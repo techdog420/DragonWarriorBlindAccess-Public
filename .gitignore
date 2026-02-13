@@ -1,0 +1,13 @@
+# DLL files (binary dependencies, not source code)
+*.dll
+
+# Test output files
+screen_dump.txt
+
+# Editor/IDE files
+*.swp
+*.swo
+*~
+
+# Claude Code local settings
+.claude/
