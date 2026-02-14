@@ -22,6 +22,7 @@ local maps = require "maps"         -- Map ID to name lookup
 local text = require "text"         -- Screen buffer reading
 local nav = require "navigation"    -- Position and map tracking
 local state = require "state"       -- Game state detection
+local menu = require "menu"         -- Command menu cursor tracking
 
 -- ============================================================
 -- Startup
@@ -40,6 +41,13 @@ FCEU.message("DW Access Mod loaded")
 local prev_hp = nil           -- Previous HP (to detect damage/healing)
 local prev_mp = nil           -- Previous MP (to detect spell use)
 local prev_level = nil        -- Previous level (to detect level-ups)
+
+-- Startup grace period: skip all change-detection announcements for the
+-- first STARTUP_FRAMES frames. This lets all the "previous" values
+-- initialize from whatever garbage is in RAM at boot without triggering
+-- a flood of false announcements (level-up to 255, lost 255 HP, etc.).
+local STARTUP_FRAMES = 120    -- 2 seconds at 60fps
+local startup_counter = 0     -- Counts up to STARTUP_FRAMES
 
 -- Dialogue stabilization tracking
 -- Dragon Warrior renders text character by character, so we can't read
@@ -141,6 +149,41 @@ local function handle_hotkeys(keys)
             tolk.output_interrupt("No text on screen")
         end
     end
+
+    -- M key: Diagnostic — read raw menu cursor values.
+    -- Use this while navigating the command menu to discover
+    -- what X/Y values the game uses for each option.
+    -- Once we've mapped all 6 items, this hotkey can be removed
+    -- or repurposed.
+    if is_key_pressed(keys, "M") then
+        tolk.output_interrupt(menu.get_cursor_info())
+    end
+
+    -- D key: Diagnostic — dump raw PPU tile bytes for rows 10-22.
+    -- This helps discover what tile values the game uses for text
+    -- that our character table doesn't decode yet.
+    -- Remove this hotkey once debugging is done.
+    if is_key_pressed(keys, "D") then
+        local dump = {}
+        for row = 10, 22 do
+            local bytes = text.read_ppu_row(row)
+            local hex_parts = {}
+            for i = 1, #bytes do
+                -- Format each byte as 2-digit hex
+                hex_parts[i] = string.format("%02X", bytes[i])
+            end
+            dump[#dump + 1] = "Row " .. row .. ": " .. table.concat(hex_parts, " ")
+        end
+        -- Write to a file since this is too much for speech
+        local f = io.open("ppu_dump.txt", "w")
+        if f then
+            f:write(table.concat(dump, "\n"))
+            f:close()
+            tolk.output_interrupt("PPU dump written to ppu_dump.txt")
+        else
+            tolk.output_interrupt("Failed to write dump file")
+        end
+    end
 end
 
 -- ============================================================
@@ -231,6 +274,30 @@ local function strip_overlap(old, new)
     return new
 end
 
+-- check_command_menu(): Announce command menu opening and cursor movement.
+-- When the player opens the command menu, we announce "Command menu" and
+-- the currently highlighted item. As they move the cursor, we announce
+-- each new item they land on.
+local function check_command_menu()
+    local changes = menu.check_for_changes()
+
+    if changes.menu_opened then
+        -- Menu just opened — announce it along with the current item
+        local item = changes.item_name or ("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
+        tolk.output("Command. " .. item)
+    elseif changes.cursor_moved and not changes.menu_closed then
+        -- Cursor moved within the open menu — announce the new item
+        local item = changes.item_name
+        if item then
+            tolk.output(item)
+        else
+            -- Unknown cursor position — announce raw values so the user
+            -- can report them for mapping
+            tolk.output("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
+        end
+    end
+end
+
 -- check_dialogue(): Read dialogue window and announce when text stabilizes.
 -- Dragon Warrior renders text one character at a time, so we wait until
 -- the text stops changing for STABLE_THRESHOLD frames before announcing.
@@ -288,24 +355,68 @@ while true do
     -- Get current game state
     local game_state = state.check_for_changes()
 
-    -- Announce state transitions
-    if game_state.changed then
-        if game_state.state == state.STATE_BATTLE then
-            tolk.output("Battle!")
+    -- Startup grace period: during the first STARTUP_FRAMES frames,
+    -- let all the "previous" tracking values initialize silently.
+    -- We still run the detection functions (so prev_ values get set),
+    -- but we suppress their announcements by skipping the output block.
+    if startup_counter < STARTUP_FRAMES then
+        startup_counter = startup_counter + 1
+
+        -- Silently initialize previous-frame values so they don't
+        -- trigger false change detections after the grace period ends.
+        prev_hp = memory.readbyte(addr.CURRENT_HP)
+        prev_mp = memory.readbyte(addr.CURRENT_MP)
+        prev_level = memory.readbyte(addr.LEVEL)
+        nav.check_for_changes()   -- Initialize map/position tracking
+        menu.check_for_changes()  -- Initialize menu cursor tracking
+
+        -- On the very last frame of the grace period, announce current
+        -- state so the player knows where they are. Without this, the
+        -- title screen transition would be missed since it happened
+        -- during the grace period.
+        if startup_counter == STARTUP_FRAMES then
+            if game_state.state == state.STATE_TITLE then
+                tolk.output("Title screen.")
+            end
         end
+    else
+        -- Normal operation: announce state transitions and changes
+
+        -- Announce state transitions
+        if game_state.changed then
+            if game_state.state == state.STATE_TITLE then
+                -- Arrived at title/save screen — read whatever text is on screen.
+                -- Use T hotkey to re-read if needed.
+                local screen_text = text.get_full_screen_text()
+                if screen_text ~= "" then
+                    tolk.output("Title screen. " .. screen_text)
+                else
+                    tolk.output("Title screen.")
+                end
+            elseif game_state.state == state.STATE_BATTLE then
+                tolk.output("Battle!")
+            elseif game_state.state == state.STATE_FIELD then
+                -- Transitioning from title to field means a game was loaded
+                if game_state.prev_state == state.STATE_TITLE then
+                    tolk.output("Game started.")
+                end
+            end
+        end
+
+        -- Run automatic checks based on current state.
+        -- Skip gameplay checks while on the title screen — the stat
+        -- addresses contain garbage/uninitialized data there.
+        if game_state.state ~= state.STATE_TITLE then
+            check_map_change()
+            check_hp_mp_changes()
+            check_level_up()
+            check_command_menu()
+        end
+
+        -- Dialogue check — runs every frame to track text changes.
+        -- This runs even on the title screen since text can appear there too.
+        check_dialogue()
     end
-
-    -- Run automatic checks based on current state
-    -- These detect changes by comparing to previous-frame values.
-    check_map_change()
-    check_hp_mp_changes()
-    check_level_up()
-
-    -- Dialogue check — runs every frame to track text changes.
-    -- The stabilization logic inside check_dialogue() waits for text
-    -- to stop changing before announcing, so running every frame is
-    -- safe and gives us accurate timing.
-    check_dialogue()
 
     -- Increment frame counter (wraps around to avoid overflow)
     frame_count = (frame_count + 1) % 600

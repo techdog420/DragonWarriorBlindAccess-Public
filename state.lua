@@ -12,6 +12,7 @@ local M = {}
 
 -- Game state constants
 -- These are our own labels (not from the game's RAM) for clarity.
+M.STATE_TITLE     = "title"      -- Title screen / save selection (no game loaded)
 M.STATE_FIELD     = "field"      -- Walking around (overworld, town, or dungeon)
 M.STATE_BATTLE    = "battle"     -- In combat with an enemy
 M.STATE_UNKNOWN   = "unknown"    -- Can't determine state
@@ -22,29 +23,36 @@ M.prev_state = nil
 -- detect(): Determine the current game state.
 -- Returns one of the STATE_* constants.
 --
--- Detection strategy (simplified for now):
--- 1. Check if enemy HP > 0: likely in battle
--- 2. Otherwise: field exploration
+-- Detection strategy:
+-- 1. Check if player level == 0: title/save screen (no game loaded yet)
+-- 2. Check if enemy HP > 0: likely in battle
+-- 3. Otherwise: field exploration
 --
--- Title screen detection was removed — the CHR page register at 0x6002
--- is outside normal NES RAM and proved unreliable. We'll revisit title
--- detection once we can test with the game.
+-- The level check works because during gameplay the player's level is
+-- always 1 or higher. On the title screen, save selection, and name
+-- entry screens, no game data is loaded so level reads as 0.
 --
--- Note: This is a first-pass heuristic. We'll refine detection as we
--- learn more about how the game signals each state.
+-- Note: The battle heuristic (enemy HP > 0) may need refinement —
+-- enemy HP could have stale data between fights. We'll improve this
+-- as we test with the actual game.
 function M.detect()
-    -- Battle check: if enemy HP > 0, we're probably in battle.
-    -- This may need refinement — enemy HP could have stale data between fights.
-    -- We'll improve this as we test with the actual game.
-    local enemy_hp = memory.readbyte(addr.ENEMY_HP)
+    -- Title screen check: if the player's level is 0 or invalid, no game
+    -- is loaded. Dragon Warrior's max level is 30. On the title screen,
+    -- RAM is uninitialized (0xFF = 255), and after the game initializes
+    -- but before loading a save, level may be 0. Either way, we're not
+    -- in gameplay.
+    local level = memory.readbyte(addr.LEVEL)
+    if level == 0 or level > 30 then
+        return M.STATE_TITLE
+    end
 
+    -- Battle check: if enemy HP > 0, we're probably in battle.
+    local enemy_hp = memory.readbyte(addr.ENEMY_HP)
     if enemy_hp > 0 then
         return M.STATE_BATTLE
     end
 
-    -- For now, everything else is "field" (walking around).
-    -- We'll add menu and dialogue detection in later iterations by
-    -- watching the screen buffer for text window patterns.
+    -- Everything else is "field" (walking around).
     return M.STATE_FIELD
 end
 

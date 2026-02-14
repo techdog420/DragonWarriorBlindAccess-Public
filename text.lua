@@ -116,7 +116,7 @@ function M.get_full_screen_text()
             all_lines[#all_lines + 1] = text
         end
     end
-    return table.concat(all_lines, "\n")
+    return table.concat(all_lines, ". ")
 end
 
 -- snapshot(): Take a snapshot of the PPU nametable bytes.
