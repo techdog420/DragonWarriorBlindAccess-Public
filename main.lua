@@ -23,6 +23,10 @@ local text = require "text"         -- Screen buffer reading
 local nav = require "navigation"    -- Position and map tracking
 local state = require "state"       -- Game state detection
 local menu = require "menu"         -- Command menu cursor tracking
+local config = require "config"     -- User-configurable settings
+local objects = require "objects"   -- Map object detection and navigation
+local pathfinder = require "pathfinder" -- A* pathfinding for interior maps
+local map_reader = require "map_reader" -- ROM map data (tile grids)
 
 -- ============================================================
 -- Startup
@@ -82,14 +86,15 @@ end
 
 -- handle_hotkeys(keys): Process keyboard hotkeys for on-demand info.
 -- keys: table from input.get() with key names as keys, true as values.
+-- All key assignments come from config.lua so the user can remap them.
 local function handle_hotkeys(keys)
-    -- P key: Read current position (map name + coordinates)
-    if is_key_pressed(keys, "P") then
+    -- Position: Read current position (map name + coordinates)
+    if is_key_pressed(keys, config.get("key_position")) then
         tolk.output_interrupt(nav.get_position_string())
     end
 
-    -- H key: Read current HP and MP
-    if is_key_pressed(keys, "H") then
+    -- HP/MP: Read current HP and MP
+    if is_key_pressed(keys, config.get("key_hp")) then
         local hp = memory.readbyte(addr.CURRENT_HP)
         local max_hp = memory.readbyte(addr.MAX_HP)
         local mp = memory.readbyte(addr.CURRENT_MP)
@@ -98,28 +103,28 @@ local function handle_hotkeys(keys)
                               ", MP " .. mp .. " of " .. max_mp)
     end
 
-    -- L key: Read player level
-    if is_key_pressed(keys, "L") then
+    -- Level: Read player level (default I, moved from L to free it for navigation)
+    if is_key_pressed(keys, config.get("key_level")) then
         local level = memory.readbyte(addr.LEVEL)
         tolk.output_interrupt("Level " .. level)
     end
 
-    -- G key: Read gold
-    if is_key_pressed(keys, "G") then
+    -- Gold: Read gold
+    if is_key_pressed(keys, config.get("key_gold")) then
         local gold = memory.readbyte(addr.GOLD_LO) +
                      memory.readbyte(addr.GOLD_HI) * 256
         tolk.output_interrupt(gold .. " gold")
     end
 
-    -- E key: Read experience
-    if is_key_pressed(keys, "E") then
+    -- Experience: Read experience
+    if is_key_pressed(keys, config.get("key_experience")) then
         local exp = memory.readbyte(addr.EXPERIENCE_LO) +
                     memory.readbyte(addr.EXPERIENCE_HI) * 256
         tolk.output_interrupt(exp .. " experience")
     end
 
-    -- S key: Read full stats
-    if is_key_pressed(keys, "S") then
+    -- Stats: Read full stats
+    if is_key_pressed(keys, config.get("key_stats")) then
         local level = memory.readbyte(addr.LEVEL)
         local hp = memory.readbyte(addr.CURRENT_HP)
         local max_hp = memory.readbyte(addr.MAX_HP)
@@ -140,8 +145,8 @@ local function handle_hotkeys(keys)
         )
     end
 
-    -- T key: Read all text currently on screen (debug/exploration)
-    if is_key_pressed(keys, "T") then
+    -- Screen text: Read all text currently on screen
+    if is_key_pressed(keys, config.get("key_screen_text")) then
         local screen_text = text.get_full_screen_text()
         if screen_text ~= "" then
             tolk.output_interrupt(screen_text)
@@ -150,31 +155,22 @@ local function handle_hotkeys(keys)
         end
     end
 
-    -- M key: Diagnostic — read raw menu cursor values.
-    -- Use this while navigating the command menu to discover
-    -- what X/Y values the game uses for each option.
-    -- Once we've mapped all 6 items, this hotkey can be removed
-    -- or repurposed.
-    if is_key_pressed(keys, "M") then
+    -- Diagnostic: raw menu cursor values
+    if is_key_pressed(keys, config.get("key_diag_cursor")) then
         tolk.output_interrupt(menu.get_cursor_info())
     end
 
-    -- D key: Diagnostic — dump raw PPU tile bytes for rows 10-22.
-    -- This helps discover what tile values the game uses for text
-    -- that our character table doesn't decode yet.
-    -- Remove this hotkey once debugging is done.
-    if is_key_pressed(keys, "D") then
+    -- Diagnostic: dump raw PPU tile bytes for rows 10-22
+    if is_key_pressed(keys, config.get("key_diag_ppu_dump")) then
         local dump = {}
         for row = 10, 22 do
             local bytes = text.read_ppu_row(row)
             local hex_parts = {}
             for i = 1, #bytes do
-                -- Format each byte as 2-digit hex
                 hex_parts[i] = string.format("%02X", bytes[i])
             end
             dump[#dump + 1] = "Row " .. row .. ": " .. table.concat(hex_parts, " ")
         end
-        -- Write to a file since this is too much for speech
         local f = io.open("ppu_dump.txt", "w")
         if f then
             f:write(table.concat(dump, "\n"))
@@ -182,6 +178,63 @@ local function handle_hotkeys(keys)
             tolk.output_interrupt("PPU dump written to ppu_dump.txt")
         else
             tolk.output_interrupt("Failed to write dump file")
+        end
+    end
+
+    -- ============================================================
+    -- Object Navigation (J/K/L/O/F)
+    -- ============================================================
+    -- Cycle through map objects (NPCs, stairs, chests, exits) and
+    -- hear direction + distance information for each one.
+    -- Follows the J/K/L convention from pokemon-access and FF mods.
+
+    -- L key (default): Next object in list
+    if is_key_pressed(keys, config.get("key_object_next")) then
+        local obj = objects.next_object()
+        if obj then
+            tolk.output_interrupt(objects.describe_current())
+        else
+            tolk.output_interrupt("No objects found")
+        end
+    end
+
+    -- J key (default): Previous object in list
+    if is_key_pressed(keys, config.get("key_object_prev")) then
+        local obj = objects.prev_object()
+        if obj then
+            tolk.output_interrupt(objects.describe_current())
+        else
+            tolk.output_interrupt("No objects found")
+        end
+    end
+
+    -- K key (default): Describe current object (re-read with updated distance)
+    if is_key_pressed(keys, config.get("key_object_current")) then
+        tolk.output_interrupt(objects.describe_current())
+    end
+
+    -- O key (default): Pathfind to current object
+    -- Uses A* for interior maps, direction+distance for overworld
+    if is_key_pressed(keys, config.get("key_pathfind")) then
+        local obj = objects.current_object()
+        if obj then
+            local map_id, px, py = nav.get_position()
+            local result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y)
+            tolk.output_interrupt(obj.name .. ". " .. result)
+        else
+            tolk.output_interrupt("No object selected")
+        end
+    end
+
+    -- F key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
+    if is_key_pressed(keys, config.get("key_filter")) then
+        local filter_name = objects.next_filter()
+        -- Announce the new filter and the first object in it
+        local count = objects.get_count()
+        if count > 0 then
+            tolk.output_interrupt(filter_name .. ". " .. objects.describe_current())
+        else
+            tolk.output_interrupt(filter_name .. ". No objects")
         end
     end
 end
@@ -411,6 +464,11 @@ while true do
             check_hp_mp_changes()
             check_level_up()
             check_command_menu()
+
+            -- Keep the object list fresh: detect map changes and
+            -- periodically re-read NPC positions (they move around).
+            local map_id = memory.readbyte(addr.MAP_ID)
+            objects.check_refresh(map_id)
         end
 
         -- Dialogue check — runs every frame to track text changes.

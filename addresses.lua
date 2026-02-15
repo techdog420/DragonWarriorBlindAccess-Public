@@ -77,4 +77,35 @@ M.SCREEN_BUF_END    = 0x07BF  -- Screen buffer end
 M.SCREEN_WIDTH      = 32      -- NES screen is 32 tiles wide
 M.SCREEN_HEIGHT     = 30      -- NES screen is 30 tiles tall (960 bytes = 30*32)
 
+-- ============================================================
+-- ROM Addresses
+-- ============================================================
+-- These are file offsets into the ROM (read with rom.readbyte).
+-- Note: rom.readbyte() in FCEUX includes the 16-byte iNES header,
+-- so ROM address 0x0000 in the file is iNES header byte 0.
+-- The actual PRG-ROM data starts at file offset 0x0010.
+
+-- Map Metadata (5 bytes per map: data pointer low, high, width, height, border tile)
+-- 30 maps total (0x00 = overworld through 0x1D)
+M.ROM_MAP_META_START = 0x002A  -- Start of map metadata table in ROM file
+M.ROM_MAP_META_SIZE  = 5       -- Bytes per map entry
+
+-- Map Tile Data — RLE compressed tiles start after the metadata table.
+-- Each map's data pointer (from metadata) gives the offset into PRG-ROM.
+M.ROM_MAP_DATA_START = 0x00C1  -- First map's tile data begins here
+
+-- Chest Data — 5 bytes per chest entry (map ID, X, Y, contents)
+-- Contains all treasure chests in the game.
+M.ROM_CHEST_START    = 0x5DDD  -- Start of chest data table
+M.ROM_CHEST_END      = 0x5E58  -- End of chest data table
+M.ROM_CHEST_SIZE     = 4       -- Bytes per chest entry (map, X, Y, contents)
+
+-- Stair/Warp Data (format not fully documented yet)
+-- Stairs down: connects a tile on one map to entry point on another
+M.ROM_STAIRS_DOWN_START = 0xF3D8  -- Stair-down entries
+M.ROM_STAIRS_DOWN_END   = 0xF471
+-- Stairs up: reverse direction warps
+M.ROM_STAIRS_UP_START   = 0xF472
+M.ROM_STAIRS_UP_END     = 0xF50B
+
 return M
