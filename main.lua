@@ -27,6 +27,7 @@ local config = require "config"     -- User-configurable settings
 local objects = require "objects"   -- Map object detection and navigation
 local pathfinder = require "pathfinder" -- A* pathfinding for interior maps
 local map_reader = require "map_reader" -- ROM map data (tile grids)
+local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
 
 -- ============================================================
 -- Startup
@@ -478,6 +479,14 @@ while true do
 
     -- Increment frame counter (wraps around to avoid overflow)
     frame_count = (frame_count + 1) % 600
+
+    -- Auto-step: extend brief D-pad taps into full tile steps.
+    -- Only active when the player is walking on the field (not in
+    -- menus, dialogue, battle, or on the title screen).
+    local can_walk = game_state.state == state.STATE_FIELD
+                     and not menu.is_open()
+                     and prev_dialogue == ""
+    auto_step.update(can_walk)
 
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.

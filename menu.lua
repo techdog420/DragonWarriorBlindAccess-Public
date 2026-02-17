@@ -68,6 +68,17 @@ local prev_cursor_y = nil   -- Previous cursor Y value
 local prev_menu_open = false -- Whether the command menu was open last frame
 
 -- ============================================================
+-- Cheap State Query
+-- ============================================================
+
+-- is_open(): Return whether the command menu was open as of the last
+-- check_for_changes() call. This is a cheap lookup (no PPU reads)
+-- so other modules can query menu state without extra overhead.
+function M.is_open()
+    return prev_menu_open
+end
+
+-- ============================================================
 -- Menu Detection
 -- ============================================================
 

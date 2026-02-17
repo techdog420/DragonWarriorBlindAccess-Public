@@ -634,6 +634,7 @@ end
 
 -- describe_current(): Describe the currently selected object.
 -- Includes the object's position in the list (e.g., "2 of 5").
+-- Also includes raw coordinate debug info to help verify distance math.
 function M.describe_current()
     if #filtered_list == 0 then
         return "No objects found"
@@ -641,7 +642,11 @@ function M.describe_current()
 
     local obj = filtered_list[current_index]
     local desc = M.describe_object(obj)
-    return desc .. " (" .. current_index .. " of " .. #filtered_list .. ")"
+    -- Include raw coordinates for debugging distance calculations.
+    -- Format: "Chest: 1 east (2 of 5) [player 4,3 obj 5,3]"
+    local _, px, py = nav.get_position()
+    return desc .. " (" .. current_index .. " of " .. #filtered_list .. ")" ..
+           " [player " .. px .. "," .. py .. " obj " .. obj.x .. "," .. obj.y .. "]"
 end
 
 return M
