@@ -29,6 +29,13 @@ def main():
     from accessible_output2.outputs.auto import Auto
     speaker = Auto()
 
+    # Prime the audio pipeline. Sound cards (especially Realtek) and
+    # Bluetooth devices enter a low-power standby after silence. The
+    # first real speech utterance gets clipped while the device wakes up.
+    # Sending a single space forces the screen reader and audio hardware
+    # to initialize, so the first real utterance plays cleanly.
+    speaker.speak(" ", interrupt=True)
+
     # Read commands from stdin, one per line.
     # We use readline() instead of iterating stdin directly because
     # Python 3's "for line in sys.stdin" buffers aggressively, which

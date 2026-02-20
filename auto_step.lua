@@ -23,8 +23,13 @@
 
 local nav = require "navigation"
 local config = require "config"
+local tolk = require "tolk"
 
 local M = {}
+
+-- Debug flag: set to true to hear speech for every auto-step event.
+-- Turn off once the feature is confirmed working.
+local DEBUG = true
 
 -- ============================================================
 -- Direction Constants
@@ -63,6 +68,17 @@ local auto_start_y = nil
 local cooldown = 0
 local COOLDOWN_FRAMES = 4  -- ~67ms at 60fps
 
+-- Injection limit: how many frames to actually inject the direction.
+-- We only need to hold long enough for the game to commit to the step
+-- (get through the turn animation and start walking). After that, the
+-- game completes the step on its own. If we inject for the entire step
+-- duration, the game starts a SECOND step because it sees the direction
+-- still held when step 1 finishes.
+--
+-- DW1 turn animation: ~8 frames. Step initiation: a few more frames.
+-- 12 frames should be plenty to get through turn + start of step.
+local INJECT_LIMIT = 12
+
 -- ============================================================
 -- Helper Functions
 -- ============================================================
@@ -77,18 +93,6 @@ local function is_any_direction_pressed(joy)
         end
     end
     return false
-end
-
--- get_pressed_direction(joy): Return the first direction found pressed.
--- If multiple directions are pressed, returns just the first one found.
--- This is fine since DW1 doesn't use diagonal movement.
-local function get_pressed_direction(joy)
-    for _, dir in ipairs(DIRECTIONS) do
-        if joy[dir] then
-            return dir
-        end
-    end
-    return nil
 end
 
 -- ============================================================
@@ -120,8 +124,10 @@ function M.update(can_walk)
     -- Read current tile position
     local _, px, py = nav.get_position()
 
-    -- Get the configured timeout (max frames to auto-hold)
-    local timeout = tonumber(config.get("auto_step_timeout")) or 30
+    -- Get the configured timeout (max frames to wait for position change).
+    -- This covers the full step: injection phase + animation completion.
+    -- A turn (~8 frames) + step (~16 frames) = ~24 frames, so 45 gives margin.
+    local timeout = tonumber(config.get("auto_step_timeout")) or 45
 
     -- If we can't walk right now, cancel any active auto-hold
     if not can_walk then
@@ -146,19 +152,38 @@ function M.update(can_walk)
     -- Phase 1: Check if auto-hold should stop
     -- --------------------------------------------------------
     if auto_dir then
-        -- Cancel if player pressed any direction manually
-        if is_any_direction_pressed(joy) then
+        -- Cancel if player pressed a DIFFERENT direction (they want
+        -- to go another way). Pressing the SAME direction we're already
+        -- auto-holding is fine — just let it continue.
+        local different_dir = false
+        for _, dir in ipairs(DIRECTIONS) do
+            if joy[dir] and dir ~= auto_dir then
+                different_dir = true
+                break
+            end
+        end
+
+        if different_dir then
+            if DEBUG then tolk.output("auto-step cancelled, different direction") end
             auto_dir = nil
         -- Cancel if position changed (step completed!)
         elseif px ~= auto_start_x or py ~= auto_start_y then
+            if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
             auto_dir = nil
             cooldown = COOLDOWN_FRAMES  -- Prevent double-step
-        -- Cancel if timeout reached (blocked by wall)
+        -- Cancel if timeout reached (blocked by wall / step never started)
         elseif auto_frames >= timeout then
+            if DEBUG then tolk.output("auto-step timeout") end
             auto_dir = nil
         else
-            -- Still auto-holding: inject the direction and increment counter
-            joypad.set(1, {[auto_dir] = true})
+            -- Only inject during the initiation phase. After INJECT_LIMIT
+            -- frames, the game has committed to the step — stop injecting
+            -- and just wait for position to change. This prevents the game
+            -- from seeing the direction held when the step finishes and
+            -- immediately starting a second step (overshoot).
+            if auto_frames <= INJECT_LIMIT then
+                joypad.set(1, {[auto_dir] = true})
+            end
             auto_frames = auto_frames + 1
         end
 
@@ -204,9 +229,15 @@ function M.update(can_walk)
                     -- Position didn't change — the tap was too short.
                     -- Start auto-holding this direction to complete the step.
                     auto_dir = tracked_dir
-                    auto_frames = 0
+                    auto_frames = 1
                     auto_start_x = px
                     auto_start_y = py
+                    -- Inject immediately on the release frame so there's
+                    -- no 1-frame gap where the game sees no direction held.
+                    -- Without this, the game could cancel the in-progress
+                    -- turn/step during that gap frame.
+                    joypad.set(1, {[auto_dir] = true})
+                    if DEBUG then tolk.output("auto-step " .. auto_dir) end
                 end
             end
             -- Either way, stop tracking this press

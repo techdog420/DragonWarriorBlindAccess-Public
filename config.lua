@@ -62,7 +62,7 @@ local DEFAULTS_ORDERED = {
     {comment = ""},
     {comment = "; === Movement ==="},
     {key = "enable_auto_step",  value = "true", comment = "; Auto-complete tile steps from quick D-pad taps"},
-    {key = "auto_step_timeout", value = "30",   comment = "; Max frames to hold direction (increase if steps aren't completing)"},
+    {key = "auto_step_timeout", value = "45",   comment = "; Max frames to wait for step to complete (increase if steps aren't finishing)"},
     {comment = ""},
     {comment = "; === Diagnostics ==="},
     {key = "key_diag_cursor",   value = "M",  comment = "; Show raw menu cursor values"},
