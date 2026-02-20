@@ -297,6 +297,64 @@ end
 -- High-Level API
 -- ============================================================
 
+-- pathfind_to_adjacent(map_id, start, goal, npc_positions):
+-- Like pathfind_to but targets a tile ADJACENT to the goal instead of the
+-- goal itself. Used for NPC targets — the player needs to stand next to an
+-- NPC to interact (press A), not on the NPC's own tile (which is blocked
+-- by the NPC's collision).
+--
+-- Returns "Adjacent" if the player is already within 1 step of the goal.
+-- Otherwise routes to the closest reachable tile next to the goal.
+function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
+    -- Already adjacent (or standing on the goal tile)
+    local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
+    if dist <= 1 then
+        return "Adjacent"
+    end
+
+    -- For the overworld, just give direction + distance (no A*)
+    if map_id == 0x00 then
+        local objects = require "objects"
+        return objects.get_direction_string(start_x, start_y, goal_x, goal_y)
+    end
+
+    -- Build blocked positions: other NPCs plus the goal tile itself.
+    -- We block the goal tile so A* stops one step short.
+    local blocked = {}
+    if npc_positions then
+        for _, npc in ipairs(npc_positions) do
+            blocked[npc.x .. "," .. npc.y] = true
+        end
+    end
+    blocked[goal_x .. "," .. goal_y] = true
+
+    -- Try each of the 4 cardinal neighbors of the goal as a destination.
+    -- A* to each walkable neighbor; keep the shortest resulting path.
+    local adj_tiles = {
+        {x = goal_x,     y = goal_y - 1},  -- north of NPC
+        {x = goal_x,     y = goal_y + 1},  -- south of NPC
+        {x = goal_x - 1, y = goal_y    },  -- west of NPC
+        {x = goal_x + 1, y = goal_y    },  -- east of NPC
+    }
+
+    local best_path = nil
+    for _, adj in ipairs(adj_tiles) do
+        -- is_walkable returns true/false/nil; nil means out-of-bounds
+        if map_reader.is_walkable(map_id, adj.x, adj.y) == true then
+            local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked)
+            if path and (not best_path or #path < #best_path) then
+                best_path = path
+            end
+        end
+    end
+
+    if best_path then
+        return "Approach: " .. M.format_path(best_path)
+    else
+        return "No path found"
+    end
+end
+
 -- pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions):
 -- Find a path and return a formatted direction string.
 --
@@ -305,7 +363,7 @@ end
 -- Returns:
 --   On success: "Path: 3 north, 2 east, 1 north"
 --   On failure: "No path found"
---   On overworld: "Overworld: [direction string]" (just direction+distance)
+--   On overworld: direction+distance string (no A*)
 function M.pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
     -- For the overworld, just give direction + distance (no A*)
     if map_id == 0x00 then

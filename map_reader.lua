@@ -55,8 +55,12 @@ local function load_metadata()
         local height = rom.readbyte(base + 3)
         local border = rom.readbyte(base + 4)
 
-        -- Combine the 2-byte pointer (little-endian)
-        local data_ptr = ptr_lo + ptr_hi * 256
+        -- Combine the 2-byte pointer (little-endian).
+        -- The ROM stores map data pointers as NES CPU addresses (e.g. $8402).
+        -- rom.readbyte() uses file offsets including the 16-byte iNES header.
+        -- PRG-ROM is mapped at CPU $8000-$FFFF, starting at file offset $0010.
+        -- Convert: file_offset = cpu_addr - $8000 + $0010
+        local data_ptr = ptr_lo + ptr_hi * 256 - 0x8000 + 0x0010
 
         meta_cache[map_id] = {
             data_ptr = data_ptr,
@@ -188,9 +192,9 @@ local WALKABLE_TOWN = {
     [1]  = true,   -- floor variant
     [2]  = false,  -- wall / building
     [3]  = false,  -- wall variant
-    [4]  = true,   -- door / entrance
+    [4]  = true,   -- floor (castle/throne carpet)
     [5]  = true,   -- stairs
-    [6]  = false,  -- counter / barrier
+    [6]  = true,   -- floor variant (throne dais, side passages)
     [7]  = false,  -- water / decoration
     [8]  = true,   -- chest (walkable to reach it)
     [9]  = true,   -- floor variant
@@ -285,30 +289,19 @@ function M.is_walkable(map_id, x, y)
 end
 
 -- get_walkability_table(map_id): Return the appropriate walkability
--- table for a given map based on its category.
+-- table for the current map.
+--
+-- We read TERRAIN_OFFSET from RAM (address 0x0016) instead of using a
+-- hardcoded map-category table, because the game itself sets this byte
+-- correctly for every map at load time:
+--   0x00 = overworld, 0x10 = town/castle, 0x20 = dungeon/cave
+-- Reading it from RAM is more reliable than guessing from map IDs.
 function M.get_walkability_table(map_id)
-    if map_id == 0x00 then
-        return WALKABLE_OVERWORLD
-    end
-
-    -- Dungeons and caves: Charlock floors (0x01-0x07, 0x16),
-    -- Erdrick's Cave (0x12-0x13), Swamp Cave (0x17),
-    -- Mountain Cave (0x18-0x19), Garin's Grave (0x1A-0x1D),
-    -- generic Cave (0x0B)
-    local dungeon_maps = {
-        [0x01] = true, [0x02] = true, [0x03] = true, [0x04] = true,
-        [0x05] = true, [0x06] = true, [0x07] = true, [0x0B] = true,
-        [0x12] = true, [0x13] = true, [0x16] = true, [0x17] = true,
-        [0x18] = true, [0x19] = true, [0x1A] = true, [0x1B] = true,
-        [0x1C] = true, [0x1D] = true,
-    }
-
-    if dungeon_maps[map_id] then
-        return WALKABLE_DUNGEON
-    end
-
-    -- Everything else is town/castle tileset
-    return WALKABLE_TOWN
+    local terrain_offset = memory.readbyte(addr.TERRAIN_OFFSET)
+    local tbl = WALKABILITY_TABLES[terrain_offset]
+    if tbl then return tbl end
+    -- Unknown terrain offset — fall back to overworld (safest default)
+    return WALKABLE_OVERWORLD
 end
 
 -- get_map_dimensions(map_id): Return width, height for a map.

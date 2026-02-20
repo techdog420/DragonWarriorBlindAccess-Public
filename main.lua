@@ -193,6 +193,123 @@ local function handle_hotkeys(keys)
         end
     end
 
+    -- Diagnostic: tile types at and around the player's position.
+    -- Speaks a short summary and writes tile_diag.txt for detailed inspection.
+    --
+    -- Key output to verify in the file:
+    --   rom.readbyte(0): if 0x4E ('N'), the iNES header IS included in offsets.
+    --                    If it's something else (e.g. 0x78 = NES SEI opcode),
+    --                    the header is NOT included (offsets are PRG-ROM relative).
+    --   Map metadata width/height: should be reasonable (8-32 for a castle room).
+    --   Tile types at player: type 0 = floor guess, 2 = wall guess in WALKABLE_TOWN.
+    --   If ALL tiles show type 0 regardless of floor/wall, the data_ptr is wrong
+    --   (out-of-bounds rom.readbyte calls returning 0).
+    if is_key_pressed(keys, config.get("key_diag_tiles")) then
+        local map_id = memory.readbyte(addr.MAP_ID)
+        local px = memory.readbyte(addr.PLAYER_X)
+        local py = memory.readbyte(addr.PLAYER_Y)
+        local ram_tile = memory.readbyte(addr.TILE_TYPE)
+        local meta = map_reader.get_metadata(map_id)
+
+        -- Helper: return "typeW" (walkable) or "typeX" (wall) for a position
+        local function td(x, y)
+            local t = map_reader.get_tile_type(map_id, x, y)
+            if t == nil then return "nil" end
+            local w = map_reader.is_walkable(map_id, x, y)
+            return tostring(t) .. (w and "W" or "X")
+        end
+
+        -- Speak a compact summary of tile types at player + 4 neighbors.
+        -- Format: "At 5,8. RAM 0. Here 0W. N 2X. S 0W. W 0W. E 1W."
+        -- 'W' suffix = walkable, 'X' = wall, RAM = game's own tile type.
+        tolk.output_interrupt(
+            "At " .. px .. "," .. py ..
+            ". RAM " .. ram_tile ..
+            ". Here " .. td(px, py) ..
+            ". N " .. td(px, py - 1) ..
+            ". S " .. td(px, py + 1) ..
+            ". W " .. td(px - 1, py) ..
+            ". E " .. td(px + 1, py)
+        )
+
+        -- Write detailed diagnostic to file
+        local lines = {}
+        lines[#lines+1] = "=== Tile Diagnostic ==="
+        lines[#lines+1] = string.format("Map ID: %d (0x%02X)", map_id, map_id)
+        lines[#lines+1] = string.format("Player: x=%d, y=%d", px, py)
+        lines[#lines+1] = string.format("RAM TILE_TYPE (0x0015): %d", ram_tile)
+        lines[#lines+1] = string.format("TERRAIN_OFFSET (0x0016): 0x%02X",
+            memory.readbyte(addr.TERRAIN_OFFSET))
+
+        -- Critical: check whether rom.readbyte(0) is the iNES header or PRG-ROM.
+        -- iNES magic: 4E 45 53 1A ('N','E','S',ctrl-Z)
+        -- If byte 0 = 0x4E, offsets include the 16-byte header.
+        -- If byte 0 = 0x78 (SEI) or another NES opcode, offsets are PRG-ROM-relative.
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- ROM addressing check ---"
+        lines[#lines+1] = string.format(
+            "rom.readbyte(0..3) = %02X %02X %02X %02X",
+            rom.readbyte(0), rom.readbyte(1), rom.readbyte(2), rom.readbyte(3))
+        lines[#lines+1] = "(0x4E 0x45 0x53 0x1A = iNES header included in offsets)"
+        lines[#lines+1] = "(other = PRG-ROM offsets, no header)"
+
+        -- Map metadata
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- Map Metadata ---"
+        if meta then
+            lines[#lines+1] = string.format("data_ptr = 0x%04X (%d)", meta.data_ptr, meta.data_ptr)
+            lines[#lines+1] = string.format("width = %d, height = %d", meta.width, meta.height)
+            lines[#lines+1] = string.format("border_tile = %d", meta.border_tile)
+            -- First 16 RLE bytes at data_ptr.
+            -- Valid RLE: each byte encodes tile_type (hi nibble, 0-15) + count-1 (lo nibble).
+            -- If all zeros: data_ptr is out of bounds (rom.readbyte returning 0).
+            local hex_parts = {}
+            for i = 0, 15 do
+                hex_parts[#hex_parts+1] = string.format("%02X", rom.readbyte(meta.data_ptr + i))
+            end
+            lines[#lines+1] = "First 16 bytes at data_ptr: " .. table.concat(hex_parts, " ")
+        else
+            lines[#lines+1] = "(no metadata — overworld or invalid map)"
+        end
+
+        -- 7x7 tile grid centered on player.
+        -- Each cell: "NN(W|X)" where NN=tile type, W=walkable, X=wall, @=player.
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- 7x7 tile grid (W=walkable X=wall @=player ?=nil) ---"
+        for dy = -3, 3 do
+            local row_parts = {}
+            for dx = -3, 3 do
+                local tx, ty = px + dx, py + dy
+                local cell
+                if tx == px and ty == py then
+                    cell = " @ "
+                else
+                    local t = map_reader.get_tile_type(map_id, tx, ty)
+                    if t == nil then
+                        cell = " ? "
+                    else
+                        local w = map_reader.is_walkable(map_id, tx, ty)
+                        cell = string.format("%2dX", t)
+                        if w then cell = string.format("%2dW", t) end
+                    end
+                end
+                row_parts[#row_parts+1] = cell
+            end
+            local label
+            if dy < 0 then label = "N" .. (-dy)
+            elseif dy > 0 then label = "S" .. dy
+            else label = "=="
+            end
+            lines[#lines+1] = table.concat(row_parts, "|") .. "  (" .. label .. ")"
+        end
+
+        local f = io.open("tile_diag.txt", "w")
+        if f then
+            f:write(table.concat(lines, "\n"))
+            f:close()
+        end
+    end
+
     -- ============================================================
     -- Object Navigation (J/K/L/O/F)
     -- ============================================================
@@ -225,13 +342,24 @@ local function handle_hotkeys(keys)
         tolk.output_interrupt(objects.describe_current())
     end
 
-    -- O key (default): Pathfind to current object
-    -- Uses A* for interior maps, direction+distance for overworld
+    -- O key (default): Pathfind to current object.
+    -- For NPCs: route to an adjacent tile (player can't walk onto the NPC).
+    -- For everything else (stairs, chests, exits): route to the exact tile.
+    -- NPC positions are passed so the pathfinder routes around other NPCs
+    -- that physically block tiles along the way.
     if is_key_pressed(keys, config.get("key_pathfind")) then
         local obj = objects.current_object()
         if obj then
             local map_id, px, py = nav.get_position()
-            local result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y)
+            local blocking = objects.get_blocking_positions()
+            local result
+            if obj.type == objects.TYPE_NPC or obj.type == objects.TYPE_CHEST then
+                -- NPCs and chests are sprite objects on walkable floor tiles.
+                -- Route to an adjacent tile rather than onto the object itself.
+                result = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
+            else
+                result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
+            end
             tolk.output_interrupt(obj.name .. ". " .. result)
         else
             tolk.output_interrupt("No object selected")

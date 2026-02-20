@@ -617,6 +617,20 @@ function M.get_count()
     return #filtered_list
 end
 
+-- get_blocking_positions(): Return a list of {x, y} for all objects that
+-- physically block movement even though their tile type is walkable floor.
+-- In DW1, NPCs and chests are sprite objects sitting on regular floor tiles.
+-- The pathfinder must avoid these positions (or route adjacent to them).
+function M.get_blocking_positions()
+    local result = {}
+    for _, obj in ipairs(object_list) do
+        if obj.type == M.TYPE_NPC or obj.type == M.TYPE_CHEST then
+            result[#result + 1] = {x = obj.x, y = obj.y}
+        end
+    end
+    return result
+end
+
 -- ============================================================
 -- Public API: Object Description
 -- ============================================================
