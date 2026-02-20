@@ -303,6 +303,69 @@ local function handle_hotkeys(keys)
             lines[#lines+1] = table.concat(row_parts, "|") .. "  (" .. label .. ")"
         end
 
+        -- NPC positions: raw RAM bytes vs. what blocking_positions contains.
+        -- This lets us diagnose coordinate mismatches between where NPCs
+        -- appear on screen and what coordinates the pathfinder sees.
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- NPC Positions (raw from RAM 0x0051+) ---"
+        lines[#lines+1] = "(Only active slots shown — skips x=0,y=0 and x=31,y=31)"
+        for i = 0, addr.NPC_COUNT - 1 do
+            local base = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
+            local byte0 = memory.readbyte(base)
+            local byte1 = memory.readbyte(base + 1)
+            local sprite_type = AND(byte0, 0xE0) / 32
+            local npc_x = AND(byte0, 0x1F)
+            local npc_y = AND(byte1, 0x1F)
+            -- Show active entries only
+            if not (npc_x == 0 and npc_y == 0)
+            and not (npc_x == 31 and npc_y == 31) then
+                -- Calculate offset from player to help spot the match
+                local dx = npc_x - px
+                local dy = npc_y - py
+                lines[#lines+1] = string.format(
+                    "  Slot %2d: byte0=0x%02X byte1=0x%02X -> x=%d, y=%d  sprite=%d  (player offset: dx=%+d dy=%+d)",
+                    i, byte0, byte1, npc_x, npc_y, sprite_type, dx, dy)
+            end
+        end
+
+        -- Show what get_blocking_positions() returns.
+        -- If this list is wrong, pathfinding won't avoid those tiles.
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- Blocking Positions (what pathfinder avoids) ---"
+        local blocking = objects.get_blocking_positions()
+        if #blocking == 0 then
+            lines[#lines+1] = "  (none — either no NPCs/chests, or object list not built yet)"
+        else
+            for _, pos in ipairs(blocking) do
+                local dx = pos.x - px
+                local dy = pos.y - py
+                lines[#lines+1] = string.format(
+                    "  Blocked x=%d, y=%d  (player offset: dx=%+d dy=%+d)",
+                    pos.x, pos.y, dx, dy)
+            end
+        end
+
+        -- Full ROM chest table dump — shows ALL chest entries across all maps.
+        -- This helps diagnose cases where chests are stored under a different
+        -- map ID than what RAM shows (e.g., throne room shows RAM map 5 but
+        -- chest table might use map 9 for some entries).
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- Full ROM Chest Table (all maps) ---"
+        local num_total = math.floor(
+            (addr.ROM_CHEST_END - addr.ROM_CHEST_START + 1) / addr.ROM_CHEST_SIZE)
+        for i = 0, num_total - 1 do
+            local base = addr.ROM_CHEST_START + (i * addr.ROM_CHEST_SIZE)
+            local cm = rom.readbyte(base)
+            local cx = rom.readbyte(base + 1)
+            local cy_raw = rom.readbyte(base + 2)
+            local cc = rom.readbyte(base + 3)
+            local cy_vis = cy_raw - 1  -- after Y-1 correction
+            local marker = (cm == map_id) and "  <== THIS MAP" or ""
+            lines[#lines+1] = string.format(
+                "  [%2d] map=%2d  x=%2d  ROM_y=%2d (visual_y=%2d)  content=0x%02X%s",
+                i, cm, cx, cy_raw, cy_vis, cc, marker)
+        end
+
         local f = io.open("tile_diag.txt", "w")
         if f then
             f:write(table.concat(lines, "\n"))
@@ -351,6 +414,9 @@ local function handle_hotkeys(keys)
         local obj = objects.current_object()
         if obj then
             local map_id, px, py = nav.get_position()
+            -- Force-refresh NPC positions right now so blocking reflects
+            -- current NPC locations, not wherever they were up to 20 frames ago.
+            objects.update_npcs()
             local blocking = objects.get_blocking_positions()
             local result
             if obj.type == objects.TYPE_NPC or obj.type == objects.TYPE_CHEST then

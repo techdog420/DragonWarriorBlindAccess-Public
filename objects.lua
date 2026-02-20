@@ -304,9 +304,13 @@ local function parse_chests(map_id)
         local base = addr.ROM_CHEST_START + (i * addr.ROM_CHEST_SIZE)
         local chest_map = rom.readbyte(base)
         local chest_x = rom.readbyte(base + 1)
-        local chest_y = rom.readbyte(base + 2)
+        -- ROM chest Y is 1-indexed (screen row), player Y is 0-indexed (map tile).
+        -- Subtract 1 to convert to the same coordinate system as player/NPC positions.
+        local chest_y = rom.readbyte(base + 2) - 1
 
-        if chest_map == map_id then
+        -- Skip entries with ROM_y=0 (a few Mountain Cave entries use this,
+        -- which would give visual_y=-1 — invalid, so ignore them).
+        if chest_map == map_id and chest_y >= 0 then
             chests[#chests + 1] = {
                 x = chest_x,
                 y = chest_y,
