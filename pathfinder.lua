@@ -174,9 +174,13 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     g_score[start_key] = 0
     heap_push(open, heuristic(start_x, start_y), {x = start_x, y = start_y})
 
-    -- Safety limit: don't explore more nodes than the entire map
-    -- (prevents runaway computation on large/complex maps)
-    local max_iterations = width * height
+    -- Safety limit on A* iterations.
+    -- Each tile can be popped from the heap multiple times when better
+    -- paths are found (one push per neighbor direction = up to 4 pops
+    -- per tile). A plain width*height limit is too tight for maps where
+    -- walls force long detours — the search exhausts the budget before
+    -- finding the route around the obstacle.
+    local max_iterations = width * height * 4
     local iterations = 0
 
     while open.size > 0 do
