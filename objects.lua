@@ -176,6 +176,30 @@ local EXITS = {
 }
 
 -- ============================================================
+-- Chest Opened Status (Session-Level Cache)
+-- ============================================================
+-- DW1 uses a password save system (no battery backup), so chest
+-- opened status is only relevant within a play session — exactly
+-- like the game's own behavior. We track this ourselves because
+-- the RAM address for the game's chest flag bitfield isn't yet
+-- documented on DataCrystal.
+--
+-- Key: chest id string (e.g. "chest_4")
+-- Value: true if the chest has been collected this session
+local opened_chests = {}
+
+-- mark_chest_opened(chest_id): Record that a chest has been collected.
+-- Called from main.lua when an inventory gain is detected near a chest.
+function M.mark_chest_opened(chest_id)
+    opened_chests[chest_id] = true
+end
+
+-- is_chest_opened(chest_id): True if chest was collected this session.
+function M.is_chest_opened(chest_id)
+    return opened_chests[chest_id] == true
+end
+
+-- ============================================================
 -- State
 -- ============================================================
 
@@ -197,6 +221,26 @@ local current_map_id = nil
 -- Frame counter for periodic NPC position updates
 local npc_refresh_counter = 0
 local NPC_REFRESH_INTERVAL = 20  -- Re-read NPC positions every 20 frames (~0.33s)
+
+-- get_nearby_chests(px, py, max_dist): Return chests within max_dist
+-- Manhattan distance of (px, py), sorted closest first.
+-- Used by main.lua to identify which chest was just collected.
+-- Must be declared here (after object_list) so the closure captures
+-- the local variable rather than treating it as a global.
+function M.get_nearby_chests(px, py, max_dist)
+    max_dist = max_dist or 1
+    local result = {}
+    for _, obj in ipairs(object_list) do
+        if obj.type == M.TYPE_CHEST then
+            local dist = math.abs(obj.x - px) + math.abs(obj.y - py)
+            if dist <= max_dist then
+                result[#result + 1] = {obj = obj, dist = dist}
+            end
+        end
+    end
+    table.sort(result, function(a, b) return a.dist < b.dist end)
+    return result
+end
 
 -- ============================================================
 -- NPC Parsing
@@ -628,7 +672,10 @@ end
 function M.get_blocking_positions()
     local result = {}
     for _, obj in ipairs(object_list) do
-        if obj.type == M.TYPE_NPC or obj.type == M.TYPE_CHEST then
+        if obj.type == M.TYPE_NPC then
+            result[#result + 1] = {x = obj.x, y = obj.y}
+        elseif obj.type == M.TYPE_CHEST and not M.is_chest_opened(obj.id) then
+            -- Only block unopened chests; opened chests have no sprite
             result[#result + 1] = {x = obj.x, y = obj.y}
         end
     end
@@ -647,7 +694,11 @@ function M.describe_object(obj)
 
     local _, px, py = nav.get_position()
     local direction = M.get_direction_string(px, py, obj.x, obj.y)
-    return obj.name .. ": " .. direction
+    local name = obj.name
+    if obj.type == M.TYPE_CHEST and M.is_chest_opened(obj.id) then
+        name = name .. " (opened)"
+    end
+    return name .. ": " .. direction
 end
 
 -- describe_current(): Describe the currently selected object.

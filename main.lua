@@ -69,6 +69,15 @@ local prev_hp = nil           -- Previous HP (to detect damage/healing)
 local prev_mp = nil           -- Previous MP (to detect spell use)
 local prev_level = nil        -- Previous level (to detect level-ups)
 
+-- Inventory tracking for chest collection detection.
+-- When gold, keys, herbs, or items increase while the player is
+-- in field state adjacent to a chest, we mark that chest as opened.
+-- Note: "prev_keys" is already taken (keyboard state). Use distinct names.
+local prev_gold        = nil
+local prev_magic_keys  = nil  -- Magic Keys count (addr.KEYS = 0x00BF)
+local prev_herbs       = nil
+local prev_items       = nil  -- Table of 4 raw item bytes (0x00C1-0x00C4)
+
 -- Startup grace period: skip all change-detection announcements for the
 -- first STARTUP_FRAMES frames. This lets all the "previous" values
 -- initialize from whatever garbage is in RAM at boot without triggering
@@ -522,6 +531,48 @@ local function check_level_up()
     prev_level = level
 end
 
+-- check_chest_collection(): Detect when the player collects a chest's
+-- contents and mark it as opened in the object list.
+--
+-- Detection: if gold, keys, herbs, or items increase while in field
+-- state (not battle) and a chest is within 1 tile of the player,
+-- that chest is marked opened. Battle rewards are excluded because
+-- they happen in STATE_BATTLE, not STATE_FIELD.
+local function check_chest_collection()
+    local gold       = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
+    local magic_keys = memory.readbyte(addr.KEYS)
+    local herbs      = memory.readbyte(addr.HERBS)
+    local items = {
+        memory.readbyte(addr.ITEMS_START),
+        memory.readbyte(addr.ITEMS_START + 1),
+        memory.readbyte(addr.ITEMS_START + 2),
+        memory.readbyte(addr.ITEMS_START + 3),
+    }
+
+    local gained = false
+    if prev_gold       ~= nil and gold       > prev_gold       then gained = true end
+    if prev_magic_keys ~= nil and magic_keys > prev_magic_keys then gained = true end
+    if prev_herbs      ~= nil and herbs      > prev_herbs      then gained = true end
+    if prev_items ~= nil then
+        for i = 1, 4 do
+            if items[i] ~= prev_items[i] then gained = true; break end
+        end
+    end
+
+    if gained then
+        local _, px, py = nav.get_position()
+        local nearby = objects.get_nearby_chests(px, py, 1)
+        if nearby[1] then
+            objects.mark_chest_opened(nearby[1].obj.id)
+        end
+    end
+
+    prev_gold       = gold
+    prev_magic_keys = magic_keys
+    prev_herbs      = herbs
+    prev_items      = items
+end
+
 -- check_map_change(): Announce when the player enters a new area.
 local function check_map_change()
     local changes = nav.check_for_changes()
@@ -760,6 +811,15 @@ while true do
         prev_hp = memory.readbyte(addr.CURRENT_HP)
         prev_mp = memory.readbyte(addr.CURRENT_MP)
         prev_level = memory.readbyte(addr.LEVEL)
+        prev_gold       = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
+        prev_magic_keys = memory.readbyte(addr.KEYS)
+        prev_herbs      = memory.readbyte(addr.HERBS)
+        prev_items = {
+            memory.readbyte(addr.ITEMS_START),
+            memory.readbyte(addr.ITEMS_START + 1),
+            memory.readbyte(addr.ITEMS_START + 2),
+            memory.readbyte(addr.ITEMS_START + 3),
+        }
         nav.check_for_changes()   -- Initialize map/position tracking
         menu.check_for_changes()  -- Initialize menu cursor tracking
 
@@ -814,6 +874,12 @@ while true do
             -- periodically re-read NPC positions (they move around).
             local map_id = memory.readbyte(addr.MAP_ID)
             objects.check_refresh(map_id)
+
+            -- Detect chest collection (only meaningful during field movement,
+            -- but safe to run any time we're not on the title screen).
+            if game_state.state == state.STATE_FIELD then
+                check_chest_collection()
+            end
         end
 
         -- Dialogue checks — run every frame to track text changes.
