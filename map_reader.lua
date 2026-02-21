@@ -273,6 +273,15 @@ function M.is_walkable(map_id, x, y)
         return false
     end
 
+    -- Engine boundary: the game prevents player movement to x=0 or y=0
+    -- on interior maps even when those tiles have walkable types.
+    -- Confirmed empirically: the left side passage (x=0) in the throne room
+    -- shows tile type 6W but the player is always blocked there.
+    -- Skip this check for the overworld (map 0x00).
+    if map_id ~= 0x00 and (x == 0 or y == 0) then
+        return false
+    end
+
     local tile_type = grid[y][x]
     if tile_type == nil then return nil end
 
