@@ -36,6 +36,28 @@ local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
 tolk.output("Dragon Warrior Accessibility Mod loaded.")
 FCEU.message("DW Access Mod loaded")
 
+-- Auto re-routing: when auto_step times out (step blocked), re-compute
+-- the path to the last pathfind target using fresh NPC positions.
+-- This handles the case where a roaming NPC blocks a step mid-path.
+auto_step.on_blocked = function()
+    if not last_pathfind_obj then return end
+    local map_id, px, py = nav.get_position()
+    objects.update_npcs()
+    local blocking = objects.get_blocking_positions()
+    local result
+    if last_pathfind_obj.type == objects.TYPE_NPC
+    or last_pathfind_obj.type == objects.TYPE_CHEST then
+        result = pathfinder.pathfind_to_adjacent(
+            map_id, px, py,
+            last_pathfind_obj.x, last_pathfind_obj.y, blocking)
+    else
+        result = pathfinder.pathfind_to(
+            map_id, px, py,
+            last_pathfind_obj.x, last_pathfind_obj.y, blocking)
+    end
+    tolk.output_interrupt("Re-routing. " .. last_pathfind_obj.name .. ". " .. result)
+end
+
 -- ============================================================
 -- Previous-Frame State
 -- ============================================================
@@ -79,6 +101,11 @@ local upper_dialogue_active = false   -- Is a dialogue window open in the upper 
 -- Some checks don't need to run every frame; we use this to
 -- spread work across frames.
 local frame_count = 0
+
+-- Last object the player pathfound to. Kept so auto_step.on_blocked
+-- can re-route to the same target when a moving NPC blocks a step.
+-- Cleared on map change.
+local last_pathfind_obj = nil
 
 -- ============================================================
 -- Hotkey Handling
@@ -413,6 +440,7 @@ local function handle_hotkeys(keys)
     if is_key_pressed(keys, config.get("key_pathfind")) then
         local obj = objects.current_object()
         if obj then
+            last_pathfind_obj = obj  -- Remember for auto re-routing on block
             local map_id, px, py = nav.get_position()
             -- Force-refresh NPC positions right now so blocking reflects
             -- current NPC locations, not wherever they were up to 20 frames ago.
@@ -499,6 +527,9 @@ local function check_map_change()
     local changes = nav.check_for_changes()
     if changes.map_changed and changes.map_name then
         tolk.output(changes.map_name)
+        -- Clear the pathfind target so auto re-routing doesn't try to reach
+        -- an object from the previous map.
+        last_pathfind_obj = nil
     end
 end
 

@@ -27,9 +27,13 @@ local tolk = require "tolk"
 
 local M = {}
 
+-- Optional callback: called when a step times out (player was blocked by
+-- a wall or moving NPC). Main.lua sets this to trigger automatic re-routing.
+-- Signature: M.on_blocked()
+M.on_blocked = nil
+
 -- Debug flag: set to true to hear speech for every auto-step event.
--- Turn off once the feature is confirmed working.
-local DEBUG = true
+local DEBUG = false
 
 -- ============================================================
 -- Direction Constants
@@ -175,6 +179,10 @@ function M.update(can_walk)
         elseif auto_frames >= timeout then
             if DEBUG then tolk.output("auto-step timeout") end
             auto_dir = nil
+            -- Notify the main loop so it can re-route around the obstacle
+            if M.on_blocked then
+                M.on_blocked()
+            end
         else
             -- Only inject during the initiation phase. After INJECT_LIMIT
             -- frames, the game has committed to the step — stop injecting
