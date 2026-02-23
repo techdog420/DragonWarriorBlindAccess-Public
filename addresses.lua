@@ -108,4 +108,16 @@ M.ROM_STAIRS_DOWN_END   = 0xF471
 M.ROM_STAIRS_UP_START   = 0xF472
 M.ROM_STAIRS_UP_END     = 0xF50B
 
+-- Opened Door Position Arrays (cartridge work RAM at $6000-$7FFF)
+-- DW1 tracks doors opened during the current map visit in these arrays.
+-- Cleared when re-entering a map (the arrays reset to 0 on map load).
+-- Layout: X positions at $600C, $600E, $6010 ... (stride 2, up to 8 slots)
+--         Y positions at $600D, $600F, $6011 ... (stride 2, interleaved with X)
+-- An entry of (0, 0) means the slot is empty.
+-- Source: DoorXPos/DoorYPos in nmikstas/dragon-warrior-disassembly
+M.DOOR_X_POS_START  = 0x600C  -- Start of opened door X position array
+M.DOOR_Y_POS_START  = 0x600D  -- Start of opened door Y position array
+M.DOOR_ARRAY_MAX    = 8       -- Maximum simultaneously tracked open doors
+M.DOOR_ARRAY_STRIDE = 2       -- Bytes between consecutive entries
+
 return M

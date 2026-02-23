@@ -18,6 +18,7 @@
 local addr = require "addresses"
 local maps = require "maps"
 local nav = require "navigation"
+local map_reader = require "map_reader"
 
 local M = {}
 
@@ -30,6 +31,7 @@ M.TYPE_NPC    = "npc"
 M.TYPE_STAIR  = "stair"
 M.TYPE_CHEST  = "chest"
 M.TYPE_EXIT   = "exit"
+M.TYPE_DOOR   = "door"
 
 -- ============================================================
 -- Filter Constants
@@ -41,6 +43,7 @@ M.FILTER_NPC    = 2
 M.FILTER_EXIT   = 3
 M.FILTER_CHEST  = 4
 M.FILTER_STAIR  = 5
+M.FILTER_DOOR   = 6
 
 -- Human-readable names for each filter mode
 local FILTER_NAMES = {
@@ -49,10 +52,11 @@ local FILTER_NAMES = {
     [M.FILTER_EXIT]  = "Exits",
     [M.FILTER_CHEST] = "Chests",
     [M.FILTER_STAIR] = "Stairs",
+    [M.FILTER_DOOR]  = "Doors",
 }
 
 -- How many filter modes there are (for wraparound)
-local FILTER_COUNT = 5
+local FILTER_COUNT = 6
 
 -- ============================================================
 -- NPC Sprite Type Names
@@ -72,6 +76,44 @@ local SPRITE_NAMES = {
 }
 
 -- ============================================================
+-- Door Tile Type Constants
+-- ============================================================
+-- In DW1's ROM map data, locked doors use a specific raw 4-bit tile
+-- type that the game's conversion table maps to BLK_DOOR ($11).
+-- The type differs between town/castle and dungeon/cave tilesets.
+--
+-- Town/castle (TERRAIN_OFFSET = 0x10): raw nibble 0x0B = 11 decimal
+-- Dungeon/cave (TERRAIN_OFFSET = 0x20): raw nibble 0x05 = 5 decimal
+--
+-- Our map_reader.lua reads these raw nibble values directly from the
+-- RLE tile data, so we compare against these constants.
+local DOOR_TILE_TOWN    = 11   -- locked door tile in town/castle maps
+local DOOR_TILE_DUNGEON = 5    -- locked door tile in dungeon/cave maps
+
+-- ============================================================
+-- Door Opened Status
+-- ============================================================
+-- When the player opens a door with a Magic Key, DW1 stores the door's
+-- position in cartridge work RAM arrays at $600C/$600D (8 slots, 2-byte
+-- stride). These are cleared when re-entering a map, so door state is
+-- session-only — exactly like our chest opened cache.
+--
+-- is_door_opened(x, y): Return true if the door at (x, y) appears in
+-- the game's opened-door RAM array. Scans all 8 slots.
+local function is_door_opened(x, y)
+    for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+        local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+        local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+        -- A non-zero X value that matches both coordinates = opened door.
+        -- Empty slots have dx=0 (no valid door is at x=0 — engine blocks it).
+        if dx ~= 0 and dx == x and dy == y then
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================================
 -- Hard-Coded Stair/Warp Locations
 -- ============================================================
 -- Since the ROM format for stair data isn't fully documented,
@@ -88,9 +130,14 @@ local STAIRS = {
     -- Stairs leading to the courtyard treasure room
     {map = 0x08, x = 29, y = 1, name = "Stairs Down", dest = "Treasure Room"},
 
-    -- Tantegel Castle Throne Room (0x09)
-    -- Stairs back up to the main castle floor
-    {map = 0x09, x = 1, y = 1, name = "Stairs Up", dest = "Tantegel Castle"},
+    -- Tantegel Castle Throne Room (empirically = RAM map 0x05, NOT 0x09)
+    -- Staircase at east end of south wall (x=8, y=7) — type-15 wall tile,
+    -- sprite overlay visible at "1 south, 4 east" from player at (4,6).
+    -- Adjacent walkable tile: (8,6). Destination needs in-game verification.
+    {map = 0x05, x = 8, y = 7, name = "Stairs", dest = "Unknown"},
+
+    -- Tantegel Castle Throne Room (0x09) — map ID may be wrong (see 0x05 above)
+    -- {map = 0x09, x = 1, y = 1, name = "Stairs Up", dest = "Tantegel Castle"},
 
     -- Erdrick's Cave B1 (0x12)
     {map = 0x12, x = 1, y = 1, name = "Stairs Down", dest = "B2"},
@@ -131,10 +178,13 @@ local STAIRS = {
     {map = 0x02, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
     {map = 0x03, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
     {map = 0x03, x = 7, y = 7, name = "Stairs Down", dest = "B4"},
-    {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "B3"},
-    {map = 0x04, x = 1, y = 1, name = "Stairs Down", dest = "B5"},
-    {map = 0x05, x = 1, y = 1, name = "Stairs Up", dest = "B4"},
-    {map = 0x05, x = 7, y = 7, name = "Stairs Down", dest = "B6"},
+    -- NOTE: map IDs 0x04 and 0x05 in RAM are actually Tantegel Castle
+    -- and the Tantegel Castle Throne Room respectively (confirmed empirically).
+    -- These Charlock B3-B5 stair entries may be at wrong map IDs; leave
+    -- placeholder comments until the correct map IDs are verified in-game.
+    -- {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "B3"},
+    -- {map = 0x04, x = 1, y = 1, name = "Stairs Down", dest = "B5"},
+    -- map 0x05 is Tantegel Throne Room — see EXITS table below
     {map = 0x06, x = 7, y = 7, name = "Stairs Up", dest = "B5"},
     {map = 0x06, x = 4, y = 4, name = "Stairs Down", dest = "B7"},
 
@@ -162,7 +212,13 @@ local EXITS = {
     {map = 0x11, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Rimuldar
 
     -- Castles — exits are typically at the south entrance
-    {map = 0x08, x = 15, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle
+    -- NOTE: map 0x05 = Tantegel Throne Room (empirically confirmed, 9x9).
+    -- The exit at x=4,y=7 is the south wall arch flanked by guards at (3,6)
+    -- and (5,6). Type-15 wall tile, so pathfinding uses adjacent routing
+    -- (routes the player to 4,6).
+    -- x=1,y=7 is also type-4W (possible alternate exit tile — needs verification).
+    {map = 0x05, x = 4, y = 7, name = "Exit", dest = "Tantegel Castle"},  -- Throne Room south arch
+    {map = 0x08, x = 15, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle (map ID needs verification)
     {map = 0x0A, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
 
     -- Shrines
@@ -369,6 +425,56 @@ local function parse_chests(map_id)
 end
 
 -- ============================================================
+-- Door Parsing (from tile grid)
+-- ============================================================
+
+-- parse_doors(map_id): Scan the ROM tile grid for locked door tiles
+-- and return a list of door objects for the given map.
+--
+-- Unlike chests (stored in a dedicated ROM table), doors ARE the tile
+-- itself: a locked door is a tile of type DOOR_TILE_TOWN (11) in castle
+-- maps or DOOR_TILE_DUNGEON (5) in cave maps. We find them by scanning
+-- the decompressed tile grid that map_reader already builds for us.
+--
+-- DW1 confirmed to have actual locked doors only on map 4 (Tantegel
+-- Castle) and map 9. Other maps return an empty list from this scan.
+local function parse_doors(map_id)
+    -- Determine the door tile type for the current terrain.
+    -- TERRAIN_OFFSET at $0016 is set by the game on every map load.
+    local terrain_offset = memory.readbyte(addr.TERRAIN_OFFSET)
+    local door_tile
+    if terrain_offset == 0x10 then
+        door_tile = DOOR_TILE_TOWN      -- castle/town maps
+    elseif terrain_offset == 0x20 then
+        door_tile = DOOR_TILE_DUNGEON   -- dungeon/cave maps
+    else
+        return {}  -- overworld or unknown tileset — no locked doors
+    end
+
+    local grid = map_reader.get_tile_grid(map_id)
+    if not grid then return {} end
+
+    local meta = map_reader.get_metadata(map_id)
+    if not meta then return {} end
+
+    local doors = {}
+    for y = 0, meta.height - 1 do
+        for x = 0, meta.width - 1 do
+            if grid[y] and grid[y][x] == door_tile then
+                doors[#doors + 1] = {
+                    x    = x,
+                    y    = y,
+                    name = "Door",
+                    type = M.TYPE_DOOR,
+                    id   = "door_" .. x .. "_" .. y,
+                }
+            end
+        end
+    end
+    return doors
+end
+
+-- ============================================================
 -- Stair/Exit Lookup
 -- ============================================================
 
@@ -481,6 +587,11 @@ local function build_object_list(map_id)
         objects[#objects + 1] = exit
     end
 
+    local doors = parse_doors(map_id)
+    for _, door in ipairs(doors) do
+        objects[#objects + 1] = door
+    end
+
     -- Sort by distance from player (closest first)
     table.sort(objects, function(a, b)
         local da = get_distance(px, py, a.x, a.y)
@@ -516,6 +627,8 @@ local function apply_filter(objects, filter)
         filter_type = M.TYPE_CHEST
     elseif filter == M.FILTER_STAIR then
         filter_type = M.TYPE_STAIR
+    elseif filter == M.FILTER_DOOR then
+        filter_type = M.TYPE_DOOR
     end
 
     local result = {}
@@ -696,6 +809,9 @@ function M.describe_object(obj)
     local direction = M.get_direction_string(px, py, obj.x, obj.y)
     local name = obj.name
     if obj.type == M.TYPE_CHEST and M.is_chest_opened(obj.id) then
+        name = name .. " (opened)"
+    end
+    if obj.type == M.TYPE_DOOR and is_door_opened(obj.x, obj.y) then
         name = name .. " (opened)"
     end
     return name .. ": " .. direction

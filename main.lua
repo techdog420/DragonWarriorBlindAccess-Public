@@ -45,8 +45,11 @@ auto_step.on_blocked = function()
     objects.update_npcs()
     local blocking = objects.get_blocking_positions()
     local result
+    local target_walkable = map_reader.is_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
     if last_pathfind_obj.type == objects.TYPE_NPC
-    or last_pathfind_obj.type == objects.TYPE_CHEST then
+    or last_pathfind_obj.type == objects.TYPE_CHEST
+    or last_pathfind_obj.type == objects.TYPE_DOOR
+    or not target_walkable then
         result = pathfinder.pathfind_to_adjacent(
             map_id, px, py,
             last_pathfind_obj.x, last_pathfind_obj.y, blocking)
@@ -247,11 +250,16 @@ local function handle_hotkeys(keys)
         local ram_tile = memory.readbyte(addr.TILE_TYPE)
         local meta = map_reader.get_metadata(map_id)
 
-        -- Helper: return "typeW" (walkable) or "typeX" (wall) for a position
+        -- Helper: return "typeW" (walkable), "typeDoor" (locked door), or "typeX" (wall)
         local function td(x, y)
             local t = map_reader.get_tile_type(map_id, x, y)
             if t == nil then return "nil" end
             local w = map_reader.is_walkable(map_id, x, y)
+            local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+            local is_door = (terrain == 0x10 and t == 11) or (terrain == 0x20 and t == 5)
+            if is_door then
+                return tostring(t) .. "D"  -- D = locked door
+            end
             return tostring(t) .. (w and "W" or "X")
         end
 
@@ -311,7 +319,7 @@ local function handle_hotkeys(keys)
         -- 7x7 tile grid centered on player.
         -- Each cell: "NN(W|X)" where NN=tile type, W=walkable, X=wall, @=player.
         lines[#lines+1] = ""
-        lines[#lines+1] = "--- 7x7 tile grid (W=walkable X=wall @=player ?=nil) ---"
+        lines[#lines+1] = "--- 7x7 tile grid (W=walkable X=wall D=door @=player ?=nil) ---"
         for dy = -3, 3 do
             local row_parts = {}
             for dx = -3, 3 do
@@ -456,9 +464,15 @@ local function handle_hotkeys(keys)
             objects.update_npcs()
             local blocking = objects.get_blocking_positions()
             local result
-            if obj.type == objects.TYPE_NPC or obj.type == objects.TYPE_CHEST then
-                -- NPCs and chests are sprite objects on walkable floor tiles.
-                -- Route to an adjacent tile rather than onto the object itself.
+            -- Use adjacent pathfinding when:
+            --   TYPE_NPC/CHEST/DOOR  — sprite or wall tile the player stands next to
+            --   Any non-walkable tile — e.g. exits where the warp fires at a wall
+            --                           (like the throne room south arch at type-15)
+            local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
+            if obj.type == objects.TYPE_NPC
+            or obj.type == objects.TYPE_CHEST
+            or obj.type == objects.TYPE_DOOR
+            or not target_walkable then
                 result = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
             else
                 result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
@@ -628,8 +642,19 @@ end
 -- When the player opens the command menu, we announce "Command menu" and
 -- the currently highlighted item. As they move the cursor, we announce
 -- each new item they land on.
+--
+-- Guard: When a Yes/No prompt is active, the game reuses the command menu
+-- window (same "COMMAND" header in the PPU, same cursor RAM addresses).
+-- The cursor at position (0,0) = YES, (0,1) = NO. Without the guard,
+-- these would be announced as "TALK" and "STATUS". We call check_for_changes()
+-- anyway to keep prev_cursor_x/y current so there's no stale-cursor
+-- false-announce after the Yes/No prompt is dismissed.
 local function check_command_menu()
     local changes = menu.check_for_changes()
+
+    -- Yes/No prompt reuses the command menu UI — suppress command menu
+    -- announcements while it is active (check_yesno_prompt handles them).
+    if menu.is_yesno_active() then return end
 
     if changes.menu_opened then
         -- Menu just opened — announce it along with the current item
@@ -645,6 +670,39 @@ local function check_command_menu()
             -- can report them for mapping
             tolk.output("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
         end
+    end
+end
+
+-- check_yesno_prompt(): Announce Yes/No prompt appearance and cursor movement.
+--
+-- Dragon Warrior NPCs sometimes ask yes/no questions ("Dost thou need
+-- guidance? YES NO"). The player moves the cursor between YES and NO with
+-- the D-pad and confirms with A. Without this function, the cursor change
+-- is completely silent since the cursor tile decodes to "" in our text system.
+--
+-- We call menu.check_yesno_changes() (which also caches the result for
+-- check_dialogue()'s guard) and announce:
+--   - "YES NO prompt. YES" when the window first appears
+--   - "YES" or "NO" when the cursor moves between options
+local function check_yesno_prompt()
+    local changes = menu.check_yesno_changes()
+    if changes.just_appeared then
+        -- The guard's question may not have completed its 30-frame
+        -- stabilization before the Yes/No window appeared. Read the
+        -- lower dialogue area right now and announce any text that
+        -- hasn't been spoken yet, so the player hears the question
+        -- before the Yes/No prompt. Update announced_dialogue so the
+        -- normal dialogue system doesn't repeat it.
+        local question = text.read_dialogue_window()
+        if question ~= "" and question ~= announced_dialogue then
+            tolk.output(question)
+            announced_dialogue = question
+        end
+        -- Queue the prompt announcement after the question text
+        tolk.output("YES NO prompt. " .. (changes.selection or ""))
+    elseif changes.selection_changed then
+        -- Cursor moved — announce the newly highlighted option.
+        tolk.output(changes.selection)
     end
 end
 
@@ -868,6 +926,9 @@ while true do
             check_map_change()
             check_hp_mp_changes()
             check_level_up()
+            -- Yes/No must run before check_command_menu() so is_yesno_active()
+            -- is populated before that guard reads it.
+            check_yesno_prompt()
             check_command_menu()
 
             -- Keep the object list fresh: detect map changes and
