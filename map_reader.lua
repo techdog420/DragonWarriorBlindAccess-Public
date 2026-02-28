@@ -261,6 +261,33 @@ local WALKABILITY_TABLES = {
 }
 
 -- ============================================================
+-- Per-Map Passthrough Cell Overrides
+-- ============================================================
+-- Some cells ARE walkable despite their tile type appearing to be a
+-- wall (type 15 in town maps, etc.). These include exit arches,
+-- staircase tiles, and interior corridor floors where the game uses
+-- the same tile type for both solid walls and passable areas.
+--
+-- Format: MAP_PASSTHROUGH_CELLS[map_id]["x,y"] = true
+-- A cell listed here is always treated as walkable regardless of
+-- its tile type. Checked BEFORE the tile-type lookup so these
+-- override non-walkable tile types.
+local MAP_PASSTHROUGH_CELLS = {
+    -- Map 0x05: Tantegel Castle Throne Room
+    -- The south wall (y=7) and bottom row (y=8) are type-15 in ROM, but
+    -- the east section contains a corridor that is physically walkable:
+    --   (4,7) = arch/passthrough in the south wall (entering the corridor)
+    --   (4,8)-(7,8) = corridor floor tiles leading east to the staircase
+    --   (8,8) = staircase entry — player stands here to use it
+    -- All confirmed empirically: player walked (4,4)→south→(4,8)→east→(8,8).
+    [0x05] = {
+        ["4,7"] = true,
+        ["4,8"] = true, ["5,8"] = true, ["6,8"] = true,
+        ["7,8"] = true, ["8,8"] = true,
+    },
+}
+
+-- ============================================================
 -- Per-Map Blocked Cell Overrides
 -- ============================================================
 -- Some cells are physically blocked by the game engine via sprite
@@ -308,6 +335,13 @@ function M.is_walkable(map_id, x, y)
     -- Skip this check for the overworld (map 0x00).
     if map_id ~= 0x00 and (x == 0 or y == 0) then
         return false
+    end
+
+    -- Per-map passthrough overrides: cells walkable despite tile type.
+    -- Check this BEFORE the tile-type table so these take priority.
+    local passthroughs = MAP_PASSTHROUGH_CELLS[map_id]
+    if passthroughs and passthroughs[x .. "," .. y] then
+        return true
     end
 
     -- Per-map sprite-collision overrides (cells blocked by game engine

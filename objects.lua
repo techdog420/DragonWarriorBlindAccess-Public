@@ -130,11 +130,13 @@ local STAIRS = {
     -- Stairs leading to the courtyard treasure room
     {map = 0x08, x = 29, y = 1, name = "Stairs Down", dest = "Treasure Room"},
 
-    -- Tantegel Castle Throne Room (empirically = RAM map 0x05, NOT 0x09)
-    -- Staircase at east end of south wall (x=8, y=7) — type-15 wall tile,
-    -- sprite overlay visible at "1 south, 4 east" from player at (4,6).
-    -- Adjacent walkable tile: (8,6). Destination needs in-game verification.
-    {map = 0x05, x = 8, y = 7, name = "Stairs", dest = "Unknown"},
+    -- Tantegel Castle Throne Room (empirically = RAM map 0x05)
+    -- Staircase at east end of the south corridor (x=8, y=8). Player stands
+    -- at (8,8) to use it. Reached by walking south through the arch at (4,7)
+    -- into the y=8 corridor, then east to (8,8). All of y=7-8 are type-15 in
+    -- the ROM tile data, but (4,7) and (4,8)-(8,8) are passthrough cells
+    -- (walkable despite type-15). Destination needs in-game verification.
+    {map = 0x05, x = 8, y = 8, name = "Stairs Down", dest = "Unknown"},
 
     -- Tantegel Castle Throne Room (0x09) — map ID may be wrong (see 0x05 above)
     -- {map = 0x09, x = 1, y = 1, name = "Stairs Up", dest = "Tantegel Castle"},
@@ -213,11 +215,10 @@ local EXITS = {
 
     -- Castles — exits are typically at the south entrance
     -- NOTE: map 0x05 = Tantegel Throne Room (empirically confirmed, 9x9).
-    -- The exit at x=4,y=7 is the south wall arch flanked by guards at (3,6)
-    -- and (5,6). Type-15 wall tile, so pathfinding uses adjacent routing
-    -- (routes the player to 4,6).
-    -- x=1,y=7 is also type-4W (possible alternate exit tile — needs verification).
-    {map = 0x05, x = 4, y = 7, name = "Exit", dest = "Tantegel Castle"},  -- Throne Room south arch
+    -- (4,7) is the arch in the south wall that leads to the y=8 corridor
+    -- within the same map (not a map exit). Pathfinding to stairs at (8,8)
+    -- automatically routes south through (4,7) and east to the staircase.
+    -- The actual map exit from map 0x05 is via the stairs at (8,8).
     {map = 0x08, x = 15, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle (map ID needs verification)
     {map = 0x0A, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
 
