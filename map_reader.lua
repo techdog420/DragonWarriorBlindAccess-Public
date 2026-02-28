@@ -191,7 +191,9 @@ local WALKABLE_TOWN = {
     [0]  = true,   -- floor / ground
     [1]  = true,   -- floor variant
     [2]  = false,  -- wall / building
-    [3]  = false,  -- wall variant
+    [3]  = true,   -- railing / decorative barrier (visually solid but walkable;
+                   --   confirmed: player can cross throne room railing y=5, x=1-7,
+                   --   which are all type-3. Update if proven non-walkable elsewhere.)
     [4]  = true,   -- floor (castle/throne carpet)
     [5]  = true,   -- stairs
     [6]  = true,   -- floor variant (throne dais, side passages)
