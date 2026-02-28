@@ -404,13 +404,16 @@ local function parse_chests(map_id)
         local base = addr.ROM_CHEST_START + (i * addr.ROM_CHEST_SIZE)
         local chest_map = rom.readbyte(base)
         local chest_x = rom.readbyte(base + 1)
-        -- ROM chest Y is 1-indexed (screen row), player Y is 0-indexed (map tile).
-        -- Subtract 1 to convert to the same coordinate system as player/NPC positions.
-        local chest_y = rom.readbyte(base + 2) - 1
+        -- ROM chest Y matches the player coordinate directly (no offset).
+        -- Formula: chest_y = ROM_y.
+        -- Empirically confirmed on map 5 (throne room):
+        --   Chest [6] at ROM_y=1 was physically found at game y=1. ✓
+        --   Chests [4],[5] at ROM_y=4 → game y=4 (1 south of player at y=3). ✓
+        -- ROM_y=0 is an invalid sentinel (skips Mountain Cave placeholder entries).
+        local rom_y = rom.readbyte(base + 2)
+        local chest_y = rom_y  -- player coordinate = ROM value directly
 
-        -- Skip entries with ROM_y=0 (a few Mountain Cave entries use this,
-        -- which would give visual_y=-1 — invalid, so ignore them).
-        if chest_map == map_id and chest_y >= 0 then
+        if chest_map == map_id and rom_y > 0 then
             chests[#chests + 1] = {
                 x = chest_x,
                 y = chest_y,
@@ -780,15 +783,16 @@ end
 
 -- get_blocking_positions(): Return a list of {x, y} for all objects that
 -- physically block movement even though their tile type is walkable floor.
--- In DW1, NPCs and chests are sprite objects sitting on regular floor tiles.
--- The pathfinder must avoid these positions (or route adjacent to them).
+-- In DW1, only NPCs block movement — you cannot walk through an NPC.
+-- Chests do NOT block movement: the player can walk onto a chest tile
+-- (which opens the chest). Empirically confirmed: player was observed
+-- standing on chest tile (4,4) while the chest was still listed as
+-- unopened. Including chests in the block list caused "No path found"
+-- when a chest happened to be on the only available route.
 function M.get_blocking_positions()
     local result = {}
     for _, obj in ipairs(object_list) do
         if obj.type == M.TYPE_NPC then
-            result[#result + 1] = {x = obj.x, y = obj.y}
-        elseif obj.type == M.TYPE_CHEST and not M.is_chest_opened(obj.id) then
-            -- Only block unopened chests; opened chests have no sprite
             result[#result + 1] = {x = obj.x, y = obj.y}
         end
     end

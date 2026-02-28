@@ -119,6 +119,13 @@ local frame_count = 0
 -- Cleared on map change.
 local last_pathfind_obj = nil
 
+-- NPC freeze: lock NPC positions in RAM for reliable pathfinding.
+-- When active, we restore NPC bytes to their snapshot values after
+-- every FCEU.frameadvance(), undoing any movement the game's AI did.
+-- The blind user doesn't need NPCs to visually wander, so this is safe.
+local npc_freeze_active = false
+local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
+
 -- ============================================================
 -- Hotkey Handling
 -- ============================================================
@@ -133,6 +140,39 @@ local prev_keys = {}
 -- from firing repeatedly while the key is held down.
 local function is_key_pressed(keys, key_name)
     return keys[key_name] and not prev_keys[key_name]
+end
+
+-- capture_npc_snapshot(): Read all 20 NPC entries (3 bytes each) from RAM
+-- and save them into frozen_npc_snapshot. Called when freeze is activated.
+-- Byte 0: sprite type (bits 7-5) + X position (bits 4-0).
+-- Byte 1: animation frame (bit 7) + direction (bits 6-5) + Y position (bits 4-0).
+-- Byte 2: movement behavior code.
+local function capture_npc_snapshot()
+    frozen_npc_snapshot = {}
+    for i = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
+        frozen_npc_snapshot[i] = {
+            memory.readbyte(base),
+            memory.readbyte(base + 1),
+            memory.readbyte(base + 2),
+        }
+    end
+end
+
+-- apply_npc_freeze(): Restore snapshotted NPC bytes to RAM.
+-- Call once per frame immediately after FCEU.frameadvance().
+-- The NES NPC AI runs during frameadvance and may write new positions;
+-- this undoes those writes so our code sees stable NPC coordinates next frame.
+-- No-op when npc_freeze_active is false, so it's safe to call every frame.
+local function apply_npc_freeze()
+    if not npc_freeze_active then return end
+    for i = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
+        local snap = frozen_npc_snapshot[i]
+        memory.writebyte(base,     snap[1])
+        memory.writebyte(base + 1, snap[2])
+        memory.writebyte(base + 2, snap[3])
+    end
 end
 
 -- handle_hotkeys(keys): Process keyboard hotkeys for on-demand info.
@@ -403,7 +443,7 @@ local function handle_hotkeys(keys)
             local cx = rom.readbyte(base + 1)
             local cy_raw = rom.readbyte(base + 2)
             local cc = rom.readbyte(base + 3)
-            local cy_vis = cy_raw - 1  -- after Y-1 correction
+            local cy_vis = cy_raw        -- game_y = ROM_y directly (no offset)
             local marker = (cm == map_id) and "  <== THIS MAP" or ""
             lines[#lines+1] = string.format(
                 "  [%2d] map=%2d  x=%2d  ROM_y=%2d (visual_y=%2d)  content=0x%02X%s",
@@ -414,6 +454,22 @@ local function handle_hotkeys(keys)
         if f then
             f:write(table.concat(lines, "\n"))
             f:close()
+        end
+    end
+
+    -- X key (default): Toggle NPC position freeze on/off.
+    -- When frozen, NPC bytes are locked to their snapshotted positions so
+    -- pathfinding routes stay valid even if guards wander. Turn off after
+    -- reaching your destination so NPCs resume normal movement.
+    if is_key_pressed(keys, config.get("key_freeze_npcs")) then
+        if npc_freeze_active then
+            npc_freeze_active = false
+            frozen_npc_snapshot = {}
+            tolk.output_interrupt("NPCs unfrozen.")
+        else
+            capture_npc_snapshot()
+            npc_freeze_active = true
+            tolk.output_interrupt("NPCs frozen.")
         end
     end
 
@@ -462,6 +518,11 @@ local function handle_hotkeys(keys)
             -- Force-refresh NPC positions right now so blocking reflects
             -- current NPC locations, not wherever they were up to 20 frames ago.
             objects.update_npcs()
+            -- Freeze NPCs at their current positions for the duration of this
+            -- path. The snapshot is taken after update_npcs() so it captures
+            -- the most up-to-date positions before we lock them in.
+            capture_npc_snapshot()
+            npc_freeze_active = true
             local blocking = objects.get_blocking_positions()
             local result
             -- Use adjacent pathfinding when:
@@ -595,6 +656,10 @@ local function check_map_change()
         -- Clear the pathfind target so auto re-routing doesn't try to reach
         -- an object from the previous map.
         last_pathfind_obj = nil
+        -- Clear NPC freeze — NPCs on the new map start fresh and their
+        -- previous positions are irrelevant.
+        npc_freeze_active = false
+        frozen_npc_snapshot = {}
     end
 end
 
@@ -966,4 +1031,10 @@ while true do
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.
     FCEU.frameadvance()
+
+    -- If NPC freeze is active, restore NPC position bytes to their snapshot.
+    -- The NES game's NPC movement routines ran during frameadvance and may
+    -- have written new positions; we undo that here so our code sees stable
+    -- NPC coordinates on the next frame.
+    apply_npc_freeze()
 end

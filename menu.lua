@@ -187,4 +187,163 @@ function M.check_for_changes()
     return result
 end
 
+-- ============================================================
+-- Yes/No Prompt Detection
+-- ============================================================
+-- When an NPC asks a yes/no question (e.g., "Dost thou need guidance?"),
+-- Dragon Warrior shows a small window with YES and NO options. The cursor
+-- (PPU tile 0x42) appears directly before the currently selected option.
+--
+-- We scan the lower dialogue area (rows 19-29) for the pattern:
+--   cursor tile (0x42) immediately before YES or NO option bytes.
+--
+-- Dragon Warrior character encoding for these options:
+--   Y=0x3C, E=0x28, S=0x36  →  YES = {0x3C, 0x28, 0x36}
+--   N=0x31, O=0x32           →  NO  = {0x31, 0x32}
+-- The cursor tile is the same 0x42 used by the command menu (decodes to "").
+local YES_BYTES  = {0x3C, 0x28, 0x36}   -- "YES" in DW1 encoding
+local NO_BYTES   = {0x31, 0x32}          -- "NO" in DW1 encoding
+local CURSOR_TILE = 0x42                 -- Same cursor arrow used by command menu
+
+-- Rows to scan for the Yes/No prompt.
+-- In DW1, the Yes/No window reuses the command menu window (same "COMMAND"
+-- header, rows 0-18 area), not the lower dialogue area. Scan the full
+-- screen to handle both possible layouts.
+local YESNO_ROW_START = 0
+local YESNO_ROW_END   = 29
+
+-- State tracking for Yes/No prompt
+local prev_yesno_selection = nil   -- "YES", "NO", or nil (no prompt active)
+local last_yesno_selection = nil   -- Cached result for is_yesno_active()
+
+-- get_yesno_state(): Scan the full screen for a Yes/No prompt.
+--
+-- Uses two independent checks to survive cursor blink animation:
+--
+--   ACTIVE: require BOTH uppercase "YES" (0x3C 0x28 0x36) AND uppercase
+--   "NO" (0x31 0x32) to be present anywhere on screen. These labels stay
+--   rendered even while the cursor tile blinks off, so active/inactive
+--   detection does not depend on the cursor being visible.
+--   Uppercase YES/NO only appear in the Yes/No window — regular dialogue
+--   uses lowercase characters (different byte values).
+--
+--   SELECTION: look for cursor tile (0x42) immediately before YES or NO
+--   (up to one space gap). Returns nil during blink frames when the cursor
+--   tile is absent; check_yesno_changes() holds the last known value then.
+--
+-- Returns: active (bool), cursor_selection ("YES"/"NO"/nil)
+local function get_yesno_state()
+    local has_yes          = false
+    local has_no           = false
+    local cursor_selection = nil
+
+    for row = YESNO_ROW_START, YESNO_ROW_END do
+        local row_start = PPU_NT0 + (row * SCREEN_WIDTH)
+
+        -- Read the full row once to avoid repeated ppu.readbyte calls
+        local row_bytes = {}
+        for col = 0, SCREEN_WIDTH - 1 do
+            row_bytes[col + 1] = ppu.readbyte(row_start + col)
+        end
+
+        for col = 1, SCREEN_WIDTH do
+            local b = row_bytes[col]
+
+            -- Presence: uppercase YES (3 bytes starting here)
+            if not has_yes
+            and b == YES_BYTES[1]
+            and row_bytes[col + 1] == YES_BYTES[2]
+            and row_bytes[col + 2] == YES_BYTES[3] then
+                has_yes = true
+            end
+
+            -- Presence: uppercase NO (2 bytes starting here)
+            if not has_no
+            and b == NO_BYTES[1]
+            and row_bytes[col + 1] == NO_BYTES[2] then
+                has_no = true
+            end
+
+            -- Selection: cursor tile followed (within 4 bytes) by YES or NO
+            if cursor_selection == nil and b == CURSOR_TILE then
+                for offset = 1, 4 do
+                    local i = col + offset
+                    if i > SCREEN_WIDTH then break end
+                    local b1 = row_bytes[i]
+                    local b2 = row_bytes[i + 1] or 0
+                    local b3 = row_bytes[i + 2] or 0
+                    if b1 == NO_BYTES[1] and b2 == NO_BYTES[2] then
+                        cursor_selection = "NO"
+                        break
+                    end
+                    if b1 == YES_BYTES[1] and b2 == YES_BYTES[2] and b3 == YES_BYTES[3] then
+                        cursor_selection = "YES"
+                        break
+                    end
+                    if b1 ~= 0x5F then break end  -- non-space: stop gap search
+                end
+            end
+        end
+
+        -- Early exit once all information is found
+        if has_yes and has_no and cursor_selection ~= nil then break end
+    end
+
+    return (has_yes and has_no), cursor_selection
+end
+
+-- check_yesno_changes(): Detect Yes/No prompt state transitions each frame.
+-- Call this once per frame; the result is cached for is_yesno_active().
+--
+-- Active/inactive is driven by label presence, not cursor visibility, so
+-- cursor blink animation does not cause spurious appear/dismiss events.
+-- When the prompt is active but the cursor is mid-blink, the previous
+-- selection is held until the cursor becomes visible again.
+--
+-- Returns a table with:
+--   active (bool):            true if a Yes/No prompt is currently visible
+--   just_appeared (bool):     true if the prompt appeared this frame
+--   just_dismissed (bool):    true if the prompt disappeared this frame
+--   selection_changed (bool): true if cursor moved between YES and NO
+--   selection (string/nil):   current selection "YES" or "NO", or nil
+function M.check_yesno_changes()
+    local active, cursor_selection = get_yesno_state()
+
+    -- Resolve effective selection:
+    --   Prompt absent  → nil (regardless of cursor)
+    --   Cursor visible → cursor_selection ("YES" or "NO")
+    --   Cursor blink   → prev_yesno_selection (labels still rendered)
+    local selection
+    if not active then
+        selection = nil
+    elseif cursor_selection ~= nil then
+        selection = cursor_selection
+    else
+        selection = prev_yesno_selection  -- hold through blink gap
+    end
+
+    -- Update cache for is_yesno_active()
+    last_yesno_selection = selection
+
+    local result = {
+        active            = (selection ~= nil),
+        just_appeared     = (selection ~= nil) and (prev_yesno_selection == nil),
+        just_dismissed    = (selection == nil) and (prev_yesno_selection ~= nil),
+        selection_changed = (selection ~= nil)
+                            and (prev_yesno_selection ~= nil)
+                            and (selection ~= prev_yesno_selection),
+        selection         = selection,
+    }
+    prev_yesno_selection = selection
+    return result
+end
+
+-- is_yesno_active(): Return whether a Yes/No prompt was detected on the
+-- last check_yesno_changes() call. This is a cheap lookup (no PPU reads)
+-- so check_dialogue() can guard itself without an extra PPU scan.
+-- Must be called AFTER check_yesno_changes() each frame.
+function M.is_yesno_active()
+    return last_yesno_selection ~= nil
+end
+
 return M

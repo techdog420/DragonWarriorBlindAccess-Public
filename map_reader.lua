@@ -258,6 +258,28 @@ local WALKABILITY_TABLES = {
     [0x20] = WALKABLE_DUNGEON,
 }
 
+-- ============================================================
+-- Per-Map Blocked Cell Overrides
+-- ============================================================
+-- Some cells are physically blocked by the game engine via sprite
+-- collision or other mechanisms that don't show up in tile types.
+-- We hardcode these overrides here after empirical confirmation.
+--
+-- Format: MAP_BLOCKED_CELLS[map_id]["x,y"] = true
+-- A cell listed here is always treated as non-walkable regardless
+-- of its tile type.
+local MAP_BLOCKED_CELLS = {
+    -- Map 0x05: Tantegel Castle Throne Room
+    -- Tiles at y=2, x=2-8 are type 4 (floor) in ROM but the engine
+    -- blocks them via the throne/dais sprite collision. Only (1,2)
+    -- is reachable (confirmed empirically by player movement tests).
+    [0x05] = {
+        ["2,2"] = true, ["3,2"] = true, ["4,2"] = true,
+        ["5,2"] = true, ["6,2"] = true, ["7,2"] = true,
+        ["8,2"] = true,
+    },
+}
+
 -- is_walkable(map_id, x, y): Check if a tile at (x, y) is passable.
 -- Returns true if the player can walk on this tile, false if it's a wall.
 -- Returns nil if we can't determine walkability (no grid data, etc.).
@@ -275,10 +297,21 @@ function M.is_walkable(map_id, x, y)
 
     -- Engine boundary: the game prevents player movement to x=0 or y=0
     -- on interior maps even when those tiles have walkable types.
-    -- Confirmed empirically: the left side passage (x=0) in the throne room
-    -- shows tile type 6W but the player is always blocked there.
+    -- Confirmed empirically:
+    --   x=0: the left side passage (x=0) in the throne room shows tile type
+    --         6W but the player is always blocked there.
+    --   y=0: hard engine boundary on all interior maps.
+    --   y=1: IS accessible (player confirmed reaching row 1 in the throne room
+    --         by going around via x=1).
     -- Skip this check for the overworld (map 0x00).
     if map_id ~= 0x00 and (x == 0 or y == 0) then
+        return false
+    end
+
+    -- Per-map sprite-collision overrides (cells blocked by game engine
+    -- mechanisms not reflected in tile types).
+    local overrides = MAP_BLOCKED_CELLS[map_id]
+    if overrides and overrides[x .. "," .. y] then
         return false
     end
 

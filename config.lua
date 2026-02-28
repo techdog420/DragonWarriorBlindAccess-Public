@@ -58,11 +58,15 @@ local DEFAULTS_ORDERED = {
     {key = "key_object_current", value = "K", comment = "; Describe current object"},
     {key = "key_object_next",   value = "L",  comment = "; Next object in list"},
     {key = "key_pathfind",      value = "O",  comment = "; Pathfind to selected object"},
+    {key = "key_freeze_npcs",   value = "X",  comment = "; Toggle NPC position freeze (locks NPCs in place for reliable pathfinding)"},
     {key = "key_filter",        value = "F",  comment = "; Cycle object filter (All/NPCs/Exits/Chests)"},
     {comment = ""},
     {comment = "; === Movement ==="},
     {key = "enable_auto_step",  value = "true", comment = "; Auto-complete tile steps from quick D-pad taps"},
     {key = "auto_step_timeout", value = "45",   comment = "; Max frames to wait for step to complete (increase if steps aren't finishing)"},
+    {comment = ""},
+    {comment = "; === Dialogue ==="},
+    {comment = "; (yesno_dismiss_frames setting removed — prompt now uses label-presence detection)"},
     {comment = ""},
     {comment = "; === Diagnostics ==="},
     {key = "key_diag_cursor",   value = "M",  comment = "; Show raw menu cursor values"},
@@ -143,11 +147,50 @@ local function write_default_config()
 end
 
 -- ============================================================
+-- File Updating
+-- ============================================================
+
+-- append_missing_settings(): After loading an existing config file,
+-- check whether any keys from DEFAULTS_ORDERED are absent and
+-- append them to the file. This ensures users see new settings
+-- added by script updates without having to delete and regenerate
+-- their config.
+local function append_missing_settings()
+    -- Collect entries whose keys are not yet in the parsed settings
+    local missing = {}
+    for _, entry in ipairs(DEFAULTS_ORDERED) do
+        if entry.key and settings[entry.key] == nil then
+            missing[#missing + 1] = entry
+        end
+    end
+    if #missing == 0 then return end
+
+    -- Append the missing entries to the existing file
+    local f = io.open(CONFIG_FILE, "a")
+    if not f then
+        print("WARNING: Could not append new settings to config file: " .. CONFIG_FILE)
+        return
+    end
+
+    f:write("\n; === Settings added by script update ===\n")
+    for _, entry in ipairs(missing) do
+        if entry.comment then
+            f:write(entry.comment .. "\n")
+        end
+        if entry.key then
+            f:write(entry.key .. "=" .. entry.value .. "\n")
+        end
+    end
+    f:close()
+end
+
+-- ============================================================
 -- Public API
 -- ============================================================
 
 -- load(): Read the config file and populate settings.
 -- If the file doesn't exist, creates it with defaults.
+-- If the file exists but is missing newer settings, appends them.
 -- Call this once at startup (it's called automatically on require).
 function M.load()
     local f = io.open(CONFIG_FILE, "r")
@@ -156,6 +199,8 @@ function M.load()
         local text = f:read("*all")
         f:close()
         settings = parse_config(text)
+        -- Add any settings introduced by newer script versions
+        append_missing_settings()
     else
         -- No config file — create one with defaults
         write_default_config()
