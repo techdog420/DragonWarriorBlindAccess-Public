@@ -43,11 +43,15 @@ auto_step.on_blocked = function()
     if not last_pathfind_obj then return end
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
+    -- Re-freeze only if the target is an NPC (same logic as initial pathfind)
+    if last_pathfind_obj.type == objects.TYPE_NPC then
+        capture_npc_snapshot()
+        npc_freeze_active = true
+    end
     local blocking = objects.get_blocking_positions()
     local result
     local target_walkable = map_reader.is_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
     if last_pathfind_obj.type == objects.TYPE_NPC
-    or last_pathfind_obj.type == objects.TYPE_CHEST
     or last_pathfind_obj.type == objects.TYPE_DOOR
     or not target_walkable then
         result = pathfinder.pathfind_to_adjacent(
@@ -518,20 +522,26 @@ local function handle_hotkeys(keys)
             -- Force-refresh NPC positions right now so blocking reflects
             -- current NPC locations, not wherever they were up to 20 frames ago.
             objects.update_npcs()
-            -- Freeze NPCs at their current positions for the duration of this
-            -- path. The snapshot is taken after update_npcs() so it captures
-            -- the most up-to-date positions before we lock them in.
-            capture_npc_snapshot()
-            npc_freeze_active = true
+            -- Only freeze NPCs when the TARGET is an NPC. Freezing is needed
+            -- so the target NPC stays in place while the player walks to it.
+            -- For exits, stairs, chests, and doors the target is a fixed tile,
+            -- so freezing just locks guards into positions that may block the
+            -- route — especially bad when guards permanently flank an exit.
+            if obj.type == objects.TYPE_NPC then
+                capture_npc_snapshot()
+                npc_freeze_active = true
+            end
             local blocking = objects.get_blocking_positions()
             local result
             -- Use adjacent pathfinding when:
-            --   TYPE_NPC/CHEST/DOOR  — sprite or wall tile the player stands next to
+            --   TYPE_NPC  — player stands next to NPCs (can't walk onto them)
+            --   TYPE_DOOR — locked door tile, player interacts from adjacent
             --   Any non-walkable tile — e.g. exits where the warp fires at a wall
             --                           (like the throne room south arch at type-15)
+            -- Chests use direct pathfinding: the player walks ONTO the chest tile
+            -- to open it, so distance-0 (not distance-1) is the goal.
             local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
             if obj.type == objects.TYPE_NPC
-            or obj.type == objects.TYPE_CHEST
             or obj.type == objects.TYPE_DOOR
             or not target_walkable then
                 result = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
