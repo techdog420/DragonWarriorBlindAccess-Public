@@ -82,25 +82,34 @@ end
 -- Menu Detection
 -- ============================================================
 
+-- COMMAND_MATCH_LEN: Number of bytes to match when searching for the
+-- "COMMAND" header. We match 6 bytes (COMMAN) instead of all 7 so that
+-- the scan still succeeds when the header starts near the right edge of
+-- a nametable row. At column 26, the 6 bytes C-O-M-M-A-N land at
+-- columns 26-31 (all within the 32-wide row), but the trailing 'D'
+-- would fall at column 32 (the next row) and be unreachable from this
+-- row's address range. Matching 6 bytes is still highly specific and
+-- avoids false positives in practice.
+local COMMAND_MATCH_LEN = 6
+
 -- is_command_menu_open(): Check if the command menu window is visible.
--- Scans the first few rows of the PPU nametable for the word "COMMAND"
--- (the window's header text). Returns true if found.
+-- Scans all 30 PPU nametable rows for the 6-byte prefix "COMMAN"
+-- (the window's header text, minus the trailing D that may wrap to the
+-- next row when the menu appears near the east edge of the nametable).
 --
--- We only scan rows 0-4 to keep it efficient (5 rows * 32 bytes =
--- 160 PPU reads, which is fine at 60fps).
+-- The menu header shifts PPU position with the NES scroll register based
+-- on the player's map position, so we scan all rows. We scan starting
+-- columns 0-26 (the last column where 6 bytes still fit in the row).
 function M.is_command_menu_open()
-    -- Scan rows 0 through 4, looking for the 7-byte sequence "COMMAND"
-    for row = 0, 4 do
+    for row = 0, 29 do
         local row_start = PPU_NT0 + (row * SCREEN_WIDTH)
-        -- Check each possible starting column (0 through 25, since
-        -- "COMMAND" is 7 bytes and the row is 32 bytes wide)
-        for col = 0, 25 do
-            -- Quick check: does the first byte match 'C' (0x26)?
-            -- This avoids reading all 7 bytes for non-matching positions.
+        -- Scan start columns 0 through 26: at col 26, bytes land at
+        -- cols 26-31 (all valid). Col 27+ would put byte 6 at col 32+
+        -- (out of row), so those start positions can never match 6 bytes.
+        for col = 0, SCREEN_WIDTH - COMMAND_MATCH_LEN do
             if ppu.readbyte(row_start + col) == COMMAND_BYTES[1] then
-                -- First byte matches — check the rest
                 local match = true
-                for i = 2, #COMMAND_BYTES do
+                for i = 2, COMMAND_MATCH_LEN do
                     if ppu.readbyte(row_start + col + i - 1) ~= COMMAND_BYTES[i] then
                         match = false
                         break
@@ -216,25 +225,33 @@ local YESNO_ROW_END   = 29
 local prev_yesno_selection = nil   -- "YES", "NO", or nil (no prompt active)
 local last_yesno_selection = nil   -- Cached result for is_yesno_active()
 
--- get_yesno_state(): Scan the full screen for a Yes/No prompt.
+-- Hold timer: how many frames to keep the prompt "active" after the cursor
+-- tile disappears. DW1's cursor blinks (tile goes absent for ~8-12 frames).
+-- We hold active long enough to bridge the blink gap without requiring the
+-- YES/NO labels to be present (which produced false positives from map tile
+-- background graphics that happen to encode to the same byte values).
+local yesno_hold_timer   = 0
+local YESNO_HOLD_FRAMES  = 30  -- ~0.5 seconds at 60fps; comfortably covers blink
+-- Whether get_yesno_state() physically found the cursor before YES/NO this frame.
+-- False when the prompt is "active" only because the hold timer is counting down
+-- from a previous detection (blink gap or prior-frame background tile false positive).
+local yesno_cursor_seen_this_frame = false
+
+-- get_yesno_state(): Scan the full screen for a Yes/No cursor.
 --
--- Uses two independent checks to survive cursor blink animation:
+-- Looks for the cursor tile (0x42) immediately followed (within 4 bytes,
+-- across spaces 0x5F) by YES bytes or NO bytes. This is the most reliable
+-- signal: the cursor physically sits before the highlighted option.
 --
---   ACTIVE: require BOTH uppercase "YES" (0x3C 0x28 0x36) AND uppercase
---   "NO" (0x31 0x32) to be present anywhere on screen. These labels stay
---   rendered even while the cursor tile blinks off, so active/inactive
---   detection does not depend on the cursor being visible.
---   Uppercase YES/NO only appear in the Yes/No window — regular dialogue
---   uses lowercase characters (different byte values).
+-- We do NOT use "YES and NO labels both present" as the active indicator.
+-- That approach requires scanning background tile bytes for specific sequences,
+-- which is vulnerable to false positives: map graphics tiles in the same
+-- byte-value range (0x24-0x3D for uppercase letters) can accidentally form
+-- N-O or Y-E-S patterns at arbitrary screen positions, suppressing command
+-- menu announcements. The cursor-before-option check is much more specific.
 --
---   SELECTION: look for cursor tile (0x42) immediately before YES or NO
---   (up to one space gap). Returns nil during blink frames when the cursor
---   tile is absent; check_yesno_changes() holds the last known value then.
---
--- Returns: active (bool), cursor_selection ("YES"/"NO"/nil)
+-- Returns: cursor_selection ("YES", "NO", or nil if cursor not found)
 local function get_yesno_state()
-    local has_yes          = false
-    local has_no           = false
     local cursor_selection = nil
 
     for row = YESNO_ROW_START, YESNO_ROW_END do
@@ -249,23 +266,8 @@ local function get_yesno_state()
         for col = 1, SCREEN_WIDTH do
             local b = row_bytes[col]
 
-            -- Presence: uppercase YES (3 bytes starting here)
-            if not has_yes
-            and b == YES_BYTES[1]
-            and row_bytes[col + 1] == YES_BYTES[2]
-            and row_bytes[col + 2] == YES_BYTES[3] then
-                has_yes = true
-            end
-
-            -- Presence: uppercase NO (2 bytes starting here)
-            if not has_no
-            and b == NO_BYTES[1]
-            and row_bytes[col + 1] == NO_BYTES[2] then
-                has_no = true
-            end
-
-            -- Selection: cursor tile followed (within 4 bytes) by YES or NO
-            if cursor_selection == nil and b == CURSOR_TILE then
+            -- Cursor tile: look for YES or NO within 4 bytes after it
+            if b == CURSOR_TILE then
                 for offset = 1, 4 do
                     local i = col + offset
                     if i > SCREEN_WIDTH then break end
@@ -282,14 +284,14 @@ local function get_yesno_state()
                     end
                     if b1 ~= 0x5F then break end  -- non-space: stop gap search
                 end
+                if cursor_selection ~= nil then break end
             end
         end
 
-        -- Early exit once all information is found
-        if has_yes and has_no and cursor_selection ~= nil then break end
+        if cursor_selection ~= nil then break end
     end
 
-    return (has_yes and has_no), cursor_selection
+    return cursor_selection
 end
 
 -- check_yesno_changes(): Detect Yes/No prompt state transitions each frame.
@@ -307,12 +309,29 @@ end
 --   selection_changed (bool): true if cursor moved between YES and NO
 --   selection (string/nil):   current selection "YES" or "NO", or nil
 function M.check_yesno_changes()
-    local active, cursor_selection = get_yesno_state()
+    local cursor_selection = get_yesno_state()
+
+    -- Update the hold timer.
+    -- When the cursor is visible before YES or NO, reset the timer to full.
+    -- When the cursor is mid-blink (absent), count down. Active state is
+    -- maintained as long as the timer is above zero, so blink gaps do not
+    -- produce spurious "just_dismissed" events.
+    if cursor_selection ~= nil then
+        yesno_hold_timer = YESNO_HOLD_FRAMES
+    elseif yesno_hold_timer > 0 then
+        yesno_hold_timer = yesno_hold_timer - 1
+    end
+
+    -- Record whether the cursor was physically present this frame so callers
+    -- can distinguish a real yes/no from a hold-timer-only activation.
+    yesno_cursor_seen_this_frame = (cursor_selection ~= nil)
+
+    local active = yesno_hold_timer > 0
 
     -- Resolve effective selection:
-    --   Prompt absent  → nil (regardless of cursor)
+    --   Prompt absent  → nil
     --   Cursor visible → cursor_selection ("YES" or "NO")
-    --   Cursor blink   → prev_yesno_selection (labels still rendered)
+    --   Cursor blink   → prev_yesno_selection (held through blink gap)
     local selection
     if not active then
         selection = nil
@@ -326,10 +345,10 @@ function M.check_yesno_changes()
     last_yesno_selection = selection
 
     local result = {
-        active            = (selection ~= nil),
-        just_appeared     = (selection ~= nil) and (prev_yesno_selection == nil),
-        just_dismissed    = (selection == nil) and (prev_yesno_selection ~= nil),
-        selection_changed = (selection ~= nil)
+        active            = active,
+        just_appeared     = active and (prev_yesno_selection == nil),
+        just_dismissed    = not active and (prev_yesno_selection ~= nil),
+        selection_changed = active
                             and (prev_yesno_selection ~= nil)
                             and (selection ~= prev_yesno_selection),
         selection         = selection,
@@ -344,6 +363,32 @@ end
 -- Must be called AFTER check_yesno_changes() each frame.
 function M.is_yesno_active()
     return last_yesno_selection ~= nil
+end
+
+-- yesno_cursor_seen(): Return whether get_yesno_state() physically found
+-- the cursor tile immediately before YES or NO on the last
+-- check_yesno_changes() call.
+--
+-- Returns false when the prompt is "active" only because the hold timer is
+-- counting down from a previous detection — i.e., the cursor is mid-blink
+-- or the previous detection was a background tile false positive.
+--
+-- Used by check_command_menu() to distinguish:
+--   (a) Real yes/no prompt: cursor IS physically before YES/NO → don't suppress.
+--   (b) Stale hold timer: cursor not seen this frame → safe to reset, let the
+--       command menu announce normally.
+function M.yesno_cursor_seen()
+    return yesno_cursor_seen_this_frame
+end
+
+-- reset_yesno(): Force-clear the Yes/No hold timer and selection state.
+-- Use when an external event proves no real Yes/No prompt is showing but
+-- the hold timer is still counting from a previous spurious detection
+-- (e.g. background tile noise at map y=1 that has since been overwritten).
+function M.reset_yesno()
+    yesno_hold_timer     = 0
+    prev_yesno_selection = nil
+    last_yesno_selection = nil
 end
 
 return M

@@ -102,6 +102,9 @@ local stable_frames = 0         -- How many consecutive checks the text hasn't c
 local STABLE_THRESHOLD = 30     -- Frames of no change before we consider text "done"
                                 -- At 60fps, 30 frames = 0.5 seconds of stability
 
+-- Upper dialogue uses the same stability threshold as lower dialogue.
+local UPPER_STABLE_THRESHOLD = 30
+
 -- Upper dialogue tracking (chest messages, shop text, etc.)
 -- Some dialogue windows appear in the upper screen area (rows 1-18)
 -- instead of the lower area. We track these separately because the
@@ -112,6 +115,32 @@ local announced_upper_dialogue = ""   -- Last upper text we actually spoke
 local upper_stable_frames = 0         -- Stability counter for upper text
 local upper_baseline = ""             -- Status display text when no dialogue active
 local upper_dialogue_active = false   -- Is a dialogue window open in the upper region?
+
+-- y≤3 cleaned-text stability tracking.
+-- The raw dialogue may oscillate every 8–12 frames due to command-menu cursor
+-- blink (tile 0x42 adjacent to uppercase labels). clean_stable_frames tracks
+-- how long the UPPERCASE-STRIPPED version has been unchanged. Once stable for
+-- STABLE_THRESHOLD frames, announce exactly once — same as the normal path.
+local prev_clean_y1       = ""  -- Previous cleaned text at y≤3
+local clean_stable_frames = 0   -- How many frames prev_clean_y1 hasn't changed
+
+-- y=1 movement tracking (interior maps only).
+-- At map y=1, NES scroll displaces the status bar so our LV/HP checks
+-- sometimes can't classify the upper text correctly. The reliable signal
+-- is player MOVEMENT: when the player moves at y=1 (or just arrives there),
+-- the next stable upper text is background noise/status, not dialogue.
+-- NPC dialogue appears while the player is frozen (no x/y movement), so
+-- it bypasses baseline absorption and gets announced normally.
+local y1_baseline_pending = false  -- true when next stable y=1 text is a baseline
+local y1_prev_player_x    = nil    -- player X on the previous frame while at y=1
+
+-- Post-start grace period: after a title→field transition (game load),
+-- silently re-initialize change-detection baselines for FIELD_GRACE frames.
+-- The game's load sequence takes several frames during which HP may briefly
+-- read 0 and map IDs cycle through intermediate values. Without this, those
+-- transient values trigger false "Lost 15 HP" / "Charlock Castle" announcements.
+local FIELD_GRACE = 90       -- 1.5 seconds at 60fps to let loading complete
+local post_start_grace = 0   -- Counts down from FIELD_GRACE when a game starts
 
 -- Frame counter for throttling periodic checks
 -- Some checks don't need to run every frame; we use this to
@@ -255,17 +284,81 @@ local function handle_hotkeys(keys)
         tolk.output_interrupt(menu.get_cursor_info())
     end
 
-    -- Diagnostic: dump raw PPU tile bytes for rows 10-22
+    -- Diagnostic: dump raw PPU tile bytes for rows 15-29.
+    -- Shows first/last non-BG column, decoded text, and any NT1 ($2400) tiles.
+    -- Use this at x=8 with truncated dialogue visible to locate where text tiles
+    -- are written in the nametable and whether any overflow into NT1.
     if is_key_pressed(keys, config.get("key_diag_ppu_dump")) then
+        local BG  = 0x9F   -- background/empty tile in PPU nametable
+        local NT0 = 0x2000 -- nametable 0
+        local NT1 = 0x2400 -- nametable 1 (potential overflow target)
+        local W   = 32     -- nametable width in tiles
+
         local dump = {}
-        for row = 10, 22 do
-            local bytes = text.read_ppu_row(row)
-            local hex_parts = {}
-            for i = 1, #bytes do
-                hex_parts[i] = string.format("%02X", bytes[i])
+        local map_id, px, py = nav.get_position()
+        dump[#dump+1] = "=== PPU Nametable Dump ==="
+        dump[#dump+1] = string.format("Map: %d (0x%02X)  Player: x=%d, y=%d", map_id, map_id, px, py)
+        dump[#dump+1] = ""
+        dump[#dump+1] = "Rows 15-29 from NT0 ($2000) and NT1 ($2400)."
+        dump[#dump+1] = "BG tile 0x9F shown as '--'.  Non-BG shown as 2-digit hex."
+        dump[#dump+1] = ""
+
+        for row = 15, 29 do
+            -- Read all 32 bytes from NT0 for this row.
+            local nt0 = {}
+            local first_col = -1
+            local last_col  = -1
+            for col = 0, W - 1 do
+                local b = ppu.readbyte(NT0 + row * W + col)
+                nt0[col] = b
+                if b ~= BG then
+                    if first_col == -1 then first_col = col end
+                    last_col = col
+                end
             end
-            dump[#dump + 1] = "Row " .. row .. ": " .. table.concat(hex_parts, " ")
+
+            -- Read NT1 for this row — collect any non-BG entries.
+            local nt1_parts = {}
+            for col = 0, W - 1 do
+                local b = ppu.readbyte(NT1 + row * W + col)
+                if b ~= BG then
+                    nt1_parts[#nt1_parts+1] = string.format("c%d=%02X", col, b)
+                end
+            end
+
+            -- Build hex display of NT0 row (BG as "--").
+            local hex_parts = {}
+            for col = 0, W - 1 do
+                local b = nt0[col]
+                hex_parts[col+1] = (b == BG) and "--" or string.format("%02X", b)
+            end
+
+            -- Decode NT0 bytes to text.
+            local row_bytes = {}
+            for col = 0, W - 1 do row_bytes[col+1] = nt0[col] end
+            local decoded = chars.decode_bytes(row_bytes)
+            decoded = decoded:match("^%s*(.-)%s*$") or ""
+
+            -- Assemble line header.
+            local col_info
+            if first_col == -1 then
+                col_info = "(all BG)"
+            else
+                col_info = string.format("cols %d-%d", first_col, last_col)
+            end
+
+            local nt1_info = ""
+            if #nt1_parts > 0 then
+                nt1_info = "  NT1: " .. table.concat(nt1_parts, " ")
+            end
+
+            dump[#dump+1] = string.format("Row %2d [%s]%s", row, col_info, nt1_info)
+            dump[#dump+1] = "  NT0: " .. table.concat(hex_parts, " ")
+            if decoded ~= "" then
+                dump[#dump+1] = "  TXT: " .. decoded
+            end
         end
+
         local f = io.open("ppu_dump.txt", "w")
         if f then
             f:write(table.concat(dump, "\n"))
@@ -328,6 +421,35 @@ local function handle_hotkeys(keys)
         lines[#lines+1] = string.format("RAM TILE_TYPE (0x0015): %d", ram_tile)
         lines[#lines+1] = string.format("TERRAIN_OFFSET (0x0016): 0x%02X",
             memory.readbyte(addr.TERRAIN_OFFSET))
+
+        -- Horizontal scroll finder: scan zero-page addresses 0x0000-0x0060.
+        -- Previous scan (0x0036-0x0050) missed the real range. The PPU scroll
+        -- shadow is typically in the very low zero page (0x00-0x35). Compare
+        -- two captures — at x=8 (truncated text) and x=1 (full text) on the
+        -- same map — and look for an address whose value is ~11*8=88 at x=8
+        -- and ~0 at x=1. That address is addr.SCROLL_X. Value is in PIXELS; the
+        -- caller divides by 8 to get NES tile scroll. 0x0042 was a false match.
+        lines[#lines+1] = ""
+        lines[#lines+1] = "--- Horizontal Scroll Finder (zero-page 0x0000-0x0060) ---"
+        lines[#lines+1] = string.format("Player x=%d y=%d  (need: ~88 at x=8, ~0 at x=1)", px, py)
+        lines[#lines+1] = "Range 0x0000-0x001F:"
+        local zp_lo = {}
+        for a = 0x0000, 0x001F do
+            zp_lo[#zp_lo+1] = string.format("0x%04X=%02X", a, memory.readbyte(a))
+        end
+        lines[#lines+1] = table.concat(zp_lo, "  ")
+        lines[#lines+1] = "Range 0x0020-0x003F:"
+        local zp_mid = {}
+        for a = 0x0020, 0x003F do
+            zp_mid[#zp_mid+1] = string.format("0x%04X=%02X", a, memory.readbyte(a))
+        end
+        lines[#lines+1] = table.concat(zp_mid, "  ")
+        lines[#lines+1] = "Range 0x0040-0x0060:"
+        local zp_hi = {}
+        for a = 0x0040, 0x0060 do
+            zp_hi[#zp_hi+1] = string.format("0x%04X=%02X", a, memory.readbyte(a))
+        end
+        lines[#lines+1] = table.concat(zp_hi, "  ")
 
         -- Critical: check whether rom.readbyte(0) is the iNES header or PRG-ROM.
         -- iNES magic: 4E 45 53 1A ('N','E','S',ctrl-Z)
@@ -573,6 +695,19 @@ end
 -- These fire automatically when game state changes, without
 -- the player pressing any hotkeys.
 
+-- get_scroll_tiles(): Read the NES horizontal scroll offset in NES tile units.
+--
+-- addr.SCROLL_X holds the PPU $2005 shadow register in PIXELS (0-255).
+-- Dividing by 8 converts to NES tile units (0-31) as expected by read_ppu_row.
+--
+-- Example: at interior map x=8, value = 88 pixels = 11 NES tiles.
+-- Dialogue text at screen col 5 + 11 = NT col 16, with chars 17+ overflowing
+-- into NT1 ($2400) — the root cause of truncated text at east map edges.
+local function get_scroll_tiles()
+    if addr.SCROLL_X == nil then return 0 end
+    return math.floor(memory.readbyte(addr.SCROLL_X) / 8)
+end
+
 -- check_hp_mp_changes(): Announce HP/MP changes (damage, healing, spell use).
 local function check_hp_mp_changes()
     local hp = memory.readbyte(addr.CURRENT_HP)
@@ -670,6 +805,13 @@ local function check_map_change()
         -- previous positions are irrelevant.
         npc_freeze_active = false
         frozen_npc_snapshot = {}
+        -- Reset y=1 tracking so the new map establishes a fresh baseline.
+        -- Without this, if the player was at y=1 on the previous map with the
+        -- same X coordinate as the new map's y=1 position, the arrival check
+        -- (player_x ~= y1_prev_player_x) would not fire and the baseline would
+        -- never be re-established for the new map's different tile layout.
+        y1_prev_player_x    = nil
+        y1_baseline_pending = false
     end
 end
 
@@ -727,14 +869,41 @@ end
 local function check_command_menu()
     local changes = menu.check_for_changes()
 
+    -- When the menu just opened while the yes/no hold timer is still counting
+    -- from a previous spurious detection (e.g. background tile 0x42 at map y=1
+    -- followed by NO bytes that falsely triggered the yesno detector), clear the
+    -- stale yesno state so the opening is announced normally.
+    --
+    -- We only clear when yesno_cursor_seen() is false — meaning the cursor was
+    -- NOT physically found before YES/NO this frame. That distinguishes the
+    -- stale-timer case from a real yes/no prompt where the cursor IS present:
+    --   Stale timer: cursor_seen=false → safe to reset → "Command. TALK" ✓
+    --   Real yes/no: cursor_seen=true  → do NOT reset → guard fires → quiet ✓
+    if changes.menu_opened and not menu.yesno_cursor_seen() then
+        menu.reset_yesno()
+    end
+
     -- Yes/No prompt reuses the command menu UI — suppress command menu
     -- announcements while it is active (check_yesno_prompt handles them).
     if menu.is_yesno_active() then return end
 
     if changes.menu_opened then
-        -- Menu just opened — announce it along with the current item
-        local item = changes.item_name or ("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
-        tolk.output("Command. " .. item)
+        -- At y<=1 on interior maps, map tile noise in the scrolling nametable
+        -- area (rows 6-17) can accidentally contain the "COMMAN" byte sequence
+        -- that is_command_menu_open() searches for, producing a spurious
+        -- menu-opened event. Suppress the opening announcement; cursor_moved
+        -- events still work correctly once the player actually navigates.
+        local mid = memory.readbyte(addr.MAP_ID)
+        local py  = memory.readbyte(addr.PLAYER_Y)
+        if not (mid ~= 0x00 and py <= 1) then
+            -- Menu just opened — read the item at the current cursor position.
+            -- changes.item_name is only set when the cursor MOVED, but on the
+            -- opening frame the cursor is already at its initial position (0,0)
+            -- with no movement detected. Look up the item name explicitly.
+            local item = menu.get_menu_item(changes.cursor_x, changes.cursor_y)
+                      or ("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
+            tolk.output("Command. " .. item)
+        end
     elseif changes.cursor_moved and not changes.menu_closed then
         -- Cursor moved within the open menu — announce the new item
         local item = changes.item_name
@@ -768,7 +937,7 @@ local function check_yesno_prompt()
         -- hasn't been spoken yet, so the player hears the question
         -- before the Yes/No prompt. Update announced_dialogue so the
         -- normal dialogue system doesn't repeat it.
-        local question = text.read_dialogue_window()
+        local question = text.read_dialogue_window(get_scroll_tiles())
         if question ~= "" and question ~= announced_dialogue then
             tolk.output(question)
             announced_dialogue = question
@@ -781,15 +950,102 @@ local function check_yesno_prompt()
     end
 end
 
--- check_dialogue(): Read dialogue window and announce when text stabilizes.
+-- read_y1_dialogue(): Read the dialogue text rows for player y≤3.
+--
+-- At y≤3 on interior maps, the NES vertical scroll shifts the dialogue window
+-- upward by 2 nametable rows per player y unit below y=4. The response text
+-- that normally sits at nametable rows 19-20 (y=4) is instead at:
+--   y=3 → rows 17-18       y=2 → rows 15-16       y=1 → rows 13-14
+-- Formula: text_row = 11 + 2 * py   (verified from PPU dumps)
+--
+-- The command menu tiles (COMMAND, TALK, STAIRS, etc.) are in rows 0-15 at y=3
+-- and do NOT overlap the response text rows, so no uppercase stripping is needed
+-- for the rows we actually scan. We still apply a lowercase filter so that border
+-- tiles adjacent to the text window (which decode as empty/spaces) are excluded.
+local function read_y1_dialogue()
+    local py = memory.readbyte(addr.PLAYER_Y)
+    -- Clamp so row numbers stay in valid nametable range (0-29).
+    local text_row = math.max(0, 11 + 2 * py)
+    local lines = {}
+    for row = text_row, math.min(29, text_row + 1) do
+        local decoded = text.decode_row(row)
+        if decoded:find("[a-z]") then
+            lines[#lines + 1] = decoded
+        end
+    end
+    return table.concat(lines, " ")
+end
+
+-- check_dialogue(): Read dialogue window and announce when text changes.
 -- Dragon Warrior renders text one character at a time, so we wait until
 -- the text stops changing for STABLE_THRESHOLD frames before announcing.
 -- This prevents reading partial text like "The Dragonl" mid-render.
 -- When text does stabilize, we strip any overlap with the previous
 -- announcement so we only speak genuinely new text.
+--
+-- At low Y positions on interior maps, the command-menu window overlaps rows
+-- 19-29 due to NES vertical scroll. The cursor tile blinks between 0x42
+-- (empty) and 0x5F (space) adjacent to uppercase border tiles, producing a
+-- 1-space frame-to-frame difference that prevents raw stability from ever
+-- being reached. Empirically this affects player rows 1-3; row 4 and below
+-- are unaffected (scroll pushes the menu window clear of rows 19-29).
+-- Fix: strip runs of 3+ consecutive uppercase letters (and adjacent spaces)
+-- before comparing. This normalizes both cursor-blink states to the same
+-- string. We then apply the SAME STABLE_THRESHOLD to the cleaned text —
+-- the cleaned text IS stable even during cursor blink, so the threshold is
+-- reached and the announcement fires exactly once. This prevents the
+-- per-character "ki…kid…kidnap…" chatter from the old per-change approach.
 local function check_dialogue()
-    local dialogue = text.read_dialogue_window()
+    local mid = memory.readbyte(addr.MAP_ID)
+    local py  = memory.readbyte(addr.PLAYER_Y)
+    local at_y1 = mid ~= 0x00 and py <= 3
 
+    local dialogue = text.read_dialogue_window(get_scroll_tiles())
+
+    if at_y1 then
+        -- Use the lowercase-only row filter so command-menu tiles and NT1 noise
+        -- are excluded before computing clean. read_y1_dialogue() keeps only
+        -- rows with at least one lowercase letter — these are the rows with real
+        -- response text. Then strip any remaining uppercase runs (e.g., if a row
+        -- mixes a command label with part of the response on the same line).
+        local y1_dialogue = read_y1_dialogue()
+        local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
+        clean = clean:match("^%s*(.-)%s*$") or ""
+
+        -- Track stability of the cleaned text.
+        -- The raw dialogue oscillates (cursor blink), but clean is stable.
+        if clean ~= prev_clean_y1 then
+            clean_stable_frames = 0
+            prev_clean_y1 = clean
+        else
+            clean_stable_frames = clean_stable_frames + 1
+        end
+
+        -- Announce once after the cleaned text has been stable for STABLE_THRESHOLD
+        -- frames. This prevents the per-character "ki … kid … kidnap …" chatter.
+        if clean_stable_frames == STABLE_THRESHOLD then
+            if clean:find("[a-z]") and clean ~= announced_dialogue then
+                -- Real response text or NPC dialogue — announce it.
+                tolk.output_interrupt(clean)
+                announced_dialogue = clean
+            elseif not clean:find("[a-z]") and announced_dialogue ~= "" then
+                -- No lowercase: command menu noise — reset for next real text.
+                announced_dialogue = ""
+            end
+        end
+
+        -- Keep raw stable_frames/prev_dialogue in sync so the normal path
+        -- picks up cleanly when the player moves from y≤3 to y>3.
+        if dialogue ~= prev_dialogue then
+            stable_frames = 0
+            prev_dialogue = dialogue
+        else
+            stable_frames = stable_frames + 1
+        end
+        return
+    end
+
+    -- Normal path (y>1): wait for STABLE_THRESHOLD frames of no change.
     if dialogue ~= prev_dialogue then
         -- Text is still changing — reset the stability counter
         stable_frames = 0
@@ -800,7 +1056,7 @@ local function check_dialogue()
     end
 
     -- Once text has been stable long enough and differs from what we
-    -- already announced, speak only the new portion
+    -- already announced, speak only the new portion.
     if stable_frames == STABLE_THRESHOLD then
         if dialogue ~= "" and dialogue ~= announced_dialogue then
             local new_text = strip_overlap(announced_dialogue, dialogue)
@@ -838,7 +1094,28 @@ local function check_upper_dialogue()
         return
     end
 
-    local upper = text.read_upper_window()
+    -- y=1 movement tracking for interior maps.
+    -- Update the pending-baseline flag every frame so it reflects current
+    -- player movement even during the upper-text stability wait period.
+    local map_id = memory.readbyte(addr.MAP_ID)
+    if map_id ~= 0x00 then
+        local player_y = memory.readbyte(addr.PLAYER_Y)
+        if player_y <= 1 then
+            local player_x = memory.readbyte(addr.PLAYER_X)
+            if player_x ~= y1_prev_player_x then
+                -- Player moved (or just arrived at y=1). The next stable upper
+                -- text is status bar noise, not dialogue — mark for absorption.
+                y1_baseline_pending = true
+            end
+            y1_prev_player_x = player_x
+        else
+            -- Player moved above y=1; reset y=1 tracking state.
+            y1_baseline_pending = false
+            y1_prev_player_x    = nil
+        end
+    end
+
+    local upper = text.read_upper_window(get_scroll_tiles())
 
     -- Track changes with stabilization (same approach as lower dialogue)
     if upper ~= prev_upper_dialogue then
@@ -848,40 +1125,92 @@ local function check_upper_dialogue()
         upper_stable_frames = upper_stable_frames + 1
     end
 
-    -- Only process once text has stabilized
-    if upper_stable_frames ~= STABLE_THRESHOLD then return end
+    -- Only process once text has stabilized for the upper-window threshold.
+    -- This is longer than the lower-dialogue threshold to allow the status
+    -- bar (which redraws incrementally after player stops moving) to fully
+    -- render before we inspect it. See UPPER_STABLE_THRESHOLD above.
+    if upper_stable_frames ~= UPPER_STABLE_THRESHOLD then return end
+
+    -- y=1 baseline absorption: if the player moved while at y=1, absorb this
+    -- stable text as the new baseline without announcing it. The player is
+    -- frozen during NPC dialogue, so dialogue text reaches here with
+    -- y1_baseline_pending = false and gets announced normally.
+    --
+    -- IMPORTANT: set announced_upper_dialogue = upper (not ""). If we used "",
+    -- the command menu's upper_stable_frames reset would cause the SAME noise
+    -- to be re-processed 30 frames after the menu closes and look "new" (since
+    -- announced is "" but upper is non-empty). Marking it as already-processed
+    -- prevents that re-announcement. NPC dialogue is different text, so it still
+    -- triggers normally when the player is stationary and upper text changes.
+    if y1_baseline_pending then
+        upper_baseline = upper
+        upper_dialogue_active = false
+        announced_upper_dialogue = upper  -- mark as processed, not ""
+        y1_baseline_pending = false
+        return
+    end
+
+    -- At y<=1 on interior maps, nametable rows 1-18 contain ONLY:
+    --   - Status bar rows (rows 0-5, some may be within 1-18)
+    --   - The NES map area (rows 6-17): north-wall tiles that have CHR
+    --     indices in the text character range (0x00-0x5F) and decode as
+    --     letters. Stone/wall tiles often use 0x24-0x2C which decode as
+    --     uppercase A-L. These look identical to text but are not dialogue.
+    --   - Possibly command menu item columns (rows 1-5, right side) but NOT
+    --     the "COMMAND" header, which is at nametable rows 27-28 (outside
+    --     rows 1-18 at y=1 with scroll=0).
+    -- Real NPC dialogue in DW1 ALWAYS renders in the lower window (rows
+    -- 18-27) and is handled by check_lower_dialogue. Nothing in rows 1-18
+    -- at y=1 is ever genuine dialogue — absorb unconditionally.
+    if map_id ~= 0x00 and memory.readbyte(addr.PLAYER_Y) <= 1 then
+        upper_baseline = upper
+        announced_upper_dialogue = upper
+        upper_dialogue_active = false
+        return
+    end
+
+    -- If the current text exactly matches the known baseline (e.g., after NPC
+    -- dialogue ends and the screen returns to its pre-dialogue state), treat it
+    -- as baseline content. Reset dialogue tracking so the next real change is
+    -- caught cleanly, without announcing the return-to-baseline itself.
+    if upper == upper_baseline then
+        if upper_dialogue_active then
+            upper_dialogue_active = false
+            announced_upper_dialogue = upper
+        end
+        return
+    end
 
     -- Determine if this is just the status display (no dialogue window).
-    -- The status display always contains "LV" and "HP" markers and is
-    -- relatively short (~35-45 chars). When it's just the status display
-    -- with no dialogue overlay, we update our baseline and move on.
-    local is_just_status = text.is_status_text(upper) and #upper < 50
+    -- Primary check: LV+HP in the combined rows-1-18 text.
+    local is_just_status = text.is_status_text(upper)
 
     -- Also check for command menu text. After the menu closes, its tiles
-    -- may linger in the PPU for several frames. The "COMMAND" header word
-    -- is a reliable indicator — it only appears as the menu window title,
-    -- never in dialogue (which uses mixed case, not all-caps "COMMAND").
-    local has_menu_text = upper:find("COMMAND") ~= nil
+    -- may linger in the PPU for several frames. We search for "COMMAN"
+    -- (6-char prefix) rather than "COMMAND" because near the east map edge
+    -- (player at x=8) the trailing 'D' wraps to the next nametable row and
+    -- is absent from the decoded text. "COMMAN" matches both the full and
+    -- truncated form. It only appears as the menu window title.
+    local has_menu_text = upper:find("COMMAN") ~= nil
 
     if is_just_status or has_menu_text then
         -- Status display or stale command menu — not dialogue.
-        -- Only update the baseline when it's genuinely the status display
-        -- (not command menu remnants), so the baseline stays clean.
+        -- Only update the baseline when rows 1-18 genuinely contain status
+        -- (not when detected via extended scan or command menu remnants),
+        -- so the baseline stays clean for strip_overlap calculations.
         if is_just_status then
             upper_baseline = upper
         end
         if upper_dialogue_active then
             upper_dialogue_active = false
-            announced_upper_dialogue = ""
+            -- Use `upper` (not "") so the same NPC dialogue text does not look
+            -- "new" when the menu disappears and the text reverts to just
+            -- the dialogue portion. If we used "" here, the dialogue would
+            -- re-announce itself after every command menu open/close cycle.
+            announced_upper_dialogue = upper
         end
         return
     end
-
-    -- Non-status text present in the upper area — it's a dialogue window!
-    upper_dialogue_active = true
-
-    -- Skip if we already announced this exact text
-    if upper == announced_upper_dialogue then return end
 
     -- Extract the genuinely new text. Strategy depends on whether the
     -- status display is still visible alongside the dialogue.
@@ -902,6 +1231,42 @@ local function check_upper_dialogue()
     if new_text == upper and announced_upper_dialogue ~= "" then
         new_text = strip_overlap(announced_upper_dialogue, upper)
     end
+
+    -- Filter: suppress announcements that contain no lowercase letters.
+    --
+    -- Real DW1 dialogue always uses mixed case — lowercase body text with
+    -- uppercase proper nouns/labels (e.g. "Thou hast found the KEY!").
+    -- Uppercase-only strings are one of three false-positive sources:
+    --   1. Map tile noise: CHR tile indices for wall/floor graphics near the
+    --      north map edge (player at y=1) fall in the text character range
+    --      and decode as letters like 'A' (tile index 0x24). These tiles
+    --      appear in PPU rows 1-18 and look like text to read_upper_window().
+    --   2. Lingering command menu text: after the menu closes, tiles for
+    --      TALK, STATUS, STAIRS, SEARCH, etc. may persist in the PPU for
+    --      a frame or two before the game clears them.
+    --   3. Status bar labels: HP, MP, LV, G, E — always uppercase, never
+    --      counted as dialogue (already filtered by is_just_status above,
+    --      but belt-and-suspenders here).
+    -- If new_text is non-empty but has zero lowercase letters, treat it as
+    -- noise and absorb it into the baseline so it doesn't re-trigger.
+    if new_text ~= "" and not new_text:find("[a-z]") then
+        if text.is_status_text(upper) then
+            upper_baseline = upper
+        end
+        -- Mark as processed (not "") so the next stabilization with the same
+        -- text is caught by the "upper == announced_upper_dialogue" check and
+        -- skips the full classification pipeline, rather than re-running all
+        -- filters on identical content.
+        announced_upper_dialogue = upper
+        upper_dialogue_active = false
+        return
+    end
+
+    -- Real dialogue detected — mark the window as active.
+    upper_dialogue_active = true
+
+    -- Skip if we already announced this exact text
+    if upper == announced_upper_dialogue then return end
 
     if new_text ~= "" then
         tolk.output_interrupt(new_text)
@@ -963,7 +1328,7 @@ while true do
         if startup_counter == STARTUP_FRAMES then
             -- Initialize the upper dialogue baseline so the status display
             -- text doesn't get announced as "new dialogue" after the grace period.
-            upper_baseline = text.read_upper_window()
+            upper_baseline = text.read_upper_window(get_scroll_tiles())
             prev_upper_dialogue = upper_baseline
 
             if game_state.state == state.STATE_TITLE then
@@ -990,6 +1355,9 @@ while true do
                 -- Transitioning from title to field means a game was loaded
                 if game_state.prev_state == state.STATE_TITLE then
                     tolk.output("Game started.")
+                    -- Start the post-start grace period to absorb transient
+                    -- load-sequence RAM values (HP=0, cycling map IDs, etc.).
+                    post_start_grace = FIELD_GRACE
                 end
             end
         end
@@ -998,9 +1366,35 @@ while true do
         -- Skip gameplay checks while on the title screen — the stat
         -- addresses contain garbage/uninitialized data there.
         if game_state.state ~= state.STATE_TITLE then
-            check_map_change()
-            check_hp_mp_changes()
-            check_level_up()
+            if post_start_grace > 0 then
+                -- Silently re-initialize change-detection baselines during
+                -- post-start grace so transient load-sequence RAM values
+                -- don't fire false HP/map announcements.
+                post_start_grace = post_start_grace - 1
+                prev_hp         = memory.readbyte(addr.CURRENT_HP)
+                prev_mp         = memory.readbyte(addr.CURRENT_MP)
+                prev_level      = memory.readbyte(addr.LEVEL)
+                prev_gold       = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
+                prev_magic_keys = memory.readbyte(addr.KEYS)
+                prev_herbs      = memory.readbyte(addr.HERBS)
+                prev_items = {
+                    memory.readbyte(addr.ITEMS_START),
+                    memory.readbyte(addr.ITEMS_START + 1),
+                    memory.readbyte(addr.ITEMS_START + 2),
+                    memory.readbyte(addr.ITEMS_START + 3),
+                }
+                nav.check_for_changes()  -- Initialize map tracking silently
+                if post_start_grace == 0 then
+                    -- Grace period just ended. Announce the now-stable
+                    -- starting location so the player knows where they are.
+                    local map_name = nav.get_map_name()
+                    if map_name then tolk.output(map_name) end
+                end
+            else
+                check_map_change()
+                check_hp_mp_changes()
+                check_level_up()
+            end
             -- Yes/No must run before check_command_menu() so is_yesno_active()
             -- is populated before that guard reads it.
             check_yesno_prompt()
