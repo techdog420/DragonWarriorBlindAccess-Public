@@ -958,16 +958,18 @@ end
 --   y=3 → rows 17-18       y=2 → rows 15-16       y=1 → rows 13-14
 -- Formula: text_row = 11 + 2 * py   (verified from PPU dumps)
 --
--- The command menu tiles (COMMAND, TALK, STAIRS, etc.) are in rows 0-15 at y=3
--- and do NOT overlap the response text rows, so no uppercase stripping is needed
--- for the rows we actually scan. We still apply a lowercase filter so that border
--- tiles adjacent to the text window (which decode as empty/spaces) are excluded.
+-- Some messages use a taller window with 4+ text lines, or two stacked
+-- sub-windows. At y=1 the guard's final page spans rows 15-19 (text_row=13),
+-- so text_row+5 misses row 19. We scan 9 rows (text_row through text_row+8)
+-- to cover the full depth of any window variant. The lowercase filter keeps
+-- only rows with real text — border tiles and map tiles decode to "" or
+-- uppercase and are silently dropped.
 local function read_y1_dialogue()
     local py = memory.readbyte(addr.PLAYER_Y)
     -- Clamp so row numbers stay in valid nametable range (0-29).
     local text_row = math.max(0, 11 + 2 * py)
     local lines = {}
-    for row = text_row, math.min(29, text_row + 1) do
+    for row = text_row, math.min(29, text_row + 8) do
         local decoded = text.decode_row(row)
         if decoded:find("[a-z]") then
             lines[#lines + 1] = decoded
@@ -1025,8 +1027,21 @@ local function check_dialogue()
         -- frames. This prevents the per-character "ki … kid … kidnap …" chatter.
         if clean_stable_frames == STABLE_THRESHOLD then
             if clean:find("[a-z]") and clean ~= announced_dialogue then
-                -- Real response text or NPC dialogue — announce it.
-                tolk.output_interrupt(clean)
+                -- Real response text or NPC dialogue — announce only the new portion.
+                -- DW1 scrolls the dialogue window so successive windows share a
+                -- tail/prefix boundary. strip_overlap prevents re-announcing the
+                -- question that already appeared at the top of the next window.
+                local new_text = strip_overlap(announced_dialogue, clean)
+                if new_text ~= "" then
+                    -- First page: interrupt to clear any prior menu speech.
+                    -- Continuation pages: queue so the speech flows without
+                    -- each scroll step cutting off the one before it.
+                    if announced_dialogue == "" then
+                        tolk.output_interrupt(new_text)
+                    else
+                        tolk.output(new_text)
+                    end
+                end
                 announced_dialogue = clean
             elseif not clean:find("[a-z]") and announced_dialogue ~= "" then
                 -- No lowercase: command menu noise — reset for next real text.
@@ -1061,7 +1076,11 @@ local function check_dialogue()
         if dialogue ~= "" and dialogue ~= announced_dialogue then
             local new_text = strip_overlap(announced_dialogue, dialogue)
             if new_text ~= "" then
-                tolk.output_interrupt(new_text)
+                if announced_dialogue == "" then
+                    tolk.output_interrupt(new_text)
+                else
+                    tolk.output(new_text)
+                end
             end
             announced_dialogue = dialogue
         elseif dialogue == "" and announced_dialogue ~= "" then
