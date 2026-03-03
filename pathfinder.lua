@@ -32,6 +32,19 @@ local DIRECTIONS = {
     {dx =  1, dy =  0, name = "east"},
 }
 
+-- face_direction(from_x, from_y, to_x, to_y): Return the cardinal direction
+-- the player must face when standing at (from_x, from_y) to interact with
+-- something at (to_x, to_y) one tile away.
+-- Returns nil if the positions are the same (shouldn't happen in practice).
+local function face_direction(from_x, from_y, to_x, to_y)
+    if to_y < from_y then return "north"
+    elseif to_y > from_y then return "south"
+    elseif to_x > from_x then return "east"
+    elseif to_x < from_x then return "west"
+    end
+    return nil
+end
+
 -- ============================================================
 -- Priority Queue (Min-Heap)
 -- ============================================================
@@ -303,23 +316,27 @@ end
 
 -- pathfind_to_adjacent(map_id, start, goal, npc_positions):
 -- Like pathfind_to but targets a tile ADJACENT to the goal instead of the
--- goal itself. Used for NPC targets — the player needs to stand next to an
--- NPC to interact (press A), not on the NPC's own tile (which is blocked
--- by the NPC's collision).
+-- goal itself. Used for NPC/door targets — the player needs to stand next to
+-- the target to interact (press A), not on the target's own tile.
 --
--- Returns "Adjacent" if the player is already within 1 step of the goal.
--- Otherwise routes to the closest reachable tile next to the goal.
+-- Returns two values:
+--   result_string  — "Adjacent", "Approach: N north, M east", or "No path found"
+--   face_dir       — cardinal direction to face on arrival (e.g. "north"), or nil
+--
+-- "Adjacent" means the player is already within 1 step of the goal;
+-- face_dir in that case is the direction from the player's current tile
+-- toward the goal, so they can orient immediately.
 function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
     -- Already adjacent (or standing on the goal tile)
     local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
     if dist <= 1 then
-        return "Adjacent"
+        return "Adjacent", face_direction(start_x, start_y, goal_x, goal_y)
     end
 
     -- For the overworld, just give direction + distance (no A*)
     if map_id == 0x00 then
         local objects = require "objects"
-        return objects.get_direction_string(start_x, start_y, goal_x, goal_y)
+        return objects.get_direction_string(start_x, start_y, goal_x, goal_y), nil
     end
 
     -- Build blocked positions: other NPCs plus the goal tile itself.
@@ -353,9 +370,13 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
     end
 
     if best_path then
-        return "Approach: " .. M.format_path(best_path)
+        -- The arrival tile is the last step's (x, y). Compute which direction
+        -- to face from there toward the goal so the player can interact on arrival.
+        local last = best_path[#best_path]
+        local face = face_direction(last.x, last.y, goal_x, goal_y)
+        return "Approach: " .. M.format_path(best_path), face
     else
-        return "No path found"
+        return "No path found", nil
     end
 end
 

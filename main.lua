@@ -49,12 +49,12 @@ auto_step.on_blocked = function()
         npc_freeze_active = true
     end
     local blocking = objects.get_blocking_positions()
-    local result
+    local result, face_dir
     local target_walkable = map_reader.is_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
     if last_pathfind_obj.type == objects.TYPE_NPC
     or last_pathfind_obj.type == objects.TYPE_DOOR
     or not target_walkable then
-        result = pathfinder.pathfind_to_adjacent(
+        result, face_dir = pathfinder.pathfind_to_adjacent(
             map_id, px, py,
             last_pathfind_obj.x, last_pathfind_obj.y, blocking)
     else
@@ -62,7 +62,11 @@ auto_step.on_blocked = function()
             map_id, px, py,
             last_pathfind_obj.x, last_pathfind_obj.y, blocking)
     end
-    tolk.output_interrupt("Re-routing. " .. last_pathfind_obj.name .. ". " .. result)
+    local msg = "Re-routing. " .. last_pathfind_obj.name .. ". " .. result
+    if face_dir then
+        msg = msg .. ". Face " .. face_dir
+    end
+    tolk.output_interrupt(msg)
 end
 
 -- ============================================================
@@ -663,14 +667,19 @@ local function handle_hotkeys(keys)
             -- Chests use direct pathfinding: the player walks ONTO the chest tile
             -- to open it, so distance-0 (not distance-1) is the goal.
             local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
+            local face_dir
             if obj.type == objects.TYPE_NPC
             or obj.type == objects.TYPE_DOOR
             or not target_walkable then
-                result = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
+                result, face_dir = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
             else
                 result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
             end
-            tolk.output_interrupt(obj.name .. ". " .. result)
+            local msg = obj.name .. ". " .. result
+            if face_dir then
+                msg = msg .. ". Face " .. face_dir
+            end
+            tolk.output_interrupt(msg)
         else
             tolk.output_interrupt("No object selected")
         end
