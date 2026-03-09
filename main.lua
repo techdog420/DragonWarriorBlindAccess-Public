@@ -146,6 +146,34 @@ local y1_prev_player_x    = nil    -- player X on the previous frame while at y=
 local FIELD_GRACE = 90       -- 1.5 seconds at 60fps to let loading complete
 local post_start_grace = 0   -- Counts down from FIELD_GRACE when a game starts
 
+-- True when in actual gameplay (STATE_FIELD or STATE_BATTLE).
+-- False on STATE_TITLE. Used to gate interior-map guards in
+-- check_dialogue() and check_upper_dialogue() so they don't
+-- misfire on garbage/uninitialized RAM during the title screen.
+local in_gameplay = false
+
+-- Title screen unified tracker: handles both screen-content changes
+-- (new sub-menus appearing) and cursor navigation within a screen.
+-- When text changes → announce the full new text.
+-- When only cursor (tile 0x42) moves → announce the item/char after it.
+local prev_title_cursor_row = nil
+local prev_title_cursor_col = nil
+local prev_title_text       = ""   -- lowercase-filtered text from all rows
+local title_stable          = 0
+local title_text_changed    = false  -- was the last reset caused by a text change?
+local TITLE_STABLE          = 10   -- frames of stability before announcing
+
+-- Adventure log (save slot) selection tracking.
+-- DW1 uses tile 0x42 cursor at col 11 of the selected slot row; confirmed via
+-- PPU dump (LOG 2 selected → 0x42 at row 22 col 11). Empty slots may omit the
+-- cursor tile; joypad tracking fills in when the cursor tile is absent.
+-- PPU row for each slot (from dump analysis): slot 1 = row 20, 2 = row 22, 3 = row 24.
+local ADV_LOG_ROWS    = {20, 22, 24}
+local adv_log_open    = false   -- adventure log selection box currently visible
+local adv_log_slot    = 1       -- highlighted slot (1–3)
+local adv_log_prev_dn = false   -- d-pad down state on previous frame
+local adv_log_prev_up = false   -- d-pad up state on previous frame
+
 -- Frame counter for throttling periodic checks
 -- Some checks don't need to run every frame; we use this to
 -- spread work across frames.
@@ -947,7 +975,13 @@ local function check_yesno_prompt()
         -- before the Yes/No prompt. Update announced_dialogue so the
         -- normal dialogue system doesn't repeat it.
         local question = text.read_dialogue_window(get_scroll_tiles())
-        if question ~= "" and question ~= announced_dialogue then
+        -- Only announce the question if it contains real dialogue text
+        -- (at least one lowercase letter). Purely-uppercase strings are either
+        -- command menu tiles that haven't been overwritten yet, or the player's
+        -- name partially rendered before the rest of the sentence appeared.
+        -- The normal dialogue stability path will catch the full text once it
+        -- finishes rendering.
+        if question ~= "" and question ~= announced_dialogue and question:find("[a-z]") then
             tolk.output(question)
             announced_dialogue = question
         end
@@ -987,6 +1021,232 @@ local function read_y1_dialogue()
     return table.concat(lines, " ")
 end
 
+-- strip_noise(str): Remove runs of 4+ consecutive zero characters that
+-- result from PPU background tiles (CHR index 0x00 → digit "0" in DW1
+-- encoding). These appear in large groups on the title screen wherever
+-- the nametable is "empty". Actual digit text never has runs that long.
+local function strip_noise(str)
+    return (str:gsub("0000+", ""):match("^%s*(.-)%s*$") or "")
+end
+
+-- read_title_menu_text(): Read the title screen menu options.
+-- Includes rows that contain at least one letter after stripping zero-noise.
+local function read_title_menu_text()
+    local lines = {}
+    for row = 0, 29 do
+        local cleaned = strip_noise(text.decode_row(row))
+        if cleaned:find("[a-zA-Z]") then
+            lines[#lines + 1] = cleaned
+        end
+    end
+    return table.concat(lines, ". ")
+end
+
+-- decode_row_from_col(row, start_col): Decode PPU nametable tiles on a row
+-- starting at start_col, reading through NT0 then NT1. Returns trimmed string.
+-- Used to read the item text that follows a cursor tile without including
+-- the (empty-decoded) cursor tile itself.
+local function decode_row_from_col(row, start_col)
+    local bytes = {}
+    for col = start_col, 31 do
+        bytes[#bytes + 1] = ppu.readbyte(0x2000 + row * 32 + col)
+    end
+    -- Also read NT1 for text that overflows past column 31.
+    for col = 0, 31 do
+        bytes[#bytes + 1] = ppu.readbyte(0x2400 + row * 32 + col)
+    end
+    local t = chars.decode_bytes(bytes)
+    return t:match("^%s*(.-)%s*$") or ""
+end
+
+-- check_title_screen(): Unified title-screen announcer.
+--
+-- Handles two events:
+--   1. Screen content change (new sub-menu appears — save slot, name entry,
+--      adventure log): detects by watching the lowercase-filtered text from
+--      all 30 PPU rows. When it changes and stabilizes, announces the new text.
+--   2. Cursor navigation (tile 0x42 moves to a new row or column): announces
+--      the text that follows the cursor on its row. For main-menu / save-slot
+--      items this is the full item label; for the name-entry alphabet grid
+--      (where the cursor sits immediately left of a single letter) this is
+--      just that letter.
+--
+-- A single stability counter guards both events. The one that triggered
+-- the last reset determines what gets announced when stable.
+local function check_title_screen()
+    -- Build letter-filtered, noise-stripped screen text. Rows that are purely
+    -- zeros (PPU background tiles decoded as digit "0") are excluded; uppercase
+    -- menu rows like "CONTINUE A QUEST" and "ADVENTURE LOG 1" are included.
+    local lines = {}
+    for row = 0, 29 do
+        local cleaned = strip_noise(text.decode_row(row))
+        if cleaned:find("[a-zA-Z]") then
+            lines[#lines + 1] = cleaned
+        end
+    end
+    local current_text = table.concat(lines, ". ")
+
+    -- Scan all PPU rows for a cursor tile, top to bottom.
+    -- DW1 uses tile 0x42 (cursor arrow) on most menus. Both 0x42 and 0x43
+    -- decode to "" so they never appear in decoded text reads.
+    local cursor_row, cursor_col = nil, nil
+    for row = 0, 29 do
+        for col = 0, 31 do
+            local tile = ppu.readbyte(0x2000 + row * 32 + col)
+            if tile == 0x42 or tile == 0x43 then
+                cursor_row, cursor_col = row, col
+                break
+            end
+        end
+        if cursor_row then break end
+    end
+
+    -- Build a comparison-only version of the text that excludes the cursor row.
+    -- On blink-off frames (cursor_row=nil) we still exclude the last known
+    -- cursor row (prev_title_cursor_row). This prevents cursor blink from
+    -- causing text_changed to fire every ~32 frames — a critical fix for the
+    -- name-entry alphabet grid, where the cursor tile sits ON a letter tile
+    -- (replacing it), so blink-on and blink-off produce different decoded text
+    -- for that row and would otherwise trigger repeated full-screen announcements.
+    local stable_cursor_row = cursor_row or prev_title_cursor_row
+    local lines_cmp = {}
+    for row = 0, 29 do
+        if row ~= stable_cursor_row then
+            local cleaned = strip_noise(text.decode_row(row))
+            if cleaned:find("[a-zA-Z]") then
+                lines_cmp[#lines_cmp + 1] = cleaned
+            end
+        end
+    end
+    local current_text_cmp = table.concat(lines_cmp, ". ")
+
+    local text_changed          = (current_text_cmp ~= prev_title_text)
+    local cursor_actually_moved = (cursor_row ~= nil
+                                   and (cursor_row ~= prev_title_cursor_row
+                                        or cursor_col ~= prev_title_cursor_col))
+
+    if cursor_actually_moved then
+        -- Cursor moved to a new position. This takes priority over text_changed,
+        -- which can fire simultaneously because the cursor-row masking flips from
+        -- the old row to the new row. Resync prev_title_text so the next frame
+        -- does not re-trigger text_changed from the masking flip.
+        title_stable          = 0
+        title_text_changed    = false
+        prev_title_cursor_row = cursor_row
+        prev_title_cursor_col = cursor_col
+        prev_title_text       = current_text_cmp
+    elseif text_changed then
+        -- Screen content changed (new sub-menu, typed letter, etc.).
+        title_stable       = 0
+        title_text_changed = true
+        prev_title_text    = current_text_cmp
+    else
+        title_stable = title_stable + 1
+    end
+
+    -- Detect name-entry screen: row 22 uniquely contains BACK and END keys.
+    -- Used below to select the right announcement strategy.
+    local is_name_entry = (current_text:find("BACK") ~= nil
+                           and current_text:find("END") ~= nil)
+
+    if title_stable == TITLE_STABLE then
+        if title_text_changed then
+            -- A new sub-screen appeared. Announce its full content so the
+            -- player knows what is being asked (prompt + all choices).
+            title_text_changed = false
+            if current_text ~= "" then
+                if is_name_entry then
+                    -- The name-entry screen leaves adventure-log rows visible at
+                    -- the bottom of the PPU (row 24 still shows "ADVENTURE LOG 3"
+                    -- from the previous sub-menu), so current_text would include
+                    -- that noise. Announce a short context prompt instead; cursor
+                    -- events will speak each letter as the player navigates.
+                    tolk.output("Name entry. Arrow keys to select letter, BACK to delete, END to finish.")
+                else
+                    tolk.output(current_text)
+                end
+            end
+        elseif prev_title_cursor_row then
+            -- Cursor moved within the same screen. Use the last known (stable)
+            -- cursor position even if it's currently in its blink-off phase.
+            -- Read just the text that follows the cursor on its row.
+            local item = decode_row_from_col(prev_title_cursor_row, prev_title_cursor_col + 1)
+            -- Fall back to the full row if the post-cursor fragment has no
+            -- letters (e.g., cursor sits between "ADVENTURE LOG " and "1").
+            if not item:find("[a-zA-Z]") then
+                item = text.decode_row(prev_title_cursor_row)
+            end
+            if is_name_entry then
+                -- On the name-entry grid the cursor sits at an odd column just
+                -- BEFORE each letter (col 5 before 'a' at col 6, col 7 before
+                -- 'b' at col 8, etc.). decode_row_from_col therefore returns the
+                -- rest of the entire row ("a b c d e f g h i j k"). Take only
+                -- the first non-whitespace token: the single selected letter or
+                -- a multi-char command like BACK or END.
+                item = item:match("^%s*(%S+)") or item
+            end
+            if item ~= "" then
+                tolk.output(item)
+            end
+        end
+    end
+
+    -- Adventure log (save slot) navigation.
+    -- The adventure log selection box uses palette highlighting rather than a
+    -- cursor tile, so the PPU tile data never changes when the player presses
+    -- up/down. We detect box visibility by checking for "ADVENTURE LOG" in the
+    -- current screen text, then track the selection from joypad input directly.
+    local was_adv_log_open = adv_log_open
+    -- Suppress adventure-log detection during name entry: row 24 still shows
+    -- "ADVENTURE LOG 3" from the previous screen (PPU not cleared), so the
+    -- "ADVENTURE LOG" string is present but the selection box is gone.
+    adv_log_open = (not is_name_entry) and (current_text:find("ADVENTURE LOG") ~= nil)
+    if adv_log_open and not was_adv_log_open then
+        -- Box just appeared. Detect the initially selected slot by scanning for
+        -- cursor tile 0x42 at column 11 of each slot row (confirmed via PPU dump:
+        -- LOG 2 selected → 0x42 at row 22, col 11). Empty slots may have no cursor
+        -- tile; in that case default to slot 1.
+        adv_log_slot = 1
+        for i, row in ipairs(ADV_LOG_ROWS) do
+            if ppu.readbyte(0x2000 + row * 32 + 11) == 0x42 then
+                adv_log_slot = i
+                break
+            end
+        end
+        local joy       = joypad.read(1)
+        adv_log_prev_dn = joy.down or false
+        adv_log_prev_up = joy.up   or false
+    end
+
+    if adv_log_open then
+        local joy    = joypad.read(1)
+        local dn_now = joy.down or false
+        local up_now = joy.up   or false
+        -- Detect press edges (transition from not-held to held).
+        local dn_press = dn_now and not adv_log_prev_dn
+        local up_press = up_now and not adv_log_prev_up
+        adv_log_prev_dn = dn_now
+        adv_log_prev_up = up_now
+
+        if dn_press or up_press then
+            if dn_press then
+                adv_log_slot = (adv_log_slot % 3) + 1
+            else
+                adv_log_slot = ((adv_log_slot - 2) % 3) + 1
+            end
+            -- Read the text content of this slot's row.
+            -- An empty save slot has all spaces → announce "Slot N, empty".
+            local row  = ADV_LOG_ROWS[adv_log_slot]
+            local item = strip_noise(text.decode_row(row)):match("^%s*(.-)%s*$") or ""
+            if item == "" then
+                tolk.output("Slot " .. adv_log_slot .. ", empty")
+            else
+                tolk.output(item)
+            end
+        end
+    end
+end
+
 -- check_dialogue(): Read dialogue window and announce when text changes.
 -- Dragon Warrior renders text one character at a time, so we wait until
 -- the text stops changing for STABLE_THRESHOLD frames before announcing.
@@ -1009,7 +1269,7 @@ end
 local function check_dialogue()
     local mid = memory.readbyte(addr.MAP_ID)
     local py  = memory.readbyte(addr.PLAYER_Y)
-    local at_y1 = mid ~= 0x00 and py <= 3
+    local at_y1 = in_gameplay and mid ~= 0x00 and py <= 3
 
     local dialogue = text.read_dialogue_window(get_scroll_tiles())
 
@@ -1083,15 +1343,22 @@ local function check_dialogue()
     -- already announced, speak only the new portion.
     if stable_frames == STABLE_THRESHOLD then
         if dialogue ~= "" and dialogue ~= announced_dialogue then
-            local new_text = strip_overlap(announced_dialogue, dialogue)
-            if new_text ~= "" then
-                if announced_dialogue == "" then
-                    tolk.output_interrupt(new_text)
-                else
-                    tolk.output(new_text)
+            -- Absorb purely-uppercase text (command menu tiles, map tiles)
+            -- without announcing — same principle as the at_y1 uppercase filter.
+            -- Real NPC dialogue always contains at least one lowercase letter.
+            if not dialogue:find("[a-z]") then
+                announced_dialogue = dialogue
+            else
+                local new_text = strip_overlap(announced_dialogue, dialogue)
+                if new_text ~= "" then
+                    if announced_dialogue == "" then
+                        tolk.output_interrupt(new_text)
+                    else
+                        tolk.output(new_text)
+                    end
                 end
+                announced_dialogue = dialogue
             end
-            announced_dialogue = dialogue
         elseif dialogue == "" and announced_dialogue ~= "" then
             -- Dialogue window closed — reset so we catch the next one
             announced_dialogue = ""
@@ -1126,7 +1393,7 @@ local function check_upper_dialogue()
     -- Update the pending-baseline flag every frame so it reflects current
     -- player movement even during the upper-text stability wait period.
     local map_id = memory.readbyte(addr.MAP_ID)
-    if map_id ~= 0x00 then
+    if in_gameplay and map_id ~= 0x00 then
         local player_y = memory.readbyte(addr.PLAYER_Y)
         if player_y <= 1 then
             local player_x = memory.readbyte(addr.PLAYER_X)
@@ -1190,7 +1457,7 @@ local function check_upper_dialogue()
     -- Real NPC dialogue in DW1 ALWAYS renders in the lower window (rows
     -- 18-27) and is handled by check_lower_dialogue. Nothing in rows 1-18
     -- at y=1 is ever genuine dialogue — absorb unconditionally.
-    if map_id ~= 0x00 and memory.readbyte(addr.PLAYER_Y) <= 1 then
+    if in_gameplay and map_id ~= 0x00 and memory.readbyte(addr.PLAYER_Y) <= 1 then
         upper_baseline = upper
         announced_upper_dialogue = upper
         upper_dialogue_active = false
@@ -1324,6 +1591,7 @@ while true do
 
     -- Get current game state
     local game_state = state.check_for_changes()
+    in_gameplay = (game_state.state ~= state.STATE_TITLE)
 
     -- Startup grace period: during the first STARTUP_FRAMES frames,
     -- let all the "previous" tracking values initialize silently.
@@ -1360,6 +1628,11 @@ while true do
             prev_upper_dialogue = upper_baseline
 
             if game_state.state == state.STATE_TITLE then
+                prev_title_cursor_row = nil
+                prev_title_cursor_col = nil
+                prev_title_text       = ""
+                title_stable          = 0
+                title_text_changed    = false
                 tolk.output("Title screen.")
             end
         end
@@ -1369,11 +1642,19 @@ while true do
         -- Announce state transitions
         if game_state.changed then
             if game_state.state == state.STATE_TITLE then
-                -- Arrived at title/save screen — read whatever text is on screen.
-                -- Use T hotkey to re-read if needed.
-                local screen_text = text.get_full_screen_text()
-                if screen_text ~= "" then
-                    tolk.output("Title screen. " .. screen_text)
+                -- Reset all title trackers. Prime prev_title_text with the
+                -- current filtered text so check_title_screen() doesn't
+                -- re-announce the initial screen content it's about to read.
+                prev_title_cursor_row = nil
+                prev_title_cursor_col = nil
+                title_stable          = 0
+                title_text_changed    = false
+                adv_log_open          = false
+                prev_title_text       = read_title_menu_text()
+                -- Use lowercase-filtered read to skip title graphic tiles that
+                -- decode as spurious digits (CHR indices 0x00-0x09 = "0"-"9").
+                if prev_title_text ~= "" then
+                    tolk.output("Title screen. " .. prev_title_text)
                 else
                     tolk.output("Title screen.")
                 end
@@ -1441,11 +1722,16 @@ while true do
         end
 
         -- Dialogue checks — run every frame to track text changes.
-        -- Lower dialogue (rows 19-29): standard dialogue area.
-        -- Upper dialogue (rows 1-18): chest messages, shop text, etc.
-        -- Both run even on the title screen since text can appear there too.
-        check_dialogue()
-        check_upper_dialogue()
+        -- Both lower (rows 19-29) and upper (rows 1-18) dialogue are only
+        -- meaningful during gameplay. On the title screen, graphic tiles in
+        -- those rows decode as spurious digits/uppercase and produce false
+        -- announcements. check_title_screen() handles all title-screen text.
+        if in_gameplay then
+            check_dialogue()
+            check_upper_dialogue()
+        else
+            check_title_screen()
+        end
     end
 
     -- Increment frame counter (wraps around to avoid overflow)

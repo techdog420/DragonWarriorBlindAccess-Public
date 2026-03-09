@@ -276,14 +276,36 @@ local MAP_PASSTHROUGH_CELLS = {
     -- Map 0x05: Tantegel Castle Throne Room
     -- The south wall (y=7) and bottom row (y=8) are type-15 in ROM, but
     -- the east section contains a corridor that is physically walkable:
-    --   (4,7) = arch/passthrough in the south wall (entering the corridor)
     --   (4,8)-(7,8) = corridor floor tiles leading east to the staircase
     --   (8,8) = staircase entry — player stands here to use it
+    -- NOTE: (4,7) is the magic-key DOOR cell — it is in MAP_DOOR_CELLS
+    -- below (walkable only after the door has been opened, not always).
     -- All confirmed empirically: player walked (4,4)→south→(4,8)→east→(8,8).
     [0x05] = {
-        ["4,7"] = true,
         ["4,8"] = true, ["5,8"] = true, ["6,8"] = true,
         ["7,8"] = true, ["8,8"] = true,
+    },
+}
+
+-- ============================================================
+-- Per-Map Magic-Key Door Cell Overrides
+-- ============================================================
+-- Some cells have tile type 15 (wall) in ROM but host a magic-key door
+-- at runtime. parse_doors() in objects.lua looks for tile type 11, so it
+-- misses these. We list them here so is_walkable() can check the game's
+-- opened-door RAM ($600C/$600D) directly.
+--
+-- Format: MAP_DOOR_CELLS[map_id]["x,y"] = {x=X, y=Y}
+-- When a cell is listed here, is_walkable() returns true ONLY if the
+-- door at (x,y) appears in the opened-door array; otherwise false.
+local MAP_DOOR_CELLS = {
+    -- Map 0x05: Tantegel Castle Throne Room
+    -- (4,7) = south-wall arch doorway. ROM tile is type-15 (wall), but the
+    -- game engine places a magic-key door here at runtime. Once the player
+    -- uses a magic key, the position is recorded in the opened-door RAM and
+    -- the cell becomes passable (leading to the corridor and stairs at (8,8)).
+    [0x05] = {
+        ["4,7"] = {x=4, y=7},
     },
 }
 
@@ -342,6 +364,22 @@ function M.is_walkable(map_id, x, y)
     local passthroughs = MAP_PASSTHROUGH_CELLS[map_id]
     if passthroughs and passthroughs[x .. "," .. y] then
         return true
+    end
+
+    -- Per-map magic-key door cells: walkable only after the door is opened.
+    -- These have tile type 15 (wall) in ROM so parse_doors() misses them.
+    -- We check the game's opened-door RAM arrays directly ($600C/$600D).
+    local door_cells = MAP_DOOR_CELLS[map_id]
+    if door_cells and door_cells[x .. "," .. y] then
+        local dc = door_cells[x .. "," .. y]
+        for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+            local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+            local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+            if dx ~= 0 and dx == dc.x and dy == dc.y then
+                return true   -- door opened → cell passable
+            end
+        end
+        return false          -- door still closed → cell blocked
     end
 
     -- Per-map sprite-collision overrides (cells blocked by game engine

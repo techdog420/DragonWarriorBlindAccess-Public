@@ -596,6 +596,23 @@ local function build_object_list(map_id)
         objects[#objects + 1] = door
     end
 
+    -- Hardcoded doors for maps where the magic-key door tile is type-15
+    -- (wall) in ROM, so parse_doors() (which scans for type-11 tiles) will
+    -- not find them. These are listed explicitly here so they appear in
+    -- navigation and pathfinding as blocked cells until opened.
+    local EXTRA_DOORS = {
+        -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
+        -- The ROM tile is type-15; is_walkable() in map_reader.lua checks
+        -- the opened-door RAM directly for this cell.
+        [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
+    }
+    local extra = EXTRA_DOORS[map_id]
+    if extra then
+        for _, d in ipairs(extra) do
+            objects[#objects + 1] = d
+        end
+    end
+
     -- Sort by distance from player (closest first)
     table.sort(objects, function(a, b)
         local da = get_distance(px, py, a.x, a.y)
