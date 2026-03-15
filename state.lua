@@ -20,39 +20,89 @@ M.STATE_UNKNOWN   = "unknown"    -- Can't determine state
 -- Previous state for change detection
 M.prev_state = nil
 
+-- PPU byte patterns for text unique to the title screen.
+-- These appear on the title menu and adventure log, never during gameplay.
+--
+-- "QUEST"   : Q=0x34, U=0x38, E=0x28, S=0x36, T=0x37
+--   Appears in "BEGIN A NEW QUEST", "CONTINUE A QUEST", etc.
+-- "ADVENTUR" : A=0x24, D=0x27, V=0x39, E=0x28, N=0x31, T=0x37, U=0x38, R=0x35
+--   Appears in "ADVENTURE LOG" header on the save-slot selection screen.
+--
+-- When level RAM is 1-30 but we are still on the title screen (e.g. after
+-- the adventure log preview loaded a save's level into RAM), these patterns
+-- tell us reliably that we have NOT yet started a game.
+--
+-- During gameplay the scan short-circuits quickly (no title text on screen).
+local QUEST    = {0x34, 0x38, 0x28, 0x36, 0x37}          -- 5 bytes
+local ADVENTUR = {0x24, 0x27, 0x39, 0x28, 0x31, 0x37, 0x38, 0x35}  -- 8 bytes
+
+local function ppu_shows_title_content()
+    for row = 0, 29 do
+        local base = 0x2000 + row * 32
+
+        -- Scan for QUEST (5 bytes); last valid start col is 31-5+1 = 27
+        for col = 0, 27 do
+            if ppu.readbyte(base + col) == QUEST[1] then
+                local ok = true
+                for i = 2, 5 do
+                    if ppu.readbyte(base + col + i - 1) ~= QUEST[i] then
+                        ok = false; break
+                    end
+                end
+                if ok then return true end
+            end
+        end
+
+        -- Scan for ADVENTUR (8 bytes); last valid start col is 31-8+1 = 24
+        for col = 0, 24 do
+            if ppu.readbyte(base + col) == ADVENTUR[1] then
+                local ok = true
+                for i = 2, 8 do
+                    if ppu.readbyte(base + col + i - 1) ~= ADVENTUR[i] then
+                        ok = false; break
+                    end
+                end
+                if ok then return true end
+            end
+        end
+    end
+    return false
+end
+
 -- detect(): Determine the current game state.
 -- Returns one of the STATE_* constants.
 --
 -- Detection strategy:
--- 1. Check if player level == 0: title/save screen (no game loaded yet)
--- 2. Check if enemy HP > 0: likely in battle
--- 3. Otherwise: field exploration
+-- 1. If level == 0 or > 30: definitely title screen (uninitialized RAM).
+-- 2. If level is 1-30 AND gameplay not yet confirmed AND PPU shows title
+--    content ("QUEST" or "ADVENTUR"): still on title screen / adventure log.
+--    (Covers the case where "CONTINUE A QUEST" loaded save data into RAM.)
+-- 3. If enemy HP > 0: battle.
+-- 4. Otherwise: field exploration.
 --
--- The level check works because during gameplay the player's level is
--- always 1 or higher. On the title screen, save selection, and name
--- entry screens, no game data is loaded so level reads as 0.
---
--- Note: The battle heuristic (enemy HP > 0) may need refinement —
--- enemy HP could have stale data between fights. We'll improve this
--- as we test with the actual game.
+-- The PPU check (step 2) short-circuits quickly during gameplay since
+-- title text is not present on screen.
 function M.detect()
-    -- Title screen check: if the player's level is 0 or invalid, no game
-    -- is loaded. Dragon Warrior's max level is 30. On the title screen,
-    -- RAM is uninitialized (0xFF = 255), and after the game initializes
-    -- but before loading a save, level may be 0. Either way, we're not
-    -- in gameplay.
     local level = memory.readbyte(addr.LEVEL)
     if level == 0 or level > 30 then
         return M.STATE_TITLE
     end
 
-    -- Battle check: if enemy HP > 0, we're probably in battle.
+    -- Level is 1-30: could be an adventure log preview or real gameplay,
+    -- or a return to the title after playing (stale level in RAM).
+    -- The screen fade that precedes actual game start clears the title text
+    -- from the PPU, so ppu_shows_title_content() returns false at that point,
+    -- allowing the TITLE→FIELD transition to fire correctly.
+    -- During gameplay the scan short-circuits quickly (no "QUEST"/"ADVENTUR" tiles).
+    if ppu_shows_title_content() then
+        return M.STATE_TITLE
+    end
+
     local enemy_hp = memory.readbyte(addr.ENEMY_HP)
     if enemy_hp > 0 then
         return M.STATE_BATTLE
     end
 
-    -- Everything else is "field" (walking around).
     return M.STATE_FIELD
 end
 

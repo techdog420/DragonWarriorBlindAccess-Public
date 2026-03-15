@@ -167,6 +167,23 @@ function M.read_dialogue_window(scroll_tiles)
     return table.concat(lines, " ")
 end
 
+-- read_dialogue_window_filtered(scroll_tiles): Same as read_dialogue_window
+-- but applies a per-row lowercase filter. Only rows containing at least one
+-- lowercase letter are included. This filters out status bar fragments
+-- (uppercase labels like "E", "G", "HP") that bleed into rows 19-29 at
+-- certain NES scroll positions (e.g., player at y=7 on interior maps).
+-- NPC dialogue always contains lowercase text, so real dialogue passes through.
+function M.read_dialogue_window_filtered(scroll_tiles)
+    local lines = {}
+    for row = 19, 29 do
+        local decoded = M.decode_row(row, scroll_tiles)
+        if decoded ~= "" and decoded:find("[a-z]") then
+            lines[#lines + 1] = decoded
+        end
+    end
+    return table.concat(lines, " ")
+end
+
 -- read_upper_window(): Read text from the upper portion of the screen
 -- (rows 1-18). This captures chest messages, shop text, and other
 -- dialogue windows that appear above the standard dialogue area.

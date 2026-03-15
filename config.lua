@@ -72,6 +72,7 @@ local DEFAULTS_ORDERED = {
     {key = "key_diag_cursor",   value = "M",  comment = "; Show raw menu cursor values"},
     {key = "key_diag_ppu_dump", value = "D",  comment = "; Dump PPU data to file"},
     {key = "key_diag_tiles",    value = "N",  comment = "; Speak tile types at player position, dump tile_diag.txt"},
+    {key = "key_diag_title",    value = "V",  comment = "; Dump title screen cursor/RAM state to title_diag.txt (use on adventure log or message speed screens)"},
 }
 
 -- Build a flat key->value lookup from the defaults for quick access

@@ -274,11 +274,18 @@ local function get_yesno_state()
                     local b1 = row_bytes[i]
                     local b2 = row_bytes[i + 1] or 0
                     local b3 = row_bytes[i + 2] or 0
-                    if b1 == NO_BYTES[1] and b2 == NO_BYTES[2] then
+                    -- Match NO: require the byte after "NO" is NOT a letter,
+                    -- to distinguish standalone "NO" from words like "NORMAL".
+                    -- DW1 letter range: 0x0A-0x3D (lowercase a-z, uppercase A-Z).
+                    if b1 == NO_BYTES[1] and b2 == NO_BYTES[2]
+                       and (b3 < 0x0A or b3 > 0x3D) then
                         cursor_selection = "NO"
                         break
                     end
-                    if b1 == YES_BYTES[1] and b2 == YES_BYTES[2] and b3 == YES_BYTES[3] then
+                    -- Match YES: same word-boundary check after "YES".
+                    local b4 = row_bytes[i + 3] or 0
+                    if b1 == YES_BYTES[1] and b2 == YES_BYTES[2] and b3 == YES_BYTES[3]
+                       and (b4 < 0x0A or b4 > 0x3D) then
                         cursor_selection = "YES"
                         break
                     end
