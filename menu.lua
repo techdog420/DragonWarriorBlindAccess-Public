@@ -188,9 +188,16 @@ function M.check_for_changes()
         end
     end
 
-    -- Update tracking state for next frame
-    prev_cursor_x = cursor_x
-    prev_cursor_y = cursor_y
+    -- Update tracking state for next frame.
+    -- Only advance the remembered cursor while the menu is visibly open.
+    -- If the COMMAND header scan drops out for a single frame near row 1,
+    -- the player can still move the cursor during that gap. Keeping the
+    -- last known open-menu position lets the next visible frame detect the
+    -- jump and announce the newly highlighted item instead of going silent.
+    if menu_open then
+        prev_cursor_x = cursor_x
+        prev_cursor_y = cursor_y
+    end
     prev_menu_open = menu_open
 
     return result

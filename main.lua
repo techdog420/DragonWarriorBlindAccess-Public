@@ -28,6 +28,13 @@ local objects = require "objects"   -- Map object detection and navigation
 local pathfinder = require "pathfinder" -- A* pathfinding for interior maps
 local map_reader = require "map_reader" -- ROM map data (tile grids)
 local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
+local items = require "items"          -- Item/equipment/spell lookup tables
+
+-- Forward declarations for state referenced by early callbacks.
+local last_pathfind_obj = nil
+local npc_freeze_active = false
+local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
+local capture_npc_snapshot
 
 -- ============================================================
 -- Startup
@@ -263,14 +270,56 @@ local frame_count = 0
 -- Last object the player pathfound to. Kept so auto_step.on_blocked
 -- can re-route to the same target when a moving NPC blocks a step.
 -- Cleared on map change.
-local last_pathfind_obj = nil
+last_pathfind_obj = nil
 
 -- NPC freeze: lock NPC positions in RAM for reliable pathfinding.
 -- When active, we restore NPC bytes to their snapshot values after
 -- every FCEU.frameadvance(), undoing any movement the game's AI did.
 -- The blind user doesn't need NPCs to visually wander, so this is safe.
-local npc_freeze_active = false
-local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
+npc_freeze_active = false
+frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
+
+-- Sub-menu tracking: STATUS and ITEM screens opened from the command menu.
+-- When the player selects STATUS or ITEM, the game opens a sub-menu that
+-- reuses the D8/D9 cursor RAM for a different purpose. Without tracking,
+-- the command menu handler interprets item cursor positions as command menu
+-- items (D9=0 → "TALK", D9=1 → "STATUS", etc.).
+--
+-- submenu_mode: nil (normal), "STATUS", or "ITEM"
+-- prev_cmd_x/y: cursor position on the previous frame, used to detect
+--   the single-frame jump from a command menu item to a sub-menu cursor.
+-- pending_status_check: if the STATUS PPU signature isn't visible on the
+--   exact frame the command menu closes, retry on the next frame.
+local submenu_mode = nil
+local prev_cmd_x = nil
+local prev_cmd_y = nil
+
+-- Sub-menu tracking state.
+local prev_joy_b_status  = false  -- B button tracking for STATUS exit
+local prev_joy_a_cmd     = false  -- A button tracking inside check_command_menu
+local cmd_menu_confirmed = false  -- true after we announce "Command." (genuine open)
+local yesno_status_block_frames = 0  -- brief cooldown after Yes/No dismissal
+local cmd_cursor_hold_frames = 0  -- recent visible command-menu cursor
+local cmd_last_live_x = nil
+local cmd_last_live_y = nil
+local cmd_menu_live = false  -- true once a fresh field-menu session is re-armed
+local cmd_rearm_required = false  -- blocks stale row-1 menu residue after TALK/YES-NO
+local movement_dialogue_hold_frames = 0
+local MOVEMENT_DIALOGUE_HOLD = 360
+local menu_upper_absorb_frames = 0
+local MENU_UPPER_ABSORB = 45
+local current_joy = {}
+local current_joy_any = false
+local recent_field_action_frames = 0
+local RECENT_FIELD_ACTION_HOLD = 180
+
+-- Hidden row-1 command diagnostics.
+-- Writes compact transition lines to row1_menu_diag.txt so row-1 menu/guard
+-- bugs can be inspected without adding spoken noise during play.
+local ROW1_TRACE_ENABLED = true
+local ROW1_TRACE_FILE = "row1_menu_diag.txt"
+local row1_trace_frame = 0
+local prev_row1_lower_dialogue_active = false
 
 -- ============================================================
 -- Hotkey Handling
@@ -293,7 +342,7 @@ end
 -- Byte 0: sprite type (bits 7-5) + X position (bits 4-0).
 -- Byte 1: animation frame (bit 7) + direction (bits 6-5) + Y position (bits 4-0).
 -- Byte 2: movement behavior code.
-local function capture_npc_snapshot()
+capture_npc_snapshot = function()
     frozen_npc_snapshot = {}
     for i = 0, addr.NPC_COUNT - 1 do
         local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
@@ -360,26 +409,9 @@ local function handle_hotkeys(keys)
         tolk.output_interrupt(exp .. " experience")
     end
 
-    -- Stats: Read full stats
+    -- Stats: Read full stats (level, HP/MP, all stats, equipment, spells)
     if is_key_pressed(keys, config.get("key_stats")) then
-        local level = memory.readbyte(addr.LEVEL)
-        local hp = memory.readbyte(addr.CURRENT_HP)
-        local max_hp = memory.readbyte(addr.MAX_HP)
-        local mp = memory.readbyte(addr.CURRENT_MP)
-        local max_mp = memory.readbyte(addr.MAX_MP)
-        local str = memory.readbyte(addr.STRENGTH)
-        local agi = memory.readbyte(addr.AGILITY)
-        local atk = memory.readbyte(addr.ATTACK)
-        local def = memory.readbyte(addr.DEFENSE)
-        tolk.output_interrupt(
-            "Level " .. level ..
-            ", HP " .. hp .. " of " .. max_hp ..
-            ", MP " .. mp .. " of " .. max_mp ..
-            ", Attack " .. atk ..
-            ", Defense " .. def ..
-            ", Strength " .. str ..
-            ", Agility " .. agi
-        )
+        tolk.output_interrupt(items.read_status_string())
     end
 
     -- Screen text: Read all text currently on screen
@@ -977,6 +1009,12 @@ end
 -- check_map_change(): Announce when the player enters a new area.
 local function check_map_change()
     local changes = nav.check_for_changes()
+    if changes.position_changed and not changes.map_changed then
+        movement_dialogue_hold_frames = MOVEMENT_DIALOGUE_HOLD
+    elseif movement_dialogue_hold_frames > 0 then
+        movement_dialogue_hold_frames = movement_dialogue_hold_frames - 1
+    end
+
     if changes.map_changed and changes.map_name then
         tolk.output(changes.map_name)
         -- Clear the pathfind target so auto re-routing doesn't try to reach
@@ -1036,38 +1074,302 @@ local function strip_overlap(old, new)
     return new
 end
 
--- check_command_menu(): Announce command menu opening and cursor movement.
--- When the player opens the command menu, we announce "Command menu" and
--- the currently highlighted item. As they move the cursor, we announce
--- each new item they land on.
+if ROW1_TRACE_ENABLED then
+    local f = io.open(ROW1_TRACE_FILE, "w")
+    if f then
+        f:write("=== Row 1 command trace ===\n")
+        f:close()
+    end
+end
+
+local function is_row1_interior_context()
+    if not in_gameplay then return false end
+    local map_id = memory.readbyte(addr.MAP_ID)
+    local py = memory.readbyte(addr.PLAYER_Y)
+    return map_id ~= 0x00 and py <= 1
+end
+
+local function trace_row1(event, changes, extra)
+    if not ROW1_TRACE_ENABLED or not is_row1_interior_context() then return end
+
+    local fields = {
+        string.format("f=%d", row1_trace_frame),
+        event,
+        "open=" .. tostring(menu.is_open()),
+        "opened=" .. tostring(changes and changes.menu_opened or false),
+        "closed=" .. tostring(changes and changes.menu_closed or false),
+        "move=" .. tostring(changes and changes.cursor_moved or false),
+        "xy=" .. tostring(changes and changes.cursor_x or "nil") .. "," .. tostring(changes and changes.cursor_y or "nil"),
+        "confirmed=" .. tostring(cmd_menu_confirmed),
+        "live=" .. tostring(cmd_menu_live),
+        "rearm=" .. tostring(cmd_rearm_required),
+        "hold=" .. tostring(cmd_cursor_hold_frames),
+        "yesno=" .. tostring(menu.is_yesno_active()),
+        "yesseen=" .. tostring(menu.yesno_cursor_seen()),
+        "block=" .. tostring(yesno_status_block_frames),
+        "submenu=" .. tostring(submenu_mode),
+    }
+
+    if extra then
+        for _, part in ipairs(extra) do
+            fields[#fields + 1] = part
+        end
+    end
+
+    local f = io.open(ROW1_TRACE_FILE, "a")
+    if f then
+        f:write(table.concat(fields, " | ") .. "\n")
+        f:close()
+    end
+end
+
+local function joypad_has_input(joy)
+    return joy.A or joy.B or joy.up or joy.down or joy.left or joy.right
+        or joy.start or joy.select
+end
+
+local function field_dialogue_guard_active()
+    if not in_gameplay then return false end
+    if current_joy_any then return false end
+    if menu.is_open() or submenu_mode ~= nil or menu.is_yesno_active() then return false end
+    return recent_field_action_frames == 0
+end
+
+local function has_visible_cursor_tile()
+    for row = 0, 29 do
+        local row_start = 0x2000 + row * 32
+        for col = 0, 31 do
+            local tile = ppu.readbyte(row_start + col)
+            if tile == 0x42 or tile == 0x43 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- check_command_menu(): Announce command menu opening, cursor movement,
+-- and handle STATUS/ITEM sub-menu transitions.
+--
+-- Sub-menu detection:
+--   STATUS: A is pressed while a confirmed field command menu is open and
+--           the cursor is on STATUS(0,1). Suppressed during a Yes/No prompt
+--           and for a few frames after it dismisses, because guard 1 reuses
+--           the same window and cursor RAM while asking about Princess Gwaelin.
+--
+--   ITEM:   While the menu is open, cursor jumps from ITEM(1,1) to (0,*)
+--           in a single frame with D9 also changing. This can't happen from
+--           normal cursor movement since DW1 menus only move one axis per
+--           frame. In ITEM mode, D9 tracks the item cursor and we announce
+--           item names from the nybble-encoded RAM slots. Exits when D8
+--           returns to 1 (back to command menu) or menu closes entirely.
 --
 -- Guard: When a Yes/No prompt is active, the game reuses the command menu
--- window (same "COMMAND" header in the PPU, same cursor RAM addresses).
--- The cursor at position (0,0) = YES, (0,1) = NO. Without the guard,
--- these would be announced as "TALK" and "STATUS". We call check_for_changes()
--- anyway to keep prev_cursor_x/y current so there's no stale-cursor
--- false-announce after the Yes/No prompt is dismissed.
+-- window (same "COMMAND" header, same cursor RAM). Suppress command menu
+-- announcements during yes/no prompts.
 local function check_command_menu()
     local changes = menu.check_for_changes()
 
-    -- When the menu just opened while the yes/no hold timer is still counting
-    -- from a previous spurious detection (e.g. background tile 0x42 at map y=1
-    -- followed by NO bytes that falsely triggered the yesno detector), clear the
-    -- stale yesno state so the opening is announced normally.
-    --
-    -- We only clear when yesno_cursor_seen() is false — meaning the cursor was
-    -- NOT physically found before YES/NO this frame. That distinguishes the
-    -- stale-timer case from a real yes/no prompt where the cursor IS present:
-    --   Stale timer: cursor_seen=false → safe to reset → "Command. TALK" ✓
-    --   Real yes/no: cursor_seen=true  → do NOT reset → guard fires → quiet ✓
+    -- Save previous cursor position for transition detection, then update.
+    local was_x = prev_cmd_x
+    local was_y = prev_cmd_y
+    prev_cmd_x = changes.cursor_x
+    prev_cmd_y = changes.cursor_y
+
+    -- === STATUS sub-menu mode ===
+    -- Stay in STATUS until the command menu re-opens (player pressed B to
+    -- return to the command menu) or B is pressed (in case pressing B from
+    -- STATUS goes directly to the field on some game versions).
+    if submenu_mode == "STATUS" then
+        local joy = joypad.read(1)
+        local b_just = joy.B and not prev_joy_b_status
+        prev_joy_b_status = joy.B
+        if changes.menu_opened or b_just then
+            submenu_mode = nil
+            -- Reset cursor tracking so the first frame back in the command
+            -- menu sees a cursor_moved and announces the current position.
+            -- Without this, prev_cmd_x/y can match the post-STATUS cursor
+            -- values, making the entire next menu session silent.
+            prev_cmd_x = nil
+            prev_cmd_y = nil
+            if changes.menu_opened then
+                menu_upper_absorb_frames = MENU_UPPER_ABSORB
+                cmd_menu_live = true
+                cmd_rearm_required = false
+                trace_row1("CMD_OPEN_FROM_STATUS", changes, {})
+                tolk.output("Command.")
+            end
+        end
+        return
+    end
+
+    -- === ITEM sub-menu mode ===
+    if submenu_mode == "ITEM" then
+        if changes.menu_closed then
+            -- Entire menu closed (item was used, or player backed out
+            -- past the command menu). Exit sub-menu.
+            submenu_mode = nil
+            menu_upper_absorb_frames = MENU_UPPER_ABSORB
+            cmd_menu_live = false
+            trace_row1("CMD_CLOSE_FROM_ITEM", changes, {})
+            return
+        end
+        if changes.cursor_moved and changes.cursor_x == 1 then
+            -- D8 jumped back to right column → returned to command menu.
+            -- Announce the command menu item the cursor landed on.
+            submenu_mode = nil
+            cmd_menu_live = true
+            cmd_rearm_required = false
+            local cmd_item = menu.get_menu_item(changes.cursor_x, changes.cursor_y)
+            if cmd_item then
+                trace_row1("CMD_CURSOR_FROM_ITEM", changes, {
+                    "item=" .. cmd_item,
+                })
+                tolk.output(cmd_item)
+            end
+            return
+        end
+        -- Item cursor moved within the list — announce the new item name.
+        if changes.cursor_moved then
+            trace_row1("ITEM_CURSOR", changes, {
+                "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
+            })
+            tolk.output(items.get_item_at_d9(changes.cursor_y))
+        end
+        return
+    end
+
+    -- === Normal command menu handling ===
+
+    -- If a real command menu just opened while the Yes/No hold timer was still
+    -- counting down from a blink gap or prior false positive, clear that stale
+    -- Yes/No state so the menu can announce normally. Only do this when the
+    -- cursor was NOT physically seen before YES/NO on this frame.
     if changes.menu_opened and not menu.yesno_cursor_seen() then
         menu.reset_yesno()
     end
 
+    -- Track A button EVERY frame (even during yes/no) so prev_joy_a_cmd
+    -- stays fresh. If we only tracked after the yesno guard, prev_joy_a_cmd
+    -- would go stale and produce a false rising-edge when yesno dismisses.
+    local joy_a_now = joypad.read(1).A or false
+    local a_just = joy_a_now and not prev_joy_a_cmd
+    prev_joy_a_cmd = joy_a_now
+
     -- Yes/No prompt reuses the command menu UI — suppress command menu
     -- announcements while it is active (check_yesno_prompt handles them).
-    if menu.is_yesno_active() then return end
+    if menu.is_yesno_active() then
+        -- A yes/no prompt is not a real field command menu. Clear the
+        -- confirmation flag so the prompt-confirm A press cannot be
+        -- misinterpreted as selecting STATUS on the dismissal edge.
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        trace_row1("CMD_BLOCK_YESNO", changes, {})
+        return
+    end
 
+    local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles()) ~= ""
+    local cursor_visible = has_visible_cursor_tile()
+
+    if is_row1_interior_context() then
+        if lower_dialogue_active ~= prev_row1_lower_dialogue_active then
+            trace_row1("DIALOGUE_LOWER_" .. (lower_dialogue_active and "ON" or "OFF"), changes, {
+                "cursor=" .. tostring(cursor_visible),
+            })
+        end
+        prev_row1_lower_dialogue_active = lower_dialogue_active
+    else
+        prev_row1_lower_dialogue_active = false
+    end
+
+    -- COMMAND text can linger in PPU after the real menu has closed. A visible
+    -- cursor tile is the reliable signal that the player is actually in a live
+    -- command menu session, so keep a short hold timer to bridge cursor blink.
+    if menu.is_open() and cursor_visible then
+        cmd_cursor_hold_frames = 12
+    elseif cmd_cursor_hold_frames > 0 then
+        cmd_cursor_hold_frames = cmd_cursor_hold_frames - 1
+    end
+
+    -- STATUS uses the same COMMAND header and cursor coordinates as the field
+    -- menu, so only accept it from a confirmed live command-menu session.
+    -- Row-1 interiors can produce noisy COMMAND-header matches, so rely on
+    -- either a real menu-open A press or a subsequent cursor movement to mark
+    -- the session confirmed instead of allowing any bare A press on STATUS.
+    local live_x = cmd_last_live_x or changes.cursor_x
+    local live_y = cmd_last_live_y or changes.cursor_y
+    if a_just and cmd_menu_confirmed and cmd_menu_live
+       and yesno_status_block_frames == 0
+       and not cmd_rearm_required
+       and live_x == 0 and live_y == 1 then
+        submenu_mode = "STATUS"
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        prev_joy_b_status = false
+        menu_upper_absorb_frames = MENU_UPPER_ABSORB
+        trace_row1("CMD_STATUS_FIRE", changes, {
+            "live_xy=" .. tostring(live_x) .. "," .. tostring(live_y),
+            "lower=" .. tostring(lower_dialogue_active),
+            "cursor=" .. tostring(cursor_visible),
+        })
+        tolk.output("Status. " .. items.read_status_string())
+        return
+    elseif a_just and live_x == 0 and live_y == 1 and cmd_rearm_required then
+        trace_row1("CMD_STATUS_GATE_BLOCK", changes, {
+            "live_xy=" .. tostring(live_x) .. "," .. tostring(live_y),
+            "lower=" .. tostring(lower_dialogue_active),
+            "cursor=" .. tostring(cursor_visible),
+        })
+    end
+
+    -- After TALK or YES/NO, row-1 interiors can leave stale COMMAND/cursor
+    -- residue in RAM and the PPU. Require a fresh menu re-arm before treating
+    -- any of that state as a live field menu again.
+    if cmd_rearm_required and not changes.menu_opened and not changes.cursor_moved then
+        trace_row1("CMD_WAIT_REARM", changes, {
+            "lower=" .. tostring(lower_dialogue_active),
+            "cursor=" .. tostring(cursor_visible),
+            "a=" .. tostring(a_just),
+        })
+        return
+    end
+
+    if changes.menu_closed then
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        menu_upper_absorb_frames = MENU_UPPER_ABSORB
+        trace_row1("CMD_CLOSE", changes, {})
+        return
+    end
+
+    -- Detect ITEM sub-menu entry via cursor jump.
+    -- Cursor was on ITEM(1,1) and jumped to (0,*) in one frame while menu
+    -- stays open. Both D8 and D9 change simultaneously — impossible from
+    -- D-pad input (which changes one axis per frame).
+    if changes.cursor_moved and was_x == 1 and was_y == 1
+       and changes.cursor_x == 0 and changes.cursor_y ~= was_y then
+        local count = items.get_item_count()
+        if count == 0 then
+            -- No items: game will show an error message and return to the
+            -- command menu. Don't enter ITEM mode (exit conditions won't
+            -- fire because the item list never actually opens).
+            trace_row1("CMD_ITEM_EMPTY", changes, {})
+            tolk.output("Items. Empty.")
+        else
+            submenu_mode = "ITEM"
+            cmd_menu_live = false
+            trace_row1("CMD_ITEM_FIRE", changes, {
+                "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
+            })
+            tolk.output("Items. " .. items.get_item_at_d9(changes.cursor_y))
+        end
+        return
+    end
+
+    -- Normal menu opening and cursor movement.
     if changes.menu_opened then
         -- At y<=1 on interior maps, map tile noise in the scrolling nametable
         -- area (rows 6-17) can accidentally contain the "COMMAN" byte sequence
@@ -1081,18 +1383,73 @@ local function check_command_menu()
             -- the last-used cursor position, so the current item is wherever
             -- the cursor was left, not necessarily TALK. The player can press
             -- any direction to hear the current selection via cursor_moved.
+            menu_upper_absorb_frames = MENU_UPPER_ABSORB
+            cmd_menu_confirmed = true
+            cmd_menu_live = true
+            cmd_rearm_required = false
+            cmd_cursor_hold_frames = math.max(cmd_cursor_hold_frames, 12)
+            cmd_last_live_x = changes.cursor_x
+            cmd_last_live_y = changes.cursor_y
+            trace_row1("CMD_OPEN", changes, {
+                "cursor=" .. tostring(cursor_visible),
+            })
             tolk.output("Command.")
+        elseif a_just then
+            -- North-edge suppression avoids false spoken openings from map-tile
+            -- noise, but a real command-menu open still comes from an A press.
+            -- Mark it confirmed silently so selecting STATUS without first
+            -- moving the cursor still works at y<=1.
+            menu_upper_absorb_frames = MENU_UPPER_ABSORB
+            cmd_menu_confirmed = true
+            cmd_menu_live = true
+            cmd_rearm_required = false
+            cmd_cursor_hold_frames = 12
+            cmd_last_live_x = changes.cursor_x
+            cmd_last_live_y = changes.cursor_y
+            trace_row1("CMD_OPEN_Y1", changes, {
+                "cursor=" .. tostring(cursor_visible),
+            })
         end
     elseif changes.cursor_moved and not changes.menu_closed then
-        -- Cursor moved within the open menu — announce the new item
+        -- Cursor moved within the open menu — announce the new item.
+        -- A real D-pad move inside the menu confirms this is a live menu
+        -- session, even in row-1 scroll cases where the opening line itself
+        -- was intentionally suppressed.
+        cmd_menu_confirmed = true
+        cmd_menu_live = true
+        cmd_rearm_required = false
+        cmd_last_live_x = changes.cursor_x
+        cmd_last_live_y = changes.cursor_y
         local item = changes.item_name
         if item then
+            trace_row1("CMD_CURSOR", changes, {
+                "item=" .. item,
+                "lower=" .. tostring(lower_dialogue_active),
+                "cursor=" .. tostring(cursor_visible),
+            })
             tolk.output(item)
         else
             -- Unknown cursor position — announce raw values so the user
-            -- can report them for mapping
+            -- can report them for mapping.
+            trace_row1("CMD_CURSOR_RAW", changes, {
+                "lower=" .. tostring(lower_dialogue_active),
+                "cursor=" .. tostring(cursor_visible),
+            })
             tolk.output("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
         end
+    end
+
+    -- Selecting TALK consumes the current field-menu session. Row-1 dialogue
+    -- and yes/no follow-ups must re-open or move the cursor again before any
+    -- later STATUS-like residue is allowed to act as a live menu.
+    if a_just and not changes.menu_opened
+       and changes.cursor_x == 0 and changes.cursor_y == 0
+       and cmd_menu_confirmed then
+        cmd_menu_live = false
+        cmd_rearm_required = true
+        trace_row1("CMD_TALK_FIRE", changes, {
+            "cursor=" .. tostring(cursor_visible),
+        })
     end
 end
 
@@ -1109,6 +1466,25 @@ end
 --   - "YES" or "NO" when the cursor moves between options
 local function check_yesno_prompt()
     local changes = menu.check_yesno_changes()
+    if changes.active then
+        yesno_status_block_frames = 10
+        cmd_menu_live = false
+        cmd_rearm_required = true
+        trace_row1("YESNO_ACTIVE", nil, {
+            "sel=" .. tostring(changes.selection),
+        })
+    elseif yesno_status_block_frames > 0 then
+        yesno_status_block_frames = yesno_status_block_frames - 1
+    end
+
+    if changes.just_dismissed then
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        cmd_rearm_required = true
+        trace_row1("YESNO_DISMISS", nil, {})
+    end
+
     if changes.just_appeared then
         -- On the title screen (e.g. erase-quest confirmation), rows 19-29
         -- contain title menu text, not dialogue. Skip question reading there.
@@ -1131,10 +1507,16 @@ local function check_yesno_prompt()
                 announced_dialogue = question
             end
         end
+        trace_row1("YESNO_APPEAR", nil, {
+            "sel=" .. tostring(changes.selection),
+        })
         -- Queue the prompt announcement after the question text
         tolk.output("YES NO prompt. " .. (changes.selection or ""))
     elseif changes.selection_changed then
         -- Cursor moved — announce the newly highlighted option.
+        trace_row1("YESNO_CURSOR", nil, {
+            "sel=" .. tostring(changes.selection),
+        })
         tolk.output(changes.selection)
     end
 end
@@ -1574,6 +1956,20 @@ local function check_dialogue()
     -- digits) that bleed into rows 19-29 at certain NES scroll positions.
     local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles())
 
+    if field_dialogue_guard_active() or
+       (movement_dialogue_hold_frames > 0 and not current_joy_any and not menu.is_open()
+        and submenu_mode == nil and not menu.is_yesno_active()) then
+        prev_dialogue = dialogue
+        stable_frames = 0
+        if at_y1 then
+            local y1_dialogue = read_y1_dialogue()
+            local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
+            prev_clean_y1 = clean:match("^%s*(.-)%s*$") or ""
+            clean_stable_frames = 0
+        end
+        return
+    end
+
     if at_y1 then
         -- Use the lowercase-only row filter so command-menu tiles and NT1 noise
         -- are excluded before computing clean. read_y1_dialogue() keeps only
@@ -1682,11 +2078,31 @@ end
 -- When the status display is replaced by dialogue, those markers vanish.
 -- When dialogue appears alongside, the total text length exceeds ~50 chars.
 local function check_upper_dialogue()
-    -- Skip when the command menu is open — menu text is handled by
-    -- check_command_menu(), and reading menu items as dialogue would
-    -- produce duplicate/incorrect announcements.
-    if menu.is_open() then
+    -- Command-menu open/close redraws can leave the status bar or menu text in
+    -- transitional states that look like fresh upper dialogue. Absorb the
+    -- current upper text into the baseline for a short window around those
+    -- transitions so normal status text is never announced as dialogue.
+    if menu.is_open() or menu_upper_absorb_frames > 0 then
+        local upper = text.read_upper_window(get_scroll_tiles())
+        upper_baseline = upper
+        prev_upper_dialogue = upper
+        announced_upper_dialogue = upper
         upper_stable_frames = 0
+        upper_dialogue_active = false
+        if menu_upper_absorb_frames > 0 then
+            menu_upper_absorb_frames = menu_upper_absorb_frames - 1
+        end
+        return
+    end
+
+    if field_dialogue_guard_active() or
+       (movement_dialogue_hold_frames > 0 and not current_joy_any and submenu_mode == nil
+        and not menu.is_yesno_active()) then
+        local upper = text.read_upper_window(get_scroll_tiles())
+        upper_baseline = upper
+        prev_upper_dialogue = upper
+        upper_stable_frames = 0
+        upper_dialogue_active = false
         return
     end
 
@@ -1712,6 +2128,21 @@ local function check_upper_dialogue()
     end
 
     local upper = text.read_upper_window(get_scroll_tiles())
+
+    -- Guard 1's post-Yes/No reply continues in the LOWER dialogue window while
+    -- the status bar remains visible above it. In that state, the upper scan can
+    -- misclassify the status bar as fresh upper-window dialogue and speak the
+    -- full stats. When real lower dialogue text is present, prefer it and treat
+    -- the current upper text as baseline-only content.
+    local lower_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles())
+    if lower_dialogue ~= "" then
+        upper_baseline = upper
+        prev_upper_dialogue = upper
+        announced_upper_dialogue = upper
+        upper_stable_frames = 0
+        upper_dialogue_active = false
+        return
+    end
 
     -- Track changes with stabilization (same approach as lower dialogue)
     if upper ~= prev_upper_dialogue then
@@ -1777,10 +2208,6 @@ local function check_upper_dialogue()
         return
     end
 
-    -- Determine if this is just the status display (no dialogue window).
-    -- Primary check: LV+HP in the combined rows-1-18 text.
-    local is_just_status = text.is_status_text(upper)
-
     -- Also check for command menu text. After the menu closes, its tiles
     -- may linger in the PPU for several frames. We search for "COMMAN"
     -- (6-char prefix) rather than "COMMAND" because near the east map edge
@@ -1789,14 +2216,8 @@ local function check_upper_dialogue()
     -- truncated form. It only appears as the menu window title.
     local has_menu_text = upper:find("COMMAN") ~= nil
 
-    if is_just_status or has_menu_text then
-        -- Status display or stale command menu — not dialogue.
-        -- Only update the baseline when rows 1-18 genuinely contain status
-        -- (not when detected via extended scan or command menu remnants),
-        -- so the baseline stays clean for strip_overlap calculations.
-        if is_just_status then
-            upper_baseline = upper
-        end
+    if has_menu_text then
+        -- Stale command menu — not dialogue.
         if upper_dialogue_active then
             upper_dialogue_active = false
             -- Use `upper` (not "") so the same NPC dialogue text does not look
@@ -1810,8 +2231,9 @@ local function check_upper_dialogue()
 
     -- Extract the genuinely new text. Strategy depends on whether the
     -- status display is still visible alongside the dialogue.
+    local has_status_markers = text.is_status_text(upper)
     local new_text
-    if text.is_status_text(upper) then
+    if has_status_markers then
         -- Status display still visible + extra dialogue content.
         -- Strip the known status baseline to get just the dialogue.
         new_text = strip_overlap(upper_baseline, upper)
@@ -1819,6 +2241,18 @@ local function check_upper_dialogue()
         -- Status display was entirely replaced by the dialogue window.
         -- The entire upper text is dialogue content.
         new_text = upper
+    end
+
+    -- Status-only content with no new text after removing the baseline.
+    -- This keeps the baseline fresh without suppressing real upper-window
+    -- dialogue that happens to include the status bar markers.
+    if has_status_markers and new_text == "" then
+        upper_baseline = upper
+        if upper_dialogue_active then
+            upper_dialogue_active = false
+            announced_upper_dialogue = upper
+        end
+        return
     end
 
     -- If stripping the baseline didn't help (no overlap found, returned
@@ -1846,7 +2280,7 @@ local function check_upper_dialogue()
     -- If new_text is non-empty but has zero lowercase letters, treat it as
     -- noise and absorb it into the baseline so it doesn't re-trigger.
     if new_text ~= "" and not new_text:find("[a-z]") then
-        if text.is_status_text(upper) then
+        if has_status_markers then
             upper_baseline = upper
         end
         -- Mark as processed (not "") so the next stabilization with the same
@@ -1881,8 +2315,12 @@ end
 -- iteration — without it, the emulator freezes.
 
 while true do
+    row1_trace_frame = frame_count
+
     -- Read keyboard state for hotkeys
     local keys = input.get()
+    current_joy = joypad.read(1)
+    current_joy_any = joypad_has_input(current_joy)
 
     -- Process on-demand hotkeys (player-initiated)
     handle_hotkeys(keys)
@@ -2005,6 +2443,21 @@ while true do
             end
         end
 
+        -- Run Yes/No detection first so the rest of the frame sees current
+        -- prompt state. Guard 1 reuses the command-menu window and cursor RAM,
+        -- so stale prompt state here can leak into false STATUS handling.
+        check_yesno_prompt()
+
+        if game_state.state == state.STATE_FIELD then
+            if current_joy_any or menu.is_open() or submenu_mode ~= nil or menu.is_yesno_active() then
+                recent_field_action_frames = RECENT_FIELD_ACTION_HOLD
+            elseif recent_field_action_frames > 0 then
+                recent_field_action_frames = recent_field_action_frames - 1
+            end
+        else
+            recent_field_action_frames = 0
+        end
+
         -- Run automatic checks based on current state.
         -- Skip gameplay checks while on the title screen — the stat
         -- addresses contain garbage/uninitialized data there.
@@ -2069,13 +2522,6 @@ while true do
             end
         end
 
-        -- Yes/No prompt: run unconditionally (both title screen and gameplay).
-        -- Must run before check_command_menu() and check_title_screen() so
-        -- is_yesno_active() is populated for their guards.
-        -- Handles erase-quest confirmation on title screen and NPC yes/no
-        -- prompts during gameplay.
-        check_yesno_prompt()
-
         -- Dialogue checks — run every frame to track text changes.
         -- Both lower (rows 19-29) and upper (rows 1-18) dialogue are only
         -- meaningful during gameplay. On the title screen, graphic tiles in
@@ -2097,6 +2543,7 @@ while true do
     -- menus, dialogue, battle, or on the title screen).
     local can_walk = game_state.state == state.STATE_FIELD
                      and not menu.is_open()
+                     and submenu_mode == nil
                      and prev_dialogue == ""
                      and not upper_dialogue_active
     auto_step.update(can_walk)

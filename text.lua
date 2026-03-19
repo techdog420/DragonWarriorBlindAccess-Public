@@ -210,7 +210,19 @@ end
 -- window replaces or extends beyond the status area, these markers
 -- disappear or the text becomes significantly longer.
 function M.is_status_text(text)
-    return text:find("LV") ~= nil and text:find("HP") ~= nil
+    if text:find("LV") ~= nil and text:find("HP") ~= nil then
+        return true
+    end
+
+    -- Menu/status redraws can split the status bar across rows or spaces,
+    -- yielding strings like "Ivy V 1 L P 15 H P 0 M 0 G 0 E". Collapse the
+    -- text to letters only and look for the status-bar marker order there.
+    local letters_only = text:gsub("[^A-Za-z]", "")
+    if letters_only:find("LV") ~= nil and letters_only:find("HP") ~= nil then
+        return true
+    end
+
+    return letters_only:find("VLPHPMGE") ~= nil
 end
 
 -- is_status_anywhere(start_row, end_row): Check if the status bar is

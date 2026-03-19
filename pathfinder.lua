@@ -120,8 +120,10 @@ end
 -- Find the shortest path from (start_x, start_y) to (goal_x, goal_y)
 -- on the given map.
 --
--- blocked_positions: optional table of {["x,y"] = true} for positions
--- that should be treated as impassable (e.g., NPC locations).
+-- blocked_positions: optional blocked-position collection. Accepts either:
+--   - keyed table: {["x,y"] = true}
+--   - array of {x=..., y=...} tables
+-- Used for dynamic blockers such as NPC locations.
 --
 -- Returns:
 --   On success: a list of {x, y, direction} steps from start to goal
@@ -150,6 +152,19 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         return x .. "," .. y
     end
 
+    local function is_blocked(x, y)
+        local k = key(x, y)
+        if blocked_positions[k] then
+            return true
+        end
+        for _, pos in ipairs(blocked_positions) do
+            if pos.x == x and pos.y == y then
+                return true
+            end
+        end
+        return false
+    end
+
     -- Check if a position is passable (walkable tile AND not blocked)
     local function is_passable(x, y)
         -- Bounds check
@@ -157,7 +172,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
             return false
         end
         -- NPC/dynamic block check
-        if blocked_positions[key(x, y)] then
+        if is_blocked(x, y) then
             return false
         end
         -- Tile walkability check

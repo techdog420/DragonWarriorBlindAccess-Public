@@ -1,0 +1,52 @@
+Ok, looks like that did it.  The main menu and its submenus are now working.  Something has caused pathfinder to start acting strangely.  Will focus on this in our next session.  Go ahead and commit.
+
+*** Start menu
+Passed
+
+*** Titlemenu
+
+** continue a quest
+passed
+
+** message speed and sub-menu
+passed
+
+** begin new quest and name entry box
+Passed
+
+** copy a quest
+passed
+
+** erase quest
+passed
+
+**** Game play:
+
+*** dialogue:
+
+** initial from king
+passed
+
+** guard1 (yes/no)
+passed
+
+** guard 1: talking too from row 1 .
+Passed
+
+** guards 2, 3 and king.
+
+*** command menu:
+
+** test each of the options on row 1 and again on row > 1.
+Passed
+
+*** Chests:
+Passed
+
+** Navigate and open each of the 3 chests on map 1.
+Passed
+
+*** Doors and stairs:
+
+**Navigate too and interact with the door and stairs on floor 1.
+
