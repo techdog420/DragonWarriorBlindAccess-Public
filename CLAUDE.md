@@ -152,23 +152,28 @@ Dragon Warrior uses custom character encoding for on-screen text. Key mappings:
 
 Text is decoded by reading bytes from the screen buffer (`0x0400-0x07BF`) and mapping them through this table.
 
-## Project Architecture (Planned)
-
-Modeled after pokemon-access, the script should separate concerns into modules:
+## Project Architecture
 
 ```
 dragonwarrior1/
-├── main.lua              -- Entry point, main loop, command dispatch
-├── tolk.lua              -- Speech output wrapper (from pokemon-access)
-├── encoding.lua          -- UTF-8/UTF-16 conversion (from pokemon-access)
-├── memory.lua            -- RAM address constants
+├── main.lua              -- Entry point, main loop, all automatic announcements
+├── tolk.lua              -- Speech output wrapper (Tolk FFI bridge)
+├── encoding.lua          -- UTF-8/UTF-16 conversion for Tolk
+├── addresses.lua         -- RAM address constants (renamed from memory.lua)
 ├── chars.lua             -- Text encoding lookup table
 ├── maps.lua              -- Map ID to name lookup
-├── state.lua             -- Game state detection (overworld, menu, battle, dialogue)
+├── state.lua             -- Game state detection (title, field, battle)
 ├── text.lua              -- Screen buffer reading and text decoding
-├── battle.lua            -- Battle state reading and announcements
 ├── menu.lua              -- Menu cursor tracking and announcements
-├── navigation.lua        -- Player position, map awareness
+├── navigation.lua        -- Player position, map change detection
+├── objects.lua           -- Map object detection (NPCs, chests, exits, doors)
+├── pathfinder.lua        -- A* pathfinding for interior maps
+├── map_reader.lua        -- ROM tile grid decoding
+├── auto_step.lua         -- Tap-to-step D-pad extension
+├── items.lua             -- Item/equipment/spell lookup tables
+├── config.lua            -- User settings (dw_access.ini)
+├── debug_tools.lua       -- Debug logging, command file, event hooks
+├── debug_hooks.txt       -- Cheat sheet for debug_tools API
 ├── Tolk.dll              -- Tolk native library
 ├── nvdaControllerClient32.dll
 ├── SAAPI32.dll
@@ -216,6 +221,48 @@ Dragon Warrior 1 has these distinct game states that need different handling:
 - Boolean operators are `not`, `and`, `or` (words, not symbols)
 - No `++` operator — use `x = x + 1`
 - Bitwise operations use FCEUX global functions: `AND(val, mask)`, `OR()`, `XOR()`, `BIT()`
+
+## Debug Tools (debug_tools.lua)
+
+A lightweight debugging and automation framework gated behind `debug_mode=true` in `dw_access.ini`. When disabled (default), all functions are no-ops with negligible overhead — safe in release builds.
+
+### When investigating bugs, USE THESE TOOLS:
+
+1. **Enable logging**: set `debug_mode=true` in `dw_access.ini`, reload script, watch `dw_debug.log`
+2. **Capture a state snapshot**: write `log_state` to `dw_commands.txt` from the shell
+3. **Simulate input**: write `simulate_input:A` (or UP/DOWN/LEFT/RIGHT/B/START/SELECT) to inject a one-frame button press
+4. **Toggle at runtime**: write `toggle_debug` to `dw_commands.txt` to flip debug on/off without reloading
+
+```bash
+echo log_state > dw_commands.txt          # capture full snapshot now
+echo simulate_input:UP > dw_commands.txt  # inject D-pad up next frame
+tail -f dw_debug.log                      # watch log in real time
+```
+
+### Wired event hooks (fire automatically when debug_mode=true):
+- `on_menu_open()` — command menu opens (3 sites: normal, y≤1 suppressed, STATUS return)
+- `on_menu_close()` — command menu closes
+- `on_dialogue(text)` — any dialogue text announced (3 sites: lower normal, lower y≤3, upper)
+- `on_battle_start()` — battle begins; auto-snapshots full game state
+- `on_map_change(new_id)` — player enters a new map
+- `tick(frame, state)` — every frame; drives command polling + log flushing
+
+### Log format:
+```
+[FRAME:00450][INFO][battle] EVENT: battle started
+[FRAME:00451][INFO][battle] --- State Snapshot ---
+[FRAME:00451][INFO][battle] map_id:    0x08 (Tantegel Castle)
+```
+
+### Adding new log calls anywhere in the codebase:
+```lua
+debug_tools.info("something happened")
+debug_tools.debug("verbose detail: " .. value)
+debug_tools.error("something broke")
+debug_tools.snapshot()  -- full state dump
+```
+
+See `debug_hooks.txt` for the full API reference.
 
 ## Reference: Pokemon Access Patterns Worth Adapting
 

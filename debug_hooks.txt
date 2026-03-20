@@ -1,0 +1,99 @@
+Dragon Warrior Accessibility Mod — Debug Hooks Cheat Sheet
+===========================================================
+
+ENABLE / DISABLE
+----------------
+In dw_access.ini:
+  debug_mode=true          Enable all debug features
+  debug_mode=false         Disable (default; all hooks are no-ops)
+  debug_log_level=DEBUG    Log everything (default when debug on)
+  debug_log_level=INFO     Log INFO and ERROR only
+  debug_log_level=ERROR    Log errors only
+
+OUTPUT FILES
+------------
+  dw_debug.log             Log output (cleared on each script load)
+  dw_commands.txt          Write commands here; cleared after reading (~1/sec)
+
+LOG ENTRY FORMAT
+----------------
+  [FRAME:nnnnn][LEVEL][state] message
+  Example: [FRAME:00450][INFO][battle] EVENT: battle started
+
+HOOKS WIRED IN main.lua
+-----------------------
+  debug_tools.on_menu_open()
+    Fires when the command menu opens.
+    3 sites: normal open, y<=1 suppressed open, return from STATUS sub-menu.
+
+  debug_tools.on_menu_close()
+    Fires when the command menu closes (changes.menu_closed).
+
+  debug_tools.on_dialogue(text)
+    Fires whenever new dialogue text is announced.
+    3 sites: lower dialogue normal path, lower dialogue y<=3 path, upper window.
+
+  debug_tools.on_battle_start()
+    Fires on transition into STATE_BATTLE.
+    Auto-calls snapshot() to capture enemy/player state at battle start.
+
+  debug_tools.on_map_change(new_id)
+    Fires when nav.check_for_changes() detects a map ID change.
+
+  debug_tools.tick(frame_count, game_state.state)
+    Called every frame in the main loop (before FCEU.frameadvance).
+    Drives command file polling and log flushing.
+    Returns simulated joypad input table or nil.
+
+HOOKS DEFINED BUT NOT YET WIRED (call manually where needed)
+-------------------------------------------------------------
+  (none — all hooks are now wired)
+
+COMMANDS (write to dw_commands.txt, one per line)
+-------------------------------------------------
+  log_state                Write full game state snapshot to log
+  report_position          Write current map/x/y to log
+  toggle_debug             Flip debug_mode on/off at runtime
+  simulate_input:UP        Inject one frame of D-pad Up
+  simulate_input:DOWN      Inject one frame of D-pad Down
+  simulate_input:LEFT      Inject one frame of D-pad Left
+  simulate_input:RIGHT     Inject one frame of D-pad Right
+  simulate_input:A         Inject one frame of A button
+  simulate_input:B         Inject one frame of B button
+  simulate_input:START     Inject one frame of Start
+  simulate_input:SELECT    Inject one frame of Select
+  ; comment line           Lines starting with ; are ignored
+
+SNAPSHOT FORMAT (log_state / on_battle_start)
+----------------------------------------------
+  --- State Snapshot ---
+  frame:     12345
+  state:     field
+  map_id:    0x08 (Tantegel Castle)
+  pos:       x=7, y=4
+  hp:        25 / 30
+  mp:        8 / 16
+  level:     3
+  gold:      120
+  exp:       450
+  enemy_hp:  0
+  cursor:    D8=0 D9=0
+  terrain:   0x10
+  ----------------------
+
+CALLING HOOKS FROM LUA (manual use in debug sessions)
+------------------------------------------------------
+  debug_tools.log(debug_tools.ERROR, "message")
+  debug_tools.log(debug_tools.INFO,  "message")
+  debug_tools.log(debug_tools.DEBUG, "message")
+  debug_tools.error("message")    -- shorthand for ERROR
+  debug_tools.info("message")     -- shorthand for INFO
+  debug_tools.debug("message")    -- shorthand for DEBUG
+  debug_tools.snapshot()          -- log full state snapshot now
+  debug_tools.shutdown()          -- flush log before exit
+
+QUICK SHELL USAGE (from WSL or cmd)
+------------------------------------
+  echo log_state > dw_commands.txt
+  echo simulate_input:A > dw_commands.txt
+  tail -f dw_debug.log

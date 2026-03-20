@@ -29,6 +29,7 @@ local pathfinder = require "pathfinder" -- A* pathfinding for interior maps
 local map_reader = require "map_reader" -- ROM map data (tile grids)
 local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
 local items = require "items"          -- Item/equipment/spell lookup tables
+local debug_tools = require "debug_tools"  -- Debug logging and automation (no-op when debug_mode=false)
 
 -- Forward declarations for state referenced by early callbacks.
 local last_pathfind_obj = nil
@@ -1077,6 +1078,7 @@ local function check_map_change()
 
     if changes.map_changed and changes.map_name then
         tolk.output(changes.map_name)
+        debug_tools.on_map_change(memory.readbyte(addr.MAP_ID))
         -- Clear the pathfind target so auto re-routing doesn't try to reach
         -- an object from the previous map.
         last_pathfind_obj = nil
@@ -1258,6 +1260,7 @@ local function check_command_menu()
                 cmd_rearm_required = false
                 trace_row1("CMD_OPEN_FROM_STATUS", changes, {})
                 tolk.output("Command.")
+                debug_tools.on_menu_open()
             end
         end
         return
@@ -1402,6 +1405,7 @@ local function check_command_menu()
         cmd_cursor_hold_frames = 0
         menu_upper_absorb_frames = MENU_UPPER_ABSORB
         trace_row1("CMD_CLOSE", changes, {})
+        debug_tools.on_menu_close()
         return
     end
 
@@ -1454,6 +1458,7 @@ local function check_command_menu()
                 "cursor=" .. tostring(cursor_visible),
             })
             tolk.output("Command.")
+            debug_tools.on_menu_open()
         elseif a_just then
             -- North-edge suppression avoids false spoken openings from map-tile
             -- noise, but a real command-menu open still comes from an A press.
@@ -1469,6 +1474,7 @@ local function check_command_menu()
             trace_row1("CMD_OPEN_Y1", changes, {
                 "cursor=" .. tostring(cursor_visible),
             })
+            debug_tools.on_menu_open()
         end
     elseif changes.cursor_moved and not changes.menu_closed then
         -- Cursor moved within the open menu — announce the new item.
@@ -2059,6 +2065,7 @@ local function check_dialogue()
                 -- question that already appeared at the top of the next window.
                 local new_text = strip_overlap(announced_dialogue, clean)
                 if new_text ~= "" then
+                    debug_tools.on_dialogue(new_text)
                     -- First page: interrupt to clear any prior menu speech.
                     -- Continuation pages: queue so the speech flows without
                     -- each scroll step cutting off the one before it.
@@ -2108,6 +2115,7 @@ local function check_dialogue()
             else
                 local new_text = strip_overlap(announced_dialogue, dialogue)
                 if new_text ~= "" then
+                    debug_tools.on_dialogue(new_text)
                     if announced_dialogue == "" then
                         tolk.output_interrupt(new_text)
                     else
@@ -2359,6 +2367,7 @@ local function check_upper_dialogue()
     if upper == announced_upper_dialogue then return end
 
     if new_text ~= "" then
+        debug_tools.on_dialogue(new_text)
         tolk.output_interrupt(new_text)
     end
     announced_upper_dialogue = upper
@@ -2479,6 +2488,7 @@ while true do
                 tolk.output("Title screen.")
             elseif game_state.state == state.STATE_BATTLE then
                 tolk.output("Battle!")
+                debug_tools.on_battle_start()
             elseif game_state.state == state.STATE_FIELD then
                 -- Transitioning from title to field: start or continue debounce.
                 if game_state.prev_state == state.STATE_TITLE then
@@ -2597,6 +2607,13 @@ while true do
 
     -- Increment frame counter (wraps around to avoid overflow)
     frame_count = (frame_count + 1) % 600
+
+    -- Debug tools: process command file, flush logs, apply simulated input.
+    -- All of this is a no-op when debug_mode=false in dw_access.ini.
+    local sim_input = debug_tools.tick(frame_count, game_state.state)
+    if sim_input then
+        joypad.set(1, sim_input)
+    end
 
     -- Auto-step: extend brief D-pad taps into full tile steps.
     -- Only active when the player is walking on the field (not in
