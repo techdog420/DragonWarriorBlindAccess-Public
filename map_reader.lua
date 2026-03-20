@@ -188,7 +188,10 @@ end
 -- Town/castle tileset (terrain_offset = 0x10)
 -- Used by: Tantegel Castle, towns, throne rooms
 local WALKABLE_TOWN = {
-    [0]  = true,   -- floor / ground
+    [0]  = false,  -- void / boundary (confirmed impassable on Charlock B4: type-0
+                   --   tiles form a barrier row the player cannot cross. If this
+                   --   ever breaks Tantegel Castle navigation, add specific
+                   --   MAP_PASSTHROUGH_CELLS entries for map 0x08.)
     [1]  = true,   -- floor variant
     [2]  = false,  -- wall / building
     [3]  = true,   -- railing / decorative barrier (visually solid but walkable;
@@ -201,7 +204,10 @@ local WALKABLE_TOWN = {
     [8]  = true,   -- chest (walkable to reach it)
     [9]  = true,   -- floor variant
     [10] = true,   -- floor variant
-    [11] = false,  -- locked door (BLK_DOOR source tile in town/castle maps)
+    [11] = false,  -- wall (NOT a locked door — OPEN command returns "no door here"
+                   --   when facing type-11 on Charlock B4, confirmed in-game.
+                   --   Actual magic-key doors have tile type 15 in ROM, tracked
+                   --   by the game engine separately from tile type data.)
     [12] = false,  -- wall
     [13] = true,   -- floor
     [14] = true,   -- floor

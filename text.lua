@@ -167,15 +167,25 @@ function M.read_dialogue_window(scroll_tiles)
     return table.concat(lines, " ")
 end
 
--- read_dialogue_window_filtered(scroll_tiles): Same as read_dialogue_window
--- but applies a per-row lowercase filter. Only rows containing at least one
--- lowercase letter are included. This filters out status bar fragments
--- (uppercase labels like "E", "G", "HP") that bleed into rows 19-29 at
--- certain NES scroll positions (e.g., player at y=7 on interior maps).
+-- read_dialogue_window_filtered(scroll_tiles, start_row): Same as
+-- read_dialogue_window but applies a per-row lowercase filter. Only rows
+-- containing at least one lowercase letter are included. This filters out
+-- status bar fragments (uppercase labels like "E", "G", "HP") that bleed
+-- into the dialogue area at certain NES scroll positions.
 -- NPC dialogue always contains lowercase text, so real dialogue passes through.
-function M.read_dialogue_window_filtered(scroll_tiles)
+--
+-- start_row: first nametable row of the dialogue window (default 19).
+--   DW1's dialogue window always appears at the same visual position on screen,
+--   but NES vertical scroll shifts which nametable row that maps to. Use
+--   get_dialogue_start_row() in main.lua to compute this from RAM 0x0007.
+--   The function reads 11 rows starting at start_row with modular wrap (% 30),
+--   so it handles both the normal case (start_row 19-29) and the scrolled case
+--   (start_row < 19, wrapping across row 0).
+function M.read_dialogue_window_filtered(scroll_tiles, start_row)
+    start_row = start_row or 19
     local lines = {}
-    for row = 19, 29 do
+    for i = 0, 10 do
+        local row = (start_row + i) % 30
         local decoded = M.decode_row(row, scroll_tiles)
         if decoded ~= "" and decoded:find("[a-z]") then
             lines[#lines + 1] = decoded

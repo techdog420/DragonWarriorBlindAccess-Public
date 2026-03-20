@@ -39,6 +39,15 @@ M.TERRAIN_OFFSET    = 0x0016  -- $20=caves, $10=towns, $00=world map
 --
 -- Divide by 8 (pixels per NES tile) to get NES tile scroll offset for read_ppu_row.
 M.SCROLL_X          = nil     -- UNCONFIRMED: scan 0x0000-0x0035 via N-key diagnostic
+-- Vertical scroll shadow register — pixel offset written to PPU $2005 vertical.
+-- Empirically confirmed via title_diag at two player positions:
+--   player y=8:  0x0007 = 0x10 = 16  px  (= (8-7)*16)
+--   player y=14: 0x0007 = 0x70 = 112 px  (= (14-7)*16)
+-- Formula: max(0, player_y - 7) * 16 pixels.  Dividing by 8 gives NES tile units.
+-- The dialogue window always appears at VISUAL row 19; its NAMETABLE row is:
+--   (19 + floor(0x0007/8)) % 30
+-- Used by get_dialogue_start_row() in main.lua.
+M.SCROLL_Y          = 0x0007  -- Vertical scroll shadow (pixels; 0 when player_y <= 7)
 M.LIGHT_RADIUS      = 0x00D0  -- Dungeon light radius (01, 03, 05, 07)
 M.RADIANT_TIMER     = 0x00DA  -- Radiant spell countdown timer
 M.REPEL_TIMER       = 0x00DB  -- Repel timer (counts down by 2 from 0xFF)

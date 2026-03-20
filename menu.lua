@@ -26,6 +26,7 @@ local M = {}
 -- PPU Constants
 -- ============================================================
 local PPU_NT0 = 0x2000
+local PPU_NT1 = 0x2400  -- NT1: right nametable (horizontal mirroring)
 local SCREEN_WIDTH = 32
 
 -- "COMMAND" in Dragon Warrior's character encoding:
@@ -83,13 +84,10 @@ end
 -- ============================================================
 
 -- COMMAND_MATCH_LEN: Number of bytes to match when searching for the
--- "COMMAND" header. We match 6 bytes (COMMAN) instead of all 7 so that
--- the scan still succeeds when the header starts near the right edge of
--- a nametable row. At column 26, the 6 bytes C-O-M-M-A-N land at
--- columns 26-31 (all within the 32-wide row), but the trailing 'D'
--- would fall at column 32 (the next row) and be unreachable from this
--- row's address range. Matching 6 bytes is still highly specific and
--- avoids false positives in practice.
+-- "COMMAND" header. We match 6 bytes (COMMAN) instead of all 7 because
+-- the trailing 'D' may fall in NT1 (col 32+) when the header is near
+-- the right edge of NT0. Matching 6 consecutive bytes is still highly
+-- specific and avoids false positives in practice.
 local COMMAND_MATCH_LEN = 6
 
 -- is_command_menu_open(): Check if the command menu window is visible.
@@ -97,20 +95,28 @@ local COMMAND_MATCH_LEN = 6
 -- (the window's header text, minus the trailing D that may wrap to the
 -- next row when the menu appears near the east edge of the nametable).
 --
--- The menu header shifts PPU position with the NES scroll register based
--- on the player's map position, so we scan all rows. We scan starting
--- columns 0-26 (the last column where 6 bytes still fit in the row).
+-- At player X >= 13, horizontal scroll pushes the COMMAND header to
+-- nametable columns >= 27, where the last bytes cross the NT0/NT1
+-- boundary (col 32+ maps to NT1 col 0+). We scan both nametables
+-- together as a 64-wide virtual row so cross-boundary sequences are
+-- found correctly regardless of the player's east position.
 function M.is_command_menu_open()
     for row = 0, 29 do
-        local row_start = PPU_NT0 + (row * SCREEN_WIDTH)
-        -- Scan start columns 0 through 26: at col 26, bytes land at
-        -- cols 26-31 (all valid). Col 27+ would put byte 6 at col 32+
-        -- (out of row), so those start positions can never match 6 bytes.
-        for col = 0, SCREEN_WIDTH - COMMAND_MATCH_LEN do
-            if ppu.readbyte(row_start + col) == COMMAND_BYTES[1] then
+        local nt0_row = PPU_NT0 + row * SCREEN_WIDTH
+        local nt1_row = PPU_NT1 + row * SCREEN_WIDTH
+        -- Scan across the full 64-tile virtual row (NT0 cols 0-31,
+        -- then NT1 cols 0-31). Stop at 64-COMMAND_MATCH_LEN so all
+        -- 6 match bytes remain within the 64-tile range.
+        for col = 0, 64 - COMMAND_MATCH_LEN do
+            local b0 = col < 32 and ppu.readbyte(nt0_row + col)
+                                 or  ppu.readbyte(nt1_row + col - 32)
+            if b0 == COMMAND_BYTES[1] then
                 local match = true
                 for i = 2, COMMAND_MATCH_LEN do
-                    if ppu.readbyte(row_start + col + i - 1) ~= COMMAND_BYTES[i] then
+                    local c = col + i - 1
+                    local bx = c < 32 and ppu.readbyte(nt0_row + c)
+                                      or  ppu.readbyte(nt1_row + c - 32)
+                    if bx ~= COMMAND_BYTES[i] then
                         match = false
                         break
                     end

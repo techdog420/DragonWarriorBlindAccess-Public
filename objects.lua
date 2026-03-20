@@ -78,17 +78,25 @@ local SPRITE_NAMES = {
 -- ============================================================
 -- Door Tile Type Constants
 -- ============================================================
--- In DW1's ROM map data, locked doors use a specific raw 4-bit tile
--- type that the game's conversion table maps to BLK_DOOR ($11).
--- The type differs between town/castle and dungeon/cave tilesets.
+-- CONFIRMED: DW1 does NOT encode locked doors as a distinct tile type
+-- in the ROM map data. The actual magic-key door positions appear as
+-- ordinary wall tiles in the tile grid (type 15 on map 0x05, confirmed
+-- empirically). The game engine tracks door positions through a separate
+-- data structure, independent of the tile type.
 --
--- Town/castle (TERRAIN_OFFSET = 0x10): raw nibble 0x0B = 11 decimal
--- Dungeon/cave (TERRAIN_OFFSET = 0x20): raw nibble 0x05 = 5 decimal
+-- Consequence: scanning the ROM tile grid for a "door tile type" does
+-- NOT find interactive locked doors. Type-11 tiles in town/castle maps
+-- are WALLS (confirmed: OPEN command returns "there is no door here"
+-- when facing a type-11 tile on Charlock B4). Type-11 is non-walkable
+-- but is not an interactive door.
 --
--- Our map_reader.lua reads these raw nibble values directly from the
--- RLE tile data, so we compare against these constants.
-local DOOR_TILE_TOWN    = 11   -- locked door tile in town/castle maps
-local DOOR_TILE_DUNGEON = 5    -- locked door tile in dungeon/cave maps
+-- DOOR_TILE_TOWN is set to nil to disable town/castle door scanning.
+-- Actual door positions must be added manually to EXTRA_DOORS below
+-- once confirmed in-game (like the map 0x05 door at (4,7)).
+--
+-- DOOR_TILE_DUNGEON (5) is unconfirmed — left as-is but not yet tested.
+local DOOR_TILE_TOWN    = nil  -- DISABLED: type-11 is a wall, not a door
+local DOOR_TILE_DUNGEON = 5    -- unconfirmed: locked door tile in dungeon/cave maps
 
 -- ============================================================
 -- Door Opened Status
@@ -180,13 +188,14 @@ local STAIRS = {
     {map = 0x02, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
     {map = 0x03, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
     {map = 0x03, x = 7, y = 7, name = "Stairs Down", dest = "B4"},
-    -- NOTE: map IDs 0x04 and 0x05 in RAM are actually Tantegel Castle
-    -- and the Tantegel Castle Throne Room respectively (confirmed empirically).
-    -- These Charlock B3-B5 stair entries may be at wrong map IDs; leave
-    -- placeholder comments until the correct map IDs are verified in-game.
-    -- {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "B3"},
+    -- Map 0x04 confirmed as Charlock Castle B4: player entered at (7,7) from
+    -- the B3 stairs (map 0x03 stairs down at (7,7) leads here). The earlier
+    -- note claiming 0x04 = Tantegel Castle was incorrect; DataCrystal's mapping
+    -- (0x04 = Charlock B4) is right. Map 0x08 = Tantegel Castle (also confirmed).
+    {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "B3"},
+    -- Stairs down from B4 — position follows the alternating (7,7)/(1,1)/(3,3)
+    -- pattern but not yet confirmed in-game. Uncomment when verified.
     -- {map = 0x04, x = 1, y = 1, name = "Stairs Down", dest = "B5"},
-    -- map 0x05 is Tantegel Throne Room — see EXITS table below
     {map = 0x06, x = 7, y = 7, name = "Stairs Up", dest = "B5"},
     {map = 0x06, x = 4, y = 4, name = "Stairs Down", dest = "B7"},
 
@@ -448,11 +457,17 @@ local function parse_doors(map_id)
     local terrain_offset = memory.readbyte(addr.TERRAIN_OFFSET)
     local door_tile
     if terrain_offset == 0x10 then
-        door_tile = DOOR_TILE_TOWN      -- castle/town maps
+        door_tile = DOOR_TILE_TOWN      -- nil: town/castle door tile type unknown
     elseif terrain_offset == 0x20 then
-        door_tile = DOOR_TILE_DUNGEON   -- dungeon/cave maps
+        door_tile = DOOR_TILE_DUNGEON   -- dungeon/cave maps (unconfirmed)
     else
         return {}  -- overworld or unknown tileset — no locked doors
+    end
+
+    -- If the door tile type is unknown for this tileset, skip scanning.
+    -- Known doors on this map type must be listed in EXTRA_DOORS below.
+    if door_tile == nil then
+        return {}
     end
 
     local grid = map_reader.get_tile_grid(map_id)

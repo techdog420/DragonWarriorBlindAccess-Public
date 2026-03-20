@@ -71,7 +71,21 @@ auto_step.on_blocked = function()
     end
     local msg = "Re-routing. " .. last_pathfind_obj.name .. ". " .. result
     if face_dir then
-        msg = msg .. ". Face " .. face_dir
+        if last_pathfind_obj.type == objects.TYPE_DOOR then
+            msg = msg .. ". Face " .. face_dir .. " then use Open command"
+        else
+            msg = msg .. ". Face " .. face_dir
+        end
+    end
+    if last_pathfind_obj.type == objects.TYPE_DOOR then
+        local keys = memory.readbyte(addr.KEYS)
+        if keys == 0 then
+            msg = msg .. ". No magic keys"
+        elseif keys == 1 then
+            msg = msg .. ". 1 magic key"
+        else
+            msg = msg .. ". " .. keys .. " magic keys"
+        end
     end
     tolk.output_interrupt(msg)
 end
@@ -881,7 +895,34 @@ local function handle_hotkeys(keys)
             end
             local msg = obj.name .. ". " .. result
             if face_dir then
-                msg = msg .. ". Face " .. face_dir
+                -- For doors, clarify which in-game command to use after arriving.
+                -- In DW1 the command is "DOOR" (not "OPEN") and requires a magic key.
+                if obj.type == objects.TYPE_DOOR then
+                    msg = msg .. ". Face " .. face_dir .. " then use Open command"
+                else
+                    msg = msg .. ". Face " .. face_dir
+                end
+            end
+            -- When routing to a locked door, append magic key count so the player
+            -- knows whether they can open it before they make the trip.
+            if obj.type == objects.TYPE_DOOR then
+                local keys = memory.readbyte(addr.KEYS)
+                if keys == 0 then
+                    msg = msg .. ". No magic keys"
+                elseif keys == 1 then
+                    msg = msg .. ". 1 magic key"
+                else
+                    msg = msg .. ". " .. keys .. " magic keys"
+                end
+            end
+            -- When a chest has no walkable path on a town/castle map, hint about
+            -- locked doors. Locked doors only exist on town/castle maps (TERRAIN_OFFSET
+            -- 0x10), so this hint is suppressed on dungeons and the overworld.
+            if obj.type == objects.TYPE_CHEST and result == "No path found" then
+                local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+                if terrain == 0x10 then
+                    msg = msg .. ". Chest may be behind locked door. Navigate to a door object first"
+                end
             end
             tolk.output_interrupt(msg)
         else
@@ -919,6 +960,25 @@ end
 local function get_scroll_tiles()
     if addr.SCROLL_X == nil then return 0 end
     return math.floor(memory.readbyte(addr.SCROLL_X) / 8)
+end
+
+-- get_dialogue_start_row(): Compute the nametable row where the dialogue window begins.
+--
+-- DW1's dialogue window always appears at VISUAL row 19. The NES vertical scroll
+-- register (addr.SCROLL_Y = 0x0007) shifts which NAMETABLE row that maps to:
+--   nametable_row = (19 + scroll_tiles) % 30
+--
+-- Empirically confirmed from title_diag data:
+--   player y=8:  scroll_px=16,  scroll_tiles=2,  nametable row (19+2)%30 = 21
+--   player y=15: scroll_px=128, scroll_tiles=16, first dialogue line at row (19+16)%30 = 5
+--               second line at row 6 (matching "there." in the y=15 title_diag)
+--   scroll=0:    nametable row 19 (confirmed by guard dump — text at rows 19-21)
+--
+-- Bug threshold: at player y >= 12, scroll_tiles >= 10, first dialogue row < 19 —
+-- outside the old hardcoded 19-29 range, causing silent command menu responses.
+local function get_dialogue_start_row()
+    local scroll_y_px = memory.readbyte(addr.SCROLL_Y)
+    return (19 + math.floor(scroll_y_px / 8)) % 30
 end
 
 -- check_hp_mp_changes(): Announce HP/MP changes (damage, healing, spell use).
@@ -1269,7 +1329,7 @@ local function check_command_menu()
         return
     end
 
-    local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles()) ~= ""
+    local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row()) ~= ""
     local cursor_visible = has_visible_cursor_tile()
 
     if is_row1_interior_context() then
@@ -1495,7 +1555,7 @@ local function check_yesno_prompt()
             -- hasn't been spoken yet, so the player hears the question
             -- before the Yes/No prompt. Update announced_dialogue so the
             -- normal dialogue system doesn't repeat it.
-            local question = text.read_dialogue_window_filtered(get_scroll_tiles())
+            local question = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
             -- Only announce the question if it contains real dialogue text
             -- (at least one lowercase letter). Purely-uppercase strings are either
             -- command menu tiles that haven't been overwritten yet, or the player's
@@ -1954,7 +2014,7 @@ local function check_dialogue()
     -- Use the filtered reader for ALL y positions: it applies a per-row
     -- lowercase filter to exclude status bar fragments (uppercase "E", "G",
     -- digits) that bleed into rows 19-29 at certain NES scroll positions.
-    local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles())
+    local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
 
     if field_dialogue_guard_active() or
        (movement_dialogue_hold_frames > 0 and not current_joy_any and not menu.is_open()
@@ -2134,7 +2194,7 @@ local function check_upper_dialogue()
     -- misclassify the status bar as fresh upper-window dialogue and speak the
     -- full stats. When real lower dialogue text is present, prefer it and treat
     -- the current upper text as baseline-only content.
-    local lower_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles())
+    local lower_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
     if lower_dialogue ~= "" then
         upper_baseline = upper
         prev_upper_dialogue = upper
