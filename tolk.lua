@@ -21,6 +21,8 @@
 local source = debug.getinfo(1, "S").source
 local script_dir = source:match("@?(.*[\\/])") or ""
 
+local config = require "config"
+
 -- Launch the Python bridge process with a write-mode pipe.
 -- io.popen(..., "w") gives us a file handle we can write to;
 -- anything we write goes to the bridge's stdin.
@@ -47,10 +49,28 @@ local function send_command(cmd)
     bridge:flush()
 end
 
+-- Debounce for output() only (not output_interrupt).
+-- Prevents the same string from being queued multiple times within a short
+-- window when two code paths happen to fire for the same event in adjacent
+-- frames. output_interrupt() is never debounced — it is always intentional
+-- (hotkeys, first-page announcements) and the caller expects it to fire.
+local debounce_secs = (tonumber(config.get("speech_debounce_ms")) or 1000) / 1000.0
+local last_queued_text = ""
+local last_queued_time = -10000.0  -- far in the past so the first call always fires
+
 -- output(text): Speak text through the screen reader.
 -- Does NOT interrupt speech that's already playing — new text
 -- is queued after the current utterance finishes.
+-- Suppresses duplicate text queued within speech_debounce_ms milliseconds.
 local function output(text)
+    if debounce_secs > 0 then
+        local now = os.clock()
+        if text == last_queued_text and (now - last_queued_time) < debounce_secs then
+            return
+        end
+        last_queued_text = text
+        last_queued_time = now
+    end
     send_command("speak:" .. text)
 end
 

@@ -34,8 +34,14 @@ local debug_tools = require "debug_tools"  -- Debug logging and automation (no-o
 -- Forward declarations for state referenced by early callbacks.
 local last_pathfind_obj = nil
 local npc_freeze_active = false
+-- Runtime engine-blocked cells discovered during auto-step timeouts.
+-- When the engine refuses a move, we record the destination here so A*
+-- won't route through it again on the next rerouting call.
+-- Format: runtime_blocked[map_id]["x,y"] = true  (cleared on map change)
+local runtime_blocked = {}
 local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
 local capture_npc_snapshot
+local do_pathfind_to_current  -- defined before main loop; used by O-key and remote command
 
 -- ============================================================
 -- Startup
@@ -47,16 +53,71 @@ FCEU.message("DW Access Mod loaded")
 -- Auto re-routing: when auto_step times out (step blocked), re-compute
 -- the path to the last pathfind target using fresh NPC positions.
 -- This handles the case where a roaming NPC blocks a step mid-path.
-auto_step.on_blocked = function()
+--
+-- from_x, from_y, blocked_dir: the starting cell and direction that the
+-- engine refused. The destination (from_x+dx, from_y+dy) is recorded in
+-- runtime_blocked so A* won't route through the same impassable cell again.
+auto_step.on_blocked = function(from_x, from_y, blocked_dir)
     if not last_pathfind_obj then return end
     local map_id, px, py = nav.get_position()
+
+    -- Refresh NPC positions first so we can exclude NPC-occupied cells
+    -- from the runtime_blocked set (NPC blocks are temporary and already
+    -- handled by the blocking table; only true engine blocks belong here).
     objects.update_npcs()
+
+    -- Record the engine-blocked destination in the runtime blocked set.
+    -- The direction strings from auto_step use FCEUX joypad keys:
+    -- "up"=north, "down"=south, "left"=west, "right"=east.
+    if from_x and from_y and blocked_dir then
+        local dx = (blocked_dir == "right" and 1) or (blocked_dir == "left" and -1) or 0
+        local dy = (blocked_dir == "down"  and 1) or (blocked_dir == "up"   and -1) or 0
+        local dest_x = from_x + dx
+        local dest_y = from_y + dy
+        -- Only record as engine-blocked if no NPC currently occupies the cell.
+        -- If an NPC is there, the block was temporary and the cell is reachable
+        -- once the NPC moves; adding it to runtime_blocked would be a false positive.
+        local npc_positions = objects.get_blocking_positions()
+        local dest_key = dest_x .. "," .. dest_y
+        local npc_at_dest = npc_positions[dest_key]
+        if not npc_at_dest then
+            for _, npc in ipairs(npc_positions) do
+                if npc.x == dest_x and npc.y == dest_y then
+                    npc_at_dest = true
+                    break
+                end
+            end
+        end
+        if not npc_at_dest then
+            if not runtime_blocked[map_id] then
+                runtime_blocked[map_id] = {}
+            end
+            local cell_key = dest_key
+            if not runtime_blocked[map_id][cell_key] then
+                runtime_blocked[map_id][cell_key] = true
+                debug_tools.info("runtime block: map=" .. map_id
+                    .. " cell=(" .. dest_x .. "," .. dest_y .. ")"
+                    .. " via " .. blocked_dir .. " from (" .. from_x .. "," .. from_y .. ")")
+            end
+        else
+            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
+        end
+    end
+
     -- Re-freeze only if the target is an NPC (same logic as initial pathfind)
     if last_pathfind_obj.type == objects.TYPE_NPC then
         capture_npc_snapshot()
         npc_freeze_active = true
     end
+
+    -- Build blocking table: NPC positions + runtime-discovered engine blocks.
     local blocking = objects.get_blocking_positions()
+    if runtime_blocked[map_id] then
+        for cell_key, _ in pairs(runtime_blocked[map_id]) do
+            blocking[cell_key] = true  -- keyed format; pathfinder checks this first
+        end
+    end
+
     local result, face_dir
     local target_walkable = map_reader.is_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
     if last_pathfind_obj.type == objects.TYPE_NPC
@@ -70,6 +131,14 @@ auto_step.on_blocked = function()
             map_id, px, py,
             last_pathfind_obj.x, last_pathfind_obj.y, blocking)
     end
+
+    -- If no path was found, cancel pathfinding to stop the retry loop.
+    if result == "No path found" then
+        last_pathfind_obj = nil
+        tolk.output_interrupt("No path found. Pathfinding cancelled.")
+        return
+    end
+
     local msg = "Re-routing. " .. last_pathfind_obj.name .. ". " .. result
     if face_dir then
         if last_pathfind_obj.type == objects.TYPE_DOOR then
@@ -860,75 +929,7 @@ local function handle_hotkeys(keys)
     -- NPC positions are passed so the pathfinder routes around other NPCs
     -- that physically block tiles along the way.
     if is_key_pressed(keys, config.get("key_pathfind")) then
-        local obj = objects.current_object()
-        if obj then
-            last_pathfind_obj = obj  -- Remember for auto re-routing on block
-            local map_id, px, py = nav.get_position()
-            -- Force-refresh NPC positions right now so blocking reflects
-            -- current NPC locations, not wherever they were up to 20 frames ago.
-            objects.update_npcs()
-            -- Only freeze NPCs when the TARGET is an NPC. Freezing is needed
-            -- so the target NPC stays in place while the player walks to it.
-            -- For exits, stairs, chests, and doors the target is a fixed tile,
-            -- so freezing just locks guards into positions that may block the
-            -- route — especially bad when guards permanently flank an exit.
-            if obj.type == objects.TYPE_NPC then
-                capture_npc_snapshot()
-                npc_freeze_active = true
-            end
-            local blocking = objects.get_blocking_positions()
-            local result
-            -- Use adjacent pathfinding when:
-            --   TYPE_NPC  — player stands next to NPCs (can't walk onto them)
-            --   TYPE_DOOR — locked door tile, player interacts from adjacent
-            --   Any non-walkable tile — e.g. exits where the warp fires at a wall
-            --                           (like the throne room south arch at type-15)
-            -- Chests use direct pathfinding: the player walks ONTO the chest tile
-            -- to open it, so distance-0 (not distance-1) is the goal.
-            local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
-            local face_dir
-            if obj.type == objects.TYPE_NPC
-            or obj.type == objects.TYPE_DOOR
-            or not target_walkable then
-                result, face_dir = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
-            else
-                result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
-            end
-            local msg = obj.name .. ". " .. result
-            if face_dir then
-                -- For doors, clarify which in-game command to use after arriving.
-                -- In DW1 the command is "DOOR" (not "OPEN") and requires a magic key.
-                if obj.type == objects.TYPE_DOOR then
-                    msg = msg .. ". Face " .. face_dir .. " then use Open command"
-                else
-                    msg = msg .. ". Face " .. face_dir
-                end
-            end
-            -- When routing to a locked door, append magic key count so the player
-            -- knows whether they can open it before they make the trip.
-            if obj.type == objects.TYPE_DOOR then
-                local keys = memory.readbyte(addr.KEYS)
-                if keys == 0 then
-                    msg = msg .. ". No magic keys"
-                elseif keys == 1 then
-                    msg = msg .. ". 1 magic key"
-                else
-                    msg = msg .. ". " .. keys .. " magic keys"
-                end
-            end
-            -- When a chest has no walkable path on a town/castle map, hint about
-            -- locked doors. Locked doors only exist on town/castle maps (TERRAIN_OFFSET
-            -- 0x10), so this hint is suppressed on dungeons and the overworld.
-            if obj.type == objects.TYPE_CHEST and result == "No path found" then
-                local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
-                if terrain == 0x10 then
-                    msg = msg .. ". Chest may be behind locked door. Navigate to a door object first"
-                end
-            end
-            tolk.output_interrupt(msg)
-        else
-            tolk.output_interrupt("No object selected")
-        end
+        do_pathfind_to_current()
     end
 
     -- F key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
@@ -1082,6 +1083,8 @@ local function check_map_change()
         -- Clear the pathfind target so auto re-routing doesn't try to reach
         -- an object from the previous map.
         last_pathfind_obj = nil
+        -- Clear runtime-blocked cells — discovered blocks are map-specific.
+        runtime_blocked = {}
         -- Clear NPC freeze — NPCs on the new map start fresh and their
         -- previous positions are irrelevant.
         npc_freeze_active = false
@@ -1461,9 +1464,10 @@ local function check_command_menu()
             debug_tools.on_menu_open()
         elseif a_just then
             -- North-edge suppression avoids false spoken openings from map-tile
-            -- noise, but a real command-menu open still comes from an A press.
-            -- Mark it confirmed silently so selecting STATUS without first
-            -- moving the cursor still works at y<=1.
+            -- noise, but a real command-menu open confirmed by an A press still
+            -- deserves the "Command." announcement so the player knows the menu
+            -- is open. False-positive map-tile triggers have a_just=false (no
+            -- physical button) so they stay silent; only genuine A presses speak.
             menu_upper_absorb_frames = MENU_UPPER_ABSORB
             cmd_menu_confirmed = true
             cmd_menu_live = true
@@ -1474,6 +1478,7 @@ local function check_command_menu()
             trace_row1("CMD_OPEN_Y1", changes, {
                 "cursor=" .. tostring(cursor_visible),
             })
+            tolk.output("Command.")
             debug_tools.on_menu_open()
         end
     elseif changes.cursor_moved and not changes.menu_closed then
@@ -1569,6 +1574,7 @@ local function check_yesno_prompt()
             -- The normal dialogue stability path will catch the full text once it
             -- finishes rendering.
             if question ~= "" and question ~= announced_dialogue and question:find("[a-z]") then
+                debug_tools.on_dialogue(question)
                 tolk.output(question)
                 announced_dialogue = question
             end
@@ -2374,6 +2380,143 @@ local function check_upper_dialogue()
 end
 
 -- ============================================================
+-- Pathfind Helper (shared by O-key and "pathfind" remote command)
+-- ============================================================
+-- do_pathfind_to_current(): Route to the currently selected object.
+-- Mirrors the full O-key logic: adjacent for NPCs/doors/non-walkable,
+-- direct for chests/stairs/exits. Updates last_pathfind_obj for re-routing.
+do_pathfind_to_current = function()
+    local obj = objects.current_object()
+    if not obj then
+        tolk.output_interrupt("No object selected")
+        return
+    end
+    last_pathfind_obj = obj  -- Remember for auto re-routing on block
+    local map_id, px, py = nav.get_position()
+    -- Force-refresh NPC positions right now so blocking reflects
+    -- current NPC locations, not wherever they were up to 20 frames ago.
+    objects.update_npcs()
+    -- Only freeze NPCs when the TARGET is an NPC. Freezing is needed
+    -- so the target NPC stays in place while the player walks to it.
+    -- For exits, stairs, chests, and doors the target is a fixed tile,
+    -- so freezing just locks guards into positions that may block the
+    -- route — especially bad when guards permanently flank an exit.
+    if obj.type == objects.TYPE_NPC then
+        capture_npc_snapshot()
+        npc_freeze_active = true
+    end
+    local blocking = objects.get_blocking_positions()
+    -- Use adjacent pathfinding when:
+    --   TYPE_NPC  — player stands next to NPCs (can't walk onto them)
+    --   TYPE_DOOR — locked door tile, player interacts from adjacent
+    --   Any non-walkable tile — e.g. exits where the warp fires at a wall
+    -- Chests use direct pathfinding: the player walks ONTO the chest tile.
+    local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
+    local result, face_dir
+    if obj.type == objects.TYPE_NPC
+    or obj.type == objects.TYPE_DOOR
+    or not target_walkable then
+        result, face_dir = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
+    else
+        result = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
+    end
+    local msg = obj.name .. ". " .. result
+    if face_dir then
+        if obj.type == objects.TYPE_DOOR then
+            msg = msg .. ". Face " .. face_dir .. " then use Open command"
+        else
+            msg = msg .. ". Face " .. face_dir
+        end
+    end
+    -- When routing to a locked door, append magic key count so the player
+    -- knows whether they can open it before they make the trip.
+    if obj.type == objects.TYPE_DOOR then
+        local key_count = memory.readbyte(addr.KEYS)
+        if key_count == 0 then
+            msg = msg .. ". No magic keys"
+        elseif key_count == 1 then
+            msg = msg .. ". 1 magic key"
+        else
+            msg = msg .. ". " .. key_count .. " magic keys"
+        end
+    end
+    -- When a chest has no walkable path on a town/castle map, hint about
+    -- locked doors (TERRAIN_OFFSET 0x10 = towns/castles only).
+    if obj.type == objects.TYPE_CHEST and result == "No path found" then
+        local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+        if terrain == 0x10 then
+            msg = msg .. ". Chest may be behind locked door. Navigate to a door object first"
+        end
+    end
+    tolk.output_interrupt(msg)
+end
+
+-- ============================================================
+-- Remote Command Registrations
+-- ============================================================
+-- These commands can be triggered by writing to dw_commands.txt,
+-- e.g.:  echo next_object > dw_commands.txt
+-- or via the wrapper script:  ./dw_commands.sh next_object
+--
+-- Requires debug_mode=true in dw_access.ini.
+-- For a full script restart, use Script > Reload in FCEUX's script window.
+-- To pick up config file changes without restart, use: reload_config
+
+debug_tools.register_command("next_object", function()
+    local obj = objects.next_object()
+    if obj then
+        tolk.output_interrupt(objects.describe_current())
+    else
+        tolk.output_interrupt("No objects found")
+    end
+end)
+
+debug_tools.register_command("prev_object", function()
+    local obj = objects.prev_object()
+    if obj then
+        tolk.output_interrupt(objects.describe_current())
+    else
+        tolk.output_interrupt("No objects found")
+    end
+end)
+
+debug_tools.register_command("current_object", function()
+    tolk.output_interrupt(objects.describe_current())
+end)
+
+debug_tools.register_command("next_filter", function()
+    local filter_name = objects.next_filter()
+    local count = objects.get_count()
+    if count > 0 then
+        tolk.output_interrupt(filter_name .. ". " .. objects.describe_current())
+    else
+        tolk.output_interrupt(filter_name .. ". No objects")
+    end
+end)
+
+debug_tools.register_command("pathfind", function()
+    do_pathfind_to_current()
+end)
+
+-- speak:TEXT — test that TTS is working, e.g.: echo speak:Hello world > dw_commands.txt
+debug_tools.register_command("speak", function(arg)
+    if arg and arg ~= "" then
+        tolk.output_interrupt(arg)
+    end
+end)
+
+debug_tools.register_command("freeze_npcs", function()
+    capture_npc_snapshot()
+    npc_freeze_active = true
+    tolk.output_interrupt("NPCs frozen")
+end)
+
+debug_tools.register_command("unfreeze_npcs", function()
+    npc_freeze_active = false
+    tolk.output_interrupt("NPCs unfrozen")
+end)
+
+-- ============================================================
 -- Main Loop
 -- ============================================================
 -- This is the core of the FCEUX Lua script. It runs forever,
@@ -2612,7 +2755,29 @@ while true do
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = debug_tools.tick(frame_count, game_state.state)
     if sim_input then
-        joypad.set(1, sim_input)
+        -- sweep_map returns input tagged with _sweep=true. These are multi-frame
+        -- raw injections (the sweep holds the key itself across frames via the
+        -- state machine). Route them directly to joypad.set() — NOT through
+        -- auto_step.inject_step(), which would start a competing auto-hold.
+        --
+        -- Normal simulate_input directions DO go through inject_step so the
+        -- full tap-to-step hold sequence fires (auto_step reads joypad.read(),
+        -- not joypad.set() output, so a bare joypad.set() of a direction would
+        -- only turn the character without moving).
+        if sim_input._sweep then
+            joypad.set(1, sim_input)
+        else
+            local dir_sim = sim_input.up or sim_input.down or sim_input.left or sim_input.right
+            if dir_sim then
+                local dir = sim_input.up and "up"
+                         or sim_input.down and "down"
+                         or sim_input.left and "left"
+                         or sim_input.right and "right"
+                auto_step.inject_step(dir)
+            else
+                joypad.set(1, sim_input)
+            end
+        end
     end
 
     -- Auto-step: extend brief D-pad taps into full tile steps.
@@ -2623,6 +2788,7 @@ while true do
                      and submenu_mode == nil
                      and prev_dialogue == ""
                      and not upper_dialogue_active
+                     and not debug_tools.is_sweep_active()  -- suspend during map sweep
     auto_step.update(can_walk)
 
     -- Advance the emulator by one frame. This is required —

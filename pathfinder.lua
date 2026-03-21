@@ -17,6 +17,7 @@
 -- Reference: pokemon-access a-star.lua (MIT licensed)
 
 local map_reader = require "map_reader"
+local debug_tools = require "debug_tools"
 
 local M = {}
 
@@ -342,6 +343,8 @@ end
 -- face_dir in that case is the direction from the player's current tile
 -- toward the goal, so they can orient immediately.
 function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
+    debug_tools.info("pathfind_to_adjacent: map=" .. map_id .. " start=(" .. start_x .. "," .. start_y .. ") goal=(" .. goal_x .. "," .. goal_y .. ")")
+
     -- Already adjacent (or standing on the goal tile)
     local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
     if dist <= 1 then
@@ -361,6 +364,13 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
         for _, npc in ipairs(npc_positions) do
             blocked[npc.x .. "," .. npc.y] = true
         end
+        -- Also copy string-keyed entries (e.g., runtime-discovered engine blocks
+        -- added by the on_blocked handler as blocked["x,y"] = true).
+        for k, v in pairs(npc_positions) do
+            if type(k) == "string" then
+                blocked[k] = v
+            end
+        end
     end
     blocked[goal_x .. "," .. goal_y] = true
 
@@ -374,23 +384,43 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
     }
 
     local best_path = nil
+    local best_adj = nil
     for _, adj in ipairs(adj_tiles) do
-        -- is_walkable returns true/false/nil; nil means out-of-bounds
-        if map_reader.is_walkable(map_id, adj.x, adj.y) == true then
+        -- is_walkable returns true/false/nil; nil means out-of-bounds.
+        -- Also skip adj tiles occupied by another NPC (player can't stand there).
+        local walkable = map_reader.is_walkable(map_id, adj.x, adj.y)
+        local npc_blocked = blocked[adj.x .. "," .. adj.y]
+        debug_tools.debug("pathfind adj (" .. adj.x .. "," .. adj.y .. ") walkable=" .. tostring(walkable) .. " npc_blocked=" .. tostring(npc_blocked))
+        if walkable == true and not npc_blocked then
             local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked)
+            if path then
+                debug_tools.debug("  path length=" .. #path .. " steps: " .. M.format_path(path))
+            else
+                debug_tools.debug("  no path to this adj tile")
+            end
             if path and (not best_path or #path < #best_path) then
                 best_path = path
+                best_adj = adj
             end
         end
     end
 
     if best_path then
+        -- Log the chosen path with tile types for each step
+        if best_adj then
+            debug_tools.info("pathfind chosen adj=(" .. best_adj.x .. "," .. best_adj.y .. ") path=" .. M.format_path(best_path))
+            for i, step in ipairs(best_path) do
+                local tt = map_reader.get_tile_type(map_id, step.x, step.y)
+                debug_tools.debug("  step " .. i .. ": (" .. step.x .. "," .. step.y .. ") dir=" .. step.direction .. " tile=" .. tostring(tt))
+            end
+        end
         -- The arrival tile is the last step's (x, y). Compute which direction
         -- to face from there toward the goal so the player can interact on arrival.
         local last = best_path[#best_path]
         local face = face_direction(last.x, last.y, goal_x, goal_y)
         return "Approach: " .. M.format_path(best_path), face
     else
+        debug_tools.info("pathfind no path to any adj of (" .. goal_x .. "," .. goal_y .. ")")
         return "No path found", nil
     end
 end
@@ -419,6 +449,12 @@ function M.pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
             -- Don't block the goal itself (in case an NPC is the target)
             if not (npc.x == goal_x and npc.y == goal_y) then
                 blocked[npc.x .. "," .. npc.y] = true
+            end
+        end
+        -- Also copy string-keyed entries (e.g., runtime-discovered engine blocks).
+        for k, v in pairs(npc_positions) do
+            if type(k) == "string" then
+                blocked[k] = v
             end
         end
     end

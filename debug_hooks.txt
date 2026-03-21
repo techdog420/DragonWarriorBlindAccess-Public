@@ -14,6 +14,9 @@ OUTPUT FILES
 ------------
   dw_debug.log             Log output (cleared on each script load)
   dw_commands.txt          Write commands here; cleared after reading (~1/sec)
+  dw_blocks.log            Persistent blocked-move database; one entry per line
+                           Format: 0xMM:x,y:dir  (e.g. "0x04:7,5:up")
+                           Loaded on startup; new entries appended automatically
 
 LOG ENTRY FORMAT
 ----------------
@@ -62,7 +65,35 @@ COMMANDS (write to dw_commands.txt, one per line)
   simulate_input:B         Inject one frame of B button
   simulate_input:START     Inject one frame of Start
   simulate_input:SELECT    Inject one frame of Select
+  dump_grid                Dump tile type + walkability grid for current map
+  export_blocks            Format all recorded blocked moves as MAP_BLOCKED_CELLS
+                           Lua entries (check dw_debug.log for output)
+  sweep_map                Start systematic engine-collision sweep of current map.
+                           Teleports player to every walkable-looking tile,
+                           probes all 4 directions, records hidden engine walls.
+                           auto_step is suspended while sweep runs.
+                           Outputs ready-to-paste MAP_BLOCKED_CELLS entries.
+  stop_sweep               Cancel an active sweep mid-run
   ; comment line           Lines starting with ; are ignored
+
+BLOCK DETECTION WORKFLOW
+-------------------------
+  Passive (during normal play):
+    1. Set debug_mode=true in dw_access.ini
+    2. Play normally — every blocked step is auto-recorded to dw_blocks.log
+    3. echo export_blocks > dw_commands.txt
+    4. Check dw_debug.log for MAP_BLOCKED_CELLS Lua entries to paste
+
+  Active (exhaustive per-map sweep):
+    1. Set debug_mode=true in dw_access.ini
+    2. Navigate into the map you want to sweep (e.g. Tantegel Castle)
+    3. echo sweep_map > dw_commands.txt
+    4. Wait for sweep to finish (watch dw_debug.log; "SWEEP COMPLETE" appears)
+    5. Paste MAP_BLOCKED_CELLS entries from dw_debug.log into map_reader.lua
+    6. Reload script to apply
+
+  NOTE: sweep_map is safe for town/castle maps (no random encounters).
+        Use with caution in dungeons — random battles may interrupt the sweep.
 
 SNAPSHOT FORMAT (log_state / on_battle_start)
 ----------------------------------------------
@@ -94,6 +125,9 @@ CALLING HOOKS FROM LUA (manual use in debug sessions)
 
 QUICK SHELL USAGE (from WSL or cmd)
 ------------------------------------
-  echo log_state > dw_commands.txt
-  echo simulate_input:A > dw_commands.txt
+  ./dw_commands.sh log_state
+  ./dw_commands.sh sweep_map
+  ./dw_commands.sh export_blocks
+  ./dw_commands.sh stop_sweep
   tail -f dw_debug.log
+  tail -f dw_blocks.log

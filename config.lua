@@ -67,6 +67,7 @@ local DEFAULTS_ORDERED = {
     {comment = ""},
     {comment = "; === Dialogue ==="},
     {comment = "; (yesno_dismiss_frames setting removed — prompt now uses label-presence detection)"},
+    {key = "speech_debounce_ms", value = "1000", comment = "; Suppress duplicate queued speech within this many milliseconds (0 to disable)"},
     {comment = ""},
     {comment = "; === Debug / Automation ==="},
     {key = "debug_mode",        value = "false", comment = "; Set true to enable dw_debug.log and dw_commands.txt processing"},

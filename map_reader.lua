@@ -326,6 +326,88 @@ local MAP_DOOR_CELLS = {
 -- A cell listed here is always treated as non-walkable regardless
 -- of its tile type.
 local MAP_BLOCKED_CELLS = {
+    -- Map 0x04: Tantegel Castle main hall
+    --
+    -- The castle contains an "antechamber" zone (x=7-12, y=6-9) that has
+    -- one-directional engine barriers on all sides. Tiles in this zone read
+    -- as walkable in ROM but the engine enforces these walls:
+    --
+    --   NORTH wall: y=5, x=7-12  — engine blocks northward exit from y=6
+    --   WEST wall:  x=6, y=6-8   — engine blocks westward exit from x=7
+    --   EAST wall:  x=13, y=7-8  — engine blocks eastward exit from x=12
+    --   SOUTH:      door at (11,9) — closed door, requires OPEN command to exit
+    --
+    -- The antechamber can be ENTERED from the east (moving west from x=13 to
+    -- x=12) but not EXITED east. Pathfinding must route around it entirely via
+    -- the north corridor (y=1-2) to reach west-wing guards at (5,6), (3,6), etc.
+    --
+    -- To approach west-wing guards, the correct path from the main hall is:
+    --   east to x=23+ (where y=6 is open), north past y=5, loop west via y=2
+    --   corridor, south into west wing to stand adjacent to the target guard.
+    [0x04] = {
+        -- North wall of antechamber (y=5, x=7-12)
+        ["7,5"]  = true, ["8,5"]  = true, ["9,5"]  = true,
+        ["10,5"] = true, ["11,5"] = true, ["12,5"] = true,
+        -- West wall (x=6): engine blocks all directions at y=6, y=7, y=8.
+        -- y=9 at x=6 is void (0-) in tile data, already non-walkable.
+        -- y=10 at x=6: confirmed engine-blocked eastward from (5,10).
+        ["6,6"]  = true, ["6,7"]  = true, ["6,8"]  = true, ["6,10"] = true,
+        -- West-wing dead zone: x=1-5, y=6-9 has NO A*-navigable exits.
+        -- Engine blocks northward re-entry to y=6 from y=7 (all x=1-5 confirmed).
+        -- x=6 blocks eastward exit at y=6-8. y=9 is void (tile 0) at x=1-10
+        -- except x=3 which is reachable from y=8 but engine-blocks onward to y=10.
+        -- Block the entire zone so A* never routes the player into it.
+        -- Guards at (3,6)/(5,6) are approached from y=5 via the north corridor.
+        ["1,6"]  = true, ["2,6"]  = true, ["4,6"]  = true,
+        ["1,7"]  = true, ["2,7"]  = true, ["3,7"]  = true, ["5,7"]  = true,
+        ["1,8"]  = true, ["2,8"]  = true, ["3,8"]  = true,
+        ["4,8"]  = true, ["5,8"]  = true,
+        ["3,9"]  = true, ["3,10"] = true,
+        -- West-wing east boundary at y=7: engine blocks westward movement from
+        -- (5,7) to (4,7). Kept here to prevent A* loop at that position.
+        ["4,7"]  = true,
+        -- East wall of antechamber (x=13, y=7-9): engine blocks eastward exit
+        ["13,7"] = true, ["13,8"] = true, ["13,9"] = true,
+        -- Upper-room zone (x=14-19, y=9-13): engine-blocked zone separating the
+        -- main hall (x=21+) from the antechamber/corridor area (x=7-13).
+        -- The engine barrier is a wall between column x=14 and x=15, running
+        -- further south than the tile data (all 4+/8+) suggests:
+        --   y=9:  x=14-19 all blocked
+        --   y=10: x=15-19 blocked (x=14 is the walkable corridor column)
+        --   y=11: x=15-19 blocked (x=14 still open)
+        --   y=12: x=15 confirmed blocked (tile=8, movement east from x=14 fails)
+        --         x=19-20 are void tiles (0-) so naturally non-walkable
+        --   y=13: x=15 confirmed blocked (tile=4, movement east from x=14 fails)
+        -- x=15 wall confirmed y=9 through y=16; y=17 is the first passable row.
+        -- A* routes south to y=17 then east to x=21+ then north to bypass.
+        ["14,9"] = true, ["15,9"] = true, ["16,9"] = true,
+        ["17,9"] = true, ["18,9"] = true, ["19,9"] = true,
+        ["15,10"] = true, ["16,10"] = true, ["17,10"] = true,
+        ["18,10"] = true, ["19,10"] = true,
+        ["15,11"] = true, ["16,11"] = true, ["17,11"] = true,
+        ["18,11"] = true, ["19,11"] = true,
+        ["15,12"] = true,  -- engine blocks eastward entry from (14,12); confirmed in-game
+        ["15,13"] = true,  -- engine blocks eastward entry from (14,13); confirmed in-game
+        ["15,14"] = true,  -- engine wall at x=14→15 extends through y=14; confirmed in-game
+        ["15,15"] = true,  -- engine wall continues through y=15; confirmed in-game
+        ["15,16"] = true,  -- engine wall continues through y=16; y=17 is first passable row
+
+        -- Sweep data (2026-03-21, freeze_npcs + death-pause, NPC-exclusion).
+        -- These 15 cells are confirmed engine-blocked from ALL walkable-adjacent
+        -- directions (blocked from 4/4 probed directions). Cells blocked from fewer
+        -- directions are omitted: they are accessible from another direction and
+        -- should not be in MAP_BLOCKED_CELLS (would break A* connectivity).
+        --
+        -- y=19: wall band — x=4-10 and x=24-25 confirmed impassable from all sides
+        ["4,19"]  = true, ["5,19"]  = true, ["6,19"]  = true, ["7,19"]  = true,
+        ["8,19"]  = true, ["9,19"]  = true, ["10,19"] = true,
+        ["24,19"] = true, ["25,19"] = true,
+        -- y=21: wall stubs confirmed impassable from all sides
+        ["10,21"] = true, ["11,21"] = true,
+        -- y=24: room divider confirmed impassable from all sides
+        ["19,24"] = true, ["20,24"] = true, ["21,24"] = true, ["22,24"] = true,
+    },
+
     -- Map 0x05: Tantegel Castle Throne Room
     -- Tiles at y=2, x=2-8 are type 4 (floor) in ROM but the engine
     -- blocks them via the throne/dais sprite collision. Only (1,2)

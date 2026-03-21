@@ -21,9 +21,10 @@
 --      - Player presses any new direction (cancel)
 --   6. After a successful step, a short cooldown prevents double-stepping
 
-local nav = require "navigation"
-local config = require "config"
-local tolk = require "tolk"
+local nav         = require "navigation"
+local config      = require "config"
+local tolk        = require "tolk"
+local debug_tools = require "debug_tools"
 
 local M = {}
 
@@ -178,10 +179,23 @@ function M.update(can_walk)
         -- Cancel if timeout reached (blocked by wall / step never started)
         elseif auto_frames >= timeout then
             if DEBUG then tolk.output("auto-step timeout") end
+            -- Record this blocked move so the collision map accumulates
+            -- automatically during normal play. In debug mode, this writes to
+            -- dw_blocks.log; outside debug mode it's a no-op.
+            local map_id = nav.get_position()  -- first return value is map_id
+            -- auto_dir is FCEUX joypad key ("up"/"down"/"left"/"right") which
+            -- matches the dir strings used by record_block.
+            debug_tools.record_block(map_id, auto_start_x, auto_start_y, auto_dir)
+            -- Save blocked info before clearing auto_dir so on_blocked can use it
+            local blocked_from_x = auto_start_x
+            local blocked_from_y = auto_start_y
+            local blocked_dir    = auto_dir
             auto_dir = nil
-            -- Notify the main loop so it can re-route around the obstacle
+            -- Notify the main loop so it can re-route around the obstacle.
+            -- Pass the blocked starting position and direction so the handler
+            -- can record the destination cell and avoid routing through it again.
             if M.on_blocked then
-                M.on_blocked()
+                M.on_blocked(blocked_from_x, blocked_from_y, blocked_dir)
             end
         else
             -- Only inject during the initiation phase. After INJECT_LIMIT
@@ -259,6 +273,21 @@ function M.update(can_walk)
     for _, dir in ipairs(DIRECTIONS) do
         prev_held[dir] = joy[dir] or false
     end
+end
+
+-- inject_step(dir): Directly trigger an auto-held step without physical joypad input.
+-- For use by debug/automation tools (e.g., simulate_input commands in debug_tools).
+-- 'dir' must be one of: "up", "down", "left", "right".
+-- The step executes only if can_walk is true when update() runs this frame.
+-- Calling joypad.set() here covers the current frame; update() covers subsequent frames.
+function M.inject_step(dir)
+    local _, px, py = nav.get_position()
+    auto_dir     = dir
+    auto_frames  = 1
+    auto_start_x = px
+    auto_start_y = py
+    tracked_dir  = nil  -- Cancel any in-progress tap tracking
+    joypad.set(1, {[dir] = true})
 end
 
 return M

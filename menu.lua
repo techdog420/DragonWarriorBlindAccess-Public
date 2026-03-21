@@ -84,16 +84,17 @@ end
 -- ============================================================
 
 -- COMMAND_MATCH_LEN: Number of bytes to match when searching for the
--- "COMMAND" header. We match 6 bytes (COMMAN) instead of all 7 because
--- the trailing 'D' may fall in NT1 (col 32+) when the header is near
--- the right edge of NT0. Matching 6 consecutive bytes is still highly
--- specific and avoids false positives in practice.
-local COMMAND_MATCH_LEN = 6
+-- "COMMAND" header. We match all 7 bytes now that both NT0 and NT1 are
+-- scanned as a 64-tile virtual row — the trailing 'D' is always within
+-- the virtual range even when the header crosses the NT0/NT1 boundary.
+-- Using all 7 bytes eliminates false positives from castle tile CHR data
+-- that accidentally matches the 6-byte COMMAN prefix (seen at x=14, y=2).
+local COMMAND_MATCH_LEN = 7
 
 -- is_command_menu_open(): Check if the command menu window is visible.
--- Scans all 30 PPU nametable rows for the 6-byte prefix "COMMAN"
--- (the window's header text, minus the trailing D that may wrap to the
--- next row when the menu appears near the east edge of the nametable).
+-- Scans all 30 PPU nametable rows for the full 7-byte "COMMAND" header
+-- text. Matching all 7 bytes prevents false positives from map tile CHR
+-- data that contains partial matches.
 --
 -- At player X >= 13, horizontal scroll pushes the COMMAND header to
 -- nametable columns >= 27, where the last bytes cross the NT0/NT1

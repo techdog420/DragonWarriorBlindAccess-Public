@@ -25,6 +25,10 @@
 --   simulate_input:B
 --   simulate_input:START
 --   simulate_input:SELECT
+--   dump_grid            -- dump tile type + walkability grid for current map
+--   export_blocks        -- format all recorded blocked moves as MAP_BLOCKED_CELLS Lua entries
+--   sweep_map            -- start systematic walkability sweep of current map
+--   stop_sweep           -- cancel active sweep
 --   Lines beginning with ; are treated as comments and ignored.
 
 local M = {}
@@ -32,9 +36,10 @@ local M = {}
 -- ============================================================
 -- Dependencies
 -- ============================================================
-local config = require "config"
-local addr   = require "addresses"
-local maps_m = require "maps"
+local config     = require "config"
+local addr       = require "addresses"
+local maps_m     = require "maps"
+local map_reader = require "map_reader"
 
 -- ============================================================
 -- Configuration
@@ -69,8 +74,13 @@ local current_log_level = parse_log_level(config.get("debug_log_level"))
 local _src       = debug.getinfo(1, "S").source
 local script_dir = _src:match("@?(.*[\\/])") or ""
 
-local LOG_FILE = script_dir .. "dw_debug.log"
-local CMD_FILE = script_dir .. "dw_commands.txt"
+local LOG_FILE    = script_dir .. "dw_debug.log"
+local CMD_FILE    = script_dir .. "dw_commands.txt"
+-- Persistent record of every engine-blocked move discovered this session or
+-- in previous sessions. One entry per line: "0xMM:x,y:dir"
+-- New discoveries are appended during play. export_blocks formats this file
+-- as copy-pasteable MAP_BLOCKED_CELLS Lua table entries.
+local BLOCKS_FILE = script_dir .. "dw_blocks.log"
 
 -- ============================================================
 -- Internal State
@@ -82,6 +92,52 @@ local CMD_CHECK_FRAMES = 60   -- Check command file every 60 frames
 local pending_input  = nil    -- Joypad table to apply on next frame, or nil
 local current_frame  = 0      -- Set each tick; used in log entry prefix
 local current_state  = "unknown"  -- Set each tick; used in log entry prefix
+
+-- Custom commands registered by main.lua via M.register_command().
+-- Maps command name -> function(arg), where arg is the text after ':' or nil.
+local custom_commands = {}
+
+-- ============================================================
+-- Block Detection State
+-- ============================================================
+-- blocked_entries: set of "0xMM:x,y:dir" keys for all known engine-blocked
+-- moves. Loaded from dw_blocks.log at startup so the database survives
+-- across sessions. New discoveries are added via M.record_block().
+local blocked_entries = {}
+
+-- ============================================================
+-- Map Sweep State Machine
+-- ============================================================
+-- The sweep command (sweep_map) teleports the player to every nominally-
+-- walkable tile on the current map, probes all 4 directions via joypad
+-- injection, and records which moves the engine rejects. This produces a
+-- complete MAP_BLOCKED_CELLS override table without requiring manual
+-- exploration. sweep_tick() advances one frame at a time inside tick().
+--
+-- sweep == nil means no sweep is active.
+local sweep = nil
+
+-- Forward declaration so M.tick (defined before sweep_tick's body) can
+-- reference it. In Lua 5.1, a local isn't in scope until its declaration,
+-- so without this, the sweep_tick() call inside M.tick would resolve as a
+-- global lookup (nil) and error on every frame when debug_mode=true.
+local sweep_tick
+
+-- Forward declaration for the same reason: process_command (line ~316) calls
+-- persist_sweep_blocks from the stop_sweep branch, but the body is defined
+-- later in the sweep section.
+local persist_sweep_blocks
+
+-- Direction metadata used by both the sweep and export_blocks.
+local DIR_META = {
+    { key="up",    dx=0,  dy=-1 },
+    { key="down",  dx=0,  dy=1  },
+    { key="left",  dx=-1, dy=0  },
+    { key="right", dx=1,  dy=0  },
+}
+-- Reverse lookup: direction string → delta
+local DIR_DELTA = {}
+for _, d in ipairs(DIR_META) do DIR_DELTA[d.key] = d end
 
 -- ============================================================
 -- Startup: open / clear log file
@@ -96,6 +152,21 @@ if M.DEBUG_MODE then
         f:write(string.format("Started: %s\n", os.date("%Y-%m-%d %H:%M:%S")))
         f:write("================================\n\n")
         f:close()
+    end
+
+    -- Load previously recorded block entries from dw_blocks.log so we don't
+    -- re-announce or re-persist discoveries from earlier sessions.
+    local bf = io.open(BLOCKS_FILE, "r")
+    if bf then
+        for line in bf:lines() do
+            local t = line:match("^%s*(.-)%s*$")
+            -- Lines starting with '#' are comments (e.g. header lines written
+            -- by export_blocks). Plain entries look like "0x04:7,5:up".
+            if t ~= "" and t:sub(1,1) ~= "#" then
+                blocked_entries[t] = true
+            end
+        end
+        bf:close()
     end
 end
 
@@ -289,8 +360,165 @@ local function process_command(cmd)
                 "'. Valid: UP DOWN LEFT RIGHT A B START SELECT")
         end
 
+    elseif cmd == "dump_grid" then
+        -- Dump the tile type and walkability for every cell in the current map.
+        -- Output format: one row per line, each cell shown as TT/W where TT=tile
+        -- type (hex) and W=walkability: '+' walkable, '-' not, '?' out-of-bounds.
+        -- Engine-blocked cells (MAP_BLOCKED_CELLS) show as '-' even if tile is
+        -- nominally walkable. Use this to identify discrepancies.
+        local map_id = memory.readbyte(addr.MAP_ID)
+        local w, h   = map_reader.get_map_dimensions(map_id)
+        if not w or not h then
+            M.error("dump_grid: no dimensions for map 0x" .. string.format("%02X", map_id))
+        else
+            M.info(string.format("GRID map=0x%02X (%s) size=%dx%d", map_id, maps_m.get_name(map_id), w, h))
+            for y = 0, h - 1 do
+                local row = string.format("y=%02d ", y)
+                for x = 0, w - 1 do
+                    local tt = map_reader.get_tile_type(map_id, x, y)
+                    local wk = map_reader.is_walkable(map_id, x, y)
+                    local flag = (wk == true) and "+" or "-"
+                    if tt == nil then flag = "?" end
+                    row = row .. string.format("%X%s ", tt or 0, flag)
+                end
+                M.info(row)
+            end
+            M.info("GRID END")
+        end
+
+    elseif cmd == "reload_config" then
+        -- Re-read dw_access.ini at runtime. Useful after editing settings without
+        -- restarting the script. Note: some settings (like debug_mode itself) are
+        -- read once at startup and won't change until the script is reloaded.
+        config.load()
+        M.info("Config reloaded from dw_access.ini")
+
+    elseif cmd == "export_blocks" then
+        -- Format all recorded block entries (from dw_blocks.log + current session)
+        -- as MAP_BLOCKED_CELLS Lua table entries ready to paste into map_reader.lua.
+        --
+        -- For each blocked move "from (x,y) in dir", we derive the destination
+        -- cell (x+dx, y+dy) and emit it as ["dest_x,dest_y"] = true. Multiple
+        -- source directions that point to the same destination cell are collapsed
+        -- into one entry with a comment listing the blocked approaches.
+        local by_map = {}
+        for key, _ in pairs(blocked_entries) do
+            local map_hex, sx, sy, dir_s =
+                key:match("^(0x%x+):(%d+),(%d+):(%a+)$")
+            if map_hex and DIR_DELTA[dir_s] then
+                sx, sy = tonumber(sx), tonumber(sy)
+                local d = DIR_DELTA[dir_s]
+                local cell = string.format("%d,%d", sx + d.dx, sy + d.dy)
+                if not by_map[map_hex] then by_map[map_hex] = {} end
+                local entry = by_map[map_hex][cell]
+                if not entry then
+                    by_map[map_hex][cell] = { dirs = {dir_s} }
+                else
+                    entry.dirs[#entry.dirs + 1] = dir_s
+                end
+            end
+        end
+
+        -- Count total unique destination cells across all maps.
+        local total = 0
+        for _, cells in pairs(by_map) do
+            for _ in pairs(cells) do total = total + 1 end
+        end
+
+        if total == 0 then
+            M.info("export_blocks: no blocks recorded yet. Play with debug_mode=true to accumulate data, or run sweep_map.")
+        else
+            M.info(string.format("export_blocks: %d unique destination cells across %d maps",
+                total, (function() local n=0; for _ in pairs(by_map) do n=n+1 end; return n end)()))
+            M.info("=== MAP_BLOCKED_CELLS (paste into map_reader.lua) ===")
+            for map_hex, cells in pairs(by_map) do
+                M.info(string.format("    [%s] = {", map_hex))
+                for cell, info in pairs(cells) do
+                    M.info(string.format('        ["%s"] = true,  -- blocked from: %s',
+                        cell, table.concat(info.dirs, ", ")))
+                end
+                M.info("    },")
+            end
+            M.info("=== end export_blocks ===")
+        end
+
+    elseif cmd == "sweep_map" then
+        -- Start a systematic walkability sweep of the current map.
+        -- The sweep teleports the player to every tile that map_reader considers
+        -- walkable, probes all 4 directions via joypad injection, and records any
+        -- moves the engine rejects. This exposes hidden engine walls that don't
+        -- appear in the ROM tile data.
+        --
+        -- While the sweep is active:
+        --   - auto_step is suspended (main.lua checks M.is_sweep_active())
+        --   - the player is teleported around the map automatically
+        --   - random encounters may occur in dungeon maps (use with caution there)
+        --
+        -- Results are written to the log and to dw_blocks.log. Run export_blocks
+        -- after completion to get the Lua table entries for map_reader.lua.
+        --
+        -- Usage: echo sweep_map > dw_commands.txt
+        -- To cancel mid-sweep: echo stop_sweep > dw_commands.txt
+        if sweep then
+            M.info("SWEEP: already active (use stop_sweep to cancel)")
+        else
+            local map_id = memory.readbyte(addr.MAP_ID)
+            if map_id == 0x00 then
+                M.error("SWEEP: overworld not supported (too large; use on interior maps)")
+            else
+                sweep = {
+                    phase      = "init",
+                    origin_map = map_id,
+                    tile_list  = nil,
+                    tile_idx   = 0,
+                    map_w      = nil,
+                    map_h      = nil,
+                    dir_idx    = 0,
+                    tile_x     = nil,
+                    tile_y     = nil,
+                    settle_timer  = 0,
+                    inject_timer  = 0,
+                    probe_timer   = 0,
+                    found_blocks  = {},
+                    -- Cells that killed the player during a previous probe attempt.
+                    -- These are skipped as probe origins and as probe destinations.
+                    death_cells   = {},
+                    -- Timing constants (frames):
+                    SETTLE = 20,  -- Frames to hold position before testing; covers
+                                  -- any in-progress walk animation (~16 frames max).
+                    INJECT = 12,  -- Frames to hold direction key; enough for DW1 to
+                                  -- commit to a step (turn ~8fr + initiation ~4fr).
+                    PROBE  = 45,  -- Total frames to wait for position change before
+                                  -- declaring the move blocked (matches auto_step timeout).
+                }
+                M.info(string.format("SWEEP: starting on map 0x%02X — standby, player will teleport",
+                    map_id))
+            end
+        end
+
+    elseif cmd == "stop_sweep" then
+        if sweep then
+            M.info(string.format("SWEEP: stopped by user at tile %d/%d",
+                sweep.tile_idx, sweep.tile_list and #sweep.tile_list or 0))
+            persist_sweep_blocks(sweep)
+            sweep = nil
+        else
+            M.info("SWEEP: no active sweep to stop")
+        end
+
     else
-        M.error("Unknown command: '" .. cmd .. "'")
+        -- Dispatch to custom commands registered by main.lua.
+        -- Supports both bare names ("next_object") and colon-arg form ("speak:Hello").
+        local cmd_name, cmd_arg = cmd:match("^([^:]+):?(.*)$")
+        cmd_arg = (cmd_arg and cmd_arg ~= "") and cmd_arg or nil
+        if cmd_name and custom_commands[cmd_name] then
+            local ok, err = pcall(custom_commands[cmd_name], cmd_arg)
+            if not ok then
+                M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
+            end
+        else
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, toggle_debug, simulate_input:BTN, dump_grid, reload_config, export_blocks, sweep_map, stop_sweep")
+        end
     end
 end
 
@@ -354,10 +582,485 @@ function M.tick(frame, game_state_str)
         flush_log()
     end
 
+    -- Advance the map sweep state machine one frame. The sweep returns a
+    -- joypad input table when it needs to inject a direction key. That table
+    -- is tagged with _sweep=true so main.lua routes it directly to joypad.set()
+    -- instead of through auto_step.inject_step() (which reads joypad.read()
+    -- and wouldn't see our injection anyway).
+    local sweep_inp = sweep_tick()
+
     -- Return and clear any pending simulated input so it fires exactly once.
-    local inp = pending_input
-    pending_input = nil
+    -- Sweep input takes priority over simulate_input commands.
+    local inp = sweep_inp or pending_input
+    if not sweep_inp then pending_input = nil end
     return inp
+end
+
+-- ============================================================
+-- Custom Command Registration
+-- ============================================================
+
+-- register_command(name, fn): Register a custom command handler callable from
+-- dw_commands.txt. Call this from main.lua after all modules are loaded.
+--
+--   name  — command name as written in the file (e.g. "next_object")
+--   fn    — function(arg) where arg is the text after the first ':',
+--            or nil if the command had no colon (e.g. "speak:Hello" → arg="Hello";
+--            "next_object" → arg=nil).
+--
+-- Example:
+--   debug_tools.register_command("speak", function(arg)
+--       tolk.output_interrupt(arg or "")
+--   end)
+--
+-- Custom commands are dispatched after all built-in commands are checked.
+-- If debug_mode is false the function is a no-op so main.lua can always call it.
+function M.register_command(name, fn)
+    if not M.DEBUG_MODE then return end
+    custom_commands[name] = fn
+end
+
+-- ============================================================
+-- Block Recording
+-- ============================================================
+
+-- record_block(map_id, x, y, dir): Record one engine-blocked movement.
+--
+--   map_id  — current map (from RAM)
+--   x, y    — tile the player was standing on when the move was rejected
+--   dir     — direction tried: "up" | "down" | "left" | "right"
+--
+-- This is called automatically by auto_step.lua whenever a step attempt
+-- times out (the player held a direction and the engine never moved them).
+-- New entries are appended to dw_blocks.log so the database persists across
+-- sessions. Duplicate entries are silently ignored.
+function M.record_block(map_id, x, y, dir)
+    if not M.DEBUG_MODE then return end
+    local key = string.format("0x%02X:%d,%d:%s", map_id, x, y, dir)
+    if blocked_entries[key] then return end  -- already known; skip
+
+    blocked_entries[key] = true
+    -- Append to persistent log so this survives a script reload.
+    local f = io.open(BLOCKS_FILE, "a")
+    if f then
+        f:write(key .. "\n")
+        f:close()
+    end
+    -- Compute the destination cell that is blocked (one step in dir from x,y).
+    local d = DIR_DELTA[dir] or {dx=0, dy=0}
+    M.info(string.format(
+        "NEW BLOCK: map=0x%02X from=(%d,%d) dir=%s  dest=(%d,%d)",
+        map_id, x, y, dir, x + d.dx, y + d.dy))
+end
+
+-- is_sweep_active(): Return true when a map sweep is running.
+-- main.lua checks this to suspend auto_step so it doesn't interfere with
+-- the sweep's own joypad injections.
+function M.is_sweep_active()
+    return sweep ~= nil
+end
+
+-- ============================================================
+-- Map Sweep: Internal State Machine
+-- ============================================================
+-- sweep_tick() is called once per frame from tick() while a sweep is active.
+-- It advances the sweep one step and returns a joypad table (or nil) that
+-- main.lua should apply via joypad.set() for the CURRENT frame.
+--
+-- The returned table is tagged with _sweep=true so main.lua skips the
+-- auto_step.inject_step() path and calls joypad.set() directly instead.
+-- (auto_step reads joypad.read() not joypad.set() output, so multi-frame
+-- direction injections from the sweep won't create auto_step hold sequences.)
+--
+-- Sweep phases:
+--   init        : build list of walkable tiles; move to next_tile
+--   teleport    : write player position bytes; move to settle
+--   settle      : keep re-writing position each frame until stable (SETTLE frames)
+--   next_dir    : advance dir_idx; if all 4 done, move to teleport for next tile
+--   inject      : inject direction via joypad for INJECT frames
+--   probe       : wait up to PROBE frames for position to change
+--   settle_back : after a successful step, teleport back and wait SETTLE frames
+--   export      : write results, clear sweep
+
+-- Tile types that indicate a map-transition tile (stair/exit). Moving onto
+-- these during the sweep would warp to a different map, aborting the sweep.
+-- We skip testing any direction whose destination has one of these types.
+-- town/castle tileset: 5=stairs; dungeon tileset: 4=stairs.
+local TRANSITION_TYPES = { [4]=true, [5]=true }
+
+-- persist_sweep_blocks(sw): Write all entries from sw.found_blocks to
+-- dw_blocks.log (skipping duplicates already in blocked_entries).
+-- Called both on normal completion (export phase) and on all abort paths so
+-- that partial sweep data is never silently discarded.
+persist_sweep_blocks = function(sw)
+    if not sw or not sw.found_blocks then return end
+    local n = 0
+    for key, _ in pairs(sw.found_blocks) do
+        if not blocked_entries[key] then
+            blocked_entries[key] = true
+            local f = io.open(BLOCKS_FILE, "a")
+            if f then f:write(key .. "\n"); f:close() end
+            n = n + 1
+        end
+    end
+    if n > 0 then
+        M.info(string.format("SWEEP: persisted %d block(s) to dw_blocks.log", n))
+    end
+end
+
+-- sweep_tick(): Advance sweep one frame. Returns a joypad input table or nil.
+-- Assigned to the forward-declared local above so M.tick can call it.
+sweep_tick = function()
+    if not sweep then return nil end
+
+    local cur_map = memory.readbyte(addr.MAP_ID)
+    local cur_x   = memory.readbyte(addr.PLAYER_X)
+    local cur_y   = memory.readbyte(addr.PLAYER_Y)
+
+    -- ---- phase: paused_death ----
+    -- Player died (hit a death square). Waiting for the user to quick-load
+    -- back to the sweep map, then the sweep auto-resumes at the next tile.
+    if sweep.phase == "paused_death" then
+        if cur_map ~= sweep.origin_map then
+            return nil  -- still on wrong map; keep waiting silently
+        end
+        -- Back on the sweep map — resume.
+        local n_deaths = 0
+        for _ in pairs(sweep.death_cells) do n_deaths = n_deaths + 1 end
+        M.info(string.format(
+            "SWEEP RESUMED: map=0x%02X  tile %d/%d  %d death cell%s will be skipped",
+            cur_map, sweep.tile_idx, #sweep.tile_list,
+            n_deaths, n_deaths == 1 and "" or "s"))
+        sweep.phase = "next_tile"
+        -- Fall through to next_tile handling this same frame.
+    end
+
+    -- Safety: pause (not abort) if the map changed unexpectedly.
+    -- This catches death squares that kill the player mid-sweep.
+    -- The user can quick-load back to the map to auto-resume.
+    if cur_map ~= sweep.origin_map then
+        -- Record whatever tile(s) may have caused the death so they are skipped
+        -- on resume: the current probe origin, plus the destination if a
+        -- directional probe was in flight.
+        if sweep.tile_x then
+            sweep.death_cells[sweep.tile_x .. "," .. sweep.tile_y] = true
+        end
+        if sweep.dir_idx and sweep.dir_idx > 0
+        and sweep.dir_idx <= #DIR_META and sweep.tile_x then
+            local dir = DIR_META[sweep.dir_idx]
+            sweep.death_cells[
+                (sweep.tile_x + dir.dx) .. "," .. (sweep.tile_y + dir.dy)] = true
+        end
+        local n_deaths = 0
+        for _ in pairs(sweep.death_cells) do n_deaths = n_deaths + 1 end
+        M.info(string.format(
+            "SWEEP PAUSED (death): tile %d/%d (%d,%d) map 0x%02X→0x%02X"
+            .. " — quick-load to resume  [%d death cell%s marked]",
+            sweep.tile_idx, sweep.tile_list and #sweep.tile_list or 0,
+            sweep.tile_x or 0, sweep.tile_y or 0,
+            sweep.origin_map, cur_map,
+            n_deaths, n_deaths == 1 and "" or "s"))
+        persist_sweep_blocks(sweep)
+        sweep.phase = "paused_death"
+        return nil
+    end
+
+    -- ---- phase: init ----
+    if sweep.phase == "init" then
+        local w, h = map_reader.get_map_dimensions(cur_map)
+        if not w then
+            M.error("SWEEP: no map dimensions for map 0x" .. string.format("%02X", cur_map))
+            sweep = nil
+            return nil
+        end
+        sweep.map_w = w
+        sweep.map_h = h
+
+        -- Collect all tiles that map_reader considers walkable. These are our
+        -- candidates; the sweep determines which ones have hidden engine walls.
+        -- Skip row 0 and col 0 — engine always blocks them (x==0 or y==0 guard
+        -- in map_reader.is_walkable). Also skip the bottom and right border rows
+        -- to avoid testing exits at map edges.
+        --
+        -- IMPORTANT: also exclude transition tiles (stairs/exits) from the ORIGIN
+        -- list. Teleporting onto a stair tile causes the game to immediately warp
+        -- the player to another map. The subsequent settle phase would then keep
+        -- writing the stair's (x,y) coordinates into the new map's RAM, which is
+        -- out-of-bounds for the destination map and can kill the player.
+        -- Snapshot current NPC positions so we can exclude them from block
+        -- recording. When a movement probe fails because an NPC is standing on
+        -- the destination tile, the engine block is transient (the NPC will
+        -- move), not a structural wall. Recording it would add a false positive
+        -- to MAP_BLOCKED_CELLS. Freeze NPCs before sweeping for best results.
+        sweep.npc_cells = {}
+        for i = 0, addr.NPC_COUNT - 1 do
+            local base  = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
+            local byte0 = memory.readbyte(base)
+            local byte1 = memory.readbyte(base + 1)
+            local nx = AND(byte0, 0x1F)
+            local ny = AND(byte1, 0x1F)
+            if not (nx == 0 and ny == 0) and not (nx == 31 and ny == 31) then
+                sweep.npc_cells[nx .. "," .. ny] = true
+            end
+        end
+        local npc_count = 0
+        for _ in pairs(sweep.npc_cells) do npc_count = npc_count + 1 end
+        M.info(string.format("SWEEP: NPC snapshot: %d active NPCs (freeze_npcs first for cleaner data)", npc_count))
+
+        sweep.tile_list = {}
+        for y = 1, h - 2 do
+            for x = 1, w - 2 do
+                if map_reader.is_walkable(cur_map, x, y) == true then
+                    local tile_type = map_reader.get_tile_type(cur_map, x, y)
+                    if not (tile_type and TRANSITION_TYPES[tile_type]) then
+                        sweep.tile_list[#sweep.tile_list + 1] = {x=x, y=y}
+                    end
+                end
+            end
+        end
+        M.info(string.format("SWEEP: map=0x%02X  %dx%d  %d walkable tiles to probe",
+            cur_map, w, h, #sweep.tile_list))
+        sweep.tile_idx = 0
+        sweep.phase = "next_tile"
+        return nil
+    end
+
+    -- ---- phase: next_tile ----
+    if sweep.phase == "next_tile" then
+        -- Advance tile index, skipping any tiles marked as death cells.
+        repeat
+            sweep.tile_idx = sweep.tile_idx + 1
+            if sweep.tile_idx > #sweep.tile_list then
+                sweep.phase = "export"
+                return nil
+            end
+            local t = sweep.tile_list[sweep.tile_idx]
+            local skip_key = t.x .. "," .. t.y
+            if sweep.death_cells[skip_key] then
+                M.debug(string.format("SWEEP SKIP (death cell): (%d,%d)", t.x, t.y))
+            else
+                break
+            end
+        until false
+        local tile = sweep.tile_list[sweep.tile_idx]
+        sweep.tile_x = tile.x
+        sweep.tile_y = tile.y
+        sweep.dir_idx = 0
+        -- Teleport player to this tile.
+        memory.writebyte(addr.PLAYER_X, sweep.tile_x)
+        memory.writebyte(addr.PLAYER_Y, sweep.tile_y)
+        sweep.settle_timer = sweep.SETTLE
+        sweep.phase = "settle"
+        return nil
+    end
+
+    -- ---- phase: settle ----
+    -- Re-write position every frame until it sticks AND we've waited long
+    -- enough for any in-progress walk animation to finish.
+    if sweep.phase == "settle" then
+        -- Note: map-change is caught by the top-level pause guard above, so
+        -- we never reach here with cur_map ~= origin_map.
+        -- Keep asserting the desired position so the game can't overwrite it.
+        memory.writebyte(addr.PLAYER_X, sweep.tile_x)
+        memory.writebyte(addr.PLAYER_Y, sweep.tile_y)
+        -- Count down only once the position actually matches what we wrote.
+        if cur_x == sweep.tile_x and cur_y == sweep.tile_y then
+            sweep.settle_timer = sweep.settle_timer - 1
+            if sweep.settle_timer <= 0 then
+                sweep.phase = "next_dir"
+            end
+        end
+        return nil
+    end
+
+    -- ---- phase: next_dir ----
+    if sweep.phase == "next_dir" then
+        sweep.dir_idx = sweep.dir_idx + 1
+        if sweep.dir_idx > #DIR_META then
+            -- All 4 directions tested for this tile; move on.
+            sweep.phase = "next_tile"
+            return nil
+        end
+
+        local dir = DIR_META[sweep.dir_idx]
+        local dest_x = sweep.tile_x + dir.dx
+        local dest_y = sweep.tile_y + dir.dy
+
+        -- Skip out-of-bounds destinations (would trigger map exit).
+        if dest_x < 0 or dest_x >= sweep.map_w
+        or dest_y < 0 or dest_y >= sweep.map_h then
+            -- Loop immediately (stay in next_dir phase, advance dir next frame).
+            return nil
+        end
+
+        -- Skip stair / exit tile types — stepping on them warps the map.
+        local dest_tile = map_reader.get_tile_type(cur_map, dest_x, dest_y)
+        if dest_tile and TRANSITION_TYPES[dest_tile] then
+            return nil
+        end
+
+        -- Also skip destinations map_reader already marks as non-walkable
+        -- (tile-type walls). We only care about tiles that LOOK walkable but
+        -- the engine rejects — those are the hidden walls we need to find.
+        local dest_walkable = map_reader.is_walkable(cur_map, dest_x, dest_y)
+        if dest_walkable ~= true then
+            return nil
+        end
+
+        -- Skip probing toward a known death cell — stepping there would kill
+        -- the player and interrupt the sweep again.
+        if sweep.death_cells[dest_x .. "," .. dest_y] then
+            M.debug(string.format("SWEEP SKIP (death cell dest): (%d,%d)->%s  dest=(%d,%d)",
+                sweep.tile_x, sweep.tile_y, dir.key, dest_x, dest_y))
+            return nil
+        end
+
+        -- Set up the probe for this direction.
+        sweep.probe_start_x  = cur_x
+        sweep.probe_start_y  = cur_y
+        sweep.probe_timer    = sweep.PROBE
+        sweep.inject_timer   = sweep.INJECT
+        sweep.phase          = "inject"
+        return nil
+    end
+
+    -- ---- phase: inject ----
+    -- Hold the direction key for INJECT frames so the game commits to a step.
+    if sweep.phase == "inject" then
+        -- Did the player move already (very fast engine response)?
+        if cur_x ~= sweep.tile_x or cur_y ~= sweep.tile_y then
+            -- Step completed — passable; teleport back.
+            sweep.phase = "settle_back"
+            sweep.settle_timer = sweep.SETTLE
+            memory.writebyte(addr.PLAYER_X, sweep.tile_x)
+            memory.writebyte(addr.PLAYER_Y, sweep.tile_y)
+            return nil
+        end
+
+        -- Check-then-decrement so we inject for exactly INJECT frames
+        -- (inject_timer=12 → inject frames 1..12, then switch to probe).
+        if sweep.inject_timer > 0 then
+            sweep.inject_timer = sweep.inject_timer - 1
+            sweep.probe_timer  = sweep.probe_timer  - 1
+            -- Return the direction key tagged as a sweep input.
+            -- The _sweep tag tells main.lua to call joypad.set() directly instead
+            -- of routing through auto_step.inject_step().
+            local dir_key = DIR_META[sweep.dir_idx].key
+            return {[dir_key] = true, _sweep = true}
+        else
+            -- Done injecting; wait for position to change.
+            sweep.phase = "probe"
+            return nil
+        end
+    end
+
+    -- ---- phase: probe ----
+    -- Wait up to PROBE frames for the position to change.
+    if sweep.phase == "probe" then
+        if cur_x ~= sweep.tile_x or cur_y ~= sweep.tile_y then
+            -- Position changed — the step succeeded. Tile is passable.
+            -- Teleport back so we can test the next direction from the same origin.
+            sweep.phase = "settle_back"
+            sweep.settle_timer = sweep.SETTLE
+            memory.writebyte(addr.PLAYER_X, sweep.tile_x)
+            memory.writebyte(addr.PLAYER_Y, sweep.tile_y)
+            return nil
+        end
+
+        sweep.probe_timer = sweep.probe_timer - 1
+        if sweep.probe_timer <= 0 then
+            -- Timeout: engine blocked this move.
+            local dir  = DIR_META[sweep.dir_idx]
+            local dest_x = sweep.tile_x + dir.dx
+            local dest_y = sweep.tile_y + dir.dy
+            local dest_key = dest_x .. "," .. dest_y
+            -- Skip recording if the destination is an NPC position. An NPC
+            -- standing on a tile blocks movement just like a wall, but the
+            -- tile itself is walkable; recording it would be a false positive.
+            if sweep.npc_cells and sweep.npc_cells[dest_key] then
+                M.debug(string.format("SWEEP SKIP (NPC): (%d,%d)->%s  dest=(%d,%d)",
+                    sweep.tile_x, sweep.tile_y, dir.key, dest_x, dest_y))
+            else
+                local key = string.format("0x%02X:%d,%d:%s",
+                    sweep.origin_map, sweep.tile_x, sweep.tile_y, dir.key)
+                if not sweep.found_blocks[key] then
+                    sweep.found_blocks[key] = true
+                    M.info(string.format("SWEEP BLOCKED: (%d,%d)->%s  dest=(%d,%d)",
+                        sweep.tile_x, sweep.tile_y, dir.key, dest_x, dest_y))
+                end
+            end
+            -- Advance to the next direction.
+            sweep.phase = "next_dir"
+        end
+        return nil
+    end
+
+    -- ---- phase: settle_back ----
+    -- After a successful step, we teleported the player back. Keep asserting
+    -- the position until the game accepts it, then test the next direction.
+    if sweep.phase == "settle_back" then
+        -- Note: map-change is caught by the top-level pause guard above, so
+        -- we never reach here with cur_map ~= origin_map.
+        memory.writebyte(addr.PLAYER_X, sweep.tile_x)
+        memory.writebyte(addr.PLAYER_Y, sweep.tile_y)
+        if cur_x == sweep.tile_x and cur_y == sweep.tile_y then
+            sweep.settle_timer = sweep.settle_timer - 1
+            if sweep.settle_timer <= 0 then
+                sweep.phase = "next_dir"
+            end
+        end
+        return nil
+    end
+
+    -- ---- phase: export ----
+    if sweep.phase == "export" then
+        -- Count totals.
+        local n_new = 0
+        for _ in pairs(sweep.found_blocks) do n_new = n_new + 1 end
+
+        M.info(string.format("SWEEP COMPLETE: map=0x%02X  %d tiles probed  %d new blocks found",
+            sweep.origin_map, #sweep.tile_list, n_new))
+
+        if n_new > 0 then
+            -- Group by destination cell (for MAP_BLOCKED_CELLS format).
+            -- Multiple blocked-from directions that all point to the same dest
+            -- cell collapse into one entry because MAP_BLOCKED_CELLS blocks all
+            -- access to that cell regardless of direction.
+            local dest_cells = {}
+            for key, _ in pairs(sweep.found_blocks) do
+                local _, sx, sy, dir_s =
+                    key:match("^(0x%x+):(%d+),(%d+):(%a+)$")
+                if dir_s and DIR_DELTA[dir_s] then
+                    local d = DIR_DELTA[dir_s]
+                    sx, sy = tonumber(sx), tonumber(sy)
+                    local cell = string.format("%d,%d", sx + d.dx, sy + d.dy)
+                    dest_cells[cell] = dest_cells[cell] or {}
+                    dest_cells[cell][#dest_cells[cell]+1] = dir_s  -- source dirs
+                end
+            end
+
+            M.info(string.format("    [0x%02X] = {", sweep.origin_map))
+            for cell, dirs in pairs(dest_cells) do
+                M.info(string.format('        ["%s"] = true,  -- blocked from: %s',
+                    cell, table.concat(dirs, ", ")))
+            end
+            M.info("    },")
+            M.info("=== (paste the above block into MAP_BLOCKED_CELLS in map_reader.lua) ===")
+
+            -- Persist new blocks to dw_blocks.log so passive logger benefits too.
+            persist_sweep_blocks(sweep)
+        else
+            M.info("SWEEP: no hidden engine blocks found on this map — tile data matches engine.")
+        end
+
+        sweep = nil
+        return nil
+    end
+
+    -- Unknown phase — defensive reset.
+    M.error("SWEEP: unknown phase '" .. tostring(sweep and sweep.phase) .. "' — aborting")
+    sweep = nil
+    return nil
 end
 
 -- ============================================================
