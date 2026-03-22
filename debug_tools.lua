@@ -76,6 +76,7 @@ local script_dir = _src:match("@?(.*[\\/])") or ""
 
 local LOG_FILE    = script_dir .. "dw_debug.log"
 local CMD_FILE    = script_dir .. "dw_commands.txt"
+local CMD_PROCESSING_FILE = script_dir .. "dw_commands.processing.txt"
 -- Persistent record of every engine-blocked move discovered this session or
 -- in previous sessions. One entry per line: "0xMM:x,y:dir"
 -- New discoveries are appended during play. export_blocks formats this file
@@ -330,8 +331,14 @@ local function process_command(cmd)
     elseif cmd == "report_position" then
         -- Write just the map and coordinates (lightweight alternative to log_state).
         local map_id = memory.readbyte(addr.MAP_ID)
-        local px     = memory.readbyte(addr.PLAYER_X)
-        local py     = memory.readbyte(addr.PLAYER_Y)
+        local px, py
+        if map_id == 0x00 then
+            px = memory.readbyte(addr.OVERWORLD_X)
+            py = memory.readbyte(addr.OVERWORLD_Y)
+        else
+            px = memory.readbyte(addr.PLAYER_X)
+            py = memory.readbyte(addr.PLAYER_Y)
+        end
         M.info(string.format("POSITION: map=0x%02X(%s) x=%d y=%d",
             map_id, maps_m.get_name(map_id), px, py))
 
@@ -388,9 +395,18 @@ local function process_command(cmd)
 
     elseif cmd == "reload_config" then
         -- Re-read dw_access.ini at runtime. Useful after editing settings without
-        -- restarting the script. Note: some settings (like debug_mode itself) are
-        -- read once at startup and won't change until the script is reloaded.
+        -- restarting the script. Some settings still depend on a callback from
+        -- other modules to refresh any cached copies after config.load().
         config.load()
+        current_log_level = parse_log_level(config.get("debug_log_level"))
+        M.DEBUG_MODE = (config.get("debug_mode") == "true")
+        local reload_hook = custom_commands["__config_reloaded"]
+        if reload_hook then
+            local ok, err = pcall(reload_hook)
+            if not ok then
+                M.error("reload_config hook failed: " .. tostring(err))
+            end
+        end
         M.info("Config reloaded from dw_access.ini")
 
     elseif cmd == "export_blocks" then
@@ -529,13 +545,27 @@ end
 local function check_commands()
     local f = io.open(CMD_FILE, "r")
     if not f then return end  -- File doesn't exist — nothing to do.
-
-    local contents = f:read("*all")
     f:close()
 
-    -- Clear the file immediately so commands fire exactly once.
-    local fw = io.open(CMD_FILE, "w")
-    if fw then fw:close() end
+    os.remove(CMD_PROCESSING_FILE)
+    local renamed = os.rename(CMD_FILE, CMD_PROCESSING_FILE)
+    local read_path = renamed and CMD_PROCESSING_FILE or CMD_FILE
+    local rf = io.open(read_path, "r")
+    if not rf then return end
+    local contents = rf:read("*all")
+    rf:close()
+
+    if renamed then
+        -- Recreate the live command file immediately so new commands can be
+        -- queued while we process the current batch.
+        local fw = io.open(CMD_FILE, "a")
+        if fw then fw:close() end
+    else
+        -- Fallback path if rename fails; preserve the previous clear-first
+        -- behavior so commands still fire once.
+        local fw = io.open(CMD_FILE, "w")
+        if fw then fw:close() end
+    end
 
     -- Process each non-blank, non-comment line.
     for line in contents:gmatch("[^\r\n]+") do
@@ -543,6 +573,10 @@ local function check_commands()
         if trimmed ~= "" and trimmed:sub(1, 1) ~= ";" then
             process_command(trimmed)
         end
+    end
+
+    if renamed then
+        os.remove(CMD_PROCESSING_FILE)
     end
 end
 

@@ -24,22 +24,40 @@ else
     print("tolk module loaded successfully!")
     FCEU.message("tolk loaded OK")
 
-    -- Step 2: Try speaking
-    print("Attempting speech output...")
-    FCEU.message("Attempting speech...")
+    local backend = tolk.get_backend and tolk.get_backend() or "unknown"
+    local ready = tolk.is_ready and tolk.is_ready() or false
+    local available = tolk.is_available and tolk.is_available() or false
+    local last_error = tolk.get_last_error and tolk.get_last_error() or "none"
 
-    local speak_ok, speak_err = pcall(function()
-        tolk.output("Speech bridge test successful. Hello from Dragon Warrior.")
-    end)
+    print("Backend:   " .. tostring(backend))
+    print("Available: " .. tostring(available))
+    print("Ready:     " .. tostring(ready))
+    if last_error ~= nil and last_error ~= "none" then
+        print("Error:     " .. tostring(last_error))
+    end
 
-    if speak_ok then
-        print("Speech command sent successfully!")
-        print("If you heard speech, the bridge is working.")
-        FCEU.message("Speech sent - did you hear it?")
+    if not ready then
+        print("FAILED: speech system not ready")
+        FCEU.message("Speech NOT ready - check console output")
     else
-        print("FAILED to send speech command!")
-        print("Error: " .. tostring(speak_err))
-        FCEU.message("Speech FAILED - check output")
+
+        -- Step 2: Try speaking
+        print("Attempting speech output...")
+        FCEU.message("Attempting speech...")
+
+        local speak_ok, speak_err = pcall(function()
+            tolk.output("Speech bridge test successful. Hello from Dragon Warrior.")
+        end)
+
+        if speak_ok then
+            print("Speech command sent successfully!")
+            print("If you heard speech, the bridge is working.")
+            FCEU.message("Speech sent - did you hear it?")
+        else
+            print("FAILED to send speech command!")
+            print("Error: " .. tostring(speak_err))
+            FCEU.message("Speech FAILED - check output")
+        end
     end
 end
 

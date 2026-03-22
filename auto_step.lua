@@ -33,6 +33,12 @@ local M = {}
 -- Signature: M.on_blocked()
 M.on_blocked = nil
 
+-- Optional callback: called when all queued route steps have been walked
+-- (the last step's position change confirmed). Use this to release any
+-- state that was set up for the route (e.g., NPC freeze).
+-- Signature: M.on_route_complete()
+M.on_route_complete = nil
+
 -- Debug flag: set to true to hear speech for every auto-step event.
 local DEBUG = false
 
@@ -66,6 +72,8 @@ local auto_dir = nil       -- Direction string ("up", "down", etc.) or nil
 local auto_frames = 0      -- How many frames we've been auto-holding
 local auto_start_x = nil   -- Position when auto-hold started
 local auto_start_y = nil
+local route_steps = nil    -- Array of queued directions for auto-walk
+local route_index = 1
 
 -- Cooldown: after a successful auto-step, wait a few frames before
 -- allowing another one. This prevents accidental double-steps when
@@ -100,6 +108,20 @@ local function is_any_direction_pressed(joy)
     return false
 end
 
+local function clear_route()
+    route_steps = nil
+    route_index = 1
+end
+
+local function begin_step(dir, px, py)
+    auto_dir = dir
+    auto_frames = 1
+    auto_start_x = px
+    auto_start_y = py
+    tracked_dir = nil
+    joypad.set(1, {[dir] = true})
+end
+
 -- ============================================================
 -- Core Update
 -- ============================================================
@@ -120,6 +142,7 @@ function M.update(can_walk)
         auto_dir = nil
         tracked_dir = nil
         cooldown = 0
+        clear_route()
         return
     end
 
@@ -139,6 +162,7 @@ function M.update(can_walk)
         auto_dir = nil
         tracked_dir = nil
         cooldown = 0
+        clear_route()
         -- Don't update prev_held here — we still need to track joypad
         -- state so we detect fresh presses correctly when can_walk
         -- becomes true again.
@@ -171,6 +195,7 @@ function M.update(can_walk)
         if different_dir then
             if DEBUG then tolk.output("auto-step cancelled, different direction") end
             auto_dir = nil
+            clear_route()
         -- Cancel if position changed (step completed!)
         elseif px ~= auto_start_x or py ~= auto_start_y then
             if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
@@ -191,6 +216,7 @@ function M.update(can_walk)
             local blocked_from_y = auto_start_y
             local blocked_dir    = auto_dir
             auto_dir = nil
+            clear_route()
             -- Notify the main loop so it can re-route around the obstacle.
             -- Pass the blocked starting position and direction so the handler
             -- can record the destination cell and avoid routing through it again.
@@ -215,6 +241,31 @@ function M.update(can_walk)
             prev_held[dir] = joy[dir] or false
         end
         return
+    end
+
+    if route_steps and is_any_direction_pressed(joy) then
+        clear_route()
+    end
+
+    if route_steps and cooldown <= 0 then
+        local next_dir = route_steps[route_index]
+        if next_dir then
+            route_index = route_index + 1
+            begin_step(next_dir, px, py)
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
+        -- All steps have been walked (auto_dir is nil here, so the last step's
+        -- position change has already been processed). Fire the completion callback.
+        clear_route()
+        if M.on_route_complete then
+            local ok, err = pcall(M.on_route_complete)
+            if not ok then
+                debug_tools.error("on_route_complete error: " .. tostring(err))
+            end
+        end
     end
 
     -- --------------------------------------------------------
@@ -250,15 +301,7 @@ function M.update(can_walk)
                 if px == press_start_x and py == press_start_y then
                     -- Position didn't change — the tap was too short.
                     -- Start auto-holding this direction to complete the step.
-                    auto_dir = tracked_dir
-                    auto_frames = 1
-                    auto_start_x = px
-                    auto_start_y = py
-                    -- Inject immediately on the release frame so there's
-                    -- no 1-frame gap where the game sees no direction held.
-                    -- Without this, the game could cancel the in-progress
-                    -- turn/step during that gap frame.
-                    joypad.set(1, {[auto_dir] = true})
+                    begin_step(tracked_dir, px, py)
                     if DEBUG then tolk.output("auto-step " .. auto_dir) end
                 end
             end
@@ -282,12 +325,25 @@ end
 -- Calling joypad.set() here covers the current frame; update() covers subsequent frames.
 function M.inject_step(dir)
     local _, px, py = nav.get_position()
-    auto_dir     = dir
-    auto_frames  = 1
-    auto_start_x = px
-    auto_start_y = py
-    tracked_dir  = nil  -- Cancel any in-progress tap tracking
-    joypad.set(1, {[dir] = true})
+    clear_route()
+    begin_step(dir, px, py)
+end
+
+function M.start_route(steps)
+    clear_route()
+    if not steps or #steps == 0 then
+        return false
+    end
+    route_steps = {}
+    for i, dir in ipairs(steps) do
+        route_steps[i] = dir
+    end
+    route_index = 1
+    return true
+end
+
+function M.clear_route()
+    clear_route()
 end
 
 return M

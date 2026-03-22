@@ -18,7 +18,9 @@ try:
     print("  Import OK")
 except ImportError as e:
     print(f"  FAILED: {e}")
-    print("  Run: pip install accessible_output2")
+    print("  Use a project-local venv instead of the system Python.")
+    print("  Example (Windows): py -m venv .venv")
+    print(r"  Then: .venv\Scripts\python.exe -m pip install accessible_output2")
     sys.exit(1)
 
 print("Step 2: Creating auto-detect output...")

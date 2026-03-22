@@ -33,6 +33,26 @@ local DIRECTIONS = {
     {dx =  1, dy =  0, name = "east"},
 }
 
+local function build_blocked_table(npc_positions, goal_x, goal_y, block_goal)
+    local blocked = {}
+    if npc_positions then
+        for _, npc in ipairs(npc_positions) do
+            if block_goal or not (npc.x == goal_x and npc.y == goal_y) then
+                blocked[npc.x .. "," .. npc.y] = true
+            end
+        end
+        for k, v in pairs(npc_positions) do
+            if type(k) == "string" then
+                blocked[k] = v
+            end
+        end
+    end
+    if block_goal then
+        blocked[goal_x .. "," .. goal_y] = true
+    end
+    return blocked
+end
+
 -- face_direction(from_x, from_y, to_x, to_y): Return the cardinal direction
 -- the player must face when standing at (from_x, from_y) to interact with
 -- something at (to_x, to_y) one tile away.
@@ -117,7 +137,7 @@ end
 -- A* Pathfinding
 -- ============================================================
 
--- find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions):
+-- find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions, opts):
 -- Find the shortest path from (start_x, start_y) to (goal_x, goal_y)
 -- on the given map.
 --
@@ -126,11 +146,20 @@ end
 --   - array of {x=..., y=...} tables
 -- Used for dynamic blockers such as NPC locations.
 --
+-- opts: optional table of debug callbacks (nil for zero overhead):
+--   on_visit(x, y, g_score, f_score)    — node popped and expanded
+--   on_reject(x, y, reason)             — neighbor not added to open set
+--     reason: "already_closed", "already_better", "out_of_bounds",
+--             "blocked_npc", "not_walkable"
+--   on_complete({success, path_length, nodes_visited, reason})
+--     Called on search finish; reason is nil on success.
+-- See path_debug.lua build_find_path_opts() for the callback factory.
+--
 -- Returns:
 --   On success: a list of {x, y, direction} steps from start to goal
 --   On failure: nil (no path exists)
 --   On skip: nil (overworld or invalid map)
-function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions)
+function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions, opts)
     -- Don't pathfind on the overworld (too large, ~120x120 tiles)
     if map_id == 0x00 then
         return nil
@@ -146,6 +175,11 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     end
 
     blocked_positions = blocked_positions or {}
+
+    -- Optional debug callbacks (zero overhead when nil)
+    local on_visit   = opts and opts.on_visit
+    local on_reject  = opts and opts.on_reject
+    local on_complete = opts and opts.on_complete
 
     -- Key function: convert (x, y) to a string key for table lookups.
     -- Lua tables can't use pairs of numbers as keys, so we serialize them.
@@ -215,11 +249,14 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     while open.size > 0 do
         iterations = iterations + 1
         if iterations > max_iterations then
+            if on_complete then
+                on_complete({success = false, path_length = 0, nodes_visited = iterations, reason = "max_iterations"})
+            end
             return nil  -- Gave up (shouldn't happen on valid maps)
         end
 
         -- Pop the most promising node (lowest f-score)
-        local _, current = heap_pop(open)
+        local current_f, current = heap_pop(open)
         local cx, cy = current.x, current.y
         local current_key = key(cx, cy)
 
@@ -243,6 +280,9 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                 cx, cy = px, py
                 k = parent_key
             end
+            if on_complete then
+                on_complete({success = true, path_length = #path, nodes_visited = iterations})
+            end
             return path
         end
 
@@ -250,6 +290,8 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         -- entries in the heap from re-insertions with better scores)
         if not closed[current_key] then
             closed[current_key] = true
+
+            if on_visit then on_visit(cx, cy, g_score[current_key] or 0, current_f or 0) end
 
             -- Explore neighbors (4 cardinal directions)
             local current_g = g_score[current_key]
@@ -259,28 +301,39 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                 local ny = cy + dir.dy
                 local nk = key(nx, ny)
 
-                -- Only process neighbors that haven't been fully explored
-                if not closed[nk] then
-                    -- Check passability (goal tile gets special treatment)
-                    local passable
-                    if nx == goal_x and ny == goal_y then
-                        -- Always allow reaching the exact goal tile
-                        passable = true
+                if closed[nk] then
+                    -- Already fully explored
+                    if on_reject then on_reject(nx, ny, "already_closed") end
+                elseif nx == goal_x and ny == goal_y then
+                    -- Always allow reaching the exact goal tile
+                    local tentative_g = current_g + 1
+                    if not g_score[nk] or tentative_g < g_score[nk] then
+                        g_score[nk] = tentative_g
+                        came_from[nk] = current_key
+                        came_from_dir[nk] = dir.name
+                        heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
                     else
-                        passable = is_passable(nx, ny)
+                        if on_reject then on_reject(nx, ny, "already_better") end
                     end
-
-                    if passable then
-                        local tentative_g = current_g + 1  -- All moves cost 1
-
-                        -- Is this a better path to this neighbor?
-                        if not g_score[nk] or tentative_g < g_score[nk] then
-                            g_score[nk] = tentative_g
-                            came_from[nk] = current_key
-                            came_from_dir[nk] = dir.name
-                            local f = tentative_g + heuristic(nx, ny)
-                            heap_push(open, f, {x = nx, y = ny})
-                        end
+                elseif nx < 0 or nx >= width or ny < 0 or ny >= height then
+                    -- Out of map bounds
+                    if on_reject then on_reject(nx, ny, "out_of_bounds") end
+                elseif is_blocked(nx, ny) then
+                    -- NPC or runtime-blocked cell
+                    if on_reject then on_reject(nx, ny, "blocked_npc") end
+                elseif map_reader.is_walkable(map_id, nx, ny) ~= true then
+                    -- Tile not walkable (wall, water, etc.)
+                    if on_reject then on_reject(nx, ny, "not_walkable") end
+                else
+                    -- Passable neighbor
+                    local tentative_g = current_g + 1
+                    if not g_score[nk] or tentative_g < g_score[nk] then
+                        g_score[nk] = tentative_g
+                        came_from[nk] = current_key
+                        came_from_dir[nk] = dir.name
+                        heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                    else
+                        if on_reject then on_reject(nx, ny, "already_better") end
                     end
                 end
             end
@@ -288,6 +341,9 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     end
 
     -- Open set exhausted without reaching the goal — no path exists
+    if on_complete then
+        on_complete({success = false, path_length = 0, nodes_visited = iterations, reason = "no_path"})
+    end
     return nil
 end
 
@@ -326,73 +382,40 @@ function M.format_path(path)
     return table.concat(groups, ", ")
 end
 
--- ============================================================
--- High-Level API
--- ============================================================
+function M.find_route_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
+    if map_id == 0x00 then
+        return nil
+    end
+    local blocked = build_blocked_table(npc_positions, goal_x, goal_y, false)
+    return M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked, opts)
+end
 
--- pathfind_to_adjacent(map_id, start, goal, npc_positions):
--- Like pathfind_to but targets a tile ADJACENT to the goal instead of the
--- goal itself. Used for NPC/door targets — the player needs to stand next to
--- the target to interact (press A), not on the target's own tile.
---
--- Returns two values:
---   result_string  — "Adjacent", "Approach: N north, M east", or "No path found"
---   face_dir       — cardinal direction to face on arrival (e.g. "north"), or nil
---
--- "Adjacent" means the player is already within 1 step of the goal;
--- face_dir in that case is the direction from the player's current tile
--- toward the goal, so they can orient immediately.
-function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
-    debug_tools.info("pathfind_to_adjacent: map=" .. map_id .. " start=(" .. start_x .. "," .. start_y .. ") goal=(" .. goal_x .. "," .. goal_y .. ")")
+function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
+    if map_id == 0x00 then
+        return nil, nil, nil
+    end
 
-    -- Already adjacent (or standing on the goal tile)
     local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
     if dist <= 1 then
-        return "Adjacent", face_direction(start_x, start_y, goal_x, goal_y)
+        return {}, face_direction(start_x, start_y, goal_x, goal_y), {x = start_x, y = start_y}
     end
 
-    -- For the overworld, just give direction + distance (no A*)
-    if map_id == 0x00 then
-        local objects = require "objects"
-        return objects.get_direction_string(start_x, start_y, goal_x, goal_y), nil
-    end
-
-    -- Build blocked positions: other NPCs plus the goal tile itself.
-    -- We block the goal tile so A* stops one step short.
-    local blocked = {}
-    if npc_positions then
-        for _, npc in ipairs(npc_positions) do
-            blocked[npc.x .. "," .. npc.y] = true
-        end
-        -- Also copy string-keyed entries (e.g., runtime-discovered engine blocks
-        -- added by the on_blocked handler as blocked["x,y"] = true).
-        for k, v in pairs(npc_positions) do
-            if type(k) == "string" then
-                blocked[k] = v
-            end
-        end
-    end
-    blocked[goal_x .. "," .. goal_y] = true
-
-    -- Try each of the 4 cardinal neighbors of the goal as a destination.
-    -- A* to each walkable neighbor; keep the shortest resulting path.
+    local blocked = build_blocked_table(npc_positions, goal_x, goal_y, true)
     local adj_tiles = {
-        {x = goal_x,     y = goal_y - 1},  -- north of NPC
-        {x = goal_x,     y = goal_y + 1},  -- south of NPC
-        {x = goal_x - 1, y = goal_y    },  -- west of NPC
-        {x = goal_x + 1, y = goal_y    },  -- east of NPC
+        {x = goal_x,     y = goal_y - 1},
+        {x = goal_x,     y = goal_y + 1},
+        {x = goal_x - 1, y = goal_y    },
+        {x = goal_x + 1, y = goal_y    },
     }
 
     local best_path = nil
     local best_adj = nil
     for _, adj in ipairs(adj_tiles) do
-        -- is_walkable returns true/false/nil; nil means out-of-bounds.
-        -- Also skip adj tiles occupied by another NPC (player can't stand there).
         local walkable = map_reader.is_walkable(map_id, adj.x, adj.y)
         local npc_blocked = blocked[adj.x .. "," .. adj.y]
         debug_tools.debug("pathfind adj (" .. adj.x .. "," .. adj.y .. ") walkable=" .. tostring(walkable) .. " npc_blocked=" .. tostring(npc_blocked))
         if walkable == true and not npc_blocked then
-            local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked)
+            local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, opts)
             if path then
                 debug_tools.debug("  path length=" .. #path .. " steps: " .. M.format_path(path))
             else
@@ -405,6 +428,55 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
         end
     end
 
+    if not best_path then
+        return nil, nil, nil
+    end
+
+    -- Guard: if best_path is empty (shouldn't happen given the dist>1 check
+    -- above, but defensive against edge cases), treat as already-adjacent.
+    if #best_path == 0 then
+        return best_path, face_direction(start_x, start_y, goal_x, goal_y), best_adj
+    end
+
+    local last = best_path[#best_path]
+    local face = face_direction(last.x, last.y, goal_x, goal_y)
+    return best_path, face, best_adj
+end
+
+-- ============================================================
+-- High-Level API
+-- ============================================================
+
+-- pathfind_to_adjacent(map_id, start, goal, npc_positions):
+-- Like pathfind_to but targets a tile ADJACENT to the goal instead of the
+-- goal itself. Used for NPC/door targets — the player needs to stand next to
+-- the target to interact (press A), not on the target's own tile.
+--
+-- Returns three values:
+--   result_string  — "Adjacent", "Approach: N north, M east", or "No path found"
+--   face_dir       — cardinal direction to face on arrival (e.g. "north"), or nil
+--   path           — raw path table (list of {x, y, direction} steps), or nil
+--
+-- "Adjacent" means the player is already within 1 step of the goal;
+-- face_dir in that case is the direction from the player's current tile
+-- toward the goal, so they can orient immediately; path is an empty table.
+function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
+    debug_tools.info("pathfind_to_adjacent: map=" .. map_id .. " start=(" .. start_x .. "," .. start_y .. ") goal=(" .. goal_x .. "," .. goal_y .. ")")
+
+    -- Already adjacent (or standing on the goal tile)
+    local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
+    if dist <= 1 then
+        return "Adjacent", face_direction(start_x, start_y, goal_x, goal_y), {}
+    end
+
+    -- For the overworld, just give direction + distance (no A*)
+    if map_id == 0x00 then
+        local objects = require "objects"
+        return objects.get_direction_string(start_x, start_y, goal_x, goal_y), nil, nil
+    end
+
+    local best_path, face, best_adj = M.find_route_to_adjacent(
+        map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
     if best_path then
         -- Log the chosen path with tile types for each step
         if best_adj then
@@ -414,14 +486,10 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
                 debug_tools.debug("  step " .. i .. ": (" .. step.x .. "," .. step.y .. ") dir=" .. step.direction .. " tile=" .. tostring(tt))
             end
         end
-        -- The arrival tile is the last step's (x, y). Compute which direction
-        -- to face from there toward the goal so the player can interact on arrival.
-        local last = best_path[#best_path]
-        local face = face_direction(last.x, last.y, goal_x, goal_y)
-        return "Approach: " .. M.format_path(best_path), face
+        return "Approach: " .. M.format_path(best_path), face, best_path
     else
         debug_tools.info("pathfind no path to any adj of (" .. goal_x .. "," .. goal_y .. ")")
-        return "No path found", nil
+        return "No path found", nil, nil
     end
 end
 
@@ -430,42 +498,35 @@ end
 --
 -- npc_positions: optional list of {x=, y=} tables for NPCs to avoid.
 --
--- Returns:
---   On success: "Path: 3 north, 2 east, 1 north"
---   On failure: "No path found"
---   On overworld: direction+distance string (no A*)
-function M.pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions)
+-- Returns three values:
+--   result_string  — "Path: 3 north, 2 east", "Already there", or "No path found"
+--   face_dir       — cardinal direction the player faces on arrival, or nil
+--   path           — raw path table (list of {x, y, direction} steps), or nil
+function M.pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
+    -- Already at the goal
+    if start_x == goal_x and start_y == goal_y then
+        return "Already there", nil, {}
+    end
+
     -- For the overworld, just give direction + distance (no A*)
     if map_id == 0x00 then
         local objects = require "objects"
         local dir_str = objects.get_direction_string(start_x, start_y, goal_x, goal_y)
-        return dir_str
+        return dir_str, nil, nil
     end
 
-    -- Build blocked positions table from NPC list
-    local blocked = {}
-    if npc_positions then
-        for _, npc in ipairs(npc_positions) do
-            -- Don't block the goal itself (in case an NPC is the target)
-            if not (npc.x == goal_x and npc.y == goal_y) then
-                blocked[npc.x .. "," .. npc.y] = true
-            end
-        end
-        -- Also copy string-keyed entries (e.g., runtime-discovered engine blocks).
-        for k, v in pairs(npc_positions) do
-            if type(k) == "string" then
-                blocked[k] = v
-            end
-        end
-    end
-
-    -- Run A*
-    local path = M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked)
+    local path = M.find_route_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
 
     if path then
-        return "Path: " .. M.format_path(path)
+        -- Compute face direction from the last step toward the goal
+        local last = path[#path]
+        local face = nil
+        if last then
+            face = last.direction
+        end
+        return "Path: " .. M.format_path(path), face, path
     else
-        return "No path found"
+        return "No path found", nil, nil
     end
 end
 

@@ -288,6 +288,10 @@ local current_map_id = nil
 local npc_refresh_counter = 0
 local NPC_REFRESH_INTERVAL = 20  -- Re-read NPC positions every 20 frames (~0.33s)
 
+-- When true, check_refresh() will rebuild the object list on the next call
+-- (after frameadvance has run and RAM reflects real NPC positions).
+local refresh_pending = false
+
 -- get_nearby_chests(px, py, max_dist): Return chests within max_dist
 -- Manhattan distance of (px, py), sorted closest first.
 -- Used by main.lua to identify which chest was just collected.
@@ -733,12 +737,29 @@ function M.update_npcs()
     -- stays wherever rebuild_filtered_list() clamped it.
 end
 
+-- request_refresh(): Schedule an NPC position rebuild for the next
+-- check_refresh() call. Use this instead of update_npcs() when calling
+-- from code that runs before frameadvance() — the deferred rebuild
+-- ensures RAM reflects the game's actual NPC positions (not a frozen
+-- snapshot that was restored during the previous frame).
+function M.request_refresh()
+    refresh_pending = true
+end
+
 -- check_refresh(map_id): Called every frame from the main loop.
 -- Handles map-change detection and periodic NPC position refresh.
 function M.check_refresh(map_id)
     -- Full rebuild on map change
     if map_id ~= current_map_id then
         M.refresh(map_id)
+        return
+    end
+
+    -- Deferred rebuild requested by request_refresh()
+    if refresh_pending then
+        refresh_pending = false
+        npc_refresh_counter = 0
+        M.update_npcs()
         return
     end
 

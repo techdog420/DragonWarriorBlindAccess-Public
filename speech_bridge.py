@@ -2,76 +2,97 @@
 speech_bridge.py
 Bridge between FCEUX Lua scripts and screen reader speech output.
 
-FCEUX uses standard Lua 5.1 which can't load DLLs directly (no FFI).
-This Python script acts as a middleman:
-  - FCEUX Lua opens a pipe to this process via io.popen
-  - Lua sends simple text commands through the pipe (one per line)
-  - This script calls the screen reader via accessible_output2
-
-accessible_output2 auto-detects the active screen reader (JAWS, NVDA,
-Narrator) and handles 32/64-bit DLL selection automatically.
-
-Commands (sent as lines of text):
-  speak:Some text here     -> Speak text without interrupting
-  interrupt:Some text here -> Speak text, cutting off current speech
-  silence                  -> Stop all current speech
-
-Requirements:
-  - Python 3.x
-  - accessible_output2 package (pip install accessible_output2)
-  - A screen reader running (NVDA, JAWS, or Narrator)
+This version writes startup status and runtime diagnostics to files so the
+Lua side can distinguish "pipe opened" from "bridge initialized successfully".
 """
 
+from __future__ import annotations
+
+import datetime as _dt
+from pathlib import Path
 import sys
+import traceback
 
-def main():
-    # Import the auto-detecting screen reader output
-    from accessible_output2.outputs.auto import Auto
-    speaker = Auto()
 
-    # Prime the audio pipeline. Sound cards (especially Realtek) and
-    # Bluetooth devices enter a low-power standby after silence. The
-    # first real speech utterance gets clipped while the device wakes up.
-    # Sending a single space forces the screen reader and audio hardware
-    # to initialize, so the first real utterance plays cleanly.
-    speaker.speak(" ", interrupt=True)
+def _append_log(log_path: Path, message: str) -> None:
+    timestamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write(f"[{timestamp}] {message}\n")
 
-    # Read commands from stdin, one per line.
-    # We use readline() instead of iterating stdin directly because
-    # Python 3's "for line in sys.stdin" buffers aggressively, which
-    # would delay speech output until the buffer fills up.
+
+def _write_status(status_path: Path, status: str) -> None:
+    status_path.write_text(status + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    # Status and log file paths are optional.
+    # Old tolk.lua (pre-FFI-rewrite) passed them as argv[1] and argv[2].
+    # New tolk.lua launches the bridge without arguments and communicates
+    # purely via stdin/stdout. When omitted, status/log file writing is skipped.
+    status_path = Path(sys.argv[1]) if len(sys.argv) >= 2 else None
+    log_path = Path(sys.argv[2]) if len(sys.argv) >= 3 else None
+
+    def log(message: str) -> None:
+        if log_path is not None:
+            _append_log(log_path, message)
+
+    if log_path is not None:
+        log_path.write_text("=== speech_bridge session start ===\n", encoding="utf-8")
+    log(f"python={sys.executable}")
+    log(f"argv={sys.argv!r}")
+
+    try:
+        from accessible_output2.outputs.auto import Auto
+
+        log("imported accessible_output2")
+        speaker = Auto()
+        log(f"speaker={speaker!r}")
+
+        # Prime the audio pipeline. Sound cards and Bluetooth devices often
+        # clip the first utterance after silence unless the speech stack is
+        # already awake.
+        speaker.speak(" ", interrupt=True)
+        log("audio pipeline primed")
+        if status_path is not None:
+            _write_status(status_path, "READY")
+        print("bridge ready", flush=True)
+    except Exception as exc:
+        if status_path is not None:
+            _write_status(status_path, f"ERROR:{exc}")
+        log(f"startup failure: {exc}")
+        log(traceback.format_exc().rstrip())
+        return 1
+
     while True:
         try:
             line = sys.stdin.readline()
             if not line:
-                # Empty string means EOF — the pipe was closed
-                # (FCEUX shut down or the script was unloaded)
+                log("stdin closed; exiting")
                 break
 
             line = line.strip()
             if not line:
                 continue
 
+            log(f"command={line!r}")
+
             if line.startswith("speak:"):
-                # Speak without interrupting current speech
-                text = line[6:]
-                speaker.speak(text, interrupt=False)
-
+                speaker.speak(line[6:], interrupt=False)
             elif line.startswith("interrupt:"):
-                # Speak and cut off any current speech
-                text = line[10:]
-                speaker.speak(text, interrupt=True)
-
+                speaker.speak(line[10:], interrupt=True)
             elif line == "silence":
-                # Stop all current speech
                 speaker.silence()
-
+            else:
+                log(f"ignored unknown command: {line!r}")
         except KeyboardInterrupt:
+            log("keyboard interrupt; exiting")
             break
-        except Exception as e:
-            # Log errors but keep running — one bad command
-            # shouldn't kill the whole speech bridge
-            print(f"Bridge error: {e}", file=sys.stderr)
+        except Exception as exc:
+            log(f"runtime failure: {exc}")
+            log(traceback.format_exc().rstrip())
+
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
