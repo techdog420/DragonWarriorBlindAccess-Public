@@ -450,8 +450,11 @@ local TEST_SCENARIOS = {
         {name = "east_wing_to_west",   start_x = 24, start_y = 8,  goal_x = 3,  goal_y = 8,  adjacent = false},
     },
     [0x05] = {  -- Tantegel Castle Throne Room
-        {name = "door_to_wise_man",    start_x = 4, start_y = 7,  goal_x = 4, goal_y = 1, adjacent = true},
-        {name = "entry_to_king_adj",   start_x = 4, start_y = 8,  goal_x = 4, goal_y = 3, adjacent = true},
+        -- Start positions must be inside the throne room (y=1-6), north of the
+        -- locked door at (4,7). Starting at y>=7 disconnects the start from the
+        -- goal when the door is closed (default game state).
+        {name = "room_center_to_north", start_x = 4, start_y = 5, goal_x = 4, goal_y = 1, adjacent = false},
+        {name = "room_center_to_king",  start_x = 4, start_y = 6, goal_x = 4, goal_y = 3, adjacent = true},
     },
 }
 
@@ -527,7 +530,7 @@ function M.run_test(scenario_name, auto_step_module, blocking_fn)
 
         local stats = opts and opts._get_stats() or {}
         local path_len = path and #path or 0
-        local ok = (result ~= "No path found" and path_len >= 0)
+        local ok = (result ~= "No path found" and path_len > 0)
 
         if ok then
             pass_count = pass_count + 1

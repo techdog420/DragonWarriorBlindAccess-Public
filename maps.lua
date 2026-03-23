@@ -11,12 +11,16 @@ M.names = {
     [0x01] = "Charlock Castle B1",
     [0x02] = "Charlock Castle B2",
     [0x03] = "Charlock Castle B3",
-    [0x04] = "Charlock Castle B4",
-    [0x05] = "Charlock Castle B5",
-    [0x06] = "Charlock Castle B6",
-    [0x07] = "Charlock Castle B7 - Dragonlord's Throne Room",
-    [0x08] = "Tantegel Castle",
-    [0x09] = "Tantegel Castle Throne Room",
+    -- NOTE: DataCrystal lists 0x04-0x07 as Charlock B4-B7 and 0x08-0x09 as
+    -- Tantegel Castle/Throne Room, but empirical in-RAM testing on USA Rev 1
+    -- confirms the opposite: 0x04=Tantegel Castle, 0x05=Tantegel Throne Room.
+    -- DataCrystal IDs for 0x06-0x09 are unverified in RAM.
+    [0x04] = "Tantegel Castle",
+    [0x05] = "Tantegel Castle Throne Room",
+    [0x06] = "Charlock Castle B6",          -- DataCrystal; unverified in RAM
+    [0x07] = "Charlock Castle B7 - Dragonlord's Throne Room",  -- DataCrystal; unverified in RAM
+    [0x08] = "Tantegel Castle (alt)",        -- DataCrystal says Tantegel Castle; unverified in RAM
+    [0x09] = "Tantegel Castle Throne Room (alt)", -- DataCrystal; unverified in RAM
     [0x0A] = "Charlock Castle",
     [0x0B] = "Cave",
     [0x0C] = "Tantegel Town",

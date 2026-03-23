@@ -138,16 +138,14 @@ local STAIRS = {
     -- Stairs leading to the courtyard treasure room
     {map = 0x08, x = 29, y = 1, name = "Stairs Down", dest = "Treasure Room"},
 
-    -- Tantegel Castle Throne Room (empirically = RAM map 0x05)
+    -- Map 0x05 (Tantegel Castle Throne Room, empirically confirmed)
     -- Staircase at east end of the south corridor (x=8, y=8). Player stands
     -- at (8,8) to use it. Reached by walking south through the arch at (4,7)
-    -- into the y=8 corridor, then east to (8,8). All of y=7-8 are type-15 in
-    -- the ROM tile data, but (4,7) and (4,8)-(8,8) are passthrough cells
-    -- (walkable despite type-15). Destination needs in-game verification.
-    {map = 0x05, x = 8, y = 8, name = "Stairs Down", dest = "Unknown"},
-
-    -- Tantegel Castle Throne Room (0x09) — map ID may be wrong (see 0x05 above)
-    -- {map = 0x09, x = 1, y = 1, name = "Stairs Up", dest = "Tantegel Castle"},
+    -- into the y=8 corridor, then east to (8,8). Leads to Tantegel Castle
+    -- (map 0x04) at (7,7) — confirmed in-game 2026-03-23.
+    {map = 0x05, x = 8, y = 8, name = "Stairs Down", dest = "Tantegel Castle"},
+    -- Return stair: Tantegel Castle (map 0x04) at (7,7) leads back to Throne Room (map 0x05)
+    {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "Tantegel Castle Throne Room"},
 
     -- Erdrick's Cave B1 (0x12)
     {map = 0x12, x = 1, y = 1, name = "Stairs Down", dest = "B2"},
@@ -188,14 +186,10 @@ local STAIRS = {
     {map = 0x02, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
     {map = 0x03, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
     {map = 0x03, x = 7, y = 7, name = "Stairs Down", dest = "B4"},
-    -- Map 0x04 confirmed as Charlock Castle B4: player entered at (7,7) from
-    -- the B3 stairs (map 0x03 stairs down at (7,7) leads here). The earlier
-    -- note claiming 0x04 = Tantegel Castle was incorrect; DataCrystal's mapping
-    -- (0x04 = Charlock B4) is right. Map 0x08 = Tantegel Castle (also confirmed).
-    {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "B3"},
-    -- Stairs down from B4 — position follows the alternating (7,7)/(1,1)/(3,3)
-    -- pattern but not yet confirmed in-game. Uncomment when verified.
-    -- {map = 0x04, x = 1, y = 1, name = "Stairs Down", dest = "B5"},
+    -- NOTE: DataCrystal lists 0x04 as Charlock B4, but empirical in-RAM testing
+    -- on USA Rev 1 confirms 0x04 = Tantegel Castle. Charlock B4 may be at a
+    -- different map ID (0x06? unverified). The 0x04 stair entry is now under
+    -- Tantegel Castle above. Charlock B4-B5 stair locations are unconfirmed.
     {map = 0x06, x = 7, y = 7, name = "Stairs Up", dest = "B5"},
     {map = 0x06, x = 4, y = 4, name = "Stairs Down", dest = "B7"},
 

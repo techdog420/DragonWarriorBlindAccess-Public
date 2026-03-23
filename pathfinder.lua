@@ -395,11 +395,6 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
         return nil, nil, nil
     end
 
-    local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
-    if dist <= 1 then
-        return {}, face_direction(start_x, start_y, goal_x, goal_y), {x = start_x, y = start_y}
-    end
-
     local blocked = build_blocked_table(npc_positions, goal_x, goal_y, true)
     local adj_tiles = {
         {x = goal_x,     y = goal_y - 1},
@@ -461,7 +456,7 @@ end
 -- face_dir in that case is the direction from the player's current tile
 -- toward the goal, so they can orient immediately; path is an empty table.
 function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
-    debug_tools.info("pathfind_to_adjacent: map=" .. map_id .. " start=(" .. start_x .. "," .. start_y .. ") goal=(" .. goal_x .. "," .. goal_y .. ")")
+    debug_tools.info(string.format("pathfind_to_adjacent: map=0x%02X start=(%d,%d) goal=(%d,%d)", map_id, start_x, start_y, goal_x, goal_y))
 
     -- Already adjacent (or standing on the goal tile)
     local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)

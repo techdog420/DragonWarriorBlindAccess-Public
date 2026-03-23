@@ -107,4 +107,15 @@ else
     printf '%s\n' "$@" >> "$CMD_FILE"
 fi
 
+# Warn if the log hasn't been updated in the last 10 seconds (emulator likely not running).
+LOG_FILE="$(dirname "$0")/dw_debug.log"
+if [ -f "$LOG_FILE" ]; then
+    last_mod=$(date -r "$LOG_FILE" +%s 2>/dev/null)
+    now=$(date +%s)
+    age=$(( now - last_mod ))
+    if [ "$age" -gt 10 ]; then
+        echo "WARNING: dw_debug.log was last updated ${age}s ago — is FCEUX running?"
+    fi
+fi
+
 echo "Sent to mod: $*"
