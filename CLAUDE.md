@@ -156,7 +156,11 @@ Text is decoded by reading bytes from the screen buffer (`0x0400-0x07BF`) and ma
 
 ```
 dragonwarrior1/
-├── main.lua              -- Entry point, main loop, all automatic announcements
+├── main.lua              -- Entry point, main loop, automatic announcements
+├── game_snapshot.lua     -- Centralized per-frame RAM reads (~35 addresses)
+├── event_bus.lua         -- Lightweight pub/sub for module decoupling
+├── route_manager.lua     -- Pathfinding coordination, NPC freeze, runtime blocks
+├── hotkeys.lua           -- Keyboard hotkey handling (on-demand info, diagnostics)
 ├── tolk.lua              -- Speech output wrapper (Tolk FFI bridge)
 ├── encoding.lua          -- UTF-8/UTF-16 conversion for Tolk
 ├── addresses.lua         -- RAM address constants (renamed from memory.lua)
@@ -173,6 +177,7 @@ dragonwarrior1/
 ├── items.lua             -- Item/equipment/spell lookup tables
 ├── config.lua            -- User settings (dw_access.ini)
 ├── debug_tools.lua       -- Debug logging, command file, event hooks
+├── path_debug.lua        -- Pathfinding debug/test tools
 ├── debug_hooks.txt       -- Cheat sheet for debug_tools API
 ├── Tolk.dll              -- Tolk native library
 ├── nvdaControllerClient32.dll
@@ -184,17 +189,19 @@ dragonwarrior1/
 
 ```lua
 while true do
+    snapshot.update()           -- Read all RAM values once per frame
     local keys = input.get()
-    handle_input(keys)          -- Process hotkey commands
+    hotkeys.update(keys)        -- Process hotkey commands
     detect_state_changes()      -- Compare current frame to previous
     if state_changed then
         announce_changes()      -- Speak relevant information via Tolk
     end
     FCEU.frameadvance()
+    route_mgr.apply_npc_freeze()  -- Restore frozen NPC positions if active
 end
 ```
 
-The core pattern is **polling**: every frame, read RAM, compare to previous values, speak differences. Use previous-frame state variables (e.g., `prev_map_id`, `prev_hp`, `prev_menu_cursor`) to detect transitions.
+The core pattern is **polling**: every frame, read RAM into `game_snapshot`, compare to previous values, speak differences. Modules read from `snapshot.*` instead of calling `memory.readbyte()` directly. Use previous-frame state variables (e.g., `prev_map_id`, `prev_hp`, `prev_menu_cursor`) to detect transitions.
 
 ## Game Structure for Accessibility
 

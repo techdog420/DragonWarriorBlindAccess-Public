@@ -18,7 +18,6 @@
 local tolk = require "tolk"         -- Speech output (Python bridge to screen reader)
 local addr = require "addresses"    -- RAM address constants
 local chars = require "chars"       -- Text encoding table
-local maps = require "maps"         -- Map ID to name lookup
 local text = require "text"         -- Screen buffer reading
 local nav = require "navigation"    -- Position and map tracking
 local state = require "state"       -- Game state detection
@@ -31,66 +30,13 @@ local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
 local items = require "items"          -- Item/equipment/spell lookup tables
 local debug_tools = require "debug_tools"  -- Debug logging and automation (no-op when debug_mode=false)
 local path_debug = require "path_debug"    -- Pathfinding debug/test tools (no-op when debug_mode=false)
+local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
+local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
+local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
+local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 
--- Forward declarations for state referenced by early callbacks.
-local last_pathfind_obj = nil
-local reroute_failures = 0   -- consecutive on_blocked calls without a successful step
-local REROUTE_FAILURE_LIMIT = 3
-local npc_freeze_active = false
--- Runtime engine-blocked cells discovered during auto-step timeouts.
--- When the engine refuses a move, we record the destination here so A*
--- won't route through it again on the next rerouting call.
--- Format: runtime_blocked[map_id]["x,y"] = true  (cleared on map change)
-local runtime_blocked = {}
-local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
-local capture_npc_snapshot
-local do_pathfind_to_current  -- defined before main loop; used by O-key and remote command
-local do_autowalk_to_current  -- defined before main loop; used by U-key and remote command
-
-local DIR_TO_DELTA = {
-    up = {dx = 0, dy = -1, face = "north"},
-    down = {dx = 0, dy = 1, face = "south"},
-    left = {dx = -1, dy = 0, face = "west"},
-    right = {dx = 1, dy = 0, face = "east"},
-}
-
-local DIR_NAME_TO_KEY = {
-    north = "up",
-    south = "down",
-    west = "left",
-    east = "right",
-}
-
-local function build_path_blocking(map_id)
-    local blocking = objects.get_blocking_positions()
-    if runtime_blocked[map_id] then
-        for cell_key, _ in pairs(runtime_blocked[map_id]) do
-            blocking[cell_key] = true
-        end
-    end
-    return blocking
-end
-
-local function count_runtime_blocks(map_id)
-    local n = 0
-    if runtime_blocked[map_id] then
-        for _ in pairs(runtime_blocked[map_id]) do
-            n = n + 1
-        end
-    end
-    return n
-end
-
-local function format_runtime_blocks(map_id)
-    local parts = {}
-    if runtime_blocked[map_id] then
-        for cell_key, _ in pairs(runtime_blocked[map_id]) do
-            parts[#parts + 1] = cell_key
-        end
-    end
-    table.sort(parts)
-    return parts
-end
+-- Direction constants (kept here for debug diagnostic functions).
+local DIR_TO_DELTA = route_mgr.get_dir_to_delta()
 
 local function parse_xy_arg(arg)
     if not arg then return nil end
@@ -118,7 +64,7 @@ end
 local function log_tile_report(map_id, x, y)
     local tile_type = map_reader.get_tile_type(map_id, x, y)
     local walkable = map_reader.is_walkable(map_id, x, y)
-    local blocking = build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id)
     local npc_blocked = false
     for _, pos in ipairs(blocking) do
         if pos.x == x and pos.y == y then
@@ -126,7 +72,7 @@ local function log_tile_report(map_id, x, y)
             break
         end
     end
-    local runtime_flag = runtime_blocked[map_id] and runtime_blocked[map_id][x .. "," .. y] or false
+    local runtime_flag = route_mgr.is_cell_runtime_blocked(map_id, x, y)
     local msg = string.format(
         "TILE map=0x%02X x=%d y=%d tile=%s walkable=%s npc_blocked=%s runtime_blocked=%s",
         map_id, x, y, tostring(tile_type), tostring(walkable), tostring(npc_blocked), tostring(runtime_flag))
@@ -135,7 +81,7 @@ local function log_tile_report(map_id, x, y)
 end
 
 local function log_move_report(from_x, from_y, dir)
-    local map_id = memory.readbyte(addr.MAP_ID)
+    local map_id = snapshot.map_id
     local meta = DIR_TO_DELTA[dir]
     if not meta then
         debug_tools.error("MOVE invalid dir: " .. tostring(dir))
@@ -145,7 +91,7 @@ local function log_move_report(from_x, from_y, dir)
     local dest_y = from_y + meta.dy
     local tile_type = map_reader.get_tile_type(map_id, dest_x, dest_y)
     local walkable = map_reader.is_walkable(map_id, dest_x, dest_y)
-    local blocking = build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id)
     local npc_blocked = false
     for _, pos in ipairs(blocking) do
         if pos.x == dest_x and pos.y == dest_y then
@@ -153,7 +99,7 @@ local function log_move_report(from_x, from_y, dir)
             break
         end
     end
-    local runtime_flag = runtime_blocked[map_id] and runtime_blocked[map_id][dest_x .. "," .. dest_y] or false
+    local runtime_flag = route_mgr.is_cell_runtime_blocked(map_id, dest_x, dest_y)
     local msg = string.format(
         "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) tile=%s walkable=%s npc_blocked=%s runtime_blocked=%s",
         map_id, from_x, from_y, dir, dest_x, dest_y, tostring(tile_type),
@@ -163,9 +109,9 @@ local function log_move_report(from_x, from_y, dir)
 end
 
 local function report_blockers_for_current_map()
-    local map_id = memory.readbyte(addr.MAP_ID)
+    local map_id = snapshot.map_id
     local blocking = objects.get_blocking_positions()
-    local runtime = format_runtime_blocks(map_id)
+    local runtime = route_mgr.format_runtime_blocks(map_id)
     debug_tools.info(string.format(
         "BLOCKERS map=0x%02X npc_count=%d runtime_count=%d",
         map_id, #blocking, #runtime))
@@ -184,132 +130,9 @@ end
 tolk.output("Dragon Warrior Accessibility Mod loaded.")
 FCEU.message("DW Access Mod loaded")
 
--- Auto re-routing: when auto_step times out (step blocked), re-compute
--- the path to the last pathfind target using fresh NPC positions.
--- This handles the case where a roaming NPC blocks a step mid-path.
---
--- from_x, from_y, blocked_dir: the starting cell and direction that the
--- engine refused. The destination (from_x+dx, from_y+dy) is recorded in
--- runtime_blocked so A* won't route through the same impassable cell again.
-auto_step.on_blocked = function(from_x, from_y, blocked_dir)
-    if not last_pathfind_obj then return end
-
-    reroute_failures = reroute_failures + 1
-    if reroute_failures >= REROUTE_FAILURE_LIMIT then
-        debug_tools.info("reroute_failures=" .. reroute_failures .. ": giving up on " .. last_pathfind_obj.name)
-        last_pathfind_obj = nil
-        reroute_failures = 0
-        if npc_freeze_active then
-            npc_freeze_active = false
-            frozen_npc_snapshot = {}
-        end
-        objects.request_refresh()
-        tolk.output_interrupt("Cannot reach destination. Pathfinding cancelled.")
-        return
-    end
-
-    local map_id, px, py = nav.get_position()
-
-    -- Refresh NPC positions first so we can exclude NPC-occupied cells
-    -- from the runtime_blocked set (NPC blocks are temporary and already
-    -- handled by the blocking table; only true engine blocks belong here).
-    objects.update_npcs()
-
-    -- Record the engine-blocked destination in the runtime blocked set.
-    -- The direction strings from auto_step use FCEUX joypad keys:
-    -- "up"=north, "down"=south, "left"=west, "right"=east.
-    if from_x and from_y and blocked_dir then
-        local dx = (blocked_dir == "right" and 1) or (blocked_dir == "left" and -1) or 0
-        local dy = (blocked_dir == "down"  and 1) or (blocked_dir == "up"   and -1) or 0
-        local dest_x = from_x + dx
-        local dest_y = from_y + dy
-        -- Only record as engine-blocked if no NPC currently occupies the cell.
-        -- If an NPC is there, the block was temporary and the cell is reachable
-        -- once the NPC moves; adding it to runtime_blocked would be a false positive.
-        local npc_positions = objects.get_blocking_positions()
-        local dest_key = dest_x .. "," .. dest_y
-        local npc_at_dest = npc_positions[dest_key]
-        if not npc_at_dest then
-            for _, npc in ipairs(npc_positions) do
-                if npc.x == dest_x and npc.y == dest_y then
-                    npc_at_dest = true
-                    break
-                end
-            end
-        end
-        if not npc_at_dest then
-            if not runtime_blocked[map_id] then
-                runtime_blocked[map_id] = {}
-            end
-            local cell_key = dest_key
-            if not runtime_blocked[map_id][cell_key] then
-                runtime_blocked[map_id][cell_key] = true
-                debug_tools.info("runtime block: map=" .. map_id
-                    .. " cell=(" .. dest_x .. "," .. dest_y .. ")"
-                    .. " via " .. blocked_dir .. " from (" .. from_x .. "," .. from_y .. ")")
-            end
-        else
-            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
-        end
-    end
-
-    -- Re-freeze only if the target is an NPC (same logic as initial pathfind)
-    if last_pathfind_obj.type == objects.TYPE_NPC then
-        capture_npc_snapshot()
-        npc_freeze_active = true
-    end
-
-    -- Build blocking table: NPC positions + runtime-discovered engine blocks.
-    local blocking = build_path_blocking(map_id)
-
-    local result, face_dir, path
-    local target_walkable = map_reader.is_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
-    if last_pathfind_obj.type == objects.TYPE_NPC
-    or last_pathfind_obj.type == objects.TYPE_DOOR
-    or not target_walkable then
-        result, face_dir, path = pathfinder.pathfind_to_adjacent(
-            map_id, px, py,
-            last_pathfind_obj.x, last_pathfind_obj.y, blocking)
-    else
-        result, face_dir, path = pathfinder.pathfind_to(
-            map_id, px, py,
-            last_pathfind_obj.x, last_pathfind_obj.y, blocking)
-    end
-
-    -- If no path was found, cancel pathfinding to stop the retry loop.
-    if result == "No path found" then
-        last_pathfind_obj = nil
-        reroute_failures = 0
-        tolk.output_interrupt("No path found. Pathfinding cancelled.")
-        return
-    end
-
-    local msg = "Re-routing. " .. build_pathfind_message(last_pathfind_obj, result, face_dir)
-    tolk.output_interrupt(msg)
-
-    -- If auto-walk was active, queue the re-routed path so the player
-    -- continues walking automatically instead of stopping.
-    if path and #path > 0 then
-        queue_path_steps(path)
-    end
-end
-
--- Route completion: when all queued auto-walk steps have landed, release
--- the NPC freeze (set during autowalk to NPC targets) and refresh the
--- object list so positions reflect the player's new location.
-auto_step.on_route_complete = function()
-    reroute_failures = 0
-    last_pathfind_obj = nil
-    if npc_freeze_active then
-        npc_freeze_active = false
-        frozen_npc_snapshot = {}
-        debug_tools.info("NPC freeze released: autowalk route complete")
-    end
-    -- Schedule a deferred refresh so check_refresh() rebuilds the object
-    -- list on the NEXT frame, after frameadvance() has run and NPC positions
-    -- in RAM reflect the game's actual state (not the frozen snapshot values).
-    objects.request_refresh()
-end
+-- NOTE: auto_step.on_blocked and auto_step.on_route_complete callbacks
+-- are now set in route_manager.lua (loaded above). They handle re-routing,
+-- NPC freeze lifecycle, and runtime block recording.
 
 -- ============================================================
 -- Previous-Frame State
@@ -325,7 +148,7 @@ local prev_level = nil        -- Previous level (to detect level-ups)
 -- Inventory tracking for chest collection detection.
 -- When gold, keys, herbs, or items increase while the player is
 -- in field state adjacent to a chest, we mark that chest as opened.
--- Note: "prev_keys" is already taken (keyboard state). Use distinct names.
+-- Note: "prev_keys" lives in hotkeys.lua. Use distinct names here.
 local prev_gold        = nil
 local prev_magic_keys  = nil  -- Magic Keys count (addr.KEYS = 0x00BF)
 local prev_herbs       = nil
@@ -502,18 +325,6 @@ local CHALLENGER_ACCEPT  = 18   -- acceptance threshold (must be > blink-off, < 
 -- spread work across frames.
 local frame_count = 0
 
--- Last object the player pathfound to. Kept so auto_step.on_blocked
--- can re-route to the same target when a moving NPC blocks a step.
--- Cleared on map change.
-last_pathfind_obj = nil
-
--- NPC freeze: lock NPC positions in RAM for reliable pathfinding.
--- When active, we restore NPC bytes to their snapshot values after
--- every FCEU.frameadvance(), undoing any movement the game's AI did.
--- The blind user doesn't need NPCs to visually wander, so this is safe.
-npc_freeze_active = false
-frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
-
 -- Sub-menu tracking: STATUS and ITEM screens opened from the command menu.
 -- When the player selects STATUS or ITEM, the game opens a sub-menu that
 -- reuses the D8/D9 cursor RAM for a different purpose. Without tracking,
@@ -556,552 +367,9 @@ local ROW1_TRACE_FILE = "row1_menu_diag.txt"
 local row1_trace_frame = 0
 local prev_row1_lower_dialogue_active = false
 
--- ============================================================
--- Hotkey Handling
--- ============================================================
--- Keyboard hotkeys let the player request info on demand.
--- We track which keys were pressed last frame to detect fresh presses
--- (key-down events) and avoid repeating while a key is held.
+-- NOTE: Hotkey handling (handle_hotkeys, is_key_pressed, prev_keys) has been
+-- extracted to hotkeys.lua. The main loop calls hotkeys.update(keys).
 
-local prev_keys = {}
-
--- is_key_pressed(keys, key_name): Check if a key was just pressed
--- this frame (wasn't pressed last frame). This prevents the action
--- from firing repeatedly while the key is held down.
-local function is_key_pressed(keys, key_name)
-    return keys[key_name] and not prev_keys[key_name]
-end
-
--- capture_npc_snapshot(): Read all 20 NPC entries (3 bytes each) from RAM
--- and save them into frozen_npc_snapshot. Called when freeze is activated.
--- Byte 0: sprite type (bits 7-5) + X position (bits 4-0).
--- Byte 1: animation frame (bit 7) + direction (bits 6-5) + Y position (bits 4-0).
--- Byte 2: movement behavior code.
-capture_npc_snapshot = function()
-    frozen_npc_snapshot = {}
-    for i = 0, addr.NPC_COUNT - 1 do
-        local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
-        frozen_npc_snapshot[i] = {
-            memory.readbyte(base),
-            memory.readbyte(base + 1),
-            memory.readbyte(base + 2),
-        }
-    end
-end
-
--- apply_npc_freeze(): Restore snapshotted NPC bytes to RAM.
--- Call once per frame immediately after FCEU.frameadvance().
--- The NES NPC AI runs during frameadvance and may write new positions;
--- this undoes those writes so our code sees stable NPC coordinates next frame.
--- No-op when npc_freeze_active is false, so it's safe to call every frame.
-local function apply_npc_freeze()
-    if not npc_freeze_active then return end
-    for i = 0, addr.NPC_COUNT - 1 do
-        local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
-        local snap = frozen_npc_snapshot[i]
-        memory.writebyte(base,     snap[1])
-        memory.writebyte(base + 1, snap[2])
-        memory.writebyte(base + 2, snap[3])
-    end
-end
-
--- handle_hotkeys(keys): Process keyboard hotkeys for on-demand info.
--- keys: table from input.get() with key names as keys, true as values.
--- All key assignments come from config.lua so the user can remap them.
-local function handle_hotkeys(keys)
-    -- Position: Read current position (map name + coordinates)
-    if is_key_pressed(keys, config.get("key_position")) then
-        tolk.output_interrupt(nav.get_position_string())
-    end
-
-    -- HP/MP: Read current HP and MP
-    if is_key_pressed(keys, config.get("key_hp")) then
-        local hp = memory.readbyte(addr.CURRENT_HP)
-        local max_hp = memory.readbyte(addr.MAX_HP)
-        local mp = memory.readbyte(addr.CURRENT_MP)
-        local max_mp = memory.readbyte(addr.MAX_MP)
-        tolk.output_interrupt("HP " .. hp .. " of " .. max_hp ..
-                              ", MP " .. mp .. " of " .. max_mp)
-    end
-
-    -- Level: Read player level (default I, moved from L to free it for navigation)
-    if is_key_pressed(keys, config.get("key_level")) then
-        local level = memory.readbyte(addr.LEVEL)
-        tolk.output_interrupt("Level " .. level)
-    end
-
-    -- Gold: Read gold
-    if is_key_pressed(keys, config.get("key_gold")) then
-        local gold = memory.readbyte(addr.GOLD_LO) +
-                     memory.readbyte(addr.GOLD_HI) * 256
-        tolk.output_interrupt(gold .. " gold")
-    end
-
-    -- Experience: Read experience
-    if is_key_pressed(keys, config.get("key_experience")) then
-        local exp = memory.readbyte(addr.EXPERIENCE_LO) +
-                    memory.readbyte(addr.EXPERIENCE_HI) * 256
-        tolk.output_interrupt(exp .. " experience")
-    end
-
-    -- Stats: Read full stats (level, HP/MP, all stats, equipment, spells)
-    if is_key_pressed(keys, config.get("key_stats")) then
-        tolk.output_interrupt(items.read_status_string())
-    end
-
-    -- Screen text: Read all text currently on screen
-    if is_key_pressed(keys, config.get("key_screen_text")) then
-        local screen_text = text.get_full_screen_text()
-        if screen_text ~= "" then
-            tolk.output_interrupt(screen_text)
-        else
-            tolk.output_interrupt("No text on screen")
-        end
-    end
-
-    -- Diagnostic: raw menu cursor values
-    if is_key_pressed(keys, config.get("key_diag_cursor")) then
-        tolk.output_interrupt(menu.get_cursor_info())
-    end
-
-    -- Diagnostic: dump raw PPU tile bytes for rows 15-29.
-    -- Shows first/last non-BG column, decoded text, and any NT1 ($2400) tiles.
-    -- Use this at x=8 with truncated dialogue visible to locate where text tiles
-    -- are written in the nametable and whether any overflow into NT1.
-    if is_key_pressed(keys, config.get("key_diag_ppu_dump")) then
-        local BG  = 0x9F   -- background/empty tile in PPU nametable
-        local NT0 = 0x2000 -- nametable 0
-        local NT1 = 0x2400 -- nametable 1 (potential overflow target)
-        local W   = 32     -- nametable width in tiles
-
-        local dump = {}
-        local map_id, px, py = nav.get_position()
-        dump[#dump+1] = "=== PPU Nametable Dump ==="
-        dump[#dump+1] = string.format("Map: %d (0x%02X)  Player: x=%d, y=%d", map_id, map_id, px, py)
-        dump[#dump+1] = ""
-        dump[#dump+1] = "Rows 15-29 from NT0 ($2000) and NT1 ($2400)."
-        dump[#dump+1] = "BG tile 0x9F shown as '--'.  Non-BG shown as 2-digit hex."
-        dump[#dump+1] = ""
-
-        for row = 15, 29 do
-            -- Read all 32 bytes from NT0 for this row.
-            local nt0 = {}
-            local first_col = -1
-            local last_col  = -1
-            for col = 0, W - 1 do
-                local b = ppu.readbyte(NT0 + row * W + col)
-                nt0[col] = b
-                if b ~= BG then
-                    if first_col == -1 then first_col = col end
-                    last_col = col
-                end
-            end
-
-            -- Read NT1 for this row — collect any non-BG entries.
-            local nt1_parts = {}
-            for col = 0, W - 1 do
-                local b = ppu.readbyte(NT1 + row * W + col)
-                if b ~= BG then
-                    nt1_parts[#nt1_parts+1] = string.format("c%d=%02X", col, b)
-                end
-            end
-
-            -- Build hex display of NT0 row (BG as "--").
-            local hex_parts = {}
-            for col = 0, W - 1 do
-                local b = nt0[col]
-                hex_parts[col+1] = (b == BG) and "--" or string.format("%02X", b)
-            end
-
-            -- Decode NT0 bytes to text.
-            local row_bytes = {}
-            for col = 0, W - 1 do row_bytes[col+1] = nt0[col] end
-            local decoded = chars.decode_bytes(row_bytes)
-            decoded = decoded:match("^%s*(.-)%s*$") or ""
-
-            -- Assemble line header.
-            local col_info
-            if first_col == -1 then
-                col_info = "(all BG)"
-            else
-                col_info = string.format("cols %d-%d", first_col, last_col)
-            end
-
-            local nt1_info = ""
-            if #nt1_parts > 0 then
-                nt1_info = "  NT1: " .. table.concat(nt1_parts, " ")
-            end
-
-            dump[#dump+1] = string.format("Row %2d [%s]%s", row, col_info, nt1_info)
-            dump[#dump+1] = "  NT0: " .. table.concat(hex_parts, " ")
-            if decoded ~= "" then
-                dump[#dump+1] = "  TXT: " .. decoded
-            end
-        end
-
-        local f = io.open("ppu_dump.txt", "w")
-        if f then
-            f:write(table.concat(dump, "\n"))
-            f:close()
-            tolk.output_interrupt("PPU dump written to ppu_dump.txt")
-        else
-            tolk.output_interrupt("Failed to write dump file")
-        end
-    end
-
-    -- Diagnostic: title screen cursor and RAM state dump.
-    -- Use this while on the Adventure Log slot-selection screen or message speed
-    -- screen to determine how the game signals which item is selected.
-    -- Output goes to title_diag.txt.
-    --
-    -- Key things to look for in the output:
-    --   D8/D9 changes as you move cursor → use RAM-based detection (cleanest)
-    --   Cursor tile (0x42) found at col 11 of slot row → cursor tile approach works
-    --   No cursor tile found → selection is palette-based; need joypad tracking
-    if is_key_pressed(keys, config.get("key_diag_title")) then
-        local d8 = memory.readbyte(addr.MENU_CURSOR_X)
-        local d9 = memory.readbyte(addr.MENU_CURSOR_Y)
-        local dump = {}
-        dump[#dump+1] = string.format("=== Title Screen Diagnostic ===")
-        dump[#dump+1] = string.format("D8 (cursor X) = %d (0x%02X)", d8, d8)
-        dump[#dump+1] = string.format("D9 (cursor Y) = %d (0x%02X)", d9, d9)
-        dump[#dump+1] = ""
-
-        -- Find all cursor tiles (0x42 or 0x43) in the full PPU nametable.
-        dump[#dump+1] = "--- Cursor tiles (0x42/0x43) found in NT0 (0x2000) ---"
-        local found_any = false
-        for row = 0, 29 do
-            for col = 0, 31 do
-                local tile = ppu.readbyte(0x2000 + row * 32 + col)
-                if tile == 0x42 or tile == 0x43 then
-                    dump[#dump+1] = string.format("  Row %2d Col %2d: tile=0x%02X", row, col, tile)
-                    found_any = true
-                end
-            end
-        end
-        if not found_any then
-            dump[#dump+1] = "  (none found)"
-        end
-        dump[#dump+1] = ""
-
-        -- Decode PPU rows 6-26 (covers both high-screen and low-screen sub-menus).
-        -- Each line shows raw hex bytes and decoded text side by side.
-        dump[#dump+1] = "--- PPU rows 6-26 (raw bytes and decoded text) ---"
-        for row = 6, 26 do
-            local hex_parts = {}
-            local raw_bytes = {}
-            for col = 0, 31 do
-                local b = ppu.readbyte(0x2000 + row * 32 + col)
-                hex_parts[#hex_parts+1] = string.format("%02X", b)
-                raw_bytes[#raw_bytes+1] = b
-            end
-            local decoded = text.decode_row(row)
-            dump[#dump+1] = string.format("Row %2d: %s  |  [%s]",
-                row,
-                table.concat(hex_parts, " "),
-                decoded)
-        end
-
-        local f = io.open("title_diag.txt", "w")
-        if f then
-            f:write(table.concat(dump, "\n"))
-            f:close()
-            tolk.output_interrupt("Title diagnostic written to title_diag.txt")
-        else
-            tolk.output_interrupt("Failed to write title_diag.txt")
-        end
-    end
-
-    -- Diagnostic: tile types at and around the player's position.
-    -- Speaks a short summary and writes tile_diag.txt for detailed inspection.
-    --
-    -- Key output to verify in the file:
-    --   rom.readbyte(0): if 0x4E ('N'), the iNES header IS included in offsets.
-    --                    If it's something else (e.g. 0x78 = NES SEI opcode),
-    --                    the header is NOT included (offsets are PRG-ROM relative).
-    --   Map metadata width/height: should be reasonable (8-32 for a castle room).
-    --   Tile types at player: type 0 = floor guess, 2 = wall guess in WALKABLE_TOWN.
-    --   If ALL tiles show type 0 regardless of floor/wall, the data_ptr is wrong
-    --   (out-of-bounds rom.readbyte calls returning 0).
-    if is_key_pressed(keys, config.get("key_diag_tiles")) then
-        local map_id = memory.readbyte(addr.MAP_ID)
-        local px = memory.readbyte(addr.PLAYER_X)
-        local py = memory.readbyte(addr.PLAYER_Y)
-        local ram_tile = memory.readbyte(addr.TILE_TYPE)
-        local meta = map_reader.get_metadata(map_id)
-
-        -- Helper: return "typeW" (walkable), "typeDoor" (locked door), or "typeX" (wall)
-        local function td(x, y)
-            local t = map_reader.get_tile_type(map_id, x, y)
-            if t == nil then return "nil" end
-            local w = map_reader.is_walkable(map_id, x, y)
-            local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
-            local is_door = (terrain == 0x10 and t == 11) or (terrain == 0x20 and t == 5)
-            if is_door then
-                return tostring(t) .. "D"  -- D = locked door
-            end
-            return tostring(t) .. (w and "W" or "X")
-        end
-
-        -- Speak a compact summary of tile types at player + 4 neighbors.
-        -- Format: "At 5,8. RAM 0. Here 0W. N 2X. S 0W. W 0W. E 1W."
-        -- 'W' suffix = walkable, 'X' = wall, RAM = game's own tile type.
-        tolk.output_interrupt(
-            "At " .. px .. "," .. py ..
-            ". RAM " .. ram_tile ..
-            ". Here " .. td(px, py) ..
-            ". N " .. td(px, py - 1) ..
-            ". S " .. td(px, py + 1) ..
-            ". W " .. td(px - 1, py) ..
-            ". E " .. td(px + 1, py)
-        )
-
-        -- Write detailed diagnostic to file
-        local lines = {}
-        lines[#lines+1] = "=== Tile Diagnostic ==="
-        lines[#lines+1] = string.format("Map ID: %d (0x%02X)", map_id, map_id)
-        lines[#lines+1] = string.format("Player: x=%d, y=%d", px, py)
-        lines[#lines+1] = string.format("RAM TILE_TYPE (0x0015): %d", ram_tile)
-        lines[#lines+1] = string.format("TERRAIN_OFFSET (0x0016): 0x%02X",
-            memory.readbyte(addr.TERRAIN_OFFSET))
-
-        -- Horizontal scroll finder: scan zero-page addresses 0x0000-0x0060.
-        -- Previous scan (0x0036-0x0050) missed the real range. The PPU scroll
-        -- shadow is typically in the very low zero page (0x00-0x35). Compare
-        -- two captures — at x=8 (truncated text) and x=1 (full text) on the
-        -- same map — and look for an address whose value is ~11*8=88 at x=8
-        -- and ~0 at x=1. That address is addr.SCROLL_X. Value is in PIXELS; the
-        -- caller divides by 8 to get NES tile scroll. 0x0042 was a false match.
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- Horizontal Scroll Finder (zero-page 0x0000-0x0060) ---"
-        lines[#lines+1] = string.format("Player x=%d y=%d  (need: ~88 at x=8, ~0 at x=1)", px, py)
-        lines[#lines+1] = "Range 0x0000-0x001F:"
-        local zp_lo = {}
-        for a = 0x0000, 0x001F do
-            zp_lo[#zp_lo+1] = string.format("0x%04X=%02X", a, memory.readbyte(a))
-        end
-        lines[#lines+1] = table.concat(zp_lo, "  ")
-        lines[#lines+1] = "Range 0x0020-0x003F:"
-        local zp_mid = {}
-        for a = 0x0020, 0x003F do
-            zp_mid[#zp_mid+1] = string.format("0x%04X=%02X", a, memory.readbyte(a))
-        end
-        lines[#lines+1] = table.concat(zp_mid, "  ")
-        lines[#lines+1] = "Range 0x0040-0x0060:"
-        local zp_hi = {}
-        for a = 0x0040, 0x0060 do
-            zp_hi[#zp_hi+1] = string.format("0x%04X=%02X", a, memory.readbyte(a))
-        end
-        lines[#lines+1] = table.concat(zp_hi, "  ")
-
-        -- Critical: check whether rom.readbyte(0) is the iNES header or PRG-ROM.
-        -- iNES magic: 4E 45 53 1A ('N','E','S',ctrl-Z)
-        -- If byte 0 = 0x4E, offsets include the 16-byte header.
-        -- If byte 0 = 0x78 (SEI) or another NES opcode, offsets are PRG-ROM-relative.
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- ROM addressing check ---"
-        lines[#lines+1] = string.format(
-            "rom.readbyte(0..3) = %02X %02X %02X %02X",
-            rom.readbyte(0), rom.readbyte(1), rom.readbyte(2), rom.readbyte(3))
-        lines[#lines+1] = "(0x4E 0x45 0x53 0x1A = iNES header included in offsets)"
-        lines[#lines+1] = "(other = PRG-ROM offsets, no header)"
-
-        -- Map metadata
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- Map Metadata ---"
-        if meta then
-            lines[#lines+1] = string.format("data_ptr = 0x%04X (%d)", meta.data_ptr, meta.data_ptr)
-            lines[#lines+1] = string.format("width = %d, height = %d", meta.width, meta.height)
-            lines[#lines+1] = string.format("border_tile = %d", meta.border_tile)
-            -- First 16 RLE bytes at data_ptr.
-            -- Valid RLE: each byte encodes tile_type (hi nibble, 0-15) + count-1 (lo nibble).
-            -- If all zeros: data_ptr is out of bounds (rom.readbyte returning 0).
-            local hex_parts = {}
-            for i = 0, 15 do
-                hex_parts[#hex_parts+1] = string.format("%02X", rom.readbyte(meta.data_ptr + i))
-            end
-            lines[#lines+1] = "First 16 bytes at data_ptr: " .. table.concat(hex_parts, " ")
-        else
-            lines[#lines+1] = "(no metadata — overworld or invalid map)"
-        end
-
-        -- 7x7 tile grid centered on player.
-        -- Each cell: "NN(W|X)" where NN=tile type, W=walkable, X=wall, @=player.
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- 7x7 tile grid (W=walkable X=wall D=door @=player ?=nil) ---"
-        for dy = -3, 3 do
-            local row_parts = {}
-            for dx = -3, 3 do
-                local tx, ty = px + dx, py + dy
-                local cell
-                if tx == px and ty == py then
-                    cell = " @ "
-                else
-                    local t = map_reader.get_tile_type(map_id, tx, ty)
-                    if t == nil then
-                        cell = " ? "
-                    else
-                        local w = map_reader.is_walkable(map_id, tx, ty)
-                        cell = string.format("%2dX", t)
-                        if w then cell = string.format("%2dW", t) end
-                    end
-                end
-                row_parts[#row_parts+1] = cell
-            end
-            local label
-            if dy < 0 then label = "N" .. (-dy)
-            elseif dy > 0 then label = "S" .. dy
-            else label = "=="
-            end
-            lines[#lines+1] = table.concat(row_parts, "|") .. "  (" .. label .. ")"
-        end
-
-        -- NPC positions: raw RAM bytes vs. what blocking_positions contains.
-        -- This lets us diagnose coordinate mismatches between where NPCs
-        -- appear on screen and what coordinates the pathfinder sees.
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- NPC Positions (raw from RAM 0x0051+) ---"
-        lines[#lines+1] = "(Only active slots shown — skips x=0,y=0 and x=31,y=31)"
-        for i = 0, addr.NPC_COUNT - 1 do
-            local base = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
-            local byte0 = memory.readbyte(base)
-            local byte1 = memory.readbyte(base + 1)
-            local sprite_type = AND(byte0, 0xE0) / 32
-            local npc_x = AND(byte0, 0x1F)
-            local npc_y = AND(byte1, 0x1F)
-            -- Show active entries only
-            if not (npc_x == 0 and npc_y == 0)
-            and not (npc_x == 31 and npc_y == 31) then
-                -- Calculate offset from player to help spot the match
-                local dx = npc_x - px
-                local dy = npc_y - py
-                lines[#lines+1] = string.format(
-                    "  Slot %2d: byte0=0x%02X byte1=0x%02X -> x=%d, y=%d  sprite=%d  (player offset: dx=%+d dy=%+d)",
-                    i, byte0, byte1, npc_x, npc_y, sprite_type, dx, dy)
-            end
-        end
-
-        -- Show what get_blocking_positions() returns.
-        -- If this list is wrong, pathfinding won't avoid those tiles.
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- Blocking Positions (what pathfinder avoids) ---"
-        local blocking = objects.get_blocking_positions()
-        if #blocking == 0 then
-            lines[#lines+1] = "  (none — either no NPCs/chests, or object list not built yet)"
-        else
-            for _, pos in ipairs(blocking) do
-                local dx = pos.x - px
-                local dy = pos.y - py
-                lines[#lines+1] = string.format(
-                    "  Blocked x=%d, y=%d  (player offset: dx=%+d dy=%+d)",
-                    pos.x, pos.y, dx, dy)
-            end
-        end
-
-        -- Full ROM chest table dump — shows ALL chest entries across all maps.
-        -- This helps diagnose cases where chests are stored under a different
-        -- map ID than what RAM shows (e.g., throne room shows RAM map 5 but
-        -- chest table might use map 9 for some entries).
-        lines[#lines+1] = ""
-        lines[#lines+1] = "--- Full ROM Chest Table (all maps) ---"
-        local num_total = math.floor(
-            (addr.ROM_CHEST_END - addr.ROM_CHEST_START + 1) / addr.ROM_CHEST_SIZE)
-        for i = 0, num_total - 1 do
-            local base = addr.ROM_CHEST_START + (i * addr.ROM_CHEST_SIZE)
-            local cm = rom.readbyte(base)
-            local cx = rom.readbyte(base + 1)
-            local cy_raw = rom.readbyte(base + 2)
-            local cc = rom.readbyte(base + 3)
-            local cy_vis = cy_raw        -- game_y = ROM_y directly (no offset)
-            local marker = (cm == map_id) and "  <== THIS MAP" or ""
-            lines[#lines+1] = string.format(
-                "  [%2d] map=%2d  x=%2d  ROM_y=%2d (visual_y=%2d)  content=0x%02X%s",
-                i, cm, cx, cy_raw, cy_vis, cc, marker)
-        end
-
-        local f = io.open("tile_diag.txt", "w")
-        if f then
-            f:write(table.concat(lines, "\n"))
-            f:close()
-        end
-    end
-
-    -- X key (default): Toggle NPC position freeze on/off.
-    -- When frozen, NPC bytes are locked to their snapshotted positions so
-    -- pathfinding routes stay valid even if guards wander. Turn off after
-    -- reaching your destination so NPCs resume normal movement.
-    if is_key_pressed(keys, config.get("key_freeze_npcs")) then
-        if npc_freeze_active then
-            npc_freeze_active = false
-            frozen_npc_snapshot = {}
-            tolk.output_interrupt("NPCs unfrozen.")
-        else
-            capture_npc_snapshot()
-            npc_freeze_active = true
-            tolk.output_interrupt("NPCs frozen.")
-        end
-    end
-
-    -- ============================================================
-    -- Object Navigation (J/K/L/O/F)
-    -- ============================================================
-    -- Cycle through map objects (NPCs, stairs, chests, exits) and
-    -- hear direction + distance information for each one.
-    -- Follows the J/K/L convention from pokemon-access and FF mods.
-
-    -- L key (default): Next object in list
-    if is_key_pressed(keys, config.get("key_object_next")) then
-        local obj = objects.next_object()
-        if obj then
-            tolk.output_interrupt(objects.describe_current())
-        else
-            tolk.output_interrupt("No objects found")
-        end
-    end
-
-    -- J key (default): Previous object in list
-    if is_key_pressed(keys, config.get("key_object_prev")) then
-        local obj = objects.prev_object()
-        if obj then
-            tolk.output_interrupt(objects.describe_current())
-        else
-            tolk.output_interrupt("No objects found")
-        end
-    end
-
-    -- K key (default): Describe current object (re-read with updated distance)
-    if is_key_pressed(keys, config.get("key_object_current")) then
-        tolk.output_interrupt(objects.describe_current())
-    end
-
-    -- O key (default): Pathfind to current object.
-    -- For NPCs: route to an adjacent tile (player can't walk onto the NPC).
-    -- For everything else (stairs, chests, exits): route to the exact tile.
-    -- NPC positions are passed so the pathfinder routes around other NPCs
-    -- that physically block tiles along the way.
-    if is_key_pressed(keys, config.get("key_pathfind")) then
-        do_pathfind_to_current()
-    end
-
-    -- U key (default): Auto-walk the computed path to the current object.
-    -- Uses the same planning logic as O, but queues the route into auto_step
-    -- so the player actually walks it on interior maps.
-    if is_key_pressed(keys, config.get("key_auto_walk")) then
-        do_autowalk_to_current()
-    end
-
-    -- F key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
-    if is_key_pressed(keys, config.get("key_filter")) then
-        local filter_name = objects.next_filter()
-        -- Announce the new filter and the first object in it
-        local count = objects.get_count()
-        if count > 0 then
-            tolk.output_interrupt(filter_name .. ". " .. objects.describe_current())
-        else
-            tolk.output_interrupt(filter_name .. ". No objects")
-        end
-    end
-end
 
 -- ============================================================
 -- Automatic Announcements
@@ -1137,14 +405,14 @@ end
 -- Bug threshold: at player y >= 12, scroll_tiles >= 10, first dialogue row < 19 —
 -- outside the old hardcoded 19-29 range, causing silent command menu responses.
 local function get_dialogue_start_row()
-    local scroll_y_px = memory.readbyte(addr.SCROLL_Y)
+    local scroll_y_px = snapshot.scroll_y
     return (19 + math.floor(scroll_y_px / 8)) % 30
 end
 
 -- check_hp_mp_changes(): Announce HP/MP changes (damage, healing, spell use).
 local function check_hp_mp_changes()
-    local hp = memory.readbyte(addr.CURRENT_HP)
-    local mp = memory.readbyte(addr.CURRENT_MP)
+    local hp = snapshot.hp
+    local mp = snapshot.mp
 
     -- Only announce after we have a baseline (skip the very first frame)
     if prev_hp ~= nil then
@@ -1177,7 +445,7 @@ end
 
 -- check_level_up(): Announce level-ups.
 local function check_level_up()
-    local level = memory.readbyte(addr.LEVEL)
+    local level = snapshot.level
     if prev_level ~= nil and level > prev_level then
         tolk.output("Level up! Now level " .. level)
     end
@@ -1192,14 +460,14 @@ end
 -- that chest is marked opened. Battle rewards are excluded because
 -- they happen in STATE_BATTLE, not STATE_FIELD.
 local function check_chest_collection()
-    local gold       = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
-    local magic_keys = memory.readbyte(addr.KEYS)
-    local herbs      = memory.readbyte(addr.HERBS)
-    local items = {
-        memory.readbyte(addr.ITEMS_START),
-        memory.readbyte(addr.ITEMS_START + 1),
-        memory.readbyte(addr.ITEMS_START + 2),
-        memory.readbyte(addr.ITEMS_START + 3),
+    local gold       = snapshot.gold
+    local magic_keys = snapshot.keys
+    local herbs      = snapshot.herbs
+    local cur_items = {
+        snapshot.items[1],
+        snapshot.items[2],
+        snapshot.items[3],
+        snapshot.items[4],
     }
 
     local gained = false
@@ -1208,7 +476,7 @@ local function check_chest_collection()
     if prev_herbs      ~= nil and herbs      > prev_herbs      then gained = true end
     if prev_items ~= nil then
         for i = 1, 4 do
-            if items[i] ~= prev_items[i] then gained = true; break end
+            if cur_items[i] ~= prev_items[i] then gained = true; break end
         end
     end
 
@@ -1223,7 +491,7 @@ local function check_chest_collection()
     prev_gold       = gold
     prev_magic_keys = magic_keys
     prev_herbs      = herbs
-    prev_items      = items
+    prev_items      = cur_items
 end
 
 -- check_map_change(): Announce when the player enters a new area.
@@ -1237,17 +505,10 @@ local function check_map_change()
 
     if changes.map_changed and changes.map_name then
         tolk.output(changes.map_name)
-        debug_tools.on_map_change(memory.readbyte(addr.MAP_ID))
-        -- Clear the pathfind target so auto re-routing doesn't try to reach
-        -- an object from the previous map.
-        last_pathfind_obj = nil
-        reroute_failures = 0
-        -- Clear runtime-blocked cells — discovered blocks are map-specific.
-        runtime_blocked = {}
-        -- Clear NPC freeze — NPCs on the new map start fresh and their
-        -- previous positions are irrelevant.
-        npc_freeze_active = false
-        frozen_npc_snapshot = {}
+        debug_tools.on_map_change(snapshot.map_id)
+        event_bus.publish("map_changed", {map_id = snapshot.map_id})
+        -- Clear pathfinding state (target, runtime blocks, NPC freeze).
+        route_mgr.on_map_change()
         -- Reset y=1 tracking so the new map establishes a fresh baseline.
         -- Without this, if the player was at y=1 on the previous map with the
         -- same X coordinate as the new map's y=1 position, the arrival check
@@ -1308,8 +569,8 @@ end
 
 local function is_row1_interior_context()
     if not in_gameplay then return false end
-    local map_id = memory.readbyte(addr.MAP_ID)
-    local py = memory.readbyte(addr.PLAYER_Y)
+    local map_id = snapshot.map_id
+    local py = snapshot.player_y
     return map_id ~= 0x00 and py <= 1
 end
 
@@ -1423,6 +684,7 @@ local function check_command_menu()
                 trace_row1("CMD_OPEN_FROM_STATUS", changes, {})
                 tolk.output("Command.")
                 debug_tools.on_menu_open()
+                event_bus.publish("menu_opened")
             end
         end
         return
@@ -1568,6 +830,7 @@ local function check_command_menu()
         menu_upper_absorb_frames = MENU_UPPER_ABSORB
         trace_row1("CMD_CLOSE", changes, {})
         debug_tools.on_menu_close()
+        event_bus.publish("menu_closed")
         return
     end
 
@@ -1602,8 +865,8 @@ local function check_command_menu()
         -- that is_command_menu_open() searches for, producing a spurious
         -- menu-opened event. Suppress the opening announcement; cursor_moved
         -- events still work correctly once the player actually navigates.
-        local mid = memory.readbyte(addr.MAP_ID)
-        local py  = memory.readbyte(addr.PLAYER_Y)
+        local mid = snapshot.map_id
+        local py  = snapshot.player_y
         if not (mid ~= 0x00 and py <= 1) then
             -- Menu just opened. Announce "Command." only — DW1 remembers
             -- the last-used cursor position, so the current item is wherever
@@ -1621,6 +884,7 @@ local function check_command_menu()
             })
             tolk.output("Command.")
             debug_tools.on_menu_open()
+            event_bus.publish("menu_opened")
         elseif a_just then
             -- North-edge suppression avoids false spoken openings from map-tile
             -- noise, but a real command-menu open confirmed by an A press still
@@ -1639,6 +903,7 @@ local function check_command_menu()
             })
             tolk.output("Command.")
             debug_tools.on_menu_open()
+            event_bus.publish("menu_opened")
         end
     elseif changes.cursor_moved and not changes.menu_closed then
         -- Cursor moved within the open menu — announce the new item.
@@ -1734,6 +999,7 @@ local function check_yesno_prompt()
             -- finishes rendering.
             if question ~= "" and question ~= announced_dialogue and question:find("[a-z]") then
                 debug_tools.on_dialogue(question)
+                event_bus.publish("dialogue_new", {text = question})
                 tolk.output(question)
                 announced_dialogue = question
             end
@@ -1767,7 +1033,7 @@ end
 -- only rows with real text — border tiles and map tiles decode to "" or
 -- uppercase and are silently dropped.
 local function read_y1_dialogue()
-    local py = memory.readbyte(addr.PLAYER_Y)
+    local py = snapshot.player_y
     -- Clamp so row numbers stay in valid nametable range (0-29).
     local text_row = math.max(0, 11 + 2 * py)
     local lines = {}
@@ -1898,7 +1164,7 @@ local function check_title_screen()
     -- speed option); D9 is instant and reliable.
     local spd_open = is_message_speed_open()
     if spd_open then
-        local d9 = memory.readbyte(addr.MENU_CURSOR_Y)
+        local d9 = snapshot.cursor_y
         if not msg_speed_was_open then
             -- First frame the screen is open: record current selection as baseline
             -- without announcing it. The speed is already selected; the player only
@@ -1929,7 +1195,7 @@ local function check_title_screen()
     local slot_type = save_slot_screen_type()
     local slot_open = (slot_type ~= nil)
     if slot_open then
-        local d9 = memory.readbyte(addr.MENU_CURSOR_Y)
+        local d9 = snapshot.cursor_y
         if d9 ~= prev_save_slot_d9 then
             local slot_row, digit_col
             if slot_type == "begin" then
@@ -1982,8 +1248,8 @@ local function check_title_screen()
     -- This bypasses the 26-frame challenger model entirely, giving instant
     -- response to arrow key presses.
     if name_entry_active then
-        local d8 = memory.readbyte(addr.MENU_CURSOR_X)
-        local d9 = memory.readbyte(addr.MENU_CURSOR_Y)
+        local d8 = snapshot.cursor_x
+        local d9 = snapshot.cursor_y
         if d8 ~= prev_name_d8 or d9 ~= prev_name_d9 then
             prev_name_d8 = d8
             prev_name_d9 = d9
@@ -2178,8 +1444,8 @@ end
 -- reached and the announcement fires exactly once. This prevents the
 -- per-character "ki…kid…kidnap…" chatter from the old per-change approach.
 local function check_dialogue()
-    local mid = memory.readbyte(addr.MAP_ID)
-    local py  = memory.readbyte(addr.PLAYER_Y)
+    local mid = snapshot.map_id
+    local py  = snapshot.player_y
     local at_y1 = in_gameplay and mid ~= 0x00 and py <= 3
 
     -- Use the filtered reader for ALL y positions: it applies a per-row
@@ -2231,6 +1497,7 @@ local function check_dialogue()
                 local new_text = strip_overlap(announced_dialogue, clean)
                 if new_text ~= "" then
                     debug_tools.on_dialogue(new_text)
+                    event_bus.publish("dialogue_new", {text = new_text})
                     -- First page: interrupt to clear any prior menu speech.
                     -- Continuation pages: queue so the speech flows without
                     -- each scroll step cutting off the one before it.
@@ -2281,6 +1548,7 @@ local function check_dialogue()
                 local new_text = strip_overlap(announced_dialogue, dialogue)
                 if new_text ~= "" then
                     debug_tools.on_dialogue(new_text)
+                    event_bus.publish("dialogue_new", {text = new_text})
                     if announced_dialogue == "" then
                         tolk.output_interrupt(new_text)
                     else
@@ -2342,11 +1610,11 @@ local function check_upper_dialogue()
     -- y=1 movement tracking for interior maps.
     -- Update the pending-baseline flag every frame so it reflects current
     -- player movement even during the upper-text stability wait period.
-    local map_id = memory.readbyte(addr.MAP_ID)
+    local map_id = snapshot.map_id
     if in_gameplay and map_id ~= 0x00 then
-        local player_y = memory.readbyte(addr.PLAYER_Y)
+        local player_y = snapshot.player_y
         if player_y <= 1 then
-            local player_x = memory.readbyte(addr.PLAYER_X)
+            local player_x = snapshot.player_x
             if player_x ~= y1_prev_player_x then
                 -- Player moved (or just arrived at y=1). The next stable upper
                 -- text is status bar noise, not dialogue — mark for absorption.
@@ -2422,7 +1690,7 @@ local function check_upper_dialogue()
     -- Real NPC dialogue in DW1 ALWAYS renders in the lower window (rows
     -- 18-27) and is handled by check_lower_dialogue. Nothing in rows 1-18
     -- at y=1 is ever genuine dialogue — absorb unconditionally.
-    if in_gameplay and map_id ~= 0x00 and memory.readbyte(addr.PLAYER_Y) <= 1 then
+    if in_gameplay and map_id ~= 0x00 and snapshot.player_y <= 1 then
         upper_baseline = upper
         announced_upper_dialogue = upper
         upper_dialogue_active = false
@@ -2533,136 +1801,15 @@ local function check_upper_dialogue()
 
     if new_text ~= "" then
         debug_tools.on_dialogue(new_text)
+        event_bus.publish("dialogue_new", {text = new_text})
         tolk.output_interrupt(new_text)
     end
     announced_upper_dialogue = upper
 end
 
--- ============================================================
--- Pathfind Helper (shared by O-key and "pathfind" remote command)
--- ============================================================
-local function build_pathfind_message(obj, result, face_dir)
-    local msg = obj.name .. ". " .. result
-    if face_dir then
-        if obj.type == objects.TYPE_DOOR then
-            msg = msg .. ". Face " .. face_dir .. " then use Open command"
-        else
-            msg = msg .. ". Face " .. face_dir
-        end
-    end
-    if obj.type == objects.TYPE_DOOR then
-        local key_count = memory.readbyte(addr.KEYS)
-        if key_count == 0 then
-            msg = msg .. ". No magic keys"
-        elseif key_count == 1 then
-            msg = msg .. ". 1 magic key"
-        else
-            msg = msg .. ". " .. key_count .. " magic keys"
-        end
-    end
-    if obj.type == objects.TYPE_CHEST and result == "No path found" then
-        local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
-        if terrain == 0x10 then
-            msg = msg .. ". Chest may be behind locked door. Navigate to a door object first"
-        end
-    end
-    return msg
-end
-
-local function plan_path_to_object(obj)
-    local map_id, px, py = nav.get_position()
-    objects.update_npcs()
-    local blocking = build_path_blocking(map_id)
-    local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
-    -- High-level APIs now return (result_string, face_dir, raw_path) in a
-    -- single A* computation — no need for separate find_route_to* calls.
-    local result, face_dir, path
-    if obj.type == objects.TYPE_NPC
-    or obj.type == objects.TYPE_DOOR
-    or not target_walkable then
-        result, face_dir, path = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
-    else
-        result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
-    end
-    -- Store path for debug recall (trace_path, validate_path, etc.)
-    if debug_tools.DEBUG_MODE then
-        path_debug.store_path(map_id, px, py, obj.x, obj.y, path, nil)
-    end
-    return result, face_dir, path, build_pathfind_message(obj, result, face_dir), map_id
-end
-
-local function queue_path_steps(path)
-    if not path or #path == 0 then
-        return false
-    end
-    local steps = {}
-    for i, step in ipairs(path) do
-        local dir = DIR_NAME_TO_KEY[step.direction]
-        if not dir then
-            return false
-        end
-        steps[i] = dir
-    end
-    if auto_step.start_route(steps) then
-        reroute_failures = 0
-        return true
-    end
-    return false
-end
-
--- do_pathfind_to_current(): Route to the currently selected object.
--- Mirrors the full O-key logic: adjacent for NPCs/doors/non-walkable,
--- direct for chests/stairs/exits. Updates last_pathfind_obj for re-routing.
-do_pathfind_to_current = function()
-    local obj = objects.current_object()
-    if not obj then
-        tolk.output_interrupt("No object selected")
-        return
-    end
-    last_pathfind_obj = obj
-    if obj.type == objects.TYPE_NPC then
-        capture_npc_snapshot()
-        npc_freeze_active = true
-    end
-    local _, _, _, msg = plan_path_to_object(obj)
-    tolk.output_interrupt(msg)
-end
-
-do_autowalk_to_current = function()
-    local obj = objects.current_object()
-    if not obj then
-        tolk.output_interrupt("No object selected")
-        return
-    end
-    last_pathfind_obj = obj
-    if obj.type == objects.TYPE_NPC then
-        capture_npc_snapshot()
-        npc_freeze_active = true
-    end
-    local result, face_dir, path, msg, map_id = plan_path_to_object(obj)
-    if map_id == 0x00 then
-        debug_tools.info("AUTO_WALK: unavailable on overworld for " .. obj.name)
-        tolk.output_interrupt("Auto-walk is only available on interior maps. " .. msg)
-        return
-    end
-    if result == "No path found" then
-        debug_tools.info("AUTO_WALK: no path for " .. obj.name)
-        tolk.output_interrupt(msg)
-        return
-    end
-    if not path or #path == 0 then
-        debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
-        tolk.output_interrupt("Already there. " .. build_pathfind_message(obj, "Adjacent", face_dir))
-        return
-    end
-    if not queue_path_steps(path) then
-        debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)
-        tolk.output_interrupt("Auto-walk could not queue the route")
-        return
-    end
-    debug_tools.info("AUTO_WALK: queued " .. #path .. " step(s) for " .. obj.name)
-    tolk.output_interrupt("Auto-walk. " .. msg)
-end
+-- NOTE: Pathfinding functions (build_pathfind_message, plan_path_to_object,
+-- queue_path_steps, pathfind_to_current, autowalk_to_current) have been
+-- extracted to route_manager.lua.
 
 -- ============================================================
 -- Remote Command Registrations
@@ -2720,11 +1867,11 @@ debug_tools.register_command("next_filter", function()
 end)
 
 debug_tools.register_command("pathfind", function()
-    do_pathfind_to_current()
+    route_mgr.pathfind_to_current()
 end)
 
 debug_tools.register_command("auto_walk", function()
-    do_autowalk_to_current()
+    route_mgr.autowalk_to_current()
 end)
 
 -- speak:TEXT — test that TTS is working, e.g.: echo speak:Hello world > dw_commands.txt
@@ -2749,15 +1896,15 @@ end)
 debug_tools.register_command("report_blockers", function()
     objects.update_npcs()
     report_blockers_for_current_map()
-    local map_id = memory.readbyte(addr.MAP_ID)
+    local map_id = snapshot.map_id
     tolk.output_interrupt(string.format(
         "Blockers reported. %d runtime blocks on map %02X",
-        count_runtime_blocks(map_id), map_id))
+        route_mgr.count_runtime_blocks(map_id), map_id))
 end)
 
 debug_tools.register_command("report_runtime_blocks", function()
-    local map_id = memory.readbyte(addr.MAP_ID)
-    local runtime = format_runtime_blocks(map_id)
+    local map_id = snapshot.map_id
+    local runtime = route_mgr.format_runtime_blocks(map_id)
     if #runtime == 0 then
         debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X none", map_id))
         tolk.output_interrupt("No runtime blocked cells")
@@ -2772,13 +1919,13 @@ end)
 
 debug_tools.register_command("clear_runtime_blocks", function(arg)
     if arg and arg:match("^%s*all%s*$") then
-        runtime_blocked = {}
+        route_mgr.clear_runtime_blocks("all")
         debug_tools.info("RUNTIME_BLOCKS cleared all maps")
         tolk.output_interrupt("Cleared runtime blocks for all maps")
         return
     end
-    local map_id = memory.readbyte(addr.MAP_ID)
-    runtime_blocked[map_id] = nil
+    local map_id = snapshot.map_id
+    route_mgr.clear_runtime_blocks(map_id)
     debug_tools.info(string.format("RUNTIME_BLOCKS cleared map=0x%02X", map_id))
     tolk.output_interrupt("Cleared runtime blocks for current map")
 end)
@@ -2790,7 +1937,7 @@ debug_tools.register_command("inspect_tile", function(arg)
         return
     end
     objects.update_npcs()
-    local map_id = memory.readbyte(addr.MAP_ID)
+    local map_id = snapshot.map_id
     local msg = log_tile_report(map_id, x, y)
     tolk.output_interrupt(msg)
 end)
@@ -2817,7 +1964,7 @@ debug_tools.register_command("pathfind_to", function(arg)
     end
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id)
     local result = pathfinder.pathfind_to(map_id, px, py, goal_x, goal_y, blocking)
     local msg = string.format("Pathfind to %d,%d. %s", goal_x, goal_y, result)
     debug_tools.info(msg)
@@ -2832,7 +1979,7 @@ debug_tools.register_command("pathfind_adjacent", function(arg)
     end
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id)
     local result, face_dir = pathfinder.pathfind_to_adjacent(map_id, px, py, goal_x, goal_y, blocking)
     local msg = string.format("Pathfind adjacent to %d,%d. %s", goal_x, goal_y, result)
     if face_dir then
@@ -2843,17 +1990,18 @@ debug_tools.register_command("pathfind_adjacent", function(arg)
 end)
 
 debug_tools.register_command("report_path_state", function()
-    local map_id = memory.readbyte(addr.MAP_ID)
+    local map_id = snapshot.map_id
     objects.update_npcs()
-    if last_pathfind_obj then
+    local target = route_mgr.get_last_pathfind_obj()
+    if target then
         debug_tools.info(string.format(
             "PATH_STATE target=%s type=%s x=%d y=%d map=0x%02X runtime_count=%d",
-            tostring(last_pathfind_obj.name), tostring(last_pathfind_obj.type),
-            last_pathfind_obj.x, last_pathfind_obj.y, map_id, count_runtime_blocks(map_id)))
+            tostring(target.name), tostring(target.type),
+            target.x, target.y, map_id, route_mgr.count_runtime_blocks(map_id)))
     else
         debug_tools.info(string.format(
             "PATH_STATE target=nil map=0x%02X runtime_count=%d",
-            map_id, count_runtime_blocks(map_id)))
+            map_id, route_mgr.count_runtime_blocks(map_id)))
     end
     report_blockers_for_current_map()
     tolk.output_interrupt("Path state reported")
@@ -2866,13 +2014,12 @@ debug_tools.register_command("__config_reloaded", function()
 end)
 
 debug_tools.register_command("freeze_npcs", function()
-    capture_npc_snapshot()
-    npc_freeze_active = true
+    route_mgr.freeze_npcs()
     tolk.output_interrupt("NPCs frozen")
 end)
 
 debug_tools.register_command("unfreeze_npcs", function()
-    npc_freeze_active = false
+    route_mgr.unfreeze_npcs()
     tolk.output_interrupt("NPCs unfrozen")
 end)
 
@@ -2890,7 +2037,7 @@ debug_tools.register_command("debug_pathfind_to", function(arg)
     end
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id)
     local opts = path_debug.build_find_path_opts()
     local result, face_dir, path = pathfinder.pathfind_to(
         map_id, px, py, goal_x, goal_y, blocking, opts)
@@ -2910,7 +2057,7 @@ debug_tools.register_command("debug_pathfind_adjacent", function(arg)
     end
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id)
     local opts = path_debug.build_find_path_opts()
     local result, face_dir, path = pathfinder.pathfind_to_adjacent(
         map_id, px, py, goal_x, goal_y, blocking, opts)
@@ -2963,7 +2110,7 @@ debug_tools.register_command("stop_validate", function()
 end)
 
 debug_tools.register_command("test_path", function(arg)
-    path_debug.run_test(arg, auto_step, build_path_blocking)
+    path_debug.run_test(arg, auto_step, route_mgr.build_path_blocking)
     tolk.output_interrupt("Test scenarios logged")
 end)
 
@@ -2990,16 +2137,18 @@ end)
 while true do
     row1_trace_frame = frame_count
 
+    -- Read all tracked RAM values into the snapshot table.
+    -- This MUST happen before any module reads from the snapshot this frame.
+    snapshot.update()
+
     -- Read keyboard state for hotkeys
     local keys = input.get()
     current_joy = joypad.read(1)
     current_joy_any = joypad_has_input(current_joy)
 
-    -- Process on-demand hotkeys (player-initiated)
-    handle_hotkeys(keys)
-
-    -- Save key state for next frame's key-down detection
-    prev_keys = keys
+    -- Process on-demand hotkeys (player-initiated).
+    -- hotkeys.update() also saves prev_keys internally for key-down detection.
+    hotkeys.update(keys)
 
     -- Get current game state
     local game_state = state.check_for_changes()
@@ -3014,17 +2163,17 @@ while true do
 
         -- Silently initialize previous-frame values so they don't
         -- trigger false change detections after the grace period ends.
-        prev_hp = memory.readbyte(addr.CURRENT_HP)
-        prev_mp = memory.readbyte(addr.CURRENT_MP)
-        prev_level = memory.readbyte(addr.LEVEL)
-        prev_gold       = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
-        prev_magic_keys = memory.readbyte(addr.KEYS)
-        prev_herbs      = memory.readbyte(addr.HERBS)
+        prev_hp = snapshot.hp
+        prev_mp = snapshot.mp
+        prev_level = snapshot.level
+        prev_gold       = snapshot.gold
+        prev_magic_keys = snapshot.keys
+        prev_herbs      = snapshot.herbs
         prev_items = {
-            memory.readbyte(addr.ITEMS_START),
-            memory.readbyte(addr.ITEMS_START + 1),
-            memory.readbyte(addr.ITEMS_START + 2),
-            memory.readbyte(addr.ITEMS_START + 3),
+            snapshot.items[1],
+            snapshot.items[2],
+            snapshot.items[3],
+            snapshot.items[4],
         }
         nav.check_for_changes()   -- Initialize map/position tracking
         menu.check_for_changes()  -- Initialize menu cursor tracking
@@ -3093,6 +2242,7 @@ while true do
             elseif game_state.state == state.STATE_BATTLE then
                 tolk.output("Battle!")
                 debug_tools.on_battle_start()
+                event_bus.publish("battle_started")
             elseif game_state.state == state.STATE_FIELD then
                 -- Transitioning from title to field: start or continue debounce.
                 if game_state.prev_state == state.STATE_TITLE then
@@ -3143,17 +2293,17 @@ while true do
                 -- The debounce period (field_from_title_ct > 0) covers the first
                 -- ~30 frames before grace officially starts; without this, HP
                 -- changes during loading trigger false "Gained X HP" announcements.
-                prev_hp         = memory.readbyte(addr.CURRENT_HP)
-                prev_mp         = memory.readbyte(addr.CURRENT_MP)
-                prev_level      = memory.readbyte(addr.LEVEL)
-                prev_gold       = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
-                prev_magic_keys = memory.readbyte(addr.KEYS)
-                prev_herbs      = memory.readbyte(addr.HERBS)
+                prev_hp         = snapshot.hp
+                prev_mp         = snapshot.mp
+                prev_level      = snapshot.level
+                prev_gold       = snapshot.gold
+                prev_magic_keys = snapshot.keys
+                prev_herbs      = snapshot.herbs
                 prev_items = {
-                    memory.readbyte(addr.ITEMS_START),
-                    memory.readbyte(addr.ITEMS_START + 1),
-                    memory.readbyte(addr.ITEMS_START + 2),
-                    memory.readbyte(addr.ITEMS_START + 3),
+                    snapshot.items[1],
+                    snapshot.items[2],
+                    snapshot.items[3],
+                    snapshot.items[4],
                 }
                 if post_start_grace > 0 then
                     post_start_grace = post_start_grace - 1
@@ -3173,9 +2323,9 @@ while true do
                 check_map_change()
                 if skip_first_hp_check then
                     -- Re-initialize baselines instead of checking for changes.
-                    prev_hp    = memory.readbyte(addr.CURRENT_HP)
-                    prev_mp    = memory.readbyte(addr.CURRENT_MP)
-                    prev_level = memory.readbyte(addr.LEVEL)
+                    prev_hp    = snapshot.hp
+                    prev_mp    = snapshot.mp
+                    prev_level = snapshot.level
                     skip_first_hp_check = false
                 else
                     check_hp_mp_changes()
@@ -3186,7 +2336,7 @@ while true do
 
             -- Keep the object list fresh: detect map changes and
             -- periodically re-read NPC positions (they move around).
-            local map_id = memory.readbyte(addr.MAP_ID)
+            local map_id = snapshot.map_id
             objects.check_refresh(map_id)
 
             -- Detect chest collection (only meaningful during field movement,
@@ -3264,5 +2414,5 @@ while true do
     -- The NES game's NPC movement routines ran during frameadvance and may
     -- have written new positions; we undo that here so our code sees stable
     -- NPC coordinates on the next frame.
-    apply_npc_freeze()
+    route_mgr.apply_npc_freeze()
 end

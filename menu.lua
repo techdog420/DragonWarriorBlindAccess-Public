@@ -18,7 +18,7 @@
 -- raw cursor values while navigating the menu, then update the lookup
 -- table below.
 
-local addr = require "addresses"
+local snapshot = require "game_snapshot"
 
 local M = {}
 
@@ -135,11 +135,11 @@ end
 -- Cursor Reading
 -- ============================================================
 
--- get_cursor_position(): Read the current menu cursor X and Y from RAM.
--- Returns two values: cursor_x, cursor_y
+-- get_cursor_position(): Read the current menu cursor X and Y.
+-- Returns two values: cursor_x, cursor_y.
+-- Reads from the game snapshot (populated each frame by snapshot.update()).
 function M.get_cursor_position()
-    return memory.readbyte(addr.MENU_CURSOR_X),
-           memory.readbyte(addr.MENU_CURSOR_Y)
+    return snapshot.cursor_x, snapshot.cursor_y
 end
 
 -- get_menu_item(x, y): Look up which menu item the cursor is on.

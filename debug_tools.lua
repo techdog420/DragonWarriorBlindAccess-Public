@@ -1098,6 +1098,24 @@ sweep_tick = function()
 end
 
 -- ============================================================
+-- Event Bus Integration
+-- ============================================================
+-- The event_bus module provides decoupled pub/sub messaging. Currently,
+-- main.lua calls both the direct hook functions (on_menu_open, etc.) AND
+-- publishes corresponding events. The direct hooks above handle logging.
+--
+-- In a future phase, main.lua will stop calling the direct hooks and only
+-- publish events. At that point, subscribe handlers here to replace the
+-- direct hooks. For now, we just require the module so it's available and
+-- leave the subscriptions commented to avoid duplicate log entries.
+--
+-- Example (activate when direct hooks are removed from main.lua):
+--   event_bus.subscribe("menu_opened", function() M.debug("EVENT: command menu opened") end)
+--   event_bus.subscribe("battle_started", function() M.info("EVENT: battle started"); M.snapshot() end)
+
+local event_bus = require "event_bus"  -- luacheck: ignore (loaded for future use)
+
+-- ============================================================
 -- Shutdown
 -- ============================================================
 

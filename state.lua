@@ -6,7 +6,7 @@
 -- state by reading various RAM addresses and comparing patterns.
 -- The main loop uses this to decide which handler should process each frame.
 
-local addr = require "addresses"
+local snapshot = require "game_snapshot"
 
 local M = {}
 
@@ -83,7 +83,7 @@ end
 -- The PPU check (step 2) short-circuits quickly during gameplay since
 -- title text is not present on screen.
 function M.detect()
-    local level = memory.readbyte(addr.LEVEL)
+    local level = snapshot.level
     if level == 0 or level > 30 then
         return M.STATE_TITLE
     end
@@ -98,7 +98,7 @@ function M.detect()
         return M.STATE_TITLE
     end
 
-    local enemy_hp = memory.readbyte(addr.ENEMY_HP)
+    local enemy_hp = snapshot.enemy_hp
     if enemy_hp > 0 then
         return M.STATE_BATTLE
     end

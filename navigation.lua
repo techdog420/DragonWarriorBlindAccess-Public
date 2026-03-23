@@ -4,9 +4,13 @@
 -- This module tracks the player's position and current map every frame.
 -- When the map changes (player enters a new area), it announces the new
 -- location name. On-demand hotkeys can read current coordinates and map.
+--
+-- Reads position data from the game_snapshot module (updated once per frame
+-- in main.lua). Falls back to direct RAM reads if the snapshot hasn't been
+-- loaded yet (e.g. during require-time initialization of other modules).
 
-local addr = require "addresses"
 local maps = require "maps"
+local snapshot = require "game_snapshot"
 
 local M = {}
 
@@ -17,31 +21,18 @@ M.prev_map_id = nil
 M.prev_x = nil
 M.prev_y = nil
 
--- get_position(): Read current player position from RAM.
+-- get_position(): Read current player position.
 -- Returns map_id, x, y.
--- On the overworld (map 0), uses the overworld-specific addresses.
--- In other maps, uses the local map addresses.
+-- On the overworld (map 0), uses the overworld-specific coordinates.
+-- In other maps, uses the local map coordinates.
+-- Reads from the game_snapshot (populated each frame by snapshot.update()).
 function M.get_position()
-    local map_id = memory.readbyte(addr.MAP_ID)
-    local x, y
-
-    if map_id == 0x00 then
-        -- Overworld uses different RAM addresses
-        x = memory.readbyte(addr.OVERWORLD_X)
-        y = memory.readbyte(addr.OVERWORLD_Y)
-    else
-        -- Interior maps (towns, dungeons, castles)
-        x = memory.readbyte(addr.PLAYER_X)
-        y = memory.readbyte(addr.PLAYER_Y)
-    end
-
-    return map_id, x, y
+    return snapshot.map_id, snapshot.x, snapshot.y
 end
 
 -- get_map_name(): Return the name of the current map.
 function M.get_map_name()
-    local map_id = memory.readbyte(addr.MAP_ID)
-    return maps.get_name(map_id)
+    return maps.get_name(snapshot.map_id)
 end
 
 -- get_position_string(): Return a human-readable position string.

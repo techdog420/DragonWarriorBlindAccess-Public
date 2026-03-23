@@ -25,18 +25,22 @@ local nav         = require "navigation"
 local config      = require "config"
 local tolk        = require "tolk"
 local debug_tools = require "debug_tools"
+local event_bus   = require "event_bus"
 
 local M = {}
 
 -- Optional callback: called when a step times out (player was blocked by
 -- a wall or moving NPC). Main.lua sets this to trigger automatic re-routing.
--- Signature: M.on_blocked()
+-- Signature: M.on_blocked(from_x, from_y, blocked_dir)
+-- TRANSITION: Both this callback AND event_bus "route_blocked" fire.
+-- Once all callers migrate to the event bus, this field can be removed.
 M.on_blocked = nil
 
 -- Optional callback: called when all queued route steps have been walked
 -- (the last step's position change confirmed). Use this to release any
 -- state that was set up for the route (e.g., NPC freeze).
 -- Signature: M.on_route_complete()
+-- TRANSITION: Both this callback AND event_bus "route_completed" fire.
 M.on_route_complete = nil
 
 -- Debug flag: set to true to hear speech for every auto-step event.
@@ -220,6 +224,12 @@ function M.update(can_walk)
             -- Notify the main loop so it can re-route around the obstacle.
             -- Pass the blocked starting position and direction so the handler
             -- can record the destination cell and avoid routing through it again.
+            local block_data = {
+                from_x = blocked_from_x,
+                from_y = blocked_from_y,
+                dir = blocked_dir,
+            }
+            event_bus.publish("route_blocked", block_data)
             if M.on_blocked then
                 M.on_blocked(blocked_from_x, blocked_from_y, blocked_dir)
             end
@@ -260,6 +270,7 @@ function M.update(can_walk)
         -- All steps have been walked (auto_dir is nil here, so the last step's
         -- position change has already been processed). Fire the completion callback.
         clear_route()
+        event_bus.publish("route_completed")
         if M.on_route_complete then
             local ok, err = pcall(M.on_route_complete)
             if not ok then
