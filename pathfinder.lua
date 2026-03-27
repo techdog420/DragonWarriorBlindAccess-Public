@@ -10,7 +10,7 @@
 -- - Manhattan distance heuristic (optimal for 4-directional grids)
 -- - Grid-based neighbor lookup for O(1) adjacency checks
 -- - NPC positions can be marked as impassable (can't walk through them)
--- - Skips overworld (map 0x00) — too large, use direction+distance instead
+-- - Skips the overworld — too large, use direction+distance instead
 -- - Returns path as grouped direction steps: "3 north, 2 east, 1 north"
 --
 -- Based on standard A* algorithm, adapted for DW1's tile system.
@@ -18,6 +18,7 @@
 
 local map_reader = require "map_reader"
 local debug_tools = require "debug_tools"
+local maps = require "maps"
 
 local M = {}
 
@@ -150,7 +151,7 @@ end
 --   on_visit(x, y, g_score, f_score)    — node popped and expanded
 --   on_reject(x, y, reason)             — neighbor not added to open set
 --     reason: "already_closed", "already_better", "out_of_bounds",
---             "blocked_npc", "not_walkable"
+--             "blocked_npc", "blocked_runtime", "not_walkable"
 --   on_complete({success, path_length, nodes_visited, reason})
 --     Called on search finish; reason is nil on success.
 -- See path_debug.lua build_find_path_opts() for the callback factory.
@@ -161,7 +162,7 @@ end
 --   On skip: nil (overworld or invalid map)
 function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions, opts)
     -- Don't pathfind on the overworld (too large, ~120x120 tiles)
-    if map_id == 0x00 then
+    if maps.is_overworld(map_id) then
         return nil
     end
 
@@ -192,12 +193,54 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         if blocked_positions[k] then
             return true
         end
-        for _, pos in ipairs(blocked_positions) do
-            if pos.x == x and pos.y == y then
-                return true
-            end
-        end
         return false
+    end
+
+    local runtime_block_log = {}
+
+    local function get_block_reason(x, y)
+        local k = key(x, y)
+        local direct = blocked_positions[k]
+        if direct then
+            if direct == "runtime" then
+                return "runtime"
+            end
+            return "npc"
+        end
+        return nil
+    end
+
+    local function log_runtime_block_use(x, y, context)
+        local log_key = context .. ":" .. key(x, y)
+        if runtime_block_log[log_key] then
+            return
+        end
+        runtime_block_log[log_key] = true
+        debug_tools.info(string.format(
+            "PATH_RUNTIME_BLOCK map=0x%02X x=%d y=%d context=%s",
+            map_id, x, y, context))
+    end
+
+    -- Direct pathfinding targets must themselves be standable. Callers that
+    -- need to interact with a non-walkable or occupied goal should use
+    -- pathfind_to_adjacent(), which searches neighboring cells instead.
+    if not (start_x == goal_x and start_y == goal_y) then
+        local goal_block_reason = get_block_reason(goal_x, goal_y)
+        if goal_block_reason then
+            if goal_block_reason == "runtime" then
+                log_runtime_block_use(goal_x, goal_y, "goal")
+            end
+            if on_complete then
+                on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_blocked"})
+            end
+            return nil
+        end
+        if map_reader.is_walkable(map_id, goal_x, goal_y) ~= true then
+            if on_complete then
+                on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_not_walkable"})
+            end
+            return nil
+        end
     end
 
     -- Check if a position is passable (walkable tile AND not blocked)
@@ -318,22 +361,31 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                 elseif nx < 0 or nx >= width or ny < 0 or ny >= height then
                     -- Out of map bounds
                     if on_reject then on_reject(nx, ny, "out_of_bounds") end
-                elseif is_blocked(nx, ny) then
-                    -- NPC or runtime-blocked cell
-                    if on_reject then on_reject(nx, ny, "blocked_npc") end
-                elseif map_reader.is_walkable(map_id, nx, ny) ~= true then
-                    -- Tile not walkable (wall, water, etc.)
-                    if on_reject then on_reject(nx, ny, "not_walkable") end
                 else
-                    -- Passable neighbor
-                    local tentative_g = current_g + 1
-                    if not g_score[nk] or tentative_g < g_score[nk] then
-                        g_score[nk] = tentative_g
-                        came_from[nk] = current_key
-                        came_from_dir[nk] = dir.name
-                        heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                    local block_reason = get_block_reason(nx, ny)
+                    if block_reason then
+                        if block_reason == "runtime" then
+                            log_runtime_block_use(nx, ny, "neighbor")
+                        end
+                        if on_reject then
+                            on_reject(nx, ny, block_reason == "runtime" and "blocked_runtime" or "blocked_npc")
+                        end
                     else
-                        if on_reject then on_reject(nx, ny, "already_better") end
+                        if map_reader.is_walkable(map_id, nx, ny) ~= true then
+                            -- Tile not walkable (wall, water, etc.)
+                            if on_reject then on_reject(nx, ny, "not_walkable") end
+                        else
+                            -- Passable neighbor
+                            local tentative_g = current_g + 1
+                            if not g_score[nk] or tentative_g < g_score[nk] then
+                                g_score[nk] = tentative_g
+                                came_from[nk] = current_key
+                                came_from_dir[nk] = dir.name
+                                heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                            else
+                                if on_reject then on_reject(nx, ny, "already_better") end
+                            end
+                        end
                     end
                 end
             end
@@ -383,7 +435,7 @@ function M.format_path(path)
 end
 
 function M.find_route_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
-    if map_id == 0x00 then
+    if maps.is_overworld(map_id) then
         return nil
     end
     local blocked = build_blocked_table(npc_positions, goal_x, goal_y, false)
@@ -391,7 +443,7 @@ function M.find_route_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions
 end
 
 function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
-    if map_id == 0x00 then
+    if maps.is_overworld(map_id) then
         return nil, nil, nil
     end
 
@@ -407,9 +459,14 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
     local best_adj = nil
     for _, adj in ipairs(adj_tiles) do
         local walkable = map_reader.is_walkable(map_id, adj.x, adj.y)
-        local npc_blocked = blocked[adj.x .. "," .. adj.y]
-        debug_tools.debug("pathfind adj (" .. adj.x .. "," .. adj.y .. ") walkable=" .. tostring(walkable) .. " npc_blocked=" .. tostring(npc_blocked))
-        if walkable == true and not npc_blocked then
+        local blocker = blocked[adj.x .. "," .. adj.y]
+        debug_tools.debug("pathfind adj (" .. adj.x .. "," .. adj.y .. ") walkable=" .. tostring(walkable) .. " blocker=" .. tostring(blocker))
+        if blocker == "runtime" then
+            debug_tools.info(string.format(
+                "PATH_RUNTIME_BLOCK map=0x%02X x=%d y=%d context=adjacent_candidate",
+                map_id, adj.x, adj.y))
+        end
+        if walkable == true and not blocker then
             local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, opts)
             if path then
                 debug_tools.debug("  path length=" .. #path .. " steps: " .. M.format_path(path))
@@ -465,7 +522,7 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
     end
 
     -- For the overworld, just give direction + distance (no A*)
-    if map_id == 0x00 then
+    if maps.is_overworld(map_id) then
         local objects = require "objects"
         return objects.get_direction_string(start_x, start_y, goal_x, goal_y), nil, nil
     end
@@ -504,7 +561,7 @@ function M.pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, 
     end
 
     -- For the overworld, just give direction + distance (no A*)
-    if map_id == 0x00 then
+    if maps.is_overworld(map_id) then
         local objects = require "objects"
         local dir_str = objects.get_direction_string(start_x, start_y, goal_x, goal_y)
         return dir_str, nil, nil

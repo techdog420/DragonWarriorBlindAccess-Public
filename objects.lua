@@ -132,11 +132,11 @@ end
 -- the stair data format at ROM 0xF3D8-0xF50B.
 
 local STAIRS = {
-    -- Tantegel Castle (0x08)
+    -- Tantegel Castle (0x04)
     -- Stairs down to throne room
-    {map = 0x08, x = 1, y = 1, name = "Stairs Down", dest = "Throne Room"},
+    {map = 0x04, x = 1, y = 1, name = "Stairs Down", dest = "Throne Room"},
     -- Stairs leading to the courtyard treasure room
-    {map = 0x08, x = 29, y = 1, name = "Stairs Down", dest = "Treasure Room"},
+    {map = 0x04, x = 29, y = 1, name = "Stairs Down", dest = "Treasure Room"},
 
     -- Map 0x05 (Tantegel Castle Throne Room, empirically confirmed)
     -- Staircase at east end of the south corridor (x=8, y=8). Player stands
@@ -147,57 +147,47 @@ local STAIRS = {
     -- Return stair: Tantegel Castle (map 0x04) at (7,7) leads back to Throne Room (map 0x05)
     {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "Tantegel Castle Throne Room"},
 
-    -- Erdrick's Cave B1 (0x12)
-    {map = 0x12, x = 1, y = 1, name = "Stairs Down", dest = "B2"},
+    -- Erdrick's Cave B1 (0x1C)
+    {map = 0x1C, x = 1, y = 1, name = "Stairs Down", dest = "B2"},
 
-    -- Erdrick's Cave B2 (0x13)
-    {map = 0x13, x = 1, y = 1, name = "Stairs Up", dest = "B1"},
+    -- Erdrick's Cave B2 (0x1D)
+    {map = 0x1D, x = 1, y = 1, name = "Stairs Up", dest = "B1"},
 
-    -- Swamp Cave (0x17)
-    {map = 0x17, x = 0, y = 0, name = "Stairs Up", dest = "World Map"},
+    -- Swamp Cave (0x15)
+    {map = 0x15, x = 0, y = 0, name = "Stairs Up", dest = "World Map"},
 
-    -- Mountain Cave (0x18)
-    {map = 0x18, x = 6, y = 5, name = "Stairs Down", dest = "B2"},
+    -- Mountain Cave (0x16)
+    {map = 0x16, x = 6, y = 5, name = "Stairs Down", dest = "B2"},
 
-    -- Mountain Cave B2 (0x19)
-    {map = 0x19, x = 6, y = 5, name = "Stairs Up", dest = "Mountain Cave"},
+    -- Mountain Cave B2 (0x17)
+    {map = 0x17, x = 6, y = 5, name = "Stairs Up", dest = "Mountain Cave"},
 
-    -- Garin's Grave B1 (0x1A)
-    {map = 0x1A, x = 19, y = 0, name = "Stairs Down", dest = "B2"},
+    -- Garin's Grave B1 (0x18)
+    {map = 0x18, x = 19, y = 0, name = "Stairs Down", dest = "B2"},
 
-    -- Garin's Grave B2 (0x1B)
-    {map = 0x1B, x = 19, y = 0, name = "Stairs Up", dest = "B1"},
-    {map = 0x1B, x = 12, y = 12, name = "Stairs Down", dest = "B3"},
+    -- Garin's Grave B2 (0x19)
+    {map = 0x19, x = 19, y = 0, name = "Stairs Up", dest = "B1"},
+    {map = 0x19, x = 12, y = 12, name = "Stairs Down", dest = "B3"},
 
-    -- Garin's Grave B3 (0x1C)
-    {map = 0x1C, x = 12, y = 12, name = "Stairs Up", dest = "B2"},
-    {map = 0x1C, x = 1, y = 1, name = "Stairs Down", dest = "B4"},
+    -- Garin's Grave B3 (0x1A)
+    {map = 0x1A, x = 12, y = 12, name = "Stairs Up", dest = "B2"},
+    {map = 0x1A, x = 1, y = 1, name = "Stairs Down", dest = "B4"},
 
-    -- Garin's Grave B4 (0x1D)
-    {map = 0x1D, x = 1, y = 1, name = "Stairs Up", dest = "B3"},
+    -- Garin's Grave B4 (0x1B)
+    {map = 0x1B, x = 1, y = 1, name = "Stairs Up", dest = "B3"},
 
-    -- Charlock Castle (0x0A)
-    {map = 0x0A, x = 10, y = 1, name = "Stairs Down", dest = "B1"},
+    -- Charlock Castle (0x02)
+    {map = 0x02, x = 10, y = 1, name = "Stairs Down", dest = "B1"},
 
-    -- Charlock Castle B1-B7 (0x01-0x07)
-    {map = 0x01, x = 10, y = 1, name = "Stairs Up", dest = "Charlock Castle"},
-    {map = 0x01, x = 7, y = 7, name = "Stairs Down", dest = "B2"},
-    {map = 0x02, x = 7, y = 7, name = "Stairs Up", dest = "B1"},
-    {map = 0x02, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
-    {map = 0x03, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
-    {map = 0x03, x = 7, y = 7, name = "Stairs Down", dest = "B4"},
-    -- NOTE: DataCrystal lists 0x04 as Charlock B4, but empirical in-RAM testing
-    -- on USA Rev 1 confirms 0x04 = Tantegel Castle. Charlock B4 may be at a
-    -- different map ID (0x06? unverified). The 0x04 stair entry is now under
-    -- Tantegel Castle above. Charlock B4-B5 stair locations are unconfirmed.
-    {map = 0x06, x = 7, y = 7, name = "Stairs Up", dest = "B5"},
-    {map = 0x06, x = 4, y = 4, name = "Stairs Down", dest = "B7"},
-
-    -- Charlock B7 - Dragonlord's Throne Room (0x07)
-    {map = 0x07, x = 4, y = 4, name = "Stairs Up", dest = "B6"},
-
-    -- Charlock B8 (0x16) — hidden basement
-    {map = 0x16, x = 9, y = 0, name = "Stairs Up", dest = "Charlock Castle"},
+    -- Dragonlord dungeon (raw map IDs from Data Crystal RAM map).
+    -- The early floors below are still the best-known mappings from earlier
+    -- reverse-engineering. Deeper floor IDs were mis-labeled in older builds,
+    -- so we only keep the entries we can map confidently today.
+    {map = 0x0F, x = 10, y = 1, name = "Stairs Up", dest = "Charlock Castle"},
+    {map = 0x0F, x = 7, y = 7, name = "Stairs Down", dest = "B2"},
+    {map = 0x10, x = 7, y = 7, name = "Stairs Up", dest = "B1"},
+    {map = 0x10, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
+    {map = 0x11, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
 }
 
 -- ============================================================
@@ -208,13 +198,13 @@ local STAIRS = {
 -- For dungeons, this is usually near the entrance stairs.
 
 local EXITS = {
-    -- Towns — exits are at the town entrance (south edge usually)
-    {map = 0x0C, x = 15, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Town
-    {map = 0x0D, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Kol
-    {map = 0x0E, x = 15, y = 29, name = "Exit", dest = "World Map"},      -- Brecconary
-    {map = 0x0F, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Garinham
-    {map = 0x10, x = 14, y = 29, name = "Exit", dest = "World Map"},      -- Cantlin
-    {map = 0x11, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Rimuldar
+    -- Towns — exits are at the town entrance. Most face south, but
+    -- Brecconary's confirmed world-map handoff is on the west edge.
+    {map = 0x07, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Kol
+    {map = 0x08, x = 0,  y = 15, name = "Exit", dest = "World Map"},      -- Brecconary (confirmed via live PPU dump)
+    {map = 0x09, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Garinham
+    {map = 0x0A, x = 14, y = 29, name = "Exit", dest = "World Map"},      -- Cantlin
+    {map = 0x0B, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Rimuldar
 
     -- Castles — exits are typically at the south entrance
     -- NOTE: map 0x05 = Tantegel Throne Room (empirically confirmed, 9x9).
@@ -222,18 +212,59 @@ local EXITS = {
     -- within the same map (not a map exit). Pathfinding to stairs at (8,8)
     -- automatically routes south through (4,7) and east to the staircase.
     -- The actual map exit from map 0x05 is via the stairs at (8,8).
-    {map = 0x08, x = 15, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle (map ID needs verification)
-    {map = 0x0A, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
+    -- Map 0x04: live castle map. The south gate exit is reached from the
+    -- interior bottom row at (11,29); the visible gate door panels sit just
+    -- south of it at (10,30) and (11,30).
+    {map = 0x04, x = 11, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle
+    {map = 0x02, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
 
     -- Shrines
-    {map = 0x14, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Northern Shrine
-    {map = 0x15, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Southern Shrine
+    {map = 0x0C, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Sun Shrine
+    {map = 0x0D, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Rain Shrine
+    {map = 0x0E, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Magic Temple
 
     -- Cave entrances (the "stairs up" at the entrance)
-    {map = 0x12, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Erdrick's Cave B1
-    {map = 0x18, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Mountain Cave
-    {map = 0x1A, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Garin's Grave B1
+    {map = 0x15, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Swamp Cave
+    {map = 0x16, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Mountain Cave
+    {map = 0x18, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Garin's Grave B1
+    {map = 0x1C, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Erdrick's Cave B1
 }
+
+-- Major overworld destinations, stored relative to Tantegel Castle using the
+-- coordinate convention from Gamer Corner's Dragon Warrior location guide.
+--
+-- The dedicated overworld coordinate bytes turned out to be unreliable for
+-- landmark math. Terminal verification on 2026-03-27 showed repeated
+-- world-map <-> Tantegel transitions through player coordinate (43,43), while
+-- the old dedicated overworld bytes still reported (51,4). We now anchor the
+-- overworld against the live player-coordinate system instead.
+local OVERWORLD_SIZE = 120
+local OVERWORLD_TANTEGEL_X = 43
+local OVERWORLD_TANTEGEL_Y = 43
+
+local OVERWORLD_LANDMARKS = {
+    {dx =   0, dy =   0, name = "Tantegel Castle"},
+    {dx =   5, dy =  -2, name = "Brecconary"},
+    {dx = -15, dy = -31, name = "Erdrick's Cave"},
+    {dx = -41, dy = -41, name = "Garinham"},
+    {dx =  61, dy = -33, name = "Kol"},
+    {dx =  38, dy = -42, name = "Northern Cave"},
+    {dx = -14, dy =  14, name = "Mountain Cave"},
+    {dx =  61, dy =   1, name = "Swamp Cave"},
+    {dx =  59, dy =  29, name = "Rimuldar"},
+    {dx =  65, dy =  66, name = "Southern Cave"},
+    {dx =  30, dy =  59, name = "Cantlin"},
+    {dx = -18, dy =  46, name = "Hauksness"},
+    {dx =   5, dy =   5, name = "Charlock Castle"},
+}
+
+local function wrap_overworld_coord(value)
+    value = value % OVERWORLD_SIZE
+    if value < 0 then
+        value = value + OVERWORLD_SIZE
+    end
+    return value
+end
 
 -- ============================================================
 -- Chest Opened Status (Session-Level Cache)
@@ -277,6 +308,7 @@ local current_filter = M.FILTER_ALL
 
 -- Which map we last built the object list for (to detect map changes)
 local current_map_id = nil
+local current_terrain_offset = nil
 
 -- Frame counter for periodic NPC position updates
 local npc_refresh_counter = 0
@@ -285,6 +317,14 @@ local NPC_REFRESH_INTERVAL = 20  -- Re-read NPC positions every 20 frames (~0.33
 -- When true, check_refresh() will rebuild the object list on the next call
 -- (after frameadvance has run and RAM reflects real NPC positions).
 local refresh_pending = false
+
+local function get_terrain_offset()
+    return memory.readbyte(addr.TERRAIN_OFFSET)
+end
+
+local function is_overworld_context()
+    return get_terrain_offset() == 0x00
+end
 
 -- get_nearby_chests(px, py, max_dist): Return chests within max_dist
 -- Manhattan distance of (px, py), sorted closest first.
@@ -320,6 +360,13 @@ end
 -- are clearly invalid (both zero, or both 31 which seems to mark
 -- unused slots).
 local function parse_npcs(map_id)
+    -- The overworld does not expose a live NPC table. After leaving an
+    -- interior map, the old town/castle NPC bytes can linger in RAM for a
+    -- while, so treat any world-map terrain context as having no NPC objects.
+    if is_overworld_context() then
+        return {}
+    end
+
     local npcs = {}
 
     -- Count occurrences of each sprite name for numbering duplicates.
@@ -529,6 +576,20 @@ local function get_exits(map_id)
     return result
 end
 
+local function get_overworld_landmarks()
+    local result = {}
+    for _, landmark in ipairs(OVERWORLD_LANDMARKS) do
+        result[#result + 1] = {
+            x = wrap_overworld_coord(OVERWORLD_TANTEGEL_X + landmark.dx),
+            y = wrap_overworld_coord(OVERWORLD_TANTEGEL_Y + landmark.dy),
+            name = landmark.name,
+            type = M.TYPE_EXIT,
+            id = "overworld_" .. landmark.name:gsub("[^%w]+", "_"):lower(),
+        }
+    end
+    return result
+end
+
 -- ============================================================
 -- Distance and Direction
 -- ============================================================
@@ -579,14 +640,33 @@ end
 -- build_object_list(map_id): Assemble the full object list for a map.
 -- Combines NPCs, stairs, chests, and exits into a single flat list
 -- sorted by distance from the player (closest first).
-local function build_object_list(map_id)
+local function build_object_list(map_id, opts)
+    opts = opts or {}
     local _, px, py = nav.get_position()
+
+    -- When the terrain offset says "world map", ignore interior object tables
+    -- entirely. Populate the list from a dedicated landmark table instead.
+    if is_overworld_context() then
+        local landmarks = get_overworld_landmarks()
+        table.sort(landmarks, function(a, b)
+            local da = get_distance(px, py, a.x, a.y)
+            local db = get_distance(px, py, b.x, b.y)
+            if da == db then
+                return a.id < b.id
+            end
+            return da < db
+        end)
+        return landmarks
+    end
+
     local objects = {}
 
     -- Gather objects from all sources
-    local npcs = parse_npcs(map_id)
-    for _, npc in ipairs(npcs) do
-        objects[#objects + 1] = npc
+    if not opts.skip_npcs then
+        local npcs = parse_npcs(map_id)
+        for _, npc in ipairs(npcs) do
+            objects[#objects + 1] = npc
+        end
     end
 
     local stairs = get_stairs(map_id)
@@ -614,6 +694,13 @@ local function build_object_list(map_id)
     -- not find them. These are listed explicitly here so they appear in
     -- navigation and pathfinding as blocked cells until opened.
     local EXTRA_DOORS = {
+        -- Map 0x04: Tantegel Castle south gate to the world map. The gate is
+        -- visually two tiles wide; both door cells need to appear in the
+        -- object list because town/castle door scanning is disabled.
+        [0x04] = {
+            {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30"},
+            {x=11, y=30, name="Door", type=M.TYPE_DOOR, id="door_11_30"},
+        },
         -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
         -- The ROM tile is type-15; is_walkable() in map_reader.lua checks
         -- the opened-door RAM directly for this cell.
@@ -695,9 +782,13 @@ end
 
 -- refresh(map_id): Rebuild the entire object list for a new map.
 -- Call this on map changes. Resets selection to the first object.
-function M.refresh(map_id)
+function M.refresh(map_id, opts)
+    opts = opts or {}
     current_map_id = map_id
-    object_list = build_object_list(map_id)
+    current_terrain_offset = get_terrain_offset()
+    object_list = build_object_list(map_id, opts)
+    npc_refresh_counter = 0
+    refresh_pending = opts.defer_npcs == true
     current_index = 1
     rebuild_filtered_list()
 end
@@ -743,9 +834,15 @@ end
 -- check_refresh(map_id): Called every frame from the main loop.
 -- Handles map-change detection and periodic NPC position refresh.
 function M.check_refresh(map_id)
+    local terrain_offset = get_terrain_offset()
+
     -- Full rebuild on map change
-    if map_id ~= current_map_id then
-        M.refresh(map_id)
+    if map_id ~= current_map_id or terrain_offset ~= current_terrain_offset then
+        local entering_overworld = terrain_offset == 0x00
+        M.refresh(map_id, {
+            skip_npcs = not entering_overworld,
+            defer_npcs = not entering_overworld,
+        })
         return
     end
 

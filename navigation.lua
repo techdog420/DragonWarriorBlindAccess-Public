@@ -23,7 +23,7 @@ M.prev_y = nil
 
 -- get_position(): Read current player position.
 -- Returns map_id, x, y.
--- On the overworld (map 0), uses the overworld-specific coordinates.
+-- On the overworld, uses the overworld-specific coordinates.
 -- In other maps, uses the local map coordinates.
 -- Reads from the game_snapshot (populated each frame by snapshot.update()).
 function M.get_position()

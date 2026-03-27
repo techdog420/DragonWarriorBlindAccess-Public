@@ -1,3 +1,18 @@
+# Session Handoff — 2026-03-27
+
+Latest detailed handoff:
+- `HANDOFF_2026-03-27_world_map_and_towns.md`
+
+Quick summary of the latest session:
+- world-map stale object carryover was traced to lingering interior NPC RAM
+- `objects.lua` now clears those stale NPCs in overworld terrain context
+- Brecconary (`0x08`) exit object was corrected to the live west-edge probe at
+  `(0,15)` using the current `ppu_dump.txt`
+- user live-verified that they could walk around town and talk to several NPCs
+- major remaining issue is Brecconary pathfinding/collision cleanup
+
+Older handoff content follows for historical context.
+
 # Session Handoff — 2026-03-21
 
 ## What Was Accomplished This Session

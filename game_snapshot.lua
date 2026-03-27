@@ -29,23 +29,28 @@
 -- Write operations remain in the modules that own them.
 
 local addr = require "addresses"
+local maps = require "maps"
 
 local M = {}
 
 -- ============================================================
 -- Player Location
 -- ============================================================
-M.map_id      = 0    -- Current map ID (0x00 = overworld)
+M.map_id      = 0    -- Current raw map ID from RAM (0x01 = overworld)
 M.player_x    = 0    -- Player X on current (interior) map
 M.player_y    = 0    -- Player Y on current (interior) map
-M.overworld_x = 0    -- Player X on the overworld
-M.overworld_y = 0    -- Player Y on the overworld
+M.overworld_x = 0    -- Raw dedicated overworld X byte (diagnostic only)
+M.overworld_y = 0    -- Raw dedicated overworld Y byte (diagnostic only)
+M.is_overworld = false
 
 -- ============================================================
 -- Effective Position (resolves overworld vs. interior)
 -- ============================================================
--- These are the "real" coordinates — overworld coords when map_id == 0,
--- interior coords otherwise. Matches navigation.lua's get_position() logic.
+-- These are the "real" coordinates used by navigation and object scanning.
+-- On the overworld we intentionally use PLAYER_X / PLAYER_Y, because live
+-- probing on 2026-03-27 showed the dedicated overworld byte pair can go
+-- stale (for example reporting y=4 while the hero was visibly at y=35).
+-- Matches navigation.lua's get_position() logic.
 M.x = 0
 M.y = 0
 
@@ -127,15 +132,14 @@ function M.update()
     M.player_y    = memory.readbyte(addr.PLAYER_Y)
     M.overworld_x = memory.readbyte(addr.OVERWORLD_X)
     M.overworld_y = memory.readbyte(addr.OVERWORLD_Y)
+    M.terrain_offset = memory.readbyte(addr.TERRAIN_OFFSET)
+    M.is_overworld = maps.is_overworld(M.map_id, M.terrain_offset)
 
-    -- Effective position (overworld vs. interior)
-    if M.map_id == 0x00 then
-        M.x = M.overworld_x
-        M.y = M.overworld_y
-    else
-        M.x = M.player_x
-        M.y = M.player_y
-    end
+    -- Effective position (overworld vs. interior).
+    -- Use player_x / player_y everywhere; the dedicated overworld pair is
+    -- retained only for diagnostics until we fully understand its semantics.
+    M.x = M.player_x
+    M.y = M.player_y
 
     -- Player stats
     M.hp       = memory.readbyte(addr.CURRENT_HP)
@@ -177,7 +181,6 @@ function M.update()
 
     -- Environment
     M.tile_type      = memory.readbyte(addr.TILE_TYPE)
-    M.terrain_offset = memory.readbyte(addr.TERRAIN_OFFSET)
     M.scroll_y       = memory.readbyte(addr.SCROLL_Y)
     M.light_radius   = memory.readbyte(addr.LIGHT_RADIUS)
     M.radiant_timer  = memory.readbyte(addr.RADIANT_TIMER)

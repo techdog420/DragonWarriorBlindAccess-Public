@@ -15,8 +15,8 @@ local M = {}
 M.MAP_ID            = 0x0045  -- Current map ID (see maps.lua for names)
 M.PLAYER_X          = 0x003A  -- Player X on current map
 M.PLAYER_Y          = 0x003B  -- Player Y on current map
-M.OVERWORLD_Y       = 0x003E  -- Player Y on the overworld (map 0x00)
-M.OVERWORLD_X       = 0x0042  -- Player X on the overworld (map 0x00)
+M.OVERWORLD_Y       = 0x003E  -- Dedicated overworld Y byte (not reliable as effective player Y)
+M.OVERWORLD_X       = 0x0042  -- Dedicated overworld X byte (diagnostic; semantics still under investigation)
 
 -- Environment / Terrain
 M.TILE_TYPE         = 0x0015  -- Exterior tile type (0=grass, 15=water, etc.)
@@ -113,7 +113,7 @@ M.SCREEN_HEIGHT     = 30      -- NES screen is 30 tiles tall (960 bytes = 30*32)
 -- The actual PRG-ROM data starts at file offset 0x0010.
 
 -- Map Metadata (5 bytes per map: data pointer low, high, width, height, border tile)
--- 30 maps total (0x00 = overworld through 0x1D)
+-- 30 map metadata entries total (0x00 through 0x1D).
 M.ROM_MAP_META_START = 0x002A  -- Start of map metadata table in ROM file
 M.ROM_MAP_META_SIZE  = 5       -- Bytes per map entry
 
@@ -146,5 +146,11 @@ M.DOOR_X_POS_START  = 0x600C  -- Start of opened door X position array
 M.DOOR_Y_POS_START  = 0x600D  -- Start of opened door Y position array
 M.DOOR_ARRAY_MAX    = 8       -- Maximum simultaneously tracked open doors
 M.DOOR_ARRAY_STRIDE = 2       -- Bytes between consecutive entries
+
+-- Mapper / CHR page registers in cartridge work RAM.
+-- 0x6002 selects the background CHR page (title/gameplay split).
+-- 0x6003 selects the sprite CHR page: 0x02 on field/title, 0x03 in battle.
+M.CHR_PAGE_BG       = 0x6002
+M.CHR_PAGE_SPRITES  = 0x6003
 
 return M

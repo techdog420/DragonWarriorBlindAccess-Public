@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent
 LUA_FILES = [
     "addresses.lua",
     "auto_step.lua",
+    "battle.lua",
     "chars.lua",
     "config.lua",
     "debug_tools.lua",
@@ -31,16 +32,42 @@ LUA_FILES = [
     "map_reader.lua",
     "maps.lua",
     "memory.lua",
+    "merchant.lua",
     "menu.lua",
     "navigation.lua",
     "objects.lua",
+    "path_debug.lua",
     "pathfinder.lua",
+    "route_manager.lua",
     "state.lua",
+    "test_auto_step.lua",
+    "test_battle.lua",
     "test_env.lua",
+    "test_game_snapshot.lua",
+    "test_maps.lua",
+    "test_map_reader.lua",
+    "test_merchant.lua",
+    "test_objects.lua",
+    "test_pathfinder.lua",
+    "test_route_manager.lua",
     "test_screen.lua",
+    "test_state.lua",
     "test_speech.lua",
     "text.lua",
     "tolk.lua",
+]
+
+LUA_TEST_FILES = [
+    "test_pathfinder.lua",
+    "test_auto_step.lua",
+    "test_battle.lua",
+    "test_game_snapshot.lua",
+    "test_maps.lua",
+    "test_map_reader.lua",
+    "test_merchant.lua",
+    "test_objects.lua",
+    "test_route_manager.lua",
+    "test_state.lua",
 ]
 
 PYTHON_FILES = [
@@ -63,7 +90,7 @@ def parse_ini_value(text: str, key: str) -> str | None:
     return None
 
 
-def get_configured_python() -> Path | None:
+def get_configured_python() -> Path | str | None:
     ini_path = ROOT / "dw_access.ini"
     if not ini_path.exists():
         return None
@@ -71,6 +98,11 @@ def get_configured_python() -> Path | None:
     python_cmd = parse_ini_value(text, "speech_python_cmd")
     if not python_cmd:
         return None
+
+    if "/" not in python_cmd and "\\" not in python_cmd:
+        resolved = shutil_which(python_cmd)
+        return resolved or python_cmd
+
     normalized = python_cmd.replace("\\", os.sep)
     candidate = Path(normalized)
     if not candidate.is_absolute():
@@ -79,12 +111,15 @@ def get_configured_python() -> Path | None:
 
 
 def run_command(label: str, cmd: list[str]) -> tuple[bool, str]:
-    proc = subprocess.run(
-        cmd,
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        return False, f"{cmd[0]} not found: {exc}"
     output = (proc.stdout + proc.stderr).strip()
     if proc.returncode == 0:
         return True, output
@@ -104,12 +139,25 @@ def check_python_syntax() -> tuple[bool, str]:
     return run_command("python syntax", cmd)
 
 
+def check_lua_unit_tests() -> tuple[bool, str]:
+    lua = shutil_which("lua")
+    if not lua:
+        return False, "lua not found on PATH"
+    outputs: list[str] = []
+    for test_file in LUA_TEST_FILES:
+        ok, detail = run_command("lua unit tests", [lua, test_file])
+        if not ok:
+            return False, f"{test_file}: {detail}"
+        outputs.append(detail)
+    return True, "\n".join(outputs)
+
+
 def check_python_dependency() -> tuple[bool, str]:
     configured_python = get_configured_python()
     if configured_python is not None:
-        if not configured_python.exists():
+        if isinstance(configured_python, Path) and not configured_python.exists():
             return False, f"configured speech_python_cmd missing: {configured_python}"
-        if os.name != "nt" and configured_python.suffix.lower() == ".exe":
+        if isinstance(configured_python, Path) and os.name != "nt" and configured_python.suffix.lower() == ".exe":
             return True, (
                 "configured speech_python_cmd is a Windows interpreter; "
                 "dependency import must be verified from Windows/FCEUX"
@@ -148,9 +196,12 @@ def check_bridge_config() -> tuple[bool, str]:
             return True, "speech_python_cmd not set; default interpreter will be used"
         return False, "speech_python_cmd set but could not be resolved"
 
-    if configured_python.exists():
-        return True, f"speech_python_cmd OK: {configured_python}"
-    return False, f"speech_python_cmd missing target: {configured_python}"
+    if isinstance(configured_python, Path):
+        if configured_python.exists():
+            return True, f"speech_python_cmd OK: {configured_python}"
+        return False, f"speech_python_cmd missing target: {configured_python}"
+
+    return True, f"speech_python_cmd OK (command): {configured_python}"
 
 
 def check_command_queue() -> tuple[bool, str]:
@@ -161,19 +212,23 @@ def check_command_queue() -> tuple[bool, str]:
     try:
         cmd_file.write_text("", encoding="utf-8")
         first = subprocess.run(
-            ["bash", "dw_commands.sh", "alpha", "beta"],
+            ["bash", "dw_commands.sh", "freeze_npcs", "debug_pathfind_to:3,3"],
             cwd=ROOT,
             text=True,
             capture_output=True,
         )
         second = subprocess.run(
-            ["bash", "dw_commands.sh", "gamma"],
+            ["bash", "dw_commands.sh", "validate_path"],
             cwd=ROOT,
             text=True,
             capture_output=True,
         )
         contents = cmd_file.read_text(encoding="utf-8").splitlines()
-        ok = first.returncode == 0 and second.returncode == 0 and contents == ["alpha", "beta", "gamma"]
+        ok = (
+            first.returncode == 0
+            and second.returncode == 0
+            and contents == ["freeze_npcs", "debug_pathfind_to:3,3", "validate_path"]
+        )
         if ok:
             return True, "dw_commands.sh append queue OK"
         detail = [
@@ -211,6 +266,7 @@ def main() -> int:
 
     checks = [
         ("Lua syntax", check_lua_syntax),
+        ("Lua unit tests", check_lua_unit_tests),
         ("Python syntax", check_python_syntax),
         ("Bridge config", check_bridge_config),
         ("Speech dependency", check_python_dependency),

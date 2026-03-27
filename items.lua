@@ -84,6 +84,15 @@ local SHIELD_NAMES = {
     [0x03] = "Silver Shield",
 }
 
+local function append_unique_names(result, seen, source)
+    for _, name in pairs(source) do
+        if name and not seen[name] then
+            seen[name] = true
+            result[#result + 1] = name
+        end
+    end
+end
+
 -- ============================================================
 -- Spell Lookup (dragon-warrior-disassembly)
 -- ============================================================
@@ -121,6 +130,17 @@ function M.get_equipment()
     local armor  = ARMOR_NAMES[AND(eq, 0x1C)]
     local shield = SHIELD_NAMES[AND(eq, 0x03)]
     return weapon, armor, shield
+end
+
+-- get_equipment_catalog_names(): Return all known equipment names.
+-- Used by merchant/shop UI parsing to recognize offered wares on screen.
+function M.get_equipment_catalog_names()
+    local result = {}
+    local seen = {}
+    append_unique_names(result, seen, WEAPON_NAMES)
+    append_unique_names(result, seen, ARMOR_NAMES)
+    append_unique_names(result, seen, SHIELD_NAMES)
+    return result
 end
 
 -- get_spells(): Return a list of spell names the player currently knows.

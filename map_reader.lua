@@ -4,10 +4,12 @@
 -- Reads map metadata and tile data from the ROM to build 2D tile grids.
 -- Dragon Warrior stores maps as RLE-compressed tile data in the ROM.
 -- Each map has a metadata entry (5 bytes) with a data pointer, width,
--- height, and border tile. The tile data uses nibble-based RLE:
+-- height, and border tile. The width/height bytes are stored as the
+-- maximum in-map coordinate, so the actual dimensions are +1. The tile
+-- data uses nibble-based RLE:
 -- high nibble = tile type (0-15), low nibble = repeat count minus 1.
 --
--- The overworld (map 0x00) uses a more complex system with row-offset
+-- The overworld uses a more complex system with row-offset
 -- pointers, so we skip A* pathfinding for it and only build tile grids
 -- for interior maps (towns, dungeons, castles).
 --
@@ -16,6 +18,7 @@
 -- numbers (0-15) have consistent meanings within each category.
 
 local addr = require "addresses"
+local maps = require "maps"
 
 local M = {}
 
@@ -23,11 +26,11 @@ local M = {}
 -- Constants
 -- ============================================================
 
--- Number of maps in the game (0x00 through 0x1D = 30 maps)
+-- Number of maps in the game (0x00 through 0x1D = 30 metadata entries).
 local NUM_MAPS = 30
 
 -- ROM address where map metadata table begins.
--- Each entry is 5 bytes: pointer_lo, pointer_hi, width, height, border_tile
+-- Each entry is 5 bytes: pointer_lo, pointer_hi, width_max, height_max, border_tile
 local META_START = addr.ROM_MAP_META_START  -- 0x002A
 
 -- The iNES header is 16 bytes. rom.readbyte() in FCEUX reads from the
@@ -51,8 +54,10 @@ local function load_metadata()
         local base = META_START + (map_id * addr.ROM_MAP_META_SIZE)
         local ptr_lo = rom.readbyte(base)
         local ptr_hi = rom.readbyte(base + 1)
-        local width = rom.readbyte(base + 2)
-        local height = rom.readbyte(base + 3)
+        -- DW1 stores the maximum interior coordinate here, not a tile count.
+        -- Example: the throne room is empirically 9x9, while the ROM byte is 8.
+        local width = rom.readbyte(base + 2) + 1
+        local height = rom.readbyte(base + 3) + 1
         local border = rom.readbyte(base + 4)
 
         -- Combine the 2-byte pointer (little-endian).
@@ -94,11 +99,11 @@ end
 --
 -- The tiles fill the grid left-to-right, top-to-bottom.
 -- Returns a 2D table: tiles[y][x] where y and x are 0-based.
--- Returns nil if map_id is invalid or is the overworld (map 0).
+-- Returns nil if map_id is invalid or is the overworld.
 function M.decompress_map(map_id)
     -- Skip the overworld — it uses a different, more complex format
     -- with row-offset pointers that we don't handle yet
-    if map_id == 0x00 then
+    if maps.is_overworld(map_id) then
         return nil
     end
 
@@ -406,90 +411,165 @@ local MAP_BLOCKED_CELLS = {
         ["10,21"] = true, ["11,21"] = true,
         -- y=24: room divider confirmed impassable from all sides
         ["19,24"] = true, ["20,24"] = true, ["21,24"] = true, ["22,24"] = true,
+        -- South-east hall corner near the merchant wing.
+        -- Empirically confirmed 2026-03-23: from (20,19), both east->(21,19)
+        -- and south->(20,20) fail live movement despite tile=6, walkable=true,
+        -- npc_blocked=false, runtime_blocked=false. Block them so A* does not
+        -- route through hidden engine-collision cells in this corner.
+        ["14,19"] = true, ["14,20"] = true, ["20,20"] = true, ["21,19"] = true,
+        -- South-central hall hidden barriers.
+        -- Empirically confirmed 2026-03-24 during validate_path recheck:
+        -- (15,18)->(15,19) and (17,20)->(17,21) both fail live movement even
+        -- though inspect_move/inspect_tile report tile=6, walkable=true,
+        -- npc_blocked=false, runtime_blocked=false.
+        ["13,21"] = true, ["13,22"] = true, ["13,23"] = true, ["15,19"] = true, ["16,21"] = true, ["17,21"] = true, ["18,21"] = true, ["21,21"] = true,
+        ["16,16"] = true, ["17,16"] = true, ["18,16"] = true, ["19,16"] = true, ["19,21"] = true, ["20,17"] = true,
+        ["13,24"] = true, ["16,24"] = true, ["17,24"] = true, ["18,24"] = true, ["21,22"] = true, ["21,23"] = true,
+        ["13,25"] = true, ["12,26"] = true, ["13,26"] = true, ["16,25"] = true, ["16,27"] = true, ["13,27"] = true, ["15,28"] = true,
+        ["21,18"] = true,
+        ["14,28"] = true,
+        -- North corridor hidden barriers near the castle center.
+        -- Empirically confirmed 2026-03-23: from (21,3), both west->(20,3)
+        -- and east->(22,3) fail one-step validation even though inspect_move
+        -- and direct pathfinding report tile=6 walkable=true.
+        ["20,3"] = true, ["22,3"] = true,
+        -- North-east corridor hidden barriers near the right edge.
+        -- Empirically confirmed 2026-03-23: from (27,3), both north->(27,2)
+        -- and west->(26,3) fail one-step validation even though inspect_move
+        -- and direct pathfinding report them as walkable.
+        ["27,2"] = true, ["26,3"] = true,
+        -- Upper north corridor hidden barrier.
+        -- Empirically confirmed 2026-03-23: from (19,3), north->(19,2)
+        -- fails one-step validation even though inspect_move and direct
+        -- pathfinding report tile=6 walkable=true.
+        ["19,2"] = true,
     },
 
     -- Map 0x05: Tantegel Castle Throne Room
-    -- Tiles at y=2, x=2-8 are type 4 (floor) in ROM but the engine
-    -- blocks them via the throne/dais sprite collision. Only (1,2)
-    -- is reachable (confirmed empirically by player movement tests).
+    -- Most tiles at y=2, x=2-8 are type 4 (floor) in ROM but the engine
+    -- blocks them via the throne/dais sprite collision. The older sweep
+    -- data overstated this row: (7,2) is reachable and must remain open so
+    -- A* can descend from the top corridor on the east side.
+    --
+    -- Additional throne-area hidden barriers confirmed 2026-03-25:
+    -- from (3,3), all four one-tile movement attempts fail live validation
+    -- despite inspect_move reporting the non-north neighbors as walkable.
+    -- The player can stand at (3,3), but the engine does not allow exits to
+    -- (2,3), (4,3), or (3,4). Blocking those cells prevents A* from claiming
+    -- routes out of the throne pocket that auto-walk can never execute.
     [0x05] = {
         ["2,2"] = true, ["3,2"] = true, ["4,2"] = true,
-        ["5,2"] = true, ["6,2"] = true, ["7,2"] = true,
+        ["5,2"] = true, ["6,2"] = true,
         ["8,2"] = true,
+        ["2,3"] = true, ["4,3"] = true, ["3,4"] = true,
     },
 }
 
--- is_walkable(map_id, x, y): Check if a tile at (x, y) is passable.
--- Returns true if the player can walk on this tile, false if it's a wall.
--- Returns nil if we can't determine walkability (no grid data, etc.).
-function M.is_walkable(map_id, x, y)
+local function lookup_walkability_base(map_id, x, y)
     local grid = M.get_tile_grid(map_id)
     if not grid then return nil end
 
     local meta = M.get_metadata(map_id)
     if not meta then return nil end
 
-    -- Bounds check
+    local details = {
+        map_id = map_id,
+        x = x,
+        y = y,
+        tile_type = nil,
+        base_walkable = nil,
+        permanent_blocked = false,
+        effective_walkable = nil,
+        reason = nil,
+    }
+
     if x < 0 or x >= meta.width or y < 0 or y >= meta.height then
-        return false
+        details.base_walkable = false
+        details.effective_walkable = false
+        details.reason = "out_of_bounds"
+        return details
     end
 
-    -- Engine boundary: the game prevents player movement to x=0 or y=0
-    -- on interior maps even when those tiles have walkable types.
-    -- Confirmed empirically:
-    --   x=0: the left side passage (x=0) in the throne room shows tile type
-    --         6W but the player is always blocked there.
-    --   y=0: hard engine boundary on all interior maps.
-    --   y=1: IS accessible (player confirmed reaching row 1 in the throne room
-    --         by going around via x=1).
-    -- Skip this check for the overworld (map 0x00).
-    if map_id ~= 0x00 and (x == 0 or y == 0) then
-        return false
+    local key = x .. "," .. y
+    local tile_type = grid[y][x]
+    details.tile_type = tile_type
+
+    if not maps.is_overworld(map_id) and (x == 0 or y == 0) then
+        details.base_walkable = false
+        details.effective_walkable = false
+        details.reason = "engine_boundary"
+        return details
     end
 
-    -- Per-map passthrough overrides: cells walkable despite tile type.
-    -- Check this BEFORE the tile-type table so these take priority.
     local passthroughs = MAP_PASSTHROUGH_CELLS[map_id]
-    if passthroughs and passthroughs[x .. "," .. y] then
-        return true
+    if passthroughs and passthroughs[key] then
+        details.base_walkable = true
+        details.effective_walkable = true
+        details.reason = "passthrough"
+        return details
     end
 
-    -- Per-map magic-key door cells: walkable only after the door is opened.
-    -- These have tile type 15 (wall) in ROM so parse_doors() misses them.
-    -- We check the game's opened-door RAM arrays directly ($600C/$600D).
     local door_cells = MAP_DOOR_CELLS[map_id]
-    if door_cells and door_cells[x .. "," .. y] then
-        local dc = door_cells[x .. "," .. y]
+    if door_cells and door_cells[key] then
+        local dc = door_cells[key]
         for i = 0, addr.DOOR_ARRAY_MAX - 1 do
             local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
             local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
             if dx ~= 0 and dx == dc.x and dy == dc.y then
-                return true   -- door opened → cell passable
+                details.base_walkable = true
+                details.effective_walkable = true
+                details.reason = "door_open"
+                return details
             end
         end
-        return false          -- door still closed → cell blocked
+        details.base_walkable = false
+        details.effective_walkable = false
+        details.reason = "door_closed"
+        return details
     end
 
-    -- Per-map sprite-collision overrides (cells blocked by game engine
-    -- mechanisms not reflected in tile types).
-    local overrides = MAP_BLOCKED_CELLS[map_id]
-    if overrides and overrides[x .. "," .. y] then
-        return false
+    if tile_type == nil then
+        return details
     end
 
-    local tile_type = grid[y][x]
-    if tile_type == nil then return nil end
-
-    -- Determine which walkability table to use based on the map.
-    -- We use terrain_offset (RAM 0x0016) but since that's a runtime value,
-    -- we need a map-based lookup. Categorize maps by their type:
     local walkable_table = M.get_walkability_table(map_id)
-    if not walkable_table then return nil end
+    if not walkable_table then
+        return details
+    end
 
     local result = walkable_table[tile_type]
-    -- Default to non-walkable for unknown tile types
-    if result == nil then return false end
-    return result
+    if result == nil then
+        result = false
+    end
+    details.base_walkable = result
+    details.effective_walkable = result
+    details.reason = "tile_type"
+    return details
+end
+
+function M.is_permanently_blocked_override(map_id, x, y)
+    local overrides = MAP_BLOCKED_CELLS[map_id]
+    return overrides and overrides[x .. "," .. y] or false
+end
+
+function M.get_walkability_details(map_id, x, y)
+    local details = lookup_walkability_base(map_id, x, y)
+    if not details then return nil end
+    details.permanent_blocked = M.is_permanently_blocked_override(map_id, x, y) and true or false
+    if details.permanent_blocked then
+        details.effective_walkable = false
+        details.reason = "permanent_blocked"
+    end
+    return details
+end
+
+-- is_walkable(map_id, x, y): Check if a tile at (x, y) is passable.
+-- Returns true if the player can walk on this tile, false if it's a wall.
+-- Returns nil if we can't determine walkability (no grid data, etc.).
+function M.is_walkable(map_id, x, y)
+    local details = M.get_walkability_details(map_id, x, y)
+    if not details then return nil end
+    return details.effective_walkable
 end
 
 -- get_walkability_table(map_id): Return the appropriate walkability

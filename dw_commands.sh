@@ -28,7 +28,19 @@
 #   report_runtime_blocks  Log current map's runtime_blocked cells
 #   clear_runtime_blocks   Clear runtime_blocked cells for current map
 #   clear_runtime_blocks:all  Clear runtime_blocked cells for all maps
-#   inspect_tile:X,Y       Log tile type, walkability, NPC block, runtime block
+#   add_blocked_tile:X,Y   Inject a runtime blocked tile on the current map
+#   add_blocked_tile:MAP_ID,X,Y  Inject a runtime blocked tile on an explicit map
+#   list_blocked_tiles     List runtime blocked tiles for the current map
+#   list_blocked_tiles:MAP_ID  List runtime blocked tiles for an explicit map
+#   clear_blocked_tiles    Clear runtime blocked tiles for the current map
+#   clear_blocked_tiles:MAP_ID  Clear runtime blocked tiles for an explicit map
+#   clear_blocked_tiles:all  Clear runtime blocked tiles for all maps
+#   is_blocked_tile:X,Y    Inspect runtime blocked status for the current map
+#   is_blocked_tile:MAP_ID,X,Y  Inspect runtime blocked status for an explicit map
+#   dump_blocked_tiles     Dump current map runtime blocked tiles as Lua table lines
+#   dump_blocked_tiles:MAP_ID  Dump explicit map runtime blocked tiles as Lua table lines
+#   inspect_tile:X,Y       Log tile type, base walkability, permanent/runtime overrides,
+#                          and final effective path passability
 #   inspect_move:DIR       Inspect a move from current position (UP/DOWN/LEFT/RIGHT)
 #   inspect_move:X,Y,DIR   Inspect a move from an explicit origin
 #   pathfind_to:X,Y        Run direct pathfinding to explicit coordinates
@@ -107,14 +119,15 @@ else
     printf '%s\n' "$@" >> "$CMD_FILE"
 fi
 
-# Warn if the log hasn't been updated in the last 10 seconds (emulator likely not running).
+# Warn only after a longer idle period so a live-but-idle emulator doesn't
+# trigger false positives during normal testing.
 LOG_FILE="$(dirname "$0")/dw_debug.log"
 if [ -f "$LOG_FILE" ]; then
     last_mod=$(date -r "$LOG_FILE" +%s 2>/dev/null)
     now=$(date +%s)
     age=$(( now - last_mod ))
-    if [ "$age" -gt 10 ]; then
-        echo "WARNING: dw_debug.log was last updated ${age}s ago — is FCEUX running?"
+    if [ "$age" -gt 60 ]; then
+        echo "WARNING: dw_debug.log was last updated ${age}s ago — FCEUX may be idle or not running"
     fi
 fi
 

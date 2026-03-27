@@ -68,6 +68,12 @@ COMMANDS (write to dw_commands.txt, one per line)
   dump_grid                Dump tile type + walkability grid for current map
   export_blocks            Format all recorded blocked moves as MAP_BLOCKED_CELLS
                            Lua entries (check dw_debug.log for output)
+  add_blocked_tile:X,Y     Inject runtime blocked tile on current map
+  add_blocked_tile:MAP,X,Y Inject runtime blocked tile on explicit map
+  list_blocked_tiles       Log current map runtime blocked tiles
+  clear_blocked_tiles      Clear current map runtime blocked tiles
+  is_blocked_tile:X,Y      Inspect runtime blocked/effective passability state
+  dump_blocked_tiles       Dump current map runtime blocked tiles as Lua lines
   sweep_map                Start systematic engine-collision sweep of current map.
                            Teleports player to every walkable-looking tile,
                            probes all 4 directions, records hidden engine walls.

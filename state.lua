@@ -6,6 +6,7 @@
 -- state by reading various RAM addresses and comparing patterns.
 -- The main loop uses this to decide which handler should process each frame.
 
+local addr = require "addresses"
 local snapshot = require "game_snapshot"
 
 local M = {}
@@ -77,7 +78,11 @@ end
 -- 2. If level is 1-30 AND gameplay not yet confirmed AND PPU shows title
 --    content ("QUEST" or "ADVENTUR"): still on title screen / adventure log.
 --    (Covers the case where "CONTINUE A QUEST" loaded save data into RAM.)
--- 3. If enemy HP > 0: battle.
+-- 3. If the battle sprite CHR page is active: battle.
+-- 4. As a fallback, if enemy HP > 0 and the sprite CHR page is neither the
+--    known field page (0x02) nor the known battle page (0x03): battle.
+--    This preserves a safety net for odd transitional frames without letting
+--    stale enemy HP force battle while the normal field sprite page is active.
 -- 4. Otherwise: field exploration.
 --
 -- The PPU check (step 2) short-circuits quickly during gameplay since
@@ -98,8 +103,13 @@ function M.detect()
         return M.STATE_TITLE
     end
 
+    local sprite_chr_page = memory.readbyte(addr.CHR_PAGE_SPRITES)
+    if sprite_chr_page == 0x03 then
+        return M.STATE_BATTLE
+    end
+
     local enemy_hp = snapshot.enemy_hp
-    if enemy_hp > 0 then
+    if enemy_hp > 0 and sprite_chr_page ~= 0x02 then
         return M.STATE_BATTLE
     end
 

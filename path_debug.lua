@@ -50,6 +50,80 @@ local DIR_KEY_MAP = {north = "up", south = "down", west = "left", east = "right"
 -- The actual wait is auto_step_timeout + this margin, so it adapts to
 -- the user's configured timeout.
 local VALIDATE_MARGIN_FRAMES = 5
+local VALIDATE_START_DELAY_FRAMES = 4
+local VALIDATE_SETTLE_FRAMES = 10
+local VALIDATE_STEP_GAP_FRAMES = 6
+local VALIDATE_MAX_RETRIES = 2
+
+local DIR_DELTAS = {
+    north = {dx = 0, dy = -1},
+    south = {dx = 0, dy = 1},
+    west  = {dx = -1, dy = 0},
+    east  = {dx = 1, dy = 0},
+}
+
+local function begin_validate_step(vs)
+    local step = vs.path[vs.index]
+    local dir_key = DIR_KEY_MAP[step.direction]
+    local delta = DIR_DELTAS[step.direction]
+
+    local _, px, py = nav.get_position()
+    local planned_from_x = vs.start_path_x
+    local planned_from_y = vs.start_path_y
+
+    if px ~= planned_from_x or py ~= planned_from_y then
+        local msg = string.format(
+            "VALIDATE step %d: DESYNC before inject actual=(%d,%d) planned_start=(%d,%d)",
+            vs.index, px, py, planned_from_x, planned_from_y)
+        debug_tools.info(msg)
+        vs.mismatches[#vs.mismatches + 1] = {
+            step       = vs.index,
+            expected_x = step.x,
+            expected_y = step.y,
+            actual_x   = px,
+            actual_y   = py,
+            planned_x  = step.x,
+            planned_y  = step.y,
+            planned_from_x = planned_from_x,
+            planned_from_y = planned_from_y,
+        }
+        debug_tools.info(string.format(
+            "VALIDATE ABORT: route desynced before step %d (%d/%d steps OK)",
+            vs.index, vs.completed, #vs.path))
+        validate_state = nil
+        return false
+    end
+
+    if not delta then
+        debug_tools.error("VALIDATE: invalid direction '" .. tostring(step.direction) .. "' at step " .. vs.index)
+        validate_state = nil
+        return false
+    end
+
+    vs.start_x = px
+    vs.start_y = py
+    vs.expected_x = step.x
+    vs.expected_y = step.y
+
+    debug_tools.debug(string.format(
+        "VALIDATE step %d/%d: at=(%d,%d) dir=%s expect=(%d,%d) planned=(%d,%d) retry=%d",
+        vs.index, #vs.path, px, py, step.direction,
+        vs.expected_x, vs.expected_y, step.x, step.y, vs.retry_count or 0))
+
+    if dir_key and vs.auto_step and vs.auto_step.inject_step then
+        vs.auto_step.inject_step(dir_key)
+    else
+        debug_tools.error("VALIDATE: invalid direction or missing auto_step module at step " .. vs.index)
+        validate_state = nil
+        return false
+    end
+
+    local timeout = tonumber(config.get("auto_step_timeout")) or 60
+    vs.wait_frames = timeout + VALIDATE_MARGIN_FRAMES
+    vs.settle_frames = 0
+    vs.phase = "wait"
+    return true
+end
 
 -- ============================================================
 -- Section A: Callback Factory
@@ -88,7 +162,8 @@ function M.build_find_path_opts()
     --   "already_closed"  — already fully explored
     --   "already_better"  — a shorter path to this node already exists
     --   "out_of_bounds"   — outside map dimensions
-    --   "blocked_npc"     — NPC or runtime-blocked cell
+    --   "blocked_npc"     — NPC-occupied cell
+    --   "blocked_runtime" — runtime-injected blocked tile
     --   "not_walkable"    — tile type is not walkable (wall, water, etc.)
     opts.on_reject = function(x, y, reason)
         stats.nodes_rejected = stats.nodes_rejected + 1
@@ -169,7 +244,20 @@ function M.trace_path()
     end
 
     if not last_path or #last_path == 0 then
-        debug_tools.info("TRACE: empty path (already at goal or no path found)")
+        if info.success == false and info.stats and info.stats.reason then
+            local reason = info.stats.reason
+            if reason == "no_path" then
+                debug_tools.info("TRACE: no path found")
+            elseif reason == "goal_not_walkable" then
+                debug_tools.info("TRACE: goal is not walkable")
+            elseif reason == "goal_blocked" then
+                debug_tools.info("TRACE: goal is blocked")
+            else
+                debug_tools.info("TRACE: empty path (" .. tostring(reason) .. ")")
+            end
+        else
+            debug_tools.info("TRACE: empty path (already at goal)")
+        end
         return
     end
 
@@ -298,13 +386,15 @@ end
 -- Section F: Path Validation State Machine
 -- ============================================================
 -- Walk the stored path automatically, comparing expected position
--- after each step to the player's actual position. Logs mismatches
--- immediately and provides a summary at the end.
+-- after each step to the player's actual position. Abort on the first
+-- mismatch so one genuine miss does not generate a long tail of
+-- downstream false positives from a desynchronized route replay.
 --
--- Phases: next → inject → wait → check → next → ... → done
+-- Phases: next → wait → settle → check → next → ... → done
 --
 -- inject: call auto_step.inject_step(dir_key) for current step
--- wait: count down VALIDATE_WAIT_FRAMES for the step animation to finish
+-- wait: wait for the player position to change, or for a true timeout
+-- settle: after movement begins, give the engine a couple frames to finish
 -- check: compare expected (step.x, step.y) vs actual (nav.get_position())
 -- next: advance to next step or finish
 
@@ -315,7 +405,29 @@ local function validate_tick()
     if not validate_state then return end
     local vs = validate_state
 
+    if vs.phase == "prime" then
+        vs.settle_frames = vs.settle_frames - 1
+        if vs.settle_frames <= 0 then
+            vs.phase = "next"
+        end
+        return
+    end
+
     if vs.phase == "next" then
+        vs.settle_frames = VALIDATE_STEP_GAP_FRAMES
+        vs.phase = "between"
+        return
+    end
+
+    if vs.phase == "between" then
+        vs.settle_frames = vs.settle_frames - 1
+        if vs.settle_frames <= 0 then
+            vs.phase = "advance"
+        end
+        return
+    end
+
+    if vs.phase == "advance" then
         vs.index = vs.index + 1
         if vs.index > #vs.path then
             -- All steps done — report summary
@@ -331,32 +443,37 @@ local function validate_tick()
             return
         end
 
-        -- Inject the next step
-        local step = vs.path[vs.index]
-        local dir_key_map = {north = "up", south = "down", west = "left", east = "right"}
-        local dir_key = dir_key_map[step.direction]
-
-        local _, px, py = nav.get_position()
-        debug_tools.debug(string.format(
-            "VALIDATE step %d/%d: at=(%d,%d) dir=%s expect=(%d,%d)",
-            vs.index, #vs.path, px, py, step.direction, step.x, step.y))
-
-        if dir_key and vs.auto_step and vs.auto_step.inject_step then
-            vs.auto_step.inject_step(dir_key)
+        vs.retry_count = 0
+        if vs.index == 1 then
+            vs.start_path_x = vs.origin_x
+            vs.start_path_y = vs.origin_y
         else
-            debug_tools.error("VALIDATE: invalid direction or missing auto_step module at step " .. vs.index)
-            validate_state = nil
-            return
+            local prev_step = vs.path[vs.index - 1]
+            vs.start_path_x = prev_step.x
+            vs.start_path_y = prev_step.y
         end
-        local timeout = tonumber(config.get("auto_step_timeout")) or 60
-        vs.wait_frames = timeout + VALIDATE_MARGIN_FRAMES
-        vs.phase = "wait"
+        begin_validate_step(vs)
         return
     end
 
     if vs.phase == "wait" then
+        local _, px, py = nav.get_position()
+        if px ~= vs.start_x or py ~= vs.start_y then
+            vs.settle_frames = VALIDATE_SETTLE_FRAMES
+            vs.phase = "settle"
+            return
+        end
+
         vs.wait_frames = vs.wait_frames - 1
         if vs.wait_frames <= 0 then
+            vs.phase = "check"
+        end
+        return
+    end
+
+    if vs.phase == "settle" then
+        vs.settle_frames = vs.settle_frames - 1
+        if vs.settle_frames <= 0 then
             vs.phase = "check"
         end
         return
@@ -365,21 +482,44 @@ local function validate_tick()
     if vs.phase == "check" then
         local step = vs.path[vs.index]
         local _, px, py = nav.get_position()
+        local expected_x = vs.expected_x
+        local expected_y = vs.expected_y
 
-        if px == step.x and py == step.y then
+        if px == expected_x and py == expected_y then
             vs.completed = vs.completed + 1
             debug_tools.debug(string.format("VALIDATE step %d: OK at (%d,%d)", vs.index, px, py))
+            if vs.auto_step and vs.auto_step.cancel_active_step then
+                vs.auto_step.cancel_active_step(false)
+            end
+        elseif px == vs.start_x and py == vs.start_y and (vs.retry_count or 0) < VALIDATE_MAX_RETRIES then
+            vs.retry_count = (vs.retry_count or 0) + 1
+            debug_tools.debug(string.format(
+                "VALIDATE step %d: no movement yet at (%d,%d), retrying",
+                vs.index, px, py))
+            begin_validate_step(vs)
+            return
         else
             vs.mismatches[#vs.mismatches + 1] = {
                 step       = vs.index,
-                expected_x = step.x,
-                expected_y = step.y,
+                expected_x = expected_x,
+                expected_y = expected_y,
                 actual_x   = px,
                 actual_y   = py,
+                planned_x  = step.x,
+                planned_y  = step.y,
             }
-            debug_tools.info(string.format(
+            local msg = string.format(
                 "VALIDATE step %d: MISMATCH expected (%d,%d) actual (%d,%d)",
-                vs.index, step.x, step.y, px, py))
+                vs.index, expected_x, expected_y, px, py)
+            if step.x ~= expected_x or step.y ~= expected_y then
+                msg = msg .. string.format(" planned=(%d,%d)", step.x, step.y)
+            end
+            debug_tools.info(msg)
+            debug_tools.info(string.format(
+                "VALIDATE ABORT: stopping at first mismatch (%d/%d steps OK)",
+                vs.completed, #vs.path))
+            validate_state = nil
+            return
         end
         vs.phase = "next"
         return
@@ -401,8 +541,18 @@ function M.start_validate(auto_step_module)
     validate_state = {
         path        = last_path,
         index       = 0,
-        phase       = "next",
+        phase       = "prime",
         wait_frames = 0,
+        settle_frames = VALIDATE_START_DELAY_FRAMES,
+        origin_x    = last_path_info and last_path_info.start_x or nil,
+        origin_y    = last_path_info and last_path_info.start_y or nil,
+        start_path_x = nil,
+        start_path_y = nil,
+        start_x     = nil,
+        start_y     = nil,
+        retry_count = 0,
+        expected_x  = nil,
+        expected_y  = nil,
         mismatches  = {},
         completed   = 0,
         auto_step   = auto_step_module,
@@ -413,6 +563,10 @@ end
 -- stop_validate(): Cancel active validation.
 function M.stop_validate()
     if validate_state then
+        local auto_step_module = validate_state.auto_step
+        if auto_step_module and auto_step_module.cancel_active_step then
+            auto_step_module.cancel_active_step(true)
+        end
         debug_tools.info(string.format(
             "VALIDATE: stopped at step %d/%d (%d mismatches so far)",
             validate_state.index, #validate_state.path, #validate_state.mismatches))
@@ -443,11 +597,14 @@ end
 
 local TEST_SCENARIOS = {
     [0x04] = {  -- Tantegel Castle
-        {name = "spawn_to_king",       start_x = 10, start_y = 12, goal_x = 3,  goal_y = 3,  adjacent = true},
-        {name = "spawn_to_stairs",     start_x = 10, start_y = 12, goal_x = 17, goal_y = 24, adjacent = false},
-        {name = "guard_to_merchant",   start_x = 6,  start_y = 4,  goal_x = 24, goal_y = 25, adjacent = true},
-        {name = "north_to_south",      start_x = 10, start_y = 4,  goal_x = 10, goal_y = 27, adjacent = false},
-        {name = "east_wing_to_west",   start_x = 24, start_y = 8,  goal_x = 3,  goal_y = 8,  adjacent = false},
+        -- Map 0x04 is the main castle, not the throne room. The current
+        -- engine-collision model splits the castle into west and east
+        -- walkable components, so fixtures must stay within one component.
+        {name = "spawn_to_stairs_up",  start_x = 10, start_y = 12, goal_x = 7,  goal_y = 7,  adjacent = false},
+        {name = "spawn_to_south_hall", start_x = 10, start_y = 12, goal_x = 17, goal_y = 20, adjacent = false},
+        {name = "east_wing_to_guard",  start_x = 24, start_y = 8,  goal_x = 25, goal_y = 12, adjacent = true},
+        {name = "north_to_south",      start_x = 10, start_y = 8,  goal_x = 10, goal_y = 27, adjacent = false},
+        {name = "east_wing_to_south",  start_x = 24, start_y = 8,  goal_x = 17, goal_y = 25, adjacent = false},
     },
     [0x05] = {  -- Tantegel Castle Throne Room
         -- Start positions must be inside the throne room (y=1-6), north of the
@@ -514,38 +671,63 @@ function M.run_test(scenario_name, auto_step_module, blocking_fn)
     local fail_count = 0
 
     for _, scenario in ipairs(to_run) do
-        local blocking = blocking_fn and blocking_fn(map_id) or {}
-        local opts = M.build_find_path_opts()
+        local start_walkable = map_reader.is_walkable(map_id, scenario.start_x, scenario.start_y)
+        local goal_walkable = map_reader.is_walkable(map_id, scenario.goal_x, scenario.goal_y)
+        local skip_scenario = false
 
-        local result, face_dir, path
-        if scenario.adjacent then
-            result, face_dir, path = pathfinder.pathfind_to_adjacent(
-                map_id, scenario.start_x, scenario.start_y,
-                scenario.goal_x, scenario.goal_y, blocking, opts)
-        else
-            result, face_dir, path = pathfinder.pathfind_to(
-                map_id, scenario.start_x, scenario.start_y,
-                scenario.goal_x, scenario.goal_y, blocking, opts)
-        end
-
-        local stats = opts and opts._get_stats() or {}
-        local path_len = path and #path or 0
-        local ok = (result ~= "No path found" and path_len > 0)
-
-        if ok then
-            pass_count = pass_count + 1
-        else
+        if start_walkable ~= true then
             fail_count = fail_count + 1
+            debug_tools.info(string.format(
+                "TEST [%s]: FAIL -> Invalid start tile (%d,%d) walkable=%s",
+                scenario.name, scenario.start_x, scenario.start_y, tostring(start_walkable)))
+            M.store_path(map_id, scenario.start_x, scenario.start_y,
+                scenario.goal_x, scenario.goal_y, nil, nil)
+            skip_scenario = true
+        end
+        if not skip_scenario and not scenario.adjacent and goal_walkable ~= true then
+            fail_count = fail_count + 1
+            debug_tools.info(string.format(
+                "TEST [%s]: FAIL -> Invalid goal tile (%d,%d) walkable=%s",
+                scenario.name, scenario.goal_x, scenario.goal_y, tostring(goal_walkable)))
+            M.store_path(map_id, scenario.start_x, scenario.start_y,
+                scenario.goal_x, scenario.goal_y, nil, nil)
+            skip_scenario = true
         end
 
-        debug_tools.info(string.format(
-            "TEST [%s]: %s -> %s visited=%d rejected=%d path=%d",
-            scenario.name, ok and "PASS" or "FAIL", tostring(result),
-            stats.nodes_visited or 0, stats.nodes_rejected or 0, path_len))
+        if not skip_scenario then
+            local blocking = blocking_fn and blocking_fn(map_id) or {}
+            local opts = M.build_find_path_opts()
 
-        -- Store last result so trace_path / dump_path_grid can inspect it
-        M.store_path(map_id, scenario.start_x, scenario.start_y,
-            scenario.goal_x, scenario.goal_y, path, opts)
+            local result, face_dir, path
+            if scenario.adjacent then
+                result, face_dir, path = pathfinder.pathfind_to_adjacent(
+                    map_id, scenario.start_x, scenario.start_y,
+                    scenario.goal_x, scenario.goal_y, blocking, opts)
+            else
+                result, face_dir, path = pathfinder.pathfind_to(
+                    map_id, scenario.start_x, scenario.start_y,
+                    scenario.goal_x, scenario.goal_y, blocking, opts)
+            end
+
+            local stats = opts and opts._get_stats() or {}
+            local path_len = path and #path or 0
+            local ok = (result ~= "No path found" and path_len > 0)
+
+            if ok then
+                pass_count = pass_count + 1
+            else
+                fail_count = fail_count + 1
+            end
+
+            debug_tools.info(string.format(
+                "TEST [%s]: %s -> %s visited=%d rejected=%d path=%d",
+                scenario.name, ok and "PASS" or "FAIL", tostring(result),
+                stats.nodes_visited or 0, stats.nodes_rejected or 0, path_len))
+
+            -- Store last result so trace_path / dump_path_grid can inspect it
+            M.store_path(map_id, scenario.start_x, scenario.start_y,
+                scenario.goal_x, scenario.goal_y, path, opts)
+        end
     end
 
     debug_tools.info(string.format("TEST SUMMARY: %d passed, %d failed", pass_count, fail_count))

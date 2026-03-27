@@ -20,6 +20,7 @@
 --   route_manager.toggle_npc_freeze()
 
 local addr       = require "addresses"
+local maps       = require "maps"
 local nav        = require "navigation"
 local objects    = require "objects"
 local pathfinder = require "pathfinder"
@@ -73,7 +74,72 @@ local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
 
 -- Runtime engine-blocked cells discovered during auto-step timeouts.
 -- Format: runtime_blocked[map_id]["x,y"] = true  (cleared on map change)
+-- Simple single-tier system: auto_step's BLOCK_RETRY_LIMIT filters
+-- intermittent misses before on_blocked fires, so we record immediately.
 local runtime_blocked = {}
+local autowalk_guard = nil
+
+local function cell_key(x, y)
+    return x .. "," .. y
+end
+
+local function parse_cell_key(k)
+    local x, y = tostring(k):match("^(%-?%d+),(%-?%d+)$")
+    if not x then return nil, nil end
+    return tonumber(x), tonumber(y)
+end
+
+local function collect_runtime_blocks(map_id)
+    local blocks = {}
+    local map_blocks = runtime_blocked[map_id]
+    if not map_blocks then
+        return blocks
+    end
+    for k in pairs(map_blocks) do
+        local x, y = parse_cell_key(k)
+        blocks[#blocks + 1] = {key = k, x = x, y = y}
+    end
+    table.sort(blocks, function(a, b)
+        if a.y ~= b.y then return a.y < b.y end
+        return a.x < b.x
+    end)
+    return blocks
+end
+
+local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
+    if not map_id or from_x == nil or from_y == nil or not blocked_dir then
+        return false
+    end
+
+    local dx = (blocked_dir == "right" and 1) or (blocked_dir == "left" and -1) or 0
+    local dy = (blocked_dir == "down"  and 1) or (blocked_dir == "up"   and -1) or 0
+    local dest_x = from_x + dx
+    local dest_y = from_y + dy
+    local k = cell_key(dest_x, dest_y)
+    local source = string.format("auto_step:%s from (%d,%d)", blocked_dir, from_x, from_y)
+
+    -- Don't record if an NPC occupies the destination (NPC blocks are temporary)
+    objects.update_npcs()
+    local npc_positions = objects.get_blocking_positions()
+    for _, npc in ipairs(npc_positions) do
+        if npc.x == dest_x and npc.y == dest_y then
+            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
+            return false
+        end
+    end
+
+    if not runtime_blocked[map_id] then
+        runtime_blocked[map_id] = {}
+    end
+    if runtime_blocked[map_id][k] then
+        return false
+    end
+    runtime_blocked[map_id][k] = true
+    debug_tools.info(string.format(
+        "runtime block: map=0x%02X cell=(%d,%d) source=%s",
+        map_id, dest_x, dest_y, source))
+    return true
+end
 
 -- ============================================================
 -- NPC Freeze
@@ -94,6 +160,11 @@ local function capture_npc_snapshot()
             memory.readbyte(base + 2),
         }
     end
+end
+
+local function freeze_npcs_for_pathing()
+    capture_npc_snapshot()
+    npc_freeze_active = true
 end
 
 -- apply_npc_freeze(): Restore snapshotted NPC bytes to RAM.
@@ -142,6 +213,14 @@ function M.is_npc_freeze_active()
     return npc_freeze_active
 end
 
+-- set_autowalk_guard(fn): Install a main-loop-owned predicate used to veto
+-- auto-walk starts when field-state gates say movement is unsafe.
+-- fn() should return (ok, reason). ok=false prevents route planning and
+-- speaks reason to the user.
+function M.set_autowalk_guard(fn)
+    autowalk_guard = fn
+end
+
 -- ============================================================
 -- Runtime Blocked Cells
 -- ============================================================
@@ -150,9 +229,12 @@ end
 -- into a single blocking table for the A* pathfinder.
 function M.build_path_blocking(map_id)
     local blocking = objects.get_blocking_positions()
+    for _, pos in ipairs(blocking) do
+        blocking[cell_key(pos.x, pos.y)] = "npc"
+    end
     if runtime_blocked[map_id] then
-        for cell_key, _ in pairs(runtime_blocked[map_id]) do
-            blocking[cell_key] = true
+        for k, _ in pairs(runtime_blocked[map_id]) do
+            blocking[k] = "runtime"
         end
     end
     return blocking
@@ -160,39 +242,75 @@ end
 
 -- count_runtime_blocks(map_id): Return count of runtime-discovered blocks.
 function M.count_runtime_blocks(map_id)
-    local n = 0
-    if runtime_blocked[map_id] then
-        for _ in pairs(runtime_blocked[map_id]) do
-            n = n + 1
-        end
-    end
-    return n
+    return #collect_runtime_blocks(map_id)
 end
 
 -- format_runtime_blocks(map_id): Return sorted list of "x,y" block keys.
 function M.format_runtime_blocks(map_id)
     local parts = {}
-    if runtime_blocked[map_id] then
-        for cell_key, _ in pairs(runtime_blocked[map_id]) do
-            parts[#parts + 1] = cell_key
-        end
+    for _, block in ipairs(collect_runtime_blocks(map_id)) do
+        parts[#parts + 1] = block.key
     end
-    table.sort(parts)
     return parts
+end
+
+-- get_runtime_block_entries(map_id): Return sorted runtime block entries.
+function M.get_runtime_block_entries(map_id)
+    return collect_runtime_blocks(map_id)
 end
 
 -- is_cell_runtime_blocked(map_id, x, y): Check if a specific cell is blocked.
 function M.is_cell_runtime_blocked(map_id, x, y)
-    return runtime_blocked[map_id] and runtime_blocked[map_id][x .. "," .. y] or false
+    return runtime_blocked[map_id] and runtime_blocked[map_id][cell_key(x, y)] or false
+end
+
+-- inject_runtime_block(map_id, x, y): Manually add a runtime blocked tile.
+function M.inject_runtime_block(map_id, x, y)
+    return add_runtime_block(map_id, x, y, "manual_command")
+end
+
+-- is_pathfinding_walkable(map_id, x, y): Static walkability plus runtime overlay.
+function M.is_pathfinding_walkable(map_id, x, y)
+    if map_reader.is_walkable(map_id, x, y) ~= true then
+        return false
+    end
+    if M.is_cell_runtime_blocked(map_id, x, y) then
+        return false
+    end
+    return true
+end
+
+-- format_runtime_blocks_as_lua(map_id): Return copy-pasteable MAP_BLOCKED_CELLS lines.
+function M.format_runtime_blocks_as_lua(map_id)
+    local entries = collect_runtime_blocks(map_id)
+    local lines = {
+        string.format("    [0x%02X] = {", map_id),
+    }
+    for _, block in ipairs(entries) do
+        lines[#lines + 1] = string.format('        ["%s"] = true,', block.key)
+    end
+    lines[#lines + 1] = "    },"
+    return lines, #entries
 end
 
 -- clear_runtime_blocks(map_id_or_all): Clear runtime blocks.
 -- Pass a map_id to clear one map, or "all" to clear everything.
 function M.clear_runtime_blocks(map_id_or_all)
     if map_id_or_all == "all" then
+        local cleared = 0
+        for mid in pairs(runtime_blocked) do
+            cleared = cleared + M.count_runtime_blocks(mid)
+        end
         runtime_blocked = {}
+        debug_tools.info(string.format("runtime blocks cleared: scope=all count=%d", cleared))
+        return cleared
     else
+        local cleared = M.count_runtime_blocks(map_id_or_all)
         runtime_blocked[map_id_or_all] = nil
+        debug_tools.info(string.format(
+            "runtime blocks cleared: map=0x%02X count=%d",
+            map_id_or_all, cleared))
+        return cleared
     end
 end
 
@@ -200,10 +318,15 @@ end
 -- Path Planning
 -- ============================================================
 
+local function get_goal_block_reason(blocking, x, y)
+    if not blocking then return nil end
+    return blocking[cell_key(x, y)]
+end
+
 -- build_pathfind_message(obj, result, face_dir): Create a human-readable
 -- message describing the pathfinding result. Includes key count for doors
 -- and locked-door hint for unreachable chests.
-local function build_pathfind_message(obj, result, face_dir)
+local function build_pathfind_message(obj, result, face_dir, no_path_reason)
     local msg = obj.name .. ". " .. result
     if face_dir then
         if obj.type == objects.TYPE_DOOR then
@@ -223,6 +346,13 @@ local function build_pathfind_message(obj, result, face_dir)
         end
     end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then
+        if no_path_reason == "goal_blocked_npc" then
+            msg = msg .. ". Chest tile is currently occupied by an NPC. Wait for it to move before auto-walking"
+            return msg
+        elseif no_path_reason == "goal_blocked_runtime" then
+            msg = msg .. ". Route is temporarily blocked by a runtime collision mark"
+            return msg
+        end
         local terrain = snapshot.terrain_offset
         if terrain == 0x10 then
             msg = msg .. ". Chest may be behind locked door. Navigate to a door object first"
@@ -237,20 +367,30 @@ local function plan_path_to_object(obj)
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
     local blocking = M.build_path_blocking(map_id)
-    local target_walkable = map_reader.is_walkable(map_id, obj.x, obj.y)
+    local target_walkable = M.is_pathfinding_walkable(map_id, obj.x, obj.y)
     local result, face_dir, path
+    local no_path_reason = nil
+    local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
     if obj.type == objects.TYPE_NPC
     or obj.type == objects.TYPE_DOOR
     or not target_walkable then
         result, face_dir, path = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
     else
-        result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
+        if goal_block_reason == "npc" then
+            result, face_dir, path = "No path found", nil, nil
+            no_path_reason = "goal_blocked_npc"
+        elseif goal_block_reason == "runtime" then
+            result, face_dir, path = "No path found", nil, nil
+            no_path_reason = "goal_blocked_runtime"
+        else
+            result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
+        end
     end
     -- Store path for debug recall (trace_path, validate_path, etc.)
     if debug_tools.DEBUG_MODE then
         path_debug.store_path(map_id, px, py, obj.x, obj.y, path, nil)
     end
-    return result, face_dir, path, build_pathfind_message(obj, result, face_dir), map_id
+    return result, face_dir, path, build_pathfind_message(obj, result, face_dir, no_path_reason), map_id
 end
 
 -- queue_path_steps(path): Convert A* path to auto_step route directions.
@@ -279,37 +419,42 @@ end
 -- ============================================================
 
 -- pathfind_to_current(): Plan a path to the currently selected object.
--- Announces the result via speech. Freezes NPCs if targeting an NPC.
+-- Announces the result via speech. Freezes NPCs before planning so the
+-- announced route matches the live route state.
 function M.pathfind_to_current()
     local obj = objects.current_object()
     if not obj then
         tolk.output_interrupt("No object selected")
         return
     end
+    freeze_npcs_for_pathing()
     last_pathfind_obj = obj
-    if obj.type == objects.TYPE_NPC then
-        capture_npc_snapshot()
-        npc_freeze_active = true
-    end
     local _, _, _, msg = plan_path_to_object(obj)
     tolk.output_interrupt(msg)
 end
 
 -- autowalk_to_current(): Plan and auto-walk to the currently selected object.
--- Only works on interior maps (not overworld).
+-- Only works on interior maps (not overworld). NPCs are frozen during route
+-- planning and released when the route completes or fails.
 function M.autowalk_to_current()
     local obj = objects.current_object()
     if not obj then
         tolk.output_interrupt("No object selected")
         return
     end
-    last_pathfind_obj = obj
-    if obj.type == objects.TYPE_NPC then
-        capture_npc_snapshot()
-        npc_freeze_active = true
+    if autowalk_guard then
+        local ok, reason = autowalk_guard()
+        if ok == false then
+            debug_tools.info("AUTO_WALK: blocked before planning for " .. obj.name)
+            tolk.output_interrupt(reason or "Cannot auto-walk right now")
+            return
+        end
     end
-    local result, face_dir, path, msg, map_id = plan_path_to_object(obj)
-    if map_id == 0x00 then
+    local map_id = nav.get_position()
+    freeze_npcs_for_pathing()
+    last_pathfind_obj = obj
+    local result, face_dir, path, msg = plan_path_to_object(obj)
+    if maps.is_overworld(map_id, snapshot.terrain_offset) then
         debug_tools.info("AUTO_WALK: unavailable on overworld for " .. obj.name)
         tolk.output_interrupt("Auto-walk is only available on interior maps. " .. msg)
         return
@@ -340,6 +485,17 @@ end
 -- rerouting when a step is blocked and cleanup when a route completes.
 
 auto_step.on_blocked = function(from_x, from_y, blocked_dir)
+    if path_debug.is_validating and path_debug.is_validating() then
+        debug_tools.debug("route_manager: ignoring blocked step during validation")
+        return
+    end
+    if path_debug.is_step_mode and path_debug.is_step_mode() then
+        debug_tools.debug("route_manager: ignoring blocked step during step mode")
+        return
+    end
+
+    local map_id = nav.get_position()
+    record_runtime_block(map_id, from_x, from_y, blocked_dir)
     if not last_pathfind_obj then return end
 
     reroute_failures = reroute_failures + 1
@@ -350,62 +506,19 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
         if npc_freeze_active then
             npc_freeze_active = false
             frozen_npc_snapshot = {}
+            debug_tools.info("NPC freeze released: reroute failure limit reached")
         end
         objects.request_refresh()
         tolk.output_interrupt("Cannot reach destination. Pathfinding cancelled.")
         return
     end
 
-    local map_id, px, py = nav.get_position()
-
-    -- Refresh NPC positions so we can exclude NPC-occupied cells
-    -- from the runtime_blocked set (NPC blocks are temporary).
-    objects.update_npcs()
-
-    -- Record the engine-blocked destination in the runtime blocked set.
-    if from_x and from_y and blocked_dir then
-        local dx = (blocked_dir == "right" and 1) or (blocked_dir == "left" and -1) or 0
-        local dy = (blocked_dir == "down"  and 1) or (blocked_dir == "up"   and -1) or 0
-        local dest_x = from_x + dx
-        local dest_y = from_y + dy
-        -- Only record as engine-blocked if no NPC currently occupies the cell.
-        local npc_positions = objects.get_blocking_positions()
-        local dest_key = dest_x .. "," .. dest_y
-        local npc_at_dest = npc_positions[dest_key]
-        if not npc_at_dest then
-            for _, npc in ipairs(npc_positions) do
-                if npc.x == dest_x and npc.y == dest_y then
-                    npc_at_dest = true
-                    break
-                end
-            end
-        end
-        if not npc_at_dest then
-            if not runtime_blocked[map_id] then
-                runtime_blocked[map_id] = {}
-            end
-            local cell_key = dest_key
-            if not runtime_blocked[map_id][cell_key] then
-                runtime_blocked[map_id][cell_key] = true
-                debug_tools.info("runtime block: map=" .. map_id
-                    .. " cell=(" .. dest_x .. "," .. dest_y .. ")"
-                    .. " via " .. blocked_dir .. " from (" .. from_x .. "," .. from_y .. ")")
-            end
-        else
-            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
-        end
-    end
-
-    -- Re-freeze only if the target is an NPC
-    if last_pathfind_obj.type == objects.TYPE_NPC then
-        capture_npc_snapshot()
-        npc_freeze_active = true
-    end
+    local _, px, py = nav.get_position()
 
     -- Build blocking table and re-route
     local blocking = M.build_path_blocking(map_id)
     local result, face_dir, path
-    local target_walkable = map_reader.is_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
+    local target_walkable = M.is_pathfinding_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
     if last_pathfind_obj.type == objects.TYPE_NPC
     or last_pathfind_obj.type == objects.TYPE_DOOR
     or not target_walkable then
@@ -421,6 +534,11 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
     if result == "No path found" then
         last_pathfind_obj = nil
         reroute_failures = 0
+        if npc_freeze_active then
+            npc_freeze_active = false
+            frozen_npc_snapshot = {}
+            debug_tools.info("NPC freeze released: no path found on reroute")
+        end
         tolk.output_interrupt("No path found. Pathfinding cancelled.")
         return
     end
@@ -471,6 +589,142 @@ end
 -- Used by debug diagnostic functions.
 function M.get_dir_to_delta()
     return DIR_TO_DELTA
+end
+
+-- ============================================================
+-- Debug Command Registration
+-- ============================================================
+-- Registers runtime-block debug commands with debug_tools.
+-- Called once from main.lua during startup.
+
+function M.register_debug_commands(get_map_id_fn)
+    -- Helper: parse "X,Y" or "MAP_ID,X,Y" argument.
+    local function parse_int(token)
+        if not token then return nil end
+        token = token:match("^%s*(.-)%s*$")
+        if token == "" then return nil end
+        if token:match("^[-+]?0[xX][%da-fA-F]+$") then return tonumber(token) end
+        if token:match("^[-+]?%d+$") then return tonumber(token) end
+        return nil
+    end
+
+    local function parse_xy(arg)
+        if not arg then return nil end
+        local xs, ys = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*$")
+        if not xs then return nil end
+        local x, y = parse_int(xs), parse_int(ys)
+        if x == nil or y == nil then return nil end
+        return x, y
+    end
+
+    local function parse_map_xy(arg, default_map)
+        if not arg then return nil end
+        local a, b, c = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)%s*$")
+        if a and b and c then
+            local mid, x, y = parse_int(a), parse_int(b), parse_int(c)
+            if mid == nil or x == nil or y == nil then return nil end
+            return mid, x, y
+        end
+        local x, y = parse_xy(arg)
+        if x == nil then return nil end
+        return default_map, x, y
+    end
+
+    debug_tools.register_command("add_blocked_tile", function(arg)
+        local mid, x, y = parse_map_xy(arg, get_map_id_fn())
+        if mid == nil then
+            debug_tools.error("add_blocked_tile usage: add_blocked_tile:X,Y or add_blocked_tile:MAP_ID,X,Y")
+            return
+        end
+        local added = M.inject_runtime_block(mid, x, y)
+        if added then
+            tolk.output_interrupt(string.format("Added blocked tile %d,%d on map %02X", x, y, mid))
+        else
+            tolk.output_interrupt(string.format("Blocked tile %d,%d already injected on map %02X", x, y, mid))
+        end
+    end)
+
+    debug_tools.register_command("list_blocked_tiles", function(arg)
+        local mid = get_map_id_fn()
+        if arg and arg ~= "" then
+            mid = parse_int(arg)
+            if mid == nil then
+                debug_tools.error("list_blocked_tiles usage: list_blocked_tiles or list_blocked_tiles:MAP_ID")
+                return
+            end
+        end
+        local entries = collect_runtime_blocks(mid)
+        if #entries == 0 then
+            debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X none", mid))
+            tolk.output_interrupt(string.format("No runtime blocked tiles on map %02X", mid))
+        else
+            debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X count=%d", mid, #entries))
+            for _, entry in ipairs(entries) do
+                debug_tools.info(string.format(
+                    "RUNTIME_BLOCK map=0x%02X x=%d y=%d key=%s",
+                    mid, entry.x, entry.y, entry.key))
+            end
+            tolk.output_interrupt(string.format("%d runtime blocked tiles on map %02X", #entries, mid))
+        end
+    end)
+
+    debug_tools.register_command("clear_blocked_tiles", function(arg)
+        if arg and arg:match("^%s*all%s*$") then
+            M.clear_runtime_blocks("all")
+            tolk.output_interrupt("Cleared blocked tiles for all maps")
+            return
+        end
+        local mid = get_map_id_fn()
+        if arg and arg ~= "" then
+            mid = parse_int(arg)
+            if mid == nil then
+                debug_tools.error("clear_blocked_tiles usage: clear_blocked_tiles, clear_blocked_tiles:MAP_ID, or clear_blocked_tiles:all")
+                return
+            end
+        end
+        M.clear_runtime_blocks(mid)
+        tolk.output_interrupt(string.format("Cleared blocked tiles for map %02X", mid))
+    end)
+
+    debug_tools.register_command("is_blocked_tile", function(arg)
+        local mid, x, y = parse_map_xy(arg, get_map_id_fn())
+        if mid == nil then
+            debug_tools.error("is_blocked_tile usage: is_blocked_tile:X,Y or is_blocked_tile:MAP_ID,X,Y")
+            return
+        end
+        local rt_blocked = M.is_cell_runtime_blocked(mid, x, y)
+        local walkable = M.is_pathfinding_walkable(mid, x, y)
+        debug_tools.info(string.format(
+            "BLOCKED_TILE_CHECK map=0x%02X x=%d y=%d runtime_blocked=%s effective_passable=%s",
+            mid, x, y, tostring(rt_blocked), tostring(walkable)))
+        tolk.output_interrupt(string.format(
+            "Blocked tile check map %02X at %d,%d. runtime_blocked=%s. effective_passable=%s",
+            mid, x, y, tostring(rt_blocked), tostring(walkable)))
+    end)
+
+    debug_tools.register_command("dump_blocked_tiles", function(arg)
+        local mid = get_map_id_fn()
+        if arg and arg ~= "" then
+            mid = parse_int(arg)
+            if mid == nil then
+                debug_tools.error("dump_blocked_tiles usage: dump_blocked_tiles or dump_blocked_tiles:MAP_ID")
+                return
+            end
+        end
+        local lines, count = M.format_runtime_blocks_as_lua(mid)
+        debug_tools.info(string.format("RUNTIME_BLOCK_EXPORT map=0x%02X count=%d", mid, count))
+        if count == 0 then
+            debug_tools.info("RUNTIME_BLOCK_EXPORT: no runtime blocked tiles to dump")
+            tolk.output_interrupt(string.format("No runtime blocked tiles to dump for map %02X", mid))
+        else
+            debug_tools.info("=== runtime blocked tiles (copy into MAP_BLOCKED_CELLS) ===")
+            for _, line in ipairs(lines) do
+                debug_tools.info(line)
+            end
+            debug_tools.info("=== end runtime blocked tiles ===")
+            tolk.output_interrupt(string.format("Dumped %d runtime blocked tiles for map %02X", count, mid))
+        end
+    end)
 end
 
 return M

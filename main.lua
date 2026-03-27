@@ -17,6 +17,7 @@
 
 local tolk = require "tolk"         -- Speech output (Python bridge to screen reader)
 local addr = require "addresses"    -- RAM address constants
+local battle = require "battle"     -- Battle command menu helpers
 local chars = require "chars"       -- Text encoding table
 local text = require "text"         -- Screen buffer reading
 local nav = require "navigation"    -- Position and map tracking
@@ -28,6 +29,7 @@ local pathfinder = require "pathfinder" -- A* pathfinding for interior maps
 local map_reader = require "map_reader" -- ROM map data (tile grids)
 local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
 local items = require "items"          -- Item/equipment/spell lookup tables
+local merchant = require "merchant"    -- Dedicated merchant/shop UI detection
 local debug_tools = require "debug_tools"  -- Debug logging and automation (no-op when debug_mode=false)
 local path_debug = require "path_debug"    -- Pathfinding debug/test tools (no-op when debug_mode=false)
 local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
@@ -38,11 +40,47 @@ local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 -- Direction constants (kept here for debug diagnostic functions).
 local DIR_TO_DELTA = route_mgr.get_dir_to_delta()
 
+local function parse_int_arg(token)
+    if not token then return nil end
+    token = token:match("^%s*(.-)%s*$")
+    if token == "" then return nil end
+    if token:match("^[-+]?0[xX][%da-fA-F]+$") then
+        return tonumber(token)
+    end
+    if token:match("^[-+]?%d+$") then
+        return tonumber(token)
+    end
+    return nil
+end
+
 local function parse_xy_arg(arg)
     if not arg then return nil end
-    local x, y = arg:match("^%s*(%-?%d+)%s*,%s*(%-?%d+)%s*$")
-    if not x then return nil end
-    return tonumber(x), tonumber(y)
+    local x_s, y_s = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*$")
+    if not x_s then return nil end
+    local x = parse_int_arg(x_s)
+    local y = parse_int_arg(y_s)
+    if x == nil or y == nil then return nil end
+    return x, y
+end
+
+local function parse_map_xy_arg(arg, default_map_id)
+    if not arg then return nil end
+    local a, b, c = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)%s*$")
+    if a and b and c then
+        local map_id = parse_int_arg(a)
+        local x = parse_int_arg(b)
+        local y = parse_int_arg(c)
+        if map_id == nil or x == nil or y == nil then return nil end
+        return map_id, x, y
+    end
+    local x, y = parse_xy_arg(arg)
+    if x == nil then return nil end
+    return default_map_id, x, y
+end
+
+local function get_block_flags(blocking, x, y)
+    local blocker = blocking and blocking[x .. "," .. y] or nil
+    return blocker == "npc", blocker == "runtime", blocker
 end
 
 local function parse_move_arg(arg, default_x, default_y)
@@ -61,21 +99,34 @@ local function parse_move_arg(arg, default_x, default_y)
     return tonumber(x), tonumber(y), dir2
 end
 
-local function log_tile_report(map_id, x, y)
+local function build_tile_report(map_id, x, y, blocking)
+    local details = map_reader.get_walkability_details(map_id, x, y)
     local tile_type = map_reader.get_tile_type(map_id, x, y)
-    local walkable = map_reader.is_walkable(map_id, x, y)
+    local npc_blocked, runtime_blocked = get_block_flags(blocking, x, y)
+    local base_walkable = details and details.base_walkable
+    local walkable = details and details.effective_walkable
+    local permanent_blocked = details and details.permanent_blocked
+    local effective_passable = (walkable == true) and not npc_blocked and not runtime_blocked
+    return {
+        tile_type = tile_type,
+        base_walkable = base_walkable,
+        walkable = walkable,
+        permanent_blocked = permanent_blocked,
+        npc_blocked = npc_blocked,
+        runtime_blocked = runtime_blocked,
+        effective_passable = effective_passable,
+    }
+end
+
+local function log_tile_report(map_id, x, y)
     local blocking = route_mgr.build_path_blocking(map_id)
-    local npc_blocked = false
-    for _, pos in ipairs(blocking) do
-        if pos.x == x and pos.y == y then
-            npc_blocked = true
-            break
-        end
-    end
-    local runtime_flag = route_mgr.is_cell_runtime_blocked(map_id, x, y)
+    local report = build_tile_report(map_id, x, y, blocking)
     local msg = string.format(
-        "TILE map=0x%02X x=%d y=%d tile=%s walkable=%s npc_blocked=%s runtime_blocked=%s",
-        map_id, x, y, tostring(tile_type), tostring(walkable), tostring(npc_blocked), tostring(runtime_flag))
+        "TILE map=0x%02X x=%d y=%d tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s runtime_blocked=%s effective_passable=%s",
+        map_id, x, y, tostring(report.tile_type), tostring(report.base_walkable),
+        tostring(report.walkable), tostring(report.permanent_blocked),
+        tostring(report.npc_blocked), tostring(report.runtime_blocked),
+        tostring(report.effective_passable))
     debug_tools.info(msg)
     return msg
 end
@@ -89,21 +140,14 @@ local function log_move_report(from_x, from_y, dir)
     end
     local dest_x = from_x + meta.dx
     local dest_y = from_y + meta.dy
-    local tile_type = map_reader.get_tile_type(map_id, dest_x, dest_y)
-    local walkable = map_reader.is_walkable(map_id, dest_x, dest_y)
     local blocking = route_mgr.build_path_blocking(map_id)
-    local npc_blocked = false
-    for _, pos in ipairs(blocking) do
-        if pos.x == dest_x and pos.y == dest_y then
-            npc_blocked = true
-            break
-        end
-    end
-    local runtime_flag = route_mgr.is_cell_runtime_blocked(map_id, dest_x, dest_y)
+    local report = build_tile_report(map_id, dest_x, dest_y, blocking)
     local msg = string.format(
-        "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) tile=%s walkable=%s npc_blocked=%s runtime_blocked=%s",
-        map_id, from_x, from_y, dir, dest_x, dest_y, tostring(tile_type),
-        tostring(walkable), tostring(npc_blocked), tostring(runtime_flag))
+        "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s runtime_blocked=%s effective_passable=%s",
+        map_id, from_x, from_y, dir, dest_x, dest_y, tostring(report.tile_type),
+        tostring(report.base_walkable), tostring(report.walkable),
+        tostring(report.permanent_blocked), tostring(report.npc_blocked),
+        tostring(report.runtime_blocked), tostring(report.effective_passable))
     debug_tools.info(msg)
     return msg
 end
@@ -122,6 +166,7 @@ local function report_blockers_for_current_map()
         debug_tools.info(string.format("BLOCKER_RUNTIME map=0x%02X cell=%s", map_id, cell_key))
     end
 end
+
 
 -- ============================================================
 -- Startup
@@ -170,6 +215,9 @@ local announced_dialogue = ""   -- Last dialogue text we actually spoke
 local stable_frames = 0         -- How many consecutive checks the text hasn't changed
 local STABLE_THRESHOLD = 30     -- Frames of no change before we consider text "done"
                                 -- At 60fps, 30 frames = 0.5 seconds of stability
+local BATTLE_DIALOGUE_STABLE_THRESHOLD = 14
+local BATTLE_DIALOGUE_GRACE_THRESHOLD = 6
+local BATTLE_DIALOGUE_GRACE = 120
 
 -- Upper dialogue uses the same stability threshold as lower dialogue.
 local UPPER_STABLE_THRESHOLD = 30
@@ -184,6 +232,20 @@ local announced_upper_dialogue = ""   -- Last upper text we actually spoke
 local upper_stable_frames = 0         -- Stability counter for upper text
 local upper_baseline = ""             -- Status display text when no dialogue active
 local upper_dialogue_active = false   -- Is a dialogue window open in the upper region?
+local merchant_screen_active = false  -- Dedicated shop/merchant interface mode
+local prev_merchant_text = ""         -- Last merchant screen text snapshot
+local announced_merchant_text = ""    -- Last merchant screen text we spoke
+local prev_merchant_selection = nil   -- Last merchant item selection seen
+local prev_merchant_price = nil       -- Last merchant item price seen
+local merchant_intro_pending = false  -- Speak "Merchant" prefix on first selection
+local merchant_stable_frames = 0      -- Stability counter for merchant screen changes
+local MERCHANT_STABLE_THRESHOLD = 12
+local submenu_mode = nil              -- nil (normal), "STATUS", or "ITEM"
+local game_state = {state = nil}      -- updated once per frame by state.check_for_changes()
+local prev_battle_menu_open = false   -- Was the battle command menu open last frame?
+local prev_battle_cursor_x = nil      -- Previous battle cursor X
+local prev_battle_cursor_y = nil      -- Previous battle cursor Y
+local battle_dialogue_grace_frames = 0
 
 -- y≤3 cleaned-text stability tracking.
 -- The raw dialogue may oscillate every 8–12 frames due to command-menu cursor
@@ -235,6 +297,39 @@ local prev_title_cursor_row = nil  -- last announced cursor row
 local prev_title_cursor_col = nil  -- last announced cursor col
 local title_stable          = 0
 local TITLE_STABLE          = 8    -- frames of stability after cursor_just_moved before announcing
+
+local function get_autowalk_unavailable_reason()
+    if game_state.state ~= state.STATE_FIELD then
+        return "Auto-walk is only available while walking on the field"
+    end
+    if debug_tools.is_sweep_active() then
+        return "Auto-walk is unavailable during map sweep"
+    end
+    if path_debug.is_step_mode() then
+        return "Finish step mode before auto-walking"
+    end
+    if menu.is_open() then
+        return "Close the command menu before auto-walking"
+    end
+    if submenu_mode ~= nil then
+        return "Close the submenu before auto-walking"
+    end
+    if merchant_screen_active then
+        return "Close the merchant interface before auto-walking"
+    end
+    if prev_dialogue ~= "" then
+        return "Wait for dialogue to finish before auto-walking"
+    end
+    if upper_dialogue_active then
+        return "Wait for the upper dialogue window to clear before auto-walking"
+    end
+    return nil
+end
+
+route_mgr.set_autowalk_guard(function()
+    local reason = get_autowalk_unavailable_reason()
+    return reason == nil, reason
+end)
 
 -- prev_is_name_entry: true when the name-entry alphabet grid is on screen.
 -- Tracks transitions so we announce "Name entry." exactly once.
@@ -336,7 +431,6 @@ local frame_count = 0
 --   the single-frame jump from a command menu item to a sub-menu cursor.
 -- pending_status_check: if the STATUS PPU signature isn't visible on the
 --   exact frame the command menu closes, retry on the next frame.
-local submenu_mode = nil
 local prev_cmd_x = nil
 local prev_cmd_y = nil
 
@@ -413,6 +507,15 @@ end
 local function check_hp_mp_changes()
     local hp = snapshot.hp
     local mp = snapshot.mp
+
+    -- Battle log already narrates damage/spell results. Suppress the generic
+    -- HP/MP delta announcer during battle and the immediate post-battle grace
+    -- window so it does not talk over combat dialogue.
+    if game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0 then
+        prev_hp = hp
+        prev_mp = mp
+        return
+    end
 
     -- Only announce after we have a baseline (skip the very first frame)
     if prev_hp ~= nil then
@@ -569,9 +672,8 @@ end
 
 local function is_row1_interior_context()
     if not in_gameplay then return false end
-    local map_id = snapshot.map_id
     local py = snapshot.player_y
-    return map_id ~= 0x00 and py <= 1
+    return not snapshot.is_overworld and py <= 1
 end
 
 local function trace_row1(event, changes, extra)
@@ -613,11 +715,185 @@ local function joypad_has_input(joy)
         or joy.start or joy.select
 end
 
+local function has_blocking_live_input()
+    if not current_joy_any then
+        return false
+    end
+    if auto_step.is_auto_active and auto_step.is_auto_active() then
+        return false
+    end
+    return true
+end
+
 local function field_dialogue_guard_active()
+    -- This guard is only for passive field play. Post-battle result/status
+    -- screens still run under STATE_BATTLE and should be allowed through the
+    -- normal dialogue readers when no menu is active.
+    if game_state.state ~= state.STATE_FIELD then return false end
     if not in_gameplay then return false end
-    if current_joy_any then return false end
+    if has_blocking_live_input() then return false end
     if menu.is_open() or submenu_mode ~= nil or menu.is_yesno_active() then return false end
+    if merchant_screen_active then return false end
     return recent_field_action_frames == 0
+end
+
+local function lower_dialogue_stable_threshold(dialogue)
+    if dialogue == "" then
+        return STABLE_THRESHOLD
+    end
+
+    if battle_dialogue_grace_frames > 0 then
+        -- Enemy HP drops to 0 before the final combat line fully resolves,
+        -- so the game can leave STATE_BATTLE while that line is still on
+        -- screen. Once the text looks complete, announce it quickly before
+        -- the victory page replaces it.
+        if dialogue:find("[a-z]") and dialogue:match("[%.!?]$") then
+            return BATTLE_DIALOGUE_GRACE_THRESHOLD
+        end
+        return BATTLE_DIALOGUE_STABLE_THRESHOLD
+    end
+
+    if game_state.state == state.STATE_BATTLE then
+        return BATTLE_DIALOGUE_STABLE_THRESHOLD
+    end
+
+    return STABLE_THRESHOLD
+end
+
+local function reset_merchant_state(sync_dialogue_baselines)
+    merchant_screen_active = false
+    prev_merchant_text = ""
+    announced_merchant_text = ""
+    prev_merchant_selection = nil
+    prev_merchant_price = nil
+    merchant_intro_pending = false
+    merchant_stable_frames = 0
+
+    if not sync_dialogue_baselines then
+        return
+    end
+
+    prev_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    stable_frames = 0
+
+    upper_baseline = text.read_upper_window(get_scroll_tiles())
+    prev_upper_dialogue = upper_baseline
+    announced_upper_dialogue = upper_baseline
+    upper_stable_frames = 0
+    upper_dialogue_active = false
+end
+
+local function reset_battle_menu_state()
+    prev_battle_menu_open = false
+    prev_battle_cursor_x = nil
+    prev_battle_cursor_y = nil
+end
+
+local function check_merchant_screen()
+    if not in_gameplay or submenu_mode ~= nil or menu.is_yesno_active() then
+        if merchant_screen_active then
+            reset_merchant_state(true)
+        end
+        return false
+    end
+
+    local info = merchant.analyze_current_screen()
+    if not info.active then
+        if merchant_screen_active then
+            reset_merchant_state(true)
+        end
+        return false
+    end
+
+    local was_active = merchant_screen_active
+    merchant_screen_active = true
+    if not was_active then
+        merchant_intro_pending = true
+    end
+
+    local offer = merchant.get_cursor_offer()
+    local selection = offer and offer.name or nil
+    local price = offer and offer.price or nil
+    if selection and (selection ~= prev_merchant_selection or price ~= prev_merchant_price) then
+        prev_merchant_selection = selection
+        prev_merchant_price = price
+        local msg
+        local price_text = price and string.format("%d gold.", price) or nil
+        if merchant_intro_pending then
+            if price_text then
+                msg = string.format("Merchant. Gold %d. %s. %s", snapshot.gold, selection, price_text)
+            else
+                msg = string.format("Merchant. Gold %d. %s.", snapshot.gold, selection)
+            end
+            merchant_intro_pending = false
+        else
+            if price_text then
+                msg = string.format("%s. %s", selection, price_text)
+            else
+                msg = selection
+            end
+        end
+        debug_tools.info("MERCHANT_SELECT: " .. msg)
+        tolk.output_interrupt(msg)
+        announced_merchant_text = info.raw_text
+        merchant_stable_frames = 0
+        prev_merchant_text = info.raw_text
+        return true
+    end
+
+    if info.raw_text ~= prev_merchant_text then
+        prev_merchant_text = info.raw_text
+        merchant_stable_frames = 0
+    else
+        merchant_stable_frames = merchant_stable_frames + 1
+    end
+
+    if merchant_stable_frames == MERCHANT_STABLE_THRESHOLD
+       and info.raw_text ~= announced_merchant_text then
+        debug_tools.info("MERCHANT: " .. info.summary)
+        tolk.output_interrupt(info.summary)
+        announced_merchant_text = info.raw_text
+        merchant_intro_pending = false
+    end
+
+    return true
+end
+
+local function check_battle_menu()
+    local changes = menu.check_for_changes()
+    local menu_open = menu.is_open()
+
+    if not menu_open then
+        prev_battle_menu_open = false
+        return
+    end
+
+    local cursor_x = changes.cursor_x
+    local cursor_y = changes.cursor_y
+    local item = battle.get_menu_item(cursor_x, cursor_y)
+    local announce = false
+
+    if not prev_battle_menu_open then
+        announce = true
+    elseif cursor_x ~= prev_battle_cursor_x or cursor_y ~= prev_battle_cursor_y then
+        announce = true
+    end
+
+    prev_battle_menu_open = true
+    prev_battle_cursor_x = cursor_x
+    prev_battle_cursor_y = cursor_y
+
+    if not announce then
+        return
+    end
+
+    if item then
+        debug_tools.info("BATTLE_MENU: " .. item)
+        tolk.output(item)
+    else
+        debug_tools.info(string.format("BATTLE_MENU_RAW: x=%s y=%s", tostring(cursor_x), tostring(cursor_y)))
+        tolk.output("Battle cursor " .. tostring(cursor_x) .. ", " .. tostring(cursor_y))
+    end
 end
 
 local function has_visible_cursor_tile()
@@ -654,6 +930,32 @@ end
 -- announcements during yes/no prompts.
 local function check_command_menu()
     local changes = menu.check_for_changes()
+
+    -- Field command-menu speech must never run outside actual field state.
+    -- Battle screens can reuse cursor RAM and window/header patterns that
+    -- superficially resemble the field command menu, but they need their own
+    -- dedicated reader. Keep menu.check_for_changes() above so menu.lua's
+    -- cached state stays fresh, then bail out silently here.
+    if game_state.state ~= state.STATE_FIELD then
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        return
+    end
+
+    -- Merchant/shop layouts can coexist with the same cursor RAM and some of
+    -- the same window/header signals the command-menu logic watches. When the
+    -- merchant screen is present, it must fully override command-menu speech.
+    local merchant_present = merchant_screen_active or merchant.analyze_current_screen().active
+    if merchant_present then
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        if submenu_mode == "ITEM" or submenu_mode == "STATUS" then
+            submenu_mode = nil
+        end
+        return
+    end
 
     -- Save previous cursor position for transition detection, then update.
     local was_x = prev_cmd_x
@@ -865,9 +1167,8 @@ local function check_command_menu()
         -- that is_command_menu_open() searches for, producing a spurious
         -- menu-opened event. Suppress the opening announcement; cursor_moved
         -- events still work correctly once the player actually navigates.
-        local mid = snapshot.map_id
         local py  = snapshot.player_y
-        if not (mid ~= 0x00 and py <= 1) then
+        if not (not snapshot.is_overworld and py <= 1) then
             -- Menu just opened. Announce "Command." only — DW1 remembers
             -- the last-used cursor position, so the current item is wherever
             -- the cursor was left, not necessarily TALK. The player can press
@@ -1444,17 +1745,22 @@ end
 -- reached and the announcement fires exactly once. This prevents the
 -- per-character "ki…kid…kidnap…" chatter from the old per-change approach.
 local function check_dialogue()
-    local mid = snapshot.map_id
     local py  = snapshot.player_y
-    local at_y1 = in_gameplay and mid ~= 0x00 and py <= 3
+    local at_y1 = in_gameplay and not snapshot.is_overworld and py <= 3
 
     -- Use the filtered reader for ALL y positions: it applies a per-row
     -- lowercase filter to exclude status bar fragments (uppercase "E", "G",
     -- digits) that bleed into rows 19-29 at certain NES scroll positions.
     local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    local battle_dialogue_mode = (game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0)
+    if battle_dialogue_mode then
+        dialogue = battle.normalize_dialogue(dialogue)
+    end
+    local lower_dialogue_visible = (dialogue ~= "")
+    local stable_threshold = lower_dialogue_stable_threshold(dialogue)
 
-    if field_dialogue_guard_active() or
-       (movement_dialogue_hold_frames > 0 and not current_joy_any and not menu.is_open()
+    if (field_dialogue_guard_active() and not lower_dialogue_visible) or
+       (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and not menu.is_open()
         and submenu_mode == nil and not menu.is_yesno_active()) then
         prev_dialogue = dialogue
         stable_frames = 0
@@ -1488,26 +1794,35 @@ local function check_dialogue()
 
         -- Announce once after the cleaned text has been stable for STABLE_THRESHOLD
         -- frames. This prevents the per-character "ki … kid … kidnap …" chatter.
-        if clean_stable_frames == STABLE_THRESHOLD then
+        if clean_stable_frames >= stable_threshold then
             if clean:find("[a-z]") and clean ~= announced_dialogue then
                 -- Real response text or NPC dialogue — announce only the new portion.
                 -- DW1 scrolls the dialogue window so successive windows share a
                 -- tail/prefix boundary. strip_overlap prevents re-announcing the
                 -- question that already appeared at the top of the next window.
-                local new_text = strip_overlap(announced_dialogue, clean)
+                local new_text
+                if battle_dialogue_mode then
+                    new_text = battle.extract_new_text(announced_dialogue, clean)
+                else
+                    new_text = strip_overlap(announced_dialogue, clean)
+                end
                 if new_text ~= "" then
-                    debug_tools.on_dialogue(new_text)
-                    event_bus.publish("dialogue_new", {text = new_text})
-                    -- First page: interrupt to clear any prior menu speech.
-                    -- Continuation pages: queue so the speech flows without
-                    -- each scroll step cutting off the one before it.
-                    if announced_dialogue == "" then
-                        tolk.output_interrupt(new_text)
-                    else
-                        tolk.output(new_text)
+                    if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
+                        debug_tools.on_dialogue(new_text)
+                        event_bus.publish("dialogue_new", {text = new_text})
+                        -- Battle pages should always queue in order. Field/NPC
+                        -- dialogue keeps the old first-page interrupt behavior so
+                        -- menu speech is cleared immediately when talk text opens.
+                        if battle_dialogue_mode then
+                            tolk.output(new_text)
+                        elseif announced_dialogue == "" then
+                            tolk.output_interrupt(new_text)
+                        else
+                            tolk.output(new_text)
+                        end
+                        announced_dialogue = clean
                     end
                 end
-                announced_dialogue = clean
             elseif not clean:find("[a-z]") and announced_dialogue ~= "" then
                 -- No lowercase: command menu noise — reset for next real text.
                 announced_dialogue = ""
@@ -1537,7 +1852,7 @@ local function check_dialogue()
 
     -- Once text has been stable long enough and differs from what we
     -- already announced, speak only the new portion.
-    if stable_frames == STABLE_THRESHOLD then
+    if stable_frames >= stable_threshold then
         if dialogue ~= "" and dialogue ~= announced_dialogue then
             -- Absorb purely-uppercase text (command menu tiles, map tiles)
             -- without announcing — same principle as the at_y1 uppercase filter.
@@ -1545,21 +1860,34 @@ local function check_dialogue()
             if not dialogue:find("[a-z]") then
                 announced_dialogue = dialogue
             else
-                local new_text = strip_overlap(announced_dialogue, dialogue)
+                local new_text
+                if battle_dialogue_mode then
+                    new_text = battle.extract_new_text(announced_dialogue, dialogue)
+                else
+                    new_text = strip_overlap(announced_dialogue, dialogue)
+                end
                 if new_text ~= "" then
-                    debug_tools.on_dialogue(new_text)
-                    event_bus.publish("dialogue_new", {text = new_text})
-                    if announced_dialogue == "" then
-                        tolk.output_interrupt(new_text)
-                    else
-                        tolk.output(new_text)
+                    if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
+                        debug_tools.on_dialogue(new_text)
+                        event_bus.publish("dialogue_new", {text = new_text})
+                        if battle_dialogue_mode then
+                            tolk.output(new_text)
+                        elseif announced_dialogue == "" then
+                            tolk.output_interrupt(new_text)
+                        else
+                            tolk.output(new_text)
+                        end
+                        announced_dialogue = dialogue
                     end
                 end
-                announced_dialogue = dialogue
             end
         elseif dialogue == "" and announced_dialogue ~= "" then
-            -- Dialogue window closed — reset so we catch the next one
-            announced_dialogue = ""
+            -- Keep the last announced battle page through the short
+            -- post-battle grace window so stale lower-window leftovers do not
+            -- re-announce as a fresh reward fragment after the window clears.
+            if not battle_dialogue_mode then
+                announced_dialogue = ""
+            end
         end
     end
 end
@@ -1596,8 +1924,23 @@ local function check_upper_dialogue()
         return
     end
 
+    -- Auto-walk drives directional input across many frames. In the throne room
+    -- this can make the upper PPU rows flicker through transient status/map
+    -- redraw states that are not real dialogue, but can still satisfy the upper
+    -- dialogue classifier for a frame and cancel the route. While an auto-walk
+    -- route is active, treat upper-window changes as baseline-only noise.
+    if auto_step.is_route_active and auto_step.is_route_active() then
+        local upper = text.read_upper_window(get_scroll_tiles())
+        upper_baseline = upper
+        prev_upper_dialogue = upper
+        announced_upper_dialogue = upper
+        upper_stable_frames = 0
+        upper_dialogue_active = false
+        return
+    end
+
     if field_dialogue_guard_active() or
-       (movement_dialogue_hold_frames > 0 and not current_joy_any and submenu_mode == nil
+       (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and submenu_mode == nil
         and not menu.is_yesno_active()) then
         local upper = text.read_upper_window(get_scroll_tiles())
         upper_baseline = upper
@@ -1610,8 +1953,7 @@ local function check_upper_dialogue()
     -- y=1 movement tracking for interior maps.
     -- Update the pending-baseline flag every frame so it reflects current
     -- player movement even during the upper-text stability wait period.
-    local map_id = snapshot.map_id
-    if in_gameplay and map_id ~= 0x00 then
+    if in_gameplay and not snapshot.is_overworld then
         local player_y = snapshot.player_y
         if player_y <= 1 then
             local player_x = snapshot.player_x
@@ -1690,7 +2032,7 @@ local function check_upper_dialogue()
     -- Real NPC dialogue in DW1 ALWAYS renders in the lower window (rows
     -- 18-27) and is handled by check_lower_dialogue. Nothing in rows 1-18
     -- at y=1 is ever genuine dialogue — absorb unconditionally.
-    if in_gameplay and map_id ~= 0x00 and snapshot.player_y <= 1 then
+    if in_gameplay and not snapshot.is_overworld and snapshot.player_y <= 1 then
         upper_baseline = upper
         announced_upper_dialogue = upper
         upper_dialogue_active = false
@@ -1793,11 +2135,14 @@ local function check_upper_dialogue()
         return
     end
 
+    -- Skip if we already announced this exact text
+    if upper == announced_upper_dialogue then
+        upper_dialogue_active = false
+        return
+    end
+
     -- Real dialogue detected — mark the window as active.
     upper_dialogue_active = true
-
-    -- Skip if we already announced this exact text
-    if upper == announced_upper_dialogue then return end
 
     if new_text ~= "" then
         debug_tools.on_dialogue(new_text)
@@ -1904,31 +2249,55 @@ end)
 
 debug_tools.register_command("report_runtime_blocks", function()
     local map_id = snapshot.map_id
-    local runtime = route_mgr.format_runtime_blocks(map_id)
-    if #runtime == 0 then
-        debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X none", map_id))
+    local count = route_mgr.count_runtime_blocks(map_id)
+    if count == 0 then
         tolk.output_interrupt("No runtime blocked cells")
         return
     end
-    debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X count=%d", map_id, #runtime))
-    for _, cell_key in ipairs(runtime) do
-        debug_tools.info(string.format("RUNTIME_BLOCK map=0x%02X cell=%s", map_id, cell_key))
-    end
-    tolk.output_interrupt(string.format("%d runtime blocked cells reported", #runtime))
+    tolk.output_interrupt(string.format("%d runtime blocked cells on map %02X", count, map_id))
+end)
+
+debug_tools.register_command("report_upper_dialogue_state", function()
+    local upper = text.read_upper_window(get_scroll_tiles())
+    local lower = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    local msg = string.format(
+        "UPPER_STATE active=%s menu=%s submenu=%s prev_dialogue_len=%d upper_len=%d baseline_len=%d announced_len=%d lower_len=%d upper=%q baseline=%q announced=%q",
+        tostring(upper_dialogue_active),
+        tostring(menu.is_open()),
+        tostring(submenu_mode),
+        #(prev_dialogue or ""),
+        #(upper or ""),
+        #(upper_baseline or ""),
+        #(announced_upper_dialogue or ""),
+        #(lower or ""),
+        tostring(upper or ""),
+        tostring(upper_baseline or ""),
+        tostring(announced_upper_dialogue or "")
+    )
+    debug_tools.info(msg)
+    tolk.output_interrupt("Upper dialogue state reported")
 end)
 
 debug_tools.register_command("clear_runtime_blocks", function(arg)
     if arg and arg:match("^%s*all%s*$") then
         route_mgr.clear_runtime_blocks("all")
-        debug_tools.info("RUNTIME_BLOCKS cleared all maps")
         tolk.output_interrupt("Cleared runtime blocks for all maps")
         return
     end
     local map_id = snapshot.map_id
+    if arg and arg ~= "" then
+        map_id = parse_int_arg(arg)
+        if map_id == nil then
+            debug_tools.error("clear_runtime_blocks usage: clear_runtime_blocks, clear_runtime_blocks:MAP_ID, or clear_runtime_blocks:all")
+            return
+        end
+    end
     route_mgr.clear_runtime_blocks(map_id)
-    debug_tools.info(string.format("RUNTIME_BLOCKS cleared map=0x%02X", map_id))
-    tolk.output_interrupt("Cleared runtime blocks for current map")
+    tolk.output_interrupt(string.format("Cleared runtime blocks for map %02X", map_id))
 end)
+
+-- Runtime block debug commands are registered via route_manager
+route_mgr.register_debug_commands(function() return snapshot.map_id end)
 
 debug_tools.register_command("inspect_tile", function(arg)
     local x, y = parse_xy_arg(arg)
@@ -2110,7 +2479,14 @@ debug_tools.register_command("stop_validate", function()
 end)
 
 debug_tools.register_command("test_path", function(arg)
-    path_debug.run_test(arg, auto_step, route_mgr.build_path_blocking)
+    local map_id = nav.get_position()
+    route_mgr.clear_runtime_blocks(map_id)
+    -- Keep deterministic fixture tests independent of live NPC movement.
+    -- The suite already clears runtime blocks above, so use an empty snapshot.
+    local blocking_snapshot = {}
+    path_debug.run_test(arg, auto_step, function()
+        return blocking_snapshot
+    end)
     tolk.output_interrupt("Test scenarios logged")
 end)
 
@@ -2151,7 +2527,7 @@ while true do
     hotkeys.update(keys)
 
     -- Get current game state
-    local game_state = state.check_for_changes()
+    game_state = state.check_for_changes()
     in_gameplay = (game_state.state ~= state.STATE_TITLE)
 
     -- Startup grace period: during the first STARTUP_FRAMES frames,
@@ -2187,6 +2563,8 @@ while true do
             -- text doesn't get announced as "new dialogue" after the grace period.
             upper_baseline = text.read_upper_window(get_scroll_tiles())
             prev_upper_dialogue = upper_baseline
+            reset_merchant_state(false)
+            reset_battle_menu_state()
 
             if game_state.state == state.STATE_TITLE then
                 prev_title_cursor_row       = nil
@@ -2209,6 +2587,8 @@ while true do
                 msg_speed_was_open          = false
                 prev_msg_speed_d9           = nil
                 field_from_title_ct         = 0
+                reset_merchant_state(false)
+                reset_battle_menu_state()
                 tolk.output("Title screen.")
             end
         end
@@ -2238,12 +2618,17 @@ while true do
                 msg_speed_was_open          = false
                 prev_msg_speed_d9           = nil
                 field_from_title_ct         = 0
+                reset_merchant_state(false)
+                reset_battle_menu_state()
                 tolk.output("Title screen.")
             elseif game_state.state == state.STATE_BATTLE then
+                reset_merchant_state(false)
+                reset_battle_menu_state()
                 tolk.output("Battle!")
                 debug_tools.on_battle_start()
                 event_bus.publish("battle_started")
             elseif game_state.state == state.STATE_FIELD then
+                reset_battle_menu_state()
                 -- Transitioning from title to field: start or continue debounce.
                 if game_state.prev_state == state.STATE_TITLE then
                     field_from_title_ct = 1
@@ -2280,6 +2665,12 @@ while true do
             end
         else
             recent_field_action_frames = 0
+        end
+
+        if game_state.state == state.STATE_BATTLE then
+            battle_dialogue_grace_frames = BATTLE_DIALOGUE_GRACE
+        elseif battle_dialogue_grace_frames > 0 then
+            battle_dialogue_grace_frames = battle_dialogue_grace_frames - 1
         end
 
         -- Run automatic checks based on current state.
@@ -2332,7 +2723,11 @@ while true do
                     check_level_up()
                 end
             end
-            check_command_menu()
+            if game_state.state == state.STATE_BATTLE then
+                check_battle_menu()
+            else
+                check_command_menu()
+            end
 
             -- Keep the object list fresh: detect map changes and
             -- periodically re-read NPC positions (they move around).
@@ -2352,9 +2747,12 @@ while true do
         -- those rows decode as spurious digits/uppercase and produce false
         -- announcements. check_title_screen() handles all title-screen text.
         if in_gameplay then
-            check_dialogue()
-            check_upper_dialogue()
+            if not check_merchant_screen() then
+                check_dialogue()
+                check_upper_dialogue()
+            end
         else
+            reset_merchant_state(false)
             check_title_screen()
         end
     end
@@ -2368,16 +2766,16 @@ while true do
     local sim_input = debug_tools.tick(frame_count, game_state.state)
     path_debug.tick()  -- Drive validation state machine (no-op when debug_mode=false)
     if sim_input then
-        -- sweep_map returns input tagged with _sweep=true. These are multi-frame
-        -- raw injections (the sweep holds the key itself across frames via the
-        -- state machine). Route them directly to joypad.set() — NOT through
+        -- sweep_map returns input tagged with _sweep=true. report/debug probes
+        -- can also request a one-frame raw injection via _raw=true.
+        -- These should go directly to joypad.set() — NOT through
         -- auto_step.inject_step(), which would start a competing auto-hold.
         --
         -- Normal simulate_input directions DO go through inject_step so the
         -- full tap-to-step hold sequence fires (auto_step reads joypad.read(),
         -- not joypad.set() output, so a bare joypad.set() of a direction would
         -- only turn the character without moving).
-        if sim_input._sweep then
+        if sim_input._sweep or sim_input._raw then
             joypad.set(1, sim_input)
         else
             local dir_sim = sim_input.up or sim_input.down or sim_input.left or sim_input.right
@@ -2397,13 +2795,34 @@ while true do
     -- Only active when the player is walking on the field (not in
     -- menus, dialogue, battle, or on the title screen).
     local can_walk = game_state.state == state.STATE_FIELD
-                     and not menu.is_open()
-                     and submenu_mode == nil
-                     and prev_dialogue == ""
-                     and not upper_dialogue_active
                      and not debug_tools.is_sweep_active()  -- suspend during map sweep
-                     and not path_debug.is_validating()    -- suspend during path validation
-                     and not path_debug.is_step_mode()     -- suspend during step-by-step mode
+                     and not path_debug.is_step_mode()      -- suspend during step-by-step mode
+                     and (
+                         path_debug.is_validating()
+                         or (
+                             not menu.is_open()
+                             and submenu_mode == nil
+                             and not merchant_screen_active
+                             and prev_dialogue == ""
+                             and not upper_dialogue_active
+                         )
+                     )
+    if debug_tools.DEBUG_MODE and not can_walk then
+        local active_target = route_mgr.get_last_pathfind_obj and route_mgr.get_last_pathfind_obj()
+        if active_target or (path_debug.is_validating and path_debug.is_validating()) then
+            debug_tools.debug(string.format(
+                "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu=%s submenu=%s prev_dialogue_len=%d upper_dialogue_active=%s target=%s",
+                tostring(game_state.state),
+                tostring(debug_tools.is_sweep_active()),
+                tostring(path_debug.is_step_mode()),
+                tostring(path_debug.is_validating()),
+                tostring(menu.is_open()),
+                tostring(submenu_mode),
+                #(prev_dialogue or ""),
+                tostring(upper_dialogue_active),
+                active_target and tostring(active_target.name) or "nil"))
+        end
+    end
     auto_step.update(can_walk)
 
     -- Advance the emulator by one frame. This is required —

@@ -76,6 +76,10 @@ local auto_dir = nil       -- Direction string ("up", "down", etc.) or nil
 local auto_frames = 0      -- How many frames we've been auto-holding
 local auto_start_x = nil   -- Position when auto-hold started
 local auto_start_y = nil
+local auto_timeout_retries = 0
+local auto_turn_represses = 0
+local auto_inject_limit = nil
+local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
 
@@ -95,6 +99,19 @@ local COOLDOWN_FRAMES = 4  -- ~67ms at 60fps
 -- DW1 turn animation: ~8 frames. Step initiation: a few more frames.
 -- 12 frames should be plenty to get through turn + start of step.
 local INJECT_LIMIT = 12
+
+-- If the player has not moved shortly after the initial inject window,
+-- assume the game consumed that press as a turn-in-place. DW1 often
+-- requires a fresh press after turning before movement begins.
+local TURN_REPRESS_DELAY = 18
+local TURN_REPRESS_LIMIT = 1
+local TURN_REPRESS_INJECT_LIMIT = 4
+
+-- Before reporting a blocked move, allow a couple of internal retries of the
+-- same step from the same tile/direction. This filters out intermittent
+-- step-start misses in otherwise open corridors without permanently
+-- misclassifying the destination cell as blocked.
+local BLOCK_RETRY_LIMIT = 2
 
 -- ============================================================
 -- Helper Functions
@@ -117,13 +134,49 @@ local function clear_route()
     route_index = 1
 end
 
-local function begin_step(dir, px, py)
+local function begin_step(dir, px, py, state)
     auto_dir = dir
     auto_frames = 1
     auto_start_x = px
     auto_start_y = py
+    auto_timeout_retries = state and state.timeout_retries or 0
+    auto_turn_represses = state and state.turn_represses or 0
+    auto_inject_limit = state and state.inject_limit or INJECT_LIMIT
+    pending_repress = nil
     tracked_dir = nil
+    debug_tools.debug(string.format(
+        "auto_step begin_step dir=%s from=(%d,%d) timeout_retries=%d turn_represses=%d inject_limit=%d",
+        tostring(dir), px or -1, py or -1, auto_timeout_retries, auto_turn_represses,
+        auto_inject_limit or -1))
     joypad.set(1, {[dir] = true})
+end
+
+local function clear_pending_repress()
+    pending_repress = nil
+end
+
+local function schedule_turn_repress(dir)
+    pending_repress = {
+        dir = dir,
+        timeout_retries = auto_timeout_retries,
+        turn_represses = auto_turn_represses + 1,
+        inject_limit = TURN_REPRESS_INJECT_LIMIT,
+    }
+    auto_dir = nil
+    auto_frames = 0
+    auto_start_x = nil
+    auto_start_y = nil
+end
+
+local function reset_active_step()
+    auto_dir = nil
+    auto_frames = 0
+    auto_start_x = nil
+    auto_start_y = nil
+    auto_timeout_retries = 0
+    auto_turn_represses = 0
+    auto_inject_limit = nil
+    clear_pending_repress()
 end
 
 -- ============================================================
@@ -143,7 +196,7 @@ function M.update(can_walk)
     local enabled = config.get("enable_auto_step")
     if enabled == "false" then
         -- Feature disabled — reset all state and return
-        auto_dir = nil
+        reset_active_step()
         tracked_dir = nil
         cooldown = 0
         clear_route()
@@ -163,7 +216,12 @@ function M.update(can_walk)
 
     -- If we can't walk right now, cancel any active auto-hold
     if not can_walk then
-        auto_dir = nil
+        if auto_dir or pending_repress then
+            debug_tools.debug(string.format(
+                "auto_step cancel: can_walk=false auto_dir=%s pending_repress=%s",
+                tostring(auto_dir), pending_repress and tostring(pending_repress.dir) or "nil"))
+        end
+        reset_active_step()
         tracked_dir = nil
         cooldown = 0
         clear_route()
@@ -179,6 +237,20 @@ function M.update(can_walk)
     -- Tick down cooldown
     if cooldown > 0 then
         cooldown = cooldown - 1
+    end
+
+    if pending_repress and is_any_direction_pressed(joy) then
+        debug_tools.debug("auto_step cancel pending repress: live direction input detected")
+        clear_pending_repress()
+    end
+
+    if pending_repress and not auto_dir and cooldown <= 0 and not is_any_direction_pressed(joy) then
+        debug_tools.debug("auto_step resume pending repress")
+        begin_step(pending_repress.dir, px, py, pending_repress)
+        for _, dir in ipairs(DIRECTIONS) do
+            prev_held[dir] = joy[dir] or false
+        end
+        return
     end
 
     -- --------------------------------------------------------
@@ -197,16 +269,43 @@ function M.update(can_walk)
         end
 
         if different_dir then
+            debug_tools.debug("auto_step cancel: different live direction pressed")
             if DEBUG then tolk.output("auto-step cancelled, different direction") end
-            auto_dir = nil
+            reset_active_step()
             clear_route()
         -- Cancel if position changed (step completed!)
         elseif px ~= auto_start_x or py ~= auto_start_y then
             if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
-            auto_dir = nil
+            reset_active_step()
             cooldown = COOLDOWN_FRAMES  -- Prevent double-step
+        -- If the first press only turned the player, release for one frame and
+        -- issue a fresh press instead of waiting for the full blocked timeout.
+        elseif auto_frames >= TURN_REPRESS_DELAY
+           and auto_turn_represses < TURN_REPRESS_LIMIT then
+            debug_tools.debug(string.format(
+                "auto_step schedule turn repress dir=%s from=(%d,%d) frame=%d",
+                tostring(auto_dir), auto_start_x or -1, auto_start_y or -1, auto_frames))
+            schedule_turn_repress(auto_dir)
         -- Cancel if timeout reached (blocked by wall / step never started)
         elseif auto_frames >= timeout then
+            if auto_timeout_retries < BLOCK_RETRY_LIMIT then
+                auto_timeout_retries = auto_timeout_retries + 1
+                auto_frames = 1
+                -- If the short turn re-press was not enough to start movement,
+                -- escalate retries back to a full inject window before treating
+                -- the destination as blocked.
+                auto_inject_limit = INJECT_LIMIT
+                joypad.set(1, {[auto_dir] = true})
+                debug_tools.debug(string.format(
+                    "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d",
+                    auto_timeout_retries, BLOCK_RETRY_LIMIT,
+                    auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
+                    auto_inject_limit or -1))
+                for _, dir in ipairs(DIRECTIONS) do
+                    prev_held[dir] = joy[dir] or false
+                end
+                return
+            end
             if DEBUG then tolk.output("auto-step timeout") end
             -- Record this blocked move so the collision map accumulates
             -- automatically during normal play. In debug mode, this writes to
@@ -219,7 +318,7 @@ function M.update(can_walk)
             local blocked_from_x = auto_start_x
             local blocked_from_y = auto_start_y
             local blocked_dir    = auto_dir
-            auto_dir = nil
+            reset_active_step()
             clear_route()
             -- Notify the main loop so it can re-route around the obstacle.
             -- Pass the blocked starting position and direction so the handler
@@ -239,7 +338,7 @@ function M.update(can_walk)
             -- and just wait for position to change. This prevents the game
             -- from seeing the direction held when the step finishes and
             -- immediately starting a second step (overshoot).
-            if auto_frames <= INJECT_LIMIT then
+            if auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
                 joypad.set(1, {[auto_dir] = true})
             end
             auto_frames = auto_frames + 1
@@ -254,6 +353,7 @@ function M.update(can_walk)
     end
 
     if route_steps and is_any_direction_pressed(joy) then
+        debug_tools.debug("auto_step clear_route: live direction input interrupted queued route")
         clear_route()
     end
 
@@ -337,6 +437,7 @@ end
 function M.inject_step(dir)
     local _, px, py = nav.get_position()
     clear_route()
+    debug_tools.debug(string.format("auto_step inject_step dir=%s at=(%d,%d)", tostring(dir), px or -1, py or -1))
     begin_step(dir, px, py)
 end
 
@@ -355,6 +456,24 @@ end
 
 function M.clear_route()
     clear_route()
+end
+
+function M.cancel_active_step(clear_queued_route)
+    reset_active_step()
+    tracked_dir = nil
+    press_start_x = nil
+    press_start_y = nil
+    if clear_queued_route then
+        clear_route()
+    end
+end
+
+function M.is_auto_active()
+    return auto_dir ~= nil or pending_repress ~= nil
+end
+
+function M.is_route_active()
+    return auto_dir ~= nil or pending_repress ~= nil or route_steps ~= nil
 end
 
 return M

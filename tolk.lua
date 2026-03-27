@@ -28,6 +28,56 @@ local config = require "config"
 local source = debug.getinfo(1, "S").source
 local script_dir = source:match("@?(.*[\\/])") or ""
 
+local function trim(s)
+    return (tostring(s):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function is_absolute_path(path)
+    return path:match("^%a:[/\\]") ~= nil or path:match("^\\\\") ~= nil
+end
+
+local function get_cwd()
+    local ok, result = pcall(function()
+        local p = io.popen("cd", "r")
+        if not p then return nil end
+        local out = p:read("*a")
+        p:close()
+        return trim(out)
+    end)
+    if ok then
+        return result
+    end
+    return nil
+end
+
+local function join_path(base, rel)
+    if not base or base == "" then
+        return rel
+    end
+    local sep = base:match("[\\/]$") and "" or "\\"
+    return base .. sep .. rel
+end
+
+local cwd = get_cwd()
+if script_dir ~= "" and not is_absolute_path(script_dir) and cwd and cwd ~= "" then
+    script_dir = join_path(cwd, script_dir)
+end
+
+local backend_log_path = script_dir .. "speech_backend.log"
+
+local function backend_log(message)
+    local ok, err = pcall(function()
+        local f = io.open(backend_log_path, "a")
+        if f then
+            f:write(os.date("[%Y-%m-%d %H:%M:%S] ") .. tostring(message) .. "\n")
+            f:close()
+        end
+    end)
+    if not ok then
+        print("tolk.lua: backend log write failed: " .. tostring(err))
+    end
+end
+
 -- ============================================================
 -- Backend: which speech path is active
 -- ============================================================
@@ -74,9 +124,11 @@ end)
 
 if ffi_ok and ffi_tolk then
     backend = "ffi"
+    backend_log("FFI backend active")
     print("tolk.lua: FFI backend active (Tolk.dll loaded directly)")
 else
     last_error = "FFI load failed: " .. tostring(ffi_err)
+    backend_log(last_error)
     print("tolk.lua: FFI unavailable (" .. tostring(ffi_err) .. "), trying Python bridge...")
 end
 
@@ -93,24 +145,50 @@ local bridge_started = false
 local bridge_ready = false
 
 if backend ~= "ffi" then
+    local function resolve_path(path)
+        if not path or path == "" then
+            return path
+        end
+        if path:find("[/\\]") and not is_absolute_path(path) then
+            return join_path(script_dir, path)
+        end
+        return path
+    end
+
+    local function quote_arg(path)
+        return '"' .. tostring(path) .. '"'
+    end
+
     -- Helper: resolve the Python command from config
     local function get_python_cmd()
         local python_cmd = config.get("speech_python_cmd")
         if not python_cmd or python_cmd == "" then
             return "python"
         end
-        return python_cmd
+        return resolve_path(python_cmd)
     end
 
     local python_cmd = get_python_cmd()
     local bridge_script = script_dir .. "speech_bridge.py"
-    local launch_cmd = 'python "' .. bridge_script .. '"'
+    local status_path = script_dir .. "speech_bridge.status"
+    local log_path = script_dir .. "speech_bridge.log"
+    local launch_log_path = script_dir .. "speech_bridge_launch.log"
 
-    -- If a custom python command is configured, use it instead
-    if python_cmd ~= "python" then
-        launch_cmd = '"' .. python_cmd .. '" "' .. bridge_script .. '"'
-    end
+    pcall(os.remove, status_path)
+    pcall(os.remove, log_path)
 
+    local child_cmd = quote_arg(python_cmd)
+        .. " " .. quote_arg(bridge_script)
+        .. " " .. quote_arg(status_path)
+        .. " " .. quote_arg(log_path)
+        .. " 1>>" .. quote_arg(launch_log_path)
+        .. " 2>&1"
+    local launch_cmd = 'cmd /c "' .. child_cmd .. '"'
+
+    backend_log("cwd=" .. tostring(cwd))
+    backend_log("script_dir=" .. tostring(script_dir))
+    backend_log("bridge child command: " .. child_cmd)
+    backend_log("bridge launch command: " .. launch_cmd)
     print("tolk.lua: Launching Python bridge: " .. launch_cmd)
     local ok, err = pcall(function()
         bridge = io.popen(launch_cmd, "w")
@@ -121,15 +199,18 @@ if backend ~= "ffi" then
         bridge_started = true
         bridge_ready = true
         last_error = nil
+        backend_log("Python bridge active")
         print("tolk.lua: Python bridge active")
     else
         last_error = last_error .. "; bridge also failed: " .. tostring(err)
+        backend_log("Python bridge failed: " .. tostring(err))
         print("tolk.lua: Python bridge failed: " .. tostring(err))
     end
 end
 
 -- If neither backend works, all speech calls go to FCEU.message/print
 if backend == "none" then
+    backend_log("No speech backend available")
     notify_fallback("WARNING: No speech backend available!")
     print("tolk.lua: No speech backend. Install Tolk.dll or Python 3.")
 end
@@ -147,6 +228,7 @@ local function send_ffi(text, interrupt)
     end)
     if not ok then
         last_error = "FFI call failed: " .. tostring(err)
+        backend_log(last_error)
         print("tolk.lua ERROR: " .. last_error)
         notify_fallback(text)
         return false
@@ -165,6 +247,7 @@ local function send_bridge(cmd)
     if not ok then
         bridge_ready = false
         last_error = "bridge write failed: " .. tostring(err)
+        backend_log(last_error)
         print("tolk.lua ERROR: " .. last_error)
         notify_fallback("Speech bridge unavailable")
         return false

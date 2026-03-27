@@ -15,9 +15,11 @@
 --
 -- Supported commands (one per line in dw_commands.txt):
 --   log_state            -- write a full game-state snapshot to the log
---   report_position      -- write current map/x/y to the log
+--   report_position      -- write effective map/x/y to the log
+--   report_coords        -- write effective + raw coordinate bytes to the log
 --   toggle_debug         -- flip DEBUG_MODE on/off at runtime
 --   simulate_input:UP    -- inject a one-frame D-pad or button press
+--   simulate_raw_input:UP -- inject a one-frame raw D-pad or button press
 --   simulate_input:DOWN
 --   simulate_input:LEFT
 --   simulate_input:RIGHT
@@ -217,8 +219,11 @@ end
 -- Format is KEY: VALUE so it's easy to parse with simple text tools.
 local function build_snapshot()
     local map_id   = memory.readbyte(addr.MAP_ID)
-    local px       = memory.readbyte(addr.PLAYER_X)
-    local py       = memory.readbyte(addr.PLAYER_Y)
+    local terrain  = memory.readbyte(addr.TERRAIN_OFFSET)
+    local px
+    local py
+    px = memory.readbyte(addr.PLAYER_X)
+    py = memory.readbyte(addr.PLAYER_Y)
     local hp       = memory.readbyte(addr.CURRENT_HP)
     local max_hp   = memory.readbyte(addr.MAX_HP)
     local mp       = memory.readbyte(addr.CURRENT_MP)
@@ -229,7 +234,6 @@ local function build_snapshot()
     local enemy_hp = memory.readbyte(addr.ENEMY_HP)
     local d8       = memory.readbyte(addr.MENU_CURSOR_X)
     local d9       = memory.readbyte(addr.MENU_CURSOR_Y)
-    local terrain  = memory.readbyte(addr.TERRAIN_OFFSET)
     local map_name = maps_m.get_name(map_id)
 
     local lines = {
@@ -238,6 +242,11 @@ local function build_snapshot()
         string.format("state:     %s",          current_state),
         string.format("map_id:    0x%02X (%s)", map_id, map_name),
         string.format("pos:       x=%d, y=%d",  px, py),
+        string.format("raw_pos:   player=(%d,%d) overworld=(%d,%d)",
+            memory.readbyte(addr.PLAYER_X),
+            memory.readbyte(addr.PLAYER_Y),
+            memory.readbyte(addr.OVERWORLD_X),
+            memory.readbyte(addr.OVERWORLD_Y)),
         string.format("hp:        %d / %d",     hp, max_hp),
         string.format("mp:        %d / %d",     mp, max_mp),
         string.format("level:     %d",          level),
@@ -331,16 +340,43 @@ local function process_command(cmd)
     elseif cmd == "report_position" then
         -- Write just the map and coordinates (lightweight alternative to log_state).
         local map_id = memory.readbyte(addr.MAP_ID)
+        local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
         local px, py
-        if map_id == 0x00 then
-            px = memory.readbyte(addr.OVERWORLD_X)
-            py = memory.readbyte(addr.OVERWORLD_Y)
-        else
-            px = memory.readbyte(addr.PLAYER_X)
-            py = memory.readbyte(addr.PLAYER_Y)
-        end
+        px = memory.readbyte(addr.PLAYER_X)
+        py = memory.readbyte(addr.PLAYER_Y)
         M.info(string.format("POSITION: map=0x%02X(%s) x=%d y=%d",
             map_id, maps_m.get_name(map_id), px, py))
+
+    elseif cmd == "report_coords" then
+        -- Write both effective coordinates and the raw interior/overworld RAM bytes.
+        local map_id = memory.readbyte(addr.MAP_ID)
+        local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+        local player_x = memory.readbyte(addr.PLAYER_X)
+        local player_y = memory.readbyte(addr.PLAYER_Y)
+        local overworld_x = memory.readbyte(addr.OVERWORLD_X)
+        local overworld_y = memory.readbyte(addr.OVERWORLD_Y)
+        local effective_x = player_x
+        local effective_y = player_y
+        M.info(string.format(
+            "COORDS: map=0x%02X(%s) terrain=0x%02X effective=(%d,%d) player=(%d,%d) overworld=(%d,%d) raw003C_0043=%02X %02X %02X %02X %02X %02X %02X %02X",
+            map_id,
+            maps_m.get_name(map_id),
+            terrain,
+            effective_x,
+            effective_y,
+            player_x,
+            player_y,
+            overworld_x,
+            overworld_y,
+            memory.readbyte(0x003C),
+            memory.readbyte(0x003D),
+            memory.readbyte(0x003E),
+            memory.readbyte(0x003F),
+            memory.readbyte(0x0040),
+            memory.readbyte(0x0041),
+            memory.readbyte(0x0042),
+            memory.readbyte(0x0043)
+        ))
 
     elseif cmd == "toggle_debug" then
         -- Flip DEBUG_MODE at runtime. Useful for activating debug mid-session
@@ -364,6 +400,18 @@ local function process_command(cmd)
             M.debug("Queued joypad: " .. btn_str)
         else
             M.error("simulate_input: unknown button '" .. btn_str ..
+                "'. Valid: UP DOWN LEFT RIGHT A B START SELECT")
+        end
+
+    elseif cmd:sub(1, 19) == "simulate_raw_input:" then
+        -- Queue a one-frame raw joypad injection that bypasses auto_step.
+        local btn_str = cmd:sub(20):upper()
+        local btn_key = BUTTON_MAP[btn_str]
+        if btn_key then
+            pending_input = { [btn_key] = true, _raw = true }
+            M.debug("Queued raw joypad: " .. btn_str)
+        else
+            M.error("simulate_raw_input: unknown button '" .. btn_str ..
                 "'. Valid: UP DOWN LEFT RIGHT A B START SELECT")
         end
 
@@ -479,7 +527,8 @@ local function process_command(cmd)
             M.info("SWEEP: already active (use stop_sweep to cancel)")
         else
             local map_id = memory.readbyte(addr.MAP_ID)
-            if map_id == 0x00 then
+            local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+            if maps_m.is_overworld(map_id, terrain) then
                 M.error("SWEEP: overworld not supported (too large; use on interior maps)")
             else
                 sweep = {
@@ -533,7 +582,7 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, toggle_debug, simulate_input:BTN, dump_grid, reload_config, export_blocks, sweep_map, stop_sweep")
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, dump_grid, reload_config, export_blocks, sweep_map, stop_sweep")
         end
     end
 end
