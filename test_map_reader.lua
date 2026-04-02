@@ -101,7 +101,25 @@ function tests.throne_room_trapped_pocket_stays_blocked()
 
     assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 2, 3), true, "(2,3) should stay blocked")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 4, 3), true, "(4,3) should stay blocked")
-    assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 3, 4), true, "(3,4) should stay blocked")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 3, 4), false, "(3,4) should remain open for king access")
+
+    env.restore()
+end
+
+function tests.throne_room_directional_candidates_are_promoted_conservatively()
+    local env = make_env()
+
+    local dirs = env.map_reader.get_directional_blocks(0x05)
+    assert_equal(dirs["7,3"].east, true, "(7,3) should block east approach")
+    assert_equal(dirs["7,3"].west, true, "(7,3) should block west approach")
+    assert_equal(dirs["7,3"].south, true, "(7,3) should block south approach after direct probe reconfirmation")
+    assert_equal(dirs["7,3"].north, nil, "(7,3) should stay open from north until confirmed")
+    assert_equal(dirs["7,2"].east, true, "(7,2) should block east approach")
+    assert_equal(dirs["7,2"].north, true, "(7,2) should block north approach")
+    assert_equal(dirs["7,2"].south, nil, "(7,2) should stay open from south until confirmed")
+    assert_equal(dirs["9,3"].west, true, "(9,3) should block west approach")
+    assert_equal(dirs["9,4"].west, true, "(9,4) should block west approach")
+    assert_equal(dirs["9,5"].west, true, "(9,5) should block west approach")
 
     env.restore()
 end

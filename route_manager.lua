@@ -30,6 +30,7 @@ local tolk       = require "tolk"
 local debug_tools = require "debug_tools"
 local path_debug = require "path_debug"
 local snapshot   = require "game_snapshot"
+local event_bus  = require "event_bus"
 
 local M = {}
 
@@ -95,9 +96,15 @@ local function collect_runtime_blocks(map_id)
     if not map_blocks then
         return blocks
     end
-    for k in pairs(map_blocks) do
-        local x, y = parse_cell_key(k)
-        blocks[#blocks + 1] = {key = k, x = x, y = y}
+    for k, dirs in pairs(map_blocks) do
+        if type(dirs) == "table" and next(dirs) then
+            local x, y = parse_cell_key(k)
+            -- Build a sorted direction list for display
+            local dir_list = {}
+            for d in pairs(dirs) do dir_list[#dir_list + 1] = d end
+            table.sort(dir_list)
+            blocks[#blocks + 1] = {key = k, x = x, y = y, dirs = dirs, dir_list = dir_list}
+        end
     end
     table.sort(blocks, function(a, b)
         if a.y ~= b.y then return a.y < b.y end
@@ -105,6 +112,16 @@ local function collect_runtime_blocks(map_id)
     end)
     return blocks
 end
+
+-- Map auto_step blocked_dir to the approach side of the destination cell.
+-- When the player at (28,2) presses LEFT and fails to enter (27,2),
+-- blocked_dir="left" and the approach is "east" (source is east of dest).
+local DIR_TO_APPROACH = {
+    right = "west",   -- source is west of dest
+    left  = "east",   -- source is east of dest
+    down  = "north",  -- source is north of dest
+    up    = "south",  -- source is south of dest
+}
 
 local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     if not map_id or from_x == nil or from_y == nil or not blocked_dir then
@@ -116,6 +133,7 @@ local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     local dest_x = from_x + dx
     local dest_y = from_y + dy
     local k = cell_key(dest_x, dest_y)
+    local approach = DIR_TO_APPROACH[blocked_dir]
     local source = string.format("auto_step:%s from (%d,%d)", blocked_dir, from_x, from_y)
 
     -- Don't record if an NPC occupies the destination (NPC blocks are temporary)
@@ -131,13 +149,16 @@ local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     if not runtime_blocked[map_id] then
         runtime_blocked[map_id] = {}
     end
-    if runtime_blocked[map_id][k] then
-        return false
+    if not runtime_blocked[map_id][k] then
+        runtime_blocked[map_id][k] = {}
     end
-    runtime_blocked[map_id][k] = true
+    if runtime_blocked[map_id][k][approach] then
+        return false  -- already recorded this direction
+    end
+    runtime_blocked[map_id][k][approach] = true
     debug_tools.info(string.format(
-        "runtime block: map=0x%02X cell=(%d,%d) source=%s",
-        map_id, dest_x, dest_y, source))
+        "runtime block: map=0x%02X cell=(%d,%d) approach=%s source=%s",
+        map_id, dest_x, dest_y, approach, source))
     return true
 end
 
@@ -225,16 +246,42 @@ end
 -- Runtime Blocked Cells
 -- ============================================================
 
--- build_path_blocking(map_id): Combine NPC positions + runtime blocks
--- into a single blocking table for the A* pathfinder.
+-- build_path_blocking(map_id): Combine NPC positions + runtime blocks +
+-- static directional blocks into a single blocking table for A*.
+--
+-- Values in the returned table:
+--   "npc"                          — NPC occupies the cell (fully blocked)
+--   {north=true, east=true, ...}   — directional engine wall (blocked from
+--                                    listed approach sides only)
 function M.build_path_blocking(map_id)
     local blocking = objects.get_blocking_positions()
     for _, pos in ipairs(blocking) do
         blocking[cell_key(pos.x, pos.y)] = "npc"
     end
+    -- Merge static directional blocks from map_reader (building walls etc.)
+    local static_dirs = map_reader.get_directional_blocks(map_id)
+    if static_dirs then
+        for k, dirs in pairs(static_dirs) do
+            if not blocking[k] then
+                -- Copy the direction table so runtime blocks can be merged in
+                local copy = {}
+                for d, v in pairs(dirs) do copy[d] = v end
+                blocking[k] = copy
+            end
+        end
+    end
+    -- Merge runtime directional blocks
     if runtime_blocked[map_id] then
-        for k, _ in pairs(runtime_blocked[map_id]) do
-            blocking[k] = "runtime"
+        for k, dirs in pairs(runtime_blocked[map_id]) do
+            if not blocking[k] then
+                blocking[k] = dirs
+            elseif type(blocking[k]) == "table" then
+                -- Merge directions into existing directional entry
+                for d, v in pairs(dirs) do
+                    blocking[k][d] = v
+                end
+            end
+            -- If blocking[k] == "npc", NPC takes precedence (fully blocked)
         end
     end
     return blocking
@@ -245,11 +292,11 @@ function M.count_runtime_blocks(map_id)
     return #collect_runtime_blocks(map_id)
 end
 
--- format_runtime_blocks(map_id): Return sorted list of "x,y" block keys.
+-- format_runtime_blocks(map_id): Return sorted list of "x,y(dirs)" strings.
 function M.format_runtime_blocks(map_id)
     local parts = {}
     for _, block in ipairs(collect_runtime_blocks(map_id)) do
-        parts[#parts + 1] = block.key
+        parts[#parts + 1] = block.key .. "(" .. table.concat(block.dir_list, ",") .. ")"
     end
     return parts
 end
@@ -259,14 +306,28 @@ function M.get_runtime_block_entries(map_id)
     return collect_runtime_blocks(map_id)
 end
 
--- is_cell_runtime_blocked(map_id, x, y): Check if a specific cell is blocked.
+-- is_cell_runtime_blocked(map_id, x, y): Check if a specific cell has any
+-- directional runtime block. Returns false if no block, or a table of
+-- blocked directions if any exist.
 function M.is_cell_runtime_blocked(map_id, x, y)
-    return runtime_blocked[map_id] and runtime_blocked[map_id][cell_key(x, y)] or false
+    local entry = runtime_blocked[map_id] and runtime_blocked[map_id][cell_key(x, y)]
+    if not entry then return false end
+    if type(entry) == "table" and next(entry) then return entry end
+    return false
 end
 
--- inject_runtime_block(map_id, x, y): Manually add a runtime blocked tile.
+-- inject_runtime_block(map_id, x, y): Manually add a runtime blocked tile
+-- (blocks all 4 approach directions).
 function M.inject_runtime_block(map_id, x, y)
-    return add_runtime_block(map_id, x, y, "manual_command")
+    local k = cell_key(x, y)
+    if not runtime_blocked[map_id] then
+        runtime_blocked[map_id] = {}
+    end
+    runtime_blocked[map_id][k] = {north=true, south=true, east=true, west=true}
+    debug_tools.info(string.format(
+        "runtime block (manual): map=0x%02X cell=(%d,%d) all_dirs",
+        map_id, x, y))
+    return true
 end
 
 -- is_pathfinding_walkable(map_id, x, y): Static walkability plus runtime overlay.
@@ -280,14 +341,19 @@ function M.is_pathfinding_walkable(map_id, x, y)
     return true
 end
 
--- format_runtime_blocks_as_lua(map_id): Return copy-pasteable MAP_BLOCKED_CELLS lines.
+-- format_runtime_blocks_as_lua(map_id): Return copy-pasteable
+-- MAP_DIRECTIONAL_BLOCKS lines for directional blocks.
 function M.format_runtime_blocks_as_lua(map_id)
     local entries = collect_runtime_blocks(map_id)
     local lines = {
         string.format("    [0x%02X] = {", map_id),
     }
     for _, block in ipairs(entries) do
-        lines[#lines + 1] = string.format('        ["%s"] = true,', block.key)
+        local dir_parts = {}
+        for _, d in ipairs(block.dir_list) do
+            dir_parts[#dir_parts + 1] = d .. "=true"
+        end
+        lines[#lines + 1] = string.format('        ["%s"] = {%s},', block.key, table.concat(dir_parts, ", "))
     end
     lines[#lines + 1] = "    },"
     return lines, #entries
@@ -321,6 +387,60 @@ end
 local function get_goal_block_reason(blocking, x, y)
     if not blocking then return nil end
     return blocking[cell_key(x, y)]
+end
+
+local function release_npc_freeze(reason)
+    if not npc_freeze_active then
+        return
+    end
+    npc_freeze_active = false
+    frozen_npc_snapshot = {}
+    if reason then
+        debug_tools.info("NPC freeze released: " .. reason)
+    end
+end
+
+local function resolve_path_mode(obj, map_id, opts)
+    opts = opts or {}
+    local path_mode = opts.path_mode
+    local target_walkable = M.is_pathfinding_walkable(map_id, obj.x, obj.y)
+    if path_mode == "direct" or path_mode == "adjacent" then
+        return path_mode, target_walkable
+    end
+    if opts.survey_safe and (obj.type == objects.TYPE_EXIT or obj.type == objects.TYPE_STAIR) then
+        return "adjacent", target_walkable
+    end
+    if obj.type == objects.TYPE_NPC
+    or obj.type == objects.TYPE_DOOR
+    or not target_walkable then
+        return "adjacent", target_walkable
+    end
+    return "direct", target_walkable
+end
+
+local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, opts, current)
+    if not opts.allow_adjacent_fallback then
+        return current
+    end
+    if obj.type ~= objects.TYPE_CHEST then
+        return current
+    end
+    if current.path_mode ~= "direct" or current.result ~= "No path found" then
+        return current
+    end
+
+    local result, face_dir, path = pathfinder.pathfind_to_adjacent(
+        map_id, start_x, start_y, obj.x, obj.y, blocking)
+    if result == "No path found" then
+        return current
+    end
+
+    current.result = result
+    current.face_dir = face_dir
+    current.path = path
+    current.path_mode = "adjacent"
+    current.no_path_reason = "direct_failed_adjacent_fallback"
+    return current
 end
 
 -- build_pathfind_message(obj, result, face_dir): Create a human-readable
@@ -363,17 +483,16 @@ end
 
 -- plan_path_to_object(obj): Compute a path from the player to the given
 -- object. Returns (result, face_dir, path, message, map_id).
-local function plan_path_to_object(obj)
+local function plan_path_to_object(obj, opts)
+    opts = opts or {}
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
     local blocking = M.build_path_blocking(map_id)
-    local target_walkable = M.is_pathfinding_walkable(map_id, obj.x, obj.y)
+    local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
     local result, face_dir, path
     local no_path_reason = nil
     local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
-    if obj.type == objects.TYPE_NPC
-    or obj.type == objects.TYPE_DOOR
-    or not target_walkable then
+    if path_mode == "adjacent" then
         result, face_dir, path = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
     else
         if goal_block_reason == "npc" then
@@ -386,11 +505,35 @@ local function plan_path_to_object(obj)
             result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
         end
     end
+    local plan = {
+        target = obj,
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        goal_x = obj.x,
+        goal_y = obj.y,
+        path_mode = path_mode,
+        target_walkable = target_walkable,
+        goal_block_reason = goal_block_reason,
+        no_path_reason = no_path_reason,
+        blocking = blocking,
+        result = result,
+        face_dir = face_dir,
+        path = path,
+        message = build_pathfind_message(obj, result, face_dir, no_path_reason),
+    }
+    plan = try_adjacent_fallback(obj, map_id, px, py, blocking, opts, plan)
+    plan.message = build_pathfind_message(obj, plan.result, plan.face_dir, plan.no_path_reason)
     -- Store path for debug recall (trace_path, validate_path, etc.)
-    if debug_tools.DEBUG_MODE then
-        path_debug.store_path(map_id, px, py, obj.x, obj.y, path, nil)
+    if debug_tools.DEBUG_MODE and opts.store_debug_path ~= false then
+        path_debug.store_path(map_id, px, py, obj.x, obj.y, plan.path, nil)
     end
-    return result, face_dir, path, build_pathfind_message(obj, result, face_dir, no_path_reason), map_id
+    return plan
+end
+
+function M.plan_path_to_object(obj, opts)
+    if not obj then return nil end
+    return plan_path_to_object(obj, opts)
 end
 
 -- queue_path_steps(path): Convert A* path to auto_step route directions.
@@ -429,8 +572,91 @@ function M.pathfind_to_current()
     end
     freeze_npcs_for_pathing()
     last_pathfind_obj = obj
-    local _, _, _, msg = plan_path_to_object(obj)
-    tolk.output_interrupt(msg)
+    local plan = plan_path_to_object(obj)
+    tolk.output_interrupt(plan.message)
+end
+
+function M.autowalk_to_object(obj, opts)
+    opts = opts or {}
+    if opts.allow_adjacent_fallback == nil then
+        opts.allow_adjacent_fallback = true
+    end
+    if not obj then
+        return {
+            status = "no_object",
+            ok = false,
+            message = "No object selected",
+        }
+    end
+    if autowalk_guard then
+        local ok, reason = autowalk_guard()
+        if ok == false then
+            debug_tools.info("AUTO_WALK: blocked before planning for " .. obj.name)
+            if opts.speak ~= false then
+                tolk.output_interrupt(reason or "Cannot auto-walk right now")
+            end
+            return {
+                status = "guard_blocked",
+                ok = false,
+                message = reason or "Cannot auto-walk right now",
+                target = obj,
+            }
+        end
+    end
+    local map_id = nav.get_position()
+    freeze_npcs_for_pathing()
+    last_pathfind_obj = obj
+    local plan = plan_path_to_object(obj, opts)
+    plan.status = "planned"
+    plan.ok = false
+    if maps.is_overworld(map_id, snapshot.terrain_offset) then
+        release_npc_freeze("autowalk unavailable on overworld")
+        debug_tools.info("AUTO_WALK: unavailable on overworld for " .. obj.name)
+        if opts.speak ~= false then
+            tolk.output_interrupt("Auto-walk is only available on interior maps. " .. plan.message)
+        end
+        plan.status = "unavailable"
+        plan.message = "Auto-walk is only available on interior maps. " .. plan.message
+        return plan
+    end
+    if plan.result == "No path found" then
+        release_npc_freeze("autowalk immediate no-path")
+        debug_tools.info("AUTO_WALK: no path for " .. obj.name)
+        if opts.speak ~= false then
+            tolk.output_interrupt(plan.message)
+        end
+        plan.status = "no_path"
+        plan.message = plan.message
+        return plan
+    end
+    if not plan.path or #plan.path == 0 then
+        release_npc_freeze("autowalk already at destination")
+        debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
+        plan.status = "already_there"
+        plan.message = "Already there. " .. build_pathfind_message(obj, "Adjacent", plan.face_dir)
+        if opts.speak ~= false then
+            tolk.output_interrupt(plan.message)
+        end
+        return plan
+    end
+    if not queue_path_steps(plan.path) then
+        release_npc_freeze("autowalk queue failure")
+        debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)
+        plan.status = "queue_failed"
+        plan.message = "Auto-walk could not queue the route"
+        if opts.speak ~= false then
+            tolk.output_interrupt(plan.message)
+        end
+        return plan
+    end
+    debug_tools.info("AUTO_WALK: queued " .. #plan.path .. " step(s) for " .. obj.name)
+    plan.status = "queued"
+    plan.ok = true
+    plan.path_length = #plan.path
+    if opts.speak ~= false then
+        tolk.output_interrupt("Auto-walk. " .. plan.message)
+    end
+    return plan
 end
 
 -- autowalk_to_current(): Plan and auto-walk to the currently selected object.
@@ -442,40 +668,7 @@ function M.autowalk_to_current()
         tolk.output_interrupt("No object selected")
         return
     end
-    if autowalk_guard then
-        local ok, reason = autowalk_guard()
-        if ok == false then
-            debug_tools.info("AUTO_WALK: blocked before planning for " .. obj.name)
-            tolk.output_interrupt(reason or "Cannot auto-walk right now")
-            return
-        end
-    end
-    local map_id = nav.get_position()
-    freeze_npcs_for_pathing()
-    last_pathfind_obj = obj
-    local result, face_dir, path, msg = plan_path_to_object(obj)
-    if maps.is_overworld(map_id, snapshot.terrain_offset) then
-        debug_tools.info("AUTO_WALK: unavailable on overworld for " .. obj.name)
-        tolk.output_interrupt("Auto-walk is only available on interior maps. " .. msg)
-        return
-    end
-    if result == "No path found" then
-        debug_tools.info("AUTO_WALK: no path for " .. obj.name)
-        tolk.output_interrupt(msg)
-        return
-    end
-    if not path or #path == 0 then
-        debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
-        tolk.output_interrupt("Already there. " .. build_pathfind_message(obj, "Adjacent", face_dir))
-        return
-    end
-    if not queue_path_steps(path) then
-        debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)
-        tolk.output_interrupt("Auto-walk could not queue the route")
-        return
-    end
-    debug_tools.info("AUTO_WALK: queued " .. #path .. " step(s) for " .. obj.name)
-    tolk.output_interrupt("Auto-walk. " .. msg)
+    M.autowalk_to_object(obj, {speak = true})
 end
 
 -- ============================================================
@@ -501,13 +694,17 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
     reroute_failures = reroute_failures + 1
     if reroute_failures >= REROUTE_FAILURE_LIMIT then
         debug_tools.info("reroute_failures=" .. reroute_failures .. ": giving up on " .. last_pathfind_obj.name)
+        event_bus.publish("route_cancelled", {
+            reason = "reroute_failure_limit",
+            target = last_pathfind_obj,
+            map_id = map_id,
+            from_x = from_x,
+            from_y = from_y,
+            blocked_dir = blocked_dir,
+        })
         last_pathfind_obj = nil
         reroute_failures = 0
-        if npc_freeze_active then
-            npc_freeze_active = false
-            frozen_npc_snapshot = {}
-            debug_tools.info("NPC freeze released: reroute failure limit reached")
-        end
+        release_npc_freeze("reroute failure limit reached")
         objects.request_refresh()
         tolk.output_interrupt("Cannot reach destination. Pathfinding cancelled.")
         return
@@ -532,13 +729,17 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
     end
 
     if result == "No path found" then
+        event_bus.publish("route_cancelled", {
+            reason = "reroute_no_path",
+            target = last_pathfind_obj,
+            map_id = map_id,
+            from_x = from_x,
+            from_y = from_y,
+            blocked_dir = blocked_dir,
+        })
         last_pathfind_obj = nil
         reroute_failures = 0
-        if npc_freeze_active then
-            npc_freeze_active = false
-            frozen_npc_snapshot = {}
-            debug_tools.info("NPC freeze released: no path found on reroute")
-        end
+        release_npc_freeze("no path found on reroute")
         tolk.output_interrupt("No path found. Pathfinding cancelled.")
         return
     end
@@ -554,11 +755,7 @@ end
 auto_step.on_route_complete = function()
     reroute_failures = 0
     last_pathfind_obj = nil
-    if npc_freeze_active then
-        npc_freeze_active = false
-        frozen_npc_snapshot = {}
-        debug_tools.info("NPC freeze released: autowalk route complete")
-    end
+    release_npc_freeze("autowalk route complete")
     objects.request_refresh()
 end
 
@@ -569,11 +766,17 @@ end
 -- on_map_change(): Clear all route-related state when the player enters
 -- a new map. Called from the main loop's check_map_change().
 function M.on_map_change()
+    if last_pathfind_obj then
+        event_bus.publish("route_cancelled", {
+            reason = "map_changed",
+            target = last_pathfind_obj,
+            map_id = snapshot.map_id,
+        })
+    end
     last_pathfind_obj = nil
     reroute_failures = 0
     runtime_blocked = {}
-    npc_freeze_active = false
-    frozen_npc_snapshot = {}
+    release_npc_freeze("map change")
 end
 
 -- ============================================================

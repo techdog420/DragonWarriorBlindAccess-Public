@@ -452,18 +452,110 @@ local MAP_BLOCKED_CELLS = {
     -- A* can descend from the top corridor on the east side.
     --
     -- Additional throne-area hidden barriers confirmed 2026-03-25:
-    -- from (3,3), all four one-tile movement attempts fail live validation
-    -- despite inspect_move reporting the non-north neighbors as walkable.
-    -- The player can stand at (3,3), but the engine does not allow exits to
-    -- (2,3), (4,3), or (3,4). Blocking those cells prevents A* from claiming
-    -- routes out of the throne pocket that auto-walk can never execute.
+    -- the side tiles flanking the king pocket still behave as blocked from
+    -- the surrounding floor, but live recheck on 2026-03-31 confirmed the
+    -- king is normally approached from (3,4). Keep the side blockers while
+    -- leaving the south interaction tile open so pathfind_to_adjacent can
+    -- route to the king for normal save interaction.
     [0x05] = {
         ["2,2"] = true, ["3,2"] = true, ["4,2"] = true,
         ["5,2"] = true, ["6,2"] = true,
         ["8,2"] = true,
-        ["2,3"] = true, ["4,3"] = true, ["3,4"] = true,
+        ["2,3"] = true, ["4,3"] = true,
+    },
+
+    -- Map 0x08: Brecconary (30x30 town, west-edge exit at (0,15))
+    --
+    -- Sweep data (2026-03-27, auto-freeze, NPC exclusion).
+    -- Only 6 cells are engine-blocked from ALL walkable-adjacent directions.
+    -- The remaining 113 directional blocks (building walls that block east-west
+    -- but allow north-south, etc.) are handled by the reroute mechanism at runtime.
+    [0x08] = {
+        ["21,4"]  = true,  -- tile=8; blocked from all 4 walkable neighbors
+        ["2,7"]   = true,  -- tile=1; blocked from 3 walkable neighbors (4th is void)
+        ["26,25"] = true,  -- tile=6; blocked from 2 walkable neighbors (others are void)
+        ["11,26"] = true,  -- tile=6; blocked from all 4 walkable neighbors
+        ["23,27"] = true,  -- tile=6; blocked from 3 walkable neighbors
+        ["26,27"] = true,  -- tile=6; blocked from 3 walkable neighbors
     },
 }
+
+-- ============================================================
+-- Per-Map Directional Block Overrides
+-- ============================================================
+-- Some cells are passable from certain directions but blocked from others
+-- (e.g., building walls in towns that prevent east/west entry but allow
+-- north/south passage). These are distinct from MAP_BLOCKED_CELLS which
+-- block ALL approach directions.
+--
+-- Format: MAP_DIRECTIONAL_BLOCKS[map_id]["x,y"] = {direction = true, ...}
+-- where direction is the approach direction that is blocked:
+--   north = blocked when approaching from the north (moving south into cell)
+--   south = blocked when approaching from the south (moving north into cell)
+--   east  = blocked when approaching from the east  (moving west into cell)
+--   west  = blocked when approaching from the west  (moving east into cell)
+local MAP_DIRECTIONAL_BLOCKS = {
+    -- Map 0x05: Tantegel Castle Throne Room
+    -- Survey/autowalk reroute evidence on 2026-03-31:
+    --   (7,3) blocked from west and east across repeated reroutes.
+    --   (7,2) blocked from east and north across repeated reroutes.
+    -- Live one-step probe and manual movement recheck on 2026-03-31
+    -- reconfirmed that (7,4)->(7,3) is engine-blocked, so restore the
+    -- south approach block. The north chest remains reachable by routing
+    -- up the west corridor (x=1) and then east across y=1.
+    [0x05] = {
+        ["7,3"] = {east = true, south = true, west = true},
+        ["7,2"] = {east = true, north = true},
+        ["9,3"] = {west = true},
+        ["9,4"] = {west = true},
+        ["9,5"] = {west = true},
+    },
+
+    -- Map 0x08: Brecconary (30x30 town)
+    -- Building walls block movement from specific directions.
+    -- Confirmed via runtime block discovery during autowalk testing 2026-03-29.
+    [0x08] = {
+        -- NW building west wall (x=3)
+        ["3,4"]  = {west = true},
+        ["3,5"]  = {west = true},
+        -- NW building east wall (x=7)
+        ["7,3"]  = {east = true},
+        ["7,4"]  = {east = true},
+        ["7,5"]  = {east = true},
+        -- Center-east building west wall (x=18)
+        ["18,10"] = {west = true},
+        ["18,11"] = {west = true},
+        ["18,12"] = {west = true},
+        -- Center-east building south wall
+        ["19,12"] = {south = true},
+        -- NE building west wall (x=20)
+        ["20,2"] = {west = true},
+        ["20,3"] = {west = true},
+        ["20,4"] = {west = true},
+        ["20,5"] = {west = true},
+        -- NE building north wall (y=2)
+        ["21,2"] = {north = true},
+        ["22,2"] = {north = true},
+        ["23,2"] = {north = true},
+        ["24,2"] = {north = true},
+        ["25,2"] = {north = true},
+        ["26,2"] = {north = true},
+        -- NE building entrance (south wall, y=6)
+        ["25,6"] = {south = true},
+        ["26,6"] = {south = true},
+        ["27,6"] = {south = true},
+        -- NE building east boundary (x=29)
+        ["29,2"] = {west = true},
+    },
+}
+
+-- get_directional_blocks(map_id): Return the directional block table for
+-- a map, or an empty table if none are defined.
+-- Each entry is keyed by "x,y" with a value table of blocked approach
+-- directions: {north=true, south=true, east=true, west=true}.
+function M.get_directional_blocks(map_id)
+    return MAP_DIRECTIONAL_BLOCKS[map_id] or {}
+end
 
 local function lookup_walkability_base(map_id, x, y)
     local grid = M.get_tile_grid(map_id)

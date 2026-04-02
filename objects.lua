@@ -303,6 +303,11 @@ local filtered_list = {}
 -- Current selection index (1-based, into filtered_list)
 local current_index = 1
 
+-- Persistent selected object ID for reference-based selection.
+-- When the list re-sorts (NPC movement), we restore selection by ID
+-- rather than trusting the numeric index.
+local selected_id = nil
+
 -- Current filter mode
 local current_filter = M.FILTER_ALL
 
@@ -764,15 +769,32 @@ end
 -- rebuild_filtered_list(): Rebuild the filtered view from the current
 -- object list and filter setting. Called after the object list changes
 -- or when the filter changes.
+-- Preserves selection by matching selected_id in the new list.
 local function rebuild_filtered_list()
     filtered_list = apply_filter(object_list, current_filter)
 
-    -- Clamp the current index to the new list size
+    -- Try to restore selection by ID (survives re-sort from NPC movement)
+    if selected_id and #filtered_list > 0 then
+        for i, obj in ipairs(filtered_list) do
+            if obj.id == selected_id then
+                current_index = i
+                return
+            end
+        end
+    end
+
+    -- ID not found or no selection — clamp index
     if current_index > #filtered_list then
         current_index = 1
     end
     if current_index < 1 then
         current_index = 1
+    end
+    -- Update selected_id to match wherever we landed
+    if filtered_list[current_index] then
+        selected_id = filtered_list[current_index].id
+    else
+        selected_id = nil
     end
 end
 
@@ -790,6 +812,7 @@ function M.refresh(map_id, opts)
     npc_refresh_counter = 0
     refresh_pending = opts.defer_npcs == true
     current_index = 1
+    selected_id = nil  -- Clear selection on full refresh (new map)
     rebuild_filtered_list()
 end
 
@@ -799,27 +822,10 @@ end
 function M.update_npcs()
     if current_map_id == nil then return end
 
-    -- Remember which object is currently selected (by ID)
-    local selected_id = nil
-    if filtered_list[current_index] then
-        selected_id = filtered_list[current_index].id
-    end
-
-    -- Rebuild the full list (NPCs may have moved)
+    -- Rebuild the full list (NPCs may have moved).
+    -- rebuild_filtered_list() preserves selection by selected_id automatically.
     object_list = build_object_list(current_map_id)
     rebuild_filtered_list()
-
-    -- Try to restore selection by ID
-    if selected_id then
-        for i, obj in ipairs(filtered_list) do
-            if obj.id == selected_id then
-                current_index = i
-                return
-            end
-        end
-    end
-    -- If we couldn't find the previously selected object, index
-    -- stays wherever rebuild_filtered_list() clamped it.
 end
 
 -- request_refresh(): Schedule an NPC position rebuild for the next
@@ -877,6 +883,7 @@ function M.next_object()
         current_index = 1  -- Wrap to start
     end
 
+    selected_id = filtered_list[current_index].id
     return filtered_list[current_index]
 end
 
@@ -891,6 +898,7 @@ function M.prev_object()
         current_index = #filtered_list  -- Wrap to end
     end
 
+    selected_id = filtered_list[current_index].id
     return filtered_list[current_index]
 end
 
@@ -911,6 +919,7 @@ function M.next_filter()
 
     -- Rebuild filtered view and reset index
     current_index = 1
+    selected_id = nil  -- Clear selection on filter change
     rebuild_filtered_list()
 
     return FILTER_NAMES[current_filter]
@@ -924,6 +933,34 @@ end
 -- get_count(): Return how many objects are in the current filtered list.
 function M.get_count()
     return #filtered_list
+end
+
+-- get_objects(opts): Return a shallow copy of the current object list.
+-- By default returns all detected objects for the map; pass
+-- opts.filtered=true to return the current filtered view instead.
+function M.get_objects(opts)
+    opts = opts or {}
+    local source = opts.filtered and filtered_list or object_list
+    local result = {}
+    for i, obj in ipairs(source) do
+        result[i] = obj
+    end
+    return result
+end
+
+-- find_object_by_id(object_id, opts): Look up an object by stable ID.
+-- Searches the full object list by default; pass opts.filtered=true to
+-- limit the lookup to the current filtered view.
+function M.find_object_by_id(object_id, opts)
+    if not object_id then return nil end
+    opts = opts or {}
+    local source = opts.filtered and filtered_list or object_list
+    for _, obj in ipairs(source) do
+        if obj.id == object_id then
+            return obj
+        end
+    end
+    return nil
 end
 
 -- get_blocking_positions(): Return a list of {x, y} for all objects that

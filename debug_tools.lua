@@ -131,6 +131,10 @@ local sweep_tick
 -- later in the sweep section.
 local persist_sweep_blocks
 
+-- Forward declaration: release NPC freeze that sweep_map acquired automatically.
+-- Uses a late require to avoid circular dependency (route_manager requires debug_tools).
+local sweep_unfreeze_npcs
+
 -- Direction metadata used by both the sweep and export_blocks.
 local DIR_META = {
     { key="up",    dx=0,  dy=-1 },
@@ -556,7 +560,7 @@ local function process_command(cmd)
                     PROBE  = 45,  -- Total frames to wait for position change before
                                   -- declaring the move blocked (matches auto_step timeout).
                 }
-                M.info(string.format("SWEEP: starting on map 0x%02X — standby, player will teleport",
+                M.info(string.format("SWEEP: starting on map 0x%02X — NPCs will auto-freeze, player will teleport",
                     map_id))
             end
         end
@@ -567,6 +571,7 @@ local function process_command(cmd)
                 sweep.tile_idx, sweep.tile_list and #sweep.tile_list or 0))
             persist_sweep_blocks(sweep)
             sweep = nil
+            sweep_unfreeze_npcs()
         else
             M.info("SWEEP: no active sweep to stop")
         end
@@ -777,17 +782,33 @@ local TRANSITION_TYPES = { [4]=true, [5]=true }
 -- that partial sweep data is never silently discarded.
 persist_sweep_blocks = function(sw)
     if not sw or not sw.found_blocks then return end
-    local n = 0
+    -- Collect new keys first, then batch-write once (avoids open/close per entry).
+    local new_keys = {}
     for key, _ in pairs(sw.found_blocks) do
         if not blocked_entries[key] then
+            new_keys[#new_keys + 1] = key
             blocked_entries[key] = true
-            local f = io.open(BLOCKS_FILE, "a")
-            if f then f:write(key .. "\n"); f:close() end
-            n = n + 1
         end
     end
-    if n > 0 then
-        M.info(string.format("SWEEP: persisted %d block(s) to dw_blocks.log", n))
+    if #new_keys > 0 then
+        local f = io.open(BLOCKS_FILE, "a")
+        if f then
+            for _, key in ipairs(new_keys) do
+                f:write(key .. "\n")
+            end
+            f:close()
+        end
+        M.info(string.format("SWEEP: persisted %d block(s) to dw_blocks.log", #new_keys))
+    end
+end
+
+-- sweep_unfreeze_npcs(): Release the NPC freeze that sweep_map acquired.
+-- Late-requires route_manager to avoid circular dependency at load time.
+sweep_unfreeze_npcs = function()
+    local ok, route_mgr = pcall(require, "route_manager")
+    if ok and route_mgr then
+        route_mgr.unfreeze_npcs()
+        M.info("SWEEP: NPCs auto-unfrozen")
     end
 end
 
@@ -859,22 +880,16 @@ sweep_tick = function()
         sweep.map_w = w
         sweep.map_h = h
 
-        -- Collect all tiles that map_reader considers walkable. These are our
-        -- candidates; the sweep determines which ones have hidden engine walls.
-        -- Skip row 0 and col 0 — engine always blocks them (x==0 or y==0 guard
-        -- in map_reader.is_walkable). Also skip the bottom and right border rows
-        -- to avoid testing exits at map edges.
-        --
-        -- IMPORTANT: also exclude transition tiles (stairs/exits) from the ORIGIN
-        -- list. Teleporting onto a stair tile causes the game to immediately warp
-        -- the player to another map. The subsequent settle phase would then keep
-        -- writing the stair's (x,y) coordinates into the new map's RAM, which is
-        -- out-of-bounds for the destination map and can kill the player.
-        -- Snapshot current NPC positions so we can exclude them from block
-        -- recording. When a movement probe fails because an NPC is standing on
-        -- the destination tile, the engine block is transient (the NPC will
-        -- move), not a structural wall. Recording it would add a false positive
-        -- to MAP_BLOCKED_CELLS. Freeze NPCs before sweeping for best results.
+        -- Auto-freeze NPCs so the sweep doesn't record transient NPC-blocked
+        -- cells as permanent engine walls. Late-require avoids circular dependency.
+        local ok, route_mgr = pcall(require, "route_manager")
+        if ok and route_mgr then
+            route_mgr.freeze_npcs()
+            M.info("SWEEP: NPCs auto-frozen")
+        end
+
+        -- Snapshot NPC positions to exclude from both probe recording (destination
+        -- check) AND origin tile list (teleporting onto an NPC causes odd behavior).
         sweep.npc_cells = {}
         for i = 0, addr.NPC_COUNT - 1 do
             local base  = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
@@ -888,14 +903,24 @@ sweep_tick = function()
         end
         local npc_count = 0
         for _ in pairs(sweep.npc_cells) do npc_count = npc_count + 1 end
-        M.info(string.format("SWEEP: NPC snapshot: %d active NPCs (freeze_npcs first for cleaner data)", npc_count))
+        M.info(string.format("SWEEP: NPC snapshot: %d active NPCs excluded from origin+dest tiles", npc_count))
 
+        -- Collect all tiles that map_reader considers walkable. These are our
+        -- candidates; the sweep determines which ones have hidden engine walls.
+        -- Skip row 0 and col 0 — engine always blocks them (x==0 or y==0 guard
+        -- in map_reader.is_walkable). Also skip the bottom and right border rows
+        -- to avoid testing exits at map edges.
+        --
+        -- Also excluded from the origin list:
+        --   - Transition tiles (stairs/exits): teleporting onto them warps the map.
+        --   - NPC-occupied tiles: teleporting onto an NPC causes odd engine behavior.
         sweep.tile_list = {}
         for y = 1, h - 2 do
             for x = 1, w - 2 do
                 if map_reader.is_walkable(cur_map, x, y) == true then
                     local tile_type = map_reader.get_tile_type(cur_map, x, y)
-                    if not (tile_type and TRANSITION_TYPES[tile_type]) then
+                    if not (tile_type and TRANSITION_TYPES[tile_type])
+                    and not sweep.npc_cells[x .. "," .. y] then
                         sweep.tile_list[#sweep.tile_list + 1] = {x=x, y=y}
                     end
                 end
@@ -925,6 +950,12 @@ sweep_tick = function()
                 break
             end
         until false
+        -- Log progress periodically so the user knows the sweep is alive.
+        local total = #sweep.tile_list
+        if sweep.tile_idx % 50 == 0 or sweep.tile_idx == total then
+            M.info(string.format("SWEEP: progress %d/%d tiles (%.0f%%)",
+                sweep.tile_idx, total, 100 * sweep.tile_idx / total))
+        end
         local tile = sweep.tile_list[sweep.tile_idx]
         sweep.tile_x = tile.x
         sweep.tile_y = tile.y
@@ -1137,12 +1168,14 @@ sweep_tick = function()
         end
 
         sweep = nil
+        sweep_unfreeze_npcs()
         return nil
     end
 
     -- Unknown phase — defensive reset.
     M.error("SWEEP: unknown phase '" .. tostring(sweep and sweep.phase) .. "' — aborting")
     sweep = nil
+    sweep_unfreeze_npcs()
     return nil
 end
 

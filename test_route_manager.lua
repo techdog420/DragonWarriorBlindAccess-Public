@@ -86,6 +86,12 @@ local function make_env(options)
             pathfind_to = function(_, _, _, _, _, blocking)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
+                if pathfind_mode == "always_no_path" then
+                    return "No path found", nil, nil
+                end
+                if pathfind_mode == "direct_no_path_adjacent_ok" then
+                    return "No path found", nil, nil
+                end
                 if pathfind_mode == "reroute_no_path" and reroute_calls >= 2 then
                     return "No path found", nil, nil
                 end
@@ -99,6 +105,9 @@ local function make_env(options)
             pathfind_to_adjacent = function(_, _, _, _, _, blocking)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
+                if pathfind_mode == "always_no_path" then
+                    return "No path found", nil, nil
+                end
                 if pathfind_mode == "reroute_no_path" and reroute_calls >= 2 then
                     return "No path found", nil, nil
                 end
@@ -114,6 +123,9 @@ local function make_env(options)
 
     package.preload["map_reader"] = function()
         return {
+            get_directional_blocks = function()
+                return {}
+            end,
             is_walkable = function()
                 return true
             end,
@@ -221,9 +233,9 @@ function tests.blocked_step_records_runtime_block_immediately()
         "blocked step should be recorded as a runtime block immediately"
     )
     assert_equal(
-        env.route_manager.build_path_blocking(0x05)["5,3"],
-        "runtime",
-        "blocked destination should appear as runtime in path blocking table"
+        env.route_manager.build_path_blocking(0x05)["5,3"].south,
+        true,
+        "blocked destination should appear as a directional runtime block"
     )
 
     env.restore()
@@ -280,6 +292,40 @@ function tests.autowalk_freezes_npcs_and_releases_on_route_complete()
         env.route_manager.is_npc_freeze_active(),
         false,
         "route completion should release NPC freeze"
+    )
+
+    env.restore()
+end
+
+function tests.autowalk_immediate_no_path_releases_npc_freeze()
+    local env = make_env({pathfind_mode = "always_no_path"})
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(
+        env.route_manager.is_npc_freeze_active(),
+        false,
+        "immediate autowalk no-path should release NPC freeze"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "No path found",
+        "immediate no-path should be announced"
+    )
+
+    env.restore()
+end
+
+function tests.autowalk_falls_back_to_adjacent_for_chest_when_direct_fails()
+    local env = make_env({pathfind_mode = "direct_no_path_adjacent_ok"})
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.start_route_calls(), 1, "chest fallback should still queue a route")
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Auto-walk.",
+        "fallback success should be announced as a normal autowalk"
     )
 
     env.restore()

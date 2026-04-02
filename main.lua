@@ -32,6 +32,7 @@ local items = require "items"          -- Item/equipment/spell lookup tables
 local merchant = require "merchant"    -- Dedicated merchant/shop UI detection
 local debug_tools = require "debug_tools"  -- Debug logging and automation (no-op when debug_mode=false)
 local path_debug = require "path_debug"    -- Pathfinding debug/test tools (no-op when debug_mode=false)
+local map_survey = require "map_survey"    -- Autonomous map/object survey workflow
 local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
 local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
@@ -83,11 +84,15 @@ local function get_block_flags(blocking, x, y)
     return blocker == "npc", blocker == "runtime", blocker
 end
 
+-- Cardinal names accepted as aliases for joypad keys.
+local CARDINAL_TO_KEY = {north = "up", south = "down", east = "right", west = "left"}
+
 local function parse_move_arg(arg, default_x, default_y)
     if not arg then return nil end
     local dir = arg:match("^%s*([%a]+)%s*$")
     if dir then
         dir = dir:lower()
+        dir = CARDINAL_TO_KEY[dir] or dir
         if DIR_TO_DELTA[dir] then
             return default_x, default_y, dir
         end
@@ -95,6 +100,7 @@ local function parse_move_arg(arg, default_x, default_y)
     local x, y, dir2 = arg:match("^%s*(%-?%d+)%s*,%s*(%-?%d+)%s*,%s*([%a]+)%s*$")
     if not x then return nil end
     dir2 = dir2:lower()
+    dir2 = CARDINAL_TO_KEY[dir2] or dir2
     if not DIR_TO_DELTA[dir2] then return nil end
     return tonumber(x), tonumber(y), dir2
 end
@@ -151,6 +157,80 @@ local function log_move_report(from_x, from_y, dir)
     debug_tools.info(msg)
     return msg
 end
+
+local edge_probe_state = nil
+
+local function edge_probe_timeout_frames()
+    local base = tonumber(config.get("auto_step_timeout")) or 45
+    -- 3x the auto_step timeout: single-tile probes need more headroom than
+    -- normal walking (the engine may delay position commit), but 5x was
+    -- overkill. 3x (~135 frames / ~2.25s at 60fps) is a safe middle ground.
+    return (base * 3)
+end
+
+local function finish_edge_probe(status, reason)
+    local probe = edge_probe_state
+    if not probe then
+        return
+    end
+    local map_id, px, py = nav.get_position()
+    local blocking = route_mgr.build_path_blocking(probe.map_id)
+    local report = build_tile_report(probe.map_id, probe.dest_x, probe.dest_y, blocking)
+    local msg = string.format(
+        "EDGE_PROBE_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) status=%s final=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s runtime_blocked=%s effective_passable=%s reason=%s",
+        probe.map_id,
+        probe.from_x,
+        probe.from_y,
+        probe.dir,
+        probe.dest_x,
+        probe.dest_y,
+        tostring(status),
+        px or -1,
+        py or -1,
+        tostring(report.tile_type),
+        tostring(report.base_walkable),
+        tostring(report.walkable),
+        tostring(report.permanent_blocked),
+        tostring(report.npc_blocked),
+        tostring(report.runtime_blocked),
+        tostring(report.effective_passable),
+        tostring(reason or ""))
+    debug_tools.info(msg)
+    tolk.output_interrupt(string.format(
+        "Edge probe %s from %d,%d to %d,%d.",
+        tostring(status), probe.from_x, probe.from_y, probe.dest_x, probe.dest_y))
+    edge_probe_state = nil
+end
+
+local function tick_edge_probe()
+    local probe = edge_probe_state
+    if not probe then
+        return
+    end
+    local map_id, px, py = nav.get_position()
+    probe.frames = probe.frames + 1
+    if map_id ~= probe.map_id then
+        finish_edge_probe("map_changed", "map_changed")
+        return
+    end
+    if px == probe.dest_x and py == probe.dest_y then
+        finish_edge_probe("moved", "position_changed")
+        return
+    end
+    if probe.frames >= edge_probe_timeout_frames() then
+        finish_edge_probe("timed_out", "timeout")
+    end
+end
+
+event_bus.subscribe("route_blocked", function(data)
+    local probe = edge_probe_state
+    if not probe or not data then
+        return
+    end
+    if data.from_x == probe.from_x and data.from_y == probe.from_y and data.dir == probe.dir then
+        finish_edge_probe("blocked", "route_blocked")
+    end
+end)
 
 local function report_blockers_for_current_map()
     local map_id = snapshot.map_id
@@ -2325,6 +2405,68 @@ debug_tools.register_command("inspect_move", function(arg)
     end
 end)
 
+debug_tools.register_command("probe_edge", function(arg)
+    local _, px, py = nav.get_position()
+    local from_x, from_y, dir = parse_move_arg(arg, px, py)
+    if not from_x then
+        debug_tools.error("probe_edge usage: probe_edge:DIR or probe_edge:X,Y,DIR")
+        return
+    end
+    if edge_probe_state then
+        debug_tools.error("probe_edge: a probe is already active")
+        return
+    end
+    if from_x ~= px or from_y ~= py then
+        debug_tools.error(string.format(
+            "probe_edge: stand on (%d,%d) first; current position is (%d,%d)",
+            from_x, from_y, px, py))
+        return
+    end
+    if map_survey.is_active() then
+        debug_tools.error("probe_edge: stop the active survey first")
+        return
+    end
+    if auto_step.is_route_active() then
+        debug_tools.error("probe_edge: wait for the current auto-walk step/route to finish")
+        return
+    end
+    objects.update_npcs()
+    local msg = log_move_report(from_x, from_y, dir)
+    local delta = DIR_TO_DELTA[dir]
+    edge_probe_state = {
+        map_id = snapshot.map_id,
+        from_x = from_x,
+        from_y = from_y,
+        dir = dir,
+        dest_x = from_x + delta.dx,
+        dest_y = from_y + delta.dy,
+        frames = 0,
+    }
+    debug_tools.info(string.format(
+        "EDGE_PROBE_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d)",
+        snapshot.map_id,
+        from_x,
+        from_y,
+        dir,
+        edge_probe_state.dest_x,
+        edge_probe_state.dest_y))
+    auto_step.inject_step(dir)
+    if msg then
+        tolk.output_interrupt("Edge probe started. " .. msg)
+    else
+        tolk.output_interrupt("Edge probe started")
+    end
+end)
+
+debug_tools.register_command("stop_probe_edge", function()
+    if not edge_probe_state then
+        debug_tools.error("stop_probe_edge: no active probe")
+        return
+    end
+    auto_step.cancel_active_step(true)
+    finish_edge_probe("cancelled", "manual_stop")
+end)
+
 debug_tools.register_command("pathfind_to", function(arg)
     local goal_x, goal_y = parse_xy_arg(arg)
     if goal_x == nil then
@@ -2412,8 +2554,11 @@ debug_tools.register_command("debug_pathfind_to", function(arg)
         map_id, px, py, goal_x, goal_y, blocking, opts)
     path_debug.store_path(map_id, px, py, goal_x, goal_y, path, opts)
     local stats = opts and opts._get_stats() or {}
-    local msg = string.format("Debug pathfind to (%d,%d): %s (visited=%d path=%d)",
-        goal_x, goal_y, result, stats.nodes_visited or 0, path and #path or 0)
+    local reason = stats and stats.reason
+    local msg = string.format("Debug pathfind to (%d,%d): %s%s (visited=%d path=%d)",
+        goal_x, goal_y, result,
+        reason and (" [" .. reason .. "]") or "",
+        stats.nodes_visited or 0, path and #path or 0)
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
 end)
@@ -2432,8 +2577,11 @@ debug_tools.register_command("debug_pathfind_adjacent", function(arg)
         map_id, px, py, goal_x, goal_y, blocking, opts)
     path_debug.store_path(map_id, px, py, goal_x, goal_y, path, opts)
     local stats = opts and opts._get_stats() or {}
-    local msg = string.format("Debug pathfind adjacent to (%d,%d): %s (visited=%d path=%d)",
-        goal_x, goal_y, result, stats.nodes_visited or 0, path and #path or 0)
+    local reason = stats and stats.reason
+    local msg = string.format("Debug pathfind adjacent to (%d,%d): %s%s (visited=%d path=%d)",
+        goal_x, goal_y, result,
+        reason and (" [" .. reason .. "]") or "",
+        stats.nodes_visited or 0, path and #path or 0)
     if face_dir then msg = msg .. ". Face " .. face_dir end
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
@@ -2498,6 +2646,130 @@ end)
 debug_tools.register_command("dump_path_grid", function()
     path_debug.dump_path_grid()
     tolk.output_interrupt("Path grid dumped")
+end)
+
+debug_tools.register_command("survey_map", function(arg)
+    local ok, err = map_survey.start_object_survey(arg)
+    if not ok then
+        debug_tools.error("survey_map: " .. tostring(err))
+        tolk.output_interrupt(tostring(err))
+    end
+end)
+
+debug_tools.register_command("survey_objects", function(arg)
+    local ok, err = map_survey.start_object_survey(arg)
+    if not ok then
+        debug_tools.error("survey_objects: " .. tostring(err))
+        tolk.output_interrupt(tostring(err))
+    end
+end)
+
+debug_tools.register_command("survey_target", function(arg)
+    local ok, err = map_survey.start_target_survey(arg)
+    if not ok then
+        debug_tools.error("survey_target: " .. tostring(err))
+        tolk.output_interrupt(tostring(err))
+    end
+end)
+
+debug_tools.register_command("stop_survey", function()
+    local ok, msg = map_survey.stop_survey()
+    if not ok then
+        debug_tools.error("stop_survey: " .. tostring(msg))
+        tolk.output_interrupt(tostring(msg))
+        return
+    end
+    tolk.output_interrupt(msg)
+end)
+
+debug_tools.register_command("report_failed_targets", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.report_failed_targets(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No failed survey targets on map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Reported %d failed survey targets on map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("report_strong_candidates", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.report_strong_candidates(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No strong reroute candidates on map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Reported %d strong reroute candidates on map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("report_survey_findings", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local findings = map_survey.report_findings(map_id)
+    if not findings or ((findings.failed_targets or 0) == 0 and (findings.strong_candidates or 0) == 0) then
+        tolk.output_interrupt(string.format("No survey findings for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format(
+            "Survey findings for map %02X. %d failed targets, %d strong reroute candidates.",
+            map_id,
+            findings.failed_targets or 0,
+            findings.strong_candidates or 0))
+    end
+end)
+
+debug_tools.register_command("report_candidate_suggestions", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.report_candidate_suggestions(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No candidate suggestions for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Reported %d candidate suggestions for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("list_blocked_candidates", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.list_blocked_candidates(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No blocked candidates on map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Listed %d blocked candidates on map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("dump_survey_report", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.dump_survey_report(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No survey report for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Dumped survey report with %d targets for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("export_blocked_candidates", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.export_blocked_candidates(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No blocked candidates to export for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Exported %d blocked candidates for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("export_directional_candidates", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_survey.export_directional_candidates(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No directional candidate exports for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Exported %d directional candidate entries for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("reset_survey_candidates", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    map_survey.reset_candidates(map_id)
+    tolk.output_interrupt(string.format("Cleared survey candidates for map %02X", map_id))
 end)
 
 -- ============================================================
@@ -2823,6 +3095,8 @@ while true do
                 active_target and tostring(active_target.name) or "nil"))
         end
     end
+    tick_edge_probe()
+    map_survey.tick(can_walk)
     auto_step.update(can_walk)
 
     -- Advance the emulator by one frame. This is required —

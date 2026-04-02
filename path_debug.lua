@@ -52,7 +52,14 @@ local DIR_KEY_MAP = {north = "up", south = "down", west = "left", east = "right"
 local VALIDATE_MARGIN_FRAMES = 5
 local VALIDATE_START_DELAY_FRAMES = 4
 local VALIDATE_SETTLE_FRAMES = 10
-local VALIDATE_STEP_GAP_FRAMES = 6
+-- Gap between a successful step check and the next step inject.
+-- Must be long enough for DW1's walking animation to fully complete
+-- after the tile position commits in RAM. Testing shows the animation
+-- runs ~18-20 frames after 0x003A updates; with a 6-frame gap, the
+-- next inject fires mid-animation and DW1 ignores it (causing a
+-- systematic retry on every step). 30 frames clears the animation
+-- with a comfortable margin.
+local VALIDATE_STEP_GAP_FRAMES = 30
 local VALIDATE_MAX_RETRIES = 2
 
 local DIR_DELTAS = {
@@ -612,6 +619,31 @@ local TEST_SCENARIOS = {
         -- goal when the door is closed (default game state).
         {name = "room_center_to_north", start_x = 4, start_y = 5, goal_x = 4, goal_y = 1, adjacent = false},
         {name = "room_center_to_king",  start_x = 4, start_y = 6, goal_x = 4, goal_y = 3, adjacent = true},
+    },
+
+    [0x08] = {  -- Brecconary (30x30 town, west-edge exit at (0,15))
+        -- y=6 has a large building void from x=3-24 that divides the map.
+        -- North-to-south routing MUST go via the x=1-2 west corridor or
+        -- the x=25-29 east corridor. All 654 walkable cells are confirmed
+        -- connected from (1,1) via ROM analysis (2026-03-27).
+        --
+        -- No MAP_BLOCKED_CELLS data yet for this map — these tests will fail
+        -- if engine-blocked cells cause A* to plan unreachable routes.
+        -- Run sweep_map (with freeze_npcs) in Brecconary to gather that data.
+
+        -- North zone to south zone (must detour around y=6 building void)
+        {name = "north_to_south_via_west", start_x = 5, start_y = 2, goal_x = 5, goal_y = 20, adjacent = false},
+
+        -- East-west navigation in the south zone (building voids at x=5-7, y=14)
+        {name = "entrance_to_east",        start_x = 1, start_y = 14, goal_x = 27, goal_y = 14, adjacent = false},
+
+        -- Center-to-center diagonal to test path variety
+        -- (10,10) is a type-2 building tile — start at (15,10) which is type-4 floor
+        {name = "center_to_south_east",    start_x = 15, start_y = 10, goal_x = 25, goal_y = 25, adjacent = false},
+
+        -- Approach exit (west edge at (0,15)) — adjacent mode: (0,15) is the
+        -- engine-boundary exit tile; find_route_to_adjacent routes to (1,15) facing west
+        {name = "center_to_exit",          start_x = 15, start_y = 15, goal_x = 0,  goal_y = 15, adjacent = true},
     },
 }
 

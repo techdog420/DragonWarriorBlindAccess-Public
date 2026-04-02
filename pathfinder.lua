@@ -27,11 +27,16 @@ local M = {}
 -- ============================================================
 -- The four cardinal directions as (dx, dy) offsets.
 -- In DW1: +X = east (right), +Y = south (down)
+--
+-- `approach` is the side of the DESTINATION cell that the player arrives
+-- from. Used for directional engine-wall checks: DW1 buildings have walls
+-- that block entry from one side only (e.g. you can't step east into a
+-- cell, but you CAN step south into the same cell).
 local DIRECTIONS = {
-    {dx =  0, dy = -1, name = "north"},
-    {dx =  0, dy =  1, name = "south"},
-    {dx = -1, dy =  0, name = "west"},
-    {dx =  1, dy =  0, name = "east"},
+    {dx =  0, dy = -1, name = "north", approach = "south"},
+    {dx =  0, dy =  1, name = "south", approach = "north"},
+    {dx = -1, dy =  0, name = "west",  approach = "east"},
+    {dx =  1, dy =  0, name = "east",  approach = "west"},
 }
 
 local function build_blocked_table(npc_positions, goal_x, goal_y, block_goal)
@@ -188,26 +193,35 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         return x .. "," .. y
     end
 
-    local function is_blocked(x, y)
+    -- is_blocked(x, y, approach): Check if a cell is blocked.
+    -- `approach` is the side the player arrives from ("north","south","east","west").
+    -- For directional runtime blocks (table value), only the matching direction
+    -- counts. For NPC/"npc" blocks, the cell is always fully blocked.
+    local function is_blocked(x, y, approach)
         local k = key(x, y)
-        if blocked_positions[k] then
-            return true
+        local block = blocked_positions[k]
+        if not block then return false end
+        if type(block) == "table" then
+            -- Directional runtime block: only blocked from specific sides
+            return block[approach] == true
         end
-        return false
+        return true  -- "npc" or legacy boolean
     end
 
     local runtime_block_log = {}
 
-    local function get_block_reason(x, y)
+    -- get_block_reason(x, y, approach): Like is_blocked but returns the
+    -- reason string ("npc", "runtime") or nil if not blocked from this side.
+    local function get_block_reason(x, y, approach)
         local k = key(x, y)
-        local direct = blocked_positions[k]
-        if direct then
-            if direct == "runtime" then
-                return "runtime"
-            end
-            return "npc"
+        local block = blocked_positions[k]
+        if not block then return nil end
+        if type(block) == "table" then
+            if block[approach] then return "runtime" end
+            return nil  -- not blocked from this approach direction
         end
-        return nil
+        if block == "runtime" then return "runtime" end
+        return "npc"
     end
 
     local function log_runtime_block_use(x, y, context)
@@ -224,16 +238,35 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     -- Direct pathfinding targets must themselves be standable. Callers that
     -- need to interact with a non-walkable or occupied goal should use
     -- pathfind_to_adjacent(), which searches neighboring cells instead.
+    --
+    -- For directional runtime blocks (table), the goal is only unreachable
+    -- if blocked from ALL 4 directions. Partial blocks still allow the
+    -- search to find a valid approach.
     if not (start_x == goal_x and start_y == goal_y) then
-        local goal_block_reason = get_block_reason(goal_x, goal_y)
-        if goal_block_reason then
-            if goal_block_reason == "runtime" then
-                log_runtime_block_use(goal_x, goal_y, "goal")
+        local goal_k = key(goal_x, goal_y)
+        local goal_block = blocked_positions[goal_k]
+        if goal_block then
+            if type(goal_block) == "table" then
+                -- Directional: only reject if every approach is blocked
+                if goal_block.north and goal_block.south
+                and goal_block.east  and goal_block.west then
+                    log_runtime_block_use(goal_x, goal_y, "goal")
+                    if on_complete then
+                        on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_blocked"})
+                    end
+                    return nil
+                end
+                -- else: some approaches open, let search proceed
+            else
+                -- "npc" or legacy binary block — fully blocked
+                if goal_block == "runtime" then
+                    log_runtime_block_use(goal_x, goal_y, "goal")
+                end
+                if on_complete then
+                    on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_blocked"})
+                end
+                return nil
             end
-            if on_complete then
-                on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_blocked"})
-            end
-            return nil
         end
         if map_reader.is_walkable(map_id, goal_x, goal_y) ~= true then
             if on_complete then
@@ -243,14 +276,20 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         end
     end
 
-    -- Check if a position is passable (walkable tile AND not blocked)
+    -- Check if a position is passable (walkable tile AND not blocked).
+    -- This answers "can the player stand on this cell?" so directional
+    -- blocks (table values) are ignored — they restrict specific approach
+    -- directions but the cell itself is standable. The neighbor-expansion
+    -- loop uses is_blocked(x,y,approach) for directional filtering instead.
     local function is_passable(x, y)
         -- Bounds check
         if x < 0 or x >= width or y < 0 or y >= height then
             return false
         end
-        -- NPC/dynamic block check
-        if is_blocked(x, y) then
+        -- NPC/dynamic block check (no approach = full blocks only)
+        local k = key(x, y)
+        local block = blocked_positions[k]
+        if block and type(block) ~= "table" then
             return false
         end
         -- Tile walkability check
@@ -362,7 +401,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                     -- Out of map bounds
                     if on_reject then on_reject(nx, ny, "out_of_bounds") end
                 else
-                    local block_reason = get_block_reason(nx, ny)
+                    local block_reason = get_block_reason(nx, ny, dir.approach)
                     if block_reason then
                         if block_reason == "runtime" then
                             log_runtime_block_use(nx, ny, "neighbor")
