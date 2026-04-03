@@ -52,6 +52,7 @@ local DIR_KEY_MAP = {north = "up", south = "down", west = "left", east = "right"
 local VALIDATE_MARGIN_FRAMES = 5
 local VALIDATE_START_DELAY_FRAMES = 4
 local VALIDATE_SETTLE_FRAMES = 10
+local VALIDATE_CONFIRM_FRAMES = 8
 -- Gap between a successful step check and the next step inject.
 -- Must be long enough for DW1's walking animation to fully complete
 -- after the tile position commits in RAM. Testing shows the animation
@@ -61,6 +62,7 @@ local VALIDATE_SETTLE_FRAMES = 10
 -- with a comfortable margin.
 local VALIDATE_STEP_GAP_FRAMES = 30
 local VALIDATE_MAX_RETRIES = 2
+local VALIDATE_LATE_WAIT_EXTENSIONS = 1
 
 local DIR_DELTAS = {
     north = {dx = 0, dy = -1},
@@ -68,6 +70,36 @@ local DIR_DELTAS = {
     west  = {dx = -1, dy = 0},
     east  = {dx = 1, dy = 0},
 }
+
+local function is_auto_step_still_active(vs)
+    local auto_step_module = vs and vs.auto_step
+    if not auto_step_module then
+        return false
+    end
+    if auto_step_module.is_auto_active then
+        return auto_step_module.is_auto_active()
+    end
+    if auto_step_module.is_route_active then
+        return auto_step_module.is_route_active()
+    end
+    return false
+end
+
+local function finish_validate_step(vs, px, py, message, use_info_log)
+    vs.completed = vs.completed + 1
+    if message then
+        if use_info_log then
+            debug_tools.info(message)
+        else
+            debug_tools.debug(message)
+        end
+    end
+    if vs.auto_step and vs.auto_step.cancel_active_step then
+        vs.auto_step.cancel_active_step(false)
+    end
+    vs.phase = "next"
+    return true
+end
 
 local function begin_validate_step(vs)
     local step = vs.path[vs.index]
@@ -79,6 +111,17 @@ local function begin_validate_step(vs)
     local planned_from_y = vs.start_path_y
 
     if px ~= planned_from_x or py ~= planned_from_y then
+        if px == step.x and py == step.y then
+            return finish_validate_step(
+                vs,
+                px,
+                py,
+                string.format(
+                    "VALIDATE step %d: already at expected (%d,%d) before inject; treating as late arrival",
+                    vs.index, px, py),
+                true
+            )
+        end
         local msg = string.format(
             "VALIDATE step %d: DESYNC before inject actual=(%d,%d) planned_start=(%d,%d)",
             vs.index, px, py, planned_from_x, planned_from_y)
@@ -403,6 +446,8 @@ end
 -- wait: wait for the player position to change, or for a true timeout
 -- settle: after movement begins, give the engine a couple frames to finish
 -- check: compare expected (step.x, step.y) vs actual (nav.get_position())
+-- confirm: once the expected tile is reached, require it to remain stable for
+--   a short window before counting the step as a success
 -- next: advance to next step or finish
 
 -- validate_tick(): Advance the validation state machine one frame.
@@ -451,6 +496,7 @@ local function validate_tick()
         end
 
         vs.retry_count = 0
+        vs.late_wait_extensions = 0
         if vs.index == 1 then
             vs.start_path_x = vs.origin_x
             vs.start_path_y = vs.origin_y
@@ -486,6 +532,41 @@ local function validate_tick()
         return
     end
 
+    if vs.phase == "confirm" then
+        local _, px, py = nav.get_position()
+        if px == vs.expected_x and py == vs.expected_y then
+            vs.settle_frames = vs.settle_frames - 1
+            if vs.settle_frames <= 0 then
+                finish_validate_step(
+                    vs,
+                    px,
+                    py,
+                    string.format("VALIDATE step %d: OK at (%d,%d)", vs.index, px, py),
+                    false
+                )
+            end
+            return
+        end
+
+        vs.mismatches[#vs.mismatches + 1] = {
+            step       = vs.index,
+            expected_x = vs.expected_x,
+            expected_y = vs.expected_y,
+            actual_x   = px,
+            actual_y   = py,
+            planned_x  = vs.path[vs.index].x,
+            planned_y  = vs.path[vs.index].y,
+        }
+        debug_tools.info(string.format(
+            "VALIDATE step %d: OVERSHOOT after arrival expected (%d,%d) actual (%d,%d)",
+            vs.index, vs.expected_x, vs.expected_y, px, py))
+        debug_tools.info(string.format(
+            "VALIDATE ABORT: stopping at first mismatch (%d/%d steps OK)",
+            vs.completed, #vs.path))
+        validate_state = nil
+        return
+    end
+
     if vs.phase == "check" then
         local step = vs.path[vs.index]
         local _, px, py = nav.get_position()
@@ -493,17 +574,31 @@ local function validate_tick()
         local expected_y = vs.expected_y
 
         if px == expected_x and py == expected_y then
-            vs.completed = vs.completed + 1
-            debug_tools.debug(string.format("VALIDATE step %d: OK at (%d,%d)", vs.index, px, py))
             if vs.auto_step and vs.auto_step.cancel_active_step then
                 vs.auto_step.cancel_active_step(false)
             end
+            vs.settle_frames = VALIDATE_CONFIRM_FRAMES
+            debug_tools.debug(string.format(
+                "VALIDATE step %d: reached expected (%d,%d), confirming settle",
+                vs.index, px, py))
+            vs.phase = "confirm"
+            return
         elseif px == vs.start_x and py == vs.start_y and (vs.retry_count or 0) < VALIDATE_MAX_RETRIES then
             vs.retry_count = (vs.retry_count or 0) + 1
             debug_tools.debug(string.format(
                 "VALIDATE step %d: no movement yet at (%d,%d), retrying",
                 vs.index, px, py))
             begin_validate_step(vs)
+            return
+        elseif px == vs.start_x and py == vs.start_y
+            and (vs.late_wait_extensions or 0) < VALIDATE_LATE_WAIT_EXTENSIONS
+            and is_auto_step_still_active(vs) then
+            vs.late_wait_extensions = (vs.late_wait_extensions or 0) + 1
+            vs.wait_frames = (tonumber(config.get("auto_step_timeout")) or 60) + VALIDATE_MARGIN_FRAMES
+            debug_tools.debug(string.format(
+                "VALIDATE step %d: auto_step still active at (%d,%d), extending wait",
+                vs.index, px, py))
+            vs.phase = "wait"
             return
         else
             vs.mismatches[#vs.mismatches + 1] = {
@@ -627,9 +722,9 @@ local TEST_SCENARIOS = {
         -- the x=25-29 east corridor. All 654 walkable cells are confirmed
         -- connected from (1,1) via ROM analysis (2026-03-27).
         --
-        -- No MAP_BLOCKED_CELLS data yet for this map — these tests will fail
-        -- if engine-blocked cells cause A* to plan unreachable routes.
-        -- Run sweep_map (with freeze_npcs) in Brecconary to gather that data.
+        -- This map now has a small confirmed permanent/directional blocker set,
+        -- but the town is still incomplete enough that these tests are expected
+        -- to expose additional collision mismatches after survey or autowalk.
 
         -- North zone to south zone (must detour around y=6 building void)
         {name = "north_to_south_via_west", start_x = 5, start_y = 2, goal_x = 5, goal_y = 20, adjacent = false},

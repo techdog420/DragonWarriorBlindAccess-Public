@@ -194,9 +194,9 @@ end
 -- Used by: Tantegel Castle, towns, throne rooms
 local WALKABLE_TOWN = {
     [0]  = false,  -- void / boundary (confirmed impassable on Charlock B4: type-0
-                   --   tiles form a barrier row the player cannot cross. If this
-                   --   ever breaks Tantegel Castle navigation, add specific
-                   --   MAP_PASSTHROUGH_CELLS entries for map 0x08.)
+                   --   tiles form a barrier row the player cannot cross. Some
+                   --   Brecconary corridor cells use type-0 in ROM despite being
+                   --   live-passable; handle those with MAP_PASSTHROUGH_CELLS.)
     [1]  = true,   -- floor variant
     [2]  = false,  -- wall / building
     [3]  = true,   -- railing / decorative barrier (visually solid but walkable;
@@ -295,6 +295,20 @@ local MAP_PASSTHROUGH_CELLS = {
     [0x05] = {
         ["4,8"] = true, ["5,8"] = true, ["6,8"] = true,
         ["7,8"] = true, ["8,8"] = true,
+    },
+
+    -- Map 0x08: Brecconary
+    -- Live probe/inspect rechecks on 2026-04-02 confirmed south-middle
+    -- corridor cells that are walkable in-engine despite decoding as
+    -- non-walkable type-0/type-12 cells. Keep this narrowly scoped to the
+    -- directly confirmed cells until the rest of the corridor is mapped.
+    [0x08] = {
+        ["8,18"] = true,
+        ["8,19"] = true,
+        ["9,18"] = true,
+        ["10,18"] = true,
+        ["11,18"] = true,
+        ["11,19"] = true,
     },
 }
 
@@ -468,8 +482,8 @@ local MAP_BLOCKED_CELLS = {
     --
     -- Sweep data (2026-03-27, auto-freeze, NPC exclusion).
     -- Only 6 cells are engine-blocked from ALL walkable-adjacent directions.
-    -- The remaining 113 directional blocks (building walls that block east-west
-    -- but allow north-south, etc.) are handled by the reroute mechanism at runtime.
+    -- Directional wall bands are tracked separately below and extended only
+    -- after direct probe confirmation.
     [0x08] = {
         ["21,4"]  = true,  -- tile=8; blocked from all 4 walkable neighbors
         ["2,7"]   = true,  -- tile=1; blocked from 3 walkable neighbors (4th is void)
@@ -513,23 +527,30 @@ local MAP_DIRECTIONAL_BLOCKS = {
 
     -- Map 0x08: Brecconary (30x30 town)
     -- Building walls block movement from specific directions.
-    -- Confirmed via runtime block discovery during autowalk testing 2026-03-29.
+    -- Confirmed via runtime block discovery during autowalk testing 2026-03-29
+    -- plus direct edge-probe rechecks where noted.
     [0x08] = {
         -- NW building west wall (x=3)
         ["3,4"]  = {west = true},
         ["3,5"]  = {west = true},
-        -- NW building east wall (x=7)
-        ["7,3"]  = {east = true},
+        -- NW building top and east walls.
+        -- The 2026-04-02 survey repeatedly rerouted into y=3 from the north,
+        -- confirming the roofline across x=4-7 in addition to the already
+        -- known east wall at x=7.
+        ["4,3"]  = {north = true},
+        ["5,3"]  = {north = true},
+        ["6,3"]  = {north = true},
+        ["7,3"]  = {north = true, east = true},
         ["7,4"]  = {east = true},
         ["7,5"]  = {east = true},
         -- Center-east building west wall (x=18)
         ["18,10"] = {west = true},
         ["18,11"] = {west = true},
-        ["18,12"] = {west = true},
+        ["18,12"] = {west = true, south = true},
         -- Center-east building south wall
         ["19,12"] = {south = true},
         -- NE building west wall (x=20)
-        ["20,2"] = {west = true},
+        ["20,2"] = {west = true, north = true},
         ["20,3"] = {west = true},
         ["20,4"] = {west = true},
         ["20,5"] = {west = true},
@@ -540,12 +561,111 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["24,2"] = {north = true},
         ["25,2"] = {north = true},
         ["26,2"] = {north = true},
+        -- NE building east wall / top edge corner.
+        -- Survey rerun after per-target runtime-block resets on 2026-04-02
+        -- repeatedly trapped routes against the same band, surfacing
+        -- east-approach blocks near x=27 and north-approach blocks at
+        -- y=9,x=21-26 across 19 failed targets. A direct live repro on
+        -- 2026-04-03 then confirmed the omitted (27,5) edge case: from
+        -- (28,5), explicit one-step validation to (27,5) failed and
+        -- auto_step published a runtime block with approach=east. Clearing
+        -- runtime blockers afterward did not restore the older no-path case
+        -- from (28,2) to (24,10), so that planner isolation was pre-existing
+        -- rather than caused by this cell.
+        ["27,2"] = {north = true, east = true},
+        ["27,3"] = {east = true},
+        ["27,4"] = {east = true},
+        ["27,5"] = {east = true},
         -- NE building entrance (south wall, y=6)
         ["25,6"] = {south = true},
         ["26,6"] = {south = true},
-        ["27,6"] = {south = true},
+        ["27,6"] = {south = true, east = true},
         -- NE building east boundary (x=29)
         ["29,2"] = {west = true},
+        -- NE/southeast corridor north wall band.
+        ["21,9"] = {north = true},
+        ["22,9"] = {north = true},
+        ["23,9"] = {north = true},
+        ["24,9"] = {north = true},
+        ["25,9"] = {north = true},
+        ["26,9"] = {north = true, east = true},
+        -- South-middle wall bands.
+        -- After the Brecconary false-wall passthrough fix on 2026-04-02, the
+        -- survey could finally escape the old pocket and repeatedly exercised
+        -- the south-middle corridors. The latest reroute-heavy surveys then
+        -- promoted x=11,y=21-25 from "possible over-promotion" to strong map
+        -- data: Merchant 3 and Guard 6 both failed on that east-approach band,
+        -- while Person 1, Person 4, and Guard 3 succeeded only after rerouting
+        -- around the same cells.
+        ["11,20"] = {north = true, east = true},
+        ["11,21"] = {east = true},
+        ["11,22"] = {east = true},
+        ["11,23"] = {east = true, west = true},
+        ["11,24"] = {east = true, west = true},
+        ["11,25"] = {east = true, west = true},
+        -- Merchant 1 south-approach pocket.
+        -- The 2026-04-03 survey still hit a live reroute failure here after
+        -- the northeast fixes. A focused replay from (8,13) toward Merchant 1
+        -- confirmed the first blocked step at (8,19)->(7,19): validation
+        -- stalled, then auto_step published runtime block approach=east for
+        -- cell (7,19). Follow-up live probes then confirmed three more cells
+        -- in the same pocket: (6,21)->(6,20) fails with approach=south,
+        -- (6,21)->(5,21) fails with approach=east, and (6,21)->(7,21) fails
+        -- with approach=west. Promote only the directly reproduced entries.
+        ["5,21"]  = {east = true},
+        ["6,20"]  = {south = true},
+        ["7,19"]  = {east = true},
+        ["7,21"]  = {west = true},
+        ["7,22"]  = {north = true, south = true, west = true},
+        ["8,22"]  = {north = true, south = true},
+        ["9,20"]  = {west = true},
+        ["9,21"]  = {west = true},
+        ["9,22"]  = {south = true},
+        ["10,22"] = {south = true},
+        ["8,24"]  = {east = true, north = true},
+        -- Southwest survey reroute trap.
+        -- The 2026-04-03 survey regression that dropped from 13/21 to 1/21
+        -- successes repeatedly failed the same reroute sequence from (9,25):
+        -- (9,26)->(9,27) published approach=north, (9,26)->(8,26) published
+        -- approach=east, and (9,25)->(8,25) published approach=east. The very
+        -- first attempt from (6,23) also failed on (6,23)->(5,23) with
+        -- approach=east. Promote these directly reproduced cells so the next
+        -- survey can test beyond the same southwest pocket.
+        ["5,23"]  = {east = true},
+        ["8,25"]  = {east = true},
+        ["8,26"]  = {east = true},
+        ["3,27"]  = {south = true},
+        ["4,27"]  = {south = true},
+        ["5,27"]  = {south = true},
+        ["6,27"]  = {south = true},
+        ["7,27"]  = {south = true},
+        ["8,27"]  = {south = true},
+        ["9,27"]  = {north = true},
+        ["10,27"] = {south = true},
+        ["11,27"] = {east = true, south = true},
+        -- Center/southeast reroute cluster.
+        -- Repeated successful reroutes after the 2026-04-02 pocket fix kept
+        -- surfacing the same hidden barriers around the merchant wing and the
+        -- center hall. Promote only the strongest repeated cells first.
+        ["18,21"] = {north = true, south = true},
+        ["19,20"] = {north = true, west = true},
+        ["19,21"] = {east = true, south = true},
+        ["20,19"] = {north = true, west = true},
+        ["20,20"] = {south = true},
+        ["21,18"] = {west = true},
+        ["21,20"] = {south = true},
+        ["22,20"] = {east = true, south = true},
+        ["7,20"] = {east = true},
+        ["24,17"] = {north = true},
+        ["25,16"] = {west = true},
+        ["25,12"] = {south = true},
+        ["26,11"] = {east = true},
+        ["26,12"] = {east = true, south = true},
+        ["26,16"] = {north = true},
+        ["27,16"] = {east = true, north = true},
+        ["28,17"] = {east = true, north = true},
+        ["15,28"] = {north = true, west = true},
+        ["16,27"] = {north = true, west = true},
     },
 }
 

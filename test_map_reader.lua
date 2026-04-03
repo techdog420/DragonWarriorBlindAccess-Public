@@ -142,6 +142,145 @@ function tests.metadata_width_height_are_inclusive_coordinates()
     env.restore()
 end
 
+function tests.brecconary_permanent_blockers_match_current_live_model()
+    local env = make_env()
+
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 21, 4), true, "(21,4) should stay permanently blocked")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 11, 26), true, "(11,26) should stay permanently blocked")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 27, 2), false, "(27,2) should remain directional-only")
+
+    env.restore()
+end
+
+function tests.brecconary_directional_walls_cover_confirmed_building_bands()
+    local env = make_env()
+
+    local dirs = env.map_reader.get_directional_blocks(0x08)
+    assert_equal(dirs["3,4"].west, true, "(3,4) should block west approach")
+    assert_equal(dirs["4,3"].north, true, "(4,3) should block north approach")
+    assert_equal(dirs["5,3"].north, true, "(5,3) should block north approach")
+    assert_equal(dirs["6,3"].north, true, "(6,3) should block north approach")
+    assert_equal(dirs["7,3"].north, true, "(7,3) should block north approach")
+    assert_equal(dirs["7,3"].east, true, "(7,3) should block east approach")
+    assert_equal(dirs["20,2"].west, true, "(20,2) should block west approach")
+    assert_equal(dirs["20,2"].north, true, "(20,2) should block north approach")
+    assert_equal(dirs["25,6"].south, true, "(25,6) should block south approach")
+    assert_equal(dirs["27,2"].north, true, "(27,2) should block north approach after live probe confirmation")
+    assert_equal(dirs["27,2"].east, true, "(27,2) should block east approach after survey confirmation")
+    assert_equal(dirs["27,3"].east, true, "(27,3) should block east approach")
+    assert_equal(dirs["27,4"].east, true, "(27,4) should block east approach")
+    assert_equal(dirs["27,5"].east, true, "(27,5) should block east approach after direct live validation from (28,5)")
+    assert_equal(dirs["27,6"].east, true, "(27,6) should block east approach")
+    assert_equal(dirs["27,6"].south, true, "(27,6) should keep its south approach block")
+    assert_equal(dirs["21,9"].north, true, "(21,9) should block north approach")
+    assert_equal(dirs["22,9"].north, true, "(22,9) should block north approach")
+    assert_equal(dirs["23,9"].north, true, "(23,9) should block north approach")
+    assert_equal(dirs["24,9"].north, true, "(24,9) should block north approach")
+    assert_equal(dirs["25,9"].north, true, "(25,9) should block north approach")
+    assert_equal(dirs["26,9"].north, true, "(26,9) should block north approach")
+    assert_equal(dirs["26,9"].east, true, "(26,9) should block east approach")
+    assert_equal(dirs["11,20"].north, true, "(11,20) should keep its north approach block")
+    assert_equal(dirs["11,20"].east, true, "(11,20) should block east approach after survey confirmation")
+    assert_equal(dirs["11,21"].east, true, "(11,21) should block east approach after repeated reroute evidence")
+    assert_equal(dirs["11,22"].east, true, "(11,22) should block east approach after repeated reroute evidence")
+    assert_equal(dirs["11,23"].east, true, "(11,23) should block east approach after repeated reroute evidence")
+    assert_equal(dirs["11,23"].west, true, "(11,23) should block west approach after repeated reroute evidence")
+    assert_equal(dirs["11,24"].east, true, "(11,24) should block east approach after repeated reroute evidence")
+    assert_equal(dirs["11,24"].west, true, "(11,24) should block west approach after repeated reroute evidence")
+    assert_equal(dirs["11,25"].east, true, "(11,25) should block east approach after repeated reroute evidence")
+    assert_equal(dirs["11,25"].west, true, "(11,25) should block west approach after repeated reroute evidence")
+    assert_equal(dirs["5,21"].east, true, "(5,21) should block east approach after direct Merchant 1 pocket repro from (6,21)")
+    assert_equal(dirs["6,20"].south, true, "(6,20) should block south approach after direct Merchant 1 pocket repro from (6,21)")
+    assert_equal(dirs["7,22"].north, true, "(7,22) should block north approach")
+    assert_equal(dirs["7,22"].south, true, "(7,22) should block south approach")
+    assert_equal(dirs["7,22"].west, true, "(7,22) should block west approach")
+    assert_equal(dirs["7,19"].east, true, "(7,19) should block east approach after direct Merchant 1 repro from (8,19)")
+    assert_equal(dirs["7,21"].west, true, "(7,21) should block west approach after direct Merchant 1 pocket repro from (6,21)")
+    assert_equal(dirs["8,22"].north, true, "(8,22) should block north approach")
+    assert_equal(dirs["8,22"].south, true, "(8,22) should block south approach")
+    assert_equal(dirs["9,20"].west, true, "(9,20) should block west approach")
+    assert_equal(dirs["9,21"].west, true, "(9,21) should block west approach")
+    assert_equal(dirs["9,22"].south, true, "(9,22) should block south approach")
+    assert_equal(dirs["10,22"].south, true, "(10,22) should block south approach")
+    assert_equal(dirs["8,24"].east, true, "(8,24) should block east approach")
+    assert_equal(dirs["8,24"].north, true, "(8,24) should block north approach")
+    assert_equal(dirs["5,23"].east, true, "(5,23) should block east approach after repeated southwest reroute trap repro")
+    assert_equal(dirs["8,25"].east, true, "(8,25) should block east approach after repeated southwest reroute trap repro")
+    assert_equal(dirs["8,26"].east, true, "(8,26) should block east approach after repeated southwest reroute trap repro")
+    assert_equal(dirs["3,27"].south, true, "(3,27) should block south approach")
+    assert_equal(dirs["4,27"].south, true, "(4,27) should block south approach")
+    assert_equal(dirs["5,27"].south, true, "(5,27) should block south approach")
+    assert_equal(dirs["6,27"].south, true, "(6,27) should block south approach")
+    assert_equal(dirs["7,27"].south, true, "(7,27) should block south approach")
+    assert_equal(dirs["8,27"].south, true, "(8,27) should block south approach")
+    assert_equal(dirs["9,27"].north, true, "(9,27) should block north approach after repeated southwest reroute trap repro")
+    assert_equal(dirs["10,27"].south, true, "(10,27) should block south approach")
+    assert_equal(dirs["11,27"].east, true, "(11,27) should block east approach")
+    assert_equal(dirs["11,27"].south, true, "(11,27) should block south approach")
+    assert_equal(dirs["18,12"].south, true, "(18,12) should block south approach")
+    assert_equal(dirs["18,21"].north, true, "(18,21) should block north approach")
+    assert_equal(dirs["18,21"].south, true, "(18,21) should block south approach")
+    assert_equal(dirs["19,20"].north, true, "(19,20) should block north approach")
+    assert_equal(dirs["19,20"].west, true, "(19,20) should block west approach")
+    assert_equal(dirs["19,21"].east, true, "(19,21) should block east approach")
+    assert_equal(dirs["19,21"].south, true, "(19,21) should block south approach")
+    assert_equal(dirs["20,19"].north, true, "(20,19) should block north approach")
+    assert_equal(dirs["20,19"].west, true, "(20,19) should block west approach")
+    assert_equal(dirs["20,20"].south, true, "(20,20) should block south approach")
+    assert_equal(dirs["21,18"].west, true, "(21,18) should block west approach")
+    assert_equal(dirs["21,20"].south, true, "(21,20) should block south approach")
+    assert_equal(dirs["22,20"].east, true, "(22,20) should block east approach")
+    assert_equal(dirs["22,20"].south, true, "(22,20) should block south approach")
+    assert_equal(dirs["7,20"].east, true, "(7,20) should block east approach after repeated live failure from (8,20)")
+    assert_equal(dirs["24,17"].north, true, "(24,17) should block north approach")
+    assert_equal(dirs["25,16"].west, true, "(25,16) should block west approach")
+    assert_equal(dirs["25,12"].south, true, "(25,12) should block south approach")
+    assert_equal(dirs["26,11"].east, true, "(26,11) should block east approach")
+    assert_equal(dirs["26,12"].east, true, "(26,12) should block east approach")
+    assert_equal(dirs["26,12"].south, true, "(26,12) should block south approach")
+    assert_equal(dirs["26,16"].north, true, "(26,16) should block north approach")
+    assert_equal(dirs["27,16"].east, true, "(27,16) should block east approach")
+    assert_equal(dirs["27,16"].north, true, "(27,16) should block north approach")
+    assert_equal(dirs["28,17"].east, true, "(28,17) should block east approach")
+    assert_equal(dirs["28,17"].north, true, "(28,17) should block north approach")
+    assert_equal(dirs["15,28"].north, true, "(15,28) should block north approach")
+    assert_equal(dirs["15,28"].west, true, "(15,28) should block west approach")
+    assert_equal(dirs["16,27"].north, true, "(16,27) should block north approach")
+    assert_equal(dirs["16,27"].west, true, "(16,27) should block west approach")
+
+    env.restore()
+end
+
+function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
+    local base = 8 * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,      -- CPU $8000 -> file offset $0010
+            [base + 1] = 0x80,
+            [base + 2] = 11,    -- width 12
+            [base + 3] = 19,    -- height 20
+            [base + 4] = 0,
+            [0x10] = 0x0F, [0x11] = 0x0F, [0x12] = 0x0F, [0x13] = 0x0F,
+            [0x14] = 0x0F, [0x15] = 0x0F, [0x16] = 0x0F, [0x17] = 0x0F,
+            [0x18] = 0x0F, [0x19] = 0x0F, [0x1A] = 0x0F, [0x1B] = 0x0F,
+            [0x1C] = 0x0F, [0x1D] = 0x0F, [0x1E] = 0x0F,
+        },
+        memory_bytes = {
+            [0] = 0x10, -- TERRAIN_OFFSET stubbed to 0 in make_env()
+        },
+    })
+
+    assert_equal(env.map_reader.is_walkable(0x08, 9, 18), true, "(9,18) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 10, 18), true, "(10,18) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 11, 18), true, "(11,18) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 11, 19), true, "(11,19) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 8, 18), true, "(8,18) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 8, 19), true, "(8,19) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 10, 19), false, "(10,19) should remain non-walkable until confirmed")
+
+    env.restore()
+end
+
 local failures = 0
 local total = 0
 

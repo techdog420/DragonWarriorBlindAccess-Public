@@ -1,15 +1,23 @@
-# Session Handoff — 2026-03-27
+# Session Handoff — 2026-04-03
 
 Latest detailed handoff:
-- `HANDOFF_2026-03-27_world_map_and_towns.md`
+- `HANDOFF_2026-04-03_brecconary_survey_regression.md`
 
 Quick summary of the latest session:
-- world-map stale object carryover was traced to lingering interior NPC RAM
-- `objects.lua` now clears those stale NPCs in overworld terrain context
-- Brecconary (`0x08`) exit object was corrected to the live west-edge probe at
-  `(0,15)` using the current `ppu_dump.txt`
-- user live-verified that they could walk around town and talk to several NPCs
-- major remaining issue is Brecconary pathfinding/collision cleanup
+- `main.lua` debug reporting was improved so directional approach blocks show up
+  in `inspect_move` / edge-probe logs
+- Brecconary permanent directional blockers were expanded from direct live
+  repros, including `(27,5)`, `(7,19)`, `(6,20)`, `(5,21)`, `(7,21)`,
+  `(5,23)`, `(8,25)`, `(8,26)`, and a corrected orientation for `(9,27)`
+- a fresh `survey_map` run regressed badly to `1/21` successes, but analysis
+  showed that most failures came from one repeated southwest reroute trap
+  rather than a total planner collapse
+- `test_map_reader.lua` and `python3 run_tests.py --allow-missing-speech-dep`
+  passed after the blocker promotions
+- major remaining issues are:
+  - confirm whether `7,20` is a real permanent blocker
+  - fix `survey_map` target-count mutation during a single run
+  - rerun a clean Brecconary survey after the latest blocker fixes are reloaded
 
 Older handoff content follows for historical context.
 

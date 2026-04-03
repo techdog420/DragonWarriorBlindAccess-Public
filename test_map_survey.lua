@@ -21,10 +21,12 @@ local function make_env(options)
     local logs = {}
     local outputs = {}
     local route_active = false
+    local runtime_count = options.runtime_count or 0
     local nav_map_id = options.map_id or 0x08
     local nav_x = options.x or 5
     local nav_y = options.y or 5
     local object = options.object or {id = "chest_1", name = "Chest", type = "chest", x = 8, y = 5}
+    local objects_list = options.objects or {object}
     local module_names = {
         "auto_step",
         "debug_tools",
@@ -92,10 +94,12 @@ local function make_env(options)
     package.preload["objects"] = function()
         return {
             current_object = function() return object end,
-            get_objects = function() return {object} end,
+            get_objects = function() return objects_list end,
             find_object_by_id = function(id)
-                if id == object.id then
-                    return object
+                for _, obj in ipairs(objects_list) do
+                    if id == obj.id then
+                        return obj
+                    end
                 end
                 return nil
             end,
@@ -143,8 +147,16 @@ local function make_env(options)
                 {x = 7, y = 5, direction = "east"},
             }},
         }
+        local clear_calls = 0
         return {
-            autowalk_to_object = function()
+            autowalk_to_object = function(target)
+                if options.autowalk_fn then
+                    return options.autowalk_fn({
+                        target = target,
+                        runtime_count = runtime_count,
+                        clear_calls = clear_calls,
+                    })
+                end
                 local spec = default_autowalk
                 if autowalk_sequence and autowalk_sequence[1] then
                     autowalk_index = autowalk_index + 1
@@ -181,7 +193,11 @@ local function make_env(options)
                 return options.blocking or {}
             end,
             count_runtime_blocks = function()
-                return options.runtime_count or 0
+                return runtime_count
+            end,
+            clear_runtime_blocks = function()
+                clear_calls = clear_calls + 1
+                runtime_count = 0
             end,
         }
     end
@@ -194,6 +210,9 @@ local function make_env(options)
         logs = logs,
         outputs = outputs,
         publish = function(event_name, data)
+            if event_name == "route_blocked" then
+                runtime_count = runtime_count + 1
+            end
             if event_name == "route_completed" or event_name == "route_cancelled" then
                 route_active = false
             end
@@ -350,6 +369,73 @@ function tests.survey_logs_include_attempt_start_position()
     local joined = table.concat(env.logs, "\n")
     assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x05", "attempt log should be emitted")
     assert_contains(joined, "start=(3,5)", "attempt/result logs should include the live start position")
+
+    env.restore()
+end
+
+function tests.survey_clears_runtime_blocks_between_attempts()
+    local env = make_env({
+        objects = {
+            {id = "npc_1", name = "First", type = "npc", x = 8, y = 5},
+            {id = "npc_2", name = "Second", type = "npc", x = 9, y = 5},
+        },
+        autowalk_fn = function(ctx)
+            if ctx.target.id == "npc_1" then
+                return {
+                    status = "queued",
+                    result = "Path: 1 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                    },
+                }
+            end
+
+            if ctx.target.id == "npc_2" then
+                if ctx.runtime_count > 0 then
+                    return {
+                        status = "no_path",
+                        result = "No path found",
+                        path_mode = "adjacent",
+                        path = nil,
+                    }
+                end
+                return {
+                    status = "queued",
+                    result = "Path: 1 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                    },
+                }
+            end
+
+            return {
+                status = "no_path",
+                result = "No path found",
+                path_mode = "adjacent",
+                path = nil,
+            }
+        end,
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_object_survey()
+    env.survey.tick(true)
+    env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    env.publish("route_cancelled", {reason = "reroute_no_path"})
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    assert_equal(run.summary.failures, 1, "only the first target should fail")
+    assert_equal(run.summary.successes, 1, "the second target should get a clean retry-free plan")
+    assert_contains(table.concat(env.logs, "\n"), "SURVEY_ATTEMPT_RESET run=1 map=0x08 target_id=npc_2 cleared_runtime_blocks=1",
+        "second attempt should clear stale runtime blockers before planning")
 
     env.restore()
 end

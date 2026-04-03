@@ -627,6 +627,16 @@ event_bus.subscribe("map_changed", on_map_changed)
 
 local function start_attempt(target)
     local map_id, start_x, start_y = nav.get_position()
+    local stale_runtime_blocks = route_mgr.count_runtime_blocks(map_id) or 0
+    if stale_runtime_blocks > 0 then
+        route_mgr.clear_runtime_blocks(map_id)
+        debug_tools.info(string.format(
+            "SURVEY_ATTEMPT_RESET run=%d map=0x%02X target_id=%s cleared_runtime_blocks=%d",
+            survey_state and survey_state.run_id or 0,
+            map_id,
+            tostring(target and target.id or ""),
+            stale_runtime_blocks))
+    end
     local plan = route_mgr.autowalk_to_object(target, {
         speak = false,
         store_debug_path = false,

@@ -79,13 +79,41 @@ local function parse_map_xy_arg(arg, default_map_id)
     return default_map_id, x, y
 end
 
-local function get_block_flags(blocking, x, y)
-    local blocker = blocking and blocking[x .. "," .. y] or nil
-    return blocker == "npc", blocker == "runtime", blocker
+local function has_directional_block(entry)
+    return type(entry) == "table" and next(entry) ~= nil
+end
+
+local function blocks_all_approaches(entry)
+    return type(entry) == "table"
+        and entry.north and entry.south and entry.east and entry.west
+end
+
+local function get_block_flags(blocking, x, y, approach)
+    -- blocking is the merged table from route_mgr.build_path_blocking(),
+    -- which already contains NPC positions ("npc"), static directional
+    -- blocks (table), and runtime directional blocks (merged into tables).
+    local key = x .. "," .. y
+    local entry = blocking and blocking[key] or nil
+    local npc_blocked = (entry == "npc")
+    local directional_blocked = has_directional_block(entry)
+    local approach_blocked = false
+
+    if approach and type(entry) == "table" then
+        approach_blocked = (entry[approach] == true)
+    end
+
+    return {
+        npc_blocked = npc_blocked,
+        directional_blocked = directional_blocked,
+        approach = approach,
+        approach_blocked = approach_blocked,
+        fully_blocked = blocks_all_approaches(entry),
+    }
 end
 
 -- Cardinal names accepted as aliases for joypad keys.
 local CARDINAL_TO_KEY = {north = "up", south = "down", east = "right", west = "left"}
+local MOVE_DIR_TO_APPROACH = {up = "south", down = "north", left = "east", right = "west"}
 
 local function parse_move_arg(arg, default_x, default_y)
     if not arg then return nil end
@@ -105,21 +133,26 @@ local function parse_move_arg(arg, default_x, default_y)
     return tonumber(x), tonumber(y), dir2
 end
 
-local function build_tile_report(map_id, x, y, blocking)
+local function build_tile_report(map_id, x, y, blocking, approach)
     local details = map_reader.get_walkability_details(map_id, x, y)
     local tile_type = map_reader.get_tile_type(map_id, x, y)
-    local npc_blocked, runtime_blocked = get_block_flags(blocking, x, y)
+    local flags = get_block_flags(blocking, x, y, approach)
     local base_walkable = details and details.base_walkable
     local walkable = details and details.effective_walkable
     local permanent_blocked = details and details.permanent_blocked
-    local effective_passable = (walkable == true) and not npc_blocked and not runtime_blocked
+    local effective_passable = (walkable == true) and not flags.npc_blocked and not flags.approach_blocked
+    if approach == nil and flags.fully_blocked then
+        effective_passable = false
+    end
     return {
         tile_type = tile_type,
         base_walkable = base_walkable,
         walkable = walkable,
         permanent_blocked = permanent_blocked,
-        npc_blocked = npc_blocked,
-        runtime_blocked = runtime_blocked,
+        npc_blocked = flags.npc_blocked,
+        directional_blocked = flags.directional_blocked,
+        blocked_approach = flags.approach,
+        approach_blocked = flags.approach_blocked,
         effective_passable = effective_passable,
     }
 end
@@ -128,10 +161,10 @@ local function log_tile_report(map_id, x, y)
     local blocking = route_mgr.build_path_blocking(map_id)
     local report = build_tile_report(map_id, x, y, blocking)
     local msg = string.format(
-        "TILE map=0x%02X x=%d y=%d tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s runtime_blocked=%s effective_passable=%s",
+        "TILE map=0x%02X x=%d y=%d tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s effective_passable=%s",
         map_id, x, y, tostring(report.tile_type), tostring(report.base_walkable),
         tostring(report.walkable), tostring(report.permanent_blocked),
-        tostring(report.npc_blocked), tostring(report.runtime_blocked),
+        tostring(report.npc_blocked), tostring(report.directional_blocked),
         tostring(report.effective_passable))
     debug_tools.info(msg)
     return msg
@@ -147,13 +180,16 @@ local function log_move_report(from_x, from_y, dir)
     local dest_x = from_x + meta.dx
     local dest_y = from_y + meta.dy
     local blocking = route_mgr.build_path_blocking(map_id)
-    local report = build_tile_report(map_id, dest_x, dest_y, blocking)
+    local approach = MOVE_DIR_TO_APPROACH[dir]
+    local report = build_tile_report(map_id, dest_x, dest_y, blocking, approach)
     local msg = string.format(
-        "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s runtime_blocked=%s effective_passable=%s",
+        "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s blocked_approach=%s approach_blocked=%s effective_passable=%s",
         map_id, from_x, from_y, dir, dest_x, dest_y, tostring(report.tile_type),
         tostring(report.base_walkable), tostring(report.walkable),
         tostring(report.permanent_blocked), tostring(report.npc_blocked),
-        tostring(report.runtime_blocked), tostring(report.effective_passable))
+        tostring(report.directional_blocked),
+        tostring(report.blocked_approach), tostring(report.approach_blocked),
+        tostring(report.effective_passable))
     debug_tools.info(msg)
     return msg
 end
@@ -162,10 +198,10 @@ local edge_probe_state = nil
 
 local function edge_probe_timeout_frames()
     local base = tonumber(config.get("auto_step_timeout")) or 45
-    -- 3x the auto_step timeout: single-tile probes need more headroom than
-    -- normal walking (the engine may delay position commit), but 5x was
-    -- overkill. 3x (~135 frames / ~2.25s at 60fps) is a safe middle ground.
-    return (base * 3)
+    -- Probes must outlast auto_step's full blocked-move lifecycle:
+    -- the initial attempt, turn re-press, and the internal timeout retries
+    -- before auto_step finally publishes route_blocked.
+    return (base * 5)
 end
 
 local function finish_edge_probe(status, reason)
@@ -175,9 +211,10 @@ local function finish_edge_probe(status, reason)
     end
     local map_id, px, py = nav.get_position()
     local blocking = route_mgr.build_path_blocking(probe.map_id)
-    local report = build_tile_report(probe.map_id, probe.dest_x, probe.dest_y, blocking)
+    local approach = MOVE_DIR_TO_APPROACH[probe.dir]
+    local report = build_tile_report(probe.map_id, probe.dest_x, probe.dest_y, blocking, approach)
     local msg = string.format(
-        "EDGE_PROBE_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) status=%s final=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s runtime_blocked=%s effective_passable=%s reason=%s",
+        "EDGE_PROBE_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) status=%s final=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s blocked_approach=%s approach_blocked=%s effective_passable=%s reason=%s",
         probe.map_id,
         probe.from_x,
         probe.from_y,
@@ -192,7 +229,9 @@ local function finish_edge_probe(status, reason)
         tostring(report.walkable),
         tostring(report.permanent_blocked),
         tostring(report.npc_blocked),
-        tostring(report.runtime_blocked),
+        tostring(report.directional_blocked),
+        tostring(report.blocked_approach),
+        tostring(report.approach_blocked),
         tostring(report.effective_passable),
         tostring(reason or ""))
     debug_tools.info(msg)
