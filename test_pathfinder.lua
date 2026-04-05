@@ -201,6 +201,53 @@ function tests.runtime_block_rejections_are_exposed_in_debug_log()
     env.restore()
 end
 
+function tests.runtime_block_neighbor_logs_are_deduped_across_searches()
+    local env = make_stub_env()
+    env.set_grid(5, 5)
+
+    local first_opts = env.path_debug.build_find_path_opts()
+    local second_opts = env.path_debug.build_find_path_opts()
+
+    local first_path = env.pathfinder.find_path(0x04, 1, 1, 3, 1, {["2,1"] = "runtime"}, first_opts)
+    local second_path = env.pathfinder.find_path(0x04, 1, 1, 3, 1, {["2,1"] = "runtime"}, second_opts)
+    local info_log = table.concat(env.logs, "\n")
+    local _, count = info_log:gsub("PATH_RUNTIME_BLOCK map=0x04 x=2 y=1 context=neighbor", "")
+
+    assert_truthy(first_path ~= nil and #first_path > 0, "first search should still find an alternate route")
+    assert_truthy(second_path ~= nil and #second_path > 0, "second search should still find an alternate route")
+    assert_equal(count, 1, "neighbor runtime-block logs should be emitted only once across repeated searches")
+
+    env.restore()
+end
+
+function tests.adjacent_pathing_prefers_larger_reachable_area_on_equal_length_tie()
+    local env = make_stub_env()
+    env.set_grid(6, 5, {
+        {x = 2, y = 2},
+        {x = 1, y = 1},
+        {x = 3, y = 1},
+        {x = 3, y = 0},
+        {x = 2, y = 0},
+        {x = 4, y = 1},
+        {x = 2, y = 3},
+    })
+
+    local result, face_dir, path = env.pathfinder.pathfind_to_adjacent(
+        0x04,
+        0, 0,
+        2, 2,
+        {["2,2"] = true}
+    )
+
+    assert_equal(result, "Approach: 2 south, 1 east", "adjacent path should still use the shortest route")
+    assert_equal(face_dir, "east", "adjacent path should face the occupied goal from the chosen landing tile")
+    assert_truthy(path ~= nil and #path == 3, "adjacent path should contain the chosen route")
+    assert_equal(path[#path].x, 1, "tie-breaker should choose the equal-length landing tile with the larger reachable area")
+    assert_equal(path[#path].y, 2, "tie-breaker should avoid the smaller reachable-area pocket")
+
+    env.restore()
+end
+
 function tests.trace_path_distinguishes_no_path_from_already_there()
     local env = make_stub_env()
     env.set_grid(5, 5)

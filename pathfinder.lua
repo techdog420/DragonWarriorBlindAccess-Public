@@ -21,6 +21,7 @@ local debug_tools = require "debug_tools"
 local maps = require "maps"
 
 local M = {}
+local runtime_block_neighbor_log = {}
 
 -- ============================================================
 -- Direction Constants
@@ -38,6 +39,73 @@ local DIRECTIONS = {
     {dx = -1, dy =  0, name = "west",  approach = "east"},
     {dx =  1, dy =  0, name = "east",  approach = "west"},
 }
+
+local function count_open_exits(map_id, x, y, blocked_positions)
+    local open = 0
+
+    for _, dir in ipairs(DIRECTIONS) do
+        local nx = x + dir.dx
+        local ny = y + dir.dy
+        local block = blocked_positions[nx .. "," .. ny]
+
+        if not block or (type(block) == "table" and block[dir.approach] ~= true) then
+            if map_reader.is_walkable(map_id, nx, ny) == true then
+                open = open + 1
+            end
+        end
+    end
+
+    return open
+end
+
+local function count_reachable_area(map_id, start_x, start_y, blocked_positions, limit)
+    limit = limit or 128
+    if map_reader.is_walkable(map_id, start_x, start_y) ~= true then
+        return 0
+    end
+
+    local start_key = start_x .. "," .. start_y
+    local start_block = blocked_positions[start_key]
+    if start_block and type(start_block) ~= "table" then
+        return 0
+    end
+
+    local queue = {{x = start_x, y = start_y}}
+    local head = 1
+    local seen = {[start_key] = true}
+    local count = 0
+
+    while head <= #queue and count < limit do
+        local current = queue[head]
+        head = head + 1
+        count = count + 1
+
+        for _, dir in ipairs(DIRECTIONS) do
+            local nx = current.x + dir.dx
+            local ny = current.y + dir.dy
+            local nk = nx .. "," .. ny
+
+            if not seen[nk] then
+                local block = blocked_positions[nk]
+                local blocked_from_approach = false
+                if block then
+                    if type(block) == "table" then
+                        blocked_from_approach = (block[dir.approach] == true)
+                    else
+                        blocked_from_approach = true
+                    end
+                end
+
+                if not blocked_from_approach and map_reader.is_walkable(map_id, nx, ny) == true then
+                    seen[nk] = true
+                    queue[#queue + 1] = {x = nx, y = ny}
+                end
+            end
+        end
+    end
+
+    return count
+end
 
 local function build_blocked_table(npc_positions, goal_x, goal_y, block_goal)
     local blocked = {}
@@ -230,6 +298,13 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
             return
         end
         runtime_block_log[log_key] = true
+        if context == "neighbor" then
+            local global_key = string.format("0x%02X:%s", map_id, key(x, y))
+            if runtime_block_neighbor_log[global_key] then
+                return
+            end
+            runtime_block_neighbor_log[global_key] = true
+        end
         debug_tools.info(string.format(
             "PATH_RUNTIME_BLOCK map=0x%02X x=%d y=%d context=%s",
             map_id, x, y, context))
@@ -483,7 +558,7 @@ end
 
 function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
     if maps.is_overworld(map_id) then
-        return nil, nil, nil
+        return nil, nil, nil, nil
     end
 
     local blocked = build_blocked_table(npc_positions, goal_x, goal_y, true)
@@ -496,9 +571,21 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
 
     local best_path = nil
     local best_adj = nil
+    local best_adj_open_exits = -1
+    local best_adj_area = -1
+    local diagnostics = {}
     for _, adj in ipairs(adj_tiles) do
         local walkable = map_reader.is_walkable(map_id, adj.x, adj.y)
         local blocker = blocked[adj.x .. "," .. adj.y]
+        local diag = {
+            x = adj.x,
+            y = adj.y,
+            walkable = walkable == true,
+            blocker = blocker,
+            path_found = false,
+            reachable_area = nil,
+            open_exits = nil,
+        }
         debug_tools.debug("pathfind adj (" .. adj.x .. "," .. adj.y .. ") walkable=" .. tostring(walkable) .. " blocker=" .. tostring(blocker))
         if blocker == "runtime" then
             debug_tools.info(string.format(
@@ -507,31 +594,50 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
         end
         if walkable == true and not blocker then
             local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, opts)
+            local open_exits = count_open_exits(map_id, adj.x, adj.y, blocked)
+            local reachable_area = count_reachable_area(map_id, adj.x, adj.y, blocked)
+            diag.path_found = path ~= nil
+            diag.reachable_area = reachable_area
+            diag.open_exits = open_exits
             if path then
-                debug_tools.debug("  path length=" .. #path .. " steps: " .. M.format_path(path))
+                debug_tools.debug(
+                    "  path length=" .. #path
+                    .. " steps: " .. M.format_path(path)
+                    .. " reachable_area=" .. reachable_area
+                    .. " open_exits=" .. open_exits)
             else
-                debug_tools.debug("  no path to this adj tile")
+                debug_tools.debug(
+                    "  no path to this adj tile (reachable_area=" .. reachable_area
+                    .. " open_exits=" .. open_exits .. ")")
             end
-            if path and (not best_path or #path < #best_path) then
+            if path and (
+                not best_path
+                or #path < #best_path
+                or (#path == #best_path and reachable_area > best_adj_area)
+                or (#path == #best_path and reachable_area == best_adj_area and open_exits > best_adj_open_exits)
+            ) then
                 best_path = path
                 best_adj = adj
+                best_adj_open_exits = open_exits
+                best_adj_area = reachable_area
             end
         end
+        diagnostics[#diagnostics + 1] = diag
     end
 
     if not best_path then
-        return nil, nil, nil
+        return nil, nil, nil, diagnostics
     end
 
     -- Guard: if best_path is empty (shouldn't happen given the dist>1 check
     -- above, but defensive against edge cases), treat as already-adjacent.
     if #best_path == 0 then
-        return best_path, face_direction(start_x, start_y, goal_x, goal_y), best_adj
+        return best_path, face_direction(start_x, start_y, goal_x, goal_y), best_adj, diagnostics
     end
 
     local last = best_path[#best_path]
     local face = face_direction(last.x, last.y, goal_x, goal_y)
-    return best_path, face, best_adj
+    return best_path, face, best_adj, diagnostics
 end
 
 -- ============================================================
@@ -566,7 +672,7 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
         return objects.get_direction_string(start_x, start_y, goal_x, goal_y), nil, nil
     end
 
-    local best_path, face, best_adj = M.find_route_to_adjacent(
+    local best_path, face, best_adj, diagnostics = M.find_route_to_adjacent(
         map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
     if best_path then
         -- Log the chosen path with tile types for each step
@@ -577,10 +683,10 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
                 debug_tools.debug("  step " .. i .. ": (" .. step.x .. "," .. step.y .. ") dir=" .. step.direction .. " tile=" .. tostring(tt))
             end
         end
-        return "Approach: " .. M.format_path(best_path), face, best_path
+        return "Approach: " .. M.format_path(best_path), face, best_path, diagnostics
     else
         debug_tools.info("pathfind no path to any adj of (" .. goal_x .. "," .. goal_y .. ")")
-        return "No path found", nil, nil
+        return "No path found", nil, nil, diagnostics
     end
 end
 

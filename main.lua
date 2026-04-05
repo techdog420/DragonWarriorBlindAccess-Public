@@ -2695,6 +2695,26 @@ debug_tools.register_command("survey_map", function(arg)
     end
 end)
 
+debug_tools.register_command("report_survey_start", function(arg)
+    local ok, info = map_survey.report_start_viability(arg)
+    if not ok then
+        debug_tools.error("report_survey_start: " .. tostring(info))
+        tolk.output_interrupt(tostring(info))
+        return
+    end
+
+    local status = info.isolated_start and "isolated" or "viable"
+    tolk.output_interrupt(string.format(
+        "Survey start %s on map %02X at (%d,%d). Reachable area %d with %d open exits for %d targets.",
+        status,
+        info.map_id,
+        info.start_x,
+        info.start_y,
+        info.reachable_area,
+        info.open_exit_count,
+        info.target_count))
+end)
+
 debug_tools.register_command("survey_objects", function(arg)
     local ok, err = map_survey.start_object_survey(arg)
     if not ok then

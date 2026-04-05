@@ -1,23 +1,36 @@
-# Session Handoff — 2026-04-03
+# Session Handoff — 2026-04-05
 
 Latest detailed handoff:
-- `HANDOFF_2026-04-03_brecconary_survey_regression.md`
+- `HANDOFF_2026-04-05_brecconary_survey_isolation.md`
 
 Quick summary of the latest session:
-- `main.lua` debug reporting was improved so directional approach blocks show up
-  in `inspect_move` / edge-probe logs
-- Brecconary permanent directional blockers were expanded from direct live
-  repros, including `(27,5)`, `(7,19)`, `(6,20)`, `(5,21)`, `(7,21)`,
-  `(5,23)`, `(8,25)`, `(8,26)`, and a corrected orientation for `(9,27)`
-- a fresh `survey_map` run regressed badly to `1/21` successes, but analysis
-  showed that most failures came from one repeated southwest reroute trap
-  rather than a total planner collapse
-- `test_map_reader.lua` and `python3 run_tests.py --allow-missing-speech-dep`
-  passed after the blocker promotions
-- major remaining issues are:
-  - confirm whether `7,20` is a real permanent blocker
-  - fix `survey_map` target-count mutation during a single run
-  - rerun a clean Brecconary survey after the latest blocker fixes are reloaded
+- Brecconary survey tooling is much more stable:
+  - no more endgame reorder/defer spin for `Guard 6`
+  - no more lingering single `no_route_found` results inside clearly isolated
+    pockets
+  - adjacent no-path targets on single-exit micro-ledges now classify directly
+    as `gated_or_isolated_region`
+- `pathfinder.lua` now returns structured adjacent-landing diagnostics through
+  `route_manager.lua`, which `map_survey.lua` uses for the new micro-pocket
+  classification
+- `map_reader.lua` promoted the strongest remaining Brecconary blocker from
+  this session: `7,20` now blocks `east` and `south`
+- later live probing showed that several tempting survey leads were *not*
+  permanent blocker candidates:
+  - Guard 1 is trapped by genuine ledge geometry near `(20,25)`
+  - `26,23` is only directly confirmed from the east
+  - `9,19` is simply a non-walkable tile, not a hidden passable wall
+- the latest clean survey finished with:
+  - `successes=13`
+  - `failures=8`
+  - `no_route=0`
+  - `suspected_engine_blocked=0`
+  - all unresolved targets in gated/isolated buckets
+- verification passed:
+  - `lua test_map_reader.lua`
+  - `lua test_map_survey.lua`
+  - `lua test_pathfinder.lua`
+  - `python3 run_tests.py --allow-missing-speech-dep`
 
 Older handoff content follows for historical context.
 

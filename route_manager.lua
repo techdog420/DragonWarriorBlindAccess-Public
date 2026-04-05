@@ -429,7 +429,7 @@ local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, op
         return current
     end
 
-    local result, face_dir, path = pathfinder.pathfind_to_adjacent(
+    local result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
         map_id, start_x, start_y, obj.x, obj.y, blocking)
     if result == "No path found" then
         return current
@@ -438,6 +438,7 @@ local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, op
     current.result = result
     current.face_dir = face_dir
     current.path = path
+    current.adjacent_diagnostics = adjacent_diagnostics
     current.path_mode = "adjacent"
     current.no_path_reason = "direct_failed_adjacent_fallback"
     return current
@@ -489,11 +490,11 @@ local function plan_path_to_object(obj, opts)
     objects.update_npcs()
     local blocking = M.build_path_blocking(map_id)
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
-    local result, face_dir, path
+    local result, face_dir, path, adjacent_diagnostics
     local no_path_reason = nil
     local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
     if path_mode == "adjacent" then
-        result, face_dir, path = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
+        result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
     else
         if goal_block_reason == "npc" then
             result, face_dir, path = "No path found", nil, nil
@@ -520,6 +521,7 @@ local function plan_path_to_object(obj, opts)
         result = result,
         face_dir = face_dir,
         path = path,
+        adjacent_diagnostics = adjacent_diagnostics,
         message = build_pathfind_message(obj, result, face_dir, no_path_reason),
     }
     plan = try_adjacent_fallback(obj, map_id, px, py, blocking, opts, plan)
@@ -638,6 +640,20 @@ function M.autowalk_to_object(obj, opts)
             tolk.output_interrupt(plan.message)
         end
         return plan
+    end
+    if opts.prequeue_hook then
+        local ok, override = opts.prequeue_hook(plan)
+        if ok == false then
+            release_npc_freeze("autowalk prequeue deferred")
+            if type(override) == "table" then
+                for k, v in pairs(override) do
+                    plan[k] = v
+                end
+            end
+            plan.status = plan.status or "prequeue_rejected"
+            plan.ok = false
+            return plan
+        end
     end
     if not queue_path_steps(plan.path) then
         release_npc_freeze("autowalk queue failure")

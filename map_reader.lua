@@ -640,7 +640,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["6,27"]  = {south = true},
         ["7,27"]  = {south = true},
         ["8,27"]  = {south = true},
-        ["9,27"]  = {north = true},
+        ["9,27"]  = {north = true, south = true},
         ["10,27"] = {south = true},
         ["11,27"] = {east = true, south = true},
         -- Center/southeast reroute cluster.
@@ -655,7 +655,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["21,18"] = {west = true},
         ["21,20"] = {south = true},
         ["22,20"] = {east = true, south = true},
-        ["7,20"] = {east = true},
+        -- Fresh 2026-04-05 survey evidence upgraded (7,20) from a one-sided
+        -- suspect to a two-sided hidden barrier: Woman 2 and Guard 4 both
+        -- failed on (7,21)->(7,20) with approach=south, while the earlier
+        -- Merchant 1 pocket repro had already confirmed the east approach.
+        ["7,20"] = {east = true, south = true},
         ["24,17"] = {north = true},
         ["25,16"] = {west = true},
         ["25,12"] = {south = true},
