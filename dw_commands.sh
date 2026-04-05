@@ -26,6 +26,7 @@
 #   stop_sweep             Cancel an active sweep
 #   report_blockers        Log current NPC blockers and runtime-discovered blocks
 #   report_runtime_blocks  Log current map's runtime_blocked cells
+#   report_upper_dialogue_state  Dump upper-window dialogue state variables to log
 #   clear_runtime_blocks   Clear runtime_blocked cells for current map
 #   clear_runtime_blocks:all  Clear runtime_blocked cells for all maps
 #   add_blocked_tile:X,Y   Inject a runtime blocked tile on the current map
@@ -73,6 +74,45 @@
 #   list_tests                  List available test scenarios for current map
 #   dump_path_grid              Dump tile grid with path overlay
 #
+# ── Edge probe commands ──────────────────────────────────────────────
+#   probe_edge:DIR              Probe one step in DIR from current position;
+#                               records whether the engine allows movement and logs result
+#                               DIR: UP/DOWN/LEFT/RIGHT
+#   probe_edge:X,Y,DIR          Same but from explicit coordinates (must be standing there)
+#   stop_probe_edge             Cancel an active edge probe
+#
+# ── Map survey commands ──────────────────────────────────────────────
+#   survey_objects              Auto-walk to every object on the current map to probe
+#                               adjacency. Freezes NPCs during the run. Results appear
+#                               in dw_debug.log and are retained for export.
+#   survey_objects:retry_failed Re-run only the targets that failed in the last survey
+#   survey_map                  Alias for survey_objects
+#   survey_target:NAME          Survey a single named target (partial name match)
+#   stop_survey                 Cancel an active survey run
+#   report_survey_start         Preflight check: reports reachable area, exit count, and
+#                               whether the current start position is isolated; does NOT
+#                               launch a survey. Use before survey_objects to verify.
+#   report_survey_start:retry_failed  Same preflight using the failed-target set
+#   report_survey_findings      Summary of failed targets + strong reroute candidates
+#   report_survey_findings:MAP_ID  Same for an explicit map
+#   report_failed_targets       Log targets that failed in the last survey run
+#   report_failed_targets:MAP_ID  Same for an explicit map
+#   report_strong_candidates    Log high-confidence directional-block candidates
+#   report_strong_candidates:MAP_ID  Same for an explicit map
+#   report_candidate_suggestions  Log suggested MAP_DIRECTIONAL_BLOCKS entries to try
+#   report_candidate_suggestions:MAP_ID  Same for an explicit map
+#   list_blocked_candidates     List all recorded blocked-candidate cells with counts
+#   list_blocked_candidates:MAP_ID  Same for an explicit map
+#   dump_survey_report          Full per-target survey report for current map
+#   dump_survey_report:MAP_ID   Same for an explicit map
+#   export_blocked_candidates   Export strong candidates as MAP_BLOCKED_CELLS Lua lines
+#   export_blocked_candidates:MAP_ID  Same for an explicit map
+#   export_directional_candidates  Export strong candidates as MAP_DIRECTIONAL_BLOCKS
+#                               Lua lines (directional block format)
+#   export_directional_candidates:MAP_ID  Same for an explicit map
+#   reset_survey_candidates     Clear all candidate data for the current map
+#   reset_survey_candidates:MAP_ID  Clear candidate data for an explicit map
+#
 # ── TTS test ─────────────────────────────────────────────────────────
 #   speak:TEXT             Speak TEXT via Tolk, e.g.: speak:Hello world
 #
@@ -92,6 +132,14 @@
 #   ./dw_commands.sh inspect_tile:14,2 pathfind_to:27,6
 #   ./dw_commands.sh debug_pathfind_to:3,3 trace_path
 #   ./dw_commands.sh test_path:spawn_to_king dump_path_grid
+#   ./dw_commands.sh report_survey_start
+#   ./dw_commands.sh survey_objects
+#   ./dw_commands.sh survey_objects:retry_failed
+#   ./dw_commands.sh stop_survey
+#   ./dw_commands.sh report_survey_findings
+#   ./dw_commands.sh dump_survey_report export_directional_candidates
+#   ./dw_commands.sh probe_edge:RIGHT
+#   ./dw_commands.sh probe_edge:14,2,UP
 
 CMD_FILE="$(dirname "$0")/dw_commands.txt"
 

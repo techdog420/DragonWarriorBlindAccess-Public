@@ -80,7 +80,50 @@ COMMANDS (write to dw_commands.txt, one per line)
                            auto_step is suspended while sweep runs.
                            Outputs ready-to-paste MAP_BLOCKED_CELLS entries.
   stop_sweep               Cancel an active sweep mid-run
+  report_upper_dialogue_state  Dump upper-window state to log (active flag, lengths,
+                           menu/submenu status, current window content)
   ; comment line           Lines starting with ; are ignored
+
+EDGE PROBE COMMANDS
+-------------------
+  probe_edge:DIR           Probe one step in DIR from current position.
+                           Injects movement and records whether the engine allowed it.
+                           Use after freeze_npcs to avoid NPC interference.
+                           DIR: UP / DOWN / LEFT / RIGHT
+  probe_edge:X,Y,DIR       Same, but specifies origin explicitly (player must be there)
+  stop_probe_edge          Cancel an active probe
+
+MAP SURVEY COMMANDS
+-------------------
+Automated adjacency survey: auto-walks to every object on the map to probe
+directional passability. Freeze NPCs first for clean results.
+
+  report_survey_start      Preflight: reports reachable area, open exits, and whether
+                           the current start is isolated. Does not launch a survey.
+  report_survey_start:retry_failed  Same preflight using the failed-target set.
+  survey_objects           Survey all objects on the current map.
+  survey_objects:retry_failed  Re-run only the targets that failed last time.
+  survey_map               Alias for survey_objects.
+  survey_target:NAME       Survey a single named target (partial name match).
+  stop_survey              Cancel the active survey run.
+  report_survey_findings   Summary: failed target count + strong candidate count.
+  report_survey_findings:MAP_ID  Same for an explicit map ID.
+  report_failed_targets    Log all targets that failed in the last survey.
+  report_failed_targets:MAP_ID  Same for an explicit map.
+  report_strong_candidates Log high-confidence directional-block candidates.
+  report_strong_candidates:MAP_ID  Same for an explicit map.
+  report_candidate_suggestions  Log suggested MAP_DIRECTIONAL_BLOCKS entries to try.
+  report_candidate_suggestions:MAP_ID  Same for an explicit map.
+  list_blocked_candidates  List recorded blocked-candidate cells with counts.
+  list_blocked_candidates:MAP_ID  Same for an explicit map.
+  dump_survey_report       Full per-target result log for the last survey run.
+  dump_survey_report:MAP_ID  Same for an explicit map.
+  export_blocked_candidates       Export as MAP_BLOCKED_CELLS Lua lines.
+  export_blocked_candidates:MAP_ID  Same for an explicit map.
+  export_directional_candidates   Export as MAP_DIRECTIONAL_BLOCKS Lua lines.
+  export_directional_candidates:MAP_ID  Same for an explicit map.
+  reset_survey_candidates  Clear all candidate data for the current map.
+  reset_survey_candidates:MAP_ID  Clear candidate data for an explicit map.
 
 BLOCK DETECTION WORKFLOW
 -------------------------
@@ -100,6 +143,16 @@ BLOCK DETECTION WORKFLOW
 
   NOTE: sweep_map is safe for town/castle maps (no random encounters).
         Use with caution in dungeons — random battles may interrupt the sweep.
+
+  Survey workflow (preferred for new maps):
+    1. freeze_npcs
+    2. report_survey_start          (verify start is not isolated)
+    3. survey_objects
+    4. Wait for "Survey complete" speech
+    5. report_survey_findings        (overview of results)
+    6. dump_survey_report            (full per-target details if needed)
+    7. export_directional_candidates (paste output into map_reader.lua)
+    8. unfreeze_npcs
 
 SNAPSHOT FORMAT (log_state / on_battle_start)
 ----------------------------------------------
@@ -135,5 +188,10 @@ QUICK SHELL USAGE (from WSL or cmd)
   ./dw_commands.sh sweep_map
   ./dw_commands.sh export_blocks
   ./dw_commands.sh stop_sweep
+  ./dw_commands.sh freeze_npcs report_survey_start survey_objects
+  ./dw_commands.sh stop_survey
+  ./dw_commands.sh report_survey_findings
+  ./dw_commands.sh dump_survey_report export_directional_candidates
+  ./dw_commands.sh probe_edge:RIGHT
   tail -f dw_debug.log
   tail -f dw_blocks.log
