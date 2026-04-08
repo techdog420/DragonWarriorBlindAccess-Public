@@ -462,15 +462,22 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                     -- Already fully explored
                     if on_reject then on_reject(nx, ny, "already_closed") end
                 elseif nx == goal_x and ny == goal_y then
-                    -- Always allow reaching the exact goal tile
-                    local tentative_g = current_g + 1
-                    if not g_score[nk] or tentative_g < g_score[nk] then
-                        g_score[nk] = tentative_g
-                        came_from[nk] = current_key
-                        came_from_dir[nk] = dir.name
-                        heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                    -- Goal tile: still respect directional blocks on the final
+                    -- approach. A blocked approach direction here means the engine
+                    -- will refuse the last step. The search may reach the goal
+                    -- via a different (unblocked) direction instead.
+                    if is_blocked(nx, ny, dir.approach) then
+                        if on_reject then on_reject(nx, ny, "blocked_runtime") end
                     else
-                        if on_reject then on_reject(nx, ny, "already_better") end
+                        local tentative_g = current_g + 1
+                        if not g_score[nk] or tentative_g < g_score[nk] then
+                            g_score[nk] = tentative_g
+                            came_from[nk] = current_key
+                            came_from_dir[nk] = dir.name
+                            heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                        else
+                            if on_reject then on_reject(nx, ny, "already_better") end
+                        end
                     end
                 elseif nx < 0 or nx >= width or ny < 0 or ny >= height then
                     -- Out of map bounds

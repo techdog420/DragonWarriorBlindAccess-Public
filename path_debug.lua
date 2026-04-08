@@ -21,6 +21,7 @@ local pathfinder  = require "pathfinder"
 local map_reader  = require "map_reader"
 local nav         = require "navigation"
 local config      = require "config"
+local tolk        = require "tolk"
 
 local M = {}
 
@@ -62,7 +63,7 @@ local VALIDATE_CONFIRM_FRAMES = 8
 -- with a comfortable margin.
 local VALIDATE_STEP_GAP_FRAMES = 30
 local VALIDATE_MAX_RETRIES = 2
-local VALIDATE_LATE_WAIT_EXTENSIONS = 1
+local VALIDATE_LATE_WAIT_EXTENSIONS = 3  -- must be >= BLOCK_RETRY_LIMIT in auto_step.lua
 
 local DIR_DELTAS = {
     north = {dx = 0, dy = -1},
@@ -638,6 +639,20 @@ function M.start_validate(auto_step_module)
     if not last_path or #last_path == 0 then
         debug_tools.info("VALIDATE: no path to validate. Run a pathfind first.")
         return
+    end
+
+    local origin_x = last_path_info and last_path_info.start_x
+    local origin_y = last_path_info and last_path_info.start_y
+    if origin_x and origin_y then
+        local _, px, py = nav.get_position()
+        if px ~= origin_x or py ~= origin_y then
+            local msg = string.format(
+                "VALIDATE: player at (%d,%d) but path starts at (%d,%d) — move there first",
+                px, py, origin_x, origin_y)
+            debug_tools.info(msg)
+            tolk.output_interrupt(msg)
+            return
+        end
     end
 
     validate_state = {

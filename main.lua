@@ -2515,8 +2515,13 @@ debug_tools.register_command("pathfind_to", function(arg)
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
     local blocking = route_mgr.build_path_blocking(map_id)
-    local result = pathfinder.pathfind_to(map_id, px, py, goal_x, goal_y, blocking)
-    local msg = string.format("Pathfind to %d,%d. %s", goal_x, goal_y, result)
+    local opts = path_debug.build_find_path_opts()
+    local result = pathfinder.pathfind_to(map_id, px, py, goal_x, goal_y, blocking, opts)
+    local stats = opts and opts._get_stats() or {}
+    local reason = stats and stats.reason
+    local msg = string.format("Pathfind to %d,%d. %s%s",
+        goal_x, goal_y, result,
+        reason and (" [" .. reason .. "]") or "")
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
 end)
@@ -2565,11 +2570,13 @@ end)
 
 debug_tools.register_command("freeze_npcs", function()
     route_mgr.freeze_npcs()
+    debug_tools.info("NPCs frozen")
     tolk.output_interrupt("NPCs frozen")
 end)
 
 debug_tools.register_command("unfreeze_npcs", function()
     route_mgr.unfreeze_npcs()
+    debug_tools.info("NPCs unfrozen")
     tolk.output_interrupt("NPCs unfrozen")
 end)
 
