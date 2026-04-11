@@ -106,6 +106,11 @@ local INJECT_LIMIT = 12
 local TURN_REPRESS_DELAY = 18
 local TURN_REPRESS_LIMIT = 1
 local TURN_REPRESS_INJECT_LIMIT = 4
+-- After deciding the first press was only a turn, leave the D-pad fully
+-- released for a couple of frames before re-pressing. This reduces the risk
+-- that the engine treats the re-press as a continuation of the old hold and
+-- chains into a second tile of movement.
+local TURN_REPRESS_RELEASE_FRAMES = 2
 
 -- Before reporting a blocked move, allow a couple of internal retries of the
 -- same step from the same tile/direction. This filters out intermittent
@@ -161,6 +166,9 @@ local function schedule_turn_repress(dir)
         timeout_retries = auto_timeout_retries,
         turn_represses = auto_turn_represses + 1,
         inject_limit = TURN_REPRESS_INJECT_LIMIT,
+        release_frames = TURN_REPRESS_RELEASE_FRAMES,
+        start_x = auto_start_x,
+        start_y = auto_start_y,
     }
     auto_dir = nil
     auto_frames = 0
@@ -242,6 +250,29 @@ function M.update(can_walk)
     if pending_repress and is_any_direction_pressed(joy) then
         debug_tools.debug("auto_step cancel pending repress: live direction input detected")
         clear_pending_repress()
+    end
+
+    if pending_repress
+       and pending_repress.start_x ~= nil
+       and pending_repress.start_y ~= nil
+       and (px ~= pending_repress.start_x or py ~= pending_repress.start_y) then
+        debug_tools.debug(string.format(
+            "auto_step cancel pending repress: position changed to (%d,%d) from (%d,%d)",
+            px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
+        clear_pending_repress()
+        cooldown = COOLDOWN_FRAMES
+        for _, dir in ipairs(DIRECTIONS) do
+            prev_held[dir] = joy[dir] or false
+        end
+        return
+    end
+
+    if pending_repress and pending_repress.release_frames and pending_repress.release_frames > 0 then
+        pending_repress.release_frames = pending_repress.release_frames - 1
+        for _, dir in ipairs(DIRECTIONS) do
+            prev_held[dir] = joy[dir] or false
+        end
+        return
     end
 
     if pending_repress and not auto_dir and cooldown <= 0 and not is_any_direction_pressed(joy) then

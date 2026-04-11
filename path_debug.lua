@@ -719,16 +719,41 @@ local TEST_SCENARIOS = {
         -- walkable components, so fixtures must stay within one component.
         {name = "spawn_to_stairs_up",  start_x = 10, start_y = 12, goal_x = 7,  goal_y = 7,  adjacent = false},
         {name = "spawn_to_south_hall", start_x = 10, start_y = 12, goal_x = 17, goal_y = 20, adjacent = false},
-        {name = "east_wing_to_guard",  start_x = 24, start_y = 8,  goal_x = 25, goal_y = 12, adjacent = true},
+        {name = "east_wing_to_guard",  start_x = 24, start_y = 7,  goal_x = 25, goal_y = 12, adjacent = true},
         {name = "north_to_south",      start_x = 10, start_y = 8,  goal_x = 10, goal_y = 27, adjacent = false},
-        {name = "east_wing_to_south",  start_x = 24, start_y = 8,  goal_x = 17, goal_y = 25, adjacent = false},
+        {name = "east_wing_to_south",  start_x = 24, start_y = 7,  goal_x = 17, goal_y = 25, adjacent = false},
+        -- Decoder-gap regression: live probing on 2026-04-11 confirmed that
+        -- (13,16) is passable even though the ROM grid decodes it as tile 11.
+        -- A* should treat this as a normal vertical corridor step.
+        {name = "middle_corridor_gap", start_x = 13, start_y = 17, goal_x = 13, goal_y = 15, adjacent = false},
+        -- Staircase to world map exit: regression test for 2026-04-09 bug where
+        -- runtime blocks at (13-14,9) and (15,7-8) accumulated and cancelled autowalk.
+        -- Goal (11,29) is the exit tile (non-walkable); adjacent=true finds (12,29).
+        {name = "stairs_to_exit",      start_x = 7,  start_y = 7,  goal_x = 11, goal_y = 29, adjacent = true},
     },
     [0x05] = {  -- Tantegel Castle Throne Room
         -- Start positions must be inside the throne room (y=1-6), north of the
         -- locked door at (4,7). Starting at y>=7 disconnects the start from the
         -- goal when the door is closed (default game state).
+        --
+        -- Key structural constraints:
+        --   (7,3): east+south+west blocked — nearly isolated; only north approach valid
+        --   (7,2): east+north blocked — limits crossing to east side of room
+        --   (9,3-5): west blocked — east corridor unreachable from x=8 at those rows
+        --   Door at (4,7) disconnects north (y=1-6) from south (y=7-8) when closed
         {name = "room_center_to_north", start_x = 4, start_y = 5, goal_x = 4, goal_y = 1, adjacent = false},
         {name = "room_center_to_king",  start_x = 4, start_y = 6, goal_x = 4, goal_y = 3, adjacent = true},
+        -- West-side approach to king: start at far west, must route east through tight corridor
+        -- Exercises left-side traversal and approach to (4,3) from an oblique angle
+        {name = "west_side_to_king",    start_x = 1, start_y = 5, goal_x = 4, goal_y = 3, adjacent = true},
+        -- East barrier routing: start west of the (7,3) barrier complex, goal east of it
+        -- A* must find a way around the east+south+west blocks at (7,3) and east+north at (7,2)
+        -- (2,3) is a wall; (2,4) is the nearest confirmed walkable tile at this x
+        {name = "center_to_east_side",  start_x = 2, start_y = 4, goal_x = 8, goal_y = 4, adjacent = false},
+        -- South-side staircase: start near door (south side), navigate east to stairs
+        -- Tests south-side connectivity (y>=7) independent of north room; door closed
+        -- (1,8) is a wall; (4,8) is confirmed walkable (tile type 15, passable)
+        {name = "south_side_to_stairs", start_x = 4, start_y = 8, goal_x = 8, goal_y = 8, adjacent = false},
     },
 
     [0x08] = {  -- Brecconary (30x30 town, west-edge exit at (0,15))

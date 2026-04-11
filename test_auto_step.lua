@@ -188,6 +188,70 @@ function tests.turn_repress_uses_short_inject_window()
     env.restore()
 end
 
+function tests.turn_repress_waits_for_release_gap_before_rearming()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 24 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[19] == nil and env.injected[20] == nil,
+        "turn re-press should leave a short fully released gap before rearming"
+    )
+
+    local saw_repress_after_gap = false
+    for frame = 21, 32 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.right then
+            saw_repress_after_gap = true
+            break
+        end
+    end
+
+    assert_truthy(
+        saw_repress_after_gap,
+        "turn re-press should still resume shortly after the release gap"
+    )
+
+    env.restore()
+end
+
+function tests.turn_repress_cancels_if_step_completes_during_release_gap()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 18 do
+        env.update(true)
+    end
+
+    -- Simulate the engine finally committing the original step while the
+    -- release gap is in progress. Re-pressing from the new tile would cause
+    -- the double-step bug we saw in live testing.
+    env.set_position(4, 1)
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    local saw_rearm = false
+    for frame = 19, 30 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.right then
+            saw_rearm = true
+            break
+        end
+    end
+
+    assert_truthy(
+        not saw_rearm,
+        "turn re-press should be cancelled once the original step finishes during the release gap"
+    )
+
+    env.restore()
+end
+
 function tests.timeout_retry_after_turn_repress_restores_full_inject_window()
     local env = make_env()
     env.auto_step.inject_step("right")

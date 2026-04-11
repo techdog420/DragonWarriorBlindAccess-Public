@@ -142,6 +142,31 @@ function tests.metadata_width_height_are_inclusive_coordinates()
     env.restore()
 end
 
+function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
+    local env = make_env({
+        rom_bytes = {
+            [20] = 0x00,
+            [21] = 0x80,
+            [22] = 29,
+            [23] = 29,
+            [24] = 0,
+        },
+    })
+
+    local left = env.map_reader.get_walkability_details(0x04, 13, 16)
+    local right = env.map_reader.get_walkability_details(0x04, 14, 16)
+
+    assert_equal(left.base_walkable, true, "(13,16) should be treated as passable via passthrough override")
+    assert_equal(left.effective_walkable, true, "(13,16) should be pathable after the decoder fix")
+    assert_equal(left.reason, "passthrough", "(13,16) should record passthrough as its walkability source")
+
+    assert_equal(right.base_walkable, true, "(14,16) should be treated as passable via passthrough override")
+    assert_equal(right.effective_walkable, true, "(14,16) should be pathable after the decoder fix")
+    assert_equal(right.reason, "passthrough", "(14,16) should record passthrough as its walkability source")
+
+    env.restore()
+end
+
 function tests.brecconary_permanent_blockers_match_current_live_model()
     local env = make_env()
 

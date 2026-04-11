@@ -284,6 +284,17 @@ local WALKABILITY_TABLES = {
 -- its tile type. Checked BEFORE the tile-type lookup so these
 -- override non-walkable tile types.
 local MAP_PASSTHROUGH_CELLS = {
+    -- Map 0x04: Tantegel Castle main hall
+    -- Live probing on 2026-04-11 confirmed a decoder gap in the y=16 corridor:
+    -- the engine allows standing on and traversing (13,16) and (14,16), but
+    -- the ROM grid decodes both cells as tile type 11 ("wall"). Keep this
+    -- narrowly scoped to the two directly confirmed cells until more live
+    -- evidence suggests additional passthroughs in this band.
+    [0x04] = {
+        ["13,16"] = true,
+        ["14,16"] = true,
+    },
+
     -- Map 0x05: Tantegel Castle Throne Room
     -- The south wall (y=7) and bottom row (y=8) are type-15 in ROM, but
     -- the east section contains a corridor that is physically walkable:
@@ -351,9 +362,9 @@ local MAP_BLOCKED_CELLS = {
     -- one-directional engine barriers on all sides. Tiles in this zone read
     -- as walkable in ROM but the engine enforces these walls:
     --
-    --   NORTH wall: y=5, x=7-12  — engine blocks northward exit from y=6
-    --   WEST wall:  x=6, y=6-8   — engine blocks westward exit from x=7
-    --   EAST wall:  x=13, y=7-8  — engine blocks eastward exit from x=12
+    --   NORTH wall: y=5, x=8-12  — engine blocks northward exit from y=6
+    --   WEST wall:  x=6, y=6     — engine blocks westward exit from x=7
+    --   EAST wall:  x=13, y=7   — engine blocks eastward exit from x=12
     --   SOUTH:      door at (11,9) — closed door, requires OPEN command to exit
     --
     -- The antechamber can be ENTERED from the east (moving west from x=13 to
@@ -364,43 +375,42 @@ local MAP_BLOCKED_CELLS = {
     --   east to x=23+ (where y=6 is open), north past y=5, loop west via y=2
     --   corridor, south into west wing to stand adjacent to the target guard.
     [0x04] = {
-        -- North wall of antechamber (y=5, x=7-12)
-        ["7,5"]  = true, ["8,5"]  = true, ["9,5"]  = true,
+        -- North wall of antechamber (y=5, x=8-12)
+        -- (7,5) removed 2026-04-08: floor tile (type 4), confirmed false positive by tester
+        ["8,5"]  = true, ["9,5"]  = true,
         ["10,5"] = true, ["11,5"] = true, ["12,5"] = true,
-        -- West wall (x=6): engine blocks all directions at y=6, y=7, y=8.
-        -- y=9 at x=6 is void (0-) in tile data, already non-walkable.
-        -- y=10 at x=6: confirmed engine-blocked eastward from (5,10).
+        -- West wall (x=6): engine blocks at y=6, y=7, y=8, y=10.
+        -- y=7 and y=8 re-added 2026-04-08: initially removed as suspected floor-tile
+        -- false positives, but re-confirmed as full all-direction engine blocks after
+        -- investigation showed the antechamber→west wing crossing is at y=9, not y=7-8.
+        -- y=9 at x=6 is the west wing crossing — west approach blocked (see
+        --   MAP_DIRECTIONAL_BLOCKS), but east approach open (enter wing from east).
+        -- y=10 at x=6: confirmed engine-blocked (also listed in MAP_DIRECTIONAL_BLOCKS east).
         ["6,6"]  = true, ["6,7"]  = true, ["6,8"]  = true, ["6,10"] = true,
-        -- West-wing dead zone: x=1-5, y=6-9 has NO A*-navigable exits.
-        -- Engine blocks northward re-entry to y=6 from y=7 (all x=1-5 confirmed).
-        -- x=6 blocks eastward exit at y=6-8. y=9 is void (tile 0) at x=1-10
-        -- except x=3 which is reachable from y=8 but engine-blocks onward to y=10.
-        -- Block the entire zone so A* never routes the player into it.
-        -- Guards at (3,6)/(5,6) are approached from y=5 via the north corridor.
-        ["1,6"]  = true, ["2,6"]  = true, ["4,6"]  = true,
-        ["1,7"]  = true, ["2,7"]  = true, ["3,7"]  = true, ["5,7"]  = true,
-        ["1,8"]  = true, ["2,8"]  = true, ["3,8"]  = true,
-        ["4,8"]  = true, ["5,8"]  = true,
+        -- West-wing boundary: x=1-2 at y=6-8 are void/impassable.
+        -- Entries (4,6), (3,7), (4,7), (5,7), (3,8), (4,8), (5,8) removed 2026-04-08:
+        -- confirmed false positives by tester — they were sealing off the west wing
+        -- from all directions, blocking A* from routing to guards at (3,6)/(5,6).
+        ["1,6"]  = true, ["2,6"]  = true,
+        ["1,7"]  = true, ["2,7"]  = true,
+        ["1,8"]  = true, ["2,8"]  = true,
         ["3,9"]  = true, ["3,10"] = true,
-        -- West-wing east boundary at y=7: engine blocks westward movement from
-        -- (5,7) to (4,7). Kept here to prevent A* loop at that position.
-        ["4,7"]  = true,
-        -- East wall of antechamber (x=13, y=7-9): engine blocks eastward exit
-        ["13,7"] = true, ["13,8"] = true, ["13,9"] = true,
-        -- Upper-room zone (x=14-19, y=9-13): engine-blocked zone separating the
+        -- East wall of antechamber (x=13, y=7): engine blocks eastward exit
+        -- (13,8) and (13,9) removed 2026-04-08: floor tiles (type 4), false positives confirmed by tester
+        ["13,7"] = true,
+        -- Upper-room zone (x=15-19, y=10-16): engine-blocked zone separating the
         -- main hall (x=21+) from the antechamber/corridor area (x=7-13).
-        -- The engine barrier is a wall between column x=14 and x=15, running
-        -- further south than the tile data (all 4+/8+) suggests:
-        --   y=9:  x=14-19 all blocked
+        -- The engine barrier is a wall at column x=15, running further south
+        -- than the tile data (all 4+/8+) suggests:
+        --   y=9:  x=14-19 removed 2026-04-08 — tester confirmed false positives
+        --         (these were blocking the east corridor completely)
         --   y=10: x=15-19 blocked (x=14 is the walkable corridor column)
         --   y=11: x=15-19 blocked (x=14 still open)
         --   y=12: x=15 confirmed blocked (tile=8, movement east from x=14 fails)
         --         x=19-20 are void tiles (0-) so naturally non-walkable
         --   y=13: x=15 confirmed blocked (tile=4, movement east from x=14 fails)
-        -- x=15 wall confirmed y=9 through y=16; y=17 is the first passable row.
+        -- x=15 wall confirmed y=10 through y=16; y=17 is the first passable row.
         -- A* routes south to y=17 then east to x=21+ then north to bypass.
-        ["14,9"] = true, ["15,9"] = true, ["16,9"] = true,
-        ["17,9"] = true, ["18,9"] = true, ["19,9"] = true,
         ["15,10"] = true, ["16,10"] = true, ["17,10"] = true,
         ["18,10"] = true, ["19,10"] = true,
         ["15,11"] = true, ["16,11"] = true, ["17,11"] = true,
@@ -438,6 +448,13 @@ local MAP_BLOCKED_CELLS = {
         -- npc_blocked=false, runtime_blocked=false.
         ["13,21"] = true, ["13,22"] = true, ["13,23"] = true, ["15,19"] = true, ["16,21"] = true, ["17,21"] = true, ["18,21"] = true, ["21,21"] = true,
         ["16,16"] = true, ["17,16"] = true, ["18,16"] = true, ["19,16"] = true, ["19,21"] = true, ["20,17"] = true,
+        -- x=12 column engine barriers at y=17-18 confirmed 2026-04-09 via survey_map:
+        -- survey consistently suspects these as blocking the northward path from (13,19).
+        -- A* routes through (12,19)→(12,18)→(12,17) to reach north hall; engine refuses.
+        -- With these blocked, A* correctly routes east to x=17-20 corridor then north.
+        ["12,17"] = true, ["12,18"] = true,
+        -- South-west full block confirmed 2026-04-09 via survey_map (all 4 approaches blocked, count=13)
+        ["3,22"] = true,
         ["13,24"] = true, ["16,24"] = true, ["17,24"] = true, ["18,24"] = true, ["21,22"] = true, ["21,23"] = true,
         ["13,25"] = true, ["12,26"] = true, ["13,26"] = true, ["16,25"] = true, ["16,27"] = true, ["13,27"] = true, ["15,28"] = true,
         ["21,18"] = true,
@@ -509,6 +526,122 @@ local MAP_BLOCKED_CELLS = {
 --   east  = blocked when approaching from the east  (moving west into cell)
 --   west  = blocked when approaching from the west  (moving east into cell)
 local MAP_DIRECTIONAL_BLOCKS = {
+    -- Map 0x04: Tantegel Castle main hall
+    -- West-wing barrier walls discovered via autowalk reroutes 2026-04-08.
+    --
+    -- The west wing (x=1-5, y=7-15) is surrounded by engine walls:
+    --   EAST FULL BLOCKS at x=6, y=6-8, y=10: in MAP_BLOCKED_CELLS (all directions)
+    --   EAST WALL at x=6, y=13-16: directional (blocked when approaching from east)
+    --   SOUTH WALL at y=16, x=1-4,6: blocked when approaching from south
+    --   y=9 at x=6 is the ONLY valid antechamber→west wing crossing — NOT blocked.
+    --   y=11-12 at x=6: unconfirmed; speculative entries removed 2026-04-08.
+    --
+    -- Antechamber south corridor (x=13-14, y=9) confirmed 2026-04-09:
+    --   These cells form a one-way east-entry corridor along the antechamber south wall.
+    --   (13,9): blocked from west, north, south — only reachable from east (from (14,9))
+    --   (14,9): blocked from north, south — reachable from east (x=15) and west (x=13)
+    --   A* must not attempt to use these cells as a vertical shortcut at y=9.
+    --
+    -- x=15 wall north extension confirmed 2026-04-09:
+    --   The engine wall at x=15 (confirmed y=10-16 in MAP_BLOCKED_CELLS) continues
+    --   northward. (15,7) and (15,8) are floor tiles (type 4) that the engine blocks
+    --   only when approaching from the west (moving east from x=14). Approaching from
+    --   east, north, or south is passable.
+    --
+    -- Interior directional barriers:
+    --   (4,9): blocked from east and north — antechamber south door region
+    --   (4,15): blocked from east
+    --   (4,16): blocked from east and south
+    [0x04] = {
+        -- x=6 east wall: y=13-16 confirmed via runtime reroutes 2026-04-08.
+        -- y=6-8 and y=10 are full blocks in MAP_BLOCKED_CELLS (not listed here).
+        -- y=9: crossing point into west wing — west approach blocked (can enter
+        --   from east going west, but cannot exit west wing going east through here).
+        --   Confirmed 2026-04-10 survey pass 8: auto_step:right from (5,9) refused.
+        ["6,9"]  = {west = true},
+        -- y=11-12: removed speculative entries (never confirmed by runtime blocks).
+        ["6,13"] = {east = true, west = true},     -- run6 west added (oscillation fix)
+        ["6,14"] = {east = true, west = true},     -- run7 west added; count=2 retry_successes=2
+        ["6,15"] = {east = true, west = true},     -- run7 west added; count=2 retry_successes=2
+        ["6,16"] = {east = true, west = true, south = true},  -- run7 west added; count=2 retry_successes=2
+        -- y=16 south wall: x=1-4 confirmed via runtime reroutes 2026-04-08.
+        -- x=5 not confirmed by any runtime block; removed (was extrapolated).
+        ["1,16"] = {south = true},
+        ["2,16"] = {south = true},
+        ["3,16"] = {south = true},
+        ["4,16"] = {east = true, south = true},  -- confirmed both east and south
+        -- x=4 east wall (y=9-16): west wing interior east boundary.
+        -- y=9 and y=15-16 previously confirmed; y=10-14 confirmed 2026-04-09 via survey_map
+        -- (count=5-6 high confidence each, east=true = can't enter from east/move west into cell).
+        ["4,9"]  = {east = true, north = true},  -- antechamber south door region; confirmed
+        ["4,10"] = {east = true},                -- survey run4 count=5 high
+        ["4,11"] = {east = true},                -- survey run4 count=5 high
+        ["4,12"] = {east = true},                -- survey run4 count=5 high
+        ["4,13"] = {east = true},                -- survey run4 count=6 high retry_successes=1
+        ["4,14"] = {east = true},                -- survey run4 count=5 high
+        ["4,15"] = {east = true},                -- confirmed via runtime reroute
+        -- Antechamber south corridor: confirmed 2026-04-09 via inspect_move probing
+        ["13,9"] = {west = true, north = true, south = true},
+        ["14,9"] = {north = true, south = true},
+        -- x=15 wall north extension: confirmed 2026-04-09 via inspect_move probing
+        ["15,7"] = {west = true},
+        ["15,8"] = {west = true},
+        -- Survey-confirmed directional blocks 2026-04-09 (survey_map run, 22 failures / 30 targets)
+        -- All entries confidence=high unless noted. Approach conventions:
+        --   north=true: approaching from north (moving south into cell) is blocked
+        --   west=true:  approaching from west  (moving east  into cell) is blocked
+        --   east=true:  approaching from east  (moving west  into cell) is blocked
+        --   south=true: approaching from south (moving north into cell) is blocked
+        --
+        -- Antechamber south area (y=7-12):
+        ["7,9"]  = {north = true, south = true},  -- count=15
+        ["8,9"]  = {east = true, south = true},   -- count=13, retry_successes=1 (strong)
+        ["6,11"] = {east = true, west = true},     -- count=6 east; run6 west (oscillation fix)
+        ["6,12"] = {east = true, west = true},      -- east: count=1 medium; west: confirmed 2026-04-10 survey pass 8
+        -- West corridor band (y=16-18, x=9-12):
+        -- x=9-12 at y=16 form a north-approach wall extending the y=16 barrier westward.
+        ["9,16"]  = {north = true, west = true},   -- count=30
+        ["10,16"] = {north = true},                -- count=15
+        ["11,16"] = {north = true},                -- count=15
+        ["12,16"] = {north = true},                -- count=15
+        ["9,18"]  = {west = true},                 -- count=15
+        -- South-west corridor (y=19-29, x=1-8):
+        -- Complex maze of directional barriers in the castle's south-west quadrant.
+        -- Run 1 (2026-04-09): found west/north/east approaches.
+        -- Run 2 (2026-04-09): found additional east/south approaches on same cells
+        --   after run-1 blocks were loaded, confirming multi-direction blocks.
+        ["1,19"]  = {south = true},                        -- run1 count=1 medium
+        ["2,19"]  = {north = true, south = true},          -- run1 count=7
+        ["7,20"]  = {east = true, west = true},            -- run1 west; run2 east
+        ["7,21"]  = {south = true, west = true},           -- run1 count=30
+        ["8,21"]  = {east = true, north = true},           -- run2 count=12
+        ["8,22"]  = {east = true, west = true},            -- run1 west; run2 east
+        ["8,23"]  = {east = true, west = true},            -- run1 west; run2 east
+        ["8,24"]  = {east = true, west = true},            -- run1 west; run2 east
+        ["8,25"]  = {east = true, west = true},            -- run1 west; run2 east
+        ["8,27"]  = {west = true},                         -- run1 count=15
+        ["9,26"]  = {north = true},                        -- run2 count=2 medium
+        ["9,28"]  = {east = true, south = true},           -- run2 count=13 retry_successes=1
+        ["6,24"]  = {north = true, west = true},           -- run1 count=9
+        ["2,24"]  = {north = true, west = true},           -- run1 count=30
+        ["3,24"]  = {east = true, north = true},           -- run1 count=30
+        ["1,25"]  = {north = true},                        -- run1 count=15
+        ["4,25"]  = {east = true, north = true},           -- run1 count=30
+        ["4,26"]  = {east = true},                         -- run1 count=15
+        ["5,27"]  = {east = true, north = true},           -- run1 count=30
+        ["2,28"]  = {south = true},                        -- run2 count=5
+        ["3,28"]  = {south = true},                        -- run2 count=5
+        ["4,28"]  = {south = true},                        -- run2 count=5
+        ["5,28"]  = {south = true},                        -- run2 count=5
+        ["6,28"]  = {north = true, south = true},          -- run1 north; run2 south
+        ["7,28"]  = {north = true, south = true},          -- run1 north; run2 south
+        ["8,28"]  = {south = true},                        -- run2 count=6
+        ["1,29"]  = {east = true},                         -- run2 count=5
+        ["11,19"] = {south = true},                        -- run2 count=7
+        ["12,19"] = {south = true, east = true},              -- run2 south count=7; run4 east count=12 high
+        ["12,28"] = {west = true},                         -- run1 count=1 medium
+    },
+
     -- Map 0x05: Tantegel Castle Throne Room
     -- Survey/autowalk reroute evidence on 2026-03-31:
     --   (7,3) blocked from west and east across repeated reroutes.
