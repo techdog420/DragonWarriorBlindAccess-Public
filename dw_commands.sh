@@ -81,6 +81,14 @@
 #   probe_edge:X,Y,DIR          Same but from explicit coordinates (must be standing there)
 #   stop_probe_edge             Cancel an active edge probe
 #
+# ── Teleport (debug) ─────────────────────────────────────────────────
+#   teleport_to:X,Y             Same-map teleport; refuses if target not walkable
+#   teleport_to:X,Y,near        Teleport to target, or first walkable cardinal/diagonal
+#                               neighbor if target is blocked
+#   teleport_to:X,Y,force       Skip walkability check (unstick/debug; risk of strand)
+#                               Refused during menus, dialogue, battle, sweeps, active
+#                               routes, or edge probes.
+#
 # ── Map survey commands ──────────────────────────────────────────────
 #   survey_objects              Auto-walk to every object on the current map to probe
 #                               adjacency. Freezes NPCs during the run. Results appear

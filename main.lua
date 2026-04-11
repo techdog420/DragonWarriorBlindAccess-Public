@@ -2580,6 +2580,156 @@ debug_tools.register_command("unfreeze_npcs", function()
     tolk.output_interrupt("NPCs unfrozen")
 end)
 
+-- Neighbor search order for teleport_to :near mode. Cardinals first, then
+-- diagonals. First walkable cell wins.
+local TELEPORT_NEAR_OFFSETS = {
+    {dx = 0,  dy = -1, name = "north"},
+    {dx = 1,  dy = 0,  name = "east"},
+    {dx = 0,  dy = 1,  name = "south"},
+    {dx = -1, dy = 0,  name = "west"},
+    {dx = 1,  dy = -1, name = "northeast"},
+    {dx = 1,  dy = 1,  name = "southeast"},
+    {dx = -1, dy = 1,  name = "southwest"},
+    {dx = -1, dy = -1, name = "northwest"},
+}
+
+-- Parse teleport_to argument: "X,Y" or "X,Y,FLAG" where FLAG is near|force.
+local function parse_teleport_arg(arg)
+    if not arg then return nil end
+    local x_s, y_s, flag = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([%a]+)%s*$")
+    if x_s then
+        local x = parse_int_arg(x_s)
+        local y = parse_int_arg(y_s)
+        if x ~= nil and y ~= nil then
+            return x, y, flag:lower()
+        end
+        return nil
+    end
+    local x, y = parse_xy_arg(arg)
+    if x ~= nil then
+        return x, y, nil
+    end
+    return nil
+end
+
+-- teleport_to:X,Y[,near|force]
+--   (default) exact: refuse if target not walkable
+--   near:     fall back to first walkable cardinal/diagonal neighbor
+--   force:    skip walkability check entirely (debug/unstick; may strand in wall)
+--
+-- Always refuses during menus, dialogue, battle, sweeps, active routes, and
+-- edge probes. Writes RAM 0x003A/0x003B for the new position; for the overworld
+-- also updates 0x0042/0x003E shadow bytes. Clears any pending auto_step state.
+debug_tools.register_command("teleport_to", function(arg)
+    local tx, ty, flag = parse_teleport_arg(arg)
+    if tx == nil then
+        debug_tools.error("teleport_to usage: teleport_to:X,Y[,near|force]")
+        tolk.output_interrupt("Teleport: invalid arguments")
+        return
+    end
+    if flag ~= nil and flag ~= "near" and flag ~= "force" then
+        debug_tools.error("teleport_to: unknown flag '" .. flag .. "' (use near or force)")
+        tolk.output_interrupt("Teleport: unknown flag " .. flag)
+        return
+    end
+
+    local reason = get_autowalk_unavailable_reason()
+    if reason then
+        debug_tools.error("teleport_to refused: " .. reason)
+        tolk.output_interrupt("Teleport refused. " .. reason)
+        return
+    end
+    if auto_step.is_route_active() then
+        debug_tools.error("teleport_to refused: auto-walk route active")
+        tolk.output_interrupt("Teleport refused. Wait for auto-walk to finish")
+        return
+    end
+    if edge_probe_state ~= nil then
+        debug_tools.error("teleport_to refused: edge probe active")
+        tolk.output_interrupt("Teleport refused. Edge probe active")
+        return
+    end
+    if map_survey.is_active() then
+        debug_tools.error("teleport_to refused: map survey active")
+        tolk.output_interrupt("Teleport refused. Survey active")
+        return
+    end
+
+    local map_id = snapshot.map_id
+    local width, height = map_reader.get_map_dimensions(map_id)
+    local function in_bounds(x, y)
+        if width == nil or height == nil then return true end
+        return x >= 0 and y >= 0 and x < width and y < height
+    end
+
+    if not in_bounds(tx, ty) then
+        debug_tools.error(string.format(
+            "teleport_to refused: (%d,%d) out of bounds (map %dx%d)",
+            tx, ty, width or -1, height or -1))
+        tolk.output_interrupt("Teleport refused. Target out of bounds")
+        return
+    end
+
+    local landing_x, landing_y = tx, ty
+    local landing_note = nil
+
+    if flag ~= "force" then
+        local walkable = map_reader.is_walkable(map_id, tx, ty)
+        if walkable ~= true then
+            if flag == "near" then
+                for _, off in ipairs(TELEPORT_NEAR_OFFSETS) do
+                    local nx, ny = tx + off.dx, ty + off.dy
+                    if in_bounds(nx, ny) and map_reader.is_walkable(map_id, nx, ny) == true then
+                        landing_x, landing_y = nx, ny
+                        landing_note = off.name
+                        break
+                    end
+                end
+                if landing_note == nil then
+                    debug_tools.error(string.format(
+                        "teleport_to refused: (%d,%d) not walkable and no walkable neighbor",
+                        tx, ty))
+                    tolk.output_interrupt("Teleport refused. No walkable cell near target")
+                    return
+                end
+            else
+                local tile_type = map_reader.get_tile_type(map_id, tx, ty)
+                local tile_str = tile_type and string.format("0x%02X", tile_type) or "?"
+                debug_tools.error(string.format(
+                    "teleport_to refused: (%d,%d) not walkable (tile=%s); use near or force",
+                    tx, ty, tile_str))
+                tolk.output_interrupt(string.format(
+                    "Teleport refused. %d, %d not walkable. Use near or force flag",
+                    tx, ty))
+                return
+            end
+        end
+    end
+
+    -- Cancel any in-flight step/repress so the engine doesn't re-inject motion
+    -- from the old position after the RAM write.
+    auto_step.cancel_active_step(true)
+
+    memory.writebyte(addr.PLAYER_X, landing_x)
+    memory.writebyte(addr.PLAYER_Y, landing_y)
+    if map_id == 0x00 then
+        memory.writebyte(addr.OVERWORLD_X, landing_x)
+        memory.writebyte(addr.OVERWORLD_Y, landing_y)
+    end
+
+    local msg
+    if landing_note then
+        msg = string.format("Teleported to (%d,%d), %s of (%d,%d)",
+            landing_x, landing_y, landing_note, tx, ty)
+    elseif flag == "force" then
+        msg = string.format("Teleported to (%d,%d) (forced)", landing_x, landing_y)
+    else
+        msg = string.format("Teleported to (%d,%d)", landing_x, landing_y)
+    end
+    debug_tools.info(msg)
+    tolk.output_interrupt(msg)
+end)
+
 -- ============================================================
 -- Path Debug Commands
 -- ============================================================

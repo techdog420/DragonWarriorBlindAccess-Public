@@ -93,6 +93,17 @@ EDGE PROBE COMMANDS
   probe_edge:X,Y,DIR       Same, but specifies origin explicitly (player must be there)
   stop_probe_edge          Cancel an active probe
 
+TELEPORT (DEBUG)
+----------------
+Writes new player coordinates directly to RAM. Same-map only. Refused during
+menus, dialogue, battle, sweeps, active auto-walk, surveys, and edge probes.
+
+  teleport_to:X,Y          Exact teleport; refused if target not walkable
+  teleport_to:X,Y,near     Teleport to target, or to the first walkable cardinal/
+                           diagonal neighbor (N,E,S,W,NE,SE,SW,NW) if target is blocked
+  teleport_to:X,Y,force    Bypass the walkability check (unstick/debug). Can strand
+                           the player inside a wall; use with care and save first.
+
 MAP SURVEY COMMANDS
 -------------------
 Automated adjacency survey: auto-walks to every object on the map to probe
