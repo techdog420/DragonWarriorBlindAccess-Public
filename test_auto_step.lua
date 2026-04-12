@@ -116,6 +116,10 @@ local function assert_truthy(value, message)
     end
 end
 
+local function has_any_direction(buttons)
+    return buttons and (buttons.up or buttons.down or buttons.left or buttons.right)
+end
+
 local tests = {}
 
 function tests.turn_only_attempt_represses_before_full_timeout()
@@ -147,7 +151,7 @@ function tests.never_moving_step_still_reports_blocked()
     local env = make_env()
     env.auto_step.inject_step("right")
 
-    for _ = 1, 230 do
+    for _ = 1, 300 do
         env.update(true)
     end
 
@@ -252,6 +256,31 @@ function tests.turn_repress_cancels_if_step_completes_during_release_gap()
     env.restore()
 end
 
+function tests.successful_step_flushes_stale_direction_with_neutral_frames()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[8] and not has_any_direction(env.injected[8]),
+        "auto_step should actively send a neutral frame immediately after a successful step"
+    )
+    assert_truthy(
+        env.injected[9] and not has_any_direction(env.injected[9]),
+        "auto_step should keep the D-pad neutral long enough to flush stale held input"
+    )
+
+    env.restore()
+end
+
 function tests.timeout_retry_after_turn_repress_restores_full_inject_window()
     local env = make_env()
     env.auto_step.inject_step("right")
@@ -271,6 +300,46 @@ function tests.timeout_retry_after_turn_repress_restores_full_inject_window()
     assert_truthy(
         retry_injections >= 8,
         "timeout retries after a turn re-press should restore a full inject window before reporting blocked"
+    )
+
+    env.restore()
+end
+
+function tests.queued_routes_wait_for_configured_settle_gap_before_next_step()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right"}, {settle_frames = 8})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    for _ = 1, 10 do
+        env.update(true)
+    end
+
+    for frame = 3, 10 do
+        assert_truthy(
+            not has_any_direction(env.injected[frame]),
+            "queued route should not start the next step before the configured settle gap finishes"
+        )
+    end
+
+    local saw_second_step = false
+    for frame = 11, 20 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.right then
+            saw_second_step = true
+            break
+        end
+    end
+
+    assert_truthy(
+        saw_second_step,
+        "queued route should resume once the settle gap has elapsed"
     )
 
     env.restore()

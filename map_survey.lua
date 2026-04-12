@@ -165,7 +165,7 @@ local function append_direction(parts, dir_name)
 end
 
 local function inspect_passable_exits(map_id, x, y)
-    local blocking = route_mgr.build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
     local open_dirs = {}
     local blocked_dirs = {}
 
@@ -251,7 +251,7 @@ end
 
 local function analyze_survey_start(targets, map_id, start_x, start_y)
     local start_exit_info = inspect_passable_exits(map_id, start_x, start_y)
-    local start_blocking = route_mgr.build_path_blocking(map_id)
+    local start_blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
     local start_reachable_area = count_reachable_walk_area(map_id, start_x, start_y, start_blocking)
     local target_count = targets and #targets or 0
 
@@ -331,7 +331,7 @@ local function evaluate_continuation_trap(queue_entry, map_id, start_x, start_y,
         return nil
     end
 
-    local blocking = plan.blocking or route_mgr.build_path_blocking(map_id)
+    local blocking = plan.blocking or route_mgr.build_path_blocking(map_id, {skip_npcs = true})
     local reachable_area = count_reachable_walk_area(map_id, landing_x, landing_y, blocking)
     if reachable_area > CONTINUATION_TRAP_AREA_LIMIT then
         return nil
@@ -483,7 +483,7 @@ local function get_or_create_no_path_cluster(map_id, start_x, start_y)
         return cluster
     end
 
-    local blocking = route_mgr.build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
     local exit_info = inspect_passable_exits(map_id, start_x, start_y)
     cluster = {
         key = key,
@@ -892,6 +892,20 @@ local function analyze_alternate_mode(target, primary_mode)
     return alternate_mode, path_found, plan.path and #plan.path or 0
 end
 
+local function analyze_skip_npcs_path(target, primary_mode)
+    local plan = route_mgr.plan_path_to_object(target, {
+        path_mode = primary_mode,
+        store_debug_path = false,
+        survey_safe = true,
+        skip_npcs = true,
+    })
+    if not plan then
+        return false, 0
+    end
+    local path_found = plan.result ~= "No path found"
+    return path_found, plan.path and #plan.path or 0
+end
+
 local function analyze_isolated_adjacent_landings(attempt)
     if not attempt or attempt.path_mode ~= "adjacent" then
         return nil
@@ -931,6 +945,7 @@ local function classify_attempt(attempt)
     local alternate_mode, alternate_path_found = analyze_alternate_mode(attempt.target, attempt.path_mode)
     attempt.alternate_mode = alternate_mode
     attempt.alternate_path_found = alternate_path_found
+    attempt.skip_npcs_path_found = false
 
     if attempt.success then
         return nil
@@ -956,10 +971,29 @@ local function classify_attempt(attempt)
         if alternate_path_found then
             return "wrong_adjacency_or_interaction_assumption"
         end
+        local skip_npcs_path_found, skip_npcs_path_length = analyze_skip_npcs_path(attempt.target, attempt.path_mode)
+        attempt.skip_npcs_path_found = skip_npcs_path_found
+        if skip_npcs_path_found then
+            debug_tools.info(string.format(
+                "SURVEY_NPC_BLOCKED_ROUTE run=%d map=0x%02X start=(%d,%d) target_id=%s target=(%d,%d) path_mode=%s ignored_npc_path_length=%d",
+                survey_state and survey_state.run_id or 0,
+                attempt.map_id or 0,
+                attempt.start_x or -1,
+                attempt.start_y or -1,
+                tostring(attempt.target and attempt.target.id or ""),
+                attempt.target and attempt.target.x or -1,
+                attempt.target and attempt.target.y or -1,
+                tostring(attempt.path_mode or ""),
+                skip_npcs_path_length or 0))
+            return "command_timing_or_state_issue"
+        end
         return "no_route_found"
     end
 
     if #attempt.suspected_tiles > 0 then
+        if attempt.reason == "reroute_no_path" and #attempt.suspected_tiles > 1 then
+            return "command_timing_or_state_issue"
+        end
         return "suspected_engine_blocked_tile"
     end
     if #attempt.blocked_tiles > 0 then
@@ -1026,21 +1060,45 @@ local function observe_clean_no_path_cluster(attempt, final_map_id, final_x, fin
     return cluster
 end
 
-local function should_retry_transient_no_path(attempt, failure_classification)
+local function get_retry_reason(attempt, failure_classification, final_map_id, final_x, final_y)
     if not survey_state or not attempt then
-        return false
-    end
-    if failure_classification ~= "no_route_found" then
-        return false
-    end
-    if attempt.plan_status ~= "no_path" then
-        return false
-    end
-    if #attempt.blocked_tiles > 0 or #attempt.suspected_tiles > 0 then
-        return false
+        return nil
     end
     local retries = survey_state.retry_counts[attempt.target.id] or 0
-    return retries < 1
+    if retries >= 1 then
+        return nil
+    end
+
+    if failure_classification == "no_route_found" then
+        if attempt.plan_status ~= "no_path" then
+            return nil
+        end
+        if #attempt.blocked_tiles > 0 or #attempt.suspected_tiles > 0 then
+            return nil
+        end
+        return "transient_no_path"
+    end
+
+    if failure_classification == "command_timing_or_state_issue" then
+        if attempt.plan_status ~= "queued" then
+            return nil
+        end
+        if attempt.reason ~= "route_inactive_without_completion" then
+            return nil
+        end
+        if #attempt.blocked_tiles > 0 or #attempt.suspected_tiles > 0 then
+            return nil
+        end
+        if final_map_id ~= attempt.map_id then
+            return nil
+        end
+        if final_x ~= attempt.start_x or final_y ~= attempt.start_y then
+            return nil
+        end
+        return "timing_orphaned_route"
+    end
+
+    return nil
 end
 
 local function finalize_attempt(attempt)
@@ -1057,7 +1115,8 @@ local function finalize_attempt(attempt)
         failure_classification = "gated_or_isolated_region"
     end
 
-    if should_retry_transient_no_path(attempt, failure_classification) then
+    local retry_reason = get_retry_reason(attempt, failure_classification, map_id, final_x, final_y)
+    if retry_reason then
         survey_state.retry_counts[attempt.target.id] = (survey_state.retry_counts[attempt.target.id] or 0) + 1
         survey_state.queue[#survey_state.queue + 1] = {
             target = refresh_object(attempt.target),
@@ -1067,10 +1126,11 @@ local function finalize_attempt(attempt)
         survey_state.queue_index = survey_state.queue_index + 1
         survey_state.active_attempt = nil
         debug_tools.info(string.format(
-            "SURVEY_REQUEUE run=%d map=0x%02X target_id=%s reason=transient_no_path retry=%d",
+            "SURVEY_REQUEUE run=%d map=0x%02X target_id=%s reason=%s retry=%d",
             survey_state.run_id,
             attempt.map_id,
             tostring(attempt.target.id),
+            retry_reason,
             survey_state.retry_counts[attempt.target.id]))
         return
     end
@@ -1542,6 +1602,9 @@ function M.stop_survey()
     survey_state.stop_reason = "manual_stop"
     if survey_state.active_attempt then
         auto_step.cancel_active_step(true)
+        if route_mgr.clear_active_route_context then
+            route_mgr.clear_active_route_context("survey manual stop")
+        end
         survey_state.active_attempt.success = false
         survey_state.active_attempt.reason = "manual_stop"
         finalize_attempt(survey_state.active_attempt)
@@ -1565,6 +1628,9 @@ function M.tick(can_walk)
             if not survey_state.active_attempt.grace_frame then
                 survey_state.active_attempt.grace_frame = true
                 return
+            end
+            if route_mgr.clear_active_route_context then
+                route_mgr.clear_active_route_context("survey orphaned route")
             end
             survey_state.active_attempt.success = false
             survey_state.active_attempt.reason = "route_inactive_without_completion"

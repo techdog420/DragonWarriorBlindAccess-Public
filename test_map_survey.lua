@@ -22,6 +22,7 @@ local function make_env(options)
     local outputs = {}
     local route_active = false
     local runtime_count = options.runtime_count or 0
+    local clear_route_context_calls = 0
     local nav_map_id = options.map_id or 0x08
     local nav_x = options.x or 5
     local nav_y = options.y or 5
@@ -245,6 +246,9 @@ local function make_env(options)
                 clear_calls = clear_calls + 1
                 runtime_count = 0
             end,
+            clear_active_route_context = function()
+                clear_route_context_calls = clear_route_context_calls + 1
+            end,
         }
     end
 
@@ -255,6 +259,12 @@ local function make_env(options)
         survey = survey,
         logs = logs,
         outputs = outputs,
+        set_route_active = function(value)
+            route_active = value
+        end,
+        clear_route_context_calls = function()
+            return package.loaded["route_manager"] and clear_route_context_calls or 0
+        end,
         publish = function(event_name, data)
             if event_name == "route_blocked" then
                 runtime_count = runtime_count + 1
@@ -327,6 +337,53 @@ function tests.no_path_with_alternate_route_is_classified_as_wrong_adjacency()
     env.restore()
 end
 
+function tests.no_path_that_clears_when_npcs_are_ignored_is_classified_as_state_issue()
+    local env = make_env({
+        object = {id = "npc_guard", name = "Guard", type = "npc", x = 8, y = 5},
+        autowalk = {
+            status = "no_path",
+            result = "No path found",
+            path_mode = "adjacent",
+            path = nil,
+        },
+        plan_fn = function(_, opts)
+            local mode = opts and opts.path_mode or "adjacent"
+            if opts and opts.skip_npcs then
+                return {
+                    result = "Approach: 3 east",
+                    path_mode = mode,
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                result = "No path found",
+                path_mode = mode,
+                path = nil,
+            }
+        end,
+    })
+
+    env.survey.start_target_survey("npc_guard")
+    env.survey.tick(true)
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(result.failure_classification, "command_timing_or_state_issue",
+        "survey no-path should be treated as a state issue when an NPC-free route exists")
+    assert_contains(joined, "SURVEY_NPC_BLOCKED_ROUTE run=1 map=0x08 start=(5,5) target_id=npc_guard",
+        "survey should log when frozen NPC blockers are the difference")
+    assert_not_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=npc_guard reason=transient_no_path retry=1",
+        "NPC-blocked no-path should not be retried as a clean map no-route")
+
+    env.restore()
+end
+
 function tests.blocked_tile_retry_success_is_recorded_as_candidate_evidence()
     local env = make_env()
 
@@ -368,6 +425,28 @@ function tests.blocked_tile_failure_is_classified_as_suspected_engine_blocked()
     assert_equal(result.movement_succeeded, false, "route cancellation should record a failure")
     assert_equal(result.failure_classification, "suspected_engine_blocked_tile",
         "blocked live movement on a nominally passable tile should be classified conservatively")
+
+    env.restore()
+end
+
+function tests.multi_tile_reroute_no_path_is_classified_as_state_issue()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    env.publish("route_blocked", {from_x = 7, from_y = 5, dir = "up"})
+    env.publish("route_cancelled", {reason = "reroute_no_path"})
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    assert_equal(result.movement_succeeded, false, "route cancellation should still record a failure")
+    assert_equal(
+        result.failure_classification,
+        "command_timing_or_state_issue",
+        "multi-tile reroute-no-path failures should not be promoted to engine-block evidence"
+    )
 
     env.restore()
 end
@@ -415,6 +494,60 @@ function tests.transient_no_path_is_retried_once_before_recording_failure()
         "retry attempts should keep the original target denominator stable")
     assert_contains(joined, "SURVEY_COMPLETE run=1 map=0x08 targets=1 successes=1 failures=0",
         "completed survey totals should stay anchored to the original target set")
+
+    env.restore()
+end
+
+function tests.orphaned_queued_route_is_retried_once_before_recording_state_issue()
+    local env = make_env({
+        autowalk_sequence = {
+            {
+                status = "queued",
+                result = "Path: 2 east",
+                path_mode = "direct",
+                path = {
+                    {x = 6, y = 5, direction = "east"},
+                    {x = 7, y = 5, direction = "east"},
+                },
+            },
+            {
+                status = "queued",
+                result = "Path: 2 east",
+                path_mode = "direct",
+                path = {
+                    {x = 6, y = 5, direction = "east"},
+                    {x = 7, y = 5, direction = "east"},
+                },
+            },
+        },
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_route_active(false)
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(run.summary.successes, 1, "clean orphaned routes should get one retry before counting as a failure")
+    assert_equal(run.summary.failures, 0, "successful orphaned-route retry should not pollute survey failures")
+    assert_equal(result.movement_succeeded, true, "requeued orphaned route should be able to succeed on retry")
+    assert_equal(
+        env.clear_route_context_calls(),
+        1,
+        "orphaned queued routes should clear stale route-manager context before retrying"
+    )
+    assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=chest_1 reason=timing_orphaned_route retry=1",
+        "orphaned queued routes should be retried once as timing noise")
 
     env.restore()
 end
@@ -1363,7 +1496,11 @@ function tests.reachable_retry_is_promoted_ahead_of_stale_no_path_retry()
         end,
         plan_fn = function(target, opts)
             local mode = opts and opts.path_mode or "direct"
-            if mode == "direct" and target.id == "npc_b" and (attempt_counts[target.id] or 0) >= 1 then
+            if mode == "direct"
+                and not (opts and opts.skip_npcs)
+                and target.id == "npc_b"
+                and (attempt_counts[target.id] or 0) >= 1
+            then
                 return {
                     result = "Path: 2 east",
                     path = {
@@ -1496,7 +1633,11 @@ function tests.reorder_skips_candidates_that_still_qualify_for_continuation_trap
                     },
                 }
             end
-            if mode == "direct" and target.id == "npc_b" and (attempt_counts[target.id] or 0) >= 1 then
+            if mode == "direct"
+                and not (opts and opts.skip_npcs)
+                and target.id == "npc_b"
+                and (attempt_counts[target.id] or 0) >= 1
+            then
                 return {
                     result = "Path: 1 south, 1 east",
                     path = {

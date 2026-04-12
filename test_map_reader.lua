@@ -167,6 +167,53 @@ function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
     env.restore()
 end
 
+function tests.tantegel_castle_west_wing_boundary_cell_is_fully_blocked()
+    local env = make_env()
+
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 6, 9),
+        true,
+        "(6,9) should be a permanent block after the direct two-sided live retest"
+    )
+
+    local dirs = env.map_reader.get_directional_blocks(0x04)
+    assert_equal(dirs["6,9"], nil, "(6,9) should no longer remain directional-only")
+
+    env.restore()
+end
+
+function tests.tantegel_castle_south_pocket_false_blocks_are_open()
+    local env = make_env()
+
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 13, 24),
+        false,
+        "(13,24) should stay open after direct live probe from (12,24)"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 14, 20),
+        false,
+        "(14,20) should remain directional-only rather than permanently blocked"
+    )
+
+    local seam_a = env.map_reader.get_walkability_details(0x04, 13, 24)
+    local seam_b = env.map_reader.get_walkability_details(0x04, 14, 20)
+    assert_equal(seam_a.permanent_blocked, false, "(13,24) should not be marked permanently blocked after stale-block removal")
+    assert_equal(seam_b.permanent_blocked, false, "(14,20) should not be marked permanently blocked after stale-block removal")
+
+    local dirs = env.map_reader.get_directional_blocks(0x04)
+    assert_equal(dirs["12,19"].south, nil, "(12,19) should stay open from south after repeated live probes")
+    assert_equal(dirs["12,19"].east, true, "(12,19) should keep its east-side blocker until directly disproved")
+    assert_equal(dirs["13,24"].west, true, "(13,24) should block west approach after repeated live repros from (12,24)")
+    assert_equal(dirs["14,20"].west, true, "(14,20) should block west approach after repeated live repros")
+    assert_equal(dirs["12,16"].east, true, "(12,16) should block east approach after repeated live repros from (13,16)")
+    assert_equal(dirs["12,16"].north, true, "(12,16) should keep its north-side blocker")
+    assert_equal(dirs["6,24"].west, nil, "(6,24) should stay open from west after repeated live probes")
+    assert_equal(dirs["6,24"].north, true, "(6,24) should keep its north-side blocker pending a direct repro")
+
+    env.restore()
+end
+
 function tests.brecconary_permanent_blockers_match_current_live_model()
     local env = make_env()
 

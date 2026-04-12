@@ -31,7 +31,7 @@ local M = {}
 
 -- Optional callback: called when a step times out (player was blocked by
 -- a wall or moving NPC). Main.lua sets this to trigger automatic re-routing.
--- Signature: M.on_blocked(from_x, from_y, blocked_dir)
+-- Signature: M.on_blocked(from_x, from_y, blocked_dir, block_data)
 -- TRANSITION: Both this callback AND event_bus "route_blocked" fire.
 -- Once all callers migrate to the event bus, this field can be removed.
 M.on_blocked = nil
@@ -82,12 +82,16 @@ local auto_inject_limit = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
+local route_settle_frames = 0
+local route_settle_default = 0
+local post_step_release_frames = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
 -- allowing another one. This prevents accidental double-steps when
 -- the player taps quickly.
 local cooldown = 0
 local COOLDOWN_FRAMES = 4  -- ~67ms at 60fps
+local POST_STEP_RELEASE_FRAMES = 2
 
 -- Injection limit: how many frames to actually inject the direction.
 -- We only need to hold long enough for the game to commit to the step
@@ -112,11 +116,12 @@ local TURN_REPRESS_INJECT_LIMIT = 4
 -- chains into a second tile of movement.
 local TURN_REPRESS_RELEASE_FRAMES = 2
 
--- Before reporting a blocked move, allow a couple of internal retries of the
--- same step from the same tile/direction. This filters out intermittent
--- step-start misses in otherwise open corridors without permanently
--- misclassifying the destination cell as blocked.
-local BLOCK_RETRY_LIMIT = 2
+-- Before reporting a blocked move, allow a few internal retries of the same
+-- step from the same tile/direction. Live probing on Map 0x04 showed that
+-- long multi-turn routes can still hit rare triple-miss timing noise even
+-- when the destination edge is genuinely passable, so keep one extra retry
+-- before promoting the move into runtime-block evidence.
+local BLOCK_RETRY_LIMIT = 3
 
 -- ============================================================
 -- Helper Functions
@@ -137,6 +142,12 @@ end
 local function clear_route()
     route_steps = nil
     route_index = 1
+    route_settle_frames = 0
+    route_settle_default = 0
+end
+
+local function start_post_step_release()
+    post_step_release_frames = POST_STEP_RELEASE_FRAMES
 end
 
 local function begin_step(dir, px, py, state)
@@ -261,6 +272,16 @@ function M.update(can_walk)
             px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
         clear_pending_repress()
         cooldown = COOLDOWN_FRAMES
+        start_post_step_release()
+        for _, dir in ipairs(DIRECTIONS) do
+            prev_held[dir] = joy[dir] or false
+        end
+        return
+    end
+
+    if post_step_release_frames > 0 and not is_any_direction_pressed(joy) then
+        joypad.set(1, {})
+        post_step_release_frames = post_step_release_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
         end
@@ -309,6 +330,10 @@ function M.update(can_walk)
             if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
             reset_active_step()
             cooldown = COOLDOWN_FRAMES  -- Prevent double-step
+            start_post_step_release()
+            if route_steps then
+                route_settle_frames = route_settle_default or 0
+            end
         -- If the first press only turned the player, release for one frame and
         -- issue a fresh press instead of waiting for the full blocked timeout.
         elseif auto_frames >= TURN_REPRESS_DELAY
@@ -349,6 +374,7 @@ function M.update(can_walk)
             local blocked_from_x = auto_start_x
             local blocked_from_y = auto_start_y
             local blocked_dir    = auto_dir
+            local blocked_queued_route = (route_steps ~= nil)
             reset_active_step()
             clear_route()
             -- Notify the main loop so it can re-route around the obstacle.
@@ -358,10 +384,11 @@ function M.update(can_walk)
                 from_x = blocked_from_x,
                 from_y = blocked_from_y,
                 dir = blocked_dir,
+                queued_route = blocked_queued_route,
             }
             event_bus.publish("route_blocked", block_data)
             if M.on_blocked then
-                M.on_blocked(blocked_from_x, blocked_from_y, blocked_dir)
+                M.on_blocked(blocked_from_x, blocked_from_y, blocked_dir, block_data)
             end
         else
             -- Only inject during the initiation phase. After INJECT_LIMIT
@@ -377,6 +404,14 @@ function M.update(can_walk)
 
         -- Update prev_held and return — while auto-holding, we don't
         -- process new press/release tracking
+        for _, dir in ipairs(DIRECTIONS) do
+            prev_held[dir] = joy[dir] or false
+        end
+        return
+    end
+
+    if route_steps and route_settle_frames > 0 then
+        route_settle_frames = route_settle_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
         end
@@ -472,7 +507,8 @@ function M.inject_step(dir)
     begin_step(dir, px, py)
 end
 
-function M.start_route(steps)
+function M.start_route(steps, opts)
+    opts = opts or {}
     clear_route()
     if not steps or #steps == 0 then
         return false
@@ -482,6 +518,8 @@ function M.start_route(steps)
         route_steps[i] = dir
     end
     route_index = 1
+    route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
+    route_settle_frames = 0
     return true
 end
 
@@ -494,6 +532,7 @@ function M.cancel_active_step(clear_queued_route)
     tracked_dir = nil
     press_start_x = nil
     press_start_y = nil
+    post_step_release_frames = 0
     if clear_queued_route then
         clear_route()
     end
@@ -504,7 +543,7 @@ function M.is_auto_active()
 end
 
 function M.is_route_active()
-    return auto_dir ~= nil or pending_repress ~= nil or route_steps ~= nil
+    return auto_dir ~= nil or pending_repress ~= nil or route_steps ~= nil or route_settle_frames > 0
 end
 
 return M

@@ -379,14 +379,16 @@ local MAP_BLOCKED_CELLS = {
         -- (7,5) removed 2026-04-08: floor tile (type 4), confirmed false positive by tester
         ["8,5"]  = true, ["9,5"]  = true,
         ["10,5"] = true, ["11,5"] = true, ["12,5"] = true,
-        -- West wall (x=6): engine blocks at y=6, y=7, y=8, y=10.
+        -- West wall (x=6): engine blocks at y=6, y=7, y=8, y=9, y=10.
         -- y=7 and y=8 re-added 2026-04-08: initially removed as suspected floor-tile
         -- false positives, but re-confirmed as full all-direction engine blocks after
-        -- investigation showed the antechamber→west wing crossing is at y=9, not y=7-8.
-        -- y=9 at x=6 is the west wing crossing — west approach blocked (see
-        --   MAP_DIRECTIONAL_BLOCKS), but east approach open (enter wing from east).
+        -- investigation showed y=7-8 were genuine wall cells.
+        -- y=9 at x=6 was previously modeled as a one-way crossing, but direct
+        -- live retests on 2026-04-11 showed movement fails from both (5,9)->(6,9)
+        -- and (7,9)->(6,9). With y=8 and y=10 already full blocks, this makes
+        -- (6,9) an isolated dead wall cell rather than a usable crossing.
         -- y=10 at x=6: confirmed engine-blocked (also listed in MAP_DIRECTIONAL_BLOCKS east).
-        ["6,6"]  = true, ["6,7"]  = true, ["6,8"]  = true, ["6,10"] = true,
+        ["6,6"]  = true, ["6,7"]  = true, ["6,8"]  = true, ["6,9"] = true, ["6,10"] = true,
         -- West-wing boundary: x=1-2 at y=6-8 are void/impassable.
         -- Entries (4,6), (3,7), (4,7), (5,7), (3,8), (4,8), (5,8) removed 2026-04-08:
         -- confirmed false positives by tester — they were sealing off the west wing
@@ -440,7 +442,7 @@ local MAP_BLOCKED_CELLS = {
         -- and south->(20,20) fail live movement despite tile=6, walkable=true,
         -- npc_blocked=false, runtime_blocked=false. Block them so A* does not
         -- route through hidden engine-collision cells in this corner.
-        ["14,19"] = true, ["14,20"] = true, ["20,20"] = true, ["21,19"] = true,
+        ["14,19"] = true, ["20,20"] = true, ["21,19"] = true,
         -- South-central hall hidden barriers.
         -- Empirically confirmed 2026-03-24 during validate_path recheck:
         -- (15,18)->(15,19) and (17,20)->(17,21) both fail live movement even
@@ -455,7 +457,7 @@ local MAP_BLOCKED_CELLS = {
         ["12,17"] = true, ["12,18"] = true,
         -- South-west full block confirmed 2026-04-09 via survey_map (all 4 approaches blocked, count=13)
         ["3,22"] = true,
-        ["13,24"] = true, ["16,24"] = true, ["17,24"] = true, ["18,24"] = true, ["21,22"] = true, ["21,23"] = true,
+        ["16,24"] = true, ["17,24"] = true, ["18,24"] = true, ["21,22"] = true, ["21,23"] = true,
         ["13,25"] = true, ["12,26"] = true, ["13,26"] = true, ["16,25"] = true, ["16,27"] = true, ["13,27"] = true, ["15,28"] = true,
         ["21,18"] = true,
         ["14,28"] = true,
@@ -555,10 +557,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
     [0x04] = {
         -- x=6 east wall: y=13-16 confirmed via runtime reroutes 2026-04-08.
         -- y=6-8 and y=10 are full blocks in MAP_BLOCKED_CELLS (not listed here).
-        -- y=9: crossing point into west wing — west approach blocked (can enter
-        --   from east going west, but cannot exit west wing going east through here).
-        --   Confirmed 2026-04-10 survey pass 8: auto_step:right from (5,9) refused.
-        ["6,9"]  = {west = true},
+        -- y=9 promoted to MAP_BLOCKED_CELLS after direct live retest 2026-04-11:
+        --   both (5,9)->(6,9) and (7,9)->(6,9) fail in-engine, so it is not a
+        --   usable crossing and should not remain directional-only.
         -- y=11-12: removed speculative entries (never confirmed by runtime blocks).
         ["6,13"] = {east = true, west = true},     -- run6 west added (oscillation fix)
         ["6,14"] = {east = true, west = true},     -- run7 west added; count=2 retry_successes=2
@@ -603,7 +604,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["9,16"]  = {north = true, west = true},   -- count=30
         ["10,16"] = {north = true},                -- count=15
         ["11,16"] = {north = true},                -- count=15
-        ["12,16"] = {north = true},                -- count=15
+        -- (13,16)->(12,16) blocked twice by direct probe on 2026-04-12 and
+        -- also failed during a long Guard 2 survey route, so this cell blocks
+        -- east approach in addition to the earlier north-side evidence.
+        ["12,16"] = {north = true, east = true},
         ["9,18"]  = {west = true},                 -- count=15
         -- South-west corridor (y=19-29, x=1-8):
         -- Complex maze of directional barriers in the castle's south-west quadrant.
@@ -622,7 +626,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["8,27"]  = {west = true},                         -- run1 count=15
         ["9,26"]  = {north = true},                        -- run2 count=2 medium
         ["9,28"]  = {east = true, south = true},           -- run2 count=13 retry_successes=1
-        ["6,24"]  = {north = true, west = true},           -- run1 count=9
+        -- (5,24)->(6,24) succeeded twice live on 2026-04-12, so the old west
+        -- approach blocker was stale. Keep the north-side evidence only until
+        -- that approach is directly reprobed.
+        ["6,24"]  = {north = true},
         ["2,24"]  = {north = true, west = true},           -- run1 count=30
         ["3,24"]  = {east = true, north = true},           -- run1 count=30
         ["1,25"]  = {north = true},                        -- run1 count=15
@@ -638,7 +645,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["8,28"]  = {south = true},                        -- run2 count=6
         ["1,29"]  = {east = true},                         -- run2 count=5
         ["11,19"] = {south = true},                        -- run2 count=7
-        ["12,19"] = {south = true, east = true},              -- run2 south count=7; run4 east count=12 high
+        -- Fresh 2026-04-11/2026-04-12 seam repros:
+        -- (12,20)->(12,19) succeeded twice live, so the old south approach
+        -- blocker was stale. The east approach is still left in place pending
+        -- a direct repro because earlier survey runs repeatedly failed there.
+        -- (13,20)->(14,20) failed twice live with no reroute contamination, so
+        -- promote that seam to a directional west-side engine block.
+        -- (12,24)->(13,24) blocked twice live on 2026-04-12 after runtime
+        -- clears, so keep this south-pocket seam closed from the west side.
+        ["12,19"] = {east = true},
+        ["13,24"] = {west = true},
+        ["14,20"] = {west = true},
         ["12,28"] = {west = true},                         -- run1 count=1 medium
     },
 

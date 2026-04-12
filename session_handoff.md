@@ -1,36 +1,72 @@
-# Session Handoff — 2026-04-05
+# Session Handoff — 2026-04-12
 
 Latest detailed handoff:
-- `HANDOFF_2026-04-05_brecconary_survey_isolation.md`
+- `HANDOFF_2026-04-11_tantegel_seam_followup.md`
 
 Quick summary of the latest session:
-- Brecconary survey tooling is much more stable:
-  - no more endgame reorder/defer spin for `Guard 6`
-  - no more lingering single `no_route_found` results inside clearly isolated
-    pockets
-  - adjacent no-path targets on single-exit micro-ledges now classify directly
-    as `gated_or_isolated_region`
-- `pathfinder.lua` now returns structured adjacent-landing diagnostics through
-  `route_manager.lua`, which `map_survey.lua` uses for the new micro-pocket
-  classification
-- `map_reader.lua` promoted the strongest remaining Brecconary blocker from
-  this session: `7,20` now blocks `east` and `south`
-- later live probing showed that several tempting survey leads were *not*
-  permanent blocker candidates:
-  - Guard 1 is trapped by genuine ledge geometry near `(20,25)`
-  - `26,23` is only directly confirmed from the east
-  - `9,19` is simply a non-walkable tile, not a hidden passable wall
-- the latest clean survey finished with:
-  - `successes=13`
-  - `failures=8`
-  - `no_route=0`
-  - `suspected_engine_blocked=0`
-  - all unresolved targets in gated/isolated buckets
+- The intermittent auto-step hop-over bug is closed for now:
+  - `auto_step.lua` now forces a 2-frame neutral release immediately after a
+    successful held step, preventing stale turn-repress input from chaining
+    into a second tile
+  - live repro from `(13,18)` with single `DOWN` input landed on `(13,19)` in
+    three consecutive runs after reload
+- Survey classification is more meaningful under `freeze_npcs`:
+  - routes that fail only because frozen NPCs occupy the path now log
+    `SURVEY_NPC_BLOCKED_ROUTE`
+  - those attempts classify as `command_timing_or_state_issue` instead of
+    polluting map no-route evidence
+- Tantegel Castle Map `0x04` seam modeling improved again:
+  - `12,16` now blocks east approach after repeated `(13,16) -> LEFT` failures
+  - `13,24` now blocks west approach after repeated `(12,24) -> RIGHT` failures
+  - stale `6,24 west` stayed removed after repeated successful live crossings
 - verification passed:
+  - `lua test_auto_step.lua`
   - `lua test_map_reader.lua`
   - `lua test_map_survey.lua`
-  - `lua test_pathfinder.lua`
-  - `python3 run_tests.py --allow-missing-speech-dep`
+  - `lua test_route_manager.lua`
+
+Older handoff content follows for historical context.
+
+# Session Handoff — 2026-04-11
+
+Latest detailed handoff:
+- `HANDOFF_2026-04-11_tantegel_seam_followup.md`
+
+Quick summary of the latest session:
+- Timing-noise handling is much better:
+  - queued survey autowalk now has a settle gap
+  - blocked-step retry budget increased to `3`
+  - clean orphaned queued routes get one retry
+- A stale route-context leak was fixed:
+  - manual `probe_edge` failures no longer trigger reroutes from an old
+    autowalk/survey target
+  - survey orphan cleanup now clears route-manager state explicitly
+- Tantegel Castle Map `0x04` south-pocket modeling improved:
+  - stale permanent blockers at `13,24` and `14,20` were removed earlier in
+    the session
+  - fresh direct probes then refined the seam again:
+    - `(13,20) -> RIGHT` into `14,20` failed twice
+    - `(12,20) -> UP` into `12,19` succeeded twice
+    - `(12,24) -> RIGHT` into `13,24` succeeded twice
+  - `map_reader.lua` now:
+    - removes stale `12,19 south`
+    - keeps `12,19 east`
+    - adds `14,20 west`
+    - keeps `13,24` open
+- Focused nearby-NPC surveys:
+  - `Guard 11` succeeded
+  - `Guard 10` succeeded
+  - `Guard 3` crossed the seam successfully, then failed later with new
+    blocker evidence centered on `6,24` and a secondary suspect at `12,16`
+- strongest next-step repros for tomorrow:
+  - `teleport_to:5,24` then `probe_edge:RIGHT` for `6,24`
+  - `teleport_to:13,16` then `probe_edge:LEFT` for `12,16`
+- verification passed:
+  - `lua test_auto_step.lua`
+  - `lua test_map_reader.lua`
+  - `lua test_map_survey.lua`
+  - `lua test_route_manager.lua`
+  - `lua test_path_debug.lua`
 
 Older handoff content follows for historical context.
 
