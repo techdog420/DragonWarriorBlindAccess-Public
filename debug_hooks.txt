@@ -112,10 +112,14 @@ directional passability. Freeze NPCs first for clean results.
   report_survey_start      Preflight: reports reachable area, open exits, and whether
                            the current start is isolated. Does not launch a survey.
   report_survey_start:retry_failed  Same preflight using the failed-target set.
+  report_survey_start:park_npcs  Same preflight, annotated for parked-NPC survey mode.
   survey_objects           Survey all objects on the current map.
   survey_objects:retry_failed  Re-run only the targets that failed last time.
+  survey_objects:park_npcs  Survey with non-target NPCs parked off-screen for the run.
+  survey_objects:retry_failed,park_npcs  Retry failed targets with parked-NPC mode.
   survey_map               Alias for survey_objects.
   survey_target:NAME       Survey a single named target (partial name match).
+  survey_target:NAME,park_npcs  Single-target survey with parked-NPC mode.
   stop_survey              Cancel the active survey run.
   report_survey_findings   Summary: failed target count + strong candidate count.
   report_survey_findings:MAP_ID  Same for an explicit map ID.

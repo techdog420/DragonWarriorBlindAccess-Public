@@ -700,11 +700,12 @@ local function build_object_list(map_id, opts)
     -- navigation and pathfinding as blocked cells until opened.
     local EXTRA_DOORS = {
         -- Map 0x04: Tantegel Castle south gate to the world map. The gate is
-        -- visually two tiles wide; both door cells need to appear in the
-        -- object list because town/castle door scanning is disabled.
+        -- visually two tiles wide, but live pathing confirms only the west
+        -- door tile is actionable from inside the castle. The east visual half
+        -- at (11,30) has no reachable adjacent stand tile, so exposing it as a
+        -- separate object just creates a permanent false survey failure.
         [0x04] = {
             {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30"},
-            {x=11, y=30, name="Door", type=M.TYPE_DOOR, id="door_11_30"},
         },
         -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
         -- The ROM tile is type-15; is_walkable() in map_reader.lua checks

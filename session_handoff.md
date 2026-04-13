@@ -1,6 +1,138 @@
 # Session Handoff — 2026-04-12
 
 Latest detailed handoff:
+- `HANDOFF_2026-04-12_survey_park_npcs_mode.md`
+
+Quick summary of the latest session:
+- Added an explicit survey-only parked-NPC mode:
+  - `survey_map:park_npcs`
+  - `survey_objects:park_npcs`
+  - `survey_objects:retry_failed,park_npcs`
+  - `survey_target:NAME,park_npcs`
+  - `report_survey_start:park_npcs`
+- parked mode behavior:
+  - parks all active non-target NPC slots off-screen for the run
+  - restores the current NPC target before its own attempt
+  - restores the original survey-start NPC bytes on survey completion/manual stop
+  - clears parked state on map change without writing old-map bytes into new-map RAM
+- important current assumption:
+  - until NPC movement-byte semantics are decoded, parked mode treats all
+    active non-target NPCs as eligible instead of trying to identify "true
+    movers" from byte 2
+- focused regression coverage passed:
+  - `lua test_map_survey.lua`
+  - `lua test_route_manager.lua`
+  - `lua test_map_reader.lua`
+  - `lua test_objects.lua`
+  - `lua -e 'assert(loadfile("map_survey.lua")); assert(loadfile("main.lua"))'`
+- before live use:
+  - reload the Lua script in FCEUX
+  - compare `survey_map` vs `survey_map:park_npcs`
+  - if parked mode surfaces new blocker candidates, still repro them directly
+    before promoting permanent map data
+
+Older handoff content follows for historical context.
+
+# Earlier 2026-04-12 Summary
+
+Latest detailed handoff:
+- `HANDOFF_2026-04-12_route_cleanup_and_west_bisection.md`
+
+Quick summary of the latest session:
+- Morning code changes are now verified and documented:
+  - `route_manager.lua` no longer treats `survey_safe` as shorthand for
+    `skip_npcs`, so actual route planning still respects frozen NPC blockers
+  - non-queued blocked steps still record runtime blocks but no longer trigger
+    reroutes
+  - Tantegel Castle now exposes only the reachable south-gate door object
+    `door_10_30`
+- new live chamber evidence found one stale permanent blocker on Map `0x04`:
+  - `(19,17) -> RIGHT` moved onto `(20,17)`
+  - `(20,18) -> UP` also moved onto `(20,17)`
+  - but `inspect_tile:20,17` and exact `teleport_to:20,17` still treated it as
+    permanently blocked
+  - `map_reader.lua` was updated to remove stale blocker `20,17`
+- after script reload, the fix verified live:
+  - `inspect_tile:20,17` now reports `walkable=true` and
+    `permanent_blocked=false`
+  - clean repros from both west and south moved onto `(20,17)`
+  - `debug_pathfind_to:23,16` and `debug_pathfind_to:18,22` now both find
+    routes from `(13,16)`
+- focused regression coverage passed:
+  - `lua test_map_reader.lua`
+  - `lua test_objects.lua`
+  - `lua test_route_manager.lua`
+  - `lua test_map_survey.lua`
+  - `lua test_auto_step.lua`
+  - `lua test_path_debug.lua`
+- live west-bisection follow-up refined the current Map `0x04` picture:
+  - `(23,15) -> LEFT` is open
+  - `(23,17) -> LEFT` is open
+  - `(20,15) -> LEFT` is open
+  - `teleport_to:19,16` is refused because `(19,16)` is already
+    `permanent_blocked=true`
+  - direct `(20,16) -> LEFT` repro failed cleanly, re-confirming the existing
+    blocker at `19,16`
+- fresh post-fix survey evidence is encouraging:
+  - `report_survey_start` from `(13,16)` is now `status=viable` with
+    `reachable_area=128` and `open_exits=north|south|east`
+  - a new `survey_map` from `(13,16)` is in progress and already advanced past
+    the old chamber-isolation story
+  - `Guard 3` completed with
+    `reason=reroute_succeeded_after_runtime_block`
+  - a fresh transient/runtime block candidate appeared at `(14,16)` from the
+    west during that survey run
+- best next-step repros from here:
+  - finish reading out the in-flight `survey_map` results
+  - if `(14,16)` repeats as a runtime block, repro it directly with split
+    commands before changing map data
+  - compare the updated chamber picture against
+    `HANDOFF_2026-03-24_castle_chamber_probe.md`
+
+Older handoff content follows for historical context.
+
+# Earlier 2026-04-12 Summary
+
+Latest detailed handoff:
+- `HANDOFF_2026-04-12_map04_command_timing_and_bisection.md`
+
+Quick summary of the latest session:
+- The hop-over movement fix held up in live testing:
+  - repeated single-press `DOWN` from `(13,18)` landed on `(13,19)`, not
+    `(13,20)`
+  - no new code changes were needed after the earlier commit
+- Map `0x04` survey noise is now separating cleanly from seam evidence:
+  - `Guard 2` and `Guard 3` from `(13,16)` both fell into
+    `SURVEY_NPC_BLOCKED_ROUTE`
+  - no fresh `route_blocked` / `blocked_step` seam evidence surfaced from
+    those long frozen-NPC routes
+- The old `tile=11` middle-band suspicion weakened:
+  - `(13,16)` and `(14,16)` inspect as `base_walkable=true` and
+    `effective_passable=true`
+  - direct `probe_edge:RIGHT` from `(13,16)` moved successfully to `(14,16)`
+- Most important new testing rule:
+  - batching `teleport_to` with `survey_target` or `probe_edge` can produce
+    stale start-state reads
+  - reliable pattern is:
+    - `freeze_npcs teleport_to:X,Y report_position`
+    - wait for log confirmation
+    - then send `probe_edge` / `survey_target` separately
+- East-band bisection with the split-command pattern found these row-16 seams
+  are open both ways:
+  - `(20,16) <-> (21,16)`
+  - `(21,16) <-> (22,16)`
+  - `(22,16) <-> (23,16)`
+- strongest next-step repros for tomorrow:
+  - `teleport_to:23,15` then `probe_edge:LEFT`
+  - `teleport_to:23,17` then `probe_edge:LEFT`
+  - if both are open, `teleport_to:19,16` then `probe_edge:RIGHT`
+    to continue the westward bisection
+
+Older handoff content follows for historical context.
+
+# Earlier 2026-04-12 Summary
+
+Latest detailed handoff:
 - `HANDOFF_2026-04-11_tantegel_seam_followup.md`
 
 Quick summary of the latest session:

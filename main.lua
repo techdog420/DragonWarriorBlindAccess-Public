@@ -3324,4 +3324,5 @@ while true do
     -- have written new positions; we undo that here so our code sees stable
     -- NPC coordinates on the next frame.
     route_mgr.apply_npc_freeze()
+    map_survey.apply_npc_parking()
 end

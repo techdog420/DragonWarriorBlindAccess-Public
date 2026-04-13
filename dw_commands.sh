@@ -94,13 +94,18 @@
 #                               adjacency. Freezes NPCs during the run. Results appear
 #                               in dw_debug.log and are retained for export.
 #   survey_objects:retry_failed Re-run only the targets that failed in the last survey
+#   survey_objects:park_npcs    Survey with non-target NPCs parked off-screen
+#                               for the run
+#   survey_objects:retry_failed,park_npcs  Retry failed targets with parked-NPC mode
 #   survey_map                  Alias for survey_objects
 #   survey_target:NAME          Survey a single named target (partial name match)
+#   survey_target:NAME,park_npcs  Single-target survey with parked-NPC mode
 #   stop_survey                 Cancel an active survey run
 #   report_survey_start         Preflight check: reports reachable area, exit count, and
 #                               whether the current start position is isolated; does NOT
 #                               launch a survey. Use before survey_objects to verify.
 #   report_survey_start:retry_failed  Same preflight using the failed-target set
+#   report_survey_start:park_npcs  Same preflight, annotated for parked-NPC mode
 #   report_survey_findings      Summary of failed targets + strong reroute candidates
 #   report_survey_findings:MAP_ID  Same for an explicit map
 #   report_failed_targets       Log targets that failed in the last survey run

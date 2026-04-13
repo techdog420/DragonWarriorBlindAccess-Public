@@ -6,6 +6,7 @@
 -- blocked-tile candidates separate from permanent map data.
 
 local auto_step   = require "auto_step"
+local addr        = require "addresses"
 local debug_tools = require "debug_tools"
 local event_bus   = require "event_bus"
 local map_reader  = require "map_reader"
@@ -23,6 +24,7 @@ local blocked_candidates = {}
 local last_runs = {}
 local run_counter = 0
 local tick_counter = 0
+local PARKED_NPC_COORD = 31
 local CONTINUATION_TRAP_AREA_LIMIT = 16
 local CONTINUATION_TRAP_MIN_REMAINING = 1
 local CONTINUATION_TRAP_MAX_DEFER_LANDINGS = 2
@@ -43,6 +45,14 @@ local SURVEY_DIRECTIONS = {
 local function trim(s)
     if s == nil then return nil end
     return tostring(s):match("^%s*(.-)%s*$")
+end
+
+local function normalize_target_token(value)
+    value = trim(value)
+    if not value or value == "" then
+        return nil
+    end
+    return value:lower()
 end
 
 local function parse_int(token)
@@ -66,6 +76,33 @@ local function split_arg_list(arg)
         parts[#parts + 1] = trim(token)
     end
     return parts
+end
+
+local function parse_survey_tokens(arg, opts)
+    opts = opts or {}
+    local parsed = {
+        park_npcs = false,
+        retry_failed = false,
+        target_token = nil,
+    }
+
+    for _, token in ipairs(split_arg_list(arg)) do
+        local lower = tostring(token):lower()
+        if lower == "park_npcs" then
+            parsed.park_npcs = true
+        elseif lower == "retry_failed" or lower == "failed" then
+            if not opts.allow_retry_failed then
+                return nil, "retry_failed is only valid for object survey commands"
+            end
+            parsed.retry_failed = true
+        elseif opts.allow_target_token and not parsed.target_token then
+            parsed.target_token = token
+        else
+            return nil, "Unknown survey option: " .. tostring(token)
+        end
+    end
+
+    return parsed
 end
 
 local function cell_key(x, y)
@@ -99,6 +136,162 @@ local function copy_target_list(list)
         copy[i] = copy_object(obj)
     end
     return copy
+end
+
+local function get_survey_npc_mode(opts)
+    if opts and opts.park_npcs then
+        return "park_npcs"
+    end
+    return "live"
+end
+
+local function is_active_npc_slot(byte0, byte1)
+    local x = AND(byte0, 0x1F)
+    local y = AND(byte1, 0x1F)
+    if x == 0 and y == 0 then
+        return false
+    end
+    if x == PARKED_NPC_COORD and y == PARKED_NPC_COORD then
+        return false
+    end
+    return true
+end
+
+local function parse_npc_slot_id(object_id)
+    local slot = tostring(object_id or ""):match("^npc_(%d+)$")
+    if not slot then return nil end
+    return tonumber(slot)
+end
+
+local function write_npc_bytes(slot, byte0, byte1, byte2)
+    local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+    memory.writebyte(base, byte0)
+    memory.writebyte(base + 1, byte1)
+    memory.writebyte(base + 2, byte2)
+end
+
+local function capture_npc_parking_state()
+    local map_id = nav.get_position()
+    local state = {
+        map_id = map_id,
+        slots = {},
+        exempt_slot = nil,
+    }
+
+    for slot = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+        local byte0 = memory.readbyte(base)
+        local byte1 = memory.readbyte(base + 1)
+        local byte2 = memory.readbyte(base + 2)
+        if is_active_npc_slot(byte0, byte1) then
+            state.slots[slot] = {
+                byte0 = byte0,
+                byte1 = byte1,
+                byte2 = byte2,
+                parked_byte0 = AND(byte0, 0xE0) + PARKED_NPC_COORD,
+                parked_byte1 = AND(byte1, 0xE0) + PARKED_NPC_COORD,
+            }
+        end
+    end
+
+    return state
+end
+
+local function apply_npc_parking_state(state)
+    if not state then return 0 end
+    local parked = 0
+    for slot, snapshot in pairs(state.slots) do
+        if slot ~= state.exempt_slot then
+            write_npc_bytes(slot, snapshot.parked_byte0, snapshot.parked_byte1, snapshot.byte2)
+            parked = parked + 1
+        end
+    end
+    return parked
+end
+
+local function set_npc_parking_exempt_slot(state, exempt_slot)
+    if not state then
+        return nil, false
+    end
+    if state.exempt_slot == exempt_slot then
+        return exempt_slot, false
+    end
+    state.exempt_slot = exempt_slot
+    if exempt_slot ~= nil then
+        local snapshot = state.slots[exempt_slot]
+        if snapshot then
+            write_npc_bytes(exempt_slot, snapshot.byte0, snapshot.byte1, snapshot.byte2)
+        end
+    end
+    return exempt_slot, true
+end
+
+local function restore_npc_parking_state(state)
+    if not state then
+        return 0, false
+    end
+    local map_id = nav.get_position()
+    if map_id ~= state.map_id then
+        return 0, false
+    end
+
+    local restored = 0
+    for slot, snapshot in pairs(state.slots) do
+        write_npc_bytes(slot, snapshot.byte0, snapshot.byte1, snapshot.byte2)
+        restored = restored + 1
+    end
+    return restored, true
+end
+
+local function get_target_exempt_slot(target)
+    local npc_type = objects.TYPE_NPC or "npc"
+    if not target or target.type ~= npc_type then
+        return nil
+    end
+    return parse_npc_slot_id(target.id)
+end
+
+local function apply_survey_npc_parking()
+    if not survey_state or not survey_state.npc_parking then
+        return 0
+    end
+    return apply_npc_parking_state(survey_state.npc_parking)
+end
+
+local function update_survey_npc_parking_for_target(target)
+    if not survey_state or not survey_state.npc_parking then
+        return
+    end
+
+    local exempt_slot, changed = set_npc_parking_exempt_slot(
+        survey_state.npc_parking,
+        get_target_exempt_slot(target))
+    local parked = apply_survey_npc_parking()
+    if changed then
+        debug_tools.info(string.format(
+            "SURVEY_NPC_PARK_TARGET run=%d map=0x%02X target_id=%s exempt_slot=%s parked_slots=%d",
+            survey_state.run_id or 0,
+            survey_state.map_id or 0,
+            tostring(target and target.id or ""),
+            exempt_slot and tostring(exempt_slot) or "-",
+            parked))
+    end
+end
+
+local function release_survey_npc_parking(reason)
+    if not survey_state or not survey_state.npc_parking then
+        return
+    end
+
+    local restored_slots, restored = restore_npc_parking_state(survey_state.npc_parking)
+    debug_tools.info(string.format(
+        "SURVEY_NPC_PARK_RESTORE run=%d map=0x%02X restored=%s restored_slots=%d reason=%s",
+        survey_state.run_id or 0,
+        survey_state.map_id or 0,
+        restored and "true" or "false",
+        restored_slots,
+        tostring(reason or "complete")))
+    survey_state.npc_parking = nil
 end
 
 local function refresh_object(obj)
@@ -802,6 +995,7 @@ local function finish_run(speak_message)
     if not survey_state then
         return
     end
+    release_survey_npc_parking(survey_state.stop_reason or (speak_message == false and "aborted" or "complete"))
     retroactively_reclassify_isolated_start_results(survey_state)
     survey_state.summary = compute_summary(survey_state)
     last_runs[survey_state.map_id] = survey_state
@@ -834,18 +1028,75 @@ end
 local function resolve_target_by_token(token)
     token = trim(token)
     if not token or token == "" then
-        return objects.current_object()
+        return objects.current_object(), nil
     end
     local obj = objects.find_object_by_id(token)
     if obj then
-        return obj
+        return obj, nil
     end
     local index = parse_int(token)
     if index and index >= 1 then
         local list = objects.get_objects()
-        return list[index]
+        return list[index], nil
     end
-    return nil
+
+    local normalized = normalize_target_token(token)
+    if not normalized then
+        return nil, "Target not found"
+    end
+
+    local list = objects.get_objects()
+    local exact_matches = {}
+    local partial_matches = {}
+    for _, candidate in ipairs(list) do
+        local candidate_id = normalize_target_token(candidate and candidate.id)
+        local candidate_name = normalize_target_token(candidate and candidate.name)
+        local matched_exact = false
+
+        if candidate_id and candidate_id == normalized then
+            exact_matches[#exact_matches + 1] = candidate
+            matched_exact = true
+        elseif candidate_name and candidate_name == normalized then
+            exact_matches[#exact_matches + 1] = candidate
+            matched_exact = true
+        end
+
+        if not matched_exact then
+            local id_match = candidate_id and string.find(candidate_id, normalized, 1, true)
+            local name_match = candidate_name and string.find(candidate_name, normalized, 1, true)
+            if id_match or name_match then
+                partial_matches[#partial_matches + 1] = candidate
+            end
+        end
+    end
+
+    local matches = exact_matches
+    if #matches == 0 then
+        matches = partial_matches
+    end
+    if #matches == 1 then
+        return matches[1], nil
+    end
+    if #matches > 1 then
+        local labels = {}
+        local limit = math.min(#matches, 4)
+        for i = 1, limit do
+            local candidate = matches[i]
+            labels[#labels + 1] = string.format(
+                "%s(%s)",
+                tostring(candidate.name or "?"),
+                tostring(candidate.id or "?"))
+        end
+        if #matches > limit then
+            labels[#labels + 1] = "..."
+        end
+        return nil, string.format(
+            "Ambiguous target token %q matched %d objects: %s",
+            tostring(token),
+            #matches,
+            table.concat(labels, ", "))
+    end
+    return nil, "Target not found"
 end
 
 local function get_default_survey_targets()
@@ -1319,6 +1570,7 @@ local function start_attempt(queue_entry)
     if not target then
         return
     end
+    update_survey_npc_parking_for_target(target)
     local map_id, start_x, start_y = nav.get_position()
     local stale_runtime_blocks = route_mgr.count_runtime_blocks(map_id) or 0
     if stale_runtime_blocks > 0 then
@@ -1493,6 +1745,7 @@ local function start_run(targets, opts)
         active_attempt = nil,
         stop_after_attempt = false,
         stop_reason = nil,
+        npc_parking = nil,
     }
     for i, target in ipairs(survey_state.targets) do
         survey_state.queue[i] = {
@@ -1501,14 +1754,23 @@ local function start_run(targets, opts)
             retry_number = 0,
         }
     end
+    if survey_state.options.park_npcs then
+        survey_state.npc_parking = capture_npc_parking_state()
+        debug_tools.info(string.format(
+            "SURVEY_NPC_PARK_START run=%d map=0x%02X parked_slots=%d exempt_slot=-",
+            survey_state.run_id,
+            survey_state.map_id,
+            apply_survey_npc_parking()))
+    end
     debug_tools.info(string.format(
-        "SURVEY_START run=%d map=0x%02X start=(%d,%d) targets=%d mode=%s runtime_blocks=%d",
+        "SURVEY_START run=%d map=0x%02X start=(%d,%d) targets=%d mode=%s npc_mode=%s runtime_blocks=%d",
         survey_state.run_id,
         survey_state.map_id,
         survey_state.start_x,
         survey_state.start_y,
         survey_state.target_total,
         tostring((opts and opts.mode) or "objects"),
+        get_survey_npc_mode(opts),
         route_mgr.count_runtime_blocks(map_id)))
     debug_tools.info(string.format(
         "SURVEY_START_CONTEXT run=%d map=0x%02X start=(%d,%d) open_exit_count=%d open_exits=%s blocked_exits=%s",
@@ -1530,44 +1792,65 @@ local function start_run(targets, opts)
             start_info.open_exits_text))
     end
     tolk.output_interrupt(string.format(
-        "Survey started on map %02X. %d target%s queued.",
+        "Survey started on map %02X. %d target%s queued.%s",
         map_id,
         survey_state.target_total,
-        (survey_state.target_total == 1) and "" or "s"))
+        (survey_state.target_total == 1) and "" or "s",
+        survey_state.options.park_npcs and " Park NPC mode active." or ""))
     return true, nil
 end
 
 local function get_object_survey_targets(arg, map_id)
-    local token = trim(arg)
-    if token == "retry_failed" or token == "failed" then
-        return get_failed_targets_for_map(map_id), "retry_failed"
+    local parsed, err = parse_survey_tokens(arg, {allow_retry_failed = true})
+    if not parsed then
+        return nil, nil, nil, err
     end
-    return get_default_survey_targets(), "objects"
+    if parsed.retry_failed then
+        return get_failed_targets_for_map(map_id), "retry_failed", parsed
+    end
+    return get_default_survey_targets(), "objects", parsed
 end
 
 function M.start_object_survey(arg)
     local map_id = nav.get_position()
-    local targets, mode = get_object_survey_targets(arg, map_id)
-    return start_run(targets, {mode = mode})
+    local targets, mode, parsed, err = get_object_survey_targets(arg, map_id)
+    if not targets then
+        return false, err
+    end
+    return start_run(targets, {
+        mode = mode,
+        park_npcs = parsed and parsed.park_npcs or false,
+    })
 end
 
 function M.report_start_viability(arg)
     local map_id, start_x, start_y = nav.get_position()
-    local targets, mode = get_object_survey_targets(arg, map_id)
+    local targets, mode, parsed, err = get_object_survey_targets(arg, map_id)
+    if not targets then
+        debug_tools.info(string.format(
+            "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=0 status=invalid_args npc_mode=%s",
+            map_id,
+            tostring(mode or "objects"),
+            start_x,
+            start_y,
+            get_survey_npc_mode(parsed)))
+        return false, err
+    end
     if not targets or #targets == 0 then
         debug_tools.info(string.format(
-            "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=0 status=no_targets",
+            "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=0 status=no_targets npc_mode=%s",
             map_id,
             tostring(mode),
             start_x,
-            start_y))
+            start_y,
+            get_survey_npc_mode(parsed)))
         return false, no_targets_message(mode, map_id)
     end
 
     local start_info = analyze_survey_start(targets, map_id, start_x, start_y)
     start_info.mode = mode
     debug_tools.info(string.format(
-        "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=%d reachable_area=%d open_exit_count=%d open_exits=%s blocked_exits=%s status=%s hard_area_limit=%d area_limit=%d open_exit_limit=%d",
+        "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=%d reachable_area=%d open_exit_count=%d open_exits=%s blocked_exits=%s status=%s hard_area_limit=%d area_limit=%d open_exit_limit=%d npc_mode=%s",
         map_id,
         tostring(mode),
         start_x,
@@ -1580,17 +1863,24 @@ function M.report_start_viability(arg)
         start_info.isolated_start and "isolated_start" or "viable",
         start_info.hard_area_limit,
         start_info.area_limit,
-        start_info.open_exit_limit))
+        start_info.open_exit_limit,
+        get_survey_npc_mode(parsed)))
     return true, start_info
 end
 
 function M.start_target_survey(arg)
-    local parts = split_arg_list(arg)
-    local target = resolve_target_by_token(parts[1])
-    if not target then
-        return false, "Target not found"
+    local parsed, err = parse_survey_tokens(arg, {allow_target_token = true})
+    if not parsed then
+        return false, err
     end
-    return start_run({copy_object(target)}, {mode = "target"})
+    local target, target_err = resolve_target_by_token(parsed.target_token)
+    if not target then
+        return false, target_err or "Target not found"
+    end
+    return start_run({copy_object(target)}, {
+        mode = "target",
+        park_npcs = parsed.park_npcs,
+    })
 end
 
 function M.stop_survey()
@@ -1658,6 +1948,10 @@ function M.tick(can_walk)
 
     maybe_reprioritize_queue()
     start_attempt(survey_state.queue[survey_state.queue_index + 1])
+end
+
+function M.apply_npc_parking()
+    apply_survey_npc_parking()
 end
 
 function M.is_active()

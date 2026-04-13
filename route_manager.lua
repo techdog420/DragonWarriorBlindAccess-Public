@@ -79,6 +79,8 @@ local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
 -- intermittent misses before on_blocked fires, so we record immediately.
 local runtime_blocked = {}
 local autowalk_guard = nil
+local active_route_settle_frames = 0
+local SURVEY_ROUTE_SETTLE_FRAMES = 30
 
 local function cell_key(x, y)
     return x .. "," .. y
@@ -246,17 +248,24 @@ end
 -- Runtime Blocked Cells
 -- ============================================================
 
--- build_path_blocking(map_id): Combine NPC positions + runtime blocks +
+-- build_path_blocking(map_id, opts): Combine NPC positions + runtime blocks +
 -- static directional blocks into a single blocking table for A*.
+--
+-- opts.skip_npcs (boolean): When true, omit NPC positions from the blocking
+--   table.  Used by map_survey to test map connectivity without frozen NPCs
+--   creating artificial isolation.
 --
 -- Values in the returned table:
 --   "npc"                          — NPC occupies the cell (fully blocked)
 --   {north=true, east=true, ...}   — directional engine wall (blocked from
 --                                    listed approach sides only)
-function M.build_path_blocking(map_id)
-    local blocking = objects.get_blocking_positions()
-    for _, pos in ipairs(blocking) do
-        blocking[cell_key(pos.x, pos.y)] = "npc"
+function M.build_path_blocking(map_id, opts)
+    local blocking = {}
+    if not (opts and opts.skip_npcs) then
+        local positions = objects.get_blocking_positions()
+        for _, pos in ipairs(positions) do
+            blocking[cell_key(pos.x, pos.y)] = "npc"
+        end
     end
     -- Merge static directional blocks from map_reader (building walls etc.)
     local static_dirs = map_reader.get_directional_blocks(map_id)
@@ -400,6 +409,16 @@ local function release_npc_freeze(reason)
     end
 end
 
+local function clear_active_route_context(reason, refresh_objects)
+    last_pathfind_obj = nil
+    reroute_failures = 0
+    active_route_settle_frames = 0
+    release_npc_freeze(reason)
+    if refresh_objects then
+        objects.request_refresh()
+    end
+end
+
 local function resolve_path_mode(obj, map_id, opts)
     opts = opts or {}
     local path_mode = opts.path_mode
@@ -488,7 +507,12 @@ local function plan_path_to_object(obj, opts)
     opts = opts or {}
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = M.build_path_blocking(map_id)
+    -- `survey_safe` is used by map_survey for classification/retry behavior,
+    -- but the actual movement plan must still respect frozen NPC blockers.
+    -- Callers that truly want an NPC-free blocking table must opt in with
+    -- skip_npcs=true explicitly.
+    local skip_npcs = opts.skip_npcs
+    local blocking = M.build_path_blocking(map_id, skip_npcs and {skip_npcs = true} or nil)
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
     local result, face_dir, path, adjacent_diagnostics
     local no_path_reason = nil
@@ -540,10 +564,11 @@ end
 
 -- queue_path_steps(path): Convert A* path to auto_step route directions.
 -- Returns true if the route was queued successfully.
-local function queue_path_steps(path)
+local function queue_path_steps(path, opts)
     if not path or #path == 0 then
         return false
     end
+    opts = opts or {}
     local steps = {}
     for i, step in ipairs(path) do
         local dir = DIR_NAME_TO_KEY[step.direction]
@@ -552,7 +577,13 @@ local function queue_path_steps(path)
         end
         steps[i] = dir
     end
-    if auto_step.start_route(steps) then
+    local settle_frames = opts.settle_frames
+    if settle_frames == nil then
+        settle_frames = active_route_settle_frames or 0
+    end
+    settle_frames = math.max(0, tonumber(settle_frames) or 0)
+    if auto_step.start_route(steps, {settle_frames = settle_frames}) then
+        active_route_settle_frames = settle_frames
         reroute_failures = 0
         return true
     end
@@ -655,7 +686,15 @@ function M.autowalk_to_object(obj, opts)
             return plan
         end
     end
-    if not queue_path_steps(plan.path) then
+    local settle_frames = opts.route_settle_frames
+    if settle_frames == nil and opts.survey_safe then
+        settle_frames = SURVEY_ROUTE_SETTLE_FRAMES
+    end
+    if settle_frames == nil then
+        settle_frames = 0
+    end
+    if not queue_path_steps(plan.path, {settle_frames = settle_frames}) then
+        active_route_settle_frames = 0
         release_npc_freeze("autowalk queue failure")
         debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)
         plan.status = "queue_failed"
@@ -693,7 +732,7 @@ end
 -- These are wired to auto_step's callback mechanism. They handle
 -- rerouting when a step is blocked and cleanup when a route completes.
 
-auto_step.on_blocked = function(from_x, from_y, blocked_dir)
+auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     if path_debug.is_validating and path_debug.is_validating() then
         debug_tools.debug("route_manager: ignoring blocked step during validation")
         return
@@ -705,6 +744,10 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
 
     local map_id = nav.get_position()
     record_runtime_block(map_id, from_x, from_y, blocked_dir)
+    if block_data and block_data.queued_route == false then
+        debug_tools.debug("route_manager: ignoring blocked step outside queued route")
+        return
+    end
     if not last_pathfind_obj then return end
 
     reroute_failures = reroute_failures + 1
@@ -718,10 +761,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
             from_y = from_y,
             blocked_dir = blocked_dir,
         })
-        last_pathfind_obj = nil
-        reroute_failures = 0
-        release_npc_freeze("reroute failure limit reached")
-        objects.request_refresh()
+        clear_active_route_context("reroute failure limit reached", true)
         tolk.output_interrupt("Cannot reach destination. Pathfinding cancelled.")
         return
     end
@@ -753,9 +793,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
             from_y = from_y,
             blocked_dir = blocked_dir,
         })
-        last_pathfind_obj = nil
-        reroute_failures = 0
-        release_npc_freeze("no path found on reroute")
+        clear_active_route_context("no path found on reroute", true)
         tolk.output_interrupt("No path found. Pathfinding cancelled.")
         return
     end
@@ -764,15 +802,12 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir)
     tolk.output_interrupt(msg)
 
     if path and #path > 0 then
-        queue_path_steps(path)
+        queue_path_steps(path, {settle_frames = active_route_settle_frames})
     end
 end
 
 auto_step.on_route_complete = function()
-    reroute_failures = 0
-    last_pathfind_obj = nil
-    release_npc_freeze("autowalk route complete")
-    objects.request_refresh()
+    clear_active_route_context("autowalk route complete", true)
 end
 
 -- ============================================================
@@ -789,10 +824,8 @@ function M.on_map_change()
             map_id = snapshot.map_id,
         })
     end
-    last_pathfind_obj = nil
-    reroute_failures = 0
     runtime_blocked = {}
-    release_npc_freeze("map change")
+    clear_active_route_context("map change", false)
 end
 
 -- ============================================================
@@ -802,6 +835,10 @@ end
 -- get_last_pathfind_obj(): Return the current pathfind target (or nil).
 function M.get_last_pathfind_obj()
     return last_pathfind_obj
+end
+
+function M.clear_active_route_context(reason)
+    clear_active_route_context(reason, true)
 end
 
 -- get_dir_to_delta(): Return the direction-to-delta table.

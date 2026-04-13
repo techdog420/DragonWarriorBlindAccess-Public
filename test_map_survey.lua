@@ -3,6 +3,8 @@
 
 local original_preload = {}
 local original_loaded = {}
+local original_memory = _G.memory
+local original_and = _G.AND
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -28,7 +30,9 @@ local function make_env(options)
     local nav_y = options.y or 5
     local object = options.object or {id = "chest_1", name = "Chest", type = "chest", x = 8, y = 5}
     local objects_list = options.objects or {object}
+    local npc_bytes = {}
     local module_names = {
+        "addresses",
         "auto_step",
         "debug_tools",
         "event_bus",
@@ -43,6 +47,45 @@ local function make_env(options)
     for _, name in ipairs(module_names) do
         save_module(name)
         package.loaded[name] = nil
+    end
+
+    if options.npc_bytes then
+        for address, value in pairs(options.npc_bytes) do
+            npc_bytes[address] = value
+        end
+    end
+
+    _G.AND = _G.AND or function(a, b)
+        local result = 0
+        local bit = 1
+        while a > 0 and b > 0 do
+            local a_bit = a % 2
+            local b_bit = b % 2
+            if a_bit == 1 and b_bit == 1 then
+                result = result + bit
+            end
+            a = math.floor(a / 2)
+            b = math.floor(b / 2)
+            bit = bit * 2
+        end
+        return result
+    end
+
+    _G.memory = {
+        readbyte = function(address)
+            return npc_bytes[address] or 0
+        end,
+        writebyte = function(address, value)
+            npc_bytes[address] = value
+        end,
+    }
+
+    package.preload["addresses"] = function()
+        return {
+            NPC_COUNT = 20,
+            NPC_DATA_START = 0x0051,
+            NPC_ENTRY_SIZE = 3,
+        }
     end
 
     package.preload["debug_tools"] = function()
@@ -276,6 +319,12 @@ local function make_env(options)
         end,
         restore = function()
             restore_modules(module_names)
+            _G.memory = original_memory
+            _G.AND = original_and
+        end,
+        read_npc_slot = function(slot)
+            local base = 0x0051 + (slot * 3)
+            return npc_bytes[base] or 0, npc_bytes[base + 1] or 0, npc_bytes[base + 2] or 0
         end,
     }
 end
@@ -763,6 +812,138 @@ function tests.survey_start_logs_context_and_low_exit_warning()
         "survey start context should explain blocked exits")
     assert_contains(joined, "SURVEY_START_WARNING run=1 map=0x05 reason=low_exit_count start=(3,5) open_exit_count=2 open_exits=south|west",
         "survey should warn when the starting tile has only a couple of exits")
+
+    env.restore()
+end
+
+function tests.survey_target_accepts_exact_display_name()
+    local env = make_env({
+        object = {id = "npc_6", name = "Guard 3", type = "npc", x = 13, y = 17},
+        objects = {
+            {id = "npc_6", name = "Guard 3", type = "npc", x = 13, y = 17},
+        },
+    })
+
+    local ok, err = env.survey.start_target_survey("Guard 3")
+    assert_equal(ok, true, "exact display name should resolve as a survey target")
+    assert_equal(err, nil, "exact display name should not return an error")
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    assert_equal(result.target_id, "npc_6", "exact display name should resolve to the matching object id")
+
+    env.restore()
+end
+
+function tests.survey_target_accepts_unique_partial_display_name()
+    local env = make_env({
+        objects = {
+            {id = "npc_guard_3", name = "Castle Guard 3", type = "npc", x = 13, y = 17},
+            {id = "chest_1", name = "Treasure Chest", type = "chest", x = 8, y = 5},
+        },
+    })
+
+    local ok, err = env.survey.start_target_survey("guard 3")
+    assert_equal(ok, true, "unique partial display names should resolve as survey targets")
+    assert_equal(err, nil, "unique partial display names should not return an error")
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    assert_equal(result.target_id, "npc_guard_3", "partial display name should resolve to the matching object id")
+
+    env.restore()
+end
+
+function tests.survey_target_rejects_ambiguous_partial_name()
+    local env = make_env({
+        objects = {
+            {id = "npc_guard_1", name = "Guard 1", type = "npc", x = 13, y = 17},
+            {id = "npc_guard_2", name = "Guard 2", type = "npc", x = 14, y = 17},
+        },
+    })
+
+    local ok, err = env.survey.start_target_survey("Guard")
+    assert_equal(ok, false, "ambiguous partial names should not guess at a target")
+    assert_contains(err or "", "Ambiguous target token", "ambiguous partial names should return a clear error")
+
+    env.restore()
+end
+
+function tests.park_npcs_mode_parks_non_target_npcs_and_restores_on_finish()
+    local env = make_env({
+        object = {id = "npc_0", name = "Guard 1", type = "npc", x = 8, y = 5},
+        objects = {
+            {id = "npc_0", name = "Guard 1", type = "npc", x = 8, y = 5},
+            {id = "npc_1", name = "Guard 2", type = "npc", x = 10, y = 5},
+        },
+        npc_bytes = {
+            [0x0051] = 0x28, [0x0052] = 0x05, [0x0053] = 0x01,
+            [0x0054] = 0x2A, [0x0055] = 0x05, [0x0056] = 0x01,
+        },
+    })
+
+    env.survey.start_target_survey("npc_0,park_npcs")
+    env.survey.tick(true)
+
+    local slot0_b0, slot0_b1 = env.read_npc_slot(0)
+    local slot1_b0, slot1_b1 = env.read_npc_slot(1)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(slot0_b0, 0x28, "target NPC should remain restored for its own attempt")
+    assert_equal(slot0_b1, 0x05, "target NPC Y byte should remain unchanged")
+    assert_equal(slot1_b0, 0x3F, "non-target NPC should be parked off-screen on X")
+    assert_equal(slot1_b1, 0x1F, "non-target NPC should be parked off-screen on Y")
+    assert_contains(joined, "SURVEY_NPC_PARK_START run=1 map=0x08 parked_slots=2",
+        "parked mode should log its initial parking pass")
+    assert_contains(joined, "SURVEY_NPC_PARK_TARGET run=1 map=0x08 target_id=npc_0 exempt_slot=0 parked_slots=1",
+        "parked mode should log the exempt target NPC slot")
+
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local restored_b0, restored_b1 = env.read_npc_slot(1)
+    assert_equal(restored_b0, 0x2A, "parked NPC should be restored when the survey finishes")
+    assert_equal(restored_b1, 0x05, "parked NPC Y byte should be restored when the survey finishes")
+    assert_contains(table.concat(env.logs, "\n"),
+        "SURVEY_NPC_PARK_RESTORE run=1 map=0x08 restored=true restored_slots=2 reason=complete",
+        "parked mode should log restoration on survey completion")
+
+    env.restore()
+end
+
+function tests.park_npcs_mode_retargets_exemption_between_npc_attempts()
+    local env = make_env({
+        object = {id = "npc_0", name = "Guard 1", type = "npc", x = 8, y = 5},
+        objects = {
+            {id = "npc_0", name = "Guard 1", type = "npc", x = 8, y = 5},
+            {id = "npc_1", name = "Guard 2", type = "npc", x = 10, y = 5},
+        },
+        npc_bytes = {
+            [0x0051] = 0x28, [0x0052] = 0x05, [0x0053] = 0x01,
+            [0x0054] = 0x2A, [0x0055] = 0x05, [0x0056] = 0x01,
+        },
+    })
+
+    env.survey.start_object_survey("park_npcs")
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+    env.survey.tick(true)
+
+    local slot0_b0, slot0_b1 = env.read_npc_slot(0)
+    local slot1_b0, slot1_b1 = env.read_npc_slot(1)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(slot0_b0, 0x3F, "the first NPC should be re-parked for later attempts")
+    assert_equal(slot0_b1, 0x1F, "the first NPC Y byte should be parked off-screen")
+    assert_equal(slot1_b0, 0x2A, "the next target NPC should be restored for its attempt")
+    assert_equal(slot1_b1, 0x05, "the next target NPC Y byte should be restored")
+    assert_contains(joined, "SURVEY_NPC_PARK_TARGET run=1 map=0x08 target_id=npc_1 exempt_slot=1 parked_slots=1",
+        "parked mode should retarget the live exemption as the queue advances")
 
     env.restore()
 end

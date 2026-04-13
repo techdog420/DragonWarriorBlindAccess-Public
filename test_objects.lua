@@ -244,6 +244,29 @@ function tests.brecconary_exit_matches_live_west_edge_probe()
     env.restore()
 end
 
+function tests.tantegel_castle_exposes_only_reachable_south_gate_door()
+    local env = make_env()
+
+    env.set_position(0x04, 10, 29)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x04)
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Exits
+    env.objects.next_filter() -- Chests
+    env.objects.next_filter() -- Stairs
+    env.objects.next_filter() -- Doors
+
+    assert_equal(env.objects.get_count(), 1, "Tantegel Castle should expose only one actionable south gate door")
+    local obj = env.objects.current_object()
+    assert_equal(obj.id, "door_10_30", "the west south-gate tile should be the remaining door object")
+    assert_equal(obj.x, 10, "south gate door x should match the reachable gate tile")
+    assert_equal(obj.y, 30, "south gate door y should match the reachable gate tile")
+
+    env.restore()
+end
+
 local failures = 0
 local total = 0
 

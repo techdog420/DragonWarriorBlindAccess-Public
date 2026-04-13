@@ -75,7 +75,7 @@ local function make_env(options)
             end,
             update_npcs = function() end,
             get_blocking_positions = function()
-                return {}
+                return options.blocking_positions or {}
             end,
             request_refresh = function() end,
         }
@@ -252,6 +252,59 @@ function tests.duplicate_blocked_step_does_not_double_count()
         env.route_manager.count_runtime_blocks(0x05),
         1,
         "duplicate blocked steps should not create multiple runtime blocks"
+    )
+
+    env.restore()
+end
+
+function tests.non_route_blocked_step_does_not_trigger_reroute()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        1,
+        "non-route blocked steps should still record runtime blocks"
+    )
+    assert_equal(
+        env.pathfind_calls(),
+        1,
+        "non-route blocked steps should not trigger reroute pathfinding"
+    )
+    assert_equal(
+        env.start_route_calls(),
+        1,
+        "non-route blocked steps should not queue a reroute"
+    )
+
+    env.restore()
+end
+
+function tests.survey_safe_planning_still_respects_frozen_npc_blockers()
+    local env = make_env({
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        blocking_positions = {
+            {x = 5, y = 3},
+        },
+    })
+
+    local plan = env.route_manager.plan_path_to_object({
+        name = "Chest",
+        type = "chest",
+        x = 6,
+        y = 1,
+    }, {
+        survey_safe = true,
+        store_debug_path = false,
+    })
+
+    assert_equal(
+        plan.result,
+        "No path found",
+        "survey_safe planning should not ignore frozen NPC blockers during actual route planning"
     )
 
     env.restore()

@@ -449,7 +449,7 @@ local MAP_BLOCKED_CELLS = {
         -- though inspect_move/inspect_tile report tile=6, walkable=true,
         -- npc_blocked=false, runtime_blocked=false.
         ["13,21"] = true, ["13,22"] = true, ["13,23"] = true, ["15,19"] = true, ["16,21"] = true, ["17,21"] = true, ["18,21"] = true, ["21,21"] = true,
-        ["16,16"] = true, ["17,16"] = true, ["18,16"] = true, ["19,16"] = true, ["19,21"] = true, ["20,17"] = true,
+        ["16,16"] = true, ["17,16"] = true, ["18,16"] = true, ["19,16"] = true, ["19,21"] = true,
         -- x=12 column engine barriers at y=17-18 confirmed 2026-04-09 via survey_map:
         -- survey consistently suspects these as blocking the northward path from (13,19).
         -- A* routes through (12,19)→(12,18)→(12,17) to reach north hall; engine refuses.

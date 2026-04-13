@@ -214,6 +214,30 @@ function tests.tantegel_castle_south_pocket_false_blocks_are_open()
     env.restore()
 end
 
+function tests.tantegel_castle_upper_chamber_entry_20_17_is_open()
+    local env = make_env()
+
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 20, 17),
+        false,
+        "(20,17) should stay open after repeated live probes from west and south"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 19, 16),
+        true,
+        "(19,16) should remain blocked so the adjacent confirmed wall strip stays modeled"
+    )
+
+    local chamber_entry = env.map_reader.get_walkability_details(0x04, 20, 17)
+    assert_equal(
+        chamber_entry.permanent_blocked,
+        false,
+        "(20,17) should no longer be marked permanently blocked"
+    )
+
+    env.restore()
+end
+
 function tests.brecconary_permanent_blockers_match_current_live_model()
     local env = make_env()
 
