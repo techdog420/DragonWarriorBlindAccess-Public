@@ -265,7 +265,7 @@ So the open/closed picture is sharper now:
 ```
 
 4. Compare the updated live boundary against the older chamber notes:
-- `HANDOFF_2026-03-24_castle_chamber_probe.md`
+- `handoff_archive/HANDOFF_2026-03-24_castle_chamber_probe.md`
 
 5. If planner/debug output still shows larger isolation than the confirmed
 west wall strip explains, investigate planner-state effects before changing
