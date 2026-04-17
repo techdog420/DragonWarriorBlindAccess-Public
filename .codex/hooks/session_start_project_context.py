@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def find_active_handoff(repo_root: Path) -> str | None:
     handoff_path = repo_root / "session_handoff.md"
@@ -19,8 +21,7 @@ def find_active_handoff(repo_root: Path) -> str | None:
 
 
 def main() -> None:
-    repo_root = Path.cwd()
-    active_handoff = find_active_handoff(repo_root)
+    active_handoff = find_active_handoff(REPO_ROOT)
 
     reminders = [
         "Read session_handoff.md first for the active handoff set.",

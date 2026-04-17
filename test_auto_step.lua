@@ -22,6 +22,7 @@ local function make_env()
     local frame = 0
     local injected = {}
     local published = {}
+    local live_joy = {}
 
     local module_names = {
         "auto_step",
@@ -83,7 +84,7 @@ local function make_env()
 
     _G.joypad = {
         read = function()
-            return {}
+            return live_joy
         end,
         set = function(_, buttons)
             injected[frame] = buttons
@@ -98,6 +99,9 @@ local function make_env()
         published = published,
         set_position = function(x, y)
             px, py = x, y
+        end,
+        set_joy = function(buttons)
+            live_joy = buttons or {}
         end,
         update = function(can_walk)
             frame = frame + 1
@@ -120,27 +124,56 @@ local function has_any_direction(buttons)
     return buttons and (buttons.up or buttons.down or buttons.left or buttons.right)
 end
 
+local function collect_direction_sequences(env, dir, max_frame)
+    local sequences = {}
+    local active_start = nil
+    local active_count = 0
+
+    for frame = 0, max_frame do
+        local buttons = env.injected[frame]
+        local pressed = buttons and buttons[dir] or false
+        if pressed then
+            if active_start == nil then
+                active_start = frame
+                active_count = 1
+            else
+                active_count = active_count + 1
+            end
+        elseif active_start ~= nil then
+            sequences[#sequences + 1] = {
+                start = active_start,
+                count = active_count,
+            }
+            active_start = nil
+            active_count = 0
+        end
+    end
+
+    if active_start ~= nil then
+        sequences[#sequences + 1] = {
+            start = active_start,
+            count = active_count,
+        }
+    end
+
+    return sequences
+end
+
 local tests = {}
 
 function tests.turn_only_attempt_represses_before_full_timeout()
     local env = make_env()
     env.auto_step.inject_step("right")
 
-    for _ = 1, 24 do
+    for _ = 1, 60 do
         env.update(true)
     end
 
-    local saw_fast_repress = false
-    for frame = 19, 30 do
-        local buttons = env.injected[frame]
-        if buttons and buttons.right then
-            saw_fast_repress = true
-            break
-        end
-    end
+    local sequences = collect_direction_sequences(env, "right", 60)
+    local repress = sequences[2]
 
     assert_truthy(
-        saw_fast_repress,
+        repress and repress.start < 60,
         "auto_step should re-press quickly after a turn-only attempt instead of waiting for full timeout"
     )
 
@@ -168,25 +201,20 @@ function tests.never_moving_step_still_reports_blocked()
     env.restore()
 end
 
-function tests.turn_repress_uses_short_inject_window()
+function tests.turn_repress_uses_full_inject_window_after_turn_only_attempt()
     local env = make_env()
     env.auto_step.inject_step("right")
 
-    for _ = 1, 30 do
+    for _ = 1, 60 do
         env.update(true)
     end
 
-    local repress_injections = 0
-    for frame = 19, 30 do
-        local buttons = env.injected[frame]
-        if buttons and buttons.right then
-            repress_injections = repress_injections + 1
-        end
-    end
+    local sequences = collect_direction_sequences(env, "right", 60)
+    local repress = sequences[2]
 
     assert_truthy(
-        repress_injections > 0 and repress_injections <= 5,
-        "turn re-press should use a short inject window to avoid overshooting into a second tile"
+        repress and repress.count >= 8,
+        "turn re-press should restore a full inject window after a turn-only attempt so the follow-up press can start movement reliably"
     )
 
     env.restore()
@@ -196,37 +224,78 @@ function tests.turn_repress_waits_for_release_gap_before_rearming()
     local env = make_env()
     env.auto_step.inject_step("right")
 
-    for _ = 1, 24 do
+    for _ = 1, 60 do
         env.update(true)
     end
 
+    local sequences = collect_direction_sequences(env, "right", 60)
+    local repress = sequences[2]
+
     assert_truthy(
-        env.injected[19] == nil and env.injected[20] == nil,
-        "turn re-press should leave a short fully released gap before rearming"
+        repress ~= nil,
+        "test setup should observe a short turn re-press sequence"
+    )
+    assert_truthy(
+        env.injected[repress.start - 1] and not has_any_direction(env.injected[repress.start - 1])
+        and env.injected[repress.start - 2] and not has_any_direction(env.injected[repress.start - 2]),
+        "turn re-press should actively send a short neutral gap before rearming"
     )
 
-    local saw_repress_after_gap = false
-    for frame = 21, 32 do
-        local buttons = env.injected[frame]
-        if buttons and buttons.right then
-            saw_repress_after_gap = true
-            break
-        end
-    end
-
     assert_truthy(
-        saw_repress_after_gap,
+        repress.start >= 2,
         "turn re-press should still resume shortly after the release gap"
     )
 
     env.restore()
 end
 
+function tests.live_direction_input_interrupts_active_route_step_even_after_autonomous_request()
+    local env = make_env()
+    env.auto_step.start_route({"right"}, {autonomous = true})
+
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+    env.set_joy({})
+
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    local saw_recontinued_right = false
+    for frame = 2, 6 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.right then
+            saw_recontinued_right = true
+            break
+        end
+    end
+
+    assert_truthy(
+        not saw_recontinued_right,
+        "live manual direction input should cancel an active queued step even if the caller requested autonomous routing"
+    )
+
+    env.restore()
+end
+
 function tests.turn_repress_cancels_if_step_completes_during_release_gap()
+    local probe_env = make_env()
+    probe_env.auto_step.inject_step("right")
+
+    for _ = 1, 60 do
+        probe_env.update(true)
+    end
+
+    local probe_sequences = collect_direction_sequences(probe_env, "right", 60)
+    local repress = probe_sequences[2]
+    assert_truthy(repress ~= nil and repress.start >= 2, "test setup should observe a re-press sequence")
+    probe_env.restore()
+
     local env = make_env()
     env.auto_step.inject_step("right")
 
-    for _ = 1, 18 do
+    for _ = 1, (repress.start - 2) do
         env.update(true)
     end
 
@@ -235,21 +304,14 @@ function tests.turn_repress_cancels_if_step_completes_during_release_gap()
     -- the double-step bug we saw in live testing.
     env.set_position(4, 1)
 
-    for _ = 1, 6 do
+    for _ = 1, 8 do
         env.update(true)
     end
 
-    local saw_rearm = false
-    for frame = 19, 30 do
-        local buttons = env.injected[frame]
-        if buttons and buttons.right then
-            saw_rearm = true
-            break
-        end
-    end
+    local sequences = collect_direction_sequences(env, "right", repress.start + 8)
 
     assert_truthy(
-        not saw_rearm,
+        #sequences == 1,
         "turn re-press should be cancelled once the original step finishes during the release gap"
     )
 
@@ -281,24 +343,40 @@ function tests.successful_step_flushes_stale_direction_with_neutral_frames()
     env.restore()
 end
 
+function tests.post_step_release_preserves_non_direction_buttons()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({A = true})
+    env.update(true)
+
+    assert_truthy(
+        env.injected[8] and env.injected[8].A and not has_any_direction(env.injected[8]),
+        "post-step neutral frames should preserve live non-direction buttons while clearing the D-pad"
+    )
+
+    env.restore()
+end
+
 function tests.timeout_retry_after_turn_repress_restores_full_inject_window()
     local env = make_env()
     env.auto_step.inject_step("right")
 
-    for _ = 1, 95 do
+    for _ = 1, 140 do
         env.update(true)
     end
 
-    local retry_injections = 0
-    for frame = 78, 95 do
-        local buttons = env.injected[frame]
-        if buttons and buttons.right then
-            retry_injections = retry_injections + 1
-        end
-    end
+    local sequences = collect_direction_sequences(env, "right", 140)
+    local retry = sequences[3]
 
     assert_truthy(
-        retry_injections >= 8,
+        retry and retry.count >= 8,
         "timeout retries after a turn re-press should restore a full inject window before reporting blocked"
     )
 

@@ -13,6 +13,7 @@ import argparse
 import importlib
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -131,12 +132,31 @@ def run_command(label: str, cmd: list[str]) -> tuple[bool, str]:
     return False, output or f"command failed with exit code {proc.returncode}"
 
 
+def get_lua_runtime() -> str | None:
+    return shutil_which("lua") or shutil_which("luajit")
+
+
 def check_lua_syntax() -> tuple[bool, str]:
     luac = shutil_which("luac")
-    if not luac:
-        return False, "luac not found on PATH"
-    cmd = [luac, "-p", *LUA_FILES]
-    return run_command("lua syntax", cmd)
+    if luac:
+        cmd = [luac, "-p", *LUA_FILES]
+        return run_command("lua syntax", cmd)
+
+    lua = get_lua_runtime()
+    if not lua:
+        return False, "luac not found on PATH and no lua/luajit runtime is available"
+
+    # LuaJIT can syntax-check by compiling bytecode to the null device.
+    if Path(lua).name.lower().startswith("luajit"):
+        outputs: list[str] = []
+        for lua_file in LUA_FILES:
+            ok, detail = run_command("luajit syntax", [lua, "-b", lua_file, os.devnull])
+            if not ok:
+                return False, f"{lua_file}: {detail}"
+            outputs.append(detail)
+        return True, "\n".join(outputs)
+
+    return False, "luac not found on PATH"
 
 
 def check_python_syntax() -> tuple[bool, str]:
@@ -145,9 +165,9 @@ def check_python_syntax() -> tuple[bool, str]:
 
 
 def check_lua_unit_tests() -> tuple[bool, str]:
-    lua = shutil_which("lua")
+    lua = get_lua_runtime()
     if not lua:
-        return False, "lua not found on PATH"
+        return False, "lua/luajit not found on PATH"
     outputs: list[str] = []
     for test_file in LUA_TEST_FILES:
         ok, detail = run_command("lua unit tests", [lua, test_file])
@@ -253,11 +273,7 @@ def check_command_queue() -> tuple[bool, str]:
 
 
 def shutil_which(name: str) -> str | None:
-    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = Path(path_dir) / name
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
+    return shutil.which(name)
 
 
 def main() -> int:

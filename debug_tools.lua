@@ -19,7 +19,9 @@
 --   report_coords        -- write effective + raw coordinate bytes to the log
 --   toggle_debug         -- flip DEBUG_MODE on/off at runtime
 --   simulate_input:UP    -- inject a one-frame D-pad or button press
+--   simulate_input:UP,12 -- inject 12 consecutive frames of the same press
 --   simulate_raw_input:UP -- inject a one-frame raw D-pad or button press
+--   simulate_raw_input:UP,12 -- inject 12 consecutive raw frames (bypasses auto_step)
 --   simulate_input:DOWN
 --   simulate_input:LEFT
 --   simulate_input:RIGHT
@@ -93,6 +95,7 @@ local LOG_FLUSH_FRAMES = 60   -- Flush to disk every 60 frames (~1 sec at 60fps)
 local CMD_CHECK_FRAMES = 60   -- Check command file every 60 frames
 
 local pending_input  = nil    -- Joypad table to apply on next frame, or nil
+local pending_input_hold = nil  -- {buttons=table, frames_remaining=n}, or nil
 local current_frame  = 0      -- Set each tick; used in log entry prefix
 local current_state  = "unknown"  -- Set each tick; used in log entry prefix
 
@@ -331,6 +334,50 @@ local BUTTON_MAP = {
     SELECT = "select",
 }
 
+local function parse_button_command_args(arg_text)
+    local btn_str, frames_str = tostring(arg_text or ""):match("^%s*([^,]+)%s*,?%s*(.-)%s*$")
+    btn_str = btn_str and btn_str:upper() or ""
+    local btn_key = BUTTON_MAP[btn_str]
+    if not btn_key then
+        return nil, nil, nil
+    end
+
+    local frames = 1
+    if frames_str and frames_str ~= "" then
+        if not frames_str:match("^%d+$") then
+            return btn_key, btn_str, nil
+        end
+        frames = tonumber(frames_str)
+        if not frames or frames < 1 then
+            return btn_key, btn_str, nil
+        end
+    end
+
+    return btn_key, btn_str, frames
+end
+
+local function queue_pending_input(buttons, frames, description)
+    pending_input = nil
+    pending_input_hold = nil
+
+    if frames and frames > 1 then
+        pending_input_hold = {
+            buttons = buttons,
+            frames_remaining = frames,
+        }
+    else
+        pending_input = buttons
+    end
+
+    if description then
+        if frames and frames > 1 then
+            M.debug(string.format("Queued %s for %d frames", description, frames))
+        else
+            M.debug("Queued " .. description)
+        end
+    end
+end
+
 -- process_command(cmd): Execute one trimmed command string.
 local function process_command(cmd)
     if cmd == "" then return end
@@ -397,26 +444,22 @@ local function process_command(cmd)
     elseif cmd:sub(1, 15) == "simulate_input:" then
         -- Queue a one-frame joypad injection. tick() applies it before frameadvance.
         -- Only one input is queued at a time; the last simulate_input in the file wins.
-        local btn_str = cmd:sub(16):upper()
-        local btn_key = BUTTON_MAP[btn_str]
-        if btn_key then
-            pending_input = { [btn_key] = true }
-            M.debug("Queued joypad: " .. btn_str)
+        -- Optional trailing ",N" holds the same press for N consecutive frames.
+        local btn_key, btn_str, frames = parse_button_command_args(cmd:sub(16))
+        if btn_key and frames then
+            queue_pending_input({ [btn_key] = true }, frames, "joypad: " .. btn_str)
         else
-            M.error("simulate_input: unknown button '" .. btn_str ..
-                "'. Valid: UP DOWN LEFT RIGHT A B START SELECT")
+            M.error("simulate_input: usage simulate_input:BTN or simulate_input:BTN,FRAMES. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
         end
 
     elseif cmd:sub(1, 19) == "simulate_raw_input:" then
-        -- Queue a one-frame raw joypad injection that bypasses auto_step.
-        local btn_str = cmd:sub(20):upper()
-        local btn_key = BUTTON_MAP[btn_str]
-        if btn_key then
-            pending_input = { [btn_key] = true, _raw = true }
-            M.debug("Queued raw joypad: " .. btn_str)
+        -- Queue a raw joypad injection that bypasses auto_step.
+        -- Optional trailing ",N" holds the same raw press for N frames.
+        local btn_key, btn_str, frames = parse_button_command_args(cmd:sub(20))
+        if btn_key and frames then
+            queue_pending_input({ [btn_key] = true, _raw = true }, frames, "raw joypad: " .. btn_str)
         else
-            M.error("simulate_raw_input: unknown button '" .. btn_str ..
-                "'. Valid: UP DOWN LEFT RIGHT A B START SELECT")
+            M.error("simulate_raw_input: usage simulate_raw_input:BTN or simulate_raw_input:BTN,FRAMES. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
         end
 
     elseif cmd == "dump_grid" then
@@ -677,10 +720,21 @@ function M.tick(frame, game_state_str)
     -- and wouldn't see our injection anyway).
     local sweep_inp = sweep_tick()
 
-    -- Return and clear any pending simulated input so it fires exactly once.
-    -- Sweep input takes priority over simulate_input commands.
-    local inp = sweep_inp or pending_input
-    if not sweep_inp then pending_input = nil end
+    -- Return and clear any pending simulated input.
+    -- Sweep input takes priority over queued button commands.
+    local held_inp = nil
+    if not sweep_inp and pending_input_hold then
+        held_inp = pending_input_hold.buttons
+        pending_input_hold.frames_remaining = pending_input_hold.frames_remaining - 1
+        if pending_input_hold.frames_remaining <= 0 then
+            pending_input_hold = nil
+        end
+    end
+
+    local inp = sweep_inp or held_inp or pending_input
+    if not sweep_inp and not held_inp then
+        pending_input = nil
+    end
     return inp
 end
 

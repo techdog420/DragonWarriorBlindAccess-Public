@@ -58,6 +58,7 @@ COMMANDS (write to dw_commands.txt, one per line)
   report_position          Write current map/x/y to log
   toggle_debug             Flip debug_mode on/off at runtime
   simulate_input:UP        Inject one frame of D-pad Up
+  simulate_input:UP,12     Inject 12 consecutive frames of D-pad Up
   simulate_input:DOWN      Inject one frame of D-pad Down
   simulate_input:LEFT      Inject one frame of D-pad Left
   simulate_input:RIGHT     Inject one frame of D-pad Right
@@ -65,6 +66,15 @@ COMMANDS (write to dw_commands.txt, one per line)
   simulate_input:B         Inject one frame of B button
   simulate_input:START     Inject one frame of Start
   simulate_input:SELECT    Inject one frame of Select
+  simulate_raw_input:UP    Inject one raw frame of D-pad Up
+  simulate_raw_input:UP,12 Inject 12 consecutive raw frames of D-pad Up
+  simulate_raw_input:DOWN  Inject one raw frame of D-pad Down
+  simulate_raw_input:LEFT  Inject one raw frame of D-pad Left
+  simulate_raw_input:RIGHT Inject one raw frame of D-pad Right
+  simulate_raw_input:A     Inject one raw frame of A button
+  simulate_raw_input:B     Inject one raw frame of B button
+  simulate_raw_input:START Inject one raw frame of Start
+  simulate_raw_input:SELECT Inject one raw frame of Select
   dump_grid                Dump tile type + walkability grid for current map
   export_blocks            Format all recorded blocked moves as MAP_BLOCKED_CELLS
                            Lua entries (check dw_debug.log for output)

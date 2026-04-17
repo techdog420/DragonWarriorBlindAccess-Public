@@ -84,7 +84,6 @@ local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
 local route_settle_frames = 0
 local route_settle_default = 0
-local route_autonomous = false  -- When true, live direction input does NOT cancel the queued route
 local post_step_release_frames = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
@@ -109,14 +108,17 @@ local INJECT_LIMIT = 12
 -- assume the game consumed that press as a turn-in-place. DW1 often
 -- requires a fresh press after turning before movement begins.
 --
--- IMPORTANT: This must be > (max turn frames + step frames) so we don't
--- fire the repress while a step is already in progress.
--- DW1: turn ~8 frames + step ~16 frames = ~24 frames max. Use 28 for margin.
--- If we fire at 18 while mid-step, the engine chains a second step on
--- completion — causing the player to overshoot by one tile.
-local TURN_REPRESS_DELAY = 28
+-- Re-arm promptly after a turn-only attempt so open steps do not stall waiting
+-- for the full timeout. The release gap below must actively neutralize the
+-- D-pad before this re-press, otherwise the engine can treat the sequence as
+-- one continuous hold and chain into an unwanted second tile.
+local TURN_REPRESS_DELAY = 18
 local TURN_REPRESS_LIMIT = 1
-local TURN_REPRESS_INJECT_LIMIT = 4
+-- After a turn-only attempt, the follow-up press still needs a normal
+-- hold window on live hardware. A short 4-frame re-press left survey/
+-- probe routes stuck at open floor like map 0x04 (11,11)->left, while a
+-- full re-hold after the turn completed the step cleanly.
+local TURN_REPRESS_INJECT_LIMIT = INJECT_LIMIT
 -- After deciding the first press was only a turn, leave the D-pad fully
 -- released for a couple of frames before re-pressing. This reduces the risk
 -- that the engine treats the re-press as a continuation of the old hold and
@@ -146,12 +148,20 @@ local function is_any_direction_pressed(joy)
     return false
 end
 
+local function copy_non_direction_buttons(joy)
+    local buttons = {}
+    if joy.A then buttons.A = true end
+    if joy.B then buttons.B = true end
+    if joy.start then buttons.start = true end
+    if joy.select then buttons.select = true end
+    return buttons
+end
+
 local function clear_route()
     route_steps = nil
     route_index = 1
     route_settle_frames = 0
     route_settle_default = 0
-    route_autonomous = false
 end
 
 local function start_post_step_release()
@@ -288,7 +298,7 @@ function M.update(can_walk)
     end
 
     if post_step_release_frames > 0 and not is_any_direction_pressed(joy) then
-        joypad.set(1, {})
+        joypad.set(1, copy_non_direction_buttons(joy))
         post_step_release_frames = post_step_release_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -297,6 +307,9 @@ function M.update(can_walk)
     end
 
     if pending_repress and pending_repress.release_frames and pending_repress.release_frames > 0 then
+        -- Make the repress gap a real neutral release on live hardware. A
+        -- passive wait was not enough to clear the held direction reliably.
+        joypad.set(1, copy_non_direction_buttons(joy))
         pending_repress.release_frames = pending_repress.release_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -328,7 +341,7 @@ function M.update(can_walk)
             end
         end
 
-        if different_dir and not route_autonomous then
+        if different_dir then
             debug_tools.debug("auto_step cancel: different live direction pressed")
             if DEBUG then tolk.output("auto-step cancelled, different direction") end
             reset_active_step()
@@ -426,7 +439,7 @@ function M.update(can_walk)
         return
     end
 
-    if route_steps and not route_autonomous and is_any_direction_pressed(joy) then
+    if route_steps and is_any_direction_pressed(joy) then
         debug_tools.debug("auto_step clear_route: live direction input interrupted queued route")
         clear_route()
     end
@@ -528,7 +541,6 @@ function M.start_route(steps, opts)
     route_index = 1
     route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
     route_settle_frames = 0
-    route_autonomous = opts.autonomous or false
     return true
 end
 

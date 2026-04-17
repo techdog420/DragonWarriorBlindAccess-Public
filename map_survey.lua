@@ -1587,7 +1587,6 @@ local function start_attempt(queue_entry)
         speak = false,
         store_debug_path = false,
         survey_safe = true,
-        autonomous = true,
         prequeue_hook = function(candidate_plan)
             local defer, info = should_defer_continuation_trap(
                 queue_entry,

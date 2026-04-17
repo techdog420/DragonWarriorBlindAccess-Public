@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/session_start_project_context.py\"",
+            "command": "python -B \"D:/modding/DragonWarrior1/.codex/hooks/session_start_project_context.py\"",
             "timeout": 10,
             "statusMessage": "Loading Dragon Warrior project context"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/pretool_dw_command_guard.py\"",
+            "command": "python -B \"D:/modding/DragonWarrior1/.codex/hooks/pretool_dw_command_guard.py\"",
             "timeout": 10,
             "statusMessage": "Checking Dragon Warrior command batching"
           }
