@@ -10,6 +10,16 @@ This project is modeled after the **pokemon-access** scripts (`D:\games\pokemon-
 
 The developer is using this project to learn Lua. Provide well-commented code with explanations of Lua-specific patterns when writing new code.
 
+## Cross-Agent Handoff Contract
+
+When sharing work with Codex:
+
+- Read `session_handoff.md` first for the active handoff set and current state
+- Keep concise current truth in `session_handoff.md`
+- Put deeper evidence, experiment logs, and detailed investigation notes in dated `HANDOFF_YYYY-MM-DD_*.md` files
+- Refresh the active handoff set after substantial work instead of relying on `.claude/agent-memory` alone
+- Treat `.claude/agent-memory/` as a supplement to repo handoff files, not the source of truth for project continuity
+
 ## Key Paths
 
 - **This project**: `D:\modding\dragonwarrior1\`

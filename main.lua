@@ -191,10 +191,77 @@ local function log_move_report(from_x, from_y, dir)
         tostring(report.blocked_approach), tostring(report.approach_blocked),
         tostring(report.effective_passable))
     debug_tools.info(msg)
-    return msg
+    return msg, report
 end
 
 local edge_probe_state = nil
+
+local function get_edge_probe_source_flags(map_id, x, y, approach)
+    local key = x .. "," .. y
+    local static_entry = map_reader.get_directional_blocks(map_id)[key]
+    local runtime_entry = route_mgr.is_cell_runtime_blocked(map_id, x, y)
+    local static_directional_blocked = has_directional_block(static_entry)
+    local runtime_directional_blocked = has_directional_block(runtime_entry)
+    local static_approach_blocked = false
+    local runtime_approach_blocked = false
+
+    if approach and type(static_entry) == "table" then
+        static_approach_blocked = (static_entry[approach] == true)
+    end
+    if approach and type(runtime_entry) == "table" then
+        runtime_approach_blocked = (runtime_entry[approach] == true)
+    end
+
+    return {
+        static_directional_blocked = static_directional_blocked,
+        static_approach_blocked = static_approach_blocked,
+        runtime_directional_blocked = runtime_directional_blocked,
+        runtime_approach_blocked = runtime_approach_blocked,
+    }
+end
+
+local function log_edge_probe_mismatch(probe, final_report, status)
+    if not probe or not probe.start_report then
+        return
+    end
+
+    local start_report = probe.start_report
+    local kind = nil
+
+    if status == "moved" and (start_report.approach_blocked or start_report.effective_passable == false) then
+        kind = "moved_through_modeled_block"
+    elseif status == "blocked"
+        and start_report.permanent_blocked ~= true
+        and start_report.npc_blocked ~= true
+        and start_report.approach_blocked ~= true
+        and start_report.effective_passable == true then
+        kind = "blocked_despite_open_preview"
+    end
+
+    if not kind then
+        return
+    end
+
+    local approach = MOVE_DIR_TO_APPROACH[probe.dir]
+    local source_flags = get_edge_probe_source_flags(probe.map_id, probe.dest_x, probe.dest_y, approach)
+    debug_tools.info(string.format(
+        "EDGE_PROBE_MODEL_MISMATCH map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) kind=%s start_approach_blocked=%s start_effective_passable=%s final_approach_blocked=%s final_effective_passable=%s static_approach_blocked=%s runtime_approach_blocked=%s static_directional_blocked=%s runtime_directional_blocked=%s",
+        probe.map_id,
+        probe.from_x,
+        probe.from_y,
+        probe.dir,
+        probe.dest_x,
+        probe.dest_y,
+        kind,
+        tostring(start_report.approach_blocked),
+        tostring(start_report.effective_passable),
+        tostring(final_report.approach_blocked),
+        tostring(final_report.effective_passable),
+        tostring(source_flags.static_approach_blocked),
+        tostring(source_flags.runtime_approach_blocked),
+        tostring(source_flags.static_directional_blocked),
+        tostring(source_flags.runtime_directional_blocked)))
+end
 
 local function edge_probe_timeout_frames()
     local base = tonumber(config.get("auto_step_timeout")) or 45
@@ -235,6 +302,7 @@ local function finish_edge_probe(status, reason)
         tostring(report.effective_passable),
         tostring(reason or ""))
     debug_tools.info(msg)
+    log_edge_probe_mismatch(probe, report, status)
     tolk.output_interrupt(string.format(
         "Edge probe %s from %d,%d to %d,%d.",
         tostring(status), probe.from_x, probe.from_y, probe.dest_x, probe.dest_y))
@@ -2470,7 +2538,7 @@ debug_tools.register_command("probe_edge", function(arg)
         return
     end
     objects.update_npcs()
-    local msg = log_move_report(from_x, from_y, dir)
+    local msg, start_report = log_move_report(from_x, from_y, dir)
     local delta = DIR_TO_DELTA[dir]
     edge_probe_state = {
         map_id = snapshot.map_id,
@@ -2479,6 +2547,7 @@ debug_tools.register_command("probe_edge", function(arg)
         dir = dir,
         dest_x = from_x + delta.dx,
         dest_y = from_y + delta.dy,
+        start_report = start_report,
         frames = 0,
     }
     debug_tools.info(string.format(

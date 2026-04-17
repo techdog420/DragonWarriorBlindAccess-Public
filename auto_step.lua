@@ -84,6 +84,7 @@ local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
 local route_settle_frames = 0
 local route_settle_default = 0
+local route_autonomous = false  -- When true, live direction input does NOT cancel the queued route
 local post_step_release_frames = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
@@ -107,7 +108,13 @@ local INJECT_LIMIT = 12
 -- If the player has not moved shortly after the initial inject window,
 -- assume the game consumed that press as a turn-in-place. DW1 often
 -- requires a fresh press after turning before movement begins.
-local TURN_REPRESS_DELAY = 18
+--
+-- IMPORTANT: This must be > (max turn frames + step frames) so we don't
+-- fire the repress while a step is already in progress.
+-- DW1: turn ~8 frames + step ~16 frames = ~24 frames max. Use 28 for margin.
+-- If we fire at 18 while mid-step, the engine chains a second step on
+-- completion — causing the player to overshoot by one tile.
+local TURN_REPRESS_DELAY = 28
 local TURN_REPRESS_LIMIT = 1
 local TURN_REPRESS_INJECT_LIMIT = 4
 -- After deciding the first press was only a turn, leave the D-pad fully
@@ -144,6 +151,7 @@ local function clear_route()
     route_index = 1
     route_settle_frames = 0
     route_settle_default = 0
+    route_autonomous = false
 end
 
 local function start_post_step_release()
@@ -320,7 +328,7 @@ function M.update(can_walk)
             end
         end
 
-        if different_dir then
+        if different_dir and not route_autonomous then
             debug_tools.debug("auto_step cancel: different live direction pressed")
             if DEBUG then tolk.output("auto-step cancelled, different direction") end
             reset_active_step()
@@ -418,7 +426,7 @@ function M.update(can_walk)
         return
     end
 
-    if route_steps and is_any_direction_pressed(joy) then
+    if route_steps and not route_autonomous and is_any_direction_pressed(joy) then
         debug_tools.debug("auto_step clear_route: live direction input interrupted queued route")
         clear_route()
     end
@@ -520,6 +528,7 @@ function M.start_route(steps, opts)
     route_index = 1
     route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
     route_settle_frames = 0
+    route_autonomous = opts.autonomous or false
     return true
 end
 

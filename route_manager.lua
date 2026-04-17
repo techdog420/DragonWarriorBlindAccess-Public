@@ -582,7 +582,7 @@ local function queue_path_steps(path, opts)
         settle_frames = active_route_settle_frames or 0
     end
     settle_frames = math.max(0, tonumber(settle_frames) or 0)
-    if auto_step.start_route(steps, {settle_frames = settle_frames}) then
+    if auto_step.start_route(steps, {settle_frames = settle_frames, autonomous = opts.autonomous}) then
         active_route_settle_frames = settle_frames
         reroute_failures = 0
         return true
@@ -693,7 +693,7 @@ function M.autowalk_to_object(obj, opts)
     if settle_frames == nil then
         settle_frames = 0
     end
-    if not queue_path_steps(plan.path, {settle_frames = settle_frames}) then
+    if not queue_path_steps(plan.path, {settle_frames = settle_frames, autonomous = opts.autonomous}) then
         active_route_settle_frames = 0
         release_npc_freeze("autowalk queue failure")
         debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)

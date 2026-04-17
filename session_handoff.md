@@ -1,53 +1,67 @@
-# Session Handoff — 2026-04-12
+# Session Handoff — 2026-04-17
 
 ## Active Handoff Set
 
 Start here:
-- `HANDOFF_2026-04-12_survey_park_npcs_mode.md`
+- `HANDOFF_2026-04-17_survey_abort_staircase_fix.md`
 
-Also keep handy:
-- `HANDOFF_2026-04-12_route_cleanup_and_west_bisection.md`
-- `HANDOFF_2026-04-12_map04_command_timing_and_bisection.md`
-
-Historical notes older than the current active set were moved to:
+Historical notes:
 - `handoff_archive/`
 
 ## Current State
 
-- survey-only parked-NPC mode is implemented and live:
-  - `survey_map:park_npcs`
-  - `survey_objects:park_npcs`
-  - `survey_objects:retry_failed,park_npcs`
-  - `survey_target:NAME,park_npcs`
-  - `report_survey_start:park_npcs`
-- parked mode currently parks all active non-target NPC slots rather than only
-  decoded movers; this is intentional until the movement-behavior byte is
-  understood confidently
-- `survey_target` now resolves by:
-  - exact id
-  - numeric index
-  - case-insensitive exact display name
-  - unique case-insensitive partial id/name
-- ambiguous partial matches now fail explicitly instead of guessing
+### Change made this session
 
-## Recent Verified Results
+**Survey abort on low exit count** (`map_survey.lua`):
 
-- `survey_target:Guard 3,park_npcs` resolves live to `target_id=npc_6`
-- `survey_target:Guard,park_npcs` fails cleanly with an ambiguous-target error
-- parked-NPC restore was verified on both manual stop and normal completion
-- stale permanent blocker `20,17` on map `0x04` was removed earlier in the day
-- current west-wall picture still keeps `19,16` blocked and treats `20,17` as
-  open
+When the tile model sees only 1–2 open exits from the survey start position, the
+survey now aborts immediately (before `survey_state` initialization, before NPC
+parking) instead of running and getting trapped. Speech says:
+
+> "Survey aborted: start (X,Y) has only N open exits. Move to a more open position
+> and try again."
+
+Log tag: `SURVEY_START_ABORT reason=low_exit_count`
+
+Root cause that motivated the fix: user teleported to staircase tile (7,7) on map
+0x04 and launched a survey. Engine blocks movement off staircase tiles (they are
+one-way entry triggers). Both tile-model exits from (7,7) were engine-blocked within
+2 attempts, trapping the player for 28 failed attempts.
+
+### Uncommitted changes in working tree
+
+All of these were tested in previous sessions (2026-04-13/14) plus today's fix.
+Ready to commit:
+
+```
+CLAUDE.md           — project notes updates
+auto_step.lua       — overshoot/timing fixes
+main.lua            — grace period, title screen, dialogue filtering
+map_reader.lua      — row-16 directional blocks + passthrough cells
+map_survey.lua      — park_npcs cache fix + today's abort fix
+route_manager.lua   — minor adjustment
+test_map_reader.lua — new tests for row-16 model
+```
+
+### Open issues
+
+1. **(12,16) east approach — MONITOR ONLY**: keep `MAP_DIRECTIONAL_BLOCKS[0x04]["12,16"].east = true`. EDGE_PROBE_MODEL_MISMATCH fired once (moved through block) but 5/6 probes blocked. Do not remove.
+
+2. **stair_1_1 route still long**: A* takes 63 steps from ~(10,14) to (1,1). May have improved after row-16 fixes — untested.
+
+3. **Gated west region on map 0x04**: chest_0/1/2/3 and Guard 4 at (1-3, 13-15) consistently `gated_or_isolated_region`. Unclear if true game gating (treasure room key) or model gap.
 
 ## Best Resume Points
 
-For survey work:
-- compare `survey_map` versus `survey_map:park_npcs`
-- if parked mode surfaces a new blocker candidate, repro it directly before
-  promoting map data
+**First action next session:**
+1. Commit the working tree (see handoff doc for suggested message)
+2. Reload Lua script in FCEUX
+3. Teleport to an open floor tile on map 0x04 (e.g., `teleport_to:10,14`)
+4. Run `echo report_viability > dw_commands.txt` — confirm open_exit_count >= 3
+5. Run `echo survey_objects:park_npcs > dw_commands.txt`
+6. Watch for Guard 1 (npc_1) and stair_1_1 route lengths — check if row-16 fixes helped
 
-For Tantegel Castle `0x04` boundary follow-up:
-- use the split-command teleport/probe pattern from
-  `HANDOFF_2026-04-12_map04_command_timing_and_bisection.md`
-- compare against the older chamber notes in
-  `handoff_archive/HANDOFF_2026-03-24_castle_chamber_probe.md`
+**Do not:**
+- Survey from the staircase tile (7,7) — now aborts cleanly, but pointless
+- Remove the (12,16) east=true block
+- Add directional blocks to (8,7) or (7,8) — engine blocks from staircase only, not model bugs

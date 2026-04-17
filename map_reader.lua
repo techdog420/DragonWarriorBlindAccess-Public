@@ -285,14 +285,26 @@ local WALKABILITY_TABLES = {
 -- override non-walkable tile types.
 local MAP_PASSTHROUGH_CELLS = {
     -- Map 0x04: Tantegel Castle main hall
-    -- Live probing on 2026-04-11 confirmed a decoder gap in the y=16 corridor:
-    -- the engine allows standing on and traversing (13,16) and (14,16), but
-    -- the ROM grid decodes both cells as tile type 11 ("wall"). Keep this
-    -- narrowly scoped to the two directly confirmed cells until more live
-    -- evidence suggests additional passthroughs in this band.
+    -- Live probing on 2026-04-11 and 2026-04-13 confirmed a decoder gap in the
+    -- y=16 corridor: the engine allows standing on and traversing these cells,
+    -- but the ROM grid decodes them as tile type 11 ("wall"). Keep this
+    -- narrowly scoped to the directly confirmed cells until more live evidence
+    -- suggests additional passthroughs in this band.
     [0x04] = {
+        -- y=16 decoder gap corridor: confirmed engine-walkable despite tile=11 in ROM.
+        -- Confirmed 2026-04-11 and 2026-04-13 via live probe.
         ["13,16"] = true,
         ["14,16"] = true,
+        ["15,16"] = true,
+        ["16,16"] = true,
+        ["17,16"] = true,
+        -- y=4 north corridor decoder gap: (14,4) and (15,4) have tile=0 in ROM but
+        -- are engine-walkable. These cells form the connection between the center
+        -- antechamber area (x=12-13) and the east wing (x=16+).
+        -- Confirmed 2026-04-16 via live probe: probe_edge:LEFT from (16,4) and (15,4)
+        -- both returned status=moved with EDGE_PROBE_MODEL_MISMATCH.
+        ["14,4"] = true,
+        ["15,4"] = true,
     },
 
     -- Map 0x05: Tantegel Castle Throne Room
@@ -396,7 +408,12 @@ local MAP_BLOCKED_CELLS = {
         ["1,6"]  = true, ["2,6"]  = true,
         ["1,7"]  = true, ["2,7"]  = true,
         ["1,8"]  = true, ["2,8"]  = true,
-        ["3,9"]  = true, ["3,10"] = true,
+        -- (3,9) and (3,10) removed 2026-04-16: confirmed false positives via live probe.
+        -- probe_edge:DOWN from (3,9) returned status=moved final=(3,10) with
+        -- EDGE_PROBE_MODEL_MISMATCH kind=moved_through_modeled_block. Both cells
+        -- have tile=6 and are engine-walkable. Removing them restores connectivity
+        -- from (3,8) south through the west-wing corridor to Guard 4 at (2,14)
+        -- and chests at (2,14)/(3,15).
         -- East wall of antechamber (x=13, y=7): engine blocks eastward exit
         -- (13,8) and (13,9) removed 2026-04-08: floor tiles (type 4), false positives confirmed by tester
         ["13,7"] = true,
@@ -411,8 +428,9 @@ local MAP_BLOCKED_CELLS = {
         --   y=12: x=15 confirmed blocked (tile=8, movement east from x=14 fails)
         --         x=19-20 are void tiles (0-) so naturally non-walkable
         --   y=13: x=15 confirmed blocked (tile=4, movement east from x=14 fails)
-        -- x=15 wall confirmed y=10 through y=16; y=17 is the first passable row.
-        -- A* routes south to y=17 then east to x=21+ then north to bypass.
+        -- x=15 wall confirmed y=10 through y=15.
+        -- Live repros on 2026-04-13 show (15,16) is part of the false-wall
+        -- corridor band and must stay open.
         ["15,10"] = true, ["16,10"] = true, ["17,10"] = true,
         ["18,10"] = true, ["19,10"] = true,
         ["15,11"] = true, ["16,11"] = true, ["17,11"] = true,
@@ -421,7 +439,6 @@ local MAP_BLOCKED_CELLS = {
         ["15,13"] = true,  -- engine blocks eastward entry from (14,13); confirmed in-game
         ["15,14"] = true,  -- engine wall at x=14→15 extends through y=14; confirmed in-game
         ["15,15"] = true,  -- engine wall continues through y=15; confirmed in-game
-        ["15,16"] = true,  -- engine wall continues through y=16; y=17 is first passable row
 
         -- Sweep data (2026-03-21, freeze_npcs + death-pause, NPC-exclusion).
         -- These 15 cells are confirmed engine-blocked from ALL walkable-adjacent
@@ -449,7 +466,27 @@ local MAP_BLOCKED_CELLS = {
         -- though inspect_move/inspect_tile report tile=6, walkable=true,
         -- npc_blocked=false, runtime_blocked=false.
         ["13,21"] = true, ["13,22"] = true, ["13,23"] = true, ["15,19"] = true, ["16,21"] = true, ["17,21"] = true, ["18,21"] = true, ["21,21"] = true,
-        ["16,16"] = true, ["17,16"] = true, ["18,16"] = true, ["19,16"] = true, ["19,21"] = true,
+        -- Row 16 upper-chamber wall retested 2026-04-13:
+        -- (19,16) is enterable from north, south, east, and west, so the old
+        -- full-cell blocker was stale. (18,16) and (17,16) are enterable from
+        -- north/east but still blocked from the south. (16,16) is enterable
+        -- from north and south but blocked from the east. Those cells move to
+        -- directional/passthrough data instead of full blockers.
+        ["19,21"] = true,
+        -- (13,13): one-way-entry trap. Tile type=4 (floor), accepts entry from west (x=12
+        -- going east), but all 4 exits blocked (engine refuses south/west/north/east).
+        -- Confirmed by survey run 5 (2026-04-15): blocked_events=4, all directions 3-for-3 timeout.
+        -- Pathfinder chose it as adj to Guard 3 (14,13) with 3-step path; (14,12) is the
+        -- safe 5-step alternative. Blocking (13,13) makes A* pick (14,12) instead.
+        ["13,13"] = true,
+        -- (28,11): one-way-entry trap. Tile type=8 (walkable in ROM), but all 4 engine exits
+        -- blocked: north→(28,10) refused, south→(28,12) refused, east→(29,11) refused,
+        -- west→(27,11) is void tile. Confirmed 2026-04-16 via survey runtime blocks during
+        -- Guard 1 path (approach from south via (28,12)→north is the only way in).
+        -- A* currently routes through here on the only model path to Guard 1's cluster (y=4,
+        -- x=9-15). Blocking it forces A* to route one step east via (29,12)→(29,11)→(29,9)
+        -- instead, which the engine has not blocked.
+        ["28,11"] = true,
         -- x=12 column engine barriers at y=17-18 confirmed 2026-04-09 via survey_map:
         -- survey consistently suspects these as blocking the northward path from (13,19).
         -- A* routes through (12,19)→(12,18)→(12,17) to reach north hall; engine refuses.
@@ -574,6 +611,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- x=4 east wall (y=9-16): west wing interior east boundary.
         -- y=9 and y=15-16 previously confirmed; y=10-14 confirmed 2026-04-09 via survey_map
         -- (count=5-6 high confidence each, east=true = can't enter from east/move west into cell).
+        -- (4,7) east wall: confirmed 2026-04-13 via survey; approach=east blocked
+        -- (auto_step:left from (5,7)) appeared 3+ times consistently across both runs.
+        -- Guard 1 and Person 2 routes both failed due to this block.
+        ["4,7"]  = {east = true},
         ["4,9"]  = {east = true, north = true},  -- antechamber south door region; confirmed
         ["4,10"] = {east = true},                -- survey run4 count=5 high
         ["4,11"] = {east = true},                -- survey run4 count=5 high
@@ -596,7 +637,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         --
         -- Antechamber south area (y=7-12):
         ["7,9"]  = {north = true, south = true},  -- count=15
-        ["8,9"]  = {east = true, south = true},   -- count=13, retry_successes=1 (strong)
+        ["8,9"]  = {east = true, south = true, north = true},  -- count=13, retry_successes=1; north confirmed 2026-04-15 runtime block (auto_step:down from (8,8))
         ["6,11"] = {east = true, west = true},     -- count=6 east; run6 west (oscillation fix)
         ["6,12"] = {east = true, west = true},      -- east: count=1 medium; west: confirmed 2026-04-10 survey pass 8
         -- West corridor band (y=16-18, x=9-12):
@@ -608,6 +649,30 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- also failed during a long Guard 2 survey route, so this cell blocks
         -- east approach in addition to the earlier north-side evidence.
         ["12,16"] = {north = true, east = true},
+        -- south approach confirmed 2026-04-14 via direct probe (from 15,17 UP: blocked).
+        -- west=true removed 2026-04-16: live probe_edge:RIGHT from (14,16) returned
+        -- status=moved final=(15,16) with runtime_directional_blocked=false —
+        -- engine does not enforce a west directional block here.
+        ["15,16"] = {south = true},
+        -- (19,16): all 3 reachable approaches blocked 2026-04-14 via direct probe.
+        -- Only north entry (from 19,15 DOWN) is free. West, east, and south all blocked.
+        -- Root cause of most row-16 corridor state_issue failures in the survey.
+        ["19,16"] = {west = true, east = true, south = true},
+        -- (16,16) south approach added: survey found runtime block when moving
+        -- up from (16,17) into (16,16) during Old Man 1 route (2026-04-13).
+        -- east=true was already confirmed by direct probe (2026-04-13).
+        ["16,16"] = {east = true, south = true},
+        ["17,16"] = {south = true},
+        ["18,16"] = {south = true},
+        -- (20,16) south: blocks north step from (20,17). Confirmed by 10 independent survey
+        -- failures in run 4 (2026-04-15). Previously removed as "false positive" after run 2,
+        -- but run 4 with the cache-coherence bug fixed still fails consistently. Real block.
+        ["20,16"] = {south = true},
+        -- (21,17) west: blocks east step from (20,17). Same run-4 evidence (10 failures).
+        -- Manual test on session S115 verified (20,17)↔(21,17) but only tested approach
+        -- from east (going west). West approach (going east from (20,17)) is engine-blocked.
+        -- With (21,18) and (21,19) already full-blocked, east wing is entered via y≤16 only.
+        ["21,17"] = {west = true},
         ["9,18"]  = {west = true},                 -- count=15
         -- South-west corridor (y=19-29, x=1-8):
         -- Complex maze of directional barriers in the castle's south-west quadrant.
@@ -649,14 +714,23 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (12,20)->(12,19) succeeded twice live, so the old south approach
         -- blocker was stale. The east approach is still left in place pending
         -- a direct repro because earlier survey runs repeatedly failed there.
+        -- south approach re-confirmed BLOCKED 2026-04-14 via direct probe (from 12,20 UP).
         -- (13,20)->(14,20) failed twice live with no reroute contamination, so
         -- promote that seam to a directional west-side engine block.
         -- (12,24)->(13,24) blocked twice live on 2026-04-12 after runtime
         -- clears, so keep this south-pocket seam closed from the west side.
-        ["12,19"] = {east = true},
+        ["12,19"] = {east = true, south = true},
         ["13,24"] = {west = true},
-        ["14,20"] = {west = true},
-        ["12,28"] = {west = true},                         -- run1 count=1 medium
+        -- (14,20): north is a wall tile (14,19 in MAP_BLOCKED_CELLS); west/south/east all engine-blocked.
+        -- west: (13,20)→(14,20) confirmed 2026-04-14 runtime; south: probe from (14,21) north BLOCKED 2026-04-15;
+        -- east: probe from (15,20) west BLOCKED 2026-04-15. Dead-end alcove; unreachable from all live sides.
+        ["14,20"] = {west = true, south = true, east = true},
+        -- (15,21): east is a wall tile (16,21 in MAP_BLOCKED_CELLS); north+south engine-blocked; west clear.
+        -- north: probe from (15,20) south BLOCKED 2026-04-15; south: probe from (15,22) north BLOCKED 2026-04-15.
+        -- One-way entry from west only (14,21 → 15,21 passable).
+        ["15,21"] = {north = true, south = true},
+        -- (12,28): west: run1 count=1 medium; north: auto_step:down from (12,27) 3/3 retry fail + probe confirm 2026-04-15.
+        ["12,28"] = {west = true, north = true},
     },
 
     -- Map 0x05: Tantegel Castle Throne Room

@@ -155,6 +155,9 @@ function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
 
     local left = env.map_reader.get_walkability_details(0x04, 13, 16)
     local right = env.map_reader.get_walkability_details(0x04, 14, 16)
+    local mid_0 = env.map_reader.get_walkability_details(0x04, 15, 16)
+    local mid_a = env.map_reader.get_walkability_details(0x04, 16, 16)
+    local mid_b = env.map_reader.get_walkability_details(0x04, 17, 16)
 
     assert_equal(left.base_walkable, true, "(13,16) should be treated as passable via passthrough override")
     assert_equal(left.effective_walkable, true, "(13,16) should be pathable after the decoder fix")
@@ -163,6 +166,18 @@ function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
     assert_equal(right.base_walkable, true, "(14,16) should be treated as passable via passthrough override")
     assert_equal(right.effective_walkable, true, "(14,16) should be pathable after the decoder fix")
     assert_equal(right.reason, "passthrough", "(14,16) should record passthrough as its walkability source")
+
+    assert_equal(mid_0.base_walkable, true, "(15,16) should be treated as passable via passthrough override")
+    assert_equal(mid_0.effective_walkable, true, "(15,16) should be pathable after the decoder fix")
+    assert_equal(mid_0.reason, "passthrough", "(15,16) should record passthrough as its walkability source")
+
+    assert_equal(mid_a.base_walkable, true, "(16,16) should be treated as passable via passthrough override")
+    assert_equal(mid_a.effective_walkable, true, "(16,16) should be pathable after the decoder fix")
+    assert_equal(mid_a.reason, "passthrough", "(16,16) should record passthrough as its walkability source")
+
+    assert_equal(mid_b.base_walkable, true, "(17,16) should be treated as passable via passthrough override")
+    assert_equal(mid_b.effective_walkable, true, "(17,16) should be pathable after the decoder fix")
+    assert_equal(mid_b.reason, "passthrough", "(17,16) should record passthrough as its walkability source")
 
     env.restore()
 end
@@ -208,13 +223,14 @@ function tests.tantegel_castle_south_pocket_false_blocks_are_open()
     assert_equal(dirs["14,20"].west, true, "(14,20) should block west approach after repeated live repros")
     assert_equal(dirs["12,16"].east, true, "(12,16) should block east approach after repeated live repros from (13,16)")
     assert_equal(dirs["12,16"].north, true, "(12,16) should keep its north-side blocker")
+    assert_equal(dirs["4,7"].east, true, "(4,7) should block east approach: 3+ consistent survey hits in 2026-04-13 runs")
     assert_equal(dirs["6,24"].west, nil, "(6,24) should stay open from west after repeated live probes")
     assert_equal(dirs["6,24"].north, true, "(6,24) should keep its north-side blocker pending a direct repro")
 
     env.restore()
 end
 
-function tests.tantegel_castle_upper_chamber_entry_20_17_is_open()
+function tests.tantegel_castle_upper_chamber_row_16_updates_are_modeled()
     local env = make_env()
 
     assert_equal(
@@ -224,8 +240,28 @@ function tests.tantegel_castle_upper_chamber_entry_20_17_is_open()
     )
     assert_equal(
         env.map_reader.is_permanently_blocked_override(0x04, 19, 16),
-        true,
-        "(19,16) should remain blocked so the adjacent confirmed wall strip stays modeled"
+        false,
+        "(19,16) should stay open after repeated live probes from north, south, east, and west"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 18, 16),
+        false,
+        "(18,16) should no longer remain a full-cell blocker after repeated live entries"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 17, 16),
+        false,
+        "(17,16) should no longer remain a full-cell blocker after repeated live entries from north and east"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 16, 16),
+        false,
+        "(16,16) should no longer remain a full-cell blocker after repeated live entries from north and south"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 15, 16),
+        false,
+        "(15,16) should no longer remain a full-cell blocker after repeated live entries from east and south"
     )
 
     local chamber_entry = env.map_reader.get_walkability_details(0x04, 20, 17)
@@ -234,6 +270,25 @@ function tests.tantegel_castle_upper_chamber_entry_20_17_is_open()
         false,
         "(20,17) should no longer be marked permanently blocked"
     )
+
+    local west_entry = env.map_reader.get_walkability_details(0x04, 19, 16)
+    assert_equal(
+        west_entry.permanent_blocked,
+        false,
+        "(19,16) should no longer be marked permanently blocked"
+    )
+
+    local dirs = env.map_reader.get_directional_blocks(0x04)
+    assert_equal(dirs["16,16"].east, true, "(16,16) should block the east approach after the 2026-04-13 repro")
+    assert_equal(dirs["16,16"].north, nil, "(16,16) should stay open from north after the direct down-step repro")
+    assert_equal(dirs["16,16"].south, true, "(16,16) should block the south approach: survey runtime block moving up from (16,17) on 2026-04-13")
+    assert_equal(dirs["15,16"].west, true, "(15,16) should block the west approach: survey runtime block moving right from (14,16) on 2026-04-13")
+    assert_equal(dirs["17,16"].south, true, "(17,16) should block the south approach after the 2026-04-13 repro")
+    assert_equal(dirs["17,16"].north, nil, "(17,16) should stay open from north after the direct down-step repro")
+    assert_equal(dirs["17,16"].east, nil, "(17,16) should stay open from east after the direct west-step repro")
+    assert_equal(dirs["18,16"].south, true, "(18,16) should block the south approach after the 2026-04-13 repro")
+    assert_equal(dirs["18,16"].north, nil, "(18,16) should stay open from north after the direct down-step repro")
+    assert_equal(dirs["19,16"], nil, "(19,16) should not keep any directional block after four-way live entry repros")
 
     env.restore()
 end

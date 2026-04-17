@@ -1,0 +1,7 @@
+# Keep LF line endings in repo and working tree on all platforms
+* text=auto eol=lf
+
+# Treat binary files as binary (no line-ending conversion)
+*.dll binary
+*.exe binary
+*.png binary

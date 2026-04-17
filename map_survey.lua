@@ -1571,6 +1571,7 @@ local function start_attempt(queue_entry)
         return
     end
     update_survey_npc_parking_for_target(target)
+    objects.update_npcs()  -- sync cache: reflects new exempt slot + parked positions
     local map_id, start_x, start_y = nav.get_position()
     local stale_runtime_blocks = route_mgr.count_runtime_blocks(map_id) or 0
     if stale_runtime_blocks > 0 then
@@ -1586,6 +1587,7 @@ local function start_attempt(queue_entry)
         speak = false,
         store_debug_path = false,
         survey_safe = true,
+        autonomous = true,
         prequeue_hook = function(candidate_plan)
             local defer, info = should_defer_continuation_trap(
                 queue_entry,
@@ -1726,6 +1728,28 @@ local function start_run(targets, opts)
             start_info.reachable_area,
             start_info.open_exit_count)
     end
+    if start_info.open_exit_count <= 2 then
+        debug_tools.info(string.format(
+            "SURVEY_START_ABORT run=%d map=0x%02X reason=low_exit_count start=(%d,%d) targets=%d open_exit_count=%d open_exits=%s blocked_exits=%s",
+            run_counter,
+            start_info.map_id,
+            start_info.start_x,
+            start_info.start_y,
+            start_info.target_count,
+            start_info.open_exit_count,
+            start_info.open_exits_text,
+            start_info.blocked_exits_text))
+        tolk.output_interrupt(string.format(
+            "Survey aborted: start (%d,%d) has only %d open exits. Move to a more open position and try again.",
+            start_info.start_x,
+            start_info.start_y,
+            start_info.open_exit_count))
+        return false, string.format(
+            "Survey start (%d,%d) has only %d open exits; move to a more open position",
+            start_info.start_x,
+            start_info.start_y,
+            start_info.open_exit_count)
+    end
     survey_state = {
         run_id = run_counter,
         map_id = map_id,
@@ -1761,6 +1785,7 @@ local function start_run(targets, opts)
             survey_state.run_id,
             survey_state.map_id,
             apply_survey_npc_parking()))
+        objects.update_npcs()  -- sync cache: parked NPCs at (31,31) filtered out
     end
     debug_tools.info(string.format(
         "SURVEY_START run=%d map=0x%02X start=(%d,%d) targets=%d mode=%s npc_mode=%s runtime_blocks=%d",
@@ -1781,16 +1806,6 @@ local function start_run(targets, opts)
         start_info.open_exit_count,
         start_info.open_exits_text,
         start_info.blocked_exits_text))
-    if start_info.open_exit_count <= 2 then
-        debug_tools.info(string.format(
-            "SURVEY_START_WARNING run=%d map=0x%02X reason=low_exit_count start=(%d,%d) open_exit_count=%d open_exits=%s",
-            survey_state.run_id,
-            survey_state.map_id,
-            survey_state.start_x,
-            survey_state.start_y,
-            start_info.open_exit_count,
-            start_info.open_exits_text))
-    end
     tolk.output_interrupt(string.format(
         "Survey started on map %02X. %d target%s queued.%s",
         map_id,
