@@ -1,6 +1,9 @@
 -- test_speech.lua
--- Minimal test to verify the speech bridge works.
+-- Minimal test to verify the tested speech path works.
 -- Load this in FCEUX: File > Load Lua Script > select this file.
+--
+-- In the current tested qfceux.exe 2.6.6 environment this usually means the
+-- Python bridge fallback, not the direct FFI path.
 --
 -- If everything works, you should hear "Speech bridge test successful"
 -- through your screen reader. The FCEUX output pane will also show

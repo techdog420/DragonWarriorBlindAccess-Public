@@ -249,9 +249,9 @@ function tests.turn_repress_waits_for_release_gap_before_rearming()
     env.restore()
 end
 
-function tests.live_direction_input_interrupts_active_route_step_even_after_autonomous_request()
+function tests.live_direction_input_cancels_active_queued_route_step()
     local env = make_env()
-    env.auto_step.start_route({"right"}, {autonomous = true})
+    env.auto_step.start_route({"right"})
 
     env.update(true)
     env.set_joy({left = true})
@@ -273,13 +273,19 @@ function tests.live_direction_input_interrupts_active_route_step_even_after_auto
 
     assert_truthy(
         not saw_recontinued_right,
-        "live manual direction input should cancel an active queued step even if the caller requested autonomous routing"
+        "live manual direction input should cancel an active queued route step"
     )
 
     env.restore()
 end
 
 function tests.turn_repress_cancels_if_step_completes_during_release_gap()
+    -- Two-phase pattern: probe_env runs first to discover the timing constants
+    -- (specifically when the re-press sequence starts) without relying on
+    -- hardcoded frame numbers. probe_env.restore() clears package.loaded so
+    -- the second make_env() gets a fresh module with independent state.
+    -- If restore() is ever skipped, env will share stale module state with
+    -- probe_env and repress.start will refer to the wrong instance.
     local probe_env = make_env()
     probe_env.auto_step.inject_step("right")
 

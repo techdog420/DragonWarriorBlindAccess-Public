@@ -16,6 +16,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parent
@@ -146,14 +147,24 @@ def check_lua_syntax() -> tuple[bool, str]:
     if not lua:
         return False, "luac not found on PATH and no lua/luajit runtime is available"
 
-    # LuaJIT can syntax-check by compiling bytecode to the null device.
+    # LuaJIT can syntax-check by compiling bytecode to a temp file.
+    # os.devnull is not reliable here: on Linux LuaJIT treats "nul" as a
+    # literal filename and writes a file in cwd instead of discarding output.
     if Path(lua).name.lower().startswith("luajit"):
         outputs: list[str] = []
-        for lua_file in LUA_FILES:
-            ok, detail = run_command("luajit syntax", [lua, "-b", lua_file, os.devnull])
-            if not ok:
-                return False, f"{lua_file}: {detail}"
-            outputs.append(detail)
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".luac")
+        os.close(tmp_fd)
+        try:
+            for lua_file in LUA_FILES:
+                ok, detail = run_command("luajit syntax", [lua, "-b", lua_file, tmp_path])
+                if not ok:
+                    return False, f"{lua_file}: {detail}"
+                outputs.append(detail)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
         return True, "\n".join(outputs)
 
     return False, "luac not found on PATH"

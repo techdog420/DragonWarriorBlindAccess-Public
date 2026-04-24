@@ -74,13 +74,18 @@ local npc_freeze_active = false
 local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
 
 -- Runtime engine-blocked cells discovered during auto-step timeouts.
--- Format: runtime_blocked[map_id]["x,y"] = true  (cleared on map change)
--- Simple single-tier system: auto_step's BLOCK_RETRY_LIMIT filters
--- intermittent misses before on_blocked fires, so we record immediately.
+-- These are the CONFIRMED route blockers that pathfinding should avoid.
+-- Noisy seam observations live in a separate table below so mixed cells do
+-- not get promoted into permanent-looking route facts too early.
 local runtime_blocked = {}
+local seam_memory = {}
+local seam_retry_state = nil
 local autowalk_guard = nil
 local active_route_settle_frames = 0
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
+local SEAM_CONFIRM_BLOCK_THRESHOLD = 3
+local SEAM_BRUTE_FORCE_RETRY_LIMIT = 2
+local APPROACH_ORDER = {north = 1, south = 2, west = 3, east = 4}
 
 local function cell_key(x, y)
     return x .. "," .. y
@@ -125,28 +130,20 @@ local DIR_TO_APPROACH = {
     up    = "south",  -- source is south of dest
 }
 
-local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
-    if not map_id or from_x == nil or from_y == nil or not blocked_dir then
+local function get_destination_for_dir(from_x, from_y, dir)
+    local delta = DIR_TO_DELTA[dir]
+    local approach = DIR_TO_APPROACH[dir]
+    if not delta or not approach then
+        return nil, nil, nil
+    end
+    return from_x + delta.dx, from_y + delta.dy, approach
+end
+
+local function add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
+    if not map_id or dest_x == nil or dest_y == nil or not approach then
         return false
     end
-
-    local dx = (blocked_dir == "right" and 1) or (blocked_dir == "left" and -1) or 0
-    local dy = (blocked_dir == "down"  and 1) or (blocked_dir == "up"   and -1) or 0
-    local dest_x = from_x + dx
-    local dest_y = from_y + dy
     local k = cell_key(dest_x, dest_y)
-    local approach = DIR_TO_APPROACH[blocked_dir]
-    local source = string.format("auto_step:%s from (%d,%d)", blocked_dir, from_x, from_y)
-
-    -- Don't record if an NPC occupies the destination (NPC blocks are temporary)
-    objects.update_npcs()
-    local npc_positions = objects.get_blocking_positions()
-    for _, npc in ipairs(npc_positions) do
-        if npc.x == dest_x and npc.y == dest_y then
-            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
-            return false
-        end
-    end
 
     if not runtime_blocked[map_id] then
         runtime_blocked[map_id] = {}
@@ -160,8 +157,290 @@ local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     runtime_blocked[map_id][k][approach] = true
     debug_tools.info(string.format(
         "runtime block: map=0x%02X cell=(%d,%d) approach=%s source=%s",
-        map_id, dest_x, dest_y, approach, source))
+        map_id, dest_x, dest_y, approach, tostring(source or "-")))
     return true
+end
+
+local function clear_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
+    local map_blocks = runtime_blocked[map_id]
+    if not map_blocks then
+        return false
+    end
+    local k = cell_key(dest_x, dest_y)
+    local entry = map_blocks[k]
+    if type(entry) ~= "table" or entry[approach] ~= true then
+        return false
+    end
+    entry[approach] = nil
+    if not next(entry) then
+        map_blocks[k] = nil
+    end
+    if not next(map_blocks) then
+        runtime_blocked[map_id] = nil
+    end
+    debug_tools.info(string.format(
+        "runtime block cleared: map=0x%02X cell=(%d,%d) approach=%s source=%s",
+        map_id, dest_x, dest_y, approach, tostring(source or "-")))
+    return true
+end
+
+local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
+    if not map_id or from_x == nil or from_y == nil or not blocked_dir then
+        return false
+    end
+
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, blocked_dir)
+    local source = string.format("auto_step:%s from (%d,%d)", blocked_dir, from_x, from_y)
+
+    -- Don't record if an NPC occupies the destination (NPC blocks are temporary)
+    objects.update_npcs()
+    local npc_positions = objects.get_blocking_positions()
+    for _, npc in ipairs(npc_positions) do
+        if npc.x == dest_x and npc.y == dest_y then
+            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
+            return false
+        end
+    end
+
+    return add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
+end
+
+local function get_seam_entry(map_id, x, y, approach, create)
+    local k = cell_key(x, y)
+    local map_entries = seam_memory[map_id]
+    if not map_entries then
+        if not create then return nil end
+        map_entries = {}
+        seam_memory[map_id] = map_entries
+    end
+    local cell_entries = map_entries[k]
+    if not cell_entries then
+        if not create then return nil end
+        cell_entries = {}
+        map_entries[k] = cell_entries
+    end
+    local entry = cell_entries[approach]
+    if not entry and create then
+        entry = {
+            key = k,
+            x = x,
+            y = y,
+            approach = approach,
+            blocked_count = 0,
+            moved_count = 0,
+            consecutive_blocked = 0,
+            consecutive_moved = 0,
+            last_result = nil,
+            last_source = nil,
+            last_from_x = nil,
+            last_from_y = nil,
+        }
+        cell_entries[approach] = entry
+    end
+    return entry
+end
+
+local function classify_seam_entry(map_id, x, y, approach, entry)
+    if not entry then
+        return nil
+    end
+    local runtime_entry = runtime_blocked[map_id] and runtime_blocked[map_id][cell_key(x, y)]
+    if type(runtime_entry) == "table" and runtime_entry[approach] == true then
+        return "confirmed_blocked"
+    end
+    if entry.blocked_count > 0 and entry.moved_count > 0 then
+        return "noisy"
+    end
+    if entry.blocked_count > 0 then
+        return "blocked_only"
+    end
+    if entry.moved_count > 0 then
+        return "passable_only"
+    end
+    return "unseen"
+end
+
+local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    if not dest_x or not approach then
+        return nil, nil
+    end
+
+    local entry = get_seam_entry(map_id, dest_x, dest_y, approach, true)
+    local previous_class = classify_seam_entry(map_id, dest_x, dest_y, approach, entry)
+
+    if result == "blocked" then
+        entry.blocked_count = entry.blocked_count + 1
+        entry.consecutive_blocked = entry.consecutive_blocked + 1
+        entry.consecutive_moved = 0
+    elseif result == "moved" then
+        entry.moved_count = entry.moved_count + 1
+        entry.consecutive_moved = entry.consecutive_moved + 1
+        entry.consecutive_blocked = 0
+        clear_runtime_block_direction(map_id, dest_x, dest_y, approach, "successful traversal")
+    end
+
+    entry.last_result = result
+    entry.last_source = source
+    entry.last_from_x = from_x
+    entry.last_from_y = from_y
+
+    if result == "blocked"
+    and entry.moved_count == 0
+    and entry.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD then
+        add_runtime_block_direction(
+            map_id,
+            dest_x,
+            dest_y,
+            approach,
+            string.format(
+                "seam_confirm:%s blocked=%d moved=%d",
+                tostring(source or "-"),
+                entry.blocked_count,
+                entry.moved_count))
+    end
+
+    local new_class = classify_seam_entry(map_id, dest_x, dest_y, approach, entry)
+    debug_tools.info(string.format(
+        "SEAM_OBSERVATION map=0x%02X cell=(%d,%d) approach=%s result=%s blocked=%d moved=%d classification=%s source=%s",
+        map_id,
+        dest_x,
+        dest_y,
+        approach,
+        tostring(result),
+        entry.blocked_count,
+        entry.moved_count,
+        tostring(new_class),
+        tostring(source or "-")))
+    if previous_class ~= new_class then
+        debug_tools.info(string.format(
+            "SEAM_CLASS_CHANGE map=0x%02X cell=(%d,%d) approach=%s from=%s to=%s",
+            map_id,
+            dest_x,
+            dest_y,
+            approach,
+            tostring(previous_class),
+            tostring(new_class)))
+    end
+    return entry, new_class
+end
+
+local function collect_seam_entries(map_id)
+    local entries = {}
+    local map_entries = seam_memory[map_id]
+    if not map_entries then
+        return entries
+    end
+    for _, by_approach in pairs(map_entries) do
+        for approach, entry in pairs(by_approach) do
+            entries[#entries + 1] = {
+                key = entry.key,
+                x = entry.x,
+                y = entry.y,
+                approach = approach,
+                blocked_count = entry.blocked_count,
+                moved_count = entry.moved_count,
+                classification = classify_seam_entry(map_id, entry.x, entry.y, approach, entry),
+            }
+        end
+    end
+    table.sort(entries, function(a, b)
+        if a.y ~= b.y then return a.y < b.y end
+        if a.x ~= b.x then return a.x < b.x end
+        return (APPROACH_ORDER[a.approach] or 99) < (APPROACH_ORDER[b.approach] or 99)
+    end)
+    return entries
+end
+
+local function get_seam_summary(map_id)
+    local summary = {
+        total = 0,
+        confirmed_blocked = 0,
+        noisy = 0,
+        blocked_only = 0,
+        passable_only = 0,
+    }
+    for _, entry in ipairs(collect_seam_entries(map_id)) do
+        summary.total = summary.total + 1
+        if summary[entry.classification] ~= nil then
+            summary[entry.classification] = summary[entry.classification] + 1
+        end
+    end
+    return summary
+end
+
+local function clear_seam_memory(map_id_or_all)
+    if map_id_or_all == "all" then
+        seam_memory = {}
+        seam_retry_state = nil
+        return
+    end
+    seam_memory[map_id_or_all] = nil
+    if seam_retry_state and seam_retry_state.map_id == map_id_or_all then
+        seam_retry_state = nil
+    end
+end
+
+local function add_temporary_directional_block(blocking, from_x, from_y, dir)
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    if not dest_x or not approach then
+        return nil, nil, nil
+    end
+    local k = cell_key(dest_x, dest_y)
+    local entry = blocking[k]
+    if entry ~= "npc" then
+        if type(entry) ~= "table" then
+            entry = {}
+            blocking[k] = entry
+        end
+        entry[approach] = true
+    end
+    return dest_x, dest_y, approach
+end
+
+local function same_seam_retry(map_id, from_x, from_y, dir)
+    return seam_retry_state
+        and seam_retry_state.map_id == map_id
+        and seam_retry_state.from_x == from_x
+        and seam_retry_state.from_y == from_y
+        and seam_retry_state.dir == dir
+end
+
+local function start_seam_bruteforce(map_id, from_x, from_y, dir)
+    local attempts = 1
+    if same_seam_retry(map_id, from_x, from_y, dir) then
+        attempts = seam_retry_state.attempts + 1
+    end
+    if attempts > SEAM_BRUTE_FORCE_RETRY_LIMIT then
+        return false
+    end
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    seam_retry_state = {
+        map_id = map_id,
+        from_x = from_x,
+        from_y = from_y,
+        dir = dir,
+        dest_x = dest_x,
+        dest_y = dest_y,
+        approach = approach,
+        attempts = attempts,
+    }
+    debug_tools.info(string.format(
+        "SEAM_BRUTE_FORCE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d",
+        map_id,
+        from_x,
+        from_y,
+        tostring(dir),
+        dest_x or -1,
+        dest_y or -1,
+        attempts,
+        SEAM_BRUTE_FORCE_RETRY_LIMIT))
+    auto_step.inject_step(dir)
+    return true
+end
+
+local function clear_seam_retry_state()
+    seam_retry_state = nil
 end
 
 -- ============================================================
@@ -301,6 +580,18 @@ function M.count_runtime_blocks(map_id)
     return #collect_runtime_blocks(map_id)
 end
 
+function M.get_seam_entries(map_id)
+    return collect_seam_entries(map_id)
+end
+
+function M.count_seam_entries(map_id)
+    return #collect_seam_entries(map_id)
+end
+
+function M.get_seam_summary(map_id)
+    return get_seam_summary(map_id)
+end
+
 -- format_runtime_blocks(map_id): Return sorted list of "x,y(dirs)" strings.
 function M.format_runtime_blocks(map_id)
     local parts = {}
@@ -389,6 +680,13 @@ function M.clear_runtime_blocks(map_id_or_all)
     end
 end
 
+function M.clear_seam_memory(map_id_or_all)
+    clear_seam_memory(map_id_or_all)
+    debug_tools.info(string.format(
+        "seam memory cleared: %s",
+        map_id_or_all == "all" and "scope=all" or string.format("map=0x%02X", map_id_or_all)))
+end
+
 -- ============================================================
 -- Path Planning
 -- ============================================================
@@ -413,6 +711,7 @@ local function clear_active_route_context(reason, refresh_objects)
     last_pathfind_obj = nil
     reroute_failures = 0
     active_route_settle_frames = 0
+    clear_seam_retry_state()
     release_npc_freeze(reason)
     if refresh_objects then
         objects.request_refresh()
@@ -435,6 +734,23 @@ local function resolve_path_mode(obj, map_id, opts)
         return "adjacent", target_walkable
     end
     return "direct", target_walkable
+end
+
+local function resolve_plan_origin(opts)
+    local map_id, start_x, start_y = nav.get_position()
+    if not opts then
+        return map_id, start_x, start_y
+    end
+    if opts.map_id ~= nil then
+        map_id = opts.map_id
+    end
+    if opts.start_x ~= nil then
+        start_x = opts.start_x
+    end
+    if opts.start_y ~= nil then
+        start_y = opts.start_y
+    end
+    return map_id, start_x, start_y
 end
 
 local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, opts, current)
@@ -505,14 +821,20 @@ end
 -- object. Returns (result, face_dir, path, message, map_id).
 local function plan_path_to_object(obj, opts)
     opts = opts or {}
-    local map_id, px, py = nav.get_position()
-    objects.update_npcs()
+    local map_id, px, py = resolve_plan_origin(opts)
     -- `survey_safe` is used by map_survey for classification/retry behavior,
     -- but the actual movement plan must still respect frozen NPC blockers.
     -- Callers that truly want an NPC-free blocking table must opt in with
     -- skip_npcs=true explicitly.
     local skip_npcs = opts.skip_npcs
-    local blocking = M.build_path_blocking(map_id, skip_npcs and {skip_npcs = true} or nil)
+    local blocking = opts.blocking
+    if not blocking then
+        -- Only refresh NPCs when we're about to rebuild blocking from live state.
+        -- Preview callers that pass a precomputed blocking table already encode
+        -- the NPC snapshot they want.
+        objects.update_npcs()
+        blocking = M.build_path_blocking(map_id, skip_npcs and {skip_npcs = true} or nil)
+    end
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
     local result, face_dir, path, adjacent_diagnostics
     local no_path_reason = nil
@@ -743,12 +1065,36 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     end
 
     local map_id = nav.get_position()
-    record_runtime_block(map_id, from_x, from_y, blocked_dir)
+    local source = (block_data and block_data.queued_route == false)
+        and "manual_block"
+        or "queued_route_block"
+    local _, seam_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
     if block_data and block_data.queued_route == false then
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
         return
     end
     if not last_pathfind_obj then return end
+
+    local _, px, py = nav.get_position()
+
+    local blocking = M.build_path_blocking(map_id)
+    if seam_class ~= "confirmed_blocked" then
+        add_temporary_directional_block(blocking, from_x, from_y, blocked_dir)
+    end
+    local plan = plan_path_to_object(last_pathfind_obj, {
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        blocking = blocking,
+        allow_adjacent_fallback = true,
+        store_debug_path = false,
+    })
+
+    if plan.result == "No path found"
+    and seam_class ~= "confirmed_blocked"
+    and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+        return
+    end
 
     reroute_failures = reroute_failures + 1
     if reroute_failures >= REROUTE_FAILURE_LIMIT then
@@ -766,25 +1112,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
 
-    local _, px, py = nav.get_position()
-
-    -- Build blocking table and re-route
-    local blocking = M.build_path_blocking(map_id)
-    local result, face_dir, path
-    local target_walkable = M.is_pathfinding_walkable(map_id, last_pathfind_obj.x, last_pathfind_obj.y)
-    if last_pathfind_obj.type == objects.TYPE_NPC
-    or last_pathfind_obj.type == objects.TYPE_DOOR
-    or not target_walkable then
-        result, face_dir, path = pathfinder.pathfind_to_adjacent(
-            map_id, px, py,
-            last_pathfind_obj.x, last_pathfind_obj.y, blocking)
-    else
-        result, face_dir, path = pathfinder.pathfind_to(
-            map_id, px, py,
-            last_pathfind_obj.x, last_pathfind_obj.y, blocking)
-    end
-
-    if result == "No path found" then
+    if plan.result == "No path found" then
         event_bus.publish("route_cancelled", {
             reason = "reroute_no_path",
             target = last_pathfind_obj,
@@ -798,12 +1126,97 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
 
-    local msg = "Re-routing. " .. build_pathfind_message(last_pathfind_obj, result, face_dir)
+    clear_seam_retry_state()
+    local msg = "Re-routing. " .. build_pathfind_message(
+        last_pathfind_obj,
+        plan.result,
+        plan.face_dir,
+        plan.no_path_reason)
     tolk.output_interrupt(msg)
 
-    if path and #path > 0 then
-        queue_path_steps(path, {settle_frames = active_route_settle_frames})
+    if plan.path and #plan.path > 0 then
+        queue_path_steps(plan.path, {settle_frames = active_route_settle_frames})
+    else
+        clear_active_route_context("reroute reached destination", true)
     end
+end
+
+auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data)
+    if path_debug.is_validating and path_debug.is_validating() then
+        debug_tools.debug("route_manager: ignoring step completion during validation")
+        return
+    end
+    if path_debug.is_step_mode and path_debug.is_step_mode() then
+        debug_tools.debug("route_manager: ignoring step completion during step mode")
+        return
+    end
+
+    local map_id = nav.get_position()
+    observe_seam_result(
+        map_id,
+        from_x,
+        from_y,
+        dir,
+        "moved",
+        step_data and step_data.source or "step_complete")
+    reroute_failures = 0
+
+    if not same_seam_retry(map_id, from_x, from_y, dir) then
+        if seam_retry_state then
+            clear_seam_retry_state()
+        end
+        return
+    end
+
+    local target = last_pathfind_obj
+    clear_seam_retry_state()
+    if not target then
+        return
+    end
+
+    local plan = plan_path_to_object(target, {
+        map_id = map_id,
+        start_x = to_x,
+        start_y = to_y,
+        allow_adjacent_fallback = true,
+        store_debug_path = false,
+    })
+
+    if plan.result == "No path found" then
+        event_bus.publish("route_cancelled", {
+            reason = "seam_bruteforce_no_path",
+            target = target,
+            map_id = map_id,
+            from_x = from_x,
+            from_y = from_y,
+            blocked_dir = dir,
+        })
+        clear_active_route_context("no path found after seam brute force", true)
+        tolk.output_interrupt("No path found after seam crossing. Pathfinding cancelled.")
+        return
+    end
+
+    if not plan.path or #plan.path == 0 then
+        clear_active_route_context("seam brute force reached destination", true)
+        tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
+            target,
+            plan.result,
+            plan.face_dir,
+            plan.no_path_reason))
+        return
+    end
+
+    if not queue_path_steps(plan.path, {settle_frames = active_route_settle_frames}) then
+        clear_active_route_context("queue failure after seam brute force", true)
+        tolk.output_interrupt("Seam crossed, but auto-walk could not queue the follow-up route.")
+        return
+    end
+
+    tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
+        target,
+        plan.result,
+        plan.face_dir,
+        plan.no_path_reason))
 end
 
 auto_step.on_route_complete = function()
@@ -825,6 +1238,7 @@ function M.on_map_change()
         })
     end
     runtime_blocked = {}
+    clear_seam_retry_state()
     clear_active_route_context("map change", false)
 end
 
@@ -924,6 +1338,66 @@ function M.register_debug_commands(get_map_id_fn)
         end
     end)
 
+    debug_tools.register_command("report_seam_cells", function(arg)
+        local mid = get_map_id_fn()
+        if arg and arg ~= "" then
+            mid = parse_int(arg)
+            if mid == nil then
+                debug_tools.error("report_seam_cells usage: report_seam_cells or report_seam_cells:MAP_ID")
+                return
+            end
+        end
+        local summary = get_seam_summary(mid)
+        debug_tools.info(string.format(
+            "SEAM_SUMMARY map=0x%02X total=%d confirmed_blocked=%d noisy=%d blocked_only=%d passable_only=%d",
+            mid,
+            summary.total,
+            summary.confirmed_blocked,
+            summary.noisy,
+            summary.blocked_only,
+            summary.passable_only))
+        if summary.total == 0 then
+            tolk.output_interrupt(string.format("No seam observations on map %02X", mid))
+        else
+            tolk.output_interrupt(string.format(
+                "%d seam observations on map %02X. %d confirmed blocked, %d noisy.",
+                summary.total,
+                mid,
+                summary.confirmed_blocked,
+                summary.noisy))
+        end
+    end)
+
+    debug_tools.register_command("list_seam_cells", function(arg)
+        local mid = get_map_id_fn()
+        if arg and arg ~= "" then
+            mid = parse_int(arg)
+            if mid == nil then
+                debug_tools.error("list_seam_cells usage: list_seam_cells or list_seam_cells:MAP_ID")
+                return
+            end
+        end
+        local entries = collect_seam_entries(mid)
+        if #entries == 0 then
+            debug_tools.info(string.format("SEAM_LIST map=0x%02X none", mid))
+            tolk.output_interrupt(string.format("No seam observations on map %02X", mid))
+            return
+        end
+        debug_tools.info(string.format("SEAM_LIST map=0x%02X count=%d", mid, #entries))
+        for _, entry in ipairs(entries) do
+            debug_tools.info(string.format(
+                "SEAM_CELL map=0x%02X x=%d y=%d approach=%s blocked=%d moved=%d classification=%s",
+                mid,
+                entry.x,
+                entry.y,
+                entry.approach,
+                entry.blocked_count,
+                entry.moved_count,
+                entry.classification))
+        end
+        tolk.output_interrupt(string.format("%d seam observations on map %02X", #entries, mid))
+    end)
+
     debug_tools.register_command("clear_blocked_tiles", function(arg)
         if arg and arg:match("^%s*all%s*$") then
             M.clear_runtime_blocks("all")
@@ -940,6 +1414,24 @@ function M.register_debug_commands(get_map_id_fn)
         end
         M.clear_runtime_blocks(mid)
         tolk.output_interrupt(string.format("Cleared blocked tiles for map %02X", mid))
+    end)
+
+    debug_tools.register_command("clear_seam_cells", function(arg)
+        if arg and arg:match("^%s*all%s*$") then
+            M.clear_seam_memory("all")
+            tolk.output_interrupt("Cleared seam observations for all maps")
+            return
+        end
+        local mid = get_map_id_fn()
+        if arg and arg ~= "" then
+            mid = parse_int(arg)
+            if mid == nil then
+                debug_tools.error("clear_seam_cells usage: clear_seam_cells, clear_seam_cells:MAP_ID, or clear_seam_cells:all")
+                return
+            end
+        end
+        M.clear_seam_memory(mid)
+        tolk.output_interrupt(string.format("Cleared seam observations for map %02X", mid))
     end)
 
     debug_tools.register_command("is_blocked_tile", function(arg)

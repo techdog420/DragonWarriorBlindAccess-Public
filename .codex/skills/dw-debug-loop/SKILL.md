@@ -1,6 +1,6 @@
 ---
 name: "dw-debug-loop"
-description: "Use when debugging or testing the Dragon Warrior Lua mod through ./dw_commands.sh, dw_commands.txt, and dw_debug.log, especially for pathfinding, map survey, probe_edge, teleport_to, runtime blocked tiles, or other state-sensitive FCEUX workflows."
+description: "Use when debugging or testing the Dragon Warrior Lua mod through ./dw_commands.ps1 or ./dw_commands.sh, dw_commands.txt, and dw_debug.log, especially for pathfinding, map survey, probe_edge, teleport_to, runtime blocked tiles, or other state-sensitive FCEUX workflows."
 ---
 
 # Dragon Warrior Debug Loop
@@ -17,7 +17,7 @@ Use this skill for live debug and QA work in this repository when command timing
 ## Preferred Loop
 
 1. Read the current state from logs.
-2. Send the smallest useful command or command batch with `./dw_commands.sh`.
+2. Send the smallest useful command or command batch with `./dw_commands.ps1` from PowerShell/Codex, or `./dw_commands.sh` from bash.
 3. Wait for log confirmation before the next state-sensitive step.
 4. Compare expected versus actual behavior.
 5. Record findings clearly.
@@ -27,10 +27,10 @@ Prefer short, evidence-driven loops over large queued command batches.
 
 ## Command Rules
 
-- Use `./dw_commands.sh --replace ...` when you need a clean, state-sensitive batch.
+- Use `./dw_commands.ps1 --replace ...` from PowerShell/Codex, or `./dw_commands.sh --replace ...` from bash, when you need a clean, state-sensitive batch.
 - Do not batch `teleport_to` with `probe_edge`, `survey_target`, `report_survey_start`, or path-debug follow-up commands when exact start state matters.
 - Preferred split pattern:
-  1. `./dw_commands.sh --replace freeze_npcs teleport_to:X,Y report_position`
+  1. `./dw_commands.ps1 --replace freeze_npcs teleport_to:X,Y report_position`
   2. wait for `dw_debug.log` to confirm the position
   3. send `probe_edge`, `survey_target`, `debug_pathfind_to`, or similar commands separately
 - Treat stale queued commands and one-second polling delays as real failure causes.

@@ -46,7 +46,11 @@ Do not:
 The project uses a command queue file and emulator polling loop.
 
 Important behavior:
-- Commands are sent through `./dw_commands.sh`
+- Current tested emulator baseline is `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
+- Command-line Lua loading on this build works with `--loadlua=PATH`
+- `D:\emulation\fceux\bin\fceux.cfg` should keep `SDL.AutoResume = 1` so startup launches advance frames and poll commands
+- Preferred WSL startup path is `./launch_dw.sh`; it restarts qfceux cleanly, loads the ROM plus `main.lua`, and supports optional battery-save restore plus savestate slot load
+- Commands are sent through `./dw_commands.ps1` from PowerShell/Codex, or `./dw_commands.sh` from bash
 - Commands are written to `dw_commands.txt`
 - The mod polls the command file roughly once per second
 - Commands append by default
@@ -58,6 +62,7 @@ This means:
 - Prefer short command batches followed by log verification
 - For state-sensitive workflows, wait for log confirmation before sending the next command
 - Treat queue timing and stale commands as possible causes of test failure
+- A fresh `dw_debug.log` header alone does not prove the emulator is unpaused and polling commands; verify that queued commands are actually consumed
 
 ## Core testing principle
 

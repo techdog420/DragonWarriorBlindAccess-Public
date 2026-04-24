@@ -29,6 +29,7 @@
 --   simulate_input:B
 --   simulate_input:START
 --   simulate_input:SELECT
+--   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
 --   export_blocks        -- format all recorded blocked moves as MAP_BLOCKED_CELLS Lua entries
 --   sweep_map            -- start systematic walkability sweep of current map
@@ -345,11 +346,11 @@ local function parse_button_command_args(arg_text)
     local frames = 1
     if frames_str and frames_str ~= "" then
         if not frames_str:match("^%d+$") then
-            return btn_key, btn_str, nil
+            return btn_key, btn_str, nil, "invalid frame count '" .. frames_str .. "' (must be a positive integer)"
         end
         frames = tonumber(frames_str)
         if not frames or frames < 1 then
-            return btn_key, btn_str, nil
+            return btn_key, btn_str, nil, "frame count must be >= 1"
         end
     end
 
@@ -445,21 +446,25 @@ local function process_command(cmd)
         -- Queue a one-frame joypad injection. tick() applies it before frameadvance.
         -- Only one input is queued at a time; the last simulate_input in the file wins.
         -- Optional trailing ",N" holds the same press for N consecutive frames.
-        local btn_key, btn_str, frames = parse_button_command_args(cmd:sub(16))
+        local btn_key, btn_str, frames, err = parse_button_command_args(cmd:sub(16))
         if btn_key and frames then
             queue_pending_input({ [btn_key] = true }, frames, "joypad: " .. btn_str)
+        elseif err then
+            M.error("simulate_input: " .. err .. ". Usage: simulate_input:BTN or simulate_input:BTN,FRAMES")
         else
-            M.error("simulate_input: usage simulate_input:BTN or simulate_input:BTN,FRAMES. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
+            M.error("simulate_input: unknown button. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
         end
 
     elseif cmd:sub(1, 19) == "simulate_raw_input:" then
         -- Queue a raw joypad injection that bypasses auto_step.
         -- Optional trailing ",N" holds the same raw press for N frames.
-        local btn_key, btn_str, frames = parse_button_command_args(cmd:sub(20))
+        local btn_key, btn_str, frames, err = parse_button_command_args(cmd:sub(20))
         if btn_key and frames then
             queue_pending_input({ [btn_key] = true, _raw = true }, frames, "raw joypad: " .. btn_str)
+        elseif err then
+            M.error("simulate_raw_input: " .. err .. ". Usage: simulate_raw_input:BTN or simulate_raw_input:BTN,FRAMES")
         else
-            M.error("simulate_raw_input: usage simulate_raw_input:BTN or simulate_raw_input:BTN,FRAMES. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
+            M.error("simulate_raw_input: unknown button. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
         end
 
     elseif cmd == "dump_grid" then
@@ -503,6 +508,18 @@ local function process_command(cmd)
             end
         end
         M.info("Config reloaded from dw_access.ini")
+
+    elseif cmd == "launcher_probe" or cmd:sub(1, 15) == "launcher_probe:" then
+        -- Lightweight launcher readiness marker. This avoids touching the speech
+        -- backend so launch verification can focus on command polling alone.
+        local tag = "ready"
+        if cmd:sub(1, 15) == "launcher_probe:" then
+            tag = cmd:sub(16):match("^%s*(.-)%s*$")
+            if tag == "" then
+                tag = "ready"
+            end
+        end
+        M.info("LAUNCHER_PROBE: " .. tag)
 
     elseif cmd == "export_blocks" then
         -- Format all recorded block entries (from dw_blocks.log + current session)
@@ -630,7 +647,7 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, dump_grid, reload_config, export_blocks, sweep_map, stop_sweep")
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
         end
     end
 end
@@ -731,6 +748,9 @@ function M.tick(frame, game_state_str)
         end
     end
 
+    -- pending_input and pending_input_hold are mutually exclusive: queue_pending_input
+    -- sets one or the other but never both. So when held_inp is active, pending_input
+    -- is already nil — the guard below is defensive insurance, not for the multi-frame case.
     local inp = sweep_inp or held_inp or pending_input
     if not sweep_inp and not held_inp then
         pending_input = nil

@@ -7,13 +7,26 @@
 --
 -- Load in FCEUX: File > Load Lua Script > select this file.
 -- Or from command line:
---   fceux.exe "Dragon Warrior (USA) (Rev 1).nes" --loadlua "main.lua"
+--   qfceux.exe --loadlua=main.lua "Dragon Warrior (USA) (Rev 1).nes"
 
 -- ============================================================
 -- Module Loading
 -- ============================================================
--- FCEUX runs scripts from the script's directory, so require() finds
--- our sibling .lua files automatically.
+-- Some launch paths leave FCEUX's current working directory somewhere other
+-- than the mod folder. Resolve this script's directory explicitly and prepend
+-- it to package.path before the first require() so sibling modules load
+-- reliably whether the script is started by command line or through the UI.
+local main_source = debug.getinfo(1, "S").source
+local main_script_dir = main_source:match("@?(.*[\\/])") or ""
+if main_script_dir ~= "" then
+    local script_package_path = table.concat({
+        main_script_dir .. "?.lua",
+        main_script_dir .. "?/init.lua",
+    }, ";")
+    if not package.path:find(main_script_dir, 1, true) then
+        package.path = script_package_path .. ";" .. package.path
+    end
+end
 
 local tolk = require "tolk"         -- Speech output (Python bridge to screen reader)
 local addr = require "addresses"    -- RAM address constants
@@ -648,6 +661,31 @@ local ROW1_TRACE_FILE = "row1_menu_diag.txt"
 local row1_trace_frame = 0
 local prev_row1_lower_dialogue_active = false
 
+-- Startup loop diagnostics.
+-- When debug_mode=true, capture a few immediate loop markers in a separate
+-- file so launcher/debug issues can distinguish "script loaded" from
+-- "FCEU.frameadvance() returned and the loop continued".
+local STARTUP_LOOP_TRACE_ENABLED = debug_tools.DEBUG_MODE
+local STARTUP_LOOP_TRACE_FILE = "startup_loop_diag.txt"
+
+local function should_trace_startup_loop()
+    return frame_count <= 3 or frame_count == 60 or frame_count == 120 or frame_count == 180
+end
+
+local function trace_startup_loop(event)
+    if not STARTUP_LOOP_TRACE_ENABLED or not should_trace_startup_loop() then return end
+    local f = io.open(STARTUP_LOOP_TRACE_FILE, "a")
+    if f then
+        f:write(string.format(
+            "frame=%d startup=%d event=%s\n",
+            frame_count,
+            startup_counter,
+            tostring(event)
+        ))
+        f:close()
+    end
+end
+
 -- NOTE: Hotkey handling (handle_hotkeys, is_key_pressed, prev_keys) has been
 -- extracted to hotkeys.lua. The main loop calls hotkeys.update(keys).
 
@@ -853,6 +891,14 @@ if ROW1_TRACE_ENABLED then
     local f = io.open(ROW1_TRACE_FILE, "w")
     if f then
         f:write("=== Row 1 command trace ===\n")
+        f:close()
+    end
+end
+
+if STARTUP_LOOP_TRACE_ENABLED then
+    local f = io.open(STARTUP_LOOP_TRACE_FILE, "w")
+    if f then
+        f:write("=== Startup loop trace ===\n")
         f:close()
     end
 end
@@ -3068,6 +3114,7 @@ end)
 -- iteration — without it, the emulator freezes.
 
 while true do
+    trace_startup_loop("loop_top")
     row1_trace_frame = frame_count
 
     -- Read all tracked RAM values into the snapshot table.
@@ -3386,7 +3433,9 @@ while true do
 
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.
+    trace_startup_loop("before_frameadvance")
     FCEU.frameadvance()
+    trace_startup_loop("after_frameadvance")
 
     -- If NPC freeze is active, restore NPC position bytes to their snapshot.
     -- The NES game's NPC movement routines ran during frameadvance and may

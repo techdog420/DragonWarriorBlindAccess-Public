@@ -25,7 +25,7 @@ def main() -> None:
 
     reminders = [
         "Read session_handoff.md first for the active handoff set.",
-        "Use ./dw_commands.sh in short batches and verify dw_debug.log between state-sensitive steps.",
+        "Use ./dw_commands.ps1 in PowerShell/Codex, or ./dw_commands.sh in bash, in short batches and verify dw_debug.log between state-sensitive steps.",
         "Do not batch teleport_to with probe_edge, survey_target, or similar follow-up commands when exact start state matters.",
         "Prefer runtime blocked-tile evidence before permanent map_reader.lua blocker changes."
     ]

@@ -32,18 +32,37 @@ When sharing work with Codex:
 ## Technology Stack
 
 - **Language**: Lua (FCEUX's embedded Lua 5.1 environment)
-- **Emulator**: FCEUX (NES emulator with Lua scripting support)
-- **Speech**: Tolk library via FFI — bridges to NVDA, JAWS, or Narrator
+- **Emulator**: FCEUX Qt build (`qfceux.exe`) 2.6.6
+- **Speech**: Tolk wrapper with Python bridge fallback for NVDA, JAWS, or Narrator
 - **Game**: Dragon Warrior (USA) (Rev 1) — NES NROM mapper, 32KB PRG, 2KB RAM
 
 ## Running the Script
 
-Load the main Lua script in FCEUX: File > Load Lua Script, or from command line:
+Preferred WSL/bash launch path:
 ```
-D:\emulation\fceux\fceux.exe "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes" --loadlua "D:\modding\dragonwarrior1\main.lua"
+./launch_dw.sh
+```
+
+Useful launcher variants:
+```
+./launch_dw.sh --state-slot 0
+./launch_dw.sh --battery-save /mnt/d/path/to/testing_area.sav
+```
+
+Direct Windows command-line launch is still supported when needed:
+```
+D:\emulation\fceux\bin\qfceux.exe --loadlua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 ```
 
 To reload after editing: in FCEUX, Script > Reload or close and re-open the script window.
+
+### Current tested environment
+
+- The current local emulator baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
+- This build accepts startup Lua loading via `--loadlua=<path>`. The spaced form `--loadlua <path>` did not reliably load scripts in local testing.
+- `D:\emulation\fceux\bin\fceux.cfg` should have `SDL.AutoResume = 1` so the emulator advances frames after startup and the mod can poll `dw_commands.txt`.
+- `./launch_dw.sh` is the preferred WSL entrypoint. It restarts any running qfceux instance, loads the ROM plus `main.lua`, and can optionally restore a battery save or load a savestate slot.
+- A fresh `dw_debug.log` header only proves that startup code ran. Treat the emulator as truly ready only after it consumes a queued command from `dw_commands.txt`.
 
 ## FCEUX Lua Architecture
 
@@ -63,11 +82,11 @@ Scripts run in a `while true do ... end` main loop. Each iteration calls `FCEU.f
 
 ## Tolk Speech Integration
 
-Speech output uses Tolk.dll loaded via LuaJIT FFI. Reference implementation from pokemon-access:
+Speech output prefers Tolk.dll via FFI, but the current tested `qfceux.exe` 2.6.6 environment does not expose `require("ffi")`. In local use, the Python bridge fallback is the tested and expected speech path.
 
-**tolk.lua** — loads `Tolk.dll`, exposes `output(text)` and `silence()` functions. Requires `encoding.lua` for UTF-8 to UTF-16 conversion (Tolk expects UTF-16). Both files plus the DLLs (`Tolk.dll`, `nvdaControllerClient32.dll`, `SAAPI32.dll`) must be accessible from the script's working directory.
+**tolk.lua** — tries `Tolk.dll` via FFI first, then falls back to `speech_bridge.py`. The DLLs (`Tolk.dll`, `nvdaControllerClient32.dll`, `SAAPI32.dll`) should still remain alongside the script, but Python 3 plus the bridge dependencies are currently required for the tested runtime.
 
-**Important**: FCEUX uses LuaJIT which supports `ffi.cdef` and `ffi.load`. Standard Lua 5.1 does not have FFI — this only works because FCEUX bundles LuaJIT.
+**Important**: Do not assume every FCEUX build bundles a working LuaJIT `ffi` module. Verify from the actual installed emulator before depending on FFI-only behavior.
 
 ## Dragon Warrior RAM Map
 

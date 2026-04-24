@@ -43,6 +43,13 @@ M.on_blocked = nil
 -- TRANSITION: Both this callback AND event_bus "route_completed" fire.
 M.on_route_complete = nil
 
+-- Optional callback: called when an injected/auto-held step completes and the
+-- player reaches a new tile. Useful for runtime seam tracking and route repair
+-- after a manual one-step brute-force retry.
+-- Signature: M.on_step_complete(from_x, from_y, dir, to_x, to_y, step_data)
+-- TRANSITION: Both this callback AND event_bus "route_step_completed" fire.
+M.on_step_complete = nil
+
 -- Debug flag: set to true to hear speech for every auto-step event.
 local DEBUG = false
 
@@ -216,6 +223,25 @@ local function reset_active_step()
     clear_pending_repress()
 end
 
+local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
+    local step_data = {
+        from_x = from_x,
+        from_y = from_y,
+        dir = dir,
+        to_x = to_x,
+        to_y = to_y,
+        source = source,
+        queued_route = (route_steps ~= nil),
+    }
+    event_bus.publish("route_step_completed", step_data)
+    if M.on_step_complete then
+        local ok, err = pcall(M.on_step_complete, from_x, from_y, dir, to_x, to_y, step_data)
+        if not ok then
+            debug_tools.error("on_step_complete error: " .. tostring(err))
+        end
+    end
+end
+
 -- ============================================================
 -- Core Update
 -- ============================================================
@@ -285,12 +311,14 @@ function M.update(can_walk)
        and pending_repress.start_x ~= nil
        and pending_repress.start_y ~= nil
        and (px ~= pending_repress.start_x or py ~= pending_repress.start_y) then
+        local completed = pending_repress
         debug_tools.debug(string.format(
             "auto_step cancel pending repress: position changed to (%d,%d) from (%d,%d)",
             px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
         clear_pending_repress()
         cooldown = COOLDOWN_FRAMES
         start_post_step_release()
+        emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress")
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
         end
@@ -348,6 +376,9 @@ function M.update(can_walk)
             clear_route()
         -- Cancel if position changed (step completed!)
         elseif px ~= auto_start_x or py ~= auto_start_y then
+            local completed_from_x = auto_start_x
+            local completed_from_y = auto_start_y
+            local completed_dir = auto_dir
             if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
             reset_active_step()
             cooldown = COOLDOWN_FRAMES  -- Prevent double-step
@@ -355,6 +386,7 @@ function M.update(can_walk)
             if route_steps then
                 route_settle_frames = route_settle_default or 0
             end
+            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold")
         -- If the first press only turned the player, release for one frame and
         -- issue a fresh press instead of waiting for the full blocked timeout.
         elseif auto_frames >= TURN_REPRESS_DELAY
@@ -528,6 +560,8 @@ function M.inject_step(dir)
     begin_step(dir, px, py)
 end
 
+-- opts: { settle_frames = N }
+-- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
     clear_route()

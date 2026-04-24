@@ -4,6 +4,14 @@
 # Test/diagnostic output files
 screen_dump.txt
 ppu_dump.txt
+dw_debug.log
+dw_commands.txt
+dw_commands.processing.txt
+dw_blocks.log
+frame_probe.txt
+rom_probe.txt
+startup_loop_diag.txt
+launch_dw_shim.log
 
 # Editor/IDE files
 *.swp
@@ -12,3 +20,7 @@ ppu_dump.txt
 
 # Claude Code local settings
 .claude/
+
+# Local environment / package installs
+.env
+node_modules/

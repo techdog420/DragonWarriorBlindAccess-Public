@@ -66,6 +66,8 @@ COMMANDS (write to dw_commands.txt, one per line)
   simulate_input:B         Inject one frame of B button
   simulate_input:START     Inject one frame of Start
   simulate_input:SELECT    Inject one frame of Select
+  launcher_probe           Write a launcher readiness marker to dw_debug.log
+  launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
   simulate_raw_input:UP    Inject one raw frame of D-pad Up
   simulate_raw_input:UP,12 Inject 12 consecutive raw frames of D-pad Up
   simulate_raw_input:DOWN  Inject one raw frame of D-pad Down
@@ -81,7 +83,10 @@ COMMANDS (write to dw_commands.txt, one per line)
   add_blocked_tile:X,Y     Inject runtime blocked tile on current map
   add_blocked_tile:MAP,X,Y Inject runtime blocked tile on explicit map
   list_blocked_tiles       Log current map runtime blocked tiles
+  report_seam_cells        Summarize current map seam observations
+  list_seam_cells          Log current map seam observations with blocked/moved counts
   clear_blocked_tiles      Clear current map runtime blocked tiles
+  clear_seam_cells         Clear current map seam observations
   is_blocked_tile:X,Y      Inspect runtime blocked/effective passability state
   dump_blocked_tiles       Dump current map runtime blocked tiles as Lua lines
   sweep_map                Start systematic engine-collision sweep of current map.
@@ -207,16 +212,28 @@ CALLING HOOKS FROM LUA (manual use in debug sessions)
   debug_tools.snapshot()          -- log full state snapshot now
   debug_tools.shutdown()          -- flush log before exit
 
-QUICK SHELL USAGE (from WSL or cmd)
-------------------------------------
-  ./dw_commands.sh log_state
-  ./dw_commands.sh sweep_map
-  ./dw_commands.sh export_blocks
-  ./dw_commands.sh stop_sweep
-  ./dw_commands.sh freeze_npcs report_survey_start survey_objects
-  ./dw_commands.sh stop_survey
-  ./dw_commands.sh report_survey_findings
-  ./dw_commands.sh dump_survey_report export_directional_candidates
-  ./dw_commands.sh probe_edge:RIGHT
+QUICK SHELL USAGE
+-----------------
+  PowerShell / Codex:
+    ./dw_commands.ps1 log_state
+    ./dw_commands.ps1 sweep_map
+    ./dw_commands.ps1 export_blocks
+    ./dw_commands.ps1 stop_sweep
+    ./dw_commands.ps1 freeze_npcs report_survey_start survey_objects
+    ./dw_commands.ps1 stop_survey
+    ./dw_commands.ps1 report_survey_findings
+    ./dw_commands.ps1 dump_survey_report export_directional_candidates
+    ./dw_commands.ps1 probe_edge:RIGHT
+
+  Bash / WSL / cmd with bash:
+    ./dw_commands.sh log_state
+    ./dw_commands.sh sweep_map
+    ./dw_commands.sh export_blocks
+    ./dw_commands.sh stop_sweep
+    ./dw_commands.sh freeze_npcs report_survey_start survey_objects
+    ./dw_commands.sh stop_survey
+    ./dw_commands.sh report_survey_findings
+    ./dw_commands.sh dump_survey_report export_directional_candidates
+    ./dw_commands.sh probe_edge:RIGHT
   tail -f dw_debug.log
   tail -f dw_blocks.log

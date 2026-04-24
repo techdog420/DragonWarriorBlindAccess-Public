@@ -6,6 +6,17 @@ local original_loaded = {}
 local original_memory = _G.memory
 local original_and = _G.AND
 
+local function shallow_copy(tbl)
+    local copy = {}
+    if not tbl then
+        return copy
+    end
+    for k, v in pairs(tbl) do
+        copy[k] = v
+    end
+    return copy
+end
+
 local function save_module(name)
     original_preload[name] = package.preload[name]
     original_loaded[name] = package.loaded[name]
@@ -25,12 +36,14 @@ local function make_env(options)
     local route_active = false
     local runtime_count = options.runtime_count or 0
     local clear_route_context_calls = 0
+    local plan_call_count = 0
+    local plan_calls = {}
     local nav_map_id = options.map_id or 0x08
     local nav_x = options.x or 5
     local nav_y = options.y or 5
     local object = options.object or {id = "chest_1", name = "Chest", type = "chest", x = 8, y = 5}
     local objects_list = options.objects or {object}
-    local npc_bytes = {}
+    local npc_bytes = {[0x00C5] = options.hp or 30}
     local module_names = {
         "addresses",
         "auto_step",
@@ -85,6 +98,7 @@ local function make_env(options)
             NPC_COUNT = 20,
             NPC_DATA_START = 0x0051,
             NPC_ENTRY_SIZE = 3,
+            CURRENT_HP = 0x00C5,
         }
     end
 
@@ -251,6 +265,16 @@ local function make_env(options)
                 return copy
             end,
             plan_path_to_object = function(target, opts)
+                plan_call_count = plan_call_count + 1
+                plan_calls[#plan_calls + 1] = {
+                    target_id = target and target.id or nil,
+                    start_x = opts and opts.start_x or nil,
+                    start_y = opts and opts.start_y or nil,
+                    map_id = opts and opts.map_id or nil,
+                    path_mode = opts and opts.path_mode or nil,
+                    skip_npcs = opts and opts.skip_npcs or false,
+                    blocking = opts and opts.blocking and shallow_copy(opts.blocking) or nil,
+                }
                 if options.plan_fn then
                     local spec = options.plan_fn(target, opts)
                     if spec then
@@ -307,6 +331,12 @@ local function make_env(options)
         end,
         clear_route_context_calls = function()
             return package.loaded["route_manager"] and clear_route_context_calls or 0
+        end,
+        plan_call_count = function()
+            return plan_call_count
+        end,
+        plan_calls = function()
+            return plan_calls
         end,
         publish = function(event_name, data)
             if event_name == "route_blocked" then
@@ -753,7 +783,7 @@ function tests.earlier_clean_no_path_results_are_reclassified_when_same_start_cl
     local joined = table.concat(env.logs, "\n")
     local result_a = run and run.result_by_id["npc_a"]
     local result_b = run and run.result_by_id["npc_b"]
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=2/2 defer=1 target_id=npc_b reason=continuation_trap landing=(7,5) reachable_area=1 remaining_targets=1",
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=2/2 defer=1 target_id=npc_b reason=continuation_trap trap_reason=small_area landing=(7,5) reachable_area=1 remaining_targets=1 reachable_remaining=0 unreachable_remaining=1",
         "the second target should be deferred into a one-way continuation trap so the first retry records before the cluster forms")
     assert_contains(joined, "SURVEY_RECLASSIFY run=1 map=0x08 start=(5,5) target_id=npc_a from=no_route_found to=gated_or_isolated_region reason=isolated_start_cluster distinct_targets=2",
         "finish_run should retroactively fold the earlier clean no-path result into the isolated-start cluster")
@@ -790,6 +820,21 @@ function tests.survey_logs_include_attempt_start_position()
     env.restore()
 end
 
+function tests.successful_attempts_do_not_run_alternate_mode_previews()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+    env.survey.tick(true)
+
+    assert_equal(env.plan_call_count(), 0,
+        "successful attempts should not pay for alternate-mode or skip-NPC replans")
+
+    env.restore()
+end
+
 function tests.survey_start_logs_context_and_low_exit_warning()
     local env = make_env({
         map_id = 0x05,
@@ -801,17 +846,18 @@ function tests.survey_start_logs_context_and_low_exit_warning()
         },
     })
 
-    env.survey.start_target_survey("chest_1")
+    local ok, err = env.survey.start_target_survey("chest_1")
 
     local joined = table.concat(env.logs, "\n")
-    assert_contains(joined, "SURVEY_START run=1 map=0x05 start=(3,5) targets=1",
-        "survey start log should include the opening coordinates")
-    assert_contains(joined, "SURVEY_START_CONTEXT run=1 map=0x05 start=(3,5) open_exit_count=2 open_exits=south|west",
-        "survey start context should record the immediate open exits")
+    assert_equal(ok, false, "low-exit single-target surveys should abort before launching")
+    assert_equal(err, "Survey start (3,5) has only 2 open exits; move to a more open position",
+        "low-exit aborts should return a clear guidance message")
+    assert_contains(joined, "SURVEY_START_ABORT run=1 map=0x05 reason=low_exit_count start=(3,5) targets=1 open_exit_count=2 open_exits=south|west",
+        "survey should log the low-exit abort with the opening coordinates")
     assert_contains(joined, "blocked_exits=north:directional(south)|east:directional(west)",
         "survey start context should explain blocked exits")
-    assert_contains(joined, "SURVEY_START_WARNING run=1 map=0x05 reason=low_exit_count start=(3,5) open_exit_count=2 open_exits=south|west",
-        "survey should warn when the starting tile has only a couple of exits")
+    assert_not_contains(joined, "SURVEY_START run=1 map=0x05 start=(3,5) targets=1",
+        "aborted low-exit starts should not log a normal survey start")
 
     env.restore()
 end
@@ -1211,6 +1257,26 @@ function tests.survey_defers_small_continuation_pocket_once()
             direct = {result = "No path found", path = nil},
             adjacent = {result = "No path found", path = nil},
         },
+        plan_fn = function(target, opts)
+            if target.id == "trap_npc" then
+                return {
+                    result = "Approach: 3 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                result = "Approach: 1 east",
+                path_mode = "adjacent",
+                path = {
+                    {x = 6, y = 5, direction = "east"},
+                },
+            }
+        end,
     })
 
     env.survey.start_object_survey()
@@ -1232,6 +1298,91 @@ function tests.survey_defers_small_continuation_pocket_once()
         "the next target should be attempted before revisiting the deferred pocket target")
     assert_contains(joined, 'SURVEY_ATTEMPT run=1 map=0x08 idx=1/5 retry=0 target_id=trap_npc',
         "the deferred target should be retried later rather than dropped")
+
+    env.restore()
+end
+
+function tests.survey_defers_large_landing_that_strands_most_remaining_targets()
+    local env = make_env({
+        objects = {
+            {id = "trap_npc", name = "Trap NPC", type = "npc", x = 9, y = 5},
+            {id = "local_safe", name = "Local Safe", type = "npc", x = 9, y = 6},
+            {id = "far_a", name = "Far A", type = "npc", x = 15, y = 5},
+            {id = "far_b", name = "Far B", type = "npc", x = 16, y = 5},
+            {id = "far_c", name = "Far C", type = "npc", x = 17, y = 5},
+        },
+        walkability_fn = function(x, y)
+            if y == 5 and x >= 5 and x <= 8 then
+                return true
+            end
+            if x == 5 and (y == 4 or y == 6) then
+                return true
+            end
+            if x >= 8 and x <= 12 and y >= 3 and y <= 7 then
+                return true
+            end
+            return false
+        end,
+        autowalk_fn = function(ctx)
+            if ctx.target.id == "trap_npc" then
+                return {
+                    status = "queued",
+                    result = "Approach: 3 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                status = "queued",
+                result = "Path: 1 east",
+                path_mode = "direct",
+                path = {
+                    {x = 6, y = 5, direction = "east"},
+                },
+            }
+        end,
+        plan_fn = function(target, opts)
+            local mode = opts and opts.path_mode or (target.type == "npc" and "adjacent" or "direct")
+            if opts and opts.start_x == 8 and opts.start_y == 5 and target.id == "local_safe" then
+                return {
+                    result = "Approach: 1 south",
+                    path_mode = mode,
+                    path = {
+                        {x = 8, y = 6, direction = "south"},
+                    },
+                }
+            end
+            if opts and opts.start_x == 8 and opts.start_y == 5 then
+                return {
+                    result = "No path found",
+                    path_mode = mode,
+                    path = nil,
+                }
+            end
+            return {
+                result = "Path: 1 east",
+                path_mode = mode,
+                path = {
+                    {x = 6, y = 5, direction = "east"},
+                },
+            }
+        end,
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_object_survey()
+    env.survey.tick(true)
+
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/5 defer=1 target_id=trap_npc reason=continuation_trap trap_reason=stranded_remainder landing=(8,5) reachable_area=30 remaining_targets=4 reachable_remaining=1 unreachable_remaining=3",
+        "large landings that strand most of the remaining queue should defer before the survey walks in")
 
     env.restore()
 end
@@ -1283,6 +1434,27 @@ function tests.survey_defers_continuation_pocket_until_it_is_last_remaining_targ
             direct = {result = "No path found", path = nil},
             adjacent = {result = "No path found", path = nil},
         },
+        plan_fn = function(target, opts)
+            if target.id == "trap_npc" then
+                return {
+                    result = "Approach: 4 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                        {x = 9, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                result = "Approach: 1 east",
+                path_mode = "adjacent",
+                path = {
+                    {x = 6, y = 5, direction = "east"},
+                },
+            }
+        end,
     })
 
     env.survey.start_object_survey()
@@ -1292,7 +1464,7 @@ function tests.survey_defers_continuation_pocket_until_it_is_last_remaining_targ
     env.survey.tick(true)
 
     local joined = table.concat(env.logs, "\n")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=1 target_id=trap_npc reason=continuation_trap landing=(9,5) reachable_area=0 remaining_targets=1",
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=1 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(9,5) reachable_area=0 remaining_targets=1 reachable_remaining=1 unreachable_remaining=0",
         "trap targets should still defer while one other target remains")
     assert_before(
         joined,
@@ -1303,16 +1475,95 @@ function tests.survey_defers_continuation_pocket_until_it_is_last_remaining_targ
     env.restore()
 end
 
+function tests.clustered_isolated_start_skips_unreachable_remainder_but_keeps_local_targets()
+    local env = make_env({
+        objects = {
+            {id = "npc_a", name = "NPC A", type = "npc", x = 8, y = 5},
+            {id = "npc_b", name = "NPC B", type = "npc", x = 9, y = 5},
+            {id = "reachable_local", name = "Reachable Local", type = "npc", x = 5, y = 6},
+            {id = "unreachable_far", name = "Unreachable Far", type = "npc", x = 20, y = 20},
+        },
+        autowalk_fn = function(ctx)
+            if ctx.target.id == "reachable_local" then
+                return {
+                    status = "queued",
+                    result = "Approach: 1 south",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 5, y = 6, direction = "south"},
+                    },
+                }
+            end
+            return {
+                status = "no_path",
+                result = "No path found",
+                path_mode = "adjacent",
+                path = nil,
+            }
+        end,
+        plan_fn = function(target, opts)
+            local mode = opts and opts.path_mode or (target.type == "npc" and "adjacent" or "direct")
+            if target.id == "reachable_local" then
+                return {
+                    result = "Approach: 1 south",
+                    path_mode = mode,
+                    path = {
+                        {x = 5, y = 6, direction = "south"},
+                    },
+                }
+            end
+            return {
+                result = "No path found",
+                path_mode = mode,
+                path = nil,
+            }
+        end,
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_object_survey()
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local joined = table.concat(env.logs, "\n")
+    local result_a = run and run.result_by_id["npc_a"]
+    local result_reachable = run and run.result_by_id["reachable_local"]
+    local result_far = run and run.result_by_id["unreachable_far"]
+    assert_contains(joined, "SURVEY_STRANDED_SCAN run=1 map=0x08 start=(5,5) pending_targets=3 reachable_targets=1 skipped_targets=2",
+        "once a stranded start is confirmed, the survey should scan and trim the remaining queue")
+    assert_contains(joined, "SURVEY_SKIP run=1 map=0x08 start=(5,5) target_id=unreachable_far target_name=\"Unreachable Far\" class=gated_or_isolated_region reason=stranded_start_unreachable",
+        "structurally unreachable targets should be skipped instead of attempted repeatedly")
+    assert_not_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=4/4 retry=0 target_id=unreachable_far",
+        "skipped stranded targets should never consume a live attempt")
+    assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=3/4 retry=0 target_id=reachable_local",
+        "reachable pocket-local targets should stay in the queue and still be attempted")
+    assert_equal(result_a.failure_classification, "gated_or_isolated_region",
+        "stale retries from the stranded start should be folded into the isolated-region bucket")
+    assert_equal(result_far.failure_classification, "gated_or_isolated_region",
+        "skipped stranded targets should still be recorded as isolated-region failures")
+    assert_equal(result_reachable.movement_succeeded, true,
+        "reachable local targets should still complete successfully after the stranded-start cleanup")
+    assert_equal(run.summary.successes, 1, "only the local reachable target should succeed")
+    assert_equal(run.summary.gated_or_isolated_region, 3,
+        "the two unreachable targets and the stale retry should all count as isolated/gated results")
+
+    env.restore()
+end
+
 function tests.survey_can_defer_same_target_again_for_different_trap_landing()
     local trap_calls = 0
     local env = make_env({
         objects = {
             {id = "trap_npc", name = "Trap NPC", type = "npc", x = 9, y = 5},
             {id = "retry_1", name = "Retry 1", type = "npc", x = 12, y = 5},
-            {id = "retry_2", name = "Retry 2", type = "npc", x = 13, y = 5},
-            {id = "retry_3", name = "Retry 3", type = "npc", x = 14, y = 5},
-            {id = "retry_4", name = "Retry 4", type = "npc", x = 15, y = 5},
-            {id = "retry_5", name = "Retry 5", type = "npc", x = 16, y = 5},
         },
         permanent_blocked = {
             ["7,5"] = true,
@@ -1365,17 +1616,50 @@ function tests.survey_can_defer_same_target_again_for_different_trap_landing()
             direct = {result = "No path found", path = nil},
             adjacent = {result = "No path found", path = nil},
         },
+        plan_fn = function(target, opts)
+            local mode = opts and opts.path_mode or "adjacent"
+            if target.id == "trap_npc" then
+                if trap_calls <= 1 then
+                    return {
+                        result = "Approach: 3 east",
+                        path_mode = "adjacent",
+                        path = {
+                            {x = 6, y = 5, direction = "east"},
+                            {x = 7, y = 5, direction = "east"},
+                            {x = 8, y = 5, direction = "east"},
+                        },
+                    }
+                end
+                return {
+                    result = "Approach: 4 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                        {x = 9, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                result = "No path found",
+                path_mode = mode,
+                path = nil,
+            }
+        end,
     })
 
     env.survey.start_object_survey()
-    for _ = 1, 7 do
+    for _ = 1, 3 do
         env.survey.tick(true)
     end
 
     local joined = table.concat(env.logs, "\n")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/6 defer=1 target_id=trap_npc reason=continuation_trap landing=(8,5)",
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=1 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(8,5)",
         "first trap landing should still be deferred")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/6 defer=2 target_id=trap_npc reason=continuation_trap landing=(9,5)",
+    assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=retry_1 reason=transient_no_path retry=1",
+        "a retryable target should stay behind the trap so the second defer still matters")
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=2 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(9,5)",
         "a different trap landing for the same target should be deferred too")
 
     env.restore()
@@ -1387,10 +1671,6 @@ function tests.survey_can_defer_same_target_again_for_same_trap_landing()
         objects = {
             {id = "trap_npc", name = "Trap NPC", type = "npc", x = 9, y = 5},
             {id = "retry_1", name = "Retry 1", type = "npc", x = 12, y = 5},
-            {id = "retry_2", name = "Retry 2", type = "npc", x = 13, y = 5},
-            {id = "retry_3", name = "Retry 3", type = "npc", x = 14, y = 5},
-            {id = "retry_4", name = "Retry 4", type = "npc", x = 15, y = 5},
-            {id = "retry_5", name = "Retry 5", type = "npc", x = 16, y = 5},
         },
         permanent_blocked = {
             ["7,5"] = true,
@@ -1431,27 +1711,49 @@ function tests.survey_can_defer_same_target_again_for_same_trap_landing()
             direct = {result = "No path found", path = nil},
             adjacent = {result = "No path found", path = nil},
         },
+        plan_fn = function(target, opts)
+            local mode = opts and opts.path_mode or "adjacent"
+            if target.id == "trap_npc" then
+                return {
+                    result = "Approach: 4 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                        {x = 9, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                result = "No path found",
+                path_mode = mode,
+                path = nil,
+            }
+        end,
     })
 
     env.survey.start_object_survey()
-    for _ = 1, 7 do
+    for _ = 1, 3 do
         env.survey.tick(true)
     end
 
     local joined = table.concat(env.logs, "\n")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/6 defer=1 target_id=trap_npc reason=continuation_trap landing=(9,5)",
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=1 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(9,5)",
         "first repeat trap landing should be deferred")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/6 defer=2 target_id=trap_npc reason=continuation_trap landing=(9,5)",
+    assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=retry_1 reason=transient_no_path retry=1",
+        "a retryable target should keep the same landing worthwhile to defer again")
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=2 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(9,5)",
         "same trap landing should be deferrable a second time")
 
     env.restore()
 end
 
-function tests.survey_can_defer_same_target_again_for_same_trap_landing_more_than_twice()
+function tests.same_landing_defer_stops_once_no_worthwhile_targets_remain()
     local env = make_env({
         objects = {
             {id = "trap_npc_a", name = "Trap NPC A", type = "npc", x = 9, y = 5},
-            {id = "trap_npc_b", name = "Trap NPC B", type = "npc", x = 9, y = 6},
+            {id = "retry_1", name = "Retry 1", type = "npc", x = 12, y = 5},
         },
         permanent_blocked = {
             ["7,5"] = true,
@@ -1466,7 +1768,7 @@ function tests.survey_can_defer_same_target_again_for_same_trap_landing_more_tha
             ["9,5"] = "npc",
         },
         autowalk_fn = function(ctx)
-            if ctx.target.id == "trap_npc_a" or ctx.target.id == "trap_npc_b" then
+            if ctx.target.id == "trap_npc_a" then
                 return {
                     status = "queued",
                     result = "Approach: 4 east",
@@ -1479,21 +1781,53 @@ function tests.survey_can_defer_same_target_again_for_same_trap_landing_more_tha
                     },
                 }
             end
+            return {
+                status = "no_path",
+                result = "No path found",
+                path_mode = "adjacent",
+                path = nil,
+            }
         end,
         alternate = {
             direct = {result = "No path found", path = nil},
             adjacent = {result = "No path found", path = nil},
         },
+        plan_fn = function(target, opts)
+            local mode = opts and opts.path_mode or "adjacent"
+            if target.id == "trap_npc_a" then
+                return {
+                    result = "Approach: 4 east",
+                    path_mode = "adjacent",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                        {x = 7, y = 5, direction = "east"},
+                        {x = 8, y = 5, direction = "east"},
+                        {x = 9, y = 5, direction = "east"},
+                    },
+                }
+            end
+            return {
+                result = "No path found",
+                path_mode = mode,
+                path = nil,
+            }
+        end,
     })
 
     env.survey.start_object_survey()
-    for _ = 1, 6 do
+    for _ = 1, 5 do
         env.survey.tick(true)
     end
 
     local joined = table.concat(env.logs, "\n")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=3 target_id=trap_npc_a reason=continuation_trap landing=(9,5)",
-        "same trap landing should keep deferring while other worthwhile targets remain")
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=1 target_id=trap_npc_a reason=continuation_trap trap_reason=small_area landing=(9,5)",
+        "same landing should still defer while the retryable target remains")
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=2 target_id=trap_npc_a reason=continuation_trap trap_reason=small_area landing=(9,5)",
+        "the same landing should defer again while the requeued target still matters")
+    assert_not_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=1/2 defer=3 target_id=trap_npc_a",
+        "once the only remaining target is exhausted, the trap target should stop deferring forever")
+    assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=1/2 retry=0 target_id=trap_npc_a",
+        "the trap target should eventually be allowed once nothing worthwhile remains behind it")
 
     env.restore()
 end
@@ -1814,6 +2148,14 @@ function tests.reorder_skips_candidates_that_still_qualify_for_continuation_trap
                     },
                 }
             end
+            if string.sub(target.id, 1, 6) == "filler" then
+                return {
+                    result = "Path: 1 east",
+                    path = {
+                        {x = 6, y = 5, direction = "east"},
+                    },
+                }
+            end
             if mode == "direct"
                 and not (opts and opts.skip_npcs)
                 and target.id == "npc_b"
@@ -1858,15 +2200,15 @@ function tests.reorder_skips_candidates_that_still_qualify_for_continuation_trap
     env.survey.tick(true)
 
     local joined = table.concat(env.logs, "\n")
-    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=2/9 defer=1 target_id=trap_npc reason=continuation_trap landing=(9,5)",
+    assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=2/9 defer=1 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(9,5)",
         "trap candidate should be deferred during the initial pass")
-    assert_contains(joined, "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=12 queue_to=10 target_id=npc_b retry=1 path_length=2 replaced_target_id=npc_a reason=reachable_priority",
+    assert_contains(joined, "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=10 queue_to=9 target_id=npc_b retry=1 path_length=2 replaced_target_id=trap_npc reason=reachable_priority",
         "reorder should choose the safe reachable retry instead of the deferred trap target")
     assert_not_contains(joined, "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=11 queue_to=10 target_id=trap_npc",
         "reorder should not pull a deferred continuation-trap target back to the front")
     assert_before(
         joined,
-        "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=12 queue_to=10 target_id=npc_b retry=1 path_length=2 replaced_target_id=npc_a reason=reachable_priority",
+        "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=10 queue_to=9 target_id=npc_b retry=1 path_length=2 replaced_target_id=trap_npc reason=reachable_priority",
         "SURVEY_ATTEMPT run=1 map=0x08 idx=3/9 retry=1 target_id=npc_b",
         "the safe retry should run immediately after it is promoted")
 

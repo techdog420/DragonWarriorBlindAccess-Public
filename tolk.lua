@@ -2,7 +2,8 @@
 -- Speech output wrapper for screen readers (NVDA, JAWS, Narrator).
 --
 -- Strategy: Try loading Tolk.dll directly via LuaJIT FFI first (instant,
--- zero-latency). If FFI fails (e.g., DLL missing, wrong architecture),
+-- zero-latency). If FFI fails (e.g., DLL missing, wrong architecture, or the
+-- current FCEUX build does not expose the ffi module),
 -- fall back to the Python bridge (speech_bridge.py via io.popen).
 --
 -- The FFI path calls Tolk functions in-process — no subprocess, no pipe,
@@ -96,9 +97,10 @@ end
 -- ============================================================
 -- Attempt 1: FFI / Tolk.dll (preferred — zero latency)
 -- ============================================================
--- FCEUX bundles LuaJIT which supports ffi.cdef and ffi.load.
--- encoding.lua (already in this project) provides UTF-8 → UTF-16
--- conversion that Tolk expects for its string arguments.
+-- Some historical/project notes assume FCEUX provides LuaJIT ffi support.
+-- In the current tested Windows qfceux.exe 2.6.6 environment, require("ffi")
+-- fails, so the Python bridge path is the expected runtime path unless the
+-- emulator build changes.
 
 local ffi_tolk = nil     -- FFI Tolk library handle
 local encoding = nil      -- encoding.lua module

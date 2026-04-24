@@ -20,25 +20,26 @@ def main() -> None:
         return
 
     command = payload.get("tool_input", {}).get("command", "")
-    if "./dw_commands.sh" not in command:
+    lowered = command.lower()
+    if "dw_commands.sh" not in lowered and "dw_commands.ps1" not in lowered:
         return
 
-    if "teleport_to:" not in command:
+    if "teleport_to:" not in lowered:
         return
 
-    if not any(token in command for token in FOLLOW_UP_TOKENS):
+    if not any(token in lowered for token in FOLLOW_UP_TOKENS):
         return
 
     response = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": (
-                "Split state-sensitive dw_commands.sh batches: send teleport_to "
-                "plus report_position first, wait for dw_debug.log confirmation, "
-                "then send probe, survey, or path-debug commands separately."
-            ),
-        }
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    "Split state-sensitive dw_commands batches: send teleport_to "
+                    "plus report_position first, wait for dw_debug.log confirmation, "
+                    "then send probe, survey, or path-debug commands separately."
+                ),
+            }
     }
     print(json.dumps(response))
 

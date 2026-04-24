@@ -29,11 +29,19 @@ local CONTINUATION_TRAP_AREA_LIMIT = 16
 local CONTINUATION_TRAP_MIN_REMAINING = 1
 local CONTINUATION_TRAP_MAX_DEFER_LANDINGS = 2
 local ISOLATED_START_CLUSTER_MIN_TARGETS = 2
+-- Defer a large-area landing only when it would strand most of the remaining
+-- queue. "Most" means the landing reaches strictly less than half of them and
+-- we have at least this many remaining targets to average over, so a single
+-- unreachable outlier in a 2-target tail does not trip the heuristic.
+local CONTINUATION_TRAP_STRANDED_MAJORITY_MIN_TARGETS = 3
 local SURVEY_START_ABORT_AREA_LIMIT = 16
 local SURVEY_START_ABORT_HARD_AREA_LIMIT = 12
 local SURVEY_START_ABORT_MAX_OPEN_EXITS = 2
 local ADJACENT_ISOLATED_MAX_OPEN_EXITS = 1
 local ADJACENT_ISOLATED_TINY_AREA_LIMIT = 2
+-- Abort the survey if current HP drops to or below this value to prevent
+-- the character dying mid-run on damage tiles (swamp/traps in some areas).
+local SURVEY_LOW_HP_ABORT_THRESHOLD = 8
 
 local SURVEY_DIRECTIONS = {
     {name = "north", dx = 0, dy = -1, approach = "south"},
@@ -357,8 +365,63 @@ local function append_direction(parts, dir_name)
     parts[#parts + 1] = dir_name
 end
 
-local function inspect_passable_exits(map_id, x, y)
-    local blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
+local function build_blocking_signature(blocking)
+    if not blocking then
+        return "-"
+    end
+
+    local parts = {}
+    for key, value in pairs(blocking) do
+        if type(value) == "table" then
+            parts[#parts + 1] = key .. ":" .. table.concat(sorted_truthy_keys(value), ",")
+        else
+            parts[#parts + 1] = key .. ":" .. tostring(value)
+        end
+    end
+    table.sort(parts)
+    if #parts == 0 then
+        return "-"
+    end
+    return table.concat(parts, ";")
+end
+
+local function invalidate_preview_caches()
+    if not survey_state then
+        return
+    end
+    survey_state.preview_cache = {}
+    survey_state.cell_diagnostics_cache = {}
+    survey_state.blocking_cache = {}
+end
+
+local function get_cached_blocking(map_id, skip_npcs)
+    local opts = skip_npcs and {skip_npcs = true} or nil
+    if not survey_state then
+        local blocking = route_mgr.build_path_blocking(map_id, opts)
+        return blocking, build_blocking_signature(blocking)
+    end
+
+    local cache_key = string.format("0x%02X:%s", map_id, skip_npcs and "skip" or "full")
+    local cached = survey_state.blocking_cache and survey_state.blocking_cache[cache_key]
+    if cached then
+        return cached.blocking, cached.signature
+    end
+
+    local blocking = route_mgr.build_path_blocking(map_id, opts)
+    local signature = build_blocking_signature(blocking)
+    cached = {
+        blocking = blocking,
+        signature = signature,
+    }
+    survey_state.blocking_cache = survey_state.blocking_cache or {}
+    survey_state.blocking_cache[cache_key] = cached
+    return blocking, signature
+end
+
+local function inspect_passable_exits(map_id, x, y, blocking)
+    if not blocking then
+        blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
+    end
     local open_dirs = {}
     local blocked_dirs = {}
 
@@ -442,10 +505,53 @@ local function format_direction_list(list)
     return "-"
 end
 
+local function get_cell_diagnostics(map_id, x, y, opts)
+    opts = opts or {}
+    local skip_npcs = opts.skip_npcs == true
+    local blocking = opts.blocking
+    local blocking_signature = opts.blocking_signature
+    if not blocking then
+        blocking, blocking_signature = get_cached_blocking(map_id, skip_npcs)
+    elseif not blocking_signature then
+        blocking_signature = build_blocking_signature(blocking)
+    end
+
+    local cache_key = nil
+    if survey_state and opts.no_cache ~= true then
+        cache_key = table.concat({
+            string.format("0x%02X", map_id),
+            tostring(x),
+            tostring(y),
+            skip_npcs and "skip" or "full",
+            blocking_signature or "-",
+        }, "|")
+        local cached = survey_state.cell_diagnostics_cache and survey_state.cell_diagnostics_cache[cache_key]
+        if cached then
+            return cached
+        end
+    end
+
+    local exit_info = inspect_passable_exits(map_id, x, y, blocking)
+    local info = {
+        map_id = map_id,
+        start_x = x,
+        start_y = y,
+        reachable_area = count_reachable_walk_area(map_id, x, y, blocking),
+        open_exit_count = exit_info.open_count,
+        open_dirs = exit_info.open_dirs,
+        blocked_dirs = exit_info.blocked_dirs,
+        open_exits_text = format_direction_list(exit_info.open_dirs),
+        blocked_exits_text = format_direction_list(exit_info.blocked_dirs),
+    }
+
+    if cache_key then
+        survey_state.cell_diagnostics_cache[cache_key] = info
+    end
+    return info
+end
+
 local function analyze_survey_start(targets, map_id, start_x, start_y)
-    local start_exit_info = inspect_passable_exits(map_id, start_x, start_y)
-    local start_blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
-    local start_reachable_area = count_reachable_walk_area(map_id, start_x, start_y, start_blocking)
+    local start_info = get_cell_diagnostics(map_id, start_x, start_y, {skip_npcs = true})
     local target_count = targets and #targets or 0
 
     return {
@@ -453,18 +559,18 @@ local function analyze_survey_start(targets, map_id, start_x, start_y)
         start_x = start_x,
         start_y = start_y,
         target_count = target_count,
-        reachable_area = start_reachable_area,
-        open_exit_count = start_exit_info.open_count,
-        open_dirs = start_exit_info.open_dirs,
-        blocked_dirs = start_exit_info.blocked_dirs,
-        open_exits_text = format_direction_list(start_exit_info.open_dirs),
-        blocked_exits_text = format_direction_list(start_exit_info.blocked_dirs),
+        reachable_area = start_info.reachable_area,
+        open_exit_count = start_info.open_exit_count,
+        open_dirs = start_info.open_dirs,
+        blocked_dirs = start_info.blocked_dirs,
+        open_exits_text = start_info.open_exits_text,
+        blocked_exits_text = start_info.blocked_exits_text,
         isolated_start = target_count > 1
             and (
-                start_reachable_area <= SURVEY_START_ABORT_HARD_AREA_LIMIT
+                start_info.reachable_area <= SURVEY_START_ABORT_HARD_AREA_LIMIT
                 or (
-                    start_reachable_area <= SURVEY_START_ABORT_AREA_LIMIT
-                    and start_exit_info.open_count <= SURVEY_START_ABORT_MAX_OPEN_EXITS
+                    start_info.reachable_area <= SURVEY_START_ABORT_AREA_LIMIT
+                    and start_info.open_exit_count <= SURVEY_START_ABORT_MAX_OPEN_EXITS
                 )
             ),
         area_limit = SURVEY_START_ABORT_AREA_LIMIT,
@@ -478,6 +584,111 @@ local function no_targets_message(mode, map_id)
         return string.format("No failed survey targets are currently loaded on map %02X", map_id)
     end
     return string.format("No survey targets found on map %02X", map_id)
+end
+
+local function plan_preview_for_target(map_id, start_x, start_y, target, opts)
+    if not target then
+        return nil
+    end
+
+    opts = opts or {}
+    local skip_npcs = opts.skip_npcs == true
+    local blocking = opts.blocking
+    local blocking_signature = opts.blocking_signature
+    if not blocking then
+        blocking, blocking_signature = get_cached_blocking(map_id, skip_npcs)
+    elseif not blocking_signature then
+        blocking_signature = build_blocking_signature(blocking)
+    end
+
+    local cache_key = nil
+    if survey_state and opts.no_cache ~= true then
+        cache_key = table.concat({
+            string.format("0x%02X", map_id),
+            tostring(start_x),
+            tostring(start_y),
+            tostring(target.id or cell_key(target.x or -1, target.y or -1)),
+            tostring(target.x or -1),
+            tostring(target.y or -1),
+            tostring(opts.path_mode or "auto"),
+            skip_npcs and "skip" or "full",
+            blocking_signature or "-",
+        }, "|")
+        local cached = survey_state.preview_cache and survey_state.preview_cache[cache_key]
+        if cached then
+            return cached
+        end
+    end
+
+    local plan_opts = {
+        map_id = map_id,
+        start_x = start_x,
+        start_y = start_y,
+        blocking = blocking,
+        skip_npcs = skip_npcs,
+        path_mode = opts.path_mode,
+        store_debug_path = false,
+        survey_safe = opts.survey_safe ~= false,
+    }
+    if opts.allow_adjacent_fallback ~= nil then
+        plan_opts.allow_adjacent_fallback = opts.allow_adjacent_fallback
+    end
+
+    local plan = route_mgr.plan_path_to_object(target, plan_opts)
+    if cache_key then
+        survey_state.preview_cache[cache_key] = plan
+    end
+    return plan
+end
+
+local function summarize_remaining_reachability(map_id, start_x, start_y, opts)
+    opts = opts or {}
+    if not survey_state or not survey_state.queue then
+        return {
+            total = 0,
+            reachable = 0,
+            unreachable = 0,
+        }
+    end
+
+    local skip_npcs = opts.skip_npcs == true
+    local blocking = opts.blocking
+    local blocking_signature = opts.blocking_signature
+    if not blocking then
+        blocking, blocking_signature = get_cached_blocking(map_id, skip_npcs)
+    elseif not blocking_signature then
+        blocking_signature = build_blocking_signature(blocking)
+    end
+
+    local first_index = opts.first_index or ((survey_state.queue_index or 0) + 1)
+    local exclude_index = opts.exclude_index
+    local total = 0
+    local reachable = 0
+    local unreachable = 0
+
+    for i = first_index, #survey_state.queue do
+        local entry = survey_state.queue[i]
+        if i ~= exclude_index and entry and entry.target then
+            total = total + 1
+            local plan = plan_preview_for_target(map_id, start_x, start_y, entry.target, {
+                skip_npcs = skip_npcs,
+                blocking = blocking,
+                blocking_signature = blocking_signature,
+                survey_safe = true,
+            })
+            if plan and plan.result ~= "No path found" then
+                reachable = reachable + 1
+            else
+                unreachable = unreachable + 1
+            end
+        end
+    end
+
+    return {
+        total = total,
+        reachable = reachable,
+        unreachable = unreachable,
+    }
 end
 
 local function get_plan_landing(start_x, start_y, plan)
@@ -502,7 +713,7 @@ local function remaining_targets_after_current()
     return remaining
 end
 
-local function evaluate_continuation_trap(queue_entry, map_id, start_x, start_y, plan, remaining_targets_override)
+local function evaluate_continuation_trap(queue_entry, map_id, start_x, start_y, plan, remaining_targets_override, queue_position_override)
     if not survey_state or not queue_entry or not queue_entry.target or not plan or not plan.path or #plan.path == 0 then
         return nil
     end
@@ -524,9 +735,60 @@ local function evaluate_continuation_trap(queue_entry, map_id, start_x, start_y,
         return nil
     end
 
-    local blocking = plan.blocking or route_mgr.build_path_blocking(map_id, {skip_npcs = true})
-    local reachable_area = count_reachable_walk_area(map_id, landing_x, landing_y, blocking)
-    if reachable_area > CONTINUATION_TRAP_AREA_LIMIT then
+    local structural_blocking, blocking_signature = get_cached_blocking(map_id, true)
+    local next_index = (survey_state.queue_index or 0) + 1
+    local remaining_first_index = next_index + 1
+    local exclude_index = nil
+    if queue_position_override and queue_position_override > next_index then
+        exclude_index = queue_position_override
+    end
+    local landing_info = get_cell_diagnostics(map_id, landing_x, landing_y, {
+        skip_npcs = true,
+        blocking = structural_blocking,
+        blocking_signature = blocking_signature,
+    })
+    local remaining_coverage = summarize_remaining_reachability(map_id, landing_x, landing_y, {
+        first_index = remaining_first_index,
+        exclude_index = exclude_index,
+        skip_npcs = true,
+        blocking = structural_blocking,
+        blocking_signature = blocking_signature,
+    })
+    local strands_all_remaining = remaining_coverage.total > 0 and remaining_coverage.reachable == 0
+    local strands_majority = remaining_coverage.total >= CONTINUATION_TRAP_STRANDED_MAJORITY_MIN_TARGETS
+        and remaining_coverage.reachable * 2 < remaining_coverage.total
+
+    if landing_info.reachable_area > CONTINUATION_TRAP_AREA_LIMIT
+        and (strands_all_remaining or strands_majority)
+    then
+        local current_coverage = summarize_remaining_reachability(map_id, start_x, start_y, {
+            first_index = remaining_first_index,
+            exclude_index = exclude_index,
+            skip_npcs = true,
+            blocking = structural_blocking,
+            blocking_signature = blocking_signature,
+        })
+        if remaining_coverage.reachable >= current_coverage.reachable then
+            return nil
+        end
+    end
+
+    if landing_info.reachable_area > CONTINUATION_TRAP_AREA_LIMIT
+        and not strands_all_remaining
+        and not strands_majority
+    then
+        return nil
+    end
+
+    -- For large areas: if all remaining targets are still reachable from the
+    -- landing, there is nothing to protect against — don't defer. This
+    -- terminates the defer loop that occurs when every remaining target is
+    -- inside the large area itself.
+    -- For small areas (≤ CONTINUATION_TRAP_AREA_LIMIT): always treat as a
+    -- trap regardless of plan reachability — the planner may report routes
+    -- as reachable even from a 0- or 1-cell pocket because it doesn't model
+    -- physical movement constraints from that landing.
+    if remaining_coverage.unreachable == 0 and landing_info.reachable_area > CONTINUATION_TRAP_AREA_LIMIT then
         return nil
     end
 
@@ -534,13 +796,18 @@ local function evaluate_continuation_trap(queue_entry, map_id, start_x, start_y,
         landing_x = landing_x,
         landing_y = landing_y,
         landing_key = landing_key,
-        reachable_area = reachable_area,
+        reachable_area = landing_info.reachable_area,
         remaining_targets = remaining_targets,
+        reachable_remaining = remaining_coverage.reachable,
+        unreachable_remaining = remaining_coverage.unreachable,
+        trap_reason = (landing_info.reachable_area <= CONTINUATION_TRAP_AREA_LIMIT)
+            and "small_area"
+            or "stranded_remainder",
     }
 end
 
-local function should_defer_continuation_trap(queue_entry, map_id, start_x, start_y, plan)
-    local trap = evaluate_continuation_trap(queue_entry, map_id, start_x, start_y, plan, nil)
+local function should_defer_continuation_trap(queue_entry, map_id, start_x, start_y, plan, queue_position_override)
+    local trap = evaluate_continuation_trap(queue_entry, map_id, start_x, start_y, plan, nil, queue_position_override)
     if not trap then
         return false
     end
@@ -548,11 +815,11 @@ local function should_defer_continuation_trap(queue_entry, map_id, start_x, star
     if trap.remaining_targets == 1 and survey_state and survey_state.queue then
         local other_entry = survey_state.queue[(survey_state.queue_index or 0) + 2]
         if other_entry and other_entry.target and other_entry.target.id ~= queue_entry.target.id then
-            local other_plan = route_mgr.plan_path_to_object(other_entry.target, {
+            local other_plan = plan_preview_for_target(map_id, start_x, start_y, other_entry.target, {
                 store_debug_path = false,
                 survey_safe = true,
             })
-            local other_trap = evaluate_continuation_trap(other_entry, map_id, start_x, start_y, other_plan, 1)
+            local other_trap = evaluate_continuation_trap(other_entry, map_id, start_x, start_y, other_plan, 1, (survey_state.queue_index or 0) + 2)
             if other_trap then
                 debug_tools.info(string.format(
                     "SURVEY_ENDGAME_ALLOW run=%d map=0x%02X idx=%d/%d target_id=%s other_target_id=%s landing=(%d,%d) reachable_area=%d reason=paired_continuation_traps remaining_targets=%d",
@@ -606,35 +873,36 @@ local function maybe_reprioritize_queue()
 
     local start_map_id, start_x, start_y = nav.get_position()
     local best_index = nil
+    local best_group = nil
     local best_retry = nil
     local best_path_length = nil
 
     for i = next_index, #survey_state.queue do
         local entry = survey_state.queue[i]
         if entry and entry.target then
-            local plan = route_mgr.plan_path_to_object(entry.target, {
-                store_debug_path = false,
+            local plan = plan_preview_for_target(start_map_id, start_x, start_y, entry.target, {
                 survey_safe = true,
             })
             if is_reachable_plan(plan) then
-                local should_skip = false
-                if i ~= next_index then
-                    should_skip = should_defer_continuation_trap(
-                        entry,
-                        start_map_id,
-                        start_x,
-                        start_y,
-                        plan)
-                end
+                local should_skip = should_defer_continuation_trap(
+                    entry,
+                    start_map_id,
+                    start_x,
+                    start_y,
+                    plan,
+                    i)
                 if not should_skip then
+                    local candidate_group = is_retry_or_deferred_entry(entry) and 0 or 1
                     local retry_number = entry.retry_number or 0
                     local path_length = plan_path_length(plan)
                     if not best_index
-                        or retry_number < best_retry
-                        or (retry_number == best_retry and path_length < best_path_length)
-                        or (retry_number == best_retry and path_length == best_path_length and i < best_index)
+                        or candidate_group < best_group
+                        or (candidate_group == best_group and retry_number < best_retry)
+                        or (candidate_group == best_group and retry_number == best_retry and path_length < best_path_length)
+                        or (candidate_group == best_group and retry_number == best_retry and path_length == best_path_length and i < best_index)
                     then
                         best_index = i
+                        best_group = candidate_group
                         best_retry = retry_number
                         best_path_length = path_length
                     end
@@ -676,8 +944,7 @@ local function get_or_create_no_path_cluster(map_id, start_x, start_y)
         return cluster
     end
 
-    local blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
-    local exit_info = inspect_passable_exits(map_id, start_x, start_y)
+    local start_info = get_cell_diagnostics(map_id, start_x, start_y, {skip_npcs = true})
     cluster = {
         key = key,
         start_x = start_x,
@@ -685,11 +952,12 @@ local function get_or_create_no_path_cluster(map_id, start_x, start_y)
         count = 0,
         target_ids = {},
         target_count = 0,
-        reachable_area = count_reachable_walk_area(map_id, start_x, start_y, blocking),
-        open_exit_count = exit_info.open_count,
-        open_dirs = exit_info.open_dirs,
-        blocked_dirs = exit_info.blocked_dirs,
+        reachable_area = start_info.reachable_area,
+        open_exit_count = start_info.open_exit_count,
+        open_dirs = start_info.open_dirs,
+        blocked_dirs = start_info.blocked_dirs,
         last_logged_target_count = 0,
+        last_stranded_scan_target_count = 0,
     }
     survey_state.no_path_clusters[key] = cluster
     return cluster
@@ -1129,32 +1397,41 @@ local function get_failed_targets_for_map(map_id)
     return targets
 end
 
-local function analyze_alternate_mode(target, primary_mode)
+local function analyze_alternate_mode(target, primary_mode, opts)
+    opts = opts or {}
+    local map_id = opts.map_id or nav.get_position()
+    local _, start_x, start_y = nav.get_position()
+    start_x = opts.start_x or start_x
+    start_y = opts.start_y or start_y
     local alternate_mode = (primary_mode == "adjacent") and "direct" or "adjacent"
-    local plan = route_mgr.plan_path_to_object(target, {
+    local plan = plan_preview_for_target(map_id, start_x, start_y, target, {
         path_mode = alternate_mode,
-        store_debug_path = false,
         survey_safe = true,
+        skip_npcs = opts.skip_npcs == true,
     })
     if not plan then
-        return alternate_mode, false, 0
+        return alternate_mode, false, 0, nil
     end
     local path_found = plan.result ~= "No path found"
-    return alternate_mode, path_found, plan.path and #plan.path or 0
+    return alternate_mode, path_found, plan.path and #plan.path or 0, plan
 end
 
-local function analyze_skip_npcs_path(target, primary_mode)
-    local plan = route_mgr.plan_path_to_object(target, {
+local function analyze_skip_npcs_path(target, primary_mode, opts)
+    opts = opts or {}
+    local map_id = opts.map_id or nav.get_position()
+    local _, start_x, start_y = nav.get_position()
+    start_x = opts.start_x or start_x
+    start_y = opts.start_y or start_y
+    local plan = plan_preview_for_target(map_id, start_x, start_y, target, {
         path_mode = primary_mode,
-        store_debug_path = false,
         survey_safe = true,
         skip_npcs = true,
     })
     if not plan then
-        return false, 0
+        return false, 0, nil
     end
     local path_found = plan.result ~= "No path found"
-    return path_found, plan.path and #plan.path or 0
+    return path_found, plan.path and #plan.path or 0, plan
 end
 
 local function analyze_isolated_adjacent_landings(attempt)
@@ -1193,14 +1470,21 @@ local function analyze_isolated_adjacent_landings(attempt)
 end
 
 local function classify_attempt(attempt)
-    local alternate_mode, alternate_path_found = analyze_alternate_mode(attempt.target, attempt.path_mode)
-    attempt.alternate_mode = alternate_mode
-    attempt.alternate_path_found = alternate_path_found
+    attempt.alternate_mode = nil
+    attempt.alternate_path_found = false
     attempt.skip_npcs_path_found = false
 
     if attempt.success then
         return nil
     end
+
+    local alternate_mode, alternate_path_found = analyze_alternate_mode(attempt.target, attempt.path_mode, {
+        map_id = attempt.map_id,
+        start_x = attempt.start_x,
+        start_y = attempt.start_y,
+    })
+    attempt.alternate_mode = alternate_mode
+    attempt.alternate_path_found = alternate_path_found
 
     if attempt.plan_status == "no_path" then
         local adjacent_isolated = analyze_isolated_adjacent_landings(attempt)
@@ -1222,7 +1506,11 @@ local function classify_attempt(attempt)
         if alternate_path_found then
             return "wrong_adjacency_or_interaction_assumption"
         end
-        local skip_npcs_path_found, skip_npcs_path_length = analyze_skip_npcs_path(attempt.target, attempt.path_mode)
+        local skip_npcs_path_found, skip_npcs_path_length = analyze_skip_npcs_path(attempt.target, attempt.path_mode, {
+            map_id = attempt.map_id,
+            start_x = attempt.start_x,
+            start_y = attempt.start_y,
+        })
         attempt.skip_npcs_path_found = skip_npcs_path_found
         if skip_npcs_path_found then
             debug_tools.info(string.format(
@@ -1273,9 +1561,8 @@ local function observe_clean_no_path_cluster(attempt, final_map_id, final_x, fin
         return nil
     end
     local refreshed_target = refresh_object(attempt.target)
-    local current_plan = route_mgr.plan_path_to_object(refreshed_target, {
+    local current_plan = plan_preview_for_target(attempt.map_id, attempt.start_x, attempt.start_y, refreshed_target, {
         path_mode = attempt.path_mode,
-        store_debug_path = false,
         survey_safe = true,
     })
     if is_reachable_plan(current_plan) then
@@ -1352,6 +1639,186 @@ local function get_retry_reason(attempt, failure_classification, final_map_id, f
     return nil
 end
 
+local function should_skip_entry_from_stranded_start(entry, map_id, start_x, start_y)
+    if not entry or not entry.target then
+        return false, nil
+    end
+
+    local target = refresh_object(entry.target)
+    local primary_plan = plan_preview_for_target(map_id, start_x, start_y, target, {
+        survey_safe = true,
+    })
+    if is_reachable_plan(primary_plan) then
+        return false, {
+            target = target,
+            primary_plan = primary_plan,
+        }
+    end
+
+    local primary_mode = primary_plan and primary_plan.path_mode or nil
+    local alternate_mode, alternate_path_found = analyze_alternate_mode(target, primary_mode, {
+        map_id = map_id,
+        start_x = start_x,
+        start_y = start_y,
+    })
+    if alternate_path_found then
+        return false, {
+            target = target,
+            primary_plan = primary_plan,
+            alternate_mode = alternate_mode,
+            alternate_path_found = true,
+        }
+    end
+
+    local skip_npcs_path_found = analyze_skip_npcs_path(target, primary_mode, {
+        map_id = map_id,
+        start_x = start_x,
+        start_y = start_y,
+    })
+    if skip_npcs_path_found then
+        return false, {
+            target = target,
+            primary_plan = primary_plan,
+            alternate_mode = alternate_mode,
+            alternate_path_found = false,
+            skip_npcs_path_found = true,
+        }
+    end
+
+    return true, {
+        target = target,
+        primary_plan = primary_plan,
+        alternate_mode = alternate_mode,
+        alternate_path_found = false,
+        skip_npcs_path_found = false,
+    }
+end
+
+local function build_stranded_skip_result(entry, detail, map_id, start_x, start_y)
+    local target = detail and detail.target or refresh_object(entry.target)
+    local primary_plan = detail and detail.primary_plan or nil
+    return {
+        run_id = survey_state.run_id,
+        map_id = map_id,
+        target_id = target.id,
+        target_type = target.type,
+        target_name = target.name,
+        start_x = start_x,
+        start_y = start_y,
+        target_x = target.x,
+        target_y = target.y,
+        path_mode = primary_plan and primary_plan.path_mode or nil,
+        path_found = false,
+        path_length = 0,
+        movement_succeeded = false,
+        final_x = start_x,
+        final_y = start_y,
+        failure_classification = "gated_or_isolated_region",
+        suspected_blocked_tiles = {},
+        blocked_tiles = {},
+        blocked_event_count = 0,
+        retry_succeeded = false,
+        alternate_mode = detail and detail.alternate_mode or nil,
+        alternate_path_found = detail and detail.alternate_path_found or false,
+        reason = "stranded_start_unreachable",
+        finished_on_same_map = true,
+    }
+end
+
+local function skip_stranded_start_remainder(cluster)
+    if not survey_state or not cluster then
+        return 0
+    end
+    if (cluster.last_stranded_scan_target_count or 0) >= cluster.target_count then
+        return 0
+    end
+
+    local first_index = (survey_state.queue_index or 0) + 1
+    if first_index > #survey_state.queue then
+        cluster.last_stranded_scan_target_count = cluster.target_count
+        return 0
+    end
+
+    cluster.last_stranded_scan_target_count = cluster.target_count
+    local start_info = get_cell_diagnostics(survey_state.map_id, cluster.start_x, cluster.start_y, {
+        skip_npcs = true,
+    })
+    local pending_summary = summarize_remaining_reachability(survey_state.map_id, cluster.start_x, cluster.start_y, {
+        first_index = first_index,
+        skip_npcs = true,
+    })
+    if pending_summary.total == 0 then
+        return 0
+    end
+
+    local compacted_queue = {}
+    for i = 1, survey_state.queue_index do
+        compacted_queue[#compacted_queue + 1] = survey_state.queue[i]
+    end
+
+    local skipped = 0
+    local still_reachable = 0
+    for i = first_index, #survey_state.queue do
+        local entry = survey_state.queue[i]
+        if entry and entry.target then
+            local should_skip, detail = should_skip_entry_from_stranded_start(
+                entry,
+                survey_state.map_id,
+                cluster.start_x,
+                cluster.start_y)
+            if should_skip then
+                local result = build_stranded_skip_result(
+                    entry,
+                    detail,
+                    survey_state.map_id,
+                    cluster.start_x,
+                    cluster.start_y)
+                survey_state.results[#survey_state.results + 1] = result
+                survey_state.result_by_id[result.target_id] = result
+                skipped = skipped + 1
+                debug_tools.info(string.format(
+                    "SURVEY_SKIP run=%d map=0x%02X start=(%d,%d) target_id=%s target_name=%q class=%s reason=%s",
+                    survey_state.run_id,
+                    survey_state.map_id,
+                    cluster.start_x,
+                    cluster.start_y,
+                    tostring(result.target_id or ""),
+                    tostring(result.target_name or ""),
+                    tostring(result.failure_classification or ""),
+                    tostring(result.reason or "")))
+                log_result(result)
+            else
+                compacted_queue[#compacted_queue + 1] = entry
+                still_reachable = still_reachable + 1
+            end
+        end
+    end
+
+    survey_state.queue = compacted_queue
+    debug_tools.info(string.format(
+        "SURVEY_STRANDED_SCAN run=%d map=0x%02X start=(%d,%d) pending_targets=%d reachable_targets=%d skipped_targets=%d reachable_area=%d open_exit_count=%d latest_target_id=%s reason=isolated_start_cluster",
+        survey_state.run_id,
+        survey_state.map_id,
+        cluster.start_x,
+        cluster.start_y,
+        pending_summary.total,
+        still_reachable,
+        skipped,
+        start_info.reachable_area,
+        start_info.open_exit_count,
+        tostring(survey_state.results[#survey_state.results] and survey_state.results[#survey_state.results].target_id or "")))
+    if still_reachable == 0 then
+        debug_tools.info(string.format(
+            "SURVEY_STRANDED_END run=%d map=0x%02X start=(%d,%d) skipped_targets=%d reason=no_remaining_reachable_targets",
+            survey_state.run_id,
+            survey_state.map_id,
+            cluster.start_x,
+            cluster.start_y,
+            skipped))
+    end
+    return skipped
+end
+
 local function finalize_attempt(attempt)
     if not survey_state or not attempt then
         return
@@ -1383,6 +1850,7 @@ local function finalize_attempt(attempt)
             tostring(attempt.target.id),
             retry_reason,
             survey_state.retry_counts[attempt.target.id]))
+        invalidate_preview_caches()
         return
     end
 
@@ -1440,6 +1908,14 @@ local function finalize_attempt(attempt)
     end
 
     log_result(result)
+    if no_path_cluster and no_path_cluster.target_count >= ISOLATED_START_CLUSTER_MIN_TARGETS then
+        skip_stranded_start_remainder(no_path_cluster)
+    end
+    -- Full flush between attempts: the player (and any un-parked NPCs) may
+    -- have moved, and cached previews/diagnostics are keyed on start position
+    -- and blocking signature. Keeping them would also grow unbounded over a
+    -- long run. on_route_blocked + start_attempt handle within-attempt drift.
+    invalidate_preview_caches()
 end
 
 local function record_candidate(attempt, blocked_event)
@@ -1522,6 +1998,7 @@ local function on_route_blocked(data)
     }
     attempt.blocked_tiles[#attempt.blocked_tiles + 1] = cell_key(dest_x, dest_y)
     record_candidate(attempt, blocked_event)
+    invalidate_preview_caches()
 end
 
 local function on_route_completed()
@@ -1576,6 +2053,7 @@ local function start_attempt(queue_entry)
     local stale_runtime_blocks = route_mgr.count_runtime_blocks(map_id) or 0
     if stale_runtime_blocks > 0 then
         route_mgr.clear_runtime_blocks(map_id)
+        invalidate_preview_caches()
         debug_tools.info(string.format(
             "SURVEY_ATTEMPT_RESET run=%d map=0x%02X target_id=%s cleared_runtime_blocks=%d",
             survey_state and survey_state.run_id or 0,
@@ -1601,11 +2079,12 @@ local function start_attempt(queue_entry)
                 status = "deferred_continuation_trap",
                 continuation_trap = info,
                 message = string.format(
-                    "Deferred %s because landing (%d,%d) only reaches %d walkable tiles with %d targets remaining",
+                    "Deferred %s because landing (%d,%d) reaches %d walkable tiles and only %d of %d remaining targets stay reachable",
                     tostring(target.name),
                     info.landing_x,
                     info.landing_y,
                     info.reachable_area,
+                    info.reachable_remaining or 0,
                     info.remaining_targets),
             }
         end,
@@ -1665,17 +2144,20 @@ local function start_attempt(queue_entry)
         }
         survey_state.queue_index = survey_state.queue_index + 1
         debug_tools.info(string.format(
-            "SURVEY_DEFER run=%d map=0x%02X idx=%d/%d defer=%d target_id=%s reason=continuation_trap landing=(%d,%d) reachable_area=%d remaining_targets=%d",
+            "SURVEY_DEFER run=%d map=0x%02X idx=%d/%d defer=%d target_id=%s reason=continuation_trap trap_reason=%s landing=(%d,%d) reachable_area=%d remaining_targets=%d reachable_remaining=%d unreachable_remaining=%d",
             survey_state.run_id,
             survey_state.map_id,
             attempt.original_index or (survey_state.queue_index + 1),
             survey_state.target_total,
             survey_state.defer_counts[target.id],
             tostring(target.id),
+            tostring(trap.trap_reason or ""),
             trap.landing_x or start_x,
             trap.landing_y or start_y,
             trap.reachable_area or 0,
-            trap.remaining_targets or 0))
+            trap.remaining_targets or 0,
+            trap.reachable_remaining or 0,
+            trap.unreachable_remaining or 0))
         return
     end
 
@@ -1765,6 +2247,9 @@ local function start_run(targets, opts)
         defer_counts = {},
         defer_landings = {},
         no_path_clusters = {},
+        preview_cache = {},
+        cell_diagnostics_cache = {},
+        blocking_cache = {},
         active_attempt = nil,
         stop_after_attempt = false,
         stop_reason = nil,
@@ -1920,6 +2405,21 @@ end
 function M.tick(can_walk)
     tick_counter = tick_counter + 1
     if not debug_tools.DEBUG_MODE or not survey_state then
+        return
+    end
+
+    local cur_hp = memory.readbyte(addr.CURRENT_HP)
+    if cur_hp <= SURVEY_LOW_HP_ABORT_THRESHOLD then
+        if survey_state.active_attempt then
+            auto_step.cancel_active_step(true)
+        end
+        debug_tools.info(string.format(
+            "SURVEY_ABORT run=%d map=0x%02X reason=low_hp hp=%d threshold=%d",
+            survey_state.run_id, survey_state.map_id, cur_hp, SURVEY_LOW_HP_ABORT_THRESHOLD))
+        tolk.output_interrupt(string.format(
+            "Survey aborted: HP critical (%d). Heal and retry.", cur_hp))
+        survey_state.stop_reason = "low_hp"
+        finish_run(false)
         return
     end
 
