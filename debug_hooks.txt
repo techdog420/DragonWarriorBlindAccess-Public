@@ -56,6 +56,9 @@ COMMANDS (write to dw_commands.txt, one per line)
 -------------------------------------------------
   log_state                Write full game state snapshot to log
   report_position          Write current map/x/y to log
+  report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
+  report_movement_state    Dump movement/camera-adjacent RAM windows
+  report_movement_state:TAG Same, with TAG included for before/after comparisons
   toggle_debug             Flip debug_mode on/off at runtime
   simulate_input:UP        Inject one frame of D-pad Up
   simulate_input:UP,12     Inject 12 consecutive frames of D-pad Up
@@ -66,6 +69,9 @@ COMMANDS (write to dw_commands.txt, one per line)
   simulate_input:B         Inject one frame of B button
   simulate_input:START     Inject one frame of Start
   simulate_input:SELECT    Inject one frame of Select
+  clear_input              Inject a neutral joypad frame to clear stale held input
+  trace_input              Log input.get() keys and joypad.read(1) changes for 300 frames
+  trace_input:FRAMES       Same, with frame count clamped to 1..1800
   launcher_probe           Write a launcher readiness marker to dw_debug.log
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
   simulate_raw_input:UP    Inject one raw frame of D-pad Up
@@ -148,7 +154,7 @@ directional passability. Freeze NPCs first for clean results.
   list_blocked_candidates:MAP_ID  Same for an explicit map.
   dump_survey_report       Full per-target result log for the last survey run.
   dump_survey_report:MAP_ID  Same for an explicit map.
-  export_blocked_candidates       Export as MAP_BLOCKED_CELLS Lua lines.
+  export_blocked_candidates       Export only pasteable confirmed candidates; skips diagnostics.
   export_blocked_candidates:MAP_ID  Same for an explicit map.
   export_directional_candidates   Export as MAP_DIRECTIONAL_BLOCKS Lua lines.
   export_directional_candidates:MAP_ID  Same for an explicit map.

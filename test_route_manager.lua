@@ -28,6 +28,7 @@ local function make_env(options)
     local pathfind_mode = options.pathfind_mode or "always_path"
     local pathfind_block_key = options.pathfind_block_key or "5,3"
     local reroute_calls = 0
+    local current_object = options.current_object or {name = "Chest", type = "chest", x = 6, y = 1}
     local module_names = {
         "addresses",
         "auto_step",
@@ -75,7 +76,13 @@ local function make_env(options)
             TYPE_NPC = "npc",
             TYPE_DOOR = "door",
             current_object = function()
-                return {name = "Chest", type = "chest", x = 6, y = 1}
+                return current_object
+            end,
+            describe_object = function(obj)
+                return (obj and obj.name or "Object") .. ": 3 north"
+            end,
+            describe_current = function()
+                return options.current_description or (current_object.name .. ": 3 north (1 of 1)")
             end,
             update_npcs = function() end,
             get_blocking_positions = function()
@@ -86,6 +93,23 @@ local function make_env(options)
     end
 
     package.preload["pathfinder"] = function()
+        local function should_return_no_path(blocking)
+            if pathfind_mode == "always_no_path" then
+                return true
+            end
+            if pathfind_mode == "reroute_no_path" and reroute_calls >= 2 then
+                return true
+            end
+            if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
+                return true
+            end
+            return false
+        end
+        local function one_step_path()
+            return {
+                {x = 5, y = 3, direction = "north"},
+            }
+        end
         return {
             pathfind_to = function(_, start_x, start_y, goal_x, goal_y, blocking)
                 pathfind_calls = pathfind_calls + 1
@@ -113,6 +137,26 @@ local function make_env(options)
                     {x = 5, y = 3, direction = "north"},
                 }
             end,
+            find_route_to = function(_, start_x, start_y, goal_x, goal_y, blocking)
+                pathfind_calls = pathfind_calls + 1
+                reroute_calls = reroute_calls + 1
+                last_direct_call = {
+                    start_x = start_x,
+                    start_y = start_y,
+                    goal_x = goal_x,
+                    goal_y = goal_y,
+                    blocking = blocking,
+                }
+                if pathfind_mode == "direct_no_path_adjacent_ok"
+                and goal_x == current_object.x
+                and goal_y == current_object.y then
+                    return nil
+                end
+                if should_return_no_path(blocking) then
+                    return nil
+                end
+                return one_step_path()
+            end,
             pathfind_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
@@ -135,6 +179,21 @@ local function make_env(options)
                 return "Approach: 1 north", "north", {
                     {x = 5, y = 3, direction = "north"},
                 }
+            end,
+            find_route_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking)
+                pathfind_calls = pathfind_calls + 1
+                reroute_calls = reroute_calls + 1
+                last_adjacent_call = {
+                    start_x = start_x,
+                    start_y = start_y,
+                    goal_x = goal_x,
+                    goal_y = goal_y,
+                    blocking = blocking,
+                }
+                if should_return_no_path(blocking) then
+                    return nil, nil, nil, {}
+                end
+                return one_step_path(), "north", {x = 5, y = 3}, {}
             end,
         }
     end
@@ -297,7 +356,12 @@ function tests.repeated_blocked_steps_promote_runtime_block_after_threshold()
     env.restore()
 end
 
-function tests.successful_traversal_clears_runtime_block_and_marks_noisy_seam()
+function tests.successful_traversal_marks_noisy_seam_but_confirmed_block_persists()
+    -- After 3 consecutive blocks, the seam is confirmed and a runtime block is
+    -- added. A single successful traversal changes the seam to "noisy" but does
+    -- NOT clear the runtime block — one state-dependent pass is not enough
+    -- evidence to erase a confirmed engine block. The block persists until either
+    -- clear_runtime_blocks is called explicitly, or the map changes.
     local env = make_env()
 
     env.route_manager.autowalk_to_current()
@@ -308,13 +372,20 @@ function tests.successful_traversal_clears_runtime_block_and_marks_noisy_seam()
 
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
-        0,
-        "a successful traversal should clear the promoted runtime block again"
+        1,
+        "confirmed runtime block should NOT be cleared by a single successful traversal"
+    )
+    -- Because the runtime block persists, classify_seam_entry returns
+    -- "confirmed_blocked" (runtime check fires first), not "noisy".
+    assert_equal(
+        env.seam_summary(0x05).confirmed_blocked,
+        1,
+        "seam with persistent runtime block should still be classified confirmed_blocked"
     )
     assert_equal(
         env.seam_summary(0x05).noisy,
-        1,
-        "mixed blocked and moved history should be classified as a noisy seam"
+        0,
+        "noisy count should be 0 because runtime block keeps confirmed_blocked classification"
     )
 
     env.restore()
@@ -413,6 +484,56 @@ function tests.preview_planning_can_override_origin_and_blocking_state()
     env.restore()
 end
 
+function tests.current_object_description_marks_unreachable_without_freezing_npcs()
+    local env = make_env({pathfind_mode = "always_no_path"})
+
+    local desc = env.route_manager.describe_current_object()
+
+    assert_contains(desc, "Chest: 3 north", "object browser should keep the normal object description")
+    assert_contains(desc, "Not currently reachable", "object browser should flag unreachable objects")
+    assert_equal(
+        env.route_manager.is_npc_freeze_active(),
+        false,
+        "object browser reachability preview should not freeze NPCs"
+    )
+    assert_equal(
+        env.start_route_calls(),
+        0,
+        "object browser reachability preview should not queue movement"
+    )
+
+    env.restore()
+end
+
+function tests.current_object_description_leaves_reachable_objects_unchanged()
+    local env = make_env()
+
+    local desc = env.route_manager.describe_current_object()
+
+    assert_equal(
+        desc,
+        "Chest: 3 north (1 of 1)",
+        "reachable object descriptions should stay concise"
+    )
+
+    env.restore()
+end
+
+function tests.current_object_description_allows_chest_adjacent_fallback()
+    local env = make_env({pathfind_mode = "direct_no_path_adjacent_ok"})
+
+    local desc = env.route_manager.describe_current_object()
+
+    assert_not_contains(
+        desc,
+        "Not currently reachable",
+        "object browser should treat a chest as reachable when adjacent fallback works"
+    )
+    assert_equal(env.pathfind_calls() > 1, true, "chest preview should try another reachable tile after direct failure")
+
+    env.restore()
+end
+
 function tests.reroute_no_path_bruteforces_unconfirmed_seam()
     local env = make_env({pathfind_mode = "reroute_no_path"})
 
@@ -459,6 +580,46 @@ function tests.successful_seam_bruteforce_requeues_followup_route()
         table.concat(env.outputs, "\n"),
         "Seam crossed.",
         "successful seam brute force should be announced"
+    )
+
+    env.restore()
+end
+
+function tests.failed_seam_bruteforce_retries_again_then_cancels_cleanly()
+    local env = make_env({pathfind_mode = "reroute_no_path"})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up")
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+    local retry_observation = env.route_manager.get_seam_observation(0x05, 5, 3, "south")
+
+    assert_equal(
+        env.inject_step_calls(),
+        2,
+        "a failed seam brute-force step should trigger the second retry before giving up"
+    )
+    assert_equal(
+        retry_observation.last_source,
+        "seam_retry_block",
+        "failed seam brute-force retries should not be recorded as direct manual repros"
+    )
+    assert_not_contains(
+        table.concat(env.outputs, "\n"),
+        "No path found. Pathfinding cancelled.",
+        "the second seam retry should not cancel until it also fails"
+    )
+
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        1,
+        "three one-sided seam failures should promote the seam into a runtime block"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "No path found. Pathfinding cancelled.",
+        "after the seam retry limit is exhausted the route should cancel cleanly"
     )
 
     env.restore()

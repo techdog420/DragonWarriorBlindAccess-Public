@@ -378,6 +378,35 @@ local MAP_PASSTHROUGH_CELLS = {
 -- When a cell is listed here, is_walkable() returns true ONLY if the
 -- door at (x,y) appears in the opened-door array; otherwise false.
 local MAP_DOOR_CELLS = {
+    -- Map 0x04: Tantegel Castle main hall
+    -- y=6 magic-key door band: five F- (type 15) tiles confirmed by dump_grid
+    -- (2026-04-26). These are the ONLY type-15 tiles on this map.
+    --
+    -- These doors provide the DIRECT CENTER crossing from the main hall (y=7+)
+    -- to the north section (y=5 and above). Of the five, only (14,6) is useful
+    -- for pathfinding: it leads to (14,5)[passthrough]→(14,4)[passthrough]→east
+    -- wing. Doors (10,6)–(13,6) exit to cells in the antechamber north wall
+    -- (y=5, x=8-12 in MAP_BLOCKED_CELLS) and provide no viable path.
+    --
+    -- NOTE: The x=5 decoder gap bypass reaches the y=4 east connector up to the
+    -- west side of the confirmed east-wall seams: (5,7)→(5,6)[passthrough]→
+    -- (5,5)→(5,4)[passthrough]→(6,4)[passthrough]→(7,4)[passthrough]→
+    -- (8,4)[passthrough]→y=4 corridor. It does NOT prove all east-side targets
+    -- are key-free: the far-east cluster past the confirmed 21,4/21,5 west
+    -- blocks remains no-path from (10,8)/(10,10) in parked-NPC checks
+    -- (2026-04-26). The magic-key doors provide a shorter center crossing once opened.
+    --
+    -- Opening any door (facing north + OPEN command + magic key) records that
+    -- door's (x,y) in the opened-door RAM array ($600C/$600D, up to 8 slots).
+    -- The pathfinder then routes through whichever door(s) are open. Doors reset
+    -- to closed on each map re-entry (RAM clears on map load).
+    [0x04] = {
+        ["10,6"] = {x=10, y=6},
+        ["11,6"] = {x=11, y=6},
+        ["12,6"] = {x=12, y=6},
+        ["13,6"] = {x=13, y=6},
+        ["14,6"] = {x=14, y=6},
+    },
     -- Map 0x05: Tantegel Castle Throne Room
     -- (4,7) = south-wall arch doorway. ROM tile is type-15 (wall), but the
     -- game engine places a magic-key door here at runtime. Once the player
@@ -408,7 +437,9 @@ local MAP_BLOCKED_CELLS = {
     --   NORTH wall: y=5, x=8-12  — engine blocks northward exit from y=6
     --   WEST wall:  x=6, y=6     — engine blocks westward exit from x=7
     --   EAST wall:  x=13, y=7   — engine blocks eastward exit from x=12
-    --   SOUTH:      door at (11,9) — closed door, requires OPEN command to exit
+    --   SOUTH:      (11,9) — tile type 6 (walkable floor), NOT a door; antechamber south
+    --               is open. Old "closed door" label was a misidentification (confirmed
+    --               2026-04-26 via dump_grid: 6+ at (11,9)).
     --
     -- The antechamber can be ENTERED from the east (moving west from x=13 to
     -- x=12) but not EXITED east. Pathfinding must route around it entirely via
@@ -589,9 +620,10 @@ local MAP_BLOCKED_CELLS = {
     -- Map 0x08: Brecconary (30x30 town, west-edge exit at (0,15))
     --
     -- Sweep data (2026-03-27, auto-freeze, NPC exclusion).
-    -- Only 6 cells are engine-blocked from ALL walkable-adjacent directions.
-    -- Directional wall bands are tracked separately below and extended only
-    -- after direct probe confirmation.
+    -- Most entries here are engine-blocked from all walkable-adjacent directions.
+    -- One-way/trap cells may also be listed when the engine can strand the
+    -- player there; those are pathfinder-forbidden even if a noisy entry probe
+    -- once appeared to move into the cell.
     [0x08] = {
         ["21,4"]  = true,  -- tile=8; blocked from all 4 walkable neighbors
         ["2,7"]   = true,  -- tile=1; blocked from 3 walkable neighbors (4th is void)
@@ -599,6 +631,21 @@ local MAP_BLOCKED_CELLS = {
         ["11,26"] = true,  -- tile=6; blocked from all 4 walkable neighbors
         ["23,27"] = true,  -- tile=6; blocked from 3 walkable neighbors
         ["26,27"] = true,  -- tile=6; blocked from 3 walkable neighbors
+        -- South-east one-way/trap cell. The 2026-04-26 parked survey reached
+        -- (16,23), then all four exits direct-probed as blocked despite open
+        -- previews. A follow-up entry probe from (16,24)->UP also blocked after
+        -- the earlier route-run move, so keep A* out of this cell entirely.
+        ["16,23"] = true,
+        -- North-east one-way/trap cell. The 2026-04-26 parked survey reached
+        -- (18,17) while routing to Person 1, then split direct probes from a
+        -- teleport-normalized start confirmed UP/LEFT/DOWN all block despite
+        -- open previews. RIGHT is already a wall tile, so keep A* out entirely.
+        ["18,17"] = true,
+        -- East-center one-way/trap cell. The 2026-04-26 parked survey entered
+        -- (17,22) from the west, then LEFT/RIGHT/DOWN direct probes all blocked
+        -- despite open previews; a raw LEFT hold also stayed pinned. NORTH is a
+        -- wall tile, so keep A* out entirely instead of routing into the trap.
+        ["17,22"] = true,
     },
 }
 
@@ -622,7 +669,8 @@ local MAP_DIRECTIONAL_BLOCKS = {
     --
     -- The west wing (x=1-5, y=7-15) is surrounded by engine walls:
     --   EAST FULL BLOCKS at x=6, y=6-8, y=10: in MAP_BLOCKED_CELLS (all directions)
-    --   EAST WALL at x=6, y=13-16: directional (blocked when approaching from east)
+    --   EAST WALL at x=6, y=13-16: directional; y=13 now blocks both horizontal
+    --     approaches, while y=14-16 also block both east/west approaches
     --   SOUTH WALL at y=16, x=1-4,6: blocked when approaching from south
     --   y=9 at x=6 is the ONLY valid antechamber→west wing crossing — NOT blocked.
     --   y=11-12 at x=6: unconfirmed; speculative entries removed 2026-04-08.
@@ -650,9 +698,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         --   both (5,9)->(6,9) and (7,9)->(6,9) fail in-engine, so it is not a
         --   usable crossing and should not remain directional-only.
         -- y=11-12: removed speculative entries (never confirmed by runtime blocks).
-        -- y=13 reopened 2026-04-18: direct probes from both (7,13)->(6,13) and
-        -- (5,13)->(6,13) moved cleanly despite the older directional model, so
-        -- keep (6,13) open and continue to treat y=14-16 as the blocked band.
+        -- y=13 revised 2026-04-26: a fresh parked survey and two split direct
+        -- probes from (5,13)->(6,13) all blocked despite an open preview. Keep
+        -- this as a horizontal seam block together with the east-side repro below.
         ["6,14"] = {east = true, west = true},     -- run7 west added; count=2 retry_successes=2
         ["6,15"] = {east = true, west = true},     -- run7 west added; count=2 retry_successes=2
         ["6,16"] = {east = true, west = true, south = true},  -- run7 west added; count=2 retry_successes=2
@@ -669,7 +717,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- y=9 and y=15-16 previously confirmed; y=10-12 and y=14 confirmed 2026-04-09 via survey_map
         -- (count=5-6 high confidence each, east=true = can't enter from east/move west into cell).
         -- (4,7): east wall confirmed 2026-04-13 (approach=east, auto_step:left from (5,7)).
-        -- south=true added 2026-04-22: probe_edge from (4,8) UP → status=blocked,
+        -- west=true added 2026-04-26: post-reload direct probe from (3,7) RIGHT
+        -- stayed at (3,7), while neighboring reroute-only candidates (3,6 south
+        -- and 4,6 north) moved on focused repro and should not be modeled.
+        -- south=true added 2026-04-22: probe_edge from (4,8) UP -> status=blocked,
         -- EDGE_PROBE_MODEL_MISMATCH blocked_despite_open_preview. Engine blocks the
         -- northward step from (4,8) into (4,7); model was missing this face.
         -- With south=true, A* bypasses (6,5) [MAP_BLOCKED_CELLS] via the y=4 passthrough strip:
@@ -678,7 +729,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (8,4) confirmed 2026-04-22 as decoder gap (tile=0); bridges (7,4) to regular floor at (9,4)+.
         -- y=13 reopened 2026-04-18: direct probe from (5,13)->(4,13) moved cleanly,
         -- and once inside, west-side targets regained short valid paths.
-        ["4,7"]  = {east = true, south = true},
+        ["4,7"]  = {east = true, west = true, south = true},
         ["4,9"]  = {east = true, north = true},  -- antechamber south door region; confirmed
         ["4,10"] = {east = true},                -- survey run4 count=5 high
         ["4,11"] = {east = true},                -- survey run4 count=5 high
@@ -703,11 +754,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["8,9"]  = {east = true, south = true, north = true},  -- count=13, retry_successes=1; north confirmed 2026-04-15 runtime block (auto_step:down from (8,8))
         ["6,11"] = {east = true, west = true},     -- count=6 east; run6 west (oscillation fix)
         ["6,12"] = {east = true, west = true},      -- east: count=1 medium; west: confirmed 2026-04-10 survey pass 8
-        -- Reconfirmed 2026-04-19 by direct seam probe:
-        -- (7,13)->(6,13) blocks with a clean model mismatch + runtime block,
-        -- while (5,13)->(6,13) and (6,13)->(7,13) both move. Model this as a
-        -- one-way east-approach block into the west-side corridor entry.
-        ["6,13"] = {east = true},
+        -- Reconfirmed by direct seam probes:
+        -- (7,13)->(6,13) blocks from the east; fresh 2026-04-26 post-reload
+        -- checks also block (5,13)->(6,13) from the west twice and promote the
+        -- seam to confirmed_blocked after the survey hit.
+        ["6,13"] = {east = true, west = true},
         -- Reconfirmed 2026-04-19 after reload:
         -- (5,13)->(4,13) now blocks cleanly on direct probe, while
         -- (4,13)->(5,13) still moves. Model the west-pocket gate as a one-way
@@ -764,6 +815,42 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (8,3) is a decoder-gap passthrough cell; this block prevents A* from routing
         -- through the (8,3)→(9,3) wall seam.
         ["9,3"]   = {west = true},
+        -- South gate east-wall band follow-up (2026-04-26):
+        -- A restarted parked survey after the south-gate door was entered found
+        -- repeated queued-route blocks along the castle exit wall. Runtime blocks
+        -- were cleared, then split direct probes from each adjacent start all
+        -- logged EDGE_PROBE_MODEL_MISMATCH blocked_despite_open_preview.
+        ["16,28"] = {south = true},
+        ["17,28"] = {south = true},
+        ["18,28"] = {south = true},
+        ["19,28"] = {south = true},
+        ["20,29"] = {west = true},
+        -- Throne-room north-entry seams confirmed 2026-04-24 after full Lua reload.
+        -- Controlled direct probes from (8,4)/(14,4)/(15,4) UP each blocked 3/3
+        -- and logged EDGE_PROBE_MODEL_MISMATCH blocked_despite_open_preview.
+        ["8,3"]   = {south = true},
+        ["14,3"]  = {south = true},
+        -- East-connector reroute wall band follow-up (2026-04-26):
+        -- The fresh parked-NPC survey re-learned 17..20,6 north and 21,4/21,5 west
+        -- as blocked via queued auto_step. Controlled probe_edge repeated that, but
+        -- the first raw held-input pass falsely appeared to split the set. After
+        -- full script reload and normalized adjacent-start controls, raw input also
+        -- stayed in place for 20,6 north and 21,4/21,5 west. Treat the earlier
+        -- "moved" result as contaminated by stale movement/subtile state.
+        ["17,6"]  = {north = true},
+        ["18,6"]  = {north = true},
+        ["19,6"]  = {north = true},
+        ["20,6"]  = {north = true},
+        ["21,4"]  = {west = true},
+        ["21,5"]  = {west = true},
+        -- x=15 east-entry: re-confirmed 2026-04-24 via natural walk (teleport
+        -- normalization removed as a variable). 90-frame LEFT hold from (17,y)
+        -- stopped at (16,y) for y=1,2,3 — engine blocks entry from (16,y)->LEFT.
+        -- Earlier "moved" probes were anomalous sub-pixel states from overshoot
+        -- movement; natural walk is ground truth.
+        ["15,1"]  = {east = true},
+        ["15,2"]  = {east = true},
+        ["15,3"]  = {east = true, south = true},
         ["9,18"]  = {west = true},                 -- count=15
         -- South-west corridor (y=19-29, x=1-8):
         -- Complex maze of directional barriers in the castle's south-west quadrant.
@@ -848,7 +935,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
     -- Confirmed via runtime block discovery during autowalk testing 2026-03-29
     -- plus direct edge-probe rechecks where noted.
     [0x08] = {
-        -- NW building west wall (x=3)
+        -- NW building west wall (x=3).
+        -- 2026-04-27 post-reload survey re-confirmed (2,5)->RIGHT into
+        -- (3,5) as blocked five times, including brute-force/manual confirms.
+        -- An earlier moved probe was likely a noisy/subtile state and is
+        -- outweighed by the clean route-context repro.
         ["3,4"]  = {west = true},
         ["3,5"]  = {west = true},
         -- NW building top and east walls.
@@ -949,18 +1040,31 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- first attempt from (6,23) also failed on (6,23)->(5,23) with
         -- approach=east. Promote these directly reproduced cells so the next
         -- survey can test beyond the same southwest pocket.
+        -- 2026-04-26 follow-up: direct probes after Guard 4 churn confirmed
+        -- (7,25)->RIGHT into (8,25), (7,26)->RIGHT into (8,26), and
+        -- (8,25)->DOWN into (8,26) are blocked despite open previews.
         ["5,23"]  = {east = true},
-        ["8,25"]  = {east = true},
-        ["8,26"]  = {east = true},
+        ["8,25"]  = {east = true, west = true},
+        ["8,26"]  = {east = true, north = true, west = true},
         ["3,27"]  = {south = true},
         ["4,27"]  = {south = true},
         ["5,27"]  = {south = true},
         ["6,27"]  = {south = true},
         ["7,27"]  = {south = true},
-        -- ["8,27"] entry removed: duplicate key (was silently overwriting line ~756 {west=true});
-        -- all confirmed faces merged into the primary entry above.
+        -- 2026-04-26 follow-up: the fresh parked survey repeatedly blocked
+        -- (8,28)->UP into (8,27). A split direct probe and a 90-frame raw hold
+        -- both stayed at (8,28), while the reverse (8,27)->DOWN moved through.
+        -- Model only the south approach; leaving the reverse open preserves
+        -- the observed one-way behavior.
+        ["8,27"]  = {south = true},
         ["9,27"]  = {north = true, south = true},
-        ["10,27"] = {south = true},
+        -- 2026-04-26 Brecconary survey + split probe correction:
+        -- (10,26)->DOWN into (10,27) blocked 13 times including a direct probe.
+        -- 2026-04-27 follow-up: normalized teleport probes from (10,28)->UP can
+        -- move, but the route-realistic sequence (11,28)->LEFT then (10,28)->UP
+        -- blocks, and a 120-frame raw UP hold from that state stays pinned.
+        -- Model the south approach so routes avoid this context-sensitive seam.
+        ["10,27"] = {north = true, south = true},
         ["11,27"] = {east = true, south = true},
         -- Center/southeast reroute cluster.
         -- Repeated successful reroutes after the 2026-04-02 pocket fix kept

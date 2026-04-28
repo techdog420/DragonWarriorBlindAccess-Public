@@ -5,6 +5,10 @@
 
 -- Check Lua version
 print("Lua version: " .. (_VERSION or "unknown"))
+if not FCEU then
+    print("SKIP: FCEUX globals are not available; load this diagnostic script in FCEUX to run it.")
+    os.exit(0)
+end
 FCEU.message("Lua version: " .. (_VERSION or "unknown"))
 
 -- Check if LuaJIT FFI is available (it probably isn't)

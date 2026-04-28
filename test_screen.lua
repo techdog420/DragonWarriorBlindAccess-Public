@@ -4,6 +4,11 @@
 -- Auto-dumps on load, then re-dumps on controller Select button.
 -- TIP: Talk to someone in-game, then press Select while text is showing.
 
+if not FCEU then
+    print("SKIP: FCEUX globals are not available; load this diagnostic script in FCEUX to run it.")
+    os.exit(0)
+end
+
 local chars = require "chars"
 
 local SCREEN_BUF_START = 0x0400  -- CPU RAM shadow buffer

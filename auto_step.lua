@@ -91,6 +91,8 @@ local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
 local route_settle_frames = 0
 local route_settle_default = 0
+local route_last_x = nil
+local route_last_y = nil
 local post_step_release_frames = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
@@ -131,6 +133,7 @@ local TURN_REPRESS_INJECT_LIMIT = INJECT_LIMIT
 -- that the engine treats the re-press as a continuation of the old hold and
 -- chains into a second tile of movement.
 local TURN_REPRESS_RELEASE_FRAMES = 2
+local ROUTE_DRIFT_CATCHUP_LIMIT = 3
 
 -- Before reporting a blocked move, allow a few internal retries of the same
 -- step from the same tile/direction. Live probing on Map 0x04 showed that
@@ -138,6 +141,45 @@ local TURN_REPRESS_RELEASE_FRAMES = 2
 -- when the destination edge is genuinely passable, so keep one extra retry
 -- before promoting the move into runtime-block evidence.
 local BLOCK_RETRY_LIMIT = 3
+
+local function config_int(key, fallback, min_value, max_value)
+    local value = tonumber(config.get(key))
+    if not value then
+        return fallback
+    end
+    value = math.floor(value)
+    if min_value and value < min_value then
+        return min_value
+    end
+    if max_value and value > max_value then
+        return max_value
+    end
+    return value
+end
+
+local function get_inject_limit()
+    return config_int("auto_step_inject_limit", INJECT_LIMIT, 1, 120)
+end
+
+local function get_turn_repress_delay()
+    return config_int("auto_step_turn_repress_delay", TURN_REPRESS_DELAY, 1, 180)
+end
+
+local function get_turn_repress_limit()
+    return config_int("auto_step_turn_repress_limit", TURN_REPRESS_LIMIT, 0, 10)
+end
+
+local function get_turn_repress_inject_limit()
+    return config_int("auto_step_turn_repress_inject_limit", get_inject_limit(), 1, 120)
+end
+
+local function get_turn_repress_release_frames()
+    return config_int("auto_step_turn_repress_release_frames", TURN_REPRESS_RELEASE_FRAMES, 0, 30)
+end
+
+local function get_block_retry_limit()
+    return config_int("auto_step_block_retry_limit", BLOCK_RETRY_LIMIT, 0, 10)
+end
 
 -- ============================================================
 -- Helper Functions
@@ -164,11 +206,17 @@ local function copy_non_direction_buttons(joy)
     return buttons
 end
 
+local function neutralize_direction(joy)
+    joypad.set(1, copy_non_direction_buttons(joy or {}))
+end
+
 local function clear_route()
     route_steps = nil
     route_index = 1
     route_settle_frames = 0
     route_settle_default = 0
+    route_last_x = nil
+    route_last_y = nil
 end
 
 local function start_post_step_release()
@@ -176,13 +224,17 @@ local function start_post_step_release()
 end
 
 local function begin_step(dir, px, py, state)
+    if route_steps and route_last_x == nil and route_last_y == nil then
+        route_last_x = px
+        route_last_y = py
+    end
     auto_dir = dir
     auto_frames = 1
     auto_start_x = px
     auto_start_y = py
     auto_timeout_retries = state and state.timeout_retries or 0
     auto_turn_represses = state and state.turn_represses or 0
-    auto_inject_limit = state and state.inject_limit or INJECT_LIMIT
+    auto_inject_limit = state and state.inject_limit or get_inject_limit()
     pending_repress = nil
     tracked_dir = nil
     debug_tools.debug(string.format(
@@ -190,6 +242,19 @@ local function begin_step(dir, px, py, state)
         tostring(dir), px or -1, py or -1, auto_timeout_retries, auto_turn_represses,
         auto_inject_limit or -1))
     joypad.set(1, {[dir] = true})
+end
+
+local function direction_delta(dir)
+    if dir == "up" then
+        return 0, -1
+    elseif dir == "down" then
+        return 0, 1
+    elseif dir == "left" then
+        return -1, 0
+    elseif dir == "right" then
+        return 1, 0
+    end
+    return 0, 0
 end
 
 local function clear_pending_repress()
@@ -201,8 +266,8 @@ local function schedule_turn_repress(dir)
         dir = dir,
         timeout_retries = auto_timeout_retries,
         turn_represses = auto_turn_represses + 1,
-        inject_limit = TURN_REPRESS_INJECT_LIMIT,
-        release_frames = TURN_REPRESS_RELEASE_FRAMES,
+        inject_limit = get_turn_repress_inject_limit(),
+        release_frames = get_turn_repress_release_frames(),
         start_x = auto_start_x,
         start_y = auto_start_y,
     }
@@ -240,6 +305,77 @@ local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
             debug_tools.error("on_step_complete error: " .. tostring(err))
         end
     end
+end
+
+local function cancel_route_for_drift(px, py, source)
+    local last_x = route_last_x
+    local last_y = route_last_y
+    local next_index = route_index
+    debug_tools.debug(string.format(
+        "auto_step clear_route: off-path drift from=(%d,%d) current=(%d,%d) next_index=%d source=%s",
+        last_x or -1, last_y or -1, px or -1, py or -1, next_index or -1,
+        tostring(source)))
+    clear_route()
+    event_bus.publish("route_cancelled", {
+        reason = "route_drift_off_path",
+        from_x = last_x,
+        from_y = last_y,
+        current_x = px,
+        current_y = py,
+        next_index = next_index,
+        source = source,
+    })
+end
+
+local function consume_route_drift(px, py, source)
+    if not route_steps
+       or route_last_x == nil
+       or route_last_y == nil
+       or px == nil
+       or py == nil
+       or (px == route_last_x and py == route_last_y) then
+        return 0, false
+    end
+
+    local simulated_x = route_last_x
+    local simulated_y = route_last_y
+    local matched = 0
+    local max_index = math.min(#route_steps, route_index + ROUTE_DRIFT_CATCHUP_LIMIT - 1)
+    for i = route_index, max_index do
+        local dx, dy = direction_delta(route_steps[i])
+        simulated_x = simulated_x + dx
+        simulated_y = simulated_y + dy
+        if simulated_x == px and simulated_y == py then
+            matched = i - route_index + 1
+            break
+        end
+    end
+
+    if matched == 0 then
+        debug_tools.debug(string.format(
+            "auto_step route drift not on queued path from=(%d,%d) current=(%d,%d) next_index=%d",
+            route_last_x or -1, route_last_y or -1, px or -1, py or -1, route_index or -1))
+        return 0, true
+    end
+
+    for _ = 1, matched do
+        local dir = route_steps[route_index]
+        local from_x = route_last_x
+        local from_y = route_last_y
+        local dx, dy = direction_delta(dir)
+        local to_x = from_x + dx
+        local to_y = from_y + dy
+        route_last_x = to_x
+        route_last_y = to_y
+        route_index = route_index + 1
+        debug_tools.debug(string.format(
+            "auto_step route catch-up dir=%s from=(%d,%d) to=(%d,%d) source=%s",
+            tostring(dir), from_x or -1, from_y or -1, to_x or -1, to_y or -1,
+            tostring(source)))
+        emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
+    end
+
+    return matched, false
 end
 
 -- ============================================================
@@ -287,6 +423,7 @@ function M.update(can_walk)
         reset_active_step()
         tracked_dir = nil
         cooldown = 0
+        post_step_release_frames = 0
         clear_route()
         -- Don't update prev_held here — we still need to track joypad
         -- state so we detect fresh presses correctly when can_walk
@@ -317,7 +454,12 @@ function M.update(can_walk)
             px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
         clear_pending_repress()
         cooldown = COOLDOWN_FRAMES
+        neutralize_direction(joy)
         start_post_step_release()
+        if route_steps then
+            route_last_x = px
+            route_last_y = py
+        end
         emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress")
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -325,8 +467,9 @@ function M.update(can_walk)
         return
     end
 
-    if post_step_release_frames > 0 and not is_any_direction_pressed(joy) then
-        joypad.set(1, copy_non_direction_buttons(joy))
+    if post_step_release_frames > 0
+       and (route_steps ~= nil or not is_any_direction_pressed(joy)) then
+        neutralize_direction(joy)
         post_step_release_frames = post_step_release_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -337,7 +480,7 @@ function M.update(can_walk)
     if pending_repress and pending_repress.release_frames and pending_repress.release_frames > 0 then
         -- Make the repress gap a real neutral release on live hardware. A
         -- passive wait was not enough to clear the held direction reliably.
-        joypad.set(1, copy_non_direction_buttons(joy))
+        neutralize_direction(joy)
         pending_repress.release_frames = pending_repress.release_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -379,35 +522,56 @@ function M.update(can_walk)
             local completed_from_x = auto_start_x
             local completed_from_y = auto_start_y
             local completed_dir = auto_dir
+            local completed_frames = auto_frames
+            local completed_retries = auto_timeout_retries
+            local completed_turn_represses = auto_turn_represses
+            local completed_inject_limit = auto_inject_limit
+            local completed_queued_route = (route_steps ~= nil)
+            debug_tools.debug(string.format(
+                "auto_step complete dir=%s from=(%d,%d) to=(%d,%d) frames=%d timeout_retries=%d turn_represses=%d inject_limit=%d queued_route=%s",
+                tostring(completed_dir),
+                completed_from_x or -1,
+                completed_from_y or -1,
+                px or -1,
+                py or -1,
+                completed_frames or -1,
+                completed_retries or -1,
+                completed_turn_represses or -1,
+                completed_inject_limit or -1,
+                tostring(completed_queued_route)))
             if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
             reset_active_step()
             cooldown = COOLDOWN_FRAMES  -- Prevent double-step
+            neutralize_direction(joy)
             start_post_step_release()
             if route_steps then
+                route_last_x = px
+                route_last_y = py
                 route_settle_frames = route_settle_default or 0
             end
             emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold")
         -- If the first press only turned the player, release for one frame and
         -- issue a fresh press instead of waiting for the full blocked timeout.
-        elseif auto_frames >= TURN_REPRESS_DELAY
-           and auto_turn_represses < TURN_REPRESS_LIMIT then
+        elseif auto_frames >= get_turn_repress_delay()
+           and auto_turn_represses < get_turn_repress_limit() then
             debug_tools.debug(string.format(
                 "auto_step schedule turn repress dir=%s from=(%d,%d) frame=%d",
                 tostring(auto_dir), auto_start_x or -1, auto_start_y or -1, auto_frames))
             schedule_turn_repress(auto_dir)
         -- Cancel if timeout reached (blocked by wall / step never started)
         elseif auto_frames >= timeout then
-            if auto_timeout_retries < BLOCK_RETRY_LIMIT then
+            local block_retry_limit = get_block_retry_limit()
+            if auto_timeout_retries < block_retry_limit then
                 auto_timeout_retries = auto_timeout_retries + 1
                 auto_frames = 1
                 -- If the short turn re-press was not enough to start movement,
                 -- escalate retries back to a full inject window before treating
                 -- the destination as blocked.
-                auto_inject_limit = INJECT_LIMIT
+                auto_inject_limit = get_inject_limit()
                 joypad.set(1, {[auto_dir] = true})
                 debug_tools.debug(string.format(
                     "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d",
-                    auto_timeout_retries, BLOCK_RETRY_LIMIT,
+                    auto_timeout_retries, block_retry_limit,
                     auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
                     auto_inject_limit or -1))
                 for _, dir in ipairs(DIRECTIONS) do
@@ -428,8 +592,22 @@ function M.update(can_walk)
             local blocked_from_y = auto_start_y
             local blocked_dir    = auto_dir
             local blocked_queued_route = (route_steps ~= nil)
+            debug_tools.debug(string.format(
+                "auto_step blocked dir=%s from=(%d,%d) frames=%d timeout_retries=%d/%d turn_represses=%d inject_limit=%d queued_route=%s timeout=%d",
+                tostring(blocked_dir),
+                blocked_from_x or -1,
+                blocked_from_y or -1,
+                auto_frames or -1,
+                auto_timeout_retries or -1,
+                block_retry_limit or -1,
+                auto_turn_represses or -1,
+                auto_inject_limit or -1,
+                tostring(blocked_queued_route),
+                timeout or -1))
             reset_active_step()
             clear_route()
+            neutralize_direction(joy)
+            start_post_step_release()
             -- Notify the main loop so it can re-route around the obstacle.
             -- Pass the blocked starting position and direction so the handler
             -- can record the destination cell and avoid routing through it again.
@@ -464,6 +642,21 @@ function M.update(can_walk)
     end
 
     if route_steps and route_settle_frames > 0 then
+        local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
+        if consumed > 0 then
+            route_settle_frames = route_settle_default or 0
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
+        if off_path then
+            cancel_route_for_drift(px, py, "route_settle_catchup")
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
         route_settle_frames = route_settle_frames - 1
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -477,6 +670,21 @@ function M.update(can_walk)
     end
 
     if route_steps and cooldown <= 0 then
+        local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
+        if consumed > 0 then
+            route_settle_frames = route_settle_default or 0
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
+        if off_path then
+            cancel_route_for_drift(px, py, "route_settle_catchup")
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
         local next_dir = route_steps[route_index]
         if next_dir then
             route_index = route_index + 1

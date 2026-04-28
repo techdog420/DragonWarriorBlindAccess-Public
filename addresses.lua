@@ -15,6 +15,19 @@ local M = {}
 M.MAP_ID            = 0x0045  -- Current map ID (see maps.lua for names)
 M.PLAYER_X          = 0x003A  -- Player X on current map
 M.PLAYER_Y          = 0x003B  -- Player Y on current map
+-- Movement state / facing direction byte.
+-- Observed values after completed steps: 0x04 (west), 0x06 (east), 0x08 (after
+-- leftward arrival), 0x00 (idle). Encoding not yet confirmed from disassembly.
+-- Confirmed normalization target: write 0x00 on teleport_to to eliminate
+-- state-dependent collision artifacts. When stale (e.g. 0x08 "leftward arrival"),
+-- a subsequent LEFT press may turn-in-place instead of stepping, causing engine
+-- to reject the step after full retry timeout.
+M.MOVEMENT_STATE    = 0x003C  -- Suspected movement state / facing direction
+-- Sub-pixel / animation offset byte adjacent to MOVEMENT_STATE.
+-- Value 0x90 observed when teleport leaves stale state that blocks probes;
+-- value 0x00 observed when probes succeed. Write 0x00 on teleport_to alongside
+-- MOVEMENT_STATE to fully normalize the movement engine state.
+M.MOVEMENT_SUBPIXEL = 0x003D  -- Sub-pixel offset or animation state (write 0x00 on teleport)
 M.OVERWORLD_Y       = 0x003E  -- Dedicated overworld Y byte (not reliable as effective player Y)
 M.OVERWORLD_X       = 0x0042  -- Dedicated overworld X byte (diagnostic; semantics still under investigation)
 

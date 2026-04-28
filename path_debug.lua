@@ -215,6 +215,7 @@ function M.build_find_path_opts()
     --   "out_of_bounds"   — outside map dimensions
     --   "blocked_npc"     — NPC-occupied cell
     --   "blocked_runtime" — runtime-injected blocked tile
+    --   "blocked_directional" — permanent directional wall/entry restriction
     --   "not_walkable"    — tile type is not walkable (wall, water, etc.)
     opts.on_reject = function(x, y, reason)
         stats.nodes_rejected = stats.nodes_rejected + 1

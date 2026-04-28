@@ -244,7 +244,7 @@ function tests.brecconary_exit_matches_live_west_edge_probe()
     env.restore()
 end
 
-function tests.tantegel_castle_exposes_only_reachable_south_gate_door()
+function tests.tantegel_castle_exposes_reachable_navigation_doors()
     local env = make_env()
 
     env.set_position(0x04, 10, 29)
@@ -258,11 +258,26 @@ function tests.tantegel_castle_exposes_only_reachable_south_gate_door()
     env.objects.next_filter() -- Stairs
     env.objects.next_filter() -- Doors
 
-    assert_equal(env.objects.get_count(), 1, "Tantegel Castle should expose only one actionable south gate door")
+    assert_equal(env.objects.get_count(), 2, "Tantegel Castle should expose the south gate and useful center crossing doors")
     local obj = env.objects.current_object()
     assert_equal(obj.id, "door_10_30", "the west south-gate tile should be the remaining door object")
     assert_equal(obj.x, 10, "south gate door x should match the reachable gate tile")
     assert_equal(obj.y, 30, "south gate door y should match the reachable gate tile")
+    assert_equal(obj.survey_exclude, true, "south gate door should stay excluded from autonomous surveys")
+
+    local doors = env.objects.get_objects({filtered = true})
+    local center = nil
+    for _, door in ipairs(doors) do
+        if door.id == "door_14_6" then
+            center = door
+            break
+        end
+    end
+    assert_equal(center ~= nil, true, "Tantegel Castle should expose the useful center crossing door")
+    assert_equal(center.name, "Center Door", "center crossing door should have a distinct navigation label")
+    assert_equal(center.x, 14, "center crossing door x should match the useful y=6 crossing")
+    assert_equal(center.y, 6, "center crossing door y should match the useful y=6 crossing")
+    assert_equal(center.survey_exclude, true, "center crossing door should stay excluded from autonomous surveys")
 
     env.restore()
 end

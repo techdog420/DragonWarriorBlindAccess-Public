@@ -40,15 +40,22 @@ local DIRECTIONS = {
     {dx =  1, dy =  0, name = "east",  approach = "west"},
 }
 
-local function count_open_exits(map_id, x, y, blocked_positions)
+local function is_directional_blocked(directional_blocks, x, y, approach)
+    local block = directional_blocks and directional_blocks[x .. "," .. y]
+    return type(block) == "table" and block[approach] == true
+end
+
+local function count_open_exits(map_id, x, y, blocked_positions, directional_blocks)
     local open = 0
 
     for _, dir in ipairs(DIRECTIONS) do
         local nx = x + dir.dx
         local ny = y + dir.dy
         local block = blocked_positions[nx .. "," .. ny]
+        local directional_block = is_directional_blocked(directional_blocks, nx, ny, dir.approach)
 
-        if not block or (type(block) == "table" and block[dir.approach] ~= true) then
+        if (not block or (type(block) == "table" and block[dir.approach] ~= true))
+            and not directional_block then
             if map_reader.is_walkable(map_id, nx, ny) == true then
                 open = open + 1
             end
@@ -58,7 +65,7 @@ local function count_open_exits(map_id, x, y, blocked_positions)
     return open
 end
 
-local function count_reachable_area(map_id, start_x, start_y, blocked_positions, limit)
+local function count_reachable_area(map_id, start_x, start_y, blocked_positions, directional_blocks, limit)
     limit = limit or 128
     if map_reader.is_walkable(map_id, start_x, start_y) ~= true then
         return 0
@@ -96,7 +103,8 @@ local function count_reachable_area(map_id, start_x, start_y, blocked_positions,
                     end
                 end
 
-                if not blocked_from_approach and map_reader.is_walkable(map_id, nx, ny) == true then
+                local directional_block = is_directional_blocked(directional_blocks, nx, ny, dir.approach)
+                if not blocked_from_approach and not directional_block and map_reader.is_walkable(map_id, nx, ny) == true then
                     seen[nk] = true
                     queue[#queue + 1] = {x = nx, y = ny}
                 end
@@ -224,7 +232,7 @@ end
 --   on_visit(x, y, g_score, f_score)    — node popped and expanded
 --   on_reject(x, y, reason)             — neighbor not added to open set
 --     reason: "already_closed", "already_better", "out_of_bounds",
---             "blocked_npc", "blocked_runtime", "not_walkable"
+--             "blocked_npc", "blocked_runtime", "blocked_directional", "not_walkable"
 --   on_complete({success, path_length, nodes_visited, reason})
 --     Called on search finish; reason is nil on success.
 -- See path_debug.lua build_find_path_opts() for the callback factory.
@@ -261,6 +269,13 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         return x .. "," .. y
     end
 
+    local directional_blocks = map_reader.get_directional_blocks and map_reader.get_directional_blocks(map_id) or {}
+
+    local function is_fully_blocked_directionally(x, y)
+        local block = directional_blocks[key(x, y)]
+        return block and block.north and block.south and block.east and block.west
+    end
+
     -- is_blocked(x, y, approach): Check if a cell is blocked.
     -- `approach` is the side the player arrives from ("north","south","east","west").
     -- For directional runtime blocks (table value), only the matching direction
@@ -286,7 +301,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
         if not block then return nil end
         if type(block) == "table" then
             if block[approach] then return "runtime" end
-            return nil  -- not blocked from this approach direction
+            return nil  -- blocked table but not from this approach
         end
         if block == "runtime" then return "runtime" end
         return "npc"
@@ -342,6 +357,12 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                 end
                 return nil
             end
+        end
+        if is_fully_blocked_directionally(goal_x, goal_y) then
+            if on_complete then
+                on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_blocked"})
+            end
+            return nil
         end
         if map_reader.is_walkable(map_id, goal_x, goal_y) ~= true then
             if on_complete then
@@ -468,6 +489,8 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                     -- via a different (unblocked) direction instead.
                     if is_blocked(nx, ny, dir.approach) then
                         if on_reject then on_reject(nx, ny, "blocked_runtime") end
+                    elseif is_directional_blocked(directional_blocks, nx, ny, dir.approach) then
+                        if on_reject then on_reject(nx, ny, "blocked_directional") end
                     else
                         local tentative_g = current_g + 1
                         if not g_score[nk] or tentative_g < g_score[nk] then
@@ -484,12 +507,25 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                     if on_reject then on_reject(nx, ny, "out_of_bounds") end
                 else
                     local block_reason = get_block_reason(nx, ny, dir.approach)
-                    if block_reason then
-                        if block_reason == "runtime" then
+                    local permanent_directional_block = is_directional_blocked(directional_blocks, nx, ny, dir.approach)
+                    if block_reason or permanent_directional_block then
+                        local reject_reason = nil
+                        if block_reason == "runtime" and not permanent_directional_block then
+                            reject_reason = "blocked_runtime"
+                        elseif block_reason == "npc" then
+                            reject_reason = "blocked_npc"
+                        else
+                            -- Either runtime and static blocking overlap, or only static
+                            -- directional lock applies.
+                            reject_reason = "blocked_directional"
+                        end
+
+                        if block_reason == "runtime" and not permanent_directional_block then
                             log_runtime_block_use(nx, ny, "neighbor")
                         end
+
                         if on_reject then
-                            on_reject(nx, ny, block_reason == "runtime" and "blocked_runtime" or "blocked_npc")
+                            on_reject(nx, ny, reject_reason)
                         end
                     else
                         if map_reader.is_walkable(map_id, nx, ny) ~= true then
@@ -581,6 +617,7 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
     local best_adj_open_exits = -1
     local best_adj_area = -1
     local diagnostics = {}
+    local directional_blocks = map_reader.get_directional_blocks and map_reader.get_directional_blocks(map_id) or {}
     for _, adj in ipairs(adj_tiles) do
         local walkable = map_reader.is_walkable(map_id, adj.x, adj.y)
         local blocker = blocked[adj.x .. "," .. adj.y]
@@ -601,8 +638,8 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
         end
         if walkable == true and not blocker then
             local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, opts)
-            local open_exits = count_open_exits(map_id, adj.x, adj.y, blocked)
-            local reachable_area = count_reachable_area(map_id, adj.x, adj.y, blocked)
+            local open_exits = count_open_exits(map_id, adj.x, adj.y, blocked, directional_blocks)
+            local reachable_area = count_reachable_area(map_id, adj.x, adj.y, blocked, directional_blocks)
             diag.path_found = path ~= nil
             diag.reachable_area = reachable_area
             diag.open_exits = open_exits

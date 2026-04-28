@@ -17,12 +17,14 @@ local function restore_modules(names)
     end
 end
 
-local function make_env()
+local function make_env(opts)
+    opts = opts or {}
     local px, py = 3, 1
     local frame = 0
     local injected = {}
     local published = {}
     local live_joy = {}
+    local sticky_joy = {}
 
     local module_names = {
         "auto_step",
@@ -62,7 +64,7 @@ local function make_env()
     package.preload["event_bus"] = function()
         return {
             publish = function(name, payload)
-                published[#published + 1] = {name = name, payload = payload}
+                published[#published + 1] = {name = name, payload = payload, frame = frame}
             end,
         }
     end
@@ -84,10 +86,29 @@ local function make_env()
 
     _G.joypad = {
         read = function()
+            if opts.sticky_joypad_set then
+                local merged = {}
+                for key, value in pairs(sticky_joy or {}) do
+                    if value and key:sub(1, 1) ~= "_" then
+                        merged[key] = value
+                    end
+                end
+                for key, value in pairs(live_joy or {}) do
+                    if value then
+                        merged[key] = value
+                    else
+                        merged[key] = nil
+                    end
+                end
+                return merged
+            end
             return live_joy
         end,
         set = function(_, buttons)
             injected[frame] = buttons
+            if opts.sticky_joypad_set then
+                sticky_joy = buttons or {}
+            end
         end,
     }
 
@@ -197,6 +218,92 @@ function tests.never_moving_step_still_reports_blocked()
     end
 
     assert_truthy(saw_blocked, "blocked steps should still publish route_blocked after retries are exhausted")
+
+    env.restore()
+end
+
+function tests.blocked_step_flushes_stale_direction_with_neutral_frames()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 300 do
+        env.update(true)
+    end
+
+    local blocked_frame = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked_frame = event.frame
+            break
+        end
+    end
+
+    assert_truthy(blocked_frame ~= nil, "test setup should observe a blocked step")
+    assert_truthy(
+        env.injected[blocked_frame] and not has_any_direction(env.injected[blocked_frame]),
+        "auto_step should actively clear the D-pad on the same frame it reports a blocked step"
+    )
+
+    env.update(true)
+
+    assert_truthy(
+        env.injected[blocked_frame + 1] and not has_any_direction(env.injected[blocked_frame + 1]),
+        "auto_step should keep the D-pad neutral immediately after a blocked step"
+    )
+
+    env.restore()
+end
+
+function tests.inject_window_does_not_neutralize_live_direction()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    env.set_joy({right = true})
+    for _ = 1, 14 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[13] == nil and env.injected[14] == nil,
+        "auto_step should not emit neutral joypad frames over a live held direction after the inject window"
+    )
+
+    env.restore()
+end
+
+function tests.cancel_active_step_does_not_emit_sticky_neutral()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.auto_step.cancel_active_step(true)
+
+    assert_truthy(
+        env.injected[1] and env.injected[1].right,
+        "cancel_active_step should not emit a neutral joypad.set that can stick over live controller input"
+    )
+
+    env.restore()
+end
+
+function tests.can_walk_false_clears_release_state_without_neutralizing()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+    env.update(false)
+    env.update(false)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[8] == nil and env.injected[9] == nil and env.injected[10] == nil,
+        "can_walk=false should clear post-step release state without sending repeated neutral input on title/menu screens"
+    )
 
     env.restore()
 end
@@ -338,6 +445,10 @@ function tests.successful_step_flushes_stale_direction_with_neutral_frames()
     env.update(true)
 
     assert_truthy(
+        env.injected[7] and not has_any_direction(env.injected[7]),
+        "auto_step should actively clear the D-pad on the same frame it observes step completion"
+    )
+    assert_truthy(
         env.injected[8] and not has_any_direction(env.injected[8]),
         "auto_step should actively send a neutral frame immediately after a successful step"
     )
@@ -425,6 +536,127 @@ function tests.queued_routes_wait_for_configured_settle_gap_before_next_step()
         saw_second_step,
         "queued route should resume once the settle gap has elapsed"
     )
+
+    env.restore()
+end
+
+function tests.queued_route_post_step_release_ignores_stale_direction_blip()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    local right_sequences = collect_direction_sequences(env, "right", 16)
+    assert_truthy(
+        #right_sequences >= 2,
+        "a stale direction blip during queued-route post-step release should not clear the route"
+    )
+
+    env.restore()
+end
+
+function tests.queued_routes_consume_matching_drift_during_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right", "down"}, {settle_frames = 3})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(5, 1)
+
+    for _ = 1, 10 do
+        env.update(true)
+    end
+
+    local right_sequences = collect_direction_sequences(env, "right", 20)
+    assert_truthy(
+        #right_sequences == 1,
+        "queued route should consume drift that already completed the next planned step instead of re-pressing that direction"
+    )
+
+    local saw_down = false
+    for frame = 3, 20 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.down then
+            saw_down = true
+            break
+        end
+    end
+    assert_truthy(
+        saw_down,
+        "queued route should resume with the following planned direction after consuming drift"
+    )
+
+    local saw_catchup = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "route_settle_catchup"
+           and payload.from_x == 4
+           and payload.from_y == 1
+           and payload.to_x == 5
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_catchup = true
+            break
+        end
+    end
+    assert_truthy(
+        saw_catchup,
+        "queued route catch-up should publish a step completion for the drifted tile"
+    )
+
+    env.restore()
+end
+
+function tests.queued_routes_cancel_unmatched_drift_during_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right", "down"}, {settle_frames = 3})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(4, 0)
+
+    for _ = 1, 10 do
+        env.update(true)
+    end
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "route_drift_off_path"
+           and payload.from_x == 4
+           and payload.from_y == 1
+           and payload.current_x == 4
+           and payload.current_y == 0 then
+            saw_cancel = true
+            break
+        end
+    end
+    assert_truthy(
+        saw_cancel,
+        "queued route should cancel when live position drifts off the planned path"
+    )
+
+    for frame = 3, 20 do
+        local buttons = env.injected[frame]
+        assert_truthy(
+            not (buttons and (buttons.right or buttons.down)),
+            "queued route should not continue stale directions after off-path drift"
+        )
+    end
 
     env.restore()
 end

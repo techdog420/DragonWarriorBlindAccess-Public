@@ -24,3 +24,12 @@ launch_dw_shim.log
 # Local environment / package installs
 .env
 node_modules/
+package.json
+package-lock.json
+
+# Local scratch prompts, aliases, and one-off probe helpers
+claude-old
+prompt*.txt
+survey*.sh
+probe_*.sh
+2026-*.png

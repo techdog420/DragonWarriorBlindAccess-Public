@@ -2403,7 +2403,7 @@ end
 debug_tools.register_command("next_object", function()
     local obj = objects.next_object()
     if obj then
-        local desc = objects.describe_current()
+        local desc = route_mgr.describe_current_object()
         debug_tools.info("OBJECT: " .. desc)
         tolk.output_interrupt(desc)
     else
@@ -2415,7 +2415,7 @@ end)
 debug_tools.register_command("prev_object", function()
     local obj = objects.prev_object()
     if obj then
-        local desc = objects.describe_current()
+        local desc = route_mgr.describe_current_object()
         debug_tools.info("OBJECT: " .. desc)
         tolk.output_interrupt(desc)
     else
@@ -2425,7 +2425,7 @@ debug_tools.register_command("prev_object", function()
 end)
 
 debug_tools.register_command("current_object", function()
-    local desc = objects.describe_current()
+    local desc = route_mgr.describe_current_object()
     debug_tools.info("OBJECT: " .. desc)
     tolk.output_interrupt(desc)
 end)
@@ -2434,7 +2434,7 @@ debug_tools.register_command("next_filter", function()
     local filter_name = objects.next_filter()
     local count = objects.get_count()
     if count > 0 then
-        local desc = filter_name .. ". " .. objects.describe_current()
+        local desc = filter_name .. ". " .. route_mgr.describe_current_object()
         debug_tools.info("FILTER: " .. desc)
         tolk.output_interrupt(desc)
     else
@@ -2484,8 +2484,19 @@ debug_tools.register_command("report_runtime_blocks", function()
     local map_id = snapshot.map_id
     local count = route_mgr.count_runtime_blocks(map_id)
     if count == 0 then
+        debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X none", map_id))
         tolk.output_interrupt("No runtime blocked cells")
         return
+    end
+    debug_tools.info(string.format("RUNTIME_BLOCKS map=0x%02X count=%d", map_id, count))
+    for _, entry in ipairs(route_mgr.get_runtime_block_entries(map_id)) do
+        debug_tools.info(string.format(
+            "RUNTIME_BLOCK map=0x%02X x=%d y=%d key=%s dirs=%s",
+            map_id,
+            entry.x,
+            entry.y,
+            entry.key,
+            table.concat(entry.dir_list, ",")))
     end
     tolk.output_interrupt(string.format("%d runtime blocked cells on map %02X", count, map_id))
 end)
@@ -2825,11 +2836,39 @@ debug_tools.register_command("teleport_to", function(arg)
     -- from the old position after the RAM write.
     auto_step.cancel_active_step(true)
 
+    -- Log the full 0x0030-0x004F range before and after the write so we can
+    -- compare movement-state bytes (0x003C, 0x003E, 0x0042 etc.) across probe
+    -- sessions. The post-write dump shows exactly which bytes teleport changes.
+    if debug_tools.DEBUG_MODE then
+        local bytes = {}
+        for a = 0x0030, 0x004F do bytes[#bytes+1] = string.format("%02X", memory.readbyte(a)) end
+        debug_tools.info(string.format(
+            "TELEPORT_PRE to=(%d,%d) map=0x%02X ram0030_004F=%s",
+            landing_x, landing_y, map_id, table.concat(bytes, " ")))
+    end
+
     memory.writebyte(addr.PLAYER_X, landing_x)
     memory.writebyte(addr.PLAYER_Y, landing_y)
     if map_id == 0x00 then
         memory.writebyte(addr.OVERWORLD_X, landing_x)
         memory.writebyte(addr.OVERWORLD_Y, landing_y)
+    end
+    -- Normalize movement-engine state so probes from this position get
+    -- reproducible results. Without this, stale 0x003C (e.g. 0x08 "leftward
+    -- arrival") causes the engine to turn-in-place on the first press and then
+    -- block on retry, making the same open edge appear engine-blocked.
+    memory.writebyte(addr.MOVEMENT_STATE,    0x00)
+    memory.writebyte(addr.MOVEMENT_SUBPIXEL, 0x00)
+    -- Keep later commands in the same command poll from reading the pre-teleport
+    -- cached position via navigation/game_snapshot.
+    snapshot.update()
+
+    if debug_tools.DEBUG_MODE then
+        local bytes = {}
+        for a = 0x0030, 0x004F do bytes[#bytes+1] = string.format("%02X", memory.readbyte(a)) end
+        debug_tools.info(string.format(
+            "TELEPORT_POST to=(%d,%d) map=0x%02X ram0030_004F=%s",
+            landing_x, landing_y, map_id, table.concat(bytes, " ")))
     end
 
     local msg
@@ -3369,6 +3408,7 @@ while true do
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = debug_tools.tick(frame_count, game_state.state)
     path_debug.tick()  -- Drive validation state machine (no-op when debug_mode=false)
+    local raw_debug_input_this_frame = sim_input and sim_input._raw
     if sim_input then
         -- sweep_map returns input tagged with _sweep=true. report/debug probes
         -- can also request a one-frame raw injection via _raw=true.
@@ -3429,7 +3469,12 @@ while true do
     end
     tick_edge_probe()
     map_survey.tick(can_walk)
-    auto_step.update(can_walk)
+    -- Raw debug input is meant to exercise the game engine directly. Do not let
+    -- auto_step observe the simulated press/release edge, or it can synthesize
+    -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
+    if not raw_debug_input_this_frame then
+        auto_step.update(can_walk)
+    end
 
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.

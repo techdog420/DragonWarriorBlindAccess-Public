@@ -704,8 +704,13 @@ local function build_object_list(map_id, opts)
         -- door tile is actionable from inside the castle. The east visual half
         -- at (11,30) has no reachable adjacent stand tile, so exposing it as a
         -- separate object just creates a permanent false survey failure.
+        --
+        -- Keep this object for explicit door navigation, but exclude it from
+        -- autonomous surveys: approaching it from (10,29) can step through the
+        -- castle exit and end the run on the world map.
         [0x04] = {
-            {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30"},
+            {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30", survey_exclude=true},
+            {x=14, y=6, name="Center Door", type=M.TYPE_DOOR, id="door_14_6", survey_exclude=true},
         },
         -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
         -- The ROM tile is type-15; is_walkable() in map_reader.lua checks

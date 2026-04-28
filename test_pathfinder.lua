@@ -20,6 +20,7 @@ local function make_stub_env()
     local grid = {}
     local width = 0
     local height = 0
+    local directional_blocks = {}
     local logs = {}
 
     local function set_grid(new_width, new_height, blocked_cells)
@@ -34,6 +35,10 @@ local function make_stub_env()
         for _, cell in ipairs(blocked_cells or {}) do
             grid[cell.x .. "," .. cell.y] = false
         end
+    end
+
+    local function set_directional_blocks(new_blocks)
+        directional_blocks = new_blocks or {}
     end
 
     local module_names = {
@@ -87,6 +92,9 @@ local function make_stub_env()
                 end
                 return 0x00
             end,
+            get_directional_blocks = function()
+                return directional_blocks
+            end,
         }
     end
 
@@ -111,6 +119,7 @@ local function make_stub_env()
 
     return {
         set_grid = set_grid,
+        set_directional_blocks = set_directional_blocks,
         logs = logs,
         pathfinder = pathfinder,
         path_debug = path_debug,
@@ -216,6 +225,42 @@ function tests.runtime_block_neighbor_logs_are_deduped_across_searches()
     assert_truthy(first_path ~= nil and #first_path > 0, "first search should still find an alternate route")
     assert_truthy(second_path ~= nil and #second_path > 0, "second search should still find an alternate route")
     assert_equal(count, 1, "neighbor runtime-block logs should be emitted only once across repeated searches")
+
+    env.restore()
+end
+
+function tests.plans_around_permanent_directional_block()
+    local env = make_stub_env()
+    env.set_grid(4, 3)
+    env.set_directional_blocks({
+        ["2,1"] = {west = true},
+    })
+
+    local opts = env.path_debug.build_find_path_opts()
+    local path = env.pathfinder.find_path(0x04, 1, 1, 3, 1, {}, opts)
+    local log = table.concat(opts._get_log(), "\n")
+
+    assert_truthy(path ~= nil and #path > 0, "permanent directional block should not make target unreachable")
+    assert_equal(#path, 4, "planner should route around one blocked directional approach")
+    assert_truthy(path[1].x ~= 2 or path[1].y ~= 1, "first step should not take blocked direct approach")
+    assert_contains(log, "REJECT (2,1) reason=blocked_directional", "debug log should record permanent directional rejection")
+
+    env.restore()
+end
+
+function tests.mixed_static_and_runtime_block_is_reported_as_directional()
+    local env = make_stub_env()
+    env.set_grid(5, 5)
+    env.set_directional_blocks({
+        ["2,1"] = {west = true},
+    })
+
+    local opts = env.path_debug.build_find_path_opts()
+    local path = env.pathfinder.find_path(0x04, 1, 1, 3, 1, {["2,1"] = {west = true}}, opts)
+    local log = table.concat(opts._get_log(), "\n")
+
+    assert_truthy(path ~= nil and #path > 0, "runtime overlap should still allow an alternate route")
+    assert_contains(log, "REJECT (2,1) reason=blocked_directional", "mixed block should be classified as blocked_directional")
 
     env.restore()
 end

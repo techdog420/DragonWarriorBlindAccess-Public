@@ -306,6 +306,10 @@ local function make_env(options)
             build_path_blocking = function()
                 return options.blocking or {}
             end,
+            get_seam_observation = function(_, x, y, approach)
+                local observations = options.seam_observations or {}
+                return observations[string.format("%d,%d:%s", x, y, tostring(approach))]
+            end,
             count_runtime_blocks = function()
                 return runtime_count
             end,
@@ -328,6 +332,11 @@ local function make_env(options)
         outputs = outputs,
         set_route_active = function(value)
             route_active = value
+        end,
+        set_position = function(map_id, x, y)
+            nav_map_id = map_id or nav_map_id
+            nav_x = x or nav_x
+            nav_y = y or nav_y
         end,
         clear_route_context_calls = function()
             return package.loaded["route_manager"] and clear_route_context_calls or 0
@@ -463,7 +472,7 @@ function tests.no_path_that_clears_when_npcs_are_ignored_is_classified_as_state_
     env.restore()
 end
 
-function tests.blocked_tile_retry_success_is_recorded_as_candidate_evidence()
+function tests.reroute_only_retry_success_stays_diagnostic_until_direct_repro()
     local env = make_env()
 
     env.survey.start_target_survey("chest_1")
@@ -479,13 +488,76 @@ function tests.blocked_tile_retry_success_is_recorded_as_candidate_evidence()
     assert_equal(result.retry_succeeded, true, "reroute success should be recorded")
     assert_equal(result.suspected_blocked_tiles[1], "6,5", "blocked destination should be tracked as a candidate")
     assert_equal(env.survey.list_blocked_candidates(0x08), 1, "candidate list should contain the implicated tile")
-    assert_equal(env.survey.report_strong_candidates(0x08), 1, "reroute-backed repeated evidence should be surfaced as a strong candidate")
-    assert_equal(env.survey.report_candidate_suggestions(0x08), 1, "medium/high confidence candidates should produce suggestions")
-    assert_equal(env.survey.export_directional_candidates(0x08), 1, "directional export should include suggested entries")
+    assert_equal(env.survey.report_strong_candidates(0x08), 0, "reroute-only evidence should wait for focused repro")
+    assert_equal(env.survey.report_candidate_suggestions(0x08), 0, "reroute-only candidates should not produce pasteable suggestions")
+    assert_equal(env.survey.export_directional_candidates(0x08), 0, "reroute-only candidates should not export directional blocks")
+    assert_equal(env.survey.export_blocked_candidates(0x08), 0, "reroute-only candidates should not export pasteable blocked data")
+    assert_contains(table.concat(env.logs, "\n"), "confidence=needs_repro",
+        "retry success without direct repro should be marked as needing confirmation")
+    assert_contains(table.concat(env.logs, "\n"), "SURVEY_CANDIDATE_EXPORT_SKIP",
+        "diagnostic-only candidates should be explicitly skipped by blocked export")
+
+    env.restore()
+end
+
+function tests.directly_confirmed_retry_candidate_is_exportable()
+    local env = make_env({
+        seam_observations = {
+            ["6,5:west"] = {
+                blocked_count = 3,
+                moved_count = 0,
+                last_result = "blocked",
+                last_source = "manual_block",
+            },
+        },
+    })
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    env.publish("route_blocked", {from_x = 6, from_y = 6, dir = "up"})
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    assert_equal(env.survey.list_blocked_candidates(0x08), 1, "candidate list should contain the implicated tile")
+    assert_equal(env.survey.report_strong_candidates(0x08), 1, "directly confirmed reroute evidence should be strong")
+    assert_equal(env.survey.report_candidate_suggestions(0x08), 1, "directly confirmed candidates should produce suggestions")
+    assert_equal(env.survey.export_directional_candidates(0x08), 1, "directional export should include directly confirmed approaches")
+    assert_equal(env.survey.export_blocked_candidates(0x08), 1, "blocked export should include directly confirmed candidates")
     assert_contains(table.concat(env.logs, "\n"), "confidence=high",
-        "retry success should raise the candidate confidence")
-    assert_contains(table.concat(env.logs, "\n"), '["6,5"] = {south=true, west=true}',
-        "directional export should preserve only the observed blocked approaches")
+        "manual direct repro should raise the candidate confidence")
+    assert_contains(table.concat(env.logs, "\n"), '["6,5"] = {west=true}',
+        "directional export should include only directly confirmed approaches for reroute-only evidence")
+
+    env.restore()
+end
+
+function tests.noisy_seam_candidate_is_downgraded()
+    local env = make_env({
+        seam_observations = {
+            ["6,5:west"] = {
+                blocked_count = 3,
+                moved_count = 1,
+                last_result = "moved",
+                last_source = "auto_hold",
+            },
+        },
+    })
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    assert_equal(env.survey.list_blocked_candidates(0x08), 1, "noisy candidate should remain visible")
+    assert_equal(env.survey.report_strong_candidates(0x08), 0, "noisy candidates should not be strong")
+    assert_equal(env.survey.report_candidate_suggestions(0x08), 0, "noisy candidates should not produce pasteable suggestions")
+    assert_equal(env.survey.export_blocked_candidates(0x08), 0, "noisy candidates should not export pasteable blocked data")
+    assert_contains(table.concat(env.logs, "\n"), "confidence=needs_repro",
+        "mixed moved/blocked seam evidence should need repro")
+    assert_contains(table.concat(env.logs, "\n"), "SURVEY_CANDIDATE_EXPORT_SKIP",
+        "noisy candidates should be reported as skipped diagnostics")
 
     env.restore()
 end
@@ -526,6 +598,13 @@ function tests.multi_tile_reroute_no_path_is_classified_as_state_issue()
         "command_timing_or_state_issue",
         "multi-tile reroute-no-path failures should not be promoted to engine-block evidence"
     )
+    assert_equal(env.survey.list_blocked_candidates(0x08), 2, "state-issue candidates should remain visible for diagnostics")
+    assert_equal(env.survey.report_strong_candidates(0x08), 0, "state-issue-only candidates should not be strong map-data candidates")
+    assert_equal(env.survey.report_candidate_suggestions(0x08), 0, "state-issue-only candidates should not produce pasteable suggestions")
+    assert_equal(env.survey.export_directional_candidates(0x08), 0, "state-issue-only candidates should not export directional blocks")
+    assert_equal(env.survey.export_blocked_candidates(0x08), 0, "state-issue-only candidates should not export pasteable blocked data")
+    assert_contains(table.concat(env.logs, "\n"), "confidence=needs_repro",
+        "state-issue-only candidates should be marked as needing direct repro")
 
     env.restore()
 end
@@ -627,6 +706,114 @@ function tests.orphaned_queued_route_is_retried_once_before_recording_state_issu
     )
     assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=chest_1 reason=timing_orphaned_route retry=1",
         "orphaned queued routes should be retried once as timing noise")
+
+    env.restore()
+end
+
+function tests.route_drift_cancellation_is_retried_once_from_live_position()
+    local env = make_env({
+        autowalk_sequence = {
+            {
+                status = "queued",
+                result = "Path: north then east",
+                path_mode = "adjacent",
+                path = {
+                    {x = 5, y = 4, direction = "north"},
+                    {x = 6, y = 4, direction = "east"},
+                },
+            },
+            {
+                status = "queued",
+                result = "Path: corrected from drift",
+                path_mode = "adjacent",
+                path = {
+                    {x = 6, y = 3, direction = "east"},
+                },
+            },
+        },
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_position(0x08, 5, 3)
+    env.publish("route_cancelled", {reason = "route_drift_off_path"})
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(run.summary.successes, 1, "same-map route drift should get one clean retry")
+    assert_equal(run.summary.failures, 0, "successful drift retry should not pollute survey failures")
+    assert_equal(result.movement_succeeded, true, "requeued route drift should be able to succeed on retry")
+    assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=chest_1 reason=route_drift_retry retry=1",
+        "route drift should be retried once as timing noise")
+    assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=1/1 retry=1 target_id=chest_1 target_type=chest target_name=\"Chest\" start=(5,3)",
+        "route drift retry should plan from the live drifted position")
+
+    env.restore()
+end
+
+function tests.route_drift_retry_is_still_allowed_after_transient_no_path_retry()
+    local env = make_env({
+        autowalk_sequence = {
+            {
+                status = "no_path",
+                result = "No path found",
+                path_mode = "adjacent",
+                path = nil,
+            },
+            {
+                status = "queued",
+                result = "Path: north then east",
+                path_mode = "adjacent",
+                path = {
+                    {x = 5, y = 4, direction = "north"},
+                    {x = 6, y = 4, direction = "east"},
+                },
+            },
+            {
+                status = "queued",
+                result = "Path: corrected from drift",
+                path_mode = "adjacent",
+                path = {
+                    {x = 6, y = 3, direction = "east"},
+                },
+            },
+        },
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.set_position(0x08, 5, 3)
+    env.publish("route_cancelled", {reason = "route_drift_off_path"})
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(run.summary.successes, 1, "route drift after a transient no-path retry should still get one correction attempt")
+    assert_equal(run.summary.failures, 0, "successful drift retry should not leave a state issue failure")
+    assert_equal(result.movement_succeeded, true, "second retry should be able to finish the target")
+    assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=chest_1 reason=transient_no_path retry=1",
+        "initial no-path should still consume only the transient planning retry")
+    assert_contains(joined, "SURVEY_REQUEUE run=1 map=0x08 target_id=chest_1 reason=route_drift_retry retry=2",
+        "later route drift should get a separate retry reason slot")
+    assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=1/1 retry=2 target_id=chest_1 target_type=chest target_name=\"Chest\" start=(5,3)",
+        "the drift retry should plan from the live drifted position")
 
     env.restore()
 end
@@ -1117,6 +1304,80 @@ function tests.survey_aborts_tiny_four_exit_start_due_to_hard_area_limit()
     env.restore()
 end
 
+function tests.survey_aborts_multi_exit_start_when_almost_no_targets_are_reachable()
+    local allowed = {
+        ["5,5"] = true,
+        ["5,4"] = true,
+        ["5,3"] = true,
+        ["5,2"] = true,
+        ["5,6"] = true,
+        ["5,7"] = true,
+        ["5,8"] = true,
+        ["6,5"] = true,
+        ["7,5"] = true,
+        ["8,5"] = true,
+        ["6,4"] = true,
+        ["7,4"] = true,
+        ["8,4"] = true,
+    }
+    local env = make_env({
+        map_id = 0x08,
+        x = 5,
+        y = 5,
+        objects = {
+            {id = "local_guard", name = "Local Guard", type = "npc", x = 6, y = 5},
+            {id = "far_1", name = "Far 1", type = "npc", x = 20, y = 5},
+            {id = "far_2", name = "Far 2", type = "npc", x = 21, y = 5},
+            {id = "far_3", name = "Far 3", type = "npc", x = 22, y = 5},
+            {id = "far_4", name = "Far 4", type = "npc", x = 23, y = 5},
+            {id = "far_5", name = "Far 5", type = "npc", x = 24, y = 5},
+            {id = "far_6", name = "Far 6", type = "npc", x = 25, y = 5},
+            {id = "far_7", name = "Far 7", type = "npc", x = 26, y = 5},
+        },
+        walkability_fn = function(x, y)
+            return allowed[x .. "," .. y] == true
+        end,
+        plan_fn = function(target)
+            if target and target.id == "local_guard" then
+                return {
+                    result = "Approach: 1 east",
+                    path = {{x = 6, y = 5, direction = "east"}},
+                }
+            end
+            return {result = "No path found", path = nil}
+        end,
+    })
+
+    local ok, info = env.survey.report_start_viability("park_npcs")
+
+    assert_equal(ok, true, "coverage preflight should return structured start information")
+    assert_equal(info.reachable_area, 13, "coverage preflight should not depend on the tiny-area threshold")
+    assert_equal(info.open_exit_count, 3, "coverage preflight should allow multi-exit pockets to be measured")
+    assert_equal(info.reachable_targets, 1, "coverage preflight should count reachable targets")
+    assert_equal(info.unreachable_targets, 7, "coverage preflight should count unreachable targets")
+    assert_equal(info.isolated_start, true, "coverage preflight should flag starts that reach almost no targets")
+    assert_equal(info.isolation_reason, "low_target_coverage", "coverage preflight should report its reason")
+
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_START_STATUS map=0x08 mode=objects start=(5,5) targets=8 reachable_area=13 open_exit_count=3",
+        "coverage preflight should preserve normal start status fields")
+    assert_contains(joined, "reachable_targets=1 unreachable_targets=7 isolation_reason=low_target_coverage",
+        "coverage preflight should log target reachability")
+
+    local start_ok, err = env.survey.start_object_survey("park_npcs")
+    assert_equal(start_ok, false, "survey should abort before generating a wall of stranded failures")
+    assert_equal(err, "Survey start (5,5) is stranded: only 1 of 8 targets are reachable",
+        "coverage abort should explain the target coverage problem")
+
+    joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_START_ABORT run=1 map=0x08 reason=isolated_start start=(5,5) targets=8 reachable_area=13 open_exit_count=3",
+        "coverage abort should log the usual start-abort fields")
+    assert_contains(joined, "isolation_reason=low_target_coverage reachable_targets=1 unreachable_targets=7",
+        "coverage abort should log why the multi-exit start was rejected")
+
+    env.restore()
+end
+
 function tests.retry_failed_start_viability_reports_clear_no_history_message()
     local env = make_env({
         map_id = 0x08,
@@ -1137,6 +1398,27 @@ function tests.retry_failed_start_viability_reports_clear_no_history_message()
     local joined = table.concat(env.logs, "\n")
     assert_contains(joined, "SURVEY_START_STATUS map=0x08 mode=retry_failed start=(10,25) targets=0 status=no_targets",
         "retry_failed preflight should log that no failed targets are currently available")
+
+    env.restore()
+end
+
+function tests.default_object_survey_skips_survey_excluded_targets()
+    local env = make_env({
+        map_id = 0x04,
+        x = 10,
+        y = 10,
+        objects = {
+            {id = "exit_11_29", name = "Exit to World Map", type = "exit", x = 11, y = 29},
+            {id = "door_10_30", name = "Door", type = "door", x = 10, y = 30, survey_exclude = true},
+        },
+    })
+
+    local ok, info = env.survey.report_start_viability()
+
+    assert_equal(ok, true, "preflight should still succeed with non-excluded survey targets")
+    assert_equal(info.target_count, 1, "default object survey should skip objects marked survey_exclude")
+    assert_contains(table.concat(env.logs, "\n"), "SURVEY_START_STATUS map=0x04 mode=objects start=(10,10) targets=1",
+        "preflight should log only the included default targets")
 
     env.restore()
 end
@@ -1537,18 +1819,18 @@ function tests.clustered_isolated_start_skips_unreachable_remainder_but_keeps_lo
     local result_a = run and run.result_by_id["npc_a"]
     local result_reachable = run and run.result_by_id["reachable_local"]
     local result_far = run and run.result_by_id["unreachable_far"]
-    assert_contains(joined, "SURVEY_STRANDED_SCAN run=1 map=0x08 start=(5,5) pending_targets=3 reachable_targets=1 skipped_targets=2",
-        "once a stranded start is confirmed, the survey should scan and trim the remaining queue")
-    assert_contains(joined, "SURVEY_SKIP run=1 map=0x08 start=(5,5) target_id=unreachable_far target_name=\"Unreachable Far\" class=gated_or_isolated_region reason=stranded_start_unreachable",
-        "structurally unreachable targets should be skipped instead of attempted repeatedly")
-    assert_not_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=4/4 retry=0 target_id=unreachable_far",
-        "skipped stranded targets should never consume a live attempt")
+    assert_contains(joined, "SURVEY_STRANDED_SCAN_DEFER run=1 map=0x08 start=(5,5) pending_targets=3 reachable_targets=1 unreachable_targets=2",
+        "when a reachable continuation remains, stranded-start cleanup should move first instead of trimming the queue")
+    assert_contains(joined, "SURVEY_RESULT run=1 map=0x08 target_id=unreachable_far",
+        "unreachable targets should get their own attempt after reachable continuations have had a chance to move the survey")
+    assert_contains(joined, "SURVEY_STRANDED_SCAN run=1 map=0x08 start=(5,5) pending_targets=1 reachable_targets=0 skipped_targets=1",
+        "once no reachable continuation remains, stranded-start cleanup can still trim stale retries")
     assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=3/4 retry=0 target_id=reachable_local",
         "reachable pocket-local targets should stay in the queue and still be attempted")
     assert_equal(result_a.failure_classification, "gated_or_isolated_region",
         "stale retries from the stranded start should be folded into the isolated-region bucket")
     assert_equal(result_far.failure_classification, "gated_or_isolated_region",
-        "skipped stranded targets should still be recorded as isolated-region failures")
+        "unreachable targets should still be recorded as isolated-region failures")
     assert_equal(result_reachable.movement_succeeded, true,
         "reachable local targets should still complete successfully after the stranded-start cleanup")
     assert_equal(run.summary.successes, 1, "only the local reachable target should succeed")
@@ -2202,13 +2484,13 @@ function tests.reorder_skips_candidates_that_still_qualify_for_continuation_trap
     local joined = table.concat(env.logs, "\n")
     assert_contains(joined, "SURVEY_DEFER run=1 map=0x08 idx=2/9 defer=1 target_id=trap_npc reason=continuation_trap trap_reason=small_area landing=(9,5)",
         "trap candidate should be deferred during the initial pass")
-    assert_contains(joined, "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=10 queue_to=9 target_id=npc_b retry=1 path_length=2 replaced_target_id=trap_npc reason=reachable_priority",
+    assert_contains(joined, "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=12 queue_to=10 target_id=npc_b retry=1 path_length=2 replaced_target_id=npc_a reason=reachable_priority",
         "reorder should choose the safe reachable retry instead of the deferred trap target")
     assert_not_contains(joined, "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=11 queue_to=10 target_id=trap_npc",
         "reorder should not pull a deferred continuation-trap target back to the front")
     assert_before(
         joined,
-        "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=10 queue_to=9 target_id=npc_b retry=1 path_length=2 replaced_target_id=trap_npc reason=reachable_priority",
+        "SURVEY_REORDER run=1 map=0x08 start=(5,5) queue_from=12 queue_to=10 target_id=npc_b retry=1 path_length=2 replaced_target_id=npc_a reason=reachable_priority",
         "SURVEY_ATTEMPT run=1 map=0x08 idx=3/9 retry=1 target_id=npc_b",
         "the safe retry should run immediately after it is promoted")
 

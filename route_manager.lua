@@ -277,7 +277,15 @@ local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
         entry.moved_count = entry.moved_count + 1
         entry.consecutive_moved = entry.consecutive_moved + 1
         entry.consecutive_blocked = 0
-        clear_runtime_block_direction(map_id, dest_x, dest_y, approach, "successful traversal")
+        -- Only clear the runtime block when there is NO prior blocking evidence
+        -- for this approach direction. A single "moved" in a seam that has also
+        -- blocked (noisy classification) does NOT erase the runtime block — the
+        -- block stays until the seam is purely passable. This prevents one
+        -- state-contaminated probe from cancelling a seam-confirmed engine block
+        -- and allowing A* to plan routes through an unreliable cell.
+        if entry.blocked_count == 0 then
+            clear_runtime_block_direction(map_id, dest_x, dest_y, approach, "successful traversal")
+        end
     end
 
     entry.last_result = result
@@ -584,6 +592,28 @@ function M.get_seam_entries(map_id)
     return collect_seam_entries(map_id)
 end
 
+function M.get_seam_observation(map_id, x, y, approach)
+    local entry = get_seam_entry(map_id, x, y, approach, false)
+    if not entry then
+        return nil
+    end
+    return {
+        key = entry.key,
+        x = entry.x,
+        y = entry.y,
+        approach = approach,
+        blocked_count = entry.blocked_count,
+        moved_count = entry.moved_count,
+        consecutive_blocked = entry.consecutive_blocked,
+        consecutive_moved = entry.consecutive_moved,
+        last_result = entry.last_result,
+        last_source = entry.last_source,
+        last_from_x = entry.last_from_x,
+        last_from_y = entry.last_from_y,
+        classification = classify_seam_entry(map_id, x, y, approach, entry),
+    }
+end
+
 function M.count_seam_entries(map_id)
     return #collect_seam_entries(map_id)
 end
@@ -815,6 +845,163 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
         end
     end
     return msg
+end
+
+local function face_direction_between(from_x, from_y, to_x, to_y)
+    if to_y < from_y then return "north"
+    elseif to_y > from_y then return "south"
+    elseif to_x > from_x then return "east"
+    elseif to_x < from_x then return "west"
+    end
+    return nil
+end
+
+local function find_quiet_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, blocking, opts)
+    local adj_tiles = {
+        {x = goal_x,     y = goal_y - 1},
+        {x = goal_x,     y = goal_y + 1},
+        {x = goal_x - 1, y = goal_y    },
+        {x = goal_x + 1, y = goal_y    },
+    }
+
+    for _, adj in ipairs(adj_tiles) do
+        local block = blocking and blocking[cell_key(adj.x, adj.y)]
+        if (not block or type(block) == "table")
+        and map_reader.is_walkable(map_id, adj.x, adj.y) == true then
+            local path = pathfinder.find_route_to(
+                map_id, start_x, start_y, adj.x, adj.y, blocking, opts)
+            if path then
+                return path, face_direction_between(adj.x, adj.y, goal_x, goal_y)
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function plan_object_reachability(obj, opts)
+    if not obj then
+        return nil
+    end
+    opts = opts or {}
+    local map_id, px, py = resolve_plan_origin(opts)
+
+    -- On the overworld we intentionally keep object browsing to bearing and
+    -- distance. Interior A* is not available or useful there.
+    if maps.is_overworld(map_id, snapshot.terrain_offset) then
+        return {
+            target = obj,
+            map_id = map_id,
+            start_x = px,
+            start_y = py,
+            reachable = nil,
+            status = "overworld",
+        }
+    end
+
+    local blocking = opts.blocking
+    if not blocking then
+        objects.update_npcs()
+        blocking = M.build_path_blocking(map_id, opts.skip_npcs and {skip_npcs = true} or nil)
+    end
+
+    local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
+    local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
+    local dist = math.abs(px - obj.x) + math.abs(py - obj.y)
+    local path = nil
+    local face_dir = nil
+    local adjacent_diagnostics = nil
+    local no_path_reason = nil
+
+    if path_mode == "adjacent" then
+        if dist <= 1 then
+            return {
+                target = obj,
+                map_id = map_id,
+                start_x = px,
+                start_y = py,
+                path_mode = path_mode,
+                target_walkable = target_walkable,
+                goal_block_reason = goal_block_reason,
+                reachable = true,
+                status = "adjacent",
+            }
+        end
+        path, face_dir = find_quiet_route_to_adjacent(
+            map_id, px, py, obj.x, obj.y, blocking, opts.pathfinder_opts)
+    else
+        if px == obj.x and py == obj.y then
+            return {
+                target = obj,
+                map_id = map_id,
+                start_x = px,
+                start_y = py,
+                path_mode = path_mode,
+                target_walkable = target_walkable,
+                goal_block_reason = goal_block_reason,
+                reachable = true,
+                status = "already_there",
+            }
+        elseif goal_block_reason == "npc" then
+            no_path_reason = "goal_blocked_npc"
+        elseif goal_block_reason == "runtime" then
+            no_path_reason = "goal_blocked_runtime"
+        else
+            path = pathfinder.find_route_to(
+                map_id, px, py, obj.x, obj.y, blocking, opts.pathfinder_opts)
+        end
+
+        if not path and obj.type == objects.TYPE_CHEST and opts.allow_adjacent_fallback ~= false then
+            local fallback_path, fallback_face = find_quiet_route_to_adjacent(
+                map_id, px, py, obj.x, obj.y, blocking, opts.pathfinder_opts)
+            if fallback_path then
+                path = fallback_path
+                face_dir = fallback_face
+                path_mode = "adjacent"
+                no_path_reason = "direct_failed_adjacent_fallback"
+            end
+        end
+    end
+
+    return {
+        target = obj,
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        path_mode = path_mode,
+        target_walkable = target_walkable,
+        goal_block_reason = goal_block_reason,
+        no_path_reason = no_path_reason,
+        reachable = path ~= nil,
+        status = path and "reachable" or "no_path",
+        path = path,
+        face_dir = face_dir,
+        adjacent_diagnostics = adjacent_diagnostics,
+    }
+end
+
+function M.object_reachability(obj, opts)
+    return plan_object_reachability(obj, opts)
+end
+
+function M.describe_object_with_reachability(obj, base_description, opts)
+    if not obj then
+        return base_description or "No objects found"
+    end
+    local desc = base_description or objects.describe_object(obj)
+    local reachability = plan_object_reachability(obj, opts)
+    if reachability and reachability.reachable == false then
+        return desc .. ". Not currently reachable"
+    end
+    return desc
+end
+
+function M.describe_current_object(opts)
+    local obj = objects.current_object()
+    if not obj then
+        return "No objects found"
+    end
+    return M.describe_object_with_reachability(obj, objects.describe_current(), opts)
 end
 
 -- plan_path_to_object(obj): Compute a path from the player to the given
@@ -1065,11 +1252,13 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     end
 
     local map_id = nav.get_position()
-    local source = (block_data and block_data.queued_route == false)
-        and "manual_block"
-        or "queued_route_block"
+    local is_manual_block = (block_data and block_data.queued_route == false)
+    local is_seam_retry_block = same_seam_retry(map_id, from_x, from_y, blocked_dir)
+    local source = is_seam_retry_block
+        and "seam_retry_block"
+        or (is_manual_block and "manual_block" or "queued_route_block")
     local _, seam_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
-    if block_data and block_data.queued_route == false then
+    if is_manual_block and not is_seam_retry_block then
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
         return
     end

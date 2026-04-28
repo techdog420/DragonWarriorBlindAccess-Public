@@ -17,6 +17,7 @@
 --   log_state            -- write a full game-state snapshot to the log
 --   report_position      -- write effective map/x/y to the log
 --   report_coords        -- write effective + raw coordinate bytes to the log
+--   report_movement_state[:TAG] -- dump movement/camera-adjacent RAM bytes
 --   toggle_debug         -- flip DEBUG_MODE on/off at runtime
 --   simulate_input:UP    -- inject a one-frame D-pad or button press
 --   simulate_input:UP,12 -- inject 12 consecutive frames of the same press
@@ -29,6 +30,8 @@
 --   simulate_input:B
 --   simulate_input:START
 --   simulate_input:SELECT
+--   clear_input          -- inject a neutral joypad frame to clear stale held input
+--   trace_input[:FRAMES] -- log input.get() and joypad.read(1) changes
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
 --   export_blocks        -- format all recorded blocked moves as MAP_BLOCKED_CELLS Lua entries
@@ -97,6 +100,9 @@ local CMD_CHECK_FRAMES = 60   -- Check command file every 60 frames
 
 local pending_input  = nil    -- Joypad table to apply on next frame, or nil
 local pending_input_hold = nil  -- {buttons=table, frames_remaining=n}, or nil
+local pending_input_release = false -- Clear stale joypad.set state after debug-owned input.
+local pending_input_release_raw = false -- Keep raw debug-input release invisible to auto_step.
+local input_trace = nil     -- Per-frame input trace state for keyboard/joypad diagnostics.
 local current_frame  = 0      -- Set each tick; used in log entry prefix
 local current_state  = "unknown"  -- Set each tick; used in log entry prefix
 
@@ -360,6 +366,8 @@ end
 local function queue_pending_input(buttons, frames, description)
     pending_input = nil
     pending_input_hold = nil
+    pending_input_release = false
+    pending_input_release_raw = false
 
     if frames and frames > 1 then
         pending_input_hold = {
@@ -377,6 +385,90 @@ local function queue_pending_input(buttons, frames, description)
             M.debug("Queued " .. description)
         end
     end
+end
+
+local function clamp_trace_frames(value)
+    local frames = tonumber(value)
+    if not frames then
+        return 300
+    end
+    frames = math.floor(frames)
+    if frames < 1 then
+        return 1
+    end
+    if frames > 1800 then
+        return 1800
+    end
+    return frames
+end
+
+local function format_pressed_keys(keys)
+    local names = {}
+    for name, pressed in pairs(keys or {}) do
+        if pressed == true then
+            names[#names + 1] = tostring(name)
+        end
+    end
+    table.sort(names)
+    if #names == 0 then
+        return "-"
+    end
+    return table.concat(names, "+")
+end
+
+local function format_joy_buttons(joy)
+    local names = {}
+    local order = {"up", "down", "left", "right", "A", "B", "select", "start"}
+    for _, name in ipairs(order) do
+        if joy and joy[name] then
+            names[#names + 1] = name
+        end
+    end
+    if #names == 0 then
+        return "-"
+    end
+    return table.concat(names, "+")
+end
+
+local function update_input_trace(frame)
+    if not input_trace then
+        return
+    end
+
+    local keys = format_pressed_keys(input.get())
+    local joy = format_joy_buttons(joypad.read(1))
+    local changed = (keys ~= input_trace.last_keys) or (joy ~= input_trace.last_joy)
+    local heartbeat = (input_trace.frames_remaining % 60 == 0)
+
+    if changed or heartbeat then
+        M.info(string.format(
+            "INPUT_TRACE frame=%d remaining=%d keys=%s joy1=%s reason=%s",
+            frame or current_frame,
+            input_trace.frames_remaining,
+            keys,
+            joy,
+            changed and "changed" or "heartbeat"
+        ))
+        input_trace.last_keys = keys
+        input_trace.last_joy = joy
+        input_trace.samples = input_trace.samples + 1
+    end
+
+    input_trace.frames_remaining = input_trace.frames_remaining - 1
+    if input_trace.frames_remaining <= 0 then
+        M.info(string.format("INPUT_TRACE_END frame=%d samples=%d",
+            frame or current_frame,
+            input_trace.samples or 0))
+        input_trace = nil
+    end
+end
+
+local function format_ram_range(first_addr, last_addr)
+    local bytes = {}
+    for a = first_addr, last_addr do
+        bytes[#bytes + 1] = string.format("%02X", memory.readbyte(a))
+    end
+    return table.concat(bytes, " ")
 end
 
 -- process_command(cmd): Execute one trimmed command string.
@@ -430,6 +522,35 @@ local function process_command(cmd)
             memory.readbyte(0x0043)
         ))
 
+    elseif cmd == "report_movement_state" or cmd:sub(1, 22) == "report_movement_state:" then
+        -- Dump compact RAM windows around known/suspect movement state bytes.
+        -- This is intentionally text-first and machine-readable for comparing
+        -- pass/block cases around stale teleport/camera/subtile state.
+        local tag = cmd:match("^report_movement_state:(.+)$") or "-"
+        local map_id = memory.readbyte(addr.MAP_ID)
+        local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+        local player_x = memory.readbyte(addr.PLAYER_X)
+        local player_y = memory.readbyte(addr.PLAYER_Y)
+        local overworld_x = memory.readbyte(addr.OVERWORLD_X)
+        local overworld_y = memory.readbyte(addr.OVERWORLD_Y)
+        local scroll_y = addr.SCROLL_Y and memory.readbyte(addr.SCROLL_Y) or 0
+        local buttons = addr.BUTTONS_PRESSED and memory.readbyte(addr.BUTTONS_PRESSED) or 0
+        M.info(string.format(
+            "MOVEMENT_STATE tag=%s map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) scroll_y=0x%02X buttons=0x%02X ram0000_001F=%s ram0030_004F=%s",
+            tag,
+            map_id,
+            maps_m.get_name(map_id),
+            terrain,
+            player_x,
+            player_y,
+            overworld_x,
+            overworld_y,
+            scroll_y,
+            buttons,
+            format_ram_range(0x0000, 0x001F),
+            format_ram_range(0x0030, 0x004F)
+        ))
+
     elseif cmd == "toggle_debug" then
         -- Flip DEBUG_MODE at runtime. Useful for activating debug mid-session
         -- without reloading the script. Note: the log file is NOT re-cleared
@@ -466,6 +587,22 @@ local function process_command(cmd)
         else
             M.error("simulate_raw_input: unknown button. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
         end
+
+    elseif cmd == "clear_input" or cmd == "neutral_input" then
+        -- Explicit recovery hook for stale joypad.set state after a failed probe
+        -- or external script reload. tick() emits the neutral frame immediately.
+        queue_pending_input({}, 1, "neutral joypad")
+
+    elseif cmd == "trace_input" or cmd:sub(1, 12) == "trace_input:" then
+        local arg = cmd:match("^trace_input:(.+)$")
+        local frames = clamp_trace_frames(arg)
+        input_trace = {
+            frames_remaining = frames,
+            last_keys = nil,
+            last_joy = nil,
+            samples = 0,
+        }
+        M.info(string.format("INPUT_TRACE_START frames=%d", frames))
 
     elseif cmd == "dump_grid" then
         -- Dump the tile type and walkability for every cell in the current map.
@@ -647,7 +784,7 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
         end
     end
 end
@@ -723,6 +860,8 @@ function M.tick(frame, game_state_str)
         check_commands()
     end
 
+    update_input_trace(frame)
+
     -- Flush the log buffer to disk once per second as well.
     -- Staggering this from the command check (offset by 30 frames) spreads
     -- two I/O operations across different frames to avoid a single-frame spike.
@@ -736,6 +875,9 @@ function M.tick(frame, game_state_str)
     -- instead of through auto_step.inject_step() (which reads joypad.read()
     -- and wouldn't see our injection anyway).
     local sweep_inp = sweep_tick()
+    if sweep_inp then
+        pending_input_release = true
+    end
 
     -- Return and clear any pending simulated input.
     -- Sweep input takes priority over queued button commands.
@@ -744,7 +886,9 @@ function M.tick(frame, game_state_str)
         held_inp = pending_input_hold.buttons
         pending_input_hold.frames_remaining = pending_input_hold.frames_remaining - 1
         if pending_input_hold.frames_remaining <= 0 then
+            pending_input_release_raw = pending_input_hold.buttons and pending_input_hold.buttons._raw or false
             pending_input_hold = nil
+            pending_input_release = true
         end
     end
 
@@ -753,6 +897,17 @@ function M.tick(frame, game_state_str)
     -- is already nil — the guard below is defensive insurance, not for the multi-frame case.
     local inp = sweep_inp or held_inp or pending_input
     if not sweep_inp and not held_inp then
+        if pending_input then
+            pending_input_release_raw = pending_input._raw or false
+            pending_input_release = true
+        elseif pending_input_release then
+            pending_input_release = false
+            inp = {}
+            if pending_input_release_raw then
+                inp._raw = true
+            end
+            pending_input_release_raw = false
+        end
         pending_input = nil
     end
     return inp

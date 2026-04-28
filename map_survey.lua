@@ -37,8 +37,11 @@ local CONTINUATION_TRAP_STRANDED_MAJORITY_MIN_TARGETS = 3
 local SURVEY_START_ABORT_AREA_LIMIT = 16
 local SURVEY_START_ABORT_HARD_AREA_LIMIT = 12
 local SURVEY_START_ABORT_MAX_OPEN_EXITS = 2
+local SURVEY_START_ABORT_MIN_TARGETS_FOR_COVERAGE = 8
+local SURVEY_START_ABORT_MAX_REACHABLE_TARGETS = 1
 local ADJACENT_ISOLATED_MAX_OPEN_EXITS = 1
 local ADJACENT_ISOLATED_TINY_AREA_LIMIT = 2
+local SURVEY_MAX_TOTAL_RETRIES_PER_TARGET = 2
 -- Abort the survey if current HP drops to or below this value to prevent
 -- the character dying mid-run on damage tiles (swamp/traps in some areas).
 local SURVEY_LOW_HP_ABORT_THRESHOLD = 8
@@ -550,32 +553,52 @@ local function get_cell_diagnostics(map_id, x, y, opts)
     return info
 end
 
+local count_reachable_targets_from_start
+
 local function analyze_survey_start(targets, map_id, start_x, start_y)
     local start_info = get_cell_diagnostics(map_id, start_x, start_y, {skip_npcs = true})
     local target_count = targets and #targets or 0
+    local reachable_targets = nil
+    local unreachable_targets = nil
+    if target_count >= SURVEY_START_ABORT_MIN_TARGETS_FOR_COVERAGE
+       and count_reachable_targets_from_start then
+        local summary = count_reachable_targets_from_start(targets, map_id, start_x, start_y)
+        reachable_targets = summary.reachable
+        unreachable_targets = summary.unreachable
+    end
+    local isolated_by_area = target_count > 1
+        and (
+            start_info.reachable_area <= SURVEY_START_ABORT_HARD_AREA_LIMIT
+            or (
+                start_info.reachable_area <= SURVEY_START_ABORT_AREA_LIMIT
+                and start_info.open_exit_count <= SURVEY_START_ABORT_MAX_OPEN_EXITS
+            )
+        )
+    local isolated_by_target_coverage = target_count >= SURVEY_START_ABORT_MIN_TARGETS_FOR_COVERAGE
+        and reachable_targets ~= nil
+        and reachable_targets <= SURVEY_START_ABORT_MAX_REACHABLE_TARGETS
 
     return {
         map_id = map_id,
         start_x = start_x,
         start_y = start_y,
         target_count = target_count,
+        reachable_targets = reachable_targets,
+        unreachable_targets = unreachable_targets,
         reachable_area = start_info.reachable_area,
         open_exit_count = start_info.open_exit_count,
         open_dirs = start_info.open_dirs,
         blocked_dirs = start_info.blocked_dirs,
         open_exits_text = start_info.open_exits_text,
         blocked_exits_text = start_info.blocked_exits_text,
-        isolated_start = target_count > 1
-            and (
-                start_info.reachable_area <= SURVEY_START_ABORT_HARD_AREA_LIMIT
-                or (
-                    start_info.reachable_area <= SURVEY_START_ABORT_AREA_LIMIT
-                    and start_info.open_exit_count <= SURVEY_START_ABORT_MAX_OPEN_EXITS
-                )
-            ),
+        isolated_start = isolated_by_area or isolated_by_target_coverage,
+        isolation_reason = isolated_by_area and "small_reachable_area"
+            or (isolated_by_target_coverage and "low_target_coverage" or nil),
         area_limit = SURVEY_START_ABORT_AREA_LIMIT,
         hard_area_limit = SURVEY_START_ABORT_HARD_AREA_LIMIT,
         open_exit_limit = SURVEY_START_ABORT_MAX_OPEN_EXITS,
+        coverage_min_targets = SURVEY_START_ABORT_MIN_TARGETS_FOR_COVERAGE,
+        coverage_reachable_limit = SURVEY_START_ABORT_MAX_REACHABLE_TARGETS,
     }
 end
 
@@ -639,6 +662,43 @@ local function plan_preview_for_target(map_id, start_x, start_y, target, opts)
         survey_state.preview_cache[cache_key] = plan
     end
     return plan
+end
+
+count_reachable_targets_from_start = function(targets, map_id, start_x, start_y)
+    local total = targets and #targets or 0
+    if total == 0 then
+        return {total = 0, reachable = 0, unreachable = 0}
+    end
+
+    local blocking = nil
+    if route_mgr.build_path_blocking then
+        blocking = route_mgr.build_path_blocking(map_id, {skip_npcs = true})
+    end
+
+    local reachable = 0
+    local unreachable = 0
+    for _, target in ipairs(targets) do
+        local plan = route_mgr.plan_path_to_object(target, {
+            map_id = map_id,
+            start_x = start_x,
+            start_y = start_y,
+            blocking = blocking,
+            skip_npcs = true,
+            store_debug_path = false,
+            survey_safe = true,
+        })
+        if plan and plan.result ~= "No path found" then
+            reachable = reachable + 1
+        else
+            unreachable = unreachable + 1
+        end
+    end
+
+    return {
+        total = total,
+        reachable = reachable,
+        unreachable = unreachable,
+    }
 end
 
 local function summarize_remaining_reachability(map_id, start_x, start_y, opts)
@@ -970,15 +1030,90 @@ local function ensure_map_candidates(map_id)
     return blocked_candidates[map_id]
 end
 
+local function get_candidate_seam_observation(entry, approach)
+    if not entry or not approach or type(route_mgr.get_seam_observation) ~= "function" then
+        return nil
+    end
+    return route_mgr.get_seam_observation(entry.map_id, entry.x, entry.y, approach)
+end
+
+local function seam_observation_is_noisy(observation)
+    return observation
+        and (observation.blocked_count or 0) > 0
+        and (observation.moved_count or 0) > 0
+end
+
+local function seam_observation_has_direct_block_repro(observation)
+    return observation
+        and observation.last_result == "blocked"
+        and observation.last_source == "manual_block"
+        and (observation.blocked_count or 0) > 0
+        and (observation.moved_count or 0) == 0
+end
+
+local function candidate_has_noisy_seam(entry)
+    if not entry then
+        return false
+    end
+    for _, approach in ipairs(sorted_truthy_keys(entry.approaches)) do
+        if seam_observation_is_noisy(get_candidate_seam_observation(entry, approach)) then
+            return true
+        end
+    end
+    return false
+end
+
+local function candidate_has_direct_block_repro(entry)
+    if not entry then
+        return false
+    end
+    for _, approach in ipairs(sorted_truthy_keys(entry.approaches)) do
+        if seam_observation_has_direct_block_repro(get_candidate_seam_observation(entry, approach)) then
+            return true
+        end
+    end
+    return false
+end
+
+local function candidate_exportable_approaches(entry)
+    local approaches = {}
+    if not entry then
+        return approaches
+    end
+    local requires_direct_repro = (entry.failure_count or 0) == 0
+        and (entry.retry_successes or 0) > 0
+    for _, approach in ipairs(sorted_truthy_keys(entry.approaches)) do
+        local observation = get_candidate_seam_observation(entry, approach)
+        if not seam_observation_is_noisy(observation) then
+            if not requires_direct_repro or seam_observation_has_direct_block_repro(observation) then
+                approaches[#approaches + 1] = approach
+            end
+        end
+    end
+    return approaches
+end
+
 local function compute_candidate_confidence(entry)
     if not entry then return "low" end
-    if entry.retry_successes >= 1 then
+    if candidate_has_noisy_seam(entry) then
+        return "needs_repro"
+    end
+    if candidate_has_direct_block_repro(entry) then
         return "high"
     end
-    if entry.target_count >= 2 or entry.count >= 3 then
+    if (entry.state_issue_count or 0) > 0 and (entry.failure_count or 0) == 0 then
+        return "needs_repro"
+    end
+    if (entry.retry_successes or 0) > 0 and (entry.failure_count or 0) == 0 then
+        return "needs_repro"
+    end
+    if (entry.retry_successes or 0) >= 1 then
         return "high"
     end
-    if entry.count >= 2 or entry.failure_count >= 1 then
+    if (entry.target_count or 0) >= 2 or (entry.count or 0) >= 3 then
+        return "high"
+    end
+    if (entry.count or 0) >= 2 or (entry.failure_count or 0) >= 1 then
         return "medium"
     end
     return "low"
@@ -1004,13 +1139,19 @@ end
 
 local function is_strong_reroute_candidate(entry)
     if not entry then return false end
-    if entry.retry_successes <= 0 then
+    if compute_candidate_confidence(entry) == "needs_repro" then
         return false
     end
-    if entry.count >= 2 then
+    if (entry.state_issue_count or 0) > 0 and (entry.failure_count or 0) == 0 then
+        return false
+    end
+    if (entry.retry_successes or 0) <= 0 then
+        return false
+    end
+    if (entry.count or 0) >= 2 then
         return true
     end
-    if entry.target_count >= 2 then
+    if (entry.target_count or 0) >= 2 then
         return true
     end
     if count_truthy_keys(entry.approaches) >= 2 then
@@ -1030,7 +1171,7 @@ local function strong_candidate_entries(map_id)
 end
 
 local function build_candidate_suggestion(entry)
-    local approaches = sorted_truthy_keys(entry and entry.approaches)
+    local approaches = candidate_exportable_approaches(entry)
     local count = #approaches
     if count == 0 then
         return nil
@@ -1047,18 +1188,25 @@ local function build_candidate_suggestion(entry)
         count = entry.count,
         target_count = entry.target_count,
         retry_successes = entry.retry_successes,
+        state_issue_count = entry.state_issue_count or 0,
     }
 end
 
 local function candidate_suggestions(map_id)
     local result = {}
     for _, entry in ipairs(sorted_candidate_entries(map_id)) do
-        local include = entry.retry_successes > 0
-            or (CONFIDENCE_RANK[entry.confidence] or 0) >= CONFIDENCE_RANK.medium
-        if include then
-            local suggestion = build_candidate_suggestion(entry)
-            if suggestion then
-                result[#result + 1] = suggestion
+        if (entry.state_issue_count or 0) > 0
+            and (entry.failure_count or 0) == 0
+            and not candidate_has_direct_block_repro(entry) then
+            -- Diagnostic-only until a focused repro separates map data from
+            -- route execution/state noise.
+        else
+            local include = (CONFIDENCE_RANK[entry.confidence] or 0) >= CONFIDENCE_RANK.medium
+            if include then
+                local suggestion = build_candidate_suggestion(entry)
+                if suggestion then
+                    result[#result + 1] = suggestion
+                end
             end
         end
     end
@@ -1370,8 +1518,10 @@ end
 local function get_default_survey_targets()
     local list = objects.get_objects()
     local targets = {}
-    for i, obj in ipairs(list) do
-        targets[i] = copy_object(obj)
+    for _, obj in ipairs(list) do
+        if not (obj and obj.survey_exclude == true) then
+            targets[#targets + 1] = copy_object(obj)
+        end
     end
     return targets
 end
@@ -1602,12 +1752,20 @@ local function get_retry_reason(attempt, failure_classification, final_map_id, f
     if not survey_state or not attempt then
         return nil
     end
+    local target_id = attempt.target.id
     local retries = survey_state.retry_counts[attempt.target.id] or 0
-    if retries >= 1 then
+    local reason_counts = survey_state.retry_reason_counts[target_id] or {}
+    local function already_retried(reason)
+        return (reason_counts[reason] or 0) >= 1
+    end
+    if retries >= SURVEY_MAX_TOTAL_RETRIES_PER_TARGET then
         return nil
     end
 
     if failure_classification == "no_route_found" then
+        if retries >= 1 or already_retried("transient_no_path") then
+            return nil
+        end
         if attempt.plan_status ~= "no_path" then
             return nil
         end
@@ -1621,13 +1779,22 @@ local function get_retry_reason(attempt, failure_classification, final_map_id, f
         if attempt.plan_status ~= "queued" then
             return nil
         end
-        if attempt.reason ~= "route_inactive_without_completion" then
-            return nil
-        end
         if #attempt.blocked_tiles > 0 or #attempt.suspected_tiles > 0 then
             return nil
         end
         if final_map_id ~= attempt.map_id then
+            return nil
+        end
+        if attempt.reason == "route_drift_off_path" then
+            if already_retried("route_drift_retry") then
+                return nil
+            end
+            return "route_drift_retry"
+        end
+        if attempt.reason ~= "route_inactive_without_completion" then
+            return nil
+        end
+        if retries >= 1 or already_retried("timing_orphaned_route") then
             return nil
         end
         if final_x ~= attempt.start_x or final_y ~= attempt.start_y then
@@ -1750,6 +1917,21 @@ local function skip_stranded_start_remainder(cluster)
     if pending_summary.total == 0 then
         return 0
     end
+    if pending_summary.reachable > 0 and start_info.reachable_area > CONTINUATION_TRAP_AREA_LIMIT then
+        debug_tools.info(string.format(
+            "SURVEY_STRANDED_SCAN_DEFER run=%d map=0x%02X start=(%d,%d) pending_targets=%d reachable_targets=%d unreachable_targets=%d reachable_area=%d open_exit_count=%d latest_target_id=%s reason=reachable_continuations_pending",
+            survey_state.run_id,
+            survey_state.map_id,
+            cluster.start_x,
+            cluster.start_y,
+            pending_summary.total,
+            pending_summary.reachable,
+            pending_summary.unreachable,
+            start_info.reachable_area,
+            start_info.open_exit_count,
+            tostring(survey_state.results[#survey_state.results] and survey_state.results[#survey_state.results].target_id or "")))
+        return 0
+    end
 
     local compacted_queue = {}
     for i = 1, survey_state.queue_index do
@@ -1835,11 +2017,15 @@ local function finalize_attempt(attempt)
 
     local retry_reason = get_retry_reason(attempt, failure_classification, map_id, final_x, final_y)
     if retry_reason then
-        survey_state.retry_counts[attempt.target.id] = (survey_state.retry_counts[attempt.target.id] or 0) + 1
+        local target_id = attempt.target.id
+        survey_state.retry_counts[target_id] = (survey_state.retry_counts[target_id] or 0) + 1
+        survey_state.retry_reason_counts[target_id] = survey_state.retry_reason_counts[target_id] or {}
+        survey_state.retry_reason_counts[target_id][retry_reason] =
+            (survey_state.retry_reason_counts[target_id][retry_reason] or 0) + 1
         survey_state.queue[#survey_state.queue + 1] = {
             target = refresh_object(attempt.target),
             original_index = attempt.original_index,
-            retry_number = survey_state.retry_counts[attempt.target.id],
+            retry_number = survey_state.retry_counts[target_id],
         }
         survey_state.queue_index = survey_state.queue_index + 1
         survey_state.active_attempt = nil
@@ -1847,9 +2033,9 @@ local function finalize_attempt(attempt)
             "SURVEY_REQUEUE run=%d map=0x%02X target_id=%s reason=%s retry=%d",
             survey_state.run_id,
             attempt.map_id,
-            tostring(attempt.target.id),
+            tostring(target_id),
             retry_reason,
-            survey_state.retry_counts[attempt.target.id]))
+            survey_state.retry_counts[target_id]))
         invalidate_preview_caches()
         return
     end
@@ -1907,6 +2093,17 @@ local function finalize_attempt(attempt)
         end
     end
 
+    if not result.movement_succeeded and result.failure_classification == "command_timing_or_state_issue" then
+        local map_candidates = blocked_candidates[result.map_id] or {}
+        for _, key in ipairs(result.suspected_blocked_tiles) do
+            local entry = map_candidates[key]
+            if entry then
+                entry.state_issue_count = (entry.state_issue_count or 0) + 1
+                entry.confidence = compute_candidate_confidence(entry)
+            end
+        end
+    end
+
     log_result(result)
     if no_path_cluster and no_path_cluster.target_count >= ISOLATED_START_CLUSTER_MIN_TARGETS then
         skip_stranded_start_remainder(no_path_cluster)
@@ -1952,6 +2149,7 @@ local function record_candidate(attempt, blocked_event)
             approaches = {},
             retry_successes = 0,
             failure_count = 0,
+            state_issue_count = 0,
             last_target_id = nil,
             confidence = "low",
         }
@@ -2185,7 +2383,7 @@ local function start_run(targets, opts)
     run_counter = run_counter + 1
     if start_info.isolated_start then
         debug_tools.info(string.format(
-            "SURVEY_START_ABORT run=%d map=0x%02X reason=isolated_start start=(%d,%d) targets=%d reachable_area=%d open_exit_count=%d open_exits=%s blocked_exits=%s",
+            "SURVEY_START_ABORT run=%d map=0x%02X reason=isolated_start start=(%d,%d) targets=%d reachable_area=%d open_exit_count=%d open_exits=%s blocked_exits=%s isolation_reason=%s reachable_targets=%s unreachable_targets=%s",
             run_counter,
             start_info.map_id,
             start_info.start_x,
@@ -2194,20 +2392,39 @@ local function start_run(targets, opts)
             start_info.reachable_area,
             start_info.open_exit_count,
             start_info.open_exits_text,
-            start_info.blocked_exits_text))
-        tolk.output_interrupt(string.format(
-            "Survey aborted on map %02X. Start (%d,%d) is isolated: reachable area %d with %d open exits.",
-            start_info.map_id,
-            start_info.start_x,
-            start_info.start_y,
-            start_info.reachable_area,
-            start_info.open_exit_count))
-        return false, string.format(
-            "Survey start (%d,%d) is isolated: reachable area %d with %d open exits",
-            start_info.start_x,
-            start_info.start_y,
-            start_info.reachable_area,
-            start_info.open_exit_count)
+            start_info.blocked_exits_text,
+            tostring(start_info.isolation_reason or "unknown"),
+            tostring(start_info.reachable_targets or "-"),
+            tostring(start_info.unreachable_targets or "-")))
+        if start_info.isolation_reason == "low_target_coverage" then
+            tolk.output_interrupt(string.format(
+                "Survey aborted on map %02X. Start (%d,%d) is stranded: only %d of %d targets are reachable.",
+                start_info.map_id,
+                start_info.start_x,
+                start_info.start_y,
+                start_info.reachable_targets or 0,
+                start_info.target_count))
+            return false, string.format(
+                "Survey start (%d,%d) is stranded: only %d of %d targets are reachable",
+                start_info.start_x,
+                start_info.start_y,
+                start_info.reachable_targets or 0,
+                start_info.target_count)
+        else
+            tolk.output_interrupt(string.format(
+                "Survey aborted on map %02X. Start (%d,%d) is isolated: reachable area %d with %d open exits.",
+                start_info.map_id,
+                start_info.start_x,
+                start_info.start_y,
+                start_info.reachable_area,
+                start_info.open_exit_count))
+            return false, string.format(
+                "Survey start (%d,%d) is isolated: reachable area %d with %d open exits",
+                start_info.start_x,
+                start_info.start_y,
+                start_info.reachable_area,
+                start_info.open_exit_count)
+        end
     end
     if start_info.open_exit_count <= 2 then
         debug_tools.info(string.format(
@@ -2244,6 +2461,7 @@ local function start_run(targets, opts)
         results = {},
         result_by_id = {},
         retry_counts = {},
+        retry_reason_counts = {},
         defer_counts = {},
         defer_landings = {},
         no_path_clusters = {},
@@ -2349,7 +2567,7 @@ function M.report_start_viability(arg)
     local start_info = analyze_survey_start(targets, map_id, start_x, start_y)
     start_info.mode = mode
     debug_tools.info(string.format(
-        "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=%d reachable_area=%d open_exit_count=%d open_exits=%s blocked_exits=%s status=%s hard_area_limit=%d area_limit=%d open_exit_limit=%d npc_mode=%s",
+        "SURVEY_START_STATUS map=0x%02X mode=%s start=(%d,%d) targets=%d reachable_area=%d open_exit_count=%d open_exits=%s blocked_exits=%s status=%s hard_area_limit=%d area_limit=%d open_exit_limit=%d reachable_targets=%s unreachable_targets=%s isolation_reason=%s coverage_min_targets=%d coverage_reachable_limit=%d npc_mode=%s",
         map_id,
         tostring(mode),
         start_x,
@@ -2363,6 +2581,11 @@ function M.report_start_viability(arg)
         start_info.hard_area_limit,
         start_info.area_limit,
         start_info.open_exit_limit,
+        tostring(start_info.reachable_targets or "-"),
+        tostring(start_info.unreachable_targets or "-"),
+        tostring(start_info.isolation_reason or "-"),
+        start_info.coverage_min_targets,
+        start_info.coverage_reachable_limit,
         get_survey_npc_mode(parsed)))
     return true, start_info
 end
@@ -2538,7 +2761,7 @@ function M.list_blocked_candidates(map_id)
     debug_tools.info(string.format("SURVEY_CANDIDATES map=0x%02X count=%d", map_id, #entries))
     for _, entry in ipairs(entries) do
         debug_tools.info(string.format(
-            "SURVEY_CANDIDATE map=0x%02X x=%d y=%d key=%s count=%d targets=%d retry_successes=%d failure_count=%d confidence=%s approaches=%s",
+            "SURVEY_CANDIDATE map=0x%02X x=%d y=%d key=%s count=%d targets=%d retry_successes=%d failure_count=%d state_issues=%d confidence=%s approaches=%s",
             map_id,
             entry.x,
             entry.y,
@@ -2547,6 +2770,7 @@ function M.list_blocked_candidates(map_id)
             entry.target_count,
             entry.retry_successes,
             entry.failure_count,
+            entry.state_issue_count or 0,
             tostring(entry.confidence),
             join_sorted_keys(entry.approaches, "|")))
     end
@@ -2563,7 +2787,7 @@ function M.report_strong_candidates(map_id)
     debug_tools.info(string.format("SURVEY_STRONG_CANDIDATES map=0x%02X count=%d", map_id, #entries))
     for _, entry in ipairs(entries) do
         debug_tools.info(string.format(
-            "SURVEY_STRONG_CANDIDATE map=0x%02X x=%d y=%d key=%s count=%d targets=%d retry_successes=%d approaches=%s confidence=%s",
+            "SURVEY_STRONG_CANDIDATE map=0x%02X x=%d y=%d key=%s count=%d targets=%d retry_successes=%d state_issues=%d approaches=%s confidence=%s",
             map_id,
             entry.x,
             entry.y,
@@ -2571,6 +2795,7 @@ function M.report_strong_candidates(map_id)
             entry.count,
             entry.target_count,
             entry.retry_successes,
+            entry.state_issue_count or 0,
             join_sorted_keys(entry.approaches, "|"),
             tostring(entry.confidence)))
     end
@@ -2639,7 +2864,7 @@ function M.report_candidate_suggestions(map_id)
     debug_tools.info(string.format("SURVEY_CANDIDATE_SUGGESTIONS map=0x%02X count=%d", map_id, #suggestions))
     for _, suggestion in ipairs(suggestions) do
         debug_tools.info(string.format(
-            "SURVEY_CANDIDATE_SUGGESTION map=0x%02X x=%d y=%d key=%s kind=%s approaches=%s confidence=%s count=%d retry_successes=%d targets=%d",
+            "SURVEY_CANDIDATE_SUGGESTION map=0x%02X x=%d y=%d key=%s kind=%s approaches=%s confidence=%s count=%d retry_successes=%d state_issues=%d targets=%d",
             map_id,
             suggestion.x,
             suggestion.y,
@@ -2649,6 +2874,7 @@ function M.report_candidate_suggestions(map_id)
             tostring(suggestion.confidence),
             suggestion.count,
             suggestion.retry_successes,
+            suggestion.state_issue_count or 0,
             suggestion.target_count))
     end
     return #suggestions
@@ -2691,23 +2917,58 @@ end
 function M.export_blocked_candidates(map_id)
     map_id = map_id or nav.get_position()
     local entries = sorted_candidate_entries(map_id)
-    debug_tools.info(string.format("SURVEY_CANDIDATE_EXPORT map=0x%02X count=%d", map_id, #entries))
-    if #entries == 0 then
+    local suggestions = candidate_suggestions(map_id)
+    local exportable_keys = {}
+    for _, suggestion in ipairs(suggestions) do
+        exportable_keys[suggestion.key] = true
+    end
+
+    local skipped = #entries - #suggestions
+    debug_tools.info(string.format(
+        "SURVEY_CANDIDATE_EXPORT map=0x%02X count=%d skipped_diagnostics=%d",
+        map_id, #suggestions, skipped))
+    for _, entry in ipairs(entries) do
+        if not exportable_keys[entry.key] then
+            debug_tools.info(string.format(
+                "SURVEY_CANDIDATE_EXPORT_SKIP map=0x%02X key=%s confidence=%s count=%d retry_successes=%d state_issues=%d reason=not_exportable_needs_repro",
+                map_id,
+                entry.key,
+                tostring(entry.confidence),
+                entry.count,
+                entry.retry_successes,
+                entry.state_issue_count or 0))
+        end
+    end
+    if #suggestions == 0 then
         return 0
     end
     debug_tools.info(string.format("    [0x%02X] = {", map_id))
-    for _, entry in ipairs(entries) do
-        debug_tools.info(string.format(
-            '        ["%s"] = {count=%d, confidence=%q, retry_successes=%d, targets=%d, approaches={%s}},',
-            entry.key,
-            entry.count,
-            entry.confidence,
-            entry.retry_successes,
-            entry.target_count,
-            join_sorted_keys(entry.approaches, "=true, ") .. (next(entry.approaches) and "=true" or "")))
+    for _, suggestion in ipairs(suggestions) do
+        if suggestion.kind == "full_block" then
+            debug_tools.info(string.format(
+                '        ["%s"] = {north=true, south=true, east=true, west=true},  -- confidence=%s count=%d retry_successes=%d state_issues=%d',
+                suggestion.key,
+                suggestion.confidence,
+                suggestion.count,
+                suggestion.retry_successes,
+                suggestion.state_issue_count or 0))
+        else
+            local dir_parts = {}
+            for _, approach in ipairs(suggestion.approaches) do
+                dir_parts[#dir_parts + 1] = approach .. "=true"
+            end
+            debug_tools.info(string.format(
+                '        ["%s"] = {%s},  -- confidence=%s count=%d retry_successes=%d state_issues=%d',
+                suggestion.key,
+                table.concat(dir_parts, ", "),
+                suggestion.confidence,
+                suggestion.count,
+                suggestion.retry_successes,
+                suggestion.state_issue_count or 0))
+        end
     end
     debug_tools.info("    },")
-    return #entries
+    return #suggestions
 end
 
 return M

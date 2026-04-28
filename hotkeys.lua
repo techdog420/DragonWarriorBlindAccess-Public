@@ -483,7 +483,7 @@ function M.update(keys)
     if is_key_pressed(keys, config.get("key_object_next")) then
         local obj = objects.next_object()
         if obj then
-            tolk.output_interrupt(objects.describe_current())
+            tolk.output_interrupt(route_mgr.describe_current_object())
         else
             tolk.output_interrupt("No objects found")
         end
@@ -493,7 +493,7 @@ function M.update(keys)
     if is_key_pressed(keys, config.get("key_object_prev")) then
         local obj = objects.prev_object()
         if obj then
-            tolk.output_interrupt(objects.describe_current())
+            tolk.output_interrupt(route_mgr.describe_current_object())
         else
             tolk.output_interrupt("No objects found")
         end
@@ -501,7 +501,7 @@ function M.update(keys)
 
     -- K key (default): Describe current object (re-read with updated distance)
     if is_key_pressed(keys, config.get("key_object_current")) then
-        tolk.output_interrupt(objects.describe_current())
+        tolk.output_interrupt(route_mgr.describe_current_object())
     end
 
     -- O key (default): Pathfind to current object.
@@ -526,7 +526,7 @@ function M.update(keys)
         -- Announce the new filter and the first object in it
         local count = objects.get_count()
         if count > 0 then
-            tolk.output_interrupt(filter_name .. ". " .. objects.describe_current())
+            tolk.output_interrupt(filter_name .. ". " .. route_mgr.describe_current_object())
         else
             tolk.output_interrupt(filter_name .. ". No objects")
         end

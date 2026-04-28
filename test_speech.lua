@@ -11,6 +11,10 @@
 
 print("=== Speech Bridge Test ===")
 print("")
+if not FCEU then
+    print("SKIP: FCEUX globals are not available; load this diagnostic script in FCEUX to run it.")
+    os.exit(0)
+end
 
 -- Step 1: Try to load the tolk module (which launches speech_bridge.py)
 print("Loading tolk module...")
