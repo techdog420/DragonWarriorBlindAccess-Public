@@ -91,3 +91,10 @@ When substantial work finishes:
 - Update `PROJECT_MEMORY.md` only for durable facts.
 - Update `PLAYTESTING.md` for gameplay findings and priorities.
 - Avoid creating new dated handoffs unless an investigation is large enough to need a detailed evidence packet.
+
+## Codex memory access note - 2026-04-28
+
+- Codex can write normal repo files here, but project-local `.codex/` is mounted read-only inside this session.
+- Keep canonical mutable memory in `session_handoff.md`, `PROJECT_MEMORY.md`, `AGENTS.md`, and focused docs such as `debug_hooks.txt`.
+- Use `/home/developer/.codex/memories/` only as assistant-local reminder storage.
+- Linux/WSL remains the recommended launch environment; the `.codex` write failure is a sandbox/read-only mount detail, not a reason to move the workflow to another environment.

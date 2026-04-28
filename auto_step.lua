@@ -43,6 +43,13 @@ M.on_blocked = nil
 -- TRANSITION: Both this callback AND event_bus "route_completed" fire.
 M.on_route_complete = nil
 
+-- Optional callback: called when a queued route is cancelled by auto_step
+-- itself (live input, field-state loss, or off-path drift). Route managers can
+-- use this to release NPC freeze and clear active destination context.
+-- Signature: M.on_route_cancelled(cancel_data)
+-- TRANSITION: Both this callback AND event_bus "route_cancelled" fire.
+M.on_route_cancelled = nil
+
 -- Optional callback: called when an injected/auto-held step completes and the
 -- player reaches a new tile. Useful for runtime seam tracking and route repair
 -- after a manual one-step brute-force retry.
@@ -307,6 +314,17 @@ local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
     end
 end
 
+local function emit_route_cancelled(cancel_data)
+    cancel_data = cancel_data or {}
+    event_bus.publish("route_cancelled", cancel_data)
+    if M.on_route_cancelled then
+        local ok, err = pcall(M.on_route_cancelled, cancel_data)
+        if not ok then
+            debug_tools.error("on_route_cancelled error: " .. tostring(err))
+        end
+    end
+end
+
 local function cancel_route_for_drift(px, py, source)
     local last_x = route_last_x
     local last_y = route_last_y
@@ -316,7 +334,7 @@ local function cancel_route_for_drift(px, py, source)
         last_x or -1, last_y or -1, px or -1, py or -1, next_index or -1,
         tostring(source)))
     clear_route()
-    event_bus.publish("route_cancelled", {
+    emit_route_cancelled({
         reason = "route_drift_off_path",
         from_x = last_x,
         from_y = last_y,
@@ -415,6 +433,7 @@ function M.update(can_walk)
 
     -- If we can't walk right now, cancel any active auto-hold
     if not can_walk then
+        local had_route = (route_steps ~= nil)
         if auto_dir or pending_repress then
             debug_tools.debug(string.format(
                 "auto_step cancel: can_walk=false auto_dir=%s pending_repress=%s",
@@ -425,6 +444,13 @@ function M.update(can_walk)
         cooldown = 0
         post_step_release_frames = 0
         clear_route()
+        if had_route then
+            emit_route_cancelled({
+                reason = "can_walk_false",
+                current_x = px,
+                current_y = py,
+            })
+        end
         -- Don't update prev_held here — we still need to track joypad
         -- state so we detect fresh presses correctly when can_walk
         -- becomes true again.
@@ -513,10 +539,20 @@ function M.update(can_walk)
         end
 
         if different_dir then
+            local had_route = (route_steps ~= nil)
+            local interrupted_dir = auto_dir
             debug_tools.debug("auto_step cancel: different live direction pressed")
             if DEBUG then tolk.output("auto-step cancelled, different direction") end
             reset_active_step()
             clear_route()
+            if had_route then
+                emit_route_cancelled({
+                    reason = "live_input_interrupt",
+                    current_x = px,
+                    current_y = py,
+                    active_dir = interrupted_dir,
+                })
+            end
         -- Cancel if position changed (step completed!)
         elseif px ~= auto_start_x or py ~= auto_start_y then
             local completed_from_x = auto_start_x
@@ -642,6 +678,20 @@ function M.update(can_walk)
     end
 
     if route_steps and route_settle_frames > 0 then
+        if is_any_direction_pressed(joy) then
+            debug_tools.debug("auto_step clear_route: live direction input interrupted queued route during settle")
+            clear_route()
+            emit_route_cancelled({
+                reason = "live_input_interrupt",
+                current_x = px,
+                current_y = py,
+                source = "route_settle",
+            })
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
         local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
         if consumed > 0 then
             route_settle_frames = route_settle_default or 0
@@ -667,6 +717,12 @@ function M.update(can_walk)
     if route_steps and is_any_direction_pressed(joy) then
         debug_tools.debug("auto_step clear_route: live direction input interrupted queued route")
         clear_route()
+        emit_route_cancelled({
+            reason = "live_input_interrupt",
+            current_x = px,
+            current_y = py,
+            source = "route_step",
+        })
     end
 
     if route_steps and cooldown <= 0 then

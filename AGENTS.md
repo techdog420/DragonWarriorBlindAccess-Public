@@ -229,12 +229,19 @@ Repo files are the source of truth:
 - Treat `PLAYTESTING.md` as the active gameplay/playability notes file
 - Treat `handoff_archive/` as historical evidence, not active context
 - Treat `~/.codex/memories/` and `.claude/agent-memory/` as assistant-local aids, not the source of truth for project state
+- Treat project-local `.codex/skills/` as read-only packaged workflow guidance inside Codex sessions; do not rely on editing it during normal work
 
 After substantial work:
 - Update `session_handoff.md` with current state and best next step
 - Update `PROJECT_MEMORY.md` only for durable facts
 - Update `PLAYTESTING.md` for player-facing findings and gameplay priorities
 - Avoid creating new dated handoff files unless a large investigation needs a detailed evidence packet
+
+Codex memory access notes:
+- The project-local `.codex/` directory may be mounted read-only inside Codex even when the surrounding repo is writable
+- Put durable project memory in repo files, especially `session_handoff.md`, `PROJECT_MEMORY.md`, `AGENTS.md`, and focused docs such as `debug_hooks.txt`
+- Put assistant-local reminders in `~/.codex/memories/`, but keep them subordinate to repo memory files
+- If the `dw-debug-loop` skill needs a permanent source update, record the desired change in repo memory first, then update the skill outside the read-only Codex mount
 
 ## Preferred output style from Codex
 

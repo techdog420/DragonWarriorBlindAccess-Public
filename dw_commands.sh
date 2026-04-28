@@ -2,13 +2,15 @@
 # dw_commands.sh — Send commands to the Dragon Warrior accessibility mod
 #
 # Usage:
-#   ./dw_commands.sh [--replace] <command> [command2 command3 ...]
+#   ./dw_commands.sh [--replace] [--wait PATTERN] [--timeout SECONDS] <command> [command2 command3 ...]
 #
 # Each argument is written as one command line to dw_commands.txt.
 # The mod polls this file every ~1 second (60 frames) and clears it
 # after processing. Requires debug_mode=true in dw_access.ini.
 # By default commands are APPENDED so separate invocations don't clobber
 # each other. Use --replace to overwrite the queue intentionally.
+# Use --wait PATTERN to wait for a fresh dw_debug.log line containing PATTERN.
+# Use --timeout SECONDS to override the default 10 second wait timeout.
 #
 # ── Built-in commands ────────────────────────────────────────────────
 #   log_state              Full game-state snapshot to dw_debug.log
@@ -153,8 +155,11 @@
 #   ./dw_commands.sh dump_survey_report export_directional_candidates
 #   ./dw_commands.sh probe_edge:RIGHT
 #   ./dw_commands.sh probe_edge:14,2,UP
+#   ./dw_commands.sh --replace --wait "POSITION:" report_position
 
-CMD_FILE="$(dirname "$0")/dw_commands.txt"
+BASE_DIR="$(dirname "$0")"
+CMD_FILE="$BASE_DIR/dw_commands.txt"
+LOG_FILE="$BASE_DIR/dw_debug.log"
 
 if [ $# -eq 0 ]; then
     sed -n 's/^# \?//p' "$0" | head -50
@@ -162,14 +167,65 @@ if [ $# -eq 0 ]; then
 fi
 
 mode="append"
-if [ "$1" = "--replace" ]; then
-    mode="replace"
-    shift
-fi
+wait_pattern=""
+timeout_seconds=10
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --replace)
+            mode="replace"
+            shift
+            ;;
+        --wait)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "--wait requires a log pattern."
+                exit 1
+            fi
+            wait_pattern="$1"
+            shift
+            ;;
+        --timeout)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "--timeout requires a positive integer seconds value."
+                exit 1
+            fi
+            case "$1" in
+                ''|*[!0-9]*)
+                    echo "--timeout requires a positive integer seconds value."
+                    exit 1
+                    ;;
+            esac
+            if [ "$1" -eq 0 ]; then
+                echo "--timeout requires a positive integer seconds value."
+                exit 1
+            fi
+            timeout_seconds="$1"
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 if [ $# -eq 0 ]; then
     echo "No commands provided."
     exit 1
+fi
+
+wait_start_line=0
+if [ -n "$wait_pattern" ] && [ -f "$LOG_FILE" ]; then
+    wait_start_line=$(wc -l < "$LOG_FILE")
 fi
 
 # Write each argument as one command line.
@@ -182,7 +238,6 @@ fi
 
 # Warn only after a longer idle period so a live-but-idle emulator doesn't
 # trigger false positives during normal testing.
-LOG_FILE="$(dirname "$0")/dw_debug.log"
 if [ -f "$LOG_FILE" ]; then
     last_mod=$(date -r "$LOG_FILE" +%s 2>/dev/null)
     now=$(date +%s)
@@ -193,3 +248,29 @@ if [ -f "$LOG_FILE" ]; then
 fi
 
 echo "Sent to mod: $*"
+
+if [ -n "$wait_pattern" ]; then
+    echo "Waiting up to ${timeout_seconds}s for log pattern: $wait_pattern"
+    start_time=$(date +%s)
+    while true; do
+        now=$(date +%s)
+        if [ $(( now - start_time )) -ge "$timeout_seconds" ]; then
+            echo "Timed out waiting for log pattern: $wait_pattern" >&2
+            exit 2
+        fi
+
+        if [ -f "$LOG_FILE" ]; then
+            current_lines=$(wc -l < "$LOG_FILE")
+            if [ "$current_lines" -lt "$wait_start_line" ]; then
+                wait_start_line=0
+            fi
+            match=$(tail -n +"$((wait_start_line + 1))" "$LOG_FILE" | grep -F "$wait_pattern" | tail -n 1)
+            if [ -n "$match" ]; then
+                echo "Matched log: $match"
+                exit 0
+            fi
+        fi
+
+        sleep 0.2
+    done
+fi

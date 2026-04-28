@@ -1412,6 +1412,11 @@ auto_step.on_route_complete = function()
     clear_active_route_context("autowalk route complete", true)
 end
 
+auto_step.on_route_cancelled = function(cancel_data)
+    local reason = cancel_data and cancel_data.reason or "auto_step_cancelled"
+    clear_active_route_context("auto_step route cancelled: " .. tostring(reason), true)
+end
+
 -- ============================================================
 -- Map Change Handler
 -- ============================================================

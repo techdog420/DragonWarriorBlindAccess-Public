@@ -243,3 +243,12 @@ QUICK SHELL USAGE
     ./dw_commands.sh probe_edge:RIGHT
   tail -f dw_debug.log
   tail -f dw_blocks.log
+
+Deterministic command confirmation:
+  ./dw_commands.sh --replace --wait "LAUNCHER_PROBE: ready" launcher_probe:ready report_position
+  ./dw_commands.ps1 --replace --wait "POSITION:" report_position
+  Add --timeout SECONDS to override the default 10 second wait.
+  --wait only matches dw_debug.log lines written after the command is queued, so stale log entries do not create false positives.
+
+Export safety note:
+  Treat aggregate map/block exports as review material unless the command name or surrounding log evidence identifies confirmed candidates. Prefer report_candidate_suggestions or export_directional_candidates for survey-derived directional door/wall findings.

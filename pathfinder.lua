@@ -636,7 +636,7 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
                 "PATH_RUNTIME_BLOCK map=0x%02X x=%d y=%d context=adjacent_candidate",
                 map_id, adj.x, adj.y))
         end
-        if walkable == true and not blocker then
+        if walkable == true and (not blocker or type(blocker) == "table") then
             local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, opts)
             local open_exits = count_open_exits(map_id, adj.x, adj.y, blocked, directional_blocks)
             local reachable_area = count_reachable_area(map_id, adj.x, adj.y, blocked, directional_blocks)

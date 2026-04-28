@@ -162,3 +162,18 @@ Use:
 - `handoff_archive/` for detailed historical evidence
 
 Do not rely on assistant-local memory as the only record of important project state.
+
+## Debug Loop Optimization
+
+- Prefer wrapper-level confirmation over ad-hoc sleeps: use `./dw_commands.sh --wait "PATTERN" ...` or `./dw_commands.ps1 --wait "PATTERN" ...` when a command has an expected log line.
+- `--wait` watches only fresh `dw_debug.log` lines written after queueing the command, which avoids stale-log false positives.
+- Default wait timeout is 10 seconds; use `--timeout SECONDS` for longer survey/pathfinding operations.
+- Good smoke check after reload: `./dw_commands.sh --replace --wait "LAUNCHER_PROBE: ready" launcher_probe:ready report_position`.
+
+## Codex Memory Access
+
+- In Codex sessions, `.codex/` under this repository can be mounted read-only even though the surrounding repo is writable.
+- Do not depend on editing `.codex/skills/dw-debug-loop/SKILL.md` during normal project work.
+- Canonical mutable project memory should live in repo files: `session_handoff.md`, `PROJECT_MEMORY.md`, `AGENTS.md`, and targeted docs such as `debug_hooks.txt`.
+- Assistant-local memory belongs under `/home/developer/.codex/memories/`; use it as a reminder layer only, not as the source of truth when repo docs disagree.
+- Current recommendation: keep launching Codex from Linux/WSL. The memory issue is a sandbox/read-only mount detail, not a reason to switch environments.

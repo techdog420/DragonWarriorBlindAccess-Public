@@ -565,6 +565,39 @@ function tests.queued_route_post_step_release_ignores_stale_direction_blip()
     env.restore()
 end
 
+function tests.queued_route_live_input_cancels_after_release_gap()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right"}, {settle_frames = 3})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    -- Hold live input past the automatic post-step neutral gap. This is a real
+    -- interruption, not a one-frame stale joypad blip.
+    env.set_joy({right = true})
+    for _ = 1, 5 do
+        env.update(true)
+    end
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "live_input_interrupt"
+           and payload.source == "route_settle" then
+            saw_cancel = true
+            break
+        end
+    end
+    assert_truthy(
+        saw_cancel,
+        "live direction held beyond the post-step release gap should cancel the queued route instead of being consumed as catch-up"
+    )
+
+    env.restore()
+end
+
 function tests.queued_routes_consume_matching_drift_during_settle()
     local env = make_env()
     env.auto_step.start_route({"right", "right", "down"}, {settle_frames = 3})

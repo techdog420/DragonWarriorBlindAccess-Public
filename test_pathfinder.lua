@@ -194,6 +194,26 @@ function tests.adjacent_pathing_accepts_occupied_goal_tile()
     env.restore()
 end
 
+function tests.adjacent_pathing_accepts_directional_block_table_landing()
+    local env = make_stub_env()
+    env.set_grid(5, 5)
+
+    local result, face_dir, path = env.pathfinder.pathfind_to_adjacent(
+        0x04,
+        1, 1,
+        3, 1,
+        {["2,1"] = {north = true}}
+    )
+
+    assert_equal(result, "Approach: 1 east", "adjacent path should allow a landing tile with unrelated directional blocks")
+    assert_equal(face_dir, "east", "landing west of the goal should still face east")
+    assert_truthy(path ~= nil and #path == 1, "directional table blocker should not make the landing tile fully occupied")
+    assert_equal(path[1].x, 2, "adjacent path should choose the direct landing tile")
+    assert_equal(path[1].y, 1, "adjacent path should choose the direct landing tile")
+
+    env.restore()
+end
+
 function tests.runtime_block_rejections_are_exposed_in_debug_log()
     local env = make_stub_env()
     env.set_grid(5, 5)
