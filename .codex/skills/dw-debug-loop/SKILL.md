@@ -10,9 +10,11 @@ Use this skill for live debug and QA work in this repository when command timing
 ## Start Here
 
 1. Read `session_handoff.md` first.
-2. Open the active dated handoff file(s) named there if the task continues existing investigation.
-3. Read `debug_hooks.txt` if you need a command name, argument shape, or expected log output.
-4. Read the relevant recent lines from `dw_debug.log` before sending new commands.
+2. Read `PROJECT_MEMORY.md` if the task depends on durable architecture, map, or command-contract context.
+3. Read `PLAYTESTING.md` if the task is gameplay or player-facing.
+4. Open archived handoffs only when investigating an old map-data decision or historical survey.
+5. Read `debug_hooks.txt` if you need a command name, argument shape, or expected log output.
+6. Read the relevant recent lines from `dw_debug.log` before sending new commands.
 
 ## Preferred Loop
 
@@ -46,6 +48,8 @@ Prefer short, evidence-driven loops over large queued command batches.
 ## Useful Files
 
 - `session_handoff.md`
+- `PROJECT_MEMORY.md`
+- `PLAYTESTING.md`
 - `debug_hooks.txt`
 - `dw_debug.log`
 - `dw_commands.sh`
@@ -54,5 +58,7 @@ Prefer short, evidence-driven loops over large queued command batches.
 ## Handoff Discipline
 
 - Put current shared truth in `session_handoff.md`.
-- Put detailed evidence in dated `HANDOFF_YYYY-MM-DD_*.md` files.
+- Put durable project facts in `PROJECT_MEMORY.md`.
+- Put gameplay findings in `PLAYTESTING.md`.
+- Treat `handoff_archive/` as historical evidence, not active context.
 - Do not rely on assistant-private memory as the only record of live findings.

@@ -15,12 +15,12 @@ Primary project goals:
 
 When working in this repository, prioritize these areas in order:
 
-1. Pathfinding correctness
-2. Map decoding and passability accuracy
-3. Discovery and handling of engine-blocked but visually passable tiles
-4. Test harness reliability
-5. Logging quality and debug visibility
-6. Speech correctness and usability
+1. Gameplay accessibility and screen reader usability
+2. Pathfinding correctness during real play
+3. Test harness reliability
+4. Logging quality and debug visibility
+5. Map decoding and passability accuracy when gameplay exposes a problem
+6. Discovery and handling of engine-blocked but visually passable tiles
 
 Avoid broad unrelated refactors unless explicitly requested.
 
@@ -221,14 +221,20 @@ Before making code changes:
 - Avoid speculative cleanup
 - Do not remove useful comments or command documentation without replacing them
 
-## Cross-agent handoff contract
+## Project memory contract
 
-When splitting work between Codex and Claude:
-- Treat `session_handoff.md` as the canonical current-state entry point
-- Keep the active handoff set, current status, and best resume points in `session_handoff.md`
-- Put detailed evidence, experiments, and one-off investigations in dated `HANDOFF_YYYY-MM-DD_*.md` files
-- Refresh the active handoff set after substantial work instead of relying on assistant-private memory alone
+Repo files are the source of truth:
+- Treat `session_handoff.md` as the concise current-state entry point
+- Treat `PROJECT_MEMORY.md` as the durable architecture and lessons file
+- Treat `PLAYTESTING.md` as the active gameplay/playability notes file
+- Treat `handoff_archive/` as historical evidence, not active context
 - Treat `~/.codex/memories/` and `.claude/agent-memory/` as assistant-local aids, not the source of truth for project state
+
+After substantial work:
+- Update `session_handoff.md` with current state and best next step
+- Update `PROJECT_MEMORY.md` only for durable facts
+- Update `PLAYTESTING.md` for player-facing findings and gameplay priorities
+- Avoid creating new dated handoff files unless a large investigation needs a detailed evidence packet
 
 ## Preferred output style from Codex
 
