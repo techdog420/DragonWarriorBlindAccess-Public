@@ -31,6 +31,7 @@
 --   simulate_input:START
 --   simulate_input:SELECT
 --   clear_input          -- inject a neutral joypad frame to clear stale held input
+--   input_status[:TAG]   -- log current input.get() keys and joypad.read(1)
 --   trace_input[:FRAMES] -- log input.get() and joypad.read(1) changes
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
@@ -85,6 +86,7 @@ local script_dir = _src:match("@?(.*[\\/])") or ""
 local LOG_FILE    = script_dir .. "dw_debug.log"
 local CMD_FILE    = script_dir .. "dw_commands.txt"
 local CMD_PROCESSING_FILE = script_dir .. "dw_commands.processing.txt"
+local KEYBOARD_BRIDGE_FILE = script_dir .. "dw_keyboard_input.txt"
 -- Persistent record of every engine-blocked move discovered this session or
 -- in previous sessions. One entry per line: "0xMM:x,y:dir"
 -- New discoveries are appended during play. export_blocks formats this file
@@ -103,6 +105,12 @@ local pending_input_hold = nil  -- {buttons=table, frames_remaining=n}, or nil
 local pending_input_release = false -- Clear stale joypad.set state after debug-owned input.
 local pending_input_release_raw = false -- Keep raw debug-input release invisible to auto_step.
 local input_trace = nil     -- Per-frame input trace state for keyboard/joypad diagnostics.
+local stuck_alt_frames = 0  -- Consecutive frames where LeftAlt appears stuck and joy1 is idle.
+local stuck_alt_warned = false
+local STUCK_ALT_WARN_FRAMES = 120
+local keyboard_bridge_active = false
+local external_keyboard_bridge_active = false
+local external_keyboard_bridge_missing_logged = false
 local current_frame  = 0      -- Set each tick; used in log entry prefix
 local current_state  = "unknown"  -- Set each tick; used in log entry prefix
 
@@ -341,6 +349,19 @@ local BUTTON_MAP = {
     SELECT = "select",
 }
 
+local JOYPAD_BUTTONS = {"up", "down", "left", "right", "A", "B", "select", "start"}
+
+local function full_joypad_state(buttons)
+    local state = {}
+    for _, name in ipairs(JOYPAD_BUTTONS) do
+        state[name] = false
+    end
+    for name, pressed in pairs(buttons or {}) do
+        state[name] = pressed
+    end
+    return state
+end
+
 local function parse_button_command_args(arg_text)
     local btn_str, frames_str = tostring(arg_text or ""):match("^%s*([^,]+)%s*,?%s*(.-)%s*$")
     btn_str = btn_str and btn_str:upper() or ""
@@ -428,6 +449,237 @@ local function format_joy_buttons(joy)
         return "-"
     end
     return table.concat(names, "+")
+end
+
+local function has_joy_buttons(joy)
+    local order = {"up", "down", "left", "right", "A", "B", "select", "start"}
+    for _, name in ipairs(order) do
+        if joy and joy[name] then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_left_alt_pressed(keys)
+    if not keys then
+        return false
+    end
+    return keys.LeftAlt
+        or keys.LEFTALT
+        or keys.leftalt
+        or keys["Left Alt"]
+        or keys["LEFT ALT"]
+        or keys["left alt"]
+        or false
+end
+
+local function is_key_pressed(keys, ...)
+    if not keys then
+        return false
+    end
+    for i = 1, select("#", ...) do
+        local name = select(i, ...)
+        if keys[name] then
+            return true
+        end
+    end
+    return false
+end
+
+local function build_keyboard_bridge_input(frame)
+    if config.get("enable_keyboard_input_bridge") == "false" then
+        return nil
+    end
+
+    local keys = input.get()
+    local joy = joypad.read(1)
+    if not is_left_alt_pressed(keys) or has_joy_buttons(joy) then
+        if keyboard_bridge_active then
+            M.info(string.format(
+                "INPUT_BRIDGE_CLEAR frame=%d keys=%s joy1=%s",
+                frame or current_frame,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy)
+            ))
+        end
+        keyboard_bridge_active = false
+        return nil
+    end
+
+    local bridge = full_joypad_state({})
+    if is_key_pressed(keys, "Up", "UP", "up") then bridge.up = true end
+    if is_key_pressed(keys, "Down", "DOWN", "down") then bridge.down = true end
+    if is_key_pressed(keys, "Left", "LEFT", "left") then bridge.left = true end
+    if is_key_pressed(keys, "Right", "RIGHT", "right") then bridge.right = true end
+    if is_key_pressed(keys, "F", "f") then bridge.A = true end
+    if is_key_pressed(keys, "D", "d") then bridge.B = true end
+    if is_key_pressed(keys, "Return", "Enter", "RETURN", "ENTER", "return", "enter") then bridge.start = true end
+    if is_key_pressed(keys, "S", "s") then bridge.select = true end
+
+    if not has_joy_buttons(bridge) then
+        if keyboard_bridge_active then
+            M.info(string.format(
+                "INPUT_BRIDGE_CLEAR frame=%d keys=%s joy1=%s",
+                frame or current_frame,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy)
+            ))
+        end
+        keyboard_bridge_active = false
+        return nil
+    end
+
+    bridge._raw = true
+    if not keyboard_bridge_active then
+        M.info(string.format(
+            "INPUT_BRIDGE_ACTIVE frame=%d keys=%s buttons=%s native_joy1=%s reason=stuck_alt_idle_joypad",
+            frame or current_frame,
+            format_pressed_keys(keys),
+            format_joy_buttons(bridge),
+            format_joy_buttons(joy)
+        ))
+    end
+    keyboard_bridge_active = true
+    return bridge
+end
+
+local function parse_external_keyboard_bridge()
+    local f = io.open(KEYBOARD_BRIDGE_FILE, "r")
+    if not f then
+        if not external_keyboard_bridge_missing_logged then
+            M.info("INPUT_EXTERNAL_BRIDGE_MISSING path=" .. KEYBOARD_BRIDGE_FILE)
+            external_keyboard_bridge_missing_logged = true
+        end
+        return nil
+    end
+
+    external_keyboard_bridge_missing_logged = false
+    local line = f:read("*l") or ""
+    f:close()
+    line = line:match("^%s*(.-)%s*$") or ""
+    if line == "" or line == "-" then
+        return full_joypad_state({})
+    end
+
+    local bridge = full_joypad_state({})
+    for part in line:gmatch("[^,]+") do
+        local button = part:match("^%s*(.-)%s*$")
+        if button == "up" or button == "down" or button == "left" or button == "right"
+           or button == "A" or button == "B" or button == "start" or button == "select" then
+            bridge[button] = true
+        end
+    end
+    return bridge
+end
+
+local function build_external_keyboard_bridge_input(frame)
+    if config.get("enable_keyboard_input_bridge") == "false" then
+        return nil
+    end
+
+    local keys = input.get()
+    local joy = joypad.read(1)
+    local fceux_stale = is_left_alt_pressed(keys)
+    local bridge = parse_external_keyboard_bridge()
+    if not bridge then
+        return nil
+    end
+
+    local bridge_active = has_joy_buttons(bridge)
+    if not fceux_stale and not bridge_active then
+        if external_keyboard_bridge_active then
+            M.info(string.format(
+                "INPUT_EXTERNAL_BRIDGE_CLEAR frame=%d reason=fceux_input_recovered keys=%s joy1=%s",
+                frame or current_frame,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy)
+            ))
+        end
+        external_keyboard_bridge_active = false
+        return nil
+    end
+
+    if not fceux_stale and not bridge_active then
+        return nil
+    end
+
+    bridge._raw = true
+    if not external_keyboard_bridge_active then
+        M.info(string.format(
+            "INPUT_EXTERNAL_BRIDGE_ACTIVE frame=%d keys=%s native_joy1=%s bridge=%s reason=fceux_stale_keyboard_state",
+            frame or current_frame,
+            format_pressed_keys(keys),
+            format_joy_buttons(joy),
+            format_joy_buttons(bridge)
+        ))
+    elseif bridge_active then
+        M.debug(string.format(
+            "INPUT_EXTERNAL_BRIDGE_APPLY frame=%d keys=%s native_joy1=%s bridge=%s",
+            frame or current_frame,
+            format_pressed_keys(keys),
+            format_joy_buttons(joy),
+            format_joy_buttons(bridge)
+        ))
+    end
+    external_keyboard_bridge_active = true
+    return bridge
+end
+
+local function log_input_status(tag)
+    local keys = input.get()
+    local joy = joypad.read(1)
+    M.info(string.format(
+        "INPUT_STATUS tag=%s keys=%s joy1=%s left_alt=%s",
+        tostring(tag or "manual"),
+        format_pressed_keys(keys),
+        format_joy_buttons(joy),
+        tostring(is_left_alt_pressed(keys))
+    ))
+end
+
+local function speak_stuck_alt_warning()
+    local ok, tolk_module = pcall(require, "tolk")
+    if not ok or not tolk_module or not tolk_module.output then
+        return
+    end
+
+    pcall(tolk_module.output, "FCEUX menu focus appears stuck. Focus the emulator, then press Escape to restore controls.")
+end
+
+local function update_stuck_alt_watch(frame)
+    local keys = input.get()
+    local joy = joypad.read(1)
+    local left_alt = is_left_alt_pressed(keys)
+    local joy_idle = not has_joy_buttons(joy)
+
+    if left_alt and joy_idle then
+        stuck_alt_frames = stuck_alt_frames + 1
+        if not stuck_alt_warned and stuck_alt_frames >= STUCK_ALT_WARN_FRAMES then
+            stuck_alt_warned = true
+            M.info(string.format(
+                "INPUT_STUCK_ALT frame=%d frames=%d keys=%s joy1=%s recovery=press_escape_or_alt_then_escape",
+                frame or current_frame,
+                stuck_alt_frames,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy)
+            ))
+            speak_stuck_alt_warning()
+        end
+        return
+    end
+
+    if stuck_alt_warned then
+        M.info(string.format(
+            "INPUT_STUCK_ALT_CLEAR frame=%d frames=%d keys=%s joy1=%s",
+            frame or current_frame,
+            stuck_alt_frames,
+            format_pressed_keys(keys),
+            format_joy_buttons(joy)
+        ))
+    end
+    stuck_alt_frames = 0
+    stuck_alt_warned = false
 end
 
 local function update_input_trace(frame)
@@ -569,7 +821,7 @@ local function process_command(cmd)
         -- Optional trailing ",N" holds the same press for N consecutive frames.
         local btn_key, btn_str, frames, err = parse_button_command_args(cmd:sub(16))
         if btn_key and frames then
-            queue_pending_input({ [btn_key] = true }, frames, "joypad: " .. btn_str)
+            queue_pending_input(full_joypad_state({ [btn_key] = true }), frames, "joypad: " .. btn_str)
         elseif err then
             M.error("simulate_input: " .. err .. ". Usage: simulate_input:BTN or simulate_input:BTN,FRAMES")
         else
@@ -581,7 +833,7 @@ local function process_command(cmd)
         -- Optional trailing ",N" holds the same raw press for N frames.
         local btn_key, btn_str, frames, err = parse_button_command_args(cmd:sub(20))
         if btn_key and frames then
-            queue_pending_input({ [btn_key] = true, _raw = true }, frames, "raw joypad: " .. btn_str)
+            queue_pending_input(full_joypad_state({ [btn_key] = true, _raw = true }), frames, "raw joypad: " .. btn_str)
         elseif err then
             M.error("simulate_raw_input: " .. err .. ". Usage: simulate_raw_input:BTN or simulate_raw_input:BTN,FRAMES")
         else
@@ -591,7 +843,11 @@ local function process_command(cmd)
     elseif cmd == "clear_input" or cmd == "neutral_input" then
         -- Explicit recovery hook for stale joypad.set state after a failed probe
         -- or external script reload. tick() emits the neutral frame immediately.
-        queue_pending_input({}, 1, "neutral joypad")
+        queue_pending_input(full_joypad_state({}), 1, "neutral joypad")
+
+    elseif cmd == "input_status" or cmd:sub(1, 13) == "input_status:" then
+        local tag = cmd:match("^input_status:(.+)$") or "manual"
+        log_input_status(tag)
 
     elseif cmd == "trace_input" or cmd:sub(1, 12) == "trace_input:" then
         local arg = cmd:match("^trace_input:(.+)$")
@@ -784,9 +1040,9 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
-        end
+        M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
     end
+end
 end
 
 -- check_commands(): Read dw_commands.txt, process each line, then clear the file.
@@ -860,6 +1116,7 @@ function M.tick(frame, game_state_str)
         check_commands()
     end
 
+    update_stuck_alt_watch(frame)
     update_input_trace(frame)
 
     -- Flush the log buffer to disk once per second as well.
@@ -902,7 +1159,7 @@ function M.tick(frame, game_state_str)
             pending_input_release = true
         elseif pending_input_release then
             pending_input_release = false
-            inp = {}
+            inp = full_joypad_state({})
             if pending_input_release_raw then
                 inp._raw = true
             end
@@ -911,6 +1168,8 @@ function M.tick(frame, game_state_str)
         pending_input = nil
     end
     return inp
+        or build_external_keyboard_bridge_input(frame)
+        or build_keyboard_bridge_input(frame)
 end
 
 -- ============================================================

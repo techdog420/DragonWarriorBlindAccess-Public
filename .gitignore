@@ -8,6 +8,7 @@ dw_debug.log
 dw_commands.txt
 dw_commands.processing.txt
 dw_blocks.log
+dw_keyboard_input.txt
 frame_probe.txt
 rom_probe.txt
 startup_loop_diag.txt

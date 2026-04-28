@@ -143,6 +143,113 @@ function Wait-ForNewEmulatorProcess {
     return $null
 }
 
+function Ensure-InputRecoveryType {
+    if (-not ("DragonWarrior.InputRecovery" -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace DragonWarrior {
+    public static class InputRecovery {
+        [DllImport("user32.dll")]
+        public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    }
+}
+'@
+    }
+}
+
+function Send-VirtualKeyUp {
+    param(
+        [Parameter(Mandatory=$true)]
+        [byte] $VirtualKey
+    )
+
+    Ensure-InputRecoveryType
+    $KEYEVENTF_KEYUP = 0x0002
+    [DragonWarrior.InputRecovery]::keybd_event($VirtualKey, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+}
+
+function Send-VirtualKeyTap {
+    param(
+        [Parameter(Mandatory=$true)]
+        [byte] $VirtualKey
+    )
+
+    Ensure-InputRecoveryType
+    $KEYEVENTF_KEYUP = 0x0002
+    [DragonWarrior.InputRecovery]::keybd_event($VirtualKey, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 50
+    [DragonWarrior.InputRecovery]::keybd_event($VirtualKey, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+}
+
+function Focus-EmulatorWindow {
+    param(
+        [System.Diagnostics.Process] $Process
+    )
+
+    if (-not $Process) {
+        Write-Warning "Startup input recovery: no emulator process available to focus."
+        return $false
+    }
+
+    Ensure-InputRecoveryType
+    $hwnd = [IntPtr]::Zero
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            $Process.Refresh()
+            $hwnd = $Process.MainWindowHandle
+            if ($hwnd -ne [IntPtr]::Zero) {
+                break
+            }
+        } catch {
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+
+    if ($hwnd -eq [IntPtr]::Zero) {
+        Write-Warning "Startup input recovery: emulator window handle was not ready."
+        return $false
+    }
+
+    [void] [DragonWarrior.InputRecovery]::ShowWindow($hwnd, 9) # SW_RESTORE
+    Start-Sleep -Milliseconds 100
+    $focused = [DragonWarrior.InputRecovery]::SetForegroundWindow($hwnd)
+    Start-Sleep -Milliseconds 150
+    Write-Host ("Startup input recovery: foregrounded emulator window: {0}" -f $focused)
+    return $focused
+}
+
+function Invoke-StartupInputRecovery {
+    param(
+        [System.Diagnostics.Process] $Process,
+        [string] $Phase = "startup"
+    )
+
+    # FCEUX/SDL can occasionally report LeftAlt as still held after script/ROM
+    # startup. A key-up only event is intentionally conservative: it clears a
+    # stale modifier without opening menus or injecting gameplay input. If the
+    # Alt key has already activated FCEUX's menu accelerator focus, Escape
+    # dismisses that UI mode so keyboard input returns to the game canvas.
+    try {
+        [void] (Focus-EmulatorWindow -Process $Process)
+        Send-VirtualKeyUp -VirtualKey 0xA4  # VK_LMENU / Left Alt
+        Send-VirtualKeyUp -VirtualKey 0x12  # VK_MENU / generic Alt
+        Start-Sleep -Milliseconds 100
+        Send-VirtualKeyTap -VirtualKey 0x1B # VK_ESCAPE / dismiss menu focus
+        Write-Host ("Startup input recovery ({0}): sent LeftAlt key-up and Escape tap." -f $Phase)
+    } catch {
+        Write-Warning ("Startup input recovery failed: {0}" -f $_.Exception.Message)
+    }
+}
+
 function Get-ConfigValue {
     param(
         [string] $ConfigPath,
@@ -159,6 +266,45 @@ function Get-ConfigValue {
     }
 
     return $match.Matches[0].Groups[1].Value.Trim()
+}
+
+function Set-ConfigValue {
+    param(
+        [string] $ConfigPath,
+        [string] $Key,
+        [string] $Value
+    )
+
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw "Config file not found: $ConfigPath"
+    }
+
+    $text = Get-Content -LiteralPath $ConfigPath -Raw
+    $pattern = ("(?m)^{0}\s*=.*$" -f [regex]::Escape($Key))
+    $line = "{0} = {1}" -f $Key, $Value
+    if ($text -match $pattern) {
+        $text = $text -replace $pattern, $line
+    } else {
+        if (-not $text.EndsWith("`n")) {
+            $text += [Environment]::NewLine
+        }
+        $text += $line + [Environment]::NewLine
+    }
+    Set-Content -LiteralPath $ConfigPath -Value $text -NoNewline
+}
+
+function Disable-FceuxNativeKeyboardGamepad {
+    param([string] $ConfigPath)
+
+    # qfceux/SDL can leave keyboard-backed GamePad.0 state stuck (for example
+    # native joy1=left while Windows reports no key down). Lua joypad.set()
+    # cannot clear that native state because FCEUX ORs the sources together.
+    # Disable the native keyboard gamepad and let keyboard_bridge.ps1 provide
+    # the project-owned keyboard-to-NES-pad path instead.
+    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.DeviceGUID" -Value ""
+    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.DeviceType" -Value "None"
+    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.Profile" -Value ""
+    Write-Host "Configured FCEUX GamePad.0 native keyboard input: disabled; using project keyboard bridge."
 }
 
 function Wait-ForCommandPolling {
@@ -237,6 +383,8 @@ $saveDir = Join-Path $emulatorDir "sav"
 $batterySaveTarget = Join-Path $saveDir ($romStem + ".sav")
 $commandFile = Join-Path $scriptDir "dw_commands.txt"
 $processingFile = Join-Path $scriptDir "dw_commands.processing.txt"
+$keyboardBridgeScript = Join-Path $scriptDir "keyboard_bridge.ps1"
+$keyboardBridgeFile = Join-Path $scriptDir "dw_keyboard_input.txt"
 $debugLog = Join-Path $scriptDir "dw_debug.log"
 $startupLoopDiag = Join-Path $scriptDir "startup_loop_diag.txt"
 $launchShim = Join-Path $scriptDir "launch_dw.cmd"
@@ -245,6 +393,7 @@ $loadStateEnabled = $StateSlot -ge 0
 $autoResumeValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.AutoResume"
 
 Assert-FileExists -PathValue $launchShim -Label "Launcher shim"
+Assert-FileExists -PathValue $keyboardBridgeScript -Label "Keyboard bridge script"
 
 Write-Host "Dragon Warrior launcher"
 Write-Host ("  Emulator: {0}" -f $FceuxPath)
@@ -344,7 +493,17 @@ if ($existingProcesses.Count -gt 0) {
     }
 }
 
+Disable-FceuxNativeKeyboardGamepad -ConfigPath $configPath
+
+$existingBridgeProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*keyboard_bridge.ps1*" })
+foreach ($bridgeProcess in $existingBridgeProcesses) {
+    Write-Host ("Stopping stale keyboard bridge PID {0}..." -f $bridgeProcess.ProcessId)
+    Stop-Process -Id $bridgeProcess.ProcessId -Force -ErrorAction SilentlyContinue
+}
+
 [System.IO.File]::WriteAllText($commandFile, "")
+[System.IO.File]::WriteAllText($keyboardBridgeFile, "-" + [Environment]::NewLine)
 if (Test-Path -LiteralPath $startupLoopDiag) {
     Remove-Item -LiteralPath $startupLoopDiag -Force
     Write-Host ("Removed stale startup loop trace: {0}" -f $startupLoopDiag)
@@ -354,6 +513,7 @@ if (Test-Path -LiteralPath $processingFile) {
     Write-Host ("Removed stale processing queue: {0}" -f $processingFile)
 }
 Write-Host ("Cleared command queue: {0}" -f $commandFile)
+Write-Host ("Cleared keyboard bridge state: {0}" -f $keyboardBridgeFile)
 
 if ($BatterySavePath) {
     New-Item -ItemType Directory -Path $saveDir -Force | Out-Null
@@ -383,6 +543,13 @@ if ($loadStateEnabled) {
 }
 
 $launchStartUtc = [datetime]::UtcNow
+$bridgeProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", $keyboardBridgeScript,
+    "-OutputPath", $keyboardBridgeFile
+) -WindowStyle Hidden -PassThru
+Write-Host ("Started keyboard bridge PID {0}" -f $bridgeProcess.Id)
 & $launchShim @shimArgs
 $shimExitCode = $LASTEXITCODE
 if ($shimExitCode -ne 0) {
@@ -396,6 +563,7 @@ if (-not $process) {
 
 Write-Host ("Started emulator PID {0}" -f $process.Id)
 Write-Host ("Launch args: {0}" -f ($launchArgs -join " "))
+Invoke-StartupInputRecovery -Process $process -Phase "post-start"
 
 if ($NoWait) {
     Write-Host "Skipping readiness wait."
@@ -421,3 +589,5 @@ if (-not (Wait-ForCommandPolling -CommandFile $commandFile -LogPath $debugLog -P
     $hint += (" Inspect {0} for before/after frameadvance markers." -f $startupLoopDiag)
     throw $hint
 }
+
+Invoke-StartupInputRecovery -Process $process -Phase "post-ready"

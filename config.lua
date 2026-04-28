@@ -70,6 +70,7 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_turn_repress_limit", value = "1", comment = "; Number of turn-only re-press attempts before timeout retries"},
     {key = "auto_step_turn_repress_release_frames", value = "2", comment = "; Neutral frames between turn-only press and re-press"},
     {key = "auto_step_block_retry_limit", value = "3", comment = "; Internal retries before reporting a blocked step"},
+    {key = "enable_keyboard_input_bridge", value = "true", comment = "; Fallback: mirror keyboard controls when FCEUX menu focus leaves joypad input idle"},
     {comment = ""},
     {comment = "; === Dialogue ==="},
     {comment = "; (yesno_dismiss_frames setting removed — prompt now uses label-presence detection)"},
