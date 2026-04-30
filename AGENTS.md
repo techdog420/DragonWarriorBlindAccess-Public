@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior running in the FCEUX emulator.
+This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. BizHawk is the default emulator path; FCEUX remains a supported fallback while compatibility work settles.
 
 Primary project goals:
 - Add reliable screen reader narration for gameplay systems
@@ -46,10 +46,12 @@ Do not:
 The project uses a command queue file and emulator polling loop.
 
 Important behavior:
-- Current tested emulator baseline is `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
-- Command-line Lua loading on this build works with `--loadlua=PATH`
+- Current default emulator path is `D:\emulation\bizhawk\EmuHawk.exe`
+- FCEUX fallback path is `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
+- FCEUX command-line Lua loading on this build works with `--loadlua=PATH`
 - `D:\emulation\fceux\bin\fceux.cfg` should keep `SDL.AutoResume = 1` so startup launches advance frames and poll commands
-- Preferred WSL startup path is `./launch_dw.sh`; it restarts qfceux cleanly, loads the ROM plus `main.lua`, and supports optional battery-save restore plus savestate slot load
+- Preferred WSL startup path is `./launch_dw.sh`; it defaults to BizHawk, loads the ROM plus `main.lua`, and supports `--emulator fceux` for the older FCEUX workflow
+- `./launch_fceux.sh` and `launch_fceux.ps1` are convenience aliases for the explicit FCEUX fallback
 - Commands are sent through `./dw_commands.ps1` from PowerShell/Codex, or `./dw_commands.sh` from bash
 - Commands are written to `dw_commands.txt`
 - The mod polls the command file roughly once per second

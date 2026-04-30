@@ -3,6 +3,7 @@
 
 local original_preload = {}
 local original_loaded = {}
+local original_emulator_compat = _G.DW_EMULATOR_COMPAT
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -32,6 +33,7 @@ local function make_env(options)
     local module_names = {
         "addresses",
         "auto_step",
+        "config",
         "debug_tools",
         "game_snapshot",
         "map_reader",
@@ -53,6 +55,9 @@ local function make_env(options)
         return 0
     end
     _G.memory.writebyte = function() end
+    _G.DW_EMULATOR_COMPAT = {
+        is_bizhawk = options.is_bizhawk == true,
+    }
 
     package.preload["addresses"] = function()
         return {
@@ -199,11 +204,38 @@ local function make_env(options)
     end
 
     package.preload["map_reader"] = function()
+        local closed_door_cells = options.closed_door_cells or {}
+        local non_walkable_cells = options.non_walkable_cells or closed_door_cells
         return {
+            get_map_dimensions = function()
+                return options.map_width or 10, options.map_height or 10
+            end,
             get_directional_blocks = function()
                 return {}
             end,
-            is_walkable = function()
+            get_walkability_details = function(_, x, y)
+                local k = x .. "," .. y
+                if closed_door_cells[k] then
+                    return {
+                        effective_walkable = false,
+                        reason = "door_closed",
+                    }
+                end
+                if non_walkable_cells[k] then
+                    return {
+                        effective_walkable = false,
+                        reason = "wall",
+                    }
+                end
+                return {
+                    effective_walkable = true,
+                    reason = "tile_walkable",
+                }
+            end,
+            is_walkable = function(_, x, y)
+                if non_walkable_cells[x .. "," .. y] then
+                    return false
+                end
                 return true
             end,
         }
@@ -240,6 +272,14 @@ local function make_env(options)
         }
     end
 
+    package.preload["config"] = function()
+        return {
+            get = function(key)
+                return options.config_values and options.config_values[key] or nil
+            end,
+        }
+    end
+
     package.preload["path_debug"] = function()
         return {
             store_path = function() end,
@@ -271,6 +311,7 @@ local function make_env(options)
         seam_entries = function(map_id) return route_manager.get_seam_entries(map_id) end,
         restore = function()
             restore_modules(module_names)
+            _G.DW_EMULATOR_COMPAT = original_emulator_compat
         end,
     }
 end
@@ -505,6 +546,39 @@ function tests.current_object_description_marks_unreachable_without_freezing_npc
     env.restore()
 end
 
+function tests.bizhawk_object_description_skips_reachability_by_default()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "always_no_path",
+    })
+
+    local desc = env.route_manager.describe_current_object()
+
+    assert_not_contains(desc, "Not currently reachable", "BizHawk default object descriptions should avoid path checks")
+    assert_equal(env.pathfind_calls(), 0, "BizHawk default object descriptions should not call pathfinder")
+
+    env.restore()
+end
+
+function tests.bizhawk_object_description_can_opt_into_reachability()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "always_no_path",
+        config_values = {
+            bizhawk_object_reachability_descriptions = "true",
+        },
+    })
+
+    local desc = env.route_manager.describe_current_object()
+
+    assert_contains(desc, "Not currently reachable", "BizHawk reachability setting should preserve path-check descriptions")
+    if env.pathfind_calls() <= 0 then
+        error("BizHawk reachability setting should call pathfinder", 2)
+    end
+
+    env.restore()
+end
+
 function tests.current_object_description_leaves_reachable_objects_unchanged()
     local env = make_env()
 
@@ -660,6 +734,25 @@ function tests.autowalk_immediate_no_path_releases_npc_freeze()
         "No path found",
         "immediate no-path should be announced"
     )
+
+    env.restore()
+end
+
+function tests.autowalk_no_path_mentions_closed_door_hint()
+    local env = make_env({
+        pathfind_mode = "always_no_path",
+        current_object = {name = "Stairs Down", type = "stair", x = 8, y = 8},
+        closed_door_cells = {
+            ["5,3"] = true,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(output, "No path found", "closed-door no-path should still report no path")
+    assert_contains(output, "Route is blocked by a closed door", "closed-door no-path should include a recovery hint")
+    assert_contains(output, "Get a magic key from a chest", "zero-key closed-door hint should point to the chest/key step")
 
     env.restore()
 end

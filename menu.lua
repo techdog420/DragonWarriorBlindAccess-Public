@@ -329,7 +329,8 @@ end
 --   just_dismissed (bool):    true if the prompt disappeared this frame
 --   selection_changed (bool): true if cursor moved between YES and NO
 --   selection (string/nil):   current selection "YES" or "NO", or nil
-function M.check_yesno_changes()
+function M.check_yesno_changes(frame_delta)
+    frame_delta = math.max(1, math.floor(tonumber(frame_delta) or 1))
     local cursor_selection = get_yesno_state()
 
     -- Update the hold timer.
@@ -340,7 +341,7 @@ function M.check_yesno_changes()
     if cursor_selection ~= nil then
         yesno_hold_timer = YESNO_HOLD_FRAMES
     elseif yesno_hold_timer > 0 then
-        yesno_hold_timer = yesno_hold_timer - 1
+        yesno_hold_timer = math.max(0, yesno_hold_timer - frame_delta)
     end
 
     -- Record whether the cursor was physically present this frame so callers

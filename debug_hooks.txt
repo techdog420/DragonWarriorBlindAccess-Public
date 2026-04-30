@@ -22,6 +22,8 @@ LOG ENTRY FORMAT
 ----------------
   [FRAME:nnnnn][LEVEL][state] message
   Example: [FRAME:00450][INFO][battle] EVENT: battle started
+  Slow command handlers also emit:
+    CMD_TIMING command=pathfind ms=123.456
 
 HOOKS WIRED IN main.lua
 -----------------------
@@ -56,6 +58,7 @@ COMMANDS (write to dw_commands.txt, one per line)
 -------------------------------------------------
   log_state                Write full game state snapshot to log
   report_position          Write current map/x/y to log
+  report_door_state        Write magic-key count and opened-door RAM slots
   report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
   report_movement_state    Dump movement/camera-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons
@@ -74,6 +77,8 @@ COMMANDS (write to dw_commands.txt, one per line)
   trace_input:FRAMES       Same, with frame count clamped to 1..1800
   launcher_probe           Write a launcher readiness marker to dw_debug.log
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
+  report_scan_stats        BizHawk only: log PPU read/cache totals and scan profiles
+  reset_scan_stats         BizHawk only: reset PPU read/cache totals and scan profiles
   simulate_raw_input:UP    Inject one raw frame of D-pad Up
   simulate_raw_input:UP,12 Inject 12 consecutive raw frames of D-pad Up
   simulate_raw_input:DOWN  Inject one raw frame of D-pad Down

@@ -5,6 +5,7 @@ local original_preload = {}
 local original_loaded = {}
 local original_memory = _G.memory
 local original_ppu = _G.ppu
+local original_emulator_compat = _G.DW_EMULATOR_COMPAT
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -32,9 +33,16 @@ local function make_env(options)
     end
 
     local sprite_chr_page = options.sprite_chr_page or 0x02
+    local ppu_reads = 0
+    local memory_reads = 0
+
+    _G.DW_EMULATOR_COMPAT = {
+        is_bizhawk = options.is_bizhawk == true,
+    }
 
     _G.memory = {
         readbyte = function(address)
+            memory_reads = memory_reads + 1
             if address == 0x6003 then
                 return sprite_chr_page
             end
@@ -43,7 +51,11 @@ local function make_env(options)
     }
 
     _G.ppu = {
-        readbyte = function()
+        readbyte = function(address)
+            ppu_reads = ppu_reads + 1
+            if options.title_pattern and address then
+                return options.title_pattern[address] or 0x9F
+            end
             return 0x9F
         end,
     }
@@ -66,10 +78,17 @@ local function make_env(options)
     local state = require "state"
     return {
         state = state,
+        ppu_reads = function()
+            return ppu_reads
+        end,
+        memory_reads = function()
+            return memory_reads
+        end,
         restore = function()
             restore_modules(module_names)
             _G.memory = original_memory
             _G.ppu = original_ppu
+            _G.DW_EMULATOR_COMPAT = original_emulator_compat
         end,
     }
 end
@@ -104,6 +123,54 @@ function tests.battle_sprite_page_forces_battle_state()
     })
 
     assert_equal(env.state.detect(), env.state.STATE_BATTLE, "battle sprite page should force battle state")
+
+    env.restore()
+end
+
+function tests.bizhawk_field_state_reuses_title_scan_between_rescans()
+    local env = make_env({
+        is_bizhawk = true,
+        sprite_chr_page = 0x02,
+        level = 1,
+        enemy_hp = 0,
+    })
+
+    assert_equal(env.state.detect(), env.state.STATE_FIELD, "first detect should reach field")
+    local reads_after_first = env.ppu_reads()
+    assert_equal(env.state.detect(), env.state.STATE_FIELD, "second detect should keep field")
+    assert_equal(env.ppu_reads(), reads_after_first, "BizHawk should skip immediate title PPU rescan after field is confirmed")
+
+    env.restore()
+end
+
+function tests.bizhawk_field_state_skips_sprite_chr_read_when_enemy_hp_is_clear()
+    local env = make_env({
+        is_bizhawk = true,
+        sprite_chr_page = 0x02,
+        level = 1,
+        enemy_hp = 0,
+    })
+
+    assert_equal(env.state.detect(), env.state.STATE_FIELD, "clear field state should remain field")
+    assert_equal(env.memory_reads(), 0, "BizHawk field state should avoid the slow cartridge work-RAM sprite-page read")
+
+    env.restore()
+end
+
+function tests.fceux_field_state_scans_title_content_each_frame()
+    local env = make_env({
+        is_bizhawk = false,
+        sprite_chr_page = 0x02,
+        level = 1,
+        enemy_hp = 0,
+    })
+
+    assert_equal(env.state.detect(), env.state.STATE_FIELD, "first detect should reach field")
+    local reads_after_first = env.ppu_reads()
+    assert_equal(env.state.detect(), env.state.STATE_FIELD, "second detect should keep field")
+    if env.ppu_reads() <= reads_after_first then
+        error("FCEUX path should preserve the existing every-frame title PPU scan", 2)
+    end
 
     env.restore()
 end

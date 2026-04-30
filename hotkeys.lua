@@ -20,6 +20,7 @@ local objects    = require "objects"
 local items      = require "items"
 local map_reader = require "map_reader"
 local route_mgr  = require "route_manager"
+local debug_tools = require "debug_tools"
 
 local M = {}
 
@@ -31,11 +32,63 @@ local M = {}
 
 local prev_keys = {}
 
+local pending_object_nav_speech = nil
+local pending_object_nav_frames = 0
+local object_nav_speech_queued_this_frame = false
+
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
 -- from firing repeatedly while the key is held down.
 local function is_key_pressed(keys, key_name)
     return keys[key_name] and not prev_keys[key_name]
+end
+
+local function get_object_nav_speech_delay()
+    local frames = tonumber(config.get("object_nav_speech_coalesce_frames")) or 0
+    if frames < 0 then return 0 end
+    return math.floor(frames)
+end
+
+local function clear_object_nav_speech()
+    pending_object_nav_speech = nil
+    pending_object_nav_frames = 0
+end
+
+local function speak_now(message)
+    clear_object_nav_speech()
+    tolk.output_interrupt(message)
+end
+
+local function flush_object_nav_speech()
+    if not pending_object_nav_speech then return false end
+
+    local message = pending_object_nav_speech
+    clear_object_nav_speech()
+    tolk.output_interrupt(message)
+    debug_tools.debug("object_nav_speech flushed")
+    return true
+end
+
+local function queue_object_nav_speech(message)
+    local delay = get_object_nav_speech_delay()
+    if delay <= 0 then
+        speak_now(message)
+        return
+    end
+
+    pending_object_nav_speech = message
+    pending_object_nav_frames = delay
+    object_nav_speech_queued_this_frame = true
+    debug_tools.debug(string.format("object_nav_speech queued delay=%d", delay))
+end
+
+local function tick_object_nav_speech()
+    if pending_object_nav_frames <= 0 then return end
+
+    pending_object_nav_frames = pending_object_nav_frames - 1
+    if pending_object_nav_frames <= 0 then
+        flush_object_nav_speech()
+    end
 end
 
 -- ============================================================
@@ -47,9 +100,11 @@ end
 -- All key assignments come from config.lua so the user can remap them.
 -- Call once per frame from the main loop.
 function M.update(keys)
+    object_nav_speech_queued_this_frame = false
+
     -- Position: Read current position (map name + coordinates)
     if is_key_pressed(keys, config.get("key_position")) then
-        tolk.output_interrupt(nav.get_position_string())
+        speak_now(nav.get_position_string())
     end
 
     -- HP/MP: Read current HP and MP
@@ -58,48 +113,48 @@ function M.update(keys)
         local max_hp = memory.readbyte(addr.MAX_HP)
         local mp = memory.readbyte(addr.CURRENT_MP)
         local max_mp = memory.readbyte(addr.MAX_MP)
-        tolk.output_interrupt("HP " .. hp .. " of " .. max_hp ..
+        speak_now("HP " .. hp .. " of " .. max_hp ..
                               ", MP " .. mp .. " of " .. max_mp)
     end
 
     -- Level: Read player level (default I, moved from L to free it for navigation)
     if is_key_pressed(keys, config.get("key_level")) then
         local level = memory.readbyte(addr.LEVEL)
-        tolk.output_interrupt("Level " .. level)
+        speak_now("Level " .. level)
     end
 
     -- Gold: Read gold
     if is_key_pressed(keys, config.get("key_gold")) then
         local gold = memory.readbyte(addr.GOLD_LO) +
                      memory.readbyte(addr.GOLD_HI) * 256
-        tolk.output_interrupt(gold .. " gold")
+        speak_now(gold .. " gold")
     end
 
     -- Experience: Read experience
     if is_key_pressed(keys, config.get("key_experience")) then
         local exp = memory.readbyte(addr.EXPERIENCE_LO) +
                     memory.readbyte(addr.EXPERIENCE_HI) * 256
-        tolk.output_interrupt(exp .. " experience")
+        speak_now(exp .. " experience")
     end
 
     -- Stats: Read full stats (level, HP/MP, all stats, equipment, spells)
     if is_key_pressed(keys, config.get("key_stats")) then
-        tolk.output_interrupt(items.read_status_string())
+        speak_now(items.read_status_string())
     end
 
     -- Screen text: Read all text currently on screen
     if is_key_pressed(keys, config.get("key_screen_text")) then
         local screen_text = text.get_full_screen_text()
         if screen_text ~= "" then
-            tolk.output_interrupt(screen_text)
+            speak_now(screen_text)
         else
-            tolk.output_interrupt("No text on screen")
+            speak_now("No text on screen")
         end
     end
 
     -- Diagnostic: raw menu cursor values
     if is_key_pressed(keys, config.get("key_diag_cursor")) then
-        tolk.output_interrupt(menu.get_cursor_info())
+        speak_now(menu.get_cursor_info())
     end
 
     -- Diagnostic: dump raw PPU tile bytes for rows 15-29.
@@ -181,9 +236,9 @@ function M.update(keys)
         if f then
             f:write(table.concat(dump, "\n"))
             f:close()
-            tolk.output_interrupt("PPU dump written to ppu_dump.txt")
+            speak_now("PPU dump written to ppu_dump.txt")
         else
-            tolk.output_interrupt("Failed to write dump file")
+            speak_now("Failed to write dump file")
         end
     end
 
@@ -244,14 +299,16 @@ function M.update(keys)
         if f then
             f:write(table.concat(dump, "\n"))
             f:close()
-            tolk.output_interrupt("Title diagnostic written to title_diag.txt")
+            speak_now("Title diagnostic written to title_diag.txt")
         else
-            tolk.output_interrupt("Failed to write title_diag.txt")
+            speak_now("Failed to write title_diag.txt")
         end
     end
 
     -- Diagnostic: tile types at and around the player's position.
-    -- Speaks a short summary and writes tile_diag.txt for detailed inspection.
+    -- Speaks a short summary. The full tile_diag.txt dump is intentionally
+    -- disabled by default because the extra memory/ROM scans can hitch BizHawk
+    -- audio.
     --
     -- Key output to verify in the file:
     --   rom.readbyte(0): if 0x4E ('N'), the iNES header IS included in offsets.
@@ -266,25 +323,21 @@ function M.update(keys)
         local px = memory.readbyte(addr.PLAYER_X)
         local py = memory.readbyte(addr.PLAYER_Y)
         local ram_tile = memory.readbyte(addr.TILE_TYPE)
-        local meta = map_reader.get_metadata(map_id)
 
         -- Helper: return "typeW" (walkable), "typeDoor" (locked door), or "typeX" (wall)
         local function td(x, y)
-            local t = map_reader.get_tile_type(map_id, x, y)
-            if t == nil then return "nil" end
-            local w = map_reader.is_walkable(map_id, x, y)
-            local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
-            local is_door = (terrain == 0x10 and t == 11) or (terrain == 0x20 and t == 5)
-            if is_door then
-                return tostring(t) .. "D"  -- D = locked door
+            local details = map_reader.get_walkability_details(map_id, x, y)
+            if not details or details.tile_type == nil then return "nil" end
+            if details.reason == "door_closed" then
+                return tostring(details.tile_type) .. "D"  -- D = locked door
             end
-            return tostring(t) .. (w and "W" or "X")
+            return tostring(details.tile_type) .. (details.effective_walkable and "W" or "X")
         end
 
         -- Speak a compact summary of tile types at player + 4 neighbors.
         -- Format: "At 5,8. RAM 0. Here 0W. N 2X. S 0W. W 0W. E 1W."
         -- 'W' suffix = walkable, 'X' = wall, RAM = game's own tile type.
-        tolk.output_interrupt(
+        speak_now(
             "At " .. px .. "," .. py ..
             ". RAM " .. ram_tile ..
             ". Here " .. td(px, py) ..
@@ -293,6 +346,9 @@ function M.update(keys)
             ". W " .. td(px - 1, py) ..
             ". E " .. td(px + 1, py)
         )
+
+        if config.get("tile_diag_dump_on_hotkey") == "true" then
+        local meta = map_reader.get_metadata(map_id)
 
         -- Write detailed diagnostic to file
         local lines = {}
@@ -462,6 +518,7 @@ function M.update(keys)
             f:write(table.concat(lines, "\n"))
             f:close()
         end
+        end
     end
 
     -- X key (default): Toggle NPC position freeze on/off.
@@ -469,6 +526,7 @@ function M.update(keys)
     -- pathfinding routes stay valid even if guards wander. Turn off after
     -- reaching your destination so NPCs resume normal movement.
     if is_key_pressed(keys, config.get("key_freeze_npcs")) then
+        clear_object_nav_speech()
         route_mgr.toggle_npc_freeze()
     end
 
@@ -483,9 +541,12 @@ function M.update(keys)
     if is_key_pressed(keys, config.get("key_object_next")) then
         local obj = objects.next_object()
         if obj then
-            tolk.output_interrupt(route_mgr.describe_current_object())
+            queue_object_nav_speech(route_mgr.describe_current_object({
+                include_reachability = false,
+                include_debug_coords = false,
+            }))
         else
-            tolk.output_interrupt("No objects found")
+            speak_now("No objects found")
         end
     end
 
@@ -493,15 +554,21 @@ function M.update(keys)
     if is_key_pressed(keys, config.get("key_object_prev")) then
         local obj = objects.prev_object()
         if obj then
-            tolk.output_interrupt(route_mgr.describe_current_object())
+            queue_object_nav_speech(route_mgr.describe_current_object({
+                include_reachability = false,
+                include_debug_coords = false,
+            }))
         else
-            tolk.output_interrupt("No objects found")
+            speak_now("No objects found")
         end
     end
 
     -- K key (default): Describe current object (re-read with updated distance)
     if is_key_pressed(keys, config.get("key_object_current")) then
-        tolk.output_interrupt(route_mgr.describe_current_object())
+        speak_now(route_mgr.describe_current_object({
+            include_reachability = false,
+            include_debug_coords = false,
+        }))
     end
 
     -- O key (default): Pathfind to current object.
@@ -510,6 +577,7 @@ function M.update(keys)
     -- NPC positions are passed so the pathfinder routes around other NPCs
     -- that physically block tiles along the way.
     if is_key_pressed(keys, config.get("key_pathfind")) then
+        clear_object_nav_speech()
         route_mgr.pathfind_to_current()
     end
 
@@ -517,23 +585,42 @@ function M.update(keys)
     -- Uses the same planning logic as O, but queues the route into auto_step
     -- so the player actually walks it on interior maps.
     if is_key_pressed(keys, config.get("key_auto_walk")) then
+        clear_object_nav_speech()
         route_mgr.autowalk_to_current()
     end
 
     -- F key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
     if is_key_pressed(keys, config.get("key_filter")) then
+        clear_object_nav_speech()
         local filter_name = objects.next_filter()
         -- Announce the new filter and the first object in it
         local count = objects.get_count()
         if count > 0 then
-            tolk.output_interrupt(filter_name .. ". " .. route_mgr.describe_current_object())
+            speak_now(filter_name .. ". " .. route_mgr.describe_current_object({
+                include_reachability = false,
+                include_debug_coords = false,
+            }))
         else
-            tolk.output_interrupt(filter_name .. ". No objects")
+            speak_now(filter_name .. ". No objects")
         end
+    end
+
+    if not object_nav_speech_queued_this_frame then
+        tick_object_nav_speech()
     end
 
     -- Save key state for next frame's key-down detection
     prev_keys = keys
+end
+
+function M._reset_for_tests()
+    prev_keys = {}
+    object_nav_speech_queued_this_frame = false
+    clear_object_nav_speech()
+end
+
+function M._pending_object_nav_speech_for_tests()
+    return pending_object_nav_speech, pending_object_nav_frames
 end
 
 return M

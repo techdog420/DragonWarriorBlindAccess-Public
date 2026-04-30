@@ -29,13 +29,13 @@ local function make_env(opts)
 
     package.preload["addresses"] = function()
         return {
-            ROM_MAP_META_START = 0,
-            ROM_MAP_META_SIZE = 5,
-            DOOR_ARRAY_MAX = 0,
-            DOOR_X_POS_START = 0,
-            DOOR_Y_POS_START = 0,
-            DOOR_ARRAY_STRIDE = 0,
-            TERRAIN_OFFSET = 0,
+            ROM_MAP_META_START = opts.rom_map_meta_start or 0,
+            ROM_MAP_META_SIZE = opts.rom_map_meta_size or 5,
+            DOOR_ARRAY_MAX = opts.door_array_max or 0,
+            DOOR_X_POS_START = opts.door_x_pos_start or 0,
+            DOOR_Y_POS_START = opts.door_y_pos_start or 0,
+            DOOR_ARRAY_STRIDE = opts.door_array_stride or 0,
+            TERRAIN_OFFSET = opts.terrain_offset_addr or 0,
         }
     end
 
@@ -102,6 +102,38 @@ function tests.throne_room_trapped_pocket_stays_blocked()
     assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 2, 3), true, "(2,3) should stay blocked")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 4, 3), true, "(4,3) should stay blocked")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x05, 3, 4), false, "(3,4) should remain open for king access")
+
+    env.restore()
+end
+
+function tests.throne_room_door_opens_from_door_ram_array()
+    local rom_bytes = {
+        [25] = 0x00,
+        [26] = 0x80,
+        [27] = 9,
+        [28] = 9,
+        [29] = 0,
+    }
+    for i = 0x10, 0x16 do
+        rom_bytes[i] = 0xFF
+    end
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+            [0x600C] = 4,
+            [0x600D] = 7,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local details = env.map_reader.get_walkability_details(0x05, 4, 7)
+    assert_equal(details.effective_walkable, true, "opened throne-room door should become walkable")
+    assert_equal(details.reason, "door_open", "opened throne-room door should report door_open")
 
     env.restore()
 end

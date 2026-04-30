@@ -15,6 +15,7 @@
 # ── Built-in commands ────────────────────────────────────────────────
 #   log_state              Full game-state snapshot to dw_debug.log
 #   report_position        Map/coordinates to dw_debug.log
+#   report_door_state      Magic-key count and opened-door RAM slots
 #   toggle_debug           Toggle debug_mode on/off at runtime
 #   dump_grid              Dump walkability grid for current map
 #   reload_config          Re-read dw_access.ini (picks up setting changes)
@@ -132,7 +133,7 @@
 #   speak:TEXT             Speak TEXT via Tolk, e.g.: speak:Hello world
 #
 # ── Script restart ───────────────────────────────────────────────────
-#   Full restart requires Script > Reload in FCEUX's Lua script window.
+#   Full restart: relaunch with ./launch_dw.sh, or use the emulator's Lua reload UI.
 #   Use reload_config to pick up dw_access.ini changes without restarting.
 #
 # ── Examples ─────────────────────────────────────────────────────────
@@ -243,7 +244,7 @@ if [ -f "$LOG_FILE" ]; then
     now=$(date +%s)
     age=$(( now - last_mod ))
     if [ "$age" -gt 60 ]; then
-        echo "WARNING: dw_debug.log was last updated ${age}s ago — FCEUX may be idle or not running"
+        echo "WARNING: dw_debug.log was last updated ${age}s ago - emulator may be idle or not running"
     fi
 fi
 

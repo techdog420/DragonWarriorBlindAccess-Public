@@ -10,6 +10,8 @@ local addr = require "addresses"
 local snapshot = require "game_snapshot"
 
 local M = {}
+local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
+local is_bizhawk = emulator_compat.is_bizhawk == true
 
 -- Game state constants
 -- These are our own labels (not from the game's RAM) for clarity.
@@ -36,6 +38,18 @@ M.prev_state = nil
 -- During gameplay the scan short-circuits quickly (no title text on screen).
 local QUEST    = {0x34, 0x38, 0x28, 0x36, 0x37}          -- 5 bytes
 local ADVENTUR = {0x24, 0x27, 0x39, 0x28, 0x31, 0x37, 0x38, 0x35}  -- 8 bytes
+-- BizHawk's PPU-domain reads are slow enough that a full title-pattern scan
+-- during field play can dominate frame time. Once gameplay is confirmed, keep
+-- the safety rescan rare; level RAM still catches normal boot/title cases.
+local BIZHAWK_TITLE_RESCAN_INTERVAL = 3600
+local BIZHAWK_CHR_PAGE_RESCAN_INTERVAL = 30
+local detect_frame = 0
+local title_scan_frame = nil
+local title_scan_cache = false
+local title_scan_after_field = false
+local sprite_chr_page_cache = 0x02
+local sprite_chr_page_frame = nil
+local prev_enemy_hp = 0
 
 local function ppu_shows_title_content()
     for row = 0, 29 do
@@ -70,6 +84,54 @@ local function ppu_shows_title_content()
     return false
 end
 
+local function should_scan_title_content()
+    if not is_bizhawk then
+        return true
+    end
+    if not title_scan_after_field then
+        return true
+    end
+    if title_scan_frame == nil then
+        return true
+    end
+    return (detect_frame - title_scan_frame) >= BIZHAWK_TITLE_RESCAN_INTERVAL
+end
+
+local function cached_ppu_shows_title_content()
+    if should_scan_title_content() then
+        title_scan_cache = ppu_shows_title_content()
+        title_scan_frame = detect_frame
+    end
+    return title_scan_cache
+end
+
+local function read_sprite_chr_page(enemy_hp)
+    if not is_bizhawk then
+        return memory.readbyte(addr.CHR_PAGE_SPRITES)
+    end
+
+    enemy_hp = tonumber(enemy_hp) or 0
+    local should_read = false
+
+    if enemy_hp > 0 then
+        should_read = (prev_enemy_hp <= 0)
+            or sprite_chr_page_frame == nil
+            or ((detect_frame - sprite_chr_page_frame) >= BIZHAWK_CHR_PAGE_RESCAN_INTERVAL)
+    elseif M.prev_state == M.STATE_BATTLE then
+        should_read = true
+    else
+        sprite_chr_page_cache = 0x02
+    end
+
+    if should_read then
+        sprite_chr_page_cache = memory.readbyte(addr.CHR_PAGE_SPRITES)
+        sprite_chr_page_frame = detect_frame
+    end
+
+    prev_enemy_hp = enemy_hp
+    return sprite_chr_page_cache
+end
+
 -- detect(): Determine the current game state.
 -- Returns one of the STATE_* constants.
 --
@@ -88,8 +150,10 @@ end
 -- The PPU check (step 2) short-circuits quickly during gameplay since
 -- title text is not present on screen.
 function M.detect()
+    detect_frame = detect_frame + 1
     local level = snapshot.level
     if level == 0 or level > 30 then
+        title_scan_after_field = false
         return M.STATE_TITLE
     end
 
@@ -99,20 +163,24 @@ function M.detect()
     -- from the PPU, so ppu_shows_title_content() returns false at that point,
     -- allowing the TITLE→FIELD transition to fire correctly.
     -- During gameplay the scan short-circuits quickly (no "QUEST"/"ADVENTUR" tiles).
-    if ppu_shows_title_content() then
+    if cached_ppu_shows_title_content() then
+        title_scan_after_field = false
         return M.STATE_TITLE
     end
 
-    local sprite_chr_page = memory.readbyte(addr.CHR_PAGE_SPRITES)
-    if sprite_chr_page == 0x03 then
-        return M.STATE_BATTLE
-    end
-
     local enemy_hp = snapshot.enemy_hp
-    if enemy_hp > 0 and sprite_chr_page ~= 0x02 then
+    local sprite_chr_page = read_sprite_chr_page(enemy_hp)
+    if sprite_chr_page == 0x03 then
+        title_scan_after_field = true
         return M.STATE_BATTLE
     end
 
+    if enemy_hp > 0 and sprite_chr_page ~= 0x02 then
+        title_scan_after_field = true
+        return M.STATE_BATTLE
+    end
+
+    title_scan_after_field = true
     return M.STATE_FIELD
 end
 

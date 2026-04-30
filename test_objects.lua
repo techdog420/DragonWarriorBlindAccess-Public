@@ -6,6 +6,7 @@ local original_loaded = {}
 local original_memory = _G.memory
 local original_rom = _G.rom
 local original_and = _G.AND
+local original_emulator_compat = _G.DW_EMULATOR_COMPAT
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -19,9 +20,11 @@ local function restore_modules(names)
     end
 end
 
-local function make_env()
+local function make_env(options)
+    options = options or {}
     local module_names = {
         "addresses",
+        "config",
         "map_reader",
         "maps",
         "navigation",
@@ -71,6 +74,10 @@ local function make_env()
         end,
     }
 
+    _G.DW_EMULATOR_COMPAT = {
+        is_bizhawk = options.is_bizhawk == true,
+    }
+
     package.preload["addresses"] = function()
         return {
             NPC_COUNT = 1,
@@ -110,6 +117,17 @@ local function make_env()
         }
     end
 
+    package.preload["config"] = function()
+        return {
+            get = function(key)
+                if key == "bizhawk_periodic_npc_refresh" then
+                    return options.bizhawk_periodic_npc_refresh or "false"
+                end
+                return nil
+            end,
+        }
+    end
+
     local objects = require "objects"
 
     return {
@@ -132,6 +150,7 @@ local function make_env()
             _G.memory = original_memory
             _G.rom = original_rom
             _G.AND = original_and
+            _G.DW_EMULATOR_COMPAT = original_emulator_compat
         end,
     }
 end
@@ -278,6 +297,72 @@ function tests.tantegel_castle_exposes_reachable_navigation_doors()
     assert_equal(center.x, 14, "center crossing door x should match the useful y=6 crossing")
     assert_equal(center.y, 6, "center crossing door y should match the useful y=6 crossing")
     assert_equal(center.survey_exclude, true, "center crossing door should stay excluded from autonomous surveys")
+
+    env.restore()
+end
+
+function tests.fceux_periodic_refresh_updates_moving_npcs()
+    local env = make_env()
+
+    env.set_position(0x04, 0, 0)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+    local initial = env.objects.current_object()
+    assert_equal(initial.x, 5, "initial NPC x should come from RAM")
+    assert_equal(initial.y, 7, "initial NPC y should come from RAM")
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    for _ = 1, 20 do
+        env.objects.check_refresh(0x04)
+    end
+
+    local refreshed = env.objects.current_object()
+    assert_equal(refreshed.x, 10, "FCEUX periodic refresh should update moving NPC x")
+    assert_equal(refreshed.y, 9, "FCEUX periodic refresh should update moving NPC y")
+
+    env.restore()
+end
+
+function tests.bizhawk_periodic_refresh_is_disabled_by_default()
+    local env = make_env({is_bizhawk = true})
+
+    env.set_position(0x04, 0, 0)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    for _ = 1, 25 do
+        env.objects.check_refresh(0x04)
+    end
+
+    local stale = env.objects.current_object()
+    assert_equal(stale.x, 5, "BizHawk should not refresh moving NPC x in the background by default")
+    assert_equal(stale.y, 7, "BizHawk should not refresh moving NPC y in the background by default")
+
+    env.restore()
+end
+
+function tests.bizhawk_periodic_refresh_can_be_opted_in()
+    local env = make_env({
+        is_bizhawk = true,
+        bizhawk_periodic_npc_refresh = "true",
+    })
+
+    env.set_position(0x04, 0, 0)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    for _ = 1, 20 do
+        env.objects.check_refresh(0x04)
+    end
+
+    local refreshed = env.objects.current_object()
+    assert_equal(refreshed.x, 10, "BizHawk opt-in periodic refresh should update moving NPC x")
+    assert_equal(refreshed.y, 9, "BizHawk opt-in periodic refresh should update moving NPC y")
 
     env.restore()
 end

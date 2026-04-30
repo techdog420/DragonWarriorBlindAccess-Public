@@ -28,7 +28,9 @@ LUA_FILES = [
     "chars.lua",
     "config.lua",
     "debug_tools.lua",
+    "emulator_compat.lua",
     "encoding.lua",
+    "hotkey_filter.lua",
     "items.lua",
     "main.lua",
     "map_survey.lua",
@@ -42,16 +44,21 @@ LUA_FILES = [
     "path_debug.lua",
     "pathfinder.lua",
     "route_manager.lua",
+    "scan_profiler.lua",
     "state.lua",
     "test_auto_step.lua",
     "test_battle.lua",
+    "test_emulator_compat.lua",
     "test_env.lua",
     "test_game_snapshot.lua",
+    "test_hotkeys.lua",
+    "test_hotkey_filter.lua",
     "test_maps.lua",
     "test_map_survey.lua",
     "test_map_reader.lua",
     "test_path_debug.lua",
     "test_merchant.lua",
+    "test_menu.lua",
     "test_objects.lua",
     "test_pathfinder.lua",
     "test_route_manager.lua",
@@ -66,12 +73,16 @@ LUA_TEST_FILES = [
     "test_pathfinder.lua",
     "test_auto_step.lua",
     "test_battle.lua",
+    "test_emulator_compat.lua",
     "test_game_snapshot.lua",
+    "test_hotkeys.lua",
+    "test_hotkey_filter.lua",
     "test_maps.lua",
     "test_map_survey.lua",
     "test_map_reader.lua",
     "test_path_debug.lua",
     "test_merchant.lua",
+    "test_menu.lua",
     "test_objects.lua",
     "test_route_manager.lua",
     "test_state.lua",
@@ -81,6 +92,13 @@ PYTHON_FILES = [
     "speech_bridge.py",
     "test_tolk.py",
     "run_tests.py",
+]
+
+SHELL_FILES = [
+    "dw_commands.sh",
+    "launch_dw.sh",
+    "launch_bizhawk.sh",
+    "launch_fceux.sh",
 ]
 
 
@@ -173,6 +191,13 @@ def check_lua_syntax() -> tuple[bool, str]:
 def check_python_syntax() -> tuple[bool, str]:
     cmd = [sys.executable, "-m", "py_compile", *PYTHON_FILES]
     return run_command("python syntax", cmd)
+
+
+def check_shell_syntax() -> tuple[bool, str]:
+    bash = shutil_which("bash")
+    if not bash:
+        return False, "bash not found on PATH"
+    return run_command("shell syntax", [bash, "-n", *SHELL_FILES])
 
 
 def check_lua_unit_tests() -> tuple[bool, str]:
@@ -299,6 +324,7 @@ def main() -> int:
     checks = [
         ("Lua syntax", check_lua_syntax),
         ("Lua unit tests", check_lua_unit_tests),
+        ("Shell syntax", check_shell_syntax),
         ("Python syntax", check_python_syntax),
         ("Bridge config", check_bridge_config),
         ("Speech dependency", check_python_dependency),

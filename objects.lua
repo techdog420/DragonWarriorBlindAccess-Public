@@ -19,6 +19,8 @@ local addr = require "addresses"
 local maps = require "maps"
 local nav = require "navigation"
 local map_reader = require "map_reader"
+local config = require "config"
+local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 
 local M = {}
 
@@ -296,6 +298,7 @@ end
 
 -- The current combined object list for this map
 local object_list = {}
+local static_object_cache = {}
 
 -- The filtered view of the object list (what the player cycles through)
 local filtered_list = {}
@@ -329,6 +332,13 @@ end
 
 local function is_overworld_context()
     return get_terrain_offset() == 0x00
+end
+
+local function periodic_npc_refresh_enabled()
+    if emulator_compat.is_bizhawk ~= true then
+        return true
+    end
+    return config.get("bizhawk_periodic_npc_refresh") == "true"
 end
 
 -- get_nearby_chests(px, py, max_dist): Return chests within max_dist
@@ -642,6 +652,55 @@ end
 -- Object List Building
 -- ============================================================
 
+-- Hardcoded doors for maps where the magic-key door tile is type-15 (wall) in
+-- ROM, so parse_doors() cannot find them. Cache these with other static object
+-- sources; opened status is checked live when the object is described.
+local EXTRA_DOORS = {
+    -- Map 0x04: Tantegel Castle south gate to the world map. The gate is
+    -- visually two tiles wide, but live pathing confirms only the west door
+    -- tile is actionable from inside the castle. The east visual half at
+    -- (11,30) has no reachable adjacent stand tile, so exposing it as a
+    -- separate object just creates a permanent false survey failure.
+    --
+    -- Keep this object for explicit door navigation, but exclude it from
+    -- autonomous surveys: approaching it from (10,29) can step through the
+    -- castle exit and end the run on the world map.
+    [0x04] = {
+        {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30", survey_exclude=true},
+        {x=14, y=6, name="Center Door", type=M.TYPE_DOOR, id="door_14_6", survey_exclude=true},
+    },
+    -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
+    -- The ROM tile is type-15; is_walkable() in map_reader.lua checks the
+    -- opened-door RAM directly for this cell.
+    [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
+}
+
+local function append_objects(dest, source)
+    for _, obj in ipairs(source) do
+        dest[#dest + 1] = obj
+    end
+end
+
+local function get_static_objects(map_id)
+    if static_object_cache[map_id] then
+        return static_object_cache[map_id]
+    end
+
+    local objects = {}
+    append_objects(objects, get_stairs(map_id))
+    append_objects(objects, parse_chests(map_id))
+    append_objects(objects, get_exits(map_id))
+    append_objects(objects, parse_doors(map_id))
+
+    local extra = EXTRA_DOORS[map_id]
+    if extra then
+        append_objects(objects, extra)
+    end
+
+    static_object_cache[map_id] = objects
+    return objects
+end
+
 -- build_object_list(map_id): Assemble the full object list for a map.
 -- Combines NPCs, stairs, chests, and exits into a single flat list
 -- sorted by distance from the player (closest first).
@@ -669,60 +728,9 @@ local function build_object_list(map_id, opts)
     -- Gather objects from all sources
     if not opts.skip_npcs then
         local npcs = parse_npcs(map_id)
-        for _, npc in ipairs(npcs) do
-            objects[#objects + 1] = npc
-        end
+        append_objects(objects, npcs)
     end
-
-    local stairs = get_stairs(map_id)
-    for _, stair in ipairs(stairs) do
-        objects[#objects + 1] = stair
-    end
-
-    local chests = parse_chests(map_id)
-    for _, chest in ipairs(chests) do
-        objects[#objects + 1] = chest
-    end
-
-    local exits = get_exits(map_id)
-    for _, exit in ipairs(exits) do
-        objects[#objects + 1] = exit
-    end
-
-    local doors = parse_doors(map_id)
-    for _, door in ipairs(doors) do
-        objects[#objects + 1] = door
-    end
-
-    -- Hardcoded doors for maps where the magic-key door tile is type-15
-    -- (wall) in ROM, so parse_doors() (which scans for type-11 tiles) will
-    -- not find them. These are listed explicitly here so they appear in
-    -- navigation and pathfinding as blocked cells until opened.
-    local EXTRA_DOORS = {
-        -- Map 0x04: Tantegel Castle south gate to the world map. The gate is
-        -- visually two tiles wide, but live pathing confirms only the west
-        -- door tile is actionable from inside the castle. The east visual half
-        -- at (11,30) has no reachable adjacent stand tile, so exposing it as a
-        -- separate object just creates a permanent false survey failure.
-        --
-        -- Keep this object for explicit door navigation, but exclude it from
-        -- autonomous surveys: approaching it from (10,29) can step through the
-        -- castle exit and end the run on the world map.
-        [0x04] = {
-            {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30", survey_exclude=true},
-            {x=14, y=6, name="Center Door", type=M.TYPE_DOOR, id="door_14_6", survey_exclude=true},
-        },
-        -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
-        -- The ROM tile is type-15; is_walkable() in map_reader.lua checks
-        -- the opened-door RAM directly for this cell.
-        [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
-    }
-    local extra = EXTRA_DOORS[map_id]
-    if extra then
-        for _, d in ipairs(extra) do
-            objects[#objects + 1] = d
-        end
-    end
+    append_objects(objects, get_static_objects(map_id))
 
     -- Sort by distance from player (closest first)
     table.sort(objects, function(a, b)
@@ -863,6 +871,14 @@ function M.check_refresh(map_id)
         refresh_pending = false
         npc_refresh_counter = 0
         M.update_npcs()
+        return
+    end
+
+    -- BizHawk memory-domain calls are slow enough that periodic background
+    -- object rebuilds can audibly hitch the emulator. Keep explicit route,
+    -- debug, and deferred map-load refreshes intact, but avoid doing this in
+    -- the idle frame loop unless the user opts back in.
+    if not periodic_npc_refresh_enabled() then
         return
     end
 
@@ -1012,18 +1028,23 @@ end
 -- describe_current(): Describe the currently selected object.
 -- Includes the object's position in the list (e.g., "2 of 5").
 -- Also includes raw coordinate debug info to help verify distance math.
-function M.describe_current()
+function M.describe_current(opts)
+    opts = opts or {}
     if #filtered_list == 0 then
         return "No objects found"
     end
 
     local obj = filtered_list[current_index]
     local desc = M.describe_object(obj)
+    local with_count = desc .. " (" .. current_index .. " of " .. #filtered_list .. ")"
+    if opts.include_debug_coords == false then
+        return with_count
+    end
+
     -- Include raw coordinates for debugging distance calculations.
     -- Format: "Chest: 1 east (2 of 5) [player 4,3 obj 5,3]"
     local _, px, py = nav.get_position()
-    return desc .. " (" .. current_index .. " of " .. #filtered_list .. ")" ..
-           " [player " .. px .. "," .. py .. " obj " .. obj.x .. "," .. obj.y .. "]"
+    return with_count .. " [player " .. px .. "," .. py .. " obj " .. obj.x .. "," .. obj.y .. "]"
 end
 
 return M

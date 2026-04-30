@@ -37,7 +37,7 @@ local CONFIG_FILE = script_dir .. "dw_access.ini"
 local DEFAULTS_ORDERED = {
     -- Section: Information hotkeys
     {comment = "; Dragon Warrior Accessibility Mod Configuration"},
-    {comment = "; Edit hotkey assignments below. Use FCEUX key names:"},
+    {comment = "; Edit hotkey assignments below. Keys are normalized by the emulator adapter:"},
     {comment = ";   Letters: A-Z (uppercase)"},
     {comment = ";   Numbers: 0-9"},
     {comment = ";   Function keys: F1-F12"},
@@ -61,6 +61,7 @@ local DEFAULTS_ORDERED = {
     {key = "key_auto_walk",     value = "U",  comment = "; Auto-walk to selected object using pathfinder"},
     {key = "key_freeze_npcs",   value = "X",  comment = "; Toggle NPC position freeze (locks NPCs in place for reliable pathfinding)"},
     {key = "key_filter",        value = "F",  comment = "; Cycle object filter (All/NPCs/Exits/Chests)"},
+    {key = "object_nav_speech_coalesce_frames", value = "18", comment = "; Wait this many frames before speaking rapid previous/next object taps (0 = immediate)"},
     {comment = ""},
     {comment = "; === Movement ==="},
     {key = "enable_auto_step",  value = "true", comment = "; Auto-complete tile steps from quick D-pad taps"},
@@ -69,8 +70,12 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_turn_repress_delay", value = "18", comment = "; Frames before re-pressing after a turn-only attempt"},
     {key = "auto_step_turn_repress_limit", value = "1", comment = "; Number of turn-only re-press attempts before timeout retries"},
     {key = "auto_step_turn_repress_release_frames", value = "2", comment = "; Neutral frames between turn-only press and re-press"},
-    {key = "auto_step_block_retry_limit", value = "3", comment = "; Internal retries before reporting a blocked step"},
-    {key = "enable_keyboard_input_bridge", value = "true", comment = "; Fallback: mirror keyboard controls when FCEUX menu focus leaves joypad input idle"},
+    {key = "auto_step_block_retry_limit", value = "1", comment = "; Internal retries before reporting a blocked step (lower reduces blocked-route audio hitches)"},
+    {key = "enable_keyboard_input_bridge", value = "true", comment = "; FCEUX only: mirror keyboard controls when menu focus leaves joypad input idle"},
+    {key = "enable_bizhawk_keyboard_hotkeys", value = "false", comment = "; BizHawk only: enable mod hotkeys from input.get() (off by default to avoid stray screen-reader/typing keys)"},
+    {key = "bizhawk_keyboard_hotkey_allowlist", value = "key_object_prev,key_object_current,key_object_next,key_pathfind,key_auto_walk,key_filter,key_freeze_npcs,key_diag_tiles", comment = "; BizHawk only: comma-separated config key names allowed when full keyboard hotkeys are off"},
+    {key = "bizhawk_object_reachability_descriptions", value = "false", comment = "; BizHawk only: include reachability/path checks in object descriptions (slower; pathfind still works)"},
+    {key = "bizhawk_periodic_npc_refresh", value = "false", comment = "; BizHawk only: refresh moving NPC objects in the background (off avoids periodic audio hitches)"},
     {comment = ""},
     {comment = "; === Dialogue ==="},
     {comment = "; (yesno_dismiss_frames setting removed — prompt now uses label-presence detection)"},
@@ -84,7 +89,8 @@ local DEFAULTS_ORDERED = {
     {comment = "; === Diagnostics ==="},
     {key = "key_diag_cursor",   value = "M",  comment = "; Show raw menu cursor values"},
     {key = "key_diag_ppu_dump", value = "D",  comment = "; Dump PPU data to file"},
-    {key = "key_diag_tiles",    value = "N",  comment = "; Speak tile types at player position, dump tile_diag.txt"},
+    {key = "key_diag_tiles",    value = "N",  comment = "; Speak tile types at player position"},
+    {key = "tile_diag_dump_on_hotkey", value = "false", comment = "; Also write full tile_diag.txt when pressing N (slow; debugging only)"},
     {key = "key_diag_title",    value = "V",  comment = "; Dump title screen cursor/RAM state to title_diag.txt (use on adventure log or message speed screens)"},
 }
 

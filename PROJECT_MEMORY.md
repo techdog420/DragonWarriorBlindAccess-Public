@@ -1,12 +1,13 @@
 # Project Memory
 
-Updated: 2026-04-28
+Updated: 2026-04-30
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 
 ## Project Shape
 
-This repository contains a Lua accessibility mod for Dragon Warrior running in FCEUX.
+This repository contains a Lua accessibility mod for Dragon Warrior. BizHawk is
+now the default emulator path, with FCEUX kept as a supported fallback.
 
 Core goals:
 - Reliable screen reader narration for normal gameplay
@@ -40,7 +41,9 @@ Avoid:
 The mod uses a command queue file and emulator polling loop.
 
 Important details:
-- Preferred launcher: `./launch_dw.sh`
+- Preferred launcher: `./launch_dw.sh` (defaults to BizHawk)
+- FCEUX fallback launcher: `./launch_dw.sh --emulator fceux`,
+  `./launch_fceux.sh`, or `launch_fceux.ps1`
 - Commands are sent through `./dw_commands.ps1` or `./dw_commands.sh`
 - Commands are written to `dw_commands.txt`
 - Debug output is written to `dw_debug.log`
@@ -55,10 +58,119 @@ For state-sensitive work:
 - Treat stale queued commands and polling delay as real failure causes
 - Confirm live map id and position before map-specific conclusions
 
+## Emulator Strategy
+
+BizHawk is the current default runtime.
+
+Durable BizHawk facts:
+- Preferred launcher: `./launch_dw.sh`
+- Explicit BizHawk launcher: `./launch_bizhawk.sh`
+- `launch_dw.sh --dry-run` should show `Emulator: BizHawk`
+- The default path is chosen because BizHawk launches cleanly from the command
+  line and JAWS/menu navigation does not inject random player movement the way
+  FCEUX can
+- Keep emulator differences in `emulator_compat.lua` and launcher scripts, not
+  scattered through gameplay modules
+
+Durable FCEUX facts:
+- Fallback launcher: `./launch_dw.sh --emulator fceux`,
+  `./launch_fceux.sh`, or `launch_fceux.ps1`
+- Current tested emulator baseline has been `qfceux.exe`
+- The launcher disables FCEUX native keyboard GamePad.0 and uses the project keyboard bridge when needed
+- `dw_keyboard_input.txt` is runtime bridge state and should stay ignored
+
+Emulator compatibility direction:
+- Keep existing gameplay code FCEUX-shaped for now
+- Put emulator differences in `emulator_compat.lua`
+- Preserve FCEUX globals where practical: `FCEU`, `memory`, `joypad`, `input`, `ppu`, `rom`, `AND`, and `BIT`
+- Use `launch_dw.sh` as the default WSL-to-Windows launcher; it routes to
+  BizHawk unless `--emulator fceux` is requested
+- Keep FCEUX runnable until BizHawk has survived enough real gameplay that the
+  fallback is clearly unnecessary
+- Patch `D:\emulation\bizhawk\config.ini` only while EmuHawk is closed or
+  immediately before launch. Live edits can be overwritten when BizHawk exits,
+  because shutdown may write its in-memory settings back to `config.ini`.
+- Keep BizHawk performance fixes gated on `DW_EMULATOR_COMPAT.is_bizhawk` so
+  FCEUX remains behaviorally unchanged.
+- Current BizHawk performance approach is a gameplay-level PPU scan throttle:
+  title-state rescans are periodic after gameplay is confirmed, and menu,
+  yes/no, merchant, lower-dialogue, and upper-dialogue scans run on short
+  cadences with elapsed-frame stability deltas.
+- `scan_profiler.lua` owns BizHawk-only scan scheduling/profiling. Use
+  `reset_scan_stats` then `report_scan_stats` in live BizHawk sessions to
+  identify active scan costs.
+- BizHawk PPU caching now holds for 120 frames and clears on real/simulated
+  input so passive text/menu scanning is cheap while user actions still refresh
+  screen state.
+- Dynamic dialogue scans clear the BizHawk PPU cache before reading text. This
+  avoids treating a cached half-rendered line as stable and speaking fragments
+  such as the first few letters of the next dialogue page.
+- A BizHawk-only boot-dialogue grace suppresses command-menu, merchant, and
+  object refresh scans while the normal king dialogue is expected after
+  continuing a quest.
+- BizHawk `input.get()` keyboard hotkeys are disabled by default with
+  `enable_bizhawk_keyboard_hotkeys=false`. In live testing, stray keyboard or
+  screen-reader key state triggered status and diagnostic hotkeys during king
+  dialogue.
+- `hotkey_filter.lua` keeps the default BizHawk keyboard path extensible:
+  when full keyboard hotkeys are off, only shortcuts named in
+  `bizhawk_keyboard_hotkey_allowlist` pass through. Add future QoL shortcut
+  setting names to that allowlist instead of re-enabling all diagnostics. The
+  `key_diag_tiles=N` coordinate/tile diagnostic is intentionally allowlisted
+  because it is useful during BizHawk playtesting and surveys. Keep it cheap:
+  `N` speaks only the compact coordinate/tile summary unless
+  `tile_diag_dump_on_hotkey=true`.
+- In BizHawk field play, avoid reading cartridge work-RAM address `$6003`
+  (`addr.CHR_PAGE_SPRITES`) every frame. A post-dialogue profile showed
+  `state.check_for_changes` averaging about 112 ms per frame from this path
+  even with zero PPU reads. Refresh the sprite CHR page only around battle-like
+  signals or battle exit.
+- Route/path command spikes can come from object refresh as much as A* itself.
+  A live post-fix sample showed `debug_tools.tick max_ms=1931` and
+  `objects.check_refresh max_ms=2068` around a path command. Keep static object
+  sources cached per map, and use `CMD_TIMING` lines to identify command
+  handlers over 25 ms.
+- BizHawk object-navigation descriptions should stay lightweight by default.
+  With `bizhawk_object_reachability_descriptions=false`, J/K/L/F style object
+  speech skips reachability path checks; explicit `pathfind`/`auto_walk`
+  commands still do route work. The hotkey path now explicitly requests brief
+  name/direction/count descriptions and suppresses raw player/object coordinate
+  suffixes while browsing.
+- Object navigator speech from rapid previous/next hotkeys is coalesced by
+  default with `object_nav_speech_coalesce_frames=18`. J/L selection changes
+  still happen immediately; the speech layer only speaks the newest selected
+  object after a short idle gap. The delay was raised from 6 after live logs
+  showed repeated 6-frame flushes during manual object-list tapping. Set the
+  value to `0` to restore immediate previous/next speech.
+- BizHawk periodic NPC/object refresh is disabled by default with
+  `bizhawk_periodic_npc_refresh=false` because live profiling showed background
+  `objects.check_refresh` calls could spike around 1.7-2.0 seconds. Explicit
+  route/path/debug commands still call `objects.update_npcs()` when they need
+  current live blockers.
+- BizHawk ROM domains can be exposed as headerless PRG data even when the
+  project expects FCEUX-style `rom.readbyte()` file offsets that include the
+  16-byte iNES header. `emulator_compat.lua` must score candidate ROM domains
+  and address mappings instead of accepting the first readable byte; otherwise
+  ROM-backed tables such as map metadata can be shifted by 16 bytes and produce
+  nonsense dimensions under BizHawk.
+
+Known BizHawk risk:
+- BizHawk's Lua memory-domain reads are much slower than FCEUX for PPU-heavy screen scanning
+- Compatibility-layer PPU caching helps but may not be enough
+- Emulator audio can still stop briefly under heavier load even when script
+  behavior is otherwise correct. Correlate clean repros with `CMD_TIMING` and
+  `report_scan_stats`, then tune BizHawk audio/config settings separately if
+  Lua timings stay small.
+- Long-term BizHawk support may still need timing instrumentation, subsystem
+  read counters, or a deeper PPU snapshot/bulk-read strategy if scan
+  throttling is not enough.
+- Treat impossible decoded map dimensions under BizHawk as a compatibility
+  layer clue before changing permanent map data.
+
 ## Testing Baseline
 
 Latest known good commit:
-- `97e648f Stabilize pathfinding and survey tooling`
+- `a79bd6f Stabilize FCEUX keyboard input bridge`
 
 Latest pre-commit validation:
 - Full plain Lua `test_*.lua` run passed with 126 unit tests
@@ -67,6 +179,92 @@ Latest pre-commit validation:
 - `git diff --check` passed
 
 Do not assume this remains current after new edits. Re-run targeted checks when asked or when preparing a commit.
+
+Latest BizHawk default validation:
+- 2026-04-29 docs follow-up: `CLAUDE.md` and `prompt1.txt` now describe
+  BizHawk as the primary emulator and FCEUX as an explicit fallback. Refreshed
+  local checks passed: `git diff --check`, `bash -n launch_dw.sh
+  launch_bizhawk.sh launch_fceux.sh`, `./launch_dw.sh --dry-run`,
+  `./launch_dw.sh --emulator fceux --dry-run`, and
+  `python3 run_tests.py --allow-missing-speech-dep`. The first sandboxed test
+  run failed only because repo-local writes were blocked; an approved rerun
+  passed.
+- 2026-04-29 live follow-up: after increasing
+  `object_nav_speech_coalesce_frames` to `18` and adding closed-door no-path
+  messaging, `python3 run_tests.py --allow-missing-speech-dep` and
+  `git diff --check` passed again.
+- Latest follow-up after the cartridge work-RAM fix and shorter auto-step retry
+  window: `git diff --check`, `bash -n launch_dw.sh launch_bizhawk.sh
+  launch_fceux.sh dw_commands.sh`, and
+  `python3 run_tests.py --allow-missing-speech-dep` passed. The only warning
+  remains the expected missing WSL `accessible_output2` package.
+- `python3 run_tests.py --allow-missing-speech-dep` passed after adding the
+  BizHawk scan-throttle/profiler patches, default-launcher routing, and
+  launcher shell-syntax validation.
+- `./launch_dw.sh --dry-run` reports BizHawk as the default emulator, while
+  `./launch_dw.sh --emulator fceux --dry-run` reports the FCEUX fallback.
+- The only warning was expected in WSL: `/usr/bin/python` lacks
+  `accessible_output2`, so speech dependency validation must still be checked
+  from the Windows/FCEUX/BizHawk runtime.
+- Live BizHawk king-dialogue sample after latest throttles: `PPU_STATS
+  reads=123840 cache_hits=108736 cache_misses=15104`, with active scans limited
+  to lower dialogue, yes/no prompt, and upper dialogue. Before boot-dialogue
+  grace, the comparable sample was about 1,039,344 reads; an earlier broad
+  field sample was about 4,157,376 reads.
+- Live BizHawk post-dialogue/player-control sample before the `$6003` state
+  fix: `state.check_for_changes calls=240 reads=0 ms=26984 avg_ms=112.433`.
+  After the patch, local validation passed with a new regression test ensuring
+  BizHawk clear-field detection skips that slow sprite-page read.
+- Live BizHawk route/path command sample before static-object caching:
+  `debug_tools.tick max_ms=1931` and `objects.check_refresh max_ms=2068`.
+  Full local validation passed after caching static object sources and
+  throttling repeated `CAN_WALK false` debug logging.
+- Latest local validation also covers BizHawk object descriptions skipping
+  reachability by default while allowing opt-in through
+  `bizhawk_object_reachability_descriptions=true`.
+- Latest live post-dialogue object-navigation validation after disabling
+  periodic BizHawk NPC refresh: command-file object navigation showed
+  `objects.check_refresh max_ms=1`; a real-hotkey sample while the user tapped
+  object navigation showed `hotkeys.update max_ms=1`,
+  `objects.check_refresh max_ms=1`, and no object command `CMD_TIMING` spikes.
+  Remaining small object-list lag is probably speech interrupt overhead or
+  BizHawk/Windows audio scheduling rather than Lua object refresh.
+- Local validation now includes `test_hotkeys.lua`, covering the hotkey-side
+  object navigator speech coalescer, immediate K/current-object reads,
+  route-action clearing, and `object_nav_speech_coalesce_frames=0`.
+- BizHawk audio trial config was patched while closed with:
+  `SoundBufferSizeMs=200`, `SoundThrottle=true`, `FrameSkip=0`, and
+  `Rewind.Enabled=false`. An earlier attempt to patch these while EmuHawk was
+  running was later overwritten on shutdown by BizHawk's in-memory settings.
+- Live audio result: that BizHawk audio baseline substantially reduced the
+  background-window glitching. The user could work in other windows with game
+  audio running without reproducing the old stutter. A single in-emulator glitch
+  happened once but could not be reproduced, so treat it as a watch item rather
+  than a current script-side blocker.
+- Local validation now includes `test_emulator_compat.lua`, which verifies that
+  the ROM adapter returns the same FCEUX-style offsets for both full iNES ROM
+  domains and headerless PRG-only ROM domains.
+- Live BizHawk follow-up on map `0x05` confirmed the stair route now decodes
+  correctly after the ROM-domain fix: `(8,8)` is passable passthrough, and
+  `(4,7)` is the closed magic-key door. A remaining no-path to the selected
+  stairs before opening that door is normal route state. `route_manager.lua`
+  now turns that case into a closed-door/magic-key hint, covered by
+  `test_route_manager.lua`.
+- BizHawk cartridge work RAM must not be read through `mainmemory`. DW1 stores
+  opened-door slots at `$600C/$600D`; `emulator_compat.lua` maps `$6000-$7FFF`
+  through System Bus or PRG-RAM-style domains so door-open checks work under
+  BizHawk. Tests cover both domain styles and map `0x05` door-open walkability.
+- After that cartridge work-RAM fix, a 2026-04-30 manual BizHawk playtest from
+  game launch through throne-room chests, the `(4,7)` door, and the stairs into
+  the castle proper worked as expected.
+- Later 2026-04-30 basic manual testing on the first two maps found scripts
+  behaving as expected after the emulator conversion, apart from emulator audio
+  stoppages under heavier load.
+- 2026-04-30 wrap-up validation after making `N` cheap and object browsing
+  brief passed focused Lua parse/unit checks plus `git diff --check`. A broad
+  `python3 run_tests.py --allow-missing-speech-dep` run passed its Lua test
+  portion, then hit the known sandbox write boundary when it tried to write
+  `__pycache__` and `dw_commands.txt`.
 
 ## Pathfinding Rules
 

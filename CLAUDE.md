@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Accessibility mod for Dragon Warrior (NES) that makes the game playable for blind and visually impaired players. Lua scripts run inside the FCEUX NES emulator, read game state from RAM, and output speech via the Tolk library to screen readers (NVDA, JAWS).
+Accessibility mod for Dragon Warrior (NES) that makes the game playable for blind and visually impaired players. Lua scripts now run primarily in BizHawk through the repository's emulator compatibility layer; FCEUX remains supported as an explicit fallback. The scripts read game state from RAM and output speech via the Tolk library or Python speech bridge to screen readers (NVDA, JAWS, Narrator).
 
 This project is modeled after the **pokemon-access** scripts (`D:\games\pokemon-access\`) which accomplish the same goal for Game Boy/GBA Pokemon titles. That codebase serves as the primary architectural reference.
 
@@ -23,7 +23,8 @@ When sharing work with Codex:
 ## Key Paths
 
 - **This project**: `D:\modding\dragonwarrior1\`
-- **FCEUX emulator**: `D:\emulation\fceux\`
+- **BizHawk emulator**: `D:\emulation\bizhawk\EmuHawk.exe`
+- **FCEUX fallback emulator**: `D:\emulation\fceux\bin\qfceux.exe`
 - **ROM**: `D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes`
 - **Pokemon Access reference**: `D:\games\pokemon-access\lua\`
 - **DataCrystal RAM map**: https://datacrystal.tcrf.net/wiki/Dragon_Warrior/RAM_map
@@ -31,8 +32,8 @@ When sharing work with Codex:
 
 ## Technology Stack
 
-- **Language**: Lua (FCEUX's embedded Lua 5.1 environment)
-- **Emulator**: FCEUX Qt build (`qfceux.exe`) 2.6.6
+- **Language**: Lua in the active emulator runtime, kept close to Lua 5.1-compatible patterns
+- **Emulator**: BizHawk (`EmuHawk.exe`) by default, FCEUX Qt build (`qfceux.exe`) 2.6.6 as fallback
 - **Speech**: Tolk wrapper with Python bridge fallback for NVDA, JAWS, or Narrator
 - **Game**: Dragon Warrior (USA) (Rev 1) — NES NROM mapper, 32KB PRG, 2KB RAM
 
@@ -45,30 +46,47 @@ Preferred WSL/bash launch path:
 
 Useful launcher variants:
 ```
-./launch_dw.sh --state-slot 0
-./launch_dw.sh --battery-save /mnt/d/path/to/testing_area.sav
+./launch_dw.sh --dry-run
+./launch_dw.sh --emulator fceux
+./launch_bizhawk.sh
+./launch_fceux.sh
 ```
 
-Direct Windows command-line launch is still supported when needed:
+FCEUX-only launcher variants:
+```
+./launch_dw.sh --emulator fceux --state-slot 0
+./launch_dw.sh --emulator fceux --battery-save /mnt/d/path/to/testing_area.sav
+```
+
+Direct Windows BizHawk command-line launch is still supported when needed:
+```
+D:\emulation\bizhawk\EmuHawk.exe --lua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
+```
+
+Direct Windows FCEUX fallback launch:
 ```
 D:\emulation\fceux\bin\qfceux.exe --loadlua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 ```
 
-To reload after editing: in FCEUX, Script > Reload or close and re-open the script window.
+To reload after editing: in BizHawk, use the Lua Console reload/open-script workflow or restart through `./launch_dw.sh`. In FCEUX, use Script > Reload or close and re-open the script window.
 
 ### Current tested environment
 
-- The current local emulator baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
-- This build accepts startup Lua loading via `--loadlua=<path>`. The spaced form `--loadlua <path>` did not reliably load scripts in local testing.
-- `D:\emulation\fceux\bin\fceux.cfg` should have `SDL.AutoResume = 1` so the emulator advances frames after startup and the mod can poll `dw_commands.txt`.
-- `./launch_dw.sh` is the preferred WSL entrypoint. It restarts any running qfceux instance, loads the ROM plus `main.lua`, and can optionally restore a battery save or load a savestate slot.
+- `./launch_dw.sh` is the preferred WSL entrypoint and defaults to BizHawk.
+- BizHawk launch should show `Emulator: BizHawk` in `./launch_dw.sh --dry-run`.
+- FCEUX remains available through `./launch_dw.sh --emulator fceux`, `./launch_fceux.sh`, or `launch_fceux.ps1`.
+- The current tested FCEUX fallback baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
+- The FCEUX build accepts startup Lua loading via `--loadlua=<path>`. The spaced form `--loadlua <path>` did not reliably load scripts in local testing.
+- `D:\emulation\fceux\bin\fceux.cfg` should have `SDL.AutoResume = 1` so FCEUX advances frames after startup and the mod can poll `dw_commands.txt`.
 - A fresh `dw_debug.log` header only proves that startup code ran. Treat the emulator as truly ready only after it consumes a queued command from `dw_commands.txt`.
 
-## FCEUX Lua Architecture
+## Emulator Lua Architecture
 
 Scripts run in a `while true do ... end` main loop. Each iteration calls `FCEU.frameadvance()` to tick the emulator one frame. All game state reading and speech output happens between frame advances. If `FCEU.frameadvance()` is never called, the emulator freezes.
 
-**Key FCEUX Lua APIs:**
+`emulator_compat.lua` supplies the FCEUX-shaped globals used by the rest of the code when running under BizHawk. Keep emulator-specific branching in the compatibility layer or clearly gated on `DW_EMULATOR_COMPAT` instead of scattering runtime checks across gameplay modules.
+
+**Key compatibility APIs:**
 - `memory.readbyte(addr)` — read unsigned byte from NES RAM
 - `memory.readbyterange(addr, len)` — read byte range as string
 - `memory.register(addr, func)` — register write callback on RAM address (slow, use sparingly)
@@ -77,16 +95,16 @@ Scripts run in a `while true do ... end` main loop. Each iteration calls `FCEU.f
 - `joypad.read(player)` — read controller state
 - `gui.text(x, y, str)` — draw text overlay (one frame behind unless using `gui.register`)
 - `FCEU.frameadvance()` — advance emulator one frame (required in main loop)
-- `FCEU.message(str)` — display message in FCEUX status bar
+- `FCEU.message(str)` — display a status message through the active emulator
 - Bitwise: `AND()`, `OR()`, `XOR()`, `BIT()` (global functions, not methods)
 
 ## Tolk Speech Integration
 
-Speech output prefers Tolk.dll via FFI, but the current tested `qfceux.exe` 2.6.6 environment does not expose `require("ffi")`. In local use, the Python bridge fallback is the tested and expected speech path.
+Speech output prefers Tolk.dll via FFI when the active emulator runtime exposes it. In local use, the Python bridge fallback is the tested and expected speech path when FFI is unavailable.
 
 **tolk.lua** — tries `Tolk.dll` via FFI first, then falls back to `speech_bridge.py`. The DLLs (`Tolk.dll`, `nvdaControllerClient32.dll`, `SAAPI32.dll`) should still remain alongside the script, but Python 3 plus the bridge dependencies are currently required for the tested runtime.
 
-**Important**: Do not assume every FCEUX build bundles a working LuaJIT `ffi` module. Verify from the actual installed emulator before depending on FFI-only behavior.
+**Important**: Do not assume every emulator build bundles a working LuaJIT `ffi` module. Verify from the actual installed emulator before depending on FFI-only behavior.
 
 ## Dragon Warrior RAM Map
 
@@ -249,14 +267,14 @@ Dragon Warrior 1 has these distinct game states that need different handling:
 
 ## Lua Conventions for This Project
 
-- Always use `local` for variables — FCEUX Lua globals persist across frames and can cause bugs
+- Always use `local` for variables — emulator Lua globals persist across frames and can cause bugs
 - Use `memory.readbyte()` for single bytes, combine two bytes for 16-bit values: `memory.readbyte(lo) + memory.readbyte(hi) * 256`
 - Tables are 1-indexed in Lua but RAM addresses are 0-indexed — be careful at the boundary
 - String concatenation uses `..` operator, not `+`
 - Inequality operator is `~=`, not `!=`
 - Boolean operators are `not`, `and`, `or` (words, not symbols)
 - No `++` operator — use `x = x + 1`
-- Bitwise operations use FCEUX global functions: `AND(val, mask)`, `OR()`, `XOR()`, `BIT()`
+- Bitwise operations use compatibility global functions: `AND(val, mask)`, `OR()`, `XOR()`, `BIT()`
 
 ## Debug Tools (debug_tools.lua)
 

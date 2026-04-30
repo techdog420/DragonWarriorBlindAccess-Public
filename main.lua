@@ -1,18 +1,19 @@
 -- main.lua
 -- Dragon Warrior Accessibility Mod — Entry Point
 --
--- This is the main script loaded by FCEUX. It runs the core polling loop:
+-- This is the main script loaded by BizHawk or FCEUX. It runs the core polling loop:
 -- every frame we read game state from RAM, compare to the previous frame,
 -- and speak any changes through Tolk (screen reader bridge).
 --
--- Load in FCEUX: File > Load Lua Script > select this file.
--- Or from command line:
+-- Preferred BizHawk command line:
+--   EmuHawk.exe --lua=main.lua "Dragon Warrior (USA) (Rev 1).nes"
+-- FCEUX fallback:
 --   qfceux.exe --loadlua=main.lua "Dragon Warrior (USA) (Rev 1).nes"
 
 -- ============================================================
 -- Module Loading
 -- ============================================================
--- Some launch paths leave FCEUX's current working directory somewhere other
+-- Some launch paths leave the emulator's current working directory somewhere other
 -- than the mod folder. Resolve this script's directory explicitly and prepend
 -- it to package.path before the first require() so sibling modules load
 -- reliably whether the script is started by command line or through the UI.
@@ -27,6 +28,9 @@ if main_script_dir ~= "" then
         package.path = script_package_path .. ";" .. package.path
     end
 end
+
+local emulator_compat = require "emulator_compat" -- FCEUX/BizHawk API shim
+local scan_profiler = require "scan_profiler" -- BizHawk scan throttling/profiling
 
 local tolk = require "tolk"         -- Speech output (Python bridge to screen reader)
 local addr = require "addresses"    -- RAM address constants
@@ -50,9 +54,11 @@ local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
 local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
+local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
 
 -- Direction constants (kept here for debug diagnostic functions).
 local DIR_TO_DELTA = route_mgr.get_dir_to_delta()
+scan_profiler.setup(emulator_compat)
 
 local function parse_int_arg(token)
     if not token then return nil end
@@ -149,6 +155,7 @@ end
 local function build_tile_report(map_id, x, y, blocking, approach)
     local details = map_reader.get_walkability_details(map_id, x, y)
     local tile_type = map_reader.get_tile_type(map_id, x, y)
+    local map_width, map_height = map_reader.get_map_dimensions(map_id)
     local flags = get_block_flags(blocking, x, y, approach)
     local base_walkable = details and details.base_walkable
     local walkable = details and details.effective_walkable
@@ -167,6 +174,9 @@ local function build_tile_report(map_id, x, y, blocking, approach)
         blocked_approach = flags.approach,
         approach_blocked = flags.approach_blocked,
         effective_passable = effective_passable,
+        reason = details and details.reason or nil,
+        map_width = map_width,
+        map_height = map_height,
     }
 end
 
@@ -174,9 +184,10 @@ local function log_tile_report(map_id, x, y)
     local blocking = route_mgr.build_path_blocking(map_id)
     local report = build_tile_report(map_id, x, y, blocking)
     local msg = string.format(
-        "TILE map=0x%02X x=%d y=%d tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s effective_passable=%s",
-        map_id, x, y, tostring(report.tile_type), tostring(report.base_walkable),
-        tostring(report.walkable), tostring(report.permanent_blocked),
+        "TILE map=0x%02X x=%d y=%d dims=%sx%s tile=%s base_walkable=%s walkable=%s reason=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s effective_passable=%s",
+        map_id, x, y, tostring(report.map_width), tostring(report.map_height),
+        tostring(report.tile_type), tostring(report.base_walkable),
+        tostring(report.walkable), tostring(report.reason), tostring(report.permanent_blocked),
         tostring(report.npc_blocked), tostring(report.directional_blocked),
         tostring(report.effective_passable))
     debug_tools.info(msg)
@@ -196,9 +207,10 @@ local function log_move_report(from_x, from_y, dir)
     local approach = MOVE_DIR_TO_APPROACH[dir]
     local report = build_tile_report(map_id, dest_x, dest_y, blocking, approach)
     local msg = string.format(
-        "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s blocked_approach=%s approach_blocked=%s effective_passable=%s",
-        map_id, from_x, from_y, dir, dest_x, dest_y, tostring(report.tile_type),
-        tostring(report.base_walkable), tostring(report.walkable),
+        "MOVE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) dims=%sx%s tile=%s base_walkable=%s walkable=%s reason=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s blocked_approach=%s approach_blocked=%s effective_passable=%s",
+        map_id, from_x, from_y, dir, dest_x, dest_y,
+        tostring(report.map_width), tostring(report.map_height), tostring(report.tile_type),
+        tostring(report.base_walkable), tostring(report.walkable), tostring(report.reason),
         tostring(report.permanent_blocked), tostring(report.npc_blocked),
         tostring(report.directional_blocked),
         tostring(report.blocked_approach), tostring(report.approach_blocked),
@@ -440,6 +452,7 @@ local prev_merchant_price = nil       -- Last merchant item price seen
 local merchant_intro_pending = false  -- Speak "Merchant" prefix on first selection
 local merchant_stable_frames = 0      -- Stability counter for merchant screen changes
 local MERCHANT_STABLE_THRESHOLD = 12
+local merchant_scan_present = false   -- Last full merchant-layout scan result
 local submenu_mode = nil              -- nil (normal), "STATUS", or "ITEM"
 local game_state = {state = nil}      -- updated once per frame by state.check_for_changes()
 local prev_battle_menu_open = false   -- Was the battle command menu open last frame?
@@ -652,6 +665,8 @@ local current_joy = {}
 local current_joy_any = false
 local recent_field_action_frames = 0
 local RECENT_FIELD_ACTION_HOLD = 180
+local bizhawk_boot_dialogue_frames = 0
+local BIZHAWK_BOOT_DIALOGUE_HOLD = 2400
 
 -- Hidden row-1 command diagnostics.
 -- Writes compact transition lines to row1_menu_diag.txt so row-1 menu/guard
@@ -970,6 +985,15 @@ local function field_dialogue_guard_active()
     return recent_field_action_frames == 0
 end
 
+local function bizhawk_dialogue_hint()
+    if not scan_profiler.is_enabled() then return false end
+    if game_state.state ~= state.STATE_FIELD then return false end
+    return bizhawk_boot_dialogue_frames > 0
+        or prev_dialogue ~= ""
+        or announced_dialogue ~= ""
+        or upper_dialogue_active
+end
+
 local function lower_dialogue_stable_threshold(dialogue)
     if dialogue == "" then
         return STABLE_THRESHOLD
@@ -1001,6 +1025,7 @@ local function reset_merchant_state(sync_dialogue_baselines)
     prev_merchant_price = nil
     merchant_intro_pending = false
     merchant_stable_frames = 0
+    merchant_scan_present = false
 
     if not sync_dialogue_baselines then
         return
@@ -1022,15 +1047,18 @@ local function reset_battle_menu_state()
     prev_battle_cursor_y = nil
 end
 
-local function check_merchant_screen()
+local function check_merchant_screen(frame_delta)
+    frame_delta = scan_profiler.stable_delta(frame_delta)
     if not in_gameplay or submenu_mode ~= nil or menu.is_yesno_active() then
         if merchant_screen_active then
             reset_merchant_state(true)
         end
+        merchant_scan_present = false
         return false
     end
 
     local info = merchant.analyze_current_screen()
+    merchant_scan_present = info.active
     if not info.active then
         if merchant_screen_active then
             reset_merchant_state(true)
@@ -1078,10 +1106,10 @@ local function check_merchant_screen()
         prev_merchant_text = info.raw_text
         merchant_stable_frames = 0
     else
-        merchant_stable_frames = merchant_stable_frames + 1
+        merchant_stable_frames = merchant_stable_frames + frame_delta
     end
 
-    if merchant_stable_frames == MERCHANT_STABLE_THRESHOLD
+    if merchant_stable_frames >= MERCHANT_STABLE_THRESHOLD
        and info.raw_text ~= announced_merchant_text then
         debug_tools.info("MERCHANT: " .. info.summary)
         tolk.output_interrupt(info.summary)
@@ -1161,7 +1189,8 @@ end
 -- Guard: When a Yes/No prompt is active, the game reuses the command menu
 -- window (same "COMMAND" header, same cursor RAM). Suppress command menu
 -- announcements during yes/no prompts.
-local function check_command_menu()
+local function check_command_menu(frame_delta)
+    frame_delta = scan_profiler.stable_delta(frame_delta)
     local changes = menu.check_for_changes()
 
     -- Field command-menu speech must never run outside actual field state.
@@ -1179,7 +1208,14 @@ local function check_command_menu()
     -- Merchant/shop layouts can coexist with the same cursor RAM and some of
     -- the same window/header signals the command-menu logic watches. When the
     -- merchant screen is present, it must fully override command-menu speech.
-    local merchant_present = merchant_screen_active or merchant.analyze_current_screen().active
+    local merchant_present = merchant_screen_active
+    if not merchant_present then
+        if scan_profiler.is_enabled() then
+            merchant_present = merchant_scan_present
+        else
+            merchant_present = merchant.analyze_current_screen().active
+        end
+    end
     if merchant_present then
         cmd_menu_confirmed = false
         cmd_menu_live = false
@@ -1311,7 +1347,7 @@ local function check_command_menu()
     if menu.is_open() and cursor_visible then
         cmd_cursor_hold_frames = 12
     elseif cmd_cursor_hold_frames > 0 then
-        cmd_cursor_hold_frames = cmd_cursor_hold_frames - 1
+        cmd_cursor_hold_frames = math.max(0, cmd_cursor_hold_frames - frame_delta)
     end
 
     -- STATUS uses the same COMMAND header and cursor coordinates as the field
@@ -1493,8 +1529,9 @@ end
 -- check_dialogue()'s guard) and announce:
 --   - "YES NO prompt. YES" when the window first appears
 --   - "YES" or "NO" when the cursor moves between options
-local function check_yesno_prompt()
-    local changes = menu.check_yesno_changes()
+local function check_yesno_prompt(frame_delta)
+    frame_delta = scan_profiler.stable_delta(frame_delta)
+    local changes = menu.check_yesno_changes(frame_delta)
     if changes.active then
         yesno_status_block_frames = 10
         cmd_menu_live = false
@@ -1503,7 +1540,7 @@ local function check_yesno_prompt()
             "sel=" .. tostring(changes.selection),
         })
     elseif yesno_status_block_frames > 0 then
-        yesno_status_block_frames = yesno_status_block_frames - 1
+        yesno_status_block_frames = math.max(0, yesno_status_block_frames - frame_delta)
     end
 
     if changes.just_dismissed then
@@ -1977,7 +2014,11 @@ end
 -- the cleaned text IS stable even during cursor blink, so the threshold is
 -- reached and the announcement fires exactly once. This prevents the
 -- per-character "ki…kid…kidnap…" chatter from the old per-change approach.
-local function check_dialogue()
+local function check_dialogue(frame_delta, refresh_ppu)
+    frame_delta = scan_profiler.stable_delta(frame_delta)
+    if refresh_ppu and emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
     local py  = snapshot.player_y
     local at_y1 = in_gameplay and not snapshot.is_overworld and py <= 3
 
@@ -2022,7 +2063,7 @@ local function check_dialogue()
             clean_stable_frames = 0
             prev_clean_y1 = clean
         else
-            clean_stable_frames = clean_stable_frames + 1
+            clean_stable_frames = clean_stable_frames + frame_delta
         end
 
         -- Announce once after the cleaned text has been stable for STABLE_THRESHOLD
@@ -2068,7 +2109,7 @@ local function check_dialogue()
             stable_frames = 0
             prev_dialogue = dialogue
         else
-            stable_frames = stable_frames + 1
+            stable_frames = stable_frames + frame_delta
         end
         return
     end
@@ -2080,7 +2121,7 @@ local function check_dialogue()
         prev_dialogue = dialogue
     else
         -- Text hasn't changed since last check — increment stability counter
-        stable_frames = stable_frames + 1
+        stable_frames = stable_frames + frame_delta
     end
 
     -- Once text has been stable long enough and differs from what we
@@ -2139,7 +2180,11 @@ end
 --   - Checking if the text length exceeds what's expected for just stats
 -- When the status display is replaced by dialogue, those markers vanish.
 -- When dialogue appears alongside, the total text length exceeds ~50 chars.
-local function check_upper_dialogue()
+local function check_upper_dialogue(frame_delta, refresh_ppu)
+    frame_delta = scan_profiler.stable_delta(frame_delta)
+    if refresh_ppu and emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
     -- Command-menu open/close redraws can leave the status bar or menu text in
     -- transitional states that look like fresh upper dialogue. Absorb the
     -- current upper text into the baseline for a short window around those
@@ -2152,7 +2197,7 @@ local function check_upper_dialogue()
         upper_stable_frames = 0
         upper_dialogue_active = false
         if menu_upper_absorb_frames > 0 then
-            menu_upper_absorb_frames = menu_upper_absorb_frames - 1
+            menu_upper_absorb_frames = math.max(0, menu_upper_absorb_frames - frame_delta)
         end
         return
     end
@@ -2225,14 +2270,14 @@ local function check_upper_dialogue()
         upper_stable_frames = 0
         prev_upper_dialogue = upper
     else
-        upper_stable_frames = upper_stable_frames + 1
+        upper_stable_frames = upper_stable_frames + frame_delta
     end
 
     -- Only process once text has stabilized for the upper-window threshold.
     -- This is longer than the lower-dialogue threshold to allow the status
     -- bar (which redraws incrementally after player stops moving) to fully
     -- render before we inspect it. See UPPER_STABLE_THRESHOLD above.
-    if upper_stable_frames ~= UPPER_STABLE_THRESHOLD then return end
+    if upper_stable_frames < UPPER_STABLE_THRESHOLD then return end
 
     -- y=1 baseline absorption: if the player moved while at y=1, absorb this
     -- stable text as the new baseline without announcing it. The player is
@@ -2469,6 +2514,31 @@ debug_tools.register_command("speech_status", function()
         tostring(backend), tostring(ready), tostring(available), tostring(err))
     debug_tools.info(status)
     tolk.output_interrupt(status)
+end)
+
+debug_tools.register_command("report_scan_stats", function()
+    if not scan_profiler.is_enabled() then
+        debug_tools.info("SCAN_PROFILE unavailable: not running under BizHawk")
+        tolk.output_interrupt("Scan stats unavailable outside BizHawk")
+        return
+    end
+
+    debug_tools.info(scan_profiler.ppu_stats_line())
+    local lines = scan_profiler.profile_lines()
+    if #lines == 0 then
+        debug_tools.info("SCAN_PROFILE none")
+    else
+        for _, line in ipairs(lines) do
+            debug_tools.info(line)
+        end
+    end
+    tolk.output_interrupt("Scan stats reported")
+end)
+
+debug_tools.register_command("reset_scan_stats", function()
+    scan_profiler.reset()
+    debug_tools.info("SCAN_PROFILE reset")
+    tolk.output_interrupt("Scan stats reset")
 end)
 
 debug_tools.register_command("report_blockers", function()
@@ -3152,25 +3222,66 @@ end)
 -- The loop MUST call FCEU.frameadvance() exactly once per
 -- iteration — without it, the emulator freezes.
 
+local function log_script_error(err)
+    local message = debug.traceback(tostring(err), 2)
+    local error_path = main_script_dir .. "dw_script_error.log"
+    local f = io.open(error_path, "a")
+    if f then
+        f:write(os.date("!%Y-%m-%dT%H:%M:%SZ"), "\n")
+        f:write(message, "\n\n")
+        f:close()
+    end
+
+    pcall(function()
+        debug_tools.error("UNHANDLED_SCRIPT_ERROR " .. tostring(err))
+    end)
+    pcall(function()
+        tolk.output_interrupt("Script error. See dw_script_error.log.")
+    end)
+    return message
+end
+
+local table_unpack = unpack or table.unpack
+
+local function checked_call(label, fn, ...)
+    local args = {...}
+    local function invoke()
+        return fn(table_unpack(args))
+    end
+    local ok, result = xpcall(invoke, function(err)
+        return log_script_error(label .. ": " .. tostring(err))
+    end)
+    if not ok then
+        error(result)
+    end
+    return result
+end
+
 while true do
     trace_startup_loop("loop_top")
     row1_trace_frame = frame_count
 
     -- Read all tracked RAM values into the snapshot table.
     -- This MUST happen before any module reads from the snapshot this frame.
-    snapshot.update()
+    scan_profiler.call("snapshot.update", checked_call, "snapshot.update", snapshot.update)
 
     -- Read keyboard state for hotkeys
-    local keys = input.get()
-    current_joy = joypad.read(1)
+    local keys = scan_profiler.call("input.get", input.get)
+    if emulator_compat.is_bizhawk then
+        keys = hotkey_filter.filter_bizhawk_keys(keys, config)
+    end
+    current_joy = scan_profiler.call("joypad.read", joypad.read, 1)
     current_joy_any = joypad_has_input(current_joy)
+    if current_joy_any and emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
 
     -- Process on-demand hotkeys (player-initiated).
     -- hotkeys.update() also saves prev_keys internally for key-down detection.
-    hotkeys.update(keys)
+    scan_profiler.call("hotkeys.update", hotkeys.update, keys)
 
     -- Get current game state
-    game_state = state.check_for_changes()
+    game_state = scan_profiler.call("state.check_for_changes", checked_call, "state.check_for_changes", state.check_for_changes)
     in_gameplay = (game_state.state ~= state.STATE_TITLE)
 
     -- Startup grace period: during the first STARTUP_FRAMES frames,
@@ -3288,6 +3399,9 @@ while true do
                 if field_from_title_ct == FIELD_DEBOUNCE then
                     tolk.output("Game started.")
                     post_start_grace = FIELD_GRACE
+                    if scan_profiler.is_enabled() then
+                        bizhawk_boot_dialogue_frames = BIZHAWK_BOOT_DIALOGUE_HOLD
+                    end
                 end
             else
                 -- State left FIELD (back to TITLE or into BATTLE) — false alarm.
@@ -3298,15 +3412,24 @@ while true do
         -- Run Yes/No detection first so the rest of the frame sees current
         -- prompt state. Guard 1 reuses the command-menu window and cursor RAM,
         -- so stale prompt state here can leak into false STATUS handling.
-        check_yesno_prompt()
+        local dialogue_hint = bizhawk_dialogue_hint()
+        local yesno_interval = menu.is_yesno_active() and 2 or (dialogue_hint and 24 or 4)
+        local run_yesno, yesno_delta = scan_profiler.should_run("yesno_prompt", yesno_interval, frame_count)
+        if run_yesno then
+            scan_profiler.call("check_yesno_prompt", checked_call, "check_yesno_prompt", check_yesno_prompt, yesno_delta)
+        end
 
         if game_state.state == state.STATE_FIELD then
+            if bizhawk_boot_dialogue_frames > 0 then
+                bizhawk_boot_dialogue_frames = bizhawk_boot_dialogue_frames - 1
+            end
             if current_joy_any or menu.is_open() or submenu_mode ~= nil or menu.is_yesno_active() then
                 recent_field_action_frames = RECENT_FIELD_ACTION_HOLD
             elseif recent_field_action_frames > 0 then
                 recent_field_action_frames = recent_field_action_frames - 1
             end
         else
+            bizhawk_boot_dialogue_frames = 0
             recent_field_action_frames = 0
         end
 
@@ -3341,7 +3464,7 @@ while true do
                 }
                 if post_start_grace > 0 then
                     post_start_grace = post_start_grace - 1
-                    nav.check_for_changes()  -- Initialize map tracking silently
+                    checked_call("nav.check_for_changes", nav.check_for_changes)  -- Initialize map tracking silently
                     if post_start_grace == 0 then
                         -- Grace period just ended. Announce the now-stable
                         -- starting location so the player knows where they are.
@@ -3354,7 +3477,7 @@ while true do
                     end
                 end
             else
-                check_map_change()
+                checked_call("check_map_change", check_map_change)
                 if skip_first_hp_check then
                     -- Re-initialize baselines instead of checking for changes.
                     prev_hp    = snapshot.hp
@@ -3362,25 +3485,49 @@ while true do
                     prev_level = snapshot.level
                     skip_first_hp_check = false
                 else
-                    check_hp_mp_changes()
-                    check_level_up()
+                    checked_call("check_hp_mp_changes", check_hp_mp_changes)
+                    checked_call("check_level_up", check_level_up)
                 end
             end
             if game_state.state == state.STATE_BATTLE then
-                check_battle_menu()
+                local run_battle_menu = true
+                local battle_menu_delta = 1
+                if scan_profiler.is_enabled() then
+                    run_battle_menu, battle_menu_delta = scan_profiler.should_run("battle_menu", 3, frame_count)
+                end
+                if run_battle_menu then
+                    scan_profiler.call("check_battle_menu", checked_call, "check_battle_menu", check_battle_menu, battle_menu_delta)
+                end
             else
-                check_command_menu()
+                local menu_interval = (menu.is_open() or submenu_mode ~= nil or cmd_menu_confirmed or menu.is_yesno_active()) and 2 or 4
+                local run_menu, menu_delta = false, 0
+                if not dialogue_hint or menu.is_open() or submenu_mode ~= nil or cmd_menu_confirmed or menu.is_yesno_active() then
+                    run_menu, menu_delta = scan_profiler.should_run("command_menu", menu_interval, frame_count)
+                end
+                if run_menu then
+                    scan_profiler.call("check_command_menu", checked_call, "check_command_menu", check_command_menu, menu_delta)
+                end
             end
 
             -- Keep the object list fresh: detect map changes and
             -- periodically re-read NPC positions (they move around).
             local map_id = snapshot.map_id
-            objects.check_refresh(map_id)
+            local run_object_refresh = true
+            if scan_profiler.is_enabled() then
+                if dialogue_hint then
+                    run_object_refresh = false
+                else
+                    run_object_refresh = scan_profiler.should_run("objects.check_refresh", 120, frame_count)
+                end
+            end
+            if run_object_refresh then
+                scan_profiler.call("objects.check_refresh", objects.check_refresh, map_id)
+            end
 
             -- Detect chest collection (only meaningful during field movement,
             -- but safe to run any time we're not on the title screen).
             if game_state.state == state.STATE_FIELD then
-                check_chest_collection()
+                checked_call("check_chest_collection", check_chest_collection)
             end
         end
 
@@ -3390,13 +3537,33 @@ while true do
         -- those rows decode as spurious digits/uppercase and produce false
         -- announcements. check_title_screen() handles all title-screen text.
         if in_gameplay then
-            if not check_merchant_screen() then
-                check_dialogue()
-                check_upper_dialogue()
+            local merchant_active = merchant_screen_active
+            local merchant_interval = merchant_screen_active and 3 or (dialogue_hint and 60 or 8)
+            local run_merchant = false
+            local merchant_delta = 0
+            if not dialogue_hint or merchant_screen_active then
+                run_merchant, merchant_delta = scan_profiler.should_run("merchant_screen", merchant_interval, frame_count)
+            end
+            if run_merchant then
+                merchant_active = scan_profiler.call("check_merchant_screen", checked_call, "check_merchant_screen", check_merchant_screen, merchant_delta)
+            end
+            if not merchant_active then
+                local lower_interval = (game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0) and 3
+                    or (dialogue_hint and 12 or 6)
+                local run_lower, lower_delta = scan_profiler.should_run("lower_dialogue", lower_interval, frame_count)
+                if run_lower then
+                    scan_profiler.call("check_dialogue", checked_call, "check_dialogue", check_dialogue, lower_delta, dialogue_hint)
+                end
+
+                local upper_interval = upper_dialogue_active and 8 or (dialogue_hint and 30 or 10)
+                local run_upper, upper_delta = scan_profiler.should_run("upper_dialogue", upper_interval, frame_count)
+                if run_upper then
+                    scan_profiler.call("check_upper_dialogue", checked_call, "check_upper_dialogue", check_upper_dialogue, upper_delta, dialogue_hint)
+                end
             end
         else
             reset_merchant_state(false)
-            check_title_screen()
+            scan_profiler.call("check_title_screen", checked_call, "check_title_screen", check_title_screen)
         end
     end
 
@@ -3406,10 +3573,13 @@ while true do
 
     -- Debug tools: process command file, flush logs, apply simulated input.
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
-    local sim_input = debug_tools.tick(frame_count, game_state.state)
-    path_debug.tick()  -- Drive validation state machine (no-op when debug_mode=false)
+    local sim_input = scan_profiler.call("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
+    scan_profiler.call("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
     local raw_debug_input_this_frame = sim_input and sim_input._raw
     if sim_input then
+        if emulator_compat.clear_ppu_cache then
+            emulator_compat.clear_ppu_cache()
+        end
         -- sweep_map returns input tagged with _sweep=true. report/debug probes
         -- can also request a one-frame raw injection via _raw=true.
         -- These should go directly to joypad.set() — NOT through
@@ -3454,26 +3624,43 @@ while true do
     if debug_tools.DEBUG_MODE and not can_walk then
         local active_target = route_mgr.get_last_pathfind_obj and route_mgr.get_last_pathfind_obj()
         if active_target or (path_debug.is_validating and path_debug.is_validating()) then
-            debug_tools.debug(string.format(
-                "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu=%s submenu=%s prev_dialogue_len=%d upper_dialogue_active=%s target=%s",
+            local can_walk_log = rawget(_G, "DW_CAN_WALK_LOG") or {}
+            local block_key = table.concat({
                 tostring(game_state.state),
                 tostring(debug_tools.is_sweep_active()),
                 tostring(path_debug.is_step_mode()),
                 tostring(path_debug.is_validating()),
                 tostring(menu.is_open()),
                 tostring(submenu_mode),
-                #(prev_dialogue or ""),
+                tostring(#(prev_dialogue or "")),
                 tostring(upper_dialogue_active),
-                active_target and tostring(active_target.name) or "nil"))
+                active_target and tostring(active_target.name) or "nil",
+            }, "|")
+            if can_walk_log.key ~= block_key or (frame_count - (can_walk_log.frame or -9999)) >= 60 then
+                debug_tools.debug(string.format(
+                    "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu=%s submenu=%s prev_dialogue_len=%d upper_dialogue_active=%s target=%s",
+                    tostring(game_state.state),
+                    tostring(debug_tools.is_sweep_active()),
+                    tostring(path_debug.is_step_mode()),
+                    tostring(path_debug.is_validating()),
+                    tostring(menu.is_open()),
+                    tostring(submenu_mode),
+                    #(prev_dialogue or ""),
+                    tostring(upper_dialogue_active),
+                    active_target and tostring(active_target.name) or "nil"))
+                can_walk_log.key = block_key
+                can_walk_log.frame = frame_count
+                _G.DW_CAN_WALK_LOG = can_walk_log
+            end
         end
     end
     tick_edge_probe()
-    map_survey.tick(can_walk)
+    scan_profiler.call("map_survey.tick", map_survey.tick, can_walk)
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
     if not raw_debug_input_this_frame then
-        auto_step.update(can_walk)
+        scan_profiler.call("auto_step.update", auto_step.update, can_walk)
     end
 
     -- Advance the emulator by one frame. This is required —

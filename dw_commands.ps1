@@ -82,7 +82,7 @@ if ($mode -eq "replace") {
 if (Test-Path -LiteralPath $logFile) {
     $ageSeconds = ((Get-Date) - (Get-Item -LiteralPath $logFile).LastWriteTime).TotalSeconds
     if ($ageSeconds -gt 60) {
-        Write-Warning ("dw_debug.log was last updated {0}s ago - FCEUX may be idle or not running" -f [int]$ageSeconds)
+        Write-Warning ("dw_debug.log was last updated {0}s ago - emulator may be idle or not running" -f [int]$ageSeconds)
     }
 }
 

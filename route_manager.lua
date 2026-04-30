@@ -31,6 +31,8 @@ local debug_tools = require "debug_tools"
 local path_debug = require "path_debug"
 local snapshot   = require "game_snapshot"
 local event_bus  = require "event_bus"
+local config     = require "config"
+local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 
 local M = {}
 
@@ -831,6 +833,14 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
             msg = msg .. ". " .. key_count .. " magic keys"
         end
     end
+    if result == "No path found" and no_path_reason == "closed_door" then
+        if snapshot.keys == 0 then
+            msg = msg .. ". Route is blocked by a closed door. Get a magic key from a chest, then navigate to a door object and use Open command"
+        else
+            msg = msg .. ". Route is blocked by a closed door. Navigate to a door object and use Open command first"
+        end
+        return msg
+    end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then
         if no_path_reason == "goal_blocked_npc" then
             msg = msg .. ". Chest tile is currently occupied by an NPC. Wait for it to move before auto-walking"
@@ -852,6 +862,63 @@ local function face_direction_between(from_x, from_y, to_x, to_y)
     elseif to_y > from_y then return "south"
     elseif to_x > from_x then return "east"
     elseif to_x < from_x then return "west"
+    end
+    return nil
+end
+
+local function is_standable_for_hint(map_id, x, y, blocking)
+    if map_reader.is_walkable(map_id, x, y) ~= true then
+        return false
+    end
+    local block = blocking and blocking[cell_key(x, y)]
+    return not block or type(block) == "table"
+end
+
+local function find_closed_door_frontier(map_id, start_x, start_y, blocking)
+    if not map_reader.get_map_dimensions or not map_reader.get_walkability_details then
+        return nil
+    end
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        return nil
+    end
+    if not is_standable_for_hint(map_id, start_x, start_y, blocking) then
+        return nil
+    end
+
+    local queue = {{x = start_x, y = start_y}}
+    local seen = {[cell_key(start_x, start_y)] = true}
+    local head = 1
+
+    while head <= #queue do
+        local current = queue[head]
+        head = head + 1
+
+        for _, dir in pairs(DIR_TO_DELTA) do
+            local nx = current.x + dir.dx
+            local ny = current.y + dir.dy
+            if nx >= 0 and nx < width and ny >= 0 and ny < height then
+                local nk = cell_key(nx, ny)
+                if not seen[nk] then
+                    local details = map_reader.get_walkability_details(map_id, nx, ny)
+                    if details and details.reason == "door_closed" then
+                        return {x = nx, y = ny}
+                    end
+                    if is_standable_for_hint(map_id, nx, ny, blocking) then
+                        seen[nk] = true
+                        queue[#queue + 1] = {x = nx, y = ny}
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+local function infer_no_path_reason(map_id, start_x, start_y, blocking)
+    if find_closed_door_frontier(map_id, start_x, start_y, blocking) then
+        return "closed_door"
     end
     return nil
 end
@@ -985,10 +1052,17 @@ function M.object_reachability(obj, opts)
 end
 
 function M.describe_object_with_reachability(obj, base_description, opts)
+    opts = opts or {}
     if not obj then
         return base_description or "No objects found"
     end
     local desc = base_description or objects.describe_object(obj)
+    if opts.include_reachability == false
+       or (opts.include_reachability == nil
+           and emulator_compat.is_bizhawk == true
+           and config.get("bizhawk_object_reachability_descriptions") ~= "true") then
+        return desc
+    end
     local reachability = plan_object_reachability(obj, opts)
     if reachability and reachability.reachable == false then
         return desc .. ". Not currently reachable"
@@ -1001,7 +1075,7 @@ function M.describe_current_object(opts)
     if not obj then
         return "No objects found"
     end
-    return M.describe_object_with_reachability(obj, objects.describe_current(), opts)
+    return M.describe_object_with_reachability(obj, objects.describe_current(opts), opts)
 end
 
 -- plan_path_to_object(obj): Compute a path from the player to the given
@@ -1038,6 +1112,9 @@ local function plan_path_to_object(obj, opts)
         else
             result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
         end
+    end
+    if result == "No path found" and no_path_reason == nil then
+        no_path_reason = infer_no_path_reason(map_id, px, py, blocking)
     end
     local plan = {
         target = obj,

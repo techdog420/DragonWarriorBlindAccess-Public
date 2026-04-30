@@ -253,6 +253,8 @@ local function build_snapshot()
     local level    = memory.readbyte(addr.LEVEL)
     local gold     = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
     local exp      = memory.readbyte(addr.EXPERIENCE_LO) + memory.readbyte(addr.EXPERIENCE_HI) * 256
+    local keys     = memory.readbyte(addr.KEYS)
+    local herbs    = memory.readbyte(addr.HERBS)
     local enemy_hp = memory.readbyte(addr.ENEMY_HP)
     local d8       = memory.readbyte(addr.MENU_CURSOR_X)
     local d9       = memory.readbyte(addr.MENU_CURSOR_Y)
@@ -274,6 +276,8 @@ local function build_snapshot()
         string.format("level:     %d",          level),
         string.format("gold:      %d",          gold),
         string.format("exp:       %d",          exp),
+        string.format("keys:      %d",          keys),
+        string.format("herbs:     %d",          herbs),
         string.format("enemy_hp:  %d",          enemy_hp),
         string.format("cursor:    D8=%d D9=%d", d8, d9),
         string.format("terrain:   0x%02X",      terrain),
@@ -727,6 +731,7 @@ end
 local function process_command(cmd)
     if cmd == "" then return end
 
+    local command_start_clock = os.clock()
     M.debug("CMD: " .. cmd)
 
     if cmd == "log_state" then
@@ -742,6 +747,18 @@ local function process_command(cmd)
         py = memory.readbyte(addr.PLAYER_Y)
         M.info(string.format("POSITION: map=0x%02X(%s) x=%d y=%d",
             map_id, maps_m.get_name(map_id), px, py))
+
+    elseif cmd == "report_door_state" then
+        local entries = {}
+        for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+            local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+            local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+            entries[#entries + 1] = string.format("%d=(%d,%d)", i, dx, dy)
+        end
+        M.info(string.format(
+            "DOOR_STATE keys=%d slots=%s",
+            memory.readbyte(addr.KEYS),
+            table.concat(entries, " ")))
 
     elseif cmd == "report_coords" then
         -- Write both effective coordinates and the raw interior/overworld RAM bytes.
@@ -1040,9 +1057,13 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-        M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
+        end
     end
-end
+    local elapsed_ms = (os.clock() - command_start_clock) * 1000
+    if elapsed_ms >= 25 then
+        M.info(string.format("CMD_TIMING command=%s ms=%.3f", cmd, elapsed_ms))
+    end
 end
 
 -- check_commands(): Read dw_commands.txt, process each line, then clear the file.
