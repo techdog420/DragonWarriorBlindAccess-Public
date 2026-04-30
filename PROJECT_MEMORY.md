@@ -169,7 +169,10 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
-Latest known good commit:
+Latest BizHawk transition checkpoint:
+- `a5386bc Make BizHawk the default emulator path`
+
+Previous FCEUX keyboard bridge checkpoint:
 - `a79bd6f Stabilize FCEUX keyboard input bridge`
 
 Latest pre-commit validation:

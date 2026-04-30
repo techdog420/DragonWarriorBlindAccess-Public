@@ -20,7 +20,10 @@ primary path unless the task explicitly targets FCEUX.
 
 ## Current Baseline
 
-Latest committed checkpoint before the BizHawk transition:
+Latest BizHawk transition checkpoint:
+- Commit: `a5386bc Make BizHawk the default emulator path`
+
+Previous FCEUX keyboard bridge checkpoint:
 - Commit: `a79bd6f Stabilize FCEUX keyboard input bridge`
 
 That commit includes:
@@ -30,7 +33,7 @@ That commit includes:
 - `enable_keyboard_input_bridge=true` config default.
 - Runtime bridge file `dw_keyboard_input.txt` ignored.
 
-The current checkpoint contains the BizHawk default transition:
+The BizHawk default transition contains:
 - `main.lua` loads `emulator_compat.lua` before the existing modules.
 - `emulator_compat.lua` supplies FCEUX-shaped globals under BizHawk.
 - `launch_dw.sh` now defaults to BizHawk. Use `./launch_dw.sh --emulator fceux`,
