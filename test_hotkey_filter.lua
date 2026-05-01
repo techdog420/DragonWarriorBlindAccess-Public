@@ -31,11 +31,11 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         key_object_next = "L",
         key_pathfind = "O",
         key_auto_walk = "U",
-        key_filter = "F",
-        key_freeze_npcs = "X",
-        key_diag_tiles = "N",
-        key_stats = "S",
-        key_diag_ppu_dump = "D",
+        key_filter = "Q",
+        key_freeze_npcs = "Shift+F",
+        key_diag_tiles = "Ctrl+N",
+        key_stats = "Shift+R",
+        key_diag_ppu_dump = "Ctrl+D",
     })
 
     local filtered = hotkey_filter.filter_bizhawk_keys({
@@ -44,8 +44,10 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         L = true,
         O = true,
         U = true,
+        Q = true,
+        Shift = true,
         F = true,
-        X = true,
+        LeftCtrl = true,
         N = true,
         S = true,
         D = true,
@@ -56,11 +58,35 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
     assert_equal(filtered.L, true, "next-object key should pass")
     assert_equal(filtered.O, true, "pathfind key should pass")
     assert_equal(filtered.U, true, "auto-walk key should pass")
-    assert_equal(filtered.F, true, "filter key should pass")
-    assert_equal(filtered.X, true, "freeze key should pass")
+    assert_equal(filtered.Q, true, "filter key should pass")
+    assert_equal(filtered.Shift, true, "freeze modifier should pass")
+    assert_equal(filtered.F, true, "freeze key should pass")
+    assert_equal(filtered.LeftCtrl, true, "tile diagnostic modifier should pass")
     assert_equal(filtered.N, true, "tile diagnostic key should pass")
     assert_equal(filtered.S, nil, "status key should be blocked by default")
     assert_equal(filtered.D, nil, "diagnostic key should be blocked by default")
+end
+
+function tests.combo_allowlist_does_not_pass_bare_component_key()
+    local config = make_config({
+        enable_bizhawk_keyboard_hotkeys = "false",
+        key_object_prev = "J",
+        key_object_current = "K",
+        key_object_next = "L",
+        key_pathfind = "O",
+        key_auto_walk = "U",
+        key_filter = "Q",
+        key_freeze_npcs = "Shift+F",
+        key_diag_tiles = "Ctrl+N",
+    })
+
+    local filtered = hotkey_filter.filter_bizhawk_keys({
+        N = true,
+        F = true,
+    }, config)
+
+    assert_equal(filtered.N, nil, "bare tile diagnostic key should not pass without Ctrl")
+    assert_equal(filtered.F, nil, "bare freeze key should not pass without Shift")
 end
 
 function tests.custom_allowlist_can_enable_future_qol_shortcut()

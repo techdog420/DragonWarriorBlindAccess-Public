@@ -170,10 +170,6 @@ if [ "$emulator" = "bizhawk" ]; then
         echo "--battery-save is currently FCEUX-only. Use --emulator fceux for that workflow." >&2
         exit 1
     fi
-    if [ "$state_slot_cli" -eq 1 ]; then
-        echo "--state-slot is currently FCEUX-only. Use --emulator fceux for that workflow." >&2
-        exit 1
-    fi
 
     bizhawk_path="$(resolve_posix_path "$bizhawk_path")"
     for required_path in "$bizhawk_path" "$rom_path" "$lua_path"; do
@@ -200,12 +196,18 @@ if [ "$emulator" = "bizhawk" ]; then
         echo "  Executable: $bizhawk_path_win"
         echo "  ROM:        $rom_path_win"
         echo "  Lua:        $lua_path_win"
+        if [ -n "$state_slot" ]; then
+            echo "  State:      slot $state_slot"
+        fi
         if [ "$wait_for_ready" -eq 0 ]; then
             echo "  Wait:       no"
         else
             echo "  Wait:       yes"
         fi
         echo "  Argument:   --lua=$lua_path_win"
+        if [ -n "$state_slot" ]; then
+            echo "  Argument:   --load-slot $state_slot"
+        fi
         exit 0
     fi
 
@@ -217,6 +219,10 @@ if [ "$emulator" = "bizhawk" ]; then
         -RomPath "$rom_path_win"
         -LuaPath "$lua_path_win"
     )
+
+    if [ -n "$state_slot" ]; then
+        ps_args+=(-StateSlot "$state_slot")
+    fi
 
     if [ "$wait_for_ready" -eq 0 ]; then
         ps_args+=(-NoWait)

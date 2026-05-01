@@ -99,6 +99,25 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local function encoded_upper(text)
+    local bytes = {}
+    for i = 1, #text do
+        local c = text:byte(i)
+        if c >= 65 and c <= 90 then
+            bytes[#bytes + 1] = 0x24 + (c - 65)
+        end
+    end
+    return bytes
+end
+
+local function put_text(pattern, row, col, value)
+    local bytes = encoded_upper(value)
+    local base = 0x2000 + row * 32 + col
+    for i, byte in ipairs(bytes) do
+        pattern[base + i - 1] = byte
+    end
+end
+
 local tests = {}
 
 function tests.stale_enemy_hp_on_field_does_not_force_battle()
@@ -171,6 +190,36 @@ function tests.fceux_field_state_scans_title_content_each_frame()
     if env.ppu_reads() <= reads_after_first then
         error("FCEUX path should preserve the existing every-frame title PPU scan", 2)
     end
+
+    env.restore()
+end
+
+function tests.erase_confirmation_with_loaded_level_remains_title()
+    local title_pattern = {}
+    put_text(title_pattern, 19, 10, "ERASE")
+    put_text(title_pattern, 21, 8, "CHARACTER")
+
+    local env = make_env({
+        level = 7,
+        title_pattern = title_pattern,
+    })
+
+    assert_equal(env.state.detect(), env.state.STATE_TITLE, "erase confirmation should stay in title state")
+
+    env.restore()
+end
+
+function tests.name_entry_grid_with_loaded_level_remains_title()
+    local title_pattern = {}
+    put_text(title_pattern, 22, 18, "BACK")
+    put_text(title_pattern, 22, 26, "END")
+
+    local env = make_env({
+        level = 7,
+        title_pattern = title_pattern,
+    })
+
+    assert_equal(env.state.detect(), env.state.STATE_TITLE, "name-entry grid should stay in title state")
 
     env.restore()
 end

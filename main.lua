@@ -577,6 +577,56 @@ local NAME_ENTRY_SYMBOLS = {
     ["9,5"] = "END",
 }
 
+NAME_ENTRY_SYMBOLS._visible = false
+NAME_ENTRY_SYMBOLS._a_was_down = false
+NAME_ENTRY_SYMBOLS._a_suppressed_logged = false
+NAME_ENTRY_SYMBOLS._a_release_frames = 0
+
+function NAME_ENTRY_SYMBOLS.reset_guard()
+    NAME_ENTRY_SYMBOLS._a_was_down = false
+    NAME_ENTRY_SYMBOLS._a_suppressed_logged = false
+    NAME_ENTRY_SYMBOLS._a_release_frames = 0
+end
+
+function NAME_ENTRY_SYMBOLS.apply_guard()
+    if game_state.state ~= state.STATE_TITLE or not NAME_ENTRY_SYMBOLS._visible then
+        NAME_ENTRY_SYMBOLS.reset_guard()
+        return
+    end
+
+    local joy = current_joy or joypad.read(1)
+    if not joy or not joy.A then
+        if NAME_ENTRY_SYMBOLS._a_was_down then
+            NAME_ENTRY_SYMBOLS._a_release_frames = NAME_ENTRY_SYMBOLS._a_release_frames + 1
+            if NAME_ENTRY_SYMBOLS._a_release_frames >= 6 then
+                NAME_ENTRY_SYMBOLS.reset_guard()
+            end
+        else
+            NAME_ENTRY_SYMBOLS._a_suppressed_logged = false
+            NAME_ENTRY_SYMBOLS._a_release_frames = 0
+        end
+        return
+    end
+
+    if NAME_ENTRY_SYMBOLS._a_was_down then
+        NAME_ENTRY_SYMBOLS._a_release_frames = 0
+        local cleaned = {}
+        for _, key in ipairs({"up", "down", "left", "right", "B", "select", "start"}) do
+            cleaned[key] = joy and joy[key] or false
+        end
+        cleaned.A = false
+        joypad.set(1, cleaned)
+        if not NAME_ENTRY_SYMBOLS._a_suppressed_logged then
+            debug_tools.debug("NAME_ENTRY_A_SUPPRESS held A after first frame")
+            NAME_ENTRY_SYMBOLS._a_suppressed_logged = true
+        end
+        return
+    end
+
+    NAME_ENTRY_SYMBOLS._a_was_down = true
+    NAME_ENTRY_SYMBOLS._a_release_frames = 0
+end
+
 -- Text seen on the last no-cursor title frame. Used to announce screens
 -- that have no cursor tile (e.g. "PRESS START BUTTON" splash screen).
 local prev_title_no_cursor_text = ""
@@ -1252,8 +1302,14 @@ local function check_command_menu(frame_delta)
                 menu_upper_absorb_frames = MENU_UPPER_ABSORB
                 cmd_menu_live = true
                 cmd_rearm_required = false
-                trace_row1("CMD_OPEN_FROM_STATUS", changes, {})
-                tolk.output("Command.")
+                cmd_last_live_x = changes.cursor_x
+                cmd_last_live_y = changes.cursor_y
+                local open_item = changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y)
+                trace_row1("CMD_OPEN_FROM_STATUS", changes, {
+                    "cursor=" .. tostring(has_visible_cursor_tile()),
+                    "item=" .. tostring(open_item),
+                })
+                tolk.output(open_item and ("Command. " .. open_item) or "Command.")
                 debug_tools.on_menu_open()
                 event_bus.publish("menu_opened")
             end
@@ -1438,10 +1494,9 @@ local function check_command_menu(frame_delta)
         -- events still work correctly once the player actually navigates.
         local py  = snapshot.player_y
         if not (not snapshot.is_overworld and py <= 1) then
-            -- Menu just opened. Announce "Command." only — DW1 remembers
-            -- the last-used cursor position, so the current item is wherever
-            -- the cursor was left, not necessarily TALK. The player can press
-            -- any direction to hear the current selection via cursor_moved.
+            -- Menu just opened. DW1 remembers the last-used cursor position,
+            -- so announce the actual highlighted item rather than assuming
+            -- TALK.
             menu_upper_absorb_frames = MENU_UPPER_ABSORB
             cmd_menu_confirmed = true
             cmd_menu_live = true
@@ -1449,10 +1504,12 @@ local function check_command_menu(frame_delta)
             cmd_cursor_hold_frames = math.max(cmd_cursor_hold_frames, 12)
             cmd_last_live_x = changes.cursor_x
             cmd_last_live_y = changes.cursor_y
+            local open_item = changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             trace_row1("CMD_OPEN", changes, {
                 "cursor=" .. tostring(cursor_visible),
+                "item=" .. tostring(open_item),
             })
-            tolk.output("Command.")
+            tolk.output(open_item and ("Command. " .. open_item) or "Command.")
             debug_tools.on_menu_open()
             event_bus.publish("menu_opened")
         elseif a_just then
@@ -1468,10 +1525,12 @@ local function check_command_menu(frame_delta)
             cmd_cursor_hold_frames = 12
             cmd_last_live_x = changes.cursor_x
             cmd_last_live_y = changes.cursor_y
+            local open_item = changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             trace_row1("CMD_OPEN_Y1", changes, {
                 "cursor=" .. tostring(cursor_visible),
+                "item=" .. tostring(open_item),
             })
-            tolk.output("Command.")
+            tolk.output(open_item and ("Command. " .. open_item) or "Command.")
             debug_tools.on_menu_open()
             event_bus.publish("menu_opened")
         end
@@ -1610,7 +1669,7 @@ local function read_y1_dialogue()
     local lines = {}
     for row = text_row, math.min(29, text_row + 8) do
         local decoded = text.decode_row(row)
-        if decoded:find("[a-z]") then
+        if decoded:find("[a-z]") and not text.is_status_text(decoded) then
             lines[#lines + 1] = decoded
         end
     end
@@ -1735,6 +1794,8 @@ local function check_title_screen()
     -- speed option); D9 is instant and reliable.
     local spd_open = is_message_speed_open()
     if spd_open then
+        NAME_ENTRY_SYMBOLS._visible = false
+        NAME_ENTRY_SYMBOLS.reset_guard()
         local d9 = snapshot.cursor_y
         if not msg_speed_was_open then
             -- First frame the screen is open: record current selection as baseline
@@ -1766,6 +1827,8 @@ local function check_title_screen()
     local slot_type = save_slot_screen_type()
     local slot_open = (slot_type ~= nil)
     if slot_open then
+        NAME_ENTRY_SYMBOLS._visible = false
+        NAME_ENTRY_SYMBOLS.reset_guard()
         local d9 = snapshot.cursor_y
         if d9 ~= prev_save_slot_d9 then
             local slot_row, digit_col
@@ -1797,6 +1860,10 @@ local function check_title_screen()
     -- We only need a small region for this; avoid reading all 30 rows.
     local row22 = text.decode_row(22)
     local is_name_entry = (row22:find("BACK") ~= nil and row22:find("END") ~= nil)
+    NAME_ENTRY_SYMBOLS._visible = is_name_entry
+    if not is_name_entry then
+        NAME_ENTRY_SYMBOLS.reset_guard()
+    end
 
     -- Sticky name_entry_active: once detected, stays true until the screen
     -- changes. This prevents the race condition where the cursor settles
@@ -2383,6 +2450,17 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
         new_text = strip_overlap(announced_upper_dialogue, upper)
     end
 
+    -- Baseline overlap can leave just the persistent status row as the
+    -- extracted "new" text. Hero names contain lowercase letters, so this must
+    -- be checked before the lowercase-dialogue filter below.
+    if new_text ~= "" and text.is_status_text(new_text) then
+        upper_baseline = upper
+        announced_upper_dialogue = upper
+        upper_dialogue_active = false
+        debug_tools.debug("UPPER_DIALOGUE_SUPPRESS_STATUS: " .. new_text)
+        return
+    end
+
     -- Filter: suppress announcements that contain no lowercase letters.
     --
     -- Real DW1 dialogue always uses mixed case — lowercase body text with
@@ -2514,6 +2592,51 @@ debug_tools.register_command("speech_status", function()
         tostring(backend), tostring(ready), tostring(available), tostring(err))
     debug_tools.info(status)
     tolk.output_interrupt(status)
+end)
+
+debug_tools.register_command("report_title_state", function()
+    local d8 = memory.readbyte(addr.MENU_CURSOR_X)
+    local d9 = memory.readbyte(addr.MENU_CURSOR_Y)
+    local buttons = memory.readbyte(addr.BUTTONS_PRESSED)
+    local joy = joypad.read(1) or {}
+    local ppu_row = 12 + d9 * 2
+    local ppu_col = 6 + d8 * 2
+    local cursor_byte = nil
+    local cursor_char = ""
+    if ppu_row >= 0 and ppu_row <= 29 and ppu_col >= 0 and ppu_col <= 31 then
+        cursor_byte = ppu.readbyte(0x2000 + ppu_row * 32 + ppu_col)
+        cursor_char = chars.decode_byte(cursor_byte) or ""
+    end
+
+    debug_tools.info(string.format(
+        "TITLE_STATE state=%s name_entry_visible=%s name_entry_active=%s d8=%d d9=%d cursor_row=%d cursor_col=%d cursor_byte=%s cursor_char=%s buttons=0x%02X joyA=%s joy=%s%s%s%s%s%s%s%s",
+        tostring(game_state.state),
+        tostring(NAME_ENTRY_SYMBOLS._visible),
+        tostring(name_entry_active),
+        d8,
+        d9,
+        ppu_row,
+        ppu_col,
+        cursor_byte and string.format("0x%02X", cursor_byte) or "nil",
+        cursor_char ~= "" and cursor_char or "-",
+        buttons,
+        tostring(joy.A == true),
+        joy.up and "up+" or "",
+        joy.down and "down+" or "",
+        joy.left and "left+" or "",
+        joy.right and "right+" or "",
+        joy.A and "A+" or "",
+        joy.B and "B+" or "",
+        joy.select and "select+" or "",
+        joy.start and "start+" or ""))
+
+    for row = 6, 26 do
+        local decoded = strip_noise(text.decode_row(row))
+        if decoded ~= "" then
+            debug_tools.info(string.format("TITLE_ROW row=%02d text=%s", row, decoded))
+        end
+    end
+    tolk.output_interrupt("Title state reported")
 end)
 
 debug_tools.register_command("report_scan_stats", function()
@@ -3325,6 +3448,8 @@ while true do
                 prev_title_cursor_col       = nil
                 prev_is_name_entry          = false
                 name_entry_active           = false
+                NAME_ENTRY_SYMBOLS._visible       = false
+                NAME_ENTRY_SYMBOLS.reset_guard()
                 prev_name_d8                = nil
                 prev_name_d9                = nil
                 title_stable                = 0
@@ -3356,6 +3481,8 @@ while true do
                 prev_title_cursor_col       = nil
                 prev_is_name_entry          = false
                 name_entry_active           = false
+                NAME_ENTRY_SYMBOLS._visible       = false
+                NAME_ENTRY_SYMBOLS.reset_guard()
                 prev_name_d8                = nil
                 prev_name_d9                = nil
                 title_stable                = 0
@@ -3376,12 +3503,24 @@ while true do
                 reset_battle_menu_state()
                 tolk.output("Title screen.")
             elseif game_state.state == state.STATE_BATTLE then
+                prev_is_name_entry = false
+                name_entry_active = false
+                NAME_ENTRY_SYMBOLS._visible = false
+                NAME_ENTRY_SYMBOLS.reset_guard()
+                prev_name_d8 = nil
+                prev_name_d9 = nil
                 reset_merchant_state(false)
                 reset_battle_menu_state()
                 tolk.output("Battle!")
                 debug_tools.on_battle_start()
                 event_bus.publish("battle_started")
             elseif game_state.state == state.STATE_FIELD then
+                prev_is_name_entry = false
+                name_entry_active = false
+                NAME_ENTRY_SYMBOLS._visible = false
+                NAME_ENTRY_SYMBOLS.reset_guard()
+                prev_name_d8 = nil
+                prev_name_d9 = nil
                 reset_battle_menu_state()
                 -- Transitioning from title to field: start or continue debounce.
                 if game_state.prev_state == state.STATE_TITLE then
@@ -3399,6 +3538,7 @@ while true do
                 if field_from_title_ct == FIELD_DEBOUNCE then
                     tolk.output("Game started.")
                     post_start_grace = FIELD_GRACE
+                    field_from_title_ct = 0
                     if scan_profiler.is_enabled() then
                         bizhawk_boot_dialogue_frames = BIZHAWK_BOOT_DIALOGUE_HOLD
                     end
@@ -3408,6 +3548,11 @@ while true do
                 field_from_title_ct = 0
             end
         end
+
+        -- Treat the title-to-field debounce as not-yet-gameplay. This keeps
+        -- title-menu fades and erase-confirmation transitions from running
+        -- gameplay dialogue/map/auto-step logic while state RAM is unstable.
+        in_gameplay = (game_state.state ~= state.STATE_TITLE and field_from_title_ct == 0)
 
         -- Run Yes/No detection first so the rest of the frame sees current
         -- prompt state. Guard 1 reuses the command-menu window and cursor RAM,
@@ -3513,8 +3658,11 @@ while true do
             -- periodically re-read NPC positions (they move around).
             local map_id = snapshot.map_id
             local run_object_refresh = true
+            local object_refresh_needed = objects.needs_refresh and objects.needs_refresh(map_id)
             if scan_profiler.is_enabled() then
-                if dialogue_hint then
+                if object_refresh_needed then
+                    run_object_refresh = true
+                elseif dialogue_hint then
                     run_object_refresh = false
                 else
                     run_object_refresh = scan_profiler.should_run("objects.check_refresh", 120, frame_count)
@@ -3605,10 +3753,14 @@ while true do
         end
     end
 
+    NAME_ENTRY_SYMBOLS.apply_guard()
+
     -- Auto-step: extend brief D-pad taps into full tile steps.
     -- Only active when the player is walking on the field (not in
     -- menus, dialogue, battle, or on the title screen).
     local can_walk = game_state.state == state.STATE_FIELD
+                     and field_from_title_ct == 0
+                     and post_start_grace == 0
                      and not debug_tools.is_sweep_active()  -- suspend during map sweep
                      and not path_debug.is_step_mode()      -- suspend during step-by-step mode
                      and (

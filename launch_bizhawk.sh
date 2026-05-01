@@ -10,6 +10,7 @@ default_lua_path="${DW_LUA_PATH:-$script_dir/main.lua}"
 bizhawk_path="$default_bizhawk_path"
 rom_path="$default_rom_path"
 lua_path="$default_lua_path"
+state_slot="${DW_STATE_SLOT:-}"
 wait_for_exit=1
 dry_run=0
 
@@ -24,12 +25,13 @@ Options:
   --bizhawk-path PATH   Override the Windows EmuHawk executable path
   --rom-path PATH       Override the Dragon Warrior ROM path
   --lua-path PATH       Override the Lua script path
+  --state-slot N        Load BizHawk savestate slot N on startup (0-9)
   --no-wait             Return immediately after launching BizHawk
   --dry-run             Print resolved launch values without launching
   --help                Show this help text
 
 Environment overrides:
-  DW_BIZHAWK_PATH, DW_ROM_PATH, DW_LUA_PATH
+  DW_BIZHAWK_PATH, DW_ROM_PATH, DW_LUA_PATH, DW_STATE_SLOT
 EOF
 }
 
@@ -81,6 +83,11 @@ while [ $# -gt 0 ]; do
             lua_path="$2"
             shift 2
             ;;
+        --state-slot)
+            [ $# -ge 2 ] || { echo "Missing value for --state-slot" >&2; exit 1; }
+            state_slot="$2"
+            shift 2
+            ;;
         --no-wait)
             wait_for_exit=0
             shift
@@ -110,6 +117,11 @@ bizhawk_path="$(resolve_posix_path "$bizhawk_path")"
 rom_path="$(resolve_posix_path "$rom_path")"
 lua_path="$(resolve_posix_path "$lua_path")"
 
+if [ -n "$state_slot" ] && ! [[ "$state_slot" =~ ^[0-9]$ ]]; then
+    echo "--state-slot must be a single digit from 0 to 9." >&2
+    exit 1
+fi
+
 for required_path in "$bizhawk_path" "$rom_path" "$lua_path"; do
     if ! is_windows_path "$required_path" && [ ! -f "$required_path" ]; then
         echo "Required file not found: $required_path" >&2
@@ -131,7 +143,13 @@ if [ "$dry_run" -eq 1 ]; then
     else
         echo "  Wait:     no"
     fi
+    if [ -n "$state_slot" ]; then
+        echo "  State:    slot $state_slot"
+    fi
     echo "  Argument: --lua=$lua_path_win"
+    if [ -n "$state_slot" ]; then
+        echo "  Argument: --load-slot $state_slot"
+    fi
     exit 0
 fi
 
@@ -151,6 +169,10 @@ ps_args=(
     -LuaPath "$lua_path_win"
     -RomPath "$rom_path_win"
 )
+
+if [ -n "$state_slot" ]; then
+    ps_args+=(-StateSlot "$state_slot")
+fi
 
 if [ "$wait_for_exit" -eq 0 ]; then
     ps_args+=(-NoWait)

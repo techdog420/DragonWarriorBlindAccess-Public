@@ -29,6 +29,8 @@ local function make_env(options)
     local pathfind_mode = options.pathfind_mode or "always_path"
     local pathfind_block_key = options.pathfind_block_key or "5,3"
     local reroute_calls = 0
+    local update_npcs_calls = 0
+    local request_refresh_calls = 0
     local current_object = options.current_object or {name = "Chest", type = "chest", x = 6, y = 1}
     local module_names = {
         "addresses",
@@ -89,11 +91,15 @@ local function make_env(options)
             describe_current = function()
                 return options.current_description or (current_object.name .. ": 3 north (1 of 1)")
             end,
-            update_npcs = function() end,
+            update_npcs = function()
+                update_npcs_calls = update_npcs_calls + 1
+            end,
             get_blocking_positions = function()
                 return options.blocking_positions or {}
             end,
-            request_refresh = function() end,
+            request_refresh = function()
+                request_refresh_calls = request_refresh_calls + 1
+            end,
         }
     end
 
@@ -162,7 +168,7 @@ local function make_env(options)
                 end
                 return one_step_path()
             end,
-            pathfind_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking)
+            pathfind_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking, opts)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
                 last_adjacent_call = {
@@ -171,6 +177,7 @@ local function make_env(options)
                     goal_x = goal_x,
                     goal_y = goal_y,
                     blocking = blocking,
+                    opts = opts,
                 }
                 if pathfind_mode == "always_no_path" then
                     return "No path found", nil, nil
@@ -185,7 +192,7 @@ local function make_env(options)
                     {x = 5, y = 3, direction = "north"},
                 }
             end,
-            find_route_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking)
+            find_route_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking, opts)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
                 last_adjacent_call = {
@@ -194,6 +201,7 @@ local function make_env(options)
                     goal_x = goal_x,
                     goal_y = goal_y,
                     blocking = blocking,
+                    opts = opts,
                 }
                 if should_return_no_path(blocking) then
                     return nil, nil, nil, {}
@@ -302,6 +310,8 @@ local function make_env(options)
         auto_step = package.loaded["auto_step"],
         route_manager = route_manager,
         pathfind_calls = function() return pathfind_calls end,
+        update_npcs_calls = function() return update_npcs_calls end,
+        request_refresh_calls = function() return request_refresh_calls end,
         start_route_calls = function() return start_route_calls end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
@@ -579,6 +589,74 @@ function tests.bizhawk_object_description_can_opt_into_reachability()
     env.restore()
 end
 
+function tests.bizhawk_pathfind_uses_cached_object_blockers_by_default()
+    local env = make_env({
+        is_bizhawk = true,
+        blocking_positions = {{x = 5, y = 3}},
+    })
+
+    env.route_manager.pathfind_to_current()
+
+    assert_equal(env.update_npcs_calls(), 0, "BizHawk pathfind should avoid forced live NPC refresh by default")
+    assert_equal(env.route_manager.is_npc_freeze_active(), false, "show-path should not leave NPC freeze active")
+    local direct = env.last_direct_call()
+    assert_equal(direct.blocking["5,3"], "npc", "cached object blockers should still be passed to pathfinding")
+
+    env.restore()
+end
+
+function tests.bizhawk_route_refresh_npcs_can_be_opted_in()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            bizhawk_route_refresh_npcs = "true",
+        },
+    })
+
+    env.route_manager.pathfind_to_current()
+
+    assert_equal(env.update_npcs_calls(), 1, "BizHawk route refresh option should preserve live NPC refresh when requested")
+
+    env.restore()
+end
+
+function tests.gameplay_adjacent_planning_skips_metrics_by_default()
+    local env = make_env({
+        current_object = {name = "Person", type = "npc", x = 6, y = 1},
+    })
+
+    env.route_manager.pathfind_to_current()
+
+    assert_equal(
+        env.last_adjacent_call().opts.use_adjacent_metrics,
+        false,
+        "normal object pathing should skip expensive adjacent tie metrics"
+    )
+
+    env.restore()
+end
+
+function tests.survey_safe_adjacent_planning_keeps_metrics()
+    local env = make_env({
+        current_object = {name = "Person", type = "npc", x = 6, y = 1},
+    })
+
+    env.route_manager.plan_path_to_object({
+        name = "Person",
+        type = "npc",
+        x = 6,
+        y = 1,
+    }, {survey_safe = true})
+
+    assert_equal(
+        env.last_adjacent_call().opts.use_adjacent_metrics,
+        nil,
+        "survey-safe planning should keep adjacent diagnostics enabled"
+    )
+
+    env.restore()
+end
+
 function tests.current_object_description_leaves_reachable_objects_unchanged()
     local env = make_env()
 
@@ -714,6 +792,94 @@ function tests.autowalk_freezes_npcs_and_releases_on_route_complete()
         env.route_manager.is_npc_freeze_active(),
         false,
         "route completion should release NPC freeze"
+    )
+    assert_equal(
+        env.request_refresh_calls(),
+        1,
+        "FCEUX route completion should keep refreshing objects after cleanup"
+    )
+
+    env.restore()
+end
+
+function tests.bizhawk_route_complete_skips_object_refresh_by_default()
+    local env = make_env({is_bizhawk = true})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+
+    assert_equal(
+        env.request_refresh_calls(),
+        0,
+        "BizHawk route completion should avoid the slow object refresh by default"
+    )
+
+    env.restore()
+end
+
+function tests.bizhawk_route_cleanup_refresh_can_be_opted_in()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            bizhawk_route_cleanup_refresh_objects = "true",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+
+    assert_equal(
+        env.request_refresh_calls(),
+        1,
+        "BizHawk route cleanup refresh option should preserve the old object refresh"
+    )
+
+    env.restore()
+end
+
+function tests.bizhawk_route_cancel_skips_object_refresh_by_default()
+    local env = make_env({is_bizhawk = true})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({reason = "test_cancel"})
+
+    assert_equal(
+        env.request_refresh_calls(),
+        0,
+        "BizHawk route cancellation should avoid the slow object refresh by default"
+    )
+
+    env.restore()
+end
+
+function tests.bizhawk_autowalk_skips_npc_freeze_by_default()
+    local env = make_env({is_bizhawk = true})
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(
+        env.route_manager.is_npc_freeze_active(),
+        false,
+        "BizHawk autowalk should avoid per-frame NPC RAM freeze by default"
+    )
+
+    env.restore()
+end
+
+function tests.bizhawk_autowalk_freeze_can_be_opted_in()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            bizhawk_autowalk_freeze_npcs = "true",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(
+        env.route_manager.is_npc_freeze_active(),
+        true,
+        "BizHawk autowalk freeze option should preserve the old NPC freeze behavior when requested"
     )
 
     env.restore()

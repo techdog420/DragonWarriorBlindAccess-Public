@@ -79,6 +79,7 @@ COMMANDS (write to dw_commands.txt, one per line)
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
   report_scan_stats        BizHawk only: log PPU read/cache totals and scan profiles
   reset_scan_stats         BizHawk only: reset PPU read/cache totals and scan profiles
+  report_title_state       Log title/name-entry cursor state and decoded title rows
   simulate_raw_input:UP    Inject one raw frame of D-pad Up
   simulate_raw_input:UP,12 Inject 12 consecutive raw frames of D-pad Up
   simulate_raw_input:DOWN  Inject one raw frame of D-pad Down

@@ -38,7 +38,7 @@ M.TYPE_DOOR   = "door"
 -- ============================================================
 -- Filter Constants
 -- ============================================================
--- The player can cycle through filters with the F key to show
+-- The player can cycle through filters with the filter hotkey to show
 -- only certain types of objects.
 M.FILTER_ALL    = 1
 M.FILTER_NPC    = 2
@@ -339,6 +339,15 @@ local function periodic_npc_refresh_enabled()
         return true
     end
     return config.get("bizhawk_periodic_npc_refresh") == "true"
+end
+
+local function prewarm_path_grid(map_id)
+    if is_overworld_context() then
+        return
+    end
+    if map_reader.get_tile_grid then
+        map_reader.get_tile_grid(map_id)
+    end
 end
 
 -- get_nearby_chests(px, py, max_dist): Return chests within max_dist
@@ -822,6 +831,7 @@ function M.refresh(map_id, opts)
     opts = opts or {}
     current_map_id = map_id
     current_terrain_offset = get_terrain_offset()
+    prewarm_path_grid(map_id)
     object_list = build_object_list(map_id, opts)
     npc_refresh_counter = 0
     refresh_pending = opts.defer_npcs == true
@@ -849,6 +859,13 @@ end
 -- snapshot that was restored during the previous frame).
 function M.request_refresh()
     refresh_pending = true
+end
+
+function M.needs_refresh(map_id)
+    local terrain_offset = get_terrain_offset()
+    return refresh_pending
+        or map_id ~= current_map_id
+        or terrain_offset ~= current_terrain_offset
 end
 
 -- check_refresh(map_id): Called every frame from the main loop.

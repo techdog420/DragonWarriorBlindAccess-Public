@@ -1202,6 +1202,62 @@ function M.get_walkability_details(map_id, x, y)
     return details
 end
 
+local function build_open_door_set()
+    local opened = {}
+    for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+        local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+        local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+        if dx ~= 0 then
+            opened[dx .. "," .. dy] = true
+        end
+    end
+    return opened
+end
+
+function M.get_walkability_snapshot(map_id)
+    local grid = M.get_tile_grid(map_id)
+    if not grid then return nil end
+
+    local meta = M.get_metadata(map_id)
+    if not meta then return nil end
+
+    local walkable_table = M.get_walkability_table(map_id)
+    if not walkable_table then return nil end
+
+    local snapshot = {}
+    local is_overworld = maps.is_overworld(map_id)
+    local passthroughs = MAP_PASSTHROUGH_CELLS[map_id]
+    local door_cells = MAP_DOOR_CELLS[map_id]
+    local open_doors = door_cells and build_open_door_set() or nil
+    local overrides = MAP_BLOCKED_CELLS[map_id]
+
+    for y = 0, meta.height - 1 do
+        local row = {}
+        snapshot[y] = row
+        for x = 0, meta.width - 1 do
+            local key = x .. "," .. y
+            local walkable = false
+            if not is_overworld and (x == 0 or y == 0) then
+                walkable = false
+            elseif passthroughs and passthroughs[key] then
+                walkable = true
+            elseif door_cells and door_cells[key] then
+                local dc = door_cells[key]
+                walkable = open_doors and open_doors[dc.x .. "," .. dc.y] == true or false
+            else
+                local tile_type = grid[y] and grid[y][x]
+                walkable = tile_type ~= nil and walkable_table[tile_type] == true or false
+            end
+            if overrides and overrides[key] then
+                walkable = false
+            end
+            row[x] = walkable
+        end
+    end
+
+    return snapshot
+end
+
 -- is_walkable(map_id, x, y): Check if a tile at (x, y) is passable.
 -- Returns true if the player can walk on this tile, false if it's a wall.
 -- Returns nil if we can't determine walkability (no grid data, etc.).

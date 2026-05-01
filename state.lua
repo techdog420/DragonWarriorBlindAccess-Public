@@ -38,6 +38,35 @@ M.prev_state = nil
 -- During gameplay the scan short-circuits quickly (no title text on screen).
 local QUEST    = {0x34, 0x38, 0x28, 0x36, 0x37}          -- 5 bytes
 local ADVENTUR = {0x24, 0x27, 0x39, 0x28, 0x31, 0x37, 0x38, 0x35}  -- 8 bytes
+
+local function encode_upper(text)
+    local bytes = {}
+    for i = 1, #text do
+        local c = text:byte(i)
+        if c >= 65 and c <= 90 then
+            bytes[#bytes + 1] = 0x24 + (c - 65)
+        end
+    end
+    return bytes
+end
+
+local ERASE     = encode_upper("ERASE")
+local CHARACTER = encode_upper("CHARACTER")
+local BACK      = encode_upper("BACK")
+local END_WORD  = encode_upper("END")
+
+local TITLE_SINGLE_PATTERNS = {
+    QUEST,
+    ADVENTUR,
+}
+
+local TITLE_PATTERN_GROUPS = {
+    -- Erase confirmation: "Do You Want To Erase This Character?"
+    -- The title menu has valid save RAM loaded, but this is not gameplay.
+    {patterns = {ERASE, CHARACTER}},
+    -- Name entry: row 22 uniquely carries BACK and END on the alphabet grid.
+    {patterns = {BACK, END_WORD}, row_start = 22, row_end = 22},
+}
 -- BizHawk's PPU-domain reads are slow enough that a full title-pattern scan
 -- during field play can dominate frame time. Once gameplay is confirmed, keep
 -- the safety rescan rare; level RAM still catches normal boot/title cases.
@@ -51,33 +80,59 @@ local sprite_chr_page_cache = 0x02
 local sprite_chr_page_frame = nil
 local prev_enemy_hp = 0
 
+local function row_contains(row_bytes, pattern)
+    local last_start = #row_bytes - #pattern + 1
+    if last_start < 1 then return false end
+    for start = 1, last_start do
+        if row_bytes[start] == pattern[1] then
+            local ok = true
+            for i = 2, #pattern do
+                if row_bytes[start + i - 1] ~= pattern[i] then
+                    ok = false
+                    break
+                end
+            end
+            if ok then return true end
+        end
+    end
+    return false
+end
+
+local function group_is_complete(matches, group)
+    for i = 1, #group.patterns do
+        if not matches[i] then return false end
+    end
+    return true
+end
+
 local function ppu_shows_title_content()
+    local group_matches = {}
+    for i = 1, #TITLE_PATTERN_GROUPS do
+        group_matches[i] = {}
+    end
+
     for row = 0, 29 do
         local base = 0x2000 + row * 32
-
-        -- Scan for QUEST (5 bytes); last valid start col is 31-5+1 = 27
-        for col = 0, 27 do
-            if ppu.readbyte(base + col) == QUEST[1] then
-                local ok = true
-                for i = 2, 5 do
-                    if ppu.readbyte(base + col + i - 1) ~= QUEST[i] then
-                        ok = false; break
-                    end
-                end
-                if ok then return true end
-            end
+        local row_bytes = {}
+        for col = 0, 31 do
+            row_bytes[col + 1] = ppu.readbyte(base + col)
         end
 
-        -- Scan for ADVENTUR (8 bytes); last valid start col is 31-8+1 = 24
-        for col = 0, 24 do
-            if ppu.readbyte(base + col) == ADVENTUR[1] then
-                local ok = true
-                for i = 2, 8 do
-                    if ppu.readbyte(base + col + i - 1) ~= ADVENTUR[i] then
-                        ok = false; break
+        for _, pattern in ipairs(TITLE_SINGLE_PATTERNS) do
+            if row_contains(row_bytes, pattern) then return true end
+        end
+
+        for group_index, group in ipairs(TITLE_PATTERN_GROUPS) do
+            local row_allowed = (group.row_start == nil or row >= group.row_start)
+                                and (group.row_end == nil or row <= group.row_end)
+            if row_allowed then
+                for pattern_index, pattern in ipairs(group.patterns) do
+                    if not group_matches[group_index][pattern_index]
+                       and row_contains(row_bytes, pattern) then
+                        group_matches[group_index][pattern_index] = true
                     end
                 end
-                if ok then return true end
+                if group_is_complete(group_matches[group_index], group) then return true end
             end
         end
     end

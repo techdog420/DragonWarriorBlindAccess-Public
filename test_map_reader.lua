@@ -134,6 +134,8 @@ function tests.throne_room_door_opens_from_door_ram_array()
     local details = env.map_reader.get_walkability_details(0x05, 4, 7)
     assert_equal(details.effective_walkable, true, "opened throne-room door should become walkable")
     assert_equal(details.reason, "door_open", "opened throne-room door should report door_open")
+    local snapshot = env.map_reader.get_walkability_snapshot(0x05)
+    assert_equal(snapshot[7][4], true, "walkability snapshot should honor opened throne-room door RAM")
 
     env.restore()
 end
@@ -526,6 +528,9 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     assert_equal(env.map_reader.is_walkable(0x08, 8, 18), true, "(8,18) should be walkable via Brecconary passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 8, 19), true, "(8,19) should be walkable via Brecconary passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 10, 19), false, "(10,19) should remain non-walkable until confirmed")
+    local snapshot = env.map_reader.get_walkability_snapshot(0x08)
+    assert_equal(snapshot[18][9], true, "walkability snapshot should honor Brecconary passthrough cells")
+    assert_equal(snapshot[19][10], false, "walkability snapshot should preserve unconfirmed Brecconary wall cells")
 
     env.restore()
 end

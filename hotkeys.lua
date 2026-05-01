@@ -21,6 +21,7 @@ local items      = require "items"
 local map_reader = require "map_reader"
 local route_mgr  = require "route_manager"
 local debug_tools = require "debug_tools"
+local key_combo  = require "key_combo"
 
 local M = {}
 
@@ -40,7 +41,7 @@ local object_nav_speech_queued_this_frame = false
 -- this frame (wasn't pressed last frame). This prevents the action
 -- from firing repeatedly while the key is held down.
 local function is_key_pressed(keys, key_name)
-    return keys[key_name] and not prev_keys[key_name]
+    return key_combo.is_pressed(keys, prev_keys, key_name)
 end
 
 local function get_object_nav_speech_delay()
@@ -117,7 +118,7 @@ function M.update(keys)
                               ", MP " .. mp .. " of " .. max_mp)
     end
 
-    -- Level: Read player level (default I, moved from L to free it for navigation)
+    -- Level: Read player level
     if is_key_pressed(keys, config.get("key_level")) then
         local level = memory.readbyte(addr.LEVEL)
         speak_now("Level " .. level)
@@ -521,7 +522,7 @@ function M.update(keys)
         end
     end
 
-    -- X key (default): Toggle NPC position freeze on/off.
+    -- Toggle NPC position freeze on/off.
     -- When frozen, NPC bytes are locked to their snapshotted positions so
     -- pathfinding routes stay valid even if guards wander. Turn off after
     -- reaching your destination so NPCs resume normal movement.
@@ -589,7 +590,7 @@ function M.update(keys)
         route_mgr.autowalk_to_current()
     end
 
-    -- F key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
+    -- Q key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
     if is_key_pressed(keys, config.get("key_filter")) then
         clear_object_nav_speech()
         local filter_name = objects.next_filter()

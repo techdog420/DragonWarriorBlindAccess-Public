@@ -9,6 +9,8 @@ param(
     [Parameter(Mandatory=$true)]
     [string] $RomPath,
 
+    [string] $StateSlot = "",
+
     [switch] $NoWait,
     [switch] $DryRun
 )
@@ -35,19 +37,37 @@ if ($NoWait) {
     $waitLabel = "no"
 }
 Write-Host ("  Wait:     {0}" -f $waitLabel)
+if ($StateSlot -ne "") {
+    Write-Host ("  State:    slot {0}" -f $StateSlot)
+}
+
+function Quote-ProcessArgument {
+    param([string] $Value)
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
 
 $arguments = @(
-    "--lua=$LuaPath",
-    $RomPath
+    "--lua=$LuaPath"
 )
+if ($StateSlot -ne "") {
+    $arguments += @("--load-slot", $StateSlot)
+}
+$arguments += $RomPath
 
 if ($DryRun) {
     Write-Host ("  Argument: --lua={0}" -f $LuaPath)
+    if ($StateSlot -ne "") {
+        Write-Host ("  Argument: --load-slot {0}" -f $StateSlot)
+    }
     return
 }
 
 if ($NoWait) {
-    Start-Process -FilePath $BizhawkPath -ArgumentList $arguments | Out-Null
+    $startArguments = @($arguments | ForEach-Object { Quote-ProcessArgument $_ })
+    Start-Process -FilePath $BizhawkPath -ArgumentList $startArguments | Out-Null
     return
 }
 

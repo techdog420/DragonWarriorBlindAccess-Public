@@ -19,9 +19,35 @@
 local map_reader = require "map_reader"
 local debug_tools = require "debug_tools"
 local maps = require "maps"
+local config_ok, config = pcall(require, "config")
+if not config_ok then
+    config = nil
+end
 
 local M = {}
 local runtime_block_neighbor_log = {}
+
+local function should_log_path_steps()
+    return config and config.get and config.get("pathfind_log_steps") == "true"
+end
+
+local function manhattan_distance(x1, y1, x2, y2)
+    return math.abs(x1 - x2) + math.abs(y1 - y2)
+end
+
+local function opts_with_walkability_snapshot(opts, snapshot)
+    if not snapshot then
+        return opts
+    end
+    local next_opts = {}
+    if opts then
+        for k, v in pairs(opts) do
+            next_opts[k] = v
+        end
+    end
+    next_opts.walkability_snapshot = snapshot
+    return next_opts
+end
 
 -- ============================================================
 -- Direction Constants
@@ -270,6 +296,25 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     end
 
     local directional_blocks = map_reader.get_directional_blocks and map_reader.get_directional_blocks(map_id) or {}
+    local walkability_snapshot = opts and opts.walkability_snapshot
+    if not walkability_snapshot and map_reader.get_walkability_snapshot then
+        walkability_snapshot = map_reader.get_walkability_snapshot(map_id)
+    end
+    local walkability_cache = {}
+
+    local function is_walkable_cached(x, y)
+        local row = walkability_snapshot and walkability_snapshot[y]
+        if row and row[x] ~= nil then
+            return row[x] == true
+        end
+        local k = key(x, y)
+        if walkability_cache[k] ~= nil then
+            return walkability_cache[k]
+        end
+        local walkable = map_reader.is_walkable(map_id, x, y) == true
+        walkability_cache[k] = walkable
+        return walkable
+    end
 
     local function is_fully_blocked_directionally(x, y)
         local block = directional_blocks[key(x, y)]
@@ -364,7 +409,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
             end
             return nil
         end
-        if map_reader.is_walkable(map_id, goal_x, goal_y) ~= true then
+        if not is_walkable_cached(goal_x, goal_y) then
             if on_complete then
                 on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_not_walkable"})
             end
@@ -389,8 +434,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
             return false
         end
         -- Tile walkability check
-        local walkable = map_reader.is_walkable(map_id, x, y)
-        return walkable == true
+        return is_walkable_cached(x, y)
     end
 
     -- The goal tile itself must be reachable (or be the destination
@@ -528,7 +572,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                             on_reject(nx, ny, reject_reason)
                         end
                     else
-                        if map_reader.is_walkable(map_id, nx, ny) ~= true then
+                        if not is_walkable_cached(nx, ny) then
                             -- Tile not walkable (wall, water, etc.)
                             if on_reject then on_reject(nx, ny, "not_walkable") end
                         else
@@ -606,27 +650,61 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
 
     local blocked = build_blocked_table(npc_positions, goal_x, goal_y, true)
     local adj_tiles = {
-        {x = goal_x,     y = goal_y - 1},
-        {x = goal_x,     y = goal_y + 1},
-        {x = goal_x - 1, y = goal_y    },
-        {x = goal_x + 1, y = goal_y    },
+        {x = goal_x,     y = goal_y - 1, order = 1},
+        {x = goal_x,     y = goal_y + 1, order = 2},
+        {x = goal_x - 1, y = goal_y,     order = 3},
+        {x = goal_x + 1, y = goal_y,     order = 4},
     }
+    table.sort(adj_tiles, function(a, b)
+        local a_dist = manhattan_distance(start_x, start_y, a.x, a.y)
+        local b_dist = manhattan_distance(start_x, start_y, b.x, b.y)
+        if a_dist == b_dist then
+            return a.order < b.order
+        end
+        return a_dist < b_dist
+    end)
 
     local best_path = nil
     local best_adj = nil
-    local best_adj_open_exits = -1
-    local best_adj_area = -1
+    local best_diag = nil
     local diagnostics = {}
     local directional_blocks = map_reader.get_directional_blocks and map_reader.get_directional_blocks(map_id) or {}
+    local walkability_snapshot = opts and opts.walkability_snapshot
+    if not walkability_snapshot and map_reader.get_walkability_snapshot then
+        walkability_snapshot = map_reader.get_walkability_snapshot(map_id)
+    end
+    local path_opts = opts_with_walkability_snapshot(opts, walkability_snapshot)
+    local use_adjacent_metrics = not opts or opts.use_adjacent_metrics ~= false
+
+    local function is_candidate_walkable(x, y)
+        local row = walkability_snapshot and walkability_snapshot[y]
+        if row and row[x] ~= nil then
+            return row[x] == true
+        end
+        return map_reader.is_walkable(map_id, x, y) == true
+    end
+
+    local function ensure_adjacent_metrics(diag)
+        if diag.reachable_area == nil then
+            diag.reachable_area = count_reachable_area(map_id, diag.x, diag.y, blocked, directional_blocks)
+        end
+        if diag.open_exits == nil then
+            diag.open_exits = count_open_exits(map_id, diag.x, diag.y, blocked, directional_blocks)
+        end
+        return diag.reachable_area, diag.open_exits
+    end
+
     for _, adj in ipairs(adj_tiles) do
-        local walkable = map_reader.is_walkable(map_id, adj.x, adj.y)
+        local walkable = is_candidate_walkable(adj.x, adj.y)
         local blocker = blocked[adj.x .. "," .. adj.y]
+        local lower_bound = manhattan_distance(start_x, start_y, adj.x, adj.y)
         local diag = {
             x = adj.x,
             y = adj.y,
             walkable = walkable == true,
             blocker = blocker,
             path_found = false,
+            lower_bound = lower_bound,
             reachable_area = nil,
             open_exits = nil,
         }
@@ -637,39 +715,59 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
                 map_id, adj.x, adj.y))
         end
         if walkable == true and (not blocker or type(blocker) == "table") then
-            local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, opts)
-            local open_exits = count_open_exits(map_id, adj.x, adj.y, blocked, directional_blocks)
-            local reachable_area = count_reachable_area(map_id, adj.x, adj.y, blocked, directional_blocks)
-            diag.path_found = path ~= nil
-            diag.reachable_area = reachable_area
-            diag.open_exits = open_exits
-            if path then
+            if best_path and lower_bound > #best_path then
+                diag.skipped_reason = "longer_than_best"
                 debug_tools.debug(
-                    "  path length=" .. #path
-                    .. " steps: " .. M.format_path(path)
-                    .. " reachable_area=" .. reachable_area
-                    .. " open_exits=" .. open_exits)
+                    "  skip path search lower_bound=" .. lower_bound
+                    .. " best_len=" .. #best_path
+                    .. " reason=longer_than_best")
             else
-                debug_tools.debug(
-                    "  no path to this adj tile (reachable_area=" .. reachable_area
-                    .. " open_exits=" .. open_exits .. ")")
-            end
-            if path and (
-                not best_path
-                or #path < #best_path
-                or (#path == #best_path and reachable_area > best_adj_area)
-                or (#path == #best_path and reachable_area == best_adj_area and open_exits > best_adj_open_exits)
-            ) then
-                best_path = path
-                best_adj = adj
-                best_adj_open_exits = open_exits
-                best_adj_area = reachable_area
+                local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, path_opts)
+                diag.path_found = path ~= nil
+                diag.path_length = path and #path or nil
+                if path then
+                    local path_info = "  path length=" .. #path .. " steps: " .. M.format_path(path)
+                    if not best_path or #path < #best_path then
+                        best_path = path
+                        best_adj = adj
+                        best_diag = diag
+                        debug_tools.debug(path_info)
+                    elseif #path == #best_path then
+                        if use_adjacent_metrics then
+                            local reachable_area, open_exits = ensure_adjacent_metrics(diag)
+                            local current_best_area, current_best_open_exits = ensure_adjacent_metrics(best_diag)
+                            debug_tools.debug(
+                                path_info
+                                .. " reachable_area=" .. reachable_area
+                                .. " open_exits=" .. open_exits)
+                            if reachable_area > current_best_area
+                                or (reachable_area == current_best_area and open_exits > current_best_open_exits) then
+                                best_path = path
+                                best_adj = adj
+                                best_diag = diag
+                            end
+                        else
+                            debug_tools.debug(path_info .. " reason=equal_length_keep_first")
+                        end
+                    else
+                        debug_tools.debug(path_info .. " reason=longer_than_best")
+                    end
+                else
+                    debug_tools.debug("  no path to this adj tile")
+                end
             end
         end
         diagnostics[#diagnostics + 1] = diag
     end
 
     if not best_path then
+        if use_adjacent_metrics then
+            for _, diag in ipairs(diagnostics) do
+                if diag.walkable == true and not diag.blocker then
+                    ensure_adjacent_metrics(diag)
+                end
+            end
+        end
         return nil, nil, nil, diagnostics
     end
 
@@ -722,9 +820,11 @@ function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_po
         -- Log the chosen path with tile types for each step
         if best_adj then
             debug_tools.info("pathfind chosen adj=(" .. best_adj.x .. "," .. best_adj.y .. ") path=" .. M.format_path(best_path))
-            for i, step in ipairs(best_path) do
-                local tt = map_reader.get_tile_type(map_id, step.x, step.y)
-                debug_tools.debug("  step " .. i .. ": (" .. step.x .. "," .. step.y .. ") dir=" .. step.direction .. " tile=" .. tostring(tt))
+            if should_log_path_steps() then
+                for i, step in ipairs(best_path) do
+                    local tt = map_reader.get_tile_type(map_id, step.x, step.y)
+                    debug_tools.debug("  step " .. i .. ": (" .. step.x .. "," .. step.y .. ") dir=" .. step.direction .. " tile=" .. tostring(tt))
+                end
             end
         end
         return "Approach: " .. M.format_path(best_path), face, best_path, diagnostics

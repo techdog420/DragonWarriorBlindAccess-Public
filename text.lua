@@ -187,7 +187,7 @@ function M.read_dialogue_window_filtered(scroll_tiles, start_row)
     for i = 0, 10 do
         local row = (start_row + i) % 30
         local decoded = M.decode_row(row, scroll_tiles)
-        if decoded ~= "" and decoded:find("[a-z]") then
+        if decoded ~= "" and decoded:find("[a-z]") and not M.is_status_text(decoded) then
             lines[#lines + 1] = decoded
         end
     end

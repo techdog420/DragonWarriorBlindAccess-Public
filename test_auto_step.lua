@@ -4,6 +4,7 @@
 local original_preload = {}
 local original_loaded = {}
 local original_joypad = _G.joypad
+local original_memory = _G.memory
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -25,11 +26,14 @@ local function make_env(opts)
     local published = {}
     local live_joy = {}
     local sticky_joy = {}
+    local movement_subpixel = opts.movement_subpixel or 0x10
 
     local module_names = {
+        "addresses",
         "auto_step",
         "config",
         "debug_tools",
+        "emulator_compat",
         "event_bus",
         "navigation",
         "tolk",
@@ -42,6 +46,9 @@ local function make_env(opts)
     package.preload["config"] = function()
         return {
             get = function(key)
+                if opts.config_values and opts.config_values[key] ~= nil then
+                    return opts.config_values[key]
+                end
                 if key == "enable_auto_step" then
                     return "true"
                 elseif key == "auto_step_timeout" then
@@ -49,6 +56,18 @@ local function make_env(opts)
                 end
                 return nil
             end,
+        }
+    end
+
+    package.preload["addresses"] = function()
+        return {
+            MOVEMENT_SUBPIXEL = 0x003D,
+        }
+    end
+
+    package.preload["emulator_compat"] = function()
+        return {
+            is_bizhawk = opts.is_bizhawk == true,
         }
     end
 
@@ -111,6 +130,14 @@ local function make_env(opts)
             end
         end,
     }
+    _G.memory = {
+        readbyte = function(address)
+            if address == 0x003D then
+                return movement_subpixel
+            end
+            return 0
+        end,
+    }
 
     local auto_step = require "auto_step"
 
@@ -124,6 +151,9 @@ local function make_env(opts)
         set_joy = function(buttons)
             live_joy = buttons or {}
         end,
+        set_subpixel = function(value)
+            movement_subpixel = value
+        end,
         update = function(can_walk)
             frame = frame + 1
             auto_step.update(can_walk)
@@ -131,6 +161,7 @@ local function make_env(opts)
         restore = function()
             restore_modules(module_names)
             _G.joypad = original_joypad
+            _G.memory = original_memory
         end,
     }
 end
@@ -266,6 +297,105 @@ function tests.inject_window_does_not_neutralize_live_direction()
     assert_truthy(
         env.injected[13] == nil and env.injected[14] == nil,
         "auto_step should not emit neutral joypad frames over a live held direction after the inject window"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_neutralizes_after_inject_window()
+    local env = make_env()
+    env.auto_step.start_route({"right"})
+
+    for _ = 1, 14 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[14] and not has_any_direction(env.injected[14]),
+        "queued route should actively clear sticky D-pad state after the inject window"
+    )
+    env.restore()
+end
+
+function tests.manual_auto_step_neutralizes_after_inject_window_when_released()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 13 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[13] and not has_any_direction(env.injected[13]),
+        "manual auto-step should clear stale injected D-pad after the inject window"
+    )
+    env.restore()
+end
+
+function tests.subpixel_release_can_be_disabled()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "false",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[2] and env.injected[2].right,
+        "subpixel changes should not release D-pad when the option is disabled"
+    )
+
+    env.restore()
+end
+
+function tests.timeout_retry_resets_movement_started_flag()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_timeout = "4",
+            auto_step_block_retry_limit = "1",
+            auto_step_release_on_movement_start = "true",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[6] and env.injected[6].right,
+        "timeout retry should inject a real held direction after an early movement-start release"
+    )
+
+    env.restore()
+end
+
+function tests.movement_start_subpixel_releases_injected_direction()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[2] and not has_any_direction(env.injected[2]),
+        "auto_step should release D-pad as soon as movement subpixel changes"
     )
 
     env.restore()
@@ -561,6 +691,68 @@ function tests.queued_route_post_step_release_ignores_stale_direction_blip()
         #right_sequences >= 2,
         "a stale direction blip during queued-route post-step release should not clear the route"
     )
+
+    env.restore()
+end
+
+function tests.queued_route_direction_change_waits_for_default_turn_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 12 do
+        env.update(true)
+    end
+
+    for frame = 3, 14 do
+        local buttons = env.injected[frame]
+        assert_truthy(
+            not (buttons and buttons.down),
+            "queued route should wait before injecting a different direction after a completed step"
+        )
+    end
+
+    local saw_down = false
+    for _ = 1, 12 do
+        env.update(true)
+    end
+    for frame = 15, 30 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.down then
+            saw_down = true
+            break
+        end
+    end
+
+    assert_truthy(
+        saw_down,
+        "queued route should resume with the new direction after the turn settle gap"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_turn_settle_actively_neutralizes_stale_direction()
+    local env = make_env()
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    for frame = 3, 10 do
+        assert_truthy(
+            env.injected[frame] and not has_any_direction(env.injected[frame]),
+            "queued route turn settle should actively send neutral D-pad frames until the next direction starts"
+        )
+    end
 
     env.restore()
 end

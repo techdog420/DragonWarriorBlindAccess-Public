@@ -26,6 +26,14 @@ local config      = require "config"
 local tolk        = require "tolk"
 local debug_tools = require "debug_tools"
 local event_bus   = require "event_bus"
+local addr_ok, addr = pcall(require, "addresses")
+if not addr_ok then
+    addr = nil
+end
+local compat_ok, emulator_compat = pcall(require, "emulator_compat")
+if not compat_ok then
+    emulator_compat = nil
+end
 
 local M = {}
 
@@ -93,6 +101,8 @@ local auto_start_y = nil
 local auto_timeout_retries = 0
 local auto_turn_represses = 0
 local auto_inject_limit = nil
+local auto_start_subpixel = nil
+local auto_movement_started = false
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
@@ -141,6 +151,11 @@ local TURN_REPRESS_INJECT_LIMIT = INJECT_LIMIT
 -- chains into a second tile of movement.
 local TURN_REPRESS_RELEASE_FRAMES = 2
 local ROUTE_DRIFT_CATCHUP_LIMIT = 3
+-- Tile coordinates can update before the walking animation and old D-pad
+-- state have fully settled. Queued auto-walk can chain straight segments
+-- immediately, but direction changes need a short pause or the engine may
+-- continue the previous direction for one more cell.
+local ROUTE_TURN_SETTLE_FRAMES = 16
 
 -- Before reporting a blocked move, allow a few internal retries of the same
 -- step from the same tile/direction. Live probing on Map 0x04 showed that
@@ -188,6 +203,15 @@ local function get_block_retry_limit()
     return config_int("auto_step_block_retry_limit", BLOCK_RETRY_LIMIT, 0, 10)
 end
 
+local function get_route_turn_settle_frames()
+    return config_int("auto_step_route_turn_settle_frames", ROUTE_TURN_SETTLE_FRAMES, 0, 60)
+end
+
+local function should_release_on_movement_start()
+    local configured = config.get("auto_step_release_on_movement_start")
+    return configured == "true" or configured == "1" or configured == "yes"
+end
+
 -- ============================================================
 -- Helper Functions
 -- ============================================================
@@ -205,7 +229,7 @@ local function is_any_direction_pressed(joy)
 end
 
 local function copy_non_direction_buttons(joy)
-    local buttons = {}
+    local buttons = {up = false, down = false, left = false, right = false}
     if joy.A then buttons.A = true end
     if joy.B then buttons.B = true end
     if joy.start then buttons.start = true end
@@ -215,6 +239,17 @@ end
 
 local function neutralize_direction(joy)
     joypad.set(1, copy_non_direction_buttons(joy or {}))
+end
+
+local function read_movement_subpixel()
+    if not addr or not addr.MOVEMENT_SUBPIXEL or not memory or not memory.readbyte then
+        return nil
+    end
+    local ok, value = pcall(memory.readbyte, addr.MOVEMENT_SUBPIXEL)
+    if ok then
+        return value
+    end
+    return nil
 end
 
 local function clear_route()
@@ -242,6 +277,8 @@ local function begin_step(dir, px, py, state)
     auto_timeout_retries = state and state.timeout_retries or 0
     auto_turn_represses = state and state.turn_represses or 0
     auto_inject_limit = state and state.inject_limit or get_inject_limit()
+    auto_start_subpixel = read_movement_subpixel()
+    auto_movement_started = false
     pending_repress = nil
     tracked_dir = nil
     debug_tools.debug(string.format(
@@ -292,7 +329,24 @@ local function reset_active_step()
     auto_timeout_retries = 0
     auto_turn_represses = 0
     auto_inject_limit = nil
+    auto_start_subpixel = nil
+    auto_movement_started = false
     clear_pending_repress()
+end
+
+local function route_settle_after_step(completed_dir)
+    local settle_frames = route_settle_default or 0
+    local next_dir = route_steps and route_steps[route_index]
+    if next_dir and completed_dir and next_dir ~= completed_dir then
+        local turn_settle = get_route_turn_settle_frames()
+        if turn_settle > settle_frames then
+            debug_tools.debug(string.format(
+                "auto_step route turn settle prev=%s next=%s frames=%d",
+                tostring(completed_dir), tostring(next_dir), turn_settle))
+            settle_frames = turn_settle
+        end
+    end
+    return settle_frames
 end
 
 local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
@@ -485,6 +539,7 @@ function M.update(can_walk)
         if route_steps then
             route_last_x = px
             route_last_y = py
+            route_settle_frames = route_settle_after_step(completed.dir)
         end
         emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress")
         for _, dir in ipairs(DIRECTIONS) do
@@ -527,6 +582,7 @@ function M.update(can_walk)
     -- Phase 1: Check if auto-hold should stop
     -- --------------------------------------------------------
     if auto_dir then
+        local current_subpixel = read_movement_subpixel()
         -- Cancel if player pressed a DIFFERENT direction (they want
         -- to go another way). Pressing the SAME direction we're already
         -- auto-holding is fine — just let it continue.
@@ -583,13 +639,30 @@ function M.update(can_walk)
             if route_steps then
                 route_last_x = px
                 route_last_y = py
-                route_settle_frames = route_settle_default or 0
+                route_settle_frames = route_settle_after_step(completed_dir)
             end
             emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold")
+        elseif should_release_on_movement_start()
+           and auto_start_subpixel ~= nil
+           and current_subpixel ~= nil
+           and not auto_movement_started
+           and current_subpixel ~= auto_start_subpixel then
+            auto_movement_started = true
+            debug_tools.debug(string.format(
+                "auto_step movement started dir=%s from=(%d,%d) frame=%d subpixel=0x%02X->0x%02X queued_route=%s",
+                tostring(auto_dir),
+                auto_start_x or -1,
+                auto_start_y or -1,
+                auto_frames or -1,
+                auto_start_subpixel or -1,
+                current_subpixel or -1,
+                tostring(route_steps ~= nil)))
+            neutralize_direction(joy)
         -- If the first press only turned the player, release for one frame and
         -- issue a fresh press instead of waiting for the full blocked timeout.
         elseif auto_frames >= get_turn_repress_delay()
-           and auto_turn_represses < get_turn_repress_limit() then
+           and auto_turn_represses < get_turn_repress_limit()
+           and not auto_movement_started then
             debug_tools.debug(string.format(
                 "auto_step schedule turn repress dir=%s from=(%d,%d) frame=%d",
                 tostring(auto_dir), auto_start_x or -1, auto_start_y or -1, auto_frames))
@@ -604,6 +677,8 @@ function M.update(can_walk)
                 -- escalate retries back to a full inject window before treating
                 -- the destination as blocked.
                 auto_inject_limit = get_inject_limit()
+                auto_start_subpixel = read_movement_subpixel()
+                auto_movement_started = false
                 joypad.set(1, {[auto_dir] = true})
                 debug_tools.debug(string.format(
                     "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d",
@@ -663,8 +738,15 @@ function M.update(can_walk)
             -- and just wait for position to change. This prevents the game
             -- from seeing the direction held when the step finishes and
             -- immediately starting a second step (overshoot).
-            if auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
+            if auto_movement_started then
+                neutralize_direction(joy)
+            elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
                 joypad.set(1, {[auto_dir] = true})
+            elseif route_steps or not is_any_direction_pressed(joy) then
+                -- Actively release after the initiation window so a sticky
+                -- joypad.set cannot commit the next tile. Preserve a real
+                -- live hold for manual movement; queued routes own their input.
+                neutralize_direction(joy)
             end
             auto_frames = auto_frames + 1
         end
@@ -692,6 +774,7 @@ function M.update(can_walk)
             end
             return
         end
+        neutralize_direction(joy)
         local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
         if consumed > 0 then
             route_settle_frames = route_settle_default or 0

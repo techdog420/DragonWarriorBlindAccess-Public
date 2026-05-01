@@ -93,6 +93,84 @@ local function cell_key(x, y)
     return x .. "," .. y
 end
 
+local function log_route_plan_timing(plan, elapsed_ms)
+    if not plan or elapsed_ms < 25 then
+        return
+    end
+    local target = plan.target or {}
+    debug_tools.info(string.format(
+        "ROUTE_PLAN_TIMING map=0x%02X start=(%d,%d) target_id=%s target_name=%s mode=%s result=%s path_len=%d ms=%.3f",
+        plan.map_id or -1,
+        plan.start_x or -1,
+        plan.start_y or -1,
+        tostring(target.id or "-"),
+        tostring(target.name or "-"),
+        tostring(plan.path_mode or "-"),
+        tostring(plan.result or "-"),
+        plan.path and #plan.path or 0,
+        elapsed_ms))
+end
+
+local function config_bool(key, default)
+    local value = config.get(key)
+    if value == nil then
+        return default
+    end
+    value = tostring(value):lower()
+    if value == "true" or value == "1" or value == "yes" then
+        return true
+    end
+    if value == "false" or value == "0" or value == "no" then
+        return false
+    end
+    return default
+end
+
+local function should_refresh_npcs_for_plan(opts)
+    opts = opts or {}
+    if opts.skip_npcs then
+        return false
+    end
+    if opts.refresh_npcs ~= nil then
+        return opts.refresh_npcs ~= false
+    end
+    if emulator_compat.is_bizhawk == true then
+        return config_bool("bizhawk_route_refresh_npcs", false)
+    end
+    return true
+end
+
+local function should_freeze_npcs_for_autowalk(opts)
+    opts = opts or {}
+    if opts.freeze_npcs ~= nil then
+        return opts.freeze_npcs ~= false
+    end
+    if emulator_compat.is_bizhawk == true then
+        return config_bool("bizhawk_autowalk_freeze_npcs", false)
+    end
+    return true
+end
+
+local function should_refresh_objects_after_route()
+    if emulator_compat.is_bizhawk == true then
+        return config_bool("bizhawk_route_cleanup_refresh_objects", false)
+    end
+    return true
+end
+
+local function adjacent_path_opts(opts)
+    opts = opts or {}
+    if opts.use_adjacent_metrics ~= nil or opts.survey_safe == true then
+        return opts
+    end
+    local next_opts = {}
+    for k, v in pairs(opts) do
+        next_opts[k] = v
+    end
+    next_opts.use_adjacent_metrics = false
+    return next_opts
+end
+
 local function parse_cell_key(k)
     local x, y = tostring(k):match("^(%-?%d+),(%-?%d+)$")
     if not x then return nil, nil end
@@ -797,7 +875,7 @@ local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, op
     end
 
     local result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
-        map_id, start_x, start_y, obj.x, obj.y, blocking)
+        map_id, start_x, start_y, obj.x, obj.y, blocking, adjacent_path_opts(opts))
     if result == "No path found" then
         return current
     end
@@ -1082,6 +1160,7 @@ end
 -- object. Returns (result, face_dir, path, message, map_id).
 local function plan_path_to_object(obj, opts)
     opts = opts or {}
+    local plan_start_clock = os.clock()
     local map_id, px, py = resolve_plan_origin(opts)
     -- `survey_safe` is used by map_survey for classification/retry behavior,
     -- but the actual movement plan must still respect frozen NPC blockers.
@@ -1093,7 +1172,9 @@ local function plan_path_to_object(obj, opts)
         -- Only refresh NPCs when we're about to rebuild blocking from live state.
         -- Preview callers that pass a precomputed blocking table already encode
         -- the NPC snapshot they want.
-        objects.update_npcs()
+        if should_refresh_npcs_for_plan(opts) then
+            objects.update_npcs()
+        end
         blocking = M.build_path_blocking(map_id, skip_npcs and {skip_npcs = true} or nil)
     end
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
@@ -1101,7 +1182,8 @@ local function plan_path_to_object(obj, opts)
     local no_path_reason = nil
     local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
     if path_mode == "adjacent" then
-        result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(map_id, px, py, obj.x, obj.y, blocking)
+        result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
+            map_id, px, py, obj.x, obj.y, blocking, adjacent_path_opts(opts))
     else
         if goal_block_reason == "npc" then
             result, face_dir, path = "No path found", nil, nil
@@ -1140,6 +1222,7 @@ local function plan_path_to_object(obj, opts)
     if debug_tools.DEBUG_MODE and opts.store_debug_path ~= false then
         path_debug.store_path(map_id, px, py, obj.x, obj.y, plan.path, nil)
     end
+    log_route_plan_timing(plan, (os.clock() - plan_start_clock) * 1000)
     return plan
 end
 
@@ -1181,15 +1264,15 @@ end
 -- ============================================================
 
 -- pathfind_to_current(): Plan a path to the currently selected object.
--- Announces the result via speech. Freezes NPCs before planning so the
--- announced route matches the live route state.
+-- Announces the result via speech. This is a preview command, so it does not
+-- hold the NPC freeze after planning. Under BizHawk it also avoids a forced
+-- live NPC refresh by default because those RAM reads audibly hitch the emulator.
 function M.pathfind_to_current()
     local obj = objects.current_object()
     if not obj then
         tolk.output_interrupt("No object selected")
         return
     end
-    freeze_npcs_for_pathing()
     last_pathfind_obj = obj
     local plan = plan_path_to_object(obj)
     tolk.output_interrupt(plan.message)
@@ -1223,7 +1306,11 @@ function M.autowalk_to_object(obj, opts)
         end
     end
     local map_id = nav.get_position()
-    freeze_npcs_for_pathing()
+    if should_freeze_npcs_for_autowalk(opts) then
+        freeze_npcs_for_pathing()
+    else
+        debug_tools.debug("AUTO_WALK: NPC freeze skipped for this route")
+    end
     last_pathfind_obj = obj
     local plan = plan_path_to_object(obj, opts)
     plan.status = "planned"
@@ -1301,8 +1388,9 @@ function M.autowalk_to_object(obj, opts)
 end
 
 -- autowalk_to_current(): Plan and auto-walk to the currently selected object.
--- Only works on interior maps (not overworld). NPCs are frozen during route
--- planning and released when the route completes or fails.
+-- Only works on interior maps (not overworld). FCEUX keeps the old NPC-freeze
+-- behavior; BizHawk skips per-frame NPC RAM freezing by default for performance
+-- and relies on reroute handling if an NPC moves into the path.
 function M.autowalk_to_current()
     local obj = objects.current_object()
     if not obj then
@@ -1373,7 +1461,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
             from_y = from_y,
             blocked_dir = blocked_dir,
         })
-        clear_active_route_context("reroute failure limit reached", true)
+        clear_active_route_context("reroute failure limit reached", should_refresh_objects_after_route())
         tolk.output_interrupt("Cannot reach destination. Pathfinding cancelled.")
         return
     end
@@ -1387,7 +1475,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
             from_y = from_y,
             blocked_dir = blocked_dir,
         })
-        clear_active_route_context("no path found on reroute", true)
+        clear_active_route_context("no path found on reroute", should_refresh_objects_after_route())
         tolk.output_interrupt("No path found. Pathfinding cancelled.")
         return
     end
@@ -1403,7 +1491,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     if plan.path and #plan.path > 0 then
         queue_path_steps(plan.path, {settle_frames = active_route_settle_frames})
     else
-        clear_active_route_context("reroute reached destination", true)
+        clear_active_route_context("reroute reached destination", should_refresh_objects_after_route())
     end
 end
 
@@ -1457,13 +1545,13 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
             from_y = from_y,
             blocked_dir = dir,
         })
-        clear_active_route_context("no path found after seam brute force", true)
+        clear_active_route_context("no path found after seam brute force", should_refresh_objects_after_route())
         tolk.output_interrupt("No path found after seam crossing. Pathfinding cancelled.")
         return
     end
 
     if not plan.path or #plan.path == 0 then
-        clear_active_route_context("seam brute force reached destination", true)
+        clear_active_route_context("seam brute force reached destination", should_refresh_objects_after_route())
         tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
             target,
             plan.result,
@@ -1473,7 +1561,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     end
 
     if not queue_path_steps(plan.path, {settle_frames = active_route_settle_frames}) then
-        clear_active_route_context("queue failure after seam brute force", true)
+        clear_active_route_context("queue failure after seam brute force", should_refresh_objects_after_route())
         tolk.output_interrupt("Seam crossed, but auto-walk could not queue the follow-up route.")
         return
     end
@@ -1486,12 +1574,12 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
 end
 
 auto_step.on_route_complete = function()
-    clear_active_route_context("autowalk route complete", true)
+    clear_active_route_context("autowalk route complete", should_refresh_objects_after_route())
 end
 
 auto_step.on_route_cancelled = function(cancel_data)
     local reason = cancel_data and cancel_data.reason or "auto_step_cancelled"
-    clear_active_route_context("auto_step route cancelled: " .. tostring(reason), true)
+    clear_active_route_context("auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
 end
 
 -- ============================================================

@@ -6,6 +6,7 @@
 -- limited to a configurable allowlist of gameplay/QoL shortcut settings.
 
 local M = {}
+local key_combo = require "key_combo"
 
 local DEFAULT_BIZHAWK_ALLOWLIST = table.concat({
     "key_object_prev",
@@ -34,7 +35,7 @@ local function split_csv(value)
     return entries
 end
 
-local function build_allowed_keys(config)
+local function build_allowed_keys(config, keys)
     local allowlist = config.get("bizhawk_keyboard_hotkey_allowlist")
     if allowlist == nil or trim(allowlist) == "" then
         allowlist = DEFAULT_BIZHAWK_ALLOWLIST
@@ -46,7 +47,9 @@ local function build_allowed_keys(config)
         if key_name ~= nil then
             key_name = trim(key_name)
             if key_name ~= "" then
-                allowed[key_name] = true
+                if not key_combo.is_combo(key_name) or key_combo.is_down(keys, key_name) then
+                    key_combo.add_aliases(allowed, key_name)
+                end
             end
         end
     end
@@ -59,7 +62,7 @@ function M.filter_bizhawk_keys(keys, config)
         return keys
     end
 
-    local allowed = build_allowed_keys(config)
+    local allowed = build_allowed_keys(config, keys)
     local filtered = {}
     for key_name, pressed in pairs(keys) do
         if pressed and allowed[key_name] then

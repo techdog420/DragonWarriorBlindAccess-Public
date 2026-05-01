@@ -22,11 +22,13 @@ local function make_stub_env()
     local height = 0
     local directional_blocks = {}
     local logs = {}
+    local walkable_calls = 0
 
     local function set_grid(new_width, new_height, blocked_cells)
         width = new_width
         height = new_height
         grid = {}
+        walkable_calls = 0
         for y = 0, height - 1 do
             for x = 0, width - 1 do
                 grid[x .. "," .. y] = true
@@ -81,6 +83,7 @@ local function make_stub_env()
                 return width, height
             end,
             is_walkable = function(_, x, y)
+                walkable_calls = walkable_calls + 1
                 if x < 0 or x >= width or y < 0 or y >= height then
                     return false
                 end
@@ -123,6 +126,9 @@ local function make_stub_env()
         logs = logs,
         pathfinder = pathfinder,
         path_debug = path_debug,
+        get_walkable_call_count = function()
+            return walkable_calls
+        end,
         restore = function()
             restore_modules(module_names)
         end,
@@ -309,6 +315,81 @@ function tests.adjacent_pathing_prefers_larger_reachable_area_on_equal_length_ti
     assert_truthy(path ~= nil and #path == 3, "adjacent path should contain the chosen route")
     assert_equal(path[#path].x, 1, "tie-breaker should choose the equal-length landing tile with the larger reachable area")
     assert_equal(path[#path].y, 2, "tie-breaker should avoid the smaller reachable-area pocket")
+
+    env.restore()
+end
+
+function tests.adjacent_pathing_can_skip_equal_length_metrics()
+    local env = make_stub_env()
+    env.set_grid(6, 5, {
+        {x = 2, y = 2},
+        {x = 1, y = 1},
+        {x = 3, y = 1},
+        {x = 3, y = 0},
+        {x = 2, y = 0},
+        {x = 4, y = 1},
+        {x = 2, y = 3},
+    })
+
+    local path, _, _, diagnostics = env.pathfinder.find_route_to_adjacent(
+        0x04,
+        0, 0,
+        2, 2,
+        {["2,2"] = true},
+        {use_adjacent_metrics = false}
+    )
+
+    assert_truthy(path ~= nil, "adjacent pathing should still find a route when metrics are disabled")
+    for _, diag in ipairs(diagnostics or {}) do
+        assert_equal(diag.reachable_area, nil, "metrics-disabled adjacent pathing should not compute reachable area")
+        assert_equal(diag.open_exits, nil, "metrics-disabled adjacent pathing should not compute open exits")
+    end
+
+    env.restore()
+end
+
+function tests.adjacent_pathing_skips_candidates_that_cannot_beat_current_best()
+    local env = make_stub_env()
+    env.set_grid(7, 7)
+
+    local path, face_dir, best_adj, diagnostics = env.pathfinder.find_route_to_adjacent(
+        0x04,
+        0, 5,
+        4, 5,
+        {["4,5"] = true}
+    )
+
+    assert_truthy(path ~= nil and #path == 3, "adjacent route should find the shortest reachable landing")
+    assert_equal(face_dir, "east", "route should face the occupied goal from the chosen landing")
+    assert_equal(best_adj.x, 3, "west landing should be chosen as the closest adjacent tile")
+    assert_equal(best_adj.y, 5, "west landing should be chosen as the closest adjacent tile")
+
+    local skipped = false
+    for _, diag in ipairs(diagnostics or {}) do
+        if diag.skipped_reason == "longer_than_best" then
+            skipped = true
+            assert_equal(diag.path_found, false, "skipped candidates should not run A*")
+            assert_equal(diag.reachable_area, nil, "skipped candidates should not run area diagnostics")
+            assert_equal(diag.open_exits, nil, "skipped candidates should not run exit diagnostics")
+        end
+    end
+
+    assert_truthy(skipped, "at least one longer adjacent candidate should be pruned")
+
+    env.restore()
+end
+
+function tests.find_path_caches_walkability_per_search()
+    local env = make_stub_env()
+    env.set_grid(8, 8)
+
+    local path = env.pathfinder.find_path(0x04, 0, 0, 7, 7, {})
+
+    assert_truthy(path ~= nil and #path > 0, "test setup should find an open-grid path")
+    assert_truthy(
+        env.get_walkable_call_count() <= 64,
+        "A* should not ask map_reader.is_walkable more than once per in-bounds cell during one search"
+    )
 
     env.restore()
 end

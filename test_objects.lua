@@ -232,6 +232,25 @@ function tests.interior_map_change_defers_npcs_until_next_frame()
     env.restore()
 end
 
+function tests.deferred_map_entry_refresh_is_visible_to_main_loop()
+    local env = make_env()
+
+    env.set_position(0x08, 15, 15)
+    env.set_terrain_offset(0x10)
+    assert_equal(env.objects.needs_refresh(0x08), true, "new map should request an immediate object refresh")
+
+    env.objects.check_refresh(0x08)
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "transition-frame object list should still defer NPC parsing")
+    assert_equal(env.objects.needs_refresh(0x08), true, "deferred NPC rebuild should bypass main-loop throttling")
+
+    env.objects.check_refresh(0x08)
+    assert_equal(env.objects.get_count(), 1, "next refresh should populate active town NPCs")
+    assert_equal(env.objects.needs_refresh(0x08), false, "settled object list should return to periodic refresh timing")
+
+    env.restore()
+end
+
 function tests.world_map_anchor_places_tantegel_nearest_to_live_probe_position()
     local env = make_env()
 

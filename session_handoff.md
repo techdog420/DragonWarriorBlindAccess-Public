@@ -1,11 +1,12 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-04-30
+Updated: 2026-05-01
 
 ## Current Focus
 
-The project has pivoted to BizHawk as the default emulator while preserving
-FCEUX as an explicit fallback.
+The BizHawk emulator swap is now good enough to call successful. Continue from
+BizHawk as the normal playtesting path while preserving FCEUX as an explicit
+fallback.
 
 Reason for the decision:
 - FCEUX has recurring keyboard/input weirdness, especially stale Alt/menu focus.
@@ -21,7 +22,8 @@ primary path unless the task explicitly targets FCEUX.
 ## Current Baseline
 
 Latest BizHawk transition checkpoint:
-- Commit: `a5386bc Make BizHawk the default emulator path`
+- Pending wrap-up commit: BizHawk stabilization and main-menu/playtesting polish
+- Previous committed baseline: `a5386bc Make BizHawk the default emulator path`
 
 Previous FCEUX keyboard bridge checkpoint:
 - Commit: `a79bd6f Stabilize FCEUX keyboard input bridge`
@@ -49,9 +51,9 @@ The BizHawk default transition contains:
   state triggered diagnostic speech during dialogue.
 - When full BizHawk hotkeys are off, `hotkey_filter.lua` still permits the
   config-driven `bizhawk_keyboard_hotkey_allowlist`; default entries restore
-  object explorer/navigation shortcuts: J/K/L/O/U/F/X plus `N` tile/coordinate
-  diagnostics.
-- The `N` tile/coordinate hotkey now speaks only the compact coordinate/tile
+  object explorer/navigation shortcuts: J/K/L/O/U/Q, `Shift+F` NPC freeze, and
+  `Ctrl+N` tile/coordinate diagnostics.
+- The `Ctrl+N` tile/coordinate hotkey now speaks only the compact coordinate/tile
   summary by default. The old full `tile_diag.txt` dump is behind
   `tile_diag_dump_on_hotkey=true` because it can stall BizHawk audio.
 - `state.lua` now avoids BizHawk's slow `$6003` sprite-CHR cartridge work-RAM
@@ -68,7 +70,7 @@ The BizHawk default transition contains:
   default (`bizhawk_object_reachability_descriptions=false`). Object navigator
   keys should speak name/direction quickly; `pathfind` and `auto_walk` still do
   real route work when requested.
-- J/K/L/F object-browser hotkeys explicitly request brief descriptions:
+- J/K/L/Q object-browser hotkeys explicitly request brief descriptions:
   name/direction/count only, with no reachability path preview and no raw
   player/object coordinate suffix.
 - Rapid previous/next object hotkeys now coalesce speech through
@@ -118,6 +120,89 @@ Lightweight checks passed during the BizHawk default transition:
   config.lua test_hotkeys.lua`, `lua test_hotkeys.lua`,
   `lua test_route_manager.lua`, `lua test_objects.lua`, and
   `git diff --check`.
+- 2026-04-30 route-turn follow-up after the user's first-town playtest passed:
+  `luac -p auto_step.lua pathfinder.lua route_manager.lua config.lua
+  test_auto_step.lua`, `lua test_auto_step.lua`, `lua test_route_manager.lua`,
+  `lua test_pathfinder.lua`, and `git diff --check`. The pathfinder test still
+  prints the known WSL-side Tolk/`cmd` warning before passing.
+- 2026-04-30 route-planning/object-refresh follow-up passed:
+  `luac -p pathfinder.lua objects.lua main.lua test_pathfinder.lua
+  test_objects.lua`, `lua test_pathfinder.lua`, `lua test_objects.lua`,
+  `lua test_route_manager.lua`, `lua test_map_survey.lua`,
+  `lua test_auto_step.lua`, and `git diff --check`. `test_pathfinder.lua` still
+  prints the known WSL-side Tolk/`cmd` warning before passing.
+- 2026-04-30 route-lag/drift follow-up passed: `luac -p auto_step.lua
+  route_manager.lua config.lua pathfinder.lua map_reader.lua objects.lua
+  main.lua test_auto_step.lua test_route_manager.lua test_pathfinder.lua
+  test_map_reader.lua test_objects.lua test_map_survey.lua`,
+  `lua test_auto_step.lua`, `lua test_route_manager.lua`,
+  `lua test_pathfinder.lua`, `lua test_map_reader.lua`,
+  `lua test_objects.lua`, `lua test_map_survey.lua`, and `git diff --check`.
+  `test_pathfinder.lua` still prints the known WSL-side Tolk/`cmd` warning
+  before passing.
+- 2026-04-30 route-cleanup refresh follow-up passed:
+  `luac -p route_manager.lua config.lua test_route_manager.lua`,
+  `lua test_route_manager.lua`, `lua test_auto_step.lua`, `lua test_objects.lua`,
+  and `git diff --check`.
+- Live BizHawk validation after that patch relaunched quick slot 1, selected
+  Person 4 and then Person 2 in Brecconary, and completed both auto-walks with
+  neutral input, no runtime blockers, no `ROUTE_PLAN_TIMING` spikes, and
+  `objects.check_refresh max_ms=0`.
+- 2026-04-30 name-entry follow-up passed:
+  `luac -p main.lua config.lua hotkeys.lua debug_tools.lua`,
+  `lua test_state.lua`, `lua test_hotkeys.lua`, and `git diff --check`.
+  The live pre-reload log only showed title/name-entry state with no held input;
+  the code patch still needs a Lua reload before user retest.
+- 2026-04-30 main-menu follow-up passed:
+  `luac -p state.lua main.lua test_state.lua`, `lua test_state.lua`, and
+  `git diff --check -- state.lua main.lua test_state.lua`. User logs showed
+  erase-confirmation screens being misclassified as field/map `0x00`, which
+  let dialogue/map/auto-step logic run on title-menu input. `state.lua` now
+  treats the erase confirmation and name-entry grid as title screens even when
+  save RAM contains a valid level, `main.lua` keeps auto-step off during
+  title-to-field debounce, and the name-entry A guard now requires a short
+  stable release before accepting another A press. This still needs a Lua
+  reload and live retest of "Erase a quest" plus name entry.
+- Important BizHawk input finding from the next retest: normal NES `P1 A` is
+  `X`, normal `P1 B` is `Z`, `Start` is `Enter`, and `Select` is `Space` in
+  `D:\emulation\bizhawk\config.ini`. `S` is not normal A; it is bound under
+  `AllTrollersAutoFire` as NES `P1 A` autofire, with one-frame on/off pulses.
+  Avoid `S` for name entry and erase confirmation. If extra A confirms or map
+  announcements continue with `X`, collect a fresh `report_title_state` /
+  `trace_input:300` capture.
+- Hotkey remap follow-up: `hotkeys.lua` now accepts modifier combos such as
+  `Ctrl+N` and `Shift+F`, and `hotkey_filter.lua` only passes combo components
+  through BizHawk's allowlist when the whole combo is actually held. Current
+  layout keeps frequent object keys unmodified (`J/K/L/O/U/Q`), puts less-used
+  info hotkeys on `Shift+key`, puts diagnostics on `Ctrl+key`, and avoids
+  BizHawk NES control/autofire keys (`X`, `Z`, `Enter`, `Space`, `A`, `S`).
+- King-dialogue regression follow-up: live probe after entering the game showed
+  `state=field` on map `0x05`, `UPPER_STATE ... lower_len=97`, but no
+  `check_dialogue` scan-profile entry; `check_title_screen` had kept running
+  in field. Root cause was the title-to-field debounce counter not being
+  cleared after "Game started.", so `in_gameplay` stayed false forever.
+  `main.lua` now clears `field_from_title_ct` when `FIELD_DEBOUNCE` completes.
+  The next live log confirmed king/NPC dialogue auto-read again.
+- 2026-05-01 command/dialogue polish passed:
+  `luac -p main.lua text.lua menu.lua test_text.lua test_state.lua
+  test_hotkeys.lua test_hotkey_filter.lua`, `lua test_text.lua`,
+  `lua test_state.lua`, `lua test_hotkeys.lua`, `lua test_hotkey_filter.lua`,
+  and `git diff --check -- main.lua text.lua test_text.lua`. `main.lua` now
+  speaks the highlighted command item when the field command menu opens, for
+  example `Command. TALK`, and `text.lua`/`read_y1_dialogue()` skip persistent
+  status rows such as `Bill LV 1 HP 15 MP 0 G 120 E 0` before they can be
+  treated as lower dialogue. Needs Lua reload and a quick live retest of command
+  menu open plus post-dialogue dismissal.
+- Follow-up live retest showed the status row could still speak from the upper
+  dialogue path. `report_upper_dialogue_state` confirmed `upper`, `baseline`,
+  and `announced` were the status row while `lower_len=0`. `main.lua` now also
+  suppresses extracted upper-dialogue `new_text` when that extracted fragment is
+  itself status text, logging `UPPER_DIALOGUE_SUPPRESS_STATUS` instead of
+  speaking it. Validation: `luac -p main.lua text.lua test_text.lua`,
+  `lua test_text.lua`, and `git diff --check -- main.lua text.lua
+  test_text.lua`. The patch was auto-reloaded in BizHawk and confirmed with
+  `launcher_probe:upper-status-guard-loaded`; it still needs the user's hands-on
+  post-dialogue dismissal retest.
 - A broader `python3 run_tests.py --allow-missing-speech-dep` run passed its
   Lua test portion, then failed at the known sandbox write boundary while
   trying to write `__pycache__` and `dw_commands.txt`. The rerun requiring
@@ -148,9 +233,10 @@ Remaining watch items:
   small amount of lag. The current worktree has a hotkey-side speech coalescer
   intended to reduce rapid J/L speech-interrupt pressure; it still needs live
   BizHawk confirmation.
-- Auto-walk can still glitch emulator audio. The shorter blocked-step retry
-  window may help, but audio behavior still needs future correlation with
-  `CMD_TIMING` and scan stats.
+- Auto-walk lag/drift is now substantially improved in both live logs and the
+  user's hands-on retest. The current worktree addresses the observed causes:
+  route-command refresh/freeze overhead, post-route object refresh, and queued
+  movement drift from sticky D-pad state after the route inject window.
 - Emulator audio can still stop for short stretches under heavier load. Current
   evidence points toward timing/config tuning and reducing synchronous hotkey
   work rather than a game-script correctness problem.
@@ -251,18 +337,110 @@ Important clues:
 - Auto-walk still causes emulator audio pain, especially when a route hits a
   blocked step and retries for several seconds. Local config now shortens that
   window with `auto_step_timeout=45` and `auto_step_block_retry_limit=1`.
+- The latest live log from the first-town manual run showed queued auto-walk
+  direction changes could continue the previous direction for one more cell:
+  after moving south to `(1,4)`, a queued `right` completed at `(1,5)` while
+  the planned seam was `(2,4)`, and a later queued `down` from `(3,5)`
+  completed at `(4,5)` while the planned seam was `(3,6)`. `auto_step.lua` now
+  adds a configurable turn-settle pause only when queued route direction
+  changes (`auto_step_route_turn_settle_frames=16`).
+- `pathfinder.lua` now keeps chosen-path summaries but suppresses tile-by-tile
+  chosen-path dumps unless `pathfind_log_steps=true`, and
+  `route_manager.lua` logs `ROUTE_PLAN_TIMING ... ms=...` for plans over
+  25 ms so hotkey-triggered `O`/`U` lag is visible even when no `CMD_TIMING`
+  line is produced.
+- The next live log produced a concrete route-planning spike:
+  `ROUTE_PLAN_TIMING map=0x08 start=(0,15) target_id=npc_15 ... path_len=2
+  ms=1978.000`. The queued walking phase then completed the expected 2-step
+  route with the new turn-settle line, so the lag was in adjacent-route planning
+  rather than the step executor. `pathfinder.lua` now sorts adjacent candidates
+  by lower-bound distance, skips candidates that cannot beat the current best
+  path, and only computes reachable-area/open-exit diagnostics when needed for
+  equal-length ties or no-path survey evidence.
+- The same user report explained the quickload/town object oddity: Brecconary
+  initially showed only "Exit to World Map" because interior map-entry refreshes
+  intentionally build static objects first and defer NPC parsing, but BizHawk's
+  120-frame object-refresh throttle could delay the second phase. `objects.lua`
+  now exposes `needs_refresh(map_id)`, and `main.lua` lets map changes/deferred
+  refreshes bypass the periodic throttle.
+- Live retest after reloading confirmed the object-refresh fix felt good: the
+  user did not notice the objects missing. The next auto-walk log still showed
+  two problems: route planning was still slow
+  (`ROUTE_PLAN_TIMING map=0x08 start=(0,15) target_id=npc_4 ... path_len=13
+  ms=1836.000`), and the route drifted during turn-settle at `(4,14)` to
+  `(5,14)`, causing `route_drift_off_path`. `auto_step.lua` now actively sends
+  neutral D-pad frames throughout route-settle, and `map_reader.lua` /
+  `pathfinder.lua` now provide and consume per-plan walkability snapshots so A*
+  avoids repeated slow map-reader checks.
+- Another live retest showed both `U` auto-walk and `O` show-path still lagged:
+  auto-walk plans logged `path_len=13 ms=1852.000` and `path_len=10
+  ms=1238.000`; show-path logged `path_len=7 ms=1422.000` and even
+  `path_len=1 ms=1514.000`. Because a one-step preview still took about
+  1.5 seconds, treat the remaining lag as fixed route-command overhead before
+  blaming path length alone.
+- `route_manager.lua` now skips forced live NPC refresh before BizHawk `O`/`U`
+  plans by default (`bizhawk_route_refresh_npcs=false`) and skips BizHawk
+  auto-walk's per-frame NPC RAM freeze by default
+  (`bizhawk_autowalk_freeze_npcs=false`). FCEUX keeps the old default behavior,
+  and both BizHawk behaviors remain opt-in through config.
+- The same retest produced two newer drift signatures during turn-settle: after
+  a first `right` step from `(0,15)` to `(1,15)`, the player slid to `(2,15)`
+  before the planned `up`; after a right segment from `(6,16)` to `(7,16)`,
+  the player slid to `(8,16)` before the planned `up`. `auto_step.lua` now also
+  neutralizes queued route input after the inject window, so sticky `joypad.set`
+  state cannot commit the next tile before settle/turn handling runs.
 - `inspect_tile` and `inspect_move` logs now include map dimensions and the
   walkability `reason`, so future bad-grid cases should show whether the model
   is clipping as `out_of_bounds`, using a passthrough, or reading ordinary tile
   data.
+- Latest 2026-04-30 quick-slot-1 follow-up: `auto_step.lua` now resets
+  movement-start tracking on timeout retry and the default config sets
+  `auto_step_turn_repress_limit=0`, avoiding the eager turn-repress path that
+  created false blocked steps. In the live Brecconary route to Person 2,
+  auto-walk reached `(10,15)` with neutral input and did not reproduce the old
+  route-settle drift points.
+- `objects.lua` now prewarms the current interior map grid during map-entry
+  refresh. After waiting for objects to populate, `pathfind` plus `auto_walk`
+  to Person 2 produced no `ROUTE_PLAN_TIMING` or `CMD_TIMING` lines, compared
+  with the previous 1.7-1.9 second first-route spike. Do not judge O/U lag from
+  a command sent before `current_object` sees the town objects; a too-early
+  command can still say "No objects found".
+- Remaining known hitch: `objects.check_refresh` can still show a one-time
+  deferred NPC refresh around 1.3 seconds after map entry. If the user still
+  hears a post-quickload audio cutout, inspect that path next.
+- The latest user retest showed manual overshoot is much better, with remaining
+  overshoot mostly when rapid manual movement presses queue up. Auto-walk audio
+  is also better, but the user still heard a lag spike near the end of route
+  attempts. Fresh logs showed a later auto-walk did reach `(15,19)` adjacent to
+  Woman 2 with neutral input and no runtime blockers, while `report_scan_stats`
+  showed `objects.check_refresh max_ms=1658`. BizHawk route cleanup now skips
+  the immediate post-completion/cancel object refresh by default via
+  `bizhawk_route_cleanup_refresh_objects=false`; FCEUX keeps the old refresh.
+- Live validation with the cleanup patch loaded completed a short route
+  `(0,15)->(1,14)` to Person 4 and a longer route `(1,14)->(9,14)` to Person 2.
+  Both ended adjacent to the target with `keys=- joy1=-`, `RUNTIME_BLOCKS none`,
+  and `objects.check_refresh max_ms=0`. The first step can still consume one
+  timeout retry before movement takes, but it recovered cleanly in both runs.
+- User hands-on retest after the cleanup patch confirmed auto-walk is reaching
+  intended targets and the lag feels under control.
+- The name-entry double-character issue likely comes from a held A/button press
+  being accepted on multiple frames by the name grid. `main.lua` now suppresses
+  repeated A frames while the name-entry grid is visible, allowing the first
+  frame through and forcing A false until release. A new `report_title_state`
+  debug command logs title/name-entry cursor RAM, selected tile byte/character,
+  controller state, and decoded title rows for future repros.
+- BizHawk launchers now support quick slots:
+  `./launch_dw.sh --state-slot 1 --no-wait` and
+  `./launch_bizhawk.sh --state-slot 1 --no-wait`.
 
 ## Recommended Next Work
 
 Best next step:
-- Continue the early-game BizHawk playthrough beyond the now-confirmed
-  first-two-map smoke test. Focus on command menus, object explorer ergonomics,
-  first combat, shops/inns, and any repeatable audio glitches during object
-  browsing, diagnostics, pathfind, or auto-walk.
+- Resume ordinary early-game playtesting from BizHawk. Prioritize combat
+  narration, shops/inns, item/spell flows, and any menu/dialogue polish that
+  appears during real play. If the status row speaks again after dialogue,
+  inspect fresh `UPPER_DIALOGUE_SUPPRESS_STATUS` / `report_upper_dialogue_state`
+  evidence before patching.
 
 Suggested live check:
 - Use `./launch_dw.sh` for BizHawk by default. Use
@@ -271,14 +449,31 @@ Suggested live check:
 - The old door/stairs verification is now passed manually. Re-run
   `report_door_state` / `inspect_tile:4,7` only if the door regression returns.
 - Use the saved post-dialogue state for quick repro loops.
+- For the current quick-slot town repro, use
+  `./launch_dw.sh --state-slot 1 --no-wait`, wait until `current_object` shows
+  town objects, then run `reset_scan_stats`, one `pathfind` or `auto_walk`, and
+  `report_scan_stats`.
+- Reload the Lua script before judging the new route-turn, route-manager,
+  pathfinder, map-reader, or object-refresh patches. A config-only
+  `reload_config` is not enough for `auto_step.lua`, `route_manager.lua`,
+  `pathfinder.lua`, `map_reader.lua`, `objects.lua`, or `main.lua` changes.
 - Use `reset_scan_stats`, play for 10-20 seconds, then `report_scan_stats` if
   lag returns.
 - If audio stutters under load, use the cleanest repro available and capture
   `reset_scan_stats` / `report_scan_stats` around only that action. Also check
   fresh `CMD_TIMING` lines before assuming steady-frame-loop lag.
 - If route/path command glitches remain, check `CMD_TIMING` lines first, then
-  use `reset_scan_stats`/`report_scan_stats` around exactly one command to see
-  whether `debug_tools.tick`, `objects.check_refresh`, or pathfinding dominates.
+  `ROUTE_PLAN_TIMING` lines. For the known Brecconary-style repros, compare
+  the old timings after a Lua reload: 1978 ms for a 2-step `npc_15` route,
+  1836/1852 ms for 13-step `npc_4` routes, 1238 ms for a 10-step auto-walk,
+  and 1422/1514 ms for show-path previews. Also watch for absence/presence of
+  `route_drift_off_path`, especially the prior drift points `(4,14)->(5,14)`,
+  `(1,15)->(2,15)`, and `(7,16)->(8,16)` during route settle. Use
+  `reset_scan_stats`/`report_scan_stats` around exactly one command if timings
+  still point away from route planning.
+- If no `CMD_TIMING`/`ROUTE_PLAN_TIMING` appears but audio still cuts out,
+  inspect `objects.check_refresh max_ms` in `report_scan_stats`; that is now
+  the most suspicious remaining script-side spike.
 - If random background-window audio freezes remain without fresh
   `CMD_TIMING`/scan-profile spikes, investigate BizHawk/Windows focus or
   priority behavior separately from Lua script performance.
@@ -286,9 +481,9 @@ Suggested live check:
   `SoundBufferSizeMs=200`, `SoundThrottle=true`, `FrameSkip=0`, and
   `Rewind.Enabled=false`. Patch these only while EmuHawk is closed.
 
-Decision still open:
-- When BizHawk survives enough real gameplay, decide whether to keep FCEUX as a
-  maintained fallback or archive it as legacy support.
+Fallback decision:
+- Keep FCEUX as an explicit fallback for now, but new gameplay/accessibility
+  work should assume BizHawk first.
 
 ## Gameplay Direction
 

@@ -38,6 +38,7 @@ local function make_env(options)
         "debug_tools",
         "hotkeys",
         "items",
+        "key_combo",
         "map_reader",
         "menu",
         "navigation",
@@ -53,24 +54,24 @@ local function make_env(options)
     end
 
     local settings = {
-        key_position = "P",
-        key_hp = "H",
-        key_level = "I",
-        key_gold = "G",
-        key_experience = "E",
-        key_stats = "S",
-        key_screen_text = "T",
-        key_diag_cursor = "M",
-        key_diag_ppu_dump = "D",
-        key_diag_title = "V",
-        key_diag_tiles = "N",
-        key_freeze_npcs = "X",
+        key_position = "Shift+P",
+        key_hp = "Shift+H",
+        key_level = "Shift+I",
+        key_gold = "Shift+G",
+        key_experience = "Shift+E",
+        key_stats = "Shift+R",
+        key_screen_text = "Shift+T",
+        key_diag_cursor = "Ctrl+M",
+        key_diag_ppu_dump = "Ctrl+D",
+        key_diag_title = "Ctrl+Y",
+        key_diag_tiles = "Ctrl+N",
+        key_freeze_npcs = "Shift+F",
         key_object_prev = "J",
         key_object_current = "K",
         key_object_next = "L",
         key_pathfind = "O",
         key_auto_walk = "U",
-        key_filter = "F",
+        key_filter = "Q",
         object_nav_speech_coalesce_frames = tostring(delay),
         tile_diag_dump_on_hotkey = options.tile_diag_dump_on_hotkey or "false",
     }
@@ -306,7 +307,7 @@ end
 function tests.tile_diag_hotkey_speaks_without_full_dump_by_default()
     local env = make_env()
 
-    env.update({N = true})
+    env.update({Control = true, N = true})
 
     assert_equal(#env.outputs, 1, "tile diagnostic hotkey should speak once")
     assert_equal(
@@ -314,6 +315,23 @@ function tests.tile_diag_hotkey_speaks_without_full_dump_by_default()
         "At 4,15. RAM 6. Here 4W. N 2X. S 6W. W 0X. E 1W",
         "tile diagnostic hotkey should speak the compact coordinate summary"
     )
+
+    env.restore()
+end
+
+function tests.modified_hotkeys_do_not_fire_as_bare_keys()
+    local env = make_env()
+
+    env.update({N = true})
+    env.update({})
+    env.update({F = true})
+
+    assert_equal(#env.outputs, 0, "bare diagnostic key should not speak")
+    assert_equal(env.freeze_calls(), 0, "bare freeze key should not toggle NPC freeze")
+
+    env.update({})
+    env.update({Shift = true, F = true})
+    assert_equal(env.freeze_calls(), 1, "Shift+F should toggle NPC freeze")
 
     env.restore()
 end
@@ -339,7 +357,7 @@ function tests.object_navigation_hotkeys_request_brief_descriptions()
         "current-object should skip raw coordinate debug details")
 
     env.update({})
-    env.update({F = true})
+    env.update({Q = true})
 
     assert_equal(#env.describe_calls, 3, "filter hotkey should describe the first filtered object")
     assert_equal(env.describe_calls[3].include_reachability, false,

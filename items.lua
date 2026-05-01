@@ -3,7 +3,7 @@
 --
 -- Provides functions to read inventory, equipment, and spells from the
 -- game snapshot and convert them to human-readable names. Used by the
--- STATUS and ITEM sub-menu handlers in main.lua, and by the S (stats) hotkey.
+-- STATUS and ITEM sub-menu handlers in main.lua, and by the stats hotkey.
 --
 -- Item encoding: RAM 0x00C1-0x00C4 holds 8 items in 4 bytes, 2 per byte
 -- (high nybble = even slot, low nybble = odd slot). Values 0x1-0xF map
