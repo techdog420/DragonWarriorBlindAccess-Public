@@ -89,8 +89,13 @@ local function any_alias_down(keys, aliases)
 end
 
 function M.is_down(keys, spec)
-    local parts = M.parse(spec)
-    if #parts == 0 then return false end
+    return M.is_down_parsed(keys, M.parse(spec))
+end
+
+-- Same as is_down but takes the already-parsed parts table from M.parse().
+-- Used by callers that hold the parsed form to avoid per-frame re-parsing.
+function M.is_down_parsed(keys, parts)
+    if not parts or #parts == 0 then return false end
     for _, aliases in ipairs(parts) do
         if not any_alias_down(keys, aliases) then
             return false

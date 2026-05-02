@@ -2885,6 +2885,9 @@ debug_tools.register_command("__config_reloaded", function()
     if tolk.reload_config then
         tolk.reload_config()
     end
+    if hotkey_filter.reload_config then
+        hotkey_filter.reload_config()
+    end
 end)
 
 debug_tools.register_command("freeze_npcs", function()

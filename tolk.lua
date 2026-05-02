@@ -2,9 +2,9 @@
 -- Speech output wrapper for screen readers (NVDA, JAWS, Narrator).
 --
 -- Strategy: Try loading Tolk.dll directly via LuaJIT FFI first (instant,
--- zero-latency). If FFI fails (e.g., DLL missing, wrong architecture, or the
--- current FCEUX build does not expose the ffi module),
--- fall back to the Python bridge (speech_bridge.py via io.popen).
+-- zero-latency). BizHawk's LuaJIT exposes ffi; FCEUX qfceux.exe does not.
+-- If FFI fails (DLL missing, wrong architecture, or no ffi module), fall back
+-- to the Python bridge (speech_bridge.py via io.popen).
 --
 -- The FFI path calls Tolk functions in-process — no subprocess, no pipe,
 -- no startup delay. The Python bridge is kept as a fallback for environments
@@ -97,10 +97,14 @@ end
 -- ============================================================
 -- Attempt 1: FFI / Tolk.dll (preferred — zero latency)
 -- ============================================================
--- Some historical/project notes assume FCEUX provides LuaJIT ffi support.
--- In the current tested Windows qfceux.exe 2.6.6 environment, require("ffi")
--- fails, so the Python bridge path is the expected runtime path unless the
--- emulator build changes.
+-- BizHawk's Lua runtime is LuaJIT-based and does expose ffi, so the FFI path
+-- is the preferred backend there. FCEUX qfceux.exe 2.6.6 (the current tested
+-- fallback build) does not expose ffi, so on FCEUX the Python bridge is the
+-- expected runtime path. ffi.load("tolk") searches the host process's CWD
+-- and PATH — under BizHawk that is the emulator's install directory, not
+-- the mod folder. We try an absolute path first so Tolk.dll resolves
+-- regardless of where the emulator chose to run from, then fall back to
+-- the bare name for legacy installs.
 
 local ffi_tolk = nil     -- FFI Tolk library handle
 local encoding = nil      -- encoding.lua module
@@ -119,8 +123,18 @@ local ffi_ok, ffi_err = pcall(function()
         void Tolk_Silence();
     ]]
 
-    -- Load Tolk.dll from the script directory or system PATH.
-    ffi_tolk = ffi.load("tolk")
+    -- Try the script-local DLL first (handles BizHawk's CWD-elsewhere case),
+    -- then the bare name (legacy/system-wide installs).
+    local abs_dll = script_dir .. "Tolk.dll"
+    local load_ok, lib_or_err = pcall(ffi.load, abs_dll)
+    if not load_ok or not lib_or_err then
+        backend_log("ffi.load(absolute) failed: " .. tostring(lib_or_err) .. " — retrying bare name")
+        load_ok, lib_or_err = pcall(ffi.load, "tolk")
+        if not load_ok or not lib_or_err then
+            error(lib_or_err or "ffi.load failed for both absolute and bare name")
+        end
+    end
+    ffi_tolk = lib_or_err
     ffi_tolk.Tolk_Load()
 end)
 

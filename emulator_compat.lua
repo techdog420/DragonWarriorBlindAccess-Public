@@ -70,7 +70,15 @@ local bizhawk_ppu = ppu
 local ppu_frame_cache = {}
 local rom_byte_cache = {}
 local ppu_cache_age_frames = 0
-local PPU_CACHE_HOLD_FRAMES = 120
+-- PPU nametable bytes are written by the game at any frame (dialogue typing,
+-- menu open/close, battle messages, merchant updates triggered by injected
+-- joypad inputs from auto_step). Holding the cache across frames lets stale
+-- bytes be read for that many frames, which can mask a freshly-opened menu
+-- or dialogue page. Hold = 1 means the cache is valid only within the
+-- current tick (between frameadvance calls); each new frame starts cold.
+-- Within-tick reuse is what we want — scanners read overlapping addresses,
+-- and a single tick's PPU state is by definition self-consistent.
+local PPU_CACHE_HOLD_FRAMES = 1
 
 function M.clear_ppu_cache()
     ppu_frame_cache = {}

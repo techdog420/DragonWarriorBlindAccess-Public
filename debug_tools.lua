@@ -50,6 +50,12 @@ local addr       = require "addresses"
 local maps_m     = require "maps"
 local map_reader = require "map_reader"
 
+-- emulator_compat is loaded by main.lua before us; fall back to the global it
+-- registers so we don't introduce a circular require. Uses rawget so missing
+-- detection (e.g. running under a future emulator) leaves both flags false and
+-- callers can fail safe.
+local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or { is_fceux = false, is_bizhawk = false }
+
 -- ============================================================
 -- Configuration
 -- ============================================================
@@ -111,6 +117,13 @@ local STUCK_ALT_WARN_FRAMES = 120
 local keyboard_bridge_active = false
 local external_keyboard_bridge_active = false
 local external_keyboard_bridge_missing_logged = false
+-- Content cache for the keyboard_bridge.ps1 sidecar's output file. The sidecar
+-- only rewrites the file when key state changes, so the same bytes show up on
+-- the vast majority of frames. Caching the parsed bridge table avoids the
+-- gmatch + table allocation each frame; we still read the file (cheap, ~30B)
+-- to detect the rare state changes within one frame.
+local external_bridge_last_line = nil
+local external_bridge_cached_table = nil
 local current_frame  = 0      -- Set each tick; used in log entry prefix
 local current_state  = "unknown"  -- Set each tick; used in log entry prefix
 
@@ -492,6 +505,14 @@ local function is_key_pressed(keys, ...)
 end
 
 local function build_keyboard_bridge_input(frame)
+    -- The stuck-Alt heuristic addresses an FCEUX-specific quirk where the
+    -- menu bar steals input focus and the joypad goes silent until Alt is
+    -- released. BizHawk doesn't have this issue, and a BizHawk player who
+    -- holds Alt (e.g. Alt+Tab to consult a guide) would otherwise have the
+    -- bridge synthesize phantom inputs from F/D/S/arrows on return.
+    if not emulator_compat.is_fceux then
+        return nil
+    end
     if config.get("enable_keyboard_input_bridge") == "false" then
         return nil
     end
@@ -548,6 +569,12 @@ local function build_keyboard_bridge_input(frame)
     return bridge
 end
 
+local function shallow_copy(t)
+    local out = {}
+    for k, v in pairs(t) do out[k] = v end
+    return out
+end
+
 local function parse_external_keyboard_bridge()
     local f = io.open(KEYBOARD_BRIDGE_FILE, "r")
     if not f then
@@ -555,6 +582,8 @@ local function parse_external_keyboard_bridge()
             M.info("INPUT_EXTERNAL_BRIDGE_MISSING path=" .. KEYBOARD_BRIDGE_FILE)
             external_keyboard_bridge_missing_logged = true
         end
+        external_bridge_last_line = nil
+        external_bridge_cached_table = nil
         return nil
     end
 
@@ -562,22 +591,37 @@ local function parse_external_keyboard_bridge()
     local line = f:read("*l") or ""
     f:close()
     line = line:match("^%s*(.-)%s*$") or ""
-    if line == "" or line == "-" then
-        return full_joypad_state({})
+
+    -- Cache hit: sidecar hasn't rewritten the file. Return a copy so callers
+    -- can mutate fields like `_raw` without corrupting the cached state.
+    if line == external_bridge_last_line and external_bridge_cached_table then
+        return shallow_copy(external_bridge_cached_table)
     end
 
     local bridge = full_joypad_state({})
-    for part in line:gmatch("[^,]+") do
-        local button = part:match("^%s*(.-)%s*$")
-        if button == "up" or button == "down" or button == "left" or button == "right"
-           or button == "A" or button == "B" or button == "start" or button == "select" then
-            bridge[button] = true
+    if line ~= "" and line ~= "-" then
+        for part in line:gmatch("[^,]+") do
+            local button = part:match("^%s*(.-)%s*$")
+            if button == "up" or button == "down" or button == "left" or button == "right"
+               or button == "A" or button == "B" or button == "start" or button == "select" then
+                bridge[button] = true
+            end
         end
     end
-    return bridge
+
+    external_bridge_last_line = line
+    external_bridge_cached_table = bridge
+    return shallow_copy(bridge)
 end
 
 local function build_external_keyboard_bridge_input(frame)
+    -- External bridge feeds the FCEUX-only keyboard_bridge.ps1 sidecar, which
+    -- watches the OS keyboard while FCEUX's menu has focus. BizHawk reads the
+    -- keyboard directly through its own input system, so the sidecar is not
+    -- relevant there.
+    if not emulator_compat.is_fceux then
+        return nil
+    end
     if config.get("enable_keyboard_input_bridge") == "false" then
         return nil
     end
@@ -652,6 +696,11 @@ local function speak_stuck_alt_warning()
 end
 
 local function update_stuck_alt_watch(frame)
+    -- FCEUX-only: BizHawk doesn't lose joypad focus on Alt, so the watch
+    -- has nothing to detect there.
+    if not emulator_compat.is_fceux then
+        return
+    end
     local keys = input.get()
     local joy = joypad.read(1)
     local left_alt = is_left_alt_pressed(keys)

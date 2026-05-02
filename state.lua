@@ -67,6 +67,26 @@ local TITLE_PATTERN_GROUPS = {
     -- Name entry: row 22 uniquely carries BACK and END on the alphabet grid.
     {patterns = {BACK, END_WORD}, row_start = 22, row_end = 22},
 }
+
+-- Precompute the union of rows any pattern wants. If a row isn't needed by
+-- any pattern, the scanner skips its 32 PPU reads entirely. Today the
+-- single patterns have no row bound so all 30 rows are included; this
+-- structure keeps the optimization correct if a future row-bounded
+-- single pattern is added.
+local PATTERN_NEEDED_ROWS = {}
+for row = 0, 29 do PATTERN_NEEDED_ROWS[row] = false end
+
+local function mark_rows(start_row, end_row)
+    start_row = start_row or 0
+    end_row = end_row or 29
+    for r = start_row, end_row do PATTERN_NEEDED_ROWS[r] = true end
+end
+
+-- Single patterns currently have no row bounds → all rows needed.
+mark_rows(0, 29)
+for _, group in ipairs(TITLE_PATTERN_GROUPS) do
+    mark_rows(group.row_start, group.row_end)
+end
 -- BizHawk's PPU-domain reads are slow enough that a full title-pattern scan
 -- during field play can dominate frame time. Once gameplay is confirmed, keep
 -- the safety rescan rare; level RAM still catches normal boot/title cases.
@@ -105,34 +125,41 @@ local function group_is_complete(matches, group)
     return true
 end
 
+-- Reused row buffer to avoid allocating a fresh 32-element table per row
+-- per scan. The scanner overwrites all 32 indices each iteration, so leftover
+-- values from a prior row are never observed.
+local _row_bytes_scratch = {}
+
 local function ppu_shows_title_content()
     local group_matches = {}
     for i = 1, #TITLE_PATTERN_GROUPS do
         group_matches[i] = {}
     end
 
+    local row_bytes = _row_bytes_scratch
     for row = 0, 29 do
-        local base = 0x2000 + row * 32
-        local row_bytes = {}
-        for col = 0, 31 do
-            row_bytes[col + 1] = ppu.readbyte(base + col)
-        end
+        if PATTERN_NEEDED_ROWS[row] then
+            local base = 0x2000 + row * 32
+            for col = 0, 31 do
+                row_bytes[col + 1] = ppu.readbyte(base + col)
+            end
 
-        for _, pattern in ipairs(TITLE_SINGLE_PATTERNS) do
-            if row_contains(row_bytes, pattern) then return true end
-        end
+            for _, pattern in ipairs(TITLE_SINGLE_PATTERNS) do
+                if row_contains(row_bytes, pattern) then return true end
+            end
 
-        for group_index, group in ipairs(TITLE_PATTERN_GROUPS) do
-            local row_allowed = (group.row_start == nil or row >= group.row_start)
-                                and (group.row_end == nil or row <= group.row_end)
-            if row_allowed then
-                for pattern_index, pattern in ipairs(group.patterns) do
-                    if not group_matches[group_index][pattern_index]
-                       and row_contains(row_bytes, pattern) then
-                        group_matches[group_index][pattern_index] = true
+            for group_index, group in ipairs(TITLE_PATTERN_GROUPS) do
+                local row_allowed = (group.row_start == nil or row >= group.row_start)
+                                    and (group.row_end == nil or row <= group.row_end)
+                if row_allowed then
+                    for pattern_index, pattern in ipairs(group.patterns) do
+                        if not group_matches[group_index][pattern_index]
+                           and row_contains(row_bytes, pattern) then
+                            group_matches[group_index][pattern_index] = true
+                        end
                     end
+                    if group_is_complete(group_matches[group_index], group) then return true end
                 end
-                if group_is_complete(group_matches[group_index], group) then return true end
             end
         end
     end
