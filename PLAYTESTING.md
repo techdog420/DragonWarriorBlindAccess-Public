@@ -320,6 +320,19 @@ Evidence:
   `UPPER_DIALOGUE_SUPPRESS_STATUS` when that path is caught.
 - BizHawk launchers now support `--state-slot N`; quick slot 1 can be loaded
   with `./launch_dw.sh --state-slot 1` or `./launch_bizhawk.sh --state-slot 1`.
+- 2026-05-01 quick live map `0x05` route cycle: from throne-room `(3,4)`,
+  object enumeration found 9 objects and the door/stairs data still looked sane
+  (`inspect_tile:4,7` = `door_closed`, `inspect_tile:8,8` = `passthrough`).
+  Auto-walk reached a nearby chest and then Guard 3. The Guard 3 route first
+  logged `NEW BLOCK` for `(4,4)` down into `(4,5)`, but a controlled
+  `probe_edge:DOWN` from `(4,4)` moved successfully, changing the seam evidence
+  to noisy/transient rather than a confirmed map blocker.
+- The same cycle found player-facing hitch risk in debug commands, not focused
+  route execution: `report_path_state`, `inspect_move`, explicit
+  `pathfind_adjacent`, and `probe_edge` all produced roughly 1-1.7 second
+  `CMD_TIMING` lines. The focused Guard 3 auto-walk window itself reported
+  `objects.check_refresh max_ms=0`, `auto_step.update max_ms=1`, and
+  `debug_tools.tick max_ms=2`.
 
 Recommended next step:
 - Continue real early-game playtesting from the BizHawk path. Good next targets
@@ -349,6 +362,9 @@ Recommended next step:
   fresh `objects.check_refresh max_ms=...` line matters most if the hitch
   happens at route completion/cancel; `ROUTE_PLAN_TIMING` still matters if the
   hitch happens before movement starts.
+- If the throne-room `(4,4)->(4,5)` route block appears again, do not promote it
+  to map data from a single auto-walk. Reprobe with `probe_edge:DOWN` from
+  `(4,4)` and compare against the latest noisy evidence.
 
 When adding issues, use this format:
 - ID

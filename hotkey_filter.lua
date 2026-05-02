@@ -9,6 +9,13 @@ local M = {}
 local key_combo = require "key_combo"
 
 local DEFAULT_BIZHAWK_ALLOWLIST = table.concat({
+    "key_position",
+    "key_hp",
+    "key_level",
+    "key_gold",
+    "key_experience",
+    "key_stats",
+    "key_screen_text",
     "key_object_prev",
     "key_object_current",
     "key_object_next",
@@ -18,6 +25,18 @@ local DEFAULT_BIZHAWK_ALLOWLIST = table.concat({
     "key_freeze_npcs",
     "key_diag_tiles",
 }, ",")
+
+local DIAGNOSTIC_BIZHAWK_ALLOWLIST = table.concat({
+    "key_diag_cursor",
+    "key_diag_ppu_dump",
+    "key_diag_title",
+}, ",")
+
+local DIAGNOSTIC_SETTING_NAMES = {
+    key_diag_cursor = true,
+    key_diag_ppu_dump = true,
+    key_diag_title = true,
+}
 
 local function trim(value)
     return tostring(value or ""):match("^%s*(.-)%s*$")
@@ -50,30 +69,39 @@ local function rebuild_cache(config)
     if allowlist == nil or trim(allowlist) == "" then
         allowlist = DEFAULT_BIZHAWK_ALLOWLIST
     end
+    local diagnostic_hotkeys_enabled = (config.get("enable_bizhawk_diagnostic_hotkeys") == "true")
 
     -- entries: list of { spec=string, parts=table, is_combo=bool, aliases=table }
     -- non_combo_aliases: precomputed merged alias set for all non-combo entries,
     --                    so the per-frame fast path is a single union.
     local entries = {}
     local non_combo_aliases = {}
-    for _, setting_name in ipairs(split_csv(allowlist)) do
-        local key_name = config.get(setting_name)
-        if key_name ~= nil then
-            key_name = trim(key_name)
-            if key_name ~= "" then
-                local parts = key_combo.parse(key_name)
-                local is_combo = #parts > 1
-                local entry_aliases = {}
-                key_combo.add_aliases(entry_aliases, key_name)
-                entries[#entries + 1] = {
-                    spec = key_name,
-                    parts = parts,
-                    is_combo = is_combo,
-                    aliases = entry_aliases,
-                }
-                if not is_combo then
-                    for alias in pairs(entry_aliases) do
-                        non_combo_aliases[alias] = true
+    local setting_names = split_csv(allowlist)
+    if diagnostic_hotkeys_enabled then
+        for _, setting_name in ipairs(split_csv(DIAGNOSTIC_BIZHAWK_ALLOWLIST)) do
+            setting_names[#setting_names + 1] = setting_name
+        end
+    end
+    for _, setting_name in ipairs(setting_names) do
+        if diagnostic_hotkeys_enabled or not DIAGNOSTIC_SETTING_NAMES[setting_name] then
+            local key_name = config.get(setting_name)
+            if key_name ~= nil then
+                key_name = trim(key_name)
+                if key_name ~= "" then
+                    local parts = key_combo.parse(key_name)
+                    local is_combo = #parts > 1
+                    local entry_aliases = {}
+                    key_combo.add_aliases(entry_aliases, key_name)
+                    entries[#entries + 1] = {
+                        spec = key_name,
+                        parts = parts,
+                        is_combo = is_combo,
+                        aliases = entry_aliases,
+                    }
+                    if not is_combo then
+                        for alias in pairs(entry_aliases) do
+                            non_combo_aliases[alias] = true
+                        end
                     end
                 end
             end

@@ -51,8 +51,12 @@ The BizHawk default transition contains:
   state triggered diagnostic speech during dialogue.
 - When full BizHawk hotkeys are off, `hotkey_filter.lua` still permits the
   config-driven `bizhawk_keyboard_hotkey_allowlist`; default entries restore
-  object explorer/navigation shortcuts: J/K/L/O/U/Q, `Shift+F` NPC freeze, and
-  `Ctrl+N` tile/coordinate diagnostics.
+  player readouts, object explorer/navigation shortcuts J/K/L/O/U/Q,
+  `Shift+F` NPC freeze, and compact `Ctrl+N` tile/coordinate diagnostics.
+  Heavier developer diagnostics (`Ctrl+M`, `Ctrl+D`, `Ctrl+Y`) are behind
+  `enable_bizhawk_diagnostic_hotkeys`; the generated/shipping default is
+  `false`, while the current checked-in `dw_access.ini` is intentionally
+  `true` for manual testing.
 - The `Ctrl+N` tile/coordinate hotkey now speaks only the compact coordinate/tile
   summary by default. The old full `tile_diag.txt` dump is behind
   `tile_diag_dump_on_hotkey=true` because it can stall BizHawk audio.
@@ -208,6 +212,30 @@ Lightweight checks passed during the BizHawk default transition:
   trying to write `__pycache__` and `dw_commands.txt`. The rerun requiring
   unsandboxed writes was intentionally not pursued because the session was
   wrapping up.
+- 2026-05-01 diagnostic-hotkey gate follow-up passed:
+  `luac -p hotkey_filter.lua config.lua test_hotkey_filter.lua`,
+  `lua test_hotkey_filter.lua`, `lua test_hotkeys.lua`, `git diff --check`,
+  and `python3 run_tests.py --allow-missing-speech-dep`. The full run only
+  showed the known WSL-side speech dependency warning / `cmd` noise.
+- 2026-05-01 quick manual retest confirmed the diagnostic gate behaves as
+  intended with `enable_bizhawk_diagnostic_hotkeys=true`: the heavier diagnostic
+  key combos pass through and activate the proper functions.
+- 2026-05-01 quick live map `0x05` movement/pathing cycle started from
+  `(3,4)` in the throne room. Object enumeration found 9 objects, including the
+  closed door at `(4,7)` and stairs at `(8,8)`. `inspect_tile:4,7` still reports
+  `reason=door_closed`, while `inspect_tile:8,8` reports `reason=passthrough`.
+  `auto_walk` completed a 1-step move to `(4,4)` and a rerouted walk to Guard 3
+  ending at `(5,5)`. During the Guard 3 route, the first queued `down` from
+  `(4,4)` to `(4,5)` timed out once and logged `NEW BLOCK`, but a controlled
+  `probe_edge:DOWN` from `(4,4)` then moved successfully to `(4,5)`. Treat this
+  seam as noisy/transient route-executor evidence, not permanent map data.
+- The same map `0x05` cycle exposed debug-command hitches: `report_path_state`
+  repeatedly logged about 1.4-1.7 seconds, `inspect_move:UP` logged 1.413s,
+  `inspect_move:DOWN` logged 0.972s, `pathfind_adjacent:4,4` logged 1.564s,
+  `pathfind_to:8,8` logged 1.004s, and `probe_edge:DOWN` logged 1.593s.
+  Focused route execution itself looked much healthier: the Guard 3 route
+  window had `objects.check_refresh max_ms=0`, `auto_step.update max_ms=1`, and
+  `debug_tools.tick max_ms=2`. The player was restored to `(3,4)` afterward.
 
 ## BizHawk Default Status
 
@@ -471,6 +499,14 @@ Suggested live check:
   `(1,15)->(2,15)`, and `(7,16)->(8,16)` during route settle. Use
   `reset_scan_stats`/`report_scan_stats` around exactly one command if timings
   still point away from route planning.
+- If map `0x05` shows a fresh `(4,4)` to `(4,5)` route block, reproduce it with
+  a controlled `probe_edge:DOWN` before patching anything. The latest probe
+  moved successfully after one queued-route block, so the seam is currently
+  noisy rather than a confirmed directional blocker.
+- If audio cuts out while using debug commands on map `0x05`, check
+  `report_path_state`, `inspect_move`, explicit `pathfind_adjacent`, and
+  `probe_edge` `CMD_TIMING` lines. The latest run showed second-scale debug
+  command hitches even while focused auto-walk execution stayed cheap.
 - If no `CMD_TIMING`/`ROUTE_PLAN_TIMING` appears but audio still cuts out,
   inspect `objects.check_refresh max_ms` in `report_scan_stats`; that is now
   the most suspicious remaining script-side spike.
