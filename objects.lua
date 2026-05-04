@@ -42,19 +42,23 @@ M.TYPE_DOOR   = "door"
 -- only certain types of objects.
 M.FILTER_ALL    = 1
 M.FILTER_NPC    = 2
-M.FILTER_EXIT   = 3
-M.FILTER_CHEST  = 4
-M.FILTER_STAIR  = 5
+M.FILTER_SERVICE = 3
+M.FILTER_TREASURE = 4
+M.FILTER_TRAVEL = 5
 M.FILTER_DOOR   = 6
+-- Backward-compatible aliases for older tests/debug code.
+M.FILTER_EXIT   = M.FILTER_TRAVEL
+M.FILTER_CHEST  = M.FILTER_TREASURE
+M.FILTER_STAIR  = M.FILTER_TRAVEL
 
 -- Human-readable names for each filter mode
 local FILTER_NAMES = {
-    [M.FILTER_ALL]   = "All",
-    [M.FILTER_NPC]   = "NPCs",
-    [M.FILTER_EXIT]  = "Exits",
-    [M.FILTER_CHEST] = "Chests",
-    [M.FILTER_STAIR] = "Stairs",
-    [M.FILTER_DOOR]  = "Doors",
+    [M.FILTER_ALL]      = "All",
+    [M.FILTER_NPC]      = "NPCs",
+    [M.FILTER_SERVICE]  = "Services",
+    [M.FILTER_TREASURE] = "Treasure",
+    [M.FILTER_TRAVEL]   = "Travel",
+    [M.FILTER_DOOR]     = "Doors",
 }
 
 -- How many filter modes there are (for wraparound)
@@ -299,6 +303,7 @@ end
 -- The current combined object list for this map
 local object_list = {}
 local static_object_cache = {}
+local visited_by_map = {}
 
 -- The filtered view of the object list (what the player cycles through)
 local filtered_list = {}
@@ -325,6 +330,22 @@ local NPC_REFRESH_INTERVAL = 20  -- Re-read NPC positions every 20 frames (~0.33
 -- When true, check_refresh() will rebuild the object list on the next call
 -- (after frameadvance has run and RAM reflects real NPC positions).
 local refresh_pending = false
+
+local function active_map_id(map_id)
+    if map_id ~= nil then return map_id end
+    if current_map_id ~= nil then return current_map_id end
+    local mid = nav.get_position()
+    return mid
+end
+
+local function visited_bucket(map_id, create)
+    map_id = active_map_id(map_id)
+    if map_id == nil then return nil end
+    if not visited_by_map[map_id] and create then
+        visited_by_map[map_id] = {}
+    end
+    return visited_by_map[map_id], map_id
+end
 
 local function get_terrain_offset()
     return memory.readbyte(addr.TERRAIN_OFFSET)
@@ -449,11 +470,15 @@ local function parse_npcs(map_id)
             display_name = base_name
         end
 
+        local is_service = entry.sprite_type == 3
         npcs[#npcs + 1] = {
             x = entry.x,
             y = entry.y,
             name = display_name,
             type = M.TYPE_NPC,
+            sprite_type = entry.sprite_type,
+            base_name = base_name,
+            service = is_service,
             id = "npc_" .. entry.slot,  -- Stable ID survives list reordering
         }
     end
@@ -766,23 +791,17 @@ local function apply_filter(objects, filter)
         return objects
     end
 
-    -- Map filter constants to object types
-    local filter_type = nil
-    if filter == M.FILTER_NPC then
-        filter_type = M.TYPE_NPC
-    elseif filter == M.FILTER_EXIT then
-        filter_type = M.TYPE_EXIT
-    elseif filter == M.FILTER_CHEST then
-        filter_type = M.TYPE_CHEST
-    elseif filter == M.FILTER_STAIR then
-        filter_type = M.TYPE_STAIR
-    elseif filter == M.FILTER_DOOR then
-        filter_type = M.TYPE_DOOR
-    end
-
     local result = {}
     for _, obj in ipairs(objects) do
-        if obj.type == filter_type then
+        if filter == M.FILTER_NPC and obj.type == M.TYPE_NPC then
+            result[#result + 1] = obj
+        elseif filter == M.FILTER_SERVICE and obj.type == M.TYPE_NPC and obj.service == true then
+            result[#result + 1] = obj
+        elseif filter == M.FILTER_TREASURE and obj.type == M.TYPE_CHEST then
+            result[#result + 1] = obj
+        elseif filter == M.FILTER_TRAVEL and (obj.type == M.TYPE_EXIT or obj.type == M.TYPE_STAIR) then
+            result[#result + 1] = obj
+        elseif filter == M.FILTER_DOOR and obj.type == M.TYPE_DOOR then
             result[#result + 1] = obj
         end
     end
@@ -964,6 +983,28 @@ function M.next_filter()
     return FILTER_NAMES[current_filter]
 end
 
+function M.prev_filter()
+    current_filter = current_filter - 1
+    if current_filter < M.FILTER_ALL then
+        current_filter = FILTER_COUNT
+    end
+
+    current_index = 1
+    selected_id = nil
+    rebuild_filtered_list()
+
+    return FILTER_NAMES[current_filter]
+end
+
+function M.all_filter()
+    current_filter = M.FILTER_ALL
+    current_index = 1
+    selected_id = nil
+    rebuild_filtered_list()
+
+    return FILTER_NAMES[current_filter]
+end
+
 -- get_filter_name(): Return the name of the current filter.
 function M.get_filter_name()
     return FILTER_NAMES[current_filter]
@@ -1002,6 +1043,77 @@ function M.find_object_by_id(object_id, opts)
     return nil
 end
 
+function M.is_visited(obj, map_id)
+    if not obj or not obj.id then return false end
+    local bucket = visited_bucket(map_id, false)
+    return bucket and bucket[obj.id] == true or false
+end
+
+function M.mark_visited(obj, map_id)
+    if not obj or not obj.id then return nil end
+    local bucket, resolved_map_id = visited_bucket(map_id, true)
+    if not bucket then return nil end
+    bucket[obj.id] = true
+    return obj, resolved_map_id
+end
+
+function M.mark_current_visited()
+    local obj = M.current_object()
+    return M.mark_visited(obj)
+end
+
+function M.clear_visited(map_id_or_all)
+    if map_id_or_all == "all" then
+        local cleared = 0
+        for _, bucket in pairs(visited_by_map) do
+            for _ in pairs(bucket) do
+                cleared = cleared + 1
+            end
+        end
+        visited_by_map = {}
+        return cleared
+    end
+
+    local map_id = active_map_id(map_id_or_all)
+    local bucket = map_id and visited_by_map[map_id] or nil
+    local cleared = 0
+    if bucket then
+        for _ in pairs(bucket) do
+            cleared = cleared + 1
+        end
+        visited_by_map[map_id] = nil
+    end
+    return cleared
+end
+
+function M.mark_adjacent_npc_visited(map_id, px, py)
+    map_id = active_map_id(map_id)
+    if px == nil or py == nil then
+        local _, cur_x, cur_y = nav.get_position()
+        px, py = cur_x, cur_y
+    end
+
+    local selected = M.current_object()
+    if selected
+       and selected.type == M.TYPE_NPC
+       and math.abs(selected.x - px) + math.abs(selected.y - py) <= 1 then
+        return M.mark_visited(selected, map_id)
+    end
+
+    local best = nil
+    local best_dist = nil
+    for _, obj in ipairs(object_list) do
+        if obj.type == M.TYPE_NPC then
+            local dist = math.abs(obj.x - px) + math.abs(obj.y - py)
+            if dist <= 1 and (not best_dist or dist < best_dist or obj.id < best.id) then
+                best = obj
+                best_dist = dist
+            end
+        end
+    end
+    return M.mark_visited(best, map_id)
+end
+
 -- get_blocking_positions(): Return a list of {x, y} for all objects that
 -- physically block movement even though their tile type is walkable floor.
 -- In DW1, only NPCs block movement — you cannot walk through an NPC.
@@ -1018,6 +1130,16 @@ function M.get_blocking_positions()
         end
     end
     return result
+end
+
+function M.is_npc_at(map_id, x, y)
+    if x == nil or y == nil then return false end
+    for _, npc in ipairs(parse_npcs(map_id)) do
+        if npc.x == x and npc.y == y then
+            return true
+        end
+    end
+    return false
 end
 
 -- ============================================================
@@ -1038,6 +1160,9 @@ function M.describe_object(obj)
     end
     if obj.type == M.TYPE_DOOR and is_door_opened(obj.x, obj.y) then
         name = name .. " (opened)"
+    end
+    if M.is_visited(obj) then
+        name = name .. " (visited)"
     end
     return name .. ": " .. direction
 end

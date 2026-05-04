@@ -40,6 +40,15 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         key_pathfind = "O",
         key_auto_walk = "U",
         key_filter = "Q",
+        key_filter_prev = "Shift+J",
+        key_filter_all = "Shift+K",
+        key_filter_next = "Shift+L",
+        key_mark_visited = "Shift+V",
+        key_teleport_exact = "Shift+Enter",
+        key_teleport_north = "Shift+Up",
+        key_teleport_south = "Shift+Down",
+        key_teleport_west = "Shift+Left",
+        key_teleport_east = "Shift+Right",
         key_freeze_npcs = "Shift+F",
         key_diag_cursor = "Ctrl+M",
         key_diag_tiles = "Ctrl+N",
@@ -64,6 +73,10 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         T = true,
         F = true,
         LeftCtrl = true,
+        Enter = true,
+        Up = true,
+        Right = true,
+        V = true,
         M = true,
         N = true,
         Y = true,
@@ -85,7 +98,12 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
     assert_equal(filtered.O, true, "pathfind key should pass")
     assert_equal(filtered.U, true, "auto-walk key should pass")
     assert_equal(filtered.Q, true, "filter key should pass")
+    assert_equal(filtered.K, true, "filter-all/current-object key should pass")
     assert_equal(filtered.F, true, "freeze key should pass")
+    assert_equal(filtered.Enter, true, "teleport exact key should pass")
+    assert_equal(filtered.Up, true, "teleport north key should pass")
+    assert_equal(filtered.Right, true, "teleport east key should pass")
+    assert_equal(filtered.V, true, "mark visited key should pass")
     assert_equal(filtered.LeftCtrl, true, "tile diagnostic modifier should pass")
     assert_equal(filtered.N, true, "tile diagnostic key should pass")
     assert_equal(filtered.M, nil, "cursor diagnostic key should be blocked by default")

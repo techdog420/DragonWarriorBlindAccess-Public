@@ -682,6 +682,11 @@ local CHALLENGER_ACCEPT  = 18   -- acceptance threshold (must be > blink-off, < 
 -- Some checks don't need to run every frame; we use this to
 -- spread work across frames.
 local frame_count = 0
+DW_QOL_STATE = rawget(_G, "DW_QOL_STATE") or {}
+_G.DW_QOL_STATE = DW_QOL_STATE
+DW_QOL_STATE.pending_talk_visit = nil
+DW_QOL_STATE.teleport_input_suppress_frames = 0
+DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
 
 -- Sub-menu tracking: STATUS and ITEM screens opened from the command menu.
 -- When the player selects STATUS or ITEM, the game opens a sub-menu that
@@ -717,6 +722,43 @@ local recent_field_action_frames = 0
 local RECENT_FIELD_ACTION_HOLD = 180
 local bizhawk_boot_dialogue_frames = 0
 local BIZHAWK_BOOT_DIALOGUE_HOLD = 2400
+
+DW_QOL_STATE.arm_talk_visit_marker = function()
+    DW_QOL_STATE.pending_talk_visit = {frame = frame_count}
+end
+
+DW_QOL_STATE.mark_pending_talk_visit = function(event)
+    if not DW_QOL_STATE.pending_talk_visit then
+        return
+    end
+    if frame_count - DW_QOL_STATE.pending_talk_visit.frame > 240 then
+        DW_QOL_STATE.pending_talk_visit = nil
+        return
+    end
+    local dialogue_text = event and event.text or ""
+    if tostring(dialogue_text):lower():find("there is no one there", 1, true) then
+        debug_tools.debug("VISITED_AUTO skipped: TALK did not find anyone")
+        DW_QOL_STATE.pending_talk_visit = nil
+        return
+    end
+
+    local map_id, px, py = nav.get_position()
+    local obj = objects.mark_adjacent_npc_visited(map_id, px, py)
+    if obj then
+        debug_tools.info(string.format(
+            "VISITED_AUTO map=0x%02X target_id=%s target_name=%s",
+            map_id,
+            tostring(obj.id),
+            tostring(obj.name)))
+    else
+        debug_tools.debug("VISITED_AUTO skipped: no adjacent NPC matched TALK dialogue")
+    end
+    DW_QOL_STATE.pending_talk_visit = nil
+end
+
+event_bus.subscribe("dialogue_new", function(event)
+    DW_QOL_STATE.mark_pending_talk_visit(event)
+end)
 
 -- Hidden row-1 command diagnostics.
 -- Writes compact transition lines to row1_menu_diag.txt so row-1 menu/guard
@@ -1571,6 +1613,7 @@ local function check_command_menu(frame_delta)
        and cmd_menu_confirmed then
         cmd_menu_live = false
         cmd_rearm_required = true
+        DW_QOL_STATE.arm_talk_visit_marker()
         trace_row1("CMD_TALK_FIRE", changes, {
             "cursor=" .. tostring(cursor_visible),
         })
@@ -2567,6 +2610,47 @@ debug_tools.register_command("next_filter", function()
     end
 end)
 
+debug_tools.register_command("prev_filter", function()
+    local filter_name = objects.prev_filter()
+    local count = objects.get_count()
+    if count > 0 then
+        local desc = filter_name .. ". " .. route_mgr.describe_current_object()
+        debug_tools.info("FILTER: " .. desc)
+        tolk.output_interrupt(desc)
+    else
+        local desc = filter_name .. ". No objects"
+        debug_tools.info("FILTER: " .. desc)
+        tolk.output_interrupt(desc)
+    end
+end)
+
+debug_tools.register_command("mark_visited", function()
+    local obj = objects.mark_current_visited()
+    if obj then
+        local msg = obj.name .. " marked visited"
+        debug_tools.info("VISITED_MANUAL target_id=" .. tostring(obj.id) .. " target_name=" .. tostring(obj.name))
+        tolk.output_interrupt(msg)
+    else
+        debug_tools.info("VISITED_MANUAL no object selected")
+        tolk.output_interrupt("No object selected")
+    end
+end)
+
+debug_tools.register_command("clear_visited", function(arg)
+    local scope = (arg and arg:match("^%s*(.-)%s*$")) or ""
+    local cleared
+    local msg
+    if scope == "all" then
+        cleared = objects.clear_visited("all")
+        msg = string.format("Cleared %d visited flags for all maps", cleared)
+    else
+        cleared = objects.clear_visited()
+        msg = string.format("Cleared %d visited flags for this map", cleared)
+    end
+    debug_tools.info("VISITED_CLEAR " .. msg)
+    tolk.output_interrupt(msg)
+end)
+
 debug_tools.register_command("pathfind", function()
     route_mgr.pathfind_to_current()
 end)
@@ -2942,39 +3026,65 @@ end
 -- Always refuses during menus, dialogue, battle, sweeps, active routes, and
 -- edge probes. Writes RAM 0x003A/0x003B for the new position; for the overworld
 -- also updates 0x0042/0x003E shadow bytes. Clears any pending auto_step state.
-debug_tools.register_command("teleport_to", function(arg)
-    local tx, ty, flag = parse_teleport_arg(arg)
+DW_QOL_STATE.suppress_teleport_input = function()
+    DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES
+    joypad.set(1, {
+        up = false,
+        down = false,
+        left = false,
+        right = false,
+        A = false,
+        B = false,
+        start = false,
+        select = false,
+    })
+end
+
+DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
+    opts = opts or {}
     if tx == nil then
-        debug_tools.error("teleport_to usage: teleport_to:X,Y[,near|force]")
-        tolk.output_interrupt("Teleport: invalid arguments")
-        return
+        debug_tools.error("teleport usage: X,Y[,near|force]")
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport: invalid arguments")
+        end
+        return false, "invalid arguments"
     end
     if flag ~= nil and flag ~= "near" and flag ~= "force" then
         debug_tools.error("teleport_to: unknown flag '" .. flag .. "' (use near or force)")
-        tolk.output_interrupt("Teleport: unknown flag " .. flag)
-        return
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport: unknown flag " .. flag)
+        end
+        return false, "unknown flag"
     end
 
     local reason = get_autowalk_unavailable_reason()
     if reason then
         debug_tools.error("teleport_to refused: " .. reason)
-        tolk.output_interrupt("Teleport refused. " .. reason)
-        return
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport refused. " .. reason)
+        end
+        return false, reason
     end
     if auto_step.is_route_active() then
         debug_tools.error("teleport_to refused: auto-walk route active")
-        tolk.output_interrupt("Teleport refused. Wait for auto-walk to finish")
-        return
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport refused. Wait for auto-walk to finish")
+        end
+        return false, "route active"
     end
     if edge_probe_state ~= nil then
         debug_tools.error("teleport_to refused: edge probe active")
-        tolk.output_interrupt("Teleport refused. Edge probe active")
-        return
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport refused. Edge probe active")
+        end
+        return false, "edge probe active"
     end
     if map_survey.is_active() then
         debug_tools.error("teleport_to refused: map survey active")
-        tolk.output_interrupt("Teleport refused. Survey active")
-        return
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport refused. Survey active")
+        end
+        return false, "survey active"
     end
 
     local map_id = snapshot.map_id
@@ -2988,8 +3098,10 @@ debug_tools.register_command("teleport_to", function(arg)
         debug_tools.error(string.format(
             "teleport_to refused: (%d,%d) out of bounds (map %dx%d)",
             tx, ty, width or -1, height or -1))
-        tolk.output_interrupt("Teleport refused. Target out of bounds")
-        return
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport refused. Target out of bounds")
+        end
+        return false, "out of bounds"
     end
 
     local landing_x, landing_y = tx, ty
@@ -3011,8 +3123,10 @@ debug_tools.register_command("teleport_to", function(arg)
                     debug_tools.error(string.format(
                         "teleport_to refused: (%d,%d) not walkable and no walkable neighbor",
                         tx, ty))
-                    tolk.output_interrupt("Teleport refused. No walkable cell near target")
-                    return
+                    if opts.speak ~= false then
+                        tolk.output_interrupt("Teleport refused. No walkable cell near target")
+                    end
+                    return false, "no walkable neighbor"
                 end
             else
                 local tile_type = map_reader.get_tile_type(map_id, tx, ty)
@@ -3020,11 +3134,29 @@ debug_tools.register_command("teleport_to", function(arg)
                 debug_tools.error(string.format(
                     "teleport_to refused: (%d,%d) not walkable (tile=%s); use near or force",
                     tx, ty, tile_str))
-                tolk.output_interrupt(string.format(
-                    "Teleport refused. %d, %d not walkable. Use near or force flag",
-                    tx, ty))
-                return
+                if opts.speak ~= false then
+                    if opts.manual then
+                        tolk.output_interrupt("Teleport refused. Target cell is not walkable")
+                    else
+                        tolk.output_interrupt(string.format(
+                            "Teleport refused. %d, %d not walkable. Use near or force flag",
+                            tx, ty))
+                    end
+                end
+                return false, "not walkable"
             end
+        end
+    end
+
+    if flag ~= "force" and opts.check_npc ~= false then
+        if objects.is_npc_at(map_id, landing_x, landing_y) then
+            debug_tools.error(string.format(
+                "teleport_to refused: (%d,%d) occupied by NPC",
+                landing_x, landing_y))
+            if opts.speak ~= false then
+                tolk.output_interrupt("Teleport refused. Target cell is occupied by an NPC")
+            end
+            return false, "npc occupied"
         end
     end
 
@@ -3067,6 +3199,8 @@ debug_tools.register_command("teleport_to", function(arg)
             landing_x, landing_y, map_id, table.concat(bytes, " ")))
     end
 
+    DW_QOL_STATE.suppress_teleport_input()
+
     local msg
     if landing_note then
         msg = string.format("Teleported to (%d,%d), %s of (%d,%d)",
@@ -3077,7 +3211,54 @@ debug_tools.register_command("teleport_to", function(arg)
         msg = string.format("Teleported to (%d,%d)", landing_x, landing_y)
     end
     debug_tools.info(msg)
-    tolk.output_interrupt(msg)
+    if opts.speak ~= false then
+        tolk.output_interrupt(msg)
+    end
+    return true, msg
+end
+
+debug_tools.register_command("teleport_to", function(arg)
+    local tx, ty, flag = parse_teleport_arg(arg)
+    DW_QOL_STATE.perform_teleport_to(tx, ty, flag)
+end)
+
+DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS = {
+    north = {dx = 0, dy = -1},
+    south = {dx = 0, dy = 1},
+    west = {dx = -1, dy = 0},
+    east = {dx = 1, dy = 0},
+}
+
+hotkeys.set_teleport_handler(function(mode)
+    local obj = objects.current_object()
+    if not obj then
+        tolk.output_interrupt("No object selected")
+        return
+    end
+
+    local tx, ty = obj.x, obj.y
+    if mode ~= "exact" then
+        local off = DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS[mode]
+        if not off then
+            tolk.output_interrupt("Teleport: unknown direction")
+            return
+        end
+        tx = obj.x + off.dx
+        ty = obj.y + off.dy
+    end
+
+    local ok = DW_QOL_STATE.perform_teleport_to(tx, ty, nil, {check_npc = true, manual = true})
+    if ok then
+        debug_tools.info(string.format(
+            "TELEPORT_SELECTED mode=%s target_id=%s target_name=%s target=(%d,%d) landing=(%d,%d)",
+            tostring(mode),
+            tostring(obj.id),
+            tostring(obj.name),
+            obj.x,
+            obj.y,
+            tx,
+            ty))
+    end
 end)
 
 -- ============================================================
@@ -3758,6 +3939,22 @@ while true do
 
     NAME_ENTRY_SYMBOLS.apply_guard()
 
+    local teleport_input_suppressed_this_frame = false
+    if DW_QOL_STATE.teleport_input_suppress_frames > 0 then
+        joypad.set(1, {
+            up = false,
+            down = false,
+            left = false,
+            right = false,
+            A = false,
+            B = false,
+            start = false,
+            select = false,
+        })
+        DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.teleport_input_suppress_frames - 1
+        teleport_input_suppressed_this_frame = true
+    end
+
     -- Auto-step: extend brief D-pad taps into full tile steps.
     -- Only active when the player is walking on the field (not in
     -- menus, dialogue, battle, or on the title screen).
@@ -3814,7 +4011,7 @@ while true do
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
-    if not raw_debug_input_this_frame then
+    if not raw_debug_input_this_frame and not teleport_input_suppressed_this_frame then
         scan_profiler.call("auto_step.update", auto_step.update, can_walk)
     end
 

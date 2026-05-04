@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-05-01
+Updated: 2026-05-04
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
@@ -29,6 +29,29 @@ Movement and routing:
 - Log route failures with enough context to reproduce
 - Avoid permanent map-data changes without direct blocker evidence
 
+QoL feature check:
+- `auto_walk` should now speak progress on longer routes and speak completion.
+- After auto-walking to an NPC, the target should be held briefly so the player
+  has time to use TALK. The route should also face the target after arrival so
+  TALK does not fail with "There is no one there."
+- Object filters are All, NPCs, Services, Treasure, Travel, and Doors; `Q`
+  cycles forward, `Shift+J` and `Shift+L` move filter categories without
+  scrolling objects, and `Shift+K` jumps back to All.
+- Visited flags are session-only and map-scoped. Use `Shift+V` or
+  `mark_visited` to mark manually; `clear_visited` clears the current map and
+  `clear_visited:all` clears all maps.
+- Selected-object teleport uses `Shift+Enter` for the target cell and
+  `Shift+direction` for an adjacent landing on that side of the target.
+- Watch selected-object teleport near doors/stairs and moving NPC clusters.
+  The first manual test did not show lost keyboard input after teleport; logs
+  showed the player boxed in at `(4,6)` on map `0x05` by NPCs at `(3,6)` and
+  `(5,6)`, the door south, and a noisy north doorway edge.
+- Direct selected-object teleport to an unwalkable target should speak a simple
+  player-facing refusal, without mentioning debug-only `near` or `force` flags.
+- Latest manual pass: auto-walk is mostly behaving as expected. A possible
+  Guard 1 auto-walk failure still needs log review, but the previously patched
+  false-visited case now behaves correctly.
+
 ## Initial Gameplay Pass Checklist
 
 Use this as a lightweight first pass:
@@ -39,10 +62,33 @@ Use this as a lightweight first pass:
 - Interact with the king/throne-room objects if available
 - Use stairs/doors/exits intentionally
 - Visit the first town and interact with NPCs/shops if reachable
+- In town, verify visited flags and Services/Treasure/Travel filter categories
 - Enter a simple combat encounter and evaluate narration
 - Record every point where the player would feel lost, under-informed, or unable to recover
 
 ## Open Gameplay Issues
+
+### GP-002
+
+Severity: Medium
+
+Area: Command menu narration / map-position sensitivity
+
+Status:
+Needs investigation in the next playtest/debug session.
+
+Description:
+Manual testing found that in certain parts of the map, the command menu does
+not read correctly. This appears to be map-region or player-position dependent,
+not a general screen-reader failure.
+
+Next evidence to collect:
+- Reproduce one bad command-menu read.
+- Immediately capture `report_position`, `input_status`, and ideally
+  `report_movement_state:menu_bad_region`.
+- Compare with a nearby position where the command menu reads correctly.
+- Check whether the issue correlates with scroll/camera bytes, row-1 command
+  menu parsing, or map-specific PPU layout.
 
 ### GP-001
 

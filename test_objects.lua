@@ -282,6 +282,88 @@ function tests.brecconary_exit_matches_live_west_edge_probe()
     env.restore()
 end
 
+function tests.service_filter_lists_merchant_npcs()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 5)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x65, 0x07) -- sprite type 3 (Merchant), x=5, y=7
+    env.objects.refresh(0x08)
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+
+    assert_equal(env.objects.get_count(), 1, "Services filter should include merchant-type NPCs")
+    local obj = env.objects.current_object()
+    assert_equal(obj.name, "Merchant", "merchant sprite should keep its service-facing label")
+    assert_equal(obj.service, true, "merchant NPCs should be marked as services")
+
+    env.restore()
+end
+
+function tests.all_filter_jumps_back_to_all_objects()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 5)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x08)
+    env.objects.next_filter() -- NPCs
+    assert_equal(env.objects.get_filter_name(), "NPCs", "test should start on the NPC filter")
+
+    local filter_name = env.objects.all_filter()
+    assert_equal(filter_name, "All", "all_filter should report the All filter")
+    assert_equal(env.objects.get_filter_name(), "All", "current filter should return to All")
+    assert_equal(env.objects.get_count() > 0, true, "All filter should expose available map objects")
+
+    env.restore()
+end
+
+function tests.npc_occupancy_check_reads_live_ram_without_full_refresh()
+    local env = make_env({is_bizhawk = true})
+
+    env.set_position(0x04, 0, 0)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    assert_equal(env.objects.current_object().x, 5, "object list should stay stale before a refresh")
+    assert_equal(env.objects.is_npc_at(0x04, 10, 9), true, "occupancy check should read the current NPC RAM")
+    assert_equal(env.objects.is_npc_at(0x04, 5, 7), false, "occupancy check should not use stale object-list positions")
+
+    env.restore()
+end
+
+function tests.visited_flags_are_map_scoped_and_clearable()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 5)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+
+    local obj = env.objects.current_object()
+    env.objects.mark_current_visited()
+    assert_equal(env.objects.is_visited(obj), true, "marked object should be visited on the current map")
+    assert_equal(
+        env.objects.describe_current({include_debug_coords = false}),
+        "Guard (visited): 2 south (1 of 1)",
+        "visited object descriptions should include the visited flag")
+
+    env.set_position(0x09, 5, 5)
+    env.objects.refresh(0x09)
+    env.objects.next_filter()
+    assert_equal(env.objects.is_visited(env.objects.current_object()), false, "visited flags should not bleed across maps")
+
+    env.set_position(0x08, 5, 5)
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+    assert_equal(env.objects.clear_visited(), 1, "clear_visited should return the count cleared for the current map")
+    assert_equal(env.objects.is_visited(env.objects.current_object()), false, "clear_visited should remove the current map flag")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_exposes_reachable_navigation_doors()
     local env = make_env()
 

@@ -84,7 +84,14 @@ local seam_memory = {}
 local seam_retry_state = nil
 local autowalk_guard = nil
 local active_route_settle_frames = 0
+local active_route_target = nil
+local active_route_face_dir = nil
+local active_route_total_steps = 0
+local active_route_completed_steps = 0
+local target_npc_hold = nil
+local target_face_input = nil
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
+local TARGET_FACE_RELEASE_FRAMES = 2
 local SEAM_CONFIRM_BLOCK_THRESHOLD = 3
 local SEAM_BRUTE_FORCE_RETRY_LIMIT = 2
 local APPROACH_ORDER = {north = 1, south = 2, west = 3, east = 4}
@@ -124,6 +131,93 @@ local function config_bool(key, default)
         return false
     end
     return default
+end
+
+local function config_int(key, default, min_value, max_value)
+    local value = tonumber(config.get(key))
+    if not value then
+        return default
+    end
+    value = math.floor(value)
+    if min_value and value < min_value then
+        return min_value
+    end
+    if max_value and value > max_value then
+        return max_value
+    end
+    return value
+end
+
+local function neutralize_directions()
+    if not joypad or not joypad.set then
+        return
+    end
+    joypad.set(1, {
+        up = false,
+        down = false,
+        left = false,
+        right = false,
+    })
+end
+
+local function release_target_face(reason)
+    if target_face_input and reason then
+        debug_tools.debug("target face released: " .. tostring(reason))
+    end
+    target_face_input = nil
+end
+
+local function queue_target_face(face_dir, target)
+    local dir = DIR_NAME_TO_KEY[face_dir]
+    if not dir or not joypad or not joypad.set then
+        return false
+    end
+    local frames = config_int("auto_walk_face_target_frames", 8, 0, 60)
+    if frames <= 0 then
+        return false
+    end
+    target_face_input = {
+        dir = dir,
+        frames = frames,
+        release_frames = TARGET_FACE_RELEASE_FRAMES,
+        name = target and target.name or "target",
+    }
+    debug_tools.info(string.format(
+        "AUTO_WALK_FACE target=%s face=%s dir=%s frames=%d",
+        tostring(target_face_input.name),
+        tostring(face_dir),
+        tostring(dir),
+        frames))
+    return true
+end
+
+local function apply_target_face()
+    if not target_face_input then
+        return
+    end
+    if not joypad or not joypad.set then
+        release_target_face("joypad unavailable")
+        return
+    end
+    if target_face_input.frames > 0 then
+        joypad.set(1, {[target_face_input.dir] = true})
+        target_face_input.frames = target_face_input.frames - 1
+        return
+    end
+    if target_face_input.release_frames > 0 then
+        neutralize_directions()
+        target_face_input.release_frames = target_face_input.release_frames - 1
+        return
+    end
+    release_target_face("face complete")
+end
+
+local function speak_noninterrupting(message)
+    if tolk.output then
+        tolk.output(message)
+    else
+        tolk.output_interrupt(message)
+    end
 end
 
 local function should_refresh_npcs_for_plan(opts)
@@ -552,6 +646,54 @@ local function capture_npc_snapshot()
     end
 end
 
+local function parse_npc_slot(obj)
+    if not obj or not obj.id then return nil end
+    local slot = tostring(obj.id):match("^npc_(%d+)$")
+    slot = tonumber(slot)
+    if not slot or slot < 0 or slot >= addr.NPC_COUNT then
+        return nil
+    end
+    return slot
+end
+
+local function release_target_npc_hold(reason)
+    if target_npc_hold and reason then
+        debug_tools.info("NPC target hold released: " .. reason)
+    end
+    target_npc_hold = nil
+end
+
+local function start_target_npc_hold(obj)
+    if not obj or obj.type ~= objects.TYPE_NPC then
+        return false
+    end
+    local frames = config_int("auto_walk_npc_hold_frames", 480, 0, 3600)
+    if frames <= 0 then
+        return false
+    end
+    local slot = parse_npc_slot(obj)
+    if not slot then
+        debug_tools.debug("NPC target hold skipped: could not parse slot for " .. tostring(obj.id))
+        return false
+    end
+
+    local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+    target_npc_hold = {
+        slot = slot,
+        frames = frames,
+        name = obj.name,
+        snapshot = {
+            memory.readbyte(base),
+            memory.readbyte(base + 1),
+            memory.readbyte(base + 2),
+        },
+    }
+    debug_tools.info(string.format(
+        "NPC target hold started: target=%s slot=%d frames=%d",
+        tostring(obj.name), slot, frames))
+    return true
+end
+
 local function freeze_npcs_for_pathing()
     capture_npc_snapshot()
     npc_freeze_active = true
@@ -561,13 +703,26 @@ end
 -- Call once per frame immediately after FCEU.frameadvance().
 -- No-op when npc_freeze_active is false, so it's safe to call every frame.
 function M.apply_npc_freeze()
-    if not npc_freeze_active then return end
-    for i = 0, addr.NPC_COUNT - 1 do
-        local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
-        local snap = frozen_npc_snapshot[i]
+    apply_target_face()
+    if npc_freeze_active then
+        for i = 0, addr.NPC_COUNT - 1 do
+            local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
+            local snap = frozen_npc_snapshot[i]
+            memory.writebyte(base,     snap[1])
+            memory.writebyte(base + 1, snap[2])
+            memory.writebyte(base + 2, snap[3])
+        end
+    end
+    if target_npc_hold then
+        local base = addr.NPC_DATA_START + target_npc_hold.slot * addr.NPC_ENTRY_SIZE
+        local snap = target_npc_hold.snapshot
         memory.writebyte(base,     snap[1])
         memory.writebyte(base + 1, snap[2])
         memory.writebyte(base + 2, snap[3])
+        target_npc_hold.frames = target_npc_hold.frames - 1
+        if target_npc_hold.frames <= 0 then
+            release_target_npc_hold("timer expired")
+        end
     end
 end
 
@@ -577,9 +732,11 @@ function M.toggle_npc_freeze()
     if npc_freeze_active then
         npc_freeze_active = false
         frozen_npc_snapshot = {}
+        release_target_npc_hold("manual unfreeze")
         tolk.output_interrupt("NPCs unfrozen.")
         return false
     else
+        release_target_npc_hold("manual full freeze")
         capture_npc_snapshot()
         npc_freeze_active = true
         tolk.output_interrupt("NPCs frozen.")
@@ -589,6 +746,7 @@ end
 
 -- freeze_npcs() / unfreeze_npcs(): Direct control for remote commands.
 function M.freeze_npcs()
+    release_target_npc_hold("full freeze requested")
     capture_npc_snapshot()
     npc_freeze_active = true
 end
@@ -596,6 +754,7 @@ end
 function M.unfreeze_npcs()
     npc_freeze_active = false
     frozen_npc_snapshot = {}
+    release_target_npc_hold("manual unfreeze")
 end
 
 -- is_npc_freeze_active(): Query freeze state (for can_walk guard, etc.)
@@ -821,11 +980,29 @@ local function clear_active_route_context(reason, refresh_objects)
     last_pathfind_obj = nil
     reroute_failures = 0
     active_route_settle_frames = 0
+    active_route_target = nil
+    active_route_face_dir = nil
+    active_route_total_steps = 0
+    active_route_completed_steps = 0
+    release_target_face(reason or "route context cleared")
     clear_seam_retry_state()
     release_npc_freeze(reason)
     if refresh_objects then
         objects.request_refresh()
     end
+end
+
+local function set_active_route_context(target, path_len, face_dir)
+    active_route_target = target
+    active_route_face_dir = face_dir
+    active_route_total_steps = tonumber(path_len) or 0
+    active_route_completed_steps = 0
+end
+
+local function update_active_route_remaining(path_len, face_dir)
+    local remaining = tonumber(path_len) or 0
+    active_route_total_steps = active_route_completed_steps + remaining
+    active_route_face_dir = face_dir
 end
 
 local function resolve_path_mode(obj, map_id, opts)
@@ -1280,6 +1457,8 @@ end
 
 function M.autowalk_to_object(obj, opts)
     opts = opts or {}
+    release_target_face("new auto-walk")
+    release_target_npc_hold("new auto-walk")
     if opts.allow_adjacent_fallback == nil then
         opts.allow_adjacent_fallback = true
     end
@@ -1340,6 +1519,12 @@ function M.autowalk_to_object(obj, opts)
         debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
         plan.status = "already_there"
         plan.message = "Already there. " .. build_pathfind_message(obj, "Adjacent", plan.face_dir)
+        if plan.path_mode == "adjacent" then
+            queue_target_face(plan.face_dir, obj)
+        end
+        if start_target_npc_hold(obj) then
+            plan.message = plan.message .. ". Target held briefly. Use TALK now"
+        end
         if opts.speak ~= false then
             tolk.output_interrupt(plan.message)
         end
@@ -1378,6 +1563,7 @@ function M.autowalk_to_object(obj, opts)
         return plan
     end
     debug_tools.info("AUTO_WALK: queued " .. #plan.path .. " step(s) for " .. obj.name)
+    set_active_route_context(obj, #plan.path, plan.path_mode == "adjacent" and plan.face_dir or nil)
     plan.status = "queued"
     plan.ok = true
     plan.path_length = #plan.path
@@ -1489,7 +1675,9 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     tolk.output_interrupt(msg)
 
     if plan.path and #plan.path > 0 then
-        queue_path_steps(plan.path, {settle_frames = active_route_settle_frames})
+        if queue_path_steps(plan.path, {settle_frames = active_route_settle_frames}) then
+            update_active_route_remaining(#plan.path, plan.path_mode == "adjacent" and plan.face_dir or nil)
+        end
     else
         clear_active_route_context("reroute reached destination", should_refresh_objects_after_route())
     end
@@ -1514,6 +1702,19 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
         "moved",
         step_data and step_data.source or "step_complete")
     reroute_failures = 0
+    if step_data and step_data.queued_route and active_route_total_steps > 0 then
+        active_route_completed_steps = active_route_completed_steps + 1
+        local progress_interval = config_int("auto_walk_progress_interval", 6, 0, 60)
+        if progress_interval > 0
+           and active_route_total_steps > progress_interval
+           and active_route_completed_steps < active_route_total_steps
+           and active_route_completed_steps % progress_interval == 0 then
+            speak_noninterrupting(string.format(
+                "Auto-walk %d of %d steps",
+                active_route_completed_steps,
+                active_route_total_steps))
+        end
+    end
 
     if not same_seam_retry(map_id, from_x, from_y, dir) then
         if seam_retry_state then
@@ -1565,6 +1766,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
         tolk.output_interrupt("Seam crossed, but auto-walk could not queue the follow-up route.")
         return
     end
+    update_active_route_remaining(#plan.path, plan.path_mode == "adjacent" and plan.face_dir or nil)
 
     tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
         target,
@@ -1574,12 +1776,32 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
 end
 
 auto_step.on_route_complete = function()
+    local target = active_route_target or last_pathfind_obj
+    local face_dir = active_route_face_dir
+    local total_steps = active_route_total_steps
     clear_active_route_context("autowalk route complete", should_refresh_objects_after_route())
+    if target then
+        local msg = string.format("Auto-walk complete. Arrived at %s", target.name or "destination")
+        if total_steps and total_steps > 0 then
+            msg = msg .. string.format(" after %d steps", total_steps)
+        end
+        queue_target_face(face_dir, target)
+        if target.type == objects.TYPE_NPC and start_target_npc_hold(target) then
+            msg = msg .. ". Target held briefly. Use TALK now"
+        end
+        tolk.output_interrupt(msg)
+    else
+        tolk.output_interrupt("Auto-walk complete")
+    end
 end
 
 auto_step.on_route_cancelled = function(cancel_data)
     local reason = cancel_data and cancel_data.reason or "auto_step_cancelled"
+    local had_target = active_route_target or last_pathfind_obj
     clear_active_route_context("auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
+    if had_target and reason ~= "can_walk_false" then
+        tolk.output_interrupt("Auto-walk cancelled. " .. tostring(reason))
+    end
 end
 
 -- ============================================================
@@ -1598,6 +1820,8 @@ function M.on_map_change()
     end
     runtime_blocked = {}
     clear_seam_retry_state()
+    release_target_face("map change")
+    release_target_npc_hold("map change")
     clear_active_route_context("map change", false)
 end
 

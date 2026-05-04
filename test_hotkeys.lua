@@ -24,8 +24,11 @@ local function make_env(options)
     local pathfind_calls = 0
     local autowalk_calls = 0
     local freeze_calls = 0
+    local visited_calls = 0
+    local teleport_modes = {}
     local describe_calls = {}
     local filter_name = options.filter_name or "NPCs"
+    local all_filter_calls = 0
     local object_count = options.object_count or 1
     local delay = options.delay
     if delay == nil then delay = 2 end
@@ -72,6 +75,15 @@ local function make_env(options)
         key_pathfind = "O",
         key_auto_walk = "U",
         key_filter = "Q",
+        key_filter_prev = "Shift+J",
+        key_filter_all = "Shift+K",
+        key_filter_next = "Shift+L",
+        key_mark_visited = "Shift+V",
+        key_teleport_exact = "Shift+Enter",
+        key_teleport_north = "Shift+Up",
+        key_teleport_south = "Shift+Down",
+        key_teleport_west = "Shift+Left",
+        key_teleport_east = "Shift+Right",
         object_nav_speech_coalesce_frames = tostring(delay),
         tile_diag_dump_on_hotkey = options.tile_diag_dump_on_hotkey or "false",
     }
@@ -181,8 +193,22 @@ local function make_env(options)
             next_filter = function()
                 return filter_name
             end,
+            prev_filter = function()
+                return options.prev_filter_name or "All"
+            end,
+            all_filter = function()
+                all_filter_calls = all_filter_calls + 1
+                return "All"
+            end,
             get_count = function()
                 return object_count
+            end,
+            mark_current_visited = function()
+                visited_calls = visited_calls + 1
+                if options.no_current_object then
+                    return nil
+                end
+                return {name = "Object " .. selected}
             end,
         }
     end
@@ -217,6 +243,9 @@ local function make_env(options)
 
     local hotkeys = require "hotkeys"
     hotkeys._reset_for_tests()
+    hotkeys.set_teleport_handler(function(mode)
+        teleport_modes[#teleport_modes + 1] = mode
+    end)
 
     return {
         outputs = outputs,
@@ -236,6 +265,13 @@ local function make_env(options)
         freeze_calls = function()
             return freeze_calls
         end,
+        visited_calls = function()
+            return visited_calls
+        end,
+        all_filter_calls = function()
+            return all_filter_calls
+        end,
+        teleport_modes = teleport_modes,
         describe_calls = describe_calls,
         restore = function()
             _G.memory = original_memory
@@ -393,6 +429,65 @@ function tests.route_actions_clear_pending_object_speech_without_speaking_it()
     env.update({})
     env.update({})
     assert_equal(#env.outputs, 0, "cleared pending object speech should not flush after pathfind")
+
+    env.restore()
+end
+
+function tests.shift_j_l_cycle_filters_without_scrolling_objects()
+    local env = make_env({delay = 0, filter_name = "Travel", prev_filter_name = "Treasure"})
+
+    env.update({Shift = true, L = true})
+    assert_equal(#env.outputs, 1, "Shift+L should speak the next filter")
+    assert_equal(env.outputs[1].message, "Travel. Object 0", "Shift+L should announce the filter selection")
+    assert_equal(#env.describe_calls, 1, "filter hotkey should describe the filtered object")
+
+    env.update({})
+    env.update({Shift = true, J = true})
+    assert_equal(#env.outputs, 2, "Shift+J should speak the previous filter")
+    assert_equal(env.outputs[2].message, "Treasure. Object 0", "Shift+J should announce the previous filter")
+    assert_equal(#env.describe_calls, 2, "previous-filter hotkey should describe the filtered object")
+
+    env.restore()
+end
+
+function tests.shift_k_jumps_filter_back_to_all_without_current_object_speech()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, K = true})
+
+    assert_equal(env.all_filter_calls(), 1, "Shift+K should reset to the All filter")
+    assert_equal(#env.outputs, 1, "Shift+K should speak the All filter")
+    assert_equal(env.outputs[1].message, "All. Object 0", "Shift+K should announce the All filter selection")
+    assert_equal(#env.describe_calls, 1, "filter reset should describe the filtered object")
+
+    env.restore()
+end
+
+function tests.mark_visited_speaks_manual_confirmation()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, V = true})
+
+    assert_equal(env.visited_calls(), 1, "visited hotkey should mark the current object")
+    assert_equal(#env.outputs, 1, "visited hotkey should speak confirmation")
+    assert_equal(env.outputs[1].message, "Object 0 marked visited", "visited hotkey should name the object")
+
+    env.restore()
+end
+
+function tests.teleport_hotkeys_call_registered_handler()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, Enter = true})
+    env.update({})
+    env.update({Shift = true, Up = true})
+    env.update({})
+    env.update({Shift = true, Right = true})
+
+    assert_equal(#env.teleport_modes, 3, "teleport hotkeys should call the handler")
+    assert_equal(env.teleport_modes[1], "exact", "Shift+Enter should request exact teleport")
+    assert_equal(env.teleport_modes[2], "north", "Shift+Up should request north-of-target teleport")
+    assert_equal(env.teleport_modes[3], "east", "Shift+Right should request east-of-target teleport")
 
     env.restore()
 end

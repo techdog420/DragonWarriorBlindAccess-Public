@@ -22,6 +22,10 @@ local SPECIAL_ALIASES = {
     enter = {"Enter", "Return", "enter", "return", "ENTER", "RETURN"},
     tab = {"Tab", "tab", "TAB"},
     backspace = {"Backspace", "Back", "backspace", "BACKSPACE"},
+    up = {"Up", "up", "UP"},
+    down = {"Down", "down", "DOWN"},
+    left = {"Left", "left", "LEFT"},
+    right = {"Right", "right", "RIGHT"},
 }
 
 local function trim(value)

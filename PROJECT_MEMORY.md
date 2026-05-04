@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-01
+Updated: 2026-05-04
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 
@@ -158,11 +158,31 @@ Emulator compatibility direction:
   object after a short idle gap. The delay was raised from 6 after live logs
   showed repeated 6-frame flushes during manual object-list tapping. Set the
   value to `0` to restore immediate previous/next speech.
+- Player-facing QoL hotkeys are part of the safe BizHawk allowlist. Current
+  additions are `Shift+J` / `Shift+L` for object-filter categories, `Shift+K`
+  to jump filters back to All, `Shift+V` for session-only visited marking, and
+  `Shift+Enter` plus `Shift+direction` for selected-object teleport. Keep these
+  shortcuts configurable and avoid re-enabling all BizHawk keyboard hotkeys for
+  normal testers.
+- Visited flags live in `objects.lua` as session-only, map-scoped state. They
+  intentionally do not persist across script restarts yet; use
+  `clear_visited` and `clear_visited:all` for local cleanup during a playtest.
+- `auto_walk` is now a tester-facing feature, not only a debug hook. Long routes
+  should provide periodic progress speech, completion should be spoken, and NPC
+  targets may be held briefly after arrival so the player has time to use TALK.
+  For adjacent interaction targets, auto-walk should also face the target after
+  arrival; otherwise a route whose final step is sideways can leave the hero
+  adjacent but facing away, making TALK say "There is no one there."
 - BizHawk periodic NPC/object refresh is disabled by default with
   `bizhawk_periodic_npc_refresh=false` because live profiling showed background
   `objects.check_refresh` calls could spike around 1.7-2.0 seconds. Explicit
   route/path/debug commands still call `objects.update_npcs()` when they need
   current live blockers.
+- Selected-object teleport should avoid full object-list rebuilds on the hotkey
+  path. Use direct live NPC RAM checks for "landing occupied" tests; a manual
+  teleport retest found the apparent lost-keyboard state was actually a boxed-in
+  landing at map `0x05` `(4,6)` with NPC blockers on both sides, a door south,
+  and a noisy north seam.
 - BizHawk ROM domains can be exposed as headerless PRG data even when the
   project expects FCEUX-style `rom.readbyte()` file offsets that include the
   16-byte iNES header. `emulator_compat.lua` must score candidate ROM domains

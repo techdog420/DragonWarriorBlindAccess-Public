@@ -4,6 +4,7 @@
 local original_preload = {}
 local original_loaded = {}
 local original_emulator_compat = _G.DW_EMULATOR_COMPAT
+local original_joypad = _G.joypad
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -28,9 +29,13 @@ local function make_env(options)
     local last_adjacent_call = nil
     local pathfind_mode = options.pathfind_mode or "always_path"
     local pathfind_block_key = options.pathfind_block_key or "5,3"
+    local path_length = options.path_length or 1
     local reroute_calls = 0
     local update_npcs_calls = 0
     local request_refresh_calls = 0
+    local joypad_sets = {}
+    local memory_values = options.memory_values or {}
+    local memory_writes = {}
     local current_object = options.current_object or {name = "Chest", type = "chest", x = 6, y = 1}
     local module_names = {
         "addresses",
@@ -53,12 +58,20 @@ local function make_env(options)
     end
 
     _G.memory = _G.memory or {}
-    _G.memory.readbyte = function()
-        return 0
+    _G.memory.readbyte = function(address)
+        return memory_values[address] or 0
     end
-    _G.memory.writebyte = function() end
+    _G.memory.writebyte = function(address, value)
+        memory_writes[#memory_writes + 1] = {address = address, value = value}
+        memory_values[address] = value
+    end
     _G.DW_EMULATOR_COMPAT = {
         is_bizhawk = options.is_bizhawk == true,
+    }
+    _G.joypad = {
+        set = function(player, buttons)
+            joypad_sets[#joypad_sets + 1] = {player = player, buttons = buttons}
+        end,
     }
 
     package.preload["addresses"] = function()
@@ -117,9 +130,11 @@ local function make_env(options)
             return false
         end
         local function one_step_path()
-            return {
-                {x = 5, y = 3, direction = "north"},
-            }
+            local path = {}
+            for i = 1, path_length do
+                path[i] = {x = 5, y = 4 - i, direction = "north"}
+            end
+            return path
         end
         return {
             pathfind_to = function(_, start_x, start_y, goal_x, goal_y, blocking)
@@ -144,9 +159,7 @@ local function make_env(options)
                 if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
                     return "No path found", nil, nil
                 end
-                return "Path: 1 north", "north", {
-                    {x = 5, y = 3, direction = "north"},
-                }
+                return "Path: 1 north", "north", one_step_path()
             end,
             find_route_to = function(_, start_x, start_y, goal_x, goal_y, blocking)
                 pathfind_calls = pathfind_calls + 1
@@ -179,6 +192,9 @@ local function make_env(options)
                     blocking = blocking,
                     opts = opts,
                 }
+                if pathfind_mode == "already_adjacent" then
+                    return "Adjacent", "north", {}
+                end
                 if pathfind_mode == "always_no_path" then
                     return "No path found", nil, nil
                 end
@@ -188,9 +204,7 @@ local function make_env(options)
                 if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
                     return "No path found", nil, nil
                 end
-                return "Approach: 1 north", "north", {
-                    {x = 5, y = 3, direction = "north"},
-                }
+                return "Approach: 1 north", "north", one_step_path()
             end,
             find_route_to_adjacent = function(_, start_x, start_y, goal_x, goal_y, blocking, opts)
                 pathfind_calls = pathfind_calls + 1
@@ -319,9 +333,12 @@ local function make_env(options)
         last_adjacent_call = function() return last_adjacent_call end,
         seam_summary = function(map_id) return route_manager.get_seam_summary(map_id) end,
         seam_entries = function(map_id) return route_manager.get_seam_entries(map_id) end,
+        memory_writes = memory_writes,
+        joypad_sets = joypad_sets,
         restore = function()
             restore_modules(module_names)
             _G.DW_EMULATOR_COMPAT = original_emulator_compat
+            _G.joypad = original_joypad
         end,
     }
 end
@@ -881,6 +898,101 @@ function tests.bizhawk_autowalk_freeze_can_be_opted_in()
         true,
         "BizHawk autowalk freeze option should preserve the old NPC freeze behavior when requested"
     )
+
+    env.restore()
+end
+
+function tests.autowalk_completion_speaks_arrival()
+    local env = make_env({path_length = 3})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(output, "Auto-walk complete. Arrived at Chest after 3 steps", "route completion should announce arrival")
+
+    env.restore()
+end
+
+function tests.autowalk_speaks_progress_on_long_routes()
+    local env = make_env({path_length = 8})
+
+    env.route_manager.autowalk_to_current()
+    for i = 1, 6 do
+        env.auto_step.on_step_complete(5, 5 - i, "up", 5, 4 - i, {
+            queued_route = true,
+            source = "test",
+        })
+    end
+
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Auto-walk 6 of 8 steps",
+        "long queued routes should speak progress at the configured interval")
+
+    env.restore()
+end
+
+function tests.autowalk_to_npc_holds_target_after_arrival()
+    local env = make_env({
+        is_bizhawk = true,
+        current_object = {name = "Person", type = "npc", id = "npc_2", x = 6, y = 1},
+        config_values = {
+            auto_walk_npc_hold_frames = "2",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+    env.route_manager.apply_npc_freeze()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(output, "Target held briefly. Use TALK now", "NPC arrival should prompt the player to talk")
+    assert_equal(env.memory_writes[1].address, 6, "NPC hold should write the target slot byte 0")
+    assert_equal(env.memory_writes[2].address, 7, "NPC hold should write the target slot byte 1")
+    assert_equal(env.memory_writes[3].address, 8, "NPC hold should write the target slot byte 2")
+
+    env.restore()
+end
+
+function tests.autowalk_to_npc_faces_target_after_arrival()
+    local env = make_env({
+        is_bizhawk = true,
+        current_object = {name = "King", type = "npc", id = "npc_10", x = 5, y = 3},
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+            auto_walk_face_target_frames = "2",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+    assert_equal(#env.joypad_sets, 0, "facing input should wait for the post-frame hook")
+
+    env.route_manager.apply_npc_freeze()
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "arrival should press toward the NPC")
+    env.route_manager.apply_npc_freeze()
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "face input should hold for configured frames")
+    env.route_manager.apply_npc_freeze()
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, false, "face input should release after the hold")
+
+    env.restore()
+end
+
+function tests.autowalk_already_adjacent_faces_target()
+    local env = make_env({
+        pathfind_mode = "already_adjacent",
+        current_object = {name = "King", type = "npc", id = "npc_10", x = 5, y = 3},
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+            auto_walk_face_target_frames = "1",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.route_manager.apply_npc_freeze()
+
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "already-adjacent auto-walk should face the target")
 
     env.restore()
 end

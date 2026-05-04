@@ -1,12 +1,12 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-01
+Updated: 2026-05-04
 
 ## Current Focus
 
-The BizHawk emulator swap is now good enough to call successful. Continue from
-BizHawk as the normal playtesting path while preserving FCEUX as an explicit
-fallback.
+The BizHawk emulator swap is now good enough to call successful. The current
+branch is adding player-facing quality-of-life features before the next normal
+gameplay pass, while preserving FCEUX as an explicit fallback.
 
 Reason for the decision:
 - FCEUX has recurring keyboard/input weirdness, especially stale Alt/menu focus.
@@ -20,6 +20,82 @@ Keep FCEUX supported as a fallback. New work should assume BizHawk is the
 primary path unless the task explicitly targets FCEUX.
 
 ## Current Baseline
+
+2026-05-04 QoL feature batch implemented in the worktree:
+- `auto_walk` now speaks progress every 6 completed queued steps on longer
+  routes and announces route completion. When the target is an NPC, arrival
+  briefly holds that NPC slot in place and prompts the player to use TALK.
+- Object navigation filters are now player-facing categories:
+  All, NPCs, Services, Treasure, Travel, and Doors. `Q` cycles forward;
+  `Shift+J` / `Shift+L` cycle filters backward/forward, and `Shift+K` jumps
+  directly back to All without also speaking the current object.
+- Session-only visited flags are map-scoped. `Shift+V` / `mark_visited` marks
+  the current object; TALK followed by real dialogue marks an adjacent NPC
+  automatically; `clear_visited` clears the current map and
+  `clear_visited:all` clears all maps.
+- Selected-object teleport is available through configurable hotkeys:
+  `Shift+Enter` for exact target cell, and `Shift+Up/Down/Left/Right` for the
+  adjacent cell on that side of the selected object. Teleport reuses the
+  existing safe refusal checks, rejects NPC-occupied landings unless forced
+  through the debug command, normalizes movement state, and suppresses leaked
+  D-pad/Start input for a few frames. The NPC-occupied landing check now reads
+  live NPC RAM directly instead of forcing a full object-list rebuild.
+- Manual selected-object teleport failures now use a simpler player-facing
+  refusal when the target cell is not walkable. The debug command still keeps
+  the developer hint about `near` / `force`.
+
+Manual test finding from the first QoL pass:
+- The reported "keyboard/controller input stopped responding" after teleport
+  did not show a script crash or lost emulator polling. A follow-up
+  `report_position input_status report_path_state speech_status` command was
+  consumed at frame `113460`, reporting map `0x05`, position `(4,6)`,
+  `keys=-`, and speech ready.
+- The log shows the player had teleported north of the door at `(4,7)` to
+  `(4,6)`, then multiple manual directions were seen by `auto_step` and timed
+  out as blocked. At the live snapshot, NPC blockers occupied `(3,6)` and
+  `(5,6)`, the door blocked south, and the north edge was the known noisy
+  `(4,6)->(4,5)` doorway seam. Treat this as a boxed-in landing/pathing
+  situation, not an input bridge failure.
+- `report_path_state` itself took `1476 ms` because it builds current blocker
+  state; avoid using that command as a routine player-facing check during
+  manual testing.
+
+Manual test finding from the auto-walk/TALK pass:
+- Auto-walk reached the King at map `0x05` by standing at `(3,4)` beside the
+  target at `(3,3)`, but the final route step was left, so the hero was still
+  facing west. TALK then produced `There is no one there.` even though the NPC
+  was adjacent.
+- `route_manager.lua` now queues a short post-arrival facing press toward
+  adjacent interaction targets before prompting TALK, and the NPC hold default
+  is longer (`auto_walk_npc_hold_frames=1200`) so manual menu selection has
+  more time. Failed TALK text no longer marks the adjacent NPC as visited.
+
+Latest manual playtest notes:
+- Auto-walk is mostly working as expected after the facing/TALK patch. There
+  may still have been an auto-walk failure on Guard 1; review fresh logs before
+  changing route behavior.
+- The false-visited regression test through failed TALK now behaves correctly
+  in manual testing.
+- New investigation target for tomorrow: in certain parts of the map, the
+  command menu does not read correctly. Treat this as likely position/map-region
+  dependent. Capture `report_position`, `input_status`, and
+  `report_movement_state:menu_bad_region` at a bad tile, then compare with a
+  nearby good tile before patching parser logic.
+
+Validation already run for this batch:
+- `luac -p config.lua hotkey_filter.lua hotkeys.lua objects.lua main.lua
+  test_hotkey_filter.lua test_hotkeys.lua test_objects.lua test_route_manager.lua`
+- `lua test_hotkey_filter.lua`
+- `lua test_hotkeys.lua`
+- `lua test_objects.lua`
+- `lua test_route_manager.lua`
+- `lua test_auto_step.lua`
+- `lua test_pathfinder.lua`
+- `lua test_map_reader.lua`
+- `lua test_map_survey.lua`
+- `python3 run_tests.py --allow-missing-speech-dep` passed with the known WSL
+  `accessible_output2` missing warning and `cmd: not found` speech-bridge noise.
+- `git diff --check`
 
 Latest BizHawk transition checkpoint:
 - Pending wrap-up commit: BizHawk stabilization and main-menu/playtesting polish
@@ -464,11 +540,16 @@ Important clues:
 ## Recommended Next Work
 
 Best next step:
-- Resume ordinary early-game playtesting from BizHawk. Prioritize combat
-  narration, shops/inns, item/spell flows, and any menu/dialogue polish that
-  appears during real play. If the status row speaks again after dialogue,
-  inspect fresh `UPPER_DIALOGUE_SUPPRESS_STATUS` / `report_upper_dialogue_state`
-  evidence before patching.
+- Reload the Lua script and do a short hands-on BizHawk check of the new QoL
+  layer before resuming ordinary early-game playtesting. Prioritize: one long
+  `auto_walk`, NPC arrival hold plus TALK, `Shift+V` visited marking,
+  `clear_visited`, filter cycling with `Q` / `Shift+J` / `Shift+L`, and
+  selected-object teleport with `Shift+Enter` plus at least one
+  `Shift+direction`.
+- After that, resume combat narration, shops/inns, item/spell flows, and any
+  menu/dialogue polish that appears during real play. If the status row speaks
+  again after dialogue, inspect fresh `UPPER_DIALOGUE_SUPPRESS_STATUS` /
+  `report_upper_dialogue_state` evidence before patching.
 
 Suggested live check:
 - Use `./launch_dw.sh` for BizHawk by default. Use

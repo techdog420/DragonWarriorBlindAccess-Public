@@ -36,6 +36,7 @@ local prev_keys = {}
 local pending_object_nav_speech = nil
 local pending_object_nav_frames = 0
 local object_nav_speech_queued_this_frame = false
+local teleport_handler = nil
 
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
@@ -58,6 +59,18 @@ end
 local function speak_now(message)
     clear_object_nav_speech()
     tolk.output_interrupt(message)
+end
+
+local function speak_filter(filter_name)
+    local count = objects.get_count()
+    if count > 0 then
+        speak_now(filter_name .. ". " .. route_mgr.describe_current_object({
+            include_reachability = false,
+            include_debug_coords = false,
+        }))
+    else
+        speak_now(filter_name .. ". No objects")
+    end
 end
 
 local function flush_object_nav_speech()
@@ -538,8 +551,28 @@ function M.update(keys)
     -- hear direction + distance information for each one.
     -- Follows the J/K/L convention from pokemon-access and FF mods.
 
+    local filter_nav_handled = false
+
+    if is_key_pressed(keys, config.get("key_filter_prev")) then
+        filter_nav_handled = true
+        clear_object_nav_speech()
+        speak_filter(objects.prev_filter())
+    end
+
+    if is_key_pressed(keys, config.get("key_filter_all")) then
+        filter_nav_handled = true
+        clear_object_nav_speech()
+        speak_filter(objects.all_filter())
+    end
+
+    if is_key_pressed(keys, config.get("key_filter_next")) then
+        filter_nav_handled = true
+        clear_object_nav_speech()
+        speak_filter(objects.next_filter())
+    end
+
     -- L key (default): Next object in list
-    if is_key_pressed(keys, config.get("key_object_next")) then
+    if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_next")) then
         local obj = objects.next_object()
         if obj then
             queue_object_nav_speech(route_mgr.describe_current_object({
@@ -552,7 +585,7 @@ function M.update(keys)
     end
 
     -- J key (default): Previous object in list
-    if is_key_pressed(keys, config.get("key_object_prev")) then
+    if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_prev")) then
         local obj = objects.prev_object()
         if obj then
             queue_object_nav_speech(route_mgr.describe_current_object({
@@ -565,7 +598,7 @@ function M.update(keys)
     end
 
     -- K key (default): Describe current object (re-read with updated distance)
-    if is_key_pressed(keys, config.get("key_object_current")) then
+    if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_current")) then
         speak_now(route_mgr.describe_current_object({
             include_reachability = false,
             include_debug_coords = false,
@@ -590,19 +623,38 @@ function M.update(keys)
         route_mgr.autowalk_to_current()
     end
 
-    -- Q key (default): Cycle object filter (All / NPCs / Exits / Chests / Stairs)
+    -- Q key (default): Cycle object filter (All / NPCs / Services / Treasure / Travel / Doors)
     if is_key_pressed(keys, config.get("key_filter")) then
         clear_object_nav_speech()
-        local filter_name = objects.next_filter()
-        -- Announce the new filter and the first object in it
-        local count = objects.get_count()
-        if count > 0 then
-            speak_now(filter_name .. ". " .. route_mgr.describe_current_object({
-                include_reachability = false,
-                include_debug_coords = false,
-            }))
+        speak_filter(objects.next_filter())
+    end
+
+    if is_key_pressed(keys, config.get("key_mark_visited")) then
+        clear_object_nav_speech()
+        local obj = objects.mark_current_visited()
+        if obj then
+            speak_now(obj.name .. " marked visited")
         else
-            speak_now(filter_name .. ". No objects")
+            speak_now("No object selected")
+        end
+    end
+
+    if teleport_handler then
+        if is_key_pressed(keys, config.get("key_teleport_exact")) then
+            clear_object_nav_speech()
+            teleport_handler("exact")
+        elseif is_key_pressed(keys, config.get("key_teleport_north")) then
+            clear_object_nav_speech()
+            teleport_handler("north")
+        elseif is_key_pressed(keys, config.get("key_teleport_south")) then
+            clear_object_nav_speech()
+            teleport_handler("south")
+        elseif is_key_pressed(keys, config.get("key_teleport_west")) then
+            clear_object_nav_speech()
+            teleport_handler("west")
+        elseif is_key_pressed(keys, config.get("key_teleport_east")) then
+            clear_object_nav_speech()
+            teleport_handler("east")
         end
     end
 
@@ -614,9 +666,14 @@ function M.update(keys)
     prev_keys = keys
 end
 
+function M.set_teleport_handler(fn)
+    teleport_handler = fn
+end
+
 function M._reset_for_tests()
     prev_keys = {}
     object_nav_speech_queued_this_frame = false
+    teleport_handler = nil
     clear_object_nav_speech()
 end
 
