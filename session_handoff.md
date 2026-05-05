@@ -21,6 +21,29 @@ primary path unless the task explicitly targets FCEUX.
 
 ## Current Baseline
 
+2026-05-05 Codex-first tooling refresh implemented in the worktree:
+- `.codex/config.toml` now uses `AGENTS.md` first, falls back to
+  `PROJECT_MEMORY.md` then `CLAUDE.md`, keeps hooks enabled, leaves model and
+  memory preferences to global config, and keeps the project sandboxed with
+  network disabled by default.
+- Repo-local hook commands now resolve from the git root and use `python3`.
+  The session-start hook summarizes the real `Current Focus` instead of
+  accidentally treating the first handoff bullet as the active handoff.
+- `pretool_dw_command_guard.py` now parses actual shell invocations instead of
+  raw substring matches. It blocks hazardous live command batches, raw writes
+  to `dw_commands.txt` / `dw_debug.log`, source reload triggers without a
+  follow-up probe/wait, and state-sensitive `dw_commands` calls without
+  `--replace`, while allowing documentation strings that merely mention bad
+  examples.
+- `dw_commands.sh` and `dw_commands.ps1` now support `--require-live SECONDS`,
+  `--wait-ready TAG`, and `--json` for automated harnesses. `--require-live`
+  fails before queueing commands when the log is missing or stale; `--wait-ready`
+  queues `launcher_probe:TAG` and waits for the fresh marker; `--json` emits a
+  machine-readable status object.
+- The `dw-debug-loop` skill moved from legacy `.codex/skills/` to the documented
+  repo-skill location `.agents/skills/dw-debug-loop/SKILL.md` with BizHawk-first
+  wording and current reload/stale-log guidance.
+
 2026-05-04 QoL feature batch implemented in the worktree:
 - `auto_walk` now speaks progress every 6 completed queued steps on longer
   routes and announces route completion. When the target is an NPC, arrival
@@ -294,6 +317,14 @@ Latest manual playtest notes:
   narration/pathfinding issues from live play.
 
 Validation already run for this batch:
+- 2026-05-05 Codex-first tooling refresh validation:
+  source-text compile checks for `.codex/hooks/pretool_dw_command_guard.py`,
+  `.codex/hooks/session_start_project_context.py`, and `test_tooling.py`;
+  `bash -n dw_commands.sh launch_dw.sh launch_bizhawk.sh launch_fceux.sh`;
+  TOML/JSON parse checks for `.codex/config.toml` and `.codex/hooks.json`;
+  `python3 test_tooling.py`; PowerShell smoke test of `dw_commands.ps1`
+  `--json --replace report_position` against a temp copy; and
+  `git diff --check`.
 - `luac -p config.lua hotkey_filter.lua hotkeys.lua objects.lua
   object_commands.lua route_manager.lua main.lua test_hotkey_filter.lua
   test_hotkeys.lua test_objects.lua test_route_manager.lua`

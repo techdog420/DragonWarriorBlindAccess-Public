@@ -49,7 +49,14 @@ Important details:
 - Debug output is written to `dw_debug.log`
 - The mod polls commands roughly once per second
 - Commands append by default
-- Use `--replace` only when queue replacement is intentional
+- Use `--replace` for state-sensitive command batches so stale queued work does
+  not contaminate the next observation
+- Use `--wait PATTERN` or `--wait-ready TAG` when the next step depends on a
+  fresh emulator/log state
+- Use `--require-live SECONDS` when stale `dw_debug.log` output would make the
+  result misleading
+- Use `--json` from `dw_commands.sh` / `dw_commands.ps1` when automated harness
+  code needs machine-readable sent/matched/timeout status
 - A fresh `dw_debug.log` header does not prove command polling is active; verify command consumption
 
 For state-sensitive work:
@@ -57,6 +64,28 @@ For state-sensitive work:
 - Wait for log confirmation between steps
 - Treat stale queued commands and polling delay as real failure causes
 - Confirm live map id and position before map-specific conclusions
+
+## Codex Tooling Contract
+
+Codex is the primary project agent; Claude-style docs are legacy fallback
+context only.
+
+Durable tooling facts:
+- `AGENTS.md` is the repo contract; `session_handoff.md`,
+  `PROJECT_MEMORY.md`, and `PLAYTESTING.md` are the durable project truth
+  sources.
+- `.codex/config.toml` should keep project safety/tooling defaults only.
+  Model choice, memory enablement, and account-level trust belong in global
+  Codex config.
+- Repo-local hooks live under `.codex/hooks/` and are enabled by
+  `.codex/hooks.json`. Hook commands should resolve the git root before
+  invoking scripts so Codex can start from subdirectories.
+- The live-command guard is a safety rail, not a full enforcement boundary.
+  Keep the real rules in `AGENTS.md` and docs, and keep the guard focused on
+  catching common hazardous command shapes.
+- Repo-specific Codex skills belong under `.agents/skills/`. The
+  `dw-debug-loop` skill should stay BizHawk-first and should only trigger for
+  live emulator/log/timing workflows, not ordinary static edits.
 
 ## Emulator Strategy
 

@@ -1,4 +1,20 @@
-project_doc_fallback_filenames = ["CLAUDE.md"]
+# Project-scoped Codex defaults for the Dragon Warrior accessibility mod.
+# Personal settings such as memories, model defaults, and project trust belong
+# in ~/.codex/config.toml.
+
+# AGENTS.md is the preferred project-instruction file. These are only fallbacks
+# if AGENTS.md is missing.
+project_doc_fallback_filenames = ["PROJECT_MEMORY.md", "CLAUDE.md"]
+project_doc_max_bytes = 60000
+
+# Keep normal repo work sandboxed while allowing interactive approvals for
+# emulator launches, Windows interop, and other higher-risk operations.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
 
 [features]
 codex_hooks = true
+
+[sandbox_workspace_write]
+network_access = false

@@ -56,15 +56,29 @@ Important behavior:
 - Commands are written to `dw_commands.txt`
 - The mod polls the command file roughly once per second
 - Commands append by default
-- Use `--replace` only when intentional queue replacement is required
+- Use `--replace` for state-sensitive command batches so stale queued work does
+  not contaminate the next observation
+- Append mode is fine for independent read-only queries, but avoid it for
+  movement, teleport, survey, reload, or path-debug work
 - Debug/test output is written to `dw_debug.log`
 
 This means:
 - Do not blast large command batches unless the task explicitly benefits from queueing
 - Prefer short command batches followed by log verification
 - For state-sensitive workflows, wait for log confirmation before sending the next command
+- Use `--wait PATTERN` or `--wait-ready TAG` when the next step depends on emulator state
+- Use `--require-live SECONDS` before live checks when stale logs would make the result misleading
 - Treat queue timing and stale commands as possible causes of test failure
 - A fresh `dw_debug.log` header alone does not prove the emulator is unpaused and polling commands; verify that queued commands are actually consumed
+
+Reload/restart rules:
+- Use `reload_config` only for `dw_access.ini` changes
+- For Lua source changes, BizHawk file-change reload can be triggered by
+  touching `main.lua` while the Lua loop is alive; follow it with
+  `launcher_probe:TAG`, `--wait-ready TAG`, or another fresh probe
+- If the log is stale, the script crashed, or commands are not consumed,
+  relaunch with `./launch_dw.sh` instead of queueing more commands
+- Do not patch BizHawk `config.ini` while EmuHawk is running
 
 ## Core testing principle
 
@@ -232,7 +246,9 @@ Repo files are the source of truth:
 - Treat `PLAYTESTING.md` as the active gameplay/playability notes file
 - Treat `handoff_archive/` as historical evidence, not active context
 - Treat `~/.codex/memories/` and `.claude/agent-memory/` as assistant-local aids, not the source of truth for project state
-- Treat project-local `.codex/skills/` as read-only packaged workflow guidance inside Codex sessions; do not rely on editing it during normal work
+- Treat project-local `.agents/skills/` as the documented repo-skill location
+  when it is writable; older `.codex/skills/` content is legacy compatibility
+  only
 
 After substantial work:
 - Update `session_handoff.md` with current state and best next step
@@ -244,7 +260,11 @@ Codex memory access notes:
 - The project-local `.codex/` directory may be mounted read-only inside Codex even when the surrounding repo is writable
 - Put durable project memory in repo files, especially `session_handoff.md`, `PROJECT_MEMORY.md`, `AGENTS.md`, and focused docs such as `debug_hooks.txt`
 - Put assistant-local reminders in `~/.codex/memories/`, but keep them subordinate to repo memory files
-- If the `dw-debug-loop` skill needs a permanent source update, record the desired change in repo memory first, then update the skill outside the read-only Codex mount
+- Allowed assistant-memory content: stable workflow lessons, project
+  preferences, and repeated pitfalls that are already reflected in repo docs
+- Do not rely on assistant memory for secrets, temporary bug state, one-off live
+  map findings, or rules that must always apply before the agent inspects the
+  repo
 
 ## Preferred output style from Codex
 

@@ -253,9 +253,20 @@ QUICK SHELL USAGE
 
 Deterministic command confirmation:
   ./dw_commands.sh --replace --wait "LAUNCHER_PROBE: ready" launcher_probe:ready report_position
+  ./dw_commands.sh --replace --wait-ready ready report_position
   ./dw_commands.ps1 --replace --wait "POSITION:" report_position
+  ./dw_commands.ps1 --replace --wait-ready ready report_position
   Add --timeout SECONDS to override the default 10 second wait.
+  Add --require-live SECONDS to fail before queueing if dw_debug.log is missing or older than that threshold.
+  Add --json to print machine-readable status for automated harnesses.
   --wait only matches dw_debug.log lines written after the command is queued, so stale log entries do not create false positives.
+  --wait-ready TAG queues launcher_probe:TAG and waits for the fresh LAUNCHER_PROBE marker.
+
+Reload / restart protocol:
+  reload_config is only for dw_access.ini changes.
+  For Lua source changes, BizHawk's file-change reload can pick up touch main.lua while the Lua loop is alive.
+  Always follow a source reload trigger with a fresh launcher_probe:TAG, --wait-ready TAG, or another fresh state probe.
+  If the probe times out, dw_debug.log is stale, or dw_script_error.log changed, relaunch with ./launch_dw.sh instead of queueing more commands.
 
 Export safety note:
   Treat aggregate map/block exports as review material unless the command name or surrounding log evidence identifies confirmed candidates. Prefer report_candidate_suggestions or export_directional_candidates for survey-derived directional door/wall findings.

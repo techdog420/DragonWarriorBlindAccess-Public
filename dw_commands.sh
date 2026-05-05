@@ -2,7 +2,8 @@
 # dw_commands.sh — Send commands to the Dragon Warrior accessibility mod
 #
 # Usage:
-#   ./dw_commands.sh [--replace] [--wait PATTERN] [--timeout SECONDS] <command> [command2 command3 ...]
+#   ./dw_commands.sh [--replace] [--wait PATTERN] [--wait-ready TAG] [--timeout SECONDS]
+#                    [--require-live SECONDS] [--json] <command> [command2 command3 ...]
 #
 # Each argument is written as one command line to dw_commands.txt.
 # The mod polls this file every ~1 second (60 frames) and clears it
@@ -10,7 +11,10 @@
 # By default commands are APPENDED so separate invocations don't clobber
 # each other. Use --replace to overwrite the queue intentionally.
 # Use --wait PATTERN to wait for a fresh dw_debug.log line containing PATTERN.
+# Use --wait-ready TAG to queue launcher_probe:TAG and wait for the fresh marker.
 # Use --timeout SECONDS to override the default 10 second wait timeout.
+# Use --require-live SECONDS to fail before queueing if dw_debug.log is stale.
+# Use --json to print machine-readable status for automated harnesses.
 #
 # ── Built-in commands ────────────────────────────────────────────────
 #   log_state              Full game-state snapshot to dw_debug.log
@@ -133,8 +137,10 @@
 #   speak:TEXT             Speak TEXT via Tolk, e.g.: speak:Hello world
 #
 # ── Script restart ───────────────────────────────────────────────────
-#   Full restart: relaunch with ./launch_dw.sh, or use the emulator's Lua reload UI.
-#   Use reload_config to pick up dw_access.ini changes without restarting.
+#   Config reload: use reload_config for dw_access.ini changes.
+#   Lua source reload: BizHawk's ReloadOnScriptFileChange can pick up touch main.lua
+#   when the Lua loop is alive; follow it with launcher_probe:TAG or --wait-ready TAG.
+#   Dead/stale polling loop: relaunch with ./launch_dw.sh instead of queueing more.
 #
 # ── Examples ─────────────────────────────────────────────────────────
 #   ./dw_commands.sh log_state
@@ -157,6 +163,8 @@
 #   ./dw_commands.sh probe_edge:RIGHT
 #   ./dw_commands.sh probe_edge:14,2,UP
 #   ./dw_commands.sh --replace --wait "POSITION:" report_position
+#   ./dw_commands.sh --replace --require-live 30 --wait-ready codex_probe report_position
+#   ./dw_commands.sh --json --replace --timeout 3 --wait-ready smoke report_position
 
 BASE_DIR="$(dirname "$0")"
 CMD_FILE="$BASE_DIR/dw_commands.txt"
@@ -169,7 +177,128 @@ fi
 
 mode="append"
 wait_pattern=""
+wait_ready_tag=""
 timeout_seconds=10
+require_live_seconds=""
+json_output=false
+sent=false
+matched_line=""
+warning_message=""
+log_age_seconds=""
+timed_out=false
+commands=()
+
+json_escape() {
+    local s="$1"
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\r'/\\r}
+    s=${s//$'\n'/\\n}
+    printf '%s' "$s"
+}
+
+json_string_or_null() {
+    if [ -z "$1" ]; then
+        printf 'null'
+    else
+        printf '"%s"' "$(json_escape "$1")"
+    fi
+}
+
+json_number_or_null() {
+    if [ -z "$1" ]; then
+        printf 'null'
+    else
+        printf '%s' "$1"
+    fi
+}
+
+json_array() {
+    printf '['
+    local first=true
+    for item in "$@"; do
+        if [ "$first" = true ]; then
+            first=false
+        else
+            printf ','
+        fi
+        printf '"%s"' "$(json_escape "$item")"
+    done
+    printf ']'
+}
+
+print_json_status() {
+    local status="$1"
+    local exit_code="$2"
+    local message="$3"
+    printf '{'
+    printf '"status":"%s",' "$(json_escape "$status")"
+    printf '"exit_code":%s,' "$exit_code"
+    printf '"mode":"%s",' "$(json_escape "$mode")"
+    printf '"commands":'
+    json_array "${commands[@]}"
+    printf ','
+    printf '"wait_pattern":'
+    json_string_or_null "$wait_pattern"
+    printf ','
+    printf '"wait_ready_tag":'
+    json_string_or_null "$wait_ready_tag"
+    printf ','
+    printf '"timeout_seconds":%s,' "$timeout_seconds"
+    printf '"require_live_seconds":'
+    json_number_or_null "$require_live_seconds"
+    printf ','
+    printf '"log_age_seconds":'
+    json_number_or_null "$log_age_seconds"
+    printf ','
+    printf '"sent":%s,' "$sent"
+    printf '"matched_line":'
+    json_string_or_null "$matched_line"
+    printf ','
+    printf '"timed_out":%s,' "$timed_out"
+    printf '"warning":'
+    json_string_or_null "$warning_message"
+    printf ','
+    printf '"message":'
+    json_string_or_null "$message"
+    printf '}\n'
+}
+
+fail_with_status() {
+    local message="$1"
+    local exit_code="$2"
+    local status="${3:-error}"
+    if [ "$json_output" = true ]; then
+        print_json_status "$status" "$exit_code" "$message"
+    else
+        echo "$message" >&2
+    fi
+    exit "$exit_code"
+}
+
+parse_positive_seconds() {
+    local option="$1"
+    local value="$2"
+    case "$value" in
+        ''|*[!0-9]*)
+            fail_with_status "$option requires a positive integer seconds value." 1
+            ;;
+    esac
+    if [ "$value" -eq 0 ]; then
+        fail_with_status "$option requires a positive integer seconds value." 1
+    fi
+}
+
+refresh_log_age() {
+    log_age_seconds=""
+    if [ -f "$LOG_FILE" ]; then
+        local last_mod
+        local now
+        last_mod=$(date -r "$LOG_FILE" +%s 2>/dev/null) || return
+        now=$(date +%s)
+        log_age_seconds=$(( now - last_mod ))
+    fi
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -180,29 +309,39 @@ while [ $# -gt 0 ]; do
         --wait)
             shift
             if [ $# -eq 0 ]; then
-                echo "--wait requires a log pattern."
-                exit 1
+                fail_with_status "--wait requires a log pattern." 1
             fi
             wait_pattern="$1"
+            shift
+            ;;
+        --wait-ready)
+            shift
+            if [ $# -eq 0 ]; then
+                fail_with_status "--wait-ready requires a tag." 1
+            fi
+            wait_ready_tag="$1"
             shift
             ;;
         --timeout)
             shift
             if [ $# -eq 0 ]; then
-                echo "--timeout requires a positive integer seconds value."
-                exit 1
+                fail_with_status "--timeout requires a positive integer seconds value." 1
             fi
-            case "$1" in
-                ''|*[!0-9]*)
-                    echo "--timeout requires a positive integer seconds value."
-                    exit 1
-                    ;;
-            esac
-            if [ "$1" -eq 0 ]; then
-                echo "--timeout requires a positive integer seconds value."
-                exit 1
-            fi
+            parse_positive_seconds "--timeout" "$1"
             timeout_seconds="$1"
+            shift
+            ;;
+        --require-live)
+            shift
+            if [ $# -eq 0 ]; then
+                fail_with_status "--require-live requires a positive integer seconds value." 1
+            fi
+            parse_positive_seconds "--require-live" "$1"
+            require_live_seconds="$1"
+            shift
+            ;;
+        --json)
+            json_output=true
             shift
             ;;
         --)
@@ -210,8 +349,7 @@ while [ $# -gt 0 ]; do
             break
             ;;
         -*)
-            echo "Unknown option: $1"
-            exit 1
+            fail_with_status "Unknown option: $1" 1
             ;;
         *)
             break
@@ -219,9 +357,29 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ $# -eq 0 ]; then
-    echo "No commands provided."
-    exit 1
+if [ -n "$wait_pattern" ] && [ -n "$wait_ready_tag" ]; then
+    fail_with_status "--wait and --wait-ready cannot be used together." 1
+fi
+
+commands=("$@")
+if [ -n "$wait_ready_tag" ]; then
+    wait_pattern="LAUNCHER_PROBE: $wait_ready_tag"
+    commands=("launcher_probe:$wait_ready_tag" "${commands[@]}")
+fi
+
+if [ "${#commands[@]}" -eq 0 ]; then
+    fail_with_status "No commands provided." 1
+fi
+
+refresh_log_age
+
+if [ -n "$require_live_seconds" ]; then
+    if [ -z "$log_age_seconds" ]; then
+        fail_with_status "dw_debug.log is missing; refusing to queue commands without live proof." 3 "not_live"
+    fi
+    if [ "$log_age_seconds" -gt "$require_live_seconds" ]; then
+        fail_with_status "dw_debug.log is ${log_age_seconds}s old, exceeding --require-live ${require_live_seconds}s; refusing to queue commands." 3 "not_live"
+    fi
 fi
 
 wait_start_line=0
@@ -232,31 +390,39 @@ fi
 # Write each argument as one command line.
 # Using printf ensures each arg gets its own line with no trailing newline issues.
 if [ "$mode" = "replace" ]; then
-    printf '%s\n' "$@" > "$CMD_FILE"
+    printf '%s\n' "${commands[@]}" > "$CMD_FILE"
 else
-    printf '%s\n' "$@" >> "$CMD_FILE"
+    printf '%s\n' "${commands[@]}" >> "$CMD_FILE"
 fi
+sent=true
 
 # Warn only after a longer idle period so a live-but-idle emulator doesn't
 # trigger false positives during normal testing.
-if [ -f "$LOG_FILE" ]; then
-    last_mod=$(date -r "$LOG_FILE" +%s 2>/dev/null)
-    now=$(date +%s)
-    age=$(( now - last_mod ))
-    if [ "$age" -gt 60 ]; then
-        echo "WARNING: dw_debug.log was last updated ${age}s ago - emulator may be idle or not running"
+if [ -n "$log_age_seconds" ] && [ "$log_age_seconds" -gt 60 ]; then
+    warning_message="dw_debug.log was last updated ${log_age_seconds}s ago - emulator may be idle or not running"
+    if [ "$json_output" != true ]; then
+        echo "WARNING: $warning_message"
     fi
 fi
 
-echo "Sent to mod: $*"
+if [ "$json_output" != true ]; then
+    echo "Sent to mod: ${commands[*]}"
+fi
 
 if [ -n "$wait_pattern" ]; then
-    echo "Waiting up to ${timeout_seconds}s for log pattern: $wait_pattern"
+    if [ "$json_output" != true ]; then
+        echo "Waiting up to ${timeout_seconds}s for log pattern: $wait_pattern"
+    fi
     start_time=$(date +%s)
     while true; do
         now=$(date +%s)
         if [ $(( now - start_time )) -ge "$timeout_seconds" ]; then
-            echo "Timed out waiting for log pattern: $wait_pattern" >&2
+            timed_out=true
+            if [ "$json_output" = true ]; then
+                print_json_status "timeout" 2 "Timed out waiting for log pattern: $wait_pattern"
+            else
+                echo "Timed out waiting for log pattern: $wait_pattern" >&2
+            fi
             exit 2
         fi
 
@@ -267,11 +433,20 @@ if [ -n "$wait_pattern" ]; then
             fi
             match=$(tail -n +"$((wait_start_line + 1))" "$LOG_FILE" | grep -F "$wait_pattern" | tail -n 1)
             if [ -n "$match" ]; then
-                echo "Matched log: $match"
+                matched_line="$match"
+                if [ "$json_output" = true ]; then
+                    print_json_status "matched" 0 ""
+                else
+                    echo "Matched log: $match"
+                fi
                 exit 0
             fi
         fi
 
         sleep 0.2
     done
+fi
+
+if [ "$json_output" = true ]; then
+    print_json_status "sent" 0 ""
 fi
