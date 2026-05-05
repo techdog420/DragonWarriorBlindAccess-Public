@@ -36,7 +36,10 @@ local function make_env(options)
     local joypad_sets = {}
     local memory_values = options.memory_values or {}
     local memory_writes = {}
-    local current_object = options.current_object or {name = "Chest", type = "chest", x = 6, y = 1}
+    local current_object = options.current_object or {id = "chest_1", name = "Chest", type = "chest", x = 6, y = 1}
+    local object_list = options.object_list or {current_object}
+    local pathability_filter = 1
+    local pathability_statuses = {}
     local module_names = {
         "addresses",
         "auto_step",
@@ -44,6 +47,7 @@ local function make_env(options)
         "debug_tools",
         "game_snapshot",
         "map_reader",
+        "maps",
         "navigation",
         "objects",
         "path_debug",
@@ -90,11 +94,29 @@ local function make_env(options)
         }
     end
 
+    package.preload["maps"] = function()
+        return {
+            is_overworld = function()
+                return options.is_overworld == true
+            end,
+        }
+    end
+
     package.preload["objects"] = function()
+        local pathability_names = {
+            [1] = "All",
+            [2] = "Reachable",
+            [3] = "Unreachable",
+        }
         return {
             TYPE_CHEST = "chest",
             TYPE_NPC = "npc",
             TYPE_DOOR = "door",
+            TYPE_EXIT = "exit",
+            TYPE_STAIR = "stair",
+            PATHABILITY_ALL = 1,
+            PATHABILITY_REACHABLE = 2,
+            PATHABILITY_UNREACHABLE = 3,
             current_object = function()
                 return current_object
             end,
@@ -109,6 +131,41 @@ local function make_env(options)
             end,
             get_blocking_positions = function()
                 return options.blocking_positions or {}
+            end,
+            get_objects = function()
+                local copy = {}
+                for i, obj in ipairs(object_list) do
+                    copy[i] = obj
+                end
+                return copy
+            end,
+            set_pathability_statuses = function(statuses)
+                pathability_statuses = statuses or {}
+            end,
+            clear_pathability_statuses = function()
+                pathability_statuses = {}
+            end,
+            set_pathability_filter = function(filter)
+                pathability_filter = filter
+                return pathability_names[pathability_filter]
+            end,
+            get_pathability_filter = function()
+                return pathability_filter
+            end,
+            get_pathability_filter_name = function()
+                return pathability_names[pathability_filter]
+            end,
+            is_pathability_filter_active = function()
+                return pathability_filter ~= 1
+            end,
+            get_filter_summary = function()
+                if pathability_filter == 1 then
+                    return "All"
+                end
+                return "All, " .. pathability_names[pathability_filter]:lower()
+            end,
+            get_count = function()
+                return options.object_count or #object_list
             end,
             request_refresh = function()
                 request_refresh_calls = request_refresh_calls + 1
@@ -159,6 +216,9 @@ local function make_env(options)
                 if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
                     return "No path found", nil, nil
                 end
+                if options.unreachable_goal_key and goal_x .. "," .. goal_y == options.unreachable_goal_key then
+                    return "No path found", nil, nil
+                end
                 return "Path: 1 north", "north", one_step_path()
             end,
             find_route_to = function(_, start_x, start_y, goal_x, goal_y, blocking)
@@ -177,6 +237,9 @@ local function make_env(options)
                     return nil
                 end
                 if should_return_no_path(blocking) then
+                    return nil
+                end
+                if options.unreachable_goal_key and goal_x .. "," .. goal_y == options.unreachable_goal_key then
                     return nil
                 end
                 return one_step_path()
@@ -326,6 +389,8 @@ local function make_env(options)
         pathfind_calls = function() return pathfind_calls end,
         update_npcs_calls = function() return update_npcs_calls end,
         request_refresh_calls = function() return request_refresh_calls end,
+        pathability_statuses = function() return pathability_statuses end,
+        pathability_filter = function() return pathability_filter end,
         start_route_calls = function() return start_route_calls end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
@@ -699,6 +764,51 @@ function tests.current_object_description_allows_chest_adjacent_fallback()
         "object browser should treat a chest as reachable when adjacent fallback works"
     )
     assert_equal(env.pathfind_calls() > 1, true, "chest preview should try another reachable tile after direct failure")
+
+    env.restore()
+end
+
+function tests.object_pathability_filter_batches_reachability_without_npc_blocks()
+    local env = make_env({
+        object_list = {
+            {id = "chest_reachable", name = "Reachable Chest", type = "chest", x = 6, y = 1},
+            {id = "chest_unreachable", name = "Unreachable Chest", type = "chest", x = 8, y = 1},
+        },
+        blocking_positions = {{x = 6, y = 1}},
+        unreachable_goal_key = "8,1",
+        non_walkable_cells = {
+            ["8,0"] = true,
+            ["8,2"] = true,
+            ["7,1"] = true,
+            ["9,1"] = true,
+        },
+    })
+
+    local info = env.route_manager.set_object_pathability_filter("reachable")
+    local statuses = env.pathability_statuses()
+
+    assert_equal(info.reachable, 1, "batch pathability should count reachable objects")
+    assert_equal(info.unreachable, 1, "batch pathability should count unreachable objects")
+    assert_equal(statuses.chest_reachable, true, "reachable target should be cached by object id")
+    assert_equal(statuses.chest_unreachable, false, "unreachable target should be cached by object id")
+    assert_equal(env.update_npcs_calls(), 0, "pathability filter should not force live NPC refresh")
+    assert_equal(env.route_manager.is_npc_freeze_active(), false, "pathability filter should not freeze NPCs")
+
+    local calls_after_first_pass = env.pathfind_calls()
+    env.route_manager.refresh_object_pathability_filter_if_needed()
+    assert_equal(env.pathfind_calls(), calls_after_first_pass, "unchanged pathability context should reuse the cached result")
+
+    env.restore()
+end
+
+function tests.object_pathability_filter_resets_to_all_on_overworld()
+    local env = make_env({is_overworld = true})
+
+    local info = env.route_manager.set_object_pathability_filter("reachable")
+
+    assert_equal(info.unavailable, true, "overworld should report reachability filtering unavailable")
+    assert_equal(env.pathability_filter(), 1, "overworld pathability request should reset filter to All")
+    assert_equal(env.pathfind_calls(), 0, "overworld pathability request should not call pathfinder")
 
     env.restore()
 end

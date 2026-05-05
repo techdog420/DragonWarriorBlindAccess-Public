@@ -43,6 +43,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
         key_filter_next = "Shift+L",
+        key_pathability_filter = "Shift+O",
         key_mark_visited = "Shift+V",
         key_teleport_exact = "Shift+Enter",
         key_teleport_north = "Shift+Up",
@@ -150,6 +151,7 @@ function tests.combo_allowlist_does_not_pass_bare_component_key()
         key_pathfind = "O",
         key_auto_walk = "U",
         key_filter = "Q",
+        key_pathability_filter = "Shift+O",
         key_freeze_npcs = "Shift+F",
         key_diag_tiles = "Ctrl+N",
     })
@@ -161,6 +163,26 @@ function tests.combo_allowlist_does_not_pass_bare_component_key()
 
     assert_equal(filtered.N, nil, "bare tile diagnostic key should not pass without Ctrl")
     assert_equal(filtered.F, nil, "bare freeze key should not pass without Shift")
+end
+
+function tests.custom_allowlist_can_enable_pathability_combo()
+    local config = make_config({
+        enable_bizhawk_keyboard_hotkeys = "false",
+        enable_bizhawk_diagnostic_hotkeys = "false",
+        bizhawk_keyboard_hotkey_allowlist = "key_pathability_filter",
+        key_pathability_filter = "Shift+O",
+        key_object_next = "L",
+    })
+
+    local filtered = hotkey_filter.filter_bizhawk_keys({
+        Shift = true,
+        O = true,
+        L = true,
+    }, config)
+
+    assert_equal(filtered.Shift, true, "pathability combo modifier should pass when listed")
+    assert_equal(filtered.O, true, "pathability combo key should pass when listed")
+    assert_equal(filtered.L, nil, "unlisted object navigation key should remain blocked")
 end
 
 function tests.custom_allowlist_can_enable_future_qol_shortcut()

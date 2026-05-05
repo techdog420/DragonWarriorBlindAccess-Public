@@ -25,6 +25,8 @@ local function make_env(options)
     local autowalk_calls = 0
     local freeze_calls = 0
     local visited_calls = 0
+    local pathability_filter_calls = 0
+    local pathability_refresh_calls = 0
     local teleport_modes = {}
     local describe_calls = {}
     local filter_name = options.filter_name or "NPCs"
@@ -78,6 +80,7 @@ local function make_env(options)
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
         key_filter_next = "Shift+L",
+        key_pathability_filter = "Shift+O",
         key_mark_visited = "Shift+V",
         key_teleport_exact = "Shift+Enter",
         key_teleport_north = "Shift+Up",
@@ -228,6 +231,16 @@ local function make_env(options)
             autowalk_to_current = function()
                 autowalk_calls = autowalk_calls + 1
             end,
+            next_object_pathability_filter = function()
+                pathability_filter_calls = pathability_filter_calls + 1
+                return options.pathability_info or {
+                    name = "All, reachable",
+                    count = object_count,
+                }
+            end,
+            refresh_object_pathability_filter_if_needed = function()
+                pathability_refresh_calls = pathability_refresh_calls + 1
+            end,
         }
     end
 
@@ -267,6 +280,12 @@ local function make_env(options)
         end,
         visited_calls = function()
             return visited_calls
+        end,
+        pathability_filter_calls = function()
+            return pathability_filter_calls
+        end,
+        pathability_refresh_calls = function()
+            return pathability_refresh_calls
         end,
         all_filter_calls = function()
             return all_filter_calls
@@ -400,6 +419,23 @@ function tests.object_navigation_hotkeys_request_brief_descriptions()
         "filter hotkey should skip path reachability checks")
     assert_equal(env.describe_calls[3].include_debug_coords, false,
         "filter hotkey should skip raw coordinate debug details")
+
+    env.restore()
+end
+
+function tests.shift_o_cycles_pathability_filter_without_pathfinding()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, O = true})
+
+    assert_equal(env.pathability_filter_calls(), 1, "Shift+O should cycle the pathability filter")
+    assert_equal(env.pathfind_calls(), 0, "Shift+O should not fall through to plain pathfind")
+    assert_equal(#env.outputs, 1, "pathability hotkey should speak the new filtered selection")
+    assert_equal(env.outputs[1].message, "All, reachable. Object 0", "pathability speech should include the stacked filter label")
+    assert_equal(env.describe_calls[1].include_reachability, false,
+        "pathability filter speech should not run another reachability preview")
+    assert_equal(env.describe_calls[1].include_debug_coords, false,
+        "pathability filter speech should stay brief")
 
     env.restore()
 end

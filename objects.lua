@@ -51,6 +51,10 @@ M.FILTER_EXIT   = M.FILTER_TRAVEL
 M.FILTER_CHEST  = M.FILTER_TREASURE
 M.FILTER_STAIR  = M.FILTER_TRAVEL
 
+M.PATHABILITY_ALL = 1
+M.PATHABILITY_REACHABLE = 2
+M.PATHABILITY_UNREACHABLE = 3
+
 -- Human-readable names for each filter mode
 local FILTER_NAMES = {
     [M.FILTER_ALL]      = "All",
@@ -63,6 +67,14 @@ local FILTER_NAMES = {
 
 -- How many filter modes there are (for wraparound)
 local FILTER_COUNT = 6
+
+local PATHABILITY_NAMES = {
+    [M.PATHABILITY_ALL] = "All",
+    [M.PATHABILITY_REACHABLE] = "Reachable",
+    [M.PATHABILITY_UNREACHABLE] = "Unreachable",
+}
+
+local PATHABILITY_COUNT = 3
 
 -- ============================================================
 -- NPC Sprite Type Names
@@ -318,6 +330,8 @@ local selected_id = nil
 
 -- Current filter mode
 local current_filter = M.FILTER_ALL
+local current_pathability_filter = M.PATHABILITY_ALL
+local pathability_status_by_id = {}
 
 -- Which map we last built the object list for (to detect map changes)
 local current_map_id = nil
@@ -784,24 +798,43 @@ end
 -- Filtering
 -- ============================================================
 
--- apply_filter(objects, filter): Return a new list containing only
--- objects matching the current filter. FILTER_ALL returns everything.
-local function apply_filter(objects, filter)
+local function matches_type_filter(obj, filter)
     if filter == M.FILTER_ALL then
+        return true
+    end
+
+    return (filter == M.FILTER_NPC and obj.type == M.TYPE_NPC)
+        or (filter == M.FILTER_SERVICE and obj.type == M.TYPE_NPC and obj.service == true)
+        or (filter == M.FILTER_TREASURE and obj.type == M.TYPE_CHEST)
+        or (filter == M.FILTER_TRAVEL and (obj.type == M.TYPE_EXIT or obj.type == M.TYPE_STAIR))
+        or (filter == M.FILTER_DOOR and obj.type == M.TYPE_DOOR)
+end
+
+local function matches_pathability_filter(obj)
+    if current_pathability_filter == M.PATHABILITY_ALL then
+        return true
+    end
+
+    local status = obj and obj.id and pathability_status_by_id[obj.id]
+    if current_pathability_filter == M.PATHABILITY_REACHABLE then
+        return status == true
+    end
+    if current_pathability_filter == M.PATHABILITY_UNREACHABLE then
+        return status == false
+    end
+    return true
+end
+
+-- apply_filter(objects, filter): Return a new list containing only objects
+-- matching the current type and pathability filters.
+local function apply_filter(objects, filter)
+    if filter == M.FILTER_ALL and current_pathability_filter == M.PATHABILITY_ALL then
         return objects
     end
 
     local result = {}
     for _, obj in ipairs(objects) do
-        if filter == M.FILTER_NPC and obj.type == M.TYPE_NPC then
-            result[#result + 1] = obj
-        elseif filter == M.FILTER_SERVICE and obj.type == M.TYPE_NPC and obj.service == true then
-            result[#result + 1] = obj
-        elseif filter == M.FILTER_TREASURE and obj.type == M.TYPE_CHEST then
-            result[#result + 1] = obj
-        elseif filter == M.FILTER_TRAVEL and (obj.type == M.TYPE_EXIT or obj.type == M.TYPE_STAIR) then
-            result[#result + 1] = obj
-        elseif filter == M.FILTER_DOOR and obj.type == M.TYPE_DOOR then
+        if matches_type_filter(obj, filter) and matches_pathability_filter(obj) then
             result[#result + 1] = obj
         end
     end
@@ -852,6 +885,7 @@ function M.refresh(map_id, opts)
     current_terrain_offset = get_terrain_offset()
     prewarm_path_grid(map_id)
     object_list = build_object_list(map_id, opts)
+    pathability_status_by_id = {}
     npc_refresh_counter = 0
     refresh_pending = opts.defer_npcs == true
     current_index = 1
@@ -1003,6 +1037,60 @@ function M.all_filter()
     rebuild_filtered_list()
 
     return FILTER_NAMES[current_filter]
+end
+
+function M.set_pathability_filter(filter)
+    if filter < M.PATHABILITY_ALL or filter > PATHABILITY_COUNT then
+        filter = M.PATHABILITY_ALL
+    end
+    current_pathability_filter = filter
+    current_index = 1
+    selected_id = nil
+    rebuild_filtered_list()
+    return PATHABILITY_NAMES[current_pathability_filter]
+end
+
+function M.next_pathability_filter()
+    local next_filter = current_pathability_filter + 1
+    if next_filter > PATHABILITY_COUNT then
+        next_filter = M.PATHABILITY_ALL
+    end
+    return M.set_pathability_filter(next_filter)
+end
+
+function M.all_pathability_filter()
+    return M.set_pathability_filter(M.PATHABILITY_ALL)
+end
+
+function M.set_pathability_statuses(status_by_id)
+    pathability_status_by_id = status_by_id or {}
+    rebuild_filtered_list()
+end
+
+function M.clear_pathability_statuses()
+    pathability_status_by_id = {}
+    rebuild_filtered_list()
+end
+
+function M.get_pathability_filter()
+    return current_pathability_filter
+end
+
+function M.get_pathability_filter_name()
+    return PATHABILITY_NAMES[current_pathability_filter]
+end
+
+function M.is_pathability_filter_active()
+    return current_pathability_filter ~= M.PATHABILITY_ALL
+end
+
+function M.get_filter_summary()
+    local type_name = FILTER_NAMES[current_filter]
+    if current_pathability_filter == M.PATHABILITY_ALL then
+        return type_name
+    end
+    local path_name = PATHABILITY_NAMES[current_pathability_filter]:lower()
+    return type_name .. ", " .. path_name
 end
 
 -- get_filter_name(): Return the name of the current filter.

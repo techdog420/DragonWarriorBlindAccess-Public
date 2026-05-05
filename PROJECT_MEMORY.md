@@ -164,6 +164,17 @@ Emulator compatibility direction:
   `Shift+Enter` plus `Shift+direction` for selected-object teleport. Keep these
   shortcuts configurable and avoid re-enabling all BizHawk keyboard hotkeys for
   normal testers.
+- Object pathability filtering is a second layer over the normal object
+  category filter. `Shift+O` cycles All, Reachable, and Unreachable; the
+  command-file hook is `pathability_filter`. It computes reachability on
+  demand through `route_manager.lua` with shared NPC-free blocking, then lets
+  `objects.lua` filter from cached statuses so rapid J/K/L browsing stays
+  cheap. Moving NPC occupancy is intentionally ignored so wandering NPCs do
+  not hide otherwise reachable targets.
+- When adding a new safe BizHawk hotkey, update both `config.lua` defaults and
+  the checked-in `dw_access.ini` allowlist. Existing explicit allowlists
+  override default allowlist changes, so a newly appended key binding can still
+  be filtered out until the allowlist includes its setting name.
 - Visited flags live in `objects.lua` as session-only, map-scoped state. They
   intentionally do not persist across script restarts yet; use
   `clear_visited` and `clear_visited:all` for local cleanup during a playtest.

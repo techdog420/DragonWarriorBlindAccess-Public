@@ -61,15 +61,42 @@ local function speak_now(message)
     tolk.output_interrupt(message)
 end
 
+local function refresh_pathability_if_needed()
+    if route_mgr.refresh_object_pathability_filter_if_needed then
+        route_mgr.refresh_object_pathability_filter_if_needed()
+    end
+end
+
 local function speak_filter(filter_name)
+    refresh_pathability_if_needed()
     local count = objects.get_count()
+    local label = objects.get_filter_summary and objects.get_filter_summary() or filter_name
     if count > 0 then
-        speak_now(filter_name .. ". " .. route_mgr.describe_current_object({
+        speak_now(label .. ". " .. route_mgr.describe_current_object({
             include_reachability = false,
             include_debug_coords = false,
         }))
     else
-        speak_now(filter_name .. ". No objects")
+        speak_now(label .. ". No objects")
+    end
+end
+
+local function speak_pathability_filter(info)
+    info = info or {}
+    if info.unavailable then
+        speak_now("Reachability filter unavailable here. " .. info.name)
+        return
+    end
+    local label = info.name or (objects.get_filter_summary and objects.get_filter_summary())
+        or objects.get_filter_name()
+    local count = info.count or objects.get_count()
+    if count > 0 then
+        speak_now(label .. ". " .. route_mgr.describe_current_object({
+            include_reachability = false,
+            include_debug_coords = false,
+        }))
+    else
+        speak_now(label .. ". No objects")
     end
 end
 
@@ -573,6 +600,7 @@ function M.update(keys)
 
     -- L key (default): Next object in list
     if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_next")) then
+        refresh_pathability_if_needed()
         local obj = objects.next_object()
         if obj then
             queue_object_nav_speech(route_mgr.describe_current_object({
@@ -586,6 +614,7 @@ function M.update(keys)
 
     -- J key (default): Previous object in list
     if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_prev")) then
+        refresh_pathability_if_needed()
         local obj = objects.prev_object()
         if obj then
             queue_object_nav_speech(route_mgr.describe_current_object({
@@ -599,10 +628,18 @@ function M.update(keys)
 
     -- K key (default): Describe current object (re-read with updated distance)
     if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_current")) then
+        refresh_pathability_if_needed()
         speak_now(route_mgr.describe_current_object({
             include_reachability = false,
             include_debug_coords = false,
         }))
+    end
+
+    local pathability_filter_handled = false
+    if is_key_pressed(keys, config.get("key_pathability_filter")) then
+        pathability_filter_handled = true
+        clear_object_nav_speech()
+        speak_pathability_filter(route_mgr.next_object_pathability_filter())
     end
 
     -- O key (default): Pathfind to current object.
@@ -610,8 +647,9 @@ function M.update(keys)
     -- For everything else (stairs, chests, exits): route to the exact tile.
     -- NPC positions are passed so the pathfinder routes around other NPCs
     -- that physically block tiles along the way.
-    if is_key_pressed(keys, config.get("key_pathfind")) then
+    if not pathability_filter_handled and is_key_pressed(keys, config.get("key_pathfind")) then
         clear_object_nav_speech()
+        refresh_pathability_if_needed()
         route_mgr.pathfind_to_current()
     end
 
@@ -620,6 +658,7 @@ function M.update(keys)
     -- so the player actually walks it on interior maps.
     if is_key_pressed(keys, config.get("key_auto_walk")) then
         clear_object_nav_speech()
+        refresh_pathability_if_needed()
         route_mgr.autowalk_to_current()
     end
 

@@ -37,6 +37,10 @@ QoL feature check:
 - Object filters are All, NPCs, Services, Treasure, Travel, and Doors; `Q`
   cycles forward, `Shift+J` and `Shift+L` move filter categories without
   scrolling objects, and `Shift+K` jumps back to All.
+- `Shift+O` cycles the separate pathability filter: All, Reachable, and
+  Unreachable. This stacks with the object category filter, ignores moving NPC
+  occupancy, and is intended for sanity-checking larger maps without making
+  rapid J/K/L browsing run pathfinding every tap.
 - Visited flags are session-only and map-scoped. Use `Shift+V` or
   `mark_visited` to mark manually; `clear_visited` clears the current map and
   `clear_visited:all` clears all maps.
@@ -436,6 +440,7 @@ Object navigation:
 - `next_object`
 - `prev_object`
 - `next_filter`
+- `pathability_filter`
 - `pathfind_adjacent:X,Y`
 - `auto_walk`
 

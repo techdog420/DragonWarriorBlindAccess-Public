@@ -90,6 +90,7 @@ local active_route_total_steps = 0
 local active_route_completed_steps = 0
 local target_npc_hold = nil
 local target_face_input = nil
+local object_pathability_signature = nil
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
 local TARGET_FACE_RELEASE_FRAMES = 2
 local SEAM_CONFIRM_BLOCK_THRESHOLD = 3
@@ -1300,6 +1301,202 @@ local function plan_object_reachability(obj, opts)
         face_dir = face_dir,
         adjacent_diagnostics = adjacent_diagnostics,
     }
+end
+
+local function normalize_pathability_filter(filter)
+    if type(filter) == "number"
+       and filter >= objects.PATHABILITY_ALL
+       and filter <= objects.PATHABILITY_UNREACHABLE then
+        return filter
+    end
+
+    local text = tostring(filter or ""):match("^%s*(.-)%s*$"):lower()
+    if text == "" or text == "next" then
+        return nil
+    end
+    if text == "all" then
+        return objects.PATHABILITY_ALL
+    end
+    if text == "reachable" or text == "pathable" or text == "pathible" then
+        return objects.PATHABILITY_REACHABLE
+    end
+    if text == "unreachable" or text == "nonreachable"
+       or text == "non-reachable" or text == "blocked" then
+        return objects.PATHABILITY_UNREACHABLE
+    end
+    return nil
+end
+
+local function runtime_block_signature(map_id)
+    local parts = {}
+    for _, entry in ipairs(collect_runtime_blocks(map_id)) do
+        parts[#parts + 1] = entry.key .. ":" .. table.concat(entry.dir_list or {}, ",")
+    end
+    return table.concat(parts, ";")
+end
+
+local function object_pathability_context_signature(map_id, start_x, start_y, targets)
+    local parts = {
+        tostring(map_id),
+        tostring(start_x),
+        tostring(start_y),
+        runtime_block_signature(map_id),
+        tostring(#targets),
+    }
+    for _, obj in ipairs(targets) do
+        parts[#parts + 1] = table.concat({
+            tostring(obj.id or "-"),
+            tostring(obj.type or "-"),
+            tostring(obj.x or "-"),
+            tostring(obj.y or "-"),
+        }, ":")
+    end
+    return table.concat(parts, "|")
+end
+
+local function pathability_supported(map_id)
+    return not maps.is_overworld(map_id, snapshot.terrain_offset)
+end
+
+function M.refresh_object_pathability_filter(opts)
+    opts = opts or {}
+    if not opts.force and not objects.is_pathability_filter_active() then
+        return {
+            name = objects.get_filter_summary(),
+            pathability_name = objects.get_pathability_filter_name(),
+            count = objects.get_count(),
+            active = false,
+            refreshed = false,
+        }
+    end
+
+    local map_id, start_x, start_y = resolve_plan_origin(opts)
+    if not pathability_supported(map_id) then
+        object_pathability_signature = nil
+        objects.clear_pathability_statuses()
+        objects.set_pathability_filter(objects.PATHABILITY_ALL)
+        return {
+            name = objects.get_filter_summary(),
+            pathability_name = objects.get_pathability_filter_name(),
+            count = objects.get_count(),
+            active = false,
+            unavailable = true,
+            refreshed = false,
+        }
+    end
+
+    local targets = objects.get_objects()
+    local signature = object_pathability_context_signature(map_id, start_x, start_y, targets)
+    if not opts.force and signature == object_pathability_signature then
+        return {
+            name = objects.get_filter_summary(),
+            pathability_name = objects.get_pathability_filter_name(),
+            count = objects.get_count(),
+            active = objects.is_pathability_filter_active(),
+            refreshed = false,
+        }
+    end
+
+    local started = os.clock()
+    local statuses = {}
+    local reachable = 0
+    local unreachable = 0
+    local blocking = M.build_path_blocking(map_id, {skip_npcs = true})
+    for _, obj in ipairs(targets) do
+        local reachability = plan_object_reachability(obj, {
+            map_id = map_id,
+            start_x = start_x,
+            start_y = start_y,
+            blocking = blocking,
+            skip_npcs = true,
+            store_debug_path = false,
+        })
+        if reachability and reachability.reachable == true then
+            if obj.id then
+                statuses[obj.id] = true
+            end
+            reachable = reachable + 1
+        elseif reachability and reachability.reachable == false then
+            if obj.id then
+                statuses[obj.id] = false
+            end
+            unreachable = unreachable + 1
+        end
+    end
+
+    objects.set_pathability_statuses(statuses)
+    object_pathability_signature = signature
+
+    local elapsed_ms = (os.clock() - started) * 1000
+    if elapsed_ms >= 25 then
+        debug_tools.info(string.format(
+            "OBJECT_PATHABILITY_TIMING map=0x%02X start=(%d,%d) targets=%d reachable=%d unreachable=%d ms=%.3f",
+            map_id,
+            start_x,
+            start_y,
+            #targets,
+            reachable,
+            unreachable,
+            elapsed_ms))
+    end
+
+    return {
+        name = objects.get_filter_summary(),
+        pathability_name = objects.get_pathability_filter_name(),
+        count = objects.get_count(),
+        active = objects.is_pathability_filter_active(),
+        refreshed = true,
+        total = #targets,
+        reachable = reachable,
+        unreachable = unreachable,
+    }
+end
+
+function M.refresh_object_pathability_filter_if_needed()
+    return M.refresh_object_pathability_filter({force = false})
+end
+
+function M.set_object_pathability_filter(filter)
+    local mode = normalize_pathability_filter(filter)
+    if not mode then
+        return nil, "pathability_filter usage: pathability_filter, pathability_filter:all, pathability_filter:reachable, pathability_filter:unreachable, or pathability_filter:refresh"
+    end
+
+    if mode == objects.PATHABILITY_ALL then
+        object_pathability_signature = nil
+        objects.set_pathability_filter(objects.PATHABILITY_ALL)
+        return {
+            name = objects.get_filter_summary(),
+            pathability_name = objects.get_pathability_filter_name(),
+            count = objects.get_count(),
+            active = false,
+        }
+    end
+
+    local refresh = M.refresh_object_pathability_filter({force = true})
+    if refresh and refresh.unavailable then
+        return refresh
+    end
+    objects.set_pathability_filter(mode)
+    return {
+        name = objects.get_filter_summary(),
+        pathability_name = objects.get_pathability_filter_name(),
+        count = objects.get_count(),
+        active = true,
+        refreshed = refresh and refresh.refreshed,
+        total = refresh and refresh.total,
+        reachable = refresh and refresh.reachable,
+        unreachable = refresh and refresh.unreachable,
+    }
+end
+
+function M.next_object_pathability_filter()
+    local current = objects.get_pathability_filter()
+    local next_filter = current + 1
+    if next_filter > objects.PATHABILITY_UNREACHABLE then
+        next_filter = objects.PATHABILITY_ALL
+    end
+    return M.set_object_pathability_filter(next_filter)
 end
 
 function M.object_reachability(obj, opts)

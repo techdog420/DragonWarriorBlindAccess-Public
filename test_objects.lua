@@ -318,6 +318,65 @@ function tests.all_filter_jumps_back_to_all_objects()
     env.restore()
 end
 
+function tests.pathability_filter_stacks_with_object_categories()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 5)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x25, 0x07) -- sprite type 1 (Guard), x=5, y=7
+    env.objects.refresh(0x08)
+
+    env.objects.set_pathability_statuses({
+        npc_0 = true,
+        exit_0_15 = false,
+    })
+    env.objects.set_pathability_filter(env.objects.PATHABILITY_REACHABLE)
+
+    assert_equal(env.objects.get_filter_summary(), "All, reachable", "filter summary should combine type and pathability filters")
+    assert_equal(env.objects.get_count(), 1, "reachable filter should hide unreachable objects")
+    assert_equal(env.objects.current_object().id, "npc_0", "reachable filter should expose the reachable NPC")
+
+    env.objects.next_filter() -- NPCs
+    assert_equal(env.objects.get_filter_summary(), "NPCs, reachable", "type filter should keep the active pathability suffix")
+    assert_equal(env.objects.get_count(), 1, "reachable NPC category should keep the NPC")
+
+    env.objects.next_filter() -- Services
+    env.objects.next_filter() -- Treasure
+    env.objects.next_filter() -- Travel
+    assert_equal(env.objects.get_count(), 0, "reachable Travel category should hide the unreachable exit")
+
+    env.objects.set_pathability_filter(env.objects.PATHABILITY_UNREACHABLE)
+    assert_equal(env.objects.get_filter_summary(), "Travel, unreachable", "unreachable mode should stack with Travel")
+    assert_equal(env.objects.get_count(), 1, "unreachable Travel category should expose the exit")
+    assert_equal(env.objects.current_object().id, "exit_0_15", "unreachable filter should expose the unreachable exit")
+
+    env.restore()
+end
+
+function tests.pathability_all_restores_normal_category_count()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 5)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x25, 0x07)
+    env.objects.refresh(0x08)
+    local all_count = env.objects.get_count()
+
+    env.objects.set_pathability_statuses({
+        npc_0 = true,
+        exit_0_15 = false,
+    })
+    env.objects.set_pathability_filter(env.objects.PATHABILITY_REACHABLE)
+    assert_equal(env.objects.get_count(), 1, "test should start with a narrowed reachable list")
+
+    env.objects.all_pathability_filter()
+    assert_equal(env.objects.get_pathability_filter_name(), "All", "all pathability filter should report All")
+    assert_equal(env.objects.get_filter_summary(), "All", "summary should drop the pathability suffix in All mode")
+    assert_equal(env.objects.get_count(), all_count, "All pathability should restore the normal object list")
+
+    env.restore()
+end
+
 function tests.npc_occupancy_check_reads_live_ram_without_full_refresh()
     local env = make_env({is_bizhawk = true})
 

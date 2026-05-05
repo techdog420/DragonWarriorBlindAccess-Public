@@ -29,6 +29,16 @@ primary path unless the task explicitly targets FCEUX.
   All, NPCs, Services, Treasure, Travel, and Doors. `Q` cycles forward;
   `Shift+J` / `Shift+L` cycle filters backward/forward, and `Shift+K` jumps
   directly back to All without also speaking the current object.
+- Object navigation also has a separate pathability layer on `Shift+O`.
+  It cycles All, Reachable, and Unreachable, stacking with the category filter
+  (for example `Treasure, reachable`). The debug command is
+  `pathability_filter`, with `:all`, `:reachable`, `:unreachable`, and
+  `:refresh` forms. Reachability is computed on demand with shared blocking,
+  ignores moving NPC occupancy, and resets to All on overworld maps where
+  interior A* reachability is unavailable.
+- Object-browser command registration moved out of `main.lua` into
+  `object_commands.lua` to keep main's local-variable pressure down while
+  adding the pathability command.
 - Session-only visited flags are map-scoped. `Shift+V` / `mark_visited` marks
   the current object; TALK followed by real dialogue marks an adjacent NPC
   automatically; `clear_visited` clears the current map and
@@ -71,6 +81,16 @@ Manual test finding from the auto-walk/TALK pass:
   more time. Failed TALK text no longer marks the adjacent NPC as visited.
 
 Latest manual playtest notes:
+- Live `Shift+O` follow-up: the first manual test did not reach
+  `hotkeys.lua` because the existing checked-in `dw_access.ini`
+  `bizhawk_keyboard_hotkey_allowlist` was an explicit override missing
+  `key_pathability_filter`. The setting itself had been auto-appended, but the
+  allowlist still blocked the combo while full BizHawk hotkeys were off.
+  `dw_access.ini` now includes `key_pathability_filter` in the allowlist;
+  `reload_config` was consumed at frame `14580`, and command-file
+  `pathability_filter` logged `All, reachable. Chest: 1 east (1 of 8)`.
+  The browser was reset with `pathability_filter:all`, so the next physical
+  `Shift+O` press should cycle to Reachable.
 - Auto-walk is mostly working as expected after the facing/TALK patch. There
   may still have been an auto-walk failure on Guard 1; review fresh logs before
   changing route behavior.
@@ -83,16 +103,13 @@ Latest manual playtest notes:
   nearby good tile before patching parser logic.
 
 Validation already run for this batch:
-- `luac -p config.lua hotkey_filter.lua hotkeys.lua objects.lua main.lua
-  test_hotkey_filter.lua test_hotkeys.lua test_objects.lua test_route_manager.lua`
+- `luac -p config.lua hotkey_filter.lua hotkeys.lua objects.lua
+  object_commands.lua route_manager.lua main.lua test_hotkey_filter.lua
+  test_hotkeys.lua test_objects.lua test_route_manager.lua`
 - `lua test_hotkey_filter.lua`
 - `lua test_hotkeys.lua`
 - `lua test_objects.lua`
 - `lua test_route_manager.lua`
-- `lua test_auto_step.lua`
-- `lua test_pathfinder.lua`
-- `lua test_map_reader.lua`
-- `lua test_map_survey.lua`
 - `python3 run_tests.py --allow-missing-speech-dep` passed with the known WSL
   `accessible_output2` missing warning and `cmd: not found` speech-bridge noise.
 - `git diff --check`
