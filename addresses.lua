@@ -34,24 +34,20 @@ M.OVERWORLD_X       = 0x0042  -- Dedicated overworld X byte (diagnostic; semanti
 -- Environment / Terrain
 M.TILE_TYPE         = 0x0015  -- Exterior tile type (0=grass, 15=water, etc.)
 M.TERRAIN_OFFSET    = 0x0016  -- $20=caves, $10=towns, $00=world map
+-- PPU control shadow. Bit 0 selects the horizontal base nametable used with
+-- the scroll shadow below: 0 = NT0 first, 1 = NT1 first. Live King dialogue at
+-- map 0x05 position (3,4) had PPU_CTRL=0x03 and SCROLL_X=0xB0, which means the
+-- visible dialogue row starts in NT1 and wraps into NT0.
+M.PPU_CTRL          = 0x0004
 -- Horizontal scroll shadow register — pixel offset (0-255).
 -- DW1 stores the pending PPU $2005 horizontal scroll value here and writes it
 -- during NMI/VBlank. On interior maps, non-zero values shift dialogue tiles into
 -- PPU nametable 1 ($2400) at player positions near the east edge of a map,
 -- causing characters to be silently missed.
---
--- NOT CONFIRMED — previous candidate 0x0042 was wrong. At x=8,y=1 its value
--- was 88 (=11 NES tiles, matches bug), but at x=1,y=4 it was 200 (=25 tiles),
--- which corrupted all dialogue reading. 0x0042 is unrelated game state (possibly
--- overworld camera position or a timer).
---
--- The real scroll register is likely in 0x0000–0x0035 (range not yet scanned).
--- Use the N-key diagnostic at x=8 with truncated text vs x=1 with full text
--- to compare that range and identify the address that changes proportionally to
--- player X.
---
+-- 0x0005 matched the live King wrap glitch with value 0xB0 (22 tiles); combined
+-- with PPU_CTRL bit 0, the reader must assemble NT1 columns 22-31 before NT0.
 -- Divide by 8 (pixels per NES tile) to get NES tile scroll offset for read_ppu_row.
-M.SCROLL_X          = nil     -- UNCONFIRMED: scan 0x0000-0x0035 via N-key diagnostic
+M.SCROLL_X          = 0x0005
 -- Vertical scroll shadow register — pixel offset written to PPU $2005 vertical.
 -- Empirically confirmed via title_diag at two player positions:
 --   player y=8:  0x0007 = 0x10 = 16  px  (= (8-7)*16)

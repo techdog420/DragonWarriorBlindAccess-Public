@@ -29,6 +29,37 @@ if main_script_dir ~= "" then
     end
 end
 
+-- BizHawk console/script reloads can re-run main.lua inside the same Lua
+-- state, leaving required project modules cached. Clear our modules before
+-- requiring them so a console reload actually picks up code changes.
+package.loaded["addresses"] = nil
+package.loaded["auto_step"] = nil
+package.loaded["battle"] = nil
+package.loaded["chars"] = nil
+package.loaded["config"] = nil
+package.loaded["debug_tools"] = nil
+package.loaded["emulator_compat"] = nil
+package.loaded["event_bus"] = nil
+package.loaded["game_snapshot"] = nil
+package.loaded["hotkey_filter"] = nil
+package.loaded["hotkeys"] = nil
+package.loaded["items"] = nil
+package.loaded["key_combo"] = nil
+package.loaded["map_reader"] = nil
+package.loaded["map_survey"] = nil
+package.loaded["maps"] = nil
+package.loaded["menu"] = nil
+package.loaded["merchant"] = nil
+package.loaded["navigation"] = nil
+package.loaded["object_commands"] = nil
+package.loaded["objects"] = nil
+package.loaded["path_debug"] = nil
+package.loaded["pathfinder"] = nil
+package.loaded["route_manager"] = nil
+package.loaded["scan_profiler"] = nil
+package.loaded["state"] = nil
+package.loaded["text"] = nil
+
 local emulator_compat = require "emulator_compat" -- FCEUX/BizHawk API shim
 local scan_profiler = require "scan_profiler" -- BizHawk scan throttling/profiling
 
@@ -521,7 +552,8 @@ local function get_autowalk_unavailable_reason()
     if path_debug.is_step_mode() then
         return "Finish step mode before auto-walking"
     end
-    if menu.is_open() then
+    if DW_QOL_STATE.command_menu_blocks_field_movement
+       and DW_QOL_STATE.command_menu_blocks_field_movement() then
         return "Close the command menu before auto-walking"
     end
     if submenu_mode ~= nil then
@@ -705,7 +737,7 @@ local prev_cmd_y = nil
 -- Sub-menu tracking state.
 local prev_joy_b_status  = false  -- B button tracking for STATUS exit
 local prev_joy_a_cmd     = false  -- A button tracking inside check_command_menu
-local cmd_menu_confirmed = false  -- true after we announce "Command." (genuine open)
+local cmd_menu_confirmed = false  -- true after a genuine open/cursor move
 local yesno_status_block_frames = 0  -- brief cooldown after Yes/No dismissal
 local cmd_cursor_hold_frames = 0  -- recent visible command-menu cursor
 local cmd_last_live_x = nil
@@ -722,6 +754,57 @@ local recent_field_action_frames = 0
 local RECENT_FIELD_ACTION_HOLD = 180
 local bizhawk_boot_dialogue_frames = 0
 local BIZHAWK_BOOT_DIALOGUE_HOLD = 2400
+
+DW_QOL_STATE.cmd_open_speech_delay = 6
+DW_QOL_STATE.cmd_open_speech_pending_frames = 0
+
+DW_QOL_STATE.clear_cmd_open_speech_pending = function()
+    DW_QOL_STATE.cmd_open_speech_pending_frames = 0
+end
+
+DW_QOL_STATE.command_open_message = function(item)
+    return item and ("Command. " .. item) or "Command."
+end
+
+DW_QOL_STATE.queue_cmd_open_speech = function()
+    DW_QOL_STATE.cmd_open_speech_pending_frames = DW_QOL_STATE.cmd_open_speech_delay
+end
+
+DW_QOL_STATE.speak_cmd_open = function(item)
+    DW_QOL_STATE.clear_cmd_open_speech_pending()
+    tolk.output(DW_QOL_STATE.command_open_message(item))
+end
+
+DW_QOL_STATE.flush_pending_cmd_open = function(item)
+    if DW_QOL_STATE.cmd_open_speech_pending_frames <= 0 then
+        return false
+    end
+    DW_QOL_STATE.speak_cmd_open(item)
+    return true
+end
+
+DW_QOL_STATE.tick_pending_cmd_open = function(frame_delta, item)
+    if DW_QOL_STATE.cmd_open_speech_pending_frames <= 0 then
+        return false
+    end
+    DW_QOL_STATE.cmd_open_speech_pending_frames = math.max(
+        0,
+        DW_QOL_STATE.cmd_open_speech_pending_frames - scan_profiler.stable_delta(frame_delta))
+    if DW_QOL_STATE.cmd_open_speech_pending_frames == 0 then
+        DW_QOL_STATE.speak_cmd_open(item)
+        return true
+    end
+    return false
+end
+
+DW_QOL_STATE.command_menu_blocks_field_movement = function()
+    -- menu.is_open() is a raw COMMAND-header PPU match. After TALK or other
+    -- dialogue transitions, COMMAND text can linger in nametable memory after
+    -- the field menu has stopped being interactive. Movement/autowalk should
+    -- only be blocked by a live command-menu session, with the short cursor
+    -- hold bridging normal cursor blink gaps.
+    return cmd_menu_live and cmd_cursor_hold_frames > 0
+end
 
 DW_QOL_STATE.arm_talk_visit_marker = function()
     DW_QOL_STATE.pending_talk_visit = {frame = frame_count}
@@ -814,6 +897,11 @@ end
 local function get_scroll_tiles()
     if addr.SCROLL_X == nil then return 0 end
     return math.floor(memory.readbyte(addr.SCROLL_X) / 8)
+end
+
+DW_QOL_STATE.get_scroll_base_nametable = function()
+    if addr.PPU_CTRL == nil then return 0 end
+    return memory.readbyte(addr.PPU_CTRL) % 2
 end
 
 -- get_dialogue_start_row(): Compute the nametable row where the dialogue window begins.
@@ -964,34 +1052,7 @@ end
 --   new = "darkness. 'Now, AAAAAAAA, thou must help us..."
 --   returns "'Now, AAAAAAAA, thou must help us..."
 local function strip_overlap(old, new)
-    if old == "" then return new end
-
-    -- Try progressively shorter suffixes of the old text.
-    -- If a suffix matches the start of the new text, everything
-    -- after that suffix in the new text is genuinely new.
-    local found_overlap = false
-    for start = 1, #old do
-        local suffix = old:sub(start)
-        if new:sub(1, #suffix) == suffix then
-            found_overlap = true
-            local remainder = new:sub(#suffix + 1)
-            -- Trim leading spaces from the new portion
-            remainder = remainder:match("^%s*(.-)$") or remainder
-            if remainder ~= "" then
-                return remainder
-            end
-        end
-    end
-
-    -- If a suffix matched but the remainder was always empty, the
-    -- entire new text is old content that scrolled within the window.
-    -- Nothing genuinely new to announce.
-    if found_overlap then
-        return ""
-    end
-
-    -- No overlap found — the entire new text is new
-    return new
+    return text.extract_new_dialogue(old, new)
 end
 
 if ROW1_TRACE_ENABLED then
@@ -1072,7 +1133,7 @@ local function field_dialogue_guard_active()
     if game_state.state ~= state.STATE_FIELD then return false end
     if not in_gameplay then return false end
     if has_blocking_live_input() then return false end
-    if menu.is_open() or submenu_mode ~= nil or menu.is_yesno_active() then return false end
+    if DW_QOL_STATE.command_menu_blocks_field_movement() or submenu_mode ~= nil or menu.is_yesno_active() then return false end
     if merchant_screen_active then return false end
     return recent_field_action_frames == 0
 end
@@ -1123,10 +1184,10 @@ local function reset_merchant_state(sync_dialogue_baselines)
         return
     end
 
-    prev_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    prev_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
     stable_frames = 0
 
-    upper_baseline = text.read_upper_window(get_scroll_tiles())
+    upper_baseline = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
     prev_upper_dialogue = upper_baseline
     announced_upper_dialogue = upper_baseline
     upper_stable_frames = 0
@@ -1294,6 +1355,7 @@ local function check_command_menu(frame_delta)
         cmd_menu_confirmed = false
         cmd_menu_live = false
         cmd_cursor_hold_frames = 0
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
         return
     end
 
@@ -1312,6 +1374,7 @@ local function check_command_menu(frame_delta)
         cmd_menu_confirmed = false
         cmd_menu_live = false
         cmd_cursor_hold_frames = 0
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
         if submenu_mode == "ITEM" or submenu_mode == "STATUS" then
             submenu_mode = nil
         end
@@ -1351,7 +1414,7 @@ local function check_command_menu(frame_delta)
                     "cursor=" .. tostring(has_visible_cursor_tile()),
                     "item=" .. tostring(open_item),
                 })
-                tolk.output(open_item and ("Command. " .. open_item) or "Command.")
+                DW_QOL_STATE.queue_cmd_open_speech()
                 debug_tools.on_menu_open()
                 event_bus.publish("menu_opened")
             end
@@ -1367,6 +1430,7 @@ local function check_command_menu(frame_delta)
             submenu_mode = nil
             menu_upper_absorb_frames = MENU_UPPER_ABSORB
             cmd_menu_live = false
+            DW_QOL_STATE.clear_cmd_open_speech_pending()
             trace_row1("CMD_CLOSE_FROM_ITEM", changes, {})
             return
         end
@@ -1421,11 +1485,12 @@ local function check_command_menu(frame_delta)
         cmd_menu_confirmed = false
         cmd_menu_live = false
         cmd_cursor_hold_frames = 0
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
         trace_row1("CMD_BLOCK_YESNO", changes, {})
         return
     end
 
-    local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row()) ~= ""
+    local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable()) ~= ""
     local cursor_visible = has_visible_cursor_tile()
 
     if is_row1_interior_context() then
@@ -1496,6 +1561,7 @@ local function check_command_menu(frame_delta)
         cmd_menu_confirmed = false
         cmd_menu_live = false
         cmd_cursor_hold_frames = 0
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
         menu_upper_absorb_frames = MENU_UPPER_ABSORB
         trace_row1("CMD_CLOSE", changes, {})
         debug_tools.on_menu_close()
@@ -1551,7 +1617,7 @@ local function check_command_menu(frame_delta)
                 "cursor=" .. tostring(cursor_visible),
                 "item=" .. tostring(open_item),
             })
-            tolk.output(open_item and ("Command. " .. open_item) or "Command.")
+            DW_QOL_STATE.queue_cmd_open_speech()
             debug_tools.on_menu_open()
             event_bus.publish("menu_opened")
         elseif a_just then
@@ -1572,7 +1638,7 @@ local function check_command_menu(frame_delta)
                 "cursor=" .. tostring(cursor_visible),
                 "item=" .. tostring(open_item),
             })
-            tolk.output(open_item and ("Command. " .. open_item) or "Command.")
+            DW_QOL_STATE.queue_cmd_open_speech()
             debug_tools.on_menu_open()
             event_bus.publish("menu_opened")
         end
@@ -1593,7 +1659,9 @@ local function check_command_menu(frame_delta)
                 "lower=" .. tostring(lower_dialogue_active),
                 "cursor=" .. tostring(cursor_visible),
             })
-            tolk.output(item)
+            if not DW_QOL_STATE.flush_pending_cmd_open(item) then
+                tolk.output(item)
+            end
         else
             -- Unknown cursor position — announce raw values so the user
             -- can report them for mapping.
@@ -1601,8 +1669,14 @@ local function check_command_menu(frame_delta)
                 "lower=" .. tostring(lower_dialogue_active),
                 "cursor=" .. tostring(cursor_visible),
             })
-            tolk.output("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
+            if not DW_QOL_STATE.flush_pending_cmd_open(nil) then
+                tolk.output("Cursor " .. changes.cursor_x .. ", " .. changes.cursor_y)
+            end
         end
+    elseif not changes.menu_closed then
+        DW_QOL_STATE.tick_pending_cmd_open(
+            frame_delta,
+            changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y))
     end
 
     -- Selecting TALK consumes the current field-menu session. Row-1 dialogue
@@ -1613,6 +1687,7 @@ local function check_command_menu(frame_delta)
        and cmd_menu_confirmed then
         cmd_menu_live = false
         cmd_rearm_required = true
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
         DW_QOL_STATE.arm_talk_visit_marker()
         trace_row1("CMD_TALK_FIRE", changes, {
             "cursor=" .. tostring(cursor_visible),
@@ -1663,17 +1738,18 @@ local function check_yesno_prompt(frame_delta)
             -- hasn't been spoken yet, so the player hears the question
             -- before the Yes/No prompt. Update announced_dialogue so the
             -- normal dialogue system doesn't repeat it.
-            local question = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+            local question = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
             -- Only announce the question if it contains real dialogue text
             -- (at least one lowercase letter). Purely-uppercase strings are either
             -- command menu tiles that haven't been overwritten yet, or the player's
             -- name partially rendered before the rest of the sentence appeared.
             -- The normal dialogue stability path will catch the full text once it
             -- finishes rendering.
-            if question ~= "" and question ~= announced_dialogue and question:find("[a-z]") then
-                debug_tools.on_dialogue(question)
-                event_bus.publish("dialogue_new", {text = question})
-                tolk.output(question)
+            local new_question = strip_overlap(announced_dialogue, question)
+            if new_question ~= "" and question ~= announced_dialogue and new_question:find("[a-z]") then
+                debug_tools.on_dialogue(new_question)
+                event_bus.publish("dialogue_new", {text = new_question})
+                tolk.output(new_question)
                 announced_dialogue = question
             end
         end
@@ -1711,7 +1787,7 @@ local function read_y1_dialogue()
     local text_row = math.max(0, 11 + 2 * py)
     local lines = {}
     for row = text_row, math.min(29, text_row + 8) do
-        local decoded = text.decode_row(row)
+        local decoded = text.decode_row(row, get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
         if decoded:find("[a-z]") and not text.is_status_text(decoded) then
             lines[#lines + 1] = decoded
         end
@@ -2135,7 +2211,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
     -- Use the filtered reader for ALL y positions: it applies a per-row
     -- lowercase filter to exclude status bar fragments (uppercase "E", "G",
     -- digits) that bleed into rows 19-29 at certain NES scroll positions.
-    local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
     local battle_dialogue_mode = (game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0)
     if battle_dialogue_mode then
         dialogue = battle.normalize_dialogue(dialogue)
@@ -2144,7 +2220,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
     local stable_threshold = lower_dialogue_stable_threshold(dialogue)
 
     if (field_dialogue_guard_active() and not lower_dialogue_visible) or
-       (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and not menu.is_open()
+       (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and not DW_QOL_STATE.command_menu_blocks_field_movement()
         and submenu_mode == nil and not menu.is_yesno_active()) then
         prev_dialogue = dialogue
         stable_frames = 0
@@ -2299,8 +2375,8 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- transitional states that look like fresh upper dialogue. Absorb the
     -- current upper text into the baseline for a short window around those
     -- transitions so normal status text is never announced as dialogue.
-    if menu.is_open() or menu_upper_absorb_frames > 0 then
-        local upper = text.read_upper_window(get_scroll_tiles())
+    if DW_QOL_STATE.command_menu_blocks_field_movement() or menu_upper_absorb_frames > 0 then
+        local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
         upper_baseline = upper
         prev_upper_dialogue = upper
         announced_upper_dialogue = upper
@@ -2318,7 +2394,7 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- dialogue classifier for a frame and cancel the route. While an auto-walk
     -- route is active, treat upper-window changes as baseline-only noise.
     if auto_step.is_route_active and auto_step.is_route_active() then
-        local upper = text.read_upper_window(get_scroll_tiles())
+        local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
         upper_baseline = upper
         prev_upper_dialogue = upper
         announced_upper_dialogue = upper
@@ -2330,7 +2406,7 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     if field_dialogue_guard_active() or
        (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and submenu_mode == nil
         and not menu.is_yesno_active()) then
-        local upper = text.read_upper_window(get_scroll_tiles())
+        local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
         upper_baseline = upper
         prev_upper_dialogue = upper
         upper_stable_frames = 0
@@ -2358,14 +2434,14 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
         end
     end
 
-    local upper = text.read_upper_window(get_scroll_tiles())
+    local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
 
     -- Guard 1's post-Yes/No reply continues in the LOWER dialogue window while
     -- the status bar remains visible above it. In that state, the upper scan can
     -- misclassify the status bar as fresh upper-window dialogue and speak the
     -- full stats. When real lower dialogue text is present, prefer it and treat
     -- the current upper text as baseline-only content.
-    local lower_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    local lower_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
     if lower_dialogue ~= "" then
         upper_baseline = upper
         prev_upper_dialogue = upper
@@ -2688,24 +2764,72 @@ debug_tools.register_command("report_runtime_blocks", function()
 end)
 
 debug_tools.register_command("report_upper_dialogue_state", function()
-    local upper = text.read_upper_window(get_scroll_tiles())
-    local lower = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row())
+    if emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
+    local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
+    local lower = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
+    local scroll_tiles = get_scroll_tiles()
+    local base_nametable = DW_QOL_STATE.get_scroll_base_nametable()
     local msg = string.format(
-        "UPPER_STATE active=%s menu=%s submenu=%s prev_dialogue_len=%d upper_len=%d baseline_len=%d announced_len=%d lower_len=%d upper=%q baseline=%q announced=%q",
+        "UPPER_STATE active=%s menu_raw=%s menu_active=%s submenu=%s scroll_tiles=%d base_nt=%d prev_dialogue_len=%d announced_dialogue_len=%d upper_len=%d baseline_len=%d announced_len=%d lower_len=%d upper=%q baseline=%q announced=%q lower=%q prev_lower=%q announced_lower=%q",
         tostring(upper_dialogue_active),
         tostring(menu.is_open()),
+        tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
         tostring(submenu_mode),
+        scroll_tiles,
+        base_nametable,
         #(prev_dialogue or ""),
+        #(announced_dialogue or ""),
         #(upper or ""),
         #(upper_baseline or ""),
         #(announced_upper_dialogue or ""),
         #(lower or ""),
         tostring(upper or ""),
         tostring(upper_baseline or ""),
-        tostring(announced_upper_dialogue or "")
+        tostring(announced_upper_dialogue or ""),
+        tostring(lower or ""),
+        tostring(prev_dialogue or ""),
+        tostring(announced_dialogue or "")
     )
     debug_tools.info(msg)
     tolk.output_interrupt("Upper dialogue state reported")
+end)
+
+debug_tools.register_command("report_menu_state", function()
+    if emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
+    local raw_open = menu.is_command_menu_open()
+    local cached_open = menu.is_open()
+    local cursor_x, cursor_y = menu.get_cursor_position()
+    local item = menu.get_menu_item(cursor_x, cursor_y) or "unknown"
+    local lower = text.read_dialogue_window_filtered(
+        get_scroll_tiles(),
+        get_dialogue_start_row(),
+        DW_QOL_STATE.get_scroll_base_nametable())
+    local msg = string.format(
+        "MENU_STATE raw_open=%s cached_open=%s active_block=%s cursor_visible=%s cursor=(%s,%s) item=%s cmd_confirmed=%s cmd_live=%s cmd_rearm=%s cmd_hold=%d yesno=%s yesno_seen=%s submenu=%s lower_len=%d scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
+        tostring(raw_open),
+        tostring(cached_open),
+        tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
+        tostring(has_visible_cursor_tile()),
+        tostring(cursor_x),
+        tostring(cursor_y),
+        tostring(item),
+        tostring(cmd_menu_confirmed),
+        tostring(cmd_menu_live),
+        tostring(cmd_rearm_required),
+        cmd_cursor_hold_frames,
+        tostring(menu.is_yesno_active()),
+        tostring(menu.yesno_cursor_seen()),
+        tostring(submenu_mode),
+        #(lower or ""),
+        get_scroll_tiles(),
+        DW_QOL_STATE.get_scroll_base_nametable(),
+        get_dialogue_start_row())
+    debug_tools.info(msg)
+    tolk.output_interrupt("Menu state reported")
 end)
 
 debug_tools.register_command("clear_runtime_blocks", function(arg)
@@ -3531,7 +3655,7 @@ while true do
         if startup_counter == STARTUP_FRAMES then
             -- Initialize the upper dialogue baseline so the status display
             -- text doesn't get announced as "new dialogue" after the grace period.
-            upper_baseline = text.read_upper_window(get_scroll_tiles())
+            upper_baseline = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
             prev_upper_dialogue = upper_baseline
             reset_merchant_state(false)
             reset_battle_menu_state()
@@ -3661,7 +3785,7 @@ while true do
             if bizhawk_boot_dialogue_frames > 0 then
                 bizhawk_boot_dialogue_frames = bizhawk_boot_dialogue_frames - 1
             end
-            if current_joy_any or menu.is_open() or submenu_mode ~= nil or menu.is_yesno_active() then
+            if current_joy_any or DW_QOL_STATE.command_menu_blocks_field_movement() or submenu_mode ~= nil or menu.is_yesno_active() then
                 recent_field_action_frames = RECENT_FIELD_ACTION_HOLD
             elseif recent_field_action_frames > 0 then
                 recent_field_action_frames = recent_field_action_frames - 1
@@ -3737,9 +3861,16 @@ while true do
                     scan_profiler.call("check_battle_menu", checked_call, "check_battle_menu", check_battle_menu, battle_menu_delta)
                 end
             else
-                local menu_interval = (menu.is_open() or submenu_mode ~= nil or cmd_menu_confirmed or menu.is_yesno_active()) and 2 or 4
+                local menu_attention = menu.is_open()
+                    or DW_QOL_STATE.command_menu_blocks_field_movement()
+                    or submenu_mode ~= nil
+                    or cmd_menu_confirmed
+                    or menu.is_yesno_active()
+                    or current_joy_any
+                    or recent_field_action_frames > 0
+                local menu_interval = menu_attention and 2 or 4
                 local run_menu, menu_delta = false, 0
-                if not dialogue_hint or menu.is_open() or submenu_mode ~= nil or cmd_menu_confirmed or menu.is_yesno_active() then
+                if not dialogue_hint or menu_attention then
                     run_menu, menu_delta = scan_profiler.should_run("command_menu", menu_interval, frame_count)
                 end
                 if run_menu then
@@ -3875,7 +4006,7 @@ while true do
                      and (
                          path_debug.is_validating()
                          or (
-                             not menu.is_open()
+                             not DW_QOL_STATE.command_menu_blocks_field_movement()
                              and submenu_mode == nil
                              and not merchant_screen_active
                              and prev_dialogue == ""
@@ -3892,6 +4023,7 @@ while true do
                 tostring(path_debug.is_step_mode()),
                 tostring(path_debug.is_validating()),
                 tostring(menu.is_open()),
+                tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
                 tostring(submenu_mode),
                 tostring(#(prev_dialogue or "")),
                 tostring(upper_dialogue_active),
@@ -3899,12 +4031,13 @@ while true do
             }, "|")
             if can_walk_log.key ~= block_key or (frame_count - (can_walk_log.frame or -9999)) >= 60 then
                 debug_tools.debug(string.format(
-                    "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu=%s submenu=%s prev_dialogue_len=%d upper_dialogue_active=%s target=%s",
+                    "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu_raw=%s menu_active=%s submenu=%s prev_dialogue_len=%d upper_dialogue_active=%s target=%s",
                     tostring(game_state.state),
                     tostring(debug_tools.is_sweep_active()),
                     tostring(path_debug.is_step_mode()),
                     tostring(path_debug.is_validating()),
                     tostring(menu.is_open()),
+                    tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
                     tostring(submenu_mode),
                     #(prev_dialogue or ""),
                     tostring(upper_dialogue_active),

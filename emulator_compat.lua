@@ -41,18 +41,99 @@ function M.reset_ppu_stats()
     end
 end
 
+function M.get_ppu_source_rows()
+    return {}
+end
+
 local function has_global(name)
     return rawget(_G, name) ~= nil
 end
 
-if has_global("FCEU") then
+local function has_bizhawk_api()
+    if not has_global("emu") then
+        return false
+    end
+    if has_global("mainmemory") or has_global("client") then
+        return true
+    end
+    local memory_api = rawget(_G, "memory")
+    return type(memory_api) == "table"
+        and (memory_api.getmemorydomainlist ~= nil or memory_api.usememorydomain ~= nil)
+end
+
+local function get_named_upvalue(fn, target_name)
+    if type(fn) ~= "function" then
+        return nil
+    end
+    local i = 1
+    while true do
+        local name, value = debug.getupvalue(fn, i)
+        if not name then
+            return nil
+        end
+        if name == target_name then
+            return value
+        end
+        i = i + 1
+    end
+end
+
+local function unwrap_adapter_table(candidate, probes)
+    local seen = {}
+    while type(candidate) == "table" and not seen[candidate] do
+        seen[candidate] = true
+        local next_candidate = nil
+        for _, probe in ipairs(probes) do
+            local value = get_named_upvalue(candidate[probe.method], probe.upvalue)
+            if type(value) == "table" and value ~= candidate then
+                next_candidate = value
+                break
+            end
+        end
+        if not next_candidate then
+            break
+        end
+        candidate = next_candidate
+    end
+    return candidate
+end
+
+local function resolve_bizhawk_api()
+    local api = {
+        emu = rawget(_G, "emu"),
+        memory = unwrap_adapter_table(rawget(_G, "memory"), {
+            {method = "readbyte", upvalue = "bizhawk_memory"},
+            {method = "writebyte", upvalue = "bizhawk_memory"},
+        }),
+        mainmemory = rawget(_G, "mainmemory"),
+        joypad = unwrap_adapter_table(rawget(_G, "joypad"), {
+            {method = "read", upvalue = "bizhawk_joypad"},
+            {method = "set", upvalue = "bizhawk_joypad"},
+        }),
+        input = unwrap_adapter_table(rawget(_G, "input"), {
+            {method = "get", upvalue = "bizhawk_input"},
+        }),
+        console = rawget(_G, "console"),
+        ppu = unwrap_adapter_table(rawget(_G, "ppu"), {
+            {method = "readbyte", upvalue = "bizhawk_ppu"},
+        }),
+    }
+
+    _G.DW_BIZHAWK_NATIVE_API = api
+    return api
+end
+
+-- On BizHawk script reloads, the FCEUX-shaped globals created by a previous
+-- adapter instance can survive in the Lua state. Prefer real BizHawk API
+-- markers so the reload path keeps scan throttling and BizHawk-specific guards.
+if not has_bizhawk_api() and has_global("FCEU") then
     M.name = "fceux"
     M.is_fceux = true
     _G.DW_EMULATOR_COMPAT = M
     return M
 end
 
-if not has_global("emu") then
+if not has_bizhawk_api() then
     _G.DW_EMULATOR_COMPAT = M
     return M
 end
@@ -60,13 +141,14 @@ end
 M.name = "bizhawk"
 M.is_bizhawk = true
 
-local bizhawk_emu = emu
-local bizhawk_memory = memory
-local bizhawk_mainmemory = mainmemory
-local bizhawk_joypad = joypad
-local bizhawk_input = input
-local bizhawk_console = console
-local bizhawk_ppu = ppu
+local bizhawk_api = resolve_bizhawk_api()
+local bizhawk_emu = bizhawk_api.emu
+local bizhawk_memory = bizhawk_api.memory
+local bizhawk_mainmemory = bizhawk_api.mainmemory
+local bizhawk_joypad = bizhawk_api.joypad
+local bizhawk_input = bizhawk_api.input
+local bizhawk_console = bizhawk_api.console
+local bizhawk_ppu = bizhawk_api.ppu
 local ppu_frame_cache = {}
 local rom_byte_cache = {}
 local ppu_cache_age_frames = 0
@@ -96,7 +178,7 @@ local function log_message(message)
 end
 
 FCEU = FCEU or {}
-FCEU.frameadvance = FCEU.frameadvance or function()
+FCEU.frameadvance = function()
     ppu_cache_age_frames = ppu_cache_age_frames + 1
     if ppu_cache_age_frames >= PPU_CACHE_HOLD_FRAMES then
         ppu_frame_cache = {}
@@ -105,7 +187,7 @@ FCEU.frameadvance = FCEU.frameadvance or function()
     end
     return bizhawk_emu.frameadvance()
 end
-FCEU.message = FCEU.message or log_message
+FCEU.message = log_message
 
 BIT = BIT or function(bit_index)
     return 2 ^ bit_index
@@ -139,6 +221,37 @@ end
 local is_cart_work_ram_address
 local read_cart_work_ram_byte
 local write_cart_work_ram_byte
+local direct_memory_failure_logged = {}
+
+local function call_number_api(label, fn, ...)
+    local ok, value = pcall(fn, ...)
+    if ok and type(value) == "number" then
+        return value
+    end
+    if not ok and not direct_memory_failure_logged[label] then
+        log_message(string.format(
+            "BizHawk memory adapter: %s failed; falling back to alternate memory API: %s",
+            tostring(label),
+            tostring(value)))
+        direct_memory_failure_logged[label] = true
+    end
+    return nil
+end
+
+local function call_write_api(label, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if ok then
+        return true
+    end
+    if not direct_memory_failure_logged[label] then
+        log_message(string.format(
+            "BizHawk memory adapter: %s failed; falling back to alternate memory API: %s",
+            tostring(label),
+            tostring(err)))
+        direct_memory_failure_logged[label] = true
+    end
+    return false
+end
 
 local function read_u8(address)
     address = math.floor(tonumber(address) or 0)
@@ -149,13 +262,30 @@ local function read_u8(address)
         end
     end
     if bizhawk_mainmemory and bizhawk_mainmemory.read_u8 then
-        return bizhawk_mainmemory.read_u8(address)
+        local value = call_number_api("mainmemory.read_u8", bizhawk_mainmemory.read_u8, address)
+        if value ~= nil then
+            return value
+        end
     end
     if bizhawk_memory and bizhawk_memory.read_u8 then
-        return bizhawk_memory.read_u8(address)
+        local value = call_number_api("memory.read_u8:System Bus", bizhawk_memory.read_u8, address, "System Bus")
+        if value ~= nil then
+            return value
+        end
+        value = call_number_api("memory.read_u8", bizhawk_memory.read_u8, address)
+        if value ~= nil then
+            return value
+        end
     end
     if bizhawk_memory and bizhawk_memory.readbyte then
-        return bizhawk_memory.readbyte(address)
+        local value = call_number_api("memory.readbyte:System Bus", bizhawk_memory.readbyte, address, "System Bus")
+        if value ~= nil then
+            return value
+        end
+        value = call_number_api("memory.readbyte", bizhawk_memory.readbyte, address)
+        if value ~= nil then
+            return value
+        end
     end
     error("BizHawk memory read_u8/readbyte API is unavailable")
 end
@@ -167,13 +297,25 @@ local function write_u8(address, value)
         return
     end
     if bizhawk_mainmemory and bizhawk_mainmemory.write_u8 then
-        return bizhawk_mainmemory.write_u8(address, value)
+        if call_write_api("mainmemory.write_u8", bizhawk_mainmemory.write_u8, address, value) then
+            return
+        end
     end
     if bizhawk_memory and bizhawk_memory.write_u8 then
-        return bizhawk_memory.write_u8(address, value)
+        if call_write_api("memory.write_u8:System Bus", bizhawk_memory.write_u8, address, value, "System Bus") then
+            return
+        end
+        if call_write_api("memory.write_u8", bizhawk_memory.write_u8, address, value) then
+            return
+        end
     end
     if bizhawk_memory and bizhawk_memory.writebyte then
-        return bizhawk_memory.writebyte(address, value)
+        if call_write_api("memory.writebyte:System Bus", bizhawk_memory.writebyte, address, value, "System Bus") then
+            return
+        end
+        if call_write_api("memory.writebyte", bizhawk_memory.writebyte, address, value) then
+            return
+        end
     end
     error("BizHawk memory write_u8/writebyte API is unavailable")
 end
@@ -356,6 +498,17 @@ local function identity_address(address)
     return address
 end
 
+local PPU_DOMAIN_CANDIDATES = {
+    { domain = "PPU Bus", address_for = identity_address },
+    { domain = "PPU Memory", address_for = identity_address },
+    { domain = "PPU", address_for = identity_address },
+    { domain = "VRAM", address_for = identity_address },
+    { domain = "CIRAM", address_for = ppu_nametable_offset },
+    { domain = "Nametables", address_for = ppu_nametable_offset },
+    { domain = "Name Table RAM", address_for = ppu_nametable_offset },
+    { domain = "CIRAM (nametables)", address_for = ppu_nametable_offset },
+}
+
 local function prg_with_ines_header_offset(address)
     if address < 0x10 then
         local header = {0x4E, 0x45, 0x53, 0x1A}
@@ -481,6 +634,74 @@ local function score_ppu_candidate(candidate, address)
     return score, primary
 end
 
+local function read_direct_ppu_byte_uncached(address)
+    if not bizhawk_ppu or not bizhawk_ppu.readbyte then
+        return nil
+    end
+    local ok, value = pcall(bizhawk_ppu.readbyte, address)
+    if ok and type(value) == "number" then
+        return value
+    end
+    return nil
+end
+
+function M.get_ppu_source_rows(rows)
+    if not M.is_bizhawk then
+        return {}
+    end
+
+    local row_list = {}
+    if type(rows) == "table" and #rows > 0 then
+        for _, row in ipairs(rows) do
+            row_list[#row_list + 1] = math.floor(tonumber(row) or 0) % 30
+        end
+    else
+        for row = 0, 29 do
+            row_list[#row_list + 1] = row
+        end
+    end
+
+    local sources = {}
+    local function add_source(name, reader)
+        local source = {name = name, rows = {}}
+        local any_row = false
+        for _, row in ipairs(row_list) do
+            local nt0 = {}
+            local nt1 = {}
+            local valid = true
+            for col = 0, 31 do
+                local v0 = reader(0x2000 + row * 32 + col)
+                local v1 = reader(0x2400 + row * 32 + col)
+                if type(v0) ~= "number" or type(v1) ~= "number" then
+                    valid = false
+                    break
+                end
+                nt0[col + 1] = v0
+                nt1[col + 1] = v1
+            end
+            if valid then
+                source.rows[row] = {nt0 = nt0, nt1 = nt1}
+                any_row = true
+            end
+        end
+        if any_row then
+            sources[#sources + 1] = source
+        end
+    end
+
+    add_source("ppu.readbyte", read_direct_ppu_byte_uncached)
+
+    for _, candidate in ipairs(PPU_DOMAIN_CANDIDATES) do
+        if domain_exists(candidate.domain) then
+            add_source(candidate.domain, function(address)
+                return read_u8_from_domain(candidate.address_for(address), candidate.domain)
+            end)
+        end
+    end
+
+    return sources
+end
+
 local function read_ppu_byte(address)
     address = math.floor(tonumber(address) or 0)
     M.ppu_stats.read_calls = M.ppu_stats.read_calls + 1
@@ -491,13 +712,6 @@ local function read_ppu_byte(address)
     end
 
     M.ppu_stats.cache_misses = M.ppu_stats.cache_misses + 1
-    if bizhawk_ppu and bizhawk_ppu.readbyte then
-        local value = bizhawk_ppu.readbyte(address)
-        M.ppu_stats.direct_reads = M.ppu_stats.direct_reads + 1
-        ppu_frame_cache[address] = value
-        return value
-    end
-
     if ppu_read_candidate then
         local value = ppu_read_candidate.reader(ppu_read_candidate.address_for(address))
         M.ppu_stats.domain_reads = M.ppu_stats.domain_reads + 1
@@ -505,21 +719,10 @@ local function read_ppu_byte(address)
         return value
     end
 
-    local candidates = {
-        { domain = "PPU Bus", address_for = function(a) return a end },
-        { domain = "PPU Memory", address_for = function(a) return a end },
-        { domain = "PPU", address_for = function(a) return a end },
-        { domain = "VRAM", address_for = function(a) return a end },
-        { domain = "CIRAM", address_for = ppu_nametable_offset },
-        { domain = "Nametables", address_for = ppu_nametable_offset },
-        { domain = "Name Table RAM", address_for = ppu_nametable_offset },
-        { domain = "CIRAM (nametables)", address_for = ppu_nametable_offset },
-    }
-
     local best_candidate = nil
     local best_value = nil
     local best_score = -1
-    for _, candidate in ipairs(candidates) do
+    for _, candidate in ipairs(PPU_DOMAIN_CANDIDATES) do
         local score, value = score_ppu_candidate(candidate, address)
         if score and score > best_score then
             best_candidate = candidate
@@ -540,6 +743,13 @@ local function read_ppu_byte(address)
         ppu_frame_cache[address] = best_value
         M.ppu_stats.domain_reads = M.ppu_stats.domain_reads + 1
         return best_value
+    end
+
+    if bizhawk_ppu and bizhawk_ppu.readbyte then
+        local value = bizhawk_ppu.readbyte(address)
+        M.ppu_stats.direct_reads = M.ppu_stats.direct_reads + 1
+        ppu_frame_cache[address] = value
+        return value
     end
 
     if not ppu_failure_logged then

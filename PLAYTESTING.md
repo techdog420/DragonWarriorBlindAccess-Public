@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-05-04
+Updated: 2026-05-05
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
@@ -33,10 +33,14 @@ QoL feature check:
 - `auto_walk` should now speak progress on longer routes and speak completion.
 - After auto-walking to an NPC, the target should be held briefly so the player
   has time to use TALK. The route should also face the target after arrival so
-  TALK does not fail with "There is no one there."
+  TALK does not fail with "There is no one there." For moving NPCs, the hold
+  should pin the selected NPC slot to the planned object coordinates rather
+  than a stale live position.
 - Object filters are All, NPCs, Services, Treasure, Travel, and Doors; `Q`
   cycles forward, `Shift+J` and `Shift+L` move filter categories without
   scrolling objects, and `Shift+K` jumps back to All.
+- Location readout is `Shift+W` now. Do not use the old `Shift+P` habit in
+  BizHawk; this machine's BizHawk global hotkeys bind `P` to Quick Load.
 - `Shift+O` cycles the separate pathability filter: All, Reachable, and
   Unreachable. This stacks with the object category filter, ignores moving NPC
   occupancy, and is intended for sanity-checking larger maps without making
@@ -52,9 +56,60 @@ QoL feature check:
   `(5,6)`, the door south, and a noisy north doorway edge.
 - Direct selected-object teleport to an unwalkable target should speak a simple
   player-facing refusal, without mentioning debug-only `near` or `force` flags.
-- Latest manual pass: auto-walk is mostly behaving as expected. A possible
-  Guard 1 auto-walk failure still needs log review, but the previously patched
-  false-visited case now behaves correctly.
+- Latest manual pass: Guard 1's route recovered and reached an adjacent tile,
+  but the post-arrival facing input stepped into the guard's planned tile
+  because the NPC hold used his wandered live position. `route_manager.lua` now
+  holds the selected NPC at the planned target tile, and the false-visited case
+  still behaves correctly.
+- Stale command-menu cache was confirmed from live logs: after a TALK/dialogue
+  attempt, `EVENT: command menu opened` had no matching close event, and later
+  `auto_walk` commands were blocked before planning. `main.lua` now treats the
+  raw `COMMAND` header match as scanner input only; movement and auto-walk are
+  blocked by the confirmed live menu session plus recent cursor hold, so
+  lingering PPU text should not freeze field movement.
+- Console reloads can leave required modules cached. A Guard 1 retest after a
+  console reload still used the old `route_manager.lua` target-hold code and
+  walked the hero onto Guard 1's tile at `(7,5)`. `main.lua` now clears project
+  modules from `package.loaded` before requiring them. After a fresh reload,
+  the visible lower text `'There is no one there.` was logged and spoken, while
+  `report_upper_dialogue_state` reported `menu_raw=true menu_active=false`.
+- Reload-lag follow-up: after module-cache clearing, the old BizHawk shim's
+  `FCEU` global survived reload and made `emulator_compat.lua` falsely detect
+  FCEUX, disabling BizHawk scan throttling. The live symptom was a fresh log
+  header with very slow frame progress and `report_scan_stats` saying
+  `SCAN_PROFILE unavailable: not running under BizHawk`. `emulator_compat.lua`
+  now detects real BizHawk APIs before trusting a stale `FCEU` shim; live
+  `touch main.lua` recovery reached `launcher_probe:reload_detect` at frame 60
+  and produced normal BizHawk scan stats.
+- Reload-input follow-up: after the BizHawk/FCEUX detection fix, stale wrapped
+  `joypad`/`input` tables could still be captured as native on reload. That
+  could make `joypad.read()` empty and make `joypad.set()` neutralize controls,
+  matching the observed `X`/`Z` failures and odd emulator-key behavior.
+  `emulator_compat.lua` now unwraps previous adapter closures back to native
+  BizHawk APIs and replaces its `FCEU.frameadvance` wrapper on every reload.
+  Live reload check reached frame 180, reported `cache_flushes=179`, and had no
+  stuck keys in `input_status`.
+- Pathfinding confusion follow-up: the no-path behavior after manual movement
+  around Guard 1/door terrain was caused by manual blocked steps being promoted
+  into runtime blockers on map `0x05`. `route_manager.lua` now treats
+  `queued_route=false` blocks as diagnostic seam observations only. A live
+  post-reload snapshot reported `RUNTIME_BLOCKS map=0x05 none`.
+- Guard 1 overlap follow-up: post-arrival facing was still being interpreted by
+  `auto_step` as a player tap, which could walk onto the NPC square. The live
+  retest after the suppression patch stayed at `(4,7)` with Guard 1 one tile
+  north at `(4,6)`.
+- Route-blocking follow-up: if a queued route is blocked by a live NPC, it
+  should now be treated as temporary NPC movement instead of map geometry. A
+  separate chest route from `(4,7)` hit a current runtime seam block at
+  `(4,6)` from the south; current NPC blockers were elsewhere, so that case is
+  not NPC clutter.
+- Command-menu open follow-up: after the King dialogue fix, opening the command
+  menu could still briefly speak the last-used cursor selection before settling
+  on TALK. `main.lua` now debounces the opening announcement for six frames and
+  uses the first real cursor movement or settled cursor item, so the expected
+  open line is `Command. TALK` without a stale selection first. After killing
+  and restarting the script, the user physically retested the fix and confirmed
+  it worked as expected.
 
 ## Initial Gameplay Pass Checklist
 
@@ -79,20 +134,49 @@ Severity: Medium
 Area: Command menu narration / map-position sensitivity
 
 Status:
-Needs investigation in the next playtest/debug session.
+Resolved for the latest King/dialogue and command-menu opening reports. Keep
+watching this area during normal play, but there is no active blocker at the
+2026-05-05 wrap-up.
 
 Description:
-Manual testing found that in certain parts of the map, the command menu does
-not read correctly. This appears to be map-region or player-position dependent,
-not a general screen-reader failure.
+Manual testing found that in certain parts of the map, the command menu or
+dialogue options do not read correctly. The latest scripted snapshots only saw
+the status row (`menu_raw=false menu_active=false lower=""`), so the bug was
+not present at capture time. `main.lua` now keeps command-menu scanning active
+during current/recent player input even while BizHawk dialogue throttling is
+active, but automated simulated A/B presses did not open the field menu in the
+live session.
 
 Next evidence to collect:
 - Reproduce one bad command-menu read.
 - Immediately capture `report_position`, `input_status`, and ideally
-  `report_movement_state:menu_bad_region`.
+  `report_upper_dialogue_state` plus `report_movement_state:menu_bad_region`.
 - Compare with a nearby position where the command menu reads correctly.
 - Check whether the issue correlates with scroll/camera bytes, row-1 command
   menu parsing, or map-specific PPU layout.
+- For King/dialogue silence specifically, the latest bad-state `Ctrl+D` dump
+  contained no visible command/menu/dialogue text in raw PPU, and the live
+  parser state also saw only status text with speech ready. The diagnostic
+  samplers now clear BizHawk's PPU cache first; if the next dump is still blank
+  while text is believed to be visible, treat it as a capture-timing or
+  alternate-domain problem rather than a normal parser-row bug. The next
+  `Ctrl+D` dump should include a `PPU source comparison` section to compare
+  native `ppu.readbyte` with available nametable-like BizHawk memory domains.
+- Follow-up resolved the source issue: native BizHawk `ppu.readbyte` was the
+  blank source, while `CIRAM (nametables)` had the actual King question,
+  `COMMAND`, and Yes/No/menu text. The compatibility layer now prefers that
+  nametable memory domain. Live reload proof spoke the King question and
+  `YES NO prompt. YES`; continue playtesting menu/dialogue normally from here.
+- The remaining silent King farewell was a separate stale-base issue. The dump
+  had the farewell text (`Goodbye now... Take care...`) in the nametable, but
+  `PPUCTRL` reported `base_nt=0` while the text still required NT1-first screen
+  order. The lower-dialogue reader now tries the alternate nametable order when
+  it contains more lowercase dialogue. Retest on the next King save/continue
+  flow; the final farewell should now speak.
+- A follow-up confirmed the King dialogue path is working. Continue with normal
+  command-menu playtesting.
+- After a script restart, the command-menu opening debounce also passed the
+  physical retest: the previous selection is no longer spoken before TALK.
 
 ### GP-001
 
@@ -313,17 +397,21 @@ Evidence:
   `lua test_auto_step.lua`, `lua test_route_manager.lua`,
   `lua test_pathfinder.lua`, `lua test_map_reader.lua`,
   `lua test_objects.lua`, `lua test_map_survey.lua`, and `git diff --check`.
-- 2026-04-30 follow-up from quick slot 1 in Brecconary: after warming the
-  current map grid during map-entry object refresh, the first usable `O` /
-  `auto_walk` route to Person 2 no longer logged `ROUTE_PLAN_TIMING` or
-  `CMD_TIMING` spikes. The prior cold route was about 1.7-1.9 seconds.
+- 2026-04-30 follow-up from quick slot 1 in Brecconary: warming the current map
+  grid during map-entry object refresh removed the first usable `O` /
+  `auto_walk` route spike to Person 2; the prior cold route was about
+  1.7-1.9 seconds. 2026-05-05 live castle play then showed that moving the cost
+  to map entry made transitions hitch under BizHawk (`objects.check_refresh
+  max_ms=1846`), so BizHawk now skips map-entry grid prewarm by default and
+  builds the grid lazily on first route/path use. FCEUX keeps prewarming, and
+  BizHawk can opt in with `bizhawk_map_entry_prewarm_path_grid=true`.
 - The same live route reached the intended adjacent tile `(10,15)` and ended
   with neutral input. The old turn-settle drift signatures did not reappear.
   There is still a smaller executor issue: the first facing/step from the town
   entrance can consume one timeout/brute-force retry before walking succeeds.
-- `objects.check_refresh` can still show a one-time deferred NPC refresh hitch
-  around 1.3 seconds after map entry. If audio still cuts out shortly after
-  quickload or town entry, treat that refresh as the next performance target.
+- If audio still cuts out shortly after quickload or map entry, first inspect
+  `objects.check_refresh max_ms` and whether it coincides with lazy first-route
+  path-grid work before moving any cost back onto the transition frame.
 - Latest user retest: manual walking overshoot is much better, with remaining
   overshoot mostly when several movement presses are entered rapidly. Auto-walk
   audio is improved, but a lag spike still happened near the end of route
@@ -339,6 +427,28 @@ Evidence:
   `debug_tools.tick max_ms=3`, and `auto_step.update max_ms=1`.
 - User hands-on retest after that patch confirmed auto-walk is behaving much
   better, reaching intended targets, and the lag seems under control.
+- King dialogue follow-up: the main King greeting now reads in correct screen
+  order, but the Yes/No prompts initially repeated the tail of the previous
+  dialogue page before the question. The worktree now strips that overlap so
+  the save prompt should speak just `Will thou tell me now...` and the continue
+  prompt should speak just `Dost thou wish to continue thy quest?` before
+  `YES NO prompt`.
+- Latest lag check: BizHawk's config is already on the safer audio/throttle
+  baseline. The latest scan stats instead point at script-side spikes,
+  especially object refresh and route/movement work. For the next lag repro,
+  use `reset_scan_stats`, perform one action, then `report_scan_stats` before
+  changing emulator timing settings.
+- Reload/menu silence follow-up: after reload near the King, speech backend
+  diagnostics were healthy but the command-menu scanner saw no menu at
+  `scroll_tiles=22 base_nt=1`. The worktree now scans both nametable wrap
+  orders for command-menu and Yes/No UI text. Retest physically by opening the
+  command menu and using TALK near the King; automated debug A input still does
+  not reproduce a real menu open here.
+- The first PPU dump for the remaining silence did not include an active menu
+  or dialogue page and only covered lower rows. `Ctrl+D` now writes a full
+  0-29-row PPU dump with decoded NT0/NT1 wrap orders and parser match hints.
+  If silence remains, capture `Ctrl+D` while the menu or dialogue is actually
+  visible, or use `report_menu_state` while holding the bad state.
 - Main-menu erase/name-entry follow-up: the latest live log showed the erase
   confirmation being treated as `field` on map `0x00`, causing extra dialogue,
   bogus auto-step block logs, and the false "Game started" / "Unknown Map 0"
@@ -383,6 +493,19 @@ Evidence:
   `CMD_TIMING` lines. The focused Guard 3 auto-walk window itself reported
   `objects.check_refresh max_ms=0`, `auto_step.update max_ms=1`, and
   `debug_tools.tick max_ms=2`.
+- 2026-05-05 crash during live play: `dw_debug.log` reset to a bare header and
+  `dw_script_error.log` showed `snapshot.update: 69` from BizHawk
+  `mainmemory.read_u8` during `game_snapshot.update`. The memory adapter now
+  catches direct RAM API errors and falls back to `System Bus`, but because the
+  script was already dead, this still needs a manual BizHawk script reload or
+  emulator relaunch before gameplay retest.
+- 2026-05-05 King dialogue glitch: the line was spoken as
+  `greatly pleased 'I am thou hast that rned, Bill. retu`. Logs confirmed the
+  same scrambled string in `EVENT: dialogue`, so the speech backend was not at
+  fault. The fix teaches the PPU text reader to assemble rows in visible screen
+  order using horizontal scroll plus the active nametable bit. Retest after a
+  manual script reload: TALK to the King should read the sentence in normal
+  order, starting with `I am greatly pleased...`.
 
 Recommended next step:
 - Continue real early-game playtesting from the BizHawk path. Good next targets

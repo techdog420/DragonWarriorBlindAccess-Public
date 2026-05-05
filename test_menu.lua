@@ -63,6 +63,36 @@ end
 
 local tests = {}
 
+local COMMAND_BYTES = {0x26, 0x32, 0x30, 0x30, 0x24, 0x31, 0x27}
+
+local function write_sequence(bytes, base, row, col, sequence)
+    for i, value in ipairs(sequence) do
+        bytes[base + row * 32 + col + i - 1] = value
+    end
+end
+
+function tests.command_menu_detects_nt1_to_nt0_wrap()
+    local bytes = {}
+    write_sequence(bytes, 0x2400, 4, 29, {COMMAND_BYTES[1], COMMAND_BYTES[2], COMMAND_BYTES[3]})
+    write_sequence(bytes, 0x2000, 4, 0, {COMMAND_BYTES[4], COMMAND_BYTES[5], COMMAND_BYTES[6], COMMAND_BYTES[7]})
+
+    local env = make_env(bytes)
+    assert_equal(env.menu.is_command_menu_open(), true, "command menu scanner should detect NT1-to-NT0 wrapped COMMAND header")
+    env.restore()
+end
+
+function tests.yesno_detects_nt1_to_nt0_wrap()
+    local bytes = {}
+    write_sequence(bytes, 0x2400, 19, 30, {0x42, 0x3C}) -- cursor, Y
+    write_sequence(bytes, 0x2000, 19, 0, {0x28, 0x36, 0x9F}) -- E, S, boundary
+
+    local env = make_env(bytes)
+    local appeared = env.menu.check_yesno_changes()
+    assert_equal(appeared.active, true, "wrapped yes/no prompt should become active")
+    assert_equal(appeared.selection, "YES", "wrapped yes/no prompt should select YES")
+    env.restore()
+end
+
 function tests.yesno_hold_timer_accepts_frame_delta()
     local bytes = {
         [0x2000] = 0x42, -- cursor

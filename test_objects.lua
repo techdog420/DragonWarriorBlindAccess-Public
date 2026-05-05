@@ -44,6 +44,7 @@ local function make_env(options)
     local nav_map_id = 0x01
     local nav_x = 0
     local nav_y = 0
+    local tile_grid_calls = 0
 
     _G.AND = function(a, b)
         local result = 0
@@ -101,6 +102,7 @@ local function make_env(options)
     package.preload["map_reader"] = function()
         return {
             get_tile_grid = function()
+                tile_grid_calls = tile_grid_calls + 1
                 return nil
             end,
             get_metadata = function()
@@ -123,6 +125,9 @@ local function make_env(options)
                 if key == "bizhawk_periodic_npc_refresh" then
                     return options.bizhawk_periodic_npc_refresh or "false"
                 end
+                if key == "bizhawk_map_entry_prewarm_path_grid" then
+                    return options.bizhawk_map_entry_prewarm_path_grid or "false"
+                end
                 return nil
             end,
         }
@@ -144,6 +149,9 @@ local function make_env(options)
             nav_map_id = map_id
             nav_x = x
             nav_y = y
+        end,
+        get_tile_grid_calls = function()
+            return tile_grid_calls
         end,
         restore = function()
             restore_modules(module_names)
@@ -247,6 +255,45 @@ function tests.deferred_map_entry_refresh_is_visible_to_main_loop()
     env.objects.check_refresh(0x08)
     assert_equal(env.objects.get_count(), 1, "next refresh should populate active town NPCs")
     assert_equal(env.objects.needs_refresh(0x08), false, "settled object list should return to periodic refresh timing")
+
+    env.restore()
+end
+
+function tests.fceux_map_entry_prewarms_path_grid()
+    local env = make_env()
+
+    env.set_position(0x04, 10, 10)
+    env.set_terrain_offset(0x10)
+    env.objects.check_refresh(0x04)
+
+    assert_equal(env.get_tile_grid_calls(), 1, "FCEUX map entry should keep the old path-grid prewarm behavior")
+
+    env.restore()
+end
+
+function tests.bizhawk_map_entry_skips_path_grid_prewarm_by_default()
+    local env = make_env({is_bizhawk = true})
+
+    env.set_position(0x04, 10, 10)
+    env.set_terrain_offset(0x10)
+    env.objects.check_refresh(0x04)
+
+    assert_equal(env.get_tile_grid_calls(), 0, "BizHawk map entry should avoid synchronous path-grid prewarm by default")
+
+    env.restore()
+end
+
+function tests.bizhawk_map_entry_prewarm_can_be_opted_in()
+    local env = make_env({
+        is_bizhawk = true,
+        bizhawk_map_entry_prewarm_path_grid = "true",
+    })
+
+    env.set_position(0x04, 10, 10)
+    env.set_terrain_offset(0x10)
+    env.objects.check_refresh(0x04)
+
+    assert_equal(env.get_tile_grid_calls(), 1, "BizHawk map-entry prewarm should stay available as an opt-in")
 
     env.restore()
 end

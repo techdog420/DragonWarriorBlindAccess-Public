@@ -91,6 +91,39 @@ end
 -- that accidentally matches the 6-byte COMMAN prefix (seen at x=14, y=2).
 local COMMAND_MATCH_LEN = 7
 
+local function read_virtual_row(row, first_nt)
+    local second_nt = (first_nt == PPU_NT0) and PPU_NT1 or PPU_NT0
+    local first_row = first_nt + row * SCREEN_WIDTH
+    local second_row = second_nt + row * SCREEN_WIDTH
+    local row_bytes = {}
+    for col = 0, SCREEN_WIDTH - 1 do
+        row_bytes[col + 1] = ppu.readbyte(first_row + col)
+    end
+    for col = 0, SCREEN_WIDTH - 1 do
+        row_bytes[SCREEN_WIDTH + col + 1] = ppu.readbyte(second_row + col)
+    end
+    return row_bytes
+end
+
+local function row_contains_sequence(row_bytes, sequence, match_len)
+    match_len = match_len or #sequence
+    for col = 1, #row_bytes - match_len + 1 do
+        if row_bytes[col] == sequence[1] then
+            local match = true
+            for i = 2, match_len do
+                if row_bytes[col + i - 1] ~= sequence[i] then
+                    match = false
+                    break
+                end
+            end
+            if match then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- is_command_menu_open(): Check if the command menu window is visible.
 -- Scans all 30 PPU nametable rows for the full 7-byte "COMMAND" header
 -- text. Matching all 7 bytes prevents false positives from map tile CHR
@@ -98,34 +131,16 @@ local COMMAND_MATCH_LEN = 7
 --
 -- At player X >= 13, horizontal scroll pushes the COMMAND header to
 -- nametable columns >= 27, where the last bytes cross the NT0/NT1
--- boundary (col 32+ maps to NT1 col 0+). We scan both nametables
--- together as a 64-wide virtual row so cross-boundary sequences are
--- found correctly regardless of the player's east position.
+-- boundary. Depending on the active base nametable, the visible order can be
+-- NT0->NT1 or NT1->NT0. Scan both 64-wide virtual row orders so reloads in a
+-- horizontally scrolled interior do not make the menu invisible.
 function M.is_command_menu_open()
     for row = 0, 29 do
-        local nt0_row = PPU_NT0 + row * SCREEN_WIDTH
-        local nt1_row = PPU_NT1 + row * SCREEN_WIDTH
-        -- Scan across the full 64-tile virtual row (NT0 cols 0-31,
-        -- then NT1 cols 0-31). Stop at 64-COMMAND_MATCH_LEN so all
-        -- 6 match bytes remain within the 64-tile range.
-        for col = 0, 64 - COMMAND_MATCH_LEN do
-            local b0 = col < 32 and ppu.readbyte(nt0_row + col)
-                                 or  ppu.readbyte(nt1_row + col - 32)
-            if b0 == COMMAND_BYTES[1] then
-                local match = true
-                for i = 2, COMMAND_MATCH_LEN do
-                    local c = col + i - 1
-                    local bx = c < 32 and ppu.readbyte(nt0_row + c)
-                                      or  ppu.readbyte(nt1_row + c - 32)
-                    if bx ~= COMMAND_BYTES[i] then
-                        match = false
-                        break
-                    end
-                end
-                if match then
-                    return true
-                end
-            end
+        if row_contains_sequence(read_virtual_row(row, PPU_NT0), COMMAND_BYTES, COMMAND_MATCH_LEN) then
+            return true
+        end
+        if row_contains_sequence(read_virtual_row(row, PPU_NT1), COMMAND_BYTES, COMMAND_MATCH_LEN) then
+            return true
         end
     end
     return false
@@ -269,44 +284,44 @@ local function get_yesno_state()
     local cursor_selection = nil
 
     for row = YESNO_ROW_START, YESNO_ROW_END do
-        local row_start = PPU_NT0 + (row * SCREEN_WIDTH)
+        local orders = {
+            read_virtual_row(row, PPU_NT0),
+            read_virtual_row(row, PPU_NT1),
+        }
 
-        -- Read the full row once to avoid repeated ppu.readbyte calls
-        local row_bytes = {}
-        for col = 0, SCREEN_WIDTH - 1 do
-            row_bytes[col + 1] = ppu.readbyte(row_start + col)
-        end
+        for _, row_bytes in ipairs(orders) do
+            for col = 1, #row_bytes do
+                local b = row_bytes[col]
 
-        for col = 1, SCREEN_WIDTH do
-            local b = row_bytes[col]
-
-            -- Cursor tile: look for YES or NO within 4 bytes after it
-            if b == CURSOR_TILE then
-                for offset = 1, 4 do
-                    local i = col + offset
-                    if i > SCREEN_WIDTH then break end
-                    local b1 = row_bytes[i]
-                    local b2 = row_bytes[i + 1] or 0
-                    local b3 = row_bytes[i + 2] or 0
-                    -- Match NO: require the byte after "NO" is NOT a letter,
-                    -- to distinguish standalone "NO" from words like "NORMAL".
-                    -- DW1 letter range: 0x0A-0x3D (lowercase a-z, uppercase A-Z).
-                    if b1 == NO_BYTES[1] and b2 == NO_BYTES[2]
-                       and (b3 < 0x0A or b3 > 0x3D) then
-                        cursor_selection = "NO"
-                        break
+                -- Cursor tile: look for YES or NO within 4 bytes after it
+                if b == CURSOR_TILE then
+                    for offset = 1, 4 do
+                        local i = col + offset
+                        if i > #row_bytes then break end
+                        local b1 = row_bytes[i]
+                        local b2 = row_bytes[i + 1] or 0
+                        local b3 = row_bytes[i + 2] or 0
+                        -- Match NO: require the byte after "NO" is NOT a letter,
+                        -- to distinguish standalone "NO" from words like "NORMAL".
+                        -- DW1 letter range: 0x0A-0x3D (lowercase a-z, uppercase A-Z).
+                        if b1 == NO_BYTES[1] and b2 == NO_BYTES[2]
+                           and (b3 < 0x0A or b3 > 0x3D) then
+                            cursor_selection = "NO"
+                            break
+                        end
+                        -- Match YES: same word-boundary check after "YES".
+                        local b4 = row_bytes[i + 3] or 0
+                        if b1 == YES_BYTES[1] and b2 == YES_BYTES[2] and b3 == YES_BYTES[3]
+                           and (b4 < 0x0A or b4 > 0x3D) then
+                            cursor_selection = "YES"
+                            break
+                        end
+                        if b1 ~= 0x5F then break end  -- non-space: stop gap search
                     end
-                    -- Match YES: same word-boundary check after "YES".
-                    local b4 = row_bytes[i + 3] or 0
-                    if b1 == YES_BYTES[1] and b2 == YES_BYTES[2] and b3 == YES_BYTES[3]
-                       and (b4 < 0x0A or b4 > 0x3D) then
-                        cursor_selection = "YES"
-                        break
-                    end
-                    if b1 ~= 0x5F then break end  -- non-space: stop gap search
+                    if cursor_selection ~= nil then break end
                 end
-                if cursor_selection ~= nil then break end
             end
+            if cursor_selection ~= nil then break end
         end
 
         if cursor_selection ~= nil then break end

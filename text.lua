@@ -30,28 +30,34 @@ local PPU_NT0 = 0x2000
 local PPU_NT1 = 0x2400
 local SCREEN_WIDTH = 32
 local SCREEN_HEIGHT = 30
+local DIALOGUE_OVERLAP_MIN_LEN = 12
 
 -- Background/empty tile in PPU nametable (different from CPU RAM's 0xFF)
 local BG_TILE = 0x9F
 
--- read_ppu_row(row, scroll_tiles): Read a single row from PPU nametable 0,
--- accounting for horizontal scroll offset.
+-- read_ppu_row(row, scroll_tiles, base_nametable): Read one visible screen row,
+-- accounting for horizontal scroll offset and active horizontal nametable.
 --
 -- row: 0-29 (top to bottom)
 -- scroll_tiles: horizontal scroll in tiles (0-31). Default 0 (no scroll).
---   When the NES scroll register is non-zero, tiles the game renders at screen
---   column C are physically written to nametable column (C + scroll_tiles) % 32.
---   If (C + scroll_tiles) >= 32, the tile is in NT1 (PPU_NT1), not NT0.
---   This function assembles the correct 32-character window by reading from
---   whichever nametable each column belongs to.
+-- base_nametable: 0 for NT0-first, 1 for NT1-first. This is PPUCTRL bit 0.
+--
+-- When the NES horizontal scroll register is non-zero, the visible 32-column
+-- screen row can straddle two nametables. At the King on map 0x05, the active
+-- base is NT1 and scroll is 22 tiles, so the visible order is NT1 cols 22-31,
+-- then NT0 cols 0-21. Reading NT0 then NT1 scrambles lines like
+-- "'I am greatly pleased" into "greatly pleased 'I am".
 --
 -- Returns a table of 32 byte values in screen-column order (left to right).
-function M.read_ppu_row(row, scroll_tiles)
-    scroll_tiles = scroll_tiles or 0
+function M.read_ppu_row(row, scroll_tiles, base_nametable)
+    scroll_tiles = math.floor(tonumber(scroll_tiles) or 0) % SCREEN_WIDTH
+    base_nametable = math.floor(tonumber(base_nametable) or 0) % 2
     local bytes = {}
     for col = 0, SCREEN_WIDTH - 1 do
-        local nt_col = (col + scroll_tiles) % SCREEN_WIDTH
-        local nt_base = ((col + scroll_tiles) < SCREEN_WIDTH) and PPU_NT0 or PPU_NT1
+        local virtual_col = scroll_tiles + col
+        local nt_col = virtual_col % SCREEN_WIDTH
+        local nt_index = (base_nametable + math.floor(virtual_col / SCREEN_WIDTH)) % 2
+        local nt_base = (nt_index == 0) and PPU_NT0 or PPU_NT1
         bytes[col + 1] = ppu.readbyte(nt_base + (row * SCREEN_WIDTH) + nt_col)
     end
     return bytes
@@ -73,33 +79,15 @@ function M.read_ppu_region(top_row, left_col, width, height)
     return rows
 end
 
--- decode_row(row, scroll_tiles): Read and decode one screen row to a string.
+-- decode_row(row, scroll_tiles, base_nametable): Read and decode one visible
+-- screen row to a string.
 -- Trims leading/trailing spaces.
 --
--- Always reads NT0 (cols 0-31) then NT1 (cols 0-31) concatenated (64 bytes
--- total). chars.decode_bytes skips unmapped bytes (border tiles, BG tile 0x9F),
--- so text that overflows from NT0 col 31 into NT1 col 0 is assembled in the
--- correct left-to-right order automatically. For example, if "stairs" is split
--- as "sta" ending NT0 col 31 and "irs" starting NT1 col 0, decode_bytes sees
--- them adjacent in the byte stream and produces "stairs" correctly.
---
--- This approach works for all scroll values: text starting in NT0 and wrapping
--- to NT1 is always in the right order in the NT0||NT1 concatenation. Persistent
--- 0x5F space tiles in NT1 (from prior nametable writes) decode as spaces and are
--- removed by the trailing-space trim.
---
--- The scroll_tiles parameter is kept for API compatibility but is unused.
-function M.decode_row(row, scroll_tiles)
-    local bytes = {}
-    -- Read NT0 (the primary nametable) into positions 1-32.
-    for col = 0, SCREEN_WIDTH - 1 do
-        bytes[col + 1] = ppu.readbyte(PPU_NT0 + row * SCREEN_WIDTH + col)
-    end
-    -- Append NT1 (the overflow nametable) into positions 33-64.
-    -- Text that overflows past NT0 col 31 wraps to NT1 col 0 onward.
-    for col = 0, SCREEN_WIDTH - 1 do
-        bytes[SCREEN_WIDTH + col + 1] = ppu.readbyte(PPU_NT1 + row * SCREEN_WIDTH + col)
-    end
+-- If scroll/base are omitted, this reads the unscrolled NT0 row, preserving the
+-- old behavior for title/menu callers. Dialogue callers should pass both values
+-- from main.lua so row text is decoded in screen-column order.
+function M.decode_row(row, scroll_tiles, base_nametable)
+    local bytes = M.read_ppu_row(row, scroll_tiles, base_nametable)
     local text = chars.decode_bytes(bytes)
     return text:match("^%s*(.-)%s*$") or ""
 end
@@ -154,12 +142,12 @@ end
 --
 -- Note: chest messages that appear in the UPPER portion of the screen
 -- (rows 4-15) are not caught here and need separate handling.
--- read_dialogue_window(scroll_tiles): Read text from the lower dialogue area.
+-- read_dialogue_window(scroll_tiles, base_nametable): Read text from the lower dialogue area.
 -- scroll_tiles: optional horizontal scroll offset (default 0). See read_ppu_row.
-function M.read_dialogue_window(scroll_tiles)
+function M.read_dialogue_window(scroll_tiles, base_nametable)
     local lines = {}
     for row = 19, 29 do
-        local decoded = M.decode_row(row, scroll_tiles)
+        local decoded = M.decode_row(row, scroll_tiles, base_nametable)
         if decoded ~= "" then
             lines[#lines + 1] = decoded
         end
@@ -181,17 +169,92 @@ end
 --   The function reads 11 rows starting at start_row with modular wrap (% 30),
 --   so it handles both the normal case (start_row 19-29) and the scrolled case
 --   (start_row < 19, wrapping across row 0).
-function M.read_dialogue_window_filtered(scroll_tiles, start_row)
+local function dialogue_score(dialogue)
+    local score = 0
+    for _ in tostring(dialogue or ""):gmatch("[a-z]") do
+        score = score + 1
+    end
+    return score
+end
+
+local function read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
     start_row = start_row or 19
     local lines = {}
     for i = 0, 10 do
         local row = (start_row + i) % 30
-        local decoded = M.decode_row(row, scroll_tiles)
+        local decoded = M.decode_row(row, scroll_tiles, base_nametable)
         if decoded ~= "" and decoded:find("[a-z]") and not M.is_status_text(decoded) then
             lines[#lines + 1] = decoded
         end
     end
     return table.concat(lines, " ")
+end
+
+function M.read_dialogue_window_filtered(scroll_tiles, start_row, base_nametable)
+    local primary = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
+
+    -- BizHawk can report a transient PPUCTRL base bit that does not match the
+    -- nametable order holding dialogue after Yes/No transitions. When the
+    -- reported order misses the lower text, try the opposite order and keep the
+    -- one with more lowercase dialogue.
+    if base_nametable ~= nil then
+        local alternate_base = (math.floor(tonumber(base_nametable) or 0) + 1) % 2
+        local alternate = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, alternate_base)
+        if dialogue_score(alternate) > dialogue_score(primary) then
+            return alternate
+        end
+    end
+
+    return primary
+end
+
+-- extract_new_dialogue(old, new): Return only the text that was not already
+-- announced on the prior dialogue page.
+--
+-- DW1 scrolls old lower-window text upward as new prompt text appears. Most
+-- pages overlap as old suffix -> new prefix, but Yes/No prompts can expose a
+-- line starting from the middle of the previous page. In that case the new
+-- visible text starts with a phrase already contained in old, followed by the
+-- actual question.
+function M.extract_new_dialogue(old, new)
+    old = tostring(old or "")
+    new = tostring(new or "")
+
+    if new == "" then return "" end
+    if old == "" then return new end
+    if old == new then return "" end
+    if old:find(new, 1, true) then return "" end
+
+    local found_overlap = false
+    for start = 1, #old do
+        local suffix = old:sub(start)
+        if new:sub(1, #suffix) == suffix then
+            found_overlap = true
+            local remainder = new:sub(#suffix + 1)
+            remainder = remainder:match("^%s*(.-)%s*$") or remainder
+            if remainder ~= "" then
+                return remainder
+            end
+        end
+    end
+
+    if found_overlap then
+        return ""
+    end
+
+    for len = math.min(#new, #old), DIALOGUE_OVERLAP_MIN_LEN, -1 do
+        local prefix = new:sub(1, len)
+        if old:find(prefix, 1, true) then
+            local remainder = new:sub(len + 1)
+            remainder = remainder:match("^%s*(.-)%s*$") or remainder
+            if remainder ~= "" then
+                return remainder
+            end
+            return ""
+        end
+    end
+
+    return new
 end
 
 -- read_upper_window(): Read text from the upper portion of the screen
@@ -201,12 +264,12 @@ end
 -- The persistent status display (player name, LV, HP, MP, G, E) is also
 -- present in this region (roughly rows 1-7). Callers must distinguish
 -- between the status display and actual dialogue content.
--- read_upper_window(scroll_tiles): Read text from the upper screen area.
+-- read_upper_window(scroll_tiles, base_nametable): Read text from the upper screen area.
 -- scroll_tiles: optional horizontal scroll offset (default 0). See read_ppu_row.
-function M.read_upper_window(scroll_tiles)
+function M.read_upper_window(scroll_tiles, base_nametable)
     local lines = {}
     for row = 1, 18 do
-        local decoded = M.decode_row(row, scroll_tiles)
+        local decoded = M.decode_row(row, scroll_tiles, base_nametable)
         if decoded ~= "" then
             lines[#lines + 1] = decoded
         end

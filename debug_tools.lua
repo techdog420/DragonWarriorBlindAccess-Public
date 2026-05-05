@@ -851,10 +851,12 @@ local function process_command(cmd)
         local player_y = memory.readbyte(addr.PLAYER_Y)
         local overworld_x = memory.readbyte(addr.OVERWORLD_X)
         local overworld_y = memory.readbyte(addr.OVERWORLD_Y)
+        local ppu_ctrl = addr.PPU_CTRL and memory.readbyte(addr.PPU_CTRL) or 0
+        local scroll_x = addr.SCROLL_X and memory.readbyte(addr.SCROLL_X) or 0
         local scroll_y = addr.SCROLL_Y and memory.readbyte(addr.SCROLL_Y) or 0
         local buttons = addr.BUTTONS_PRESSED and memory.readbyte(addr.BUTTONS_PRESSED) or 0
         M.info(string.format(
-            "MOVEMENT_STATE tag=%s map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) scroll_y=0x%02X buttons=0x%02X ram0000_001F=%s ram0030_004F=%s",
+            "MOVEMENT_STATE tag=%s map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) ppu_ctrl=0x%02X scroll_x=0x%02X scroll_y=0x%02X buttons=0x%02X ram0000_001F=%s ram0030_004F=%s",
             tag,
             map_id,
             maps_m.get_name(map_id),
@@ -863,6 +865,8 @@ local function process_command(cmd)
             player_y,
             overworld_x,
             overworld_y,
+            ppu_ctrl,
+            scroll_x,
             scroll_y,
             buttons,
             format_ram_range(0x0000, 0x001F),

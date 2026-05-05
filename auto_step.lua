@@ -111,6 +111,7 @@ local route_settle_default = 0
 local route_last_x = nil
 local route_last_y = nil
 local post_step_release_frames = 0
+local suppress_direction_tracking_frames = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
 -- allowing another one. This prevents accidental double-steps when
@@ -305,6 +306,12 @@ local function clear_pending_repress()
     pending_repress = nil
 end
 
+local function clear_direction_press_tracking()
+    tracked_dir = nil
+    press_start_x = nil
+    press_start_y = nil
+end
+
 local function schedule_turn_repress(dir)
     pending_repress = {
         dir = dir,
@@ -468,8 +475,9 @@ function M.update(can_walk)
     if enabled == "false" then
         -- Feature disabled — reset all state and return
         reset_active_step()
-        tracked_dir = nil
+        clear_direction_press_tracking()
         cooldown = 0
+        suppress_direction_tracking_frames = 0
         clear_route()
         return
     end
@@ -494,7 +502,7 @@ function M.update(can_walk)
                 tostring(auto_dir), pending_repress and tostring(pending_repress.dir) or "nil"))
         end
         reset_active_step()
-        tracked_dir = nil
+        clear_direction_press_tracking()
         cooldown = 0
         post_step_release_frames = 0
         clear_route()
@@ -508,6 +516,19 @@ function M.update(can_walk)
         -- Don't update prev_held here — we still need to track joypad
         -- state so we detect fresh presses correctly when can_walk
         -- becomes true again.
+        for _, dir in ipairs(DIRECTIONS) do
+            prev_held[dir] = joy[dir] or false
+        end
+        return
+    end
+
+    if suppress_direction_tracking_frames > 0
+       and not auto_dir
+       and not pending_repress
+       and route_steps == nil
+       and route_settle_frames <= 0 then
+        suppress_direction_tracking_frames = suppress_direction_tracking_frames - 1
+        clear_direction_press_tracking()
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
         end
@@ -883,7 +904,7 @@ function M.update(can_walk)
                 end
             end
             -- Either way, stop tracking this press
-            tracked_dir = nil
+            clear_direction_press_tracking()
         end
     end
 
@@ -905,6 +926,23 @@ function M.inject_step(dir)
     clear_route()
     debug_tools.debug(string.format("auto_step inject_step dir=%s at=(%d,%d)", tostring(dir), px or -1, py or -1))
     begin_step(dir, px, py)
+end
+
+-- suppress_direction_tracking(frames): Temporarily ignore raw D-pad
+-- press/release edges without cancelling queued route or active auto-step
+-- state. Used by route_manager's post-arrival facing helper: it injects a
+-- short direction press to turn toward an NPC, and that artificial tap must
+-- not be reinterpreted here as a player tap-to-step request.
+function M.suppress_direction_tracking(frames)
+    frames = tonumber(frames) or 0
+    frames = math.floor(frames)
+    if frames <= 0 then
+        return
+    end
+    if frames > suppress_direction_tracking_frames then
+        suppress_direction_tracking_frames = frames
+    end
+    clear_direction_press_tracking()
 end
 
 -- opts: { settle_frames = N }

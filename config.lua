@@ -10,7 +10,7 @@
 --
 -- Usage:
 --   local config = require "config"
---   local key = config.get("key_position")  -- returns "P" (or whatever user set)
+--   local key = config.get("key_position")  -- returns "Shift+W" (or whatever user set)
 
 local M = {}
 
@@ -47,7 +47,7 @@ local DEFAULTS_ORDERED = {
     {comment = "; BizHawk's S and A keys are NES autofire by default, so avoid those too."},
     {comment = ""},
     {comment = "; === Information Hotkeys (Shift+key) ==="},
-    {key = "key_position",      value = "Shift+P",  comment = "; Announce map name and coordinates"},
+    {key = "key_position",      value = "Shift+W",  comment = "; Announce map name and coordinates"},
     {key = "key_hp",            value = "Shift+H",  comment = "; Announce current HP and MP"},
     {key = "key_level",         value = "Shift+I",  comment = "; Announce player level"},
     {key = "key_gold",          value = "Shift+G",  comment = "; Announce gold"},
@@ -95,6 +95,7 @@ local DEFAULTS_ORDERED = {
     {key = "bizhawk_keyboard_hotkey_allowlist", value = "key_position,key_hp,key_level,key_gold,key_experience,key_stats,key_screen_text,key_object_prev,key_object_current,key_object_next,key_pathfind,key_auto_walk,key_filter,key_filter_prev,key_filter_all,key_filter_next,key_pathability_filter,key_mark_visited,key_teleport_exact,key_teleport_north,key_teleport_south,key_teleport_west,key_teleport_east,key_freeze_npcs,key_diag_tiles", comment = "; BizHawk only: comma-separated config key names allowed when full keyboard hotkeys are off (player-safe readouts/object keys; diagnostic flag adds developer diagnostics)"},
     {key = "bizhawk_object_reachability_descriptions", value = "false", comment = "; BizHawk only: include reachability/path checks in object descriptions (slower; pathfind still works)"},
     {key = "bizhawk_periodic_npc_refresh", value = "false", comment = "; BizHawk only: refresh moving NPC objects in the background (off avoids periodic audio hitches)"},
+    {key = "bizhawk_map_entry_prewarm_path_grid", value = "false", comment = "; BizHawk only: prebuild pathfinding tile grids on map entry (faster first route, slower transitions)"},
     {key = "bizhawk_route_refresh_npcs", value = "false", comment = "; BizHawk only: refresh live NPC blockers before O/U path planning (slower)"},
     {key = "bizhawk_autowalk_freeze_npcs", value = "false", comment = "; BizHawk only: freeze NPC RAM during auto-walk routes (slower)"},
     {key = "bizhawk_route_cleanup_refresh_objects", value = "false", comment = "; BizHawk only: refresh object/NPC list immediately after route completion/cancel (slower)"},

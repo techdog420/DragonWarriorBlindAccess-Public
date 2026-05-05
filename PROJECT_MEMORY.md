@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-04
+Updated: 2026-05-05
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 
@@ -95,8 +95,17 @@ Emulator compatibility direction:
   because shutdown may write its in-memory settings back to `config.ini`.
 - BizHawk Lua Console's `ReloadOnScriptFileChange` feature is useful for
   fast iteration. With it enabled, `touch main.lua` from WSL auto-reloads the
-  script; confirm reloads with a fresh `launcher_probe:TAG` because module
-  caching may keep some required-module startup behavior alive.
+  script; confirm reloads with a fresh `launcher_probe:TAG`. `main.lua` now
+  clears project modules from `package.loaded` before requiring them because
+  BizHawk console/script reloads can otherwise keep stale required-module code
+  alive while re-running only the main chunk. When clearing/reloading the
+  compatibility adapter, prefer real BizHawk API markers over the shim-created
+  `FCEU` global; stale shim globals can survive a reload and make the adapter
+  misdetect BizHawk as FCEUX, disabling scan throttling. Also unwrap prior
+  adapter closures for `joypad`, `input`, `memory`, and `ppu` before installing
+  a fresh shim; otherwise a reload can capture its own wrappers as "native" and
+  break controls or cache aging. Under BizHawk, replace `FCEU.frameadvance` on
+  every adapter load so the active PPU cache flushes on the current frame hook.
 - Keep BizHawk performance fixes gated on `DW_EMULATOR_COMPAT.is_bizhawk` so
   FCEUX remains behaviorally unchanged.
 - Current BizHawk performance approach is a gameplay-level PPU scan throttle:
@@ -164,6 +173,10 @@ Emulator compatibility direction:
   `Shift+Enter` plus `Shift+direction` for selected-object teleport. Keep these
   shortcuts configurable and avoid re-enabling all BizHawk keyboard hotkeys for
   normal testers.
+- Avoid assigning player-facing BizHawk hotkeys to `P` on this machine. The
+  local BizHawk config binds global Quick Load to `P`, and `Shift+P` proved
+  unreliable during live play. The project position/read-location hotkey is now
+  `Shift+W`.
 - Object pathability filtering is a second layer over the normal object
   category filter. `Shift+O` cycles All, Reachable, and Unreachable; the
   command-file hook is `pathability_filter`. It computes reachability on
@@ -183,7 +196,43 @@ Emulator compatibility direction:
   targets may be held briefly after arrival so the player has time to use TALK.
   For adjacent interaction targets, auto-walk should also face the target after
   arrival; otherwise a route whose final step is sideways can leave the hero
-  adjacent but facing away, making TALK say "There is no one there."
+  adjacent but facing away, making TALK say "There is no one there." When
+  holding a moving NPC after arrival, pin the selected NPC slot to the planned
+  object coordinates while preserving the encoded sprite/facing/movement bits;
+  snapshotting the live slot position can hold the NPC where it wandered and
+  leave the planned TALK tile empty.
+- Manual/non-route blocked steps (`queued_route=false`) should remain seam
+  diagnostics and should not be promoted into pathfinding runtime blockers.
+  Manual walking into doors, NPC boxes, or odd seams can otherwise poison A*
+  for later autowalks on the same map. Runtime blocker promotion should come
+  from queued-route movement, seam-retry failure, survey/probe evidence, or
+  explicit debug commands.
+- Queued-route blocks caused by live NPC occupancy are temporary clutter, not
+  map geometry. Check the destination against current NPC RAM before
+  seam-bruteforcing or promoting runtime blockers; if the destination is an
+  NPC, cancel with a temporary NPC-movement message instead.
+- Post-arrival facing for auto-walk must not feed back into tap-to-step.
+  `route_manager.lua` may inject a short direction press so the hero faces an
+  adjacent NPC, but `auto_step.lua` must suppress edge tracking for that
+  artificial tap or it can extend the face press into a full tile step.
+- Do not use raw `menu.is_open()` as the sole field movement or auto-walk
+  blocker. It is a COMMAND-header PPU match and can stay true after TALK or
+  dialogue transitions because the header lingers in nametable memory. Movement
+  gating should use the confirmed live command-menu session plus recent visible
+  cursor hold, while the scanner can still use the raw header match to recover
+  real menu open/close state.
+- Command-menu open speech should tolerate one short stale-cursor window. DW1
+  can expose the last-used command cursor in RAM for a few frames before the
+  newly opened field menu settles on TALK. Debounce the open announcement and
+  flush it with the first real cursor movement or settled item instead of
+  immediately speaking `Command. <last item>`.
+- BizHawk dialogue throttling should not put the command-menu scanner fully to
+  sleep during player input. A fresh A/X press can open the field menu one
+  frame after the input is sampled, so keep menu scanning awake during current
+  or recent field input even while dialogue hints are active.
+- `report_upper_dialogue_state` includes both raw and active menu state plus
+  the lower dialogue text and lower previous/announced baselines. Use it when
+  diagnosing silent dialogue around row-scrolled command-menu leftovers.
 - BizHawk periodic NPC/object refresh is disabled by default with
   `bizhawk_periodic_npc_refresh=false` because live profiling showed background
   `objects.check_refresh` calls could spike around 1.7-2.0 seconds. Explicit
@@ -204,6 +253,14 @@ Emulator compatibility direction:
 Known BizHawk risk:
 - BizHawk's Lua memory-domain reads are much slower than FCEUX for PPU-heavy screen scanning
 - Compatibility-layer PPU caching helps but may not be enough
+- BizHawk native `ppu.readbyte` can expose a stale/blank nametable view during
+  dialogue even when the visible text is present in the `CIRAM (nametables)`
+  memory domain. Prefer a readable nametable memory domain for PPU text reads
+  and keep native `ppu.readbyte` as fallback.
+- `PPUCTRL` bit 0 can also be stale during dialogue/menu transitions. If
+  `scroll_tiles` indicates a wrapped row but the reported base nametable yields
+  no lowercase dialogue, try the alternate nametable order before declaring the
+  lower window empty.
 - Emulator audio can still stop briefly under heavier load even when script
   behavior is otherwise correct. Correlate clean repros with `CMD_TIMING` and
   `report_scan_stats`, then tune BizHawk audio/config settings separately if
@@ -359,9 +416,12 @@ Latest BizHawk default validation:
   quick turn-represses by default (`auto_step_turn_repress_limit=0`) and relies
   on timeout retry for turn-only attempts.
 - The Brecconary first-route `O`/`U` lag was mostly first-use map-grid/ROM-cache
-  cost. `objects.refresh()` now prewarms the current interior map grid during
-  map-entry refresh, so the first usable path command after objects populate no
-  longer pays the old 1.7-1.9 second `ROUTE_PLAN_TIMING` cost.
+  cost. Prewarming the current interior map grid during map-entry refresh moved
+  that cost away from the first route, but later live castle play showed the
+  transition itself could hitch (`objects.check_refresh max_ms=1846`). BizHawk
+  now skips map-entry path-grid prewarm by default with
+  `bizhawk_map_entry_prewarm_path_grid=false`; FCEUX keeps the old prewarm, and
+  BizHawk can opt in when first-route warmup is preferable.
 - End-of-route BizHawk hitches can come from route cleanup, not route planning.
   A user retest showed improved auto-walk audio and a successful route to
   `(15,19)` with neutral input, but `report_scan_stats` later showed
@@ -369,6 +429,35 @@ Latest BizHawk default validation:
   immediate object/NPC refresh after BizHawk route completion or cancellation by
   default (`bizhawk_route_cleanup_refresh_objects=false`). FCEUX keeps the old
   refresh, and BizHawk can opt back in for stale-object investigations.
+- If King or other field Yes/No prompts speak a fragment of the previous page
+  before the question, inspect the lower-window overlap handling before changing
+  row decoding. `text.extract_new_dialogue()` owns the field overlap logic and
+  handles both old-suffix/new-prefix overlap and the prompt case where the new
+  visible text starts from inside the old page before appending the actual
+  question. `main.lua`'s `check_yesno_prompt()` should log/speak the extracted
+  new fragment but keep the full raw lower-window text as `announced_dialogue`
+  for later stability comparisons.
+- BizHawk settings are not the first suspect for the latest King-area lag: the
+  active config already has the safer baseline (`SoundBufferSizeMs=200`,
+  `SoundThrottle=true`, `FrameSkip=0`, `Rewind.Enabled=false`, VSync off). A
+  live 2026-05-05 `report_scan_stats` showed single-digit max times for
+  dialogue/menu scans, but second-scale script spikes in `objects.check_refresh`,
+  `hotkeys.update`, and `auto_step.update`. Use a reset/profile window around
+  one repro before changing emulator timing settings such as frame skip or skip
+  lag frames.
+- Menu and Yes/No prompt detection must account for both horizontal nametable
+  orders. In throne-room scroll states like `scroll_tiles=22 base_nt=1`, visible
+  UI text can cross from NT1 back into NT0. `text.lua` handles this for decoded
+  rows; `menu.lua` separately scans both NT0->NT1 and NT1->NT0 virtual rows for
+  `COMMAND` and Yes/No cursor patterns. If command-menu speech goes silent after
+  reload while speech status is ready and scanners are active, inspect wrapped
+  menu/header detection before chasing the speech backend.
+- For silent menu/dialogue captures, the old PPU diagnostic rows 15-29 are not
+  enough because the command menu may be in upper rows. The `Ctrl+D` PPU dump
+  now records rows 0-29 for both nametables, decoded NT0->NT1 and NT1->NT0 row
+  orders, scroll/base/cursor RAM, and explicit `COMMAND` / `YESNO` match hints.
+  Pair it with `report_menu_state` for parser state while the bad UI is still
+  visible.
 - Live validation after the cleanup patch completed Brecconary routes to Person
   4 and Person 2 with no route drift, neutral final input, no runtime blockers,
   no route-planning timing spikes, and `objects.check_refresh max_ms=0`.
@@ -518,6 +607,31 @@ Do not rely on assistant-local memory as the only record of important project st
 - `--wait` watches only fresh `dw_debug.log` lines written after queueing the command, which avoids stale-log false positives.
 - Default wait timeout is 10 seconds; use `--timeout SECONDS` for longer survey/pathfinding operations.
 - Good smoke check after reload: `./dw_commands.sh --replace --wait "LAUNCHER_PROBE: ready" launcher_probe:ready report_position`.
+
+## BizHawk Memory Adapter Lessons
+
+- A live crash with `dw_script_error.log` showing `snapshot.update: 69` from
+  `emulator_compat.lua` inside `mainmemory.read_u8` means BizHawk's direct
+  RAM API raised a native/numeric error before the domain fallback could run.
+- Keep BizHawk memory adapter reads/writes behind `pcall` and fall back to the
+  domain-backed `System Bus` API for ordinary CPU RAM. This keeps one flaky
+  direct memory call from killing the whole Lua loop during startup or reload.
+- Once the Lua loop has crashed, `touch main.lua` is not enough to reload the
+  fix; the user must reload the script from BizHawk or relaunch the emulator.
+
+## PPU Text And Scroll Lessons
+
+- Dialogue row decoding must use both horizontal scroll and the active
+  horizontal nametable bit. Reading NT0 then NT1 as a flat 64-tile row can
+  scramble visible text when PPUCTRL bit 0 selects NT1 as the first visible
+  nametable.
+- Live King repro on map `0x05` at `(3,4)` had `PPU_CTRL=0x03` and
+  `SCROLL_X=0xB0` (22 tiles). The visible order was NT1 columns 22-31 followed
+  by NT0 columns 0-21, which turned the intended sentence into
+  `greatly pleased 'I am ... retu` before `text.decode_row()` was fixed.
+- For future dialogue bugs, capture `report_movement_state` and
+  `report_upper_dialogue_state`; the useful fields are `ppu_ctrl`, `scroll_x`,
+  `scroll_y`, `scroll_tiles`, `base_nt`, and the raw lower/upper decoded text.
 
 ## Codex Memory Access
 

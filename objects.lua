@@ -376,8 +376,18 @@ local function periodic_npc_refresh_enabled()
     return config.get("bizhawk_periodic_npc_refresh") == "true"
 end
 
+local function map_entry_path_grid_prewarm_enabled()
+    if emulator_compat.is_bizhawk ~= true then
+        return true
+    end
+    return config.get("bizhawk_map_entry_prewarm_path_grid") == "true"
+end
+
 local function prewarm_path_grid(map_id)
     if is_overworld_context() then
+        return
+    end
+    if not map_entry_path_grid_prewarm_enabled() then
         return
     end
     if map_reader.get_tile_grid then

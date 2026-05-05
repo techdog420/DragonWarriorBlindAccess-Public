@@ -41,6 +41,7 @@ local function make_env(options)
         "chars",
         "config",
         "debug_tools",
+        "emulator_compat",
         "hotkeys",
         "items",
         "key_combo",
@@ -59,7 +60,7 @@ local function make_env(options)
     end
 
     local settings = {
-        key_position = "Shift+P",
+        key_position = "Shift+W",
         key_hp = "Shift+H",
         key_level = "Shift+I",
         key_gold = "Shift+G",
@@ -110,6 +111,15 @@ local function make_env(options)
     package.preload["debug_tools"] = function()
         return {
             debug = function() end,
+        }
+    end
+
+    package.preload["emulator_compat"] = function()
+        return {
+            clear_ppu_cache = function() end,
+            get_ppu_source_rows = function()
+                return {}
+            end,
         }
     end
 

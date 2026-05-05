@@ -886,6 +886,36 @@ function tests.queued_routes_cancel_unmatched_drift_during_settle()
     env.restore()
 end
 
+function tests.suppressed_direction_press_does_not_start_auto_step()
+    local env = make_env()
+
+    env.auto_step.suppress_direction_tracking(4)
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    for frame, buttons in pairs(env.injected) do
+        assert_truthy(
+            not has_any_direction(buttons),
+            string.format("suppressed direction tap should not inject auto-step input at frame %d", frame)
+        )
+    end
+
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "suppressed direction tap should not become a blocked movement event"
+        )
+    end
+
+    env.restore()
+end
+
 local failures = 0
 local total = 0
 

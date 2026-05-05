@@ -62,6 +62,7 @@ COMMANDS (write to dw_commands.txt, one per line)
   report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
   report_movement_state    Dump movement/camera-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons
+  report_menu_state        Dump command-menu parser/cursor state
   toggle_debug             Flip debug_mode on/off at runtime
   simulate_input:UP        Inject one frame of D-pad Up
   simulate_input:UP,12     Inject 12 consecutive frames of D-pad Up

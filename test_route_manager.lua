@@ -23,6 +23,8 @@ local function make_env(options)
     local outputs = {}
     local start_route_calls = 0
     local inject_step_calls = 0
+    local suppress_direction_tracking_calls = 0
+    local last_suppress_direction_tracking_frames = nil
     local last_injected_dir = nil
     local pathfind_calls = 0
     local last_direct_call = nil
@@ -336,6 +338,10 @@ local function make_env(options)
                 inject_step_calls = inject_step_calls + 1
                 last_injected_dir = dir
             end,
+            suppress_direction_tracking = function(frames)
+                suppress_direction_tracking_calls = suppress_direction_tracking_calls + 1
+                last_suppress_direction_tracking_frames = frames
+            end,
         }
         return stub
     end
@@ -394,6 +400,8 @@ local function make_env(options)
         start_route_calls = function() return start_route_calls end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
+        suppress_direction_tracking_calls = function() return suppress_direction_tracking_calls end,
+        last_suppress_direction_tracking_frames = function() return last_suppress_direction_tracking_frames end,
         last_direct_call = function() return last_direct_call end,
         last_adjacent_call = function() return last_adjacent_call end,
         seam_summary = function(map_id) return route_manager.get_seam_summary(map_id) end,
@@ -471,9 +479,9 @@ function tests.repeated_blocked_steps_promote_runtime_block_after_threshold()
     local env = make_env()
 
     env.route_manager.autowalk_to_current()
-    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
-    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
-    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+    env.auto_step.on_blocked(5, 4, "up")
+    env.auto_step.on_blocked(5, 4, "up")
+    env.auto_step.on_blocked(5, 4, "up")
 
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
@@ -489,6 +497,58 @@ function tests.repeated_blocked_steps_promote_runtime_block_after_threshold()
     env.restore()
 end
 
+function tests.repeated_manual_blocked_steps_do_not_promote_runtime_block()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "manual blocked steps should not promote into pathfinding runtime blocks"
+    )
+    assert_equal(
+        env.seam_summary(0x05).blocked_only,
+        1,
+        "manual blocked steps should remain diagnostic seam observations"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_block_into_live_npc_does_not_promote_runtime_block()
+    local env = make_env({
+        pathfind_mode = "always_no_path",
+        blocking_positions = {
+            {x = 5, y = 3},
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up")
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "queued route blocks caused by live NPCs should not become runtime map blockers"
+    )
+    assert_equal(
+        env.inject_step_calls(),
+        0,
+        "NPC blocks should not trigger seam brute-force retries"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Route blocked by NPC movement",
+        "NPC route blocks should give a player-facing temporary clutter message"
+    )
+
+    env.restore()
+end
+
 function tests.successful_traversal_marks_noisy_seam_but_confirmed_block_persists()
     -- After 3 consecutive blocks, the seam is confirmed and a runtime block is
     -- added. A single successful traversal changes the seam to "noisy" but does
@@ -498,9 +558,9 @@ function tests.successful_traversal_marks_noisy_seam_but_confirmed_block_persist
     local env = make_env()
 
     env.route_manager.autowalk_to_current()
-    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
-    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
-    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+    env.auto_step.on_blocked(5, 4, "up")
+    env.auto_step.on_blocked(5, 4, "up")
+    env.auto_step.on_blocked(5, 4, "up")
     env.auto_step.on_step_complete(5, 4, "up", 5, 3, {queued_route = false, source = "test"})
 
     assert_equal(
@@ -1065,6 +1125,43 @@ function tests.autowalk_to_npc_holds_target_after_arrival()
     env.restore()
 end
 
+function tests.autowalk_to_moving_npc_holds_planned_target_tile()
+    local env = make_env({
+        is_bizhawk = true,
+        current_object = {name = "Guard 1", type = "npc", id = "npc_0", x = 7, y = 5},
+        config_values = {
+            auto_walk_npc_hold_frames = "2",
+            auto_walk_face_target_frames = "2",
+        },
+        memory_values = {
+            [0] = 0x80 + 4,
+            [1] = 0x60 + 4,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.memory_writes[1].address, 0, "moving NPC hold should write slot byte 0 immediately")
+    assert_equal(env.memory_writes[1].value, 0x80 + 7, "moving NPC hold should pin target X while preserving sprite bits")
+    assert_equal(env.memory_writes[2].address, 1, "moving NPC hold should write slot byte 1 immediately")
+    assert_equal(env.memory_writes[2].value, 0x60 + 5, "moving NPC hold should pin target Y while preserving facing bits")
+    assert_equal(env.memory_writes[3].address, 2, "moving NPC hold should preserve movement byte")
+    assert_equal(env.memory_writes[3].value, 0x12, "moving NPC hold should preserve movement byte value")
+
+    env.route_manager.apply_npc_freeze()
+
+    assert_equal(env.memory_writes[4].value, 0x80 + 7, "per-frame NPC hold should keep target X pinned")
+    assert_equal(env.memory_writes[5].value, 0x60 + 5, "per-frame NPC hold should keep target Y pinned")
+    assert_equal(env.memory_writes[6].value, 0x12, "per-frame NPC hold should keep movement byte pinned")
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "arrival should still face the held NPC")
+    assert_equal(env.suppress_direction_tracking_calls(), 1, "NPC facing tap should suppress auto-step edge tracking")
+    assert_equal(env.last_suppress_direction_tracking_frames(), 8, "suppression should cover face hold, release, and cleanup frames")
+
+    env.restore()
+end
+
 function tests.autowalk_to_npc_faces_target_after_arrival()
     local env = make_env({
         is_bizhawk = true,
@@ -1078,6 +1175,7 @@ function tests.autowalk_to_npc_faces_target_after_arrival()
     env.route_manager.autowalk_to_current()
     env.auto_step.on_route_complete()
     assert_equal(#env.joypad_sets, 0, "facing input should wait for the post-frame hook")
+    assert_equal(env.suppress_direction_tracking_calls(), 1, "facing tap should suppress auto-step edge tracking")
 
     env.route_manager.apply_npc_freeze()
     assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "arrival should press toward the NPC")
@@ -1103,6 +1201,7 @@ function tests.autowalk_already_adjacent_faces_target()
     env.route_manager.apply_npc_freeze()
 
     assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "already-adjacent auto-walk should face the target")
+    assert_equal(env.suppress_direction_tracking_calls(), 1, "already-adjacent facing tap should suppress auto-step edge tracking")
 
     env.restore()
 end
@@ -1141,6 +1240,26 @@ function tests.autowalk_no_path_mentions_closed_door_hint()
     assert_contains(output, "No path found", "closed-door no-path should still report no path")
     assert_contains(output, "Route is blocked by a closed door", "closed-door no-path should include a recovery hint")
     assert_contains(output, "Get a magic key from a chest", "zero-key closed-door hint should point to the chest/key step")
+
+    env.restore()
+end
+
+function tests.autowalk_no_path_mentions_npc_clutter_when_npc_free_route_exists()
+    local env = make_env({
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        blocking_positions = {
+            {x = 5, y = 3},
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Route is currently blocked by NPC movement",
+        "no-path output should explain when NPC clutter is the likely route blocker"
+    )
 
     env.restore()
 end

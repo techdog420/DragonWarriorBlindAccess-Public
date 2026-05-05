@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-04
+Updated: 2026-05-05
 
 ## Current Focus
 
@@ -91,16 +91,207 @@ Latest manual playtest notes:
   `pathability_filter` logged `All, reachable. Chest: 1 east (1 of 8)`.
   The browser was reset with `pathability_filter:all`, so the next physical
   `Shift+O` press should cycle to Reachable.
-- Auto-walk is mostly working as expected after the facing/TALK patch. There
-  may still have been an auto-walk failure on Guard 1; review fresh logs before
-  changing route behavior.
+- Guard 1 follow-up from live map `0x05`: the route itself recovered and
+  reached `(6,5)` adjacent to Guard 1 at `(7,5)`, but the post-arrival facing
+  input walked into `(7,5)` and TALK returned `There is no one there.` Root
+  cause was the target NPC hold snapshotting the guard's current live RAM
+  position after he had wandered, not the object coordinates used for the
+  route plan. `route_manager.lua` now pins the held NPC slot to the planned
+  object `(x,y)` while preserving sprite/facing/movement bits, and restores the
+  held target before applying the facing input.
+- Stale command-menu follow-up: live logs showed `EVENT: command menu opened`
+  after a TALK attempt and dialogue appeared, but there was no matching
+  `EVENT: command menu closed`. Later `auto_walk` attempts were repeatedly
+  blocked before planning. The raw `menu.is_open()` value can stay true from
+  lingering `COMMAND` PPU text after the field menu is no longer interactive,
+  so `main.lua` now blocks movement/auto-walk only when the confirmed live
+  command-menu session still has a recent visible cursor hold. The command
+  menu scanner still uses the raw header match so real open/close tracking can
+  recover.
+- Reload-cache follow-up: a BizHawk console reload re-ran `main.lua` but kept
+  the old cached `route_manager.lua`; evidence was the old
+  `NPC target hold started: target=Guard 1 slot=0 frames=1200` log without the
+  new `at=(x,y)` suffix. `main.lua` now clears project modules from
+  `package.loaded` before requiring them, so console/file-change reloads should
+  actually pick up required-module edits. After touching `main.lua`, the log
+  reset and `report_upper_dialogue_state` used the new diagnostic format.
+- Reload-lag follow-up: clearing `package.loaded["emulator_compat"]` exposed a
+  second reload trap. The old BizHawk shim-created `FCEU` global survived in the
+  Lua state, so the fresh adapter saw `FCEU` first, misdetected the runtime as
+  FCEUX, disabled `scan_profiler`, and made reloads crawl. `emulator_compat.lua`
+  now prefers real BizHawk API markers (`emu` plus `mainmemory`/`client` or
+  memory-domain APIs) over stale `FCEU` shim globals. Live recovery check after
+  `touch main.lua`: `launcher_probe:reload_detect` landed at frame `00060` and
+  `report_scan_stats` produced normal BizHawk `SCAN_PROFILE` lines instead of
+  `SCAN_PROFILE unavailable`.
+- Reload-input follow-up: another stale-shim layer could still leave BizHawk in
+  the right mode while capturing old wrapped `joypad`/`input`/`ppu` tables as
+  if they were native. Symptoms were player controls like `X`/`Z` not working
+  and keys behaving like emulator/UI shortcuts after reload. `emulator_compat`
+  now unwraps prior adapter closures back to the original BizHawk tables and
+  replaces the `FCEU.frameadvance` wrapper on every BizHawk reload so the active
+  PPU cache flushes under the current adapter. Live check after `touch main.lua`:
+  `launcher_probe:frameadvance_unwrap` landed at frame `00180`,
+  `cache_flushes=179`, and `input_status` reported no stuck keys.
+- P-key follow-up: the project-side `Shift+P` position hotkey was configured
+  and allowlisted correctly, but the local BizHawk config has global
+  `"Quick Load": "P"`, making P a bad player-facing shortcut in this runtime.
+  `key_position` is now `Shift+W` in both `config.lua` defaults and
+  `dw_access.ini`. Live `reload_config` was consumed at frame `12780`; the
+  follow-up `input_status:after_position_key_remap` showed no stuck keys.
+- Pathfinding confusion follow-up: live logs showed manual blocked movement
+  near the throne-room door/seam area promoted runtime blockers at `(4,7)` and
+  `(5,7)` on map `0x05`, which then made later autowalks report no path.
+  `route_manager.lua` now keeps `queued_route=false` manual blocks as seam
+  diagnostics only; runtime blocker promotion still happens for queued-route
+  and seam-retry failures. After the reload, `report_runtime_blocks` reported
+  `RUNTIME_BLOCKS map=0x05 none`, and the later config-reload snapshot stayed
+  clean.
+- Guard/NPC overlap follow-up: a live Guard 1 route still arrived at `(4,7)`
+  and then the post-arrival facing helper pressed north long enough for
+  `auto_step` to treat the artificial face tap as a player step. That walked
+  the hero onto Guard 1's square `(4,6)`. `auto_step.lua` now exposes
+  `suppress_direction_tracking(frames)`, and `route_manager.lua` calls it when
+  queuing post-arrival facing, so the face tap can turn the hero without being
+  reinterpreted as tap-to-step. Live retest after reload:
+  `auto_walk` while adjacent to Guard 1 logged `AUTO_WALK_FACE ... dir=up
+  frames=8`, then a later `report_position` still showed `(4,7)`.
+- NPC-clutter route follow-up: queued-route blocks that are currently caused by
+  a live NPC are now logged as `AUTO_WALK_NPC_BLOCK`, cancel with "Route
+  blocked by NPC movement", do not seam-bruteforce into the NPC, and do not
+  promote runtime map blockers. Separately, a live chest route from `(4,7)` to
+  the chest at `(4,4)` blocked at `(4,6)` from the south while current NPC
+  blockers were `(3,6)`, `(5,6)`, `(2,6)`, and `(3,3)`. That one was not NPC
+  clutter; it promoted `BLOCKER_RUNTIME map=0x05 cell=4,6(south)` as current
+  live seam evidence.
+- Command-menu scan follow-up: while BizHawk dialogue throttling is active,
+  `main.lua` now keeps the command-menu scanner awake during current or recent
+  player input. This should catch a fresh menu open after dialogue even when
+  the menu was not already known open. Automated `simulate_raw_input:A` /
+  `simulate_input:A` / `simulate_raw_input:B` did not open the field command
+  menu in the live session, so this still needs a physical `X`/command-menu
+  test from the user.
+- King dialogue wrap follow-up: live play produced
+  `greatly pleased 'I am thou hast that rned, Bill. retu` for the King's
+  line that should read in normal screen order. The live state at map `0x05`
+  `(3,4)` had `PPU_CTRL=0x03` and horizontal scroll `0xB0` (22 tiles), so the
+  visible dialogue row starts in NT1 and wraps into NT0. `text.decode_row()`
+  now assembles visible rows using horizontal scroll plus PPUCTRL bit 0 instead
+  of reading NT0 then NT1 blindly. `report_upper_dialogue_state` now logs
+  `scroll_tiles` and `base_nt`; `report_movement_state` logs `ppu_ctrl` and
+  `scroll_x`. Offline tests cover NT1-first dialogue wrap. Live validation was
+  attempted with `touch main.lua`, but BizHawk did not reload/poll the command
+  queue, so the next physical script reload should retest the King dialogue.
+- King Yes/No prompt follow-up: the fixed King row order exposed a separate
+  lower-window overlap issue. Live logs showed the prompt reads as repeated
+  prior tail text plus the actual question, for example
+  `experience thou must gain 7 Points. 'Will thou tell me now of thy deeds so
+  they won't be forgotten?'`. `text.extract_new_dialogue()` now strips both the
+  normal suffix/prefix dialogue overlap and the prompt-specific "new text
+  starts inside old text" overlap; `check_yesno_prompt()` speaks/logs only the
+  genuinely new question while keeping the full lower-window baseline for the
+  normal dialogue scanner.
+- Current lag note: the local BizHawk config already matches the known safer
+  baseline (`SoundBufferSizeMs=200`, `SoundThrottle=true`, `FrameSkip=0`,
+  `Rewind.Enabled=false`, VSync off). A live `report_scan_stats` during the
+  King follow-up showed dialogue/menu scanners staying in single-digit max
+  milliseconds, while the remaining suspicious spikes were script-side:
+  `objects.check_refresh max_ms=3027`, `hotkeys.update max_ms=2270`, and
+  `auto_step.update max_ms=1536`. Treat future lag repros as object refresh,
+  route command, or movement executor evidence first unless a clean scan window
+  shows no script spike.
+- Reload/menu silence follow-up: after another script reload at map `0x05`
+  `(3,5)`, command-menu and dialogue speech went silent while the script still
+  polled commands. Diagnostics at frame `06900` showed speech bridge ready,
+  state `field`, `scroll_tiles=22`, `base_nt=1`, and active scanners, but
+  `menu_raw=false lower=""`. Root cause is the same NT1-first scroll condition
+  as the King dialogue row bug, but in `menu.lua`: the command-menu and Yes/No
+  scanners still searched only NT0-first physical row order. `menu.lua` now
+  scans both NT0->NT1 and NT1->NT0 virtual row orders for the `COMMAND` header
+  and Yes/No cursor patterns. A live `touch main.lua` reload succeeded and
+  `launcher_probe:menu_nt_wrap_patch` landed at frame `00180`; physical
+  command-menu/TALK retest is still needed because automated simulated A input
+  still did not open the field menu in this live state.
+- Follow-up PPU dump note: the user-provided `ppu_dump.txt` did not capture an
+  active command menu or dialogue page; it only included rows 15-29, which miss
+  much of the command window. The PPU dump hotkey now records all rows 0-29 for
+  both NT0 and NT1, decodes both NT0->NT1 and NT1->NT0 row orders, and marks
+  explicit `COMMAND` / `YESNO` matches. `report_menu_state` is now available to
+  log parser/cursor state (`raw_open`, cached open, cursor visibility, yes/no,
+  scroll/base, and dialogue start row). Live reload probe
+  `launcher_probe:menu_dump_diag_patch` landed at frame `00180`; current idle
+  state had `MENU_STATE raw_open=false ... lower_len=0 ... base_nt=0
+  dialogue_start_row=13`.
+- Latest King silence capture: after a manual reload and a PPU dump taken while
+  the King dialogue was believed to be open, the dump still contained no
+  `COMMAND` match, no `YESNO` match, and no lower-window lowercase dialogue.
+  It showed map `0x05`, player `(3,4)`, `scroll_tiles=22`, `base_nt=1`, and
+  only the status/name fragments. A live `report_menu_state
+  report_upper_dialogue_state speech_status` probe likewise reported
+  `raw_open=false`, `lower_len=0`, and speech bridge ready. Diagnostics now
+  clear the BizHawk PPU cache immediately before `Ctrl+D`,
+  `report_menu_state`, and `report_upper_dialogue_state` sample the screen so
+  the next capture rules out stale cached nametable bytes. The dump hotkey now
+  also appends a diagnostic-only `PPU source comparison` section that compares
+  native `ppu.readbyte` with available BizHawk nametable-like memory domains,
+  so the next bad-state dump can show whether another source sees text that the
+  normal reader misses.
+- Root cause confirmed by the next dump: native BizHawk `ppu.readbyte` showed
+  the blank/status-only state, while `CIRAM (nametables)` contained the real
+  King text, the `COMMAND` header, and the Yes/No/menu rows. `emulator_compat.lua`
+  now prefers a readable nametable memory domain for PPU reads and falls back
+  to native `ppu.readbyte` only when no domain is available. Live reload proof:
+  after `touch main.lua`, frame `00144` logged the full King dialogue event,
+  and `speech_bridge.log` spoke both the question and `YES NO prompt. YES`.
+- King final-line follow-up: the final page dump showed the farewell text in
+  the nametable (`'Goodbye now, Bill. Take care and tempt not the Fates.`), but
+  no matching dialogue event or speech. On that page `PPUCTRL` reported
+  `base_nt=0` even though `scroll_tiles=22` still required the NT1-to-NT0
+  visible order. With the reported base, the lower reader missed rows 12-17
+  entirely. `text.read_dialogue_window_filtered()` now compares the reported
+  base with the alternate nametable order and keeps the one with more lowercase
+  dialogue. Live reload proof: frame `00156` spoke a lower-window error line
+  (`'There are no stairs here.`) while `base_nt=0`, confirming the fallback is
+  active in the running script. Retest the King farewell naturally on the next
+  save/continue interaction.
+- Command-menu opening follow-up: after the King dialogue fix, live speech logs
+  still showed stale cursor RAM leaking into the first command-menu
+  announcement, e.g. `Command. STAIRS` immediately before `TALK`. The snapshot
+  matched this (`report_menu_state` had cursor `(0,2)` / `STAIRS` while the
+  live menu was not confirmed). `main.lua` now queues the menu-open speech for
+  a short six-frame debounce and either flushes it with the first real cursor
+  movement or speaks the settled current item. The first live reload attempt
+  was blocked by the idle emulator loop, but after the user killed/restarted the
+  script, the physical retest worked as expected: opening the command menu no
+  longer speaks the last-used selection before TALK.
+- Script-crash follow-up: the user reported the script acted funky, lagged,
+  then crashed. `dw_debug.log` only had a fresh header, but
+  `dw_script_error.log` showed `snapshot.update: 69` from
+  `emulator_compat.lua` inside `mainmemory.read_u8`. `emulator_compat.lua` now
+  wraps direct BizHawk RAM reads/writes in `pcall` and falls back through the
+  domain-backed `System Bus` memory API instead of letting one native memory
+  read kill the Lua loop. Because the script was already dead, `touch main.lua`
+  did not reload it; relaunch/reload BizHawk Lua before judging the fix.
+- Map-transition lag follow-up: after the live `0x05` -> `0x04` transition,
+  `report_scan_stats` showed `objects.check_refresh max_ms=1846` while dialogue
+  and menu scans stayed in single-digit milliseconds. The spike was the
+  map-entry path-grid prewarm. BizHawk now skips that prewarm by default via
+  `bizhawk_map_entry_prewarm_path_grid=false`; FCEUX keeps the old behavior,
+  and BizHawk can opt back in if first-route warmup matters more than transition
+  smoothness.
+- Latest scripted live state after the manual-block patch: the player was on
+  map `0x05` at `(4,7)`, the selected object had reset to `Door (opened)`, and
+  `report_upper_dialogue_state` showed only the status row:
+  `menu_raw=false menu_active=false lower=""`. This snapshot did not reproduce
+  the silent command-menu/dialogue issue; capture the next bad state while the
+  menu or dialogue is visibly up before patching parser logic.
 - The false-visited regression test through failed TALK now behaves correctly
   in manual testing.
-- New investigation target for tomorrow: in certain parts of the map, the
-  command menu does not read correctly. Treat this as likely position/map-region
-  dependent. Capture `report_position`, `input_status`, and
-  `report_movement_state:menu_bad_region` at a bad tile, then compare with a
-  nearby good tile before patching parser logic.
+- Current investigation target: no active blocker at wrap-up. The King
+  dialogue/Yes-No/farewell path is fixed in manual testing, and the command-menu
+  opening debounce passed the user's physical retest after a script restart.
+  Next session should resume normal early-game playtesting and capture any new
+  narration/pathfinding issues from live play.
 
 Validation already run for this batch:
 - `luac -p config.lua hotkey_filter.lua hotkeys.lua objects.lua
@@ -110,6 +301,82 @@ Validation already run for this batch:
 - `lua test_hotkeys.lua`
 - `lua test_objects.lua`
 - `lua test_route_manager.lua`
+- 2026-05-05 Guard 1 follow-up validation: `luac -p route_manager.lua
+  test_route_manager.lua`, `lua test_route_manager.lua`,
+  `lua test_auto_step.lua`, and `git diff --check`.
+- 2026-05-05 stale command-menu follow-up validation: `luac -p main.lua
+  route_manager.lua`, `lua test_route_manager.lua`, `lua test_menu.lua`,
+  `lua test_auto_step.lua`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep` passed with the known WSL
+  `accessible_output2` warning and `cmd: not found` speech-bridge noise.
+- 2026-05-05 reload-cache/diagnostic follow-up validation:
+  `luac -p main.lua route_manager.lua test_route_manager.lua`,
+  `lua test_route_manager.lua`, `lua test_menu.lua`, `lua test_auto_step.lua`,
+  `git diff --check`, and `python3 run_tests.py --allow-missing-speech-dep`
+  passed with the same known WSL speech warnings/noise.
+- 2026-05-05 reload-lag follow-up validation: `luac -p emulator_compat.lua
+  test_emulator_compat.lua`, `lua test_emulator_compat.lua`,
+  live `touch main.lua` plus `launcher_probe:reload_detect report_scan_stats`,
+  `git diff --check`, and `python3 run_tests.py --allow-missing-speech-dep`
+  passed before the later memory-read crash fix.
+- 2026-05-05 memory-read crash follow-up validation: `luac -p
+  emulator_compat.lua test_emulator_compat.lua` and
+  `lua test_emulator_compat.lua`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep` passed with the known WSL
+  speech warnings/noise. A live `touch main.lua` could not reload the script
+  because the Lua loop had already crashed and was no longer polling commands.
+- 2026-05-05 King dialogue wrap validation: `luac -p addresses.lua text.lua
+  main.lua debug_tools.lua test_text.lua`, `lua test_text.lua`,
+  `python3 run_tests.py --allow-missing-speech-dep`, and `git diff --check`
+  passed with known WSL speech warnings/noise and the known `dw_access.ini`
+  CRLF warning. A live `touch main.lua` did not trigger command polling, so
+  physical script reload/retest is still needed.
+- 2026-05-05 King Yes/No prompt overlap validation: `luac -p text.lua
+  main.lua test_text.lua`, `lua test_text.lua`, `python3 run_tests.py
+  --allow-missing-speech-dep`, and `git diff --check` passed with the known WSL
+  speech warnings/noise and the known `dw_access.ini` CRLF warning. Live retest
+  still needs a physical Lua reload and another King save/continue prompt.
+- 2026-05-05 reload/menu silence validation: `luac -p menu.lua test_menu.lua
+  main.lua`, `lua test_menu.lua`, `python3 run_tests.py
+  --allow-missing-speech-dep`, and `git diff --check` passed with the known WSL
+  speech warnings/noise and `dw_access.ini` CRLF warning. Live reload probe
+  passed with `launcher_probe:menu_nt_wrap_patch`; physical command-menu/TALK
+  retest is still needed.
+- 2026-05-05 PPU/menu diagnostic follow-up validation: `luac -p main.lua
+  hotkeys.lua test_hotkeys.lua`, `lua test_hotkeys.lua`, and `git diff --check`
+  passed with the known `dw_access.ini` CRLF warning. Live reload probe passed
+  with `launcher_probe:menu_dump_diag_patch`.
+- 2026-05-05 reload-input follow-up validation: `luac -p emulator_compat.lua
+  test_emulator_compat.lua`, `lua test_emulator_compat.lua`, live `touch
+  main.lua` plus `launcher_probe:frameadvance_unwrap report_scan_stats
+  input_status:after_frameadvance_unwrap`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep` passed with the same known
+  WSL speech warnings/noise.
+- 2026-05-05 manual-block/P-key follow-up validation: `luac -p config.lua
+  route_manager.lua test_hotkey_filter.lua test_hotkeys.lua
+  test_route_manager.lua`, `lua test_hotkey_filter.lua`,
+  `lua test_hotkeys.lua`, `lua test_route_manager.lua`, live `reload_config
+  input_status:after_position_key_remap report_runtime_blocks
+  report_upper_dialogue_state`, `python3 run_tests.py
+  --allow-missing-speech-dep`, and `git diff --check`. The live log showed
+  `RUNTIME_BLOCKS map=0x05 none`; broad harness still has the known WSL
+  `accessible_output2` warning and `cmd: not found` speech-bridge noise.
+- 2026-05-05 menu/facing/NPC-block follow-up validation so far: `luac -p
+  main.lua auto_step.lua route_manager.lua test_auto_step.lua
+  test_route_manager.lua`, `lua test_auto_step.lua`, `lua test_route_manager.lua`,
+  live `launcher_probe:menu_face_npc_clutter_patch`, and live Guard 1 facing
+  retest that stayed at `(4,7)`. Follow-up broad validation:
+  `python3 run_tests.py --allow-missing-speech-dep` and `git diff --check`;
+  broad harness still has the known WSL `accessible_output2` warning and
+  `cmd: not found` speech-bridge noise, and `git diff --check` still has the
+  known `dw_access.ini` CRLF warning.
+- 2026-05-05 command-menu opening debounce validation: `luac -p main.lua`,
+  `lua test_menu.lua`, `python3 run_tests.py --allow-missing-speech-dep`, and
+  `git diff --check` passed. The broad harness still has the known WSL
+  `accessible_output2` warning and `cmd: not found` speech-bridge noise, and
+  `git diff --check` still has the known `dw_access.ini` CRLF warning. A live
+  `touch main.lua` probe timed out because the emulator loop was idle and did
+  not consume commands.
 - `python3 run_tests.py --allow-missing-speech-dep` passed with the known WSL
   `accessible_output2` missing warning and `cmd: not found` speech-bridge noise.
 - `git diff --check`
@@ -520,15 +787,16 @@ Important clues:
   created false blocked steps. In the live Brecconary route to Person 2,
   auto-walk reached `(10,15)` with neutral input and did not reproduce the old
   route-settle drift points.
-- `objects.lua` now prewarms the current interior map grid during map-entry
-  refresh. After waiting for objects to populate, `pathfind` plus `auto_walk`
-  to Person 2 produced no `ROUTE_PLAN_TIMING` or `CMD_TIMING` lines, compared
-  with the previous 1.7-1.9 second first-route spike. Do not judge O/U lag from
-  a command sent before `current_object` sees the town objects; a too-early
-  command can still say "No objects found".
-- Remaining known hitch: `objects.check_refresh` can still show a one-time
-  deferred NPC refresh around 1.3 seconds after map entry. If the user still
-  hears a post-quickload audio cutout, inspect that path next.
+- `objects.lua` previously prewarmed the current interior map grid during
+  map-entry refresh to avoid a 1.7-1.9 second first-route spike. As of
+  2026-05-05, that prewarm is disabled by default under BizHawk because live
+  map transitions showed `objects.check_refresh max_ms=1846`; the first route
+  on a new map may pay the lazy grid-build cost instead. FCEUX still prewarms,
+  and BizHawk can opt in with `bizhawk_map_entry_prewarm_path_grid=true`.
+- Remaining transition-performance note: if the user still hears a post-entry
+  audio cutout, compare `objects.check_refresh max_ms` against first-route
+  `ROUTE_PLAN_TIMING` / `CMD_TIMING` before moving more work back onto the
+  transition frame.
 - The latest user retest showed manual overshoot is much better, with remaining
   overshoot mostly when rapid manual movement presses queue up. Auto-walk audio
   is also better, but the user still heard a lag spike near the end of route

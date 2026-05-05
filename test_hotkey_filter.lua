@@ -27,7 +27,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
     local config = make_config({
         enable_bizhawk_keyboard_hotkeys = "false",
         enable_bizhawk_diagnostic_hotkeys = "false",
-        key_position = "Shift+P",
+        key_position = "Shift+W",
         key_hp = "Shift+H",
         key_level = "Shift+I",
         key_gold = "Shift+G",
@@ -65,7 +65,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         U = true,
         Q = true,
         Shift = true,
-        P = true,
+        W = true,
         H = true,
         I = true,
         G = true,
@@ -86,7 +86,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
     }, config)
 
     assert_equal(filtered.Shift, true, "player-info modifier should pass")
-    assert_equal(filtered.P, true, "position key should pass")
+    assert_equal(filtered.W, true, "position key should pass")
     assert_equal(filtered.H, true, "HP key should pass")
     assert_equal(filtered.I, true, "level key should pass")
     assert_equal(filtered.G, true, "gold key should pass")
@@ -118,7 +118,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
         enable_bizhawk_keyboard_hotkeys = "false",
         enable_bizhawk_diagnostic_hotkeys = "false",
         bizhawk_keyboard_hotkey_allowlist = "",
-        key_position = "Shift+P",
+        key_position = "Shift+W",
         key_object_next = "L",
         key_diag_tiles = "Ctrl+N",
         key_diag_ppu_dump = "Ctrl+D",
@@ -126,7 +126,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
 
     local filtered = hotkey_filter.filter_bizhawk_keys({
         Shift = true,
-        P = true,
+        W = true,
         L = true,
         LeftCtrl = true,
         N = true,
@@ -134,7 +134,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
     }, config)
 
     assert_equal(filtered.Shift, true, "blank allowlist should still pass position modifier")
-    assert_equal(filtered.P, true, "blank allowlist should still pass player readout key")
+    assert_equal(filtered.W, true, "blank allowlist should still pass player readout key")
     assert_equal(filtered.L, true, "blank allowlist should still pass object navigation key")
     assert_equal(filtered.LeftCtrl, true, "blank allowlist should still pass compact tile readout modifier")
     assert_equal(filtered.N, true, "blank allowlist should still pass compact tile readout key")

@@ -22,6 +22,7 @@ local map_reader = require "map_reader"
 local route_mgr  = require "route_manager"
 local debug_tools = require "debug_tools"
 local key_combo  = require "key_combo"
+local emulator_compat = require "emulator_compat"
 
 local M = {}
 
@@ -59,6 +60,12 @@ end
 local function speak_now(message)
     clear_object_nav_speech()
     tolk.output_interrupt(message)
+end
+
+local function clear_ppu_cache_for_diagnostic()
+    if emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
 end
 
 local function refresh_pathability_if_needed()
@@ -198,78 +205,182 @@ function M.update(keys)
         speak_now(menu.get_cursor_info())
     end
 
-    -- Diagnostic: dump raw PPU tile bytes for rows 15-29.
-    -- Shows first/last non-BG column, decoded text, and any NT1 ($2400) tiles.
-    -- Use this at x=8 with truncated dialogue visible to locate where text tiles
-    -- are written in the nametable and whether any overflow into NT1.
+    -- Diagnostic: dump raw PPU tile bytes and decoded text for both nametables.
+    -- Use this while a menu/dialogue bug is visible. It records the full
+    -- 30-row NT0/NT1 state plus both horizontal wrap orders so parser bugs can
+    -- be compared directly against what the player sees.
     if is_key_pressed(keys, config.get("key_diag_ppu_dump")) then
+        clear_ppu_cache_for_diagnostic()
         local BG  = 0x9F   -- background/empty tile in PPU nametable
         local NT0 = 0x2000 -- nametable 0
         local NT1 = 0x2400 -- nametable 1 (potential overflow target)
         local W   = 32     -- nametable width in tiles
+        local COMMAND_BYTES = {0x26, 0x32, 0x30, 0x30, 0x24, 0x31, 0x27}
+        local YES_BYTES = {0x3C, 0x28, 0x36}
+        local NO_BYTES = {0x31, 0x32}
+        local CURSOR_TILE = 0x42
+
+        local function read_row(base, row)
+            local bytes = {}
+            for col = 0, W - 1 do
+                bytes[col + 1] = ppu.readbyte(base + row * W + col)
+            end
+            return bytes
+        end
+
+        local function row_hex(bytes)
+            local parts = {}
+            for i = 1, #bytes do
+                local b = bytes[i]
+                parts[i] = (b == BG) and "--" or string.format("%02X", b)
+            end
+            return table.concat(parts, " ")
+        end
+
+        local function decode(bytes)
+            local decoded = chars.decode_bytes(bytes)
+            return decoded:match("^%s*(.-)%s*$") or ""
+        end
+
+        local function concat_rows(first, second)
+            local out = {}
+            for i = 1, #first do out[#out + 1] = first[i] end
+            for i = 1, #second do out[#out + 1] = second[i] end
+            return out
+        end
+
+        local function find_sequence(bytes, sequence)
+            for start = 1, #bytes - #sequence + 1 do
+                local match = true
+                for i = 1, #sequence do
+                    if bytes[start + i - 1] ~= sequence[i] then
+                        match = false
+                        break
+                    end
+                end
+                if match then return start end
+            end
+            return nil
+        end
+
+        local function find_yesno(bytes)
+            for col = 1, #bytes do
+                if bytes[col] == CURSOR_TILE then
+                    for offset = 1, 4 do
+                        local i = col + offset
+                        local b1 = bytes[i]
+                        local b2 = bytes[i + 1] or 0
+                        local b3 = bytes[i + 2] or 0
+                        if b1 == NO_BYTES[1] and b2 == NO_BYTES[2]
+                           and (b3 < 0x0A or b3 > 0x3D) then
+                            return "NO", col
+                        end
+                        local b4 = bytes[i + 3] or 0
+                        if b1 == YES_BYTES[1] and b2 == YES_BYTES[2] and b3 == YES_BYTES[3]
+                           and (b4 < 0x0A or b4 > 0x3D) then
+                            return "YES", col
+                        end
+                        if b1 ~= 0x5F then break end
+                    end
+                end
+            end
+            return nil, nil
+        end
 
         local dump = {}
         local map_id, px, py = nav.get_position()
+        local scroll_x = addr.SCROLL_X and memory.readbyte(addr.SCROLL_X) or 0
+        local scroll_tiles = math.floor(scroll_x / 8) % W
+        local ppu_ctrl = addr.PPU_CTRL and memory.readbyte(addr.PPU_CTRL) or 0
+        local base_nt = ppu_ctrl % 2
+        local d8 = memory.readbyte(addr.MENU_CURSOR_X)
+        local d9 = memory.readbyte(addr.MENU_CURSOR_Y)
         dump[#dump+1] = "=== PPU Nametable Dump ==="
-        dump[#dump+1] = string.format("Map: %d (0x%02X)  Player: x=%d, y=%d", map_id, map_id, px, py)
+        dump[#dump+1] = string.format(
+            "Map: %d (0x%02X)  Player: x=%d, y=%d  scroll_x=0x%02X scroll_tiles=%d ppu_ctrl=0x%02X base_nt=%d cursor_d8=%d cursor_d9=%d menu_open=%s",
+            map_id, map_id, px, py, scroll_x, scroll_tiles, ppu_ctrl, base_nt,
+            d8, d9, tostring(menu.is_open()))
         dump[#dump+1] = ""
-        dump[#dump+1] = "Rows 15-29 from NT0 ($2000) and NT1 ($2400)."
+        dump[#dump+1] = "Rows 0-29 from NT0 ($2000) and NT1 ($2400)."
         dump[#dump+1] = "BG tile 0x9F shown as '--'.  Non-BG shown as 2-digit hex."
+        dump[#dump+1] = "V01 means decoded NT0->NT1 row order; V10 means decoded NT1->NT0 row order."
         dump[#dump+1] = ""
 
-        for row = 15, 29 do
-            -- Read all 32 bytes from NT0 for this row.
-            local nt0 = {}
-            local first_col = -1
-            local last_col  = -1
-            for col = 0, W - 1 do
-                local b = ppu.readbyte(NT0 + row * W + col)
-                nt0[col] = b
-                if b ~= BG then
-                    if first_col == -1 then first_col = col end
-                    last_col = col
+        for row = 0, 29 do
+            local nt0 = read_row(NT0, row)
+            local nt1 = read_row(NT1, row)
+            local v01 = concat_rows(nt0, nt1)
+            local v10 = concat_rows(nt1, nt0)
+            local decoded0 = decode(nt0)
+            local decoded1 = decode(nt1)
+            local decoded01 = decode(v01)
+            local decoded10 = decode(v10)
+            local cmd01 = find_sequence(v01, COMMAND_BYTES)
+            local cmd10 = find_sequence(v10, COMMAND_BYTES)
+            local yes01, yes_col01 = find_yesno(v01)
+            local yes10, yes_col10 = find_yesno(v10)
+
+            dump[#dump+1] = string.format("Row %02d", row)
+            dump[#dump+1] = "  NT0: " .. row_hex(nt0)
+            dump[#dump+1] = "  NT1: " .. row_hex(nt1)
+            if decoded0 ~= "" then dump[#dump+1] = "  T0:  " .. decoded0 end
+            if decoded1 ~= "" then dump[#dump+1] = "  T1:  " .. decoded1 end
+            if decoded01 ~= "" then dump[#dump+1] = "  V01: " .. decoded01 end
+            if decoded10 ~= "" then dump[#dump+1] = "  V10: " .. decoded10 end
+            if cmd01 then
+                dump[#dump+1] = string.format("  MATCH: COMMAND V01 col=%d", cmd01 - 1)
+            end
+            if cmd10 then
+                dump[#dump+1] = string.format("  MATCH: COMMAND V10 col=%d", cmd10 - 1)
+            end
+            if yes01 then
+                dump[#dump+1] = string.format("  MATCH: YESNO %s V01 cursor_col=%d", yes01, yes_col01 - 1)
+            end
+            if yes10 then
+                dump[#dump+1] = string.format("  MATCH: YESNO %s V10 cursor_col=%d", yes10, yes_col10 - 1)
+            end
+        end
+
+        if emulator_compat.get_ppu_source_rows then
+            local probe_rows = {}
+            for row = 0, 29 do
+                probe_rows[#probe_rows + 1] = row
+            end
+            local sources = emulator_compat.get_ppu_source_rows(probe_rows)
+            if sources and #sources > 0 then
+                dump[#dump+1] = ""
+                dump[#dump+1] = "PPU source comparison (decoded rows/matches only)."
+                for _, source in ipairs(sources) do
+                    dump[#dump+1] = "Source: " .. tostring(source.name)
+                    local any = false
+                    for row = 0, 29 do
+                        local row_data = source.rows and source.rows[row]
+                        if row_data then
+                            local v01 = concat_rows(row_data.nt0, row_data.nt1)
+                            local v10 = concat_rows(row_data.nt1, row_data.nt0)
+                            local decoded01 = decode(v01)
+                            local decoded10 = decode(v10)
+                            local cmd01 = find_sequence(v01, COMMAND_BYTES)
+                            local cmd10 = find_sequence(v10, COMMAND_BYTES)
+                            local yes01, yes_col01 = find_yesno(v01)
+                            local yes10, yes_col10 = find_yesno(v10)
+                            local parts = {}
+                            if decoded01 ~= "" then parts[#parts + 1] = "V01=" .. decoded01 end
+                            if decoded10 ~= "" then parts[#parts + 1] = "V10=" .. decoded10 end
+                            if cmd01 then parts[#parts + 1] = string.format("COMMAND V01 col=%d", cmd01 - 1) end
+                            if cmd10 then parts[#parts + 1] = string.format("COMMAND V10 col=%d", cmd10 - 1) end
+                            if yes01 then parts[#parts + 1] = string.format("YESNO %s V01 cursor_col=%d", yes01, yes_col01 - 1) end
+                            if yes10 then parts[#parts + 1] = string.format("YESNO %s V10 cursor_col=%d", yes10, yes_col10 - 1) end
+                            if #parts > 0 then
+                                dump[#dump+1] = string.format("  Row %02d: %s", row, table.concat(parts, " | "))
+                                any = true
+                            end
+                        end
+                    end
+                    if not any then
+                        dump[#dump+1] = "  (no decoded text or matches)"
+                    end
                 end
-            end
-
-            -- Read NT1 for this row — collect any non-BG entries.
-            local nt1_parts = {}
-            for col = 0, W - 1 do
-                local b = ppu.readbyte(NT1 + row * W + col)
-                if b ~= BG then
-                    nt1_parts[#nt1_parts+1] = string.format("c%d=%02X", col, b)
-                end
-            end
-
-            -- Build hex display of NT0 row (BG as "--").
-            local hex_parts = {}
-            for col = 0, W - 1 do
-                local b = nt0[col]
-                hex_parts[col+1] = (b == BG) and "--" or string.format("%02X", b)
-            end
-
-            -- Decode NT0 bytes to text.
-            local row_bytes = {}
-            for col = 0, W - 1 do row_bytes[col+1] = nt0[col] end
-            local decoded = chars.decode_bytes(row_bytes)
-            decoded = decoded:match("^%s*(.-)%s*$") or ""
-
-            -- Assemble line header.
-            local col_info
-            if first_col == -1 then
-                col_info = "(all BG)"
-            else
-                col_info = string.format("cols %d-%d", first_col, last_col)
-            end
-
-            local nt1_info = ""
-            if #nt1_parts > 0 then
-                nt1_info = "  NT1: " .. table.concat(nt1_parts, " ")
-            end
-
-            dump[#dump+1] = string.format("Row %2d [%s]%s", row, col_info, nt1_info)
-            dump[#dump+1] = "  NT0: " .. table.concat(hex_parts, " ")
-            if decoded ~= "" then
-                dump[#dump+1] = "  TXT: " .. decoded
             end
         end
 

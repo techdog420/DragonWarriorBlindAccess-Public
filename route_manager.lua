@@ -183,6 +183,9 @@ local function queue_target_face(face_dir, target)
         release_frames = TARGET_FACE_RELEASE_FRAMES,
         name = target and target.name or "target",
     }
+    if auto_step.suppress_direction_tracking then
+        auto_step.suppress_direction_tracking(frames + TARGET_FACE_RELEASE_FRAMES + 4)
+    end
     debug_tools.info(string.format(
         "AUTO_WALK_FACE target=%s face=%s dir=%s frames=%d",
         tostring(target_face_input.name),
@@ -359,6 +362,21 @@ local function clear_runtime_block_direction(map_id, dest_x, dest_y, approach, s
     return true
 end
 
+local function is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
+    local dest_x, dest_y = get_destination_for_dir(from_x, from_y, blocked_dir)
+    if not dest_x or not dest_y then
+        return false
+    end
+    objects.update_npcs()
+    local npc_positions = objects.get_blocking_positions()
+    for _, npc in ipairs(npc_positions) do
+        if npc.x == dest_x and npc.y == dest_y then
+            return true, dest_x, dest_y
+        end
+    end
+    return false, dest_x, dest_y
+end
+
 local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     if not map_id or from_x == nil or from_y == nil or not blocked_dir then
         return false
@@ -368,13 +386,10 @@ local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     local source = string.format("auto_step:%s from (%d,%d)", blocked_dir, from_x, from_y)
 
     -- Don't record if an NPC occupies the destination (NPC blocks are temporary)
-    objects.update_npcs()
-    local npc_positions = objects.get_blocking_positions()
-    for _, npc in ipairs(npc_positions) do
-        if npc.x == dest_x and npc.y == dest_y then
-            debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
-            return false
-        end
+    local npc_block = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
+    if npc_block then
+        debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
+        return false
     end
 
     return add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
@@ -470,7 +485,9 @@ local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
 
     if result == "blocked"
     and entry.moved_count == 0
-    and entry.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD then
+    and entry.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD
+    and source ~= "manual_block"
+    and source ~= "npc_block" then
         add_runtime_block_direction(
             map_id,
             dest_x,
@@ -664,6 +681,22 @@ local function release_target_npc_hold(reason)
     target_npc_hold = nil
 end
 
+local function encode_npc_coordinate_byte(current_byte, coord)
+    local coord_num = tonumber(coord)
+    if not coord_num or coord_num < 0 or coord_num > 31 then
+        return current_byte, false
+    end
+    coord_num = math.floor(coord_num)
+    return (current_byte - (current_byte % 32)) + coord_num, true
+end
+
+local function write_target_npc_snapshot(slot, snapshot)
+    local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+    memory.writebyte(base, snapshot[1])
+    memory.writebyte(base + 1, snapshot[2])
+    memory.writebyte(base + 2, snapshot[3])
+end
+
 local function start_target_npc_hold(obj)
     if not obj or obj.type ~= objects.TYPE_NPC then
         return false
@@ -679,19 +712,30 @@ local function start_target_npc_hold(obj)
     end
 
     local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+    local byte0 = memory.readbyte(base)
+    local byte1 = memory.readbyte(base + 1)
+    local byte2 = memory.readbyte(base + 2)
+    local target_byte0, used_target_x = encode_npc_coordinate_byte(byte0, obj.x)
+    local target_byte1, used_target_y = encode_npc_coordinate_byte(byte1, obj.y)
+    local snapshot = {
+        target_byte0,
+        target_byte1,
+        byte2,
+    }
     target_npc_hold = {
         slot = slot,
         frames = frames,
         name = obj.name,
-        snapshot = {
-            memory.readbyte(base),
-            memory.readbyte(base + 1),
-            memory.readbyte(base + 2),
-        },
+        snapshot = snapshot,
     }
+    write_target_npc_snapshot(slot, snapshot)
     debug_tools.info(string.format(
-        "NPC target hold started: target=%s slot=%d frames=%d",
-        tostring(obj.name), slot, frames))
+        "NPC target hold started: target=%s slot=%d frames=%d at=(%s,%s)",
+        tostring(obj.name),
+        slot,
+        frames,
+        used_target_x and tostring(obj.x) or "live",
+        used_target_y and tostring(obj.y) or "live"))
     return true
 end
 
@@ -704,7 +748,6 @@ end
 -- Call once per frame immediately after FCEU.frameadvance().
 -- No-op when npc_freeze_active is false, so it's safe to call every frame.
 function M.apply_npc_freeze()
-    apply_target_face()
     if npc_freeze_active then
         for i = 0, addr.NPC_COUNT - 1 do
             local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
@@ -715,16 +758,13 @@ function M.apply_npc_freeze()
         end
     end
     if target_npc_hold then
-        local base = addr.NPC_DATA_START + target_npc_hold.slot * addr.NPC_ENTRY_SIZE
-        local snap = target_npc_hold.snapshot
-        memory.writebyte(base,     snap[1])
-        memory.writebyte(base + 1, snap[2])
-        memory.writebyte(base + 2, snap[3])
+        write_target_npc_snapshot(target_npc_hold.slot, target_npc_hold.snapshot)
         target_npc_hold.frames = target_npc_hold.frames - 1
         if target_npc_hold.frames <= 0 then
             release_target_npc_hold("timer expired")
         end
     end
+    apply_target_face()
 end
 
 -- toggle_npc_freeze(): Toggle NPC position freeze on/off.
@@ -1097,6 +1137,10 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
         end
         return msg
     end
+    if result == "No path found" and no_path_reason == "npc_clutter" then
+        msg = msg .. ". Route is currently blocked by NPC movement. Wait for them to move and try again"
+        return msg
+    end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then
         if no_path_reason == "goal_blocked_npc" then
             msg = msg .. ". Chest tile is currently occupied by an NPC. Wait for it to move before auto-walking"
@@ -1172,14 +1216,42 @@ local function find_closed_door_frontier(map_id, start_x, start_y, blocking)
     return nil
 end
 
-local function infer_no_path_reason(map_id, start_x, start_y, blocking)
+local find_quiet_route_to_adjacent
+
+local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, path_mode, opts)
     if find_closed_door_frontier(map_id, start_x, start_y, blocking) then
         return "closed_door"
+    end
+    if obj and not (opts and opts.blocking) then
+        local npc_free_blocking = M.build_path_blocking(map_id, {skip_npcs = true})
+        local npc_free_path = nil
+        if path_mode == "adjacent" then
+            npc_free_path = find_quiet_route_to_adjacent(
+                map_id,
+                start_x,
+                start_y,
+                obj.x,
+                obj.y,
+                npc_free_blocking,
+                opts and opts.pathfinder_opts or nil)
+        else
+            npc_free_path = pathfinder.find_route_to(
+                map_id,
+                start_x,
+                start_y,
+                obj.x,
+                obj.y,
+                npc_free_blocking,
+                opts and opts.pathfinder_opts or nil)
+        end
+        if npc_free_path then
+            return "npc_clutter"
+        end
     end
     return nil
 end
 
-local function find_quiet_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, blocking, opts)
+function find_quiet_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, blocking, opts)
     local adj_tiles = {
         {x = goal_x,     y = goal_y - 1},
         {x = goal_x,     y = goal_y + 1},
@@ -1570,7 +1642,7 @@ local function plan_path_to_object(obj, opts)
         end
     end
     if result == "No path found" and no_path_reason == nil then
-        no_path_reason = infer_no_path_reason(map_id, px, py, blocking)
+        no_path_reason = infer_no_path_reason(map_id, px, py, blocking, obj, path_mode, opts)
     end
     local plan = {
         target = obj,
@@ -1669,7 +1741,10 @@ function M.autowalk_to_object(obj, opts)
     if autowalk_guard then
         local ok, reason = autowalk_guard()
         if ok == false then
-            debug_tools.info("AUTO_WALK: blocked before planning for " .. obj.name)
+            debug_tools.info(string.format(
+                "AUTO_WALK: blocked before planning for %s reason=%s",
+                tostring(obj.name),
+                tostring(reason or "unspecified")))
             if opts.speak ~= false then
                 tolk.output_interrupt(reason or "Cannot auto-walk right now")
             end
@@ -1802,10 +1877,22 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     local map_id = nav.get_position()
     local is_manual_block = (block_data and block_data.queued_route == false)
     local is_seam_retry_block = same_seam_retry(map_id, from_x, from_y, blocked_dir)
-    local source = is_seam_retry_block
-        and "seam_retry_block"
+    local is_npc_block, npc_x, npc_y = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
+    local source = is_npc_block
+        and "npc_block"
+        or (is_seam_retry_block and "seam_retry_block")
         or (is_manual_block and "manual_block" or "queued_route_block")
     local _, seam_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
+    if is_npc_block then
+        debug_tools.info(string.format(
+            "AUTO_WALK_NPC_BLOCK map=0x%02X from=(%d,%d) dir=%s npc=(%d,%d)",
+            map_id,
+            from_x or -1,
+            from_y or -1,
+            tostring(blocked_dir),
+            npc_x or -1,
+            npc_y or -1))
+    end
     if is_manual_block and not is_seam_retry_block then
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
         return
@@ -1829,6 +1916,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
 
     if plan.result == "No path found"
     and seam_class ~= "confirmed_blocked"
+    and not is_npc_block
     and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
         return
     end
@@ -1851,7 +1939,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
 
     if plan.result == "No path found" then
         event_bus.publish("route_cancelled", {
-            reason = "reroute_no_path",
+            reason = is_npc_block and "reroute_npc_block" or "reroute_no_path",
             target = last_pathfind_obj,
             map_id = map_id,
             from_x = from_x,
@@ -1859,7 +1947,11 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
             blocked_dir = blocked_dir,
         })
         clear_active_route_context("no path found on reroute", should_refresh_objects_after_route())
-        tolk.output_interrupt("No path found. Pathfinding cancelled.")
+        if is_npc_block then
+            tolk.output_interrupt("Route blocked by NPC movement. Wait for them to move and try again.")
+        else
+            tolk.output_interrupt("No path found. Pathfinding cancelled.")
+        end
         return
     end
 
