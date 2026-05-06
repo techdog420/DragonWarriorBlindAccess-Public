@@ -650,6 +650,23 @@ local MAP_BLOCKED_CELLS = {
 }
 
 -- ============================================================
+-- Per-Map Hazard Cell Overrides
+-- ============================================================
+-- These cells are engine-walkable but unsafe for autonomous movement.
+-- Keep them separate from MAP_BLOCKED_CELLS so logs and diagnostics do not
+-- misreport them as walls.
+--
+-- Format: MAP_HAZARD_CELLS[map_id]["x,y"] = "damage"
+local MAP_HAZARD_CELLS = {
+    [0x04] = {
+        -- 2026-05-05 playtest: stepping from (10,19) to (10,18) took 15 HP
+        -- and led directly into the "Thou art dead." sequence. Treat as
+        -- pathfinder-forbidden for normal auto-walk/teleport/auto-step use.
+        ["10,18"] = "damage",
+    },
+}
+
+-- ============================================================
 -- Per-Map Directional Block Overrides
 -- ============================================================
 -- Some cells are passable from certain directions but blocked from others
@@ -1191,11 +1208,20 @@ function M.is_permanently_blocked_override(map_id, x, y)
     return overrides and overrides[x .. "," .. y] or false
 end
 
+function M.is_hazard_cell(map_id, x, y)
+    local hazards = MAP_HAZARD_CELLS[map_id]
+    return hazards and hazards[x .. "," .. y] or false
+end
+
 function M.get_walkability_details(map_id, x, y)
     local details = lookup_walkability_base(map_id, x, y)
     if not details then return nil end
+    details.hazard = M.is_hazard_cell(map_id, x, y) or false
     details.permanent_blocked = M.is_permanently_blocked_override(map_id, x, y) and true or false
-    if details.permanent_blocked then
+    if details.hazard then
+        details.effective_walkable = false
+        details.reason = "hazard"
+    elseif details.permanent_blocked then
         details.effective_walkable = false
         details.reason = "permanent_blocked"
     end
@@ -1230,6 +1256,7 @@ function M.get_walkability_snapshot(map_id)
     local door_cells = MAP_DOOR_CELLS[map_id]
     local open_doors = door_cells and build_open_door_set() or nil
     local overrides = MAP_BLOCKED_CELLS[map_id]
+    local hazards = MAP_HAZARD_CELLS[map_id]
 
     for y = 0, meta.height - 1 do
         local row = {}
@@ -1249,6 +1276,9 @@ function M.get_walkability_snapshot(map_id)
                 walkable = tile_type ~= nil and walkable_table[tile_type] == true or false
             end
             if overrides and overrides[key] then
+                walkable = false
+            end
+            if hazards and hazards[key] then
                 walkable = false
             end
             row[x] = walkable

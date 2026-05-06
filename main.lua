@@ -29,6 +29,53 @@ if main_script_dir ~= "" then
     end
 end
 
+-- One-time reload migration: older objects.lua builds kept visited flags in a
+-- module-local table. Copy that table into reload_state before the module cache
+-- is cleared so the first source reload after this patch does not erase the
+-- player's current visited list.
+function _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD()
+    local old_objects = package.loaded["objects"]
+    if type(old_objects) ~= "table"
+       or type(old_objects.is_visited) ~= "function"
+       or type(debug) ~= "table"
+       or type(debug.getupvalue) ~= "function" then
+        return
+    end
+
+    local reload_state = rawget(_G, "DW_OBJECTS_RELOAD_STATE")
+    if type(reload_state) ~= "table" then
+        reload_state = {}
+        _G.DW_OBJECTS_RELOAD_STATE = reload_state
+    end
+    if type(reload_state.visited_by_map) == "table" then
+        return
+    end
+
+    local visited_bucket = nil
+    for i = 1, 20 do
+        local name, value = debug.getupvalue(old_objects.is_visited, i)
+        if not name then break end
+        if name == "visited_bucket" then
+            visited_bucket = value
+            break
+        end
+    end
+    if type(visited_bucket) ~= "function" then
+        return
+    end
+
+    for i = 1, 20 do
+        local name, value = debug.getupvalue(visited_bucket, i)
+        if not name then break end
+        if name == "visited_by_map" and type(value) == "table" then
+            reload_state.visited_by_map = value
+            return
+        end
+    end
+end
+_G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD()
+_G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
+
 -- BizHawk console/script reloads can re-run main.lua inside the same Lua
 -- state, leaving required project modules cached. Clear our modules before
 -- requiring them so a console reload actually picks up code changes.
@@ -801,9 +848,10 @@ DW_QOL_STATE.command_menu_blocks_field_movement = function()
     -- menu.is_open() is a raw COMMAND-header PPU match. After TALK or other
     -- dialogue transitions, COMMAND text can linger in nametable memory after
     -- the field menu has stopped being interactive. Movement/autowalk should
-    -- only be blocked by a live command-menu session, with the short cursor
-    -- hold bridging normal cursor blink gaps.
-    return cmd_menu_live and cmd_cursor_hold_frames > 0
+    -- only be blocked by a confirmed live command-menu session. The raw header
+    -- is safe once paired with cmd_menu_live, because TALK/menu-close paths
+    -- clear cmd_menu_live before stale PPU text can linger.
+    return cmd_menu_live and (cmd_cursor_hold_frames > 0 or menu.is_open())
 end
 
 DW_QOL_STATE.arm_talk_visit_marker = function()
@@ -814,7 +862,9 @@ DW_QOL_STATE.mark_pending_talk_visit = function(event)
     if not DW_QOL_STATE.pending_talk_visit then
         return
     end
-    if frame_count - DW_QOL_STATE.pending_talk_visit.frame > 240 then
+    local pending_age = frame_count - DW_QOL_STATE.pending_talk_visit.frame
+    if pending_age > 720 then
+        debug_tools.debug("VISITED_AUTO skipped: TALK marker expired age=" .. tostring(pending_age))
         DW_QOL_STATE.pending_talk_visit = nil
         return
     end
@@ -1029,6 +1079,7 @@ local function check_map_change()
     if changes.map_changed and changes.map_name then
         tolk.output(changes.map_name)
         debug_tools.on_map_change(snapshot.map_id)
+        objects.on_map_change(snapshot.map_id, {previous_map_id = changes.previous_map_id})
         event_bus.publish("map_changed", {map_id = snapshot.map_id})
         -- Clear pathfinding state (target, runtime blocks, NPC freeze).
         route_mgr.on_map_change()
@@ -1039,6 +1090,8 @@ local function check_map_change()
         -- never be re-established for the new map's different tile layout.
         y1_prev_player_x    = nil
         y1_baseline_pending = false
+    elseif game_state.state == state.STATE_FIELD then
+        objects.observe_npcs(snapshot.map_id)
     end
 end
 
@@ -1781,7 +1834,7 @@ end
 -- to cover the full depth of any window variant. The lowercase filter keeps
 -- only rows with real text — border tiles and map tiles decode to "" or
 -- uppercase and are silently dropped.
-local function read_y1_dialogue()
+local function read_y1_dialogue(dialogue_fallback)
     local py = snapshot.player_y
     -- Clamp so row numbers stay in valid nametable range (0-29).
     local text_row = math.max(0, 11 + 2 * py)
@@ -1792,7 +1845,18 @@ local function read_y1_dialogue()
             lines[#lines + 1] = decoded
         end
     end
-    return table.concat(lines, " ")
+    local result = table.concat(lines, " ")
+    if dialogue_fallback and dialogue_fallback:find("[a-z]")
+       and text.dialogue_score(dialogue_fallback) > text.dialogue_score(result) then
+        -- The fixed row formula covers the original row-1 guard cases, but
+        -- BizHawk scroll/base state can place text in the normal filtered
+        -- lower window instead, or can make the fixed scan catch only the
+        -- first line of a multi-line NPC message. Use the richer already-
+        -- filtered candidate so short TALK failures and moved-NPC dialogue
+        -- are not absorbed or truncated.
+        result = dialogue_fallback
+    end
+    return result
 end
 
 -- strip_noise(str): Remove runs of 4+ consecutive zero characters that
@@ -2225,7 +2289,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
         prev_dialogue = dialogue
         stable_frames = 0
         if at_y1 then
-            local y1_dialogue = read_y1_dialogue()
+            local y1_dialogue = read_y1_dialogue(dialogue)
             local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
             prev_clean_y1 = clean:match("^%s*(.-)%s*$") or ""
             clean_stable_frames = 0
@@ -2239,7 +2303,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
         -- rows with at least one lowercase letter — these are the rows with real
         -- response text. Then strip any remaining uppercase runs (e.g., if a row
         -- mixes a command label with part of the response on the same line).
-        local y1_dialogue = read_y1_dialogue()
+        local y1_dialogue = read_y1_dialogue(dialogue)
         local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
         clean = clean:match("^%s*(.-)%s*$") or ""
 
@@ -3647,6 +3711,12 @@ while true do
         }
         nav.check_for_changes()   -- Initialize map/position tracking
         menu.check_for_changes()  -- Initialize menu cursor tracking
+        if game_state.state == state.STATE_FIELD then
+            checked_call("objects.observe_npcs", objects.observe_npcs, snapshot.map_id)
+        end
+        if game_state.state ~= state.STATE_TITLE then
+            checked_call("objects.check_refresh", objects.check_refresh, snapshot.map_id)
+        end
 
         -- On the very last frame of the grace period, announce current
         -- state so the player knows where they are. Without this, the

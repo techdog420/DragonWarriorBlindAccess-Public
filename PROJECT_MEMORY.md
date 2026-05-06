@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-05
+Updated: 2026-05-06
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 
@@ -218,8 +218,16 @@ Emulator compatibility direction:
   override default allowlist changes, so a newly appended key binding can still
   be filtered out until the allowlist includes its setting name.
 - Visited flags live in `objects.lua` as session-only, map-scoped state. They
-  intentionally do not persist across script restarts yet; use
+  survive BizHawk source reloads through `_G.DW_OBJECTS_RELOAD_STATE`, but
+  still intentionally do not persist across full script restarts yet; use
   `clear_visited` and `clear_visited:all` for local cleanup during a playtest.
+  Auto-marking after TALK should not rely only on cached object-list
+  coordinates, because BizHawk normally disables periodic NPC object refreshes.
+  If a real dialogue appears and no cached adjacent NPC matches, fall back to
+  live NPC RAM slots and mark the stable `npc_N` id. Keep the pending TALK
+  marker alive long enough for slow dialogue stabilization; live logs showed a
+  valid NPC dialogue could arrive about 300 frames after TALK, so the marker
+  timeout is 720 frames and logs explicit expiry.
 - `auto_walk` is now a tester-facing feature, not only a debug hook. Long routes
   should provide periodic progress speech, completion should be spoken, and NPC
   targets may be held briefly after arrival so the player has time to use TALK.
@@ -230,12 +238,42 @@ Emulator compatibility direction:
   object coordinates while preserving the encoded sprite/facing/movement bits;
   snapshotting the live slot position can hold the NPC where it wandered and
   leave the planned TALK tile empty.
+- Auto-step must stay disabled for an active field command menu until the
+  session really closes. The cursor tile can blink or the cursor-hold timer can
+  expire while the menu remains open; treating that as walkable can turn menu
+  D-pad navigation into false runtime blocked tiles around the player. Pair raw
+  `COMMAND` header checks with a confirmed live menu-session flag, and clear
+  that flag on TALK/menu-close so stale PPU command text does not block field
+  movement afterward.
+- The y<=3 interior dialogue path should not trust only its fixed row formula.
+  BizHawk scroll/base state can place short TALK-failure text where the normal
+  filtered lower dialogue reader sees it, while `read_y1_dialogue()` scans an
+  empty row band. If the row-1 scan finds no lowercase text, fall back to the
+  already-filtered lower dialogue so failures such as `'There is no one there.`
+  are spoken instead of being absorbed into `prev_dialogue`. If both readers
+  see lowercase text, prefer the candidate with more lowercase content; moving
+  NPCs near the top of Brecconary produced a partial fixed-row read
+  (`Please, save us from`) while the normal lower-window reader can hold the
+  full multi-line message.
+- For object reachability, the `Reachable` pathability filter is geometry-only
+  and may ignore temporary live NPC occupancy by design. When auto-walk cannot
+  reach a target that the filter listed as reachable, infer the no-path reason
+  by checking whether an NPC-free route exists before using a generic
+  closed-door frontier hint. Otherwise castle maps with nearby locked doors can
+  mislabel temporary NPC clutter as "blocked by a closed door."
 - Manual/non-route blocked steps (`queued_route=false`) should remain seam
   diagnostics and should not be promoted into pathfinding runtime blockers.
   Manual walking into doors, NPC boxes, or odd seams can otherwise poison A*
   for later autowalks on the same map. Runtime blocker promotion should come
   from queued-route movement, seam-retry failure, survey/probe evidence, or
   explicit debug commands.
+- Engine-walkable hazard cells should be modeled separately from walls. The
+  first confirmed case is Tantegel Castle map `0x04` `(10,18)`, which manual
+  movement reached from `(10,19)` and immediately produced `Lost 15 HP. HP 0`
+  followed by the death sequence. Keep these cells pathfinder-forbidden and
+  prevent tap-to-step/queued auto-step from extending into them, but do not
+  mislabel them as permanent blockers because the player can still deliberately
+  walk onto them.
 - Queued-route blocks caused by live NPC occupancy are temporary clutter, not
   map geometry. Check the destination against current NPC RAM before
   seam-bruteforcing or promoting runtime blockers; if the destination is an
@@ -267,6 +305,16 @@ Emulator compatibility direction:
   `objects.check_refresh` calls could spike around 1.7-2.0 seconds. Explicit
   route/path/debug commands still call `objects.update_npcs()` when they need
   current live blockers.
+- Accepted NPC RAM signatures for map-entry object refresh must survive
+  BizHawk Lua reloads. `main.lua` clears `package.loaded["objects"]` on reload,
+  so `objects.lua` stores accepted signatures in `_G.DW_OBJECTS_RELOAD_STATE`.
+  Full object-list refresh is not enough because BizHawk disables periodic NPC
+  object rebuilds and NPCs can move between refresh and stairs use. `main.lua`
+  should call `objects.observe_npcs(map_id)` during normal gameplay frames and
+  reload grace so map entry can compare against the latest observed previous
+  map signature. The signature should mask off NPC direction/frame bits and
+  compare sprite/x/y coordinates, then hide NPCs on the destination map while
+  RAM still matches the map just left.
 - Selected-object teleport should avoid full object-list rebuilds on the hotkey
   path. Use direct live NPC RAM checks for "landing occupied" tests; a manual
   teleport retest found the apparent lost-keyboard state was actually a boxed-in
@@ -441,9 +489,13 @@ Latest BizHawk default validation:
   `$003D`/`MOVEMENT_SUBPIXEL` can change during a turn-in-place before the tile
   step is truly underway. If an early movement-start release later times out,
   timeout retry must reset `auto_movement_started` and the baseline subpixel so
-  the retry gets a real held direction. The safer BizHawk config now disables
-  quick turn-represses by default (`auto_step_turn_repress_limit=0`) and relies
-  on timeout retry for turn-only attempts.
+  the retry gets a real held direction. A later fresh-game playtest showed that
+  relying only on timeout retry made manual autostep feel like native held-key
+  movement, so the BizHawk config now allows one quick turn-only re-press by
+  default (`auto_step_turn_repress_limit=1`) while keeping the neutral-gap and
+  movement-start release guards. Because a turn-in-place can trigger a very
+  early subpixel change, `auto_step.lua` tracks the frame of the subpixel
+  change and still schedules the re-press when no tile move follows.
 - The Brecconary first-route `O`/`U` lag was mostly first-use map-grid/ROM-cache
   cost. Prewarming the current interior map grid during map-entry refresh moved
   that cost away from the first route, but later live castle play showed the
@@ -458,6 +510,14 @@ Latest BizHawk default validation:
   immediate object/NPC refresh after BizHawk route completion or cancellation by
   default (`bizhawk_route_cleanup_refresh_objects=false`). FCEUX keeps the old
   refresh, and BizHawk can opt back in for stale-object investigations.
+- Object caches must also honor explicit map-change events, not only
+  `objects.check_refresh()` noticing a different current map id. In normal play
+  the map id can change before NPC RAM has loaded the new map's NPC table.
+  `navigation.lua` exposes `previous_map_id`, and `main.lua` should pass it to
+  `objects.on_map_change(map_id, {previous_map_id=...})`. `objects.lua` should
+  keep accepted NPC RAM signatures by map; on map entry, if current NPC bytes
+  still match the previous map's accepted signature, keep NPCs hidden and retry
+  instead of publishing previous-map NPCs in the browser.
 - If King or other field Yes/No prompts speak a fragment of the previous page
   before the question, inspect the lower-window overlap handling before changing
   row decoding. `text.extract_new_dialogue()` owns the field overlap logic and
@@ -612,6 +672,9 @@ Brecconary/map `0x08`:
 - Latest reliable surveys showed no strong blocker candidates and no runtime blocks.
 - Remaining failures are clean gated/isolated object regions.
 - Existing permanent Brecconary fixes in `map_reader.lua` should be preserved unless better evidence appears.
+- First-town playtesting has not yet identified the actual inn keeper or
+  selling merchant among reachable TALK targets. Treat shop/inn support as a
+  service-discovery problem, not just a dialogue filter issue.
 
 Tantegel/castle/interior maps:
 - Confirm live map id before permanent edits.
@@ -645,8 +708,16 @@ Do not rely on assistant-local memory as the only record of important project st
 - Keep BizHawk memory adapter reads/writes behind `pcall` and fall back to the
   domain-backed `System Bus` API for ordinary CPU RAM. This keeps one flaky
   direct memory call from killing the whole Lua loop during startup or reload.
-- Once the Lua loop has crashed, `touch main.lua` is not enough to reload the
-  fix; the user must reload the script from BizHawk or relaunch the emulator.
+- Keep BizHawk adapter logging behind `pcall` too. A `Ctrl+W`-adjacent crash
+  showed `console.log()` itself can raise while the adapter is reporting a
+  memory fallback, so logging must fail closed and never become the fatal path.
+- If BizHawk briefly exposes no usable read/write memory API during reload or
+  window churn, the compatibility shim should fail closed for that frame:
+  return `0` for reads and drop writes after a one-time log instead of crashing
+  the Lua loop.
+- Once the Lua loop has crashed, `touch main.lua` is not reliable by itself.
+  Always pair it with a fresh launcher probe; if the probe does not arrive,
+  reload the script from BizHawk or relaunch the emulator.
 
 ## PPU Text And Scroll Lessons
 

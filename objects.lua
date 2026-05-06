@@ -24,6 +24,18 @@ local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 
 local M = {}
 
+local reload_state = rawget(_G, "DW_OBJECTS_RELOAD_STATE")
+if type(reload_state) ~= "table" then
+    reload_state = {}
+    _G.DW_OBJECTS_RELOAD_STATE = reload_state
+end
+if type(reload_state.accepted_npc_signature_by_map) ~= "table" then
+    reload_state.accepted_npc_signature_by_map = {}
+end
+if type(reload_state.visited_by_map) ~= "table" then
+    reload_state.visited_by_map = {}
+end
+
 -- ============================================================
 -- Object Type Constants
 -- ============================================================
@@ -315,7 +327,7 @@ end
 -- The current combined object list for this map
 local object_list = {}
 local static_object_cache = {}
-local visited_by_map = {}
+local visited_by_map = reload_state.visited_by_map
 
 -- The filtered view of the object list (what the player cycles through)
 local filtered_list = {}
@@ -340,10 +352,19 @@ local current_terrain_offset = nil
 -- Frame counter for periodic NPC position updates
 local npc_refresh_counter = 0
 local NPC_REFRESH_INTERVAL = 20  -- Re-read NPC positions every 20 frames (~0.33s)
+local MAP_ENTRY_NPC_REFRESH_CHECKS = 90
+local MAP_ENTRY_NPC_REFRESH_INTERVAL = 8
 
 -- When true, check_refresh() will rebuild the object list on the next call
 -- (after frameadvance has run and RAM reflects real NPC positions).
 local refresh_pending = false
+local refresh_defer_checks = 0
+local map_entry_stale_npc_signatures = nil
+local map_entry_npc_refresh_checks = 0
+local map_entry_npc_refresh_gap = 0
+local map_entry_force_accept_npcs = false
+local last_accepted_npc_signature = reload_state.last_accepted_npc_signature
+local accepted_npc_signature_by_map = reload_state.accepted_npc_signature_by_map
 
 local function active_map_id(map_id)
     if map_id ~= nil then return map_id end
@@ -395,6 +416,66 @@ local function prewarm_path_grid(map_id)
     end
 end
 
+local function read_npc_snapshot()
+    local parts = {}
+    local entries = {}
+    for i = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
+        local byte0 = memory.readbyte(base)
+        local byte1 = memory.readbyte(base + 1)
+        local y_only = byte1 % 0x20
+        parts[#parts + 1] = string.format(
+            "%02X%02X",
+            byte0,
+            y_only)
+        entries[#entries + 1] = {
+            slot = i,
+            byte0 = byte0,
+            byte1 = byte1,
+        }
+    end
+    return table.concat(parts, ""), entries
+end
+
+local function read_npc_signature()
+    local signature = read_npc_snapshot()
+    return signature
+end
+
+local function clear_map_entry_npc_retry()
+    map_entry_stale_npc_signatures = nil
+    map_entry_npc_refresh_checks = 0
+    map_entry_npc_refresh_gap = 0
+    map_entry_force_accept_npcs = false
+end
+
+local function remember_map_entry_stale_npc_signature(signature)
+    if signature == nil then return end
+    if map_entry_stale_npc_signatures == nil then
+        map_entry_stale_npc_signatures = {}
+    end
+    map_entry_stale_npc_signatures[signature] = true
+end
+
+local function is_map_entry_stale_npc_signature(signature)
+    return map_entry_stale_npc_signatures ~= nil
+        and map_entry_stale_npc_signatures[signature] == true
+end
+
+local function remember_accepted_npc_signature(map_id, signature)
+    if map_id == nil or signature == nil then return end
+    last_accepted_npc_signature = signature
+    reload_state.last_accepted_npc_signature = signature
+    accepted_npc_signature_by_map[map_id] = signature
+end
+
+function M.observe_npcs(map_id)
+    if map_id == nil or is_overworld_context() then
+        return
+    end
+    remember_accepted_npc_signature(map_id, read_npc_signature())
+end
+
 -- get_nearby_chests(px, py, max_dist): Return chests within max_dist
 -- Manhattan distance of (px, py), sorted closest first.
 -- Used by main.lua to identify which chest was just collected.
@@ -436,6 +517,17 @@ local function parse_npcs(map_id)
         return {}
     end
 
+    local current_signature, raw_entries = read_npc_snapshot()
+    if not map_entry_force_accept_npcs
+       and is_map_entry_stale_npc_signature(current_signature) then
+        return {}
+    end
+
+    remember_accepted_npc_signature(map_id, current_signature)
+    if map_entry_stale_npc_signatures ~= nil then
+        clear_map_entry_npc_retry()
+    end
+
     local npcs = {}
 
     -- Count occurrences of each sprite name for numbering duplicates.
@@ -444,10 +536,9 @@ local function parse_npcs(map_id)
     local entries = {}
 
     -- First pass: parse all valid NPC entries
-    for i = 0, addr.NPC_COUNT - 1 do
-        local base = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
-        local byte0 = memory.readbyte(base)
-        local byte1 = memory.readbyte(base + 1)
+    for _, raw in ipairs(raw_entries) do
+        local byte0 = raw.byte0
+        local byte1 = raw.byte1
 
         -- Extract fields using FCEUX bitwise operations
         local sprite_type = AND(byte0, 0xE0) / 32   -- bits 7-5 (divide by 32 = shift right 5)
@@ -472,7 +563,7 @@ local function parse_npcs(map_id)
                 y = y,
                 sprite_type = sprite_type,
                 base_name = name,
-                slot = i,  -- RAM slot index, useful as a stable ID
+                slot = raw.slot,  -- RAM slot index, useful as a stable ID
             }
         end
     end
@@ -898,9 +989,41 @@ function M.refresh(map_id, opts)
     pathability_status_by_id = {}
     npc_refresh_counter = 0
     refresh_pending = opts.defer_npcs == true
+    refresh_defer_checks = math.max(0, tonumber(opts.defer_checks) or 0)
+    map_entry_stale_npc_signatures = nil
+    remember_map_entry_stale_npc_signature(opts.stale_npc_signature)
+    map_entry_npc_refresh_checks = math.max(0, tonumber(opts.npc_refresh_checks) or 0)
+    map_entry_npc_refresh_gap = 0
+    map_entry_force_accept_npcs = false
     current_index = 1
     selected_id = nil  -- Clear selection on full refresh (new map)
     rebuild_filtered_list()
+end
+
+function M.on_map_change(map_id, opts)
+    opts = opts or {}
+    local entering_overworld = get_terrain_offset() == 0x00
+    local stale_npc_signature = nil
+    local npc_refresh_checks = 0
+    if not entering_overworld then
+        local current_signature = read_npc_signature()
+        local previous_map_id = opts.previous_map_id
+        if previous_map_id == nil and current_map_id ~= map_id then
+            previous_map_id = current_map_id
+        end
+        local previous_signature = previous_map_id and accepted_npc_signature_by_map[previous_map_id]
+            or last_accepted_npc_signature
+        if previous_signature ~= nil and current_signature == previous_signature then
+            stale_npc_signature = current_signature
+            npc_refresh_checks = MAP_ENTRY_NPC_REFRESH_CHECKS
+        end
+    end
+    M.refresh(map_id, {
+        skip_npcs = not entering_overworld,
+        defer_npcs = not entering_overworld,
+        stale_npc_signature = stale_npc_signature,
+        npc_refresh_checks = npc_refresh_checks,
+    })
 end
 
 -- update_npcs(): Re-read NPC positions from RAM without doing a full
@@ -927,6 +1050,7 @@ end
 function M.needs_refresh(map_id)
     local terrain_offset = get_terrain_offset()
     return refresh_pending
+        or map_entry_npc_refresh_checks > 0
         or map_id ~= current_map_id
         or terrain_offset ~= current_terrain_offset
 end
@@ -938,19 +1062,35 @@ function M.check_refresh(map_id)
 
     -- Full rebuild on map change
     if map_id ~= current_map_id or terrain_offset ~= current_terrain_offset then
-        local entering_overworld = terrain_offset == 0x00
-        M.refresh(map_id, {
-            skip_npcs = not entering_overworld,
-            defer_npcs = not entering_overworld,
-        })
+        M.on_map_change(map_id, {previous_map_id = current_map_id})
         return
     end
 
     -- Deferred rebuild requested by request_refresh()
     if refresh_pending then
+        if refresh_defer_checks > 0 then
+            refresh_defer_checks = refresh_defer_checks - 1
+            return
+        end
         refresh_pending = false
+        refresh_defer_checks = 0
         npc_refresh_counter = 0
         M.update_npcs()
+        return
+    end
+
+    if map_entry_npc_refresh_checks > 0 then
+        if map_entry_npc_refresh_gap > 0 then
+            map_entry_npc_refresh_gap = map_entry_npc_refresh_gap - 1
+            return
+        end
+        map_entry_npc_refresh_checks = map_entry_npc_refresh_checks - 1
+        map_entry_force_accept_npcs = map_entry_npc_refresh_checks <= 0
+        M.update_npcs()
+        map_entry_force_accept_npcs = false
+        if map_entry_stale_npc_signatures ~= nil and map_entry_npc_refresh_checks > 0 then
+            map_entry_npc_refresh_gap = MAP_ENTRY_NPC_REFRESH_INTERVAL
+        end
         return
     end
 
@@ -1168,7 +1308,9 @@ function M.clear_visited(map_id_or_all)
                 cleared = cleared + 1
             end
         end
-        visited_by_map = {}
+        for map_id in pairs(visited_by_map) do
+            visited_by_map[map_id] = nil
+        end
         return cleared
     end
 
@@ -1209,7 +1351,46 @@ function M.mark_adjacent_npc_visited(map_id, px, py)
             end
         end
     end
-    return M.mark_visited(best, map_id)
+    if best then
+        return M.mark_visited(best, map_id)
+    end
+
+    local selected_slot = nil
+    if selected and selected.id then
+        selected_slot = tonumber(tostring(selected.id):match("^npc_(%d+)$"))
+    end
+
+    local live_best = nil
+    local live_best_dist = nil
+    for slot = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+        local byte0 = memory.readbyte(base)
+        local byte1 = memory.readbyte(base + 1)
+        local x = AND(byte0, 0x1F)
+        local y = AND(byte1, 0x1F)
+        if not (x == 0 and y == 0) and not (x == 31 and y == 31) then
+            local dist = math.abs(x - px) + math.abs(y - py)
+            if dist <= 1 then
+                local id = "npc_" .. slot
+                local existing = M.find_object_by_id(id)
+                local candidate = existing or {
+                    id = id,
+                    type = M.TYPE_NPC,
+                    name = "NPC " .. (slot + 1),
+                    x = x,
+                    y = y,
+                }
+                if slot == selected_slot then
+                    return M.mark_visited(candidate, map_id)
+                end
+                if not live_best_dist or dist < live_best_dist or id < live_best.id then
+                    live_best = candidate
+                    live_best_dist = dist
+                end
+            end
+        end
+    end
+    return M.mark_visited(live_best, map_id)
 end
 
 -- get_blocking_positions(): Return a list of {x, y} for all objects that

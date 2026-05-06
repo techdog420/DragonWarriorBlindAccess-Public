@@ -1219,9 +1219,6 @@ end
 local find_quiet_route_to_adjacent
 
 local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, path_mode, opts)
-    if find_closed_door_frontier(map_id, start_x, start_y, blocking) then
-        return "closed_door"
-    end
     if obj and not (opts and opts.blocking) then
         local npc_free_blocking = M.build_path_blocking(map_id, {skip_npcs = true})
         local npc_free_path = nil
@@ -1247,6 +1244,9 @@ local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, pat
         if npc_free_path then
             return "npc_clutter"
         end
+    end
+    if find_closed_door_frontier(map_id, start_x, start_y, blocking) then
+        return "closed_door"
     end
     return nil
 end
@@ -2086,10 +2086,11 @@ end
 
 auto_step.on_route_cancelled = function(cancel_data)
     local reason = cancel_data and cancel_data.reason or "auto_step_cancelled"
+    local message = cancel_data and cancel_data.message
     local had_target = active_route_target or last_pathfind_obj
     clear_active_route_context("auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
     if had_target and reason ~= "can_walk_false" then
-        tolk.output_interrupt("Auto-walk cancelled. " .. tostring(reason))
+        tolk.output_interrupt("Auto-walk cancelled. " .. tostring(message or reason))
     end
 end
 

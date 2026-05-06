@@ -34,6 +34,10 @@ local compat_ok, emulator_compat = pcall(require, "emulator_compat")
 if not compat_ok then
     emulator_compat = nil
 end
+local map_reader_ok, map_reader = pcall(require, "map_reader")
+if not map_reader_ok then
+    map_reader = nil
+end
 
 local M = {}
 
@@ -103,6 +107,7 @@ local auto_turn_represses = 0
 local auto_inject_limit = nil
 local auto_start_subpixel = nil
 local auto_movement_started = false
+local auto_movement_start_frame = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
@@ -280,6 +285,7 @@ local function begin_step(dir, px, py, state)
     auto_inject_limit = state and state.inject_limit or get_inject_limit()
     auto_start_subpixel = read_movement_subpixel()
     auto_movement_started = false
+    auto_movement_start_frame = nil
     pending_repress = nil
     tracked_dir = nil
     debug_tools.debug(string.format(
@@ -338,6 +344,7 @@ local function reset_active_step()
     auto_inject_limit = nil
     auto_start_subpixel = nil
     auto_movement_started = false
+    auto_movement_start_frame = nil
     clear_pending_repress()
 end
 
@@ -455,6 +462,68 @@ local function consume_route_drift(px, py, source)
     end
 
     return matched, false
+end
+
+local function get_hazard_destination(dir, px, py)
+    if not map_reader or not map_reader.is_hazard_cell or px == nil or py == nil then
+        return nil
+    end
+    local map_id = nav.get_position()
+    local dx, dy = direction_delta(dir)
+    if dx == 0 and dy == 0 then
+        return nil
+    end
+    local dest_x = px + dx
+    local dest_y = py + dy
+    local hazard = map_reader.is_hazard_cell(map_id, dest_x, dest_y)
+    if not hazard then
+        return nil
+    end
+    return {
+        map_id = map_id,
+        x = dest_x,
+        y = dest_y,
+        hazard = hazard,
+    }
+end
+
+local function refuse_hazard_step(dir, px, py, source)
+    local hazard = get_hazard_destination(dir, px, py)
+    if not hazard then
+        return false
+    end
+    debug_tools.info(string.format(
+        "AUTO_STEP_REFUSED_HAZARD map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s source=%s queued_route=%s",
+        hazard.map_id or -1,
+        px or -1,
+        py or -1,
+        tostring(dir),
+        hazard.x or -1,
+        hazard.y or -1,
+        tostring(hazard.hazard),
+        tostring(source),
+        tostring(route_steps ~= nil)))
+    clear_direction_press_tracking()
+    if source == "pending_repress" then
+        clear_pending_repress()
+    end
+    if route_steps then
+        clear_route()
+        emit_route_cancelled({
+            reason = "dangerous_tile",
+            message = "Dangerous tile ahead",
+            current_x = px,
+            current_y = py,
+            dir = dir,
+            dest_x = hazard.x,
+            dest_y = hazard.y,
+            hazard = hazard.hazard,
+            source = source,
+        })
+    elseif source == "manual_tap" or source == "inject_step" then
+        tolk.output_interrupt("Dangerous tile ahead")
+    end
+    return true
 end
 
 -- ============================================================
@@ -592,6 +661,12 @@ function M.update(can_walk)
 
     if pending_repress and not auto_dir and cooldown <= 0 and not is_any_direction_pressed(joy) then
         debug_tools.debug("auto_step resume pending repress")
+        if refuse_hazard_step(pending_repress.dir, px, py, "pending_repress") then
+            for _, dir in ipairs(DIRECTIONS) do
+                prev_held[dir] = joy[dir] or false
+            end
+            return
+        end
         begin_step(pending_repress.dir, px, py, pending_repress)
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
@@ -669,6 +744,7 @@ function M.update(can_walk)
            and not auto_movement_started
            and current_subpixel ~= auto_start_subpixel then
             auto_movement_started = true
+            auto_movement_start_frame = auto_frames
             debug_tools.debug(string.format(
                 "auto_step movement started dir=%s from=(%d,%d) frame=%d subpixel=0x%02X->0x%02X queued_route=%s",
                 tostring(auto_dir),
@@ -683,7 +759,10 @@ function M.update(can_walk)
         -- issue a fresh press instead of waiting for the full blocked timeout.
         elseif auto_frames >= get_turn_repress_delay()
            and auto_turn_represses < get_turn_repress_limit()
-           and not auto_movement_started then
+           and (
+               not auto_movement_started
+               or (auto_movement_start_frame ~= nil and auto_movement_start_frame <= 4)
+           ) then
             debug_tools.debug(string.format(
                 "auto_step schedule turn repress dir=%s from=(%d,%d) frame=%d",
                 tostring(auto_dir), auto_start_x or -1, auto_start_y or -1, auto_frames))
@@ -700,6 +779,7 @@ function M.update(can_walk)
                 auto_inject_limit = get_inject_limit()
                 auto_start_subpixel = read_movement_subpixel()
                 auto_movement_started = false
+                auto_movement_start_frame = nil
                 joypad.set(1, {[auto_dir] = true})
                 debug_tools.debug(string.format(
                     "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d",
@@ -848,6 +928,12 @@ function M.update(can_walk)
         local next_dir = route_steps[route_index]
         if next_dir then
             route_index = route_index + 1
+            if refuse_hazard_step(next_dir, px, py, "queued_route") then
+                for _, dir in ipairs(DIRECTIONS) do
+                    prev_held[dir] = joy[dir] or false
+                end
+                return
+            end
             begin_step(next_dir, px, py)
             for _, dir in ipairs(DIRECTIONS) do
                 prev_held[dir] = joy[dir] or false
@@ -899,8 +985,10 @@ function M.update(can_walk)
                 if px == press_start_x and py == press_start_y then
                     -- Position didn't change — the tap was too short.
                     -- Start auto-holding this direction to complete the step.
-                    begin_step(tracked_dir, px, py)
-                    if DEBUG then tolk.output("auto-step " .. auto_dir) end
+                    if not refuse_hazard_step(tracked_dir, px, py, "manual_tap") then
+                        begin_step(tracked_dir, px, py)
+                        if DEBUG then tolk.output("auto-step " .. auto_dir) end
+                    end
                 end
             end
             -- Either way, stop tracking this press
@@ -925,7 +1013,11 @@ function M.inject_step(dir)
     local _, px, py = nav.get_position()
     clear_route()
     debug_tools.debug(string.format("auto_step inject_step dir=%s at=(%d,%d)", tostring(dir), px or -1, py or -1))
+    if refuse_hazard_step(dir, px, py, "inject_step") then
+        return false
+    end
     begin_step(dir, px, py)
+    return true
 end
 
 -- suppress_direction_tracking(frames): Temporarily ignore raw D-pad

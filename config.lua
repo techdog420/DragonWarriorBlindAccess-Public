@@ -81,7 +81,7 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_timeout", value = "45",   comment = "; Max frames to wait for step to complete (increase if steps aren't finishing)"},
     {key = "auto_step_inject_limit", value = "12", comment = "; Frames to hold each auto-step press before waiting for movement"},
     {key = "auto_step_turn_repress_delay", value = "18", comment = "; Frames before re-pressing after a turn-only attempt"},
-    {key = "auto_step_turn_repress_limit", value = "0", comment = "; Number of quick turn-only re-press attempts before timeout retries (0 = safer BizHawk default)"},
+    {key = "auto_step_turn_repress_limit", value = "1", comment = "; Number of quick turn-only re-press attempts before timeout retries"},
     {key = "auto_step_turn_repress_release_frames", value = "2", comment = "; Neutral frames between turn-only press and re-press"},
     {key = "auto_step_block_retry_limit", value = "1", comment = "; Internal retries before reporting a blocked step (lower reduces blocked-route audio hitches)"},
     {key = "auto_step_route_turn_settle_frames", value = "16", comment = "; Extra neutral frames before queued auto-walk changes direction"},

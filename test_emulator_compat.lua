@@ -281,6 +281,52 @@ function tests.mainmemory_read_failure_falls_back_to_system_bus()
     restore_globals()
 end
 
+function tests.console_log_failure_does_not_crash_memory_fallback()
+    setup_bizhawk({
+        ["System Bus"] = {
+            [0x0045] = 0x08,
+        },
+    }, {"System Bus"})
+    _G.console.log = function()
+        error("console closed")
+    end
+    _G.mainmemory.read_u8 = function()
+        error(69)
+    end
+
+    require "emulator_compat"
+
+    assert_equal(memory.readbyte(0x0045), 0x08, "console logging failure should not crash fallback memory reads")
+
+    restore_globals()
+end
+
+function tests.temporarily_unavailable_memory_read_returns_zero()
+    setup_bizhawk({}, {"System Bus"})
+    _G.mainmemory.read_u8 = nil
+    _G.memory.read_u8 = nil
+    _G.memory.readbyte = nil
+
+    require "emulator_compat"
+
+    assert_equal(memory.readbyte(0x0045), 0, "unavailable BizHawk memory reads should not crash the Lua loop")
+
+    restore_globals()
+end
+
+function tests.temporarily_unavailable_memory_write_is_ignored()
+    setup_bizhawk({}, {"System Bus"})
+    _G.mainmemory.write_u8 = nil
+    _G.memory.write_u8 = nil
+    _G.memory.writebyte = nil
+
+    require "emulator_compat"
+
+    memory.writebyte(0x0045, 0x08)
+
+    restore_globals()
+end
+
 function tests.ppu_source_probe_reads_direct_ppu_and_candidate_domains()
     setup_bizhawk({
         ["CIRAM"] = {

@@ -48,12 +48,14 @@ end
 --   map_changed (boolean): true if the map ID changed
 --   position_changed (boolean): true if X or Y changed
 --   map_name (string): name of current map (only if map_changed)
+--   previous_map_id: map ID from the previous frame
 -- Call this once per frame in the main loop.
 function M.check_for_changes()
     local map_id, x, y = M.get_position()
     local result = {
         map_changed = false,
         position_changed = false,
+        previous_map_id = M.prev_map_id,
     }
 
     -- Check if the map changed (player entered a new area)

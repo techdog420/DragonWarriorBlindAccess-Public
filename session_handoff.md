@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-05
+Updated: 2026-05-06
 
 ## Current Focus
 
@@ -104,6 +104,43 @@ Manual test finding from the auto-walk/TALK pass:
   more time. Failed TALK text no longer marks the adjacent NPC as visited.
 
 Latest manual playtest notes:
+- Ctrl+W crash follow-up: immediately after the user used `Ctrl+W`, the script
+  crashed with `2026-05-06T03:35:37Z snapshot.update: nil`. The stack pointed
+  at `emulator_compat.lua:174` inside `bizhawk_console.log()` while reporting a
+  `mainmemory.read_u8` fallback from `game_snapshot.update()`. `emulator_compat`
+  now wraps adapter logging in `pcall`, disables the console-log path after its
+  first failure, and falls back to protected `print`. The first reload then
+  surfaced a second transient `BizHawk memory read_u8/readbyte API is
+  unavailable` crash; the adapter now returns `0` for temporarily unavailable
+  reads and drops unavailable writes after logging once, instead of killing the
+  Lua loop. Validation passed:
+  `luac -p emulator_compat.lua test_emulator_compat.lua` and
+  `lua test_emulator_compat.lua` (14 tests). Live reload after the second fix
+  succeeded: `launcher_probe:memory_api_hardened` landed at frame `00060`, and
+  `speech_status` reported `backend=bridge ready=true`.
+- Future overworld QoL note: the user heard an NPC clue that crossing bridges
+  leads into more dangerous areas. This is a good later candidate for an
+  optional/subtle alert when the player crosses into a new encounter-strength
+  region or other invisible overworld danger boundary.
+- Brecconary service-discovery note: the user talked to every reachable
+  towns-person target and did not find the inn keeper or a true selling
+  merchant. Woman 3 mentioned she was near the shop. Next pass should inspect
+  whether shop/inn keepers are blocked targets, static/counter objects, or
+  missing from normal NPC/service registration.
+- Brecconary Guard 6 follow-up: after auto-walk reached Guard 6 in the
+  southwest/southeast guard pocket, the object browser recomputed pathability
+  as `targets=21 reachable=1 unreachable=20`, leaving only Guard 6 in the
+  reachable filter. This matches the known isolated guard-pocket behavior from
+  `handoff_archive/HANDOFF_2026-04-26_brecconary_stranded_start_abort.md` and
+  `HANDOFF_2026-04-27_brecconary_clean_post_35_survey.md`, not a stale object
+  scanner by itself. If continued play needs broad Brecconary routing, move the
+  player back to a viable central/open-town start before judging target
+  reachability.
+- Investigation note: a standalone Lua pathfinder probe accidentally loaded the
+  real `debug_tools.lua` once and reset `dw_debug.log` at local time
+  `2026-05-05 22:31:03`. Do not treat that fresh header as proof that the
+  emulator consumed commands; rely on later frame-bearing log lines or
+  `speech_bridge.log` for live evidence.
 - Live `Shift+O` follow-up: the first manual test did not reach
   `hotkeys.lua` because the existing checked-in `dw_access.ini`
   `bizhawk_keyboard_hotkey_allowlist` was an explicit override missing
@@ -287,6 +324,31 @@ Latest manual playtest notes:
   was blocked by the idle emulator loop, but after the user killed/restarted the
   script, the physical retest worked as expected: opening the command menu no
   longer speaks the last-used selection before TALK.
+- Death-square follow-up: manual movement found a damaging/death tile on map
+  `0x04` at `(10,18)`. The relevant log evidence is a manual/tap step from
+  `(10,19)` to `(10,18)`, followed by speech `Lost 15 HP. HP 0`, `Thou art
+  dead.`, and the normal Death King recovery dialogue. Treat this as a hazard
+  discovery, not an autowalk failure. `map_reader.lua` now models `(10,18)` as
+  an engine-walkable hazard, making snapshots/pathfinding/teleport walkability
+  avoid it, and `auto_step.lua` refuses tap-extension or queued-route injected
+  steps into known hazards while raw held manual movement remains player-owned.
+- Reachable-NPC dialogue pass: the user finished dialogue testing all
+  reachable NPCs in this part of Tantegel Castle. NPC traffic was still
+  annoying enough that Guard 1 was reached by teleport. The castle
+  merchant-labeled NPCs only offered dialogue in this pass; verify later
+  whether they ever sell before keeping them in the Services object filter.
+- First-town merchant dialogue follow-up: in Brecconary, `Merchant 1` also
+  offered dialogue only (`Please, save us from the minions of the Dragonlord.`)
+  while still appearing in Services. The first encounter at `(15,8)` spoke the
+  full line, but after the NPC moved near the top of town, the later encounters
+  at `(11,4)` logged/spoke only `Please,save us from`. Root cause is likely the
+  y<=3 special row reader catching only the first line and ignoring the richer
+  normal lower-window candidate. `read_y1_dialogue()` now compares the fixed
+  row scan against the already-filtered lower reader and uses the candidate
+  with more lowercase text. Validation passed (`luac -p main.lua text.lua
+  test_text.lua`, `lua test_text.lua`, `lua test_auto_step.lua`, and
+  `git diff --check` with the known `dw_access.ini` CRLF warning). This patch
+  has not been live-reloaded yet, to avoid interrupting active town autowalk.
 - Script-crash follow-up: the user reported the script acted funky, lagged,
   then crashed. `dw_debug.log` only had a fresh header, but
   `dw_script_error.log` showed `snapshot.update: 69` from
@@ -308,13 +370,95 @@ Latest manual playtest notes:
   `menu_raw=false menu_active=false lower=""`. This snapshot did not reproduce
   the silent command-menu/dialogue issue; capture the next bad state while the
   menu or dialogue is visibly up before patching parser logic.
-- The false-visited regression test through failed TALK now behaves correctly
+- Second-map stale object-browser follow-up: during normal fresh-game play,
+  entering map `0x04` from the throne room could leave old map `0x05` NPCs in
+  the current object browser until a later route/NPC-block check forced an NPC
+  refresh. The user narrowed the repro: a fresh Lua load transitions cleanly,
+  but after touching `main.lua` for a BizHawk reload, the old behavior returns.
+  The `ppu_dump.txt` capture from the stale state did not show the prior wrong
+  PPU-source failure; `ppu.readbyte` and `CIRAM (nametables)` agreed for the
+  decoded rows. Root cause is reload/transition state instead. The first
+  signature patch fixed only the current-map list after reload; the user's
+  follow-up proved the next transition still accepted previous-map NPC RAM
+  after those NPCs had moved or changed facing. `objects.lua` now stores
+  signatures in `_G.DW_OBJECTS_RELOAD_STATE`, masks off NPC direction/frame
+  bits, and exposes `observe_npcs(map_id)` so `main.lua` records the latest
+  current-map NPC coordinate signature during normal frames and reload grace.
+  On map entry, if NPC RAM still matches the just-observed previous map, the
+  browser hides NPCs and retries until RAM changes instead of publishing old
+  King/guard or castle entries as current-map objects. Live reload sanity check
+  after this second patch: `launcher_probe:object_observe_field_only_patch`
+  landed at frame `00060`; on map `0x04`, `current_object` reported a clean
+  30-object castle list. User physical retest then confirmed the actual
+  post-reload stairs-transition case: map `0x05` shows 4 NPCs, and map `0x04`
+  shows 20 NPCs.
+- Visited-after-TALK follow-up: live first-town logs showed a real TALK
+  dialogue at frame `18346`, followed by
+  `VISITED_AUTO skipped: no adjacent NPC matched TALK dialogue`. The TALK
+  marker was armed correctly; the miss came from `objects.mark_adjacent_npc_visited()`
+  using cached object-list coordinates while BizHawk periodic NPC object
+  refresh is disabled. `objects.lua` now falls back to live NPC RAM slots when
+  no cached adjacent NPC matches, marking the same stable `npc_N` id so the
+  browser shows the NPC as visited once the object list catches up. Live reload
+  probe `launcher_probe:visited_live_npc_patch` landed at frame `00060`.
+- Guard 1/menu-open false-block follow-up: while testing reachable NPCs on map
+  `0x04`, Guard 1 completed at `(18,2)`, then later route attempts from that
+  tile recorded false runtime blocks at `(18,1)`, `(17,2)`, and `(18,3)` while
+  the field command menu was still open. That boxed object pathability into
+  `reachable=0`. `command_menu_blocks_field_movement()` now keeps blocking
+  auto-step for a confirmed live command-menu session while either the cursor
+  hold is fresh or the raw COMMAND header is still open; TALK/menu-close paths
+  still clear the live-session flag before stale PPU text can linger. The live
+  session was unboxed with `clear_blocked_tiles:0x04` (`count=3`), reloaded with
+  `launcher_probe:guard1_menu_gate_patch`, and verified at `(18,2)` with
+  `PATH_STATE ... runtime_count=0`.
+- Guard 1/TALK-failure silence follow-up: immediately afterward, the user's
+  failed TALK at `(18,2)` did render lower dialogue, but nothing spoke it.
+  `report_upper_dialogue_state` captured `lower="'There is no one there."`,
+  `prev_lower` equal to the same text, and `announced_lower=""`; the normal
+  filtered lower reader saw the text, but the y<=3 row-1 cleaned dialogue path
+  scanned the wrong rows for this BizHawk scroll/base state and treated the
+  message as empty forever. `read_y1_dialogue()` now accepts the already
+  filtered lower dialogue as a fallback when its fixed-row scan finds no
+  lowercase text. Important live note: the first attempted patch briefly pushed
+  `main.lua` over Lua 5.1's 200-local limit, and BizHawk appears to have
+  stopped polling before the corrected patch could reload. The file is fixed,
+  `luac -p main.lua` passes, and later live source-reload probes have
+  succeeded.
+- Delayed-dialogue visited follow-up: the user noticed visited flags were most
+  likely to miss when NPC dialogue took a while to read. Logs confirmed it:
+  the first Person 1 TALK armed the marker, then the real dialogue arrived
+  about 299 frames later, after the old 240-frame pending marker expired, so no
+  `VISITED_AUTO` line was emitted. A later faster repeat of the same dialogue
+  did mark Person 1. `main.lua` now keeps pending TALK visits for 720 frames
+  and logs explicit expiry; `objects.lua` stores `visited_by_map` in
+  `_G.DW_OBJECTS_RELOAD_STATE`, and `main.lua` migrates the old module-local
+  visited table before clearing cached modules so the first hot reload after
+  this patch should not wipe the current playtest's visited flags. Live reload
+  probe `launcher_probe:talk_visit_timeout_patch` landed at frame `00060`.
+- Person 1 reachable-filter/no-path hint follow-up: live castle logs showed
+  Person 1 in `NPCs, reachable`, then auto-walk failed with the closed-door
+  hint. The planner itself was not treating Person 1 as truly isolated: the
+  reachability filter is intentionally geometry-only and ignores live NPC
+  occupancy, while the failed route had already logged an `AUTO_WALK_NPC_BLOCK`.
+  The bad part was `infer_no_path_reason()` preferring any nearby
+  closed-door frontier before checking whether an NPC-free route exists, so a
+  temporary NPC-clutter no-path could be narrated as "blocked by a closed door."
+  `route_manager.lua` now checks the NPC-free route first and only falls back
+  to the closed-door hint when NPC clutter is not the better explanation.
+  Regression: `autowalk_npc_clutter_hint_takes_precedence_over_nearby_closed_door`.
+  Live caveat: after reloading `launcher_probe:person1_hint_patch`, a probe
+  `auto_walk` hit the post-reload selected object (`Exit to World Map`) instead
+  of Person 1 and moved the player from `(13,20)` to `(11,28)`. Runtime blocks
+  are clear (`PATH_STATE ... runtime_count=0`), but do not treat that accidental
+  route as a Person 1 physical retest.
+- The false-visited regression test through failed TALK still behaves correctly
   in manual testing.
-- Current investigation target: no active blocker at wrap-up. The King
-  dialogue/Yes-No/farewell path is fixed in manual testing, and the command-menu
-  opening debounce passed the user's physical retest after a script restart.
-  Next session should resume normal early-game playtesting and capture any new
-  narration/pathfinding issues from live play.
+- Current investigation target: no active blocker at wrap-up. The stale
+  object-browser reload/transition fix is confirmed by user retest, the NPC
+  clutter hint is corrected, and the delayed-dialogue visited fix is live after
+  a probe-only reload. Continue normal playtesting and watch whether the next
+  slow NPC dialogue emits `VISITED_AUTO`.
 
 Validation already run for this batch:
 - 2026-05-05 Codex-first tooling refresh validation:
@@ -340,6 +484,40 @@ Validation already run for this batch:
   `lua test_auto_step.lua`, `git diff --check`, and
   `python3 run_tests.py --allow-missing-speech-dep` passed with the known WSL
   `accessible_output2` warning and `cmd: not found` speech-bridge noise.
+- 2026-05-05 autostep/object-browser follow-up validation: `luac -p
+  auto_step.lua objects.lua main.lua navigation.lua test_auto_step.lua
+  test_objects.lua config.lua`, `lua test_auto_step.lua`,
+  `lua test_objects.lua`, and `git diff --check` passed. `git diff --check`
+  still prints the known `dw_access.ini` CRLF warning.
+- 2026-05-06 object-browser reload follow-up validation: `luac -p
+  objects.lua main.lua navigation.lua test_objects.lua test_auto_step.lua
+  config.lua`, `lua test_objects.lua`, `lua test_auto_step.lua`, and
+  `git diff --check` passed. `git diff --check` still prints the known
+  `dw_access.ini` CRLF warning. New regression coverage includes observed
+  previous-map NPC signatures surviving an `objects.lua` module reload, plus
+  direction/frame-bit-only NPC changes. Live `touch main.lua` plus
+  `launcher_probe:object_observe_field_only_patch` passed, and `current_object`
+  reported the clean map `0x04` 30-object list after reload.
+- 2026-05-06 visited-auto live-RAM follow-up validation: `luac -p
+  objects.lua test_objects.lua main.lua`, `lua test_objects.lua`,
+  `lua test_auto_step.lua`, live `touch main.lua` plus
+  `launcher_probe:visited_live_npc_patch`, and `git diff --check` passed.
+  `git diff --check` still prints the known `dw_access.ini` CRLF warning.
+- 2026-05-06 delayed-dialogue visited follow-up validation: `luac -p
+  main.lua objects.lua test_objects.lua test_route_manager.lua`,
+  `lua test_objects.lua`, `lua test_route_manager.lua`, live source reload
+  with `launcher_probe:talk_visit_timeout_patch`, and `git diff --check`
+  passed. `git diff --check` still prints the known `dw_access.ini` CRLF
+  warning. Regression coverage includes visited flags surviving an
+  `objects.lua` module reload and staying cleared after `clear_visited:all`.
+- 2026-05-06 death-square hazard follow-up validation: `luac -p
+  map_reader.lua auto_step.lua route_manager.lua test_map_reader.lua
+  test_auto_step.lua`, `lua test_map_reader.lua`, `lua test_auto_step.lua`,
+  `lua test_route_manager.lua`, and `git diff --check` passed. `git diff
+  --check` still prints the known `dw_access.ini` CRLF warning. Live source
+  reload with `launcher_probe:hazard_patch` landed at frame `00060`; the log
+  reset cleanly, and `dw_script_error.log` had no new entry beyond older known
+  crashes.
 - 2026-05-05 reload-cache/diagnostic follow-up validation:
   `luac -p main.lua route_manager.lua test_route_manager.lua`,
   `lua test_route_manager.lua`, `lua test_menu.lua`, `lua test_auto_step.lua`,
@@ -813,11 +991,17 @@ Important clues:
   is clipping as `out_of_bounds`, using a passthrough, or reading ordinary tile
   data.
 - Latest 2026-04-30 quick-slot-1 follow-up: `auto_step.lua` now resets
-  movement-start tracking on timeout retry and the default config sets
-  `auto_step_turn_repress_limit=0`, avoiding the eager turn-repress path that
-  created false blocked steps. In the live Brecconary route to Person 2,
-  auto-walk reached `(10,15)` with neutral input and did not reproduce the old
-  route-settle drift points.
+  movement-start tracking on timeout retry and the later route-settle fixes
+  neutralize route-owned input after the inject window. A 2026-05-05 fresh-game
+  playtest then showed manual movement/autostep feeling too native and
+  timeout-retry heavy, so the default config is back to
+  `auto_step_turn_repress_limit=1`. A follow-up log showed the remaining slow
+  taps were often early `$003D` subpixel changes from turn-in-place animation;
+  `auto_step.lua` now records the frame of the subpixel change and still
+  schedules the quick re-press when that change happened very early and no tile
+  move followed. Watch future routes for the older false block / route-settle
+  drift signatures, but the neutral gap and movement-start release guards
+  should keep this safer than the original eager re-press path.
 - `objects.lua` previously prewarmed the current interior map grid during
   map-entry refresh to avoid a 1.7-1.9 second first-route spike. As of
   2026-05-05, that prewarm is disabled by default under BizHawk because live

@@ -177,6 +177,8 @@ local function dialogue_score(dialogue)
     return score
 end
 
+M.dialogue_score = dialogue_score
+
 local function read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
     start_row = start_row or 19
     local lines = {}

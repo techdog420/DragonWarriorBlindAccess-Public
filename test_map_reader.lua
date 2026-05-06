@@ -216,6 +216,41 @@ function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
     env.restore()
 end
 
+function tests.tantegel_castle_death_tile_is_modeled_as_hazard()
+    local data_start = 0x110
+    local rom_bytes = {
+        [20] = 0x00,
+        [21] = 0x81,
+        [22] = 29,
+        [23] = 29,
+        [24] = 0,
+    }
+    for i = 0, 56 do
+        rom_bytes[data_start + i] = 0x4F
+    end
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    assert_equal(env.map_reader.is_hazard_cell(0x04, 10, 18), "damage", "(10,18) should be tracked as a damage hazard")
+
+    local details = env.map_reader.get_walkability_details(0x04, 10, 18)
+    assert_equal(details.base_walkable, true, "(10,18) should remain engine-walkable in the base model")
+    assert_equal(details.hazard, "damage", "(10,18) should report the hazard type")
+    assert_equal(details.effective_walkable, false, "(10,18) should be forbidden for pathfinding")
+    assert_equal(details.reason, "hazard", "(10,18) should report hazard rather than wall/permanent_blocked")
+    assert_equal(env.map_reader.is_walkable(0x04, 10, 18), false, "(10,18) should not be pathfinder-walkable")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x04)
+    assert_equal(snapshot[18][10], false, "walkability snapshot should exclude the death tile")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_west_wing_boundary_cell_is_fully_blocked()
     local env = make_env()
 

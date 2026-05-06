@@ -1264,6 +1264,35 @@ function tests.autowalk_no_path_mentions_npc_clutter_when_npc_free_route_exists(
     env.restore()
 end
 
+function tests.autowalk_npc_clutter_hint_takes_precedence_over_nearby_closed_door()
+    local env = make_env({
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        blocking_positions = {
+            {x = 5, y = 3},
+        },
+        closed_door_cells = {
+            ["6,4"] = true,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(
+        output,
+        "Route is currently blocked by NPC movement",
+        "npc-free route evidence should beat a generic closed-door frontier"
+    )
+    assert_not_contains(
+        output,
+        "Route is blocked by a closed door",
+        "closed-door hint should not override a live NPC clutter explanation"
+    )
+
+    env.restore()
+end
+
 function tests.autowalk_falls_back_to_adjacent_for_chest_when_direct_fails()
     local env = make_env({pathfind_mode = "direct_no_path_adjacent_ok"})
 

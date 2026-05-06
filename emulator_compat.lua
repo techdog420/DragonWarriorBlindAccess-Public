@@ -168,12 +168,19 @@ function M.clear_ppu_cache()
     M.ppu_stats.cache_flushes = M.ppu_stats.cache_flushes + 1
 end
 
+local bizhawk_console_log_failed = false
+
 local function log_message(message)
     message = tostring(message or "")
-    if bizhawk_console and bizhawk_console.log then
-        bizhawk_console.log(message)
-    elseif print then
-        print(message)
+    if bizhawk_console and bizhawk_console.log and not bizhawk_console_log_failed then
+        local ok = pcall(bizhawk_console.log, message)
+        if ok then
+            return
+        end
+        bizhawk_console_log_failed = true
+    end
+    if print then
+        pcall(print, message)
     end
 end
 
@@ -222,6 +229,8 @@ local is_cart_work_ram_address
 local read_cart_work_ram_byte
 local write_cart_work_ram_byte
 local direct_memory_failure_logged = {}
+local memory_read_unavailable_logged = false
+local memory_write_unavailable_logged = false
 
 local function call_number_api(label, fn, ...)
     local ok, value = pcall(fn, ...)
@@ -287,7 +296,11 @@ local function read_u8(address)
             return value
         end
     end
-    error("BizHawk memory read_u8/readbyte API is unavailable")
+    if not memory_read_unavailable_logged then
+        log_message("BizHawk memory read_u8/readbyte API is unavailable; returning 0 until it recovers")
+        memory_read_unavailable_logged = true
+    end
+    return 0
 end
 
 local function write_u8(address, value)
@@ -317,7 +330,10 @@ local function write_u8(address, value)
             return
         end
     end
-    error("BizHawk memory write_u8/writebyte API is unavailable")
+    if not memory_write_unavailable_logged then
+        log_message("BizHawk memory write_u8/writebyte API is unavailable; dropping writes until it recovers")
+        memory_write_unavailable_logged = true
+    end
 end
 
 memory = {

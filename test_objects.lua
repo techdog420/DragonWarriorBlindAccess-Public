@@ -7,6 +7,7 @@ local original_memory = _G.memory
 local original_rom = _G.rom
 local original_and = _G.AND
 local original_emulator_compat = _G.DW_EMULATOR_COMPAT
+local original_object_reload_state = _G.DW_OBJECTS_RELOAD_STATE
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -35,6 +36,8 @@ local function make_env(options)
         save_module(name)
         package.loaded[name] = nil
     end
+
+    _G.DW_OBJECTS_RELOAD_STATE = {}
 
     local npc_ram = {
         [0] = 0x25, -- sprite type 1 (Guard), x=5
@@ -153,12 +156,18 @@ local function make_env(options)
         get_tile_grid_calls = function()
             return tile_grid_calls
         end,
+        reload_objects = function()
+            package.loaded["objects"] = nil
+            objects = require "objects"
+            return objects
+        end,
         restore = function()
             restore_modules(module_names)
             _G.memory = original_memory
             _G.rom = original_rom
             _G.AND = original_and
             _G.DW_EMULATOR_COMPAT = original_emulator_compat
+            _G.DW_OBJECTS_RELOAD_STATE = original_object_reload_state
         end,
     }
 end
@@ -255,6 +264,164 @@ function tests.deferred_map_entry_refresh_is_visible_to_main_loop()
     env.objects.check_refresh(0x08)
     assert_equal(env.objects.get_count(), 1, "next refresh should populate active town NPCs")
     assert_equal(env.objects.needs_refresh(0x08), false, "settled object list should return to periodic refresh timing")
+
+    env.restore()
+end
+
+function tests.map_change_event_refreshes_even_when_map_id_matches_current_cache()
+    local env = make_env()
+
+    env.set_position(0x04, 10, 10)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+    assert_equal(env.objects.current_object().x, 5, "test should start with the original map NPC")
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    env.objects.on_map_change(0x04)
+    assert_equal(env.objects.get_count(), 0, "map-change event should clear stale NPCs immediately")
+
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 1, "next check should populate NPCs from the new map context")
+    assert_equal(env.objects.current_object().x, 10, "refreshed NPC x should come from current RAM")
+    assert_equal(env.objects.current_object().y, 9, "refreshed NPC y should come from current RAM")
+
+    env.restore()
+end
+
+function tests.map_entry_rejects_previous_map_npc_signature_until_ram_changes()
+    local env = make_env()
+
+    env.set_position(0x05, 8, 8)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x05)
+    env.objects.next_filter()
+    assert_equal(env.objects.current_object().x, 5, "test should start with previous-map NPC RAM accepted")
+
+    env.set_position(0x04, 7, 7)
+    env.objects.on_map_change(0x04, {previous_map_id = 0x05})
+    assert_equal(env.objects.get_count(), 0, "map entry should clear NPCs while RAM still matches the previous map")
+
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 0, "deferred refresh should not parse byte-identical previous-map NPC RAM")
+    assert_equal(env.objects.needs_refresh(0x04), true, "stale NPC RAM should keep the map-entry refresh active")
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 1, "changed NPC RAM should populate the new map")
+    assert_equal(env.objects.current_object().x, 10, "new map NPC x should come from changed RAM")
+    assert_equal(env.objects.current_object().y, 9, "new map NPC y should come from changed RAM")
+    assert_equal(env.objects.needs_refresh(0x04), false, "settled NPC RAM should end the map-entry retry")
+
+    env.restore()
+end
+
+function tests.map_entry_npc_signature_survives_objects_module_reload()
+    local env = make_env()
+
+    env.set_position(0x05, 8, 8)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x05)
+    env.objects.next_filter()
+    assert_equal(env.objects.current_object().x, 5, "test should start with previous-map NPC RAM accepted")
+
+    env.objects = env.reload_objects()
+
+    env.set_position(0x04, 7, 7)
+    env.objects.on_map_change(0x04, {previous_map_id = 0x05})
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "reloaded object module should still reject stale previous-map NPC RAM")
+
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 0, "reloaded deferred refresh should keep rejecting byte-identical previous-map NPC RAM")
+    assert_equal(env.objects.needs_refresh(0x04), true, "reloaded stale NPC RAM should keep the map-entry refresh active")
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 1, "changed NPC RAM should populate the new map after a module reload")
+    assert_equal(env.objects.current_object().x, 10, "new map NPC x should come from changed RAM after reload")
+    assert_equal(env.objects.current_object().y, 9, "new map NPC y should come from changed RAM after reload")
+
+    env.restore()
+end
+
+function tests.map_entry_rejects_observed_previous_map_signature_after_reload()
+    local env = make_env()
+
+    env.set_position(0x05, 8, 8)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x05)
+    env.objects.next_filter()
+    assert_equal(env.objects.current_object().x, 5, "test should start with previous-map NPC RAM accepted")
+
+    env.set_npc(0, 0x26, 0x07) -- previous-map NPC moved after the object list was built
+    env.objects.observe_npcs(0x05)
+    env.objects = env.reload_objects()
+
+    env.set_position(0x04, 7, 7)
+    env.objects.on_map_change(0x04, {previous_map_id = 0x05})
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "reloaded map entry should reject the latest observed previous-map NPC RAM")
+
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 0, "observed previous-map NPC RAM should stay hidden until RAM changes")
+
+    env.set_npc(0, 0x2A, 0x09) -- x=10, y=9 with sprite type 1
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 1, "changed NPC RAM should populate after observed stale RAM clears")
+    assert_equal(env.objects.current_object().x, 10, "new map NPC x should come from changed RAM")
+    assert_equal(env.objects.current_object().y, 9, "new map NPC y should come from changed RAM")
+
+    env.restore()
+end
+
+function tests.map_entry_signature_ignores_npc_direction_bits()
+    local env = make_env()
+
+    env.set_position(0x05, 8, 8)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x05)
+    env.objects.next_filter()
+    assert_equal(env.objects.current_object().y, 7, "test should start with previous-map NPC RAM accepted")
+
+    env.set_npc(0, 0x25, 0x47) -- same y=7, changed facing bits
+    env.set_position(0x04, 7, 7)
+    env.objects.on_map_change(0x04, {previous_map_id = 0x05})
+    assert_equal(env.objects.get_count(), 0, "direction-only NPC RAM changes should still be treated as previous-map stale RAM")
+
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 0, "direction-only stale NPC RAM should stay hidden until coordinates change")
+
+    env.set_npc(0, 0x2A, 0x09)
+    env.objects.check_refresh(0x04)
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 1, "changed NPC coordinates should populate the new map")
+
+    env.restore()
+end
+
+function tests.startup_object_refresh_primes_previous_map_signature()
+    local env = make_env()
+
+    env.set_position(0x05, 8, 8)
+    env.set_terrain_offset(0x10)
+    env.objects.check_refresh(0x05)
+    env.objects.check_refresh(0x05)
+    env.objects.next_filter()
+    assert_equal(env.objects.current_object().x, 5, "startup object refresh should accept the current map NPC RAM")
+
+    env.set_position(0x04, 7, 7)
+    env.objects.on_map_change(0x04, {previous_map_id = 0x05})
+    env.objects.all_filter()
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "primed signature should reject stale NPC RAM after a quick stairs transition")
+
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 0, "deferred quick-transition refresh should still suppress stale NPC RAM")
+
+    env.set_npc(0, 0x2A, 0x09)
+    env.objects.check_refresh(0x04)
+    assert_equal(env.objects.get_count(), 1, "changed NPC RAM should populate after the startup-primed transition")
 
     env.restore()
 end
@@ -466,6 +633,57 @@ function tests.visited_flags_are_map_scoped_and_clearable()
     env.objects.next_filter()
     assert_equal(env.objects.clear_visited(), 1, "clear_visited should return the count cleared for the current map")
     assert_equal(env.objects.is_visited(env.objects.current_object()), false, "clear_visited should remove the current map flag")
+
+    env.restore()
+end
+
+function tests.visited_flags_survive_objects_module_reload()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 5)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+
+    local obj = env.objects.current_object()
+    env.objects.mark_current_visited()
+
+    env.objects = env.reload_objects()
+    assert_equal(env.objects.is_visited(obj, 0x08), true, "visited flag should survive a source reload")
+
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+    assert_equal(
+        env.objects.describe_current({include_debug_coords = false}),
+        "Guard (visited): 2 south (1 of 1)",
+        "reloaded object descriptions should keep the visited flag")
+
+    assert_equal(env.objects.clear_visited("all"), 1, "clear_visited all should clear the reload-persistent visit")
+    env.objects = env.reload_objects()
+    assert_equal(env.objects.is_visited(obj, 0x08), false, "cleared visits should stay cleared after reload")
+
+    env.restore()
+end
+
+function tests.talk_visit_marker_uses_live_npc_ram_when_object_list_position_is_stale()
+    local env = make_env()
+
+    env.set_position(0x04, 10, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+    local obj = env.objects.current_object()
+    assert_equal(obj.id, "npc_0", "test should start with the NPC selected")
+    assert_equal(obj.x, 5, "test object-list NPC should start away from the player")
+
+    env.set_npc(0, 0x2A, 0x08) -- x=10, y=8, adjacent north of player
+    local marked = env.objects.mark_adjacent_npc_visited(0x04, 10, 9)
+    assert_equal(marked.id, "npc_0", "live adjacent NPC slot should be marked even when cached coordinates are stale")
+    assert_equal(env.objects.is_visited(obj, 0x04), true, "visited flag should apply to the cached object with the same NPC slot id")
+    assert_equal(
+        env.objects.describe_current({include_debug_coords = false}),
+        "Guard (visited): 2 north, 5 west (1 of 1)",
+        "stale cached object should show visited once its live slot was marked")
 
     env.restore()
 end

@@ -20,6 +20,7 @@ end
 
 local function make_env(opts)
     opts = opts or {}
+    local map_id = opts.map_id or 0x05
     local px, py = 3, 1
     local frame = 0
     local injected = {}
@@ -35,6 +36,7 @@ local function make_env(opts)
         "debug_tools",
         "emulator_compat",
         "event_bus",
+        "map_reader",
         "navigation",
         "tolk",
     }
@@ -88,10 +90,19 @@ local function make_env(opts)
         }
     end
 
+    package.preload["map_reader"] = function()
+        return {
+            is_hazard_cell = function(mid, x, y)
+                local by_map = opts.hazard_cells and opts.hazard_cells[mid]
+                return by_map and by_map[x .. "," .. y] or false
+            end,
+        }
+    end
+
     package.preload["navigation"] = function()
         return {
             get_position = function()
-                return 0x05, px, py
+                return map_id, px, py
             end,
         }
     end
@@ -332,6 +343,73 @@ function tests.manual_auto_step_neutralizes_after_inject_window_when_released()
     env.restore()
 end
 
+function tests.manual_auto_step_refuses_known_hazard_destination()
+    local env = make_env({
+        map_id = 0x04,
+        hazard_cells = {
+            [0x04] = {["10,18"] = "damage"},
+        },
+    })
+    env.set_position(10, 19)
+
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        not env.auto_step.is_auto_active(),
+        "manual tap-to-step should not auto-hold into a known hazard"
+    )
+    for frame, buttons in pairs(env.injected) do
+        assert_truthy(
+            not has_any_direction(buttons),
+            string.format("hazard refusal should not inject D-pad input at frame %d", frame)
+        )
+    end
+
+    env.restore()
+end
+
+function tests.queued_route_cancels_before_known_hazard_destination()
+    local env = make_env({
+        map_id = 0x04,
+        hazard_cells = {
+            [0x04] = {["10,18"] = "damage"},
+        },
+    })
+    env.set_position(10, 19)
+    env.auto_step.start_route({"up", "left"})
+
+    env.update(true)
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "dangerous_tile"
+           and payload.dest_x == 10
+           and payload.dest_y == 18 then
+            saw_cancel = true
+            break
+        end
+    end
+    assert_truthy(saw_cancel, "queued route should cancel before stepping into a known hazard")
+    assert_truthy(not env.auto_step.is_route_active(), "hazard-cancelled route should no longer be active")
+    for frame, buttons in pairs(env.injected) do
+        assert_truthy(
+            not has_any_direction(buttons),
+            string.format("hazard-cancelled route should not inject D-pad input at frame %d", frame)
+        )
+    end
+
+    env.restore()
+end
+
 function tests.subpixel_release_can_be_disabled()
     local env = make_env({
         sticky_joypad_set = true,
@@ -481,6 +559,27 @@ function tests.turn_repress_waits_for_release_gap_before_rearming()
     assert_truthy(
         repress.start >= 2,
         "turn re-press should still resume shortly after the release gap"
+    )
+
+    env.restore()
+end
+
+function tests.turn_repress_handles_early_subpixel_turn_without_waiting_for_timeout()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    for _ = 1, 35 do
+        env.update(true)
+    end
+
+    local sequences = collect_direction_sequences(env, "right", 40)
+    local repress = sequences[2]
+
+    assert_truthy(
+        repress and repress.start < 40,
+        "early subpixel-only turn attempts should still re-press before the full timeout"
     )
 
     env.restore()

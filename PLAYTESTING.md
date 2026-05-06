@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-05-05
+Updated: 2026-05-06
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
@@ -45,9 +45,18 @@ QoL feature check:
   Unreachable. This stacks with the object category filter, ignores moving NPC
   occupancy, and is intended for sanity-checking larger maps without making
   rapid J/K/L browsing run pathfinding every tap.
+- Future overworld QoL idea: an NPC clue explains that crossing bridges leads
+  into more dangerous territory. Later, consider a subtle player-facing alert
+  when the hero crosses into a new encounter-strength region, especially after
+  bridge crossings or other invisible difficulty boundaries.
 - Visited flags are session-only and map-scoped. Use `Shift+V` or
   `mark_visited` to mark manually; `clear_visited` clears the current map and
-  `clear_visited:all` clears all maps.
+  `clear_visited:all` clears all maps. After TALK dialogue, the auto-visited
+  marker now falls back to live NPC RAM if the cached object list has stale NPC
+  coordinates, which can happen under BizHawk's disabled periodic NPC refresh.
+  The marker also stays armed for slow dialogue stabilization and survives
+  BizHawk source reloads, so delayed NPC text should still mark the talked-to
+  NPC without losing existing visited flags on `touch main.lua`.
 - Selected-object teleport uses `Shift+Enter` for the target cell and
   `Shift+direction` for an adjacent landing on that side of the target.
 - Watch selected-object teleport near doors/stairs and moving NPC clusters.
@@ -64,15 +73,33 @@ QoL feature check:
 - Stale command-menu cache was confirmed from live logs: after a TALK/dialogue
   attempt, `EVENT: command menu opened` had no matching close event, and later
   `auto_walk` commands were blocked before planning. `main.lua` now treats the
-  raw `COMMAND` header match as scanner input only; movement and auto-walk are
-  blocked by the confirmed live menu session plus recent cursor hold, so
-  lingering PPU text should not freeze field movement.
+  raw `COMMAND` header match as scanner input only unless a confirmed live
+  field-menu session is active. Movement and auto-walk stay blocked for that
+  confirmed live session while the cursor hold or raw header is present, so a
+  still-open command menu cannot let auto-step record false field blocks after
+  the cursor blink/hold expires; TALK and menu-close paths clear the live flag
+  before lingering PPU text can freeze field movement.
 - Console reloads can leave required modules cached. A Guard 1 retest after a
   console reload still used the old `route_manager.lua` target-hold code and
   walked the hero onto Guard 1's tile at `(7,5)`. `main.lua` now clears project
   modules from `package.loaded` before requiring them. After a fresh reload,
   the visible lower text `'There is no one there.` was logged and spoken, while
   `report_upper_dialogue_state` reported `menu_raw=true menu_active=false`.
+- A later Guard 1 playtest at `(18,2)` found a different TALK-failure silence:
+  the normal filtered lower reader captured `'There is no one there.`, but the
+  y<=3 row-1 cleaned dialogue path missed it and left `announced_lower` empty.
+  The row-1 reader now falls back to the already-filtered lower dialogue when
+  its fixed-row scan finds no lowercase text. An intermediate bad reload hit
+  Lua 5.1's local limit, but the corrected file validates and later live
+  reload probes have succeeded.
+- Person 1 in the reachable NPC list can still be temporarily blocked by moving
+  NPC traffic because the reachable filter intentionally ignores live NPC
+  occupancy. The player-facing no-path hint should call that NPC clutter, not a
+  closed door, when an NPC-free route exists. `route_manager.lua` now prioritizes
+  that explanation over nearby closed-door frontiers. Live note: the reload
+  verification accidentally auto-walked the post-reload selected `Exit to World
+  Map`; current logged position after cleanup was map `0x04` `(11,28)` with
+  runtime blocks clear.
 - Reload-lag follow-up: after module-cache clearing, the old BizHawk shim's
   `FCEU` global survived reload and made `emulator_compat.lua` falsely detect
   FCEUX, disabling BizHawk scan throttling. The live symptom was a fresh log
@@ -110,6 +137,38 @@ QoL feature check:
   open line is `Command. TALK` without a stale selection first. After killing
   and restarting the script, the user physically retested the fix and confirmed
   it worked as expected.
+- Death-square follow-up: manual movement found a damaging/death tile on
+  Tantegel Castle map `0x04` at `(10,18)`. Entering it from `(10,19)` logged
+  `Lost 15 HP. HP 0`, then the normal `Thou art dead.` / Death King recovery
+  sequence. Death King dialogue narration passed. The tile is now modeled as a
+  hazard, not a wall, so auto-walk, teleport walkability, and tap-to-step
+  extension avoid it while deliberate held manual movement remains under
+  player control.
+- Reachable NPC dialogue pass: the user finished dialogue testing all
+  reachable NPCs in this part of Tantegel Castle. Waiting for NPC movement
+  remained tedious enough that Guard 1 was reached by teleport. The castle
+  merchant-labeled NPCs behaved as dialogue-only NPCs in this pass; keep an
+  eye on whether they ever sell later, and consider removing them from the
+  Services filter if they stay dialogue-only.
+- First-town merchant follow-up: Brecconary `Merchant 1` also behaved as a
+  dialogue-only NPC (`Please, save us from the minions of the Dragonlord.`),
+  despite being listed under Services. When the merchant moved near the top of
+  town, the y<=3 dialogue reader spoke only `Please, save us from`. The row-1
+  dialogue path now prefers the richer normal lower-window candidate when the
+  fixed y<=3 row scan catches only part of a multi-line message.
+- Brecconary service-discovery follow-up: the user talked to all reachable
+  townspeople in the first town and still did not find an inn keeper or real
+  merchant service. Woman 3 said she was near the shop. The shop/inn actors may
+  be blocked targets, may be represented differently than normal wandering
+  NPCs, or may need a shop-counter/object interaction path rather than ordinary
+  TALK-to-NPC handling.
+- Ctrl+W crash follow-up: the script crashed immediately after `Ctrl+W` with a
+  fresh `dw_script_error.log` entry in `snapshot.update`; the fatal line was
+  adapter logging through BizHawk `console.log()` while memory fallback was
+  active. Adapter logging is now protected. A follow-up reload-window crash
+  also showed temporarily unavailable BizHawk memory APIs, so the adapter now
+  fails closed for unavailable reads/writes instead of crashing. The second
+  live reload succeeded and speech reported ready.
 
 ## Initial Gameplay Pass Checklist
 
@@ -326,6 +385,32 @@ Evidence:
 - The same run showed auto-walk audio pain around blocked-step retries. Local
   config now uses `auto_step_timeout=45` and `auto_step_block_retry_limit=1`
   to shorten blocked-route retry windows.
+- A 2026-05-05 fresh-game playtest found manual autostep feeling like native
+  BizHawk movement: direction keys worked, but the player often had to hold
+  until the game turned or stepped. Recent logs showed many 45-frame
+  `auto_step timeout retry` paths, and the checked-in config had quick
+  turn-only re-presses disabled. `auto_step_turn_repress_limit` is now `1`
+  again so a tap that only turns gets one prompt follow-up press before the
+  slower timeout retry path. Follow-up logs showed early subpixel changes could
+  still mark a turn-in-place as movement started, suppressing that quick
+  re-press until the timeout path; `auto_step.lua` now treats very early
+  subpixel-only starts as eligible for the turn re-press too.
+- The same fresh-game pass exposed stale object-browser NPCs after entering
+  the second map from the throne room: old map `0x05` NPCs could remain
+  selected on map `0x04` until routing hit a blocking live NPC and refreshed
+  the list. Fresh Lua startup transitions cleanly; the repro returned only
+  after touching `main.lua` for a BizHawk reload. The stale-state PPU dump did
+  not show the prior wrong-source bug, so the fix is reload/transition-state
+  based. The first signature patch fixed the current map after reload but not
+  the next transition. The current patch keeps accepted NPC signatures in
+  `_G.DW_OBJECTS_RELOAD_STATE`, observes the latest current-map NPC coordinate
+  signature during normal gameplay frames, masks off direction/frame bits, and
+  hides NPCs on map entry while RAM still matches the just-observed previous
+  map. Retest by touching `main.lua`, waiting for reload to settle, using
+  STAIRS between map `0x05` and `0x04`, and checking the NPC filter for the
+  destination map's NPCs rather than the map just left. User retest confirmed
+  the desired result after reload: 4 NPCs on map `0x05`, and 20 NPCs on map
+  `0x04`.
 - A later 2026-04-30 first-town manual run reported that route/path commands
   still caused lag, name-entry clicks could double-enter letters, and movement
   could overshoot cells. The live `dw_debug.log` did not contain `CMD_TIMING`
