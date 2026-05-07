@@ -470,81 +470,101 @@ FCEU.message("DW Access Mod loaded")
 -- NPC freeze lifecycle, and runtime block recording.
 
 -- ============================================================
+-- Constants
+-- ============================================================
+-- Frame thresholds and grace windows. Grouped so the chunk-level
+-- locals stay well under Lua 5.1's 200-local-per-chunk ceiling.
+local K = {
+    STARTUP_FRAMES                    = 120,  -- 2s of grace after script load
+    STABLE_THRESHOLD                  = 30,   -- frames of no change for "done"
+    BATTLE_DIALOGUE_STABLE_THRESHOLD  = 14,
+    BATTLE_DIALOGUE_GRACE_THRESHOLD   = 6,
+    BATTLE_DIALOGUE_GRACE             = 120,
+    UPPER_STABLE_THRESHOLD            = 30,
+    MERCHANT_STABLE_THRESHOLD         = 12,
+    FIELD_GRACE                       = 90,   -- 1.5s post-load baseline reset
+    FIELD_DEBOUNCE                    = 30,   -- ~0.5s before "Game started."
+    TITLE_STABLE                      = 8,    -- frames before announcing cursor
+    CURSOR_HOLD                       = 20,   -- blink-off margin before drop
+    CHALLENGER_ACCEPT                 = 18,   -- competing-cursor accept threshold
+    MOVEMENT_DIALOGUE_HOLD            = 360,
+    MENU_UPPER_ABSORB                 = 45,
+    RECENT_FIELD_ACTION_HOLD          = 180,
+    BIZHAWK_BOOT_DIALOGUE_HOLD        = 2400,
+}
+
+-- ============================================================
 -- Previous-Frame State
 -- ============================================================
 -- We track values from the previous frame so we only speak when
 -- something actually changes. Without this, we'd repeat the same
 -- info 60 times per second.
-
-local prev_hp = nil           -- Previous HP (to detect damage/healing)
-local prev_mp = nil           -- Previous MP (to detect spell use)
-local prev_level = nil        -- Previous level (to detect level-ups)
-
--- Inventory tracking for chest collection detection.
--- When gold, keys, herbs, or items increase while the player is
--- in field state adjacent to a chest, we mark that chest as opened.
--- Note: "prev_keys" lives in hotkeys.lua. Use distinct names here.
-local prev_gold        = nil
-local prev_magic_keys  = nil  -- Magic Keys count (addr.KEYS = 0x00BF)
-local prev_herbs       = nil
-local prev_items       = nil  -- Table of 4 raw item bytes (0x00C1-0x00C4)
+--
+-- All previous-frame trackers live on PREV so the chunk-level
+-- locals stay well under Lua 5.1's 200-local-per-chunk ceiling.
+-- (Note: "prev_keys" lives in hotkeys.lua; use distinct names here.)
+local PREV = {
+    -- player stats
+    hp = nil, mp = nil, level = nil,
+    -- inventory (chest detection)
+    gold = nil, magic_keys = nil, herbs = nil, items = nil,
+    -- lower dialogue
+    dialogue = "", announced_dialogue = "", stable_count = 0,
+    -- upper dialogue
+    upper_dialogue = "", announced_upper = "",
+    upper_stable_count = 0, upper_baseline = "", upper_active = false,
+    -- merchant
+    merchant_text = "", announced_merchant = "",
+    merchant_selection = nil, merchant_price = nil,
+    -- battle menu
+    battle_menu_open = false, battle_cursor_x = nil, battle_cursor_y = nil,
+    -- y<=3 cleaned dialogue
+    clean_y1 = "", clean_stable_count = 0,
+    -- title cursor
+    title_cursor_row = nil, title_cursor_col = nil,
+    title_no_cursor_text = "",
+    -- name entry
+    is_name_entry = false, name_d8 = nil, name_d9 = nil,
+    -- save-slot / message-speed
+    save_slot_d9 = nil, msg_speed_d9 = nil,
+    -- command menu
+    cmd_x = nil, cmd_y = nil,
+    joy_a_cmd = false, joy_b_status = false,
+    -- row1 trace
+    row1_lower_dialogue_active = false,
+}
 
 -- Startup grace period: skip all change-detection announcements for the
--- first STARTUP_FRAMES frames. This lets all the "previous" values
+-- first K.STARTUP_FRAMES frames. This lets all the "previous" values
 -- initialize from whatever garbage is in RAM at boot without triggering
 -- a flood of false announcements (level-up to 255, lost 255 HP, etc.).
-local STARTUP_FRAMES = 120    -- 2 seconds at 60fps
-local startup_counter = 0     -- Counts up to STARTUP_FRAMES
+local startup_counter = 0     -- Counts up to K.STARTUP_FRAMES
 
 -- Dialogue stabilization tracking
 -- Dragon Warrior renders text character by character, so we can't read
 -- dialogue the instant it changes. Instead, we wait for the text to
 -- stop changing (stabilize) before announcing it.
-local prev_dialogue = ""        -- Last dialogue text we checked
-local announced_dialogue = ""   -- Last dialogue text we actually spoke
-local stable_frames = 0         -- How many consecutive checks the text hasn't changed
-local STABLE_THRESHOLD = 30     -- Frames of no change before we consider text "done"
-                                -- At 60fps, 30 frames = 0.5 seconds of stability
-local BATTLE_DIALOGUE_STABLE_THRESHOLD = 14
-local BATTLE_DIALOGUE_GRACE_THRESHOLD = 6
-local BATTLE_DIALOGUE_GRACE = 120
-
--- Upper dialogue uses the same stability threshold as lower dialogue.
-local UPPER_STABLE_THRESHOLD = 30
+-- (PREV.dialogue, PREV.announced_dialogue, PREV.stable_count above;
+-- K.STABLE_THRESHOLD = 30 frames = 0.5s @ 60fps)
 
 -- Upper dialogue tracking (chest messages, shop text, etc.)
 -- Some dialogue windows appear in the upper screen area (rows 1-18)
 -- instead of the lower area. We track these separately because the
 -- status display (name/LV/HP/MP/G/E) is always present in the upper
--- area and must be filtered out.
-local prev_upper_dialogue = ""        -- Last upper text we checked
-local announced_upper_dialogue = ""   -- Last upper text we actually spoke
-local upper_stable_frames = 0         -- Stability counter for upper text
-local upper_baseline = ""             -- Status display text when no dialogue active
-local upper_dialogue_active = false   -- Is a dialogue window open in the upper region?
-local merchant_screen_active = false  -- Dedicated shop/merchant interface mode
-local prev_merchant_text = ""         -- Last merchant screen text snapshot
-local announced_merchant_text = ""    -- Last merchant screen text we spoke
-local prev_merchant_selection = nil   -- Last merchant item selection seen
-local prev_merchant_price = nil       -- Last merchant item price seen
-local merchant_intro_pending = false  -- Speak "Merchant" prefix on first selection
-local merchant_stable_frames = 0      -- Stability counter for merchant screen changes
-local MERCHANT_STABLE_THRESHOLD = 12
-local merchant_scan_present = false   -- Last full merchant-layout scan result
+-- area and must be filtered out. PREV.upper_dialogue / .announced_upper
+-- / .upper_stable_count / .upper_baseline / .upper_active live above.
+
+-- Merchant module: state on MER (defined further below); per-frame
+-- text/selection/price baselines on PREV.merchant_*.
 local submenu_mode = nil              -- nil (normal), "STATUS", or "ITEM"
 local game_state = {state = nil}      -- updated once per frame by state.check_for_changes()
-local prev_battle_menu_open = false   -- Was the battle command menu open last frame?
-local prev_battle_cursor_x = nil      -- Previous battle cursor X
-local prev_battle_cursor_y = nil      -- Previous battle cursor Y
 local battle_dialogue_grace_frames = 0
 
--- y≤3 cleaned-text stability tracking.
+-- y≤3 cleaned-text stability tracking lives on PREV.clean_y1 / .clean_stable_count.
 -- The raw dialogue may oscillate every 8–12 frames due to command-menu cursor
--- blink (tile 0x42 adjacent to uppercase labels). clean_stable_frames tracks
+-- blink (tile 0x42 adjacent to uppercase labels). PREV.clean_stable_count tracks
 -- how long the UPPERCASE-STRIPPED version has been unchanged. Once stable for
--- STABLE_THRESHOLD frames, announce exactly once — same as the normal path.
-local prev_clean_y1       = ""  -- Previous cleaned text at y≤3
-local clean_stable_frames = 0   -- How many frames prev_clean_y1 hasn't changed
+-- K.STABLE_THRESHOLD frames, announce exactly once — same as the normal path.
 
 -- y=1 movement tracking (interior maps only).
 -- At map y=1, NES scroll displaces the status bar so our LV/HP checks
@@ -557,12 +577,11 @@ local y1_baseline_pending = false  -- true when next stable y=1 text is a baseli
 local y1_prev_player_x    = nil    -- player X on the previous frame while at y=1
 
 -- Post-start grace period: after a title→field transition (game load),
--- silently re-initialize change-detection baselines for FIELD_GRACE frames.
+-- silently re-initialize change-detection baselines for K.FIELD_GRACE frames.
 -- The game's load sequence takes several frames during which HP may briefly
 -- read 0 and map IDs cycle through intermediate values. Without this, those
 -- transient values trigger false "Lost 15 HP" / "Charlock Castle" announcements.
-local FIELD_GRACE = 90       -- 1.5 seconds at 60fps to let loading complete
-local post_start_grace = 0   -- Counts down from FIELD_GRACE when a game starts
+local post_start_grace = 0   -- Counts down from K.FIELD_GRACE when a game starts
 local skip_first_hp_check = false  -- Skip one HP/MP check after grace ends
 
 -- Debounce for TITLE→FIELD transition.
@@ -570,8 +589,7 @@ local skip_first_hp_check = false  -- Skip one HP/MP check after grace ends
 -- QUEST/ADVENTUR tiles from the PPU for a few frames. That momentarily makes
 -- ppu_shows_title_content() return false while level RAM still holds a value
 -- 1-30, causing a false STATE_FIELD for ~5-10 frames. We suppress the "Game
--- started." announcement until FIELD has been stable for FIELD_DEBOUNCE frames.
-local FIELD_DEBOUNCE      = 30   -- ~0.5 s; real game loads stay FIELD much longer
+-- started." announcement until FIELD has been stable for K.FIELD_DEBOUNCE frames.
 local field_from_title_ct = 0    -- counts up while FIELD follows TITLE
 
 -- True when in actual gameplay (STATE_FIELD or STATE_BATTLE).
@@ -584,10 +602,9 @@ local in_gameplay = false
 -- Tracks which menu item or sub-menu slot the cursor is on and announces
 -- it when the cursor settles. Uses a hold-timer (not debounce) to survive
 -- cursor blink gaps without letting a stale second cursor take over.
-local prev_title_cursor_row = nil  -- last announced cursor row
-local prev_title_cursor_col = nil  -- last announced cursor col
-local title_stable          = 0
-local TITLE_STABLE          = 8    -- frames of stability after cursor_just_moved before announcing
+-- PREV.title_cursor_row / .title_cursor_col carry the announced position.
+-- TITLE.stable below; K.TITLE_STABLE = 8 frames of stability after
+-- cursor_just_moved before announcing.
 
 local function get_autowalk_unavailable_reason()
     if game_state.state ~= state.STATE_FIELD then
@@ -606,13 +623,13 @@ local function get_autowalk_unavailable_reason()
     if submenu_mode ~= nil then
         return "Close the submenu before auto-walking"
     end
-    if merchant_screen_active then
+    if MER.active then
         return "Close the merchant interface before auto-walking"
     end
-    if prev_dialogue ~= "" then
+    if PREV.dialogue ~= "" then
         return "Wait for dialogue to finish before auto-walking"
     end
-    if upper_dialogue_active then
+    if PREV.upper_active then
         return "Wait for the upper dialogue window to clear before auto-walking"
     end
     return nil
@@ -623,19 +640,14 @@ route_mgr.set_autowalk_guard(function()
     return reason == nil, reason
 end)
 
--- prev_is_name_entry: true when the name-entry alphabet grid is on screen.
+-- PREV.is_name_entry: true when the name-entry alphabet grid is on screen.
 -- Tracks transitions so we announce "Name entry." exactly once.
-local prev_is_name_entry    = false
+-- PREV.is_name_entry / .name_d8 / .name_d9 hold the per-frame baselines.
 
--- name_entry_active: sticky flag — once name entry is detected (BACK+END on
--- row 22), stays true until the screen changes (save-slot/speed screen opens,
--- or state leaves TITLE). Prevents the race condition where the cursor settles
--- before row 22 finishes rendering.
-local name_entry_active     = false
-
--- D8/D9 tracking for name entry cursor (bypasses the slow challenger model).
-local prev_name_d8          = nil
-local prev_name_d9          = nil
+-- TITLE.name_entry_active: sticky flag — once name entry is detected
+-- (BACK+END on row 22), stays true until the screen changes (save-slot/speed
+-- screen opens, or state leaves TITLE). Prevents the race condition where
+-- the cursor settles before row 22 finishes rendering.
 
 -- Name entry symbol lookup: grid positions (D8, D9) that correspond to
 -- punctuation symbols need human-readable spoken names.
@@ -706,56 +718,62 @@ function NAME_ENTRY_SYMBOLS.apply_guard()
     NAME_ENTRY_SYMBOLS._a_release_frames = 0
 end
 
--- Text seen on the last no-cursor title frame. Used to announce screens
--- that have no cursor tile (e.g. "PRESS START BUTTON" splash screen).
-local prev_title_no_cursor_text = ""
--- Stability counter for no-cursor text (same threshold as cursor path).
-local title_no_cursor_stable    = 0
+-- Text seen on the last no-cursor title frame lives on PREV.title_no_cursor_text.
+-- TITLE.no_cursor_stable holds the stability counter. Used to announce screens
+-- that have no cursor tile (e.g. "PRESS START BUTTON" splash).
 
--- Save-slot screen state tracking (BEGIN / CONTINUE / COPY / ERASE paths).
+-- Save-slot screen state (BEGIN / CONTINUE / COPY / ERASE) — TITLE.save_slot_open.
 -- All four sub-screens share the same inner-box layout (slots at rows 20/22/24,
--- digit at col 26) and are handled by a single unified handler.
--- Detected by the inner sub-menu box top-left corner tile (0x64) at row 18, col 10.
-local save_slot_was_open    = false  -- was save-slot screen open last frame?
-local prev_save_slot_d9     = nil    -- D9 value on previous frame (nil = not tracking)
+-- digit at col 26) and are handled by a single unified handler. Detected by
+-- the inner sub-menu box top-left corner tile (0x64) at row 18, col 10.
+-- D9 prev lives on PREV.save_slot_d9.
 
--- Message speed selection state tracking.
+-- Message speed selection — TITLE.msg_speed_open.
 -- D9 tracks which speed is selected: 0=FAST (row 22), 1=NORMAL (row 24), 2=SLOW (row 26).
--- Detected by "FAST" bytes at PPU row 22, cols 15-18.
-local msg_speed_was_open     = false
-local prev_msg_speed_d9      = nil
+-- Detected by "FAST" bytes at PPU row 22, cols 15-18. D9 prev lives on PREV.msg_speed_d9.
 
 -- Cursor hold state.
 -- Once a cursor is confirmed, we hold that position through blink-off gaps.
 -- A different cursor is only accepted after the held cursor has been absent
--- for CURSOR_HOLD consecutive frames, preventing sub-menu cursor blink-off
+-- for K.CURSOR_HOLD consecutive frames, preventing sub-menu cursor blink-off
 -- from letting the stale main-menu cursor "steal" the held position.
--- DW1 cursor blink-off is ~12-15 frames; CURSOR_HOLD = 20 provides margin.
+-- DW1 cursor blink-off is ~12-15 frames; K.CURSOR_HOLD = 20 provides margin.
 --
 -- Title-screen cursor tracking uses a "challenger" model:
 --
---   cursor_held_row/col: the last accepted cursor position.
---   challenger_row/col/frames: a competing cursor we are watching.
+--   TITLE.cursor_held_row/col: the last accepted cursor position.
+--   TITLE.challenger_row/col/frames: a competing cursor we are watching.
 --
---   A challenger must be seen CONSECUTIVELY for CHALLENGER_ACCEPT frames
+--   A challenger must be seen CONSECUTIVELY for K.CHALLENGER_ACCEPT frames
 --   before it displaces the held cursor. Key rule: when the HELD cursor tile
 --   is physically on screen, the challenger streak resets to zero. This
 --   prevents two independently blinking cursors from oscillating — the held
 --   cursor's ~20-frame blink-on period resets any challenger whose streak
 --   has not yet reached the threshold.
 --
---   CHALLENGER_ACCEPT must satisfy:
+--   K.CHALLENGER_ACCEPT must satisfy:
 --     > blink-off duration (~12-15 frames) — stale cursors never accumulate
 --     < blink-on duration  (~20-48 frames) — genuine cursors always succeed
 --   18 frames satisfies both constraints with comfortable margin.
-local cursor_held_row    = nil
-local cursor_held_col    = nil
-local cursor_hold_timer  = 0
-local CURSOR_HOLD        = 20   -- frames before cursor_present expires on blink-off
-local challenger_row     = nil
-local challenger_col     = nil
-local challenger_frames  = 0    -- consecutive frames challenger has been last-wins
-local CHALLENGER_ACCEPT  = 18   -- acceptance threshold (must be > blink-off, < blink-on)
+-- Title-screen mutable state, grouped on TITLE so chunk locals stay under
+-- Lua 5.1's ceiling. PREV.title_cursor_row / .title_cursor_col / .is_name_entry
+-- / .name_d8 / .name_d9 / .save_slot_d9 / .msg_speed_d9 / .title_no_cursor_text
+-- carry per-frame baselines for this cluster.
+-- K.CURSOR_HOLD = 20 frames before cursor_present expires on blink-off.
+-- K.CHALLENGER_ACCEPT = 18 frames; must be > blink-off, < blink-on.
+local TITLE = {
+    cursor_held_row    = nil,
+    cursor_held_col    = nil,
+    cursor_hold_timer  = 0,
+    challenger_row     = nil,
+    challenger_col     = nil,
+    challenger_frames  = 0,    -- consecutive frames challenger has been last-wins
+    stable             = 0,    -- frames since cursor_just_moved (K.TITLE_STABLE gate)
+    no_cursor_stable   = 0,    -- stability counter for no-cursor screens
+    name_entry_active  = false,
+    save_slot_open     = false,
+    msg_speed_open     = false,
+}
 
 -- Frame counter for throttling periodic checks
 -- Some checks don't need to run every frame; we use this to
@@ -774,33 +792,37 @@ DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
 -- items (D9=0 → "TALK", D9=1 → "STATUS", etc.).
 --
 -- submenu_mode: nil (normal), "STATUS", or "ITEM"
--- prev_cmd_x/y: cursor position on the previous frame, used to detect
+-- PREV.cmd_x / .cmd_y: cursor position on the previous frame, used to detect
 --   the single-frame jump from a command menu item to a sub-menu cursor.
--- pending_status_check: if the STATUS PPU signature isn't visible on the
---   exact frame the command menu closes, retry on the next frame.
-local prev_cmd_x = nil
-local prev_cmd_y = nil
 
--- Sub-menu tracking state.
-local prev_joy_b_status  = false  -- B button tracking for STATUS exit
-local prev_joy_a_cmd     = false  -- A button tracking inside check_command_menu
-local cmd_menu_confirmed = false  -- true after a genuine open/cursor move
-local yesno_status_block_frames = 0  -- brief cooldown after Yes/No dismissal
-local cmd_cursor_hold_frames = 0  -- recent visible command-menu cursor
-local cmd_last_live_x = nil
-local cmd_last_live_y = nil
-local cmd_menu_live = false  -- true once a fresh field-menu session is re-armed
-local cmd_rearm_required = false  -- blocks stale row-1 menu residue after TALK/YES-NO
-local movement_dialogue_hold_frames = 0
-local MOVEMENT_DIALOGUE_HOLD = 360
-local menu_upper_absorb_frames = 0
-local MENU_UPPER_ABSORB = 45
+-- Command-menu / sub-menu / dialogue-hold state. Grouped on CMD so chunk locals
+-- stay under Lua 5.1's ceiling. PREV.joy_a_cmd / .joy_b_status hold per-frame
+-- A/B button baselines used by this cluster.
+local CMD = {
+    menu_confirmed       = false,  -- true after a genuine open/cursor move
+    yesno_status_block   = 0,      -- brief cooldown after Yes/No dismissal
+    cursor_hold          = 0,      -- frames since last visible command-menu cursor
+    last_live_x          = nil,
+    last_live_y          = nil,
+    menu_live            = false,  -- true once a fresh field-menu session is re-armed
+    rearm_required       = false,  -- blocks stale row-1 menu residue after TALK/YES-NO
+    movement_dialogue    = 0,      -- residual hold while text follows movement
+    menu_upper_absorb    = 0,      -- post-menu upper-window baseline-absorb window
+    recent_field_action  = 0,      -- recent field input window
+    bizhawk_boot_dialogue = 0,     -- early-boot dialogue throttle (BizHawk)
+}
+
+-- Merchant module state. PREV.merchant_text / .announced_merchant /
+-- .merchant_selection / .merchant_price hold per-frame baselines.
+local MER = {
+    active         = false,  -- shop UI currently up
+    intro_pending  = false,  -- speak "Merchant" prefix on first selection
+    stable_count   = 0,      -- stability counter for merchant text changes
+    scan_present   = false,  -- last full merchant-layout scan result
+}
+
 local current_joy = {}
 local current_joy_any = false
-local recent_field_action_frames = 0
-local RECENT_FIELD_ACTION_HOLD = 180
-local bizhawk_boot_dialogue_frames = 0
-local BIZHAWK_BOOT_DIALOGUE_HOLD = 2400
 
 DW_QOL_STATE.cmd_open_speech_delay = 6
 DW_QOL_STATE.cmd_open_speech_pending_frames = 0
@@ -849,9 +871,9 @@ DW_QOL_STATE.command_menu_blocks_field_movement = function()
     -- dialogue transitions, COMMAND text can linger in nametable memory after
     -- the field menu has stopped being interactive. Movement/autowalk should
     -- only be blocked by a confirmed live command-menu session. The raw header
-    -- is safe once paired with cmd_menu_live, because TALK/menu-close paths
-    -- clear cmd_menu_live before stale PPU text can linger.
-    return cmd_menu_live and (cmd_cursor_hold_frames > 0 or menu.is_open())
+    -- is safe once paired with CMD.menu_live, because TALK/menu-close paths
+    -- clear CMD.menu_live before stale PPU text can linger.
+    return CMD.menu_live and (CMD.cursor_hold > 0 or menu.is_open())
 end
 
 DW_QOL_STATE.arm_talk_visit_marker = function()
@@ -895,11 +917,13 @@ end)
 
 -- Hidden row-1 command diagnostics.
 -- Writes compact transition lines to row1_menu_diag.txt so row-1 menu/guard
--- bugs can be inspected without adding spoken noise during play.
-local ROW1_TRACE_ENABLED = true
+-- bugs can be inspected without adding spoken noise during play. Gated on
+-- DEBUG_MODE: leaving this on unconditionally meant filesystem I/O on the
+-- gameplay hot path every time the player crossed an interior y<=1 row.
+local ROW1_TRACE_ENABLED = debug_tools.DEBUG_MODE
 local ROW1_TRACE_FILE = "row1_menu_diag.txt"
 local row1_trace_frame = 0
-local prev_row1_lower_dialogue_active = false
+-- prev row1 lower-dialogue baseline lives on PREV.row1_lower_dialogue_active.
 
 -- Startup loop diagnostics.
 -- When debug_mode=true, capture a few immediate loop markers in a separate
@@ -982,47 +1006,47 @@ local function check_hp_mp_changes()
     -- HP/MP delta announcer during battle and the immediate post-battle grace
     -- window so it does not talk over combat dialogue.
     if game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0 then
-        prev_hp = hp
-        prev_mp = mp
+        PREV.hp = hp
+        PREV.mp = mp
         return
     end
 
     -- Only announce after we have a baseline (skip the very first frame)
-    if prev_hp ~= nil then
+    if PREV.hp ~= nil then
         -- HP decreased: player took damage
-        if hp < prev_hp then
-            local damage = prev_hp - hp
+        if hp < PREV.hp then
+            local damage = PREV.hp - hp
             tolk.output("Lost " .. damage .. " HP. HP " .. hp)
         -- HP increased: player healed
-        elseif hp > prev_hp then
-            local healed = hp - prev_hp
+        elseif hp > PREV.hp then
+            local healed = hp - PREV.hp
             tolk.output("Recovered " .. healed .. " HP. HP " .. hp)
         end
     end
 
-    if prev_mp ~= nil then
+    if PREV.mp ~= nil then
         -- MP decreased: spell was cast
-        if mp < prev_mp then
-            local cost = prev_mp - mp
+        if mp < PREV.mp then
+            local cost = PREV.mp - mp
             tolk.output("Used " .. cost .. " MP. MP " .. mp)
         -- MP increased: MP restored (inn, item)
-        elseif mp > prev_mp then
-            local restored = mp - prev_mp
+        elseif mp > PREV.mp then
+            local restored = mp - PREV.mp
             tolk.output("Recovered " .. restored .. " MP. MP " .. mp)
         end
     end
 
-    prev_hp = hp
-    prev_mp = mp
+    PREV.hp = hp
+    PREV.mp = mp
 end
 
 -- check_level_up(): Announce level-ups.
 local function check_level_up()
     local level = snapshot.level
-    if prev_level ~= nil and level > prev_level then
+    if PREV.level ~= nil and level > PREV.level then
         tolk.output("Level up! Now level " .. level)
     end
-    prev_level = level
+    PREV.level = level
 end
 
 -- check_chest_collection(): Detect when the player collects a chest's
@@ -1044,12 +1068,12 @@ local function check_chest_collection()
     }
 
     local gained = false
-    if prev_gold       ~= nil and gold       > prev_gold       then gained = true end
-    if prev_magic_keys ~= nil and magic_keys > prev_magic_keys then gained = true end
-    if prev_herbs      ~= nil and herbs      > prev_herbs      then gained = true end
-    if prev_items ~= nil then
+    if PREV.gold       ~= nil and gold       > PREV.gold       then gained = true end
+    if PREV.magic_keys ~= nil and magic_keys > PREV.magic_keys then gained = true end
+    if PREV.herbs      ~= nil and herbs      > PREV.herbs      then gained = true end
+    if PREV.items ~= nil then
         for i = 1, 4 do
-            if cur_items[i] ~= prev_items[i] then gained = true; break end
+            if cur_items[i] ~= PREV.items[i] then gained = true; break end
         end
     end
 
@@ -1061,19 +1085,19 @@ local function check_chest_collection()
         end
     end
 
-    prev_gold       = gold
-    prev_magic_keys = magic_keys
-    prev_herbs      = herbs
-    prev_items      = cur_items
+    PREV.gold       = gold
+    PREV.magic_keys = magic_keys
+    PREV.herbs      = herbs
+    PREV.items      = cur_items
 end
 
 -- check_map_change(): Announce when the player enters a new area.
 local function check_map_change()
     local changes = nav.check_for_changes()
     if changes.position_changed and not changes.map_changed then
-        movement_dialogue_hold_frames = MOVEMENT_DIALOGUE_HOLD
-    elseif movement_dialogue_hold_frames > 0 then
-        movement_dialogue_hold_frames = movement_dialogue_hold_frames - 1
+        CMD.movement_dialogue = K.MOVEMENT_DIALOGUE_HOLD
+    elseif CMD.movement_dialogue > 0 then
+        CMD.movement_dialogue = CMD.movement_dialogue - 1
     end
 
     if changes.map_changed and changes.map_name then
@@ -1141,13 +1165,13 @@ local function trace_row1(event, changes, extra)
         "closed=" .. tostring(changes and changes.menu_closed or false),
         "move=" .. tostring(changes and changes.cursor_moved or false),
         "xy=" .. tostring(changes and changes.cursor_x or "nil") .. "," .. tostring(changes and changes.cursor_y or "nil"),
-        "confirmed=" .. tostring(cmd_menu_confirmed),
-        "live=" .. tostring(cmd_menu_live),
-        "rearm=" .. tostring(cmd_rearm_required),
-        "hold=" .. tostring(cmd_cursor_hold_frames),
+        "confirmed=" .. tostring(CMD.menu_confirmed),
+        "live=" .. tostring(CMD.menu_live),
+        "rearm=" .. tostring(CMD.rearm_required),
+        "hold=" .. tostring(CMD.cursor_hold),
         "yesno=" .. tostring(menu.is_yesno_active()),
         "yesseen=" .. tostring(menu.yesno_cursor_seen()),
-        "block=" .. tostring(yesno_status_block_frames),
+        "block=" .. tostring(CMD.yesno_status_block),
         "submenu=" .. tostring(submenu_mode),
     }
 
@@ -1187,22 +1211,22 @@ local function field_dialogue_guard_active()
     if not in_gameplay then return false end
     if has_blocking_live_input() then return false end
     if DW_QOL_STATE.command_menu_blocks_field_movement() or submenu_mode ~= nil or menu.is_yesno_active() then return false end
-    if merchant_screen_active then return false end
-    return recent_field_action_frames == 0
+    if MER.active then return false end
+    return CMD.recent_field_action == 0
 end
 
 local function bizhawk_dialogue_hint()
     if not scan_profiler.is_enabled() then return false end
     if game_state.state ~= state.STATE_FIELD then return false end
-    return bizhawk_boot_dialogue_frames > 0
-        or prev_dialogue ~= ""
-        or announced_dialogue ~= ""
-        or upper_dialogue_active
+    return CMD.bizhawk_boot_dialogue > 0
+        or PREV.dialogue ~= ""
+        or PREV.announced_dialogue ~= ""
+        or PREV.upper_active
 end
 
 local function lower_dialogue_stable_threshold(dialogue)
     if dialogue == "" then
-        return STABLE_THRESHOLD
+        return K.STABLE_THRESHOLD
     end
 
     if battle_dialogue_grace_frames > 0 then
@@ -1211,88 +1235,88 @@ local function lower_dialogue_stable_threshold(dialogue)
         -- screen. Once the text looks complete, announce it quickly before
         -- the victory page replaces it.
         if dialogue:find("[a-z]") and dialogue:match("[%.!?]$") then
-            return BATTLE_DIALOGUE_GRACE_THRESHOLD
+            return K.BATTLE_DIALOGUE_GRACE_THRESHOLD
         end
-        return BATTLE_DIALOGUE_STABLE_THRESHOLD
+        return K.BATTLE_DIALOGUE_STABLE_THRESHOLD
     end
 
     if game_state.state == state.STATE_BATTLE then
-        return BATTLE_DIALOGUE_STABLE_THRESHOLD
+        return K.BATTLE_DIALOGUE_STABLE_THRESHOLD
     end
 
-    return STABLE_THRESHOLD
+    return K.STABLE_THRESHOLD
 end
 
 local function reset_merchant_state(sync_dialogue_baselines)
-    merchant_screen_active = false
-    prev_merchant_text = ""
-    announced_merchant_text = ""
-    prev_merchant_selection = nil
-    prev_merchant_price = nil
-    merchant_intro_pending = false
-    merchant_stable_frames = 0
-    merchant_scan_present = false
+    MER.active = false
+    PREV.merchant_text = ""
+    PREV.announced_merchant = ""
+    PREV.merchant_selection = nil
+    PREV.merchant_price = nil
+    MER.intro_pending = false
+    MER.stable_count = 0
+    MER.scan_present = false
 
     if not sync_dialogue_baselines then
         return
     end
 
-    prev_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
-    stable_frames = 0
+    PREV.dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
+    PREV.stable_count = 0
 
-    upper_baseline = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
-    prev_upper_dialogue = upper_baseline
-    announced_upper_dialogue = upper_baseline
-    upper_stable_frames = 0
-    upper_dialogue_active = false
+    PREV.upper_baseline = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
+    PREV.upper_dialogue = PREV.upper_baseline
+    PREV.announced_upper = PREV.upper_baseline
+    PREV.upper_stable_count = 0
+    PREV.upper_active = false
 end
 
 local function reset_battle_menu_state()
-    prev_battle_menu_open = false
-    prev_battle_cursor_x = nil
-    prev_battle_cursor_y = nil
+    PREV.battle_menu_open = false
+    PREV.battle_cursor_x = nil
+    PREV.battle_cursor_y = nil
 end
 
 local function check_merchant_screen(frame_delta)
     frame_delta = scan_profiler.stable_delta(frame_delta)
     if not in_gameplay or submenu_mode ~= nil or menu.is_yesno_active() then
-        if merchant_screen_active then
+        if MER.active then
             reset_merchant_state(true)
         end
-        merchant_scan_present = false
+        MER.scan_present = false
         return false
     end
 
     local info = merchant.analyze_current_screen()
-    merchant_scan_present = info.active
+    MER.scan_present = info.active
     if not info.active then
-        if merchant_screen_active then
+        if MER.active then
             reset_merchant_state(true)
         end
         return false
     end
 
-    local was_active = merchant_screen_active
-    merchant_screen_active = true
+    local was_active = MER.active
+    MER.active = true
     if not was_active then
-        merchant_intro_pending = true
+        MER.intro_pending = true
     end
 
     local offer = merchant.get_cursor_offer()
     local selection = offer and offer.name or nil
     local price = offer and offer.price or nil
-    if selection and (selection ~= prev_merchant_selection or price ~= prev_merchant_price) then
-        prev_merchant_selection = selection
-        prev_merchant_price = price
+    if selection and (selection ~= PREV.merchant_selection or price ~= PREV.merchant_price) then
+        PREV.merchant_selection = selection
+        PREV.merchant_price = price
         local msg
         local price_text = price and string.format("%d gold.", price) or nil
-        if merchant_intro_pending then
+        if MER.intro_pending then
             if price_text then
                 msg = string.format("Merchant. Gold %d. %s. %s", snapshot.gold, selection, price_text)
             else
                 msg = string.format("Merchant. Gold %d. %s.", snapshot.gold, selection)
             end
-            merchant_intro_pending = false
+            MER.intro_pending = false
         else
             if price_text then
                 msg = string.format("%s. %s", selection, price_text)
@@ -1302,25 +1326,25 @@ local function check_merchant_screen(frame_delta)
         end
         debug_tools.info("MERCHANT_SELECT: " .. msg)
         tolk.output_interrupt(msg)
-        announced_merchant_text = info.raw_text
-        merchant_stable_frames = 0
-        prev_merchant_text = info.raw_text
+        PREV.announced_merchant = info.raw_text
+        MER.stable_count = 0
+        PREV.merchant_text = info.raw_text
         return true
     end
 
-    if info.raw_text ~= prev_merchant_text then
-        prev_merchant_text = info.raw_text
-        merchant_stable_frames = 0
+    if info.raw_text ~= PREV.merchant_text then
+        PREV.merchant_text = info.raw_text
+        MER.stable_count = 0
     else
-        merchant_stable_frames = merchant_stable_frames + frame_delta
+        MER.stable_count = MER.stable_count + frame_delta
     end
 
-    if merchant_stable_frames >= MERCHANT_STABLE_THRESHOLD
-       and info.raw_text ~= announced_merchant_text then
+    if MER.stable_count >= K.MERCHANT_STABLE_THRESHOLD
+       and info.raw_text ~= PREV.announced_merchant then
         debug_tools.info("MERCHANT: " .. info.summary)
         tolk.output_interrupt(info.summary)
-        announced_merchant_text = info.raw_text
-        merchant_intro_pending = false
+        PREV.announced_merchant = info.raw_text
+        MER.intro_pending = false
     end
 
     return true
@@ -1331,7 +1355,7 @@ local function check_battle_menu()
     local menu_open = menu.is_open()
 
     if not menu_open then
-        prev_battle_menu_open = false
+        PREV.battle_menu_open = false
         return
     end
 
@@ -1340,15 +1364,15 @@ local function check_battle_menu()
     local item = battle.get_menu_item(cursor_x, cursor_y)
     local announce = false
 
-    if not prev_battle_menu_open then
+    if not PREV.battle_menu_open then
         announce = true
-    elseif cursor_x ~= prev_battle_cursor_x or cursor_y ~= prev_battle_cursor_y then
+    elseif cursor_x ~= PREV.battle_cursor_x or cursor_y ~= PREV.battle_cursor_y then
         announce = true
     end
 
-    prev_battle_menu_open = true
-    prev_battle_cursor_x = cursor_x
-    prev_battle_cursor_y = cursor_y
+    PREV.battle_menu_open = true
+    PREV.battle_cursor_x = cursor_x
+    PREV.battle_cursor_y = cursor_y
 
     if not announce then
         return
@@ -1405,9 +1429,9 @@ local function check_command_menu(frame_delta)
     -- dedicated reader. Keep menu.check_for_changes() above so menu.lua's
     -- cached state stays fresh, then bail out silently here.
     if game_state.state ~= state.STATE_FIELD then
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         return
     end
@@ -1415,14 +1439,14 @@ local function check_command_menu(frame_delta)
     -- Merchant/shop layouts can coexist with the same cursor RAM and some of
     -- the same window/header signals the command-menu logic watches. When the
     -- merchant screen is present, it must fully override command-menu speech.
-    local merchant_present = merchant_screen_active or merchant_scan_present
+    local merchant_present = MER.active or MER.scan_present
     if not merchant_present then
         merchant_present = merchant.analyze_current_screen().active
     end
     if merchant_present then
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         if submenu_mode == "ITEM" or submenu_mode == "STATUS" then
             submenu_mode = nil
@@ -1431,10 +1455,10 @@ local function check_command_menu(frame_delta)
     end
 
     -- Save previous cursor position for transition detection, then update.
-    local was_x = prev_cmd_x
-    local was_y = prev_cmd_y
-    prev_cmd_x = changes.cursor_x
-    prev_cmd_y = changes.cursor_y
+    local was_x = PREV.cmd_x
+    local was_y = PREV.cmd_y
+    PREV.cmd_x = changes.cursor_x
+    PREV.cmd_y = changes.cursor_y
 
     -- === STATUS sub-menu mode ===
     -- Stay in STATUS until the command menu re-opens (player pressed B to
@@ -1442,22 +1466,22 @@ local function check_command_menu(frame_delta)
     -- STATUS goes directly to the field on some game versions).
     if submenu_mode == "STATUS" then
         local joy = joypad.read(1)
-        local b_just = joy.B and not prev_joy_b_status
-        prev_joy_b_status = joy.B
+        local b_just = joy.B and not PREV.joy_b_status
+        PREV.joy_b_status = joy.B
         if changes.menu_opened or b_just then
             submenu_mode = nil
             -- Reset cursor tracking so the first frame back in the command
             -- menu sees a cursor_moved and announces the current position.
-            -- Without this, prev_cmd_x/y can match the post-STATUS cursor
+            -- Without this, PREV.cmd_x/y can match the post-STATUS cursor
             -- values, making the entire next menu session silent.
-            prev_cmd_x = nil
-            prev_cmd_y = nil
+            PREV.cmd_x = nil
+            PREV.cmd_y = nil
             if changes.menu_opened then
-                menu_upper_absorb_frames = MENU_UPPER_ABSORB
-                cmd_menu_live = true
-                cmd_rearm_required = false
-                cmd_last_live_x = changes.cursor_x
-                cmd_last_live_y = changes.cursor_y
+                CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
+                CMD.menu_live = true
+                CMD.rearm_required = false
+                CMD.last_live_x = changes.cursor_x
+                CMD.last_live_y = changes.cursor_y
                 local open_item = changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y)
                 trace_row1("CMD_OPEN_FROM_STATUS", changes, {
                     "cursor=" .. tostring(has_visible_cursor_tile()),
@@ -1477,8 +1501,8 @@ local function check_command_menu(frame_delta)
             -- Entire menu closed (item was used, or player backed out
             -- past the command menu). Exit sub-menu.
             submenu_mode = nil
-            menu_upper_absorb_frames = MENU_UPPER_ABSORB
-            cmd_menu_live = false
+            CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
+            CMD.menu_live = false
             DW_QOL_STATE.clear_cmd_open_speech_pending()
             trace_row1("CMD_CLOSE_FROM_ITEM", changes, {})
             return
@@ -1487,8 +1511,8 @@ local function check_command_menu(frame_delta)
             -- D8 jumped back to right column → returned to command menu.
             -- Announce the command menu item the cursor landed on.
             submenu_mode = nil
-            cmd_menu_live = true
-            cmd_rearm_required = false
+            CMD.menu_live = true
+            CMD.rearm_required = false
             local cmd_item = menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             if cmd_item then
                 trace_row1("CMD_CURSOR_FROM_ITEM", changes, {
@@ -1518,12 +1542,12 @@ local function check_command_menu(frame_delta)
         menu.reset_yesno()
     end
 
-    -- Track A button EVERY frame (even during yes/no) so prev_joy_a_cmd
-    -- stays fresh. If we only tracked after the yesno guard, prev_joy_a_cmd
+    -- Track A button EVERY frame (even during yes/no) so PREV.joy_a_cmd
+    -- stays fresh. If we only tracked after the yesno guard, PREV.joy_a_cmd
     -- would go stale and produce a false rising-edge when yesno dismisses.
     local joy_a_now = joypad.read(1).A or false
-    local a_just = joy_a_now and not prev_joy_a_cmd
-    prev_joy_a_cmd = joy_a_now
+    local a_just = joy_a_now and not PREV.joy_a_cmd
+    PREV.joy_a_cmd = joy_a_now
 
     -- Yes/No prompt reuses the command menu UI — suppress command menu
     -- announcements while it is active (check_yesno_prompt handles them).
@@ -1531,9 +1555,9 @@ local function check_command_menu(frame_delta)
         -- A yes/no prompt is not a real field command menu. Clear the
         -- confirmation flag so the prompt-confirm A press cannot be
         -- misinterpreted as selecting STATUS on the dismissal edge.
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         trace_row1("CMD_BLOCK_YESNO", changes, {})
         return
@@ -1547,9 +1571,9 @@ local function check_command_menu(frame_delta)
     -- common inside shops: the game redraws TALK/STATUS/etc. behind purchase
     -- prompts and error text while D8/D9 continue to change.
     if lower_dialogue_active and not changes.menu_opened then
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         trace_row1("CMD_BLOCK_LOWER_DIALOGUE", changes, {
             "cursor=" .. tostring(cursor_visible),
@@ -1558,23 +1582,23 @@ local function check_command_menu(frame_delta)
     end
 
     if is_row1_interior_context() then
-        if lower_dialogue_active ~= prev_row1_lower_dialogue_active then
+        if lower_dialogue_active ~= PREV.row1_lower_dialogue_active then
             trace_row1("DIALOGUE_LOWER_" .. (lower_dialogue_active and "ON" or "OFF"), changes, {
                 "cursor=" .. tostring(cursor_visible),
             })
         end
-        prev_row1_lower_dialogue_active = lower_dialogue_active
+        PREV.row1_lower_dialogue_active = lower_dialogue_active
     else
-        prev_row1_lower_dialogue_active = false
+        PREV.row1_lower_dialogue_active = false
     end
 
     -- COMMAND text can linger in PPU after the real menu has closed. A visible
     -- cursor tile is the reliable signal that the player is actually in a live
     -- command menu session, so keep a short hold timer to bridge cursor blink.
     if menu.is_open() and cursor_visible then
-        cmd_cursor_hold_frames = 12
-    elseif cmd_cursor_hold_frames > 0 then
-        cmd_cursor_hold_frames = math.max(0, cmd_cursor_hold_frames - frame_delta)
+        CMD.cursor_hold = 12
+    elseif CMD.cursor_hold > 0 then
+        CMD.cursor_hold = math.max(0, CMD.cursor_hold - frame_delta)
     end
 
     -- STATUS uses the same COMMAND header and cursor coordinates as the field
@@ -1582,18 +1606,18 @@ local function check_command_menu(frame_delta)
     -- Row-1 interiors can produce noisy COMMAND-header matches, so rely on
     -- either a real menu-open A press or a subsequent cursor movement to mark
     -- the session confirmed instead of allowing any bare A press on STATUS.
-    local live_x = cmd_last_live_x or changes.cursor_x
-    local live_y = cmd_last_live_y or changes.cursor_y
-    if a_just and cmd_menu_confirmed and cmd_menu_live
-       and yesno_status_block_frames == 0
-       and not cmd_rearm_required
+    local live_x = CMD.last_live_x or changes.cursor_x
+    local live_y = CMD.last_live_y or changes.cursor_y
+    if a_just and CMD.menu_confirmed and CMD.menu_live
+       and CMD.yesno_status_block == 0
+       and not CMD.rearm_required
        and live_x == 0 and live_y == 1 then
         submenu_mode = "STATUS"
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
-        prev_joy_b_status = false
-        menu_upper_absorb_frames = MENU_UPPER_ABSORB
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
+        PREV.joy_b_status = false
+        CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
         trace_row1("CMD_STATUS_FIRE", changes, {
             "live_xy=" .. tostring(live_x) .. "," .. tostring(live_y),
             "lower=" .. tostring(lower_dialogue_active),
@@ -1601,7 +1625,7 @@ local function check_command_menu(frame_delta)
         })
         tolk.output("Status. " .. items.read_status_string())
         return
-    elseif a_just and live_x == 0 and live_y == 1 and cmd_rearm_required then
+    elseif a_just and live_x == 0 and live_y == 1 and CMD.rearm_required then
         trace_row1("CMD_STATUS_GATE_BLOCK", changes, {
             "live_xy=" .. tostring(live_x) .. "," .. tostring(live_y),
             "lower=" .. tostring(lower_dialogue_active),
@@ -1612,7 +1636,7 @@ local function check_command_menu(frame_delta)
     -- After TALK or YES/NO, row-1 interiors can leave stale COMMAND/cursor
     -- residue in RAM and the PPU. Require a fresh menu re-arm before treating
     -- any of that state as a live field menu again.
-    if cmd_rearm_required and not changes.menu_opened and not changes.cursor_moved then
+    if CMD.rearm_required and not changes.menu_opened and not changes.cursor_moved then
         trace_row1("CMD_WAIT_REARM", changes, {
             "lower=" .. tostring(lower_dialogue_active),
             "cursor=" .. tostring(cursor_visible),
@@ -1622,11 +1646,11 @@ local function check_command_menu(frame_delta)
     end
 
     if changes.menu_closed then
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
-        menu_upper_absorb_frames = MENU_UPPER_ABSORB
+        CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
         trace_row1("CMD_CLOSE", changes, {})
         debug_tools.on_menu_close()
         event_bus.publish("menu_closed")
@@ -1648,7 +1672,7 @@ local function check_command_menu(frame_delta)
             tolk.output("Items. Empty.")
         else
             submenu_mode = "ITEM"
-            cmd_menu_live = false
+            CMD.menu_live = false
             trace_row1("CMD_ITEM_FIRE", changes, {
                 "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
             })
@@ -1669,13 +1693,13 @@ local function check_command_menu(frame_delta)
             -- Menu just opened. DW1 remembers the last-used cursor position,
             -- so announce the actual highlighted item rather than assuming
             -- TALK.
-            menu_upper_absorb_frames = MENU_UPPER_ABSORB
-            cmd_menu_confirmed = true
-            cmd_menu_live = true
-            cmd_rearm_required = false
-            cmd_cursor_hold_frames = math.max(cmd_cursor_hold_frames, 12)
-            cmd_last_live_x = changes.cursor_x
-            cmd_last_live_y = changes.cursor_y
+            CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
+            CMD.menu_confirmed = true
+            CMD.menu_live = true
+            CMD.rearm_required = false
+            CMD.cursor_hold = math.max(CMD.cursor_hold, 12)
+            CMD.last_live_x = changes.cursor_x
+            CMD.last_live_y = changes.cursor_y
             local open_item = changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             trace_row1("CMD_OPEN", changes, {
                 "cursor=" .. tostring(cursor_visible),
@@ -1690,13 +1714,13 @@ local function check_command_menu(frame_delta)
             -- deserves the "Command." announcement so the player knows the menu
             -- is open. False-positive map-tile triggers have a_just=false (no
             -- physical button) so they stay silent; only genuine A presses speak.
-            menu_upper_absorb_frames = MENU_UPPER_ABSORB
-            cmd_menu_confirmed = true
-            cmd_menu_live = true
-            cmd_rearm_required = false
-            cmd_cursor_hold_frames = 12
-            cmd_last_live_x = changes.cursor_x
-            cmd_last_live_y = changes.cursor_y
+            CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
+            CMD.menu_confirmed = true
+            CMD.menu_live = true
+            CMD.rearm_required = false
+            CMD.cursor_hold = 12
+            CMD.last_live_x = changes.cursor_x
+            CMD.last_live_y = changes.cursor_y
             local open_item = changes.item_name or menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             trace_row1("CMD_OPEN_Y1", changes, {
                 "cursor=" .. tostring(cursor_visible),
@@ -1711,11 +1735,11 @@ local function check_command_menu(frame_delta)
         -- A real D-pad move inside the menu confirms this is a live menu
         -- session, even in row-1 scroll cases where the opening line itself
         -- was intentionally suppressed.
-        cmd_menu_confirmed = true
-        cmd_menu_live = true
-        cmd_rearm_required = false
-        cmd_last_live_x = changes.cursor_x
-        cmd_last_live_y = changes.cursor_y
+        CMD.menu_confirmed = true
+        CMD.menu_live = true
+        CMD.rearm_required = false
+        CMD.last_live_x = changes.cursor_x
+        CMD.last_live_y = changes.cursor_y
         local item = changes.item_name
         if item then
             trace_row1("CMD_CURSOR", changes, {
@@ -1748,9 +1772,9 @@ local function check_command_menu(frame_delta)
     -- later STATUS-like residue is allowed to act as a live menu.
     if a_just and not changes.menu_opened
        and changes.cursor_x == 0 and changes.cursor_y == 0
-       and cmd_menu_confirmed then
-        cmd_menu_live = false
-        cmd_rearm_required = true
+       and CMD.menu_confirmed then
+        CMD.menu_live = false
+        CMD.rearm_required = true
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         DW_QOL_STATE.arm_talk_visit_marker()
         trace_row1("CMD_TALK_FIRE", changes, {
@@ -1774,21 +1798,21 @@ local function check_yesno_prompt(frame_delta)
     frame_delta = scan_profiler.stable_delta(frame_delta)
     local changes = menu.check_yesno_changes(frame_delta)
     if changes.active then
-        yesno_status_block_frames = 10
-        cmd_menu_live = false
-        cmd_rearm_required = true
+        CMD.yesno_status_block = 10
+        CMD.menu_live = false
+        CMD.rearm_required = true
         trace_row1("YESNO_ACTIVE", nil, {
             "sel=" .. tostring(changes.selection),
         })
-    elseif yesno_status_block_frames > 0 then
-        yesno_status_block_frames = math.max(0, yesno_status_block_frames - frame_delta)
+    elseif CMD.yesno_status_block > 0 then
+        CMD.yesno_status_block = math.max(0, CMD.yesno_status_block - frame_delta)
     end
 
     if changes.just_dismissed then
-        cmd_menu_confirmed = false
-        cmd_menu_live = false
-        cmd_cursor_hold_frames = 0
-        cmd_rearm_required = true
+        CMD.menu_confirmed = false
+        CMD.menu_live = false
+        CMD.cursor_hold = 0
+        CMD.rearm_required = true
         trace_row1("YESNO_DISMISS", nil, {})
     end
 
@@ -1800,7 +1824,7 @@ local function check_yesno_prompt(frame_delta)
             -- stabilization before the Yes/No window appeared. Read the
             -- lower dialogue area right now and announce any text that
             -- hasn't been spoken yet, so the player hears the question
-            -- before the Yes/No prompt. Update announced_dialogue so the
+            -- before the Yes/No prompt. Update PREV.announced_dialogue so the
             -- normal dialogue system doesn't repeat it.
             local question = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
             -- Only announce the question if it contains real dialogue text
@@ -1809,12 +1833,12 @@ local function check_yesno_prompt(frame_delta)
             -- name partially rendered before the rest of the sentence appeared.
             -- The normal dialogue stability path will catch the full text once it
             -- finishes rendering.
-            local new_question = strip_overlap(announced_dialogue, question)
-            if new_question ~= "" and question ~= announced_dialogue and new_question:find("[a-z]") then
+            local new_question = strip_overlap(PREV.announced_dialogue, question)
+            if new_question ~= "" and question ~= PREV.announced_dialogue and new_question:find("[a-z]") then
                 debug_tools.on_dialogue(new_question)
                 event_bus.publish("dialogue_new", {text = new_question})
                 tolk.output(new_question)
-                announced_dialogue = question
+                PREV.announced_dialogue = question
             end
         end
         trace_row1("YESNO_APPEAR", nil, {
@@ -1991,13 +2015,13 @@ local function check_title_screen()
         NAME_ENTRY_SYMBOLS._visible = false
         NAME_ENTRY_SYMBOLS.reset_guard()
         local d9 = snapshot.cursor_y
-        if not msg_speed_was_open then
+        if not TITLE.msg_speed_open then
             -- First frame the screen is open: record current selection as baseline
             -- without announcing it. The speed is already selected; the player only
             -- needs to hear it when they actively change it.
-            prev_msg_speed_d9 = d9
-        elseif d9 ~= prev_msg_speed_d9 then
-            prev_msg_speed_d9 = d9
+            PREV.msg_speed_d9 = d9
+        elseif d9 ~= PREV.msg_speed_d9 then
+            PREV.msg_speed_d9 = d9
             local speed_name = SPEED_NAMES[d9]
             if speed_name then
                 tolk.output(speed_name)
@@ -2008,11 +2032,11 @@ local function check_title_screen()
                 if row_text ~= "" then tolk.output(row_text) end
             end
         end
-        msg_speed_was_open = true
+        TITLE.msg_speed_open = true
         return
     else
-        if msg_speed_was_open then prev_msg_speed_d9 = nil end
-        msg_speed_was_open = false
+        if TITLE.msg_speed_open then PREV.msg_speed_d9 = nil end
+        TITLE.msg_speed_open = false
     end
 
     -- ---- Save-slot screen: unified handler for BEGIN / CONTINUE / COPY / ERASE ----
@@ -2024,7 +2048,7 @@ local function check_title_screen()
         NAME_ENTRY_SYMBOLS._visible = false
         NAME_ENTRY_SYMBOLS.reset_guard()
         local d9 = snapshot.cursor_y
-        if d9 ~= prev_save_slot_d9 then
+        if d9 ~= PREV.save_slot_d9 then
             local slot_row, digit_col
             if slot_type == "begin" then
                 slot_row  = 20 + d9 * 2
@@ -2036,18 +2060,18 @@ local function check_title_screen()
                 digit_col = 22
             end
             -- Only announce when the slot digit is valid (1-9). If the PPU
-            -- hasn't rendered it yet, prev_save_slot_d9 stays nil and we
+            -- hasn't rendered it yet, PREV.save_slot_d9 stays nil and we
             -- retry next frame. No fallback to raw row text — that reads
             -- stale main-menu text before the slot content renders.
             if announce_adventure_slot(slot_row, digit_col) then
-                prev_save_slot_d9 = d9
+                PREV.save_slot_d9 = d9
             end
         end
-        save_slot_was_open = true
+        TITLE.save_slot_open = true
         return
     else
-        if save_slot_was_open then prev_save_slot_d9 = nil end
-        save_slot_was_open = false
+        if TITLE.save_slot_open then PREV.save_slot_d9 = nil end
+        TITLE.save_slot_open = false
     end
 
     -- Detect name-entry screen: row 22 uniquely contains BACK and END.
@@ -2059,32 +2083,32 @@ local function check_title_screen()
         NAME_ENTRY_SYMBOLS.reset_guard()
     end
 
-    -- Sticky name_entry_active: once detected, stays true until the screen
+    -- Sticky TITLE.name_entry_active: once detected, stays true until the screen
     -- changes. This prevents the race condition where the cursor settles
     -- before row 22 finishes rendering (BACK/END not yet present).
     if is_name_entry then
-        name_entry_active = true
+        TITLE.name_entry_active = true
     end
 
     -- Announce name-entry context once on transition into it.
-    if is_name_entry and not prev_is_name_entry then
+    if is_name_entry and not PREV.is_name_entry then
         tolk.output("Name entry. Arrow keys to select letter, BACK to delete, END to finish.")
         -- Initialize D8/D9 tracking so the first cursor position is announced.
-        prev_name_d8 = nil
-        prev_name_d9 = nil
+        PREV.name_d8 = nil
+        PREV.name_d9 = nil
     end
-    prev_is_name_entry = is_name_entry
+    PREV.is_name_entry = is_name_entry
 
     -- ---- Name entry: D8/D9-based cursor (instant, no challenger delay) ----
-    -- When name_entry_active, read cursor position directly from D8/D9 RAM.
+    -- When TITLE.name_entry_active, read cursor position directly from D8/D9 RAM.
     -- This bypasses the 26-frame challenger model entirely, giving instant
     -- response to arrow key presses.
-    if name_entry_active then
+    if TITLE.name_entry_active then
         local d8 = snapshot.cursor_x
         local d9 = snapshot.cursor_y
-        if d8 ~= prev_name_d8 or d9 ~= prev_name_d9 then
-            prev_name_d8 = d8
-            prev_name_d9 = d9
+        if d8 ~= PREV.name_d8 or d9 ~= PREV.name_d9 then
+            PREV.name_d8 = d8
+            PREV.name_d9 = d9
 
             -- Check symbol lookup first (symbols need spoken names)
             local sym_key = d8 .. "," .. d9
@@ -2145,70 +2169,70 @@ local function check_title_screen()
     -- During blink-off (no cursor visible): count down the hold timer but
     -- leave the challenger streak unchanged (blink gaps don't reset progress).
     --
-    -- Acceptance threshold: when cursor_held_row is nil (no held cursor, fresh
+    -- Acceptance threshold: when TITLE.cursor_held_row is nil (no held cursor, fresh
     -- menu open), use a reduced threshold (3 frames) since there's no competing
     -- cursor to protect against. When displacing an existing held cursor, use
-    -- the full CHALLENGER_ACCEPT (18 frames) for anti-oscillation.
-    local accept_threshold = (cursor_held_row == nil) and 3 or CHALLENGER_ACCEPT
+    -- the full K.CHALLENGER_ACCEPT (18 frames) for anti-oscillation.
+    local accept_threshold = (TITLE.cursor_held_row == nil) and 3 or K.CHALLENGER_ACCEPT
     if cursor_row ~= nil then
-        if cursor_row == cursor_held_row and cursor_col == cursor_held_col then
+        if cursor_row == TITLE.cursor_held_row and cursor_col == TITLE.cursor_held_col then
             -- Held cursor tile physically present: refresh timer, reset challenger.
-            cursor_hold_timer = CURSOR_HOLD
-            challenger_row    = nil
-            challenger_col    = nil
-            challenger_frames = 0
+            TITLE.cursor_hold_timer = K.CURSOR_HOLD
+            TITLE.challenger_row    = nil
+            TITLE.challenger_col    = nil
+            TITLE.challenger_frames = 0
         else
             -- A different cursor is visible: advance consecutive streak.
-            if cursor_row == challenger_row and cursor_col == challenger_col then
-                challenger_frames = challenger_frames + 1
+            if cursor_row == TITLE.challenger_row and cursor_col == TITLE.challenger_col then
+                TITLE.challenger_frames = TITLE.challenger_frames + 1
             else
                 -- New position: start a fresh streak.
-                challenger_row    = cursor_row
-                challenger_col    = cursor_col
-                challenger_frames = 1
+                TITLE.challenger_row    = cursor_row
+                TITLE.challenger_col    = cursor_col
+                TITLE.challenger_frames = 1
             end
-            if challenger_frames >= accept_threshold then
-                cursor_held_row   = challenger_row
-                cursor_held_col   = challenger_col
-                cursor_hold_timer = CURSOR_HOLD
-                challenger_row    = nil
-                challenger_col    = nil
-                challenger_frames = 0
+            if TITLE.challenger_frames >= accept_threshold then
+                TITLE.cursor_held_row   = TITLE.challenger_row
+                TITLE.cursor_held_col   = TITLE.challenger_col
+                TITLE.cursor_hold_timer = K.CURSOR_HOLD
+                TITLE.challenger_row    = nil
+                TITLE.challenger_col    = nil
+                TITLE.challenger_frames = 0
             end
             -- Keep cursor_present alive while challenger accumulates.
-            if cursor_hold_timer > 0 then
-                cursor_hold_timer = cursor_hold_timer - 1
+            if TITLE.cursor_hold_timer > 0 then
+                TITLE.cursor_hold_timer = TITLE.cursor_hold_timer - 1
             end
         end
     else
         -- Blink-off: pause challenger streak, count down timer.
-        if cursor_hold_timer > 0 then
-            cursor_hold_timer = cursor_hold_timer - 1
+        if TITLE.cursor_hold_timer > 0 then
+            TITLE.cursor_hold_timer = TITLE.cursor_hold_timer - 1
         end
     end
 
     -- cursor_just_moved: held cursor settled at a new position.
     -- Update prev immediately so this only fires once per move.
-    local cursor_present    = (cursor_hold_timer > 0)
+    local cursor_present    = (TITLE.cursor_hold_timer > 0)
     local cursor_just_moved = cursor_present
-                              and (cursor_held_row ~= prev_title_cursor_row
-                                   or cursor_held_col ~= prev_title_cursor_col)
+                              and (TITLE.cursor_held_row ~= PREV.title_cursor_row
+                                   or TITLE.cursor_held_col ~= PREV.title_cursor_col)
 
     if cursor_just_moved then
-        title_stable          = 0
-        prev_title_cursor_row = cursor_held_row
-        prev_title_cursor_col = cursor_held_col
+        TITLE.stable          = 0
+        PREV.title_cursor_row = TITLE.cursor_held_row
+        PREV.title_cursor_col = TITLE.cursor_held_col
     else
-        title_stable = title_stable + 1
+        TITLE.stable = TITLE.stable + 1
     end
 
     -- Announce after a brief stability wait to let the cursor row finish rendering.
-    if title_stable == TITLE_STABLE and prev_title_cursor_row then
-        local item = decode_row_from_col(prev_title_cursor_row, prev_title_cursor_col + 1)
+    if TITLE.stable == K.TITLE_STABLE and PREV.title_cursor_row then
+        local item = decode_row_from_col(PREV.title_cursor_row, PREV.title_cursor_col + 1)
         -- Fall back to the full row when the post-cursor text has no letters
         -- (e.g. cursor sits between "ADVENTURE LOG " and "1").
         if not item:find("[a-zA-Z]") then
-            item = text.decode_row(prev_title_cursor_row)
+            item = text.decode_row(PREV.title_cursor_row)
         end
         if item ~= "" then
             tolk.output(item)
@@ -2217,15 +2241,15 @@ local function check_title_screen()
 
     -- No-cursor fallback: announce screens that have no cursor tile at all
     -- (e.g. "PRESS START BUTTON" splash). Only fires when:
-    --   • no cursor is held (cursor_hold_timer expired)
-    --   • no cursor is being tracked as a challenger (challenger_frames == 0)
+    --   • no cursor is held (TITLE.cursor_hold_timer expired)
+    --   • no cursor is being tracked as a challenger (TITLE.challenger_frames == 0)
     --   • not in name entry (handled separately)
-    -- The challenger_frames guard prevents this from firing during the normal
+    -- The TITLE.challenger_frames guard prevents this from firing during the normal
     -- cursor acceptance window (18 frames) when a menu first opens — without
     -- it, the fallback reads all screen text as a block announcement before
     -- the cursor is officially accepted.
-    if not cursor_present and cursor_held_row == nil
-       and challenger_frames == 0 and not is_name_entry then
+    if not cursor_present and TITLE.cursor_held_row == nil
+       and TITLE.challenger_frames == 0 and not is_name_entry then
         -- Collect rows that contain at least one letter (upper or lower).
         -- Apply strip_noise to remove runs of zeros from empty PPU tiles
         -- (CHR tile 0x00 = digit '0') before checking for letter content.
@@ -2237,28 +2261,28 @@ local function check_title_screen()
             end
         end
         local full_text = table.concat(lines, " ")
-        if full_text == prev_title_no_cursor_text then
-            title_no_cursor_stable = title_no_cursor_stable + 1
+        if full_text == PREV.title_no_cursor_text then
+            TITLE.no_cursor_stable = TITLE.no_cursor_stable + 1
         else
-            prev_title_no_cursor_text = full_text
-            title_no_cursor_stable    = 0
+            PREV.title_no_cursor_text = full_text
+            TITLE.no_cursor_stable    = 0
         end
-        if title_no_cursor_stable == TITLE_STABLE and full_text ~= "" then
+        if TITLE.no_cursor_stable == K.TITLE_STABLE and full_text ~= "" then
             tolk.output(full_text)
             -- Reset so we don't re-announce the same static screen every frame.
-            title_no_cursor_stable = title_no_cursor_stable + 1
+            TITLE.no_cursor_stable = TITLE.no_cursor_stable + 1
         end
     else
         -- Cursor is present (or name-entry): reset no-cursor tracking.
-        prev_title_no_cursor_text = ""
-        title_no_cursor_stable    = 0
+        PREV.title_no_cursor_text = ""
+        TITLE.no_cursor_stable    = 0
     end
 
 end
 
 -- check_dialogue(): Read dialogue window and announce when text changes.
 -- Dragon Warrior renders text one character at a time, so we wait until
--- the text stops changing for STABLE_THRESHOLD frames before announcing.
+-- the text stops changing for K.STABLE_THRESHOLD frames before announcing.
 -- This prevents reading partial text like "The Dragonl" mid-render.
 -- When text does stabilize, we strip any overlap with the previous
 -- announcement so we only speak genuinely new text.
@@ -2271,7 +2295,7 @@ end
 -- are unaffected (scroll pushes the menu window clear of rows 19-29).
 -- Fix: strip runs of 3+ consecutive uppercase letters (and adjacent spaces)
 -- before comparing. This normalizes both cursor-blink states to the same
--- string. We then apply the SAME STABLE_THRESHOLD to the cleaned text —
+-- string. We then apply the SAME K.STABLE_THRESHOLD to the cleaned text —
 -- the cleaned text IS stable even during cursor blink, so the threshold is
 -- reached and the announcement fires exactly once. This prevents the
 -- per-character "ki…kid…kidnap…" chatter from the old per-change approach.
@@ -2295,15 +2319,15 @@ local function check_dialogue(frame_delta, refresh_ppu)
     local stable_threshold = lower_dialogue_stable_threshold(dialogue)
 
     if (field_dialogue_guard_active() and not lower_dialogue_visible) or
-       (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and not DW_QOL_STATE.command_menu_blocks_field_movement()
+       (CMD.movement_dialogue > 0 and not has_blocking_live_input() and not DW_QOL_STATE.command_menu_blocks_field_movement()
         and submenu_mode == nil and not menu.is_yesno_active()) then
-        prev_dialogue = dialogue
-        stable_frames = 0
+        PREV.dialogue = dialogue
+        PREV.stable_count = 0
         if at_y1 then
             local y1_dialogue = read_y1_dialogue(dialogue)
             local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
-            prev_clean_y1 = clean:match("^%s*(.-)%s*$") or ""
-            clean_stable_frames = 0
+            PREV.clean_y1 = clean:match("^%s*(.-)%s*$") or ""
+            PREV.clean_stable_count = 0
         end
         return
     end
@@ -2320,26 +2344,26 @@ local function check_dialogue(frame_delta, refresh_ppu)
 
         -- Track stability of the cleaned text.
         -- The raw dialogue oscillates (cursor blink), but clean is stable.
-        if clean ~= prev_clean_y1 then
-            clean_stable_frames = 0
-            prev_clean_y1 = clean
+        if clean ~= PREV.clean_y1 then
+            PREV.clean_stable_count = 0
+            PREV.clean_y1 = clean
         else
-            clean_stable_frames = clean_stable_frames + frame_delta
+            PREV.clean_stable_count = PREV.clean_stable_count + frame_delta
         end
 
-        -- Announce once after the cleaned text has been stable for STABLE_THRESHOLD
+        -- Announce once after the cleaned text has been stable for K.STABLE_THRESHOLD
         -- frames. This prevents the per-character "ki … kid … kidnap …" chatter.
-        if clean_stable_frames >= stable_threshold then
-            if clean:find("[a-z]") and clean ~= announced_dialogue then
+        if PREV.clean_stable_count >= stable_threshold then
+            if clean:find("[a-z]") and clean ~= PREV.announced_dialogue then
                 -- Real response text or NPC dialogue — announce only the new portion.
                 -- DW1 scrolls the dialogue window so successive windows share a
                 -- tail/prefix boundary. strip_overlap prevents re-announcing the
                 -- question that already appeared at the top of the next window.
                 local new_text
                 if battle_dialogue_mode then
-                    new_text = battle.extract_new_text(announced_dialogue, clean)
+                    new_text = battle.extract_new_text(PREV.announced_dialogue, clean)
                 else
-                    new_text = strip_overlap(announced_dialogue, clean)
+                    new_text = strip_overlap(PREV.announced_dialogue, clean)
                 end
                 if new_text ~= "" then
                     if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
@@ -2350,56 +2374,56 @@ local function check_dialogue(frame_delta, refresh_ppu)
                         -- menu speech is cleared immediately when talk text opens.
                         if battle_dialogue_mode then
                             tolk.output(new_text)
-                        elseif announced_dialogue == "" then
+                        elseif PREV.announced_dialogue == "" then
                             tolk.output_interrupt(new_text)
                         else
                             tolk.output(new_text)
                         end
-                        announced_dialogue = clean
+                        PREV.announced_dialogue = clean
                     end
                 end
-            elseif not clean:find("[a-z]") and announced_dialogue ~= "" then
+            elseif not clean:find("[a-z]") and PREV.announced_dialogue ~= "" then
                 -- No lowercase: command menu noise — reset for next real text.
-                announced_dialogue = ""
+                PREV.announced_dialogue = ""
             end
         end
 
-        -- Keep raw stable_frames/prev_dialogue in sync so the normal path
+        -- Keep raw PREV.stable_count/PREV.dialogue in sync so the normal path
         -- picks up cleanly when the player moves from y≤3 to y>3.
-        if dialogue ~= prev_dialogue then
-            stable_frames = 0
-            prev_dialogue = dialogue
+        if dialogue ~= PREV.dialogue then
+            PREV.stable_count = 0
+            PREV.dialogue = dialogue
         else
-            stable_frames = stable_frames + frame_delta
+            PREV.stable_count = PREV.stable_count + frame_delta
         end
         return
     end
 
-    -- Normal path (y>1): wait for STABLE_THRESHOLD frames of no change.
-    if dialogue ~= prev_dialogue then
+    -- Normal path (y>1): wait for K.STABLE_THRESHOLD frames of no change.
+    if dialogue ~= PREV.dialogue then
         -- Text is still changing — reset the stability counter
-        stable_frames = 0
-        prev_dialogue = dialogue
+        PREV.stable_count = 0
+        PREV.dialogue = dialogue
     else
         -- Text hasn't changed since last check — increment stability counter
-        stable_frames = stable_frames + frame_delta
+        PREV.stable_count = PREV.stable_count + frame_delta
     end
 
     -- Once text has been stable long enough and differs from what we
     -- already announced, speak only the new portion.
-    if stable_frames >= stable_threshold then
-        if dialogue ~= "" and dialogue ~= announced_dialogue then
+    if PREV.stable_count >= stable_threshold then
+        if dialogue ~= "" and dialogue ~= PREV.announced_dialogue then
             -- Absorb purely-uppercase text (command menu tiles, map tiles)
             -- without announcing — same principle as the at_y1 uppercase filter.
             -- Real NPC dialogue always contains at least one lowercase letter.
             if not dialogue:find("[a-z]") then
-                announced_dialogue = dialogue
+                PREV.announced_dialogue = dialogue
             else
                 local new_text
                 if battle_dialogue_mode then
-                    new_text = battle.extract_new_text(announced_dialogue, dialogue)
+                    new_text = battle.extract_new_text(PREV.announced_dialogue, dialogue)
                 else
-                    new_text = strip_overlap(announced_dialogue, dialogue)
+                    new_text = strip_overlap(PREV.announced_dialogue, dialogue)
                 end
                 if new_text ~= "" then
                     if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
@@ -2407,21 +2431,21 @@ local function check_dialogue(frame_delta, refresh_ppu)
                         event_bus.publish("dialogue_new", {text = new_text})
                         if battle_dialogue_mode then
                             tolk.output(new_text)
-                        elseif announced_dialogue == "" then
+                        elseif PREV.announced_dialogue == "" then
                             tolk.output_interrupt(new_text)
                         else
                             tolk.output(new_text)
                         end
-                        announced_dialogue = dialogue
+                        PREV.announced_dialogue = dialogue
                     end
                 end
             end
-        elseif dialogue == "" and announced_dialogue ~= "" then
+        elseif dialogue == "" and PREV.announced_dialogue ~= "" then
             -- Keep the last announced battle page through the short
             -- post-battle grace window so stale lower-window leftovers do not
             -- re-announce as a fresh reward fragment after the window clears.
             if not battle_dialogue_mode then
-                announced_dialogue = ""
+                PREV.announced_dialogue = ""
             end
         end
     end
@@ -2450,15 +2474,15 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- transitional states that look like fresh upper dialogue. Absorb the
     -- current upper text into the baseline for a short window around those
     -- transitions so normal status text is never announced as dialogue.
-    if DW_QOL_STATE.command_menu_blocks_field_movement() or menu_upper_absorb_frames > 0 then
+    if DW_QOL_STATE.command_menu_blocks_field_movement() or CMD.menu_upper_absorb > 0 then
         local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
-        upper_baseline = upper
-        prev_upper_dialogue = upper
-        announced_upper_dialogue = upper
-        upper_stable_frames = 0
-        upper_dialogue_active = false
-        if menu_upper_absorb_frames > 0 then
-            menu_upper_absorb_frames = math.max(0, menu_upper_absorb_frames - frame_delta)
+        PREV.upper_baseline = upper
+        PREV.upper_dialogue = upper
+        PREV.announced_upper = upper
+        PREV.upper_stable_count = 0
+        PREV.upper_active = false
+        if CMD.menu_upper_absorb > 0 then
+            CMD.menu_upper_absorb = math.max(0, CMD.menu_upper_absorb - frame_delta)
         end
         return
     end
@@ -2470,22 +2494,22 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- route is active, treat upper-window changes as baseline-only noise.
     if auto_step.is_route_active and auto_step.is_route_active() then
         local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
-        upper_baseline = upper
-        prev_upper_dialogue = upper
-        announced_upper_dialogue = upper
-        upper_stable_frames = 0
-        upper_dialogue_active = false
+        PREV.upper_baseline = upper
+        PREV.upper_dialogue = upper
+        PREV.announced_upper = upper
+        PREV.upper_stable_count = 0
+        PREV.upper_active = false
         return
     end
 
     if field_dialogue_guard_active() or
-       (movement_dialogue_hold_frames > 0 and not has_blocking_live_input() and submenu_mode == nil
+       (CMD.movement_dialogue > 0 and not has_blocking_live_input() and submenu_mode == nil
         and not menu.is_yesno_active()) then
         local upper = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
-        upper_baseline = upper
-        prev_upper_dialogue = upper
-        upper_stable_frames = 0
-        upper_dialogue_active = false
+        PREV.upper_baseline = upper
+        PREV.upper_dialogue = upper
+        PREV.upper_stable_count = 0
+        PREV.upper_active = false
         return
     end
 
@@ -2518,43 +2542,43 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- the current upper text as baseline-only content.
     local lower_dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
     if lower_dialogue ~= "" then
-        upper_baseline = upper
-        prev_upper_dialogue = upper
-        announced_upper_dialogue = upper
-        upper_stable_frames = 0
-        upper_dialogue_active = false
+        PREV.upper_baseline = upper
+        PREV.upper_dialogue = upper
+        PREV.announced_upper = upper
+        PREV.upper_stable_count = 0
+        PREV.upper_active = false
         return
     end
 
     -- Track changes with stabilization (same approach as lower dialogue)
-    if upper ~= prev_upper_dialogue then
-        upper_stable_frames = 0
-        prev_upper_dialogue = upper
+    if upper ~= PREV.upper_dialogue then
+        PREV.upper_stable_count = 0
+        PREV.upper_dialogue = upper
     else
-        upper_stable_frames = upper_stable_frames + frame_delta
+        PREV.upper_stable_count = PREV.upper_stable_count + frame_delta
     end
 
     -- Only process once text has stabilized for the upper-window threshold.
     -- This is longer than the lower-dialogue threshold to allow the status
     -- bar (which redraws incrementally after player stops moving) to fully
-    -- render before we inspect it. See UPPER_STABLE_THRESHOLD above.
-    if upper_stable_frames < UPPER_STABLE_THRESHOLD then return end
+    -- render before we inspect it. See K.UPPER_STABLE_THRESHOLD above.
+    if PREV.upper_stable_count < K.UPPER_STABLE_THRESHOLD then return end
 
     -- y=1 baseline absorption: if the player moved while at y=1, absorb this
     -- stable text as the new baseline without announcing it. The player is
     -- frozen during NPC dialogue, so dialogue text reaches here with
     -- y1_baseline_pending = false and gets announced normally.
     --
-    -- IMPORTANT: set announced_upper_dialogue = upper (not ""). If we used "",
-    -- the command menu's upper_stable_frames reset would cause the SAME noise
+    -- IMPORTANT: set PREV.announced_upper = upper (not ""). If we used "",
+    -- the command menu's PREV.upper_stable_count reset would cause the SAME noise
     -- to be re-processed 30 frames after the menu closes and look "new" (since
     -- announced is "" but upper is non-empty). Marking it as already-processed
     -- prevents that re-announcement. NPC dialogue is different text, so it still
     -- triggers normally when the player is stationary and upper text changes.
     if y1_baseline_pending then
-        upper_baseline = upper
-        upper_dialogue_active = false
-        announced_upper_dialogue = upper  -- mark as processed, not ""
+        PREV.upper_baseline = upper
+        PREV.upper_active = false
+        PREV.announced_upper = upper  -- mark as processed, not ""
         y1_baseline_pending = false
         return
     end
@@ -2572,9 +2596,9 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- 18-27) and is handled by check_lower_dialogue. Nothing in rows 1-18
     -- at y=1 is ever genuine dialogue — absorb unconditionally.
     if in_gameplay and not snapshot.is_overworld and snapshot.player_y <= 1 then
-        upper_baseline = upper
-        announced_upper_dialogue = upper
-        upper_dialogue_active = false
+        PREV.upper_baseline = upper
+        PREV.announced_upper = upper
+        PREV.upper_active = false
         return
     end
 
@@ -2582,10 +2606,10 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- dialogue ends and the screen returns to its pre-dialogue state), treat it
     -- as baseline content. Reset dialogue tracking so the next real change is
     -- caught cleanly, without announcing the return-to-baseline itself.
-    if upper == upper_baseline then
-        if upper_dialogue_active then
-            upper_dialogue_active = false
-            announced_upper_dialogue = upper
+    if upper == PREV.upper_baseline then
+        if PREV.upper_active then
+            PREV.upper_active = false
+            PREV.announced_upper = upper
         end
         return
     end
@@ -2600,13 +2624,13 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
 
     if has_menu_text then
         -- Stale command menu — not dialogue.
-        if upper_dialogue_active then
-            upper_dialogue_active = false
+        if PREV.upper_active then
+            PREV.upper_active = false
             -- Use `upper` (not "") so the same NPC dialogue text does not look
             -- "new" when the menu disappears and the text reverts to just
             -- the dialogue portion. If we used "" here, the dialogue would
             -- re-announce itself after every command menu open/close cycle.
-            announced_upper_dialogue = upper
+            PREV.announced_upper = upper
         end
         return
     end
@@ -2618,7 +2642,7 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     if has_status_markers then
         -- Status display still visible + extra dialogue content.
         -- Strip the known status baseline to get just the dialogue.
-        new_text = strip_overlap(upper_baseline, upper)
+        new_text = strip_overlap(PREV.upper_baseline, upper)
     else
         -- Status display was entirely replaced by the dialogue window.
         -- The entire upper text is dialogue content.
@@ -2629,10 +2653,10 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- This keeps the baseline fresh without suppressing real upper-window
     -- dialogue that happens to include the status bar markers.
     if has_status_markers and new_text == "" then
-        upper_baseline = upper
-        if upper_dialogue_active then
-            upper_dialogue_active = false
-            announced_upper_dialogue = upper
+        PREV.upper_baseline = upper
+        if PREV.upper_active then
+            PREV.upper_active = false
+            PREV.announced_upper = upper
         end
         return
     end
@@ -2640,17 +2664,17 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- If stripping the baseline didn't help (no overlap found, returned
     -- the full text including status), and we have a previous announcement,
     -- try stripping that instead to find just the NEW portion.
-    if new_text == upper and announced_upper_dialogue ~= "" then
-        new_text = strip_overlap(announced_upper_dialogue, upper)
+    if new_text == upper and PREV.announced_upper ~= "" then
+        new_text = strip_overlap(PREV.announced_upper, upper)
     end
 
     -- Baseline overlap can leave just the persistent status row as the
     -- extracted "new" text. Hero names contain lowercase letters, so this must
     -- be checked before the lowercase-dialogue filter below.
     if new_text ~= "" and text.is_status_text(new_text) then
-        upper_baseline = upper
-        announced_upper_dialogue = upper
-        upper_dialogue_active = false
+        PREV.upper_baseline = upper
+        PREV.announced_upper = upper
+        PREV.upper_active = false
         debug_tools.debug("UPPER_DIALOGUE_SUPPRESS_STATUS: " .. new_text)
         return
     end
@@ -2674,32 +2698,32 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     -- noise and absorb it into the baseline so it doesn't re-trigger.
     if new_text ~= "" and not new_text:find("[a-z]") then
         if has_status_markers then
-            upper_baseline = upper
+            PREV.upper_baseline = upper
         end
         -- Mark as processed (not "") so the next stabilization with the same
-        -- text is caught by the "upper == announced_upper_dialogue" check and
+        -- text is caught by the "upper == PREV.announced_upper" check and
         -- skips the full classification pipeline, rather than re-running all
         -- filters on identical content.
-        announced_upper_dialogue = upper
-        upper_dialogue_active = false
+        PREV.announced_upper = upper
+        PREV.upper_active = false
         return
     end
 
     -- Skip if we already announced this exact text
-    if upper == announced_upper_dialogue then
-        upper_dialogue_active = false
+    if upper == PREV.announced_upper then
+        PREV.upper_active = false
         return
     end
 
     -- Real dialogue detected — mark the window as active.
-    upper_dialogue_active = true
+    PREV.upper_active = true
 
     if new_text ~= "" then
         debug_tools.on_dialogue(new_text)
         event_bus.publish("dialogue_new", {text = new_text})
         tolk.output_interrupt(new_text)
     end
-    announced_upper_dialogue = upper
+    PREV.announced_upper = upper
 end
 
 -- NOTE: Pathfinding functions (build_pathfind_message, plan_path_to_object,
@@ -2753,10 +2777,10 @@ debug_tools.register_command("report_title_state", function()
     end
 
     debug_tools.info(string.format(
-        "TITLE_STATE state=%s name_entry_visible=%s name_entry_active=%s d8=%d d9=%d cursor_row=%d cursor_col=%d cursor_byte=%s cursor_char=%s buttons=0x%02X joyA=%s joy=%s%s%s%s%s%s%s%s",
+        "TITLE_STATE state=%s name_entry_visible=%s TITLE.name_entry_active=%s d8=%d d9=%d cursor_row=%d cursor_col=%d cursor_byte=%s cursor_char=%s buttons=0x%02X joyA=%s joy=%s%s%s%s%s%s%s%s",
         tostring(game_state.state),
         tostring(NAME_ENTRY_SYMBOLS._visible),
-        tostring(name_entry_active),
+        tostring(TITLE.name_entry_active),
         d8,
         d9,
         ppu_row,
@@ -2875,25 +2899,25 @@ debug_tools.register_command("report_upper_dialogue_state", function()
     local scroll_tiles = get_scroll_tiles()
     local base_nametable = DW_QOL_STATE.get_scroll_base_nametable()
     local msg = string.format(
-        "UPPER_STATE active=%s menu_raw=%s menu_active=%s submenu=%s scroll_tiles=%d base_nt=%d prev_dialogue_len=%d announced_dialogue_len=%d upper_len=%d baseline_len=%d announced_len=%d lower_len=%d upper=%q baseline=%q announced=%q lower=%q prev_lower=%q announced_lower=%q",
-        tostring(upper_dialogue_active),
+        "UPPER_STATE active=%s menu_raw=%s menu_active=%s submenu=%s scroll_tiles=%d base_nt=%d PREV.dialogue_len=%d PREV.announced_dialogue_len=%d upper_len=%d baseline_len=%d announced_len=%d lower_len=%d upper=%q baseline=%q announced=%q lower=%q prev_lower=%q announced_lower=%q",
+        tostring(PREV.upper_active),
         tostring(menu.is_open()),
         tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
         tostring(submenu_mode),
         scroll_tiles,
         base_nametable,
-        #(prev_dialogue or ""),
-        #(announced_dialogue or ""),
+        #(PREV.dialogue or ""),
+        #(PREV.announced_dialogue or ""),
         #(upper or ""),
-        #(upper_baseline or ""),
-        #(announced_upper_dialogue or ""),
+        #(PREV.upper_baseline or ""),
+        #(PREV.announced_upper or ""),
         #(lower or ""),
         tostring(upper or ""),
-        tostring(upper_baseline or ""),
-        tostring(announced_upper_dialogue or ""),
+        tostring(PREV.upper_baseline or ""),
+        tostring(PREV.announced_upper or ""),
         tostring(lower or ""),
-        tostring(prev_dialogue or ""),
-        tostring(announced_dialogue or "")
+        tostring(PREV.dialogue or ""),
+        tostring(PREV.announced_dialogue or "")
     )
     debug_tools.info(msg)
     tolk.output_interrupt("Upper dialogue state reported")
@@ -2920,15 +2944,15 @@ debug_tools.register_command("report_menu_state", function()
         tostring(cursor_x),
         tostring(cursor_y),
         tostring(item),
-        tostring(cmd_menu_confirmed),
-        tostring(cmd_menu_live),
-        tostring(cmd_rearm_required),
-        cmd_cursor_hold_frames,
+        tostring(CMD.menu_confirmed),
+        tostring(CMD.menu_live),
+        tostring(CMD.rearm_required),
+        CMD.cursor_hold,
         tostring(menu.is_yesno_active()),
         tostring(menu.yesno_cursor_seen()),
         tostring(submenu_mode),
-        tostring(merchant_screen_active),
-        tostring(merchant_scan_present),
+        tostring(MER.active),
+        tostring(MER.scan_present),
         #(lower or ""),
         get_scroll_tiles(),
         DW_QOL_STATE.get_scroll_base_nametable(),
@@ -3766,25 +3790,25 @@ while true do
     -- leaked game input.
     scan_profiler.call("hotkeys.update", hotkeys.update, keys, game_state,
         get_autowalk_unavailable_reason() == nil
-            and announced_dialogue == ""
+            and PREV.announced_dialogue == ""
             and not (auto_step.is_route_active and auto_step.is_route_active()))
 
-    -- Startup grace period: during the first STARTUP_FRAMES frames,
+    -- Startup grace period: during the first K.STARTUP_FRAMES frames,
     -- let all the "previous" tracking values initialize silently.
     -- We still run the detection functions (so prev_ values get set),
     -- but we suppress their announcements by skipping the output block.
-    if startup_counter < STARTUP_FRAMES then
+    if startup_counter < K.STARTUP_FRAMES then
         startup_counter = startup_counter + 1
 
         -- Silently initialize previous-frame values so they don't
         -- trigger false change detections after the grace period ends.
-        prev_hp = snapshot.hp
-        prev_mp = snapshot.mp
-        prev_level = snapshot.level
-        prev_gold       = snapshot.gold
-        prev_magic_keys = snapshot.keys
-        prev_herbs      = snapshot.herbs
-        prev_items = {
+        PREV.hp = snapshot.hp
+        PREV.mp = snapshot.mp
+        PREV.level = snapshot.level
+        PREV.gold       = snapshot.gold
+        PREV.magic_keys = snapshot.keys
+        PREV.herbs      = snapshot.herbs
+        PREV.items = {
             snapshot.items[1],
             snapshot.items[2],
             snapshot.items[3],
@@ -3803,36 +3827,36 @@ while true do
         -- state so the player knows where they are. Without this, the
         -- title screen transition would be missed since it happened
         -- during the grace period.
-        if startup_counter == STARTUP_FRAMES then
+        if startup_counter == K.STARTUP_FRAMES then
             -- Initialize the upper dialogue baseline so the status display
             -- text doesn't get announced as "new dialogue" after the grace period.
-            upper_baseline = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
-            prev_upper_dialogue = upper_baseline
+            PREV.upper_baseline = text.read_upper_window(get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
+            PREV.upper_dialogue = PREV.upper_baseline
             reset_merchant_state(false)
             reset_battle_menu_state()
 
             if game_state.state == state.STATE_TITLE then
-                prev_title_cursor_row       = nil
-                prev_title_cursor_col       = nil
-                prev_is_name_entry          = false
-                name_entry_active           = false
+                PREV.title_cursor_row       = nil
+                PREV.title_cursor_col       = nil
+                PREV.is_name_entry          = false
+                TITLE.name_entry_active           = false
                 NAME_ENTRY_SYMBOLS._visible       = false
                 NAME_ENTRY_SYMBOLS.reset_guard()
-                prev_name_d8                = nil
-                prev_name_d9                = nil
-                title_stable                = 0
-                cursor_held_row             = nil
-                cursor_held_col             = nil
-                cursor_hold_timer           = 0
-                challenger_row              = nil
-                challenger_col              = nil
-                challenger_frames           = 0
-                prev_title_no_cursor_text   = ""
-                title_no_cursor_stable      = 0
-                save_slot_was_open          = false
-                prev_save_slot_d9           = nil
-                msg_speed_was_open          = false
-                prev_msg_speed_d9           = nil
+                PREV.name_d8                = nil
+                PREV.name_d9                = nil
+                TITLE.stable                = 0
+                TITLE.cursor_held_row             = nil
+                TITLE.cursor_held_col             = nil
+                TITLE.cursor_hold_timer           = 0
+                TITLE.challenger_row              = nil
+                TITLE.challenger_col              = nil
+                TITLE.challenger_frames           = 0
+                PREV.title_no_cursor_text   = ""
+                TITLE.no_cursor_stable      = 0
+                TITLE.save_slot_open          = false
+                PREV.save_slot_d9           = nil
+                TITLE.msg_speed_open          = false
+                PREV.msg_speed_d9           = nil
                 field_from_title_ct         = 0
                 reset_merchant_state(false)
                 reset_battle_menu_state()
@@ -3845,50 +3869,50 @@ while true do
         -- Announce state transitions
         if game_state.changed then
             if game_state.state == state.STATE_TITLE then
-                prev_title_cursor_row       = nil
-                prev_title_cursor_col       = nil
-                prev_is_name_entry          = false
-                name_entry_active           = false
+                PREV.title_cursor_row       = nil
+                PREV.title_cursor_col       = nil
+                PREV.is_name_entry          = false
+                TITLE.name_entry_active           = false
                 NAME_ENTRY_SYMBOLS._visible       = false
                 NAME_ENTRY_SYMBOLS.reset_guard()
-                prev_name_d8                = nil
-                prev_name_d9                = nil
-                title_stable                = 0
-                cursor_held_row             = nil
-                cursor_held_col             = nil
-                cursor_hold_timer           = 0
-                challenger_row              = nil
-                challenger_col              = nil
-                challenger_frames           = 0
-                prev_title_no_cursor_text   = ""
-                title_no_cursor_stable      = 0
-                save_slot_was_open          = false
-                prev_save_slot_d9           = nil
-                msg_speed_was_open          = false
-                prev_msg_speed_d9           = nil
+                PREV.name_d8                = nil
+                PREV.name_d9                = nil
+                TITLE.stable                = 0
+                TITLE.cursor_held_row             = nil
+                TITLE.cursor_held_col             = nil
+                TITLE.cursor_hold_timer           = 0
+                TITLE.challenger_row              = nil
+                TITLE.challenger_col              = nil
+                TITLE.challenger_frames           = 0
+                PREV.title_no_cursor_text   = ""
+                TITLE.no_cursor_stable      = 0
+                TITLE.save_slot_open          = false
+                PREV.save_slot_d9           = nil
+                TITLE.msg_speed_open          = false
+                PREV.msg_speed_d9           = nil
                 field_from_title_ct         = 0
                 reset_merchant_state(false)
                 reset_battle_menu_state()
                 tolk.output("Title screen.")
             elseif game_state.state == state.STATE_BATTLE then
-                prev_is_name_entry = false
-                name_entry_active = false
+                PREV.is_name_entry = false
+                TITLE.name_entry_active = false
                 NAME_ENTRY_SYMBOLS._visible = false
                 NAME_ENTRY_SYMBOLS.reset_guard()
-                prev_name_d8 = nil
-                prev_name_d9 = nil
+                PREV.name_d8 = nil
+                PREV.name_d9 = nil
                 reset_merchant_state(false)
                 reset_battle_menu_state()
                 tolk.output("Battle!")
                 debug_tools.on_battle_start()
                 event_bus.publish("battle_started")
             elseif game_state.state == state.STATE_FIELD then
-                prev_is_name_entry = false
-                name_entry_active = false
+                PREV.is_name_entry = false
+                TITLE.name_entry_active = false
                 NAME_ENTRY_SYMBOLS._visible = false
                 NAME_ENTRY_SYMBOLS.reset_guard()
-                prev_name_d8 = nil
-                prev_name_d9 = nil
+                PREV.name_d8 = nil
+                PREV.name_d9 = nil
                 reset_battle_menu_state()
                 -- Transitioning from title to field: start or continue debounce.
                 if game_state.prev_state == state.STATE_TITLE then
@@ -3903,12 +3927,12 @@ while true do
         if field_from_title_ct > 0 then
             if game_state.state == state.STATE_FIELD then
                 field_from_title_ct = field_from_title_ct + 1
-                if field_from_title_ct == FIELD_DEBOUNCE then
+                if field_from_title_ct == K.FIELD_DEBOUNCE then
                     tolk.output("Game started.")
-                    post_start_grace = FIELD_GRACE
+                    post_start_grace = K.FIELD_GRACE
                     field_from_title_ct = 0
                     if scan_profiler.is_enabled() then
-                        bizhawk_boot_dialogue_frames = BIZHAWK_BOOT_DIALOGUE_HOLD
+                        CMD.bizhawk_boot_dialogue = K.BIZHAWK_BOOT_DIALOGUE_HOLD
                     end
                 end
             else
@@ -3933,21 +3957,21 @@ while true do
         end
 
         if game_state.state == state.STATE_FIELD then
-            if bizhawk_boot_dialogue_frames > 0 then
-                bizhawk_boot_dialogue_frames = bizhawk_boot_dialogue_frames - 1
+            if CMD.bizhawk_boot_dialogue > 0 then
+                CMD.bizhawk_boot_dialogue = CMD.bizhawk_boot_dialogue - 1
             end
             if current_joy_any or DW_QOL_STATE.command_menu_blocks_field_movement() or submenu_mode ~= nil or menu.is_yesno_active() then
-                recent_field_action_frames = RECENT_FIELD_ACTION_HOLD
-            elseif recent_field_action_frames > 0 then
-                recent_field_action_frames = recent_field_action_frames - 1
+                CMD.recent_field_action = K.RECENT_FIELD_ACTION_HOLD
+            elseif CMD.recent_field_action > 0 then
+                CMD.recent_field_action = CMD.recent_field_action - 1
             end
         else
-            bizhawk_boot_dialogue_frames = 0
-            recent_field_action_frames = 0
+            CMD.bizhawk_boot_dialogue = 0
+            CMD.recent_field_action = 0
         end
 
         if game_state.state == state.STATE_BATTLE then
-            battle_dialogue_grace_frames = BATTLE_DIALOGUE_GRACE
+            battle_dialogue_grace_frames = K.BATTLE_DIALOGUE_GRACE
         elseif battle_dialogue_grace_frames > 0 then
             battle_dialogue_grace_frames = battle_dialogue_grace_frames - 1
         end
@@ -3963,13 +3987,13 @@ while true do
                 -- The debounce period (field_from_title_ct > 0) covers the first
                 -- ~30 frames before grace officially starts; without this, HP
                 -- changes during loading trigger false "Gained X HP" announcements.
-                prev_hp         = snapshot.hp
-                prev_mp         = snapshot.mp
-                prev_level      = snapshot.level
-                prev_gold       = snapshot.gold
-                prev_magic_keys = snapshot.keys
-                prev_herbs      = snapshot.herbs
-                prev_items = {
+                PREV.hp         = snapshot.hp
+                PREV.mp         = snapshot.mp
+                PREV.level      = snapshot.level
+                PREV.gold       = snapshot.gold
+                PREV.magic_keys = snapshot.keys
+                PREV.herbs      = snapshot.herbs
+                PREV.items = {
                     snapshot.items[1],
                     snapshot.items[2],
                     snapshot.items[3],
@@ -3993,9 +4017,9 @@ while true do
                 checked_call("check_map_change", check_map_change)
                 if skip_first_hp_check then
                     -- Re-initialize baselines instead of checking for changes.
-                    prev_hp    = snapshot.hp
-                    prev_mp    = snapshot.mp
-                    prev_level = snapshot.level
+                    PREV.hp    = snapshot.hp
+                    PREV.mp    = snapshot.mp
+                    PREV.level = snapshot.level
                     skip_first_hp_check = false
                 else
                     checked_call("check_hp_mp_changes", check_hp_mp_changes)
@@ -4015,10 +4039,10 @@ while true do
                 local menu_attention = menu.is_open()
                     or DW_QOL_STATE.command_menu_blocks_field_movement()
                     or submenu_mode ~= nil
-                    or cmd_menu_confirmed
+                    or CMD.menu_confirmed
                     or menu.is_yesno_active()
                     or current_joy_any
-                    or recent_field_action_frames > 0
+                    or CMD.recent_field_action > 0
                 local menu_interval = menu_attention and 2 or 4
                 local run_menu, menu_delta = false, 0
                 if not dialogue_hint or menu_attention then
@@ -4060,8 +4084,8 @@ while true do
         -- those rows decode as spurious digits/uppercase and produce false
         -- announcements. check_title_screen() handles all title-screen text.
         if in_gameplay then
-            local merchant_active = merchant_screen_active
-            local merchant_interval = merchant_screen_active and 3 or (dialogue_hint and 12 or 8)
+            local merchant_active = MER.active
+            local merchant_interval = MER.active and 3 or (dialogue_hint and 12 or 8)
             local run_merchant = false
             local merchant_delta = 0
             -- The shop item list always includes lower prompt text ("What dost
@@ -4081,7 +4105,7 @@ while true do
                     scan_profiler.call("check_dialogue", checked_call, "check_dialogue", check_dialogue, lower_delta, dialogue_hint)
                 end
 
-                local upper_interval = upper_dialogue_active and 8 or (dialogue_hint and 30 or 10)
+                local upper_interval = PREV.upper_active and 8 or (dialogue_hint and 30 or 10)
                 local run_upper, upper_delta = scan_profiler.should_run("upper_dialogue", upper_interval, frame_count)
                 if run_upper then
                     scan_profiler.call("check_upper_dialogue", checked_call, "check_upper_dialogue", check_upper_dialogue, upper_delta, dialogue_hint)
@@ -4162,9 +4186,9 @@ while true do
                          or (
                              not DW_QOL_STATE.command_menu_blocks_field_movement()
                              and submenu_mode == nil
-                             and not merchant_screen_active
-                             and prev_dialogue == ""
-                             and not upper_dialogue_active
+                             and not MER.active
+                             and PREV.dialogue == ""
+                             and not PREV.upper_active
                          )
                      )
     if debug_tools.DEBUG_MODE and not can_walk then
@@ -4179,13 +4203,13 @@ while true do
                 tostring(menu.is_open()),
                 tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
                 tostring(submenu_mode),
-                tostring(#(prev_dialogue or "")),
-                tostring(upper_dialogue_active),
+                tostring(#(PREV.dialogue or "")),
+                tostring(PREV.upper_active),
                 active_target and tostring(active_target.name) or "nil",
             }, "|")
             if can_walk_log.key ~= block_key or (frame_count - (can_walk_log.frame or -9999)) >= 60 then
                 debug_tools.debug(string.format(
-                    "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu_raw=%s menu_active=%s submenu=%s prev_dialogue_len=%d upper_dialogue_active=%s target=%s",
+                    "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu_raw=%s menu_active=%s submenu=%s PREV.dialogue_len=%d PREV.upper_active=%s target=%s",
                     tostring(game_state.state),
                     tostring(debug_tools.is_sweep_active()),
                     tostring(path_debug.is_step_mode()),
@@ -4193,8 +4217,8 @@ while true do
                     tostring(menu.is_open()),
                     tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
                     tostring(submenu_mode),
-                    #(prev_dialogue or ""),
-                    tostring(upper_dialogue_active),
+                    #(PREV.dialogue or ""),
+                    tostring(PREV.upper_active),
                     active_target and tostring(active_target.name) or "nil"))
                 can_walk_log.key = block_key
                 can_walk_log.frame = frame_count
