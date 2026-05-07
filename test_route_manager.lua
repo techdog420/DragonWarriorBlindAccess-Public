@@ -91,7 +91,7 @@ local function make_env(options)
     package.preload["navigation"] = function()
         return {
             get_position = function()
-                return 0x05, 5, 4
+                return options.start_map_id or 0x05, options.start_x or 5, options.start_y or 4
             end,
         }
     end
@@ -673,6 +673,45 @@ function tests.preview_planning_can_override_origin_and_blocking_state()
     assert_equal(adjacent.start_x, 8, "adjacent fallback should reuse the overridden preview origin")
     assert_equal(adjacent.start_y, 8, "adjacent fallback should reuse the overridden preview origin")
     assert_equal(adjacent.blocking["8,7"].south, true, "adjacent fallback should reuse the supplied preview blocking state")
+
+    env.restore()
+end
+
+function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service()
+    local merchant = {
+        name = "Merchant 2",
+        type = "npc",
+        id = "npc_1",
+        x = 5,
+        y = 4,
+        interaction_x = 5,
+        interaction_y = 6,
+        interaction_face_dir = "north",
+    }
+    local env = make_env({
+        start_map_id = 0x08,
+        start_x = 8,
+        start_y = 5,
+        current_object = merchant,
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+            auto_walk_face_target_frames = "1",
+        },
+    })
+
+    local plan = env.route_manager.plan_path_to_object(merchant)
+    local direct = env.last_direct_call()
+    assert_equal(plan.path_mode, "direct", "counter services should route directly to the interaction square")
+    assert_equal(plan.goal_x, 5, "counter service plan should target the doorway X")
+    assert_equal(plan.goal_y, 6, "counter service plan should target the doorway Y")
+    assert_equal(plan.face_dir, "north", "counter service plan should face toward the merchant after arrival")
+    assert_equal(direct.goal_x, 5, "direct pathfinder call should use the interaction X")
+    assert_equal(direct.goal_y, 6, "direct pathfinder call should use the interaction Y")
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_complete()
+    env.route_manager.apply_npc_freeze()
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "direct service arrival should face the merchant")
 
     env.restore()
 end
@@ -1259,6 +1298,36 @@ function tests.autowalk_no_path_mentions_npc_clutter_when_npc_free_route_exists(
         table.concat(env.outputs, "\n"),
         "Route is currently blocked by NPC movement",
         "no-path output should explain when NPC clutter is the likely route blocker"
+    )
+
+    env.restore()
+end
+
+function tests.autowalk_no_path_mentions_stationary_npc_when_blocker_cannot_move()
+    local target = {id = "npc_10", name = "Merchant 2", type = "npc", x = 6, y = 1}
+    local stationary = {id = "npc_12", name = "Woman 3", type = "npc", x = 5, y = 3, movement = 0}
+    local env = make_env({
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        current_object = target,
+        object_list = {target, stationary},
+        blocking_positions = {
+            {x = 5, y = 3},
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(
+        output,
+        "Route is blocked by a stationary NPC",
+        "stationary NPC blockers should not be announced as temporary NPC movement"
+    )
+    assert_not_contains(
+        output,
+        "Wait for them to move",
+        "stationary blocker output should not tell the player to wait"
     )
 
     env.restore()

@@ -8,6 +8,10 @@
 -- Extracted from main.lua to reduce its size and improve modularity.
 -- The main loop calls hotkeys.update(keys) once per frame, passing
 -- the table from input.get().
+-- update(keys, game_state, allow_object_hotkeys) accepts an optional third
+-- argument so callers can disable object navigation during non-idle interactive
+-- states (command/merchant/dialogue/autowalk). If omitted, the legacy behavior
+-- applies.
 
 local tolk       = require "tolk"
 local addr       = require "addresses"
@@ -46,6 +50,66 @@ local function is_key_pressed(keys, key_name)
     return key_combo.is_pressed(keys, prev_keys, key_name)
 end
 
+local function allow_field_object_hotkeys(game_state, allow_object_hotkeys)
+    if game_state ~= nil and game_state.state ~= "field" then
+        return false
+    end
+
+    if allow_object_hotkeys == nil then
+        return true
+    end
+
+    return allow_object_hotkeys
+end
+
+local OBJECT_HOTKEY_CONFIG_KEYS = {
+    "key_freeze_npcs",
+    "key_filter_prev",
+    "key_filter_all",
+    "key_filter_next",
+    "key_object_next",
+    "key_object_prev",
+    "key_object_current",
+    "key_pathability_filter",
+    "key_pathfind",
+    "key_auto_walk",
+    "key_filter",
+    "key_mark_visited",
+    "key_teleport_exact",
+    "key_teleport_north",
+    "key_teleport_south",
+    "key_teleport_west",
+    "key_teleport_east",
+}
+
+local function blocked_object_hotkey_pressed(keys)
+    for _, config_key in ipairs(OBJECT_HOTKEY_CONFIG_KEYS) do
+        if is_key_pressed(keys, config.get(config_key)) then
+            return config_key
+        end
+    end
+    return nil
+end
+
+local function blocked_object_hotkey_down(keys)
+    for _, config_key in ipairs(OBJECT_HOTKEY_CONFIG_KEYS) do
+        if key_combo.is_down(keys, config.get(config_key)) then
+            return config_key
+        end
+    end
+    return nil
+end
+
+local function suppress_blocked_hotkey_game_input()
+    local qol = rawget(_G, "DW_QOL_STATE")
+    if qol and qol.suppress_teleport_input then
+        local ok, err = pcall(qol.suppress_teleport_input)
+        if not ok and debug_tools.error then
+            debug_tools.error("blocked hotkey input suppression failed: " .. tostring(err))
+        end
+    end
+end
+
 local function get_object_nav_speech_delay()
     local frames = tonumber(config.get("object_nav_speech_coalesce_frames")) or 0
     if frames < 0 then return 0 end
@@ -59,7 +123,22 @@ end
 
 local function speak_now(message)
     clear_object_nav_speech()
-    tolk.output_interrupt(message)
+    local ok, err = pcall(tolk.output_interrupt, message)
+    if not ok and debug_tools.error then
+        debug_tools.error("hotkey speech output failed: " .. tostring(err))
+    end
+end
+
+local function speak_position()
+    local ok, message = pcall(nav.get_position_string)
+    if ok and message and message ~= "" then
+        speak_now(message)
+        return
+    end
+    if debug_tools.error then
+        debug_tools.error("position hotkey failed: " .. tostring(message))
+    end
+    speak_now("Position unavailable")
 end
 
 local function clear_ppu_cache_for_diagnostic()
@@ -147,12 +226,12 @@ end
 -- keys: table from input.get() with key names as keys, true as values.
 -- All key assignments come from config.lua so the user can remap them.
 -- Call once per frame from the main loop.
-function M.update(keys)
+function M.update(keys, game_state, allow_object_hotkeys)
     object_nav_speech_queued_this_frame = false
 
     -- Position: Read current position (map name + coordinates)
     if is_key_pressed(keys, config.get("key_position")) then
-        speak_now(nav.get_position_string())
+        speak_position()
     end
 
     -- HP/MP: Read current HP and MP
@@ -673,138 +752,154 @@ function M.update(keys)
         end
     end
 
+    local object_hotkeys_allowed = allow_field_object_hotkeys(game_state, allow_object_hotkeys)
+
     -- Toggle NPC position freeze on/off.
     -- When frozen, NPC bytes are locked to their snapshotted positions so
     -- pathfinding routes stay valid even if guards wander. Turn off after
     -- reaching your destination so NPCs resume normal movement.
-    if is_key_pressed(keys, config.get("key_freeze_npcs")) then
+    if object_hotkeys_allowed and is_key_pressed(keys, config.get("key_freeze_npcs")) then
         clear_object_nav_speech()
         route_mgr.toggle_npc_freeze()
     end
 
-    -- ============================================================
-    -- Object Navigation (J/K/L/O/F)
-    -- ============================================================
-    -- Cycle through map objects (NPCs, stairs, chests, exits) and
-    -- hear direction + distance information for each one.
-    -- Follows the J/K/L convention from pokemon-access and FF mods.
+    -- Object hotkeys are allowed in field play only. This keeps battle/input
+    -- from running route/path/teleport/mark actions while the encounter is active.
+    if not object_hotkeys_allowed then
+        local blocked_key = blocked_object_hotkey_pressed(keys)
+        local held_key = blocked_key or blocked_object_hotkey_down(keys)
+        if held_key then
+            suppress_blocked_hotkey_game_input()
+        end
+        if blocked_key then
+            debug_tools.debug("object hotkey blocked: " .. blocked_key)
+            speak_now("Object controls unavailable right now")
+        end
+    else
+        -- ============================================================
+        -- Object Navigation (J/K/L/O/F)
+        -- ============================================================
+        -- Cycle through map objects (NPCs, stairs, chests, exits) and
+        -- hear direction + distance information for each one.
+        -- Follows the J/K/L convention from pokemon-access and FF mods.
 
-    local filter_nav_handled = false
+        local filter_nav_handled = false
 
-    if is_key_pressed(keys, config.get("key_filter_prev")) then
-        filter_nav_handled = true
-        clear_object_nav_speech()
-        speak_filter(objects.prev_filter())
-    end
+        if is_key_pressed(keys, config.get("key_filter_prev")) then
+            filter_nav_handled = true
+            clear_object_nav_speech()
+            speak_filter(objects.prev_filter())
+        end
 
-    if is_key_pressed(keys, config.get("key_filter_all")) then
-        filter_nav_handled = true
-        clear_object_nav_speech()
-        speak_filter(objects.all_filter())
-    end
+        if is_key_pressed(keys, config.get("key_filter_all")) then
+            filter_nav_handled = true
+            clear_object_nav_speech()
+            speak_filter(objects.all_filter())
+        end
 
-    if is_key_pressed(keys, config.get("key_filter_next")) then
-        filter_nav_handled = true
-        clear_object_nav_speech()
-        speak_filter(objects.next_filter())
-    end
+        if is_key_pressed(keys, config.get("key_filter_next")) then
+            filter_nav_handled = true
+            clear_object_nav_speech()
+            speak_filter(objects.next_filter())
+        end
 
-    -- L key (default): Next object in list
-    if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_next")) then
-        refresh_pathability_if_needed()
-        local obj = objects.next_object()
-        if obj then
-            queue_object_nav_speech(route_mgr.describe_current_object({
+        -- L key (default): Next object in list
+        if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_next")) then
+            refresh_pathability_if_needed()
+            local obj = objects.next_object()
+            if obj then
+                queue_object_nav_speech(route_mgr.describe_current_object({
+                    include_reachability = false,
+                    include_debug_coords = false,
+                }))
+            else
+                speak_now("No objects found")
+            end
+        end
+
+        -- J key (default): Previous object in list
+        if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_prev")) then
+            refresh_pathability_if_needed()
+            local obj = objects.prev_object()
+            if obj then
+                queue_object_nav_speech(route_mgr.describe_current_object({
+                    include_reachability = false,
+                    include_debug_coords = false,
+                }))
+            else
+                speak_now("No objects found")
+            end
+        end
+
+        -- K key (default): Describe current object (re-read with updated distance)
+        if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_current")) then
+            refresh_pathability_if_needed()
+            speak_now(route_mgr.describe_current_object({
                 include_reachability = false,
                 include_debug_coords = false,
             }))
-        else
-            speak_now("No objects found")
         end
-    end
 
-    -- J key (default): Previous object in list
-    if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_prev")) then
-        refresh_pathability_if_needed()
-        local obj = objects.prev_object()
-        if obj then
-            queue_object_nav_speech(route_mgr.describe_current_object({
-                include_reachability = false,
-                include_debug_coords = false,
-            }))
-        else
-            speak_now("No objects found")
+        local pathability_filter_handled = false
+        if is_key_pressed(keys, config.get("key_pathability_filter")) then
+            pathability_filter_handled = true
+            clear_object_nav_speech()
+            speak_pathability_filter(route_mgr.next_object_pathability_filter())
         end
-    end
 
-    -- K key (default): Describe current object (re-read with updated distance)
-    if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_current")) then
-        refresh_pathability_if_needed()
-        speak_now(route_mgr.describe_current_object({
-            include_reachability = false,
-            include_debug_coords = false,
-        }))
-    end
-
-    local pathability_filter_handled = false
-    if is_key_pressed(keys, config.get("key_pathability_filter")) then
-        pathability_filter_handled = true
-        clear_object_nav_speech()
-        speak_pathability_filter(route_mgr.next_object_pathability_filter())
-    end
-
-    -- O key (default): Pathfind to current object.
-    -- For NPCs: route to an adjacent tile (player can't walk onto the NPC).
-    -- For everything else (stairs, chests, exits): route to the exact tile.
-    -- NPC positions are passed so the pathfinder routes around other NPCs
-    -- that physically block tiles along the way.
-    if not pathability_filter_handled and is_key_pressed(keys, config.get("key_pathfind")) then
-        clear_object_nav_speech()
-        refresh_pathability_if_needed()
-        route_mgr.pathfind_to_current()
-    end
-
-    -- U key (default): Auto-walk the computed path to the current object.
-    -- Uses the same planning logic as O, but queues the route into auto_step
-    -- so the player actually walks it on interior maps.
-    if is_key_pressed(keys, config.get("key_auto_walk")) then
-        clear_object_nav_speech()
-        refresh_pathability_if_needed()
-        route_mgr.autowalk_to_current()
-    end
-
-    -- Q key (default): Cycle object filter (All / NPCs / Services / Treasure / Travel / Doors)
-    if is_key_pressed(keys, config.get("key_filter")) then
-        clear_object_nav_speech()
-        speak_filter(objects.next_filter())
-    end
-
-    if is_key_pressed(keys, config.get("key_mark_visited")) then
-        clear_object_nav_speech()
-        local obj = objects.mark_current_visited()
-        if obj then
-            speak_now(obj.name .. " marked visited")
-        else
-            speak_now("No object selected")
+        -- O key (default): Pathfind to current object.
+        -- For NPCs: route to an adjacent tile (player can't walk onto the NPC).
+        -- For everything else (stairs, chests, exits): route to the exact tile.
+        -- NPC positions are passed so the pathfinder routes around other NPCs
+        -- that physically block tiles along the way.
+        if not pathability_filter_handled and is_key_pressed(keys, config.get("key_pathfind")) then
+            clear_object_nav_speech()
+            refresh_pathability_if_needed()
+            route_mgr.pathfind_to_current()
         end
-    end
 
-    if teleport_handler then
-        if is_key_pressed(keys, config.get("key_teleport_exact")) then
+        -- U key (default): Auto-walk the computed path to the current object.
+        -- Uses the same planning logic as O, but queues the route into auto_step
+        -- so the player actually walks it on interior maps.
+        if is_key_pressed(keys, config.get("key_auto_walk")) then
             clear_object_nav_speech()
-            teleport_handler("exact")
-        elseif is_key_pressed(keys, config.get("key_teleport_north")) then
+            refresh_pathability_if_needed()
+            route_mgr.autowalk_to_current()
+        end
+
+        -- Q key (default): Cycle object filter (All / NPCs / Services / Treasure / Travel / Doors)
+        if is_key_pressed(keys, config.get("key_filter")) then
             clear_object_nav_speech()
-            teleport_handler("north")
-        elseif is_key_pressed(keys, config.get("key_teleport_south")) then
+            speak_filter(objects.next_filter())
+        end
+
+        if is_key_pressed(keys, config.get("key_mark_visited")) then
             clear_object_nav_speech()
-            teleport_handler("south")
-        elseif is_key_pressed(keys, config.get("key_teleport_west")) then
-            clear_object_nav_speech()
-            teleport_handler("west")
-        elseif is_key_pressed(keys, config.get("key_teleport_east")) then
-            clear_object_nav_speech()
-            teleport_handler("east")
+            local obj = objects.mark_current_visited()
+            if obj then
+                speak_now(obj.name .. " marked visited")
+            else
+                speak_now("No object selected")
+            end
+        end
+
+        if teleport_handler then
+            if is_key_pressed(keys, config.get("key_teleport_exact")) then
+                clear_object_nav_speech()
+                teleport_handler("exact")
+            elseif is_key_pressed(keys, config.get("key_teleport_north")) then
+                clear_object_nav_speech()
+                teleport_handler("north")
+            elseif is_key_pressed(keys, config.get("key_teleport_south")) then
+                clear_object_nav_speech()
+                teleport_handler("south")
+            elseif is_key_pressed(keys, config.get("key_teleport_west")) then
+                clear_object_nav_speech()
+                teleport_handler("west")
+            elseif is_key_pressed(keys, config.get("key_teleport_east")) then
+                clear_object_nav_speech()
+                teleport_handler("east")
+            end
         end
     end
 

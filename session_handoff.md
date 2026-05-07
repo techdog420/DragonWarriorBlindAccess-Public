@@ -104,6 +104,89 @@ Manual test finding from the auto-walk/TALK pass:
   more time. Failed TALK text no longer marks the adjacent NPC as visited.
 
 Latest manual playtest notes:
+- 2026-05-06 Spark-change review / hotkey crash follow-up: reviewed the
+  field-only object-hotkey patch and tightened it before the next live pass.
+  `hotkeys.update` still receives `game_state` plus an object-hotkey allowance,
+  but `main.lua` now blocks object/teleport/path/mark/freeze hotkeys when the
+  existing auto-walk interaction guard reports menu/dialogue/merchant/sweep/step
+  state, when lower dialogue has not fully cleared, or while an auto-walk route
+  is active. The position readout now protects `nav.get_position_string()` and
+  speech output with `pcall`; a failed "where am I" read logs the error and says
+  `Position unavailable` instead of killing the Lua loop. Validation:
+  `lua test_hotkeys.lua` (15 tests), `lua test_hotkey_filter.lua` (9 tests),
+  `luac -p hotkeys.lua test_hotkeys.lua test_hotkey_filter.lua`, and
+  `git diff --check`.
+- Live status from the same review: `dw_debug.log` is stale at only a fresh
+  header from `2026-05-06 12:42:24`; `./dw_commands.sh --require-live 60 ...`
+  refused to queue, and a guarded `touch main.lua && ./dw_commands.sh --replace
+  --wait "LAUNCHER_PROBE: codex_review_reload" launcher_probe:codex_review_reload`
+  timed out. Windows still shows an `EmuHawk` process with window title
+  `Lua Console`, so the next live test needs a manual script restart or an
+  intentional close/relaunch of BizHawk before judging `Shift+W` / Ctrl+W.
+  Also note an untracked zero-byte `main..lua` exists in the repo root, likely
+  accidental scratch output; remove it after confirming no external tool needs
+  it.
+- Loader-error correction from the screenshot: the Lua console showed
+  `[string "main"]:4010: too many local variables (limit is 200) in main
+  function near '='`. The new object-hotkey helper pushed `main.lua` over the
+  Lua 5.1/NLua local limit. The helper was removed and the same boolean is now
+  passed inline at the `hotkeys.update` call site, so `luac -p main.lua` now
+  passes again. After the fix, `touch main.lua && ./dw_commands.sh --replace
+  --wait "LAUNCHER_PROBE: codex_local_limit_fixed" ...` still timed out, which
+  means the existing failed Lua Console instance did not auto-reload; reload the
+  script manually in BizHawk's Lua Console or close/relaunch BizHawk before the
+  next live probe.
+- Follow-up after script reload: the Lua loop is live again in Brecconary at
+  `(21,7)`. `speech_status` reports `backend=bridge ready=true available=true
+  error=none`, and `speech_bridge.log` received fresh utterances including
+  `Codex_speech_test`, current-object speech, and `Teleport refused. Target
+  cell is occupied by an NPC`. A command-file `teleport_to:5,4` refused because
+  Merchant 2 occupies that tile and did not move the player. No physical
+  selected-object teleport hotkey event appeared in `dw_debug.log`, so the
+  likely bad experience was a silent object-hotkey guard/focus/key-filter miss,
+  not a teleport or speech crash. `hotkeys.lua` now speaks `Object controls
+  unavailable right now` and logs `object hotkey blocked: CONFIG_KEY` when a
+  blocked object/path/teleport/freeze hotkey is pressed. Reload verification:
+  `launcher_probe:object_hotkey_guard_message` landed at frame `00060` after
+  `touch main.lua`, with speech ready and position still `map=0x08 x=21 y=7`.
+- Blocked-teleport input leak follow-up: after the guard-message patch, physical
+  blocked teleport attempts logged `object hotkey blocked: key_teleport_*`, but
+  the directional component still leaked into gameplay. Evidence: immediately
+  after blocked `key_teleport_west/east/south/north`, `auto_step` began manual
+  steps left/up/right from `(21,7)`, hit blocked edges, and left the player
+  feeling control-locked. A live `clear_input input_status:unlock_check
+  report_position report_menu_state speech_status` recovered/confirmed neutral
+  input (`keys=- joy1=- left_alt=false`), menu closed, speech ready, and player
+  at Brecconary `(22,7)`. `hotkeys.lua` now calls
+  `DW_QOL_STATE.suppress_teleport_input()` whenever an object/path/teleport/freeze
+  hotkey is blocked, so the same six-frame neutralization used by successful
+  teleports also prevents leaked D-pad/Start input from reaching `auto_step`.
+  Validation: `luac -p main.lua hotkeys.lua test_hotkeys.lua test_hotkey_filter.lua`,
+  `lua test_hotkeys.lua` (15 tests), `lua test_hotkey_filter.lua` (9 tests), and
+  `git diff --check`. Reload verification:
+  `launcher_probe:blocked_hotkey_suppresses_input` landed at frame `00060`,
+  with speech ready, position `map=0x08 x=22 y=7`, and neutral input.
+- Held-key/self-blocking correction: the first suppression patch only neutralized
+  input for six frames after the rising edge, but a held `Shift+Up` outlasted
+  that window and still reached `auto_step`. `hotkeys.lua` now suppresses leaked
+  input every frame while a blocked object/path/teleport/freeze hotkey remains
+  held, but only speaks the guard on the initial press. Also, `main.lua` no
+  longer bases object-hotkey allowance on `field_dialogue_guard_active()`, because
+  that function treats the teleport hotkey's own Enter/arrow component as live
+  joypad input and made teleport hotkeys refuse themselves. The allowance still
+  uses the menu/dialogue/merchant/autowalk guard via
+  `get_autowalk_unavailable_reason()`, pending lower-dialogue state, and active
+  route state. Validation: `luac -p main.lua hotkeys.lua test_hotkeys.lua
+  test_hotkey_filter.lua`, `lua test_hotkeys.lua` (16 tests),
+  `lua test_hotkey_filter.lua` (9 tests), and `git diff --check`.
+  Reload verification: `launcher_probe:teleport_self_block_removed` landed at
+  frame `00060`, speech ready, neutral input, Brecconary `(22,7)`.
+- Initial 2026-05-06 hotkey robustness follow-up: object/teleport/path/mark-visited hotkeys were moved behind a field-state gate.
+  `hotkeys.update` now receives `game_state`, and `main.lua` evaluates state before
+  hotkey processing so battle-state actions are suppressed in that pass. `Shift+V`
+  / `mark_visited` and selected-object teleport remain available in field play.
+  Superseded by the interaction-aware guard, loader-error correction, and later
+  validation notes above.
 - Ctrl+W crash follow-up: immediately after the user used `Ctrl+W`, the script
   crashed with `2026-05-06T03:35:37Z snapshot.update: nil`. The stack pointed
   at `emulator_compat.lua:174` inside `bizhawk_console.log()` while reporting a
@@ -127,6 +210,67 @@ Latest manual playtest notes:
   merchant. Woman 3 mentioned she was near the shop. Next pass should inspect
   whether shop/inn keepers are blocked targets, static/counter objects, or
   missing from normal NPC/service registration.
+- Brecconary counter-service discovery follow-up: the missing first-town
+  services were counter/large-tile interactions. `map_reader.lua` now exposes
+  non-invasive raw block helpers (`get_raw_block_id`, `is_large_tile`) for the
+  original two-nibbles-per-byte map data. `objects.lua` infers service counters
+  from adjacent raw `0xF` large tiles, but Brecconary has three live-confirmed
+  direct overrides: Merchant 2 `(5,4)` uses `(5,6)` facing north for the
+  weapon/armor shop; Merchant 3 `(10,21)` uses raw large tile `(9,21)` facing
+  east for the inn; Merchant 4 `(25,25)` uses raw large tile `(24,25)` facing
+  east for the tool shop. Live evidence: TALK from `(9,21)` opened
+  `Welcome to the traveler's Inn... Room and board is 6 GOLD per night`, and
+  TALK from `(24,25)` opened `Welcome. We deal in tools.` Final reload
+  verification showed `Services` objects with `Merchant 4 ... interact 24,25`
+  and `Merchant 3 ... interact 9,21`; `RUNTIME_BLOCKS map=0x08 none`.
+- Brecconary Merchant 2 located: selected-object teleport placed the player west
+  of `Merchant 2` at `(5,4)`, and TALK from `(4,4)` opened the real
+  weapon/armor shop (`We deal in weapons and armor...`). Follow-up proved that
+  `(4,4)`, `(4,5)`, `(4,6)`, `(5,5)`, `(6,4)`, and `(6,5)` are trap/service
+  pocket cells for autonomous routing. A later public-side route repro
+  superseded the old noisy `(8,5)->LEFT` moved evidence: `(7,5).east` is blocked
+  too. The real public service approach is the doorway/counter square `(5,6)`;
+  face north and TALK to Merchant 2 at `(5,4)`, two tiles away.
+- Merchant item-list readout fix: the weapon/armor list can show a `COMMAND`
+  header while reusing command-menu cursor RAM, so the command-menu reader was
+  speaking `TALK` / `STATUS` / `SEARCH` and raw cursor values. `merchant.lua`
+  now reads visible rows with horizontal scroll, vertical scroll, and active
+  nametable order, and `main.lua` does a fresh merchant-layout check before
+  command-menu speech. Follow-up found two stability issues: merchant scans
+  were starved while the shop prompt kept `dialogue_hint` true, and stale
+  command labels were visible behind item confirmation/error dialogue.
+  `main.lua` now keeps merchant scanning active during dialogue hints and blocks
+  command-menu speech while lower dialogue is present. Live validation completed
+  a Copper Sword not-enough-gold loop and returned to the list with
+  `Bamboo Pole. 10 gold.` and no fresh command-label chatter.
+- Merchant 2 routing correction: `(4,4)`, `(4,5)`, `(4,6)`, `(5,5)`,
+  `(6,4)`, and `(6,5)` are all pathfinder-forbidden trap/service-pocket cells.
+  After reload, a trapped start at `(5,5)` reports `No path found` immediately
+  with no runtime blocks, while a public start at `(8,5)` auto-walked all the
+  way to the world-map exit at `(1,15)` and ended with `RUNTIME_BLOCKS none`.
+  Follow-up route validation found that `(5,3)` was a false interaction target:
+  the shop opens from `(5,6)` while the merchant object remains two squares
+  north at `(5,4)`. `objects.lua` now exposes a Brecconary service interaction
+  override for Merchant 2, and `route_manager.lua` routes to the interaction
+  square directly, then faces north. Live reload verification:
+  `FILTER: Services. Merchant 2: 2 north, counter here (1 of 4) [player 5,6
+  obj 5,4 interact 5,6]`.
+- Merchant 2 doorway passthrough correction: the first counter-interaction
+  route still stopped short because the doorway throat tiles `(5,6)` and
+  `(5,7)` decoded as non-walkable type-0 tiles. Live evidence showed movement
+  through `(5,8)->UP->(5,7)->UP->(5,6)` and TALK from `(5,6)` opens the shop.
+  `map_reader.lua` now marks `(5,6)` and `(5,7)` as narrow Brecconary
+  passthrough cells. Live validation after reload: `debug_pathfind_to:5,6`
+  found a 13-step path from the west exit side, `auto_walk` queued 13 steps for
+  Merchant 2, arrived at `(5,6)`, faced north, and `pathability_filter:refresh`
+  from `(5,6)` reported `targets=21 reachable=11 unreachable=10` with no
+  runtime blocks.
+- Live verification (2026-05-06): after a restart in BizHawk and reload of the
+  current state, `next_filter` still reports `Services. Merchant 1/2/3/4` plus
+  a `Woman 3` NPC. TALK attempts on `Merchant 1` and `Woman 3` both return
+  `There is no one there.` with `VISITED_AUTO skipped`. Superseded follow-up:
+  Merchant 2 is the weapon/armor shop, Merchant 3 is the inn via counter tile
+  `(9,21)`, and Merchant 4 is the tool shop via counter tile `(24,25)`.
 - Brecconary Guard 6 follow-up: after auto-walk reached Guard 6 in the
   southwest/southeast guard pocket, the object browser recomputed pathability
   as `targets=21 reachable=1 unreachable=20`, leaving only Guard 6 in the

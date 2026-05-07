@@ -1046,12 +1046,38 @@ local function update_active_route_remaining(path_len, face_dir)
     active_route_face_dir = face_dir
 end
 
+local function get_plan_goal(obj)
+    if obj
+       and obj.interaction_x ~= nil
+       and obj.interaction_y ~= nil then
+        return obj.interaction_x, obj.interaction_y, true
+    end
+    return obj and obj.x or nil, obj and obj.y or nil, false
+end
+
+local function get_plan_face_dir(obj, uses_interaction)
+    if uses_interaction and obj and obj.interaction_face_dir then
+        return obj.interaction_face_dir
+    end
+    return nil
+end
+
+local function should_face_after_plan(plan)
+    return plan
+       and plan.face_dir ~= nil
+       and (plan.path_mode == "adjacent" or plan.interaction_goal == true)
+end
+
 local function resolve_path_mode(obj, map_id, opts)
     opts = opts or {}
     local path_mode = opts.path_mode
-    local target_walkable = M.is_pathfinding_walkable(map_id, obj.x, obj.y)
+    local goal_x, goal_y, uses_interaction = get_plan_goal(obj)
+    local target_walkable = M.is_pathfinding_walkable(map_id, goal_x, goal_y)
     if path_mode == "direct" or path_mode == "adjacent" then
         return path_mode, target_walkable
+    end
+    if uses_interaction then
+        return "direct", target_walkable
     end
     if opts.survey_safe and (obj.type == objects.TYPE_EXIT or obj.type == objects.TYPE_STAIR) then
         return "adjacent", target_walkable
@@ -1141,6 +1167,10 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
         msg = msg .. ". Route is currently blocked by NPC movement. Wait for them to move and try again"
         return msg
     end
+    if result == "No path found" and no_path_reason == "stationary_npc_blocker" then
+        msg = msg .. ". Route is blocked by a stationary NPC. Waiting will not clear this route; try another interaction point"
+        return msg
+    end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then
         if no_path_reason == "goal_blocked_npc" then
             msg = msg .. ". Chest tile is currently occupied by an NPC. Wait for it to move before auto-walking"
@@ -1218,8 +1248,31 @@ end
 
 local find_quiet_route_to_adjacent
 
+local function find_stationary_npc_on_path(path)
+    if not path then
+        return nil
+    end
+    local stationary_by_cell = {}
+    for _, obj in ipairs(objects.get_objects()) do
+        if obj.type == objects.TYPE_NPC
+        and tonumber(obj.movement) == 0
+        and obj.x ~= nil
+        and obj.y ~= nil then
+            stationary_by_cell[cell_key(obj.x, obj.y)] = obj
+        end
+    end
+    for _, step in ipairs(path) do
+        local obj = stationary_by_cell[cell_key(step.x, step.y)]
+        if obj then
+            return obj
+        end
+    end
+    return nil
+end
+
 local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, path_mode, opts)
     if obj and not (opts and opts.blocking) then
+        local goal_x, goal_y = get_plan_goal(obj)
         local npc_free_blocking = M.build_path_blocking(map_id, {skip_npcs = true})
         local npc_free_path = nil
         if path_mode == "adjacent" then
@@ -1227,8 +1280,8 @@ local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, pat
                 map_id,
                 start_x,
                 start_y,
-                obj.x,
-                obj.y,
+                goal_x,
+                goal_y,
                 npc_free_blocking,
                 opts and opts.pathfinder_opts or nil)
         else
@@ -1236,12 +1289,24 @@ local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, pat
                 map_id,
                 start_x,
                 start_y,
-                obj.x,
-                obj.y,
+                goal_x,
+                goal_y,
                 npc_free_blocking,
                 opts and opts.pathfinder_opts or nil)
         end
         if npc_free_path then
+            local stationary_npc = find_stationary_npc_on_path(npc_free_path)
+            if stationary_npc then
+                debug_tools.info(string.format(
+                    "NO_PATH_STATIONARY_NPC map=0x%02X target=%s blocker=%s id=%s x=%d y=%d",
+                    map_id,
+                    tostring(obj.name),
+                    tostring(stationary_npc.name),
+                    tostring(stationary_npc.id),
+                    stationary_npc.x or -1,
+                    stationary_npc.y or -1))
+                return "stationary_npc_blocker"
+            end
             return "npc_clutter"
         end
     end
@@ -1300,11 +1365,12 @@ local function plan_object_reachability(obj, opts)
         blocking = M.build_path_blocking(map_id, opts.skip_npcs and {skip_npcs = true} or nil)
     end
 
+    local goal_x, goal_y, uses_interaction = get_plan_goal(obj)
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
-    local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
-    local dist = math.abs(px - obj.x) + math.abs(py - obj.y)
+    local goal_block_reason = get_goal_block_reason(blocking, goal_x, goal_y)
+    local dist = math.abs(px - goal_x) + math.abs(py - goal_y)
     local path = nil
-    local face_dir = nil
+    local face_dir = get_plan_face_dir(obj, uses_interaction)
     local adjacent_diagnostics = nil
     local no_path_reason = nil
 
@@ -1315,6 +1381,9 @@ local function plan_object_reachability(obj, opts)
                 map_id = map_id,
                 start_x = px,
                 start_y = py,
+                goal_x = goal_x,
+                goal_y = goal_y,
+                interaction_goal = uses_interaction,
                 path_mode = path_mode,
                 target_walkable = target_walkable,
                 goal_block_reason = goal_block_reason,
@@ -1323,19 +1392,23 @@ local function plan_object_reachability(obj, opts)
             }
         end
         path, face_dir = find_quiet_route_to_adjacent(
-            map_id, px, py, obj.x, obj.y, blocking, opts.pathfinder_opts)
+            map_id, px, py, goal_x, goal_y, blocking, opts.pathfinder_opts)
     else
-        if px == obj.x and py == obj.y then
+        if px == goal_x and py == goal_y then
             return {
                 target = obj,
                 map_id = map_id,
                 start_x = px,
                 start_y = py,
+                goal_x = goal_x,
+                goal_y = goal_y,
+                interaction_goal = uses_interaction,
                 path_mode = path_mode,
                 target_walkable = target_walkable,
                 goal_block_reason = goal_block_reason,
                 reachable = true,
                 status = "already_there",
+                face_dir = face_dir,
             }
         elseif goal_block_reason == "npc" then
             no_path_reason = "goal_blocked_npc"
@@ -1343,12 +1416,12 @@ local function plan_object_reachability(obj, opts)
             no_path_reason = "goal_blocked_runtime"
         else
             path = pathfinder.find_route_to(
-                map_id, px, py, obj.x, obj.y, blocking, opts.pathfinder_opts)
+                map_id, px, py, goal_x, goal_y, blocking, opts.pathfinder_opts)
         end
 
         if not path and obj.type == objects.TYPE_CHEST and opts.allow_adjacent_fallback ~= false then
             local fallback_path, fallback_face = find_quiet_route_to_adjacent(
-                map_id, px, py, obj.x, obj.y, blocking, opts.pathfinder_opts)
+                map_id, px, py, goal_x, goal_y, blocking, opts.pathfinder_opts)
             if fallback_path then
                 path = fallback_path
                 face_dir = fallback_face
@@ -1363,6 +1436,9 @@ local function plan_object_reachability(obj, opts)
         map_id = map_id,
         start_x = px,
         start_y = py,
+        goal_x = goal_x,
+        goal_y = goal_y,
+        interaction_goal = uses_interaction,
         path_mode = path_mode,
         target_walkable = target_walkable,
         goal_block_reason = goal_block_reason,
@@ -1421,6 +1497,8 @@ local function object_pathability_context_signature(map_id, start_x, start_y, ta
             tostring(obj.type or "-"),
             tostring(obj.x or "-"),
             tostring(obj.y or "-"),
+            tostring(obj.interaction_x or "-"),
+            tostring(obj.interaction_y or "-"),
         }, ":")
     end
     return table.concat(parts, "|")
@@ -1623,13 +1701,14 @@ local function plan_path_to_object(obj, opts)
         end
         blocking = M.build_path_blocking(map_id, skip_npcs and {skip_npcs = true} or nil)
     end
+    local goal_x, goal_y, uses_interaction = get_plan_goal(obj)
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
     local result, face_dir, path, adjacent_diagnostics
     local no_path_reason = nil
-    local goal_block_reason = get_goal_block_reason(blocking, obj.x, obj.y)
+    local goal_block_reason = get_goal_block_reason(blocking, goal_x, goal_y)
     if path_mode == "adjacent" then
         result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
-            map_id, px, py, obj.x, obj.y, blocking, adjacent_path_opts(opts))
+            map_id, px, py, goal_x, goal_y, blocking, adjacent_path_opts(opts))
     else
         if goal_block_reason == "npc" then
             result, face_dir, path = "No path found", nil, nil
@@ -1638,7 +1717,10 @@ local function plan_path_to_object(obj, opts)
             result, face_dir, path = "No path found", nil, nil
             no_path_reason = "goal_blocked_runtime"
         else
-            result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, obj.x, obj.y, blocking)
+            result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, goal_x, goal_y, blocking)
+            if uses_interaction and path then
+                face_dir = get_plan_face_dir(obj, uses_interaction) or face_dir
+            end
         end
     end
     if result == "No path found" and no_path_reason == nil then
@@ -1649,8 +1731,9 @@ local function plan_path_to_object(obj, opts)
         map_id = map_id,
         start_x = px,
         start_y = py,
-        goal_x = obj.x,
-        goal_y = obj.y,
+        goal_x = goal_x,
+        goal_y = goal_y,
+        interaction_goal = uses_interaction,
         path_mode = path_mode,
         target_walkable = target_walkable,
         goal_block_reason = goal_block_reason,
@@ -1666,7 +1749,7 @@ local function plan_path_to_object(obj, opts)
     plan.message = build_pathfind_message(obj, plan.result, plan.face_dir, plan.no_path_reason)
     -- Store path for debug recall (trace_path, validate_path, etc.)
     if debug_tools.DEBUG_MODE and opts.store_debug_path ~= false then
-        path_debug.store_path(map_id, px, py, obj.x, obj.y, plan.path, nil)
+        path_debug.store_path(map_id, px, py, plan.goal_x, plan.goal_y, plan.path, nil)
     end
     log_route_plan_timing(plan, (os.clock() - plan_start_clock) * 1000)
     return plan
@@ -1791,7 +1874,7 @@ function M.autowalk_to_object(obj, opts)
         debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
         plan.status = "already_there"
         plan.message = "Already there. " .. build_pathfind_message(obj, "Adjacent", plan.face_dir)
-        if plan.path_mode == "adjacent" then
+        if should_face_after_plan(plan) then
             queue_target_face(plan.face_dir, obj)
         end
         if start_target_npc_hold(obj) then
@@ -1835,7 +1918,7 @@ function M.autowalk_to_object(obj, opts)
         return plan
     end
     debug_tools.info("AUTO_WALK: queued " .. #plan.path .. " step(s) for " .. obj.name)
-    set_active_route_context(obj, #plan.path, plan.path_mode == "adjacent" and plan.face_dir or nil)
+    set_active_route_context(obj, #plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
     plan.status = "queued"
     plan.ok = true
     plan.path_length = #plan.path
@@ -1965,7 +2048,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
 
     if plan.path and #plan.path > 0 then
         if queue_path_steps(plan.path, {settle_frames = active_route_settle_frames}) then
-            update_active_route_remaining(#plan.path, plan.path_mode == "adjacent" and plan.face_dir or nil)
+            update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
         end
     else
         clear_active_route_context("reroute reached destination", should_refresh_objects_after_route())
@@ -2055,7 +2138,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
         tolk.output_interrupt("Seam crossed, but auto-walk could not queue the follow-up route.")
         return
     end
-    update_active_route_remaining(#plan.path, plan.path_mode == "adjacent" and plan.face_dir or nil)
+    update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
 
     tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
         target,

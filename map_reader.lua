@@ -177,6 +177,50 @@ function M.get_tile_grid(map_id)
 end
 
 -- ============================================================
+-- Raw Block Access
+-- ============================================================
+-- The game map bytes themselves store two block IDs per byte. This is useful
+-- for engine triggers such as block 0xF ("Large Tile" / counter), even where
+-- the accessibility pathfinding grid has local overrides or older decoder
+-- assumptions layered on top of it.
+
+function M.get_raw_block_id(map_id, x, y)
+    if maps.is_overworld(map_id) then
+        return nil
+    end
+
+    local meta = M.get_metadata(map_id)
+    if not meta then return nil end
+
+    x = tonumber(x)
+    y = tonumber(y)
+    if x == nil or y == nil then return nil end
+    x = math.floor(x)
+    y = math.floor(y)
+
+    if x < 0 or x >= meta.width or y < 0 or y >= meta.height then
+        return nil
+    end
+
+    local bytes_per_row = math.ceil(meta.width / 2)
+    local byte_offset = meta.data_ptr + y * bytes_per_row + math.floor(x / 2)
+    local byte = rom.readbyte(byte_offset)
+    if byte == nil then
+        return nil
+    end
+
+    byte = math.floor(tonumber(byte) or 0) % 256
+    if x % 2 == 0 then
+        return math.floor(byte / 16) % 16
+    end
+    return byte % 16
+end
+
+function M.is_large_tile(map_id, x, y)
+    return M.get_raw_block_id(map_id, x, y) == 0x0F
+end
+
+-- ============================================================
 -- Walkability
 -- ============================================================
 -- Tile walkability depends on the tileset. Dragon Warrior uses
@@ -357,6 +401,18 @@ local MAP_PASSTHROUGH_CELLS = {
     -- non-walkable type-0/type-12 cells. Keep this narrowly scoped to the
     -- directly confirmed cells until the rest of the corridor is mapped.
     [0x08] = {
+        -- Weapon shop west-side column. These cells are engine-walkable, but
+        -- Woman 3 can stand at (4,7). The west column stays modeled as
+        -- engine-walkable where appropriate, but the adjacent shop pockets are
+        -- pathfinder-forbidden below until a normal public approach is decoded.
+        ["4,6"] = true,
+        ["4,7"] = true,
+        -- Merchant 2 doorway/counter interaction throat. The ROM tiles decode
+        -- as non-walkable type 0, but live movement reaches (5,7) from the
+        -- south and then (5,6); TALK opens the weapon/armor shop from (5,6)
+        -- while facing north.
+        ["5,6"] = true,
+        ["5,7"] = true,
         ["8,18"] = true,
         ["8,19"] = true,
         ["9,18"] = true,
@@ -646,6 +702,20 @@ local MAP_BLOCKED_CELLS = {
         -- despite open previews; a raw LEFT hold also stayed pinned. NORTH is a
         -- wall tile, so keep A* out entirely instead of routing into the trap.
         ["17,22"] = true,
+        -- Weapon-shop service pockets. 2026-05-06 merchant-to-exit auto-walk
+        -- first proved the east pocket at (6,4)/(6,5) has no usable exit, then
+        -- follow-up routing from (4,4)/(5,5) proved the west/south talk squares
+        -- are also sealed by directional walls plus stationary Woman 3 at
+        -- (4,7). These cells are engine-enterable and can open the shop when
+        -- manually positioned, but autonomous routing must avoid them. Merchant
+        -- 2 is handled by a service interaction override that targets the
+        -- doorway/counter square at (5,6), facing north.
+        ["4,4"] = true,
+        ["4,5"] = true,
+        ["4,6"] = true,
+        ["5,5"] = true,
+        ["6,4"] = true,
+        ["6,5"] = true,
     },
 }
 
@@ -957,18 +1027,26 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (3,5) as blocked five times, including brute-force/manual confirms.
         -- An earlier moved probe was likely a noisy/subtile state and is
         -- outweighed by the clean route-context repro.
-        ["3,4"]  = {west = true},
-        ["3,5"]  = {west = true},
         -- NW building top and east walls.
         -- The 2026-04-02 survey repeatedly rerouted into y=3 from the north,
         -- confirming the roofline across x=4-7 in addition to the already
         -- known east wall at x=7.
-        ["4,3"]  = {north = true},
-        ["5,3"]  = {north = true},
-        ["6,3"]  = {north = true},
+        -- 2026-05-06 route validation re-confirmed (8,4)->LEFT into (7,4)
+        -- is blocked; an earlier moved probe was noisy. Later merchant-to-exit
+        -- auto-walk from the shop pocket also confirmed (6,4)->RIGHT into
+        -- (7,4), (6,5)->RIGHT into (7,5), (6,5)->LEFT into (5,5), and
+        -- (6,4)->UP into (6,3) as blocked after three repeated route attempts.
+        -- A follow-up public-side route re-confirmed (8,5)->LEFT into (7,5)
+        -- is blocked. Merchant 2 is not reached from the upper `(5,3)` tile;
+        -- he is a counter interaction from doorway square (5,6), facing north.
+        ["4,3"]  = {north = true, south = true},
+        ["6,3"]  = {north = true, south = true},
         ["7,3"]  = {north = true, east = true},
-        ["7,4"]  = {east = true},
-        ["7,5"]  = {east = true},
+        ["3,4"]  = {west = true, east = true},
+        ["3,5"]  = {west = true, east = true},
+        ["7,4"]  = {east = true, west = true},
+        ["5,5"]  = {east = true},
+        ["7,5"]  = {east = true, west = true},
         -- Center-east building west wall (x=18)
         ["18,10"] = {west = true},
         ["18,11"] = {west = true},

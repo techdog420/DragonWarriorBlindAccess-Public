@@ -31,10 +31,13 @@ local function make_env(options)
     local describe_calls = {}
     local filter_name = options.filter_name or "NPCs"
     local all_filter_calls = 0
+    local debug_errors = {}
+    local input_suppress_calls = 0
     local object_count = options.object_count or 1
     local delay = options.delay
     if delay == nil then delay = 2 end
     local original_memory = _G.memory
+    local original_dw_qol_state = _G.DW_QOL_STATE
 
     local module_names = {
         "addresses",
@@ -111,6 +114,9 @@ local function make_env(options)
     package.preload["debug_tools"] = function()
         return {
             debug = function() end,
+            error = function(message)
+                debug_errors[#debug_errors + 1] = message
+            end,
         }
     end
 
@@ -143,6 +149,9 @@ local function make_env(options)
     package.preload["navigation"] = function()
         return {
             get_position_string = function()
+                if options.position_error then
+                    error(options.position_error, 2)
+                end
                 return "Tantegel Castle Throne Room, 5, 7"
             end,
         }
@@ -263,6 +272,11 @@ local function make_env(options)
             return 0
         end,
     }
+    _G.DW_QOL_STATE = {
+        suppress_teleport_input = function()
+            input_suppress_calls = input_suppress_calls + 1
+        end,
+    }
 
     local hotkeys = require "hotkeys"
     hotkeys._reset_for_tests()
@@ -272,9 +286,9 @@ local function make_env(options)
 
     return {
         outputs = outputs,
-        update = function(keys)
+        update = function(keys, game_state, allow_object_hotkeys)
             frame = frame + 1
-            hotkeys.update(keys or {})
+            hotkeys.update(keys or {}, game_state, allow_object_hotkeys)
         end,
         pending = function()
             return hotkeys._pending_object_nav_speech_for_tests()
@@ -300,10 +314,15 @@ local function make_env(options)
         all_filter_calls = function()
             return all_filter_calls
         end,
+        input_suppress_calls = function()
+            return input_suppress_calls
+        end,
+        debug_errors = debug_errors,
         teleport_modes = teleport_modes,
         describe_calls = describe_calls,
         restore = function()
             _G.memory = original_memory
+            _G.DW_QOL_STATE = original_dw_qol_state
             restore_modules(module_names)
         end,
     }
@@ -397,6 +416,61 @@ function tests.modified_hotkeys_do_not_fire_as_bare_keys()
     env.update({})
     env.update({Shift = true, F = true})
     assert_equal(env.freeze_calls(), 1, "Shift+F should toggle NPC freeze")
+
+    env.restore()
+end
+
+function tests.object_only_hotkeys_respect_allowance_and_non_object_hotkeys_still_run()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, W = true}, nil, false)
+    assert_equal(#env.outputs, 1, "non-object hotkey should still run when object hotkeys are blocked")
+    assert_equal(env.outputs[1].message, "Tantegel Castle Throne Room, 5, 7", "position announcement should run through the same frame")
+
+    env.update({L = true}, nil, false)
+    env.update({Shift = true, F = true}, nil, false)
+    env.update({Shift = true, O = true}, nil, false)
+    env.update({Shift = true, Q = true}, nil, false)
+
+    assert_equal(#env.outputs, 5, "blocked object hotkeys should report why they did not run")
+    assert_equal(env.outputs[2].message, "Object controls unavailable right now",
+        "blocked object hotkey should give an audible guard message")
+    assert_equal(env.outputs[5].message, "Object controls unavailable right now",
+        "each fresh blocked object hotkey should give an audible guard message")
+    assert_equal(env.input_suppress_calls(), 4, "blocked object hotkeys should suppress leaked game input")
+    assert_equal(#env.describe_calls, 0, "object navigation should be fully blocked when allowance is false")
+    assert_equal(env.freeze_calls(), 0, "freeze command should not run when blocked")
+    assert_equal(env.pathfind_calls(), 0, "pathfind should not run when blocked")
+    assert_equal(env.autowalk_calls(), 0, "auto-walk should not run when blocked")
+    assert_equal(env.visited_calls(), 0, "visited marker should not run when blocked")
+
+    env.restore()
+end
+
+function tests.held_blocked_object_hotkey_keeps_suppressing_input_without_repeating_speech()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, Up = true}, nil, false)
+    env.update({Shift = true, Up = true}, nil, false)
+    env.update({Shift = true, Up = true}, nil, false)
+
+    assert_equal(#env.outputs, 1, "held blocked hotkey should speak the guard only once")
+    assert_equal(env.outputs[1].message, "Object controls unavailable right now",
+        "held blocked hotkey should announce the object-control guard")
+    assert_equal(env.input_suppress_calls(), 3,
+        "held blocked hotkey should suppress leaked game input every frame")
+
+    env.restore()
+end
+
+function tests.position_hotkey_reports_unavailable_instead_of_crashing()
+    local env = make_env({position_error = "snapshot not ready"})
+
+    env.update({Shift = true, W = true})
+
+    assert_equal(#env.outputs, 1, "position failure should still speak one fallback")
+    assert_equal(env.outputs[1].message, "Position unavailable", "position failure should use a clear fallback")
+    assert_equal(#env.debug_errors, 1, "position failure should be logged for debugging")
 
     env.restore()
 end

@@ -260,13 +260,21 @@ Emulator compatibility direction:
   reach a target that the filter listed as reachable, infer the no-path reason
   by checking whether an NPC-free route exists before using a generic
   closed-door frontier hint. Otherwise castle maps with nearby locked doors can
-  mislabel temporary NPC clutter as "blocked by a closed door."
+  mislabel NPC clutter as "blocked by a closed door." If the NPC-free route is
+  blocked by an NPC whose movement byte is `0x00`, report it as a stationary
+  NPC blocker instead of telling the player to wait.
 - Manual/non-route blocked steps (`queued_route=false`) should remain seam
   diagnostics and should not be promoted into pathfinding runtime blockers.
   Manual walking into doors, NPC boxes, or odd seams can otherwise poison A*
   for later autowalks on the same map. Runtime blocker promotion should come
   from queued-route movement, seam-retry failure, survey/probe evidence, or
   explicit debug commands.
+- Screenshots can be useful evidence for over-promoted directional blocks, but
+  promote route changes only after live probes and route outcomes agree. In
+  Brecconary, early `(8,5)->LEFT` moved evidence for `(7,5).east` was
+  superseded by controlled public-side probe/route failures; Merchant 2 access
+  is a counter interaction from `(5,6)` while the merchant object remains at
+  `(5,4)`.
 - Engine-walkable hazard cells should be modeled separately from walls. The
   first confirmed case is Tantegel Castle map `0x04` `(10,18)`, which manual
   movement reached from `(10,19)` and immediately produced `Lost 15 HP. HP 0`
@@ -277,7 +285,8 @@ Emulator compatibility direction:
 - Queued-route blocks caused by live NPC occupancy are temporary clutter, not
   map geometry. Check the destination against current NPC RAM before
   seam-bruteforcing or promoting runtime blockers; if the destination is an
-  NPC, cancel with a temporary NPC-movement message instead.
+  NPC, cancel with an NPC-blocker message instead. Use the decoded movement
+  byte to distinguish ordinary wandering clutter from stationary NPC blockers.
 - Post-arrival facing for auto-walk must not feed back into tap-to-step.
   `route_manager.lua` may inject a short direction press so the hero faces an
   adjacent NPC, but `auto_step.lua` must suppress edge tracking for that
@@ -669,12 +678,29 @@ Durable facts:
 
 Brecconary/map `0x08`:
 - Broad blocker hunting can pause.
-- Latest reliable surveys showed no strong blocker candidates and no runtime blocks.
-- Remaining failures are clean gated/isolated object regions.
+- Latest broad surveys showed no strong blocker candidates; route-specific
+  live play can still promote narrow service-pocket traps when repeated route
+  evidence is clean.
+- Merchant 2 is the real Brecconary weapon/armor shop at `(5,4)`. The safe
+  public interaction square is the doorway/counter at `(5,6)`; face north and
+  TALK even though the object reports two tiles north. The doorway throat
+  `(5,7)` and the counter square `(5,6)` are both type-0 false-wall tiles and
+  must stay in Brecconary passthrough data.
+  Treat `(4,4)`, `(4,5)`, `(4,6)`, `(5,5)`, `(6,4)`, and `(6,5)` as
+  pathfinder-forbidden service-pocket traps, and keep `(7,5).east` blocked so
+  A* does not try the false shortcut from `(8,5)`.
+- Raw map block `0xF` is the town/castle large-tile counter trigger. Use
+  `map_reader.get_raw_block_id()` / `is_large_tile()` for service-counter
+  discovery instead of changing the existing pathfinding grid decoder.
+- Brecconary `Merchant 3` at `(10,21)` is the inn keeper. The live-confirmed
+  TALK tile is the raw large tile `(9,21)`, facing east. Brecconary
+  `Merchant 4` at `(25,25)` is the tool shop. The live-confirmed TALK tile is
+  `(24,25)`, facing east. These are direct counter interactions, not ordinary
+  adjacent-NPC TALK targets.
+- Remaining broad failures are clean gated/isolated object regions.
 - Existing permanent Brecconary fixes in `map_reader.lua` should be preserved unless better evidence appears.
-- First-town playtesting has not yet identified the actual inn keeper or
-  selling merchant among reachable TALK targets. Treat shop/inn support as a
-  service-discovery problem, not just a dialogue filter issue.
+- Treat remaining first-town service issues as counter/large-tile interaction
+  problems first, not just dialogue filtering or ordinary adjacent NPC routing.
 
 Tantegel/castle/interior maps:
 - Confirm live map id before permanent edits.
@@ -729,9 +755,20 @@ Do not rely on assistant-local memory as the only record of important project st
   `SCROLL_X=0xB0` (22 tiles). The visible order was NT1 columns 22-31 followed
   by NT0 columns 0-21, which turned the intended sentence into
   `greatly pleased 'I am ... retu` before `text.decode_row()` was fixed.
+- Merchant/shop list readers need the same visible-screen treatment plus
+  vertical scroll. The Brecconary weapon shop at `(5,4)` showed a `COMMAND`
+  header and reused D8/D9 cursor RAM, so stale command-menu logic spoke
+  `STATUS`, `SEARCH`, and raw cursor values until `merchant.lua` decoded
+  visible scrolled rows and `main.lua` forced a fresh merchant-layout check
+  before command-menu speech. Keep merchant scans running while shop prompts
+  make `dialogue_hint` true; otherwise the item reader can starve after
+  buy/error/continue cycles. Item confirmation/error dialogue can leave command
+  labels visible behind lower text, so command-menu speech must stay blocked
+  while lower dialogue is active.
 - For future dialogue bugs, capture `report_movement_state` and
-  `report_upper_dialogue_state`; the useful fields are `ppu_ctrl`, `scroll_x`,
-  `scroll_y`, `scroll_tiles`, `base_nt`, and the raw lower/upper decoded text.
+  `report_upper_dialogue_state`; for shop/menu bugs also capture
+  `report_merchant_state`. Useful fields are `ppu_ctrl`, `scroll_x`, `scroll_y`,
+  `scroll_tiles`, `base_nt`, and the raw lower/upper/merchant decoded text.
 
 ## Codex Memory Access
 

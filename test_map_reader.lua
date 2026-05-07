@@ -176,6 +176,53 @@ function tests.metadata_width_height_are_inclusive_coordinates()
     env.restore()
 end
 
+function tests.raw_block_reader_uses_high_and_low_nibbles_by_coordinate()
+    local data_start = 0x110
+    local env = make_env({
+        rom_bytes = {
+            [0] = 0x00,
+            [1] = 0x81,
+            [2] = 3,
+            [3] = 1,
+            [4] = 0,
+            [data_start + 0] = 0x4F,
+            [data_start + 1] = 0xC0,
+            [data_start + 2] = 0x9A,
+            [data_start + 3] = 0x12,
+        },
+    })
+
+    assert_equal(env.map_reader.get_raw_block_id(0, 0, 0), 0x04, "even X should read the high nibble")
+    assert_equal(env.map_reader.get_raw_block_id(0, 1, 0), 0x0F, "odd X should read the low nibble")
+    assert_equal(env.map_reader.get_raw_block_id(0, 2, 0), 0x0C, "next byte high nibble should read the next even X")
+    assert_equal(env.map_reader.get_raw_block_id(0, 3, 0), 0x00, "next byte low nibble should read the next odd X")
+    assert_equal(env.map_reader.get_raw_block_id(0, 0, 1), 0x09, "Y should advance by ceil(width / 2) bytes")
+    assert_equal(env.map_reader.get_raw_block_id(0, 4, 0), nil, "out-of-bounds X should return nil")
+
+    env.restore()
+end
+
+function tests.large_tile_detection_uses_raw_block_f()
+    local data_start = 0x110
+    local env = make_env({
+        rom_bytes = {
+            [0] = 0x00,
+            [1] = 0x81,
+            [2] = 3,
+            [3] = 0,
+            [4] = 0,
+            [data_start + 0] = 0x4F,
+            [data_start + 1] = 0xC0,
+        },
+    })
+
+    assert_equal(env.map_reader.is_large_tile(0, 0, 0), false, "raw block 4 is not a large tile")
+    assert_equal(env.map_reader.is_large_tile(0, 1, 0), true, "raw block F should be a large tile")
+    assert_equal(env.map_reader.is_large_tile(0, 2, 0), false, "raw block C is not a large tile")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
     local env = make_env({
         rom_bytes = {
@@ -425,6 +472,12 @@ function tests.brecconary_permanent_blockers_match_current_live_model()
     assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 16, 23), true, "(16,23) should be pathfinder-forbidden after direct trap-cell probes")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 18, 17), true, "(18,17) should be pathfinder-forbidden after direct trap-cell probes")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 17, 22), true, "(17,22) should be pathfinder-forbidden after direct trap-cell probes")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 4, 4), true, "(4,4) should be pathfinder-forbidden after Merchant 2 west pocket trap repro")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 4, 5), true, "(4,5) should be pathfinder-forbidden after Merchant 2 west pocket trap repro")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 4, 6), true, "(4,6) should be pathfinder-forbidden after stationary Woman 3 sealed the west pocket")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 5, 5), true, "(5,5) should be pathfinder-forbidden after Merchant 2 south pocket trap repro")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 6, 4), true, "(6,4) should be pathfinder-forbidden after Merchant 2 pocket trap repro")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 6, 5), true, "(6,5) should be pathfinder-forbidden after Merchant 2 pocket trap repro")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 27, 2), false, "(27,2) should remain directional-only")
 
     env.restore()
@@ -435,12 +488,21 @@ function tests.brecconary_directional_walls_cover_confirmed_building_bands()
 
     local dirs = env.map_reader.get_directional_blocks(0x08)
     assert_equal(dirs["3,4"].west, true, "(3,4) should block west approach")
+    assert_equal(dirs["3,4"].east, true, "(3,4) should block east approach after Merchant 2 west pocket exit repro")
     assert_equal(dirs["3,5"].west, true, "(3,5) should block west approach after post-reload survey and brute-force repros from (2,5)")
+    assert_equal(dirs["3,5"].east, true, "(3,5) should block east approach after Merchant 2 west pocket exit repro")
     assert_equal(dirs["4,3"].north, true, "(4,3) should block north approach")
-    assert_equal(dirs["5,3"].north, true, "(5,3) should block north approach")
+    assert_equal(dirs["4,3"].south, true, "(4,3) should block south approach after Merchant 2 west pocket exit repro")
+    assert_equal(dirs["5,3"], nil, "(5,3) should preserve the confirmed (5,2)->DOWN probe evidence, but Merchant 2 uses the counter at (5,6)")
     assert_equal(dirs["6,3"].north, true, "(6,3) should block north approach")
+    assert_equal(dirs["6,3"].south, true, "(6,3) should block south approach after Merchant 2 pocket exit repro")
     assert_equal(dirs["7,3"].north, true, "(7,3) should block north approach")
     assert_equal(dirs["7,3"].east, true, "(7,3) should block east approach")
+    assert_equal(dirs["7,4"].east, true, "(7,4) should block east approach after repeated Merchant 2 route failures from (8,4)")
+    assert_equal(dirs["7,4"].west, true, "(7,4) should block west approach after Merchant 2 pocket exit repro")
+    assert_equal(dirs["5,5"].east, true, "(5,5) should block east approach after Merchant 2 pocket exit repro")
+    assert_equal(dirs["7,5"].west, true, "(7,5) should block west approach after Merchant 2 pocket exit repro")
+    assert_equal(dirs["7,5"].east, true, "(7,5) should block east approach after controlled public-side route repro from (8,5)")
     assert_equal(dirs["20,2"].west, true, "(20,2) should block west approach")
     assert_equal(dirs["20,2"].north, true, "(20,2) should block north approach")
     assert_equal(dirs["25,6"].south, true, "(25,6) should block south approach")
@@ -562,9 +624,16 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     assert_equal(env.map_reader.is_walkable(0x08, 11, 19), true, "(11,19) should be walkable via Brecconary passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 8, 18), true, "(8,18) should be walkable via Brecconary passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 8, 19), true, "(8,19) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 4, 7), true, "(4,7) should be walkable via the Merchant 2 west-side passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 4, 6), false, "(4,6) should be pathfinder-forbidden after Merchant 2 west-side trap repro")
+    assert_equal(env.map_reader.is_walkable(0x08, 5, 6), true, "(5,6) should be walkable via the Merchant 2 counter interaction passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 5, 7), true, "(5,7) should be walkable via the Merchant 2 doorway throat passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 10, 19), false, "(10,19) should remain non-walkable until confirmed")
     local snapshot = env.map_reader.get_walkability_snapshot(0x08)
     assert_equal(snapshot[18][9], true, "walkability snapshot should honor Brecconary passthrough cells")
+    assert_equal(snapshot[6][4], false, "walkability snapshot should keep the Merchant 2 west-side trap out of A*")
+    assert_equal(snapshot[6][5], true, "walkability snapshot should include the Merchant 2 counter interaction square")
+    assert_equal(snapshot[7][5], true, "walkability snapshot should include the Merchant 2 doorway throat")
     assert_equal(snapshot[19][10], false, "walkability snapshot should preserve unconfirmed Brecconary wall cells")
 
     env.restore()

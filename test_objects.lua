@@ -48,6 +48,8 @@ local function make_env(options)
     local nav_x = 0
     local nav_y = 0
     local tile_grid_calls = 0
+    local large_tiles = options.large_tiles or {}
+    local walkable_tiles = options.walkable_tiles or {}
 
     _G.AND = function(a, b)
         local result = 0
@@ -84,7 +86,7 @@ local function make_env(options)
 
     package.preload["addresses"] = function()
         return {
-            NPC_COUNT = 1,
+            NPC_COUNT = options.npc_count or 1,
             NPC_DATA_START = 0,
             NPC_ENTRY_SIZE = 3,
             ROM_CHEST_START = 0,
@@ -110,6 +112,12 @@ local function make_env(options)
             end,
             get_metadata = function()
                 return nil
+            end,
+            is_large_tile = function(map_id, x, y)
+                return large_tiles[string.format("0x%02X:%d,%d", map_id, x, y)] == true
+            end,
+            is_walkable = function(map_id, x, y)
+                return walkable_tiles[string.format("0x%02X:%d,%d", map_id, x, y)] == true
             end,
         }
     end
@@ -143,10 +151,11 @@ local function make_env(options)
         set_terrain_offset = function(value)
             terrain_offset = value
         end,
-        set_npc = function(slot, byte0, byte1)
+        set_npc = function(slot, byte0, byte1, byte2)
             local base = slot * 3
             npc_ram[base] = byte0
             npc_ram[base + 1] = byte1
+            npc_ram[base + 2] = byte2 or 0
         end,
         set_position = function(map_id, x, y)
             nav_map_id = map_id
@@ -501,7 +510,7 @@ function tests.service_filter_lists_merchant_npcs()
 
     env.set_position(0x08, 5, 5)
     env.set_terrain_offset(0x10)
-    env.set_npc(0, 0x65, 0x07) -- sprite type 3 (Merchant), x=5, y=7
+    env.set_npc(0, 0x65, 0x47, 0xFC) -- sprite type 3 (Merchant), x=5, y=7, facing bits set
     env.objects.refresh(0x08)
 
     env.objects.next_filter() -- NPCs
@@ -511,6 +520,8 @@ function tests.service_filter_lists_merchant_npcs()
     local obj = env.objects.current_object()
     assert_equal(obj.name, "Merchant", "merchant sprite should keep its service-facing label")
     assert_equal(obj.service, true, "merchant NPCs should be marked as services")
+    assert_equal(obj.direction, 2, "NPC parser should expose facing bits for diagnostics")
+    assert_equal(obj.movement, 0xFC, "NPC parser should expose movement byte for route diagnostics")
 
     env.restore()
 end
@@ -684,6 +695,122 @@ function tests.talk_visit_marker_uses_live_npc_ram_when_object_list_position_is_
         env.objects.describe_current({include_debug_coords = false}),
         "Guard (visited): 2 north, 5 west (1 of 1)",
         "stale cached object should show visited once its live slot was marked")
+
+    env.restore()
+end
+
+function tests.brecconary_counter_service_marks_selected_merchant_visited()
+    local env = make_env()
+
+    env.set_position(0x08, 5, 6)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 5, 0x04, 0x00) -- Merchant at (5,4)
+    env.objects.refresh(0x08)
+
+    local obj = env.objects.current_object()
+    assert_equal(obj.name, "Merchant", "single service NPC should be named Merchant in the test harness")
+    assert_equal(obj.interaction_x, 5, "Brecconary merchant should expose the counter interaction X")
+    assert_equal(obj.interaction_y, 6, "Brecconary merchant should expose the counter interaction Y")
+    assert_equal(obj.interaction_face_dir, "north", "Brecconary merchant should face north from the counter")
+    assert_equal(
+        env.objects.describe_current({include_debug_coords = false}),
+        "Merchant: 2 north, counter here (1 of 2)",
+        "merchant description should name the usable counter square")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x08, 5, 6)
+    assert_equal(marked.id, "npc_0", "counter interaction should mark the selected merchant visited")
+    assert_equal(env.objects.is_visited(obj, 0x08), true, "counter interaction visit should persist on the merchant")
+
+    env.restore()
+end
+
+function tests.service_counter_inference_uses_adjacent_large_tile_public_stand()
+    local env = make_env({
+        large_tiles = {
+            ["0x09:9,21"] = true,
+            ["0x09:24,25"] = true,
+        },
+        walkable_tiles = {
+            ["0x09:8,21"] = true,
+            ["0x09:23,25"] = true,
+        },
+        npc_count = 4,
+    })
+
+    env.set_position(0x09, 12, 23)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 5, 0x04, 0x00)
+    env.set_npc(1, 0x60 + 1, 0x01, 0x00)
+    env.set_npc(2, 0x60 + 10, 0x15, 0x00)
+    env.set_npc(3, 0x60 + 25, 0x19, 0x00)
+    env.objects.refresh(0x09)
+
+    local merchant3 = nil
+    local merchant4 = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Merchant 3" then
+            merchant3 = obj
+        elseif obj.name == "Merchant 4" then
+            merchant4 = obj
+        end
+    end
+
+    assert_equal(merchant3 ~= nil, true, "Brecconary Merchant 3 should be present in the service list")
+    assert_equal(merchant3.interaction_x, 8, "Merchant 3 should use the public stand west of the raw large tile")
+    assert_equal(merchant3.interaction_y, 21, "Merchant 3 counter stand Y should match the raw large tile row")
+    assert_equal(merchant3.interaction_face_dir, "east", "Merchant 3 should face east through the counter")
+    assert_equal(merchant3.interaction_label, "counter", "inferred service stand should be labeled as a counter")
+
+    assert_equal(merchant4 ~= nil, true, "Brecconary Merchant 4 should be present in the service list")
+    assert_equal(merchant4.interaction_x, 23, "Merchant 4 should use the public stand west of the raw large tile")
+    assert_equal(merchant4.interaction_y, 25, "Merchant 4 counter stand Y should match the raw large tile row")
+    assert_equal(merchant4.interaction_face_dir, "east", "Merchant 4 should face east through the counter")
+
+    env.restore()
+end
+
+function tests.brecconary_confirmed_counter_services_use_live_talk_tiles()
+    local env = make_env({
+        large_tiles = {
+            ["0x08:9,21"] = true,
+            ["0x08:24,25"] = true,
+        },
+        walkable_tiles = {
+            ["0x08:8,21"] = true,
+            ["0x08:9,21"] = true,
+            ["0x08:23,25"] = true,
+            ["0x08:24,25"] = true,
+        },
+        npc_count = 4,
+    })
+
+    env.set_position(0x08, 12, 23)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 5, 0x04, 0x00)
+    env.set_npc(1, 0x60 + 1, 0x01, 0x00)
+    env.set_npc(2, 0x60 + 10, 0x15, 0x00)
+    env.set_npc(3, 0x60 + 25, 0x19, 0x00)
+    env.objects.refresh(0x08)
+
+    local merchant3 = nil
+    local merchant4 = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Merchant 3" then
+            merchant3 = obj
+        elseif obj.name == "Merchant 4" then
+            merchant4 = obj
+        end
+    end
+
+    assert_equal(merchant3 ~= nil, true, "Brecconary Merchant 3 should be present")
+    assert_equal(merchant3.interaction_x, 9, "Merchant 3 should use the live-confirmed inn counter tile")
+    assert_equal(merchant3.interaction_y, 21, "Merchant 3 live-confirmed counter Y should match the inn large tile")
+    assert_equal(merchant3.interaction_face_dir, "east", "Merchant 3 should face east toward the inn keeper")
+
+    assert_equal(merchant4 ~= nil, true, "Brecconary Merchant 4 should be present")
+    assert_equal(merchant4.interaction_x, 24, "Merchant 4 should use the live-confirmed tool-shop counter tile")
+    assert_equal(merchant4.interaction_y, 25, "Merchant 4 live-confirmed counter Y should match the tool-shop large tile")
+    assert_equal(merchant4.interaction_face_dir, "east", "Merchant 4 should face east toward the tool-shop keeper")
 
     env.restore()
 end

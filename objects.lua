@@ -105,6 +105,8 @@ local SPRITE_NAMES = {
     [7] = "Guard",        -- Another guard variant
 }
 
+local apply_service_interaction_override
+
 -- ============================================================
 -- Door Tile Type Constants
 -- ============================================================
@@ -423,6 +425,7 @@ local function read_npc_snapshot()
         local base = addr.NPC_DATA_START + (i * addr.NPC_ENTRY_SIZE)
         local byte0 = memory.readbyte(base)
         local byte1 = memory.readbyte(base + 1)
+        local byte2 = memory.readbyte(base + 2)
         local y_only = byte1 % 0x20
         parts[#parts + 1] = string.format(
             "%02X%02X",
@@ -432,6 +435,7 @@ local function read_npc_snapshot()
             slot = i,
             byte0 = byte0,
             byte1 = byte1,
+            byte2 = byte2,
         }
     end
     return table.concat(parts, ""), entries
@@ -544,6 +548,7 @@ local function parse_npcs(map_id)
         local sprite_type = AND(byte0, 0xE0) / 32   -- bits 7-5 (divide by 32 = shift right 5)
         local x = AND(byte0, 0x1F)                   -- bits 4-0
         local y = AND(byte1, 0x1F)                    -- bits 4-0
+        local direction = math.floor(byte1 / 0x20) % 4
 
         -- Filter out likely-inactive entries:
         -- If both coordinates are 0, the slot is probably unused.
@@ -564,6 +569,8 @@ local function parse_npcs(map_id)
                 sprite_type = sprite_type,
                 base_name = name,
                 slot = raw.slot,  -- RAM slot index, useful as a stable ID
+                direction = direction,
+                movement = raw.byte2,
             }
         end
     end
@@ -586,7 +593,7 @@ local function parse_npcs(map_id)
         end
 
         local is_service = entry.sprite_type == 3
-        npcs[#npcs + 1] = {
+        local npc = {
             x = entry.x,
             y = entry.y,
             name = display_name,
@@ -594,8 +601,11 @@ local function parse_npcs(map_id)
             sprite_type = entry.sprite_type,
             base_name = base_name,
             service = is_service,
+            direction = entry.direction,
+            movement = entry.movement,
             id = "npc_" .. entry.slot,  -- Stable ID survives list reordering
         }
+        npcs[#npcs + 1] = apply_service_interaction_override(npc, map_id)
     end
 
     return npcs
@@ -823,6 +833,104 @@ local EXTRA_DOORS = {
     -- opened-door RAM directly for this cell.
     [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
 }
+
+local SERVICE_INTERACTION_OVERRIDES = {
+    -- Brecconary weapon/armor shop. The keeper occupies (5,4), but TALK opens
+    -- the shop from the doorway/counter square at (5,6) while facing north.
+    -- The inn and tool-shop counters use raw large tiles directly; live TALK
+    -- confirmed (9,21) opens the inn and (24,25) opens the tool shop.
+    [0x08] = {
+        ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter"},
+        ["10,21"] = {x = 9, y = 21, face_dir = "east", label = "counter"},
+        ["25,25"] = {x = 24, y = 25, face_dir = "east", label = "counter"},
+    },
+}
+
+local COUNTER_DIRECTIONS = {
+    {dx =  0, dy = -1, face_dir = "south"},
+    {dx =  1, dy =  0, face_dir = "west"},
+    {dx =  0, dy =  1, face_dir = "north"},
+    {dx = -1, dy =  0, face_dir = "east"},
+}
+
+local CONFIRMED_DIRECT_COUNTER_TILES = {
+}
+
+local function safe_is_large_tile(map_id, x, y)
+    if type(map_reader.is_large_tile) ~= "function" then
+        return false
+    end
+    local ok, result = pcall(map_reader.is_large_tile, map_id, x, y)
+    return ok and result == true
+end
+
+local function safe_is_walkable(map_id, x, y)
+    if type(map_reader.is_walkable) ~= "function" then
+        return false
+    end
+    local ok, result = pcall(map_reader.is_walkable, map_id, x, y)
+    return ok and result == true
+end
+
+local function confirmed_direct_counter_tile(map_id, obj_key, x, y)
+    local by_map = CONFIRMED_DIRECT_COUNTER_TILES[map_id]
+    local entry = by_map and by_map[obj_key]
+    return entry ~= nil and entry.x == x and entry.y == y
+end
+
+local function infer_service_interaction(obj, map_id)
+    local obj_key = obj.x .. "," .. obj.y
+    local fallback = nil
+
+    for _, dir in ipairs(COUNTER_DIRECTIONS) do
+        local counter_x = obj.x + dir.dx
+        local counter_y = obj.y + dir.dy
+        if safe_is_large_tile(map_id, counter_x, counter_y) then
+            local stand_x = obj.x + dir.dx * 2
+            local stand_y = obj.y + dir.dy * 2
+            if safe_is_walkable(map_id, stand_x, stand_y) then
+                obj.interaction_x = stand_x
+                obj.interaction_y = stand_y
+                obj.interaction_face_dir = dir.face_dir
+                obj.interaction_label = "counter"
+                return obj
+            end
+            if not fallback
+               and safe_is_walkable(map_id, counter_x, counter_y)
+               and confirmed_direct_counter_tile(map_id, obj_key, counter_x, counter_y) then
+                fallback = {
+                    x = counter_x,
+                    y = counter_y,
+                    face_dir = dir.face_dir,
+                }
+            end
+        end
+    end
+
+    if fallback then
+        obj.interaction_x = fallback.x
+        obj.interaction_y = fallback.y
+        obj.interaction_face_dir = fallback.face_dir
+        obj.interaction_label = "counter"
+    end
+    return obj
+end
+
+apply_service_interaction_override = function(obj, map_id)
+    if not obj or obj.service ~= true then
+        return obj
+    end
+    local by_cell = SERVICE_INTERACTION_OVERRIDES[map_id]
+    local override = by_cell and by_cell[obj.x .. "," .. obj.y]
+    if override then
+        obj.interaction_x = override.x
+        obj.interaction_y = override.y
+        obj.interaction_face_dir = override.face_dir
+        obj.interaction_label = override.label
+        return obj
+    end
+    return infer_service_interaction(obj, map_id)
+end
 
 local function append_objects(dest, source)
     for _, obj in ipairs(source) do
@@ -1339,6 +1447,12 @@ function M.mark_adjacent_npc_visited(map_id, px, py)
        and math.abs(selected.x - px) + math.abs(selected.y - py) <= 1 then
         return M.mark_visited(selected, map_id)
     end
+    if selected
+       and selected.type == M.TYPE_NPC
+       and selected.interaction_x == px
+       and selected.interaction_y == py then
+        return M.mark_visited(selected, map_id)
+    end
 
     local best = nil
     local best_dist = nil
@@ -1443,6 +1557,14 @@ function M.describe_object(obj)
     if M.is_visited(obj) then
         name = name .. " (visited)"
     end
+    if obj.interaction_x ~= nil and obj.interaction_y ~= nil then
+        local interaction_direction = M.get_direction_string(px, py, obj.interaction_x, obj.interaction_y)
+        local label = obj.interaction_label or "interaction"
+        if interaction_direction == "here" then
+            return name .. ": " .. direction .. ", " .. label .. " here"
+        end
+        return name .. ": " .. direction .. ", " .. label .. " " .. interaction_direction
+    end
     return name .. ": " .. direction
 end
 
@@ -1465,7 +1587,11 @@ function M.describe_current(opts)
     -- Include raw coordinates for debugging distance calculations.
     -- Format: "Chest: 1 east (2 of 5) [player 4,3 obj 5,3]"
     local _, px, py = nav.get_position()
-    return with_count .. " [player " .. px .. "," .. py .. " obj " .. obj.x .. "," .. obj.y .. "]"
+    local debug_suffix = " [player " .. px .. "," .. py .. " obj " .. obj.x .. "," .. obj.y
+    if obj.interaction_x ~= nil and obj.interaction_y ~= nil then
+        debug_suffix = debug_suffix .. " interact " .. obj.interaction_x .. "," .. obj.interaction_y
+    end
+    return with_count .. debug_suffix .. "]"
 end
 
 return M

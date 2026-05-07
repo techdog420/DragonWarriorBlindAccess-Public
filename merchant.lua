@@ -11,10 +11,13 @@ local items = require "items"
 local snapshot = require "game_snapshot"
 local text = require "text"
 local chars = require "chars"
+local addr = require "addresses"
 
 local M = {}
 
-local ROW_START = 15
+local SCREEN_WIDTH = 32
+local SCREEN_HEIGHT = 30
+local ROW_START = 0
 local ROW_END = 29
 
 local STATUS_TOKENS = {
@@ -34,6 +37,72 @@ local catalog_cache = nil
 
 local function row_text(rows, row)
     return rows[row] or rows[row - ROW_START + 1] or ""
+end
+
+local function safe_readbyte(address, default)
+    if not address or type(memory) ~= "table" or type(memory.readbyte) ~= "function" then
+        return default
+    end
+
+    local ok, value = pcall(memory.readbyte, address)
+    if not ok or value == nil then
+        return default
+    end
+    return value
+end
+
+local function get_scroll_context(opts)
+    opts = opts or {}
+
+    local scroll_tiles = opts.scroll_tiles
+    if scroll_tiles == nil then
+        scroll_tiles = math.floor(safe_readbyte(addr.SCROLL_X, 0) / 8)
+    end
+
+    local base_nametable = opts.base_nametable
+    if base_nametable == nil then
+        base_nametable = safe_readbyte(addr.PPU_CTRL, 0) % 2
+    end
+
+    local vertical_scroll_tiles = opts.vertical_scroll_tiles
+    if vertical_scroll_tiles == nil then
+        vertical_scroll_tiles = math.floor((snapshot.scroll_y or safe_readbyte(addr.SCROLL_Y, 0)) / 8)
+    end
+
+    return {
+        scroll_tiles = math.floor(tonumber(scroll_tiles) or 0) % SCREEN_WIDTH,
+        base_nametable = math.floor(tonumber(base_nametable) or 0) % 2,
+        vertical_scroll_tiles = math.floor(tonumber(vertical_scroll_tiles) or 0) % SCREEN_HEIGHT,
+    }
+end
+
+local function nametable_row_for_visible_row(visible_row, ctx)
+    return (visible_row + ctx.vertical_scroll_tiles) % SCREEN_HEIGHT
+end
+
+local function read_visible_virtual_row(visible_row, ctx)
+    local NT0 = 0x2000
+    local NT1 = 0x2400
+    local bytes = {}
+    local nametable_row = nametable_row_for_visible_row(visible_row, ctx)
+
+    -- Return two screen-widths in visible order. The first 32 bytes are the
+    -- actual visible row; the next 32 preserve text that wraps into the paired
+    -- horizontal nametable, which is where shop prices can live.
+    for col = 0, (SCREEN_WIDTH * 2) - 1 do
+        local virtual_col = ctx.scroll_tiles + col
+        local nt_col = virtual_col % SCREEN_WIDTH
+        local nt_index = (ctx.base_nametable + math.floor(virtual_col / SCREEN_WIDTH)) % 2
+        local nt_base = (nt_index == 0) and NT0 or NT1
+        bytes[col + 1] = ppu.readbyte(nt_base + nametable_row * SCREEN_WIDTH + nt_col)
+    end
+
+    return bytes
+end
+
+local function extract_price(fragment)
+    local digits = tostring(fragment or ""):match("(%d+)")
+    return digits and tonumber(digits) or nil
 end
 
 local function get_catalog_entries()
@@ -168,64 +237,41 @@ local function extract_offer_names(rows)
     return offers
 end
 
-function M.read_rows()
+local function has_buy_prompt(raw_text)
+    local lower = tostring(raw_text or ""):lower()
+    return lower:find("what dost thou wish", 1, true) ~= nil
+        and lower:find("to buy", 1, true) ~= nil
+end
+
+function M.read_rows(opts)
+    local ctx = get_scroll_context(opts)
     local rows = {}
-    for row = ROW_START, ROW_END do
-        rows[row] = text.decode_row(row)
+    for visible_row = ROW_START, ROW_END do
+        local nametable_row = nametable_row_for_visible_row(visible_row, ctx)
+        rows[visible_row] = text.decode_row(nametable_row, ctx.scroll_tiles, ctx.base_nametable)
     end
     return rows
 end
 
-local function read_price_for_row(row)
-    local NT0 = 0x2000
-    local NT1 = 0x2400
-    local W = 32
-    local digits = {}
+function M.get_cursor_offer(opts)
+    local ctx = get_scroll_context(opts)
 
-    -- Merchant prices live in the left side of NT1 on the selected item's row.
-    -- Example from live dump:
-    --   Bamboo Pole   -> NT1 c3=01 c4=00  => 10
-    --   Club          -> NT1 c3=06 c4=00  => 60
-    --   Copper Sword  -> NT1 c2=01 c3=08 c4=00 => 180
-    for col = 0, 7 do
-        local b = ppu.readbyte(NT1 + row * W + col)
-        if b >= 0 and b <= 9 then
-            digits[#digits + 1] = tostring(b)
-        elseif #digits > 0 then
-            break
-        end
-    end
-
-    if #digits == 0 then
-        return nil
-    end
-
-    return tonumber(table.concat(digits))
-end
-
-function M.get_cursor_offer()
-    local NT0 = 0x2000
-    local NT1 = 0x2400
-    local W = 32
-
-    for row = ROW_START, ROW_END do
-        for col = 0, W - 1 do
-            local b = ppu.readbyte(NT0 + row * W + col)
+    for visible_row = ROW_START, ROW_END do
+        local row_bytes = read_visible_virtual_row(visible_row, ctx)
+        for col = 0, SCREEN_WIDTH - 1 do
+            local b = row_bytes[col + 1]
             if CURSOR_TILES[b] then
                 local bytes = {}
-                for x = col + 1, W - 1 do
-                    bytes[#bytes + 1] = ppu.readbyte(NT0 + row * W + x)
-                end
-                for x = 0, W - 1 do
-                    bytes[#bytes + 1] = ppu.readbyte(NT1 + row * W + x)
+                for x = col + 2, #row_bytes do
+                    bytes[#bytes + 1] = row_bytes[x]
                 end
                 local fragment = chars.decode_bytes(bytes):match("^%s*(.-)%s*$") or ""
                 local selection = match_offer_prefix(fragment)
                 if selection then
                     return {
                         name = selection,
-                        price = read_price_for_row(row),
-                        row = row,
+                        price = extract_price(fragment),
+                        row = visible_row,
                     }
                 end
             end
@@ -254,7 +300,9 @@ function M.analyze_rows(rows, opts)
     local raw_text = table.concat(nonempty_lines, " | ")
     local offers = extract_offer_names(rows)
     local status_marker_count = extract_status_marker_count(rows)
-    local active = status_marker_count >= 4 and #offers >= 2
+    local buy_prompt = has_buy_prompt(raw_text)
+    local active = (status_marker_count >= 4 and #offers >= 2)
+        or (buy_prompt and #offers >= 2)
 
     local summary = nil
     if active then
@@ -271,12 +319,13 @@ function M.analyze_rows(rows, opts)
         raw_text = raw_text,
         offers = offers,
         status_marker_count = status_marker_count,
+        buy_prompt = buy_prompt,
         summary = summary,
     }
 end
 
-function M.analyze_current_screen()
-    return M.analyze_rows(M.read_rows(), {
+function M.analyze_current_screen(opts)
+    return M.analyze_rows(M.read_rows(opts), {
         gold = snapshot.gold,
     })
 end

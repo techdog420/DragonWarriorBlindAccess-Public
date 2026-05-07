@@ -63,6 +63,8 @@ COMMANDS (write to dw_commands.txt, one per line)
   report_movement_state    Dump movement/camera-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons
   report_menu_state        Dump command-menu parser/cursor state
+  report_npcs              Dump active NPC slots with decoded names, coordinates,
+                           facing, movement byte, service flag, and raw bytes
   toggle_debug             Flip debug_mode on/off at runtime
   simulate_input:UP        Inject one frame of D-pad Up
   simulate_input:UP,12     Inject 12 consecutive frames of D-pad Up
@@ -110,6 +112,8 @@ COMMANDS (write to dw_commands.txt, one per line)
   stop_sweep               Cancel an active sweep mid-run
   report_upper_dialogue_state  Dump upper-window state to log (active flag, lengths,
                            menu/submenu status, current window content)
+  report_merchant_state    Dump merchant/shop detector state, visible decoded rows,
+                           offers, prompt flag, and current cursor offer
   ; comment line           Lines starting with ; are ignored
 
 EDGE PROBE COMMANDS

@@ -35,10 +35,6 @@ local function make_env()
         }
     end
 
-    package.preload["text"] = function()
-        return {}
-    end
-
     _G.ppu = _G.ppu or {}
     _G.ppu.readbyte = function()
         return 0x9F
@@ -58,6 +54,75 @@ local function assert_equal(actual, expected, message)
     if actual ~= expected then
         error(string.format("%s: expected %s, got %s", message, tostring(expected), tostring(actual)), 2)
     end
+end
+
+local function encode_char(ch)
+    local byte = string.byte(ch)
+    if ch >= "0" and ch <= "9" then
+        return byte - string.byte("0")
+    end
+    if ch >= "a" and ch <= "z" then
+        return 0x0A + byte - string.byte("a")
+    end
+    if ch >= "A" and ch <= "Z" then
+        return 0x24 + byte - string.byte("A")
+    end
+    if ch == " " then return 0x5F end
+    if ch == "'" then return 0x40 end
+    if ch == "." then return 0x52 end
+    if ch == "?" then return 0x4B end
+    if ch == "," then return 0x48 end
+    return 0x9F
+end
+
+local function write_visible_text(bytes, ctx, visible_row, start_col, value)
+    local NT0 = 0x2000
+    local NT1 = 0x2400
+    local nametable_row = (visible_row + (ctx.vertical_scroll_tiles or 0)) % 30
+    for i = 1, #value do
+        local screen_col = start_col + i - 1
+        local virtual_col = (ctx.scroll_tiles or 0) + screen_col
+        local nt_col = virtual_col % 32
+        local nt_index = ((ctx.base_nametable or 0) + math.floor(virtual_col / 32)) % 2
+        local nt_base = (nt_index == 0) and NT0 or NT1
+        bytes[nt_base + nametable_row * 32 + nt_col] = encode_char(value:sub(i, i))
+    end
+end
+
+local function build_scrolled_shop_screen()
+    local ctx = {
+        scroll_tiles = 26,
+        base_nametable = 1,
+        vertical_scroll_tiles = 20,
+    }
+    local bytes = {}
+
+    write_visible_text(bytes, ctx, 1, 3, "BILL")
+    write_visible_text(bytes, ctx, 3, 3, "LV   1")
+    write_visible_text(bytes, ctx, 5, 3, "HP  15")
+    write_visible_text(bytes, ctx, 7, 3, "MP   0")
+    write_visible_text(bytes, ctx, 9, 3, "G   60")
+    write_visible_text(bytes, ctx, 11, 3, "E    0")
+
+    write_visible_text(bytes, ctx, 4, 14, "Bamboo      10")
+    write_visible_text(bytes, ctx, 5, 16, "Pole")
+    write_visible_text(bytes, ctx, 6, 14, "Club        60")
+    write_visible_text(bytes, ctx, 8, 14, "Copper     180")
+    write_visible_text(bytes, ctx, 9, 16, "Sword")
+    write_visible_text(bytes, ctx, 10, 14, "Clothes     20")
+    write_visible_text(bytes, ctx, 12, 14, "Leather     70")
+    write_visible_text(bytes, ctx, 13, 16, "Armor")
+    write_visible_text(bytes, ctx, 14, 14, "Small       90")
+    write_visible_text(bytes, ctx, 15, 16, "Shield")
+
+    local cursor_row = (10 + ctx.vertical_scroll_tiles) % 30
+    local cursor_virtual_col = ctx.scroll_tiles + 13
+    local cursor_nt_col = cursor_virtual_col % 32
+    local cursor_nt_index = (ctx.base_nametable + math.floor(cursor_virtual_col / 32)) % 2
+    local cursor_base = (cursor_nt_index == 0) and 0x2000 or 0x2400
+    bytes[cursor_base + cursor_row * 32 + cursor_nt_col] = 0x42
+
+    return bytes, ctx
 end
 
 local tests = {}
@@ -111,6 +176,72 @@ function tests.ignores_regular_dialogue_rows()
     env.restore()
 end
 
+function tests.buy_prompt_with_partial_offer_list_is_active()
+    local env = make_env()
+
+    local rows = {
+        [11] = "Clothes      20",
+        [12] = "G   60",
+        [13] = "Leather      70",
+        [14] = "E    0  Armor",
+        [15] = "Small        90",
+        [16] = "Shield",
+        [20] = "'Dost thou wish to buy",
+        [21] = "anything more?'",
+        [23] = "'What dost thou wish",
+        [24] = "to buy?'",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 60})
+    assert_equal(info.active, true, "buy prompt plus partial shop list should stay in merchant mode")
+    assert_equal(info.buy_prompt, true, "merchant parser should recognize the active buy prompt")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Clothes, Leather Armor, Small Shield",
+        "partial visible offers should still be extracted"
+    )
+
+    env.restore()
+end
+
+function tests.buy_more_yesno_without_buy_prompt_is_not_item_list()
+    local env = make_env()
+
+    local rows = {
+        [20] = "'Dost thou wish to buy",
+        [21] = "anything more?'",
+        [23] = "YES        NO",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 60})
+    assert_equal(info.active, false, "buy-more yes/no prompt alone should not become item-list mode")
+
+    env.restore()
+end
+
+function tests.item_confirmation_with_stale_buy_prompt_is_not_item_list()
+    local env = make_env()
+
+    local rows = {
+        [4] = "Bill TALK    SPELL",
+        [6] = "LV   1 STATUS  ITEM",
+        [8] = "HP  15 STAIRS  DOOR",
+        [10] = "MP   0 SEARCH  TAKE",
+        [12] = "G   60",
+        [14] = "E    0",
+        [19] = "'Dost thou wish to buy",
+        [20] = "anything more?'",
+        [22] = "'What dost thou wish",
+        [23] = "to buy?'",
+        [25] = "'The Copper Sword?'",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 60})
+    assert_equal(info.active, false, "item confirmation dialogue should not be merchant item-list mode")
+
+    env.restore()
+end
+
 function tests.cursor_selection_reads_current_offer()
     local env = make_env()
 
@@ -134,6 +265,40 @@ function tests.cursor_selection_reads_current_offer()
     local offer = env.merchant.get_cursor_offer()
     assert_equal(offer.name, "Club", "merchant cursor should resolve the selected item")
     assert_equal(offer.price, 60, "merchant cursor should resolve the selected item price")
+
+    env.restore()
+end
+
+function tests.detects_scrolled_weapon_shop_layout()
+    local env = make_env()
+    local bytes, ctx = build_scrolled_shop_screen()
+
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local info = env.merchant.analyze_rows(env.merchant.read_rows(ctx), {gold = 60})
+    assert_equal(info.active, true, "scrolled merchant screen should be detected")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Bamboo Pole, Club, Copper Sword, Clothes, Leather Armor, Small Shield",
+        "scrolled merchant offers should be normalized"
+    )
+
+    env.restore()
+end
+
+function tests.cursor_selection_reads_scrolled_visible_offer()
+    local env = make_env()
+    local bytes, ctx = build_scrolled_shop_screen()
+
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local offer = env.merchant.get_cursor_offer(ctx)
+    assert_equal(offer.name, "Clothes", "scrolled merchant cursor should resolve selected item")
+    assert_equal(offer.price, 20, "scrolled merchant cursor should resolve selected price")
 
     env.restore()
 end

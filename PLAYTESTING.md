@@ -162,6 +162,33 @@ QoL feature check:
   be blocked targets, may be represented differently than normal wandering
   NPCs, or may need a shop-counter/object interaction path rather than ordinary
   TALK-to-NPC handling.
+- Brecconary weapon-shop follow-up: the true weapon/armor merchant is
+  `Merchant 2` at `(5,4)`. The safe public access path reaches the doorway/
+  counter square at `(5,6)`; face north and TALK even though the merchant object
+  is two tiles north. The route enters through `(5,8)->(5,7)->(5,6)`; both
+  `(5,7)` and `(5,6)` are false-wall passthrough tiles in the map model. Routes from the merchant pockets to the
+  world-map exit proved `(4,4)`, `(4,5)`, `(4,6)`, `(5,5)`, `(6,4)`, and
+  `(6,5)` are trap/service-pocket cells for autonomous movement; the map model
+  keeps those pathfinder-forbidden and also blocks the false `(8,5)->LEFT`
+  shortcut into `(7,5)`.
+- Brecconary counter-service discovery: raw map block `0xF` marks the shop
+  counter/large-tile trigger. `Merchant 3` at `(10,21)` is the inn keeper; TALK
+  from the live-confirmed counter tile `(9,21)` while facing east opens
+  `Welcome to the traveler's Inn... Room and board is 6 GOLD per night.`
+  `Merchant 4` at `(25,25)` is the tool shop; TALK from `(24,25)` while facing
+  east opens `Welcome. We deal in tools.` `objects.lua` now exposes these
+  confirmed counter tiles directly, while keeping the generic adjacent raw
+  large-tile inference for future service counters.
+- Weapon-shop item list follow-up: the buy/yes-no prompt worked, but the item
+  list initially spoke field command labels and raw cursor coordinates because
+  the shop list also shows a `COMMAND` header and reuses menu cursor RAM.
+  `merchant.lua` now decodes the visible scrolled shop rows and prices, and
+  `main.lua` suppresses command-menu speech whenever that merchant layout or
+  lower shop dialogue is present. The merchant scan also keeps running while
+  the shop prompt sets the generic dialogue hint, so the item reader does not
+  starve after a buy/error/continue cycle. Live validation completed a Copper
+  Sword not-enough-gold loop and returned to the list with `Bamboo Pole. 10
+  gold.` instead of `STATUS` / `SEARCH`.
 - Ctrl+W crash follow-up: the script crashed immediately after `Ctrl+W` with a
   fresh `dw_script_error.log` entry in `snapshot.update`; the fatal line was
   adapter logging through BizHawk `console.log()` while memory fallback was

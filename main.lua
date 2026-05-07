@@ -1415,13 +1415,9 @@ local function check_command_menu(frame_delta)
     -- Merchant/shop layouts can coexist with the same cursor RAM and some of
     -- the same window/header signals the command-menu logic watches. When the
     -- merchant screen is present, it must fully override command-menu speech.
-    local merchant_present = merchant_screen_active
+    local merchant_present = merchant_screen_active or merchant_scan_present
     if not merchant_present then
-        if scan_profiler.is_enabled() then
-            merchant_present = merchant_scan_present
-        else
-            merchant_present = merchant.analyze_current_screen().active
-        end
+        merchant_present = merchant.analyze_current_screen().active
     end
     if merchant_present then
         cmd_menu_confirmed = false
@@ -1545,6 +1541,21 @@ local function check_command_menu(frame_delta)
 
     local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable()) ~= ""
     local cursor_visible = has_visible_cursor_tile()
+
+    -- If lower dialogue is still visible, COMMAND/header/cursor tiles are
+    -- stale backing UI rather than a usable field menu. This is especially
+    -- common inside shops: the game redraws TALK/STATUS/etc. behind purchase
+    -- prompts and error text while D8/D9 continue to change.
+    if lower_dialogue_active and not changes.menu_opened then
+        cmd_menu_confirmed = false
+        cmd_menu_live = false
+        cmd_cursor_hold_frames = 0
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
+        trace_row1("CMD_BLOCK_LOWER_DIALOGUE", changes, {
+            "cursor=" .. tostring(cursor_visible),
+        })
+        return
+    end
 
     if is_row1_interior_context() then
         if lower_dialogue_active ~= prev_row1_lower_dialogue_active then
@@ -2806,6 +2817,34 @@ debug_tools.register_command("report_blockers", function()
         route_mgr.count_runtime_blocks(map_id), map_id))
 end)
 
+debug_tools.register_command("report_npcs", function()
+    local map_id = snapshot.map_id
+    objects.update_npcs()
+    debug_tools.info(string.format("NPCS map=0x%02X", map_id))
+    for slot = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+        local byte0 = memory.readbyte(base)
+        local byte1 = memory.readbyte(base + 1)
+        local byte2 = memory.readbyte(base + 2)
+        local x = byte0 % 0x20
+        local y = byte1 % 0x20
+        local active = not ((x == 0 and y == 0) or (x == 31 and y == 31))
+        if active then
+            local sprite_type = math.floor(byte0 / 0x20)
+            local direction = math.floor(byte1 / 0x20) % 4
+            local obj = objects.find_object_by_id("npc_" .. slot)
+            debug_tools.info(string.format(
+                "NPC_SLOT map=0x%02X slot=%d id=npc_%d name=%s x=%d y=%d sprite=%d dir=%d move=0x%02X service=%s raw=%02X,%02X,%02X",
+                map_id, slot, slot,
+                obj and tostring(obj.name) or "unknown",
+                x, y, sprite_type, direction, byte2,
+                tostring(obj and obj.service == true or false),
+                byte0, byte1, byte2))
+        end
+    end
+    tolk.output_interrupt("NPCs reported")
+end)
+
 debug_tools.register_command("report_runtime_blocks", function()
     local map_id = snapshot.map_id
     local count = route_mgr.count_runtime_blocks(map_id)
@@ -2873,7 +2912,7 @@ debug_tools.register_command("report_menu_state", function()
         get_dialogue_start_row(),
         DW_QOL_STATE.get_scroll_base_nametable())
     local msg = string.format(
-        "MENU_STATE raw_open=%s cached_open=%s active_block=%s cursor_visible=%s cursor=(%s,%s) item=%s cmd_confirmed=%s cmd_live=%s cmd_rearm=%s cmd_hold=%d yesno=%s yesno_seen=%s submenu=%s lower_len=%d scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
+        "MENU_STATE raw_open=%s cached_open=%s active_block=%s cursor_visible=%s cursor=(%s,%s) item=%s cmd_confirmed=%s cmd_live=%s cmd_rearm=%s cmd_hold=%d yesno=%s yesno_seen=%s submenu=%s merchant_active=%s merchant_scan=%s lower_len=%d scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
         tostring(raw_open),
         tostring(cached_open),
         tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
@@ -2888,12 +2927,46 @@ debug_tools.register_command("report_menu_state", function()
         tostring(menu.is_yesno_active()),
         tostring(menu.yesno_cursor_seen()),
         tostring(submenu_mode),
+        tostring(merchant_screen_active),
+        tostring(merchant_scan_present),
         #(lower or ""),
         get_scroll_tiles(),
         DW_QOL_STATE.get_scroll_base_nametable(),
         get_dialogue_start_row())
     debug_tools.info(msg)
     tolk.output_interrupt("Menu state reported")
+end)
+
+debug_tools.register_command("report_merchant_state", function()
+    if emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
+    local info = merchant.analyze_current_screen()
+    local offer = merchant.get_cursor_offer()
+    local scroll_tiles = get_scroll_tiles()
+    local base_nametable = DW_QOL_STATE.get_scroll_base_nametable()
+    local msg = string.format(
+        "MERCHANT_STATE active=%s buy_prompt=%s status_markers=%d offers=%q summary=%q cursor_name=%q cursor_price=%s cursor_row=%s scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
+        tostring(info.active),
+        tostring(info.buy_prompt),
+        tonumber(info.status_marker_count) or 0,
+        table.concat(info.offers or {}, ", "),
+        tostring(info.summary or ""),
+        tostring(offer and offer.name or ""),
+        tostring(offer and offer.price or "nil"),
+        tostring(offer and offer.row or "nil"),
+        scroll_tiles,
+        base_nametable,
+        get_dialogue_start_row())
+    debug_tools.info(msg)
+    local rows = merchant.read_rows()
+    for row = 0, 29 do
+        local line = rows[row]
+        if line and line ~= "" then
+            debug_tools.info(string.format("MERCHANT_ROW row=%02d text=%q", row, tostring(line)))
+        end
+    end
+    tolk.output_interrupt("Merchant state reported")
 end)
 
 debug_tools.register_command("clear_runtime_blocks", function(arg)
@@ -3669,6 +3742,11 @@ while true do
     -- This MUST happen before any module reads from the snapshot this frame.
     scan_profiler.call("snapshot.update", checked_call, "snapshot.update", snapshot.update)
 
+    -- Get current game state before handling hotkeys so context-sensitive
+    -- actions can suppress field-only handlers during battle.
+    game_state = scan_profiler.call("state.check_for_changes", checked_call, "state.check_for_changes", state.check_for_changes)
+    in_gameplay = (game_state.state ~= state.STATE_TITLE)
+
     -- Read keyboard state for hotkeys
     local keys = scan_profiler.call("input.get", input.get)
     if emulator_compat.is_bizhawk then
@@ -3682,11 +3760,14 @@ while true do
 
     -- Process on-demand hotkeys (player-initiated).
     -- hotkeys.update() also saves prev_keys internally for key-down detection.
-    scan_profiler.call("hotkeys.update", hotkeys.update, keys)
-
-    -- Get current game state
-    game_state = scan_profiler.call("state.check_for_changes", checked_call, "state.check_for_changes", state.check_for_changes)
-    in_gameplay = (game_state.state ~= state.STATE_TITLE)
+    -- Do not include current live joypad input in this allowance: BizHawk maps
+    -- Enter/arrow teleport hotkeys to Start/D-pad too, so that would make
+    -- teleport hotkeys refuse themselves before hotkeys.lua can neutralize the
+    -- leaked game input.
+    scan_profiler.call("hotkeys.update", hotkeys.update, keys, game_state,
+        get_autowalk_unavailable_reason() == nil
+            and announced_dialogue == ""
+            and not (auto_step.is_route_active and auto_step.is_route_active()))
 
     -- Startup grace period: during the first STARTUP_FRAMES frames,
     -- let all the "previous" tracking values initialize silently.
@@ -3980,12 +4061,15 @@ while true do
         -- announcements. check_title_screen() handles all title-screen text.
         if in_gameplay then
             local merchant_active = merchant_screen_active
-            local merchant_interval = merchant_screen_active and 3 or (dialogue_hint and 60 or 8)
+            local merchant_interval = merchant_screen_active and 3 or (dialogue_hint and 12 or 8)
             local run_merchant = false
             local merchant_delta = 0
-            if not dialogue_hint or merchant_screen_active then
-                run_merchant, merchant_delta = scan_profiler.should_run("merchant_screen", merchant_interval, frame_count)
-            end
+            -- The shop item list always includes lower prompt text ("What dost
+            -- thou wish to buy?"), so dialogue_hint stays true while the
+            -- merchant cursor is active. Do not let the dialogue throttle starve
+            -- merchant scanning, or the command-menu fallback can regain control
+            -- after buy/error/continue cycles.
+            run_merchant, merchant_delta = scan_profiler.should_run("merchant_screen", merchant_interval, frame_count)
             if run_merchant then
                 merchant_active = scan_profiler.call("check_merchant_screen", checked_call, "check_merchant_screen", check_merchant_screen, merchant_delta)
             end
