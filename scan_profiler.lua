@@ -3,6 +3,10 @@
 
 local M = {
     enabled = false,
+    -- Profiling collection is opt-in: even on BizHawk, M.call() runs as a plain
+    -- pass-through unless recording is started. Avoids per-frame os.clock() and
+    -- {fn(...)} tuple allocation on every wrapped call during normal play.
+    recording = false,
     compat = nil,
     slots = {},
     profiles = {},
@@ -17,6 +21,20 @@ end
 
 function M.is_enabled()
     return M.enabled
+end
+
+function M.is_recording()
+    return M.enabled and M.recording
+end
+
+function M.start_recording()
+    if not M.enabled then return false end
+    M.recording = true
+    return true
+end
+
+function M.stop_recording()
+    M.recording = false
 end
 
 function M.should_run(name, interval, frame_count)
@@ -78,7 +96,9 @@ local function record(label, read_delta, elapsed_ms)
 end
 
 function M.call(label, fn, ...)
-    if not M.enabled or not (M.compat and M.compat.get_ppu_read_count) then
+    -- Fast path: skip measurement when not recording. Avoids os.clock() syscall
+    -- pairs and the {fn(...)} tuple allocation on every wrapped call.
+    if not M.recording or not M.enabled or not (M.compat and M.compat.get_ppu_read_count) then
         return fn(...)
     end
 

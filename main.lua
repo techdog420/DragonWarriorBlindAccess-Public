@@ -79,33 +79,16 @@ _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
 -- BizHawk console/script reloads can re-run main.lua inside the same Lua
 -- state, leaving required project modules cached. Clear our modules before
 -- requiring them so a console reload actually picks up code changes.
-package.loaded["addresses"] = nil
-package.loaded["auto_step"] = nil
-package.loaded["battle"] = nil
-package.loaded["chars"] = nil
-package.loaded["config"] = nil
-package.loaded["debug_tools"] = nil
-package.loaded["emulator_compat"] = nil
-package.loaded["event_bus"] = nil
-package.loaded["game_snapshot"] = nil
-package.loaded["hotkey_filter"] = nil
-package.loaded["hotkeys"] = nil
-package.loaded["items"] = nil
-package.loaded["key_combo"] = nil
-package.loaded["map_reader"] = nil
-package.loaded["map_survey"] = nil
-package.loaded["maps"] = nil
-package.loaded["menu"] = nil
-package.loaded["merchant"] = nil
-package.loaded["navigation"] = nil
-package.loaded["object_commands"] = nil
-package.loaded["objects"] = nil
-package.loaded["path_debug"] = nil
-package.loaded["pathfinder"] = nil
-package.loaded["route_manager"] = nil
-package.loaded["scan_profiler"] = nil
-package.loaded["state"] = nil
-package.loaded["text"] = nil
+for _, mod_name in ipairs({
+    "addresses", "auto_step", "battle", "chars", "config",
+    "debug_tools", "emulator_compat", "event_bus", "game_snapshot",
+    "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
+    "map_survey", "maps", "menu", "merchant", "navigation",
+    "object_commands", "objects", "path_debug", "pathfinder",
+    "route_manager", "scan_profiler", "state", "text",
+}) do
+    package.loaded[mod_name] = nil
+end
 
 local emulator_compat = require "emulator_compat" -- FCEUX/BizHawk API shim
 local scan_profiler = require "scan_profiler" -- BizHawk scan throttling/profiling
@@ -490,6 +473,11 @@ local K = {
     MOVEMENT_DIALOGUE_HOLD            = 360,
     MENU_UPPER_ABSORB                 = 45,
     RECENT_FIELD_ACTION_HOLD          = 180,
+    -- ~40s post-boot window where BizHawk's heavier scan path skips dialogue
+    -- and menu polling on idle frames. The hint relaxes back to normal as
+    -- soon as movement, dialogue, or menu state is detected. Tuned high
+    -- because BizHawk's PPU read cost dominates the first few seconds; can
+    -- be re-tuned empirically once steady-state perf is profiled.
     BIZHAWK_BOOT_DIALOGUE_HOLD        = 2400,
 }
 
@@ -685,7 +673,7 @@ function NAME_ENTRY_SYMBOLS.apply_guard()
         return
     end
 
-    local joy = current_joy or joypad.read(1)
+    local joy = current_joy
     if not joy or not joy.A then
         if NAME_ENTRY_SYMBOLS._a_was_down then
             NAME_ENTRY_SYMBOLS._a_release_frames = NAME_ENTRY_SYMBOLS._a_release_frames + 1
@@ -815,10 +803,11 @@ local CMD = {
 -- Merchant module state. PREV.merchant_text / .announced_merchant /
 -- .merchant_selection / .merchant_price hold per-frame baselines.
 local MER = {
-    active         = false,  -- shop UI currently up
-    intro_pending  = false,  -- speak "Merchant" prefix on first selection
-    stable_count   = 0,      -- stability counter for merchant text changes
-    scan_present   = false,  -- last full merchant-layout scan result
+    active            = false,  -- shop UI currently up
+    intro_pending     = false,  -- speak "Merchant" prefix on first selection
+    stable_count      = 0,      -- stability counter for merchant text changes
+    scan_present      = false,  -- last full merchant-layout scan result
+    scan_present_frame = -1000, -- frame_count at last scan_present refresh
 }
 
 local current_joy = {}
@@ -1284,11 +1273,13 @@ local function check_merchant_screen(frame_delta)
             reset_merchant_state(true)
         end
         MER.scan_present = false
+        MER.scan_present_frame = frame_count
         return false
     end
 
     local info = merchant.analyze_current_screen()
     MER.scan_present = info.active
+    MER.scan_present_frame = frame_count
     if not info.active then
         if MER.active then
             reset_merchant_state(true)
@@ -1440,8 +1431,15 @@ local function check_command_menu(frame_delta)
     -- the same window/header signals the command-menu logic watches. When the
     -- merchant screen is present, it must fully override command-menu speech.
     local merchant_present = MER.active or MER.scan_present
-    if not merchant_present then
-        merchant_present = merchant.analyze_current_screen().active
+    -- Fallback scan only when MER.scan_present is stale (>4 frames). The
+    -- check_merchant_screen producer runs at interval 3-12 frames, so a fresh
+    -- false result is trustworthy and we can skip the duplicate full-screen
+    -- PPU read here.
+    if not merchant_present and (frame_count - MER.scan_present_frame) > 4 then
+        local info = merchant.analyze_current_screen()
+        MER.scan_present = info.active
+        MER.scan_present_frame = frame_count
+        merchant_present = info.active
     end
     if merchant_present then
         CMD.menu_confirmed = false
@@ -2814,10 +2812,15 @@ debug_tools.register_command("report_scan_stats", function()
         return
     end
 
+    debug_tools.info("SCAN_PROFILE recording=" .. tostring(scan_profiler.is_recording()))
     debug_tools.info(scan_profiler.ppu_stats_line())
     local lines = scan_profiler.profile_lines()
     if #lines == 0 then
-        debug_tools.info("SCAN_PROFILE none")
+        if scan_profiler.is_recording() then
+            debug_tools.info("SCAN_PROFILE none")
+        else
+            debug_tools.info("SCAN_PROFILE none — run start_scan_profiling first")
+        end
     else
         for _, line in ipairs(lines) do
             debug_tools.info(line)
@@ -2830,6 +2833,22 @@ debug_tools.register_command("reset_scan_stats", function()
     scan_profiler.reset()
     debug_tools.info("SCAN_PROFILE reset")
     tolk.output_interrupt("Scan stats reset")
+end)
+
+debug_tools.register_command("start_scan_profiling", function()
+    if scan_profiler.start_recording() then
+        debug_tools.info("SCAN_PROFILE recording started")
+        tolk.output_interrupt("Scan profiling started")
+    else
+        debug_tools.info("SCAN_PROFILE recording unavailable: not running under BizHawk")
+        tolk.output_interrupt("Scan profiling unavailable outside BizHawk")
+    end
+end)
+
+debug_tools.register_command("stop_scan_profiling", function()
+    scan_profiler.stop_recording()
+    debug_tools.info("SCAN_PROFILE recording stopped")
+    tolk.output_interrupt("Scan profiling stopped")
 end)
 
 debug_tools.register_command("report_blockers", function()
@@ -3778,9 +3797,8 @@ while true do
     end
     current_joy = scan_profiler.call("joypad.read", joypad.read, 1)
     current_joy_any = joypad_has_input(current_joy)
-    if current_joy_any and emulator_compat.clear_ppu_cache then
-        emulator_compat.clear_ppu_cache()
-    end
+    -- No explicit PPU flush needed: frameadvance() already cleared the cache
+    -- at the start of this tick (PPU_CACHE_HOLD_FRAMES=1).
 
     -- Process on-demand hotkeys (player-initiated).
     -- hotkeys.update() also saves prev_keys internally for key-down detection.

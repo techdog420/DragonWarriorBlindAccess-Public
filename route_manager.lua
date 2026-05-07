@@ -91,6 +91,13 @@ local active_route_completed_steps = 0
 local target_npc_hold = nil
 local target_face_input = nil
 local object_pathability_signature = nil
+-- Tracks the wall-clock time of the last full pathability recompute. Holding
+-- a navigation hotkey can produce many key-down events per second; without a
+-- floor, each one runs A* per-target because the player's start position is
+-- part of the signature.
+local object_pathability_last_clock = -1
+local OBJECT_PATHABILITY_MIN_INTERVAL = 0.1  -- seconds; ~6 fps cap on full refresh
+local last_pathability_result = nil
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
 local TARGET_FACE_RELEASE_FRAMES = 2
 local SEAM_CONFIRM_BLOCK_THRESHOLD = 3
@@ -747,14 +754,17 @@ end
 -- apply_npc_freeze(): Restore snapshotted NPC bytes to RAM.
 -- Call once per frame immediately after FCEU.frameadvance().
 -- No-op when npc_freeze_active is false, so it's safe to call every frame.
+-- Diff-only: skip writebyte when RAM already matches the snapshot. Most
+-- frozen NPCs don't change RAM-side, so this avoids 60 redundant BizHawk
+-- writebyte calls per frame.
 function M.apply_npc_freeze()
     if npc_freeze_active then
         for i = 0, addr.NPC_COUNT - 1 do
             local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
             local snap = frozen_npc_snapshot[i]
-            memory.writebyte(base,     snap[1])
-            memory.writebyte(base + 1, snap[2])
-            memory.writebyte(base + 2, snap[3])
+            if memory.readbyte(base)     ~= snap[1] then memory.writebyte(base,     snap[1]) end
+            if memory.readbyte(base + 1) ~= snap[2] then memory.writebyte(base + 1, snap[2]) end
+            if memory.readbyte(base + 2) ~= snap[3] then memory.writebyte(base + 2, snap[3]) end
         end
     end
     if target_npc_hold then
@@ -1523,6 +1533,7 @@ function M.refresh_object_pathability_filter(opts)
     local map_id, start_x, start_y = resolve_plan_origin(opts)
     if not pathability_supported(map_id) then
         object_pathability_signature = nil
+        last_pathability_result = nil
         objects.clear_pathability_statuses()
         objects.set_pathability_filter(objects.PATHABILITY_ALL)
         return {
@@ -1544,6 +1555,25 @@ function M.refresh_object_pathability_filter(opts)
             count = objects.get_count(),
             active = objects.is_pathability_filter_active(),
             refreshed = false,
+        }
+    end
+
+    -- Wall-clock throttle: on non-forced calls, when the last full recompute
+    -- finished within OBJECT_PATHABILITY_MIN_INTERVAL, reuse the cached result
+    -- rather than re-running A* per-target. The player's start position is part
+    -- of the signature, so signature changes every step and a held hotkey
+    -- otherwise re-walks every target on every key-down.
+    if not opts.force
+        and last_pathability_result
+        and (os.clock() - object_pathability_last_clock) < OBJECT_PATHABILITY_MIN_INTERVAL
+    then
+        return {
+            name = objects.get_filter_summary(),
+            pathability_name = objects.get_pathability_filter_name(),
+            count = objects.get_count(),
+            active = objects.is_pathability_filter_active(),
+            refreshed = false,
+            throttled = true,
         }
     end
 
@@ -1576,6 +1606,7 @@ function M.refresh_object_pathability_filter(opts)
 
     objects.set_pathability_statuses(statuses)
     object_pathability_signature = signature
+    object_pathability_last_clock = os.clock()
 
     local elapsed_ms = (os.clock() - started) * 1000
     if elapsed_ms >= 25 then
@@ -1590,7 +1621,7 @@ function M.refresh_object_pathability_filter(opts)
             elapsed_ms))
     end
 
-    return {
+    last_pathability_result = {
         name = objects.get_filter_summary(),
         pathability_name = objects.get_pathability_filter_name(),
         count = objects.get_count(),
@@ -1600,6 +1631,7 @@ function M.refresh_object_pathability_filter(opts)
         reachable = reachable,
         unreachable = unreachable,
     }
+    return last_pathability_result
 end
 
 function M.refresh_object_pathability_filter_if_needed()
@@ -1614,6 +1646,7 @@ function M.set_object_pathability_filter(filter)
 
     if mode == objects.PATHABILITY_ALL then
         object_pathability_signature = nil
+        last_pathability_result = nil
         objects.set_pathability_filter(objects.PATHABILITY_ALL)
         return {
             name = objects.get_filter_summary(),
