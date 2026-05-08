@@ -55,6 +55,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   the east approach. After reload, a path-only probe from `(5,6)` to the
   world-map exit chose the detour through `(5,9)->(4,9)` and avoided the old
   timeout edge. Player position was restored to Brecconary `(1,15)`.
+- Inn route/name follow-up: `Merchant 2` is now named `Weapons Merchant` and
+  `Merchant 3` is now named `Inn` in the Services object list. The inn service
+  routes to the public stand tile `(8,21)` facing east; live TALK from there
+  opened `Welcome to the traveler's Inn... Room and board is 6 GOLD per night.`
+  A first retest exposed a timeout on `(7,17)->RIGHT` into `(8,17)`, so that
+  west approach is now modeled as blocked. After reload, auto-walk from
+  Brecconary `(1,15)` queued 17 steps for `Inn`, reached `(8,21)`, and faced
+  east with no new blocked edge. Player position was restored to `(1,15)`.
+- Spell menu follow-up: after the player reached level 3 and learned Heal, the
+  SPELL list opened but did not speak its contents. Live state showed the
+  command menu header was still detected, speech was ready, and no dialogue or
+  upper-window text was available; the missing piece was a SPELL submenu reader.
+  `main.lua` now tracks `submenu=SPELL` and `items.lua` maps D9 to known
+  spells. The visible field list only shows `>HEAL` and does not show a
+  per-spell MP cost, so accessibility speech adds NES spell costs from metadata.
+  Live reload/re-entry proof under BizHawk now speaks exactly
+  `Spells. Heal. 4 MP`, then `report_menu_state` shows `submenu=SPELL` with
+  speech ready and no backend error.
 
 ## Current Goal
 
@@ -230,12 +248,12 @@ QoL feature check:
   reload: the list reported all six offers and a Down input spoke
   `Clothes. 20 gold.`
 - Brecconary counter-service discovery: raw map block `0xF` marks the shop
-  counter/large-tile trigger. `Merchant 3` at `(10,21)` is the inn keeper; TALK
-  from the live-confirmed counter tile `(9,21)` while facing east opens
-  `Welcome to the traveler's Inn... Room and board is 6 GOLD per night.`
-  `Merchant 4` at `(25,25)` is the tool shop; TALK from `(24,25)` while facing
-  east opens `Welcome. We deal in tools.` `objects.lua` now exposes these
-  confirmed counter tiles directly, while keeping the generic adjacent raw
+  counter/large-tile trigger. `Inn` at `(10,21)` is the inn keeper; TALK from
+  the public stand tile `(8,21)` while facing east opens `Welcome to the
+  traveler's Inn... Room and board is 6 GOLD per night.` `Merchant 4` at
+  `(25,25)` is the tool shop; TALK from `(24,25)` while facing east opens
+  `Welcome. We deal in tools.` `objects.lua` now exposes these confirmed
+  service interaction tiles directly, while keeping the generic adjacent raw
   large-tile inference for future service counters.
 - Weapon-shop item list follow-up: the buy/yes-no prompt worked, but the item
   list initially spoke field command labels and raw cursor coordinates because

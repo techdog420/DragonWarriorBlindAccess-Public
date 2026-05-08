@@ -90,6 +90,35 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   adjacent `(0,15)` chose `3 south, 1 west, 3 south, 2 west, 2 south, 1 west,
   1 south`, avoiding the old `(5,13)->LEFT` timeout. Player was restored to
   Brecconary `(1,15)` afterward.
+- Brecconary inn/service route follow-up: the old `Merchant 3` service entry
+  targeted `(9,21)`, which TALK can use but which is directionally blocked from
+  the public west approach. Live proof from `(1,15)` showed `pathfind_to:9,21`
+  failed while `pathfind_to:8,21` succeeded; a controlled TALK probe from
+  `(8,21)` facing east opened the inn dialogue. `objects.lua` now labels
+  Merchant 2 as `Weapons Merchant`, labels Merchant 3 as `Inn`, and routes the
+  inn to `(8,21)` facing east. The first retest exposed a real timeout on
+  `(7,17)->RIGHT` into `(8,17)`, so `map_reader.lua` now blocks `(8,17)` from
+  the west. Live reload proof: `LAUNCHER_PROBE: codex_inn_edge_reload`, then
+  `auto_walk` from Brecconary `(1,15)` queued 17 steps for `Inn`, reached
+  `(8,21)`, and logged `AUTO_WALK_FACE target=Inn face=east` with no new
+  blocked edge. Player was restored to `(1,15)`.
+- Level-3 spell menu follow-up: after learning Heal, selecting `SPELL` opened a
+  list that was silent because `main.lua` only tracked `STATUS` and `ITEM`
+  submenus. Live `report_menu_state` while in the spell list showed
+  `raw_open=true`, speech ready, `cursor=(0,0)`, no lower/upper text, and
+  `submenu=nil`, meaning this was a missing submenu mode rather than a speech
+  backend failure. `items.lua` now exposes known-spell list helpers and
+  `main.lua` tracks `submenu=SPELL`. The game screen only shows the spell name
+  (`>HEAL`) plus the separate current-MP status panel, not per-spell costs, so
+  speech adds NES MP costs from spell metadata. Entry/cursor speech now says
+  entries such as `Spells. Heal. 4 MP`; later spell-list movement speaks the
+  selected spell with its cost. A follow-up reload suppressed the first
+  synthetic cursor jump so entry no longer double-speaks. Live proof:
+  `LAUNCHER_PROBE: codex_spell_menu_dedup_reload`; after backing out and
+  re-entering SPELL, `speech_bridge.log` recorded one `speak:Spells. Heal`.
+  Cost follow-up proof: `LAUNCHER_PROBE: codex_spell_cost_reload`; re-entering
+  SPELL recorded `speak:Spells. Heal. 4 MP`, `MENU_STATE` reported
+  `submenu=SPELL`, and `speech_status` was ready with `error=none`.
 
 ## Current Baseline
 
@@ -310,15 +339,16 @@ Latest manual playtest notes:
   services were counter/large-tile interactions. `map_reader.lua` now exposes
   non-invasive raw block helpers (`get_raw_block_id`, `is_large_tile`) for the
   original two-nibbles-per-byte map data. `objects.lua` infers service counters
-  from adjacent raw `0xF` large tiles, but Brecconary has three live-confirmed
-  direct overrides: Merchant 2 `(5,4)` uses `(5,6)` facing north for the
-  weapon/armor shop; Merchant 3 `(10,21)` uses raw large tile `(9,21)` facing
-  east for the inn; Merchant 4 `(25,25)` uses raw large tile `(24,25)` facing
-  east for the tool shop. Live evidence: TALK from `(9,21)` opened
-  `Welcome to the traveler's Inn... Room and board is 6 GOLD per night`, and
-  TALK from `(24,25)` opened `Welcome. We deal in tools.` Final reload
-  verification showed `Services` objects with `Merchant 4 ... interact 24,25`
-  and `Merchant 3 ... interact 9,21`; `RUNTIME_BLOCKS map=0x08 none`.
+  from adjacent raw `0xF` large tiles, but Brecconary has live-confirmed direct
+  overrides: `Weapons Merchant` at `(5,4)` uses `(5,6)` facing north for the
+  weapon/armor shop; `Inn` at `(10,21)` uses the public stand `(8,21)` facing
+  east because `(9,21)` is blocked from the west approach; Merchant 4 `(25,25)`
+  uses raw large tile `(24,25)` facing east for the tool shop. Live evidence:
+  TALK from `(8,21)` opened `Welcome to the traveler's Inn... Room and board
+  is 6 GOLD per night`, and TALK from `(24,25)` opened `Welcome. We deal in
+  tools.` Final reload verification showed `Services` objects with
+  `Weapons Merchant ... interact 5,6`, `Inn ... interact 8,21`, and
+  `Merchant 4 ... interact 24,25`.
 - Brecconary Merchant 2 located: selected-object teleport placed the player west
   of `Merchant 2` at `(5,4)`, and TALK from `(4,4)` opened the real
   weapon/armor shop (`We deal in weapons and armor...`). Follow-up proved that
@@ -365,8 +395,8 @@ Latest manual playtest notes:
   current state, `next_filter` still reports `Services. Merchant 1/2/3/4` plus
   a `Woman 3` NPC. TALK attempts on `Merchant 1` and `Woman 3` both return
   `There is no one there.` with `VISITED_AUTO skipped`. Superseded follow-up:
-  Merchant 2 is the weapon/armor shop, Merchant 3 is the inn via counter tile
-  `(9,21)`, and Merchant 4 is the tool shop via counter tile `(24,25)`.
+  `Weapons Merchant` is the weapon/armor shop, `Inn` is reached via public
+  stand `(8,21)`, and Merchant 4 is the tool shop via counter tile `(24,25)`.
 - Brecconary Guard 6 follow-up: after auto-walk reached Guard 6 in the
   southwest/southeast guard pocket, the object browser recomputed pathability
   as `targets=21 reachable=1 unreachable=20`, leaving only Guard 6 in the

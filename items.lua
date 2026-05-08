@@ -105,16 +105,16 @@ end
 -- direct RAM calls.
 
 local SPELL_LIST = {
-    {field = "spells",   bit_num = 0, name = "Heal"},
-    {field = "spells",   bit_num = 1, name = "Hurt"},
-    {field = "spells",   bit_num = 2, name = "Sleep"},
-    {field = "spells",   bit_num = 3, name = "Radiant"},
-    {field = "spells",   bit_num = 4, name = "Stopspell"},
-    {field = "spells",   bit_num = 5, name = "Outside"},
-    {field = "spells",   bit_num = 6, name = "Return"},
-    {field = "spells",   bit_num = 7, name = "Repel"},
-    {field = "flags_cf", bit_num = 0, name = "Healmore"},
-    {field = "flags_cf", bit_num = 1, name = "Hurtmore"},
+    {field = "spells",   bit_num = 0, name = "Heal",      mp_cost = 4},
+    {field = "spells",   bit_num = 1, name = "Hurt",      mp_cost = 2},
+    {field = "spells",   bit_num = 2, name = "Sleep",     mp_cost = 2},
+    {field = "spells",   bit_num = 3, name = "Radiant",   mp_cost = 3},
+    {field = "spells",   bit_num = 4, name = "Stopspell", mp_cost = 2},
+    {field = "spells",   bit_num = 5, name = "Outside",   mp_cost = 6},
+    {field = "spells",   bit_num = 6, name = "Return",    mp_cost = 8},
+    {field = "spells",   bit_num = 7, name = "Repel",     mp_cost = 2},
+    {field = "flags_cf", bit_num = 0, name = "Healmore",  mp_cost = 10},
+    {field = "flags_cf", bit_num = 1, name = "Hurtmore",  mp_cost = 5},
 }
 
 -- ============================================================
@@ -156,6 +156,50 @@ function M.get_spells()
         end
     end
     return known
+end
+
+-- get_spell_entries(): Return known spells with metadata for the SPELL menu.
+-- Each entry has {name=string, mp_cost=number}.
+function M.get_spell_entries()
+    local known = {}
+    for _, spell in ipairs(SPELL_LIST) do
+        local byte_val = snapshot[spell.field]
+        if AND(byte_val, BIT(spell.bit_num)) ~= 0 then
+            known[#known + 1] = {
+                name = spell.name,
+                mp_cost = spell.mp_cost,
+            }
+        end
+    end
+    return known
+end
+
+-- get_spell_count(): Return total spells visible in the SPELL menu.
+function M.get_spell_count()
+    return #M.get_spells()
+end
+
+-- get_spell_at_d9(d9): Get the spell name at SPELL menu cursor position d9.
+-- D9 indexes the known-spell list in learning order, 0-based.
+-- Returns "Empty" if the cursor points past the learned spell list.
+function M.get_spell_at_d9(d9)
+    local spells = M.get_spell_entries()
+    local idx = d9 + 1  -- convert 0-based D9 to 1-based Lua index
+    if idx <= #spells then
+        return spells[idx].name
+    end
+    return "Empty"
+end
+
+-- describe_spell_at_d9(d9): Spell menu speech with MP cost.
+function M.describe_spell_at_d9(d9)
+    local spells = M.get_spell_entries()
+    local idx = d9 + 1
+    if idx <= #spells then
+        local spell = spells[idx]
+        return string.format("%s. %d MP", spell.name, spell.mp_cost)
+    end
+    return "Empty"
 end
 
 -- get_nybble_items(): Read the 8 nybble-encoded item slots from the snapshot.

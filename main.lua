@@ -774,13 +774,13 @@ DW_QOL_STATE.pending_talk_visit = nil
 DW_QOL_STATE.teleport_input_suppress_frames = 0
 DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
 
--- Sub-menu tracking: STATUS and ITEM screens opened from the command menu.
--- When the player selects STATUS or ITEM, the game opens a sub-menu that
+-- Sub-menu tracking: STATUS, SPELL, and ITEM screens opened from the command menu.
+-- When the player selects STATUS, SPELL, or ITEM, the game opens a sub-menu that
 -- reuses the D8/D9 cursor RAM for a different purpose. Without tracking,
 -- the command menu handler interprets item cursor positions as command menu
 -- items (D9=0 → "TALK", D9=1 → "STATUS", etc.).
 --
--- submenu_mode: nil (normal), "STATUS", or "ITEM"
+-- submenu_mode: nil (normal), "STATUS", "SPELL", or "ITEM"
 -- PREV.cmd_x / .cmd_y: cursor position on the previous frame, used to detect
 --   the single-frame jump from a command menu item to a sub-menu cursor.
 
@@ -799,6 +799,7 @@ local CMD = {
     menu_upper_absorb    = 0,      -- post-menu upper-window baseline-absorb window
     recent_field_action  = 0,      -- recent field input window
     bizhawk_boot_dialogue = 0,     -- early-boot dialogue throttle (BizHawk)
+    spell_entry_pending  = false,  -- suppress first SPELL submenu cursor jump
 }
 
 -- Merchant module state. PREV.merchant_text / .announced_merchant /
@@ -1446,8 +1447,9 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.spell_entry_pending = false
         DW_QOL_STATE.clear_cmd_open_speech_pending()
-        if submenu_mode == "ITEM" or submenu_mode == "STATUS" then
+        if submenu_mode == "ITEM" or submenu_mode == "STATUS" or submenu_mode == "SPELL" then
             submenu_mode = nil
         end
         return
@@ -1527,6 +1529,50 @@ local function check_command_menu(frame_delta)
                 "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
             })
             tolk.output(items.get_item_at_d9(changes.cursor_y))
+        end
+        return
+    end
+
+    -- === SPELL sub-menu mode ===
+    if submenu_mode == "SPELL" then
+        if changes.menu_closed then
+            -- Entire menu closed (spell was cast, or player backed out
+            -- past the command menu). Exit sub-menu.
+            submenu_mode = nil
+            CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
+            CMD.menu_live = false
+            CMD.spell_entry_pending = false
+            DW_QOL_STATE.clear_cmd_open_speech_pending()
+            trace_row1("CMD_CLOSE_FROM_SPELL", changes, {})
+            return
+        end
+        if changes.cursor_moved and changes.cursor_x == 1 then
+            -- D8 jumped back to right column -> returned to command menu.
+            submenu_mode = nil
+            CMD.menu_live = true
+            CMD.rearm_required = false
+            CMD.spell_entry_pending = false
+            local cmd_item = menu.get_menu_item(changes.cursor_x, changes.cursor_y)
+            if cmd_item then
+                trace_row1("CMD_CURSOR_FROM_SPELL", changes, {
+                    "item=" .. cmd_item,
+                })
+                tolk.output(cmd_item)
+            end
+            return
+        end
+        if changes.cursor_moved and CMD.spell_entry_pending then
+            -- The frame after selecting SPELL can jump from the command cursor
+            -- to the first spell row. Entry already spoke that row.
+            CMD.spell_entry_pending = false
+            return
+        end
+        -- Spell cursor moved within the list - announce the new spell name.
+        if changes.cursor_moved then
+            trace_row1("SPELL_CURSOR", changes, {
+                "spell=" .. tostring(items.describe_spell_at_d9(changes.cursor_y)),
+            })
+            tolk.output(items.describe_spell_at_d9(changes.cursor_y))
         end
         return
     end
@@ -1630,6 +1676,30 @@ local function check_command_menu(frame_delta)
             "lower=" .. tostring(lower_dialogue_active),
             "cursor=" .. tostring(cursor_visible),
         })
+    end
+
+    -- SPELL uses the same command menu header, but the selected-spell list
+    -- reuses D9 as a list index and may not leave a visible cursor tile. Enter
+    -- the mode from the confirmed SPELL command so a one-spell list still
+    -- speaks immediately instead of waiting for a cursor move that cannot
+    -- happen.
+    if a_just and CMD.menu_confirmed and CMD.menu_live
+       and not CMD.rearm_required
+       and live_x == 1 and live_y == 0 then
+        local count = items.get_spell_count()
+        if count == 0 then
+            trace_row1("CMD_SPELL_EMPTY", changes, {})
+            tolk.output("Spells. Empty.")
+        else
+            submenu_mode = "SPELL"
+            CMD.menu_live = false
+            CMD.spell_entry_pending = true
+            trace_row1("CMD_SPELL_FIRE", changes, {
+                "spell=" .. tostring(items.describe_spell_at_d9(changes.cursor_y)),
+            })
+            tolk.output("Spells. " .. items.describe_spell_at_d9(changes.cursor_y))
+        end
+        return
     end
 
     -- After TALK or YES/NO, row-1 interiors can leave stale COMMAND/cursor

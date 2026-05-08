@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-06
+Updated: 2026-05-08
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 
@@ -302,6 +302,15 @@ Emulator compatibility direction:
   newly opened field menu settles on TALK. Debounce the open announcement and
   flush it with the first real cursor movement or settled item instead of
   immediately speaking `Command. <last item>`.
+- Field command submenus that reuse D8/D9 need explicit modes. `STATUS` reads
+  full status, `ITEM` maps D9 through the inventory list, and `SPELL` maps D9
+  through known spells from `items.lua`. Enter SPELL from the confirmed
+  command-menu selection so a one-spell list, such as level-3 Heal, speaks
+  immediately even if there is no visible cursor tile or later cursor movement.
+  Suppress the first synthetic cursor jump after entry so the first spell is
+  not spoken twice. DW1's field spell list does not display per-spell MP costs;
+  speech should add the NES spell cost from metadata, for example
+  `Heal. 4 MP`.
 - BizHawk dialogue throttling should not put the command-menu scanner fully to
   sleep during player input. A fresh A/X press can open the field menu one
   frame after the input is sampled, so keep menu scanning awake during current
@@ -681,7 +690,7 @@ Brecconary/map `0x08`:
 - Latest broad surveys showed no strong blocker candidates; route-specific
   live play can still promote narrow service-pocket traps when repeated route
   evidence is clean.
-- Merchant 2 is the real Brecconary weapon/armor shop at `(5,4)`. The safe
+- `Weapons Merchant` is the real Brecconary weapon/armor shop at `(5,4)`. The safe
   public interaction square is the doorway/counter at `(5,6)`; face north and
   TALK even though the object reports two tiles north. The doorway throat
   `(5,7)` and the counter square `(5,6)` are both type-0 false-wall tiles and
@@ -692,11 +701,13 @@ Brecconary/map `0x08`:
 - Raw map block `0xF` is the town/castle large-tile counter trigger. Use
   `map_reader.get_raw_block_id()` / `is_large_tile()` for service-counter
   discovery instead of changing the existing pathfinding grid decoder.
-- Brecconary `Merchant 3` at `(10,21)` is the inn keeper. The live-confirmed
-  TALK tile is the raw large tile `(9,21)`, facing east. Brecconary
-  `Merchant 4` at `(25,25)` is the tool shop. The live-confirmed TALK tile is
-  `(24,25)`, facing east. These are direct counter interactions, not ordinary
-  adjacent-NPC TALK targets.
+- Brecconary `Inn` at `(10,21)` is the inn keeper. TALK works from the public
+  stand tile `(8,21)` facing east; `(9,21)` can trigger the inn but is blocked
+  from the public west approach and should not be the route target. Keep
+  `(8,17).west` blocked so the entrance-to-inn route avoids the discovered
+  timeout. Brecconary `Merchant 4` at `(25,25)` is the tool shop. The
+  live-confirmed TALK tile is `(24,25)`, facing east. These are direct counter
+  interactions, not ordinary adjacent-NPC TALK targets.
 - Remaining broad failures are clean gated/isolated object regions.
 - Existing permanent Brecconary fixes in `map_reader.lua` should be preserved unless better evidence appears.
 - Treat remaining first-town service issues as counter/large-tile interaction
