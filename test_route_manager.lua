@@ -40,8 +40,12 @@ local function make_env(options)
     local memory_writes = {}
     local current_object = options.current_object or {id = "chest_1", name = "Chest", type = "chest", x = 6, y = 1}
     local object_list = options.object_list or {current_object}
+    local current_map_id = options.start_map_id or 0x05
+    local current_x = options.start_x or 5
+    local current_y = options.start_y or 4
     local pathability_filter = 1
     local pathability_statuses = {}
+    local pathability_status_updates = 0
     local module_names = {
         "addresses",
         "auto_step",
@@ -91,7 +95,7 @@ local function make_env(options)
     package.preload["navigation"] = function()
         return {
             get_position = function()
-                return options.start_map_id or 0x05, options.start_x or 5, options.start_y or 4
+                return current_map_id, current_x, current_y
             end,
         }
     end
@@ -143,6 +147,7 @@ local function make_env(options)
             end,
             set_pathability_statuses = function(statuses)
                 pathability_statuses = statuses or {}
+                pathability_status_updates = pathability_status_updates + 1
             end,
             clear_pathability_statuses = function()
                 pathability_statuses = {}
@@ -396,6 +401,7 @@ local function make_env(options)
         update_npcs_calls = function() return update_npcs_calls end,
         request_refresh_calls = function() return request_refresh_calls end,
         pathability_statuses = function() return pathability_statuses end,
+        pathability_status_updates = function() return pathability_status_updates end,
         pathability_filter = function() return pathability_filter end,
         start_route_calls = function() return start_route_calls end,
         inject_step_calls = function() return inject_step_calls end,
@@ -407,6 +413,11 @@ local function make_env(options)
         seam_summary = function(map_id) return route_manager.get_seam_summary(map_id) end,
         seam_entries = function(map_id) return route_manager.get_seam_entries(map_id) end,
         memory_writes = memory_writes,
+        set_position = function(map_id, x, y)
+            current_map_id = map_id
+            current_x = x
+            current_y = y
+        end,
         joypad_sets = joypad_sets,
         restore = function()
             restore_modules(module_names)
@@ -892,10 +903,34 @@ function tests.object_pathability_filter_batches_reachability_without_npc_blocks
     assert_equal(statuses.chest_unreachable, false, "unreachable target should be cached by object id")
     assert_equal(env.update_npcs_calls(), 0, "pathability filter should not force live NPC refresh")
     assert_equal(env.route_manager.is_npc_freeze_active(), false, "pathability filter should not freeze NPCs")
+    assert_equal(env.pathfind_calls(), 0, "batch pathability should use one flood-fill instead of per-object A*")
 
     local calls_after_first_pass = env.pathfind_calls()
     env.route_manager.refresh_object_pathability_filter_if_needed()
     assert_equal(env.pathfind_calls(), calls_after_first_pass, "unchanged pathability context should reuse the cached result")
+
+    env.restore()
+end
+
+function tests.object_pathability_filter_recomputes_when_position_changes()
+    local env = make_env({
+        object_list = {
+            {id = "chest_1", name = "Chest", type = "chest", x = 6, y = 1},
+        },
+    })
+
+    env.route_manager.set_object_pathability_filter("reachable")
+    local updates_after_first_pass = env.pathability_status_updates()
+
+    env.set_position(0x05, 6, 4)
+    local info = env.route_manager.refresh_object_pathability_filter_if_needed()
+
+    assert_equal(info.refreshed, true, "changed player position should refresh pathability")
+    assert_equal(
+        env.pathability_status_updates() > updates_after_first_pass,
+        true,
+        "changed player position must not reuse stale reachability data"
+    )
 
     env.restore()
 end

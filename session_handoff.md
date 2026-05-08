@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-06
+Updated: 2026-05-08
 
 ## Current Focus
 
@@ -18,6 +18,78 @@ Reason for the decision:
 
 Keep FCEUX supported as a fallback. New work should assume BizHawk is the
 primary path unless the task explicitly targets FCEUX.
+
+BizHawk 2.11.1 side-install note:
+- Installed official `BizHawk-2.11.1-win-x64.zip` side by side at
+  `D:\emulation\bizhawk-2.11.1` / `/mnt/d/emulation/bizhawk-2.11.1`.
+- The existing `D:\emulation\bizhawk` 2.10 install was left untouched.
+- Version check:
+  `EmuHawk.exe` reports `FileVersion 2.11.1.0` and
+  `ProductVersion 2.11.1+bdddf4a58aa1a022afb11dc73294a81a5aa7bbd5`.
+- Test with:
+  `./launch_dw.sh --bizhawk-path /mnt/d/emulation/bizhawk-2.11.1/EmuHawk.exe`.
+- Dry-run confirmation resolved to
+  `D:\emulation\bizhawk-2.11.1\EmuHawk.exe` with the normal ROM and
+  `main.lua` arguments.
+
+BizHawk 2.11.1 bulk PPU-read experiment status:
+- Implemented an experimental `ppu.readbyterange(address, length)` path in
+  `emulator_compat.lua`. When BizHawk exposes
+  `memory.read_bytes_as_binary_string` or `memory.read_bytes_as_array`, the
+  adapter reads contiguous nametable/CIRAM spans through one bulk memory call
+  and populates the existing within-frame PPU cache. It falls back to the old
+  byte loop when bulk APIs are unavailable.
+- `text.lua`, `menu.lua`, and `merchant.lua` now request contiguous PPU row or
+  row-span reads, preserving byte-loop fallback for FCEUX/older runtimes.
+- `scan_profiler.lua` now includes `bulk_reads` and `bulk_bytes` in
+  `PPU_STATS`, so a real live reload should make bulk use obvious in logs.
+- Static validation passed:
+  `luac -p emulator_compat.lua scan_profiler.lua text.lua menu.lua merchant.lua main.lua test_emulator_compat.lua`,
+  `lua test_emulator_compat.lua`, `lua test_text.lua`, `lua test_menu.lua`,
+  `lua test_merchant.lua`, `lua test_hotkeys.lua`, and `git diff --check`.
+- Live caveat: WSL/PowerShell timestamp nudges did not actually reload the
+  current BizHawk Lua script; the old `report_scan_stats` command closure kept
+  logging the pre-patch `PPU_STATS` format with no `bulk_reads`. A real Lua
+  Console script reload or close/relaunch of BizHawk 2.11.1 is needed before
+  judging the experiment.
+- Live result after enabling BizHawk auto-reload and reloading manually:
+  `report_scan_stats` now shows the new `PPU_STATS` fields. A 2,280-frame
+  Brecconary sample logged `bulk_reads=46482`, `bulk_bytes=1290432`, proving
+  the bulk path is active. Compared with the earlier 2.11.1 idle profile,
+  average costs improved: `check_yesno_prompt 3.566ms -> 1.246ms`,
+  `check_merchant_screen 1.823ms -> 0.302ms`, `check_dialogue 1.119ms ->
+  0.337ms`, `check_upper_dialogue 0.790ms -> 0.254ms`, and
+  `check_command_menu 1.499ms -> 1.126ms`. Recording was stopped after the
+  sample at frame `08340`.
+- Follow-up lag attribution test: in Brecconary, `pathability_filter:refresh`
+  from `(1,15)` over 21 objects took `59ms` and logged matching
+  `CMD_TIMING`; scan profiling put the spike in `debug_tools.tick max_ms=60`
+  while `objects.check_refresh` stayed `0ms`. Selected `Guard 2` at `(4,8)`;
+  `pathfind` planned a 9-step route to `(4,9)` without hitting the 25ms route
+  timing threshold, and `auto_walk` completed the 9 steps with normal 23-28
+  frame moves, no timeout/retry reroute, then faced/held the guard. Current
+  player position after the test is `(4,9)`.
+- Object pathability refresh now builds one reachable-cell set for the current
+  map/start/blocking context and classifies all objects against that set,
+  instead of running one A* search per object. Static tests confirm the batch
+  path no longer calls per-object pathfinding and still refreshes immediately
+  when the player's position changes. Live reload proof:
+  `LAUNCHER_PROBE: codex_pathability_flood` at frame 60; from Brecconary
+  `(4,9)`, `pathability_filter:refresh` over 21 objects returned normally and
+  emitted no `OBJECT_PATHABILITY_TIMING` or `CMD_TIMING` warning, meaning it
+  stayed under the existing 25ms log threshold. This is not a perfect
+  apples-to-apples comparison with the old `(1,15)` 59ms sample, but it removes
+  the identified per-target A* cost center.
+- Manual reroute-lag follow-up: user noticed a lag spike during reroute while
+  traveling from Merchant 2 toward the Brecconary exit. Log evidence showed
+  queued auto-walk timing out on `(5,13)->LEFT` into `(4,13)`, publishing
+  `SEAM_OBSERVATION map=0x08 cell=(4,13) approach=east result=blocked`, then
+  rerouting successfully via `(5,12)`. `map_reader.lua` now models Brecconary
+  `(4,13)` with `{east=true}`. Live reload proof:
+  `LAUNCHER_PROBE: codex_brec_413_block`; a path-only probe from `(5,6)` to
+  adjacent `(0,15)` chose `3 south, 1 west, 3 south, 2 west, 2 south, 1 west,
+  1 south`, avoiding the old `(5,13)->LEFT` timeout. Player was restored to
+  Brecconary `(1,15)` afterward.
 
 ## Current Baseline
 
@@ -104,6 +176,30 @@ Manual test finding from the auto-walk/TALK pass:
   more time. Failed TALK text no longer marks the adjacent NPC as visited.
 
 Latest manual playtest notes:
+- 2026-05-07 refactor review / merchant regression follow-up: after the
+  `main.lua` local-reduction refactor, field entry initially looked dead
+  because `get_autowalk_unavailable_reason()` captured `MER` before the local
+  merchant state table was declared. `main.lua` now forward-declares `MER`,
+  and the per-frame `scan_profiler.call(...)` paths go through `checked_scan`
+  so future scan-loop crashes are written to `dw_script_error.log` instead of
+  silently stopping after the startup header. Validation:
+  `luac -p main.lua merchant.lua route_manager.lua hotkeys.lua`,
+  `lua test_hotkeys.lua`, `lua test_merchant.lua`, `lua test_route_manager.lua`,
+  and `git diff --check`.
+- Same follow-up: Brecconary Merchant 2's weapon/armor item list was visible
+  but silent because `merchant.read_rows()` defaulted to live field scroll
+  registers (`scroll_tiles=10`, `base_nt=1` in the failing log) and therefore
+  missed the fixed shop/menu rows. `merchant.lua` now defaults merchant scans
+  to screen coordinates while still accepting explicit scrolled contexts.
+  Live reload evidence: `MERCHANT_STATE active=true` found Bamboo Pole, Club,
+  Copper Sword, Clothes, Leather Armor, and Small Shield; a raw Down input
+  then logged `MERCHANT_SELECT: Clothes. 20 gold.`
+- Same follow-up: the object pathability reachability cache no longer reuses
+  changed-context data inside an `os.clock()` throttle window. The signature
+  cache still avoids recompute when map/start/objects/runtime blocks are
+  unchanged, but a changed player position now recomputes immediately; the new
+  regression is
+  `object_pathability_filter_recomputes_when_position_changes`.
 - 2026-05-06 Spark-change review / hotkey crash follow-up: reviewed the
   field-only object-hotkey patch and tightened it before the next live pass.
   `hotkeys.update` still receives `game_state` plus an object-hotkey allowance,

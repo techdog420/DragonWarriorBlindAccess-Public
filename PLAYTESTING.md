@@ -1,8 +1,60 @@
 # Playtesting Notes
 
-Updated: 2026-05-06
+Updated: 2026-05-08
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
+
+## Latest Notes
+
+- BizHawk 2.11.1 side-install check: user transferred save data and reloaded
+  in Brecconary under `/mnt/d/emulation/bizhawk-2.11.1/EmuHawk.exe`. Current
+  live state reported `POSITION: map=0x08(Brecconary) x=0 y=15`; speech bridge
+  was ready with `error=none`; `dw_script_error.log` had no entries newer than
+  the earlier `MER` refactor crash.
+- Short scan profile on 2.11.1 while idle in Brecconary showed no large
+  frame-loop spikes. Biggest steady costs were PPU text/menu scanners:
+  `check_yesno_prompt avg_ms=3.566 max_ms=10`, `check_merchant_screen
+  avg_ms=1.823 max_ms=6`, and `check_command_menu avg_ms=1.499 max_ms=5`.
+  `state.check_for_changes avg_ms=0.009 max_ms=1`, confirming the old `$6003`
+  cartridge-work-RAM lag is not present in this run.
+- Aggregate PPU stats are still high (`reads=65493755`, `cache_hits=45887003`,
+  `cache_misses=19606752`), so the next emulator-API experiment should focus
+  on whether BizHawk 2.11.1's bulk/string byte-reading support can reduce
+  contiguous menu/dialogue/nametable scans rather than expecting individual
+  `readbyte` calls to become free.
+- Bulk-read experiment live result: after enabling BizHawk's automatic script
+  reload and reloading the patched script, `PPU_STATS` reported nonzero
+  `bulk_reads` and `bulk_bytes`. A 2,280-frame Brecconary sample used
+  `bulk_reads=46482`, `bulk_bytes=1290432`. Compared with the prior 2.11.1
+  idle sample, average scanner costs improved substantially:
+  `check_yesno_prompt 3.566ms -> 1.246ms`, `check_merchant_screen 1.823ms ->
+  0.302ms`, `check_dialogue 1.119ms -> 0.337ms`, and `check_upper_dialogue
+  0.790ms -> 0.254ms`. `check_command_menu` improved more modestly from
+  `1.499ms -> 1.126ms`.
+- Follow-up route-lag sample in Brecconary: from `(1,15)`, forced
+  `pathability_filter:refresh` over 21 objects took `59ms` and logged
+  `CMD_TIMING command=pathability_filter:refresh ms=59.000`. Scan profiling
+  attributed the spike to `debug_tools.tick max_ms=60`, while
+  `objects.check_refresh` stayed `0ms`; this points at reachability/pathability
+  computation, not PPU scanning or object refresh.
+- Same sample selected `Guard 2` at `(4,8)`. Plain `pathfind` planned a 9-step
+  route to `(4,9)` without crossing the 25ms `ROUTE_PLAN_TIMING` threshold.
+  `auto_walk` then completed all 9 steps from `(1,15)` to `(4,9)` with each
+  movement finishing in 23-28 frames, no timeout/retry reroute, and normal
+  post-arrival facing/hold. Current player position after the test is `(4,9)`.
+- Object pathability refresh follow-up: the refresh now uses one map-wide
+  reachable-cell pass rather than one A* search per object. After a live reload
+  probe, `pathability_filter:refresh` from Brecconary `(4,9)` over 21 objects
+  returned normally and produced no `OBJECT_PATHABILITY_TIMING` or `CMD_TIMING`
+  warning, so the command stayed below the existing 25ms timing threshold. The
+  earlier 59ms sample was from `(1,15)`, so keep watching this during normal
+  browsing, but the direct per-object pathfinding cost has been removed.
+- Reroute-lag follow-up: the spike during Merchant 2-to-exit travel was a real
+  auto-step timeout on the unmodeled Brecconary edge `(5,13)->LEFT` into
+  `(4,13)`, not a scan-loop or crash issue. The map now blocks `(4,13)` from
+  the east approach. After reload, a path-only probe from `(5,6)` to the
+  world-map exit chose the detour through `(5,9)->(4,9)` and avoided the old
+  timeout edge. Player position was restored to Brecconary `(1,15)`.
 
 ## Current Goal
 
@@ -171,6 +223,12 @@ QoL feature check:
   `(6,5)` are trap/service-pocket cells for autonomous movement; the map model
   keeps those pathfinder-forbidden and also blocks the false `(8,5)->LEFT`
   shortcut into `(7,5)`.
+- Brecconary Merchant 2 item-list narration regression is fixed after the
+  `main.lua` local-reduction refactor. The shop list is rendered in fixed
+  screen/menu rows even while field scroll registers remain non-zero, so
+  merchant scanning now reads screen coordinates by default. Live proof after
+  reload: the list reported all six offers and a Down input spoke
+  `Clothes. 20 gold.`
 - Brecconary counter-service discovery: raw map block `0xF` marks the shop
   counter/large-tile trigger. `Merchant 3` at `(10,21)` is the inn keeper; TALK
   from the live-confirmed counter tile `(9,21)` while facing east opens

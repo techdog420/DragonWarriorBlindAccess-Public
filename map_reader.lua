@@ -1093,6 +1093,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["24,9"] = {north = true},
         ["25,9"] = {north = true},
         ["26,9"] = {north = true, east = true},
+        -- West-pocket gate into the west-side exit corridor. 2026-05-07
+        -- BizHawk playtest: auto-walk from Merchant 2 toward the world-map
+        -- exit routed through (5,13)->LEFT, timed out, published
+        -- approach=east for (4,13), then rerouted successfully via (5,12).
+        -- Keep only this approach blocked; the reroute entered (4,13) from
+        -- the north and crossed west normally.
+        ["4,13"] = {east = true},
         -- South-middle wall bands.
         -- After the Brecconary false-wall passthrough fix on 2026-04-02, the
         -- survey could finally escape the old pocket and repeatedly exercised

@@ -56,6 +56,13 @@ local DIR_NAME_TO_KEY = {
     east  = "right",
 }
 
+local PATH_DIRECTIONS = {
+    {dx =  0, dy = -1, name = "north", approach = "south"},
+    {dx =  0, dy =  1, name = "south", approach = "north"},
+    {dx = -1, dy =  0, name = "west",  approach = "east"},
+    {dx =  1, dy =  0, name = "east",  approach = "west"},
+}
+
 -- ============================================================
 -- State
 -- ============================================================
@@ -91,12 +98,6 @@ local active_route_completed_steps = 0
 local target_npc_hold = nil
 local target_face_input = nil
 local object_pathability_signature = nil
--- Tracks the wall-clock time of the last full pathability recompute. Holding
--- a navigation hotkey can produce many key-down events per second; without a
--- floor, each one runs A* per-target because the player's start position is
--- part of the signature.
-local object_pathability_last_clock = -1
-local OBJECT_PATHABILITY_MIN_INTERVAL = 0.1  -- seconds; ~6 fps cap on full refresh
 local last_pathability_result = nil
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
 local TARGET_FACE_RELEASE_FRAMES = 2
@@ -1518,6 +1519,143 @@ local function pathability_supported(map_id)
     return not maps.is_overworld(map_id, snapshot.terrain_offset)
 end
 
+local function is_blocked_from_approach(blocking, x, y, approach)
+    local block = blocking and blocking[cell_key(x, y)]
+    if not block then
+        return false
+    end
+    if type(block) == "table" then
+        return block[approach] == true
+    end
+    return true
+end
+
+local function is_fully_blocked(blocking, x, y)
+    local block = blocking and blocking[cell_key(x, y)]
+    if not block then
+        return false
+    end
+    if type(block) ~= "table" then
+        return true
+    end
+    return block.north and block.south and block.east and block.west
+end
+
+local function is_static_directional_blocked(directional_blocks, x, y, approach)
+    local block = directional_blocks and directional_blocks[cell_key(x, y)]
+    return type(block) == "table" and block[approach] == true
+end
+
+local function is_walkable_from_snapshot(map_id, x, y, walkability_snapshot, walkability_cache)
+    local row = walkability_snapshot and walkability_snapshot[y]
+    if row and row[x] ~= nil then
+        return row[x] == true
+    end
+    local key = cell_key(x, y)
+    if walkability_cache[key] ~= nil then
+        return walkability_cache[key]
+    end
+    local walkable = map_reader.is_walkable(map_id, x, y) == true
+    walkability_cache[key] = walkable
+    return walkable
+end
+
+local function build_pathability_reachable_set(map_id, start_x, start_y, blocking)
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        return nil
+    end
+    if start_x < 0 or start_x >= width or start_y < 0 or start_y >= height then
+        return nil
+    end
+
+    local walkability_snapshot = map_reader.get_walkability_snapshot
+        and map_reader.get_walkability_snapshot(map_id)
+        or nil
+    local walkability_cache = {}
+    if not is_walkable_from_snapshot(map_id, start_x, start_y, walkability_snapshot, walkability_cache) then
+        return {}
+    end
+    if is_fully_blocked(blocking, start_x, start_y) then
+        return {}
+    end
+
+    local directional_blocks = map_reader.get_directional_blocks
+        and map_reader.get_directional_blocks(map_id)
+        or {}
+    local reachable = {[cell_key(start_x, start_y)] = true}
+    local queue = {{x = start_x, y = start_y}}
+    local head = 1
+
+    while head <= #queue do
+        local current = queue[head]
+        head = head + 1
+
+        for _, dir in ipairs(PATH_DIRECTIONS) do
+            local nx = current.x + dir.dx
+            local ny = current.y + dir.dy
+            local key = cell_key(nx, ny)
+            if not reachable[key]
+            and nx >= 0 and nx < width
+            and ny >= 0 and ny < height
+            and not is_blocked_from_approach(blocking, nx, ny, dir.approach)
+            and not is_static_directional_blocked(directional_blocks, nx, ny, dir.approach)
+            and is_walkable_from_snapshot(map_id, nx, ny, walkability_snapshot, walkability_cache) then
+                reachable[key] = true
+                queue[#queue + 1] = {x = nx, y = ny}
+            end
+        end
+    end
+
+    return reachable
+end
+
+local function is_reachable_cell(reachable, x, y)
+    return reachable and reachable[cell_key(x, y)] == true
+end
+
+local function object_reachable_from_set(obj, map_id, start_x, start_y, blocking, reachable)
+    local goal_x, goal_y, uses_interaction = get_plan_goal(obj)
+    if goal_x == nil or goal_y == nil then
+        return nil
+    end
+
+    local path_mode, target_walkable = resolve_path_mode(obj, map_id, {
+        blocking = blocking,
+        skip_npcs = true,
+    })
+    local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)
+
+    if path_mode == "adjacent" then
+        if dist <= 1 then
+            return true
+        end
+        for _, dir in ipairs(PATH_DIRECTIONS) do
+            local adj_x = goal_x + dir.dx
+            local adj_y = goal_y + dir.dy
+            if is_reachable_cell(reachable, adj_x, adj_y) then
+                return true
+            end
+        end
+        return false
+    end
+
+    if start_x == goal_x and start_y == goal_y then
+        return true
+    end
+    if target_walkable and is_reachable_cell(reachable, goal_x, goal_y) then
+        return true
+    end
+    if obj.type == objects.TYPE_CHEST then
+        for _, dir in ipairs(PATH_DIRECTIONS) do
+            if is_reachable_cell(reachable, goal_x + dir.dx, goal_y + dir.dy) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function M.refresh_object_pathability_filter(opts)
     opts = opts or {}
     if not opts.force and not objects.is_pathability_filter_active() then
@@ -1558,45 +1696,34 @@ function M.refresh_object_pathability_filter(opts)
         }
     end
 
-    -- Wall-clock throttle: on non-forced calls, when the last full recompute
-    -- finished within OBJECT_PATHABILITY_MIN_INTERVAL, reuse the cached result
-    -- rather than re-running A* per-target. The player's start position is part
-    -- of the signature, so signature changes every step and a held hotkey
-    -- otherwise re-walks every target on every key-down.
-    if not opts.force
-        and last_pathability_result
-        and (os.clock() - object_pathability_last_clock) < OBJECT_PATHABILITY_MIN_INTERVAL
-    then
-        return {
-            name = objects.get_filter_summary(),
-            pathability_name = objects.get_pathability_filter_name(),
-            count = objects.get_count(),
-            active = objects.is_pathability_filter_active(),
-            refreshed = false,
-            throttled = true,
-        }
-    end
-
     local started = os.clock()
     local statuses = {}
     local reachable = 0
     local unreachable = 0
     local blocking = M.build_path_blocking(map_id, {skip_npcs = true})
+    local reachable_cells = build_pathability_reachable_set(map_id, start_x, start_y, blocking)
     for _, obj in ipairs(targets) do
-        local reachability = plan_object_reachability(obj, {
-            map_id = map_id,
-            start_x = start_x,
-            start_y = start_y,
-            blocking = blocking,
-            skip_npcs = true,
-            store_debug_path = false,
-        })
-        if reachability and reachability.reachable == true then
+        local is_reachable = nil
+        if reachable_cells ~= nil then
+            is_reachable = object_reachable_from_set(obj, map_id, start_x, start_y, blocking, reachable_cells)
+        else
+            local reachability = plan_object_reachability(obj, {
+                map_id = map_id,
+                start_x = start_x,
+                start_y = start_y,
+                blocking = blocking,
+                skip_npcs = true,
+                store_debug_path = false,
+            })
+            is_reachable = reachability and reachability.reachable
+        end
+
+        if is_reachable == true then
             if obj.id then
                 statuses[obj.id] = true
             end
             reachable = reachable + 1
-        elseif reachability and reachability.reachable == false then
+        elseif is_reachable == false then
             if obj.id then
                 statuses[obj.id] = false
             end
@@ -1606,7 +1733,6 @@ function M.refresh_object_pathability_filter(opts)
 
     objects.set_pathability_statuses(statuses)
     object_pathability_signature = signature
-    object_pathability_last_clock = os.clock()
 
     local elapsed_ms = (os.clock() - started) * 1000
     if elapsed_ms >= 25 then

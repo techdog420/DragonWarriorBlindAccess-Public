@@ -111,6 +111,17 @@ local function setup_bizhawk(domains, domain_names)
             end
             return domain_bytes[address] or 0
         end,
+        read_bytes_as_binary_string = function(address, length, domain)
+            local domain_bytes = domains[domain]
+            if not domain_bytes then
+                error("unknown domain: " .. tostring(domain))
+            end
+            local bytes = {}
+            for i = 0, length - 1 do
+                bytes[i + 1] = string.char(domain_bytes[address + i] or 0)
+            end
+            return table.concat(bytes)
+        end,
         write_u8 = function() end,
     }
     _G.mainmemory = {
@@ -362,6 +373,38 @@ function tests.ppu_adapter_prefers_nametable_domain_over_native_ppu()
     assert_equal(ppu.readbyte(0x2000), 0xAA, "PPU adapter should prefer nametable domain NT0 bytes")
     assert_equal(ppu.readbyte(0x2400), 0xBB, "PPU adapter should prefer nametable domain NT1 bytes")
     assert_contains(table.concat(logs, "\n"), "PPU adapter using memory domain: CIRAM", "PPU adapter should log selected nametable domain")
+
+    restore_globals()
+end
+
+function tests.ppu_adapter_bulk_range_uses_nametable_domain_and_cache()
+    setup_bizhawk({
+        ["CIRAM"] = {
+            [0x0000] = 0xAA,
+            [0x0001] = 0xAB,
+            [0x0002] = 0xAC,
+            [0x0003] = 0xAD,
+        },
+    }, {"CIRAM"})
+
+    local compat = require "emulator_compat"
+    local bytes = ppu.readbyterange(0x2000, 4)
+
+    assert_equal(bytes[1], 0xAA, "bulk range byte 1 should come from CIRAM")
+    assert_equal(bytes[4], 0xAD, "bulk range byte 4 should come from CIRAM")
+
+    local stats = compat.get_ppu_stats_snapshot()
+    assert_equal(stats.read_calls, 4, "bulk range should count logical PPU byte reads")
+    assert_equal(stats.bulk_reads, 1, "bulk range should use one bulk memory API call")
+    assert_equal(stats.bulk_bytes, 4, "bulk range should record bulk byte count")
+    assert_equal(stats.cache_misses, 4, "first bulk range should populate cache")
+
+    local cached = ppu.readbyterange(0x2000, 4)
+    assert_equal(cached[2], 0xAB, "cached bulk range should return the same bytes")
+    stats = compat.get_ppu_stats_snapshot()
+    assert_equal(stats.read_calls, 8, "cached range should still count logical reads")
+    assert_equal(stats.cache_hits, 4, "second range should hit the PPU cache")
+    assert_equal(stats.bulk_reads, 1, "cached range should not issue another bulk API call")
 
     restore_globals()
 end

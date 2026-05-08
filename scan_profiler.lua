@@ -166,12 +166,14 @@ function M.ppu_stats_line()
     end
     local stats = M.compat.get_ppu_stats_snapshot()
     return string.format(
-        "PPU_STATS reads=%d cache_hits=%d cache_misses=%d direct_reads=%d domain_reads=%d cache_flushes=%d",
+        "PPU_STATS reads=%d cache_hits=%d cache_misses=%d direct_reads=%d domain_reads=%d bulk_reads=%d bulk_bytes=%d cache_flushes=%d",
         stats.read_calls or 0,
         stats.cache_hits or 0,
         stats.cache_misses or 0,
         stats.direct_reads or 0,
         stats.domain_reads or 0,
+        stats.bulk_reads or 0,
+        stats.bulk_bytes or 0,
         stats.cache_flushes or 0)
 end
 

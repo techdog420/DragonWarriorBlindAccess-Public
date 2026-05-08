@@ -585,6 +585,7 @@ local field_from_title_ct = 0    -- counts up while FIELD follows TITLE
 -- check_dialogue() and check_upper_dialogue() so they don't
 -- misfire on garbage/uninitialized RAM during the title screen.
 local in_gameplay = false
+local MER
 
 -- Title screen cursor tracker.
 -- Tracks which menu item or sub-menu slot the cursor is on and announces
@@ -802,7 +803,7 @@ local CMD = {
 
 -- Merchant module state. PREV.merchant_text / .announced_merchant /
 -- .merchant_selection / .merchant_price hold per-frame baselines.
-local MER = {
+MER = {
     active            = false,  -- shop UI currently up
     intro_pending     = false,  -- speak "Merchant" prefix on first selection
     stable_count      = 0,      -- stability counter for merchant text changes
@@ -3777,25 +3778,29 @@ local function checked_call(label, fn, ...)
     return result
 end
 
+local function checked_scan(label, fn, ...)
+    return scan_profiler.call(label, checked_call, label, fn, ...)
+end
+
 while true do
     trace_startup_loop("loop_top")
     row1_trace_frame = frame_count
 
     -- Read all tracked RAM values into the snapshot table.
     -- This MUST happen before any module reads from the snapshot this frame.
-    scan_profiler.call("snapshot.update", checked_call, "snapshot.update", snapshot.update)
+    checked_scan("snapshot.update", snapshot.update)
 
     -- Get current game state before handling hotkeys so context-sensitive
     -- actions can suppress field-only handlers during battle.
-    game_state = scan_profiler.call("state.check_for_changes", checked_call, "state.check_for_changes", state.check_for_changes)
+    game_state = checked_scan("state.check_for_changes", state.check_for_changes)
     in_gameplay = (game_state.state ~= state.STATE_TITLE)
 
     -- Read keyboard state for hotkeys
-    local keys = scan_profiler.call("input.get", input.get)
+    local keys = checked_scan("input.get", input.get)
     if emulator_compat.is_bizhawk then
         keys = hotkey_filter.filter_bizhawk_keys(keys, config)
     end
-    current_joy = scan_profiler.call("joypad.read", joypad.read, 1)
+    current_joy = checked_scan("joypad.read", joypad.read, 1)
     current_joy_any = joypad_has_input(current_joy)
     -- No explicit PPU flush needed: frameadvance() already cleared the cache
     -- at the start of this tick (PPU_CACHE_HOLD_FRAMES=1).
@@ -3806,10 +3811,12 @@ while true do
     -- Enter/arrow teleport hotkeys to Start/D-pad too, so that would make
     -- teleport hotkeys refuse themselves before hotkeys.lua can neutralize the
     -- leaked game input.
-    scan_profiler.call("hotkeys.update", hotkeys.update, keys, game_state,
-        get_autowalk_unavailable_reason() == nil
+    local allow_object_hotkeys = checked_call("object_hotkey_allowance", function()
+        return get_autowalk_unavailable_reason() == nil
             and PREV.announced_dialogue == ""
-            and not (auto_step.is_route_active and auto_step.is_route_active()))
+            and not (auto_step.is_route_active and auto_step.is_route_active())
+    end)
+    checked_scan("hotkeys.update", hotkeys.update, keys, game_state, allow_object_hotkeys)
 
     -- Startup grace period: during the first K.STARTUP_FRAMES frames,
     -- let all the "previous" tracking values initialize silently.
@@ -3971,7 +3978,7 @@ while true do
         local yesno_interval = menu.is_yesno_active() and 2 or (dialogue_hint and 24 or 4)
         local run_yesno, yesno_delta = scan_profiler.should_run("yesno_prompt", yesno_interval, frame_count)
         if run_yesno then
-            scan_profiler.call("check_yesno_prompt", checked_call, "check_yesno_prompt", check_yesno_prompt, yesno_delta)
+            checked_scan("check_yesno_prompt", check_yesno_prompt, yesno_delta)
         end
 
         if game_state.state == state.STATE_FIELD then
@@ -4051,7 +4058,7 @@ while true do
                     run_battle_menu, battle_menu_delta = scan_profiler.should_run("battle_menu", 3, frame_count)
                 end
                 if run_battle_menu then
-                    scan_profiler.call("check_battle_menu", checked_call, "check_battle_menu", check_battle_menu, battle_menu_delta)
+                    checked_scan("check_battle_menu", check_battle_menu, battle_menu_delta)
                 end
             else
                 local menu_attention = menu.is_open()
@@ -4067,7 +4074,7 @@ while true do
                     run_menu, menu_delta = scan_profiler.should_run("command_menu", menu_interval, frame_count)
                 end
                 if run_menu then
-                    scan_profiler.call("check_command_menu", checked_call, "check_command_menu", check_command_menu, menu_delta)
+                    checked_scan("check_command_menu", check_command_menu, menu_delta)
                 end
             end
 
@@ -4075,7 +4082,8 @@ while true do
             -- periodically re-read NPC positions (they move around).
             local map_id = snapshot.map_id
             local run_object_refresh = true
-            local object_refresh_needed = objects.needs_refresh and objects.needs_refresh(map_id)
+            local object_refresh_needed = objects.needs_refresh
+                and checked_call("objects.needs_refresh", objects.needs_refresh, map_id)
             if scan_profiler.is_enabled() then
                 if object_refresh_needed then
                     run_object_refresh = true
@@ -4086,7 +4094,7 @@ while true do
                 end
             end
             if run_object_refresh then
-                scan_profiler.call("objects.check_refresh", objects.check_refresh, map_id)
+                checked_scan("objects.check_refresh", objects.check_refresh, map_id)
             end
 
             -- Detect chest collection (only meaningful during field movement,
@@ -4113,25 +4121,25 @@ while true do
             -- after buy/error/continue cycles.
             run_merchant, merchant_delta = scan_profiler.should_run("merchant_screen", merchant_interval, frame_count)
             if run_merchant then
-                merchant_active = scan_profiler.call("check_merchant_screen", checked_call, "check_merchant_screen", check_merchant_screen, merchant_delta)
+                merchant_active = checked_scan("check_merchant_screen", check_merchant_screen, merchant_delta)
             end
             if not merchant_active then
                 local lower_interval = (game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0) and 3
                     or (dialogue_hint and 12 or 6)
                 local run_lower, lower_delta = scan_profiler.should_run("lower_dialogue", lower_interval, frame_count)
                 if run_lower then
-                    scan_profiler.call("check_dialogue", checked_call, "check_dialogue", check_dialogue, lower_delta, dialogue_hint)
+                    checked_scan("check_dialogue", check_dialogue, lower_delta, dialogue_hint)
                 end
 
                 local upper_interval = PREV.upper_active and 8 or (dialogue_hint and 30 or 10)
                 local run_upper, upper_delta = scan_profiler.should_run("upper_dialogue", upper_interval, frame_count)
                 if run_upper then
-                    scan_profiler.call("check_upper_dialogue", checked_call, "check_upper_dialogue", check_upper_dialogue, upper_delta, dialogue_hint)
+                    checked_scan("check_upper_dialogue", check_upper_dialogue, upper_delta, dialogue_hint)
                 end
             end
         else
             reset_merchant_state(false)
-            scan_profiler.call("check_title_screen", checked_call, "check_title_screen", check_title_screen)
+            checked_scan("check_title_screen", check_title_screen)
         end
     end
 
@@ -4141,8 +4149,8 @@ while true do
 
     -- Debug tools: process command file, flush logs, apply simulated input.
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
-    local sim_input = scan_profiler.call("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
-    scan_profiler.call("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
+    local sim_input = checked_scan("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
+    checked_scan("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
     local raw_debug_input_this_frame = sim_input and sim_input._raw
     if sim_input then
         if emulator_compat.clear_ppu_cache then
@@ -4245,12 +4253,12 @@ while true do
         end
     end
     tick_edge_probe()
-    scan_profiler.call("map_survey.tick", map_survey.tick, can_walk)
+    checked_scan("map_survey.tick", map_survey.tick, can_walk)
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
     if not raw_debug_input_this_frame and not teleport_input_suppressed_this_frame then
-        scan_profiler.call("auto_step.update", auto_step.update, can_walk)
+        checked_scan("auto_step.update", auto_step.update, can_walk)
     end
 
     -- Advance the emulator by one frame. This is required —

@@ -16,6 +16,8 @@ local M = {
         cache_misses = 0,
         direct_reads = 0,
         domain_reads = 0,
+        bulk_reads = 0,
+        bulk_bytes = 0,
         cache_flushes = 0,
     },
 }
@@ -31,6 +33,8 @@ function M.get_ppu_stats_snapshot()
         cache_misses = M.ppu_stats.cache_misses,
         direct_reads = M.ppu_stats.direct_reads,
         domain_reads = M.ppu_stats.domain_reads,
+        bulk_reads = M.ppu_stats.bulk_reads,
+        bulk_bytes = M.ppu_stats.bulk_bytes,
         cache_flushes = M.ppu_stats.cache_flushes,
     }
 end
@@ -613,6 +617,20 @@ local function make_domain_reader(domain)
     return nil
 end
 
+local function make_domain_bulk_reader(domain)
+    if bizhawk_memory and bizhawk_memory.read_bytes_as_binary_string then
+        return function(address, length)
+            return bizhawk_memory.read_bytes_as_binary_string(address, length, domain)
+        end
+    end
+    if bizhawk_memory and bizhawk_memory.read_bytes_as_array then
+        return function(address, length)
+            return bizhawk_memory.read_bytes_as_array(address, length, domain)
+        end
+    end
+    return nil
+end
+
 read_u8_from_domain = function(address, domain)
     if address == nil then
         return nil
@@ -657,6 +675,30 @@ local function read_direct_ppu_byte_uncached(address)
     local ok, value = pcall(bizhawk_ppu.readbyte, address)
     if ok and type(value) == "number" then
         return value
+    end
+    return nil
+end
+
+local function normalize_bulk_bytes(data, length)
+    local bytes = {}
+    if type(data) == "string" then
+        if #data < length then
+            return nil
+        end
+        for i = 1, length do
+            bytes[i] = data:byte(i) or 0
+        end
+        return bytes
+    end
+    if type(data) == "table" then
+        for i = 1, length do
+            local value = data[i]
+            if type(value) ~= "number" then
+                return nil
+            end
+            bytes[i] = value
+        end
+        return bytes
     end
     return nil
 end
@@ -718,21 +760,9 @@ function M.get_ppu_source_rows(rows)
     return sources
 end
 
-local function read_ppu_byte(address)
-    address = math.floor(tonumber(address) or 0)
-    M.ppu_stats.read_calls = M.ppu_stats.read_calls + 1
-    local cached = ppu_frame_cache[address]
-    if cached ~= nil then
-        M.ppu_stats.cache_hits = M.ppu_stats.cache_hits + 1
-        return cached
-    end
-
-    M.ppu_stats.cache_misses = M.ppu_stats.cache_misses + 1
+local function select_ppu_candidate(address)
     if ppu_read_candidate then
-        local value = ppu_read_candidate.reader(ppu_read_candidate.address_for(address))
-        M.ppu_stats.domain_reads = M.ppu_stats.domain_reads + 1
-        ppu_frame_cache[address] = value
-        return value
+        return ppu_read_candidate, nil
     end
 
     local best_candidate = nil
@@ -749,6 +779,7 @@ local function read_ppu_byte(address)
 
     if best_candidate then
         best_candidate.reader = make_domain_reader(best_candidate.domain)
+        best_candidate.bulk_reader = make_domain_bulk_reader(best_candidate.domain)
         if best_candidate.reader then
             ppu_read_candidate = best_candidate
         end
@@ -756,9 +787,31 @@ local function read_ppu_byte(address)
             log_message("BizHawk PPU adapter using memory domain: " .. best_candidate.domain)
             ppu_domain_logged = true
         end
-        ppu_frame_cache[address] = best_value
+        return ppu_read_candidate, best_value
+    end
+
+    return nil, nil
+end
+
+local function read_ppu_byte(address)
+    address = math.floor(tonumber(address) or 0)
+    M.ppu_stats.read_calls = M.ppu_stats.read_calls + 1
+    local cached = ppu_frame_cache[address]
+    if cached ~= nil then
+        M.ppu_stats.cache_hits = M.ppu_stats.cache_hits + 1
+        return cached
+    end
+
+    M.ppu_stats.cache_misses = M.ppu_stats.cache_misses + 1
+    local candidate, selected_value = select_ppu_candidate(address)
+    if candidate then
+        local value = selected_value
+        if value == nil then
+            value = candidate.reader(candidate.address_for(address))
+        end
         M.ppu_stats.domain_reads = M.ppu_stats.domain_reads + 1
-        return best_value
+        ppu_frame_cache[address] = value
+        return value
     end
 
     if bizhawk_ppu and bizhawk_ppu.readbyte then
@@ -776,8 +829,63 @@ local function read_ppu_byte(address)
     return 0
 end
 
+local function read_ppu_range(address, length)
+    address = math.floor(tonumber(address) or 0)
+    length = math.max(0, math.floor(tonumber(length) or 0))
+    if length == 0 then
+        return {}
+    end
+
+    local bytes = {}
+    local cache_hits = 0
+    local all_cached = true
+    for i = 0, length - 1 do
+        local cached = ppu_frame_cache[address + i]
+        if cached == nil then
+            all_cached = false
+        else
+            bytes[i + 1] = cached
+            cache_hits = cache_hits + 1
+        end
+    end
+
+    if all_cached then
+        M.ppu_stats.read_calls = M.ppu_stats.read_calls + length
+        M.ppu_stats.cache_hits = M.ppu_stats.cache_hits + length
+        return bytes
+    end
+
+    local candidate = select_ppu_candidate(address)
+    if candidate and candidate.bulk_reader then
+        local mapped_address = candidate.address_for(address)
+        local ok, data = pcall(candidate.bulk_reader, mapped_address, length)
+        local bulk_bytes = ok and normalize_bulk_bytes(data, length) or nil
+        if bulk_bytes then
+            M.ppu_stats.read_calls = M.ppu_stats.read_calls + length
+            M.ppu_stats.cache_hits = M.ppu_stats.cache_hits + cache_hits
+            M.ppu_stats.cache_misses = M.ppu_stats.cache_misses + (length - cache_hits)
+            M.ppu_stats.domain_reads = M.ppu_stats.domain_reads + length
+            M.ppu_stats.bulk_reads = M.ppu_stats.bulk_reads + 1
+            M.ppu_stats.bulk_bytes = M.ppu_stats.bulk_bytes + length
+            for i = 1, length do
+                local value = bulk_bytes[i]
+                bytes[i] = value
+                ppu_frame_cache[address + i - 1] = value
+            end
+            return bytes
+        end
+        candidate.bulk_reader = nil
+    end
+
+    for i = 0, length - 1 do
+        bytes[i + 1] = read_ppu_byte(address + i)
+    end
+    return bytes
+end
+
 ppu = {
     readbyte = read_ppu_byte,
+    readbyterange = read_ppu_range,
 }
 
 local function read_rom_byte(address)

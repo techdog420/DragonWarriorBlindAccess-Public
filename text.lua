@@ -35,6 +35,27 @@ local DIALOGUE_OVERLAP_MIN_LEN = 12
 -- Background/empty tile in PPU nametable (different from CPU RAM's 0xFF)
 local BG_TILE = 0x9F
 
+local function read_ppu_range(address, length)
+    if ppu and ppu.readbyterange then
+        local bytes = ppu.readbyterange(address, length)
+        if type(bytes) == "table" and #bytes == length then
+            return bytes
+        end
+    end
+
+    local bytes = {}
+    for i = 0, length - 1 do
+        bytes[i + 1] = ppu.readbyte(address + i)
+    end
+    return bytes
+end
+
+local function append_bytes(target, source)
+    for i = 1, #source do
+        target[#target + 1] = source[i]
+    end
+end
+
 -- read_ppu_row(row, scroll_tiles, base_nametable): Read one visible screen row,
 -- accounting for horizontal scroll offset and active horizontal nametable.
 --
@@ -53,12 +74,14 @@ function M.read_ppu_row(row, scroll_tiles, base_nametable)
     scroll_tiles = math.floor(tonumber(scroll_tiles) or 0) % SCREEN_WIDTH
     base_nametable = math.floor(tonumber(base_nametable) or 0) % 2
     local bytes = {}
-    for col = 0, SCREEN_WIDTH - 1 do
-        local virtual_col = scroll_tiles + col
-        local nt_col = virtual_col % SCREEN_WIDTH
-        local nt_index = (base_nametable + math.floor(virtual_col / SCREEN_WIDTH)) % 2
-        local nt_base = (nt_index == 0) and PPU_NT0 or PPU_NT1
-        bytes[col + 1] = ppu.readbyte(nt_base + (row * SCREEN_WIDTH) + nt_col)
+
+    local first_nt = (base_nametable == 0) and PPU_NT0 or PPU_NT1
+    local second_nt = (base_nametable == 0) and PPU_NT1 or PPU_NT0
+    local first_len = SCREEN_WIDTH - scroll_tiles
+
+    append_bytes(bytes, read_ppu_range(first_nt + row * SCREEN_WIDTH + scroll_tiles, first_len))
+    if scroll_tiles > 0 then
+        append_bytes(bytes, read_ppu_range(second_nt + row * SCREEN_WIDTH, scroll_tiles))
     end
     return bytes
 end
@@ -69,12 +92,8 @@ end
 function M.read_ppu_region(top_row, left_col, width, height)
     local rows = {}
     for r = 0, height - 1 do
-        local row_bytes = {}
         local row_start = PPU_NT0 + ((top_row + r) * SCREEN_WIDTH) + left_col
-        for c = 0, width - 1 do
-            row_bytes[c + 1] = ppu.readbyte(row_start + c)
-        end
-        rows[r + 1] = row_bytes
+        rows[r + 1] = read_ppu_range(row_start, width)
     end
     return rows
 end
@@ -337,11 +356,7 @@ end
 -- Returns a flat table of 960 byte values (row-major order).
 -- Useful for comparing frames to detect text changes.
 function M.snapshot()
-    local snap = {}
-    for i = 0, (SCREEN_WIDTH * SCREEN_HEIGHT) - 1 do
-        snap[i + 1] = ppu.readbyte(PPU_NT0 + i)
-    end
-    return snap
+    return read_ppu_range(PPU_NT0, SCREEN_WIDTH * SCREEN_HEIGHT)
 end
 
 -- compare_snapshots(old, new): Check if two screen snapshots differ.

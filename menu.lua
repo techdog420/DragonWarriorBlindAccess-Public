@@ -33,6 +33,27 @@ local SCREEN_WIDTH = 32
 -- C=0x26, O=0x32, M=0x30, M=0x30, A=0x24, N=0x31, D=0x27
 local COMMAND_BYTES = {0x26, 0x32, 0x30, 0x30, 0x24, 0x31, 0x27}
 
+local function read_ppu_range(address, length)
+    if ppu and ppu.readbyterange then
+        local bytes = ppu.readbyterange(address, length)
+        if type(bytes) == "table" and #bytes == length then
+            return bytes
+        end
+    end
+
+    local bytes = {}
+    for i = 0, length - 1 do
+        bytes[i + 1] = ppu.readbyte(address + i)
+    end
+    return bytes
+end
+
+local function append_bytes(target, source)
+    for i = 1, #source do
+        target[#target + 1] = source[i]
+    end
+end
+
 -- ============================================================
 -- Command Menu Item Lookup
 -- ============================================================
@@ -96,12 +117,8 @@ local function read_virtual_row(row, first_nt)
     local first_row = first_nt + row * SCREEN_WIDTH
     local second_row = second_nt + row * SCREEN_WIDTH
     local row_bytes = {}
-    for col = 0, SCREEN_WIDTH - 1 do
-        row_bytes[col + 1] = ppu.readbyte(first_row + col)
-    end
-    for col = 0, SCREEN_WIDTH - 1 do
-        row_bytes[SCREEN_WIDTH + col + 1] = ppu.readbyte(second_row + col)
-    end
+    append_bytes(row_bytes, read_ppu_range(first_row, SCREEN_WIDTH))
+    append_bytes(row_bytes, read_ppu_range(second_row, SCREEN_WIDTH))
     return row_bytes
 end
 

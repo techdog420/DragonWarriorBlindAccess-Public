@@ -125,6 +125,29 @@ local function build_scrolled_shop_screen()
     return bytes, ctx
 end
 
+local function build_fixed_shop_screen()
+    local ctx = {
+        scroll_tiles = 0,
+        base_nametable = 0,
+        vertical_scroll_tiles = 0,
+    }
+    local bytes = {}
+
+    write_visible_text(bytes, ctx, 16, 0, "Bill")
+    write_visible_text(bytes, ctx, 17, 0, "Bamboo")
+    write_visible_text(bytes, ctx, 18, 0, "LV   2  Pole")
+    write_visible_text(bytes, ctx, 19, 0, "Club")
+    write_visible_text(bytes, ctx, 20, 0, "HP   7")
+    write_visible_text(bytes, ctx, 21, 0, "Copper")
+    write_visible_text(bytes, ctx, 22, 0, "MP   0  Sword")
+    write_visible_text(bytes, ctx, 23, 0, "Clothes")
+    write_visible_text(bytes, ctx, 24, 0, "G   13")
+    write_visible_text(bytes, ctx, 25, 0, "Leather")
+    write_visible_text(bytes, ctx, 26, 0, "E   12  Armor")
+
+    return bytes
+end
+
 local tests = {}
 
 function tests.detects_weapon_shop_layout_and_extracts_offers()
@@ -283,6 +306,30 @@ function tests.detects_scrolled_weapon_shop_layout()
         table.concat(info.offers, ", "),
         "Bamboo Pole, Club, Copper Sword, Clothes, Leather Armor, Small Shield",
         "scrolled merchant offers should be normalized"
+    )
+
+    env.restore()
+end
+
+function tests.default_shop_reader_ignores_field_scroll_registers()
+    local env = make_env()
+    local bytes = build_fixed_shop_screen()
+
+    _G.memory = {
+        readbyte = function()
+            return 0xFF
+        end,
+    }
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local info = env.merchant.analyze_rows(env.merchant.read_rows(), {gold = 13})
+    assert_equal(info.active, true, "merchant default reader should use fixed screen rows")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Bamboo Pole, Club, Copper Sword, Clothes, Leather Armor",
+        "merchant default reader should ignore stale field scroll registers"
     )
 
     env.restore()

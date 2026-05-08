@@ -11,7 +11,6 @@ local items = require "items"
 local snapshot = require "game_snapshot"
 local text = require "text"
 local chars = require "chars"
-local addr = require "addresses"
 
 local M = {}
 
@@ -35,38 +34,50 @@ local CURSOR_TILES = {
 
 local catalog_cache = nil
 
-local function row_text(rows, row)
-    return rows[row] or rows[row - ROW_START + 1] or ""
+local function read_ppu_range(address, length)
+    if ppu and ppu.readbyterange then
+        local bytes = ppu.readbyterange(address, length)
+        if type(bytes) == "table" and #bytes == length then
+            return bytes
+        end
+    end
+
+    local bytes = {}
+    for i = 0, length - 1 do
+        bytes[i + 1] = ppu.readbyte(address + i)
+    end
+    return bytes
 end
 
-local function safe_readbyte(address, default)
-    if not address or type(memory) ~= "table" or type(memory.readbyte) ~= "function" then
-        return default
+local function append_bytes(target, source)
+    for i = 1, #source do
+        target[#target + 1] = source[i]
     end
+end
 
-    local ok, value = pcall(memory.readbyte, address)
-    if not ok or value == nil then
-        return default
-    end
-    return value
+local function row_text(rows, row)
+    return rows[row] or rows[row - ROW_START + 1] or ""
 end
 
 local function get_scroll_context(opts)
     opts = opts or {}
 
+    -- Shop screens are menu overlays in screen coordinates. The game may leave
+    -- field scroll registers non-zero underneath them, so the default reader
+    -- must not apply live field scroll unless a caller explicitly asks for it.
     local scroll_tiles = opts.scroll_tiles
     if scroll_tiles == nil then
-        scroll_tiles = math.floor(safe_readbyte(addr.SCROLL_X, 0) / 8)
+        scroll_tiles = 0
     end
 
     local base_nametable = opts.base_nametable
     if base_nametable == nil then
-        base_nametable = safe_readbyte(addr.PPU_CTRL, 0) % 2
+        base_nametable = 0
     end
 
     local vertical_scroll_tiles = opts.vertical_scroll_tiles
     if vertical_scroll_tiles == nil then
-        vertical_scroll_tiles = math.floor((snapshot.scroll_y or safe_readbyte(addr.SCROLL_Y, 0)) / 8)
+        vertical_scroll_tiles = 0
     end
 
     return {
@@ -89,12 +100,15 @@ local function read_visible_virtual_row(visible_row, ctx)
     -- Return two screen-widths in visible order. The first 32 bytes are the
     -- actual visible row; the next 32 preserve text that wraps into the paired
     -- horizontal nametable, which is where shop prices can live.
-    for col = 0, (SCREEN_WIDTH * 2) - 1 do
+    local col = 0
+    while col < (SCREEN_WIDTH * 2) do
         local virtual_col = ctx.scroll_tiles + col
         local nt_col = virtual_col % SCREEN_WIDTH
         local nt_index = (ctx.base_nametable + math.floor(virtual_col / SCREEN_WIDTH)) % 2
         local nt_base = (nt_index == 0) and NT0 or NT1
-        bytes[col + 1] = ppu.readbyte(nt_base + nametable_row * SCREEN_WIDTH + nt_col)
+        local run_len = math.min((SCREEN_WIDTH * 2) - col, SCREEN_WIDTH - nt_col)
+        append_bytes(bytes, read_ppu_range(nt_base + nametable_row * SCREEN_WIDTH + nt_col, run_len))
+        col = col + run_len
     end
 
     return bytes
