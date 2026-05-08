@@ -21,6 +21,7 @@ local nav = require "navigation"
 local map_reader = require "map_reader"
 local config = require "config"
 local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
+local overworld_routes = require "overworld_routes"
 
 local M = {}
 
@@ -761,6 +762,9 @@ local function get_overworld_landmarks()
             id = "overworld_" .. landmark.name:gsub("[^%w]+", "_"):lower(),
         }
     end
+    for _, waypoint in ipairs(overworld_routes.get_active_waypoint_objects()) do
+        result[#result + 1] = waypoint
+    end
     return result
 end
 
@@ -1294,12 +1298,38 @@ function M.prev_filter()
 end
 
 function M.all_filter()
-    current_filter = M.FILTER_ALL
+    return M.set_filter(M.FILTER_ALL)
+end
+
+function M.set_filter(filter)
+    filter = tonumber(filter) or M.FILTER_ALL
+    if filter < M.FILTER_ALL or filter > FILTER_COUNT then
+        filter = M.FILTER_ALL
+    end
+    current_filter = filter
     current_index = 1
     selected_id = nil
     rebuild_filtered_list()
 
     return FILTER_NAMES[current_filter]
+end
+
+function M.travel_filter()
+    return M.set_filter(M.FILTER_TRAVEL)
+end
+
+function M.select_object_by_id(object_id)
+    if not object_id then
+        return nil
+    end
+    for i, obj in ipairs(filtered_list) do
+        if obj.id == object_id then
+            current_index = i
+            selected_id = obj.id
+            return obj
+        end
+    end
+    return nil
 end
 
 function M.set_pathability_filter(filter)

@@ -114,6 +114,17 @@ COMMANDS (write to dw_commands.txt, one per line)
                            menu/submenu status, current window content)
   report_merchant_state    Dump merchant/shop detector state, visible decoded rows,
                            offers, prompt flag, and current cursor offer
+  start_overworld_route    Start manual Travel-filter route guidance to Erdrick's Cave
+  start_overworld_route:cave
+                           Start the first-dungeon route using the short alias
+  start_overworld_route:brecconary
+                           Start safety route guidance back to Brecconary
+  start_overworld_route:castle
+                           Start safety route guidance back to Tantegel Castle
+  route_guidance           Start guidance for selected Travel destination, or
+                           speak active route status (player hotkey: R)
+  route_status             Speak the active overworld route's next waypoint
+  stop_overworld_route     Clear active overworld route guidance
   ; comment line           Lines starting with ; are ignored
 
 EDGE PROBE COMMANDS

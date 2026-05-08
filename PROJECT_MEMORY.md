@@ -213,6 +213,48 @@ Emulator compatibility direction:
   `objects.lua` filter from cached statuses so rapid J/K/L browsing stays
   cheap. Moving NPC occupancy is intentionally ignored so wandering NPCs do
   not hide otherwise reachable targets.
+- Manual overworld route guidance lives in `overworld_routes.lua`, not in the
+  interior A* pathfinder. The player-facing hotkey is `R`: select a supported
+  Travel destination such as `Erdrick's Cave`, `Brecconary`, or `Tantegel
+  Castle`, then press `R` to start guidance or press it again for active route
+  status. Command-file equivalents are `route_guidance`,
+  `start_overworld_route:cave` (aliases `erdrick` and `erdric`),
+  `start_overworld_route:brecconary` (alias `breconary`),
+  `start_overworld_route:castle`, `route_status`, and `stop_overworld_route`.
+  Active route waypoints are
+  injected as a small Travel layer, currently capped at the next two markers,
+  so the player can browse guidance without cluttering the major destination
+  list. The Erdrick route deliberately includes mountain-pinch intermediate
+  markers (`East choke approach`, `Eastern mountain lane`, `North ridge bend`)
+  because a straight heading from the pinch led the player into blocked
+  mountain tiles. The east-choke and eastern-lane markers are exact-tile
+  markers at `(35,32)` and `(35,24)` because radius-based arrival consumed
+  them one tile west and made the next leg turn too early. It also routes
+  through `Bridge south bend`, `Bridge lower west lane`, `Bridge west bend`,
+  and `Upper bridge lane` before `East choke approach`; live evidence
+  showed the direct first-bridge-to-pinch leg blocked north from `(45,34)` into
+  `(45,33)`, and the early lower-detour version tempted blocked north moves
+  from `(41,35)`, `(40,35)`, and `(39,35)`. The old `Mountain pinch turn`
+  marker caused a short west-then-east reversal near the east choke, so it is
+  no longer mandatory on the bridge/east-choke segment. The Brecconary and
+  Tantegel Castle safety routes reverse those markers from the cave side, then
+  use `Upper bridge lane`, `Bridge west bend`, `Bridge lower west lane`, and
+  `Bridge south bend` before heading directly to safety. The old return-route
+  marker at `(45,34)` was removed because it caused a north-then-south
+  backtrack. Safety routes complete on destination maps `0x08` for Brecconary
+  and `0x04` /
+  `0x05` for Tantegel Castle. Entering
+  Erdrick's Cave maps `0x1C` / `0x1D` completes the first-dungeon route even
+  if the world-map final tile was not observed before the map transition. `O`
+  should remain the plain heading/path preview, and `U` should remain
+  available for future overworld auto-walk until the world-map decoder and
+  encounter-flow behavior are proven live.
+- Read-only hotkey speech should avoid cutting off route progress
+  announcements. `hotkeys.lua` uses non-interrupting `tolk.output` for
+  position, HP/MP, level, gold, experience, stats, screen text, and `R` route
+  guidance/status. During auto-step movement, `R` may still report an active
+  route's status, but starting a new route or running movement-changing object
+  controls remains blocked until movement is stable.
 - When adding a new safe BizHawk hotkey, update both `config.lua` defaults and
   the checked-in `dw_access.ini` allowlist. Existing explicit allowlists
   override default allowlist changes, so a newly appended key binding can still

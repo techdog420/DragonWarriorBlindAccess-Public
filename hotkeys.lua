@@ -8,10 +8,10 @@
 -- Extracted from main.lua to reduce its size and improve modularity.
 -- The main loop calls hotkeys.update(keys) once per frame, passing
 -- the table from input.get().
--- update(keys, game_state, allow_object_hotkeys) accepts an optional third
--- argument so callers can disable object navigation during non-idle interactive
--- states (command/merchant/dialogue/autowalk). If omitted, the legacy behavior
--- applies.
+-- update(keys, game_state, allow_object_hotkeys, object_hotkey_block_reason)
+-- accepts optional trailing arguments so callers can disable object navigation
+-- during non-idle interactive states (command/merchant/dialogue/autowalk).
+-- If omitted, the legacy behavior applies.
 
 local tolk       = require "tolk"
 local addr       = require "addresses"
@@ -24,6 +24,7 @@ local objects    = require "objects"
 local items      = require "items"
 local map_reader = require "map_reader"
 local route_mgr  = require "route_manager"
+local overworld_routes = require "overworld_routes"
 local debug_tools = require "debug_tools"
 local key_combo  = require "key_combo"
 local emulator_compat = require "emulator_compat"
@@ -42,6 +43,8 @@ local pending_object_nav_speech = nil
 local pending_object_nav_frames = 0
 local object_nav_speech_queued_this_frame = false
 local teleport_handler = nil
+local route_guidance_key_pressed
+local route_guidance_key_down
 
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
@@ -71,6 +74,7 @@ local OBJECT_HOTKEY_CONFIG_KEYS = {
     "key_object_prev",
     "key_object_current",
     "key_pathability_filter",
+    "key_route_guidance",
     "key_pathfind",
     "key_auto_walk",
     "key_filter",
@@ -84,18 +88,24 @@ local OBJECT_HOTKEY_CONFIG_KEYS = {
 
 local function blocked_object_hotkey_pressed(keys)
     for _, config_key in ipairs(OBJECT_HOTKEY_CONFIG_KEYS) do
-        if is_key_pressed(keys, config.get(config_key)) then
+        if config_key ~= "key_route_guidance" and is_key_pressed(keys, config.get(config_key)) then
             return config_key
         end
+    end
+    if route_guidance_key_pressed and route_guidance_key_pressed(keys) then
+        return "key_route_guidance"
     end
     return nil
 end
 
 local function blocked_object_hotkey_down(keys)
     for _, config_key in ipairs(OBJECT_HOTKEY_CONFIG_KEYS) do
-        if key_combo.is_down(keys, config.get(config_key)) then
+        if config_key ~= "key_route_guidance" and key_combo.is_down(keys, config.get(config_key)) then
             return config_key
         end
+    end
+    if route_guidance_key_down and route_guidance_key_down(keys) then
+        return "key_route_guidance"
     end
     return nil
 end
@@ -129,16 +139,24 @@ local function speak_now(message)
     end
 end
 
+local function speak_info(message)
+    clear_object_nav_speech()
+    local ok, err = pcall(tolk.output, message)
+    if not ok and debug_tools.error then
+        debug_tools.error("hotkey speech output failed: " .. tostring(err))
+    end
+end
+
 local function speak_position()
     local ok, message = pcall(nav.get_position_string)
     if ok and message and message ~= "" then
-        speak_now(message)
+        speak_info(message)
         return
     end
     if debug_tools.error then
         debug_tools.error("position hotkey failed: " .. tostring(message))
     end
-    speak_now("Position unavailable")
+    speak_info("Position unavailable")
 end
 
 local function clear_ppu_cache_for_diagnostic()
@@ -186,6 +204,85 @@ local function speak_pathability_filter(info)
     end
 end
 
+local function log_route_event(prefix, info)
+    if debug_tools.info and info then
+        debug_tools.info(prefix .. ": " .. tostring(info.log or info.message))
+    end
+end
+
+local function focus_route_waypoint(map_id, info)
+    if tonumber(map_id) ~= 0x01 or not info or not info.object_id then
+        return
+    end
+    if objects.refresh then
+        objects.refresh(map_id)
+    end
+    if objects.all_pathability_filter then
+        objects.all_pathability_filter()
+    end
+    if objects.travel_filter then
+        objects.travel_filter()
+    end
+    if objects.select_object_by_id then
+        objects.select_object_by_id(info.object_id)
+    end
+end
+
+local function speak_route_guidance()
+    clear_object_nav_speech()
+    local map_id, x, y = nav.get_position()
+    local info, err
+
+    if overworld_routes.is_active and overworld_routes.is_active() then
+        info = overworld_routes.status(map_id, x, y)
+    else
+        info, err = overworld_routes.start_for_object(objects.current_object(), map_id, x, y)
+    end
+
+    if not info then
+        local message = tostring(err or "No guided route for selected object. Use O for heading.")
+        if debug_tools.info then
+            debug_tools.info("OVERWORLD_ROUTE: event=no_route message=" .. message)
+        end
+        speak_info(message)
+        return
+    end
+
+    focus_route_waypoint(map_id, info)
+    log_route_event("OVERWORLD_ROUTE", info)
+    speak_info(info.message)
+end
+
+local function blocked_object_hotkey_message(reason)
+    reason = tostring(reason or "")
+    if reason ~= "" then
+        return reason
+    end
+    return "Object controls unavailable right now"
+end
+
+local function has_modifier_down(keys)
+    return key_combo.is_down(keys, "Shift")
+        or key_combo.is_down(keys, "Ctrl")
+        or key_combo.is_down(keys, "Alt")
+end
+
+route_guidance_key_pressed = function(keys)
+    local spec = config.get("key_route_guidance")
+    if key_combo.is_combo(spec) then
+        return is_key_pressed(keys, spec)
+    end
+    return is_key_pressed(keys, spec) and not has_modifier_down(keys)
+end
+
+route_guidance_key_down = function(keys)
+    local spec = config.get("key_route_guidance")
+    if key_combo.is_combo(spec) then
+        return key_combo.is_down(keys, spec)
+    end
+    return key_combo.is_down(keys, spec) and not has_modifier_down(keys)
+end
+
 local function flush_object_nav_speech()
     if not pending_object_nav_speech then return false end
 
@@ -226,7 +323,7 @@ end
 -- keys: table from input.get() with key names as keys, true as values.
 -- All key assignments come from config.lua so the user can remap them.
 -- Call once per frame from the main loop.
-function M.update(keys, game_state, allow_object_hotkeys)
+function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_reason)
     object_nav_speech_queued_this_frame = false
 
     -- Position: Read current position (map name + coordinates)
@@ -240,48 +337,48 @@ function M.update(keys, game_state, allow_object_hotkeys)
         local max_hp = memory.readbyte(addr.MAX_HP)
         local mp = memory.readbyte(addr.CURRENT_MP)
         local max_mp = memory.readbyte(addr.MAX_MP)
-        speak_now("HP " .. hp .. " of " .. max_hp ..
+        speak_info("HP " .. hp .. " of " .. max_hp ..
                               ", MP " .. mp .. " of " .. max_mp)
     end
 
     -- Level: Read player level
     if is_key_pressed(keys, config.get("key_level")) then
         local level = memory.readbyte(addr.LEVEL)
-        speak_now("Level " .. level)
+        speak_info("Level " .. level)
     end
 
     -- Gold: Read gold
     if is_key_pressed(keys, config.get("key_gold")) then
         local gold = memory.readbyte(addr.GOLD_LO) +
                      memory.readbyte(addr.GOLD_HI) * 256
-        speak_now(gold .. " gold")
+        speak_info(gold .. " gold")
     end
 
     -- Experience: Read experience
     if is_key_pressed(keys, config.get("key_experience")) then
         local exp = memory.readbyte(addr.EXPERIENCE_LO) +
                     memory.readbyte(addr.EXPERIENCE_HI) * 256
-        speak_now(exp .. " experience")
+        speak_info(exp .. " experience")
     end
 
     -- Stats: Read full stats (level, HP/MP, all stats, equipment, spells)
     if is_key_pressed(keys, config.get("key_stats")) then
-        speak_now(items.read_status_string())
+        speak_info(items.read_status_string())
     end
 
     -- Screen text: Read all text currently on screen
     if is_key_pressed(keys, config.get("key_screen_text")) then
         local screen_text = text.get_full_screen_text()
         if screen_text ~= "" then
-            speak_now(screen_text)
+            speak_info(screen_text)
         else
-            speak_now("No text on screen")
+            speak_info("No text on screen")
         end
     end
 
     -- Diagnostic: raw menu cursor values
     if is_key_pressed(keys, config.get("key_diag_cursor")) then
-        speak_now(menu.get_cursor_info())
+        speak_info(menu.get_cursor_info())
     end
 
     -- Diagnostic: dump raw PPU tile bytes and decoded text for both nametables.
@@ -766,14 +863,29 @@ function M.update(keys, game_state, allow_object_hotkeys)
     -- Object hotkeys are allowed in field play only. This keeps battle/input
     -- from running route/path/teleport/mark actions while the encounter is active.
     if not object_hotkeys_allowed then
+        local route_status_handled = false
+        if route_guidance_key_pressed(keys)
+           and overworld_routes.is_active
+           and overworld_routes.is_active() then
+            debug_tools.debug("object hotkey read-only while blocked: key_route_guidance")
+            speak_route_guidance()
+            route_status_handled = true
+        end
+
         local blocked_key = blocked_object_hotkey_pressed(keys)
+        if route_status_handled and blocked_key == "key_route_guidance" then
+            blocked_key = nil
+        end
         local held_key = blocked_key or blocked_object_hotkey_down(keys)
+        if route_status_handled and held_key == "key_route_guidance" then
+            held_key = nil
+        end
         if held_key then
             suppress_blocked_hotkey_game_input()
         end
         if blocked_key then
             debug_tools.debug("object hotkey blocked: " .. blocked_key)
-            speak_now("Object controls unavailable right now")
+            speak_info(blocked_object_hotkey_message(object_hotkey_block_reason))
         end
     else
         -- ============================================================
@@ -845,6 +957,12 @@ function M.update(keys, game_state, allow_object_hotkeys)
             pathability_filter_handled = true
             clear_object_nav_speech()
             speak_pathability_filter(route_mgr.next_object_pathability_filter())
+        end
+
+        -- R key (default): Start or check curated route guidance for the
+        -- selected destination. This keeps O as a plain heading/path preview.
+        if route_guidance_key_pressed(keys) then
+            speak_route_guidance()
         end
 
         -- O key (default): Pathfind to current object.

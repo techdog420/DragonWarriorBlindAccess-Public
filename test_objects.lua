@@ -30,6 +30,7 @@ local function make_env(options)
         "maps",
         "navigation",
         "objects",
+        "overworld_routes",
     }
 
     for _, name in ipairs(module_names) do
@@ -486,6 +487,75 @@ function tests.world_map_anchor_places_tantegel_nearest_to_live_probe_position()
     assert_equal(obj.x, 43, "Tantegel Castle x should match the calibrated overworld anchor")
     assert_equal(obj.y, 43, "Tantegel Castle y should match the verified Tantegel transition tile")
 
+    env.restore()
+end
+
+function tests.inactive_overworld_route_does_not_clutter_travel_filter()
+    local env = make_env()
+
+    env.set_position(0x01, 30, 32)
+    env.set_terrain_offset(0x00)
+    require("overworld_routes").reset_for_tests()
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+
+    local found_route_marker = false
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        if obj.route_waypoint then
+            found_route_marker = true
+            break
+        end
+    end
+
+    assert_equal(found_route_marker, false, "inactive route waypoints should stay out of the Travel list")
+    assert_equal(env.objects.get_count(), 13, "plain world-map Travel should only list major destinations")
+
+    env.restore()
+end
+
+function tests.active_overworld_route_adds_travel_waypoint()
+    local env = make_env()
+
+    env.set_position(0x01, 30, 32)
+    env.set_terrain_offset(0x00)
+    require("overworld_routes").start("erdric", 0x01, 30, 32)
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+
+    local found = false
+    local route_count = 0
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        if obj.route_waypoint then
+            route_count = route_count + 1
+        end
+        if obj.id == "route_erdrick_07" then
+            found = true
+            assert_equal(obj.name, "Route next: East choke approach", "active route waypoint should be labeled as next")
+            assert_equal(obj.type, env.objects.TYPE_EXIT, "route waypoints should appear under Travel")
+        end
+    end
+
+    assert_equal(found, true, "active route waypoint should be present in the Travel filter")
+    assert_equal(route_count, 2, "active route should expose only the next two route waypoints")
+
+    require("overworld_routes").reset_for_tests()
+    env.restore()
+end
+
+function tests.route_waypoint_can_be_selected_after_route_start()
+    local env = make_env()
+
+    env.set_position(0x01, 33, 27)
+    env.set_terrain_offset(0x00)
+    local info = require("overworld_routes").start("cave", 0x01, 33, 27)
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+    local selected = env.objects.select_object_by_id(info.object_id)
+
+    assert_equal(selected.id, "route_erdrick_08", "route start should expose the nearest active route waypoint")
+    assert_equal(env.objects.current_object().name, "Route next: Eastern mountain lane", "current object should become the active route waypoint")
+
+    require("overworld_routes").reset_for_tests()
     env.restore()
 end
 

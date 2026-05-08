@@ -84,7 +84,7 @@ for _, mod_name in ipairs({
     "debug_tools", "emulator_compat", "event_bus", "game_snapshot",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_survey", "maps", "menu", "merchant", "navigation",
-    "object_commands", "objects", "path_debug", "pathfinder",
+    "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "text",
 }) do
     package.loaded[mod_name] = nil
@@ -1107,6 +1107,19 @@ local function check_map_change()
         y1_baseline_pending = false
     elseif game_state.state == state.STATE_FIELD then
         objects.observe_npcs(snapshot.map_id)
+    end
+
+    if game_state.state == state.STATE_FIELD then
+        local route_event = require("overworld_routes").observe_position(snapshot.map_id, snapshot.x, snapshot.y)
+        if route_event then
+            debug_tools.info("OVERWORLD_ROUTE: " .. tostring(route_event.log or route_event.message))
+            if route_event.refresh and objects.request_refresh then
+                objects.request_refresh()
+            end
+            if route_event.message then
+                tolk.output(route_event.message)
+            end
+        end
     end
 end
 
@@ -3881,12 +3894,44 @@ while true do
     -- Enter/arrow teleport hotkeys to Start/D-pad too, so that would make
     -- teleport hotkeys refuse themselves before hotkeys.lua can neutralize the
     -- leaked game input.
-    local allow_object_hotkeys = checked_call("object_hotkey_allowance", function()
-        return get_autowalk_unavailable_reason() == nil
-            and PREV.announced_dialogue == ""
-            and not (auto_step.is_route_active and auto_step.is_route_active())
+    local object_hotkey_block_reason = checked_call("object_hotkey_allowance", function()
+        if game_state.state ~= state.STATE_FIELD then
+            return "Object controls unavailable right now"
+        end
+        if debug_tools.is_sweep_active() then
+            return "Object controls unavailable during map sweep"
+        end
+        if path_debug.is_step_mode() then
+            return "Finish step mode before using object controls"
+        end
+        if DW_QOL_STATE.command_menu_blocks_field_movement
+           and DW_QOL_STATE.command_menu_blocks_field_movement() then
+            return "Close the command menu first"
+        end
+        if submenu_mode ~= nil then
+            return "Close the submenu first"
+        end
+        if MER.active then
+            return "Close the merchant interface first"
+        end
+        if PREV.dialogue ~= "" or PREV.announced_dialogue ~= "" then
+            return "Wait for dialogue to finish"
+        end
+        if PREV.upper_active then
+            return "Wait for the upper window to clear"
+        end
+        if auto_step.is_route_active and auto_step.is_route_active() then
+            return "Wait for movement to finish"
+        end
+        return nil
     end)
-    checked_scan("hotkeys.update", hotkeys.update, keys, game_state, allow_object_hotkeys)
+    checked_scan(
+        "hotkeys.update",
+        hotkeys.update,
+        keys,
+        game_state,
+        object_hotkey_block_reason == nil,
+        object_hotkey_block_reason)
 
     -- Startup grace period: during the first K.STARTUP_FRAMES frames,
     -- let all the "previous" tracking values initialize silently.

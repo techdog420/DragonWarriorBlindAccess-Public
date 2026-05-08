@@ -122,6 +122,129 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
 
 ## Current Baseline
 
+2026-05-08 overworld route-guidance QoL implemented in the worktree:
+- `overworld_routes.lua` adds manual route guidance for the first dungeon,
+  Erdrick's Cave, plus safety returns to Brecconary and Tantegel Castle. It is
+  route-table driven, accepts `erdrick`, `erdric`, `cave`, `brecconary`,
+  `breconary`, `town`, `safe`, `tantegel`, and `castle`, and keeps the route
+  in reload-surviving Lua state while the script remains alive.
+- Route guidance deliberately does not enable overworld `auto_walk`. The
+  player-facing hotkey is `R`: select a supported Travel destination such as
+  `Erdrick's Cave`, `Brecconary`, or `Tantegel Castle`, then press `R` to start
+  guidance or press it again for active route status. The active route injects
+  a small Travel layer capped at the next two `Route next` / `Route later`
+  markers, and advances one waypoint at a time as the player manually reaches
+  markers.
+- The first route includes a one-time bridge warning: `Bridge crossing.
+  Monsters may become more dangerous beyond this point.` This addresses the
+  early-game clue about bridge/danger boundaries without making every step
+  noisy.
+- Live route follow-up after the first successful trip to the dungeon: the
+  `North trail marker` waypoint was consumed correctly, but the final cave
+  waypoint was not cleared because the map changed to `0x1C` before the
+  world-map final-tile arrival check fired. `overworld_routes.lua` now treats
+  Erdrick's Cave destination maps `0x1C` and `0x1D` as route completion.
+  The same log showed blocked mountain tiles around `(30,31)`, `(29,32)`,
+  `(27,33)`, and `(28,32)` when the route gave a long heading from the pinch,
+  so the route now guides through `East choke approach`,
+  `Eastern mountain lane`, and `North ridge bend` before `North trail marker`.
+- Cave-bound bridge follow-up: after the safety-route patch, a live cave-bound
+  trip reached `map=0x01 x=45 y=34` with active Erdrick route status still
+  pointing at `Mountain pinch turn`; pressing north from `(45,34)` blocked into
+  `(45,33)`. `overworld_routes.lua` now routes Erdrick's Cave through `Bridge
+  south bend` `(44,38)`, `Bridge lower west lane` `(38,36)`, `Bridge west
+  bend` `(38,34)`, `Upper bridge lane` `(38,32)`, then
+  `East choke approach` `(35,32)`.
+  Reload proof: `launcher_probe:cave_bridge_detour_reload` plus `route_status`
+  at frame `00060` reported `route=erdrick waypoint=Bridge south bend index=4`
+  while the player was still at `map=0x01(World Map) x=45 y=34`.
+- Latest bridge-detour log review: the `Bridge south bend` -> `Bridge west
+  bend` leg was still too diagonal and produced blocked north attempts from
+  `(41,35)`, `(40,35)`, and `(39,35)` before the player found the passable
+  `x=38` column. The `Bridge lower west lane` marker at `(38,36)` exists to
+  steer west on the lower lane before turning north. The same review found a
+  safety-route backtrack where `Bridge south bend` sent the player up toward
+  `(45,34)`, then the next Brecconary checkpoint sent them south again; safety
+  routes now go from `Bridge south bend` directly to the destination.
+  Validation: `luac -p overworld_routes.lua test_overworld_routes.lua
+  objects.lua test_objects.lua hotkeys.lua main.lua`, `lua
+  test_overworld_routes.lua`, `lua test_objects.lua`, `lua test_hotkeys.lua`,
+  and `git diff --check` passed (only the existing `dw_access.ini` CRLF
+  warning). BizHawk reload proof:
+  `launcher_probe:bridge_lower_lane_reload`; fresh position reported
+  `map=0x01(World Map) x=48 y=41`.
+- East-choke log review: the route advanced `East choke approach` while the
+  player was still at `(34,32)`, one tile west of the intended `(35,32)` lane,
+  then `Eastern mountain lane` advanced from `(34,24)` before the player
+  finished correcting east. These were early-consumed route markers rather
+  than confirmed terrain blockers. `overworld_routes.lua` now requires exact
+  arrival at `(35,32)` and `(35,24)` for the east choke / mountain lane turn
+  points in both cave-bound and safety routes. Focused regression tests cover
+  the one-tile-west non-advance cases.
+- East-choke reversal follow-up: the exact marker fix exposed an older route
+  ordering problem. Cave-bound guidance sent the player west from `(35,32)` to
+  the old `Mountain pinch turn`, then immediately back east four steps to
+  `East choke approach`. The route now uses `Upper bridge lane` at `(38,32)`
+  between `Bridge west bend` and `East choke approach`; return routes use the
+  same marker in reverse, so the player should stay on the east/west lane
+  instead of doing a west-then-east reversal.
+- Safety-route follow-up: `overworld_routes.lua` now has reverse routes to
+  Brecconary and Tantegel Castle using the same cave-road, north-trail,
+  mountain-lane, east-choke, upper-bridge, and bridge markers. A live Brecconary
+  return then showed the direct `Mountain pinch turn` -> `First bridge
+  crossing` leg hitting blocked moves into `(39,34)`, `(41,34)`, and `(42,34)`.
+  The safety routes now insert `Upper bridge lane` at `(38,32)`, `Bridge west
+  bend` at `(38,34)`, `Bridge lower west lane` at `(38,36)`, and `Bridge south
+  bend` at `(44,38)`. Brecconary completes on map `0x08`; Tantegel Castle
+  completes on maps `0x04` and `0x05`. Both routes warn once at the bridge
+  that monsters should become safer beyond that point.
+- New debug/player command hooks: `route_guidance`, `start_overworld_route`,
+  `start_overworld_route:erdrick`, `start_overworld_route:erdric`,
+  `start_overworld_route:cave`, `start_overworld_route:brecconary`,
+  `start_overworld_route:castle`, `route_status`, and `stop_overworld_route`.
+- Follow-up after the first live try: the route command was registered and the
+  object list grew from 13 to 16 entries, but selection stayed on the old
+  `Erdrick's Cave` landmark. `object_commands.lua` now refreshes the overworld
+  list immediately, clears the pathability layer, switches to Travel, and
+  selects the active `Route next` waypoint when `route_guidance` or
+  `start_overworld_route:*` runs. `O` remains a plain heading/path preview for
+  the selected object; `U` remains reserved for auto-walk.
+- Input/speech QoL follow-up: player testing showed the generic `Object
+  controls unavailable right now` message felt bad when pressing readout keys
+  during step movement, and route announcements could be cut off by hotkey
+  interrupts. `hotkeys.lua` now lets `R` report active route status while
+  movement is settling, keeps new route starts and movement-changing object
+  controls blocked until stable movement, and uses non-interrupting speech for
+  read-only hotkeys (`Shift+W`, `Shift+H`, `Shift+I`, `Shift+G`, `Shift+E`,
+  `Shift+R`, `Shift+T`, and `R`). `main.lua` now passes a specific block reason
+  such as `Wait for movement to finish`.
+- Latest input/speech QoL validation passed: `luac -p hotkeys.lua main.lua
+  test_hotkeys.lua overworld_routes.lua test_overworld_routes.lua objects.lua
+  object_commands.lua config.lua hotkey_filter.lua`, `lua test_hotkeys.lua`
+  (24 tests), `lua test_objects.lua`, `lua test_overworld_routes.lua`,
+  `lua test_hotkey_filter.lua`, and `git diff --check` (only the existing
+  `dw_access.ini` CRLF warning). BizHawk source reload was nudged with
+  `launcher_probe:input_qol_reload`; fresh position reported
+  `map=0x01(World Map) x=45 y=34`.
+- Validation passed: `luac -p overworld_routes.lua objects.lua
+  object_commands.lua hotkeys.lua hotkey_filter.lua config.lua main.lua
+  test_overworld_routes.lua test_objects.lua test_hotkeys.lua
+  test_hotkey_filter.lua`, `lua test_overworld_routes.lua`,
+  `lua test_objects.lua`, `lua test_hotkeys.lua`, `lua test_hotkey_filter.lua`,
+  `lua test_route_manager.lua`, `lua test_maps.lua`, and `git diff --check`
+  (only the existing `dw_access.ini` CRLF warning). Live note: the first
+  timestamp nudge plus `launcher_probe:route_destination_patch` proved the old
+  loop was still polling but did not immediately reload the route table. A
+  later fresh script header appeared, and `start_overworld_route:cave` then
+  logged `waypoint=Eastern mountain lane index=5` at frame `01440`, proving
+  that version of the refined pinch-point route was live. A later hands-on pass
+  still hit blockage on the first leg, then worked smoothly after reaching the
+  eastern lane; `overworld_routes.lua` now adds `East choke approach` at
+  `(35,32)` before `Eastern mountain lane`. The stale active route from the
+  completed cave trip had also been cleared earlier with `stop_overworld_route`
+  at frame `47760`. Destination-map completion then worked live at frame
+  `13879`: entering map `0x1C` logged `OVERWORLD_ROUTE: event=arrived`.
+
 2026-05-05 Codex-first tooling refresh implemented in the worktree:
 - `.codex/config.toml` now uses `AGENTS.md` first, falls back to
   `PROJECT_MEMORY.md` then `CLAUDE.md`, keeps hooks enabled, leaves model and
@@ -1310,11 +1433,15 @@ Important clues:
 ## Recommended Next Work
 
 Best next step:
-- Reload the Lua script and do a short hands-on BizHawk check of the new QoL
-  layer before resuming ordinary early-game playtesting. Prioritize: one long
-  `auto_walk`, NPC arrival hold plus TALK, `Shift+V` visited marking,
-  `clear_visited`, filter cycling with `Q` / `Shift+J` / `Shift+L`, and
-  selected-object teleport with `Shift+Enter` plus at least one
+- Reload the Lua script and do a short hands-on BizHawk check of the safety
+  routes before resuming ordinary early-game playtesting. From near the cave,
+  selecting `Brecconary` or `Tantegel Castle` in Travel and pressing `R` should
+  start a reverse route at `North trail marker`, then guide through the ridge,
+  eastern lane, east choke, `Upper bridge lane`, `Bridge west bend`,
+  `Bridge lower west lane`, and `Bridge south bend`. Then check one bridge/waypoint progress
+  announcement, one long `auto_walk`, NPC arrival hold plus TALK, `Shift+V`
+  visited marking, `clear_visited`, filter cycling with `Q` / `Shift+J` /
+  `Shift+L`, and selected-object teleport with `Shift+Enter` plus at least one
   `Shift+direction`.
 - After that, resume combat narration, shops/inns, item/spell flows, and any
   menu/dialogue polish that appears during real play. If the status row speaks

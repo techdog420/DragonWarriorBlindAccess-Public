@@ -25,10 +25,15 @@ local function make_env(options)
     local autowalk_calls = 0
     local freeze_calls = 0
     local visited_calls = 0
+    local route_status_calls = 0
+    local route_start_calls = 0
     local pathability_filter_calls = 0
     local pathability_refresh_calls = 0
     local teleport_modes = {}
     local describe_calls = {}
+    local route_start_objects = {}
+    local focused_route_ids = {}
+    local object_refresh_calls = 0
     local filter_name = options.filter_name or "NPCs"
     local all_filter_calls = 0
     local debug_errors = {}
@@ -52,6 +57,7 @@ local function make_env(options)
         "menu",
         "navigation",
         "objects",
+        "overworld_routes",
         "route_manager",
         "text",
         "tolk",
@@ -79,6 +85,7 @@ local function make_env(options)
         key_object_current = "K",
         key_object_next = "L",
         key_pathfind = "O",
+        key_route_guidance = "R",
         key_auto_walk = "U",
         key_filter = "Q",
         key_filter_prev = "Shift+J",
@@ -105,8 +112,11 @@ local function make_env(options)
 
     package.preload["tolk"] = function()
         return {
+            output = function(message)
+                outputs[#outputs + 1] = {frame = frame, message = message, interrupt = false}
+            end,
             output_interrupt = function(message)
-                outputs[#outputs + 1] = {frame = frame, message = message}
+                outputs[#outputs + 1] = {frame = frame, message = message, interrupt = true}
             end,
         }
     end
@@ -153,6 +163,9 @@ local function make_env(options)
                     error(options.position_error, 2)
                 end
                 return "Tantegel Castle Throne Room, 5, 7"
+            end,
+            get_position = function()
+                return options.map_id or 0x01, options.player_x or 30, options.player_y or 32
             end,
         }
     end
@@ -222,6 +235,31 @@ local function make_env(options)
                 all_filter_calls = all_filter_calls + 1
                 return "All"
             end,
+            travel_filter = function()
+                filter_name = "Travel"
+                return "Travel"
+            end,
+            all_pathability_filter = function()
+                return "All"
+            end,
+            select_object_by_id = function(object_id)
+                focused_route_ids[#focused_route_ids + 1] = object_id
+                return {id = object_id, name = "Route next"}
+            end,
+            refresh = function()
+                object_refresh_calls = object_refresh_calls + 1
+            end,
+            current_object = function()
+                if options.no_current_object then
+                    return nil
+                end
+                return options.current_object or {
+                    id = "overworld_erdrick_s_cave",
+                    name = "Erdrick's Cave",
+                    x = 28,
+                    y = 12,
+                }
+            end,
             get_count = function()
                 return object_count
             end,
@@ -231,6 +269,35 @@ local function make_env(options)
                     return nil
                 end
                 return {name = "Object " .. selected}
+            end,
+        }
+    end
+
+    package.preload["overworld_routes"] = function()
+        return {
+            is_active = function()
+                return options.route_active == true
+            end,
+            status = function()
+                route_status_calls = route_status_calls + 1
+                return options.route_status_info or {
+                    message = "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+                    log = "event=status route=erdrick waypoint=North trail marker index=5",
+                    object_id = "route_erdrick_05",
+                }
+            end,
+            start_for_object = function(obj)
+                route_start_calls = route_start_calls + 1
+                route_start_objects[#route_start_objects + 1] = obj
+                if options.route_start_error then
+                    return nil, options.route_start_error
+                end
+                return options.route_start_info or {
+                    message = "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+                    log = "event=start route=erdrick waypoint=North trail marker index=5",
+                    object_id = "route_erdrick_05",
+                    refresh = true,
+                }
             end,
         }
     end
@@ -286,9 +353,9 @@ local function make_env(options)
 
     return {
         outputs = outputs,
-        update = function(keys, game_state, allow_object_hotkeys)
+        update = function(keys, game_state, allow_object_hotkeys, object_hotkey_block_reason)
             frame = frame + 1
-            hotkeys.update(keys or {}, game_state, allow_object_hotkeys)
+            hotkeys.update(keys or {}, game_state, allow_object_hotkeys, object_hotkey_block_reason)
         end,
         pending = function()
             return hotkeys._pending_object_nav_speech_for_tests()
@@ -304,6 +371,17 @@ local function make_env(options)
         end,
         visited_calls = function()
             return visited_calls
+        end,
+        route_status_calls = function()
+            return route_status_calls
+        end,
+        route_start_calls = function()
+            return route_start_calls
+        end,
+        route_start_objects = route_start_objects,
+        focused_route_ids = focused_route_ids,
+        object_refresh_calls = function()
+            return object_refresh_calls
         end,
         pathability_filter_calls = function()
             return pathability_filter_calls
@@ -420,29 +498,102 @@ function tests.modified_hotkeys_do_not_fire_as_bare_keys()
     env.restore()
 end
 
+function tests.shift_r_keeps_stats_without_starting_route_guidance()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, R = true})
+
+    assert_equal(#env.outputs, 1, "Shift+R should speak stats only")
+    assert_equal(env.outputs[1].message, "status", "Shift+R should preserve the existing stats hotkey")
+    assert_equal(env.route_start_calls(), 0, "Shift+R should not also start route guidance")
+    assert_equal(env.route_status_calls(), 0, "Shift+R should not report route status")
+
+    env.restore()
+end
+
+function tests.blocked_shift_r_keeps_stats_without_object_guard()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, R = true}, nil, false)
+
+    assert_equal(#env.outputs, 1, "blocked object controls should not swallow Shift+R stats")
+    assert_equal(env.outputs[1].message, "status", "Shift+R stats should still run while object controls are blocked")
+    assert_equal(env.input_suppress_calls(), 0, "Shift+R should not be treated as a blocked object key")
+    assert_equal(env.route_start_calls(), 0, "route guidance should not run from Shift+R")
+
+    env.restore()
+end
+
 function tests.object_only_hotkeys_respect_allowance_and_non_object_hotkeys_still_run()
     local env = make_env({delay = 0})
 
     env.update({Shift = true, W = true}, nil, false)
     assert_equal(#env.outputs, 1, "non-object hotkey should still run when object hotkeys are blocked")
     assert_equal(env.outputs[1].message, "Tantegel Castle Throne Room, 5, 7", "position announcement should run through the same frame")
+    assert_equal(env.outputs[1].interrupt, false, "read-only status hotkeys should not interrupt route speech")
 
     env.update({L = true}, nil, false)
     env.update({Shift = true, F = true}, nil, false)
     env.update({Shift = true, O = true}, nil, false)
     env.update({Shift = true, Q = true}, nil, false)
+    env.update({R = true}, nil, false)
 
-    assert_equal(#env.outputs, 5, "blocked object hotkeys should report why they did not run")
+    assert_equal(#env.outputs, 6, "blocked object hotkeys should report why they did not run")
     assert_equal(env.outputs[2].message, "Object controls unavailable right now",
         "blocked object hotkey should give an audible guard message")
-    assert_equal(env.outputs[5].message, "Object controls unavailable right now",
+    assert_equal(env.outputs[6].message, "Object controls unavailable right now",
         "each fresh blocked object hotkey should give an audible guard message")
-    assert_equal(env.input_suppress_calls(), 4, "blocked object hotkeys should suppress leaked game input")
+    assert_equal(env.input_suppress_calls(), 5, "blocked object hotkeys should suppress leaked game input")
     assert_equal(#env.describe_calls, 0, "object navigation should be fully blocked when allowance is false")
     assert_equal(env.freeze_calls(), 0, "freeze command should not run when blocked")
     assert_equal(env.pathfind_calls(), 0, "pathfind should not run when blocked")
     assert_equal(env.autowalk_calls(), 0, "auto-walk should not run when blocked")
     assert_equal(env.visited_calls(), 0, "visited marker should not run when blocked")
+    assert_equal(env.route_start_calls(), 0, "route guidance should not run when blocked")
+
+    env.restore()
+end
+
+function tests.blocked_object_hotkey_uses_specific_reason_when_available()
+    local env = make_env({delay = 0})
+
+    env.update({L = true}, {state = "field"}, false, "Wait for movement to finish")
+
+    assert_equal(#env.outputs, 1, "blocked object hotkey should explain why it did not run")
+    assert_equal(env.outputs[1].message, "Wait for movement to finish",
+        "movement gating should avoid the generic object-controls message")
+    assert_equal(env.outputs[1].interrupt, false, "blocked guard speech should not interrupt route announcements")
+    assert_equal(env.input_suppress_calls(), 1, "blocked object hotkey should still suppress leaked game input")
+
+    env.restore()
+end
+
+function tests.r_reports_active_route_status_while_movement_blocks_actions()
+    local env = make_env({delay = 0, route_active = true})
+
+    env.update({R = true}, {state = "field"}, false, "Wait for movement to finish")
+
+    assert_equal(env.route_status_calls(), 1, "R should report active route status while movement is settling")
+    assert_equal(env.route_start_calls(), 0, "R should not restart an active route while blocked")
+    assert_equal(#env.outputs, 1, "route status should speak without the block message")
+    assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+        "blocked active-route R should still speak the route status")
+    assert_equal(env.outputs[1].interrupt, false, "route status should not interrupt route progress speech")
+    assert_equal(env.input_suppress_calls(), 0, "read-only R status should not need game-input suppression")
+
+    env.restore()
+end
+
+function tests.r_waits_to_start_route_while_movement_blocks_actions()
+    local env = make_env({delay = 0})
+
+    env.update({R = true}, {state = "field"}, false, "Wait for movement to finish")
+
+    assert_equal(env.route_status_calls(), 0, "inactive route should not report status")
+    assert_equal(env.route_start_calls(), 0, "R should not start a new route from a moving tile")
+    assert_equal(#env.outputs, 1, "blocked route start should speak one guard")
+    assert_equal(env.outputs[1].message, "Wait for movement to finish",
+        "route start should ask the player to wait for stable position")
 
     env.restore()
 end
@@ -549,6 +700,59 @@ function tests.route_actions_clear_pending_object_speech_without_speaking_it()
     env.update({})
     env.update({})
     assert_equal(#env.outputs, 0, "cleared pending object speech should not flush after pathfind")
+
+    env.restore()
+end
+
+function tests.r_starts_guided_route_from_selected_travel_object()
+    local env = make_env({delay = 0})
+
+    env.update({R = true})
+
+    assert_equal(env.route_start_calls(), 1, "R should start route guidance from the selected object")
+    assert_equal(env.route_status_calls(), 0, "inactive route should start instead of only reporting status")
+    assert_equal(env.route_start_objects[1].name, "Erdrick's Cave", "route start should receive the selected object")
+    assert_equal(env.object_refresh_calls(), 1, "route start should refresh the object list")
+    assert_equal(env.focused_route_ids[1], "route_erdrick_05", "route start should focus the active waypoint")
+    assert_equal(#env.outputs, 1, "route guidance should speak one route message")
+    assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+        "route guidance should speak the next waypoint")
+    assert_equal(env.outputs[1].interrupt, false, "route guidance should queue behind route progress speech")
+    assert_equal(env.pathfind_calls(), 0, "R should not run the O heading/path preview")
+    assert_equal(env.autowalk_calls(), 0, "R should not run auto-walk")
+
+    env.restore()
+end
+
+function tests.r_reports_active_route_status_without_restarting()
+    local env = make_env({delay = 0, route_active = true})
+
+    env.update({R = true})
+
+    assert_equal(env.route_status_calls(), 1, "R should report active route status")
+    assert_equal(env.route_start_calls(), 0, "active route status should not restart the route")
+    assert_equal(env.focused_route_ids[1], "route_erdrick_05", "active route status should keep the next waypoint focused")
+    assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+        "active route status should speak the next waypoint")
+    assert_equal(env.outputs[1].interrupt, false, "active route status should not interrupt route progress speech")
+
+    env.restore()
+end
+
+function tests.r_reports_missing_guided_route_and_preserves_heading_workflow()
+    local env = make_env({
+        delay = 0,
+        current_object = {id = "overworld_brecconary", name = "Brecconary", x = 48, y = 41},
+        route_start_error = "No guided route for Brecconary. Use O for heading.",
+    })
+
+    env.update({R = true})
+
+    assert_equal(env.route_start_calls(), 1, "R should check route availability for the selected object")
+    assert_equal(#env.outputs, 1, "missing route should speak one explanation")
+    assert_equal(env.outputs[1].message, "No guided route for Brecconary. Use O for heading.",
+        "missing route should steer the player back to O for a plain heading")
+    assert_equal(env.pathfind_calls(), 0, "missing route should not silently run O")
 
     env.restore()
 end

@@ -2,7 +2,9 @@
 -- Debug-command registration for object browsing and object-route actions.
 
 local debug_tools = require "debug_tools"
+local nav = require "navigation"
 local objects = require "objects"
+local overworld_routes = require "overworld_routes"
 local route_mgr = require "route_manager"
 local tolk = require "tolk"
 
@@ -58,6 +60,40 @@ local function speak_pathability_result(info)
         local desc = info.name .. ". No objects"
         debug_tools.info("PATHABILITY_FILTER: " .. desc)
         tolk.output_interrupt(desc)
+    end
+end
+
+local function current_position()
+    local map_id, x, y = nav.get_position()
+    return map_id, x, y
+end
+
+local function speak_route_event(prefix, info)
+    if not info then
+        return
+    end
+    debug_tools.info(prefix .. ": " .. tostring(info.log or info.message))
+    if info.refresh and objects.request_refresh then
+        objects.request_refresh()
+    end
+    tolk.output_interrupt(info.message)
+end
+
+local function focus_route_waypoint(map_id, info)
+    if map_id ~= 0x01 or not info or not info.object_id then
+        return
+    end
+    if objects.refresh then
+        objects.refresh(map_id)
+    end
+    if objects.all_pathability_filter then
+        objects.all_pathability_filter()
+    end
+    if objects.travel_filter then
+        objects.travel_filter()
+    end
+    if objects.select_object_by_id then
+        objects.select_object_by_id(info.object_id)
     end
 end
 
@@ -157,6 +193,44 @@ function M.register()
     debug_tools.register_command("auto_walk", function()
         refresh_pathability_if_needed()
         route_mgr.autowalk_to_current()
+    end)
+
+    debug_tools.register_command("start_overworld_route", function(arg)
+        local map_id, x, y = current_position()
+        local info, err = overworld_routes.start(arg, map_id, x, y)
+        if not info then
+            debug_tools.error("OVERWORLD_ROUTE: " .. tostring(err))
+            tolk.output_interrupt(tostring(err))
+            return
+        end
+        focus_route_waypoint(map_id, info)
+        speak_route_event("OVERWORLD_ROUTE", info)
+    end)
+
+    debug_tools.register_command("route_guidance", function()
+        local map_id, x, y = current_position()
+        local info, err
+        if overworld_routes.is_active and overworld_routes.is_active() then
+            info = overworld_routes.status(map_id, x, y)
+        else
+            info, err = overworld_routes.start_for_object(objects.current_object(), map_id, x, y)
+        end
+        if not info then
+            debug_tools.info("OVERWORLD_ROUTE: event=no_route message=" .. tostring(err))
+            tolk.output_interrupt(tostring(err))
+            return
+        end
+        focus_route_waypoint(map_id, info)
+        speak_route_event("OVERWORLD_ROUTE", info)
+    end)
+
+    debug_tools.register_command("route_status", function()
+        local map_id, x, y = current_position()
+        speak_route_event("OVERWORLD_ROUTE", overworld_routes.status(map_id, x, y))
+    end)
+
+    debug_tools.register_command("stop_overworld_route", function()
+        speak_route_event("OVERWORLD_ROUTE", overworld_routes.stop())
     end)
 end
 

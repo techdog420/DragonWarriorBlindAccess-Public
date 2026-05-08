@@ -38,6 +38,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         key_object_current = "K",
         key_object_next = "L",
         key_pathfind = "O",
+        key_route_guidance = "R",
         key_auto_walk = "U",
         key_filter = "Q",
         key_filter_prev = "Shift+J",
@@ -120,6 +121,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
         bizhawk_keyboard_hotkey_allowlist = "",
         key_position = "Shift+W",
         key_object_next = "L",
+        key_route_guidance = "R",
         key_diag_tiles = "Ctrl+N",
         key_diag_ppu_dump = "Ctrl+D",
     })
@@ -128,6 +130,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
         Shift = true,
         W = true,
         L = true,
+        R = true,
         LeftCtrl = true,
         N = true,
         D = true,
@@ -136,6 +139,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
     assert_equal(filtered.Shift, true, "blank allowlist should still pass position modifier")
     assert_equal(filtered.W, true, "blank allowlist should still pass player readout key")
     assert_equal(filtered.L, true, "blank allowlist should still pass object navigation key")
+    assert_equal(filtered.R, true, "blank allowlist should still pass route guidance key")
     assert_equal(filtered.LeftCtrl, true, "blank allowlist should still pass compact tile readout modifier")
     assert_equal(filtered.N, true, "blank allowlist should still pass compact tile readout key")
     assert_equal(filtered.D, nil, "blank allowlist should not pass developer dump key")

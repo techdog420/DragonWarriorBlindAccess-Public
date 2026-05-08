@@ -62,9 +62,15 @@
 #   current_object         Describe current object (like K key)
 #   next_filter            Cycle object filter: All/NPCs/Exits/Chests/Stairs/Doors
 #   pathfind               Pathfind to current object (like O key)
+#   route_guidance         Start/check selected-destination route guidance (like R key)
 #   auto_walk              Auto-walk to current object (like U key)
 #   freeze_npcs            Lock NPC positions in RAM
 #   unfreeze_npcs          Unlock NPC positions
+#   start_overworld_route  Start manual Travel-filter route guidance to Erdrick's Cave
+#   start_overworld_route:brecconary  Start safety route guidance back to Brecconary
+#   start_overworld_route:castle  Start safety route guidance back to Tantegel Castle
+#   route_status           Speak the active overworld route's next waypoint
+#   stop_overworld_route   Clear active overworld route guidance
 #
 # ── Path debug commands ─────────────────────────────────────────────
 #   debug_pathfind_to:X,Y       Pathfind with full A* search logging

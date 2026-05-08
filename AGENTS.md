@@ -154,6 +154,7 @@ Prefer automated test/debug hooks over manual exploration whenever possible.
 - `prev_object`
 - `current_object`
 - `next_filter`
+- `route_guidance`
 - `pathability_filter`
 - `freeze_npcs`
 - `unfreeze_npcs`

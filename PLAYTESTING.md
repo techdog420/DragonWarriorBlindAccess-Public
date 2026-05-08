@@ -115,10 +115,52 @@ QoL feature check:
   Unreachable. This stacks with the object category filter, ignores moving NPC
   occupancy, and is intended for sanity-checking larger maps without making
   rapid J/K/L browsing run pathfinding every tap.
-- Future overworld QoL idea: an NPC clue explains that crossing bridges leads
-  into more dangerous territory. Later, consider a subtle player-facing alert
-  when the hero crosses into a new encounter-strength region, especially after
-  bridge crossings or other invisible difficulty boundaries.
+- Overworld route guidance exists for the first dungeon and the first safety
+  returns. Select the `Erdrick's Cave`, `Brecconary`, or `Tantegel Castle`
+  Travel object and press `R`, or use `route_guidance`,
+  `start_overworld_route:cave`, `start_overworld_route:brecconary`, or
+  `start_overworld_route:castle` from the command file. Press `R` again, run
+  `route_status`, or browse the Travel filter to hear the next route waypoint.
+  This is manual guidance only: it does not enable overworld auto-walk, so the
+  player still fights normal random encounters and grows during the trip.
+  After starting the route, `current_object` should report a `Route next`
+  waypoint rather than the plain landmark. `O` remains the plain heading/path
+  preview for the selected object, and `U` remains reserved for auto-walk
+  behavior.
+- The Erdrick's Cave route includes a one-time bridge warning about stronger
+  monsters beyond the crossing. During live testing, check whether this is
+  helpful and quiet enough. The route now uses additional mountain-pinch
+  markers after live evidence showed the old long heading from `(30,32)` led
+  into blocked terrain: `East choke approach`, `Eastern mountain lane`,
+  `North ridge bend`, then `North trail marker`. `East choke approach` at
+  `(35,32)` and `Eastern mountain lane` at `(35,24)` are exact markers now;
+  this prevents the route from advancing one tile early and telling the player
+  to turn before the choke lane has really been cleared.
+- The Erdrick's Cave route also uses the lower bridge detour after live
+  evidence showed the direct first-bridge-to-pinch leg could block: from
+  `Brecconary road`, it now routes to `Bridge south bend`, `Bridge lower west
+  lane`, `Bridge west bend`, `Upper bridge lane`, and `East choke approach`.
+  The immediate repro was a blocked north move from `(45,34)` into `(45,33)`,
+  followed by blocked north attempts from `(41,35)`, `(40,35)`, and `(39,35)`
+  when the detour was still too diagonal. A later log showed the old
+  `Mountain pinch turn` marker caused a short west-then-east reversal, so it
+  is no longer a mandatory step on this bridge/east-choke segment.
+- The Brecconary and Tantegel Castle safety routes reverse the cave route's
+  mountain-lane and bridge markers, using `East choke approach`, `Upper bridge
+  lane`, `Bridge west bend`, `Bridge lower west lane`, and `Bridge south bend`
+  before heading directly to safety. Live return evidence showed blocked
+  direct moves into `(39,34)`, `(41,34)`, and `(42,34)`, while the lower bend
+  through `(44,38)` reached town cleanly. The old safety marker at `(45,34)`
+  was removed because it sent the player north, then immediately back south
+  toward town. These routes warn once that monsters
+  should become safer after the bridge and complete on the destination maps
+  (`0x08` for Brecconary; `0x04` / `0x05` for Tantegel Castle).
+- Read-only hotkey speech now queues instead of interrupting current speech:
+  position, HP/MP, level, gold, experience, stats, screen text, and `R` route
+  guidance/status use non-interrupting speech. While a manual step is still
+  settling, `R` may report an active route's status, but starting a new route
+  or using movement-changing object controls waits for stable movement and
+  says `Wait for movement to finish`.
 - Visited flags are session-only and map-scoped. Use `Shift+V` or
   `mark_visited` to mark manually; `clear_visited` clears the current map and
   `clear_visited:all` clears all maps. After TALK dialogue, the auto-visited
@@ -284,6 +326,10 @@ Use this as a lightweight first pass:
 - Use stairs/doors/exits intentionally
 - Visit the first town and interact with NPCs/shops if reachable
 - In town, verify visited flags and Services/Treasure/Travel filter categories
+- On the world map, select `Erdrick's Cave`, `Brecconary`, or `Tantegel
+  Castle`, press `R` or run `route_guidance`, browse the small Travel route
+  layer, verify `current_object` selects `Route next`, and verify
+  `route_status` plus one route-progress announcement
 - Enter a simple combat encounter and evaluate narration
 - Record every point where the player would feel lost, under-informed, or unable to recover
 
