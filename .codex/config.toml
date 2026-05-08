@@ -14,7 +14,7 @@ sandbox_mode = "workspace-write"
 web_search = "cached"
 
 [features]
-codex_hooks = true
+hooks = true
 
 [sandbox_workspace_write]
 network_access = false
