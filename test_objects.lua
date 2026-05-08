@@ -708,13 +708,13 @@ function tests.brecconary_counter_service_marks_selected_merchant_visited()
     env.objects.refresh(0x08)
 
     local obj = env.objects.current_object()
-    assert_equal(obj.name, "Merchant", "single service NPC should be named Merchant in the test harness")
+    assert_equal(obj.name, "Weapons Merchant", "Brecconary weapon-shop service should have a player-facing label")
     assert_equal(obj.interaction_x, 5, "Brecconary merchant should expose the counter interaction X")
     assert_equal(obj.interaction_y, 6, "Brecconary merchant should expose the counter interaction Y")
     assert_equal(obj.interaction_face_dir, "north", "Brecconary merchant should face north from the counter")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Merchant: 2 north, counter here (1 of 2)",
+        "Weapons Merchant: 2 north, counter here (1 of 2)",
         "merchant description should name the usable counter square")
 
     local marked = env.objects.mark_adjacent_npc_visited(0x08, 5, 6)
@@ -792,20 +792,20 @@ function tests.brecconary_confirmed_counter_services_use_live_talk_tiles()
     env.set_npc(3, 0x60 + 25, 0x19, 0x00)
     env.objects.refresh(0x08)
 
-    local merchant3 = nil
+    local inn = nil
     local merchant4 = nil
     for _, obj in ipairs(env.objects.get_objects()) do
-        if obj.name == "Merchant 3" then
-            merchant3 = obj
+        if obj.name == "Inn" then
+            inn = obj
         elseif obj.name == "Merchant 4" then
             merchant4 = obj
         end
     end
 
-    assert_equal(merchant3 ~= nil, true, "Brecconary Merchant 3 should be present")
-    assert_equal(merchant3.interaction_x, 9, "Merchant 3 should use the live-confirmed inn counter tile")
-    assert_equal(merchant3.interaction_y, 21, "Merchant 3 live-confirmed counter Y should match the inn large tile")
-    assert_equal(merchant3.interaction_face_dir, "east", "Merchant 3 should face east toward the inn keeper")
+    assert_equal(inn ~= nil, true, "Brecconary inn should be present")
+    assert_equal(inn.interaction_x, 8, "Inn should use the live-confirmed public stand tile")
+    assert_equal(inn.interaction_y, 21, "Inn public stand Y should match the counter row")
+    assert_equal(inn.interaction_face_dir, "east", "Inn should face east toward the inn keeper")
 
     assert_equal(merchant4 ~= nil, true, "Brecconary Merchant 4 should be present")
     assert_equal(merchant4.interaction_x, 24, "Merchant 4 should use the live-confirmed tool-shop counter tile")

@@ -837,11 +837,13 @@ local EXTRA_DOORS = {
 local SERVICE_INTERACTION_OVERRIDES = {
     -- Brecconary weapon/armor shop. The keeper occupies (5,4), but TALK opens
     -- the shop from the doorway/counter square at (5,6) while facing north.
-    -- The inn and tool-shop counters use raw large tiles directly; live TALK
-    -- confirmed (9,21) opens the inn and (24,25) opens the tool shop.
+    -- The inn can be opened from the public west-side stand tile at (8,21)
+    -- while facing east. The intermediate counter tile (9,21) is walkable but
+    -- blocks west-side entry, so routing directly to it strands public paths.
+    -- The tool-shop counter still uses the live-confirmed (24,25) tile.
     [0x08] = {
-        ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter"},
-        ["10,21"] = {x = 9, y = 21, face_dir = "east", label = "counter"},
+        ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter", name = "Weapons Merchant"},
+        ["10,21"] = {x = 8, y = 21, face_dir = "east", label = "counter", name = "Inn"},
         ["25,25"] = {x = 24, y = 25, face_dir = "east", label = "counter"},
     },
 }
@@ -923,6 +925,9 @@ apply_service_interaction_override = function(obj, map_id)
     local by_cell = SERVICE_INTERACTION_OVERRIDES[map_id]
     local override = by_cell and by_cell[obj.x .. "," .. obj.y]
     if override then
+        if override.name then
+            obj.name = override.name
+        end
         obj.interaction_x = override.x
         obj.interaction_y = override.y
         obj.interaction_face_dir = override.face_dir

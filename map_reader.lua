@@ -1128,6 +1128,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,19"]  = {east = true},
         ["7,21"]  = {west = true},
         ["7,22"]  = {north = true, south = true, west = true},
+        -- 2026-05-07 inn route follow-up: after retargeting the inn to the
+        -- public stand tile at (8,21), auto-walk from the town entrance first
+        -- planned through (7,17)->RIGHT, timed out on entry to (8,17), then
+        -- rerouted cleanly around it and reached the inn.
+        ["8,17"]  = {west = true},
         ["8,22"]  = {north = true, south = true},
         ["9,20"]  = {west = true},
         ["9,21"]  = {west = true},
