@@ -2222,6 +2222,69 @@ local function on_route_cancelled(data)
     end
 end
 
+local function pause_for_battle()
+    if not survey_state then
+        return
+    end
+    if survey_state.paused_reason == "battle_started" then
+        return
+    end
+
+    local attempt = survey_state.active_attempt
+    if attempt then
+        auto_step.cancel_active_step(true)
+        if route_mgr.clear_active_route_context then
+            route_mgr.clear_active_route_context("survey battle pause")
+        end
+        survey_state.active_attempt = nil
+    end
+
+    survey_state.paused_reason = "battle_started"
+    survey_state.paused_target_id = attempt and attempt.target and attempt.target.id or nil
+    debug_tools.info(string.format(
+        "SURVEY_PAUSE run=%d map=0x%02X reason=battle_started target_id=%s queue_index=%d",
+        survey_state.run_id,
+        survey_state.map_id,
+        tostring(survey_state.paused_target_id or "-"),
+        survey_state.queue_index or 0))
+    tolk.output_interrupt("Survey paused for battle. It will resume when safe.")
+end
+
+local function resume_from_pause_if_ready(can_walk)
+    if not survey_state or not survey_state.paused_reason then
+        return true
+    end
+    if not can_walk then
+        return false
+    end
+
+    local map_id = nav.get_position()
+    if map_id ~= survey_state.map_id then
+        survey_state.stop_after_attempt = true
+        survey_state.stop_reason = "map_changed"
+        debug_tools.info(string.format(
+            "SURVEY_ABORT run=%d map=0x%02X reason=map_changed_while_paused current_map=0x%02X pause_reason=%s",
+            survey_state.run_id,
+            survey_state.map_id,
+            map_id or -1,
+            tostring(survey_state.paused_reason)))
+        finish_run(false)
+        return false
+    end
+
+    debug_tools.info(string.format(
+        "SURVEY_RESUME run=%d map=0x%02X reason=%s target_id=%s queue_index=%d",
+        survey_state.run_id,
+        survey_state.map_id,
+        tostring(survey_state.paused_reason),
+        tostring(survey_state.paused_target_id or "-"),
+        survey_state.queue_index or 0))
+    tolk.output_interrupt("Survey resumed.")
+    survey_state.paused_reason = nil
+    survey_state.paused_target_id = nil
+    return true
+end
+
 local function on_map_changed(data)
     if not survey_state or not data then
         return
@@ -2238,6 +2301,7 @@ end
 event_bus.subscribe("route_blocked", on_route_blocked)
 event_bus.subscribe("route_completed", on_route_completed)
 event_bus.subscribe("route_cancelled", on_route_cancelled)
+event_bus.subscribe("battle_started", pause_for_battle)
 event_bus.subscribe("map_changed", on_map_changed)
 
 local function start_attempt(queue_entry)
@@ -2471,6 +2535,8 @@ local function start_run(targets, opts)
         active_attempt = nil,
         stop_after_attempt = false,
         stop_reason = nil,
+        paused_reason = nil,
+        paused_target_id = nil,
         npc_parking = nil,
     }
     for i, target in ipairs(survey_state.targets) do
@@ -2643,6 +2709,10 @@ function M.tick(can_walk)
             "Survey aborted: HP critical (%d). Heal and retry.", cur_hp))
         survey_state.stop_reason = "low_hp"
         finish_run(false)
+        return
+    end
+
+    if not resume_from_pause_if_ready(can_walk) then
         return
     end
 

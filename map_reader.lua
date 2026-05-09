@@ -326,7 +326,8 @@ local WALKABILITY_TABLES = {
 -- Format: MAP_PASSTHROUGH_CELLS[map_id]["x,y"] = true
 -- A cell listed here is always treated as walkable regardless of
 -- its tile type. Checked BEFORE the tile-type lookup so these
--- override non-walkable tile types.
+-- override non-walkable tile types and map-specific entrance edge cells
+-- can override the generic interior boundary rule.
 local MAP_PASSTHROUGH_CELLS = {
     -- Map 0x04: Tantegel Castle main hall
     -- Live probing on 2026-04-11 and 2026-04-13 confirmed a decoder gap in the
@@ -419,6 +420,17 @@ local MAP_PASSTHROUGH_CELLS = {
         ["10,18"] = true,
         ["11,18"] = true,
         ["11,19"] = true,
+    },
+
+    -- Map 0x1C: Erdrick's Cave B1 entrance strip.
+    -- Live probes on 2026-05-08 confirmed the engine moves
+    -- (0,0) -> right -> (1,0) -> down -> (1,1), and the reverse
+    -- (1,1) -> up -> (1,0) -> left -> (0,0), despite (0,0)/(1,0)
+    -- decoding as type-9 edge/wall cells. Keep this limited to the
+    -- confirmed entrance path; (0,1) still behaves as a boundary wall.
+    [0x1C] = {
+        ["0,0"] = true,
+        ["1,0"] = true,
     },
 }
 
@@ -1201,6 +1213,39 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["15,28"] = {north = true, west = true},
         ["16,27"] = {north = true, west = true},
     },
+
+    -- Map 0x1C: Erdrick's Cave B1
+    --
+    -- 2026-05-08 first dungeon routes between the corrected B1 stairs at
+    -- (9,9) and the entrance. The decoded dungeon tiles are walkable, but
+    -- direct probe_edge checks after clearing runtime blocks confirmed these
+    -- engine seams block from the listed approaches. Keep these
+    -- directional-only so neighboring cells remain available from approaches
+    -- that have not failed. Later same-day route evidence showed the newest
+    -- single-probe additions were noisy. The 2026-05-08/09 probe_edge_verify
+    -- pass then reconfirmed the listed start-choke/east-column approaches with
+    -- 5/5 blocked attempts each; mixed verifier results remain unmodeled.
+    [0x1C] = {
+        ["2,1"] = {west = true}, -- (1,1)->RIGHT blocked 5/5 by probe_edge_verify
+        ["2,3"] = {west = true, north = true}, -- west/north approaches blocked 5/5
+        ["3,3"] = {north = true, south = true}, -- (3,2)->DOWN and (3,4)->UP blocked
+        ["4,1"] = {south = true}, -- (4,2)->UP blocked 5/5 by probe_edge_verify
+        ["4,3"] = {north = true, south = true}, -- (4,2)->DOWN and (4,4)->UP blocked
+        ["5,1"] = {south = true, east = true}, -- south/east approaches blocked 5/5
+        ["2,4"] = {east = true, west = true}, -- (3,4)->LEFT and (1,4)->RIGHT blocked
+        ["3,5"] = {north = true}, -- (3,4)->DOWN blocked
+        ["4,5"] = {north = true, east = true}, -- north/east approaches blocked 5/5
+        ["7,2"] = {west = true},  -- (6,2)->RIGHT blocked
+        ["6,3"] = {north = true}, -- (6,2)->DOWN blocked
+        ["6,4"] = {west = true, south = true}, -- west/south approaches blocked 5/5
+        ["1,5"] = {north = true}, -- (1,4)->DOWN blocked
+        ["6,6"] = {west = true, north = true}, -- west/north approaches blocked
+        ["8,5"] = {west = true}, -- (7,5)->RIGHT blocked 5/5 by probe_edge_verify
+        ["8,6"] = {west = true, south = true}, -- west/south approaches blocked 5/5
+        ["5,7"] = {north = true}, -- (5,6)->DOWN blocked
+        ["8,8"] = {west = true, north = true, east = true}, -- west/north/east approaches blocked
+        ["8,9"] = {west = true, east = true},  -- west/east approaches blocked 5/5
+    },
 }
 
 -- get_directional_blocks(map_id): Return the directional block table for
@@ -1240,18 +1285,18 @@ local function lookup_walkability_base(map_id, x, y)
     local tile_type = grid[y][x]
     details.tile_type = tile_type
 
-    if not maps.is_overworld(map_id) and (x == 0 or y == 0) then
-        details.base_walkable = false
-        details.effective_walkable = false
-        details.reason = "engine_boundary"
-        return details
-    end
-
     local passthroughs = MAP_PASSTHROUGH_CELLS[map_id]
     if passthroughs and passthroughs[key] then
         details.base_walkable = true
         details.effective_walkable = true
         details.reason = "passthrough"
+        return details
+    end
+
+    if not maps.is_overworld(map_id) and (x == 0 or y == 0) then
+        details.base_walkable = false
+        details.effective_walkable = false
+        details.reason = "engine_boundary"
         return details
     end
 
@@ -1354,10 +1399,10 @@ function M.get_walkability_snapshot(map_id)
         for x = 0, meta.width - 1 do
             local key = x .. "," .. y
             local walkable = false
-            if not is_overworld and (x == 0 or y == 0) then
-                walkable = false
-            elseif passthroughs and passthroughs[key] then
+            if passthroughs and passthroughs[key] then
                 walkable = true
+            elseif not is_overworld and (x == 0 or y == 0) then
+                walkable = false
             elseif door_cells and door_cells[key] then
                 local dc = door_cells[key]
                 walkable = open_doors and open_doors[dc.x .. "," .. dc.y] == true or false

@@ -486,7 +486,7 @@ function tests.first_blocked_step_stays_in_seam_memory_until_confirmed()
     env.restore()
 end
 
-function tests.repeated_blocked_steps_promote_runtime_block_after_threshold()
+function tests.repeated_route_blocked_steps_stay_soft_until_verified()
     local env = make_env()
 
     env.route_manager.autowalk_to_current()
@@ -496,14 +496,62 @@ function tests.repeated_blocked_steps_promote_runtime_block_after_threshold()
 
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "repeated queued route blocks should not promote into hard runtime map blockers"
+    )
+    assert_equal(
+        env.route_manager.build_path_blocking(0x05)["5,3"],
+        nil,
+        "normal path blocking should not include unverified route-only seam memory"
+    )
+    assert_equal(
+        env.route_manager.build_path_blocking(0x05, {include_unconfirmed_seams = true})["5,3"].south,
+        true,
+        "reroute-specific blocking can still avoid repeated soft seam failures"
+    )
+
+    env.restore()
+end
+
+function tests.verified_probe_can_promote_and_clear_runtime_block()
+    local env = make_env()
+
+    env.route_manager.confirm_runtime_block_for_step(0x05, 5, 4, "up", "verified_probe")
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
         1,
-        "repeated one-sided blocked steps should promote a confirmed runtime block"
+        "verified probe consensus should be allowed to create a runtime block"
     )
     assert_equal(
         env.route_manager.build_path_blocking(0x05)["5,3"].south,
         true,
-        "promoted seam should appear as a directional runtime block"
+        "verified runtime block should appear in normal path blocking"
     )
+
+    env.route_manager.clear_runtime_block_for_step(0x05, 5, 4, "up", "verified_passable")
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "confirmed passable verification should clear the matching runtime block"
+    )
+
+    env.restore()
+end
+
+function tests.reroute_temporary_block_does_not_mutate_verified_runtime_dirs()
+    local env = make_env()
+
+    env.route_manager.confirm_runtime_block_for_step(0x05, 5, 4, "up", "verified_probe")
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(6, 3, "left")
+
+    local entries = env.route_manager.get_runtime_block_entries(0x05)
+    assert_equal(#entries, 1, "route-only reroute should not create another hard runtime block")
+    assert_equal(entries[1].key, "5,3", "verified runtime block should remain on the original cell")
+    assert_equal(entries[1].dirs.south, true, "verified approach should remain recorded")
+    assert_equal(entries[1].dirs.east, nil, "temporary route-only approach should stay out of runtime blocks")
 
     env.restore()
 end
@@ -560,12 +608,10 @@ function tests.queued_route_block_into_live_npc_does_not_promote_runtime_block()
     env.restore()
 end
 
-function tests.successful_traversal_marks_noisy_seam_but_confirmed_block_persists()
-    -- After 3 consecutive blocks, the seam is confirmed and a runtime block is
-    -- added. A single successful traversal changes the seam to "noisy" but does
-    -- NOT clear the runtime block — one state-dependent pass is not enough
-    -- evidence to erase a confirmed engine block. The block persists until either
-    -- clear_runtime_blocks is called explicitly, or the map changes.
+function tests.successful_traversal_marks_repeated_route_blocks_noisy()
+    -- Repeated route-only blocks are diagnostic seam memory, not hard map data.
+    -- A later successful traversal makes the seam noisy so it will not be used
+    -- as a soft reroute block until a stronger verifier confirms it.
     local env = make_env()
 
     env.route_manager.autowalk_to_current()
@@ -576,20 +622,18 @@ function tests.successful_traversal_marks_noisy_seam_but_confirmed_block_persist
 
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
-        1,
-        "confirmed runtime block should NOT be cleared by a single successful traversal"
+        0,
+        "route-only seam observations should not create a confirmed runtime block"
     )
-    -- Because the runtime block persists, classify_seam_entry returns
-    -- "confirmed_blocked" (runtime check fires first), not "noisy".
     assert_equal(
         env.seam_summary(0x05).confirmed_blocked,
-        1,
-        "seam with persistent runtime block should still be classified confirmed_blocked"
+        0,
+        "route-only seam should not be classified confirmed without verifier evidence"
     )
     assert_equal(
         env.seam_summary(0x05).noisy,
-        0,
-        "noisy count should be 0 because runtime block keeps confirmed_blocked classification"
+        1,
+        "mixed route/probe evidence should classify the seam as noisy"
     )
 
     env.restore()
@@ -1026,8 +1070,8 @@ function tests.failed_seam_bruteforce_retries_again_then_cancels_cleanly()
 
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
-        1,
-        "three one-sided seam failures should promote the seam into a runtime block"
+        0,
+        "failed seam brute-force retries should remain soft evidence until repeated verification"
     )
     assert_contains(
         table.concat(env.outputs, "\n"),

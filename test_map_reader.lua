@@ -641,6 +641,114 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     env.restore()
 end
 
+function tests.erdricks_cave_b1_entrance_passthrough_overrides_edge_boundary()
+    local base = 0x1C * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,      -- CPU $8000 -> file offset $0010
+            [base + 1] = 0x80,
+            [base + 2] = 9,     -- width 10
+            [base + 3] = 9,     -- height 10
+            [base + 4] = 0,
+            [0x10] = 0x99,      -- row 0: ten type-9 edge/wall tiles
+            [0x11] = 0x90,      -- row 1 x=0: type-9 boundary tile
+            [0x12] = 0x88,      -- row 1 x=1-9: type-8 floor/stair strip
+            [0x13] = 0x0F, [0x14] = 0x0F, [0x15] = 0x0F,
+            [0x16] = 0x0F, [0x17] = 0x0F, -- remaining 80 floor tiles
+        },
+        memory_bytes = {
+            [0] = 0x20, -- TERRAIN_OFFSET stubbed to 0 in make_env()
+        },
+    })
+
+    local exit = env.map_reader.get_walkability_details(0x1C, 0, 0)
+    assert_equal(exit.base_walkable, true, "Erdrick B1 entrance exit tile should be passable")
+    assert_equal(exit.reason, "passthrough", "Erdrick B1 entrance exit should override edge boundary")
+
+    local strip = env.map_reader.get_walkability_details(0x1C, 1, 0)
+    assert_equal(strip.base_walkable, true, "Erdrick B1 entrance strip should be passable")
+    assert_equal(strip.reason, "passthrough", "Erdrick B1 entrance strip should override edge boundary")
+
+    local west_wall = env.map_reader.get_walkability_details(0x1C, 0, 1)
+    assert_equal(west_wall.base_walkable, false, "unconfirmed Erdrick B1 west edge should remain blocked")
+    assert_equal(west_wall.reason, "engine_boundary", "unconfirmed Erdrick B1 west edge should keep boundary reason")
+
+    local entrance_floor = env.map_reader.get_walkability_details(0x1C, 1, 1)
+    assert_equal(entrance_floor.base_walkable, true, "Erdrick B1 entrance floor should stay tile-walkable")
+    assert_equal(entrance_floor.reason, "tile_type", "Erdrick B1 entrance floor should not need passthrough")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x1C)
+    assert_equal(snapshot[0][0], true, "walkability snapshot should include the Erdrick B1 exit tile")
+    assert_equal(snapshot[0][1], true, "walkability snapshot should include the Erdrick B1 entrance strip")
+    assert_equal(snapshot[1][0], false, "walkability snapshot should keep the unconfirmed west edge blocked")
+    assert_equal(snapshot[1][1], true, "walkability snapshot should include the Erdrick B1 entrance floor")
+
+    env.restore()
+end
+
+function tests.erdricks_cave_b1_stair_to_entrance_seams_are_directional()
+    local env = make_env()
+
+    local dirs = env.map_reader.get_directional_blocks(0x1C)
+    assert_equal(dirs["2,1"].west, true, "Erdrick B1 (2,1) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["2,1"].east, nil, "Erdrick B1 (2,1) should keep unconfirmed approaches open")
+    assert_equal(dirs["2,3"].west, true, "Erdrick B1 (2,3) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["2,3"].north, true, "Erdrick B1 (2,3) should block entry from the north after fresh 5/5 verifier consensus")
+    assert_equal(dirs["2,3"].east, nil, "Erdrick B1 (2,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["3,3"].south, true, "Erdrick B1 (3,3) should block entry from the south")
+    assert_equal(dirs["3,3"].north, true, "Erdrick B1 (3,3) should block entry from the north")
+    assert_equal(dirs["3,3"].east, nil, "Erdrick B1 (3,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,3"].south, true, "Erdrick B1 (4,3) should block entry from the south")
+    assert_equal(dirs["4,3"].north, true, "Erdrick B1 (4,3) should block entry from the north")
+    assert_equal(dirs["4,3"].east, nil, "Erdrick B1 (4,3) should keep noisy east approach open until repeated verification")
+    assert_equal(dirs["4,3"].west, nil, "Erdrick B1 (4,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["2,4"].east, true, "Erdrick B1 (2,4) should block entry from the east")
+    assert_equal(dirs["2,4"].west, true, "Erdrick B1 (2,4) should block entry from the west")
+    assert_equal(dirs["2,4"].north, nil, "Erdrick B1 (2,4) should keep unconfirmed approaches open")
+    assert_equal(dirs["3,5"].north, true, "Erdrick B1 (3,5) should block entry from the north")
+    assert_equal(dirs["3,5"].south, nil, "Erdrick B1 (3,5) should not be fully blocked")
+    assert_equal(dirs["4,1"].south, true, "Erdrick B1 (4,1) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["4,1"].north, nil, "Erdrick B1 (4,1) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,1"].south, true, "Erdrick B1 (5,1) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["5,1"].east, true, "Erdrick B1 (5,1) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["5,1"].north, nil, "Erdrick B1 (5,1) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,1"].west, nil, "Erdrick B1 (5,1) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,5"].north, true, "Erdrick B1 (4,5) should block entry from the north after 5/5 verifier consensus")
+    assert_equal(dirs["4,5"].east, true, "Erdrick B1 (4,5) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["4,5"].south, nil, "Erdrick B1 (4,5) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,5"].west, nil, "Erdrick B1 (4,5) should keep unconfirmed approaches open")
+    assert_equal(dirs["7,2"].west, true, "Erdrick B1 (7,2) should block entry from the west")
+    assert_equal(dirs["7,2"].east, nil, "Erdrick B1 (7,2) should not be fully blocked")
+    assert_equal(dirs["6,3"].north, true, "Erdrick B1 (6,3) should block entry from the north")
+    assert_equal(dirs["6,3"].west, nil, "Erdrick B1 (6,3) should keep noisy west approach open until repeated verification")
+    assert_equal(dirs["6,3"].south, nil, "Erdrick B1 (6,3) should not be fully blocked")
+    assert_equal(dirs["6,4"].west, true, "Erdrick B1 (6,4) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["6,4"].south, true, "Erdrick B1 (6,4) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["6,4"].east, nil, "Erdrick B1 (6,4) should keep unconfirmed approaches open")
+    assert_equal(dirs["1,5"].north, true, "Erdrick B1 (1,5) should block entry from the north")
+    assert_equal(dirs["1,5"].south, nil, "Erdrick B1 (1,5) should not be fully blocked")
+    assert_equal(dirs["6,6"].west, true, "Erdrick B1 (6,6) should block entry from the west")
+    assert_equal(dirs["6,6"].north, true, "Erdrick B1 (6,6) should block entry from the north after fresh 5/5 verifier consensus")
+    assert_equal(dirs["6,6"].east, nil, "Erdrick B1 (6,6) should not be fully blocked")
+    assert_equal(dirs["8,5"].west, true, "Erdrick B1 (8,5) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["8,5"].east, nil, "Erdrick B1 (8,5) should keep unconfirmed approaches open")
+    assert_equal(dirs["8,6"].west, true, "Erdrick B1 (8,6) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["8,6"].south, true, "Erdrick B1 (8,6) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["8,6"].east, nil, "Erdrick B1 (8,6) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,7"].north, true, "Erdrick B1 (5,7) should block entry from the north")
+    assert_equal(dirs["5,7"].south, nil, "Erdrick B1 (5,7) should not be fully blocked")
+    assert_equal(dirs["8,8"].west, true, "Erdrick B1 (8,8) should block entry from the west")
+    assert_equal(dirs["8,8"].north, true, "Erdrick B1 (8,8) should block entry from the north")
+    assert_equal(dirs["8,8"].east, true, "Erdrick B1 (8,8) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["8,8"].south, nil, "Erdrick B1 (8,8) should keep unconfirmed approaches open")
+    assert_equal(dirs["8,9"].west, true, "Erdrick B1 (8,9) should block entry from the west")
+    assert_equal(dirs["8,9"].east, true, "Erdrick B1 (8,9) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["8,9"].north, nil, "Erdrick B1 (8,9) should keep unconfirmed approaches open")
+    assert_equal(dirs["8,9"].south, nil, "Erdrick B1 (8,9) should keep unconfirmed approaches open")
+
+    env.restore()
+end
+
 local failures = 0
 local total = 0
 

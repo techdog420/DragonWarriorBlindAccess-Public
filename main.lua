@@ -281,6 +281,43 @@ local function log_move_report(from_x, from_y, dir)
 end
 
 local edge_probe_state = nil
+local edge_verify_state = nil
+local EDGE_VERIFY_DEFAULT_ATTEMPTS = 5
+local EDGE_VERIFY_MAX_ATTEMPTS = 15
+local EDGE_VERIFY_SETTLE_FRAMES = 18
+local EDGE_VERIFY_BETWEEN_SETTLE_FRAMES = 30
+local get_autowalk_unavailable_reason
+
+local function parse_edge_verify_arg(arg, default_x, default_y)
+    if not arg then return nil end
+    local parts = {}
+    for part in tostring(arg):gmatch("[^,]+") do
+        parts[#parts + 1] = part:match("^%s*(.-)%s*$")
+    end
+    if #parts == 1 or #parts == 2 then
+        local dir = parts[1] and parts[1]:lower()
+        dir = CARDINAL_TO_KEY[dir] or dir
+        if not DIR_TO_DELTA[dir] then
+            return nil
+        end
+        local attempts = parse_int_arg(parts[2]) or EDGE_VERIFY_DEFAULT_ATTEMPTS
+        attempts = math.max(1, math.min(EDGE_VERIFY_MAX_ATTEMPTS, attempts))
+        return default_x, default_y, dir, attempts, false
+    end
+    if #parts == 3 or #parts == 4 then
+        local x = parse_int_arg(parts[1])
+        local y = parse_int_arg(parts[2])
+        local dir = parts[3] and parts[3]:lower()
+        dir = CARDINAL_TO_KEY[dir] or dir
+        if x == nil or y == nil or not DIR_TO_DELTA[dir] then
+            return nil
+        end
+        local attempts = parse_int_arg(parts[4]) or EDGE_VERIFY_DEFAULT_ATTEMPTS
+        attempts = math.max(1, math.min(EDGE_VERIFY_MAX_ATTEMPTS, attempts))
+        return x, y, dir, attempts, true
+    end
+    return nil
+end
 
 local function get_edge_probe_source_flags(map_id, x, y, approach)
     local key = x .. "," .. y
@@ -395,6 +432,210 @@ local function finish_edge_probe(status, reason)
     edge_probe_state = nil
 end
 
+local function classify_edge_verify_result(verify, final_status)
+    local r = verify.results
+    if final_status == "cancelled" then
+        return "cancelled"
+    end
+    if (r.map_changed or 0) > 0 then
+        return "inconclusive_map_changed"
+    end
+    if (r.interrupted or 0) > 0 then
+        return "inconclusive_interrupted"
+    end
+    if (r.refused or 0) > 0 or (r.drifted or 0) > 0 then
+        return "inconclusive_control"
+    end
+    if (r.timed_out or 0) > 0 then
+        return "inconclusive_timeout"
+    end
+    if r.blocked == verify.attempts and r.moved == 0 then
+        return "confirmed_blocked"
+    end
+    if r.moved == verify.attempts and r.blocked == 0 then
+        return "confirmed_passable"
+    end
+    if r.moved > 0 and r.blocked > 0 then
+        return "mixed"
+    end
+    return "inconclusive"
+end
+
+local function finish_edge_verify(final_status, reason)
+    local verify = edge_verify_state
+    if not verify then
+        return
+    end
+    auto_step.cancel_active_step(true)
+    local classification = classify_edge_verify_result(verify, final_status)
+    local runtime_added = false
+    local runtime_cleared = false
+    if classification == "confirmed_blocked" then
+        runtime_added = route_mgr.confirm_runtime_block_for_step(
+            verify.map_id,
+            verify.from_x,
+            verify.from_y,
+            verify.dir,
+            "verified_probe")
+    elseif classification == "confirmed_passable" then
+        runtime_cleared = route_mgr.clear_runtime_block_for_step(
+            verify.map_id,
+            verify.from_x,
+            verify.from_y,
+            verify.dir,
+            "verified_passable")
+    end
+    debug_tools.info(string.format(
+        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d classification=%s reason=%s runtime_added=%s runtime_cleared=%s",
+        verify.map_id,
+        verify.from_x,
+        verify.from_y,
+        verify.dir,
+        verify.dest_x,
+        verify.dest_y,
+        verify.attempts,
+        verify.results.moved,
+        verify.results.blocked,
+        verify.results.timed_out,
+        verify.results.refused,
+        verify.results.drifted,
+        verify.results.map_changed,
+        verify.results.interrupted,
+        classification,
+        tostring(reason or final_status or ""),
+        tostring(runtime_added),
+        tostring(runtime_cleared)))
+    edge_verify_state = nil
+end
+
+local function record_edge_verify_attempt(status, reason)
+    local verify = edge_verify_state
+    if not verify then
+        return
+    end
+    local _, px, py = nav.get_position()
+    verify.results[status] = (verify.results[status] or 0) + 1
+    debug_tools.info(string.format(
+        "EDGE_VERIFY_ATTEMPT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d status=%s final=(%d,%d) frames=%d reason=%s",
+        verify.map_id,
+        verify.from_x,
+        verify.from_y,
+        verify.dir,
+        verify.dest_x,
+        verify.dest_y,
+        verify.attempt,
+        verify.attempts,
+        tostring(status),
+        px or -1,
+        py or -1,
+        verify.frames or 0,
+        tostring(reason or "")))
+    auto_step.cancel_active_step(true)
+    if verify.attempt >= verify.attempts then
+        finish_edge_verify("complete", reason)
+        return
+    end
+    verify.phase = "between"
+    verify.frames = 0
+    verify.settle_frames = EDGE_VERIFY_BETWEEN_SETTLE_FRAMES
+end
+
+local function start_edge_verify_attempt()
+    local verify = edge_verify_state
+    if not verify then
+        return
+    end
+    local ok, teleport_reason = DW_QOL_STATE.perform_teleport_to(
+        verify.from_x,
+        verify.from_y,
+        nil,
+        {speak = false, check_npc = false, allow_edge_verify = true})
+    if not ok then
+        verify.results.refused = verify.results.refused + 1
+        finish_edge_verify("aborted", "teleport_failed:" .. tostring(teleport_reason))
+        return
+    end
+    snapshot.update()
+    objects.update_npcs()
+    local msg, start_report = log_move_report(verify.from_x, verify.from_y, verify.dir)
+    verify.attempt = verify.attempt + 1
+    verify.phase = "settle"
+    verify.frames = 0
+    verify.settle_frames = EDGE_VERIFY_SETTLE_FRAMES
+    verify.start_report = start_report
+    debug_tools.info(string.format(
+        "EDGE_VERIFY_ATTEMPT_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d preview=%s",
+        verify.map_id,
+        verify.from_x,
+        verify.from_y,
+        verify.dir,
+        verify.dest_x,
+        verify.dest_y,
+        verify.attempt,
+        verify.attempts,
+        tostring(msg or "")))
+end
+
+local function tick_edge_verify()
+    local verify = edge_verify_state
+    if not verify then
+        return
+    end
+    local reason = get_autowalk_unavailable_reason()
+    if reason then
+        verify.results.interrupted = verify.results.interrupted + 1
+        finish_edge_verify("interrupted", reason)
+        return
+    end
+    local map_id, px, py = nav.get_position()
+    if map_id ~= verify.map_id then
+        verify.results.map_changed = verify.results.map_changed + 1
+        finish_edge_verify("aborted", "map_changed")
+        return
+    end
+    if verify.phase == "arming" then
+        verify.settle_frames = (verify.settle_frames or 1) - 1
+        if verify.settle_frames <= 0 then
+            verify.phase = "between"
+        end
+        return
+    end
+    if verify.phase == "between" then
+        verify.settle_frames = (verify.settle_frames or 0) - 1
+        if verify.settle_frames > 0 then
+            return
+        end
+        start_edge_verify_attempt()
+        return
+    end
+    if verify.phase == "settle" then
+        verify.settle_frames = verify.settle_frames - 1
+        if verify.settle_frames <= 0 then
+            verify.phase = "running"
+            verify.frames = 0
+            if not auto_step.inject_step(verify.dir) then
+                record_edge_verify_attempt("refused", "inject_refused")
+            end
+        end
+        return
+    end
+    if verify.phase ~= "running" then
+        return
+    end
+    verify.frames = verify.frames + 1
+    if px == verify.dest_x and py == verify.dest_y then
+        record_edge_verify_attempt("moved", "position_changed")
+        return
+    end
+    if px ~= verify.from_x or py ~= verify.from_y then
+        record_edge_verify_attempt("drifted", "unexpected_position")
+        return
+    end
+    if verify.frames >= edge_probe_timeout_frames() then
+        record_edge_verify_attempt("timed_out", "timeout")
+    end
+end
+
 local function tick_edge_probe()
     local probe = edge_probe_state
     if not probe then
@@ -416,6 +657,14 @@ local function tick_edge_probe()
 end
 
 event_bus.subscribe("route_blocked", function(data)
+    local verify = edge_verify_state
+    if verify and data
+       and verify.phase == "running"
+       and data.from_x == verify.from_x
+       and data.from_y == verify.from_y
+       and data.dir == verify.dir then
+        record_edge_verify_attempt("blocked", "route_blocked")
+    end
     local probe = edge_probe_state
     if not probe or not data then
         return
@@ -595,7 +844,7 @@ local MER
 -- TITLE.stable below; K.TITLE_STABLE = 8 frames of stability after
 -- cursor_just_moved before announcing.
 
-local function get_autowalk_unavailable_reason()
+get_autowalk_unavailable_reason = function()
     if game_state.state ~= state.STATE_FIELD then
         return "Auto-walk is only available while walking on the field"
     end
@@ -3197,6 +3446,85 @@ debug_tools.register_command("probe_edge", function(arg)
     end
 end)
 
+debug_tools.register_command("probe_edge_verify", function(arg)
+    local _, px, py = nav.get_position()
+    local from_x, from_y, dir, attempts, explicit_origin = parse_edge_verify_arg(arg, px, py)
+    if not from_x then
+        debug_tools.error("probe_edge_verify usage: probe_edge_verify:DIR[,ATTEMPTS] or probe_edge_verify:X,Y,DIR[,ATTEMPTS]")
+        return
+    end
+    if edge_verify_state then
+        debug_tools.error("probe_edge_verify: verification is already active")
+        return
+    end
+    if edge_probe_state then
+        debug_tools.error("probe_edge_verify: wait for the active edge probe to finish")
+        return
+    end
+    if (from_x ~= px or from_y ~= py) and not explicit_origin then
+        debug_tools.error(string.format(
+            "probe_edge_verify: stand on (%d,%d) first; current position is (%d,%d)",
+            from_x, from_y, px, py))
+        return
+    end
+    if map_survey.is_active() then
+        debug_tools.error("probe_edge_verify: stop the active survey first")
+        return
+    end
+    if auto_step.is_route_active() then
+        debug_tools.error("probe_edge_verify: wait for the current auto-walk step/route to finish")
+        return
+    end
+    local reason = get_autowalk_unavailable_reason()
+    if reason then
+        debug_tools.error("probe_edge_verify refused: " .. reason)
+        return
+    end
+    local delta = DIR_TO_DELTA[dir]
+    edge_verify_state = {
+        map_id = snapshot.map_id,
+        from_x = from_x,
+        from_y = from_y,
+        dir = dir,
+        dest_x = from_x + delta.dx,
+        dest_y = from_y + delta.dy,
+        attempts = attempts,
+        attempt = 0,
+        phase = "arming",
+        frames = 0,
+        settle_frames = 1,
+        results = {
+            moved = 0,
+            blocked = 0,
+            timed_out = 0,
+            refused = 0,
+            drifted = 0,
+            map_changed = 0,
+            interrupted = 0,
+        },
+    }
+    debug_tools.info(string.format(
+        "EDGE_VERIFY_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d settle_frames=%d between_settle_frames=%d",
+        snapshot.map_id,
+        from_x,
+        from_y,
+        dir,
+        edge_verify_state.dest_x,
+        edge_verify_state.dest_y,
+        attempts,
+        EDGE_VERIFY_SETTLE_FRAMES,
+        EDGE_VERIFY_BETWEEN_SETTLE_FRAMES))
+    if explicit_origin and (from_x ~= px or from_y ~= py) then
+        debug_tools.info(string.format(
+            "EDGE_VERIFY_RELOCATE map=0x%02X current=(%d,%d) origin=(%d,%d)",
+            snapshot.map_id,
+            px or -1,
+            py or -1,
+            from_x,
+            from_y))
+    end
+end)
+
 debug_tools.register_command("stop_probe_edge", function()
     if not edge_probe_state then
         debug_tools.error("stop_probe_edge: no active probe")
@@ -3204,6 +3532,14 @@ debug_tools.register_command("stop_probe_edge", function()
     end
     auto_step.cancel_active_step(true)
     finish_edge_probe("cancelled", "manual_stop")
+end)
+
+debug_tools.register_command("stop_probe_edge_verify", function()
+    if not edge_verify_state then
+        debug_tools.error("stop_probe_edge_verify: no active verification")
+        return
+    end
+    finish_edge_verify("cancelled", "manual_stop")
 end)
 
 debug_tools.register_command("pathfind_to", function(arg)
@@ -3375,6 +3711,13 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
             tolk.output_interrupt("Teleport refused. Edge probe active")
         end
         return false, "edge probe active"
+    end
+    if edge_verify_state ~= nil and opts.allow_edge_verify ~= true then
+        debug_tools.error("teleport_to refused: edge verification active")
+        if opts.speak ~= false then
+            tolk.output_interrupt("Teleport refused. Edge verification active")
+        end
+        return false, "edge verification active"
     end
     if map_survey.is_active() then
         debug_tools.error("teleport_to refused: map survey active")
@@ -4367,7 +4710,8 @@ while true do
             end
         end
     end
-    tick_edge_probe()
+    checked_call("tick_edge_probe", tick_edge_probe)
+    checked_call("tick_edge_verify", tick_edge_verify)
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize

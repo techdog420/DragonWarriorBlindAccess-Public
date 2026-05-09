@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-08
+Updated: 2026-05-09
 
 ## Current Focus
 
@@ -121,6 +121,250 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   `submenu=SPELL`, and `speech_status` was ready with `error=none`.
 
 ## Current Baseline
+
+2026-05-08 Erdrick's Cave B1 first-floor cleanup in the worktree:
+- Dungeon/cave object browsing no longer accepts stale town NPC RAM. Live
+  proof after reload `LAUNCHER_PROBE: codex_dungeon_npc_fix` showed
+  `POSITION: map=0x1C(Erdrick's Cave B1) x=0 y=0`, with exactly two objects:
+  `Exit to World Map` at `(0,0)` and the old hard-coded
+  `Stairs Down to B2` at `(1,1)`. The NPC filter reported `No objects`.
+- Live stairway probes confirmed the cave entrance strip is walkable even
+  though the decoded tile type is 9 and the old generic boundary rule rejected
+  it: `(0,0)->RIGHT` moved to `(1,0)`, `(1,0)->DOWN` moved to `(1,1)`,
+  `(1,1)->UP` moved back to `(1,0)`, and `(1,0)->LEFT` moved back to `(0,0)`.
+  `map_reader.lua` now models `(0,0)` and `(1,0)` on map `0x1C` as scoped
+  passthrough cells and lets passthroughs override the generic interior
+  x/y-zero boundary in both direct tile checks and walkability snapshots.
+- Live validation after reload `LAUNCHER_PROBE: codex_cave_snapshot_patch`:
+  `pathfind_to:1,1` from `(0,0)` now returns `Path: 1 east, 1 south`, and
+  `report_survey_start` reports `targets=2`, `reachable_area=83`,
+  `open_exits=east`, and `status=viable`.
+- Survey battle-interruption safety is now implemented. If `battle_started`
+  fires during a survey, `map_survey.lua` cancels the active auto-walk route,
+  clears route context, logs `SURVEY_PAUSE reason=battle_started`, keeps the
+  interrupted target queued, and resumes it when `can_walk` becomes true again.
+  This prevents random encounters from becoming bogus `SURVEY_RESULT` failures
+  or blocked-tile candidates. If combat ends on a different map, the survey
+  aborts rather than continuing with contaminated context.
+- Targeted B1 surveys are clean enough to proceed. Starting surveys directly
+  from `(0,0)` hit the expected `low_exit_count` guardrail, so `(2,2)` is the
+  current interior survey seed: `report_survey_start` from there reports
+  `reachable_area=83` and `open_exit_count=4`. `survey_target:Exit` succeeded
+  for `Exit to World Map`. The earlier `survey_target:Stairs` success only
+  proved that the route could reach the old modeled coordinate, not that the
+  coordinate was correct: standing at `(1,1)` and selecting STAIRS produced
+  `'There are no stairs here.`
+- Erdrick B1/B2 stair coordinates are corrected in `objects.lua`. The ROM
+  stair-down table contains `1C 09 09`, and live proof from `(9,9)` selecting
+  STAIRS changed to `map=0x1D(Erdrick's Cave B2)` with landing `(8,9)`.
+  Returning from B2 `(8,9)` via STAIRS changed back to `map=0x1C` with landing
+  `(9,9)`. `Stairs Down to B2` is now `(9,9)` and `Stairs Up to B1` is now
+  `(8,9)`. Live reload proof `LAUNCHER_PROBE: codex_erdrick_stairs_fix` then
+  `current_object` at B1 `(9,9)` reported
+  `Stairs Down to B2: here (1 of 2) [player 9,9 obj 9,9]`.
+- The survey route briefly marked `(2,1)` from the south and `(1,2)` from the
+  east as blocked/noisy, but direct probes from `(2,2)` with `probe_edge:UP`
+  and `probe_edge:LEFT` both moved successfully, so do not promote those to
+  permanent map data. `RUNTIME_BLOCKS map=0x1C none`. Current live position
+  after the stair confirmation is `(9,9)` on B1.
+- Full B1 route passes exposed real directional maze seams, with no
+  `EVENT: battle` / `battle_started` log entries. Direct `probe_edge` checks
+  after clearing runtime blocks confirmed the pre-regression approaches:
+  `(3,3)` from north/south, `(4,3)` from north/south, `(2,4)` from east/west,
+  `(3,5)` from north, `(7,2)` from west, `(6,3)` from north, `(1,5)` from
+  north, `(6,6)` from west, `(5,7)` from north, `(8,8)` from north/west, and
+  `(8,9)` from west. `map_reader.lua` models them as directional-only blocks
+  for map `0x1C`.
+  Reload proofs: `LAUNCHER_PROBE: codex_b1_route_blocks`,
+  `codex_b1_more_seams`, `codex_b1_upper_seams`, `codex_b1_top_verticals`,
+  and `codex_b1_logpass_edges`.
+- A later B1 pass got worse after four newer one-probe additions and produced
+  many reroutes plus contaminated runtime blocks. Those newest additions are
+  rolled back for now: `(4,3)` from east, `(4,1)` from south, `(6,3)` from
+  west, and `(6,6)` from north. Route-only blocked observations now remain
+  seam-memory evidence and no longer promote into hard `runtime_blocked` map
+  facts. Use `probe_edge_verify:DIR[,N]` or
+  `probe_edge_verify:X,Y,DIR[,N]` before re-promoting any suspect B1 edge.
+  The verifier resets movement state between attempts and only reports
+  `confirmed_blocked` / `confirmed_passable` when every attempt agrees.
+  Static tests pass. The stale live Lua loop was relaunched during this check;
+  the current emulator is on the title screen (`map=0x00`) after
+  `LAUNCHER_PROBE: codex_relaunch_probe`, and the command-surface check from
+  title refused cleanly. A live field-edge verifier run is still needed after
+  restoring gameplay state.
+- Follow-up after manual reload: both B1 entrance/stairs routes can eventually
+  succeed, but the live log still shows engine-collision sounds as soft seam
+  observations. The latest clean route to stairs hit blocked-only route evidence
+  at `(2,1)` from west, `(2,3)` from west/north, `(6,3)` from west,
+  `(6,4)` from west, and `(6,6)` from north; it then recovered and reached
+  `(9,9)` with `RUNTIME_BLOCKS map=0x1C none`. Do not promote these from route
+  evidence alone.
+- `probe_edge_verify:X,Y,DIR,N` was adjusted so explicit-coordinate verifier
+  calls relocate to the origin themselves instead of requiring a separate
+  `teleport_to` command. `luac -p main.lua` and `git diff --check` pass.
+  Live verification is still blocked because the Lua command loop stalled after
+  `report_runtime_blocks` at frame `07620`: BizHawk remains responsive, but
+  `dw_debug.log` stops advancing and a queued
+  `launcher_probe:codex_probe_after_missing_cmd` remains in `dw_commands.txt`.
+  After a fresh manual reload/relaunch, test with single commands such as
+  `probe_edge_verify:6,5,DOWN,5`, `probe_edge_verify:5,4,RIGHT,5`, and
+  `probe_edge_verify:5,3,RIGHT,5`.
+- Latest B1 route validation: from entrance `(0,0)`, `pathfind_to:9,9`
+  planned `Path: 1 east, 2 south, 4 east, 2 south, 3 east, 2 south, 1 east,
+  3 south`; auto-walk to `Stairs Down to B2` reached `(9,9)` and ended with
+  `RUNTIME_BLOCKS map=0x1C none`. The route still produced a one-off blocked
+  observation at `(6,4)` from the west, but direct probe `(5,4)->RIGHT` moved
+  successfully, so do not promote it. Also keep `(5,1)` from south, `(2,1)`
+  from east/south/west, and `(2,3)` from north/west unpromoted; direct probes
+  moved through those logged approaches.
+- Latest diagnostic follow-up after manual reload: auto-walk from B1 entrance
+  to `Stairs Down to B2` reached `(9,9)` again, but produced six route-only
+  blocked auto-step events: `(2,1)` from west, `(2,3)` from west and north,
+  `(6,3)` from west, `(6,4)` from west, and `(6,6)` from north. Current-state
+  reports after a fresh `launcher_probe:codex_b1_after_reroutes` showed
+  `PATH_STATE target=nil map=0x1C runtime_count=0`,
+  `RUNTIME_BLOCKS map=0x1C none`, and
+  `SEAM_SUMMARY map=0x1C total=26 confirmed_blocked=0 noisy=0 blocked_only=6
+  passable_only=20`. This confirms the soft-seam gate is working: route-only
+  collisions are not contaminating hard runtime blockers.
+- The first live `probe_edge_verify:1,1,RIGHT,3` retest still wedged the Lua
+  command loop before any verifier lines reached `dw_debug.log`; a later
+  `report_position` remained queued in `dw_commands.txt`, and
+  `dw_script_error.log` had no fresh entry. `debug_tools.lua` now flushes the
+  `CMD:` marker immediately before and after command handlers, and
+  `main.lua` makes `probe_edge_verify` log-only, defers the first verifier
+  movement out of the command callback, and wraps `tick_edge_probe` /
+  `tick_edge_verify` in `checked_call` so future verifier failures leave either
+  `EDGE_VERIFY_*` evidence or a `dw_script_error.log` entry. Static validation:
+  `luac -p main.lua debug_tools.lua`, `lua test_route_manager.lua`,
+  `lua test_map_reader.lua`, `lua test_auto_step.lua`, and `git diff --check`
+  all pass.
+- Live reload note: after the verifier logging patch, `touch main.lua` plus
+  `launcher_probe:codex_verifier_patch_reload` successfully reloaded the
+  patched script and consumed the command at frame `00060`; `dw_commands.txt`
+  is empty and `dw_script_error.log` has no fresh entry. The active state was
+  `title`, so B1 edge verification still needs to wait until gameplay is back
+  on Erdrick's Cave B1.
+- At that point, the best next step was to run a single verifier such as
+  `probe_edge_verify:1,1,RIGHT,3` and wait for either `EDGE_VERIFY_RESULT` or a
+  fresh script-error entry. If that produces useful output, verify the
+  remaining soft B1 route-only edges before moving on to B2; otherwise debug
+  the verifier loop itself before trusting further probe data.
+- Follow-up verifier crash from the first B1 retry is fixed in the worktree:
+  `dw_script_error.log` reported
+  `tick_edge_verify: [string "main"]:582: attempt to call a nil value (global
+  'get_autowalk_unavailable_reason')`. Cause: `tick_edge_verify` is defined
+  before the local guard function, so Lua resolved it as a nil global. `main.lua`
+  now forward-declares `get_autowalk_unavailable_reason` before the verifier
+  helpers and assigns the existing guard body later. Validation passed:
+  `luac -p main.lua debug_tools.lua`, `lua test_route_manager.lua`,
+  `lua test_auto_step.lua`, and `git diff --check`. A reload probe attempted
+  after the patch timed out because the running script was already stopped by
+  the old crash; `dw_commands.txt` has been cleared. Manually reload/relaunch
+  before retrying `probe_edge_verify:1,1,RIGHT,3`.
+- Live verifier follow-up after manual reload: the script no longer crashed.
+  The first `probe_edge_verify:1,1,RIGHT,3` completed as `classification=mixed`
+  with `moved=1 blocked=2`, so it correctly avoided runtime promotion. A later
+  same-edge retry completed `confirmed_blocked` with `moved=0 blocked=3` and
+  `runtime_added=true`. Additional soft-edge checks produced:
+  `(1,3)->RIGHT` into `(2,3)` confirmed blocked 3/3 and added runtime,
+  `(2,2)->DOWN` into `(2,3)` mixed 1/2,
+  `(5,3)->RIGHT` into `(6,3)` confirmed passable 3/3,
+  `(5,4)->RIGHT` into `(6,4)` mixed 1/2, and
+  `(6,5)->DOWN` into `(6,6)` mixed 2/1. Current live state after summaries:
+  `POSITION map=0x1C x=6 y=5`, `RUNTIME_BLOCKS count=2`, with runtime
+  directional blocks only for `(2,1)` west and `(2,3)` west.
+- Worktree-only verifier hardening after that live pass: `main.lua` now raises
+  verifier post-teleport settle to 18 frames and adds a 30-frame inter-attempt
+  settle before the next teleport/attempt. Caveat: the attempted
+  `touch main.lua` reload did not actually restart the Lua script; later live
+  verifier logs still showed the old `settle_frames=8` format. Manually reload
+  before judging the new settle patch. A clean retest should first clear
+  runtime blocks, then verify the two current confirmed edges and the three
+  mixed edges again. The new `EDGE_VERIFY_START` line should include
+  `settle_frames=18 between_settle_frames=30`.
+- Latest B1 verifier pass after manual reload: the new settle patch is live;
+  `EDGE_VERIFY_START` now reports
+  `settle_frames=18 between_settle_frames=30`. Five-attempt verification
+  confirmed four west-approach engine seams on map `0x1C`: `(2,1)` west,
+  `(2,3)` west, `(6,4)` west, and `(8,6)` west. `map_reader.lua` now models
+  those as directional blocks and `test_map_reader.lua` asserts them while
+  keeping unconfirmed approaches open. Mixed/unpromoted edges remain
+  `(2,3)` north, `(6,3)` west, and `(6,6)` north. Runtime simulation with all
+  four confirmed blocks reached `Stairs Down to B2` at `(9,9)` and reduced the
+  route to one remaining blocked auto-step: `(2,2)->DOWN` into `(2,3)` from
+  the north. Fresh state marker `LAUNCHER_PROBE: codex_b1_final_state` then
+  reported `PATH_STATE target=nil map=0x1C runtime_count=4` and
+  `SEAM_SUMMARY map=0x1C total=27 confirmed_blocked=4 noisy=0 blocked_only=3
+  passable_only=20`. Validation passed:
+  `luac -p map_reader.lua test_map_reader.lua main.lua debug_tools.lua
+  route_manager.lua test_route_manager.lua test_auto_step.lua`,
+  `lua test_map_reader.lua`, `lua test_route_manager.lua`,
+  `lua test_auto_step.lua`, and `git diff --check`. A later
+  `touch main.lua` plus `launcher_probe:codex_b1_permanent_reload` was
+  consumed at frame `34260` without resetting the frame counter, so it did not
+  prove a source reload. Manually reload/relaunch before judging the permanent
+  `map_reader.lua` version with runtime blocks cleared.
+- Latest B1 route follow-up after the user reloaded the script: the permanent
+  four-seam patch is live and made the entrance-to-stairs route cleaner. The
+  route from `(0,0)` to `Stairs Down to B2` reached `(9,9)` with three
+  remaining route-only collisions: `(2,2)->DOWN` into `(2,3)` from the north,
+  `(5,3)->RIGHT` into `(6,3)` from the west, and `(7,5)->RIGHT` into `(8,5)`
+  from the west. Five-attempt verifier results: `(2,3)` north confirmed
+  blocked `5/5`, `(8,5)` west confirmed blocked `5/5`, `(6,6)` north confirmed
+  blocked `5/5` after the runtime-simulation retest exposed it again, and
+  `(6,3)` west stayed mixed with `moved=4 blocked=1`. `map_reader.lua` now
+  models only the three confirmed approaches and keeps `(6,3)` west unmodeled.
+  A runtime simulation with `(2,3)` north, `(8,5)` west, and `(6,6)` north
+  active reached `(9,9)` and only bumped the mixed `(6,3)` west edge. Fresh
+  summary at `FRAME:26700`: `PATH_STATE target=nil map=0x1C runtime_count=3`,
+  runtime blocks exactly those three verified approaches, and
+  `SEAM_SUMMARY map=0x1C total=22 confirmed_blocked=3 noisy=0 blocked_only=1
+  passable_only=18`. Validation passed again:
+  `luac -p map_reader.lua test_map_reader.lua main.lua debug_tools.lua
+  route_manager.lua test_route_manager.lua test_auto_step.lua`,
+  `lua test_map_reader.lua`, `lua test_route_manager.lua`,
+  `lua test_auto_step.lua`, and `git diff --check`.
+- Reverse-route log investigation found a real runtime-contamination bug plus a
+  stale-live-code issue. `route_manager.build_path_blocking()` used to pass a
+  live `runtime_blocked` direction table directly into the mutable pathfinding
+  overlay when no static entry already existed. A later reroute-only temporary
+  block could then mutate that verified runtime table and make one confirmed
+  approach look like several hard runtime directions. `route_manager.lua` now
+  copies runtime direction tables before merging them into the planner overlay,
+  and `test_route_manager.lua` has a regression
+  `reroute_temporary_block_does_not_mutate_verified_runtime_dirs`. Validation:
+  `luac -p route_manager.lua test_route_manager.lua map_reader.lua
+  test_map_reader.lua main.lua debug_tools.lua test_auto_step.lua`,
+  `lua test_route_manager.lua`, `lua test_map_reader.lua`,
+  `lua test_auto_step.lua`, and `git diff --check` passed.
+- Live reload attempt `touch main.lua` plus
+  `launcher_probe:codex_route_alias_fix` was consumed, but did not pick up the
+  latest `map_reader.lua` directional table. Evidence: after clearing B1
+  runtime/seam state and rerunning stairs-to-entrance from `(9,9)`, the route
+  reached `(0,0)` with `PATH_STATE target=nil map=0x1C runtime_count=0` and
+  `RUNTIME_BLOCKS map=0x1C none`, so the hard runtime contamination was gone.
+  However `inspect_move:4,4,DOWN` still reported `approach_blocked=false` for
+  `(4,5)` north, `inspect_move:5,2,UP` reported `approach_blocked=false` for
+  `(5,1)` south, and `inspect_move:9,8,LEFT` saw a directional entry at
+  `(8,8)` but not the newly patched east approach. That means the current
+  emulator script is still using older map-reader data; manually reload/relaunch
+  before judging the reverse route or promoting more B1 seams.
+- Post-reload reverse-route failure investigation from B1 stairs `(9,9)` to
+  entrance `(0,0)` found three more confirmed one-way engine blockers. The route
+  hard-stopped at `(9,9)->LEFT` into `(8,9)` from the east; verifier
+  `probe_edge_verify:9,9,LEFT,5` blocked `5/5`, so `(8,9).east` is now modeled.
+  Runtime simulation with that block exposed `(6,1)->LEFT` into `(5,1)` from
+  the east; `probe_edge_verify:6,1,LEFT,5` blocked `5/5`, so `(5,1).east` is
+  now modeled. A second simulation exposed `(5,5)->LEFT` into `(4,5)` from the
+  east; `probe_edge_verify:5,5,LEFT,5` blocked `5/5`, so `(4,5).east` is now
+  modeled. `test_map_reader.lua` keeps unverified approaches open for all three
+  cells. The current live session is stopped at B1 `(5,5)`, `PATH_STATE
+  target=nil`, command queue empty, with runtime blocks exactly `(8,9).east`,
+  `(5,1).east`, and `(4,5).east`. Because the earlier reload probe left
+  `map_reader.lua` stale, manually reload/relaunch before judging whether the
+  disk patch fully quiets the route; a full stairs-to-entrance run with all three
+  changes loaded from disk has not yet been completed.
 
 2026-05-08 overworld route-guidance QoL implemented in the worktree:
 - `overworld_routes.lua` adds manual route guidance for the first dungeon,
@@ -1433,20 +1677,25 @@ Important clues:
 ## Recommended Next Work
 
 Best next step:
-- Reload the Lua script and do a short hands-on BizHawk check of the safety
-  routes before resuming ordinary early-game playtesting. From near the cave,
-  selecting `Brecconary` or `Tantegel Castle` in Travel and pressing `R` should
-  start a reverse route at `North trail marker`, then guide through the ridge,
-  eastern lane, east choke, `Upper bridge lane`, `Bridge west bend`,
-  `Bridge lower west lane`, and `Bridge south bend`. Then check one bridge/waypoint progress
-  announcement, one long `auto_walk`, NPC arrival hold plus TALK, `Shift+V`
-  visited marking, `clear_visited`, filter cycling with `Q` / `Shift+J` /
-  `Shift+L`, and selected-object teleport with `Shift+Enter` plus at least one
-  `Shift+direction`.
-- After that, resume combat narration, shops/inns, item/spell flows, and any
-  menu/dialogue polish that appears during real play. If the status row speaks
-  again after dialogue, inspect fresh `UPPER_DIALOGUE_SUPPRESS_STATUS` /
-  `report_upper_dialogue_state` evidence before patching.
+- Manually reload or relaunch the Lua script so both the
+  `route_manager.lua` alias fix and the latest `map_reader.lua` B1
+  directional-block changes are truly live. Confirm with a quick static check:
+  after reload and after clearing runtime blocks, `inspect_move:4,4,DOWN`,
+  `inspect_move:5,2,UP`, `inspect_move:9,8,LEFT`, `inspect_move:9,9,LEFT`,
+  `inspect_move:6,1,LEFT`, and `inspect_move:5,5,LEFT` should show
+  `approach_blocked=true` for the patched approaches.
+- Then clear runtime/seam state and run the B1 stairs-to-entrance route from
+  `(9,9)` to `(0,0)`, followed by the entrance-to-stairs route from `(0,0)` to
+  `(9,9)`. Expected result: both routes reach their targets with
+  `RUNTIME_BLOCKS map=0x1C none`; any remaining bumps should be treated as
+  route-only seam evidence until a fresh verifier confirms them.
+- Do not promote `(6,3)` west from route-only evidence; its latest verifier was
+  mixed (`moved=4 blocked=1`). Use `probe_edge_verify:5,3,RIGHT,5` again only
+  if the permanent-model route still gets meaningfully stuck or noisy.
+- After B1 is quiet enough, take the B2 stairs and repeat the fresh-floor
+  pattern there: verify object list, choose an interior seed if the entry
+  corner trips `low_exit_count`, then run targeted surveys before any full
+  sweep.
 
 Suggested live check:
 - Use `./launch_dw.sh` for BizHawk by default. Use

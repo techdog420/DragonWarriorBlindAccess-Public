@@ -308,9 +308,12 @@ Emulator compatibility direction:
 - Manual/non-route blocked steps (`queued_route=false`) should remain seam
   diagnostics and should not be promoted into pathfinding runtime blockers.
   Manual walking into doors, NPC boxes, or odd seams can otherwise poison A*
-  for later autowalks on the same map. Runtime blocker promotion should come
-  from queued-route movement, seam-retry failure, survey/probe evidence, or
-  explicit debug commands.
+  for later autowalks on the same map. Route-timeout and seam-retry evidence
+  should stay in seam memory and can be used as soft same-session reroute
+  avoidance, but hard runtime blocker promotion should come from explicit
+  verifier/manual confirmation. When merging runtime blockers into a mutable
+  pathfinding overlay, copy direction tables first so temporary reroute blocks
+  cannot mutate the verified runtime table by aliasing.
 - Screenshots can be useful evidence for over-promoted directional blocks, but
   promote route changes only after live probes and route outcomes agree. In
   Brecconary, early `(8,5)->LEFT` moved evidence for `(7,5).east` was
@@ -375,6 +378,12 @@ Emulator compatibility direction:
   map signature. The signature should mask off NPC direction/frame bits and
   compare sprite/x/y coordinates, then hide NPCs on the destination map while
   RAM still matches the map just left.
+- Dungeon/cave maps should not parse the live NPC RAM table for object
+  browsing. That RAM can contain stale town/castle NPC bytes after map entry
+  and should not be force-accepted after retry windows. Keep live NPC objects
+  limited to the town/castle terrain context; dungeons/caves should expose
+  static travel, door, and treasure objects unless a future map proves an
+  actual NPC-like object source.
 - Selected-object teleport should avoid full object-list rebuilds on the hotkey
   path. Use direct live NPC RAM checks for "landing occupied" tests; a manual
   teleport retest found the apparent lost-keyboard state was actually a boxed-in
@@ -681,6 +690,16 @@ Durable model:
 - Classification flows through attempt classification, clean no-path clustering, retry decisions, and finalization
 - Run-end logic can retroactively classify isolated-start results
 - Route planning diagnostics flow from pathfinder through route manager into survey classification
+- Random encounters are not map evidence. On `battle_started`, the survey
+  pauses, cancels the active auto-walk route, clears route context, and keeps
+  the current queue index unchanged so the interrupted target is retried after
+  field movement is safe. If combat returns on a different map, abort rather
+  than resuming with contaminated context. Low HP remains a hard survey abort.
+- Fresh dungeon floors may start on a stair/entrance corner with only one open
+  exit. Treat `low_exit_count` from that tile as a survey-start guardrail, not
+  blocker evidence. Move to a nearby interior seed with multiple exits, run
+  targeted object surveys first, and use direct `probe_edge` checks before
+  promoting noisy survey reroute observations to permanent map data.
 
 Important maintenance risk:
 - Reachability/BFS-like logic exists in both `pathfinder.lua` and `map_survey.lua`
@@ -759,6 +778,32 @@ Tantegel/castle/interior maps:
 - Confirm live map id before permanent edits.
 - Historical notes sometimes label map `0x04` as Tantegel Castle and `0x05` as throne room/interior.
 - Recent map `0x05` blocked-cell observations looked transient and did not justify permanent map-data changes.
+
+Erdrick's Cave/map `0x1C`:
+- The B1 object baseline is static-only: `Exit to World Map` at `(0,0)` and
+  `Stairs Down to B2` at `(9,9)`. B2 returns via `Stairs Up to B1` at `(8,9)`.
+  Stale Brecconary NPCs after cave entry are RAM carryover, not real dungeon
+  objects.
+- Do not reuse the old `(1,1)` Erdrick B1 stair guess. Live STAIRS at `(1,1)`
+  produced `'There are no stairs here.` The ROM stair-down table contains
+  `1C 09 09`, and live STAIRS from `(9,9)` changed to map `0x1D` landing at
+  `(8,9)`. Live STAIRS from B2 `(8,9)` returned to B1 `(9,9)`.
+- B1 has confirmed directional maze seams, but route/probe evidence must be
+  consensus-checked before becoming map data. Keep the current truth in
+  `map_reader.lua` / `test_map_reader.lua`, keep all B1 seams directional-only,
+  and do not promote route-only timeout observations into hard runtime or
+  permanent map blockers. `(6,3)` from the west is currently mixed and should
+  stay unmodeled unless a future `probe_edge_verify` pass reaches consensus.
+  Reverse-route follow-up also confirmed the east approaches into `(8,9)`,
+  `(5,1)`, and `(4,5)` with `5/5` verifier blocks each; these belong in the
+  directional table, not as full-cell blockers.
+  If a touch-plus-probe reload is consumed but B1 still sounds noisy, confirm
+  the live static model with `inspect_move`; stale `map_reader.lua` has already
+  made patched approaches report `approach_blocked=false` until a manual
+  reload/relaunch.
+- The B1 entrance uses confirmed edge passthrough cells: `(0,0)` and `(1,0)`.
+  Live probes confirmed `(0,0)->RIGHT->(1,0)->DOWN->(1,1)` and the reverse
+  path. Keep `(0,1)` blocked until it has its own direct evidence.
 
 ## Memory Policy
 

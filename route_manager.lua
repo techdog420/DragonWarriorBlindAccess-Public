@@ -82,10 +82,10 @@ local REROUTE_FAILURE_LIMIT = 3
 local npc_freeze_active = false
 local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
 
--- Runtime engine-blocked cells discovered during auto-step timeouts.
--- These are the CONFIRMED route blockers that pathfinding should avoid.
--- Noisy seam observations live in a separate table below so mixed cells do
--- not get promoted into permanent-looking route facts too early.
+-- Runtime engine-blocked cells confirmed by explicit verification commands.
+-- Route-timeout observations live in seam_memory first; reroutes may use them
+-- as soft same-session evidence, but they do not become hard map facts until a
+-- verifier or manual confirmation promotes them.
 local runtime_blocked = {}
 local seam_memory = {}
 local seam_retry_state = nil
@@ -104,9 +104,21 @@ local TARGET_FACE_RELEASE_FRAMES = 2
 local SEAM_CONFIRM_BLOCK_THRESHOLD = 3
 local SEAM_BRUTE_FORCE_RETRY_LIMIT = 2
 local APPROACH_ORDER = {north = 1, south = 2, west = 3, east = 4}
+local RUNTIME_PROMOTION_SOURCES = {
+    verified_probe = true,
+    manual_confirmed = true,
+}
 
 local function cell_key(x, y)
     return x .. "," .. y
+end
+
+local function copy_direction_table(dirs)
+    local copy = {}
+    for d, v in pairs(dirs or {}) do
+        copy[d] = v
+    end
+    return copy
 end
 
 local function log_route_plan_timing(plan, elapsed_ms)
@@ -403,6 +415,22 @@ local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
     return add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
 end
 
+local function add_runtime_block_for_step(map_id, from_x, from_y, dir, source)
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    if not dest_x or not approach then
+        return false
+    end
+    return add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
+end
+
+local function clear_runtime_block_for_step(map_id, from_x, from_y, dir, source)
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    if not dest_x or not approach then
+        return false
+    end
+    return clear_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
+end
+
 local function get_seam_entry(map_id, x, y, approach, create)
     local k = cell_key(x, y)
     local map_entries = seam_memory[map_id]
@@ -475,12 +503,9 @@ local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
         entry.moved_count = entry.moved_count + 1
         entry.consecutive_moved = entry.consecutive_moved + 1
         entry.consecutive_blocked = 0
-        -- Only clear the runtime block when there is NO prior blocking evidence
-        -- for this approach direction. A single "moved" in a seam that has also
-        -- blocked (noisy classification) does NOT erase the runtime block — the
-        -- block stays until the seam is purely passable. This prevents one
-        -- state-contaminated probe from cancelling a seam-confirmed engine block
-        -- and allowing A* to plan routes through an unreliable cell.
+        -- Only opportunistically clear a runtime block when this approach has no
+        -- prior blocking evidence. Confirmed passable probe consensus uses the
+        -- explicit public clear helper below.
         if entry.blocked_count == 0 then
             clear_runtime_block_direction(map_id, dest_x, dest_y, approach, "successful traversal")
         end
@@ -494,8 +519,7 @@ local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
     if result == "blocked"
     and entry.moved_count == 0
     and entry.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD
-    and source ~= "manual_block"
-    and source ~= "npc_block" then
+    and RUNTIME_PROMOTION_SOURCES[tostring(source or "")] == true then
         add_runtime_block_direction(
             map_id,
             dest_x,
@@ -838,8 +862,9 @@ end
 --   {north=true, east=true, ...}   — directional engine wall (blocked from
 --                                    listed approach sides only)
 function M.build_path_blocking(map_id, opts)
+    opts = opts or {}
     local blocking = {}
-    if not (opts and opts.skip_npcs) then
+    if not opts.skip_npcs then
         local positions = objects.get_blocking_positions()
         for _, pos in ipairs(positions) do
             blocking[cell_key(pos.x, pos.y)] = "npc"
@@ -850,10 +875,23 @@ function M.build_path_blocking(map_id, opts)
     if static_dirs then
         for k, dirs in pairs(static_dirs) do
             if not blocking[k] then
-                -- Copy the direction table so runtime blocks can be merged in
-                local copy = {}
-                for d, v in pairs(dirs) do copy[d] = v end
-                blocking[k] = copy
+                -- Copy the direction table so runtime/temporary blocks can be merged in.
+                blocking[k] = copy_direction_table(dirs)
+            end
+        end
+    end
+    if opts.include_unconfirmed_seams then
+        for _, seam in ipairs(collect_seam_entries(map_id)) do
+            if seam.classification == "blocked_only"
+               and seam.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD then
+                local entry = blocking[seam.key]
+                if entry ~= "npc" then
+                    if type(entry) ~= "table" then
+                        entry = {}
+                        blocking[seam.key] = entry
+                    end
+                    entry[seam.approach] = true
+                end
             end
         end
     end
@@ -861,7 +899,10 @@ function M.build_path_blocking(map_id, opts)
     if runtime_blocked[map_id] then
         for k, dirs in pairs(runtime_blocked[map_id]) do
             if not blocking[k] then
-                blocking[k] = dirs
+                -- Keep the pathfinding overlay mutable without aliasing the
+                -- verified runtime table. Reroute-only temporary blocks are
+                -- added to this table during planning and must stay soft.
+                blocking[k] = copy_direction_table(dirs)
             elseif type(blocking[k]) == "table" then
                 -- Merge directions into existing directional entry
                 for d, v in pairs(dirs) do
@@ -949,6 +990,14 @@ function M.inject_runtime_block(map_id, x, y)
         "runtime block (manual): map=0x%02X cell=(%d,%d) all_dirs",
         map_id, x, y))
     return true
+end
+
+function M.confirm_runtime_block_for_step(map_id, from_x, from_y, dir, source)
+    return add_runtime_block_for_step(map_id, from_x, from_y, dir, source or "verified_probe")
+end
+
+function M.clear_runtime_block_for_step(map_id, from_x, from_y, dir, source)
+    return clear_runtime_block_for_step(map_id, from_x, from_y, dir, source or "verified_passable")
 end
 
 -- is_pathfinding_walkable(map_id, x, y): Static walkability plus runtime overlay.
@@ -2143,7 +2192,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
 
     local _, px, py = nav.get_position()
 
-    local blocking = M.build_path_blocking(map_id)
+    local blocking = M.build_path_blocking(map_id, {include_unconfirmed_seams = true})
     if seam_class ~= "confirmed_blocked" then
         add_temporary_directional_block(blocking, from_x, from_y, blocked_dir)
     end

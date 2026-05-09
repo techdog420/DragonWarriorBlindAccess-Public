@@ -782,6 +782,10 @@ local function process_command(cmd)
 
     local command_start_clock = os.clock()
     M.debug("CMD: " .. cmd)
+    -- Flush the command marker before running the handler. If a diagnostic
+    -- command wedges or crashes the script, the last attempted command is still
+    -- visible in dw_debug.log instead of being stranded in the in-memory buffer.
+    flush_log()
 
     if cmd == "log_state" then
         -- Write a full state snapshot to the log immediately.
@@ -1117,6 +1121,7 @@ local function process_command(cmd)
     if elapsed_ms >= 25 then
         M.info(string.format("CMD_TIMING command=%s ms=%.3f", cmd, elapsed_ms))
     end
+    flush_log()
 end
 
 -- check_commands(): Read dw_commands.txt, process each line, then clear the file.

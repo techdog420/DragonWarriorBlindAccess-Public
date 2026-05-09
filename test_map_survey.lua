@@ -333,6 +333,9 @@ local function make_env(options)
         set_route_active = function(value)
             route_active = value
         end,
+        route_active = function()
+            return route_active
+        end,
         set_position = function(map_id, x, y)
             nav_map_id = map_id or nav_map_id
             nav_x = x or nav_x
@@ -394,7 +397,58 @@ local function assert_before(haystack, first, second, message)
     end
 end
 
+local function count_occurrences(haystack, needle)
+    local count = 0
+    local pos = 1
+    while true do
+        local next_pos = string.find(haystack, needle, pos, true)
+        if not next_pos then
+            return count
+        end
+        count = count + 1
+        pos = next_pos + #needle
+    end
+end
+
 local tests = {}
+
+function tests.battle_started_pauses_survey_without_recording_failed_target()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    assert_equal(env.route_active(), true, "survey should begin by queueing an auto-walk route")
+
+    env.publish("battle_started")
+    assert_equal(env.route_active(), false, "battle pause should cancel the active route")
+
+    env.survey.tick(false)
+    local paused_logs = table.concat(env.logs, "\n")
+    assert_contains(paused_logs, "SURVEY_PAUSE run=1 map=0x08 reason=battle_started target_id=chest_1",
+        "battle start should be logged as a survey pause")
+    assert_not_contains(paused_logs, "SURVEY_RESULT", "battle pause should not finalize the target as a failure")
+    assert_equal(env.survey.get_last_run(0x08), nil, "paused survey should not produce a completed run")
+
+    env.survey.tick(true)
+    local resumed_logs = table.concat(env.logs, "\n")
+    assert_contains(resumed_logs, "SURVEY_RESUME run=1 map=0x08 reason=battle_started target_id=chest_1",
+        "survey should log resume after field movement becomes safe again")
+    assert_equal(count_occurrences(resumed_logs, "SURVEY_ATTEMPT run=1"), 2,
+        "the interrupted target should be attempted again after battle")
+    assert_equal(env.route_active(), true, "survey should queue the route again after resume")
+
+    env.publish("route_completed", {})
+    env.survey.tick(true)
+    local final_logs = table.concat(env.logs, "\n")
+    assert_contains(final_logs, "SURVEY_RESULT run=1 map=0x08 target_id=chest_1",
+        "resumed survey should still record the completed target")
+    assert_contains(final_logs, "movement_succeeded=true",
+        "resumed target should be recorded as successful")
+    assert_equal(count_occurrences(final_logs, "SURVEY_RESULT run=1"), 1,
+        "battle interruption should not create an extra failed result")
+
+    env.restore()
+end
 
 function tests.no_path_with_alternate_route_is_classified_as_wrong_adjacency()
     local env = make_env({

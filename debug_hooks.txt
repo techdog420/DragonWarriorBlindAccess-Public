@@ -135,6 +135,15 @@ EDGE PROBE COMMANDS
                            DIR: UP / DOWN / LEFT / RIGHT
   probe_edge:X,Y,DIR       Same, but specifies origin explicitly (player must be there)
   stop_probe_edge          Cancel an active probe
+  probe_edge_verify:DIR[,N]
+                           Repeat a probe from the same origin N times (default 5,
+                           max 15), resetting movement state between attempts.
+                           Logs EDGE_VERIFY_* and only reports confirmed_blocked
+                           or confirmed_passable when every attempt agrees.
+  probe_edge_verify:X,Y,DIR[,N]
+                           Same, but specifies origin explicitly. The verifier
+                           relocates to that origin and resets between attempts.
+  stop_probe_edge_verify   Cancel active repeated edge verification
 
 TELEPORT (DEBUG)
 ----------------

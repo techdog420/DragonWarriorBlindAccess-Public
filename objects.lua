@@ -181,10 +181,12 @@ local STAIRS = {
     {map = 0x04, x = 7, y = 7, name = "Stairs Up", dest = "Tantegel Castle Throne Room"},
 
     -- Erdrick's Cave B1 (0x1C)
-    {map = 0x1C, x = 1, y = 1, name = "Stairs Down", dest = "B2"},
+    -- Confirmed live: STAIRS at (9,9) moves to B2 (map 0x1D) at (8,9).
+    {map = 0x1C, x = 9, y = 9, name = "Stairs Down", dest = "B2"},
 
     -- Erdrick's Cave B2 (0x1D)
-    {map = 0x1D, x = 1, y = 1, name = "Stairs Up", dest = "B1"},
+    -- Confirmed live: STAIRS at (8,9) moves to B1 (map 0x1C) at (9,9).
+    {map = 0x1D, x = 8, y = 9, name = "Stairs Up", dest = "B1"},
 
     -- Swamp Cave (0x15)
     {map = 0x15, x = 0, y = 0, name = "Stairs Up", dest = "World Map"},
@@ -393,6 +395,14 @@ local function is_overworld_context()
     return get_terrain_offset() == 0x00
 end
 
+local function current_context_allows_npcs()
+    local terrain_offset = get_terrain_offset()
+    -- Dungeon/cave maps do not expose a usable NPC table. Town/castle NPC RAM
+    -- can linger after map entry, so keep live NPC parsing to interior maps
+    -- with the town/castle terrain set.
+    return terrain_offset == 0x10
+end
+
 local function periodic_npc_refresh_enabled()
     if emulator_compat.is_bizhawk ~= true then
         return true
@@ -515,10 +525,10 @@ end
 -- are clearly invalid (both zero, or both 31 which seems to mark
 -- unused slots).
 local function parse_npcs(map_id)
-    -- The overworld does not expose a live NPC table. After leaving an
-    -- interior map, the old town/castle NPC bytes can linger in RAM for a
-    -- while, so treat any world-map terrain context as having no NPC objects.
-    if is_overworld_context() then
+    -- Only town/castle interiors expose useful NPC RAM for object browsing.
+    -- Overworld and dungeon/cave contexts can retain stale NPC bytes from the
+    -- previous map, so never turn those bytes into current-map objects.
+    if not current_context_allows_npcs() then
         return {}
     end
 
@@ -1119,10 +1129,10 @@ end
 
 function M.on_map_change(map_id, opts)
     opts = opts or {}
-    local entering_overworld = get_terrain_offset() == 0x00
+    local allows_npcs = current_context_allows_npcs()
     local stale_npc_signature = nil
     local npc_refresh_checks = 0
-    if not entering_overworld then
+    if allows_npcs then
         local current_signature = read_npc_signature()
         local previous_map_id = opts.previous_map_id
         if previous_map_id == nil and current_map_id ~= map_id then
@@ -1136,8 +1146,8 @@ function M.on_map_change(map_id, opts)
         end
     end
     M.refresh(map_id, {
-        skip_npcs = not entering_overworld,
-        defer_npcs = not entering_overworld,
+        skip_npcs = true,
+        defer_npcs = allows_npcs,
         stale_npc_signature = stale_npc_signature,
         npc_refresh_checks = npc_refresh_checks,
     })

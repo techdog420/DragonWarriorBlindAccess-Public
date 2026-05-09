@@ -73,6 +73,61 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   Live reload/re-entry proof under BizHawk now speaks exactly
   `Spells. Heal. 4 MP`, then `report_menu_state` shows `submenu=SPELL` with
   speech ready and no backend error.
+- Erdrick's Cave B1 first-floor cleanup: after entering the cave, object
+  browsing initially showed Brecconary-style NPC ghosts. `objects.lua` now
+  limits live NPC parsing to town/castle terrain contexts, so dungeon/cave
+  maps keep only their static objects. Live reload proof on `map=0x1C` showed
+  exactly `Exit to World Map` at `(0,0)` and the old hard-coded
+  `Stairs Down to B2` at `(1,1)`; the NPC filter reported no objects. Probes
+  also confirmed the entrance path `(0,0)->(1,0)->(1,1)` and reverse, so
+  `map_reader.lua` models `(0,0)` and `(1,0)` as Erdrick B1 passthrough cells.
+  After reload, `pathfind_to:1,1` from the entrance returned
+  `Path: 1 east, 1 south`, and
+  `report_survey_start` was viable with `targets=2` and `reachable_area=83`.
+- Survey battle safety: autonomous surveys now pause on `battle_started`
+  instead of recording the interrupted target as a map failure. The active route
+  is cancelled, route context is cleared, and the same target is retried when
+  field movement is safe again. This should make dungeon surveys tolerable once
+  random encounters start appearing; low HP still aborts the survey before
+  resuming movement.
+- Erdrick's Cave B1 targeted survey pass: starting from the entrance `(0,0)`
+  correctly tripped the survey `low_exit_count` guardrail, so the first-floor
+  survey seed is `(2,2)`. From that seed, `Exit to World Map` surveyed
+  successfully. The earlier `Stairs Down to B2` survey only proved reachability
+  to the old modeled coordinate; using STAIRS at `(1,1)` produced
+  `'There are no stairs here.`
+- Erdrick's Cave stair-coordinate correction: the ROM stair-down table has
+  `1C 09 09`, and live STAIRS from B1 `(9,9)` moves to B2 `(8,9)`. Live STAIRS
+  from B2 `(8,9)` returns to B1 `(9,9)`. `objects.lua` now uses those paired
+  coordinates instead of the old `(1,1)` guesses. After reload,
+  `current_object` at B1 `(9,9)` reports `Stairs Down to B2: here`.
+- Route execution briefly produced noisy blocked-move observations at `(2,1)`
+  and `(1,2)`, but direct edge probes from `(2,2)` moved north and west
+  successfully; treat those as route timing noise, not map data.
+- Erdrick's Cave B1 route-block follow-up: a live route from the corrected B1
+  stairs `(9,9)` back to the entrance completed at `(0,0)` and had no battle
+  events in the log. It did expose real hidden maze seams around `(3,4)`.
+  Direct probes after clearing runtime blocks confirmed `(3,4)->UP`,
+  `(4,4)->UP`, `(3,4)->LEFT`, and `(3,4)->DOWN` block in-engine despite
+  walkable decoded tiles. `map_reader.lua` now models those as directional
+  blocks only; after reload, `pathfind_to:0,0` from `(9,9)` chose a route
+  around that central cluster.
+- Erdrick's Cave B1 entrance-to-stairs follow-up: another live pass exposed
+  additional real directional seams at `(2,4)` from the west, `(1,5)` from the
+  north, `(7,2)` from the west, `(6,3)` from the north, `(5,7)` from the
+  north, `(6,6)` from the west, `(8,8)` from the north/west, and `(8,9)` from
+  the west. After reload, auto-walk from entrance `(0,0)` to
+  `Stairs Down to B2` reached `(9,9)` and ended with no runtime blocks.
+  One-off route observations at `(6,4)` from the west were not promoted because
+  direct probes moved successfully. No battle or encounter markers appeared in
+  the latest B1 log.
+- Erdrick's Cave B1 probe-hardening follow-up: a later route got worse after
+  four newest one-probe additions and produced many reroutes plus contaminated
+  runtime blocks. Rolled back `(4,3)` from the east, `(4,1)` from the south,
+  `(6,3)` from the west, and `(6,6)` from the north until repeated
+  `probe_edge_verify` consensus reconfirms them. Route-only blocked
+  observations now stay as soft seam evidence instead of hard runtime map
+  blockers.
 
 ## Current Goal
 

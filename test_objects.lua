@@ -206,6 +206,72 @@ function tests.world_map_refresh_drops_stale_interior_npcs()
     env.restore()
 end
 
+function tests.dungeon_refresh_drops_stale_town_npcs()
+    local env = make_env({npc_count = 4})
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 5, 0x04, 0x00)
+    env.set_npc(1, 0x20 + 4, 0x08, 0x00)
+    env.set_npc(2, 0xC0 + 15, 0x18, 0x00)
+    env.set_npc(3, 0x60 + 25, 0x19, 0x00)
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 4, "town map should expose live NPC RAM")
+
+    env.set_position(0x1C, 0, 0)
+    env.set_terrain_offset(0x20)
+    env.objects.on_map_change(0x1C, {previous_map_id = 0x08})
+    env.objects.all_filter()
+    assert_equal(env.objects.get_count(), 2, "dungeon map should keep only static exit/stair objects")
+
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "dungeon NPC filter should not expose stale town NPCs")
+
+    for _ = 1, 100 do
+        env.objects.check_refresh(0x1C)
+    end
+    env.objects.all_filter()
+    assert_equal(env.objects.get_count(), 2, "dungeon map should not force-accept stale NPC RAM after retries")
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "dungeon NPC filter should stay empty after refresh checks")
+
+    env.restore()
+end
+
+function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
+    local env = make_env()
+
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x1C)
+    local b1_stair
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.type == env.objects.TYPE_STAIR then
+            b1_stair = obj
+            break
+        end
+    end
+    assert_equal(b1_stair ~= nil, true, "Erdrick B1 should expose a static stair object")
+    assert_equal(b1_stair.id, "stair_9_9", "Erdrick B1 stair id should match the live trigger")
+    assert_equal(b1_stair.x, 9, "Erdrick B1 stairs should be at the live-confirmed x coordinate")
+    assert_equal(b1_stair.y, 9, "Erdrick B1 stairs should be at the live-confirmed y coordinate")
+
+    env.objects.refresh(0x1D)
+    local b2_stair
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.type == env.objects.TYPE_STAIR then
+            b2_stair = obj
+            break
+        end
+    end
+    assert_equal(b2_stair ~= nil, true, "Erdrick B2 should expose a static stair object")
+    assert_equal(b2_stair.id, "stair_8_9", "Erdrick B2 stair id should match the live trigger")
+    assert_equal(b2_stair.x, 8, "Erdrick B2 stairs should be at the live-confirmed x coordinate")
+    assert_equal(b2_stair.y, 9, "Erdrick B2 stairs should be at the live-confirmed y coordinate")
+
+    env.restore()
+end
+
 function tests.terrain_flip_forces_refresh_even_when_map_id_sticks()
     local env = make_env()
 
