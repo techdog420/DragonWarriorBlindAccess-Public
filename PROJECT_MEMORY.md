@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-08
+Updated: 2026-05-09
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 
@@ -280,6 +280,12 @@ Emulator compatibility direction:
   object coordinates while preserving the encoded sprite/facing/movement bits;
   snapshotting the live slot position can hold the NPC where it wandered and
   leave the planned TALK tile empty.
+- Survey-safe autowalks are different from player-facing autowalks. They should
+  not perform post-arrival facing taps, target-NPC holds, or normal completion
+  speech, because that synthetic input can be read by the next survey attempt
+  as `live_input_interrupt` and create false `command_timing_or_state_issue`
+  failures. Keep this behavior scoped to `survey_safe`; normal player routes
+  should still face and hold NPCs after arrival.
 - Auto-step must stay disabled for an active field command menu until the
   session really closes. The cursor tile can blink or the cursor-hold timer can
   expire while the menu remains open; treating that as walkable can turn menu
@@ -565,6 +571,13 @@ Latest BizHawk default validation:
   movement-start release guards. Because a turn-in-place can trigger a very
   early subpixel change, `auto_step.lua` tracks the frame of the subpixel
   change and still schedules the re-press when no tile move follows.
+- Queued-route timing-suspect blocks should not become survey map candidates.
+  If a queued route needed a turn re-press, saw movement start, and then timed
+  out quickly, mark the block data `timing_suspect`, let `route_manager.lua`
+  direct-retry the same seam, and have `map_survey.lua` ignore that route block
+  for blocked-tile counting. If the direct retry lands exactly at the adjacent
+  goal, `route_manager.lua` must publish `route_completed`; otherwise surveys
+  can falsely report `route_inactive_without_completion`.
 - The Brecconary first-route `O`/`U` lag was mostly first-use map-grid/ROM-cache
   cost. Prewarming the current interior map grid during map-entry refresh moved
   that cost away from the first route, but later live castle play showed the
@@ -748,7 +761,11 @@ Durable facts:
 
 Brecconary/map `0x08`:
 - Broad blocker hunting can pause.
-- Latest broad surveys showed no strong blocker candidates; route-specific
+- Latest broad surveys showed no strong blocker candidates. The 2026-05-09
+  parked-NPC stress sequence from `(15,15)` has repeatedly ended with
+  `suspected_engine_blocked=0` and `RUNTIME_BLOCKS none` after separating
+  survey-safe post-arrival input, route-drift retry ordering, and
+  timing-suspect queued-route blocks from real map geometry. Route-specific
   live play can still promote narrow service-pocket traps when repeated route
   evidence is clean.
 - `Weapons Merchant` is the real Brecconary weapon/armor shop at `(5,4)`. The safe
@@ -758,7 +775,32 @@ Brecconary/map `0x08`:
   must stay in Brecconary passthrough data.
   Treat `(4,4)`, `(4,5)`, `(4,6)`, `(5,5)`, `(6,4)`, and `(6,5)` as
   pathfinder-forbidden service-pocket traps, and keep `(7,5).east` blocked so
-  A* does not try the false shortcut from `(8,5)`.
+  A* does not try the false shortcut from `(8,5)`. A 2026-05-09 verifier also
+  confirmed `(5,2)->DOWN` into `(5,3)` blocks 5/5 despite the decoded tile
+  looking open, so keep `(5,3).north` modeled as a directional block.
+- Survey blocker classification should not promote an orphaned route as engine
+  evidence when the final position is the same tile it suspected was blocked.
+  The 2026-05-09 Brecconary Old Man 1 report on `(20,14)` was this case:
+  `probe_edge_verify:19,14,RIGHT,5` later confirmed the edge passable 5/5.
+- Survey `route_drift_retry` events should retry the same target immediately
+  from the live drifted position. Appending the retry behind the remaining
+  queue can turn one auto-step overshoot into a cluster of bogus
+  `gated_or_isolated` failures from the drifted start tile.
+- Queued auto-step should not keep holding early subpixel twitches after a
+  timeout retry. If the retry press catches an already-moving step close to
+  tile completion, the old hold-through-grace behavior can commit an unwanted
+  extra tile before route settle catches it.
+- Queued auto-step should mark early turn re-press timeouts as timing-suspect
+  and direct-retry them rather than waiting for the full wall timeout or
+  counting them as survey blockers. A focused Brecconary exit target from
+  `(15,15)` reached `(1,15)` with `blocked_events=0` after this handling even
+  though the live log still showed multiple `AUTO_WALK_TIMING_RETRY` entries.
+- Queued-route completion must match the injected direction. If a queued step
+  says `left` but the engine lands south, cancel as `route_drift_off_path`
+  instead of publishing a false step completion. For survey-safe routes, keep
+  the long neutral settle around direction changes but skip it between
+  same-direction straight steps; the 2026-05-09 Brecconary Inn comparison
+  dropped `route_settle_catchup` to zero while still finishing at `(8,21)`.
 - Raw map block `0xF` is the town/castle large-tile counter trigger. Use
   `map_reader.get_raw_block_id()` / `is_large_tile()` for service-counter
   discovery instead of changing the existing pathfinding grid decoder.
@@ -769,6 +811,11 @@ Brecconary/map `0x08`:
   timeout. Brecconary `Merchant 4` at `(25,25)` is the tool shop. The
   live-confirmed TALK tile is `(24,25)`, facing east. These are direct counter
   interactions, not ordinary adjacent-NPC TALK targets.
+- Survey target copies must preserve service interaction metadata
+  (`service`, `interaction_x`, `interaction_y`, `interaction_face_dir`).
+  Dropping those fields makes surveys route to raw adjacent NPC cells while
+  manual Services autowalk correctly routes to counter stand tiles, producing
+  false no-path results for counter services such as the Brecconary inn.
 - Remaining broad failures are clean gated/isolated object regions.
 - Existing permanent Brecconary fixes in `map_reader.lua` should be preserved unless better evidence appears.
 - Treat remaining first-town service issues as counter/large-tile interaction
@@ -804,6 +851,13 @@ Erdrick's Cave/map `0x1C`:
 - The B1 entrance uses confirmed edge passthrough cells: `(0,0)` and `(1,0)`.
   Live probes confirmed `(0,0)->RIGHT->(1,0)->DOWN->(1,1)` and the reverse
   path. Keep `(0,1)` blocked until it has its own direct evidence.
+- BizHawk queued auto-walk can produce false "blocked" route events when the
+  movement subpixel byte twitches during engine settle or turn-in-place. Do not
+  treat those as geometry by default. `auto_step.lua` keeps queued-route input
+  held through early twitches with
+  `auto_step_route_early_release_grace_frames`, and route-timeout metadata lets
+  `route_manager.lua` direct-retry suspect movement-start timeouts before
+  accepting a silent alternate reroute.
 
 ## Memory Policy
 

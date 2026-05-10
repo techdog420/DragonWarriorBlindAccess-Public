@@ -122,6 +122,158 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
 
 ## Current Baseline
 
+2026-05-09 Brecconary autowalk stress survey:
+- User returned to Brecconary and stood at the town entrance. The entrance tile
+  `(0,15)` is a transition/isolated tile, and `(1,15)` still trips the survey
+  `low_exit_count` guardrail, so the stress survey was launched from the open
+  interior seed `(15,15)` with `survey_objects:park_npcs`.
+- Survey run `2` completed on map `0x08`: `targets=21`, `successes=7`,
+  `failures=14`, `gated_or_isolated=8`, `state_issues=6`,
+  `suspected_engine_blocked=0`, and `strong_reroute_candidates=0`.
+  Post-run checks showed `PATH_STATE target=nil map=0x08 runtime_count=0`,
+  `RUNTIME_BLOCKS map=0x08 none`, `SURVEY_STRONG_CANDIDATES map=0x08 none`,
+  and player position `(10,25)`.
+- The six `command_timing_or_state_issue` failures were traced to survey routes
+  performing normal post-arrival actions: `AUTO_WALK_FACE` and target-NPC hold
+  fired after a successful route, then the next survey target started on the
+  next frame and auto_step saw that synthetic facing input as
+  `live_input_interrupt`. This is autowalk orchestration noise, not map data.
+- `route_manager.lua` now treats `survey_safe` autowalks as silent
+  post-arrival routes: no target-facing input, no target NPC hold, and no
+  normal completion speech. Normal player autowalk still faces/holds/speaks
+  after arrival. Regression coverage was added in `test_route_manager.lua`.
+  Static checks passed: `lua test_route_manager.lua`, `lua test_auto_step.lua`,
+  `lua test_map_survey.lua`, and `git diff --check` (with the existing
+  `dw_access.ini` CRLF warning).
+- Fresh rerun after the survey-safe patch completed with `targets=21`,
+  `successes=12`, `failures=9`, `gated_or_isolated=7`,
+  `suspected_engine_blocked=2`, and `state_issues=0`. The two suspects split
+  cleanly under direct verifier:
+  `probe_edge_verify:5,2,DOWN,5` confirmed `(5,3).north` blocked 5/5, while
+  `probe_edge_verify:19,14,RIGHT,5` confirmed `(20,14).west` passable 5/5.
+  `map_reader.lua` now models Brecconary `(5,3).north`; after reload
+  `inspect_move:5,2,DOWN` reports `directional_blocked=true` and
+  `report_runtime_blocks:0x08` reports none.
+- `map_survey.lua` now downgrades orphaned-route blocker claims when the hero
+  actually lands on the suspected tile before `route_inactive_without_completion`.
+  That covers the false Old Man 1 `(20,14)` report without weakening real
+  `reroute_no_path` blocker evidence. Regression coverage was added in
+  `test_map_survey.lua`.
+- Follow-up survey after reload was materially contaminated by two
+  `route_drift_retry` events, not map geometry. The first was Old Man 1:
+  `(7,12)->UP` completed at `(7,11)`, then stale/continued movement put the
+  hero at `(7,10)` during route settle. The second was Person 4:
+  `(2,12)->DOWN` completed at `(2,13)`, then drifted to `(2,14)`. Because
+  route-drift retries were appended to the survey tail, seven later targets
+  were attempted from the stranded `(7,10)` start and became bogus
+  `gated_or_isolated` failures. Current run summary was therefore
+  `successes=13 failures=8`, but the `start=(7,10)` failure cluster should not
+  be interpreted as map data.
+- `map_survey.lua` now inserts `route_drift_retry` and
+  `timing_orphaned_route` retries immediately after the failed target instead
+  of appending them after the rest of the object queue. `auto_step.lua` also
+  avoids queued-route early-twitch holding after a timeout retry; this targets
+  the exact overshoot pattern where a retry press lands on the next tile within
+  8 frames and can commit one extra tile. Regression coverage was added in
+  `test_map_survey.lua` and `test_auto_step.lua`. Live reload proof:
+  `LAUNCHER_PROBE: codex_drift_retry_patch`, followed by
+  `POSITION: map=0x08(Brecconary) x=10 y=25` and
+  `RUNTIME_BLOCKS map=0x08 none`.
+- Fresh user-run parked-NPC survey from `(15,15)` completed as run `1` on
+  map `0x08`: `targets=21`, `successes=10`, `failures=11`,
+  `gated_or_isolated=9`, `state_issues=2`, and
+  `suspected_engine_blocked=0`. Follow-up live checks showed
+  `POSITION: map=0x08(Brecconary) x=10 y=25`,
+  `PATH_STATE target=nil map=0x08 runtime_count=0`, and
+  `RUNTIME_BLOCKS map=0x08 none`.
+- The two remaining state issues are still route timing/orchestration, not
+  map data. `Guard 2` briefly marked `(15,17).west` blocked, then immediately
+  brute-forced into `(15,17)`, so the harness downgraded it to
+  `command_timing_or_state_issue`. `Old Man 1` drifted off the queued route
+  from `(18,18)` to `(16,18)` during route settle, retried immediately, then
+  hit a target-NPC adjacency problem (`NO_PATH_STATIONARY_NPC`) rather than a
+  hidden wall. The one runtime reroute at `(9,15).west` was noisy and recovered;
+  no runtime blocks persisted.
+- Follow-up queued-route timing patch is live and validated. `auto_step.lua`
+  now keeps queued-route input held through early movement-subpixel twitches,
+  uses a shorter configured timeout after a turn re-press twitch, and marks
+  those reports as `timing_suspect` so survey does not promote them as map
+  candidates. `route_manager.lua` now publishes `route_completed` when a
+  seam-bruteforce retry lands exactly at the adjacent goal. Regression coverage
+  was added in `test_auto_step.lua`, `test_route_manager.lua`, and
+  `test_map_survey.lua`.
+- Live proof after reload `LAUNCHER_PROBE: codex_timing_ignore_reload`: from
+  Brecconary `(15,15)`, `survey_target:Exit,park_npcs` hit the same early
+  twitch/turn-repress path repeatedly, logged `SURVEY_TIMING_BLOCK_IGNORED`
+  plus `AUTO_WALK_TIMING_RETRY`, reached `(1,15)`, and recorded
+  `movement_succeeded=true`, `blocked_events=0`, `suspected_tiles=-`,
+  `failure_class=none`, `reason=route_completed`. Final checks showed
+  `RUNTIME_BLOCKS map=0x08 none` and `POSITION map=0x08 x=1 y=15`.
+- Latest user-run parked-NPC Brecconary survey from `(15,15)` is cleaner but
+  still not a map-data patch candidate. Run `1` on map `0x08` completed with
+  `targets=21`, `successes=13`, `failures=8`, `no_route=0`,
+  `gated_or_isolated=8`, `movement_failed=0`,
+  `suspected_engine_blocked=0`, `state_issues=0`, and
+  `adjacency_issues=0`. Failure starts were `(28,2)` for four targets
+  (`Guard`, `Merchant`, `Person`, `Weapons Merchant`), `(17,16)` for two
+  targets (`Old Man 2`, `Person 5`), `(1,2)` for `Inn`, and `(24,7)` for
+  `Woman 1`. Every failed `SURVEY_RESULT` had `blocked_events=0` and
+  `suspected_tiles=-`; follow-up reports showed
+  `SURVEY_STRONG_CANDIDATES map=0x08 none`,
+  `SURVEY_FINDINGS ... failed_targets=8 failure_starts=4
+  strong_reroute_candidates=0`, and `RUNTIME_BLOCKS map=0x08 none`. The log
+  did contain `118` `SURVEY_TIMING_BLOCK_IGNORED` /
+  `AUTO_WALK_TIMING_RETRY` pairs, so route timing remains noisy even though the
+  survey now classifies that noise without promoting false blockers.
+- Follow-up tuning attempt did not leave a new timing patch. Focused live
+  repro was `survey_target:Exit,park_npcs` from Brecconary `(15,15)`.
+  Extending queued-route early-twitch holding removed route-level timing
+  retries briefly, but chained extra tiles and caused `route_drift_off_path`
+  around `(7,15)`/`(7,17)`. Moving the first timing retry inside `auto_step`
+  kept queued-route state stuck long enough to become normal blocked events.
+  Narrowing the early-twitch grace and widening the turn-repress timeout still
+  produced the same every-other-tile `AUTO_WALK_TIMING_RETRY` pattern on the
+  westbound exit route. Those experimental changes were reverted. The useful
+  clue is that queued-route steps from even x-coordinates on the westbound
+  path often see `0x00->0x90` subpixel twitches and time out, while the direct
+  seam retry from the same tile succeeds quickly after a fresh inject. Next
+  timing work should investigate why queued-route retry state behaves
+  differently from `inject_step`/seam-bruteforce state, rather than only tuning
+  grace/timeout thresholds.
+- Survey/manual autowalk comparison found one real survey-data skew and one
+  remaining timing concern. Before the fix, manual Services autowalk to the
+  Brecconary `Inn` from `(15,15)` used the service counter target `(8,21)`,
+  queued `13` steps, hit one `AUTO_WALK_TIMING_RETRY`, and arrived with
+  `RUNTIME_BLOCKS map=0x08 none`; `survey_target:Inn` copied only
+  `id/name/type/x/y`, lost `interaction_x/y/face_dir`, and therefore tried raw
+  adjacent routing to the innkeeper at `(10,21)`, producing a false no-path.
+  `map_survey.copy_object()` now preserves `service`, `interaction_x`,
+  `interaction_y`, and `interaction_face_dir`, with regression coverage in
+  `test_map_survey.lua`. Live proof after reload
+  `LAUNCHER_PROBE: ab_service_copy_reload`: `survey_target:Inn` from
+  `(15,15)` now logs `mode=direct path_length=13`, succeeds at final `(8,21)`,
+  and reports `blocked_events=0`, `RUNTIME_BLOCKS map=0x08 none`. That fixed
+  route still logged five timing retries / five
+  `SURVEY_TIMING_BLOCK_IGNORED` entries and two `route_settle_catchup` lines,
+  so survey data is no longer losing the service target, but survey-safe
+  settle timing remains noisy and worth later tuning. A static code check also
+  confirmed survey-safe exits/stairs intentionally route adjacent while manual
+  `auto_walk` routes direct to walkable exits/stairs, so exit comparisons are
+  not apples-to-apples unless the goal mode is specified.
+- Catchup-noise follow-up kept the service-target fix and narrowed the survey
+  settle behavior. An abandoned branch that delayed queued-route re-press after
+  early movement twitches could finish at the wrong tile, so it was not kept.
+  `auto_step.lua` now cancels a queued route as `route_drift_off_path` if a
+  step lands somewhere other than the injected direction would allow, and
+  survey-safe routes now skip the long settle between same-direction straight
+  steps while retaining it for direction changes. Live reload
+  `LAUNCHER_PROBE: catchup_straight_settle_reload`; `survey_target:Inn` from
+  `(15,15)` succeeded at `(8,21)` with `blocked_events=0`,
+  `RUNTIME_BLOCKS map=0x08 none`, `route_settle_catchup=0`, and four
+  `AUTO_WALK_TIMING_RETRY` / `SURVEY_TIMING_BLOCK_IGNORED` pairs. That is an
+  improvement over the previous fixed-Inn proof's five retry pairs plus two
+  catchups, and it did not skew the route target or survey result.
+
 2026-05-08 Erdrick's Cave B1 first-floor cleanup in the worktree:
 - Dungeon/cave object browsing no longer accepts stale town NPC RAM. Live
   proof after reload `LAUNCHER_PROBE: codex_dungeon_npc_fix` showed
@@ -365,6 +517,136 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   `map_reader.lua` stale, manually reload/relaunch before judging whether the
   disk patch fully quiets the route; a full stairs-to-entrance run with all three
   changes loaded from disk has not yet been completed.
+- 2026-05-09 route-2 follow-up after the user drove the hero back toward the
+  B1 entrance: route 1 to `Stairs Down to B2` is clean enough for now, but the
+  return route stopped at `(4,6)->UP` into `(4,5)` from the south. A focused
+  verifier confirmed `(4,5).south` blocked `5/5`, and follow-up verifier runs
+  confirmed the same south-approach wall at `(1,5)`, `(2,5)`, and `(3,5)`.
+  `map_reader.lua` now models those four row-5 south approaches as directional
+  B1 blockers, and `test_map_reader.lua` asserts them while preserving other
+  approaches. Control check: `(4,2)->LEFT` into `(3,2)` moved `5/5`, so do not
+  promote that earlier repeated route-only noise. With the four confirmed
+  runtime blocks active in the stale live session, a short `auto_walk` tail
+  reached the entrance `(0,0)`. It logged noisy but passable brute-force bumps
+  at `(3,1).south`, `(2,1).south`, `(1,0).south`, and `(0,0).east`; do not
+  promote those from route-only evidence.
+- Validation for the row-5 B1 patch passed:
+  `luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`, and
+  `git diff --check`. Live caveat: `touch main.lua` plus
+  `launcher_probe:codex_b1_45_south_reload` proved the command loop was alive,
+  but after clearing runtime blocks, `inspect_move:4,6,UP` still reported
+  `approach_blocked=false`, so the running BizHawk Lua state had not picked up
+  the disk `map_reader.lua` change. Current live state after the route tail:
+  B1 `(0,0)`, no active path, runtime blocks exactly `(1,5).south`,
+  `(2,5).south`, `(3,5).south`, and `(4,5).south`. A real Lua reload/relaunch
+  is still needed before judging the permanent disk data without runtime help.
+- Later 2026-05-09 rerun after the user found the BizHawk Lua Console
+  auto-reload setting is not persistent across emulator exit and reran both
+  route directions: the fresh log started at `2026-05-09 10:29:39`, so the
+  row-5 disk patch was live. Route 1 from B1 entrance `(0,0)` to `Stairs Down
+  to B2` at `(9,9)` reached the target with only one reroute, `(5,3)->RIGHT`
+  into `(6,3)` from the west. Leave `(6,3).west` unmodeled because earlier
+  verifier evidence was mixed and this rerun was only a single route bounce.
+  The return route reached `(0,0)` but bounced heavily; post-run state was
+  `POSITION map=0x1C x=0 y=0`, `PATH_STATE target=nil runtime_count=0`, and
+  `RUNTIME_BLOCKS none`.
+- Focused verifier follow-up on the return-route bounce cluster confirmed seven
+  more B1 directional blockers with `probe_edge_verify` 5/5 blocked attempts:
+  `(9,5).south`, `(8,6).east`, `(7,3).south`, `(6,4).east`, `(8,2).south`,
+  `(7,3).east`, and `(4,3).east`. `map_reader.lua` now models those confirmed
+  directions and `test_map_reader.lua` asserts them. The top-row check
+  `probe_edge_verify:3,2,UP,5` was mixed (`moved=4 blocked=1`), so do not
+  promote `(3,1).south`; similarly, route-only noisy bumps such as
+  `(9,7).south`, `(9,6).south`, `(7,7).east`, `(7,6).south`, `(7,5).south`,
+  `(7,4).south`, `(7,1).east`, `(6,1).east`, `(4,2).east`, `(3,2).east`,
+  `(2,1).south`, `(1,0).south`, and `(0,0).east` still need verifier consensus
+  before permanent modeling.
+- Validation for the later return-route patch passed:
+  `luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`, and
+  `git diff --check`. Current live state after the verifier pass is B1 `(3,1)`,
+  no active path, and runtime blocks matching the newly confirmed directions:
+  `(8,2).south`, `(4,3).east`, `(7,3).east/south`, `(6,4).east`,
+  `(9,5).south`, and `(8,6).east`. A reload or relaunch will load the disk
+  model; if route tests again look stale, manually re-enable BizHawk Lua
+  Console auto reload before touching source files.
+- Follow-up manual pass later on 2026-05-09 looked much better. Starting from
+  the prior verifier position `(3,1)`, the route first returned to entrance
+  `(0,0)` with small top-left noise, then route 1 from entrance to `Stairs Down
+  to B2` queued 18 steps and reached `(9,9)` with only the known
+  `(6,3).west` route-only bounce. The return route to entrance also completed
+  and ended at `(0,0)` with no active path. It still logged noisy/passable
+  brute-force corrections at several previously noisy seams plus hard route
+  bounces at cells already covered by static or verifier runtime data, but no
+  new edge had verifier-grade evidence. Live caveat: `report_runtime_blocks`
+  after the pass still showed the six verifier runtime cells active
+  (`(8,2).south`, `(4,3).east`, `(7,3).east/south`, `(6,4).east`,
+  `(9,5).south`, `(8,6).east`), so this was a practical route-success check,
+  not a clean disk-only validation. For disk-only proof, reload/relaunch or
+  clear B1 runtime blocks before the next route pair.
+- Reloaded disk-only pass and focused verifier follow-up on the recurring
+  suspects clarified the remaining route bounces. After the clean route pair,
+  `POSITION` was B1 `(0,0)`, `PATH_STATE target=nil runtime_count=0`, and
+  `RUNTIME_BLOCKS map=0x1C none`, so the previous verifier runtime overlay was
+  not carrying the pass. The route still produced some temporary route bounces,
+  but focused `probe_edge_verify` split them cleanly. New confirmed blockers
+  now modeled in `map_reader.lua`: `(6,7).east` from
+  `probe_edge_verify:7,7,LEFT,5`, `(6,6).east` from
+  `probe_edge_verify:7,6,LEFT,5`, `(8,2).east` from
+  `probe_edge_verify:9,2,LEFT,5`, `(7,2).north` from
+  `probe_edge_verify:7,1,DOWN,5`, and `(2,1).south` from
+  `probe_edge_verify:2,2,UP,5`; all were `5/5` blocked. Do not model the mixed
+  results: `(6,3).west` was `moved=1 blocked=4`, `(5,5).east` was
+  `moved=4 blocked=1`, `(8,2).north` was `moved=1 blocked=4`, and
+  `(3,1).south` again was `moved=4 blocked=1`. Validation for this patch passed
+  `luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`, and
+  `git diff --check`. Current live state after verifier probes is B1 `(2,2)`,
+  no active path, with runtime blocks matching the five new disk entries; reload
+  before judging a fresh disk-only route pair.
+- Later route-2 geometry pass after those five entries were loaded from disk:
+  the log restarted at `2026-05-09 11:01:49`, proving a fresh script run. The
+  route returned from the prior verifier position to entrance, route 1 reached
+  `Stairs Down to B2` with the known `(6,3).west` mixed bounce, and route 2
+  eventually reached entrance `(0,0)` but detoured farther through the lower B1
+  rows. Post-route state before probes was clean: `POSITION` B1 `(0,0)`,
+  `PATH_STATE target=nil runtime_count=0`, and `RUNTIME_BLOCKS none`. Focused
+  verifier follow-up promoted three more real engine seams: `(5,7).south` from
+  `probe_edge_verify:5,8,UP,5`, `(5,7).west` from
+  `probe_edge_verify:4,7,RIGHT,5`, and `(2,1).east` from
+  `probe_edge_verify:3,1,LEFT,5`; all were `5/5` blocked and are now modeled in
+  `map_reader.lua`. Do not model the cleared suspects from this pass:
+  `(7,6).south` verified `moved=5 blocked=0`, `(6,8).east` was mixed
+  `moved=2 blocked=3`, `(6,8).south` was mixed `moved=4 blocked=1`,
+  `(9,1).south` verified `moved=5 blocked=0`, and `(5,5).east` verified
+  `moved=5 blocked=0`. Validation passed `luac -p map_reader.lua
+  test_map_reader.lua`, `lua test_map_reader.lua`, and `git diff --check`.
+  Current live state after verifier probes is B1 `(3,1)`, no active path, with
+  runtime blocks matching the three new disk directions; reload before judging
+  the next clean disk-only route pair.
+- 2026-05-09 silent-reroute/autowalk timing investigation: the noisy return
+  route was not only map geometry. Many queued-route blocks showed
+  `movement_started=true` from an early `$003D` subpixel twitch, then timed out;
+  the same edge either succeeded immediately through seam brute-force or should
+  have been direct-tested before allowing an alternate reroute. `auto_step.lua`
+  now keeps queued-route input held through early subpixel twitches
+  (`auto_step_route_early_release_grace_frames=6` in `dw_access.ini`) and adds
+  blocked-step metadata (`movement_started`, `movement_start_frame`,
+  retry/turn counts). `route_manager.lua` treats movement-start route timeouts
+  as suspect timing and tries the same seam with `AUTO_WALK_TIMING_RETRY`
+  before silently rerouting around it.
+  Validation passed `luac -p auto_step.lua route_manager.lua config.lua
+  test_auto_step.lua test_route_manager.lua`, `lua test_auto_step.lua`,
+  `lua test_route_manager.lua`, and `git diff --check` (only the known
+  `dw_access.ini` CRLF warning). Live reload proof:
+  `LAUNCHER_PROBE: codex_autowalk_timing_patch` at frame `00060`.
+  Clean live B1 retest from `(0,0)` with no runtime/seam state reached
+  `(9,9)`; early twitch holds turned the previous false blockers into normal
+  10-13 frame steps. The only blocked edge was `(5,3)->RIGHT` into `(6,3)`
+  from the west, which got the new `AUTO_WALK_TIMING_RETRY`, failed direct
+  retry, and then detoured without hard runtime contamination. Return route
+  from `(9,9)` to entrance then reached `(0,0)` cleanly with no blocked events.
+  Final state: `POSITION map=0x1C x=0 y=0`, `PATH_STATE target=nil
+  runtime_count=0`, `RUNTIME_BLOCKS none`, and seam memory was passable-only
+  except the still-unmodeled `(6,3).west` blocked-only route/seam evidence.
 
 2026-05-08 overworld route-guidance QoL implemented in the worktree:
 - `overworld_routes.lua` adds manual route guidance for the first dungeon,
@@ -1677,25 +1959,18 @@ Important clues:
 ## Recommended Next Work
 
 Best next step:
-- Manually reload or relaunch the Lua script so both the
-  `route_manager.lua` alias fix and the latest `map_reader.lua` B1
-  directional-block changes are truly live. Confirm with a quick static check:
-  after reload and after clearing runtime blocks, `inspect_move:4,4,DOWN`,
-  `inspect_move:5,2,UP`, `inspect_move:9,8,LEFT`, `inspect_move:9,9,LEFT`,
-  `inspect_move:6,1,LEFT`, and `inspect_move:5,5,LEFT` should show
-  `approach_blocked=true` for the patched approaches.
-- Then clear runtime/seam state and run the B1 stairs-to-entrance route from
-  `(9,9)` to `(0,0)`, followed by the entrance-to-stairs route from `(0,0)` to
-  `(9,9)`. Expected result: both routes reach their targets with
-  `RUNTIME_BLOCKS map=0x1C none`; any remaining bumps should be treated as
-  route-only seam evidence until a fresh verifier confirms them.
-- Do not promote `(6,3)` west from route-only evidence; its latest verifier was
-  mixed (`moved=4 blocked=1`). Use `probe_edge_verify:5,3,RIGHT,5` again only
-  if the permanent-model route still gets meaningfully stuck or noisy.
-- After B1 is quiet enough, take the B2 stairs and repeat the fresh-floor
-  pattern there: verify object list, choose an interior seed if the entry
-  corner trips `low_exit_count`, then run targeted surveys before any full
-  sweep.
+- Rerun the full Brecconary parked-NPC object survey from `(15,15)` as the next
+  confidence check. The narrow exit target now succeeds cleanly under the new
+  timing-suspect handling; a full survey will show whether the remaining
+  `Guard 2` / `Old Man 1` state issues are gone or need a separate route-settle
+  pass.
+- Do not promote new Brecconary map blockers from this run. If `(15,17).west`
+  or `(9,15).west` recurs during normal play, verify with
+  `probe_edge_verify` first; current evidence remains noisy/recovered.
+- B1 can then resume as the next dungeon/map stress target. Do not promote
+  `(6,3)` west from route-only evidence; its latest verifier was mixed. If B1
+  routes get meaningfully stuck again, use fresh `probe_edge_verify` consensus
+  before changing permanent map data.
 
 Suggested live check:
 - Use `./launch_dw.sh` for BizHawk by default. Use

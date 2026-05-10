@@ -1,11 +1,41 @@
 # Playtesting Notes
 
-Updated: 2026-05-08
+Updated: 2026-05-09
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Brecconary autowalk stress survey: from the town entrance, `(0,15)` proved to
+  be the isolated transition tile and `(1,15)` correctly hit the
+  `low_exit_count` survey-start guardrail, so the parked-NPC survey ran from
+  open tile `(15,15)`. It completed with `targets=21`, `successes=7`,
+  `gated_or_isolated=8`, `state_issues=6`, and zero suspected engine blockers.
+  Follow-up state showed `RUNTIME_BLOCKS map=0x08 none` and no strong survey
+  candidates. The state issues were false interruptions caused by normal
+  post-arrival `AUTO_WALK_FACE` / NPC-hold behavior between survey targets;
+  `survey_safe` autowalk now suppresses those actions while normal player
+  autowalk keeps them.
+- Fresh Brecconary rerun after that fix improved to `12` successes and `0`
+  state issues. The remaining two suspect blockers were checked directly:
+  `(5,2)->DOWN` into `(5,3)` is a real engine block and is now modeled as
+  `(5,3).north`; `(19,14)->RIGHT` into `(20,14)` is passable 5/5 and is now
+  covered by a survey-classifier guard for orphaned routes that actually landed
+  on the suspected tile.
+- Next Brecconary survey exposed route drift rather than new blockers. Two
+  queued routes overshot by one tile after timeout retry/settle handling, and
+  the old survey queue appended those retries after later targets. That made
+  several later targets fail from a stranded `(7,10)` start. The retry ordering
+  is now fixed so drift retries run immediately, and queued auto-step no longer
+  holds early subpixel twitches after a timeout retry.
+- Autostep timing follow-up: queued routes now keep holding through early
+  movement-subpixel twitches, but timing-suspect turn re-press twitches report
+  early to the route manager as direct retry opportunities instead of waiting
+  for a full wall timeout. Survey ignores those timing-suspect route blocks as
+  map candidates. Live Brecconary proof from `(15,15)` to the world-map exit:
+  the route reached `(1,15)` with `movement_succeeded=true`,
+  `blocked_events=0`, `suspected_engine_blocked=0`, and
+  `RUNTIME_BLOCKS map=0x08 none`.
 - BizHawk 2.11.1 side-install check: user transferred save data and reloaded
   in Brecconary under `/mnt/d/emulation/bizhawk-2.11.1/EmuHawk.exe`. Current
   live state reported `POSITION: map=0x08(Brecconary) x=0 y=15`; speech bridge
@@ -795,8 +825,17 @@ Evidence:
   order using horizontal scroll plus the active nametable bit. Retest after a
   manual script reload: TALK to the King should read the sentence in normal
   order, starting with `I am greatly pleased...`.
+- 2026-05-09 B1 auto-walk timing follow-up: the noisy return-route reroutes
+  were partly false route-executor timeouts caused by early movement-subpixel
+  twitches, not new engine blockers. After the autowalk timing patch, a clean
+  live B1 pass from entrance to stairs reached `(9,9)` with only the known
+  `(6,3).west` direct-retry failure, and the return route reached `(0,0)`
+  without blocked events or runtime blockers.
 
 Recommended next step:
+- The narrow Brecconary exit target is now clean after the autostep timing
+  patch. A full parked-NPC object survey from `(15,15)` is the next useful
+  confidence check before moving on to broader playtesting.
 - Continue real early-game playtesting from the BizHawk path. Good next targets
   are combat narration, shops/inns, item/spell flows, and any remaining menu or
   dialogue polish that shows up naturally. If the post-dialogue status row
