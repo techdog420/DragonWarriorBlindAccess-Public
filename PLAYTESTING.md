@@ -1,11 +1,66 @@
 # Playtesting Notes
 
-Updated: 2026-05-09
+Updated: 2026-05-10
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Erdrick's Cave B2 first chest-route pass: the new B2 map `0x1D` had no
+  permanent directional seam model, so auto-walk toward the chest at `(9,3)`
+  kept learning hidden one-way maze walls during play and eventually gave up.
+  Direct `probe_edge_verify` checks promoted only 5/5 blocked approaches:
+  `(5,3).south`, `(6,4).west`, `(6,5).east/south`, `(7,4).south`,
+  `(8,5).west/south`, `(9,5).south`, `(5,8).south/east`, and `(7,8).west`.
+  A second pass from the stairs/chest route added `(1,6).south` and
+  `(2,6).south`; route-observed `(4,7).west` and `(2,6).east` were directly
+  mixed, so they intentionally stay out of permanent data. A final focused
+  verifier pass added `(3,5).south`, `(4,4).east`, `(4,5).east`,
+  `(4,6).east/west`, `(5,7).north/east`, `(5,8).west`, `(7,8).east`, and
+  `(8,7).south`. A morning follow-up after a normal stairs-to-chest route
+  promoted `(6,5).west`, `(7,9).east`, `(7,7).north`, `(8,7).north`,
+  `(4,7).south`, and `(4,7).west` after fresh 5/5 verifiers. After enabling
+  BizHawk auto-reload and reloading for real, validation exposed `(8,7).east`
+  as blocked 5/5 and `(2,6).east` as blocked 10/10; both are now modeled. With
+  runtime blocks cleared, `debug_pathfind_adjacent:9,3` from B2 stairs now
+  reports no path to any chest-adjacent tile. Additional bridge spot checks
+  reconfirmed `(5,3).south`, `(6,4).west`, `(9,5).south`, and `(7,4).south`
+  blocked 10/10. A reverse pass from chest-side `(8,3)` toward stairs added
+  `(9,5).north`, `(7,4).north`, `(6,4).north`, `(5,3).east`, `(5,2).east`, and
+  `(5,1).east` after clean 10/10 direct verifiers. A later chest-to-stairs
+  route naturally failed at `(8,4)->DOWN` and `(8,4)->LEFT`; fresh direct
+  repeats promoted `(8,5).north` and `(7,4).east` after both verified blocked
+  15/15. Walkthrough context confirmed B2 should be a normal loop to the tablet
+  rather than a special-gated puzzle. A later route-shaped raw pass and fresh
+  `probe_edge_verify:8,9,LEFT,15` restored `(7,9).east` after 15/15 blocked
+  evidence; the earlier raw crossing evidence was timing-confounded. A
+  walkthrough-guided left-edge pass found the missing route shape: the intended
+  loop uses B2 edge passthrough cells `(0,4)` through `(0,7)`, then returns into
+  the interior. `(0,8)`, `(0,9)`, and `(0,3)` were blocked or mixed and remain
+  unmodeled. That pass also promoted `(1,3).south`, `(2,3).south`, and
+  `(4,3).west` after clean 5/5 verifiers. A follow-up stairs-to-chest reroute
+  got deeper, then exposed an upper-left choke. Newly modeled route blockers
+  are `(1,5).west`, `(4,4).west`, `(4,3).north`, `(5,2).west`,
+  `(4,1).south`, `(3,1).south`, `(3,5).north/west`, `(2,3).east`,
+  `(2,1).south`, and `(1,1).south`; `(1,1).south` also verified blocked 15/15
+  directly. The graph then needed one more narrow edge opening:
+  `(1,2)->LEFT` moved into `(0,2)` 15/15, and forced-origin `(0,2)->UP` moved
+  into `(0,1)`. The next autowalk reached `(0,1)` and failed into `(1,1)`;
+  `(0,1)->RIGHT` verified blocked 15/15. Follow-up graph checks and live probes
+  proved the top-edge continuation: `(0,1)->UP` into `(0,0)` passed 15/15,
+  probes moved right through `(1,0)`..`(6,0)`, row-1 downward entries from
+  x=1..5 blocked, and `(6,0)->DOWN` moved into `(6,1)`. Static tests pass, the
+  running script reports `(0,0)` and `(6,0)` as `reason=passthrough`, and
+  `debug_pathfind_adjacent:9,3` from stairs `(8,9)` chooses chest-adjacent
+  `(8,3)` with a 42-step route and `Face east`. Live auto-walk is now
+  two-way playable: stairs-to-chest reached the chest after one reroute bounce
+  near `(7,2)`, and chest-to-stairs bounced through several return-trip dead
+  branches before reaching B2 stairs `(8,9)`. Runtime blocks cleared afterward,
+  leaving `RUNTIME_BLOCKS map=0x1D none`. The B2 maze is done enough for now:
+  avoid spending more time perfecting optional return-trip bounces unless
+  normal gameplay exposes a fresh blocker. Next preferred playtesting focus is
+  away from pathfinding, likely combat dialogue tuning while exiting the
+  dungeon.
 - Brecconary autowalk stress survey: from the town entrance, `(0,15)` proved to
   be the isolated transition tile and `(1,15)` correctly hit the
   `low_exit_count` survey-start guardrail, so the parked-NPC survey ran from

@@ -174,6 +174,13 @@ When debugging pathfinding:
 ## Rules for map-decoding work
 
 When working on unstarted or partially decoded maps:
+- Before starting a new map or major new floor, look up external map or
+  walkthrough guidance for intended layout, route shape, relevant objects, and
+  special conditions such as required light/items. Prefer an actual visual or
+  decoded map image when available, then translate its useful route/object
+  clues into text notes in the handoff. Treat guide data as orientation, not
+  proof; still verify movement live before changing permanent `map_reader.lua`
+  data.
 - Prefer tooling and automation that scale across many maps
 - Improve survey, sweep, export, reporting, and retry workflows when possible
 - Favor structured logging that an AI agent can analyze repeatedly

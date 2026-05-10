@@ -432,6 +432,32 @@ local MAP_PASSTHROUGH_CELLS = {
         ["0,0"] = true,
         ["1,0"] = true,
     },
+
+    -- Map 0x1D: Erdrick's Cave B2 left-edge loop.
+    -- The generic dungeon edge rule marks x=0 cells as boundaries, but live
+    -- route-shaped probes on 2026-05-10 confirmed the intended B2 loop crosses
+    -- from (1,7) into (0,7), walks north through (0,6)/(0,5)/(0,4), then
+    -- returns east to (1,4). A later reroute proved the upper continuation:
+    -- (1,2)->LEFT moved into (0,2) 15/15, then a forced-origin probe from
+    -- (0,2)->UP moved into (0,1). A later route-shaped probe sequence proved
+    -- the top edge continues from (0,1)->UP through (0,0)..(6,0), then drops
+    -- into (6,1). Adjacent edge cells such as (0,8), (0,9), and (0,3) stayed
+    -- blocked or mixed, so keep this route strip narrow.
+    [0x1D] = {
+        ["0,0"] = true,
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["0,7"] = true,
+        ["1,0"] = true,
+        ["2,0"] = true,
+        ["3,0"] = true,
+        ["4,0"] = true,
+        ["5,0"] = true,
+        ["6,0"] = true,
+    },
 }
 
 -- ============================================================
@@ -1253,6 +1279,47 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["5,7"] = {north = true, south = true, west = true}, -- north/south/west approaches blocked 5/5
         ["8,8"] = {west = true, north = true, east = true}, -- west/north/east approaches blocked
         ["8,9"] = {west = true, east = true},  -- west/east approaches blocked 5/5
+    },
+
+    -- Map 0x1D: Erdrick's Cave B2
+    --
+    -- 2026-05-10 first chest-route pass. B2 had no permanent seam model, so
+    -- auto-walk kept rediscovering hidden one-way maze walls while routing
+    -- toward the chest at (9,3). Only direct probe_edge_verify 5/5 blocked
+    -- consensus is promoted here; mixed first-pass results stayed runtime-only
+    -- until a later direct verifier pass confirmed them cleanly. Later natural
+    -- route failures promoted repeated queued-route plus seam-retry blockers
+    -- when the graph also identified the missing passthrough route.
+    [0x1D] = {
+        ["1,1"] = {north = true, south = true, west = true}, -- north/west blocked after top-edge route; south blocked 15/15
+        ["2,1"] = {north = true, south = true}, -- north blocked from (2,0); south route-blocked 4/4
+        ["3,1"] = {north = true, south = true}, -- north blocked from (3,0); south route-blocked 4/4
+        ["4,1"] = {north = true, south = true}, -- north blocked from (4,0); south route-blocked 4/4
+        ["1,3"] = {south = true}, -- (1,4)->UP blocked 5/5 after left-edge route opened
+        ["2,3"] = {south = true, east = true}, -- south 5/5; (3,3)->LEFT route-blocked 2/2
+        ["4,3"] = {west = true, north = true}, -- west 5/5; (4,2)->DOWN route-blocked 4/4
+        ["4,4"] = {east = true, west = true}, -- east 5/5; (3,4)->RIGHT route-blocked 4/4
+        ["5,1"] = {north = true, east = true}, -- north blocked from (5,0); reverse route (6,1)->LEFT blocked 10/10
+        ["5,2"] = {east = true, west = true}, -- east 10/10; (4,2)->RIGHT route-blocked 4/4
+        ["5,3"] = {south = true, east = true}, -- (5,4)->UP blocked 5/5; reverse route (6,3)->LEFT blocked 10/10
+        ["3,5"] = {south = true, north = true, west = true}, -- south 5/5; north/west route-blocked 4/4
+        ["4,5"] = {east = true}, -- (5,5)->LEFT blocked 5/5
+        ["1,5"] = {west = true}, -- (0,5)->RIGHT route-blocked 2/2 after left-edge loop
+        ["6,4"] = {west = true, north = true}, -- (5,4)->RIGHT blocked 5/5; reverse route (6,3)->DOWN blocked 10/10
+        ["6,5"] = {east = true, south = true, west = true}, -- (7,5)->LEFT, (6,6)->UP, and (5,5)->RIGHT blocked 5/5
+        ["4,6"] = {east = true, west = true}, -- (5,6)->LEFT and (3,6)->RIGHT blocked 5/5
+        ["4,7"] = {south = true, west = true}, -- (4,8)->UP and (3,7)->RIGHT blocked 5/5 after fresh recheck
+        ["5,7"] = {north = true, east = true}, -- (5,6)->DOWN and (6,7)->LEFT blocked 5/5
+        ["7,7"] = {north = true}, -- (7,6)->DOWN blocked 5/5
+        ["7,4"] = {south = true, north = true, east = true}, -- (7,5)->UP, (7,3)->DOWN, and (8,4)->LEFT blocked after verifier consensus
+        ["8,5"] = {west = true, south = true, north = true}, -- (7,5)->RIGHT, (8,6)->UP, and (8,4)->DOWN blocked after verifier consensus
+        ["9,5"] = {south = true, north = true}, -- (9,6)->UP raw-hold blocked; reverse route (9,4)->DOWN blocked 10/10
+        ["1,6"] = {south = true}, -- (1,7)->UP blocked 5/5
+        ["2,6"] = {south = true, east = true}, -- (2,7)->UP blocked 5/5; (3,6)->LEFT blocked 10/10 after real reload
+        ["8,7"] = {south = true, north = true, east = true}, -- (8,8)->UP, (8,6)->DOWN, and (9,7)->LEFT blocked 5/5
+        ["5,8"] = {south = true, east = true, west = true}, -- (5,9)->UP, (6,8)->LEFT, and (4,8)->RIGHT blocked 5/5
+        ["7,8"] = {west = true, east = true}, -- (6,8)->RIGHT and (8,8)->LEFT blocked 5/5
+        ["7,9"] = {east = true}, -- (8,9)->LEFT blocked by route-shaped raw walk and fresh 15/15 verifier
     },
 }
 

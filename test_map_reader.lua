@@ -687,6 +687,66 @@ function tests.erdricks_cave_b1_entrance_passthrough_overrides_edge_boundary()
     env.restore()
 end
 
+function tests.erdricks_cave_b2_left_edge_loop_passthrough_overrides_boundary()
+    local base = 0x1D * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,      -- CPU $8000 -> file offset $0010
+            [base + 1] = 0x80,
+            [base + 2] = 9,     -- width 10
+            [base + 3] = 9,     -- height 10
+            [base + 4] = 0,
+            [0x10] = 0xAF, [0x11] = 0xAF, [0x12] = 0xAF,
+            [0x13] = 0xAF, [0x14] = 0xAF, [0x15] = 0xAF,
+            [0x16] = 0xA3,      -- 100 type-A cave-floor cells
+        },
+        memory_bytes = {
+            [0] = 0x20, -- TERRAIN_OFFSET stubbed to 0 in make_env()
+        },
+    })
+
+    for x = 0, 6 do
+        local details = env.map_reader.get_walkability_details(0x1D, x, 0)
+        assert_equal(details.base_walkable, true, "Erdrick B2 top-edge route cell should be passable")
+        assert_equal(details.reason, "passthrough", "Erdrick B2 top-edge route cell should override boundary")
+    end
+
+    for _, y in ipairs({1, 2, 4, 5, 6, 7}) do
+        local details = env.map_reader.get_walkability_details(0x1D, 0, y)
+        assert_equal(details.base_walkable, true, "Erdrick B2 left-edge route cell should be passable")
+        assert_equal(details.reason, "passthrough", "Erdrick B2 left-edge route cell should override boundary")
+    end
+
+    local unconfirmed_top_edge = env.map_reader.get_walkability_details(0x1D, 7, 0)
+    assert_equal(unconfirmed_top_edge.base_walkable, false, "unconfirmed Erdrick B2 top edge past x=6 should stay unmodeled")
+    assert_equal(unconfirmed_top_edge.reason, "engine_boundary", "unconfirmed Erdrick B2 top edge should keep boundary reason")
+
+    local south_pocket = env.map_reader.get_walkability_details(0x1D, 0, 9)
+    assert_equal(south_pocket.base_walkable, false, "mixed Erdrick B2 (0,9) edge pocket should stay unmodeled")
+    assert_equal(south_pocket.reason, "engine_boundary", "mixed Erdrick B2 (0,9) should keep boundary reason")
+
+    local north_wall = env.map_reader.get_walkability_details(0x1D, 0, 3)
+    assert_equal(north_wall.base_walkable, false, "blocked Erdrick B2 (0,3) edge should stay unmodeled")
+    assert_equal(north_wall.reason, "engine_boundary", "blocked Erdrick B2 (0,3) should keep boundary reason")
+
+    local blocked_gap = env.map_reader.get_walkability_details(0x1D, 0, 8)
+    assert_equal(blocked_gap.base_walkable, false, "blocked Erdrick B2 (0,8) edge should stay unmodeled")
+    assert_equal(blocked_gap.reason, "engine_boundary", "blocked Erdrick B2 (0,8) should keep boundary reason")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x1D)
+    assert_equal(snapshot[0][0], true, "walkability snapshot should include B2 upper-left corner route")
+    assert_equal(snapshot[0][6], true, "walkability snapshot should include B2 top-edge route through x=6")
+    assert_equal(snapshot[0][7], false, "walkability snapshot should keep unconfirmed B2 top-edge x=7 blocked")
+    assert_equal(snapshot[1][0], true, "walkability snapshot should include B2 upper-left route y=1")
+    assert_equal(snapshot[2][0], true, "walkability snapshot should include B2 upper-left route y=2")
+    assert_equal(snapshot[4][0], true, "walkability snapshot should include B2 left-edge route y=4")
+    assert_equal(snapshot[7][0], true, "walkability snapshot should include B2 left-edge route y=7")
+    assert_equal(snapshot[8][0], false, "walkability snapshot should keep B2 left-edge gap y=8 blocked")
+    assert_equal(snapshot[9][0], false, "walkability snapshot should keep mixed B2 left-edge pocket y=9 blocked")
+
+    env.restore()
+end
+
 function tests.erdricks_cave_b1_stair_to_entrance_seams_are_directional()
     local env = make_env()
 
@@ -764,6 +824,94 @@ function tests.erdricks_cave_b1_stair_to_entrance_seams_are_directional()
     assert_equal(dirs["8,9"].east, true, "Erdrick B1 (8,9) should block entry from the east after 5/5 verifier consensus")
     assert_equal(dirs["8,9"].north, nil, "Erdrick B1 (8,9) should keep unconfirmed approaches open")
     assert_equal(dirs["8,9"].south, nil, "Erdrick B1 (8,9) should keep unconfirmed approaches open")
+
+    env.restore()
+end
+
+function tests.erdricks_cave_b2_chest_route_seams_are_directional()
+    local env = make_env()
+
+    local dirs = env.map_reader.get_directional_blocks(0x1D)
+    assert_equal(dirs["1,1"].south, true, "Erdrick B2 (1,1) should block entry from the south after 15/15 verifier consensus")
+    assert_equal(dirs["1,1"].west, true, "Erdrick B2 (1,1) should block entry from the west after 15/15 verifier consensus")
+    assert_equal(dirs["1,1"].north, true, "Erdrick B2 (1,1) should block entry from the north after top-edge probe")
+    assert_equal(dirs["1,1"].east, nil, "Erdrick B2 (1,1) should keep unconfirmed east approach open")
+    assert_equal(dirs["2,1"].south, true, "Erdrick B2 (2,1) should block entry from the south after repeated route evidence")
+    assert_equal(dirs["2,1"].north, true, "Erdrick B2 (2,1) should block entry from the north after top-edge probe")
+    assert_equal(dirs["3,1"].south, true, "Erdrick B2 (3,1) should block entry from the south after repeated route evidence")
+    assert_equal(dirs["3,1"].north, true, "Erdrick B2 (3,1) should block entry from the north after top-edge probe")
+    assert_equal(dirs["4,1"].south, true, "Erdrick B2 (4,1) should block entry from the south after repeated route evidence")
+    assert_equal(dirs["4,1"].north, true, "Erdrick B2 (4,1) should block entry from the north after top-edge probe")
+    assert_equal(dirs["1,3"].south, true, "Erdrick B2 (1,3) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["1,3"].north, nil, "Erdrick B2 (1,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["2,3"].south, true, "Erdrick B2 (2,3) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["2,3"].east, true, "Erdrick B2 (2,3) should block entry from the east after repeated route evidence")
+    assert_equal(dirs["2,3"].north, nil, "Erdrick B2 (2,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,3"].west, true, "Erdrick B2 (4,3) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["4,3"].north, true, "Erdrick B2 (4,3) should block entry from the north after repeated route evidence")
+    assert_equal(dirs["4,3"].east, nil, "Erdrick B2 (4,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,4"].east, true, "Erdrick B2 (4,4) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["4,4"].west, true, "Erdrick B2 (4,4) should block entry from the west after repeated route evidence")
+    assert_equal(dirs["5,3"].south, true, "Erdrick B2 (5,3) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["5,3"].north, nil, "Erdrick B2 (5,3) should keep unconfirmed approaches open")
+    assert_equal(dirs["3,5"].south, true, "Erdrick B2 (3,5) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["3,5"].north, true, "Erdrick B2 (3,5) should block entry from the north after repeated route evidence")
+    assert_equal(dirs["3,5"].west, true, "Erdrick B2 (3,5) should block entry from the west after repeated route evidence")
+    assert_equal(dirs["4,5"].east, true, "Erdrick B2 (4,5) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["4,5"].west, nil, "Erdrick B2 (4,5) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,1"].east, true, "Erdrick B2 (5,1) should block entry from the east after reverse-route 10/10 verifier consensus")
+    assert_equal(dirs["5,1"].north, true, "Erdrick B2 (5,1) should block entry from the north after top-edge probe")
+    assert_equal(dirs["5,1"].west, nil, "Erdrick B2 (5,1) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,2"].east, true, "Erdrick B2 (5,2) should block entry from the east after reverse-route 10/10 verifier consensus")
+    assert_equal(dirs["5,2"].west, true, "Erdrick B2 (5,2) should block entry from the west after repeated route evidence")
+    assert_equal(dirs["1,5"].west, true, "Erdrick B2 (1,5) should block entry from the west after repeated route evidence")
+    assert_equal(dirs["6,4"].west, true, "Erdrick B2 (6,4) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["6,4"].north, true, "Erdrick B2 (6,4) should block entry from the north after reverse-route 10/10 verifier consensus")
+    assert_equal(dirs["6,4"].east, nil, "Erdrick B2 (6,4) should keep unconfirmed approaches open")
+    assert_equal(dirs["6,5"].east, true, "Erdrick B2 (6,5) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["6,5"].south, true, "Erdrick B2 (6,5) should block entry from the south after repeated 5/5 verifier consensus")
+    assert_equal(dirs["6,5"].west, true, "Erdrick B2 (6,5) should block entry from the west after fresh 5/5 verifier consensus")
+    assert_equal(dirs["4,6"].east, true, "Erdrick B2 (4,6) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["4,6"].west, true, "Erdrick B2 (4,6) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["4,6"].north, nil, "Erdrick B2 (4,6) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,7"].south, true, "Erdrick B2 (4,7) should block entry from the south after fresh 5/5 verifier consensus")
+    assert_equal(dirs["4,7"].west, true, "Erdrick B2 (4,7) should block entry from the west after fresh 5/5 verifier consensus")
+    assert_equal(dirs["4,7"].north, nil, "Erdrick B2 (4,7) should keep unconfirmed approaches open")
+    assert_equal(dirs["4,7"].east, nil, "Erdrick B2 (4,7) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,7"].north, true, "Erdrick B2 (5,7) should block entry from the north after 5/5 verifier consensus")
+    assert_equal(dirs["5,7"].east, true, "Erdrick B2 (5,7) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["5,7"].west, nil, "Erdrick B2 (5,7) should keep unconfirmed approaches open")
+    assert_equal(dirs["7,4"].south, true, "Erdrick B2 (7,4) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["7,4"].north, true, "Erdrick B2 (7,4) should block entry from the north after reverse-route 10/10 verifier consensus")
+    assert_equal(dirs["7,4"].east, true, "Erdrick B2 (7,4) should block entry from the east after fresh 15/15 verifier consensus from (8,4)")
+    assert_equal(dirs["7,4"].west, nil, "Erdrick B2 (7,4) should keep unconfirmed approaches open")
+    assert_equal(dirs["7,7"].north, true, "Erdrick B2 (7,7) should block entry from the north after fresh 5/5 verifier consensus")
+    assert_equal(dirs["7,7"].south, nil, "Erdrick B2 (7,7) should keep unconfirmed approaches open")
+    assert_equal(dirs["8,5"].west, true, "Erdrick B2 (8,5) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["8,5"].south, true, "Erdrick B2 (8,5) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["8,5"].north, true, "Erdrick B2 (8,5) should block entry from the north after fresh 15/15 verifier consensus from (8,4)")
+    assert_equal(dirs["8,5"].east, nil, "Erdrick B2 (8,5) should keep unconfirmed approaches open")
+    assert_equal(dirs["9,5"].south, true, "Erdrick B2 (9,5) should block entry from the south after raw-hold repro from (9,6)")
+    assert_equal(dirs["9,5"].north, true, "Erdrick B2 (9,5) should block entry from the north after reverse-route 10/10 verifier consensus")
+    assert_equal(dirs["1,6"].south, true, "Erdrick B2 (1,6) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["1,6"].east, nil, "Erdrick B2 (1,6) should keep unconfirmed approaches open")
+    assert_equal(dirs["2,6"].south, true, "Erdrick B2 (2,6) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["2,6"].east, true, "Erdrick B2 (2,6) should block entry from the east after real-reload 10/10 verifier consensus")
+    assert_equal(dirs["2,6"].north, nil, "Erdrick B2 (2,6) should keep unconfirmed approaches open")
+    assert_equal(dirs["8,7"].south, true, "Erdrick B2 (8,7) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["8,7"].north, true, "Erdrick B2 (8,7) should block entry from the north after fresh 5/5 verifier consensus")
+    assert_equal(dirs["8,7"].east, true, "Erdrick B2 (8,7) should block entry from the east after fresh 5/5 verifier consensus")
+    assert_equal(dirs["8,7"].west, nil, "Erdrick B2 (8,7) should keep unconfirmed approaches open")
+    assert_equal(dirs["5,8"].south, true, "Erdrick B2 (5,8) should block entry from the south after 5/5 verifier consensus")
+    assert_equal(dirs["5,8"].east, true, "Erdrick B2 (5,8) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["5,8"].west, true, "Erdrick B2 (5,8) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["5,8"].north, nil, "Erdrick B2 (5,8) should keep unconfirmed approaches open")
+    assert_equal(dirs["7,8"].west, true, "Erdrick B2 (7,8) should block entry from the west after 5/5 verifier consensus")
+    assert_equal(dirs["7,8"].east, true, "Erdrick B2 (7,8) should block entry from the east after 5/5 verifier consensus")
+    assert_equal(dirs["7,8"].north, nil, "Erdrick B2 (7,8) should keep unconfirmed approaches open")
+    assert_equal(dirs["7,9"].east, true, "Erdrick B2 (7,9) should block entry from the east after route-shaped raw walk and fresh 15/15 verifier")
+    assert_equal(dirs["7,9"].west, nil, "Erdrick B2 (7,9) should keep unconfirmed approaches open")
+    assert_equal(dirs["7,5"], nil, "Erdrick B2 route evidence should not globally block the origin cell (7,5)")
 
     env.restore()
 end

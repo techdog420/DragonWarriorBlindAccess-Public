@@ -2,6 +2,137 @@
 
 Updated: 2026-05-10
 
+## Active Resume
+
+Resume from Erdrick's Cave B2 (`map=0x1D`) at the B2 stairs `(8,9)`.
+Current live state after the latest cave-loop investigation: BizHawk reloaded
+the patched Lua script, the player was restored to B2 stairs `(8,9)`, and the
+latest two-way auto-walk route between the stairs and chest now succeeds from
+there.
+
+User decision: call the B2 maze done enough. This cave chest is the only known
+required chest/interaction on this floor, and both stairs-to-chest and
+chest-to-stairs are now playable. Do not keep polishing B2 bounce candidates
+unless normal gameplay exposes a fresh blocker; the next preferred focus is
+something else, likely combat dialogue tuning while the hero exits the dungeon.
+
+The uncommitted B2 patch set is in `map_reader.lua`, `test_map_reader.lua`,
+`session_handoff.md`, `PROJECT_MEMORY.md`, and `PLAYTESTING.md`. Static
+validation passed: `luac -p map_reader.lua test_map_reader.lua`,
+`lua test_map_reader.lua`, and `git diff --check`. Live validation after the
+latest reload is in `dw_debug.log` from `Started: 2026-05-10 14:56:18`.
+
+Morning route/verifier pass after the user ran stairs-to-chest first promoted
+six more B2 directional seams from clean 5/5 direct verifier consensus:
+`(6,5).west`, `(7,9).east`, `(7,7).north`, `(8,7).north`, `(4,7).south`, and
+`(4,7).west`. Later walkthrough-guided loop testing briefly made
+`(7,9).east` suspect because a same-batch raw-input/report run appeared to
+cross west from the stairs. The latest route-shaped raw pass and fresh
+`probe_edge_verify:8,9,LEFT,15` both stayed blocked, so `(7,9).east` is modeled
+again. After the user enabled BizHawk auto-reload and reloaded for real,
+validation exposed `(8,7).east`, which verified blocked 5/5, then exposed
+`(2,6).east`, which verified blocked 10/10. Both are now promoted.
+
+Reverse-route pass after the user teleported adjacent to the chest and routed
+toward the stairs promoted six more clean 10/10 direct-verifier B2 seams:
+`(9,5).north`, `(7,4).north`, `(6,4).north`, `(5,3).east`, `(5,2).east`, and
+`(5,1).east`. Two route-observed seams remain intentionally unmodeled because
+direct verification was mixed: `(8,5).north` from `(8,4)->DOWN` moved 2/10,
+then 2/15 on a longer repeat, and `(7,4).east` from `(8,4)->LEFT` moved 1/10.
+After the user reran chest-to-stairs, those exact exits failed naturally from
+`(8,4)`. Fresh direct repeats promoted both: `(8,5).north` from
+`(8,4)->DOWN` verified blocked 15/15, and `(7,4).east` from `(8,4)->LEFT`
+verified blocked 15/15.
+
+Latest left-edge investigation found the missing route shape. The generic
+dungeon boundary rule was hiding the intended B2 loop along the west edge. The
+current uncommitted patch now marks B2 passthrough cells `(0,1)`, `(0,2)`,
+`(0,4)`, `(0,5)`, `(0,6)`, and `(0,7)`, and adds confirmed directional seams
+from both the left-edge and upper-left reroute passes.
+
+Live evidence for that patch:
+- `(1,7)->LEFT` first verified passable 5/5 and a later raw hold from `(1,7)`
+  ended at `(0,7)`. One later single `probe_edge` false-blocked from the same
+  origin, so treat this edge as hidden-state noisy but route-shaped passable.
+- From `(0,7)`, route-shaped probes moved north through `(0,6)`, `(0,5)`, and
+  `(0,4)`. `(0,4)->RIGHT` moved to `(1,4)`.
+- `(0,4)->UP` into `(0,3)` blocked, `(1,8)->LEFT` into `(0,8)` blocked 5/5,
+  and `(1,9)->LEFT` into `(0,9)` was mixed 4 moved / 1 blocked, so those
+  boundary cells intentionally remain unmodeled.
+- After the left edge opened, `(1,4)->UP`, `(2,4)->UP`, and
+  `(3,3)->RIGHT` each verified blocked 5/5 and are now modeled as directional
+  seams. `(4,4)->UP` was mixed 1 moved / 4 blocked, and `(3,3)->UP` was mixed
+  4 moved / 1 blocked, so both remain unmodeled.
+
+Latest reroute investigation:
+- The user reran stairs-to-chest after the left-edge patch. The route got deep
+  into the upper-left loop, then failed from `(1,2)` after repeated blockers.
+- Newly promoted directional seams: `(1,5).west`, `(4,4).west`,
+  `(4,3).north`, `(5,2).west`, `(4,1).south`, `(3,1).south`,
+  `(3,5).north/west`, `(2,3).east`, `(2,1).south`, and `(1,1).south`.
+  Most came from queued-route blocks plus seam retries; `(1,1).south` then
+  verified blocked 15/15 directly.
+- A static leave-one-out graph check showed that the confirmed upper-left
+  blockers require another narrow west-edge opening. Live
+  `probe_edge_verify:1,2,LEFT,15` moved into `(0,2)` 15/15, and a forced-origin
+  `probe_edge:UP` from `(0,2)` moved into `(0,1)`.
+- The next real autowalk reached `(0,1)` and failed on `(0,1)->RIGHT` into
+  `(1,1)`. Fresh `probe_edge_verify:0,1,RIGHT,15` confirmed `(1,1).west`
+  blocked 15/15. Graph and live probes then found the top-edge continuation:
+  `(0,1)->UP` into `(0,0)` verified passable 15/15, route-shaped probes moved
+  right through `(1,0)` through `(6,0)`, downward entries into `(1,1)` through
+  `(5,1)` blocked, and `(6,0)->DOWN` moved into `(6,1)`. The current patch adds
+  B2 passthrough cells `(0,0)` through `(6,0)` plus the matching north-entry
+  blockers for `(1,1)` through `(5,1)`.
+- Static validation after the upper-left patch passed:
+  `luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`
+  (22 tests), and a local ROM-backed pathfinder run. The patched model now
+  finds a 42-step route from B2 stairs `(8,9)` to chest-adjacent `(8,3)`,
+  facing east.
+- Live validation after reload: `inspect_tile:0,0` and `inspect_tile:6,0`
+  both report `base_walkable=true walkable=true reason=passthrough`.
+  `debug_pathfind_adjacent:9,3` from `(8,9)` chooses `(8,3)` with the 42-step
+  route and `Face east`: `1 north, 1 east, 2 north, 3 west, 3 south,
+  2 west, 1 north, 1 west, 1 north, 3 west, 3 north, 3 east, 2 north,
+  3 west, 2 north, 6 east, 2 south, 2 east, 1 south`.
+- Actual two-way proof after the user reran the route: stairs-to-chest queued
+  43 steps for `Chest`, bounced at `(6,2)->RIGHT` into `(7,2)`, rerouted
+  through `(6,3)`, and reached the chest. The return queued 29 steps for
+  `Stairs Up to B1`, bounced through several route-learned dead branches, and
+  still reached B2 stairs `(8,9)`.
+- Return-trip bounce candidates observed in the successful run, not yet
+  promoted as permanent data: `(1,3).north`, `(2,3).north`, `(2,6).north`,
+  `(1,5).east/north`, `(2,8).north`, `(3,9).north`, `(7,9).west`, and
+  `(7,7).west`. Treat these as optional direct-verifier cleanup targets.
+- Current live state is `(8,9)`, `RUNTIME_BLOCKS map=0x1D none`, and
+  `PATH_STATE target=nil`.
+
+Latest loop investigation notes:
+- External guide context agrees with the user's clue: Erdrick's Cave B2 is a
+  normal loop to the tablet/chest, not a special-gated puzzle; torch is for
+  visibility.
+- `(9,5).south` was temporarily demoted after `probe_edge_verify:9,6,UP,10`
+  produced mixed 2 moved / 8 blocked, but raw held UP from `(9,6)` stayed at
+  `(9,6)` and a live auto-walk failed there. Restored `(9,5).south` as blocked.
+- Latest route-shaped raw walk from the stairs reconfirmed the east-side and
+  west-loop blockers already modeled: `(9,6)->UP`, `(8,6)->UP`, `(6,6)->UP`,
+  `(5,4)->UP/RIGHT/LEFT`, `(4,8)->UP`, `(3,6)->LEFT/UP`, `(2,7)->UP`,
+  `(1,7)->UP`, and the `(7,5)` north/west/east branches all stayed blocked.
+- `(7,9).east` is restored as permanent data after a settled raw `LEFT,90`
+  from `(8,9)` stayed at `(8,9)` and verifier evidence returned
+  15 blocked / 0 moved. Post-reload `inspect_move:8,9,LEFT` reports
+  `directional_blocked=true`, and `RUNTIME_BLOCKS map=0x1D none`.
+- Do not trust same-command `simulate_raw_input:* report_position`; the report
+  can run before queued raw input has played out. Split raw input and later
+  `report_position` with a delay.
+- Raw/teleport checks around the west loop are still hidden-state sensitive.
+  The chest route is now playably validated in both directions. The next useful
+  B2 work would only be optional cleanup of the return-trip bounce candidates
+  with direct verifiers. The user has decided to move on now that the only
+  required cave chest is reachable. Keep using the external visual/decoded map
+  reference as orientation on future maps, but live movement remains the source
+  of truth.
+
 ## Current Focus
 
 The BizHawk emulator swap is now good enough to call successful. The current
@@ -121,6 +252,57 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   `submenu=SPELL`, and `speech_status` was ready with `error=none`.
 
 ## Current Baseline
+
+2026-05-10 Erdrick's Cave B2 first chest-route investigation:
+- User reached brand-new map `0x1D` / Erdrick's Cave B2 and selected the only
+  visible chest at `(9,3)`. Auto-walk planned routes but repeatedly gave up
+  because B2 had no permanent directional seam model yet; decoded cave floor
+  tiles looked walkable while the engine blocked one-way maze approaches.
+- Direct verifier-confirmed B2 seam data has been promoted to `map_reader.lua`
+  as directional-only blockers: `(5,3).south`, `(6,4).west`,
+  `(6,5).east/south`, `(7,4).south`, `(8,5).west/south`, `(9,5).south`,
+  `(1,6).south`, `(2,6).south`, `(5,8).south/east`, and `(7,8).west`. These
+  are all `probe_edge_verify` 5/5 blocked results; a first mixed `(6,6)->UP`
+  result was not promoted until a later verifier pass returned clean 5/5
+  blocked. A later route-observed `(4,7).west` and `(2,6).east` were checked
+  directly and came back mixed, so they remain unmodeled.
+- Final focused verifier pass from the stairs/chest churn added
+  `(3,5).south`, `(4,4).east`, `(4,5).east`, `(4,6).east/west`,
+  `(5,7).north/east`, `(5,8).west`, `(7,8).east`, and `(8,7).south`.
+  Additional route-observed `(6,5).west` and `(4,7).south` came back mixed
+  under direct verification and were not promoted.
+- Morning follow-up after a normal stairs-to-chest route promoted six more
+  clean direct-verifier seams: `(6,5).west`, `(7,9).east`, `(7,7).north`,
+  `(8,7).north`, `(4,7).south`, and `(4,7).west`. After the user enabled
+  BizHawk auto-reload and reloaded for real, validation exposed `(8,7).east`,
+  which verified blocked 5/5, and then `(2,6).east`, which verified blocked
+  10/10. Both are now modeled.
+- Reverse-route follow-up from chest side toward stairs promoted six more clean
+  10/10 verifier seams: `(9,5).north`, `(7,4).north`, `(6,4).north`,
+  `(5,3).east`, `(5,2).east`, and `(5,1).east`. Route-observed
+  `(8,5).north` and `(7,4).east` stayed mixed under direct verification and
+  remain unmodeled.
+- Final static validation passed after the reverse-route B2 pass:
+  `luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`,
+  and `git diff --check`.
+- Live reload proof after auto-reload was enabled: `LAUNCHER_PROBE:
+  codex_b2_87east_reload` and `LAUNCHER_PROBE: codex_b2_26east_reload`.
+  Reverse-route reload proof: `LAUNCHER_PROBE: codex_b2_reverse_edges`.
+  Runtime B2 blocks were cleared afterward and `RUNTIME_BLOCKS map=0x1D none`
+  reported, with the player restored to chest-side `(8,3)` and
+  `PATH_STATE target=nil`.
+- Caveat: this is still a partial B2 decode, not a full map solve. The current
+  disk model finds no stairs-to-chest route. From chest-side `(8,3)`, it can
+  plan back to stairs `(8,9)`, but the route depends on mixed seam
+  `(8,5).north`; the next useful work is targeted bridge/region investigation
+  rather than treating this as a normal player-facing chest route.
+- Later left-edge investigation found the missing route shape: B2 needs narrow
+  west-edge passthrough cells `(0,4)` through `(0,7)`, plus new directional
+  blockers `(1,3).south`, `(2,3).south`, and `(4,3).west`. Static tests pass
+  and a local patched-model pathfinder run reaches chest-adjacent `(8,3)` from
+  stairs `(8,9)` in 30 steps. Live BizHawk still needs a real Lua reload before
+  that patch can be judged in-emulator; timestamp nudges only proved the old
+  script loop was still consuming commands.
 
 2026-05-09 Brecconary autowalk stress survey:
 - User returned to Brecconary and stood at the town entrance. The entrance tile
