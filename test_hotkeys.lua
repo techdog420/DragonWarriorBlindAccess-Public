@@ -299,6 +299,28 @@ local function make_env(options)
                     refresh = true,
                 }
             end,
+            guidance_for_object = function(obj)
+                if options.route_active == true and not options.route_guidance_starts_when_active then
+                    route_status_calls = route_status_calls + 1
+                    return options.route_status_info or {
+                        message = "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+                        log = "event=status route=erdrick waypoint=North trail marker index=5",
+                        object_id = "route_erdrick_05",
+                    }
+                end
+
+                route_start_calls = route_start_calls + 1
+                route_start_objects[#route_start_objects + 1] = obj
+                if options.route_start_error then
+                    return nil, options.route_start_error
+                end
+                return options.route_start_info or {
+                    message = "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+                    log = "event=start route=erdrick waypoint=North trail marker index=5",
+                    object_id = "route_erdrick_05",
+                    refresh = true,
+                }
+            end,
         }
     end
 
@@ -580,6 +602,24 @@ function tests.r_reports_active_route_status_while_movement_blocks_actions()
         "blocked active-route R should still speak the route status")
     assert_equal(env.outputs[1].interrupt, false, "route status should not interrupt route progress speech")
     assert_equal(env.input_suppress_calls(), 0, "read-only R status should not need game-input suppression")
+
+    env.restore()
+end
+
+function tests.blocked_active_route_r_stays_read_only_even_with_new_destination_selected()
+    local env = make_env({
+        delay = 0,
+        route_active = true,
+        route_guidance_starts_when_active = true,
+        current_object = {id = "overworld_brecconary", name = "Brecconary", x = 48, y = 41},
+    })
+
+    env.update({R = true}, {state = "field"}, false, "Wait for movement to finish")
+
+    assert_equal(env.route_status_calls(), 1, "blocked active-route R should only report status")
+    assert_equal(env.route_start_calls(), 0, "blocked active-route R should not replace routes while movement is unstable")
+    assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+        "blocked active-route R should preserve read-only status speech")
 
     env.restore()
 end

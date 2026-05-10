@@ -175,6 +175,10 @@ local function active_route()
     return state.active_id and ROUTES[state.active_id] or nil
 end
 
+function M.active_route_id()
+    return state.active_id
+end
+
 local function clamp_next_index(route)
     if not route then return nil end
     local count = #route.waypoints
@@ -308,15 +312,30 @@ function M.start(route_name, map_id, px, py)
     end
 
     local route = ROUTES[id]
+    local previous_id = state.active_id
+    local event = "start"
+    if previous_id == id then
+        event = "recalculate"
+    elseif previous_id ~= nil then
+        event = "replace"
+    end
+
     state.active_id = id
     state.warned = {}
     state.last_position_key = nil
     state.next_index = choose_next_index(route, map_id, px, py)
 
+    local message = waypoint_status(route, state.next_index, is_overworld(map_id) and px or nil, is_overworld(map_id) and py or nil)
+    if event == "replace" then
+        message = "Route changed. " .. message
+    elseif event == "recalculate" then
+        message = "Route recalculated. " .. message
+    end
+
     return {
         route = route,
-        message = waypoint_status(route, state.next_index, is_overworld(map_id) and px or nil, is_overworld(map_id) and py or nil),
-        log = make_log("start", route, route.waypoints[state.next_index]),
+        message = message,
+        log = make_log(event, route, route.waypoints[state.next_index]),
         object_id = route_object_id(route, state.next_index),
         refresh = true,
     }
@@ -355,7 +374,8 @@ function M.stop()
     }
 end
 
-function M.status(map_id, px, py)
+function M.status(map_id, px, py, opts)
+    opts = opts or {}
     local route = active_route()
     if not route then
         return {
@@ -365,14 +385,55 @@ function M.status(map_id, px, py)
     end
 
     local index = clamp_next_index(route)
+    local recalculated = false
+    if opts.recalculate and is_overworld(map_id) and px ~= nil and py ~= nil then
+        local new_index = choose_next_index(route, map_id, px, py)
+        if new_index ~= index then
+            state.next_index = new_index
+            state.last_position_key = nil
+            index = new_index
+            recalculated = true
+        end
+    end
+
     local use_position = is_overworld(map_id)
+    local message = waypoint_status(route, index, use_position and px or nil, use_position and py or nil)
+    if recalculated or opts.force_recalculate_message then
+        message = "Route recalculated. " .. message
+    end
+
     return {
         route = route,
         waypoint = route.waypoints[index],
-        message = waypoint_status(route, index, use_position and px or nil, use_position and py or nil),
-        log = make_log("status", route, route.waypoints[index]),
+        message = message,
+        log = make_log(recalculated and "recalculate" or "status", route, route.waypoints[index]),
         object_id = route_object_id(route, index),
     }
+end
+
+function M.recalculate(map_id, px, py)
+    return M.status(map_id, px, py, {
+        recalculate = true,
+        force_recalculate_message = true,
+    })
+end
+
+function M.guidance_for_object(obj, map_id, px, py)
+    local route = active_route()
+    if route then
+        local selected_id = M.route_id_for_object(obj)
+        if selected_id then
+            if selected_id ~= route.id then
+                return M.start(selected_id, map_id, px, py)
+            end
+            if not (obj and obj.route_waypoint) then
+                return M.start(selected_id, map_id, px, py)
+            end
+        end
+        return M.status(map_id, px, py, {recalculate = true})
+    end
+
+    return M.start_for_object(obj, map_id, px, py)
 end
 
 function M.observe_position(map_id, px, py)

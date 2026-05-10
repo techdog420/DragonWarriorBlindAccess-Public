@@ -70,6 +70,7 @@
 #   start_overworld_route:brecconary  Start safety route guidance back to Brecconary
 #   start_overworld_route:castle  Start safety route guidance back to Tantegel Castle
 #   route_status           Speak the active overworld route's next waypoint
+#   route_recalculate      Recalculate active overworld route from current world-map position
 #   stop_overworld_route   Clear active overworld route guidance
 #
 # ── Path debug commands ─────────────────────────────────────────────

@@ -121,9 +121,15 @@ COMMANDS (write to dw_commands.txt, one per line)
                            Start safety route guidance back to Brecconary
   start_overworld_route:castle
                            Start safety route guidance back to Tantegel Castle
-  route_guidance           Start guidance for selected Travel destination, or
-                           speak active route status (player hotkey: R)
+  route_guidance           Start guidance for selected Travel destination,
+                           replace an active route if another guided Travel
+                           destination is selected, or recalculate/status the
+                           active route (player hotkey: R)
   route_status             Speak the active overworld route's next waypoint
+  route_recalculate        Recalculate the active overworld route's next
+                           waypoint from the current world-map position
+  recalculate_overworld_route
+                           Alias for route_recalculate
   stop_overworld_route     Clear active overworld route guidance
   ; comment line           Lines starting with ; are ignored
 

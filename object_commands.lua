@@ -209,12 +209,7 @@ function M.register()
 
     debug_tools.register_command("route_guidance", function()
         local map_id, x, y = current_position()
-        local info, err
-        if overworld_routes.is_active and overworld_routes.is_active() then
-            info = overworld_routes.status(map_id, x, y)
-        else
-            info, err = overworld_routes.start_for_object(objects.current_object(), map_id, x, y)
-        end
+        local info, err = overworld_routes.guidance_for_object(objects.current_object(), map_id, x, y)
         if not info then
             debug_tools.info("OVERWORLD_ROUTE: event=no_route message=" .. tostring(err))
             tolk.output_interrupt(tostring(err))
@@ -223,6 +218,16 @@ function M.register()
         focus_route_waypoint(map_id, info)
         speak_route_event("OVERWORLD_ROUTE", info)
     end)
+
+    local function recalculate_route_command()
+        local map_id, x, y = current_position()
+        local info = overworld_routes.recalculate(map_id, x, y)
+        focus_route_waypoint(map_id, info)
+        speak_route_event("OVERWORLD_ROUTE", info)
+    end
+
+    debug_tools.register_command("route_recalculate", recalculate_route_command)
+    debug_tools.register_command("recalculate_overworld_route", recalculate_route_command)
 
     debug_tools.register_command("route_status", function()
         local map_id, x, y = current_position()

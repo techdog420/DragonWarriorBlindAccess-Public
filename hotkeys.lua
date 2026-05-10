@@ -233,11 +233,7 @@ local function speak_route_guidance()
     local map_id, x, y = nav.get_position()
     local info, err
 
-    if overworld_routes.is_active and overworld_routes.is_active() then
-        info = overworld_routes.status(map_id, x, y)
-    else
-        info, err = overworld_routes.start_for_object(objects.current_object(), map_id, x, y)
-    end
+    info, err = overworld_routes.guidance_for_object(objects.current_object(), map_id, x, y)
 
     if not info then
         local message = tostring(err or "No guided route for selected object. Use O for heading.")
@@ -247,6 +243,16 @@ local function speak_route_guidance()
         speak_info(message)
         return
     end
+
+    focus_route_waypoint(map_id, info)
+    log_route_event("OVERWORLD_ROUTE", info)
+    speak_info(info.message)
+end
+
+local function speak_active_route_status()
+    clear_object_nav_speech()
+    local map_id, x, y = nav.get_position()
+    local info = overworld_routes.status(map_id, x, y)
 
     focus_route_waypoint(map_id, info)
     log_route_event("OVERWORLD_ROUTE", info)
@@ -868,7 +874,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
            and overworld_routes.is_active
            and overworld_routes.is_active() then
             debug_tools.debug("object hotkey read-only while blocked: key_route_guidance")
-            speak_route_guidance()
+            speak_active_route_status()
             route_status_handled = true
         end
 

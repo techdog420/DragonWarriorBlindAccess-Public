@@ -217,10 +217,16 @@ Emulator compatibility direction:
   interior A* pathfinder. The player-facing hotkey is `R`: select a supported
   Travel destination such as `Erdrick's Cave`, `Brecconary`, or `Tantegel
   Castle`, then press `R` to start guidance or press it again for active route
-  status. Command-file equivalents are `route_guidance`,
+  status/recalculation. If an active route exists and the selected Travel
+  object resolves to a different guided destination, `R` replaces the active
+  route instead of leaving stale waypoints in control. If the active waypoint
+  is selected and the player has drifted far from it, `R` recalculates the next
+  route marker from the current world-map position. Command-file equivalents
+  are `route_guidance`,
   `start_overworld_route:cave` (aliases `erdrick` and `erdric`),
   `start_overworld_route:brecconary` (alias `breconary`),
-  `start_overworld_route:castle`, `route_status`, and `stop_overworld_route`.
+  `start_overworld_route:castle`, `route_status`, `route_recalculate`, and
+  `stop_overworld_route`.
   Active route waypoints are
   injected as a small Travel layer, currently capped at the next two markers,
   so the player can browse guidance without cluttering the major destination

@@ -328,6 +328,65 @@ function tests.entering_tantegel_stops_safety_route()
     routes.reset_for_tests()
 end
 
+function tests.selected_destination_replaces_active_route()
+    routes.reset_for_tests()
+    routes.start("cave", 0x01, 30, 32)
+
+    local info, err = routes.guidance_for_object({
+        id = "overworld_brecconary",
+        name = "Brecconary",
+        x = 48,
+        y = 41,
+    }, 0x01, 28, 12)
+
+    assert_equal(err, nil, "selecting another guided destination should replace the active route")
+    assert_contains(info.message, "Route changed. Route to Brecconary", "replacement should be audible")
+    assert_equal(info.object_id, "route_brecconary_02", "replacement should calculate from the current position")
+    assert_contains(info.log, "event=replace route=brecconary", "replacement should be logged distinctly")
+    assert_equal(routes.active_route_id(), "brecconary", "new destination should become active")
+
+    routes.reset_for_tests()
+end
+
+function tests.active_route_status_recalculates_after_drift()
+    routes.reset_for_tests()
+    routes.start("cave", 0x01, 30, 32)
+
+    local info = routes.guidance_for_object({
+        id = "route_erdrick_07",
+        name = "Route next: East choke approach",
+        route_id = "erdrick",
+        route_waypoint = true,
+        x = 35,
+        y = 32,
+    }, 0x01, 48, 41)
+
+    assert_contains(info.message, "Route recalculated", "active route status should recover from large drift")
+    assert_contains(info.message, "Bridge south bend", "recalculation should choose the best waypoint for the new position")
+    assert_equal(info.object_id, "route_erdrick_03", "route waypoint focus should move to the recalculated waypoint")
+    assert_contains(info.log, "event=recalculate route=erdrick", "drift recovery should be visible in logs")
+
+    routes.reset_for_tests()
+end
+
+function tests.selected_same_destination_recalculates_active_route()
+    routes.reset_for_tests()
+    routes.start("cave", 0x01, 30, 32)
+
+    local info = routes.guidance_for_object({
+        id = "overworld_erdrick_s_cave",
+        name = "Erdrick's Cave",
+        x = 28,
+        y = 12,
+    }, 0x01, 48, 41)
+
+    assert_contains(info.message, "Route recalculated. Route to Erdrick's Cave", "same destination should explicitly recalculate")
+    assert_equal(info.object_id, "route_erdrick_03", "same-destination recalculation should use current position")
+    assert_contains(info.log, "event=recalculate route=erdrick", "same-destination recalc should be logged")
+
+    routes.reset_for_tests()
+end
+
 local failures = 0
 local total = 0
 

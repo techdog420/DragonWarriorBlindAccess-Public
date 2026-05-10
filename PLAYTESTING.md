@@ -214,6 +214,12 @@ QoL feature check:
   `start_overworld_route:cave`, `start_overworld_route:brecconary`, or
   `start_overworld_route:castle` from the command file. Press `R` again, run
   `route_status`, or browse the Travel filter to hear the next route waypoint.
+  If a route is active and another guided Travel destination is selected,
+  pressing `R` replaces the old route with a route to the new destination. If
+  the player has drifted far off the expected waypoint, pressing `R` on the
+  active route waypoint recalculates the next marker from the current position;
+  `route_recalculate` / `recalculate_overworld_route` do the same from the
+  command file. `stop_overworld_route` cancels the active route.
   This is manual guidance only: it does not enable overworld auto-walk, so the
   player still fights normal random encounters and grows during the trip.
   After starting the route, `current_object` should report a `Route next`

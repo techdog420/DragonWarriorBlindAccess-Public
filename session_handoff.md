@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-09
+Updated: 2026-05-10
 
 ## Current Focus
 
@@ -325,6 +325,22 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   `Merchant. Gold 44. Club. 60 gold.` A down/up cursor pulse then spoke
   `Copper Sword. 180 gold.` and `Club. 60 gold.`, leaving the cursor back on
   Club.
+- Overworld route replacement/recalculation follow-up: player testing found
+  that once a route was active, pressing `R` only reported the old route and
+  never calculated a route to a newly selected Travel destination. The route
+  decision now lives in `overworld_routes.guidance_for_object()`: selecting a
+  different guided Travel destination replaces the active route, selecting the
+  same destination recalculates from the current world-map position, and
+  pressing `R` on an active route waypoint recalculates/statuses the current
+  route so large drift can recover to the best next marker. While movement is
+  unstable, `R` remains read-only status and will not replace/recalculate the
+  active route until object controls are stable. Command-file helpers now
+  include `route_recalculate` and `recalculate_overworld_route`;
+  `stop_overworld_route` remains the explicit cancel command. Static
+  validation passed: `luac -p overworld_routes.lua hotkeys.lua
+  object_commands.lua test_overworld_routes.lua test_hotkeys.lua`,
+  `lua test_overworld_routes.lua`, `lua test_hotkeys.lua`, and
+  `lua test_objects.lua`.
 
 2026-05-08 Erdrick's Cave B1 first-floor cleanup in the worktree:
 - Dungeon/cave object browsing no longer accepts stale town NPC RAM. Live
@@ -709,10 +725,12 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
 - Route guidance deliberately does not enable overworld `auto_walk`. The
   player-facing hotkey is `R`: select a supported Travel destination such as
   `Erdrick's Cave`, `Brecconary`, or `Tantegel Castle`, then press `R` to start
-  guidance or press it again for active route status. The active route injects
-  a small Travel layer capped at the next two `Route next` / `Route later`
-  markers, and advances one waypoint at a time as the player manually reaches
-  markers.
+  guidance or press it again for active route status/recalculation. Selecting
+  another guided Travel destination and pressing `R` replaces the active route;
+  selecting the same destination recalculates from the current world-map
+  position. The active route injects a small Travel layer capped at the next
+  two `Route next` / `Route later` markers, and advances one waypoint at a time
+  as the player manually reaches markers.
 - The first route includes a one-time bridge warning: `Bridge crossing.
   Monsters may become more dangerous beyond this point.` This addresses the
   early-game clue about bridge/danger boundaries without making every step
@@ -779,7 +797,8 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
 - New debug/player command hooks: `route_guidance`, `start_overworld_route`,
   `start_overworld_route:erdrick`, `start_overworld_route:erdric`,
   `start_overworld_route:cave`, `start_overworld_route:brecconary`,
-  `start_overworld_route:castle`, `route_status`, and `stop_overworld_route`.
+  `start_overworld_route:castle`, `route_status`, `route_recalculate`,
+  `recalculate_overworld_route`, and `stop_overworld_route`.
 - Follow-up after the first live try: the route command was registered and the
   object list grew from 13 to 16 entries, but selection stayed on the old
   `Erdrick's Cave` landmark. `object_commands.lua` now refreshes the overworld
