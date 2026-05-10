@@ -335,6 +335,101 @@ function tests.default_shop_reader_ignores_field_scroll_registers()
     env.restore()
 end
 
+function tests.current_screen_uses_scrolled_context_when_fixed_rows_are_empty()
+    local env = make_env()
+    local bytes, ctx = build_scrolled_shop_screen()
+
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local info = env.merchant.analyze_current_screen({
+        contexts = {
+            {label = "fixed", scroll_tiles = 0, base_nametable = 0, vertical_scroll_tiles = 0},
+            {
+                label = "live",
+                scroll_tiles = ctx.scroll_tiles,
+                base_nametable = ctx.base_nametable,
+                vertical_scroll_tiles = ctx.vertical_scroll_tiles,
+            },
+        },
+    })
+
+    assert_equal(info.active, true, "merchant screen should fall back to live scroll context")
+    assert_equal(info.context_label, "live", "active context should identify the live scroll reader")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Bamboo Pole, Club, Copper Sword, Clothes, Leather Armor, Small Shield",
+        "fallback context should recover scrolled merchant offers"
+    )
+
+    env.restore()
+end
+
+function tests.current_screen_can_fall_back_to_alternate_live_base()
+    local env = make_env()
+    local bytes, ctx = build_scrolled_shop_screen()
+
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local reported_base = (ctx.base_nametable + 1) % 2
+    local info = env.merchant.analyze_current_screen({
+        contexts = {
+            {label = "fixed", scroll_tiles = 0, base_nametable = 0, vertical_scroll_tiles = 0},
+            {
+                label = "live",
+                scroll_tiles = ctx.scroll_tiles,
+                base_nametable = reported_base,
+                vertical_scroll_tiles = ctx.vertical_scroll_tiles,
+            },
+            {
+                label = "live_alt_base",
+                scroll_tiles = ctx.scroll_tiles,
+                base_nametable = ctx.base_nametable,
+                vertical_scroll_tiles = ctx.vertical_scroll_tiles,
+            },
+        },
+    })
+
+    assert_equal(info.active, true, "alternate live base should recover the merchant screen")
+    assert_equal(info.context_label, "live_alt_base", "alternate base context should be identified")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Bamboo Pole, Club, Copper Sword, Clothes, Leather Armor, Small Shield",
+        "alternate base fallback should recover scrolled merchant offers"
+    )
+
+    env.restore()
+end
+
+function tests.current_screen_keeps_fixed_context_when_it_is_active()
+    local env = make_env()
+    local bytes = build_fixed_shop_screen()
+
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local info = env.merchant.analyze_current_screen({
+        contexts = {
+            {label = "fixed", scroll_tiles = 0, base_nametable = 0, vertical_scroll_tiles = 0},
+            {label = "live", scroll_tiles = 26, base_nametable = 1, vertical_scroll_tiles = 20},
+        },
+    })
+
+    assert_equal(info.active, true, "fixed merchant rows should still be detected first")
+    assert_equal(info.context_label, "fixed", "fixed context should win when it is already active")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Bamboo Pole, Club, Copper Sword, Clothes, Leather Armor",
+        "fixed context should preserve the old no-scroll merchant behavior"
+    )
+
+    env.restore()
+end
+
 function tests.cursor_selection_reads_scrolled_visible_offer()
     local env = make_env()
     local bytes, ctx = build_scrolled_shop_screen()

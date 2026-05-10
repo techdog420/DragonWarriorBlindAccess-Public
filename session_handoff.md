@@ -273,6 +273,58 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   `AUTO_WALK_TIMING_RETRY` / `SURVEY_TIMING_BLOCK_IGNORED` pairs. That is an
   improvement over the previous fixed-Inn proof's five retry pairs plus two
   catchups, and it did not skew the route target or survey result.
+- Player-facing Inn autowalk route-drift follow-up: after the catchup tuning,
+  a live route from the Brecconary entrance `(0,15)` to `Inn` canceled at
+  `(2,15)` as `route_drift_off_path`. The drift guard was correct; the executor
+  had held through an early first-step movement twitch and then scheduled a
+  same-direction turn re-press, which committed an extra right tile during the
+  planned right-to-down settle. `auto_step.lua` now treats early queued-route
+  movement twitches as timing-suspect short timeouts/direct retries but does
+  not schedule the same-direction turn re-press while the hold-through-grace
+  path is active. Live proof `LAUNCHER_PROBE: route_twitch_patch_inn_repro`:
+  from `(0,15)`, player-facing `auto_walk` to `Inn` reached `(8,21)` and
+  logged `AUTO_WALK_FACE target=Inn face=east`; final checks showed
+  `PATH_STATE target=nil`, `RUNTIME_BLOCKS map=0x08 none`, and no route-drift
+  lines. One `AUTO_WALK_TIMING_RETRY` remains on the first twitchy step, but it
+  no longer skews the route.
+- Follow-up player-facing drift while routing from `Merchant 1` to
+  `Weapons Merchant`: log showed `AUTO_WALK` from `(2,14)` queued 11 steps,
+  timed out the first `(2,14)->RIGHT` early-twitch step at frame 24, then
+  seam-bruteforce retried right. The retry landed at `(3,14)` in one frame,
+  but the immediate follow-up `UP` step saw residual right movement carry the
+  hero to `(4,14)`, so the drift guard canceled with
+  `source=auto_hold_mismatch`; later status was `(4,13)`,
+  `PATH_STATE target=nil`, and `RUNTIME_BLOCKS map=0x08 none`. This is
+  executor timing, not map data. Worktree patch separates early-twitch timeout
+  from turn-repress timeout: `auto_step_route_turn_repress_timeout_frames`
+  stays `24`, while new `auto_step_route_early_twitch_timeout_frames=32`
+  lets a real in-progress tile finish before injecting a seam retry. After the
+  user reloaded the Lua script, live proof `LAUNCHER_PROBE:
+  weapons_drift_patch_live` from `(2,14)` reached `Weapons Merchant` and logged
+  `AUTO_WALK_FACE target=Weapons Merchant face=north`; the first timing retry
+  now reported `timeout=32`. A second live proof
+  `LAUNCHER_PROBE: inn_entrance_patch_live` force-started from the entrance
+  `(0,15)`, reached the inn stand tile `(8,21)`, and logged
+  `AUTO_WALK_FACE target=Inn face=east`. The fresh post-reload log contains no
+  `clear_route`, `route_drift`, or `auto_hold_mismatch` lines. Final status was
+  `POSITION map=0x08 x=8 y=21`, `PATH_STATE target=nil`, and
+  `RUNTIME_BLOCKS map=0x08 none`.
+- Weapons-merchant item-list follow-up: after the clean route, TALK/YES reached
+  the shop prompt but the item list was silent. The pre-fix report at frame
+  `40020` showed speech was ready and lower text contained the merchant prompt,
+  but `MERCHANT_STATE active=false` and the fixed merchant row reader dumped no
+  item rows. Root cause was scroll context: at the Brecconary weapon counter the
+  shop overlay is vertically scrolled (`dialogue_start_row=25`, so merchant
+  visual rows need `vertical_scroll_tiles=6`), and BizHawk reported
+  `base_nt=1` while the text was in the alternate base order. `merchant.lua`
+  now supports ordered screen-context fallbacks, and `main.lua` passes fixed,
+  live, and live-alt-base contexts to merchant scans and cursor reads. Live
+  reload proof `LAUNCHER_PROBE: merchant_context_reload` reported
+  `MERCHANT_STATE active=true ... context=live_alt_base context_scroll=30
+  context_base=0 context_vertical=6`, recovered all six offers, and spoke
+  `Merchant. Gold 44. Club. 60 gold.` A down/up cursor pulse then spoke
+  `Copper Sword. 180 gold.` and `Club. 60 gold.`, leaving the cursor back on
+  Club.
 
 2026-05-08 Erdrick's Cave B1 first-floor cleanup in the worktree:
 - Dungeon/cave object browsing no longer accepts stale town NPC RAM. Live

@@ -170,6 +170,10 @@ local ROUTE_EARLY_RELEASE_GRACE_FRAMES = 10
 -- If a queued route already needed a turn re-press and only sees another early
 -- subpixel twitch, retry sooner than the normal wall timeout.
 local ROUTE_TURN_REPRESS_TIMEOUT_FRAMES = 24
+-- Early queued-route twitches may be real movement that just has not reached
+-- the next tile yet. Give them enough time to finish before route_manager
+-- tries a direct seam retry, which can otherwise re-press into a tile boundary.
+local ROUTE_EARLY_TWITCH_TIMEOUT_FRAMES = 32
 
 -- Before reporting a blocked move, allow a few internal retries of the same
 -- step from the same tile/direction. Live probing on Map 0x04 showed that
@@ -229,6 +233,10 @@ local function get_route_turn_repress_timeout_frames()
     return config_int("auto_step_route_turn_repress_timeout_frames", ROUTE_TURN_REPRESS_TIMEOUT_FRAMES, 1, 120)
 end
 
+local function get_route_early_twitch_timeout_frames()
+    return config_int("auto_step_route_early_twitch_timeout_frames", ROUTE_EARLY_TWITCH_TIMEOUT_FRAMES, 1, 120)
+end
+
 local function should_release_on_movement_start()
     local configured = config.get("auto_step_release_on_movement_start")
     return configured == "true" or configured == "1" or configured == "yes"
@@ -245,11 +253,33 @@ local function should_hold_early_route_movement_start()
     return grace > 0 and auto_movement_start_frame <= grace
 end
 
-local function should_use_route_turn_repress_timeout()
-    return route_steps ~= nil
-        and auto_turn_represses > 0
-        and auto_timeout_retries == 0
-        and auto_movement_started
+local function is_early_route_movement_twitch()
+    if route_steps == nil
+       or auto_movement_start_frame == nil
+       or auto_timeout_retries > 0 then
+        return false
+    end
+    local grace = get_route_early_release_grace_frames()
+    return grace > 0 and auto_movement_start_frame <= grace
+end
+
+local function get_route_timing_suspect_timeout_frames()
+    if route_steps == nil
+       or not auto_movement_started
+       or auto_timeout_retries > 0 then
+        return nil
+    end
+    if auto_turn_represses > 0 then
+        return get_route_turn_repress_timeout_frames()
+    end
+    if is_early_route_movement_twitch() then
+        return get_route_early_twitch_timeout_frames()
+    end
+    return nil
+end
+
+local function should_use_route_timing_suspect_timeout()
+    return get_route_timing_suspect_timeout_frames() ~= nil
 end
 
 -- ============================================================
@@ -894,6 +924,7 @@ function M.update(can_walk)
                or (
                    auto_movement_start_frame ~= nil
                    and auto_movement_start_frame <= get_route_early_release_grace_frames()
+                   and not should_hold_early_route_movement_start()
                )
            ) then
             debug_tools.debug(string.format(
@@ -903,8 +934,9 @@ function M.update(can_walk)
         -- Cancel if timeout reached (blocked by wall / step never started)
         else
             local effective_timeout = timeout
-            if should_use_route_turn_repress_timeout() then
-                effective_timeout = math.min(timeout, get_route_turn_repress_timeout_frames())
+            local route_timing_timeout = get_route_timing_suspect_timeout_frames()
+            if route_timing_timeout then
+                effective_timeout = math.min(timeout, route_timing_timeout)
             end
             if auto_frames < effective_timeout then
                 -- Only inject during the initiation phase. After INJECT_LIMIT
@@ -925,7 +957,7 @@ function M.update(can_walk)
                 auto_frames = auto_frames + 1
             else
                 local block_retry_limit = get_block_retry_limit()
-                local timing_suspect_timeout = should_use_route_turn_repress_timeout()
+                local timing_suspect_timeout = should_use_route_timing_suspect_timeout()
                 if auto_timeout_retries < block_retry_limit and not timing_suspect_timeout then
                     auto_timeout_retries = auto_timeout_retries + 1
                     auto_frames = 1

@@ -438,6 +438,7 @@ function tests.timeout_retry_resets_movement_started_flag()
             auto_step_timeout = "4",
             auto_step_block_retry_limit = "1",
             auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "0",
         },
     })
     env.auto_step.start_route({"right"})
@@ -528,7 +529,7 @@ function tests.queued_route_early_subpixel_twitch_keeps_holding_input()
     env.restore()
 end
 
-function tests.queued_route_turn_repress_twitch_reports_short_timing_block()
+function tests.queued_route_early_twitch_reports_short_timing_block_without_repress()
     local env = make_env({
         config_values = {
             auto_step_release_on_movement_start = "true",
@@ -568,7 +569,7 @@ function tests.queued_route_turn_repress_twitch_reports_short_timing_block()
 
     assert_truthy(
         blocked_event and blocked_event.frame < 35,
-        "queued-route turn re-press twitches should report to the route manager before the full wall timeout"
+        "queued-route early movement twitches should report to the route manager before the full wall timeout"
     )
     assert_truthy(
         blocked_event.payload and blocked_event.payload.movement_started == true,
@@ -577,6 +578,71 @@ function tests.queued_route_turn_repress_twitch_reports_short_timing_block()
     assert_truthy(
         blocked_event.payload and blocked_event.payload.timing_suspect == true,
         "short route timeout reports should be marked as timing-suspect survey noise"
+    )
+
+    local right_sequences = collect_direction_sequences(env, "right", 35)
+    assert_truthy(
+        #right_sequences == 1,
+        "queued-route early movement twitches should not schedule a same-direction turn re-press that can commit an extra tile"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_early_twitch_waits_for_late_tile_completion()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_early_twitch_timeout_frames = "32",
+            auto_step_route_turn_repress_timeout_frames = "24",
+            auto_step_inject_limit = "3",
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_release_frames = "1",
+        },
+    })
+    env.auto_step.start_route({"right", "up"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 23 do
+        env.update(true)
+    end
+
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "early queued-route twitches should wait past the direct-retry timeout when the tile may still complete"
+        )
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_completion = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.queued_route == true
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_completion = true
+        end
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "late tile completion should finish the queued route step instead of starting a seam retry"
+        )
+    end
+    assert_truthy(
+        saw_completion,
+        "queued route should accept late completion after an early movement twitch"
     )
 
     env.restore()

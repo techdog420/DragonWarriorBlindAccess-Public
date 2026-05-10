@@ -1237,6 +1237,31 @@ local function get_dialogue_start_row()
     return (19 + math.floor(scroll_y_px / 8)) % 30
 end
 
+local function get_vertical_scroll_tiles()
+    return math.floor((snapshot.scroll_y or 0) / 8) % 30
+end
+
+local function get_merchant_screen_contexts()
+    local scroll_tiles = get_scroll_tiles()
+    local base_nametable = DW_QOL_STATE.get_scroll_base_nametable()
+    local vertical_scroll_tiles = get_vertical_scroll_tiles()
+    return {
+        {label = "fixed", scroll_tiles = 0, base_nametable = 0, vertical_scroll_tiles = 0},
+        {
+            label = "live",
+            scroll_tiles = scroll_tiles,
+            base_nametable = base_nametable,
+            vertical_scroll_tiles = vertical_scroll_tiles,
+        },
+        {
+            label = "live_alt_base",
+            scroll_tiles = scroll_tiles,
+            base_nametable = (base_nametable + 1) % 2,
+            vertical_scroll_tiles = vertical_scroll_tiles,
+        },
+    }
+end
+
 -- check_hp_mp_changes(): Announce HP/MP changes (damage, healing, spell use).
 local function check_hp_mp_changes()
     local hp = snapshot.hp
@@ -1541,7 +1566,7 @@ local function check_merchant_screen(frame_delta)
         return false
     end
 
-    local info = merchant.analyze_current_screen()
+    local info = merchant.analyze_current_screen({contexts = get_merchant_screen_contexts()})
     MER.scan_present = info.active
     MER.scan_present_frame = frame_count
     if not info.active then
@@ -1557,7 +1582,7 @@ local function check_merchant_screen(frame_delta)
         MER.intro_pending = true
     end
 
-    local offer = merchant.get_cursor_offer()
+    local offer = merchant.get_cursor_offer(info.context)
     local selection = offer and offer.name or nil
     local price = offer and offer.price or nil
     if selection and (selection ~= PREV.merchant_selection or price ~= PREV.merchant_price) then
@@ -1700,7 +1725,7 @@ local function check_command_menu(frame_delta)
     -- false result is trustworthy and we can skip the duplicate full-screen
     -- PPU read here.
     if not merchant_present and (frame_count - MER.scan_present_frame) > 4 then
-        local info = merchant.analyze_current_screen()
+        local info = merchant.analyze_current_screen({contexts = get_merchant_screen_contexts()})
         MER.scan_present = info.active
         MER.scan_present_frame = frame_count
         merchant_present = info.active
@@ -3317,12 +3342,13 @@ debug_tools.register_command("report_merchant_state", function()
     if emulator_compat.clear_ppu_cache then
         emulator_compat.clear_ppu_cache()
     end
-    local info = merchant.analyze_current_screen()
-    local offer = merchant.get_cursor_offer()
+    local info = merchant.analyze_current_screen({contexts = get_merchant_screen_contexts()})
+    local offer = merchant.get_cursor_offer(info.context)
+    local ctx = info.context or {}
     local scroll_tiles = get_scroll_tiles()
     local base_nametable = DW_QOL_STATE.get_scroll_base_nametable()
     local msg = string.format(
-        "MERCHANT_STATE active=%s buy_prompt=%s status_markers=%d offers=%q summary=%q cursor_name=%q cursor_price=%s cursor_row=%s scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
+        "MERCHANT_STATE active=%s buy_prompt=%s status_markers=%d offers=%q summary=%q cursor_name=%q cursor_price=%s cursor_row=%s context=%s context_scroll=%s context_base=%s context_vertical=%s scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
         tostring(info.active),
         tostring(info.buy_prompt),
         tonumber(info.status_marker_count) or 0,
@@ -3331,11 +3357,15 @@ debug_tools.register_command("report_merchant_state", function()
         tostring(offer and offer.name or ""),
         tostring(offer and offer.price or "nil"),
         tostring(offer and offer.row or "nil"),
+        tostring(info.context_label or ""),
+        tostring(ctx.scroll_tiles or "nil"),
+        tostring(ctx.base_nametable or "nil"),
+        tostring(ctx.vertical_scroll_tiles or "nil"),
         scroll_tiles,
         base_nametable,
         get_dialogue_start_row())
     debug_tools.info(msg)
-    local rows = merchant.read_rows()
+    local rows = merchant.read_rows(info.context)
     for row = 0, 29 do
         local line = rows[row]
         if line and line ~= "" then

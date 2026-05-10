@@ -795,6 +795,20 @@ Brecconary/map `0x08`:
   counting them as survey blockers. A focused Brecconary exit target from
   `(15,15)` reached `(1,15)` with `blocked_events=0` after this handling even
   though the live log still showed multiple `AUTO_WALK_TIMING_RETRY` entries.
+- Queued auto-step should not combine hold-through-grace and same-direction
+  turn re-press recovery for the same early movement twitch. The 2026-05-09
+  Brecconary entrance-to-Inn route held through the first right-step twitch and
+  then re-pressed right, committing an extra tile to `(2,15)` during
+  right-to-down settle. Keep early-twitch reports timing-suspect/direct-retry
+  eligible, but suppress the re-press while hold-through-grace is active.
+- Early queued-route twitch timeouts and turn-repress twitch timeouts need
+  different budgets. A 24-frame timeout was safe for turn-repress retries but
+  too aggressive for a real in-progress queued step: the Brecconary
+  `(2,14)->RIGHT` route to `Weapons Merchant` timed out just before tile
+  completion, then the seam retry re-pressed into the tile boundary and
+  carried the hero off route. Use the separate
+  `auto_step_route_early_twitch_timeout_frames` setting to give early movement
+  twitches a few extra neutral frames before retry injection.
 - Queued-route completion must match the injected direction. If a queued step
   says `left` but the engine lands south, cancel as `route_drift_off_path`
   instead of publishing a false step completion. For survey-safe routes, keep
@@ -916,7 +930,11 @@ Do not rely on assistant-local memory as the only record of important project st
   make `dialogue_hint` true; otherwise the item reader can starve after
   buy/error/continue cycles. Item confirmation/error dialogue can leave command
   labels visible behind lower text, so command-menu speech must stay blocked
-  while lower dialogue is active.
+  while lower dialogue is active. Keep the fixed merchant context as a
+  conservative first pass, but fall back to live horizontal/vertical scroll and
+  the alternate nametable base; the Brecconary weapon counter has shown
+  `base_nt=1` while the active list decoded from the opposite base with
+  `vertical_scroll_tiles=6`.
 - For future dialogue bugs, capture `report_movement_state` and
   `report_upper_dialogue_state`; for shop/menu bugs also capture
   `report_merchant_state`. Useful fields are `ppu_ctrl`, `scroll_x`, `scroll_y`,

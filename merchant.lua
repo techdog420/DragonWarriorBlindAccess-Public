@@ -81,6 +81,7 @@ local function get_scroll_context(opts)
     end
 
     return {
+        label = opts.label,
         scroll_tiles = math.floor(tonumber(scroll_tiles) or 0) % SCREEN_WIDTH,
         base_nametable = math.floor(tonumber(base_nametable) or 0) % 2,
         vertical_scroll_tiles = math.floor(tonumber(vertical_scroll_tiles) or 0) % SCREEN_HEIGHT,
@@ -338,10 +339,48 @@ function M.analyze_rows(rows, opts)
     }
 end
 
-function M.analyze_current_screen(opts)
-    return M.analyze_rows(M.read_rows(opts), {
+local function score_inactive_info(info)
+    local score = 0
+    if info.buy_prompt then
+        score = score + 100
+    end
+    score = score + ((info.offers and #info.offers or 0) * 10)
+    score = score + (tonumber(info.status_marker_count) or 0)
+    score = score + text.dialogue_score(info.raw_text)
+    return score
+end
+
+local function analyze_context(opts)
+    local ctx = get_scroll_context(opts)
+    local info = M.analyze_rows(M.read_rows(ctx), {
         gold = snapshot.gold,
     })
+    info.context = ctx
+    info.context_label = ctx.label
+    return info
+end
+
+function M.analyze_current_screen(opts)
+    if opts and type(opts.contexts) == "table" then
+        local fallback = nil
+        local fallback_score = nil
+        for _, ctx in ipairs(opts.contexts) do
+            local info = analyze_context(ctx)
+            if info.active then
+                return info
+            end
+
+            local score = score_inactive_info(info)
+            if not fallback or score > fallback_score then
+                fallback = info
+                fallback_score = score
+            end
+        end
+
+        return fallback or analyze_context(nil)
+    end
+
+    return analyze_context(opts)
 end
 
 return M

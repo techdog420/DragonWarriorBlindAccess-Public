@@ -93,6 +93,14 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   west approach is now modeled as blocked. After reload, auto-walk from
   Brecconary `(1,15)` queued 17 steps for `Inn`, reached `(8,21)`, and faced
   east with no new blocked edge. Player position was restored to `(1,15)`.
+- Weapons merchant item-list follow-up: after the clean route to the Brecconary
+  weapon counter, TALK/YES reached `What dost thou wish to buy?` but the item
+  list was silent. This was not a speech backend failure; `report_merchant_state`
+  was reading the wrong screen rows. `merchant.lua`/`main.lua` now try the old
+  fixed shop reader first, then live scrolled contexts including the alternate
+  nametable base. Live proof recovered all six offers and spoke the selected
+  item; a down/up cursor pulse spoke `Copper Sword. 180 gold.` then
+  `Club. 60 gold.`
 - Spell menu follow-up: after the player reached level 3 and learned Heal, the
   SPELL list opened but did not speak its contents. Live state showed the
   command menu header was still detected, speech was ready, and no dialogue or
