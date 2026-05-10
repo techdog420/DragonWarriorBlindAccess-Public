@@ -137,6 +137,10 @@ local function copy_object(obj)
         type = obj.type,
         x = obj.x,
         y = obj.y,
+        service = obj.service,
+        interaction_x = obj.interaction_x,
+        interaction_y = obj.interaction_y,
+        interaction_face_dir = obj.interaction_face_dir,
     }
 end
 
@@ -1619,7 +1623,14 @@ local function analyze_isolated_adjacent_landings(attempt)
     }
 end
 
-local function classify_attempt(attempt)
+local function final_matches_suspected_tile(attempt, final_map_id, final_x, final_y)
+    if not attempt or final_map_id ~= attempt.map_id or final_x == nil or final_y == nil then
+        return false
+    end
+    return attempt.suspected_tile_set[cell_key(final_x, final_y)] == true
+end
+
+local function classify_attempt(attempt, final_map_id, final_x, final_y)
     attempt.alternate_mode = nil
     attempt.alternate_path_found = false
     attempt.skip_npcs_path_found = false
@@ -1680,6 +1691,19 @@ local function classify_attempt(attempt)
     end
 
     if #attempt.suspected_tiles > 0 then
+        if attempt.reason == "route_inactive_without_completion"
+            and #attempt.suspected_tiles == 1
+            and final_matches_suspected_tile(attempt, final_map_id, final_x, final_y)
+        then
+            debug_tools.info(string.format(
+                "SURVEY_CLASSIFY_DOWNGRADE run=%d map=0x%02X target_id=%s from=suspected_engine_blocked_tile to=command_timing_or_state_issue reason=orphaned_route_landed_on_suspect final=(%d,%d)",
+                survey_state and survey_state.run_id or 0,
+                attempt.map_id or 0,
+                tostring(attempt.target and attempt.target.id or ""),
+                final_x or -1,
+                final_y or -1))
+            return "command_timing_or_state_issue"
+        end
         if attempt.reason == "reroute_no_path" and #attempt.suspected_tiles > 1 then
             return "command_timing_or_state_issue"
         end
@@ -1804,6 +1828,11 @@ local function get_retry_reason(attempt, failure_classification, final_map_id, f
     end
 
     return nil
+end
+
+local function retry_should_run_next(reason)
+    return reason == "route_drift_retry"
+        or reason == "timing_orphaned_route"
 end
 
 local function should_skip_entry_from_stranded_start(entry, map_id, start_x, start_y)
@@ -2009,7 +2038,7 @@ local function finalize_attempt(attempt)
         return
     end
     local map_id, final_x, final_y = nav.get_position()
-    local failure_classification = classify_attempt(attempt)
+    local failure_classification = classify_attempt(attempt, map_id, final_x, final_y)
     local no_path_cluster = observe_clean_no_path_cluster(attempt, map_id, final_x, final_y)
     if no_path_cluster and no_path_cluster.target_count >= ISOLATED_START_CLUSTER_MIN_TARGETS then
         failure_classification = "gated_or_isolated_region"
@@ -2022,12 +2051,17 @@ local function finalize_attempt(attempt)
         survey_state.retry_reason_counts[target_id] = survey_state.retry_reason_counts[target_id] or {}
         survey_state.retry_reason_counts[target_id][retry_reason] =
             (survey_state.retry_reason_counts[target_id][retry_reason] or 0) + 1
-        survey_state.queue[#survey_state.queue + 1] = {
+        local retry_entry = {
             target = refresh_object(attempt.target),
             original_index = attempt.original_index,
             retry_number = survey_state.retry_counts[target_id],
         }
         survey_state.queue_index = survey_state.queue_index + 1
+        if retry_should_run_next(retry_reason) then
+            table.insert(survey_state.queue, survey_state.queue_index + 1, retry_entry)
+        else
+            survey_state.queue[#survey_state.queue + 1] = retry_entry
+        end
         survey_state.active_attempt = nil
         debug_tools.info(string.format(
             "SURVEY_REQUEUE run=%d map=0x%02X target_id=%s reason=%s retry=%d",
@@ -2174,6 +2208,16 @@ end
 
 local function on_route_blocked(data)
     if not survey_state or not survey_state.active_attempt or not data then
+        return
+    end
+    if data.timing_suspect == true then
+        debug_tools.info(string.format(
+            "SURVEY_TIMING_BLOCK_IGNORED run=%d map=0x%02X from=(%d,%d) dir=%s reason=timing_suspect_route_timeout",
+            survey_state.run_id or 0,
+            survey_state.map_id or 0,
+            data.from_x or -1,
+            data.from_y or -1,
+            tostring(data.dir or "-")))
         return
     end
     local attempt = survey_state.active_attempt

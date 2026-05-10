@@ -554,6 +554,35 @@ function tests.reroute_only_retry_success_stays_diagnostic_until_direct_repro()
     env.restore()
 end
 
+function tests.timing_suspect_route_block_is_ignored_as_candidate()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_blocked", {
+        from_x = 5,
+        from_y = 5,
+        dir = "right",
+        timing_suspect = true,
+    })
+    env.publish("route_completed")
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    assert_equal(result.movement_succeeded, true, "timing-suspect retry should still allow route success")
+    assert_equal(result.blocked_event_count, 0, "timing-suspect route blocks should not count as survey blockers")
+    assert_equal(result.retry_succeeded, false, "timing-suspect route blocks should not be treated as reroute evidence")
+    assert_equal(env.survey.list_blocked_candidates(0x08), 0, "timing-suspect route blocks should not become candidates")
+    assert_contains(
+        table.concat(env.logs, "\n"),
+        "SURVEY_TIMING_BLOCK_IGNORED",
+        "survey should log when it ignores a timing-suspect route block"
+    )
+
+    env.restore()
+end
+
 function tests.directly_confirmed_retry_candidate_is_exportable()
     local env = make_env({
         seam_observations = {
@@ -630,6 +659,35 @@ function tests.blocked_tile_failure_is_classified_as_suspected_engine_blocked()
     assert_equal(result.movement_succeeded, false, "route cancellation should record a failure")
     assert_equal(result.failure_classification, "suspected_engine_blocked_tile",
         "blocked live movement on a nominally passable tile should be classified conservatively")
+
+    env.restore()
+end
+
+function tests.orphaned_route_landed_on_suspect_is_classified_as_state_issue()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    env.set_position(0x08, 6, 5)
+    env.set_route_active(false)
+    env.survey.tick(true)
+    env.survey.tick(true)
+    env.survey.tick(true)
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    assert_equal(result.movement_succeeded, false, "orphaned route should record a failure")
+    assert_equal(
+        result.failure_classification,
+        "command_timing_or_state_issue",
+        "an orphaned route that landed on the suspected tile should not become blocker evidence"
+    )
+    assert_contains(
+        table.concat(env.logs, "\n"),
+        "SURVEY_CLASSIFY_DOWNGRADE",
+        "classifier should log the downgrade reason"
+    )
 
     env.restore()
 end
@@ -809,6 +867,75 @@ function tests.route_drift_cancellation_is_retried_once_from_live_position()
         "route drift should be retried once as timing noise")
     assert_contains(joined, "SURVEY_ATTEMPT run=1 map=0x08 idx=1/1 retry=1 target_id=chest_1 target_type=chest target_name=\"Chest\" start=(5,3)",
         "route drift retry should plan from the live drifted position")
+
+    env.restore()
+end
+
+function tests.route_drift_retry_runs_before_later_survey_targets()
+    local env = make_env({
+        objects = {
+            {id = "chest_1", name = "Chest 1", type = "chest", x = 8, y = 5},
+            {id = "chest_2", name = "Chest 2", type = "chest", x = 9, y = 5},
+        },
+        autowalk_sequence = {
+            {
+                status = "queued",
+                result = "Path: north then east",
+                path_mode = "adjacent",
+                path = {
+                    {x = 5, y = 4, direction = "north"},
+                    {x = 6, y = 4, direction = "east"},
+                },
+            },
+            {
+                status = "queued",
+                result = "Path: corrected from drift",
+                path_mode = "adjacent",
+                path = {
+                    {x = 6, y = 3, direction = "east"},
+                },
+            },
+            {
+                status = "queued",
+                result = "Path: later target",
+                path_mode = "adjacent",
+                path = {
+                    {x = 7, y = 3, direction = "east"},
+                },
+            },
+        },
+        alternate = {
+            direct = {result = "No path found", path = nil},
+            adjacent = {result = "No path found", path = nil},
+        },
+    })
+
+    env.survey.start_object_survey()
+    env.survey.tick(true)
+    env.set_position(0x08, 5, 3)
+    env.publish("route_cancelled", {reason = "route_drift_off_path"})
+    env.survey.tick(true)
+    env.publish("route_completed")
+    env.survey.tick(true)
+    env.survey.tick(true)
+
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(
+        joined,
+        "retry=1 target_id=chest_1 target_type=chest target_name=\"Chest 1\" start=(5,3)",
+        "route drift should immediately retry the drifted target"
+    )
+    assert_contains(
+        joined,
+        "retry=0 target_id=chest_2",
+        "survey should still continue to the later target"
+    )
+    assert_before(
+        joined,
+        "retry=1 target_id=chest_1",
+        "retry=0 target_id=chest_2",
+        "route drift retry should run before later survey targets consume the drifted position"
+    )
 
     env.restore()
 end
@@ -1143,6 +1270,50 @@ function tests.survey_target_accepts_unique_partial_display_name()
     local run = env.survey.get_last_run(0x08)
     local result = run and run.results[1]
     assert_equal(result.target_id, "npc_guard_3", "partial display name should resolve to the matching object id")
+
+    env.restore()
+end
+
+function tests.survey_target_preserves_service_interaction_metadata()
+    local captured_target = nil
+    local env = make_env({
+        objects = {
+            {
+                id = "npc_inn",
+                name = "Inn",
+                type = "npc",
+                service = true,
+                x = 10,
+                y = 21,
+                interaction_x = 8,
+                interaction_y = 21,
+                interaction_face_dir = "east",
+            },
+        },
+        autowalk_fn = function(ctx)
+            captured_target = ctx.target
+            return {
+                status = "queued",
+                result = "Path: 1 west",
+                path_mode = "direct",
+                path = {{x = 8, y = 21, direction = "west"}},
+            }
+        end,
+    })
+
+    local ok, err = env.survey.start_target_survey("Inn")
+    assert_equal(ok, true, "service display name should resolve as a survey target")
+    assert_equal(err, nil, "service target should not return an error")
+    env.survey.tick(true)
+
+    assert_equal(captured_target and captured_target.interaction_x, 8,
+        "survey autowalk should preserve service interaction X")
+    assert_equal(captured_target and captured_target.interaction_y, 21,
+        "survey autowalk should preserve service interaction Y")
+    assert_equal(captured_target and captured_target.interaction_face_dir, "east",
+        "survey autowalk should preserve service interaction facing")
+    assert_equal(captured_target and captured_target.service, true,
+        "survey autowalk should preserve service marker")
 
     env.restore()
 end

@@ -21,7 +21,9 @@ end
 local function make_env(options)
     options = options or {}
     local outputs = {}
+    local published_events = {}
     local start_route_calls = 0
+    local last_start_route_opts = nil
     local inject_step_calls = 0
     local suppress_direction_tracking_calls = 0
     local last_suppress_direction_tracking_frames = nil
@@ -51,6 +53,7 @@ local function make_env(options)
         "auto_step",
         "config",
         "debug_tools",
+        "event_bus",
         "game_snapshot",
         "map_reader",
         "maps",
@@ -265,6 +268,9 @@ local function make_env(options)
                 if pathfind_mode == "already_adjacent" then
                     return "Adjacent", "north", {}
                 end
+                if options.already_adjacent_after_first and reroute_calls > 1 then
+                    return "Adjacent", "north", {}
+                end
                 if pathfind_mode == "always_no_path" then
                     return "No path found", nil, nil
                 end
@@ -335,8 +341,9 @@ local function make_env(options)
 
     package.preload["auto_step"] = function()
         local stub = {
-            start_route = function()
+            start_route = function(_, opts)
                 start_route_calls = start_route_calls + 1
+                last_start_route_opts = opts
                 return true
             end,
             inject_step = function(dir)
@@ -376,6 +383,14 @@ local function make_env(options)
         }
     end
 
+    package.preload["event_bus"] = function()
+        return {
+            publish = function(name, payload)
+                published_events[#published_events + 1] = {name = name, payload = payload}
+            end,
+        }
+    end
+
     package.preload["path_debug"] = function()
         return {
             store_path = function() end,
@@ -395,6 +410,7 @@ local function make_env(options)
 
     return {
         outputs = outputs,
+        published_events = function() return published_events end,
         auto_step = package.loaded["auto_step"],
         route_manager = route_manager,
         pathfind_calls = function() return pathfind_calls end,
@@ -404,6 +420,7 @@ local function make_env(options)
         pathability_status_updates = function() return pathability_status_updates end,
         pathability_filter = function() return pathability_filter end,
         start_route_calls = function() return start_route_calls end,
+        last_start_route_opts = function() return last_start_route_opts end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
         suppress_direction_tracking_calls = function() return suppress_direction_tracking_calls end,
@@ -1016,6 +1033,37 @@ function tests.reroute_no_path_bruteforces_unconfirmed_seam()
     env.restore()
 end
 
+function tests.suspect_route_timeout_bruteforces_before_silent_reroute()
+    local env = make_env({pathfind_mode = "always_path"})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 5,
+        timeout_retries = 1,
+        turn_represses = 1,
+    })
+
+    assert_equal(
+        env.inject_step_calls(),
+        1,
+        "a movement-start route timeout should directly retry the same seam before accepting an alternate reroute"
+    )
+    assert_equal(
+        env.start_route_calls(),
+        1,
+        "the suspicious timeout should not silently queue an alternate route first"
+    )
+    assert_not_contains(
+        table.concat(env.outputs, "\n"),
+        "Re-routing.",
+        "the suspicious timeout should not be announced as a normal reroute before direct retry"
+    )
+
+    env.restore()
+end
+
 function tests.successful_seam_bruteforce_requeues_followup_route()
     local env = make_env({pathfind_mode = "block_sensitive"})
 
@@ -1037,6 +1085,45 @@ function tests.successful_seam_bruteforce_requeues_followup_route()
         table.concat(env.outputs, "\n"),
         "Seam crossed.",
         "successful seam brute force should be announced"
+    )
+
+    env.restore()
+end
+
+function tests.successful_seam_bruteforce_at_destination_publishes_route_complete()
+    local target = {id = "exit_1", name = "Exit", type = "exit", x = 5, y = 2}
+    local env = make_env({
+        current_object = target,
+        object_list = {target},
+        non_walkable_cells = {["5,2"] = true},
+        already_adjacent_after_first = true,
+    })
+
+    env.route_manager.autowalk_to_object(target, {survey_safe = true, speak = false})
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 5,
+    })
+    env.auto_step.on_step_complete(5, 4, "up", 5, 3, {queued_route = false, source = "test"})
+
+    local saw_route_complete = false
+    for _, event in ipairs(env.published_events()) do
+        if event.name == "route_completed" then
+            saw_route_complete = true
+            break
+        end
+    end
+
+    assert_equal(
+        env.start_route_calls(),
+        1,
+        "seam brute force that reaches the goal should not queue an empty follow-up route"
+    )
+    assert_equal(
+        saw_route_complete,
+        true,
+        "seam brute force that reaches the goal should publish route_completed for survey listeners"
     )
 
     env.restore()
@@ -1305,6 +1392,52 @@ function tests.autowalk_to_npc_faces_target_after_arrival()
     env.restore()
 end
 
+function tests.survey_safe_autowalk_skips_arrival_input_and_speech()
+    local target = {name = "King", type = "npc", id = "npc_10", x = 5, y = 3}
+    local env = make_env({
+        is_bizhawk = true,
+        current_object = target,
+        config_values = {
+            auto_walk_npc_hold_frames = "2",
+            auto_walk_face_target_frames = "2",
+        },
+    })
+
+    env.route_manager.autowalk_to_object(target, {
+        survey_safe = true,
+        speak = false,
+        store_debug_path = false,
+    })
+    env.auto_step.on_route_complete()
+    env.route_manager.apply_npc_freeze()
+
+    assert_equal(#env.joypad_sets, 0, "survey routes should not inject post-arrival facing input")
+    assert_equal(#env.memory_writes, 0, "survey routes should not hold the target NPC after arrival")
+    assert_equal(env.suppress_direction_tracking_calls(), 0, "survey routes should not arm facing-input suppression")
+    assert_equal(table.concat(env.outputs, "\n"), "", "silent survey routes should not announce normal arrival speech")
+
+    env.restore()
+end
+
+function tests.survey_safe_autowalk_keeps_turn_settle_but_skips_straight_settle()
+    local target = {name = "King", type = "npc", id = "npc_10", x = 5, y = 3}
+    local env = make_env({
+        current_object = target,
+        path_length = 2,
+    })
+
+    env.route_manager.autowalk_to_object(target, {
+        survey_safe = true,
+        speak = false,
+    })
+
+    local opts = env.last_start_route_opts()
+    assert_equal(opts and opts.settle_frames, 30, "survey routes should retain long settle frames for direction changes")
+    assert_equal(opts and opts.settle_same_direction, false, "survey routes should skip the long settle between straight same-direction steps")
+
+    env.restore()
+end
+
 function tests.autowalk_already_adjacent_faces_target()
     local env = make_env({
         pathfind_mode = "already_adjacent",
@@ -1320,6 +1453,33 @@ function tests.autowalk_already_adjacent_faces_target()
 
     assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "already-adjacent auto-walk should face the target")
     assert_equal(env.suppress_direction_tracking_calls(), 1, "already-adjacent facing tap should suppress auto-step edge tracking")
+
+    env.restore()
+end
+
+function tests.survey_safe_already_adjacent_skips_arrival_input()
+    local target = {name = "King", type = "npc", id = "npc_10", x = 5, y = 3}
+    local env = make_env({
+        pathfind_mode = "already_adjacent",
+        current_object = target,
+        config_values = {
+            auto_walk_npc_hold_frames = "2",
+            auto_walk_face_target_frames = "1",
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_object(target, {
+        survey_safe = true,
+        speak = false,
+        store_debug_path = false,
+    })
+    env.route_manager.apply_npc_freeze()
+
+    assert_equal(plan.status, "already_there", "survey-safe adjacent target should still finalize as already_there")
+    assert_equal(#env.joypad_sets, 0, "survey-safe adjacent target should not inject facing input")
+    assert_equal(#env.memory_writes, 0, "survey-safe adjacent target should not hold the target NPC")
+    assert_equal(env.suppress_direction_tracking_calls(), 0, "survey-safe adjacent target should not suppress direction tracking")
+    assert_equal(table.concat(env.outputs, "\n"), "", "silent survey-safe adjacent target should not speak")
 
     env.restore()
 end

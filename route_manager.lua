@@ -91,8 +91,11 @@ local seam_memory = {}
 local seam_retry_state = nil
 local autowalk_guard = nil
 local active_route_settle_frames = 0
+local active_route_settle_same_direction = true
 local active_route_target = nil
 local active_route_face_dir = nil
+local active_route_completion_actions = true
+local active_route_speak_completion = true
 local active_route_total_steps = 0
 local active_route_completed_steps = 0
 local target_npc_hold = nil
@@ -675,6 +678,12 @@ local function clear_seam_retry_state()
     seam_retry_state = nil
 end
 
+local function is_suspect_route_timeout(block_data)
+    return block_data
+        and block_data.queued_route ~= false
+        and block_data.movement_started == true
+end
+
 -- ============================================================
 -- NPC Freeze
 -- ============================================================
@@ -1081,8 +1090,11 @@ local function clear_active_route_context(reason, refresh_objects)
     last_pathfind_obj = nil
     reroute_failures = 0
     active_route_settle_frames = 0
+    active_route_settle_same_direction = true
     active_route_target = nil
     active_route_face_dir = nil
+    active_route_completion_actions = true
+    active_route_speak_completion = true
     active_route_total_steps = 0
     active_route_completed_steps = 0
     release_target_face(reason or "route context cleared")
@@ -1093,9 +1105,20 @@ local function clear_active_route_context(reason, refresh_objects)
     end
 end
 
-local function set_active_route_context(target, path_len, face_dir)
+local function use_post_arrival_actions(opts)
+    opts = opts or {}
+    if opts.post_arrival_actions == false or opts.survey_safe then
+        return false
+    end
+    return true
+end
+
+local function set_active_route_context(target, path_len, face_dir, opts)
+    opts = opts or {}
     active_route_target = target
     active_route_face_dir = face_dir
+    active_route_completion_actions = use_post_arrival_actions(opts)
+    active_route_speak_completion = opts.speak ~= false
     active_route_total_steps = tonumber(path_len) or 0
     active_route_completed_steps = 0
 end
@@ -1988,8 +2011,17 @@ local function queue_path_steps(path, opts)
         settle_frames = active_route_settle_frames or 0
     end
     settle_frames = math.max(0, tonumber(settle_frames) or 0)
-    if auto_step.start_route(steps, {settle_frames = settle_frames}) then
+    local settle_same_direction = opts.settle_same_direction
+    if settle_same_direction == nil then
+        settle_same_direction = active_route_settle_same_direction
+    end
+    settle_same_direction = settle_same_direction ~= false
+    if auto_step.start_route(steps, {
+        settle_frames = settle_frames,
+        settle_same_direction = settle_same_direction,
+    }) then
         active_route_settle_frames = settle_frames
+        active_route_settle_same_direction = settle_same_direction
         reroute_failures = 0
         return true
     end
@@ -2082,10 +2114,10 @@ function M.autowalk_to_object(obj, opts)
         debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
         plan.status = "already_there"
         plan.message = "Already there. " .. build_pathfind_message(obj, "Adjacent", plan.face_dir)
-        if should_face_after_plan(plan) then
+        if use_post_arrival_actions(opts) and should_face_after_plan(plan) then
             queue_target_face(plan.face_dir, obj)
         end
-        if start_target_npc_hold(obj) then
+        if use_post_arrival_actions(opts) and start_target_npc_hold(obj) then
             plan.message = plan.message .. ". Target held briefly. Use TALK now"
         end
         if opts.speak ~= false then
@@ -2114,8 +2146,19 @@ function M.autowalk_to_object(obj, opts)
     if settle_frames == nil then
         settle_frames = 0
     end
-    if not queue_path_steps(plan.path, {settle_frames = settle_frames}) then
+    local settle_same_direction = opts.route_settle_same_direction
+    if settle_same_direction == nil and opts.survey_safe then
+        settle_same_direction = false
+    end
+    if settle_same_direction == nil then
+        settle_same_direction = true
+    end
+    if not queue_path_steps(plan.path, {
+        settle_frames = settle_frames,
+        settle_same_direction = settle_same_direction,
+    }) then
         active_route_settle_frames = 0
+        active_route_settle_same_direction = true
         release_npc_freeze("autowalk queue failure")
         debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)
         plan.status = "queue_failed"
@@ -2126,7 +2169,7 @@ function M.autowalk_to_object(obj, opts)
         return plan
     end
     debug_tools.info("AUTO_WALK: queued " .. #plan.path .. " step(s) for " .. obj.name)
-    set_active_route_context(obj, #plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
+    set_active_route_context(obj, #plan.path, should_face_after_plan(plan) and plan.face_dir or nil, opts)
     plan.status = "queued"
     plan.ok = true
     plan.path_length = #plan.path
@@ -2189,6 +2232,23 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
     if not last_pathfind_obj then return end
+
+    if is_suspect_route_timeout(block_data)
+       and not is_seam_retry_block
+       and not is_npc_block
+       and seam_class ~= "confirmed_blocked"
+       and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+        debug_tools.info(string.format(
+            "AUTO_WALK_TIMING_RETRY map=0x%02X from=(%d,%d) dir=%s movement_start_frame=%s timeout_retries=%s turn_represses=%s",
+            map_id,
+            from_x or -1,
+            from_y or -1,
+            tostring(blocked_dir),
+            tostring(block_data and block_data.movement_start_frame),
+            tostring(block_data and block_data.timeout_retries),
+            tostring(block_data and block_data.turn_represses)))
+        return
+    end
 
     local _, px, py = nav.get_position()
 
@@ -2332,6 +2392,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     end
 
     if not plan.path or #plan.path == 0 then
+        event_bus.publish("route_completed")
         clear_active_route_context("seam brute force reached destination", should_refresh_objects_after_route())
         tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
             target,
@@ -2359,18 +2420,24 @@ auto_step.on_route_complete = function()
     local target = active_route_target or last_pathfind_obj
     local face_dir = active_route_face_dir
     local total_steps = active_route_total_steps
+    local completion_actions = active_route_completion_actions
+    local speak_completion = active_route_speak_completion
     clear_active_route_context("autowalk route complete", should_refresh_objects_after_route())
     if target then
         local msg = string.format("Auto-walk complete. Arrived at %s", target.name or "destination")
         if total_steps and total_steps > 0 then
             msg = msg .. string.format(" after %d steps", total_steps)
         end
-        queue_target_face(face_dir, target)
-        if target.type == objects.TYPE_NPC and start_target_npc_hold(target) then
+        if completion_actions then
+            queue_target_face(face_dir, target)
+        end
+        if completion_actions and target.type == objects.TYPE_NPC and start_target_npc_hold(target) then
             msg = msg .. ". Target held briefly. Use TALK now"
         end
-        tolk.output_interrupt(msg)
-    else
+        if speak_completion then
+            tolk.output_interrupt(msg)
+        end
+    elseif speak_completion then
         tolk.output_interrupt("Auto-walk complete")
     end
 end

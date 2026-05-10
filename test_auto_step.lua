@@ -458,11 +458,60 @@ function tests.timeout_retry_resets_movement_started_flag()
     env.restore()
 end
 
+function tests.queued_route_timeout_retry_does_not_hold_early_twitch()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_timeout = "4",
+            auto_step_block_retry_limit = "1",
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "6",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[6] and not has_any_direction(env.injected[6]),
+        "queued-route timeout retries should release after immediate subpixel twitches to avoid extra-tile drift"
+    )
+
+    env.restore()
+end
+
 function tests.movement_start_subpixel_releases_injected_direction()
     local env = make_env({
         sticky_joypad_set = true,
         config_values = {
             auto_step_release_on_movement_start = "true",
+        },
+    })
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[2] and not has_any_direction(env.injected[2]),
+        "auto_step should release D-pad as soon as movement subpixel changes"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_early_subpixel_twitch_keeps_holding_input()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
         },
     })
     env.auto_step.start_route({"right"})
@@ -472,8 +521,62 @@ function tests.movement_start_subpixel_releases_injected_direction()
     env.update(true)
 
     assert_truthy(
-        env.injected[2] and not has_any_direction(env.injected[2]),
-        "auto_step should release D-pad as soon as movement subpixel changes"
+        env.injected[2] and env.injected[2].right,
+        "queued-route early subpixel twitches should keep the D-pad held instead of creating a fake blocked step"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_turn_repress_twitch_reports_short_timing_block()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_repress_timeout_frames = "12",
+            auto_step_inject_limit = "3",
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_release_frames = "1",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 5 do
+        env.update(true)
+    end
+
+    env.set_subpixel(0x30)
+    env.update(true)
+
+    for _ = 1, 50 do
+        env.update(true)
+    end
+
+    local blocked_event
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked_event = event
+            break
+        end
+    end
+
+    assert_truthy(
+        blocked_event and blocked_event.frame < 35,
+        "queued-route turn re-press twitches should report to the route manager before the full wall timeout"
+    )
+    assert_truthy(
+        blocked_event.payload and blocked_event.payload.movement_started == true,
+        "short route timeout reports should preserve movement-start metadata for the route manager timing retry"
+    )
+    assert_truthy(
+        blocked_event.payload and blocked_event.payload.timing_suspect == true,
+        "short route timeout reports should be marked as timing-suspect survey noise"
     )
 
     env.restore()
@@ -769,6 +872,85 @@ function tests.queued_routes_wait_for_configured_settle_gap_before_next_step()
     env.restore()
 end
 
+function tests.queued_routes_can_skip_configured_settle_on_straight_segments()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right"}, {
+        settle_frames = 8,
+        settle_same_direction = false,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    local saw_second_step_before_full_settle = false
+    for frame = 5, 10 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.right then
+            saw_second_step_before_full_settle = true
+            break
+        end
+    end
+
+    assert_truthy(
+        saw_second_step_before_full_settle,
+        "queued route should be able to skip configured settle frames between straight same-direction steps"
+    )
+
+    env.restore()
+end
+
+function tests.queued_routes_still_settle_on_direction_change_when_straight_settle_disabled()
+    local env = make_env({
+        config_values = {
+            auto_step_route_turn_settle_frames = "0",
+        },
+    })
+    env.auto_step.start_route({"right", "down"}, {
+        settle_frames = 8,
+        settle_same_direction = false,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    for frame = 3, 10 do
+        local buttons = env.injected[frame]
+        assert_truthy(
+            not (buttons and buttons.down),
+            "queued route should still wait before changing direction when straight settle is disabled"
+        )
+    end
+
+    local saw_down = false
+    for _ = 1, 10 do
+        env.update(true)
+    end
+    for frame = 11, 20 do
+        local buttons = env.injected[frame]
+        if buttons and buttons.down then
+            saw_down = true
+            break
+        end
+    end
+
+    assert_truthy(
+        saw_down,
+        "queued route should resume after the configured turn settle when straight settle is disabled"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_post_step_release_ignores_stale_direction_blip()
     local env = make_env()
     env.auto_step.start_route({"right", "right"})
@@ -981,6 +1163,41 @@ function tests.queued_routes_cancel_unmatched_drift_during_settle()
             "queued route should not continue stale directions after off-path drift"
         )
     end
+
+    env.restore()
+end
+
+function tests.queued_route_completion_must_match_injected_direction()
+    local env = make_env()
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_position(3, 2)
+    env.update(true)
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "route_drift_off_path"
+           and payload.source == "auto_hold_mismatch"
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.expected_x == 4
+           and payload.expected_y == 1
+           and payload.current_x == 3
+           and payload.current_y == 2 then
+            saw_cancel = true
+        end
+        assert_truthy(
+            event.name ~= "route_step_completed",
+            "queued route should not publish a completed step when the landed tile does not match the injected direction"
+        )
+    end
+    assert_truthy(
+        saw_cancel,
+        "queued route should cancel when the engine moves a different direction than the injected route step"
+    )
 
     env.restore()
 end

@@ -86,6 +86,8 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_turn_repress_release_frames", value = "2", comment = "; Neutral frames between turn-only press and re-press"},
     {key = "auto_step_block_retry_limit", value = "1", comment = "; Internal retries before reporting a blocked step (lower reduces blocked-route audio hitches)"},
     {key = "auto_step_route_turn_settle_frames", value = "16", comment = "; Extra neutral frames before queued auto-walk changes direction"},
+    {key = "auto_step_route_early_release_grace_frames", value = "10", comment = "; Queued-route subpixel twitches at/before this frame keep holding input"},
+    {key = "auto_step_route_turn_repress_timeout_frames", value = "24", comment = "; Short timeout for queued-route turn re-presses that only twitch"},
     {key = "auto_step_release_on_movement_start", value = "true", comment = "; Release injected D-pad once movement subpixel changes to reduce cell overshoot"},
     {key = "auto_walk_progress_interval", value = "6", comment = "; Speak auto-walk progress every N completed queued steps on longer routes (0 = off)"},
     {key = "auto_walk_npc_hold_frames", value = "1200", comment = "; Frames to hold a target NPC in place after auto-walk arrival (0 = off)"},
