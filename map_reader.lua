@@ -1051,7 +1051,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- A follow-up public-side route re-confirmed (8,5)->LEFT into (7,5)
         -- is blocked. Merchant 2 is not reached from the upper `(5,3)` tile;
         -- he is a counter interaction from doorway square (5,6), facing north.
+        -- 2026-05-09 parked survey + probe_edge_verify confirmed (5,2)->DOWN
+        -- into (5,3) blocks 5/5 despite an open model preview.
         ["4,3"]  = {north = true, south = true},
+        ["5,3"]  = {north = true},
         ["6,3"]  = {north = true, south = true},
         ["7,3"]  = {north = true, east = true},
         ["3,4"]  = {west = true, east = true},
@@ -1226,23 +1229,28 @@ local MAP_DIRECTIONAL_BLOCKS = {
     -- pass then reconfirmed the listed start-choke/east-column approaches with
     -- 5/5 blocked attempts each; mixed verifier results remain unmodeled.
     [0x1C] = {
-        ["2,1"] = {west = true}, -- (1,1)->RIGHT blocked 5/5 by probe_edge_verify
+        ["2,1"] = {west = true, south = true, east = true}, -- west/south/east approaches blocked 5/5
         ["2,3"] = {west = true, north = true}, -- west/north approaches blocked 5/5
         ["3,3"] = {north = true, south = true}, -- (3,2)->DOWN and (3,4)->UP blocked
         ["4,1"] = {south = true}, -- (4,2)->UP blocked 5/5 by probe_edge_verify
-        ["4,3"] = {north = true, south = true}, -- (4,2)->DOWN and (4,4)->UP blocked
+        ["4,3"] = {north = true, south = true, east = true}, -- north/south/east approaches blocked 5/5
         ["5,1"] = {south = true, east = true}, -- south/east approaches blocked 5/5
         ["2,4"] = {east = true, west = true}, -- (3,4)->LEFT and (1,4)->RIGHT blocked
-        ["3,5"] = {north = true}, -- (3,4)->DOWN blocked
-        ["4,5"] = {north = true, east = true}, -- north/east approaches blocked 5/5
-        ["7,2"] = {west = true},  -- (6,2)->RIGHT blocked
+        ["1,5"] = {north = true, south = true}, -- north/south approaches blocked 5/5
+        ["2,5"] = {south = true}, -- (2,6)->UP blocked 5/5 by probe_edge_verify
+        ["3,5"] = {north = true, south = true}, -- north/south approaches blocked 5/5
+        ["4,5"] = {north = true, east = true, south = true}, -- north/east/south approaches blocked 5/5
+        ["7,2"] = {west = true, north = true},  -- west/north approaches blocked 5/5
+        ["8,2"] = {south = true, east = true}, -- south/east approaches blocked 5/5
+        ["7,3"] = {south = true, east = true}, -- south/east approaches blocked 5/5
         ["6,3"] = {north = true}, -- (6,2)->DOWN blocked
-        ["6,4"] = {west = true, south = true}, -- west/south approaches blocked 5/5
-        ["1,5"] = {north = true}, -- (1,4)->DOWN blocked
-        ["6,6"] = {west = true, north = true}, -- west/north approaches blocked
+        ["6,4"] = {west = true, south = true, east = true}, -- west/south/east approaches blocked 5/5
+        ["6,6"] = {west = true, north = true, east = true}, -- west/north/east approaches blocked 5/5
+        ["6,7"] = {east = true}, -- (7,7)->LEFT blocked 5/5 by probe_edge_verify
         ["8,5"] = {west = true}, -- (7,5)->RIGHT blocked 5/5 by probe_edge_verify
-        ["8,6"] = {west = true, south = true}, -- west/south approaches blocked 5/5
-        ["5,7"] = {north = true}, -- (5,6)->DOWN blocked
+        ["9,5"] = {south = true}, -- (9,6)->UP blocked 5/5 by probe_edge_verify
+        ["8,6"] = {west = true, south = true, east = true}, -- west/south/east approaches blocked 5/5
+        ["5,7"] = {north = true, south = true, west = true}, -- north/south/west approaches blocked 5/5
         ["8,8"] = {west = true, north = true, east = true}, -- west/north/east approaches blocked
         ["8,9"] = {west = true, east = true},  -- west/east approaches blocked 5/5
     },
