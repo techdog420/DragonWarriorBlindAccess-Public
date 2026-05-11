@@ -710,6 +710,7 @@ local K = {
     STARTUP_FRAMES                    = 120,  -- 2s of grace after script load
     STABLE_THRESHOLD                  = 30,   -- frames of no change for "done"
     BATTLE_DIALOGUE_STABLE_THRESHOLD  = 14,
+    BATTLE_DIALOGUE_FAST_THRESHOLD    = 6,
     BATTLE_DIALOGUE_GRACE_THRESHOLD   = 6,
     BATTLE_DIALOGUE_GRACE             = 120,
     UPPER_STABLE_THRESHOLD            = 30,
@@ -755,6 +756,11 @@ local PREV = {
     merchant_selection = nil, merchant_price = nil,
     -- battle menu
     battle_menu_open = false, battle_cursor_x = nil, battle_cursor_y = nil,
+    battle_spell_mode = false, battle_spell_entry_pending = false,
+    battle_spell_index = nil, battle_joy_a = false, battle_joy_b = false,
+    battle_opening_dialogue_pending = false,
+    battle_fast_dialogue = "", battle_fast_prefix = "",
+    battle_fast_stable_count = 0,
     -- y<=3 cleaned dialogue
     clean_y1 = "", clean_stable_count = 0,
     -- title cursor
@@ -796,6 +802,7 @@ local startup_counter = 0     -- Counts up to K.STARTUP_FRAMES
 local submenu_mode = nil              -- nil (normal), "STATUS", or "ITEM"
 local game_state = {state = nil}      -- updated once per frame by state.check_for_changes()
 local battle_dialogue_grace_frames = 0
+local battle_spell_recovery_available = false
 
 -- y≤3 cleaned-text stability tracking lives on PREV.clean_y1 / .clean_stable_count.
 -- The raw dialogue may oscillate every 8–12 frames due to command-menu cursor
@@ -1553,6 +1560,29 @@ local function reset_battle_menu_state()
     PREV.battle_menu_open = false
     PREV.battle_cursor_x = nil
     PREV.battle_cursor_y = nil
+    PREV.battle_spell_mode = false
+    PREV.battle_spell_entry_pending = false
+    PREV.battle_spell_index = nil
+    PREV.battle_joy_a = false
+    PREV.battle_joy_b = false
+    PREV.battle_opening_dialogue_pending = false
+    PREV.battle_fast_dialogue = ""
+    PREV.battle_fast_prefix = ""
+    PREV.battle_fast_stable_count = 0
+end
+
+local function is_battle_spell_screen_visible()
+    local upper = text.read_upper_window(
+        get_scroll_tiles(),
+        DW_QOL_STATE.get_scroll_base_nametable())
+    return battle.is_spell_screen_text(upper, items.get_spell_entries())
+end
+
+local function speak_battle_spell_selection(prefix, d9)
+    local selection = items.describe_spell_at_d9(d9 or 0)
+    local msg = (prefix or "") .. selection
+    debug_tools.info("BATTLE_SPELL: " .. msg)
+    tolk.output_interrupt(msg)
 end
 
 local function check_merchant_screen(frame_delta)
@@ -1631,17 +1661,116 @@ local function check_merchant_screen(frame_delta)
 end
 
 local function check_battle_menu()
-    local changes = menu.check_for_changes()
-    local menu_open = menu.is_open()
+    local cursor_x, cursor_y = menu.get_cursor_position()
+    local changes = {
+        cursor_x = cursor_x,
+        cursor_y = cursor_y,
+        cursor_moved = (cursor_x ~= PREV.battle_cursor_x or cursor_y ~= PREV.battle_cursor_y),
+        menu_closed = false,
+    }
+    local joy = joypad.read(1)
+    local a_now = joy.A or false
+    local b_now = joy.B or false
+    local a_just = a_now and not PREV.battle_joy_a
+    local b_just = b_now and not PREV.battle_joy_b
+    PREV.battle_joy_a = a_now
+    PREV.battle_joy_b = b_now
+    local item = battle.get_menu_item(cursor_x, cursor_y)
 
-    if not menu_open then
-        PREV.battle_menu_open = false
+    -- Full upper-window spell detection is expensive in BizHawk. Use it only
+    -- when the script reloads directly into an unknown battle menu state. Normal
+    -- SPELL entry is tracked from the A press or the immediately-following
+    -- A-held cursor jump into the spell list.
+    local maybe_spell_list_transition = changes.cursor_moved
+        and PREV.battle_cursor_x == 1 and PREV.battle_cursor_y == 0
+        and cursor_x == 0 and cursor_y == 0
+        and a_now
+    if maybe_spell_list_transition then
+        PREV.battle_spell_mode = true
+        PREV.battle_spell_entry_pending = false
+        PREV.battle_spell_index = cursor_y
+        PREV.battle_menu_open = true
+        PREV.battle_cursor_x = cursor_x
+        PREV.battle_cursor_y = cursor_y
+        speak_battle_spell_selection("Spells. ", cursor_y)
         return
     end
 
-    local cursor_x = changes.cursor_x
-    local cursor_y = changes.cursor_y
-    local item = battle.get_menu_item(cursor_x, cursor_y)
+    if not PREV.battle_spell_mode and battle_spell_recovery_available then
+        battle_spell_recovery_available = false
+        if is_battle_spell_screen_visible() then
+            PREV.battle_spell_mode = true
+            PREV.battle_spell_entry_pending = false
+            PREV.battle_spell_index = cursor_y
+            PREV.battle_menu_open = true
+            PREV.battle_cursor_x = cursor_x
+            PREV.battle_cursor_y = cursor_y
+            speak_battle_spell_selection("Spells. ", cursor_y)
+            return
+        end
+    end
+
+    if PREV.battle_spell_mode then
+        if changes.menu_closed then
+            PREV.battle_spell_mode = false
+            PREV.battle_spell_entry_pending = false
+            PREV.battle_spell_index = nil
+            PREV.battle_menu_open = false
+            return
+        end
+
+        if b_just or a_just then
+            PREV.battle_spell_mode = false
+            PREV.battle_spell_entry_pending = false
+            PREV.battle_spell_index = nil
+            PREV.battle_menu_open = false
+            return
+        end
+
+        if PREV.battle_spell_entry_pending and changes.cursor_moved then
+            PREV.battle_spell_entry_pending = false
+            PREV.battle_spell_index = cursor_y
+            PREV.battle_cursor_x = cursor_x
+            PREV.battle_cursor_y = cursor_y
+            return
+        end
+
+        if changes.cursor_moved or cursor_y ~= PREV.battle_spell_index then
+            PREV.battle_spell_entry_pending = false
+            PREV.battle_spell_index = cursor_y
+            PREV.battle_cursor_x = cursor_x
+            PREV.battle_cursor_y = cursor_y
+            speak_battle_spell_selection("", cursor_y)
+        end
+        return
+    end
+
+    if item == "SPELL" and a_just then
+        if items.get_spell_count() == 0 then
+            debug_tools.info("BATTLE_SPELL: Spells. Empty.")
+            tolk.output_interrupt("Spells. Empty.")
+        else
+            PREV.battle_spell_mode = true
+            PREV.battle_spell_entry_pending = true
+            PREV.battle_spell_index = cursor_y
+            PREV.battle_menu_open = true
+            PREV.battle_cursor_x = cursor_x
+            PREV.battle_cursor_y = cursor_y
+            speak_battle_spell_selection("Spells. ", cursor_y)
+        end
+        return
+    end
+
+    if a_just then
+        -- Selecting a top-level battle command will lead into action dialogue.
+        -- Keep the current cursor remembered so the held A press does not
+        -- immediately re-announce the same command while the screen transitions.
+        PREV.battle_menu_open = true
+        PREV.battle_cursor_x = cursor_x
+        PREV.battle_cursor_y = cursor_y
+        return
+    end
+
     local announce = false
 
     if not PREV.battle_menu_open then
@@ -1661,7 +1790,7 @@ local function check_battle_menu()
     if item then
         debug_tools.info("BATTLE_MENU: " .. item)
         tolk.output(item)
-    else
+    elseif changes.cursor_moved then
         debug_tools.info(string.format("BATTLE_MENU_RAW: x=%s y=%s", tostring(cursor_x), tostring(cursor_y)))
         tolk.output("Battle cursor " .. tostring(cursor_x) .. ", " .. tostring(cursor_y))
     end
@@ -2655,6 +2784,102 @@ end
 -- the cleaned text IS stable even during cursor blink, so the threshold is
 -- reached and the announcement fires exactly once. This prevents the
 -- per-character "ki…kid…kidnap…" chatter from the old per-change approach.
+local function speak_new_dialogue(new_text, battle_dialogue_mode, priority)
+    debug_tools.on_dialogue(new_text)
+    event_bus.publish("dialogue_new", {text = new_text})
+    if battle_dialogue_mode then
+        if PREV.battle_opening_dialogue_pending or priority == "interrupt" then
+            PREV.battle_opening_dialogue_pending = false
+            tolk.output_interrupt(new_text)
+        else
+            tolk.output(new_text)
+        end
+    elseif PREV.announced_dialogue == "" then
+        tolk.output_interrupt(new_text)
+    else
+        tolk.output(new_text)
+    end
+end
+
+local function maybe_announce_battle_opening(dialogue)
+    if not PREV.battle_opening_dialogue_pending then return false end
+    if game_state.state ~= state.STATE_BATTLE then return false end
+    if dialogue == "" or not dialogue:find("draws near", 1, true) then return false end
+
+    local new_text = battle.extract_new_text(PREV.announced_dialogue, dialogue)
+    if new_text == "" or not battle.is_coherent_dialogue(new_text) then return false end
+
+    speak_new_dialogue(new_text, true)
+    PREV.announced_dialogue = dialogue
+    PREV.dialogue = dialogue
+    PREV.stable_count = 0
+    PREV.clean_y1 = dialogue
+    PREV.clean_stable_count = 0
+    return true
+end
+
+local function announced_battle_prefix(dialogue, new_text, complete_text)
+    local start_pos = dialogue:find(new_text, 1, true)
+    if start_pos then
+        local end_pos = start_pos + #complete_text - 1
+        return dialogue:sub(1, end_pos):match("^%s*(.-)%s*$") or complete_text
+    end
+    return complete_text
+end
+
+local function maybe_announce_fast_battle_dialogue(dialogue, frame_delta)
+    if game_state.state ~= state.STATE_BATTLE and battle_dialogue_grace_frames <= 0 then
+        return false
+    end
+    if PREV.battle_opening_dialogue_pending then
+        return false
+    end
+    if dialogue == "" or not dialogue:find("[a-z]") then
+        return false
+    end
+
+    local new_text = battle.extract_new_text(PREV.announced_dialogue, dialogue)
+    if new_text == "" then
+        return false
+    end
+
+    local complete_text = battle.fast_action_prefix(new_text)
+    if complete_text == "" then
+        PREV.battle_fast_dialogue = ""
+        PREV.battle_fast_prefix = ""
+        PREV.battle_fast_stable_count = 0
+        return false
+    end
+
+    local announced_prefix = announced_battle_prefix(dialogue, new_text, complete_text)
+    if complete_text ~= PREV.battle_fast_dialogue or announced_prefix ~= PREV.battle_fast_prefix then
+        PREV.battle_fast_dialogue = complete_text
+        PREV.battle_fast_prefix = announced_prefix
+        PREV.battle_fast_stable_count = 0
+        PREV.dialogue = dialogue
+        PREV.stable_count = 0
+        return true
+    end
+
+    PREV.battle_fast_stable_count = PREV.battle_fast_stable_count + frame_delta
+    if PREV.battle_fast_stable_count < K.BATTLE_DIALOGUE_FAST_THRESHOLD then
+        PREV.dialogue = dialogue
+        PREV.stable_count = 0
+        return true
+    end
+
+    speak_new_dialogue(complete_text, true, "interrupt")
+    PREV.announced_dialogue = announced_prefix
+    PREV.dialogue = dialogue
+    PREV.stable_count = 0
+    PREV.battle_fast_dialogue = ""
+    PREV.battle_fast_prefix = ""
+    PREV.battle_fast_stable_count = 0
+    PREV.clean_y1 = dialogue
+    PREV.clean_stable_count = 0
+    return true
+end
+
 local function check_dialogue(frame_delta, refresh_ppu)
     frame_delta = scan_profiler.stable_delta(frame_delta)
     if refresh_ppu and emulator_compat.clear_ppu_cache then
@@ -2673,6 +2898,14 @@ local function check_dialogue(frame_delta, refresh_ppu)
     end
     local lower_dialogue_visible = (dialogue ~= "")
     local stable_threshold = lower_dialogue_stable_threshold(dialogue)
+
+    if maybe_announce_battle_opening(dialogue) then
+        return
+    end
+
+    if maybe_announce_fast_battle_dialogue(dialogue, frame_delta) then
+        return
+    end
 
     if (field_dialogue_guard_active() and not lower_dialogue_visible) or
        (CMD.movement_dialogue > 0 and not has_blocking_live_input() and not DW_QOL_STATE.command_menu_blocks_field_movement()
@@ -2723,18 +2956,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
                 end
                 if new_text ~= "" then
                     if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
-                        debug_tools.on_dialogue(new_text)
-                        event_bus.publish("dialogue_new", {text = new_text})
-                        -- Battle pages should always queue in order. Field/NPC
-                        -- dialogue keeps the old first-page interrupt behavior so
-                        -- menu speech is cleared immediately when talk text opens.
-                        if battle_dialogue_mode then
-                            tolk.output(new_text)
-                        elseif PREV.announced_dialogue == "" then
-                            tolk.output_interrupt(new_text)
-                        else
-                            tolk.output(new_text)
-                        end
+                        speak_new_dialogue(new_text, battle_dialogue_mode)
                         PREV.announced_dialogue = clean
                     end
                 end
@@ -2783,15 +3005,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
                 end
                 if new_text ~= "" then
                     if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
-                        debug_tools.on_dialogue(new_text)
-                        event_bus.publish("dialogue_new", {text = new_text})
-                        if battle_dialogue_mode then
-                            tolk.output(new_text)
-                        elseif PREV.announced_dialogue == "" then
-                            tolk.output_interrupt(new_text)
-                        else
-                            tolk.output(new_text)
-                        end
+                        speak_new_dialogue(new_text, battle_dialogue_mode)
                         PREV.announced_dialogue = dialogue
                     end
                 end
@@ -4347,6 +4561,7 @@ while true do
             PREV.upper_dialogue = PREV.upper_baseline
             reset_merchant_state(false)
             reset_battle_menu_state()
+            battle_spell_recovery_available = (game_state.state == state.STATE_BATTLE)
 
             if game_state.state == state.STATE_TITLE then
                 PREV.title_cursor_row       = nil
@@ -4416,7 +4631,13 @@ while true do
                 PREV.name_d9 = nil
                 reset_merchant_state(false)
                 reset_battle_menu_state()
-                tolk.output("Battle!")
+                PREV.dialogue = ""
+                PREV.announced_dialogue = ""
+                PREV.stable_count = 0
+                PREV.clean_y1 = ""
+                PREV.clean_stable_count = 0
+                PREV.battle_opening_dialogue_pending = true
+                tolk.output_interrupt("Battle!")
                 debug_tools.on_battle_start()
                 event_bus.publish("battle_started")
             elseif game_state.state == state.STATE_FIELD then

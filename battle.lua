@@ -13,12 +13,60 @@ local ITEMS = {
 }
 local OVERLAP_MIN_LEN = 8
 
+local function complete_prefix_without_coherence_check(text)
+    local s = tostring(text or "")
+    local last_punctuation = nil
+    for i = 1, #s do
+        local ch = s:sub(i, i)
+        if ch == "." or ch == "!" or ch == "?" then
+            last_punctuation = i
+        end
+    end
+    if not last_punctuation then
+        return ""
+    end
+    local prefix = s:sub(1, last_punctuation):match("^%s*(.-)%s*$") or ""
+    if prefix:find("[a-z]") then
+        return prefix
+    end
+    return ""
+end
+
+local function drop_truncated_damage_prefix(text, phrase)
+    local _, _, before, after = text:find("^(.-)" .. phrase .. "%s+([A-Z].*)$")
+    if not after then
+        return text
+    end
+
+    local complete_prefix = complete_prefix_without_coherence_check(before)
+    after = after:match("^%s*(.-)%s*$") or after
+    if complete_prefix ~= "" then
+        return complete_prefix .. " " .. after
+    end
+    return after
+end
+
 function M.get_menu_item(x, y)
     local row = ITEMS[y]
     if row then
         return row[x]
     end
     return nil
+end
+
+function M.is_spell_screen_text(text, spell_entries)
+    local upper = tostring(text or ""):upper()
+    if upper == "" then
+        return false
+    end
+
+    for _, spell in ipairs(spell_entries or {}) do
+        local name = tostring(spell.name or ""):upper()
+        if name ~= "" and upper:find(name, 1, true) then
+            return true
+        end
+    end
+    return false
 end
 
 function M.normalize_dialogue(text)
@@ -33,6 +81,8 @@ function M.normalize_dialogue(text)
     -- remaining macro placeholders from battle-log text.
     normalized = normalized:gsub("%[GOLD%]%s*increas", "Gold increas")
     normalized = normalized:gsub("%[GOLD%]", "")
+    normalized = normalized:gsub("Experience%s+Gold%s+increases", "Experience increases")
+    normalized = normalized:gsub("GOLD%s+Gold%s+increases", "GOLD increases")
 
     -- The battle command prompt has dedicated menu speech and should not be
     -- appended to the log narration. If both sides are present, keep the
@@ -49,15 +99,18 @@ function M.normalize_dialogue(text)
         end
     end
 
-    -- When a damage line is cut off and the next action sentence begins, drop
-    -- the incomplete prefix rather than reading both mashed together.
-    normalized = normalized:gsub("^.-reduced by%s+([A-Z].*)$", "%1")
-    normalized = normalized:gsub("^.-decreased by%s+([A-Z].*)$", "%1")
+    -- When a damage line is cut off and the next action/reward sentence begins,
+    -- drop the incomplete damage fragment. Preserve any already-complete action
+    -- sentence before it so one-hit kills still speak "Bill attacks!".
+    normalized = drop_truncated_damage_prefix(normalized, "reduced by")
+    normalized = drop_truncated_damage_prefix(normalized, "decreased by")
 
     -- Border redraw noise often shows up as dot runs between real words.
     normalized = normalized:gsub("%.%.+", " ")
+    normalized = normalized:gsub("(%a)%s+%.%s+(%a)", "%1 %2")
     normalized = normalized:gsub("%s+%.([A-Z])", " %1")
     normalized = normalized:gsub("%s+%.([a-z])", " %1")
+    normalized = normalized:gsub("([%.!?])%s+%.", "%1")
 
     normalized = normalized:gsub("^%.%s*", "")
     normalized = normalized:gsub("%s+", " ")
@@ -125,6 +178,74 @@ function M.is_coherent_dialogue(text)
         end
     end
     return true
+end
+
+function M.complete_sentence_prefix(text)
+    local s = tostring(text or "")
+    if s == "" then
+        return ""
+    end
+
+    local last_punctuation = nil
+    for i = 1, #s do
+        local ch = s:sub(i, i)
+        if ch == "." or ch == "!" or ch == "?" then
+            last_punctuation = i
+        end
+    end
+
+    if not last_punctuation then
+        return ""
+    end
+
+    local prefix = s:sub(1, last_punctuation):match("^%s*(.-)%s*$") or ""
+    if prefix ~= "" and M.is_coherent_dialogue(prefix) then
+        return prefix
+    end
+    return ""
+end
+
+function M.is_fast_action_dialogue(text)
+    local s = tostring(text or "")
+    if s == "" then
+        return false
+    end
+
+    if s:find("draws near", 1, true)
+        or s:find("Thou hast done well", 1, true)
+        or s:find("Experience", 1, true)
+        or s:find("GOLD", 1, true)
+        or s:find("Gold", 1, true) then
+        return false
+    end
+
+    local lower = s:lower()
+    return s:find("attacks", 1, true) ~= nil
+        or s:find("Hit Point", 1, true) ~= nil
+        or s:find("Hit Points", 1, true) ~= nil
+        or s:find("reduced by", 1, true) ~= nil
+        or s:find("decreased by", 1, true) ~= nil
+        or lower:find("miss", 1, true) ~= nil
+        or lower:find("dodg", 1, true) ~= nil
+end
+
+function M.fast_action_prefix(text)
+    local s = tostring(text or "")
+    local best = ""
+
+    for i = 1, #s do
+        local ch = s:sub(i, i)
+        if ch == "." or ch == "!" or ch == "?" then
+            local prefix = s:sub(1, i):match("^%s*(.-)%s*$") or ""
+            if prefix ~= ""
+                and M.is_coherent_dialogue(prefix)
+                and M.is_fast_action_dialogue(prefix) then
+                best = prefix
+            end
+        end
+    end
+
+    return best
 end
 
 return M

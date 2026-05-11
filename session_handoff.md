@@ -4,23 +4,68 @@ Updated: 2026-05-10
 
 ## Active Resume
 
-Resume from Erdrick's Cave B2 (`map=0x1D`) at the B2 stairs `(8,9)`.
-Current live state after the latest cave-loop investigation: BizHawk reloaded
-the patched Lua script, the player was restored to B2 stairs `(8,9)`, and the
-latest two-way auto-walk route between the stairs and chest now succeeds from
-there.
+Resume from world-map grinding after exiting Erdrick's Cave. The combat spell
+bug was captured in a Red Slime fight where the user parked the battle SPELL
+submenu on the first spell; live state showed cursor `D8=0 D9=0`, visible spell
+text `HEAL` / `HURT`, HP `22/31`, and MP `14/14`.
 
-User decision: call the B2 maze done enough. This cave chest is the only known
-required chest/interaction on this floor, and both stairs-to-chest and
-chest-to-stairs are now playable. Do not keep polishing B2 bounce candidates
-unless normal gameplay exposes a fresh blocker; the next preferred focus is
-something else, likely combat dialogue tuning while the hero exits the dungeon.
+Combat spell reading now has a first fix in the worktree, plus a lag follow-up.
+`battle.lua` can recognize a battle spell-list screen by visible known spell
+names, and `main.lua` keeps a battle spell submenu mode so cursor `(0,0)` is
+announced as the selected spell instead of top-level `FIGHT`. After BizHawk
+auto-reload, `dw_debug.log` from `Started: 2026-05-10 15:25:01` logged
+`BATTLE_SPELL: Spells. Heal. 4 MP` while still on the parked spell list.
+The first implementation lagged combat because it decoded the upper battle
+window every battle-menu poll. The current patch limits that expensive
+spell-screen scan to a one-time recovery probe after reload/attach; normal
+SPELL entry is tracked from the A press. Latest polish also stops doing the
+recovery scan on every normal battle start, treats an A-held transition from
+top-level SPELL into cursor `(0,0)` as spell-list entry without a PPU scan, and
+uses interrupting speech for spell-list announcements so rapid Heal/Hurt cursor
+movement does not queue stale spell names. Follow-up logs showed combat start
+was fixed, but spell-menu entry and Heal/Hurt movement still glitched. The
+latest disk patch removes the generic field-menu `COMMAND` PPU scanner from
+the battle-menu path entirely; battle cursor tracking now reads the already
+cached D8/D9 cursor RAM from `game_snapshot` and only uses the upper-window
+spell scan for the rare case where the script reloads directly into an unknown
+battle spell-list state.
 
-The uncommitted B2 patch set is in `map_reader.lua`, `test_map_reader.lua`,
-`session_handoff.md`, `PROJECT_MEMORY.md`, and `PLAYTESTING.md`. Static
-validation passed: `luac -p map_reader.lua test_map_reader.lua`,
-`lua test_map_reader.lua`, and `git diff --check`. Live validation after the
-latest reload is in `dw_debug.log` from `Started: 2026-05-10 14:56:18`.
+Current validation passed: `luac -p main.lua battle.lua test_battle.lua
+test_items.lua`, `lua test_battle.lua` (26 tests), `lua test_items.lua`, and
+`git diff --check`. Latest reload proof is `dw_debug.log` from
+`Started: 2026-05-10 19:01:39`, with
+`LAUNCHER_PROBE: battle_dot_artifact_dedupe` at frame 60. After the user
+confirmed opening battle announcements now work well, the latest patch keeps
+the `Battle!`/`draws near` fast path and adds a battle-action fast path:
+complete action/damage sentence prefixes such as attacks and HP reduction/loss
+lines can interrupt stale menu speech after a short 6-frame confirmation,
+without waiting for the whole lower dialogue page to stabilize. Victory/reward
+text stays on the normal stable battle-dialogue path, and leaked `Gold`
+macro artifacts like `GOLD Gold increases` are normalized. Next useful test is
+a normal fight: confirm attack/damage lines are spoken during the round rather
+than near the end, while reward text remains readable and not chattery.
+Follow-up log analysis found one missed action line in a quick Slime one-hit
+kill: the log went from `A Slime draws near!` directly to reward text, while
+longer Red Slime rounds announced attacks/damage correctly. The latest patch
+preserves already-complete action prefixes before a truncated `reduced by` /
+`decreased by` fragment is dropped, and the fast path now extracts the last
+eligible action prefix before reward text begins. Reload proof:
+`Started: 2026-05-10 18:52:58` with
+`LAUNCHER_PROBE: battle_fast_prefix_fix` at frame 60. Next useful live check:
+one-shot Slimes should now still announce at least `Bill attacks!`, and
+non-lethal hits should continue speaking full damage lines.
+The user then reported a repeated `Bill attacks` line. Fresh logs showed the
+same Red Slime hit announced three times because equivalent PPU render variants
+looked different to overlap detection: `Hit . Points`, `been . reduced`, and
+trailing `5. .`. `battle.normalize_dialogue()` now collapses isolated dot
+tiles between words and duplicate punctuation-dot artifacts before fast-path
+dedupe. Next useful live check with stronger enemies: repeated attack/damage
+lines should be suppressed while each distinct round still speaks once.
+
+Recently completed: user decision was to call Erdrick's Cave B2 done enough.
+This cave chest is the only known required chest/interaction on that floor, and
+both stairs-to-chest and chest-to-stairs are playable. Do not keep polishing B2
+bounce candidates unless normal gameplay exposes a fresh blocker.
 
 Morning route/verifier pass after the user ran stairs-to-chest first promoted
 six more B2 directional seams from clean 5/5 direct verifier consensus:

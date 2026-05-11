@@ -6,6 +6,72 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Combat spell-list narration first pass: after exiting Erdrick's Cave, a world
+  map fight with a Red Slime exposed that battle spell menus were not being
+  read. Live capture showed the SPELL submenu with cursor `D8=0 D9=0` and upper
+  text containing `HEAL` / `HURT`, but the old battle parser treated cursor
+  `(0,0)` as top-level `FIGHT`. `battle.lua` now recognizes visible known spell
+  names on the battle spell-list screen, and `main.lua` keeps a battle spell
+  submenu mode that announces the selected spell with MP cost. Live reload proof
+  logged `BATTLE_SPELL: Spells. Heal. 4 MP` on the parked first spell. Next
+  combat checks: move within the spell list, back out to the top-level battle
+  menu, and cast a spell to verify result narration.
+- Combat spell-list lag follow-up: the first spell-reader patch was too eager
+  and decoded the upper battle window every battle-menu poll, which lagged out
+  combat. The spell-screen detector is now only a one-time recovery probe for
+  reload/attach into an unknown battle menu state; normal SPELL entry is tracked
+  from the A press and should not continuously rescan upper PPU rows.
+- Combat spell-list polish follow-up: live grinding confirmed most lag was gone
+  but some glitching remained at battle start, SPELL menu entry, and Heal/Hurt
+  cursor movement. The current disk patch removes the routine battle-start
+  recovery scan, detects an A-held top-level SPELL -> `(0,0)` transition without
+  an upper-window scan, and makes spell-list speech interrupt stale queued spell
+  names. This patch is statically validated, but the last BizHawk auto-reload
+  stopped polling after writing only a fresh log header, so it still needs a
+  manual reload/restart before live judgment.
+- Combat spell-list polish follow-up 2: the user's next live test confirmed
+  combat-start lag is gone, with remaining glitching isolated to SPELL menu
+  entry and Heal/Hurt cursor movement. `main.lua` now avoids the generic
+  field-menu `COMMAND` PPU scanner in battle entirely; battle menu and spell
+  list tracking read the already-cached D8/D9 cursor RAM instead, while keeping
+  the expensive upper-window spell-list detector only for reload-directly-into-
+  battle recovery. The script reloaded cleanly afterward; next fight should
+  judge SPELL entry/cursor feel.
+- Combat opening dialogue follow-up: live logs showed battle-state detection
+  and menu speech were now prompt, but `A Red Slime draws near!` did not log
+  until roughly 216-246 frames after battle start. Because menu/spell speech
+  can queue ahead of that late stable-dialogue announcement, the latest patch
+  resets lower-dialogue baselines on battle start, interrupts immediately with
+  `Battle!`, and lets the first coherent `draws near` line interrupt queued
+  menu speech as soon as it is complete. Next fight should confirm opening
+  announcements are not delayed or skipped.
+- Combat action-dialogue speed follow-up: after the opening fix, the user
+  confirmed battle starts announce properly but action/damage lines were still
+  arriving late in the round. Battle dialogue now has a narrowly-scoped fast
+  path for complete action/damage sentence prefixes (`attacks`, HP
+  reduced/decreased, misses/dodges) after a short 6-frame confirmation, using
+  interrupting speech so stale menu chatter does not delay the result. Victory
+  and reward pages intentionally stay on the normal stable reader, and leaked
+  gold macro artifacts such as `GOLD Gold increases` are normalized. Next fight
+  should judge whether attacks and damage land soon enough without making
+  combat speech too chattery.
+- Combat action-line miss follow-up: fresh logs showed a quick Slime fight at
+  frame 7800 going from `A Slime draws near!` directly to reward text, while
+  longer Red Slime rounds spoke attacks and damage. This pointed at one-hit
+  kills where the text window briefly contained a complete `Bill attacks!`
+  prefix followed by an incomplete `reduced by` fragment and then reward text.
+  The normalizer now preserves complete action prefixes before dropping
+  truncated damage fragments, and the fast path extracts the eligible action
+  prefix before reward text begins. Next one-shot Slime should still speak at
+  least `Bill attacks!`.
+- Combat action-line repeat follow-up: the user heard `Bill attacks` repeat in
+  one later fight. Logs showed one Red Slime damage line announced three times
+  as the PPU rendered equivalent dot-artifact variants: `Hit . Points`,
+  `been . reduced`, and trailing `5. .`. `battle.normalize_dialogue()` now
+  removes isolated dot tiles between words and duplicate punctuation-dot
+  artifacts before overlap/fast-path comparison. Stronger-enemy testing should
+  verify that each round's action/damage line speaks once without losing the
+  next round.
 - Erdrick's Cave B2 first chest-route pass: the new B2 map `0x1D` had no
   permanent directional seam model, so auto-walk toward the chest at `(9,3)`
   kept learning hidden one-way maze walls during play and eventually gave up.
@@ -910,6 +976,11 @@ Recommended next step:
   dialogue polish that shows up naturally. If the post-dialogue status row
   appears again, check for `UPPER_DIALOGUE_SUPPRESS_STATUS` and
   `report_upper_dialogue_state` before changing the dialogue parser again.
+- Future Erdrick's Cave B2 polish task: revisit the chest-to-stairs return route
+  from chest-adjacent `(8,3)` to B2 stairs `(8,9)` when pathfinding cleanup is
+  back in scope. Use direct verifiers/probes on the return-trip bounce
+  candidates before changing permanent map data; the current route is playable
+  and should not block the pivot to combat/dialogue work.
 - While testing object navigation, rapidly tap J/L and listen for reduced audio
   hitching. Use K to speak the current selection immediately. If the short delay
   feels worse than the old behavior, set `object_nav_speech_coalesce_frames=0`

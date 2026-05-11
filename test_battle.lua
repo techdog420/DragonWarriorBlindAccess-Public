@@ -26,6 +26,28 @@ function tests.unknown_positions_return_nil()
     assert_equal(battle.get_menu_item(0, 2), nil, "unknown Y should return nil")
 end
 
+function tests.detects_battle_spell_list_from_upper_text()
+    assert_equal(
+        battle.is_spell_screen_text(
+            ".. [GOLD][GOLD] COMMAND [GOLD] Bill FIGHSPELL LV   4 RUN HEAL HP  22 HURT MP  14",
+            {{name = "Heal"}, {name = "Hurt"}}
+        ),
+        true,
+        "battle spell list should be recognized when known spell names are visible"
+    )
+end
+
+function tests.top_level_spell_command_is_not_spell_list()
+    assert_equal(
+        battle.is_spell_screen_text(
+            "COMMAND Bill FIGHT SPELL LV   4 RUN ITEM HP  22 MP  14",
+            {{name = "Heal"}, {name = "Hurt"}}
+        ),
+        false,
+        "top-level SPELL command alone should not be treated as the spell list"
+    )
+end
+
 function tests.normalize_dialogue_strips_gold_macros_and_prompt_noise()
     local raw = "reduced by 3. The Red Slime attacks! .Thy Hit Points [GOLD][GOLD]decreased by 2. [GOLD]Command?"
     assert_equal(
@@ -43,6 +65,14 @@ function tests.normalize_dialogue_preserves_reward_line()
     )
 end
 
+function tests.normalize_dialogue_removes_leaked_gold_reward_macros()
+    assert_equal(
+        battle.normalize_dialogue("Thy Experience Gold increases by 1. Thy GOLD Gold increases by 2."),
+        "Thy Experience increases by 1. Thy GOLD increases by 2.",
+        "leaked gold macro text should not duplicate reward labels"
+    )
+end
+
 function tests.normalize_dialogue_keeps_text_before_command_prompt()
     assert_equal(
         battle.normalize_dialogue("The Slime attacks! Thy Hit Points decreased by 1. Command? BILL attacks!"),
@@ -56,6 +86,14 @@ function tests.normalize_dialogue_drops_truncated_damage_prefix()
         battle.normalize_dialogue("The Slime's Hit Points have been reduced by The Slime attacks!"),
         "The Slime attacks!",
         "truncated damage line should not be read ahead of the next action"
+    )
+end
+
+function tests.normalize_dialogue_preserves_action_before_truncated_damage()
+    assert_equal(
+        battle.normalize_dialogue("Bill attacks! The Slime's Hit Points have been reduced by Thou hast done well in defeating the Slime."),
+        "Bill attacks! Thou hast done well in defeating the Slime.",
+        "complete action text should survive when one-hit-kill damage is truncated"
     )
 end
 
@@ -97,6 +135,30 @@ function tests.normalize_dialogue_removes_dot_artifacts()
     )
 end
 
+function tests.normalize_dialogue_removes_spaced_dot_artifacts()
+    assert_equal(
+        battle.normalize_dialogue("Bill attacks! The Red Slime's Hit . Points have been . reduced by 5. ."),
+        "Bill attacks! The Red Slime's Hit Points have been reduced by 5.",
+        "spaced dot artifacts should not make the same battle line look new"
+    )
+end
+
+function tests.normalize_dialogue_removes_reward_spaced_dot_artifacts()
+    assert_equal(
+        battle.normalize_dialogue("Thy Experience . increases by 1. Thy GOLD increases by 2."),
+        "Thy Experience increases by 1. Thy GOLD increases by 2.",
+        "spaced dot artifacts should be removed from reward text too"
+    )
+end
+
+function tests.normalize_dialogue_removes_opening_trailing_dot_artifact()
+    assert_equal(
+        battle.normalize_dialogue("A Red Slime draws near! ."),
+        "A Red Slime draws near!",
+        "opening battle line should not keep a stray border dot after punctuation"
+    )
+end
+
 function tests.is_coherent_dialogue_rejects_split_tokens()
     assert_equal(
         battle.is_coherent_dialogue("ntsThe Slime's Hit Poi y have been reduced b."),
@@ -110,6 +172,62 @@ function tests.is_coherent_dialogue_accepts_complete_sentence()
         battle.is_coherent_dialogue("The Slime attacks! Thy Hit Point decreased by 1."),
         true,
         "complete battle sentence should be accepted"
+    )
+end
+
+function tests.complete_sentence_prefix_keeps_ready_action_text()
+    assert_equal(
+        battle.complete_sentence_prefix("Bill attacks! The Drakee's Hit Points have been reduced by"),
+        "Bill attacks!",
+        "battle action speech can be announced before the whole page is done"
+    )
+end
+
+function tests.complete_sentence_prefix_accepts_multiple_complete_sentences()
+    assert_equal(
+        battle.complete_sentence_prefix("Bill attacks! The Drakee's Hit Points have been reduced by 3. The Drakee"),
+        "Bill attacks! The Drakee's Hit Points have been reduced by 3.",
+        "all complete battle sentences in the current prefix should be speakable"
+    )
+end
+
+function tests.complete_sentence_prefix_rejects_partial_text()
+    assert_equal(
+        battle.complete_sentence_prefix("The Drakee's Hit Points have been reduced by"),
+        "",
+        "partial battle text should not be announced"
+    )
+end
+
+function tests.fast_action_dialogue_accepts_damage_and_attacks()
+    assert_equal(
+        battle.is_fast_action_dialogue("Bill attacks! The Drakee's Hit Points have been reduced by 3."),
+        true,
+        "action and damage lines should be eligible for fast battle speech"
+    )
+end
+
+function tests.fast_action_dialogue_rejects_rewards()
+    assert_equal(
+        battle.is_fast_action_dialogue("Thou hast done well in defeating the Drakee. Thy Experience increases by 2."),
+        false,
+        "victory and reward text should keep the stable battle dialogue path"
+    )
+end
+
+function tests.fast_action_prefix_stops_before_rewards()
+    assert_equal(
+        battle.fast_action_prefix("Bill attacks! Thou hast done well in defeating the Slime."),
+        "Bill attacks!",
+        "fast battle speech should preserve the action prefix before reward text"
+    )
+end
+
+function tests.fast_action_prefix_keeps_damage_before_rewards()
+    assert_equal(
+        battle.fast_action_prefix("Bill attacks! The Red Slime's Hit Points have been reduced by 5. Thou hast done well in defeating the Red Slime."),
+        "Bill attacks! The Red Slime's Hit Points have been reduced by 5.",
+        "fast battle speech should keep completed damage before reward text"
     )
 end
 
