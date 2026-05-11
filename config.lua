@@ -70,7 +70,7 @@ local DEFAULTS_ORDERED = {
     {key = "key_filter_next",   value = "Shift+L", comment = "; Next object filter"},
     {key = "key_pathability_filter", value = "Shift+O", comment = "; Cycle object reachability filter (All/Reachable/Unreachable)"},
     {key = "key_mark_visited",  value = "Shift+V", comment = "; Mark the current object as visited"},
-    {key = "key_teleport_exact", value = "Shift+Enter", comment = "; Teleport to the selected object's cell when safe"},
+    {key = "key_teleport_exact", value = "Shift+Enter", comment = "; Teleport to the selected object; NPCs use an adjacent interaction cell"},
     {key = "key_teleport_north", value = "Shift+Up", comment = "; Teleport to the cell north of the selected object"},
     {key = "key_teleport_south", value = "Shift+Down", comment = "; Teleport to the cell south of the selected object"},
     {key = "key_teleport_west", value = "Shift+Left", comment = "; Teleport to the cell west of the selected object"},

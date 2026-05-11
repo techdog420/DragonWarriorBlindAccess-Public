@@ -116,6 +116,7 @@ local event_bus = require "event_bus"      -- Pub/sub event system for module de
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
+local key_combo = require "key_combo"      -- Configurable key-combo helpers
 
 -- Direction constants (kept here for debug diagnostic functions).
 local DIR_TO_DELTA = route_mgr.get_dir_to_delta()
@@ -1029,6 +1030,9 @@ _G.DW_QOL_STATE = DW_QOL_STATE
 DW_QOL_STATE.pending_talk_visit = nil
 DW_QOL_STATE.teleport_input_suppress_frames = 0
 DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
+DW_QOL_STATE.TELEPORT_INPUT_RELEASE_MAX_FRAMES = 90
+DW_QOL_STATE.teleport_input_suppress_until_release = nil
+DW_QOL_STATE.pending_teleport_face = nil
 
 -- Sub-menu tracking: STATUS, SPELL, and ITEM screens opened from the command menu.
 -- When the player selects STATUS, SPELL, or ITEM, the game opens a sub-menu that
@@ -3900,23 +3904,158 @@ end
 --   near:     fall back to first walkable cardinal/diagonal neighbor
 --   force:    skip walkability check entirely (debug/unstick; may strand in wall)
 --
--- Always refuses during menus, dialogue, battle, sweeps, active routes, and
--- edge probes. Writes RAM 0x003A/0x003B for the new position; for the overworld
--- also updates 0x0042/0x003E shadow bytes. Clears any pending auto_step state.
-DW_QOL_STATE.suppress_teleport_input = function()
-    DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES
-    joypad.set(1, {
+-- Keyboard teleport hotkeys also map to NES Start/D-pad in BizHawk. Keep the
+-- leaked game input neutral until the non-modifier trigger key is released.
+local TELEPORT_MODE_CONFIG_KEYS = {
+    exact = "key_teleport_exact",
+    north = "key_teleport_north",
+    south = "key_teleport_south",
+    west = "key_teleport_west",
+    east = "key_teleport_east",
+}
+
+local function teleport_key_spec_for_mode(mode)
+    local key = TELEPORT_MODE_CONFIG_KEYS[mode]
+    if not key then
+        return nil
+    end
+    return config.get(key)
+end
+
+local function trimmed_combo_part(part)
+    return tostring(part or ""):match("^%s*(.-)%s*$")
+end
+
+local function is_modifier_combo_part(part)
+    local cleaned = trimmed_combo_part(part):lower():gsub("[%s_-]", "")
+    return cleaned == "shift"
+        or cleaned == "ctrl"
+        or cleaned == "control"
+        or cleaned == "ctl"
+        or cleaned == "alt"
+        or cleaned == "option"
+end
+
+local function primary_combo_part(spec)
+    local fallback = nil
+    for part in tostring(spec or ""):gmatch("[^+]+") do
+        local trimmed = trimmed_combo_part(part)
+        if trimmed ~= "" then
+            fallback = fallback or trimmed
+            if not is_modifier_combo_part(trimmed) then
+                return trimmed
+            end
+        end
+    end
+    return fallback
+end
+
+local function neutralize_teleport_input(extra)
+    local cleaned = {
         up = false,
         down = false,
         left = false,
         right = false,
-        A = false,
-        B = false,
         start = false,
         select = false,
-    })
+    }
+    if extra then
+        for k, v in pairs(extra) do
+            cleaned[k] = v
+        end
+    end
+    joypad.set(1, cleaned)
 end
 
+DW_QOL_STATE.suppress_teleport_input = function(mode)
+    DW_QOL_STATE.pending_teleport_face = nil
+    DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES
+    local spec = teleport_key_spec_for_mode(mode)
+    if spec and spec ~= "" then
+        DW_QOL_STATE.teleport_input_suppress_until_release = {
+            mode = tostring(mode),
+            spec = spec,
+            trigger_spec = primary_combo_part(spec) or spec,
+            held_frames = 0,
+        }
+        debug_tools.debug(string.format(
+            "TELEPORT_INPUT_SUPPRESS mode=%s spec=%s trigger=%s",
+            tostring(mode),
+            tostring(spec),
+            tostring(DW_QOL_STATE.teleport_input_suppress_until_release.trigger_spec)))
+    end
+    neutralize_teleport_input()
+end
+
+DW_QOL_STATE.teleport_hotkey_still_held = function(keys)
+    local hold = DW_QOL_STATE.teleport_input_suppress_until_release
+    if not hold then
+        return false
+    end
+
+    if key_combo.is_down(keys, hold.trigger_spec or hold.spec) then
+        hold.held_frames = (hold.held_frames or 0) + 1
+        local max_frames = tonumber(DW_QOL_STATE.TELEPORT_INPUT_RELEASE_MAX_FRAMES) or 90
+        if max_frames > 0 and hold.held_frames >= max_frames then
+            debug_tools.info(string.format(
+                "TELEPORT_INPUT_RELEASE_TIMEOUT mode=%s trigger=%s held_frames=%d",
+                tostring(hold.mode),
+                tostring(hold.trigger_spec or hold.spec),
+                hold.held_frames))
+            DW_QOL_STATE.teleport_input_suppress_until_release = nil
+            return false
+        end
+        return true
+    end
+
+    debug_tools.debug(string.format(
+        "TELEPORT_INPUT_RELEASED mode=%s trigger=%s held_frames=%d",
+        tostring(hold.mode),
+        tostring(hold.trigger_spec or hold.spec),
+        tonumber(hold.held_frames) or 0))
+    DW_QOL_STATE.teleport_input_suppress_until_release = nil
+    return false
+end
+
+DW_QOL_STATE.apply_pending_teleport_face = function()
+    local face = DW_QOL_STATE.pending_teleport_face
+    if not face then
+        return false
+    end
+    DW_QOL_STATE.pending_teleport_face = nil
+    if auto_step.suppress_direction_tracking then
+        auto_step.suppress_direction_tracking(4)
+    end
+    neutralize_teleport_input({[face.dir] = true})
+    DW_QOL_STATE.teleport_input_suppress_frames = 2
+    debug_tools.info(string.format(
+        "TELEPORT_FACE target=%s face=%s dir=%s landing=(%s,%s)",
+        tostring(face.target_name),
+        tostring(face.face_dir),
+        tostring(face.dir),
+        face.landing_x ~= nil and tostring(face.landing_x) or "?",
+        face.landing_y ~= nil and tostring(face.landing_y) or "?"))
+    return true
+end
+
+DW_QOL_STATE.queue_teleport_face = function(face_dir, target_name, landing)
+    local dir = CARDINAL_TO_KEY[face_dir]
+    if not dir then
+        return false
+    end
+    DW_QOL_STATE.pending_teleport_face = {
+        dir = dir,
+        face_dir = face_dir,
+        target_name = target_name or "target",
+        landing_x = landing and landing.x or nil,
+        landing_y = landing and landing.y or nil,
+    }
+    return true
+end
+
+-- Always refuses during menus, dialogue, battle, sweeps, active routes, and
+-- edge probes. Writes RAM 0x003A/0x003B for the new position; for the overworld
+-- also updates 0x0042/0x003E shadow bytes. Clears any pending auto_step state.
 DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
     opts = opts or {}
     if tx == nil then
@@ -4107,13 +4246,15 @@ debug_tools.register_command("teleport_to", function(arg)
 end)
 
 DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS = {
-    north = {dx = 0, dy = -1},
-    south = {dx = 0, dy = 1},
-    west = {dx = -1, dy = 0},
-    east = {dx = 1, dy = 0},
+    north = {dx = 0, dy = -1, face_dir = "south"},
+    south = {dx = 0, dy = 1, face_dir = "north"},
+    west = {dx = -1, dy = 0, face_dir = "east"},
+    east = {dx = 1, dy = 0, face_dir = "west"},
 }
 
 hotkeys.set_teleport_handler(function(mode)
+    DW_QOL_STATE.suppress_teleport_input(mode)
+
     local obj = objects.current_object()
     if not obj then
         tolk.output_interrupt("No object selected")
@@ -4121,7 +4262,25 @@ hotkeys.set_teleport_handler(function(mode)
     end
 
     local tx, ty = obj.x, obj.y
-    if mode ~= "exact" then
+    local landing = nil
+    if mode == "exact" and obj.type == objects.TYPE_NPC and objects.resolve_teleport_landing then
+        local map_id = snapshot.map_id
+        local err
+        landing, err = objects.resolve_teleport_landing(obj, map_id, {check_npc = true})
+        if not landing then
+            local msg = "Teleport refused. No open cell next to " .. tostring(obj.name or "NPC")
+            debug_tools.error(string.format(
+                "TELEPORT_SELECTED refused mode=exact target_id=%s target_name=%s target=(%d,%d) reason=%s",
+                tostring(obj.id),
+                tostring(obj.name),
+                obj.x,
+                obj.y,
+                tostring(err)))
+            tolk.output_interrupt(msg)
+            return
+        end
+        tx, ty = landing.x, landing.y
+    elseif mode ~= "exact" then
         local off = DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS[mode]
         if not off then
             tolk.output_interrupt("Teleport: unknown direction")
@@ -4129,19 +4288,38 @@ hotkeys.set_teleport_handler(function(mode)
         end
         tx = obj.x + off.dx
         ty = obj.y + off.dy
+        if obj.type == objects.TYPE_NPC then
+            landing = {
+                x = tx,
+                y = ty,
+                target_x = obj.x,
+                target_y = obj.y,
+                note = mode,
+                face_dir = off.face_dir,
+                reason = "manual_adjacent",
+            }
+        end
     end
 
     local ok = DW_QOL_STATE.perform_teleport_to(tx, ty, nil, {check_npc = true, manual = true})
     if ok then
+        if landing and landing.face_dir then
+            DW_QOL_STATE.queue_teleport_face(landing.face_dir, obj.name, {x = tx, y = ty})
+        end
         debug_tools.info(string.format(
             "TELEPORT_SELECTED mode=%s target_id=%s target_name=%s target=(%d,%d) landing=(%d,%d)",
             tostring(mode),
             tostring(obj.id),
             tostring(obj.name),
-            obj.x,
-            obj.y,
+            landing and landing.target_x or obj.x,
+            landing and landing.target_y or obj.y,
             tx,
-            ty))
+            ty)
+            .. (landing and string.format(
+                " landing_reason=%s landing_note=%s face_dir=%s",
+                tostring(landing.reason),
+                tostring(landing.note),
+                tostring(landing.face_dir)) or ""))
     end
 end)
 
@@ -4893,19 +5071,21 @@ while true do
     NAME_ENTRY_SYMBOLS.apply_guard()
 
     local teleport_input_suppressed_this_frame = false
-    if DW_QOL_STATE.teleport_input_suppress_frames > 0 then
-        joypad.set(1, {
-            up = false,
-            down = false,
-            left = false,
-            right = false,
-            A = false,
-            B = false,
-            start = false,
-            select = false,
-        })
-        DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.teleport_input_suppress_frames - 1
+    local teleport_face_input_this_frame = false
+    local teleport_hotkey_held = checked_call(
+        "teleport_hotkey_release",
+        DW_QOL_STATE.teleport_hotkey_still_held,
+        keys) == true
+    if DW_QOL_STATE.teleport_input_suppress_frames > 0 or teleport_hotkey_held then
+        neutralize_teleport_input()
+        if DW_QOL_STATE.teleport_input_suppress_frames > 0 then
+            DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.teleport_input_suppress_frames - 1
+        end
         teleport_input_suppressed_this_frame = true
+    else
+        teleport_face_input_this_frame = checked_call(
+            "teleport_face",
+            DW_QOL_STATE.apply_pending_teleport_face) == true
     end
 
     -- Auto-step: extend brief D-pad taps into full tile steps.
@@ -4967,7 +5147,9 @@ while true do
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
-    if not raw_debug_input_this_frame and not teleport_input_suppressed_this_frame then
+    if not raw_debug_input_this_frame
+       and not teleport_input_suppressed_this_frame
+       and not teleport_face_input_this_frame then
         checked_scan("auto_step.update", auto_step.update, can_walk)
     end
 

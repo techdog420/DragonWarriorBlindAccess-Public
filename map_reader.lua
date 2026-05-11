@@ -1088,6 +1088,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,4"]  = {east = true, west = true},
         ["5,5"]  = {east = true},
         ["7,5"]  = {east = true, west = true},
+        -- 2026-05-10 selected-NPC teleport repro: Woman 3 at (4,7) could
+        -- choose the east stand at (5,7). From there, live auto-step/input
+        -- accepted the press but engine-blocked every non-NPC exit:
+        -- UP into (5,6), DOWN into (5,8), and RIGHT into (6,7).
+        ["5,6"]  = {south = true},
+        ["5,8"]  = {north = true},
+        ["6,7"]  = {west = true},
         -- Center-east building west wall (x=18)
         ["18,10"] = {west = true},
         ["18,11"] = {west = true},

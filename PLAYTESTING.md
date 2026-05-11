@@ -6,6 +6,31 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Selected-object NPC teleport follow-up: while checking Brecconary NPCs before
+  leaving town, `Shift+Enter` was found to teleport onto the selected NPC's
+  occupied tile. The hotkey now resolves an NPC landing first: service NPCs use
+  their interaction stand when one is modeled, otherwise the first open
+  cardinal adjacent cell is used. The resolver reads the selected NPC slot's
+  live RAM position without forcing a full object-list rebuild, skips occupied
+  adjacent cells, and logs `TELEPORT_SELECTED` with the target and landing.
+  Follow-up logs showed the Weapons Merchant counter landed correctly at
+  `(5,6)` but TALK still missed because the hero was not facing north, so
+  selected NPC teleports now queue one raw post-teleport facing tap after the
+  normal input-suppression window, neutralize input afterward, and log
+  `TELEPORT_FACE`. A later retest showed `Shift+Enter` could leak through as
+  Start if the hotkey was still physically held after the fixed suppression
+  window, leaving the game in a menu/control-stuck-feeling state until Enter
+  was pressed again. Teleport suppression now watches the non-modifier trigger
+  key (`Enter` or an arrow), keeps Start/D-pad neutral until release, and only
+  then runs the facing tap. A second live repro of the "hung" state showed
+  input was actually neutral and the menu was closed; the selected Woman 3
+  teleport had landed at `(5,7)`, whose UP/DOWN/RIGHT exits all engine-blocked
+  while LEFT was the NPC. Brecconary now records those hidden seams, and
+  selected NPC teleport skips adjacent landings that have no non-target escape.
+  Next manual check: select a Brecconary NPC and press `Shift+Enter`; the hero
+  should land next to or at the interaction stand for that NPC, face the target,
+  and then TALK should reach the NPC/counter. Woman 3 at `(4,7)` should land at
+  `(4,8)`, facing north, not at the trapped `(5,7)` stand.
 - Combat spell-list narration first pass: after exiting Erdrick's Cave, a world
   map fight with a Red Slime exposed that battle spell menus were not being
   read. Live capture showed the SPELL submenu with cursor `D8=0 D9=0` and upper
@@ -389,7 +414,8 @@ QoL feature check:
   The marker also stays armed for slow dialogue stabilization and survives
   BizHawk source reloads, so delayed NPC text should still mark the talked-to
   NPC without losing existing visited flags on `touch main.lua`.
-- Selected-object teleport uses `Shift+Enter` for the target cell and
+- Selected-object teleport uses `Shift+Enter` for the selected object, with
+  NPCs landing at an adjacent or service interaction cell, and
   `Shift+direction` for an adjacent landing on that side of the target.
 - Watch selected-object teleport near doors/stairs and moving NPC clusters.
   The first manual test did not show lost keyboard input after teleport; logs

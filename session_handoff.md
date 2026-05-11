@@ -4,6 +4,45 @@ Updated: 2026-05-10
 
 ## Active Resume
 
+Current local patch fixes selected-object teleport for NPCs while the user is
+checking Brecconary dialogue before moving on. `Shift+Enter` on an NPC now
+resolves a usable landing through `objects.resolve_teleport_landing()` instead
+of aiming at the NPC's occupied cell. The resolver keeps the hotkey path cheap:
+it reads the selected NPC slot's live RAM position without a full object-list
+rebuild, skips NPC-occupied adjacent landings, honors service interaction
+stands such as Brecconary counters, and falls back to cardinal adjacent cells
+that have at least one non-target exit.
+Fresh logs confirmed the counter resolver chose
+`Weapons Merchant target=(5,4) landing=(5,6) landing_reason=interaction`, but
+TALK still said `There is no one there.` because the hero was not facing north.
+`main.lua` now queues one raw post-teleport facing tap after input
+suppression. This logs `TELEPORT_FACE`, skips auto-step for that frame, then
+neutralizes input for two more frames, and should face counter/service NPCs
+without walking onto walkable counter tiles. After the user reported that
+`Shift+Enter` teleport could leave controller access apparently stuck until
+Enter was pressed again, the suppression became release-aware: it now watches
+the non-modifier trigger key (`Enter` or an arrow) and keeps Start/D-pad
+neutralized until that key is released, then runs the facing tap. Static
+Follow-up live investigation showed the remaining "hung" case was not menu or
+input state: at `map=0x08 x=5 y=7`, logs reported `keys=-`, `joy1=-`,
+`buttons=0x00`, menu closed, and path target nil. Injected movement reached
+the engine but timed out UP, DOWN, and RIGHT, while LEFT was the target NPC at
+`(4,7)`. `map_reader.lua` now models the three Brecconary seams around that
+trap, and `objects.resolve_teleport_landing()` skips adjacent landings with no
+escape route. The intended fallback for that Woman 3 case is now the south
+stand at `(4,8)`, facing north. Static validation passed: `luac -p main.lua
+objects.lua map_reader.lua config.lua test_objects.lua test_map_reader.lua
+test_hotkeys.lua`, `lua test_objects.lua` (40 tests), `lua test_map_reader.lua`
+(22 tests), `lua test_hotkeys.lua` (25 tests), and `git diff --check` (with the
+known `dw_access.ini` CRLF warning). Latest reload proof:
+`dw_debug.log` from `Started: 2026-05-10 20:04:46` logged
+`LAUNCHER_PROBE: codex_teleport_escape_fix` at frame 60. Next manual check:
+press `Shift+Enter` on a selected Brecconary NPC and confirm
+`TELEPORT_INPUT_SUPPRESS`, `TELEPORT_INPUT_RELEASED`,
+`TELEPORT_SELECTED ... landing_reason=adjacent|interaction`, and
+`TELEPORT_FACE ... face=<dir>` before TALK. For Woman 3 at `(4,7)`, landing
+should be `(4,8)`, not `(5,7)`.
+
 Resume from world-map grinding after exiting Erdrick's Cave. The combat spell
 bug was captured in a Red Slime fight where the user parked the battle SPELL
 submenu on the first spell; live state showed cursor `D8=0 D9=0`, visible spell
@@ -1115,12 +1154,13 @@ BizHawk 2.11.1 bulk PPU-read experiment status:
   automatically; `clear_visited` clears the current map and
   `clear_visited:all` clears all maps.
 - Selected-object teleport is available through configurable hotkeys:
-  `Shift+Enter` for exact target cell, and `Shift+Up/Down/Left/Right` for the
-  adjacent cell on that side of the selected object. Teleport reuses the
-  existing safe refusal checks, rejects NPC-occupied landings unless forced
-  through the debug command, normalizes movement state, and suppresses leaked
-  D-pad/Start input for a few frames. The NPC-occupied landing check now reads
-  live NPC RAM directly instead of forcing a full object-list rebuild.
+  `Shift+Enter` for the selected object, using an adjacent/interaction landing
+  for NPCs, and `Shift+Up/Down/Left/Right` for the adjacent cell on that side
+  of the selected object. Teleport reuses the existing safe refusal checks,
+  rejects NPC-occupied landings unless forced through the debug command,
+  normalizes movement state, and suppresses leaked D-pad/Start input for a few
+  frames. NPC target and landing checks read live NPC RAM directly instead of
+  forcing a full object-list rebuild.
 - Manual selected-object teleport failures now use a simpler player-facing
   refusal when the target cell is not walkable. The debug command still keeps
   the developer hint about `near` / `force`.

@@ -51,6 +51,7 @@ local function make_env(options)
     local tile_grid_calls = 0
     local large_tiles = options.large_tiles or {}
     local walkable_tiles = options.walkable_tiles or {}
+    local directional_blocks = options.directional_blocks or {}
 
     _G.AND = function(a, b)
         local result = 0
@@ -114,11 +115,19 @@ local function make_env(options)
             get_metadata = function()
                 return nil
             end,
+            get_map_dimensions = function()
+                return options.map_width or 32, options.map_height or 32
+            end,
             is_large_tile = function(map_id, x, y)
                 return large_tiles[string.format("0x%02X:%d,%d", map_id, x, y)] == true
             end,
             is_walkable = function(map_id, x, y)
                 return walkable_tiles[string.format("0x%02X:%d,%d", map_id, x, y)] == true
+            end,
+            get_directional_blocks = function(map_id)
+                return directional_blocks[map_id]
+                    or directional_blocks[string.format("0x%02X", map_id)]
+                    or {}
             end,
         }
     end
@@ -750,6 +759,135 @@ function tests.npc_occupancy_check_reads_live_ram_without_full_refresh()
     assert_equal(env.objects.current_object().x, 5, "object list should stay stale before a refresh")
     assert_equal(env.objects.is_npc_at(0x04, 10, 9), true, "occupancy check should read the current NPC RAM")
     assert_equal(env.objects.is_npc_at(0x04, 5, 7), false, "occupancy check should not use stale object-list positions")
+
+    env.restore()
+end
+
+function tests.npc_selected_teleport_landing_uses_adjacent_cell()
+    local env = make_env({
+        walkable_tiles = {
+            ["0x08:5,5"] = true,
+            ["0x08:5,6"] = true,
+        },
+    })
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+
+    local landing = assert(env.objects.resolve_teleport_landing(env.objects.current_object(), 0x08))
+    assert_equal(landing.x, 5, "NPC exact teleport should not land on the occupied NPC x")
+    assert_equal(landing.y, 6, "NPC exact teleport should use a cardinal adjacent cell")
+    assert_equal(landing.note, "north", "landing note should describe the stand cell relative to the NPC")
+    assert_equal(landing.face_dir, "south", "landing face direction should point back at the NPC")
+
+    env.restore()
+end
+
+function tests.npc_selected_teleport_landing_skips_occupied_adjacent_cell()
+    local env = make_env({
+        npc_count = 2,
+        walkable_tiles = {
+            ["0x08:5,6"] = true,
+            ["0x08:6,7"] = true,
+            ["0x08:7,7"] = true,
+        },
+    })
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.set_npc(1, 0x25, 0x06) -- another guard occupies the north landing
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+    env.objects.select_object_by_id("npc_0")
+
+    local landing = assert(env.objects.resolve_teleport_landing(env.objects.current_object(), 0x08))
+    assert_equal(landing.x, 6, "NPC teleport should skip occupied adjacent landings")
+    assert_equal(landing.y, 7, "NPC teleport should choose the next open cardinal landing")
+    assert_equal(landing.note, "east", "landing note should describe the fallback side")
+
+    env.restore()
+end
+
+function tests.npc_selected_teleport_landing_reads_live_slot_without_refresh()
+    local env = make_env({
+        is_bizhawk = true,
+        walkable_tiles = {
+            ["0x08:10,7"] = true,
+            ["0x08:10,8"] = true,
+        },
+    })
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+    local selected = env.objects.current_object()
+
+    env.set_npc(0, 0x2A, 0x09) -- same selected slot moved to x=10, y=9
+    assert_equal(selected.x, 5, "cached selected object should stay stale before a refresh")
+
+    local landing = assert(env.objects.resolve_teleport_landing(selected, 0x08))
+    assert_equal(landing.x, 10, "selected teleport should read the NPC slot's live x")
+    assert_equal(landing.y, 8, "selected teleport should land adjacent to the live NPC y")
+    assert_equal(selected.x, 5, "resolve should not rebuild or mutate the cached object")
+
+    env.restore()
+end
+
+function tests.npc_selected_teleport_landing_skips_adjacent_cell_with_no_escape()
+    local env = make_env({
+        walkable_tiles = {
+            ["0x08:5,7"] = true,
+            ["0x08:5,6"] = true,
+            ["0x08:5,8"] = true,
+            ["0x08:6,7"] = true,
+            ["0x08:4,8"] = true,
+            ["0x08:4,9"] = true,
+        },
+        directional_blocks = {
+            [0x08] = {
+                ["5,6"] = {south = true},
+                ["5,8"] = {north = true},
+                ["6,7"] = {west = true},
+            },
+        },
+    })
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x24, 0x07) -- NPC moved to (4,7), matching the Brecconary trap repro.
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+
+    local landing = assert(env.objects.resolve_teleport_landing(env.objects.current_object(), 0x08))
+    assert_equal(landing.x, 4, "NPC teleport should skip adjacent cells with no non-target escape")
+    assert_equal(landing.y, 8, "NPC teleport should use the first open adjacent cell that can be exited")
+    assert_equal(landing.note, "south", "landing note should describe the usable stand cell")
+    assert_equal(landing.face_dir, "north", "landing should still face back to the NPC")
+
+    env.restore()
+end
+
+function tests.service_selected_teleport_landing_uses_interaction_stand()
+    local env = make_env({
+        walkable_tiles = {
+            ["0x08:5,6"] = true,
+        },
+    })
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x65, 0x04) -- Merchant at Brecconary weapon counter
+    env.objects.refresh(0x08)
+    env.objects.next_filter()
+
+    local landing = assert(env.objects.resolve_teleport_landing(env.objects.current_object(), 0x08))
+    assert_equal(landing.x, 5, "service teleport should use its public interaction stand x")
+    assert_equal(landing.y, 6, "service teleport should use its public interaction stand y")
+    assert_equal(landing.reason, "interaction", "service override should be treated as an interaction landing")
+    assert_equal(landing.face_dir, "north", "service landing should preserve the interaction facing")
 
     env.restore()
 end

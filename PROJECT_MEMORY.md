@@ -402,10 +402,27 @@ Emulator compatibility direction:
   static travel, door, and treasure objects unless a future map proves an
   actual NPC-like object source.
 - Selected-object teleport should avoid full object-list rebuilds on the hotkey
-  path. Use direct live NPC RAM checks for "landing occupied" tests; a manual
-  teleport retest found the apparent lost-keyboard state was actually a boxed-in
-  landing at map `0x05` `(4,6)` with NPC blockers on both sides, a door south,
-  and a noisy north seam.
+  path. Use direct live NPC RAM checks for "landing occupied" tests and for the
+  selected `npc_N` slot's current target position. `Shift+Enter` on an NPC
+  should resolve to a service interaction stand when one is modeled, otherwise
+  to an open cardinal adjacent cell; it should never intentionally land on the
+  NPC's occupied cell. After a selected NPC teleport, queue a one-frame raw
+  facing tap after teleport input suppression, then neutralize input, instead
+  of using an auto-step/held direction; counter stands such as Brecconary
+  `(5,6)` have walkable tiles in front, so held directions can walk onto the
+  counter rather than just face it. Because BizHawk can also see
+  `Shift+Enter`/`Shift+direction` as NES Start/D-pad input, selected teleport
+  suppression should stay active until the non-modifier trigger key (`Enter` or
+  the arrow) is released; a fixed short window can leak Start and leave the
+  player in a command-menu/control-stuck-feeling state. Also reject generic NPC
+  adjacent landings with no non-target escape route. The Brecconary Woman 3
+  repro at target `(4,7)` initially chose `(5,7)`; live injected movement from
+  that cell engine-blocked UP into `(5,6)`, DOWN into `(5,8)`, and RIGHT into
+  `(6,7)`, while LEFT was the NPC. The safe fallback is the south stand
+  `(4,8)`, facing north.
+  A manual teleport retest found the apparent lost-keyboard state was actually
+  a boxed-in landing at map `0x05` `(4,6)` with NPC blockers on both sides, a
+  door south, and a noisy north seam.
 - BizHawk ROM domains can be exposed as headerless PRG data even when the
   project expects FCEUX-style `rom.readbyte()` file offsets that include the
   16-byte iNES header. `emulator_compat.lua` must score candidate ROM domains

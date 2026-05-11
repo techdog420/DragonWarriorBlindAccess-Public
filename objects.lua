@@ -869,6 +869,20 @@ local COUNTER_DIRECTIONS = {
     {dx = -1, dy =  0, face_dir = "east"},
 }
 
+local NPC_TELEPORT_ADJACENT_OFFSETS = {
+    {dx =  0, dy = -1, note = "north", face_dir = "south"},
+    {dx =  1, dy =  0, note = "east",  face_dir = "west"},
+    {dx =  0, dy =  1, note = "south", face_dir = "north"},
+    {dx = -1, dy =  0, note = "west",  face_dir = "east"},
+}
+
+local TELEPORT_ESCAPE_DIRECTIONS = {
+    {dx =  0, dy = -1, approach = "south"},
+    {dx =  1, dy =  0, approach = "west"},
+    {dx =  0, dy =  1, approach = "north"},
+    {dx = -1, dy =  0, approach = "east"},
+}
+
 local CONFIRMED_DIRECT_COUNTER_TILES = {
 }
 
@@ -1578,6 +1592,143 @@ function M.is_npc_at(map_id, x, y)
         end
     end
     return false
+end
+
+local function map_contains(map_id, x, y)
+    if type(map_reader.get_map_dimensions) ~= "function" then
+        return true
+    end
+    local ok, width, height = pcall(map_reader.get_map_dimensions, map_id)
+    if not ok or width == nil or height == nil then
+        return true
+    end
+    return x >= 0 and y >= 0 and x < width and y < height
+end
+
+local function live_npc_object(obj, map_id)
+    if not obj or obj.type ~= M.TYPE_NPC or not obj.id then
+        return obj
+    end
+    local slot = tonumber(tostring(obj.id):match("^npc_(%d+)$"))
+    if slot == nil or slot < 0 or slot >= addr.NPC_COUNT then
+        return obj
+    end
+
+    local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+    local byte0 = memory.readbyte(base)
+    local byte1 = memory.readbyte(base + 1)
+    local byte2 = memory.readbyte(base + 2)
+    local x = AND(byte0, 0x1F)
+    local y = AND(byte1, 0x1F)
+    if (x == 0 and y == 0) or (x == 31 and y == 31) then
+        return obj
+    end
+
+    local live = {}
+    for k, v in pairs(obj) do
+        live[k] = v
+    end
+    live.x = x
+    live.y = y
+    live.sprite_type = AND(byte0, 0xE0) / 32
+    live.direction = math.floor(byte1 / 0x20) % 4
+    live.movement = byte2
+    live.service = live.sprite_type == 3
+    return apply_service_interaction_override(live, map_id)
+end
+
+local function teleport_landing_open(map_id, x, y, opts)
+    opts = opts or {}
+    if not map_contains(map_id, x, y) then
+        return false, "out of bounds"
+    end
+    if safe_is_walkable(map_id, x, y) ~= true then
+        return false, "not walkable"
+    end
+    if opts.check_npc ~= false and M.is_npc_at(map_id, x, y) then
+        return false, "npc occupied"
+    end
+    return true, nil
+end
+
+local function teleport_step_blocked(map_id, dest_x, dest_y, approach)
+    if type(map_reader.get_directional_blocks) ~= "function" then
+        return false
+    end
+    local blocks = map_reader.get_directional_blocks(map_id) or {}
+    local entry = blocks[dest_x .. "," .. dest_y]
+    return entry ~= nil and entry[approach] == true
+end
+
+local function teleport_landing_has_escape(map_id, x, y, target_x, target_y, opts)
+    opts = opts or {}
+    if opts.require_escape == false then
+        return true
+    end
+
+    for _, dir in ipairs(TELEPORT_ESCAPE_DIRECTIONS) do
+        local nx, ny = x + dir.dx, y + dir.dy
+        if nx ~= target_x or ny ~= target_y then
+            local ok = teleport_landing_open(map_id, nx, ny, opts)
+            if ok and not teleport_step_blocked(map_id, nx, ny, dir.approach) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+function M.resolve_teleport_landing(obj, map_id, opts)
+    opts = opts or {}
+    if not obj then
+        return nil, "no object selected"
+    end
+    map_id = active_map_id(map_id)
+
+    if obj.type ~= M.TYPE_NPC then
+        return {
+            x = obj.x,
+            y = obj.y,
+            target_x = obj.x,
+            target_y = obj.y,
+            reason = "exact",
+        }, nil
+    end
+
+    local target = opts.use_live_npc == false and obj or live_npc_object(obj, map_id)
+    if target.interaction_x ~= nil and target.interaction_y ~= nil then
+        local ok = teleport_landing_open(map_id, target.interaction_x, target.interaction_y, opts)
+        if ok then
+            return {
+                x = target.interaction_x,
+                y = target.interaction_y,
+                target_x = target.x,
+                target_y = target.y,
+                note = target.interaction_label or "interaction",
+                face_dir = target.interaction_face_dir,
+                reason = "interaction",
+            }, nil
+        end
+    end
+
+    for _, off in ipairs(NPC_TELEPORT_ADJACENT_OFFSETS) do
+        local nx, ny = target.x + off.dx, target.y + off.dy
+        local ok = teleport_landing_open(map_id, nx, ny, opts)
+        if ok and teleport_landing_has_escape(map_id, nx, ny, target.x, target.y, opts) then
+            return {
+                x = nx,
+                y = ny,
+                target_x = target.x,
+                target_y = target.y,
+                note = off.note,
+                face_dir = off.face_dir,
+                reason = "adjacent",
+            }, nil
+        end
+    end
+
+    return nil, "no open adjacent cell"
 end
 
 -- ============================================================
