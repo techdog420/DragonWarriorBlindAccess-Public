@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-12
+Updated: 2026-05-13
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -114,6 +114,10 @@ edge. Current policy:
   abort so validation failures do not write stale seam observations. Validation
   may force-release injected D-pad state after success/abort, but normal manual
   cancel behavior must not be changed.
+- Route-settle `route_drift_off_path` during object auto-walk is execution
+  drift, not map evidence by itself. Recover by replanning from the drifted
+  tile to the same active target and log `AUTO_WALK_DRIFT_REROUTE`; only promote
+  map data when independent movement evidence supports it.
 
 ## Codex Tooling Contract
 
@@ -404,6 +408,12 @@ Emulator compatibility direction:
   live planner can route from `(1,15)` to the public stand `(23,25)` through
   `(16,25)->(17,25)->(18,25)`. If validation aborts before that bridge on an
   open-floor overshoot, treat it as movement timing noise rather than map data.
+- The Merchant 4 return route from the public stand also needs `(21,26)` as a
+  Brecconary passthrough. The ROM decodes it as non-walkable, but
+  `probe_edge_verify:22,26,LEFT,3` moved into `(21,26)` 3/3 times on
+  2026-05-13. With `(21,26)` modeled, normal auto-walk from `(23,25)` reaches
+  the Brecconary exit landing `(1,15)` with runtime blockers empty, though
+  queued-route timing may still log recoverable `AUTO_WALK_TIMING_RETRY` noise.
 - On BizHawk, keep background periodic NPC refresh off by default to avoid
   frame/audio hitches. Plain object browsing should also avoid full
   `objects.update_npcs()` rebuilds; instead, `objects.describe_current()` reads

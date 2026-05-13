@@ -436,9 +436,12 @@ local MAP_PASSTHROUGH_CELLS = {
         -- decodes (17,25) as type-0/non-walkable, but 2026-05-13 edge
         -- verifier moved (16,25)->RIGHT into (17,25) 3/3 times.
         ["17,25"] = true,
-        -- Merchant 4 public-side false wall. Fresh 2026-05-12 edge verifier
-        -- evidence moved (22,26)->RIGHT into (23,26) 5/5 times; leave the
-        -- deeper neighbors closed until their own edges are verified.
+        -- Merchant 4 public-side false walls. Fresh 2026-05-12 edge verifier
+        -- evidence moved (22,26)->RIGHT into (23,26) 5/5 times. A 2026-05-13
+        -- return-route verifier then moved (22,26)->LEFT into (21,26) 3/3
+        -- times, giving the public stand a way back out around the one-way
+        -- (22,25)->LEFT blocker.
+        ["21,26"] = true,
         ["23,26"] = true,
         -- Merchant 4 east-side false wall. Edge verifier confirmed
         -- (27,25)->DOWN into (27,26) moved 3/3, with six total moved seam

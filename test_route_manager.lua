@@ -1286,6 +1286,41 @@ function tests.bizhawk_route_cancel_skips_object_refresh_by_default()
     env.restore()
 end
 
+function tests.autowalk_reroutes_from_route_drift_tile()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "route_drift_off_path",
+        current_x = 8,
+        current_y = 16,
+        source = "route_settle_catchup",
+    })
+
+    assert_equal(
+        env.start_route_calls(),
+        2,
+        "route drift should queue a fresh route from the drifted position"
+    )
+    assert_equal(
+        env.last_direct_call().start_x,
+        8,
+        "route drift reroute should plan from the current drifted x"
+    )
+    assert_equal(
+        env.last_direct_call().start_y,
+        16,
+        "route drift reroute should plan from the current drifted y"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Re-routing after drift",
+        "route drift recovery should announce that it is re-routing"
+    )
+
+    env.restore()
+end
+
 function tests.bizhawk_autowalk_skips_npc_freeze_by_default()
     local env = make_env({is_bizhawk = true})
 

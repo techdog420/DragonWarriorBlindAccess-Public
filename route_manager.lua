@@ -2225,6 +2225,71 @@ function M.autowalk_to_current()
     M.autowalk_to_object(obj, {speak = true})
 end
 
+local function reroute_after_route_drift(cancel_data, target)
+    if not target then
+        return false
+    end
+    local map_id, live_x, live_y = nav.get_position()
+    local start_x = tonumber(cancel_data and cancel_data.current_x) or live_x
+    local start_y = tonumber(cancel_data and cancel_data.current_y) or live_y
+    if start_x == nil or start_y == nil then
+        return false
+    end
+
+    local plan = plan_path_to_object(target, {
+        map_id = map_id,
+        start_x = start_x,
+        start_y = start_y,
+        allow_adjacent_fallback = true,
+        store_debug_path = false,
+    })
+
+    if plan.result == "No path found" then
+        debug_tools.info(string.format(
+            "AUTO_WALK_DRIFT_REROUTE_FAILED map=0x%02X target=%s current=(%d,%d) reason=no_path",
+            map_id or -1,
+            tostring(target.name),
+            start_x or -1,
+            start_y or -1))
+        return false
+    end
+
+    if not plan.path or #plan.path == 0 then
+        event_bus.publish("route_completed")
+        clear_active_route_context("route drift reached destination", should_refresh_objects_after_route())
+        tolk.output_interrupt("Auto-walk complete. Arrived at " .. tostring(target.name or "destination"))
+        return true
+    end
+
+    if not queue_path_steps(plan.path, {
+        settle_frames = active_route_settle_frames,
+        settle_same_direction = active_route_settle_same_direction,
+    }) then
+        debug_tools.info(string.format(
+            "AUTO_WALK_DRIFT_REROUTE_FAILED map=0x%02X target=%s current=(%d,%d) reason=queue_failed",
+            map_id or -1,
+            tostring(target.name),
+            start_x or -1,
+            start_y or -1))
+        return false
+    end
+
+    update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
+    debug_tools.info(string.format(
+        "AUTO_WALK_DRIFT_REROUTE map=0x%02X target=%s current=(%d,%d) path_len=%d",
+        map_id or -1,
+        tostring(target.name),
+        start_x or -1,
+        start_y or -1,
+        #plan.path))
+    tolk.output_interrupt("Re-routing after drift. " .. build_pathfind_message(
+        target,
+        plan.result,
+        plan.face_dir,
+        plan.no_path_reason))
+    return true
+end
+
 -- ============================================================
 -- Auto-Step Callbacks
 -- ============================================================
@@ -2479,6 +2544,10 @@ auto_step.on_route_cancelled = function(cancel_data)
     local reason = cancel_data and cancel_data.reason or "auto_step_cancelled"
     local message = cancel_data and cancel_data.message
     local had_target = active_route_target or last_pathfind_obj
+    if reason == "route_drift_off_path"
+       and reroute_after_route_drift(cancel_data, had_target) then
+        return
+    end
     clear_active_route_context("auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
     if had_target and reason ~= "can_walk_false" then
         tolk.output_interrupt("Auto-walk cancelled. " .. tostring(message or reason))

@@ -39,6 +39,26 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   aborted early from an open-floor overshoot before reaching the new bridge, so
   the map route is fixed but the movement-validation timing quirk remains.
 
+- Brecconary Merchant 4 return route is now connected too. The return from the
+  public stand to the entrance needed `(21,26)` as another false-wall
+  passthrough: `probe_edge_verify:22,26,LEFT,3` moved into `(21,26)` 3/3 times.
+  After reload, a normal live `auto_walk` from `(23,25)` to `Exit to World Map`
+  queued 38 steps, crossed `(22,26)->(21,26)`, recovered one noisy timing retry
+  at `(20,25)->LEFT`, replanned from `(19,25)`, and reached the exit landing
+  `(1,15)` with runtime blockers still empty. The current exit object stops at
+  the adjacent landing and faces west; `inspect_move:1,15,LEFT` still reports
+  `engine_boundary`, so treat `(1,15)` as the successful in-town exit landing.
+
+- Merchant 4 route drift follow-up: the latest manual drifts were route-settle
+  overshoots, not missing passability data. The auto-walk reached open-floor
+  turn transitions, then slid one tile off the queued path before the next
+  planned direction started. `route_manager.lua` now catches
+  `route_drift_off_path`, replans from the drifted tile to the same selected
+  object, and logs `AUTO_WALK_DRIFT_REROUTE`. Live proof showed the recovery
+  surviving several drifts on a Guard 2 route and still reaching the target.
+  User testing later confirmed the entrance-to-Merchant 4 route succeeds after
+  reroutes; the remaining return-route miss was the `(21,26)` passthrough above.
+
 - Brecconary Merchant 4 noise-hardening pass: the current live map is
   confirmed as `map=0x08(Brecconary)`, not castle data. `(27,25)->DOWN` into
   `(27,26)` is a confirmed false-wall passthrough: verifier movement succeeded

@@ -62,6 +62,37 @@ aborted on an early open-floor overshoot at `(1,16)->RIGHT`, before reaching
 the new Merchant 4 bridge. Treat that as movement-validation timing noise, not
 new blocker evidence. Runtime blockers remained empty.
 
+Latest Merchant 4 return-route follow-up: the route from the public stand back
+to the Brecconary entrance needed one more confirmed false-wall passthrough.
+`inspect_move:22,26,LEFT` originally treated `(21,26)` as nonwalkable, but
+`probe_edge_verify:22,26,LEFT,3` moved into `(21,26)` 3/3 times. `map_reader.lua`
+now records `(21,26)` as a Brecconary passthrough and `test_map_reader.lua`
+pins it. Reload proof: `inspect_move:22,26,LEFT` now reports
+`reason=passthrough`, and a live normal `auto_walk` from `(23,25)` to
+`Exit to World Map` queued 38 steps, used the new
+`(22,26)->(21,26)` connector, recovered one noisy `AUTO_WALK_TIMING_RETRY` at
+`(20,25)->LEFT` via `SEAM_BRUTE_FORCE`, replanned from `(19,25)`, and reached
+the exit landing at `(1,15)`. `RUNTIME_BLOCKS map=0x08 none` after arrival.
+The exit object currently routes adjacent and faces west; `inspect_move:1,15,LEFT`
+still reports `reason=engine_boundary`, so reaching `(1,15)` is the modeled
+stairs/exit landing rather than a world-map transition.
+
+Latest route-drift follow-up: the user's first successful entrance-to-Merchant
+4 auto-walk exposed route execution drift, not another map blocker. The log
+shows planned routes cancelled after route-settle overshoots at `(7,16)->(8,16)`
+and `(10,16)->(11,16)` while the next queued steps were different directions;
+music/control freezes were not involved in this symptom. `route_manager.lua`
+now handles `route_drift_off_path` cancellations by replanning from the drifted
+tile to the same active target, preserving route context and logging
+`AUTO_WALK_DRIFT_REROUTE` on recovery. Validation passed with targeted route
+manager and auto-step tests. Live reload proof showed repeated drift recovery
+on a Guard 2 route, eventually arriving and facing the target. A focused
+Merchant 4 retest selected Merchant 4 at `(1,15)`, but the current live state
+reported `NO_PATH_STATIONARY_NPC ... blocker=Guard 1 ... x=20 y=25` before a
+route could start. Later user testing confirmed the entrance-to-Merchant 4
+route succeeds after reroutes; the remaining manual repro was the return path,
+which is covered by the `(21,26)` passthrough follow-up above.
+
 Earlier Merchant 4 forced-teleport confirmation: the alternate tool-shop
 pocket at `(25,26)` also opens the normal tool shop while facing north, and a
 fresh state read reported `POSITION: map=0x08(Brecconary) x=25 y=26`,
