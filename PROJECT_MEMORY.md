@@ -398,6 +398,12 @@ Emulator compatibility direction:
   but it is not the normal public service route. Keep its one-way/isolated
   movement data modeled for pathfinding, especially `(25,27).north` blocking
   exit back south.
+- Brecconary `Merchant 4`'s public route also needs `(17,25)` as a passthrough.
+  The ROM decodes it as non-walkable type 0, but 2026-05-13 live verifier proof
+  moved `(16,25)->RIGHT` into `(17,25)` 3/3 times. With that passthrough, the
+  live planner can route from `(1,15)` to the public stand `(23,25)` through
+  `(16,25)->(17,25)->(18,25)`. If validation aborts before that bridge on an
+  open-floor overshoot, treat it as movement timing noise rather than map data.
 - On BizHawk, keep background periodic NPC refresh off by default to avoid
   frame/audio hitches. Plain object browsing should also avoid full
   `objects.update_npcs()` rebuilds; instead, `objects.describe_current()` reads

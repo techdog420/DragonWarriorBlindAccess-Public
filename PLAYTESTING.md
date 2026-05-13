@@ -29,6 +29,16 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   isolated: route the service to `(23,25)` facing east, but keep the movement
   seam into `(24,25)` blocked.
 
+- Brecconary Merchant 4 public route breakthrough: `(17,25)` is a confirmed
+  false-wall passthrough. A focused static graph pass showed it was a single
+  missing cell that would connect public origin `(1,15)` to the public tool-shop
+  stand `(23,25)`, and live `probe_edge_verify:16,25,RIGHT,3` moved into
+  `(17,25)` 3/3 times with no runtime blocker pollution. After reload,
+  `debug_pathfind_to:23,25` from `(1,15)` produced a 38-step route through
+  `(16,25)->(17,25)->(18,25)` and on to `(23,25)`. One validation attempt
+  aborted early from an open-floor overshoot before reaching the new bridge, so
+  the map route is fixed but the movement-validation timing quirk remains.
+
 - Brecconary Merchant 4 noise-hardening pass: the current live map is
   confirmed as `map=0x08(Brecconary)`, not castle data. `(27,25)->DOWN` into
   `(27,26)` is a confirmed false-wall passthrough: verifier movement succeeded

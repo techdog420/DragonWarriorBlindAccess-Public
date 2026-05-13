@@ -432,6 +432,10 @@ local MAP_PASSTHROUGH_CELLS = {
         -- as type-0/non-walkable, but 2026-05-12 manual movement and logs
         -- repeatedly crossed (20,25)<->(20,26) in both directions.
         ["20,26"] = true,
+        -- Merchant 4 lower-west bridge toward the public stand. The ROM
+        -- decodes (17,25) as type-0/non-walkable, but 2026-05-13 edge
+        -- verifier moved (16,25)->RIGHT into (17,25) 3/3 times.
+        ["17,25"] = true,
         -- Merchant 4 public-side false wall. Fresh 2026-05-12 edge verifier
         -- evidence moved (22,26)->RIGHT into (23,26) 5/5 times; leave the
         -- deeper neighbors closed until their own edges are verified.

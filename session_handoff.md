@@ -45,6 +45,23 @@ east, and `map_reader.lua` keeps `(23,25).east` / `(24,25).west` closed for
 movement. This supersedes the older "Merchant 4 isolated" route target below;
 do not reopen the movement edge just because TALK reaches across the counter.
 
+Latest Merchant 4 route-breakthrough: the remaining public route blocker was
+one missing passthrough at `(17,25)`. A static graph pass showed that making
+`(17,25)` walkable would connect public origin `(1,15)` to the confirmed
+Merchant 4 public stand `(23,25)`. Live verifier proof then moved
+`(16,25)->RIGHT` into `(17,25)` 3/3 times with `runtime_added=false`, so
+`map_reader.lua` now records `(17,25)` as a Brecconary passthrough and
+`test_map_reader.lua` pins it. Validation passed: `luac -p map_reader.lua
+test_map_reader.lua` and `lua test_map_reader.lua` (24 tests). Reload proof:
+`LAUNCHER_PROBE: codex_1725_reload`; after teleporting to `(1,15)`, live
+`debug_pathfind_to:23,25` produced a 38-step route through
+`... (16,25)->(17,25)->(18,25) ... ->(23,25)`. A first live retry briefly
+reported no path because a live NPC occupied the `(12,20)` choke; a second
+retry after NPC refresh succeeded. `validate_path` did not finish the route: it
+aborted on an early open-floor overshoot at `(1,16)->RIGHT`, before reaching
+the new Merchant 4 bridge. Treat that as movement-validation timing noise, not
+new blocker evidence. Runtime blockers remained empty.
+
 Earlier Merchant 4 forced-teleport confirmation: the alternate tool-shop
 pocket at `(25,26)` also opens the normal tool shop while facing north, and a
 fresh state read reported `POSITION: map=0x08(Brecconary) x=25 y=26`,
