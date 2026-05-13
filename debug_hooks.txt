@@ -14,9 +14,10 @@ OUTPUT FILES
 ------------
   dw_debug.log             Log output (cleared on each script load)
   dw_commands.txt          Write commands here; cleared after reading (~1/sec)
-  dw_blocks.log            Persistent blocked-move database; one entry per line
+  dw_blocks.log            Legacy optional blocked-move log; one entry per line
                            Format: 0xMM:x,y:dir  (e.g. "0x04:7,5:up")
-                           Loaded on startup; new entries appended automatically
+                           Ignored by default. Set auto_step_record_debug_blocks=true
+                           only for local forensic runs.
 
 LOG ENTRY FORMAT
 ----------------
@@ -97,6 +98,8 @@ COMMANDS (write to dw_commands.txt, one per line)
                            Lua entries (check dw_debug.log for output)
   add_blocked_tile:X,Y     Inject runtime blocked tile on current map
   add_blocked_tile:MAP,X,Y Inject runtime blocked tile on explicit map
+  add_blocked_edge:X,Y,DIR Inject a runtime blocked edge after manual review
+  add_blocked_edge:MAP,X,Y,DIR Same, but on explicit map
   list_blocked_tiles       Log current map runtime blocked tiles
   report_seam_cells        Summarize current map seam observations
   list_seam_cells          Log current map seam observations with blocked/moved counts
@@ -146,6 +149,8 @@ EDGE PROBE COMMANDS
                            max 15), resetting movement state between attempts.
                            Logs EDGE_VERIFY_* and only reports confirmed_blocked
                            or confirmed_passable when every attempt agrees.
+                           Does not inject runtime blockers; use add_blocked_edge
+                           after manual review when a blocker should affect paths.
   probe_edge_verify:X,Y,DIR[,N]
                            Same, but specifies origin explicitly. The verifier
                            relocates to that origin and resets between attempts.
@@ -200,18 +205,31 @@ directional passability. Freeze NPCs first for clean results.
 
 BLOCK DETECTION WORKFLOW
 -------------------------
-  Passive (during normal play):
+  Passive debug logging (legacy/forensic only):
     1. Set debug_mode=true in dw_access.ini
-    2. Play normally — every blocked step is auto-recorded to dw_blocks.log
-    3. echo export_blocks > dw_commands.txt
-    4. Check dw_debug.log for MAP_BLOCKED_CELLS Lua entries to paste
+    2. Set auto_step_record_debug_blocks=true only for the local run
+    3. Play normally — blocked steps append to dw_blocks.log
+    4. Treat this output as review material, not map truth
+    5. Turn auto_step_record_debug_blocks back off afterward
+
+  Manual promotion:
+    1. Verify the suspect cell/edge on the correct map
+    2. Prefer directional evidence such as probe_edge_verify:X,Y,DIR,N
+    3. Use add_blocked_edge:X,Y,DIR for a deliberate runtime edge blocker
+    4. Use add_blocked_tile:X,Y only for a deliberate full-cell runtime block
+    5. Patch map_reader.lua only after map-scoped evidence is strong
+
+  Export review:
+    1. Set debug_mode=true in dw_access.ini
+    2. echo export_blocks > dw_commands.txt
+    3. Check dw_debug.log for MAP_BLOCKED_CELLS Lua entries to review
 
   Active (exhaustive per-map sweep):
     1. Set debug_mode=true in dw_access.ini
     2. Navigate into the map you want to sweep (e.g. Tantegel Castle)
     3. echo sweep_map > dw_commands.txt
     4. Wait for sweep to finish (watch dw_debug.log; "SWEEP COMPLETE" appears)
-    5. Paste MAP_BLOCKED_CELLS entries from dw_debug.log into map_reader.lua
+    5. Review MAP_BLOCKED_CELLS entries from dw_debug.log before promotion
     6. Reload script to apply
 
   NOTE: sweep_map is safe for town/castle maps (no random encounters).
@@ -224,7 +242,7 @@ BLOCK DETECTION WORKFLOW
     4. Wait for "Survey complete" speech
     5. report_survey_findings        (overview of results)
     6. dump_survey_report            (full per-target details if needed)
-    7. export_directional_candidates (paste output into map_reader.lua)
+    7. export_directional_candidates (review output before map_reader.lua patch)
     8. unfreeze_npcs
 
 SNAPSHOT FORMAT (log_state / on_battle_start)
@@ -279,7 +297,7 @@ QUICK SHELL USAGE
     ./dw_commands.sh dump_survey_report export_directional_candidates
     ./dw_commands.sh probe_edge:RIGHT
   tail -f dw_debug.log
-  tail -f dw_blocks.log
+  tail -f dw_blocks.log   (only when auto_step_record_debug_blocks=true)
 
 Deterministic command confirmation:
   ./dw_commands.sh --replace --wait "LAUNCHER_PROBE: ready" launcher_probe:ready report_position

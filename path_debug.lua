@@ -96,10 +96,17 @@ local function finish_validate_step(vs, px, py, message, use_info_log)
         end
     end
     if vs.auto_step and vs.auto_step.cancel_active_step then
-        vs.auto_step.cancel_active_step(false)
+        vs.auto_step.cancel_active_step(false, true)
     end
     vs.phase = "next"
     return true
+end
+
+local function clear_validate_state(vs)
+    if vs and vs.auto_step and vs.auto_step.cancel_active_step then
+        vs.auto_step.cancel_active_step(false, true)
+    end
+    validate_state = nil
 end
 
 local function begin_validate_step(vs)
@@ -141,13 +148,13 @@ local function begin_validate_step(vs)
         debug_tools.info(string.format(
             "VALIDATE ABORT: route desynced before step %d (%d/%d steps OK)",
             vs.index, vs.completed, #vs.path))
-        validate_state = nil
+        clear_validate_state(vs)
         return false
     end
 
     if not delta then
         debug_tools.error("VALIDATE: invalid direction '" .. tostring(step.direction) .. "' at step " .. vs.index)
-        validate_state = nil
+        clear_validate_state(vs)
         return false
     end
 
@@ -165,7 +172,7 @@ local function begin_validate_step(vs)
         vs.auto_step.inject_step(dir_key)
     else
         debug_tools.error("VALIDATE: invalid direction or missing auto_step module at step " .. vs.index)
-        validate_state = nil
+        clear_validate_state(vs)
         return false
     end
 
@@ -493,7 +500,7 @@ local function validate_tick()
                     "  MISMATCH step %d: expected (%d,%d) actual (%d,%d)",
                     m.step, m.expected_x, m.expected_y, m.actual_x, m.actual_y))
             end
-            validate_state = nil
+            clear_validate_state(vs)
             return
         end
 
@@ -565,7 +572,7 @@ local function validate_tick()
         debug_tools.info(string.format(
             "VALIDATE ABORT: stopping at first mismatch (%d/%d steps OK)",
             vs.completed, #vs.path))
-        validate_state = nil
+        clear_validate_state(vs)
         return
     end
 
@@ -577,20 +584,13 @@ local function validate_tick()
 
         if px == expected_x and py == expected_y then
             if vs.auto_step and vs.auto_step.cancel_active_step then
-                vs.auto_step.cancel_active_step(false)
+                vs.auto_step.cancel_active_step(false, true)
             end
             vs.settle_frames = VALIDATE_CONFIRM_FRAMES
             debug_tools.debug(string.format(
                 "VALIDATE step %d: reached expected (%d,%d), confirming settle",
                 vs.index, px, py))
             vs.phase = "confirm"
-            return
-        elseif px == vs.start_x and py == vs.start_y and (vs.retry_count or 0) < VALIDATE_MAX_RETRIES then
-            vs.retry_count = (vs.retry_count or 0) + 1
-            debug_tools.debug(string.format(
-                "VALIDATE step %d: no movement yet at (%d,%d), retrying",
-                vs.index, px, py))
-            begin_validate_step(vs)
             return
         elseif px == vs.start_x and py == vs.start_y
             and (vs.late_wait_extensions or 0) < VALIDATE_LATE_WAIT_EXTENSIONS
@@ -601,6 +601,13 @@ local function validate_tick()
                 "VALIDATE step %d: auto_step still active at (%d,%d), extending wait",
                 vs.index, px, py))
             vs.phase = "wait"
+            return
+        elseif px == vs.start_x and py == vs.start_y and (vs.retry_count or 0) < VALIDATE_MAX_RETRIES then
+            vs.retry_count = (vs.retry_count or 0) + 1
+            debug_tools.debug(string.format(
+                "VALIDATE step %d: no movement yet at (%d,%d), retrying",
+                vs.index, px, py))
+            begin_validate_step(vs)
             return
         else
             vs.mismatches[#vs.mismatches + 1] = {
@@ -622,7 +629,7 @@ local function validate_tick()
             debug_tools.info(string.format(
                 "VALIDATE ABORT: stopping at first mismatch (%d/%d steps OK)",
                 vs.completed, #vs.path))
-            validate_state = nil
+            clear_validate_state(vs)
             return
         end
         vs.phase = "next"

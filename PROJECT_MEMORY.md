@@ -1,8 +1,10 @@
 # Project Memory
 
-Updated: 2026-05-10
+Updated: 2026-05-12
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
+Use `TASKS.md` for lightweight future-work/backlog items that should not
+interrupt the active debug loop.
 
 ## Project Shape
 
@@ -69,6 +71,49 @@ For state-sensitive work:
 - Wait for log confirmation between steps
 - Treat stale queued commands and polling delay as real failure causes
 - Confirm live map id and position before map-specific conclusions
+
+## Map Evidence Policy
+
+Dragon Warrior's engine can produce movement timing noise on passable cells.
+Route-timeout, verifier, seam-memory, and `dw_blocks.log` evidence must remain
+diagnostic until a human deliberately promotes a specific map-scoped cell or
+edge. Current policy:
+- Permanent map edits belong under the correct `map_id` in `map_reader.lua`.
+- Use passthrough cells for directly confirmed false walls.
+- Use directional blocks for directly confirmed engine walls.
+- In Brecconary Merchant 4 work, manual confirmation remains the tiebreaker for
+  suspect route seams. Validation-only noise kept `(25,23).north` open, while
+  manual-confirmed blocks such as `(21,25).east`, `(23,23).north`, and
+  `(26,28).east`, `(27,29).north`, and `(28,28).west` are promoted
+  directionally.
+- Runtime blockers are added only by explicit commands such as
+  `add_blocked_tile` or `add_blocked_edge`.
+- `dw_blocks.log` is legacy/forensic and is ignored unless
+  `auto_step_record_debug_blocks=true`.
+- Blocked-only seam memory is diagnostic-only; reroute may temporarily avoid
+  the edge it just hit, but same-session seam noise must not become route truth.
+- Manual tap-to-step should not add extra pressure into static blockers the map
+  model already knows about. `auto_step.lua` refuses manual tap extensions into
+  permanent and directional static blocks with `AUTO_STEP_REFUSED_STATIC_BLOCK`,
+  while debug/probe `inject_step` still intentionally tests those edges.
+- Physical `manual_tap` must also release synthetic D-pad input after an early
+  movement-subpixel twitch; otherwise unmodeled walls and live NPC blocks can
+  keep playing collision input after the player has released the key. Keep the
+  conservative early-twitch hold for debug/probe `inject_step` and queued route
+  verification, where false blockers are more damaging than a brief probe hold.
+- If a physical `manual_tap` has already seen an early movement-subpixel twitch,
+  do not schedule the same-direction turn-repress recovery; that re-press can
+  recreate the wall/NPC collision hold that the early release just avoided.
+- Released physical `manual_tap` wall/NPC bumps should not publish blocked seam
+  evidence. If a movement-subpixel twitch has happened but the tile has not
+  changed after a short wait, silently cancel the manual step before the normal
+  blocked timeout path; keep blocked-event publication for debug/probe
+  injection and queued routes.
+- `validate_path` evidence is also diagnostic. The validator must wait for an
+  active `auto_step` before retrying and must cancel injected auto-step state on
+  abort so validation failures do not write stale seam observations. Validation
+  may force-release injected D-pad state after success/abort, but normal manual
+  cancel behavior must not be changed.
 
 ## Codex Tooling Contract
 
@@ -322,15 +367,52 @@ Emulator compatibility direction:
   mislabel NPC clutter as "blocked by a closed door." If the NPC-free route is
   blocked by an NPC whose movement byte is `0x00`, report it as a stationary
   NPC blocker instead of telling the player to wait.
-- Manual/non-route blocked steps (`queued_route=false`) should remain seam
-  diagnostics and should not be promoted into pathfinding runtime blockers.
-  Manual walking into doors, NPC boxes, or odd seams can otherwise poison A*
-  for later autowalks on the same map. Route-timeout and seam-retry evidence
-  should stay in seam memory and can be used as soft same-session reroute
-  avoidance, but hard runtime blocker promotion should come from explicit
-  verifier/manual confirmation. When merging runtime blockers into a mutable
+- Brecconary (`map 0x08`) has two guide-backed locked doors that the ROM tile
+  scan does not find: `Northeast Door` at `(21,6)` for the northeast building
+  and `Inn West Room Door` at `(5,22)`. Mike's map labels `4) Fairy Water` in
+  the center-east building and `5) Removes Curses` in the top-right building
+  (local copy: `project_resources/maps/brecconary/mikesrpgcenter_brecconary.png`),
+  so keep the object labels positional instead of overcommitting to a service
+  name. With the current live Brecconary NPC table, door-specific static
+  pathfinding from public origin `(1,15)` shows `Northeast Door` alone makes
+  `Woman 1` reachable. The user manually verified `Woman 1` as the Fairy Water
+  merchant, so that target is expected to be locked behind the northeast door.
+  `Inn West Room Door` alone makes `Old Man 1`
+  reachable at his current `(1,20)` position and also makes `Guard 4`
+  reachable. Opening both modeled doors still does not route to
+  `Weapons Merchant`, `Person 3`, `Person 5`, `Old Man 2`, `Merchant 4`,
+  `Person 1`, or the currently no-path `Guard 2` / `Guard 3`, so those remain
+  route/blocker-data follow-ups, not explained by the known locked doors.
+  Closed-door no-path hints should remain target-aware: do not give key/door
+  advice merely because a closed door is reachable if opening it would not make
+  the selected object reachable.
+- Brecconary `Merchant 4` is the normal tool shop, and it does have a public
+  access node. The user found a small walkable pocket at `(22,25)`/`(23,25)`;
+  fresh logs confirmed repeated movement `(22,25)<->(23,25)`, repeated blocked
+  movement `(23,25)->RIGHT` into `(24,25)`, and `MERCHANT_ACTION: Merchant.
+  Buy.` when TALK was used from `(23,25)` facing east. Model Merchant 4 service
+  interaction as `(23,25)` facing east. Keep `(23,25).east` and `(24,25).west`
+  as directional movement blockers: the counter can be talked across, but the
+  hero cannot walk across it. The older `(25,26)` north-facing tool-shop tile is
+  still a real alternate/debug interaction pocket reached from `(25,27)->UP`,
+  but it is not the normal public service route. Keep its one-way/isolated
+  movement data modeled for pathfinding, especially `(25,27).north` blocking
+  exit back south.
+- On BizHawk, keep background periodic NPC refresh off by default to avoid
+  frame/audio hitches, but object browsing and object-route actions should
+  refresh live NPC coordinates on demand. Otherwise moving NPCs such as
+  Brecconary Person 1 can sound like static blockers because the object browser
+  is describing an old object-list snapshot.
+- Blocked-step, seam-memory, and `probe_edge_verify` results should remain
+  diagnostics and should not automatically promote into pathfinding runtime
+  blockers. The engine and input timing can produce convincing false blocker
+  evidence, so hard runtime blocker promotion should come only from explicit
+  manual commands after review, such as `add_blocked_edge:X,Y,DIR` for a
+  directional edge or `add_blocked_tile:X,Y` for an intentionally full blocked
+  tile. Route-timeout and seam-retry evidence can still be used as soft
+  same-session reroute avoidance. When merging runtime blockers into a mutable
   pathfinding overlay, copy direction tables first so temporary reroute blocks
-  cannot mutate the verified runtime table by aliasing.
+  cannot mutate the manual runtime table by aliasing.
 - Screenshots can be useful evidence for over-promoted directional blocks, but
   promote route changes only after live probes and route outcomes agree. In
   Brecconary, early `(8,5)->LEFT` moved evidence for `(7,5).east` was
@@ -851,7 +933,10 @@ Brecconary/map `0x08`:
   from the public west approach and should not be the route target. Keep
   `(8,17).west` blocked so the entrance-to-inn route avoids the discovered
   timeout. Brecconary `Merchant 4` at `(25,25)` is the tool shop. The
-  live-confirmed TALK tile is `(24,25)`, facing east. These are direct counter
+  public route-facing TALK tile is `(23,25)`, facing east across a blocked
+  movement seam into the counter trigger; the older `(25,26)` north-facing
+  stand and raw `(24,25)` trigger also open the shop but are alternate/debug
+  pockets, not the normal public route target. These are direct counter
   interactions, not ordinary adjacent-NPC TALK targets.
 - Survey target copies must preserve service interaction metadata
   (`service`, `interaction_x`, `interaction_y`, `interaction_face_dir`).
@@ -1015,7 +1100,17 @@ Do not rely on assistant-local memory as the only record of important project st
   conservative first pass, but fall back to live horizontal/vertical scroll and
   the alternate nametable base; the Brecconary weapon counter has shown
   `base_nt=1` while the active list decoded from the opposite base with
-  `vertical_scroll_tiles=6`.
+  `vertical_scroll_tiles=6`. Tool shops need the same parser but a broader
+  catalog: Brecconary `Merchant 4` showed `Herb`, `Torch`, and split
+  `Dragon's` / `Scale` rows, and stayed silent until the shop catalog included
+  item-shop goods in addition to equipment names. Merchant action prompts are a
+  third shop state: Brecconary `Merchant 4` overlays `BUY`/`SELL` on stale
+  command-menu rows while reusing D8/D9, so parse it as `mode=action`
+  (`0=Buy`, `1=Sell`) instead of letting the field command reader call those
+  cursor positions `TALK`/`STATUS`. While merchant UI owns the screen, keep the
+  lower-dialogue baseline synchronized with the visible shop prompt; otherwise
+  closing/error lines can re-announce previous shop prompt text before the new
+  farewell or error.
 - For future dialogue bugs, capture `report_movement_state` and
   `report_upper_dialogue_state`; for shop/menu bugs also capture
   `report_merchant_state`. Useful fields are `ppu_ctrl`, `scroll_x`, `scroll_y`,

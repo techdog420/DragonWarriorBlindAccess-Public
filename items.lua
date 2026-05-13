@@ -93,6 +93,13 @@ local function append_unique_names(result, seen, source)
     end
 end
 
+local function append_unique_name(result, seen, name)
+    if name and not seen[name] then
+        seen[name] = true
+        result[#result + 1] = name
+    end
+end
+
 -- ============================================================
 -- Spell Lookup (dragon-warrior-disassembly)
 -- ============================================================
@@ -140,6 +147,31 @@ function M.get_equipment_catalog_names()
     append_unique_names(result, seen, WEAPON_NAMES)
     append_unique_names(result, seen, ARMOR_NAMES)
     append_unique_names(result, seen, SHIELD_NAMES)
+    return result
+end
+
+-- get_item_catalog_names(): Return item names that can appear in shop lists.
+-- Used by merchant/shop UI parsing; unlike the held-item menu, shops can sell
+-- Magic Keys even though keys are tracked outside the nybble item slots.
+function M.get_item_catalog_names()
+    local result = {}
+    local seen = {}
+    for id = 0x1, 0xF do
+        append_unique_name(result, seen, ITEM_NAMES[id])
+    end
+    append_unique_name(result, seen, "Magic Key")
+    return result
+end
+
+-- get_shop_catalog_names(): Return all item/equipment names the merchant UI
+-- may offer. Weapon/armor shops and tool shops share the same screen reader.
+function M.get_shop_catalog_names()
+    local result = {}
+    local seen = {}
+    append_unique_names(result, seen, WEAPON_NAMES)
+    append_unique_names(result, seen, ARMOR_NAMES)
+    append_unique_names(result, seen, SHIELD_NAMES)
+    append_unique_names(result, seen, M.get_item_catalog_names())
     return result
 end
 

@@ -32,6 +32,11 @@ local CURSOR_TILES = {
     [0x43] = true,
 }
 
+local ACTION_PROMPT_SELECTIONS = {
+    [0] = "Buy",
+    [1] = "Sell",
+}
+
 local catalog_cache = nil
 
 local function read_ppu_range(address, length)
@@ -126,7 +131,9 @@ local function get_catalog_entries()
     end
 
     local entries = {}
-    for _, name in ipairs(items.get_equipment_catalog_names()) do
+    local names = items.get_shop_catalog_names and items.get_shop_catalog_names()
+        or items.get_equipment_catalog_names()
+    for _, name in ipairs(names) do
         local tokens = {}
         for token in name:gmatch("%S+") do
             tokens[#tokens + 1] = token
@@ -258,6 +265,33 @@ local function has_buy_prompt(raw_text)
         and lower:find("to buy", 1, true) ~= nil
 end
 
+local function row_has_word(rows, wanted)
+    for row = ROW_START, ROW_END do
+        local line = row_text(rows, row)
+        for token in tostring(line or ""):gmatch("[A-Za-z']+") do
+            if token == wanted then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function has_action_prompt(raw_text, rows)
+    local lower = tostring(raw_text or ""):lower()
+    return lower:find("what can i do for", 1, true) ~= nil
+        and row_has_word(rows, "BUY")
+        and row_has_word(rows, "SELL")
+end
+
+local function get_action_selection(cursor_y)
+    local y = tonumber(cursor_y)
+    if y == nil then
+        return nil
+    end
+    return ACTION_PROMPT_SELECTIONS[y]
+end
+
 function M.read_rows(opts)
     local ctx = get_scroll_context(opts)
     local rows = {}
@@ -316,11 +350,20 @@ function M.analyze_rows(rows, opts)
     local offers = extract_offer_names(rows)
     local status_marker_count = extract_status_marker_count(rows)
     local buy_prompt = has_buy_prompt(raw_text)
-    local active = (status_marker_count >= 4 and #offers >= 2)
+    local action_prompt = has_action_prompt(raw_text, rows)
+    local action_selection = action_prompt and get_action_selection(opts.cursor_y) or nil
+    local offer_list_active = (status_marker_count >= 4 and #offers >= 2)
         or (buy_prompt and #offers >= 2)
+    local active = offer_list_active or action_prompt
 
     local summary = nil
-    if active then
+    if action_prompt then
+        local parts = {"Merchant. Buy or Sell."}
+        if action_selection then
+            parts[#parts + 1] = action_selection .. "."
+        end
+        summary = table.concat(parts, " ")
+    elseif offer_list_active then
         local parts = {"Merchant."}
         if opts.gold ~= nil then
             parts[#parts + 1] = "Gold " .. tostring(opts.gold) .. "."
@@ -335,6 +378,9 @@ function M.analyze_rows(rows, opts)
         offers = offers,
         status_marker_count = status_marker_count,
         buy_prompt = buy_prompt,
+        action_prompt = action_prompt,
+        action_selection = action_selection,
+        mode = action_prompt and "action" or (offer_list_active and "offers" or nil),
         summary = summary,
     }
 end
@@ -354,6 +400,7 @@ local function analyze_context(opts)
     local ctx = get_scroll_context(opts)
     local info = M.analyze_rows(M.read_rows(ctx), {
         gold = snapshot.gold,
+        cursor_y = snapshot.cursor_y,
     })
     info.context = ctx
     info.context_label = ctx.label

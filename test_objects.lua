@@ -857,7 +857,7 @@ function tests.npc_selected_teleport_landing_skips_adjacent_cell_with_no_escape(
 
     env.set_position(0x08, 1, 15)
     env.set_terrain_offset(0x10)
-    env.set_npc(0, 0x24, 0x07) -- NPC moved to (4,7), matching the Brecconary trap repro.
+    env.set_npc(0, 0x24, 0x07) -- Synthetic adjacent-NPC no-escape case.
     env.objects.refresh(0x08)
     env.objects.next_filter()
 
@@ -988,12 +988,34 @@ function tests.brecconary_counter_service_marks_selected_merchant_visited()
     assert_equal(obj.interaction_face_dir, "north", "Brecconary merchant should face north from the counter")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Weapons Merchant: 2 north, counter here (1 of 2)",
+        "Weapons Merchant: 2 north, counter here (1 of 4)",
         "merchant description should name the usable counter square")
 
     local marked = env.objects.mark_adjacent_npc_visited(0x08, 5, 6)
     assert_equal(marked.id, "npc_0", "counter interaction should mark the selected merchant visited")
     assert_equal(env.objects.is_visited(obj, 0x08), true, "counter interaction visit should persist on the merchant")
+
+    env.restore()
+end
+
+function tests.brecconary_counter_service_marks_merchant_even_when_not_selected()
+    local env = make_env({npc_count = 2})
+
+    env.set_position(0x08, 5, 6)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 5, 0x04, 0x00) -- Merchant at (5,4)
+    env.set_npc(1, 0x20 + 20, 0x14, 0x00) -- Non-service NPC away from the counter
+    env.objects.refresh(0x08)
+
+    local merchant = env.objects.find_object_by_id("npc_0")
+    assert_equal(merchant.name, "Weapons Merchant", "test should expose the weapon-shop merchant")
+    local selected = env.objects.select_object_by_id("npc_1")
+    assert_equal(selected.id, "npc_1", "test should force a different selected object")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x08, 5, 6)
+    assert_equal(marked.id, "npc_0", "counter interaction should mark the service merchant, not the selected NPC")
+    assert_equal(env.objects.is_visited(merchant, 0x08), true, "counter visit should persist on the merchant")
+    assert_equal(env.objects.is_visited(selected, 0x08), false, "unrelated selected NPC should not be marked visited")
 
     env.restore()
 end
@@ -1054,6 +1076,7 @@ function tests.brecconary_confirmed_counter_services_use_live_talk_tiles()
             ["0x08:9,21"] = true,
             ["0x08:23,25"] = true,
             ["0x08:24,25"] = true,
+            ["0x08:25,26"] = true,
         },
         npc_count = 4,
     })
@@ -1082,9 +1105,13 @@ function tests.brecconary_confirmed_counter_services_use_live_talk_tiles()
     assert_equal(inn.interaction_face_dir, "east", "Inn should face east toward the inn keeper")
 
     assert_equal(merchant4 ~= nil, true, "Brecconary Merchant 4 should be present")
-    assert_equal(merchant4.interaction_x, 24, "Merchant 4 should use the live-confirmed tool-shop counter tile")
-    assert_equal(merchant4.interaction_y, 25, "Merchant 4 live-confirmed counter Y should match the tool-shop large tile")
-    assert_equal(merchant4.interaction_face_dir, "east", "Merchant 4 should face east toward the tool-shop keeper")
+    assert_equal(merchant4.interaction_x, 23, "Merchant 4 should use the live-confirmed public pocket stand")
+    assert_equal(merchant4.interaction_y, 25, "Merchant 4 public counter stand should match the counter row")
+    assert_equal(merchant4.interaction_face_dir, "east", "Merchant 4 should face east through the blocked counter edge")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x08, 23, 25)
+    assert_equal(marked.id, merchant4.id, "Merchant 4 public counter stand should mark the tool merchant visited")
+    assert_equal(env.objects.is_visited(merchant4, 0x08), true, "Merchant 4 counter visit should persist from the public stand")
 
     env.restore()
 end
@@ -1123,6 +1150,45 @@ function tests.tantegel_castle_exposes_reachable_navigation_doors()
     assert_equal(center.x, 14, "center crossing door x should match the useful y=6 crossing")
     assert_equal(center.y, 6, "center crossing door y should match the useful y=6 crossing")
     assert_equal(center.survey_exclude, true, "center crossing door should stay excluded from autonomous surveys")
+
+    env.restore()
+end
+
+function tests.brecconary_exposes_hidden_locked_doors()
+    local env = make_env()
+
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x08)
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Exits
+    env.objects.next_filter() -- Chests
+    env.objects.next_filter() -- Stairs
+    env.objects.next_filter() -- Doors
+
+    assert_equal(env.objects.get_count(), 2, "Brecconary should expose both hidden locked doors")
+    local doors = env.objects.get_objects({filtered = true})
+    local northeast = nil
+    local inn_west = nil
+    for _, door in ipairs(doors) do
+        if door.id == "door_21_6" then
+            northeast = door
+        elseif door.id == "door_5_22" then
+            inn_west = door
+        end
+    end
+
+    assert_equal(northeast ~= nil, true, "Brecconary should expose the northeast hidden door")
+    assert_equal(northeast.name, "Northeast Door", "northeast door should have a distinct navigation label")
+    assert_equal(northeast.x, 21, "northeast door x should match the topology frontier")
+    assert_equal(northeast.y, 6, "northeast door y should match the topology frontier")
+
+    assert_equal(inn_west ~= nil, true, "Brecconary should expose the inn west-room door")
+    assert_equal(inn_west.name, "Inn West Room Door", "inn west-room door should have a distinct navigation label")
+    assert_equal(inn_west.x, 5, "inn west-room door x should match the topology frontier")
+    assert_equal(inn_west.y, 22, "inn west-room door y should match the topology frontier")
 
     env.restore()
 end

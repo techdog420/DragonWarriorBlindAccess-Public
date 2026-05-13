@@ -846,6 +846,15 @@ local EXTRA_DOORS = {
     -- The ROM tile is type-15; is_walkable() in map_reader.lua checks the
     -- opened-door RAM directly for this cell.
     [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
+    -- Map 0x08: Brecconary has two locked doors that are not encoded as a
+    -- distinct town door tile: the northeast building and the west room in the
+    -- inn. External guide/map labels disagree on nearby service names, so keep
+    -- the navigation labels positional; local topology isolates Woman 1 behind
+    -- (21,6) and Guard 4 behind (5,22).
+    [0x08] = {
+        {x=21, y=6, name="Northeast Door", type=M.TYPE_DOOR, id="door_21_6"},
+        {x=5, y=22, name="Inn West Room Door", type=M.TYPE_DOOR, id="door_5_22"},
+    },
 }
 
 local SERVICE_INTERACTION_OVERRIDES = {
@@ -854,11 +863,14 @@ local SERVICE_INTERACTION_OVERRIDES = {
     -- The inn can be opened from the public west-side stand tile at (8,21)
     -- while facing east. The intermediate counter tile (9,21) is walkable but
     -- blocks west-side entry, so routing directly to it strands public paths.
-    -- The tool-shop counter still uses the live-confirmed (24,25) tile.
+    -- The tool shop counter can be used from the public west-side stand at
+    -- (23,25) while facing east. Walking east into the raw counter trigger at
+    -- (24,25) is engine-blocked, but TALK still reaches the counter across
+    -- that blocked movement edge.
     [0x08] = {
         ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter", name = "Weapons Merchant"},
         ["10,21"] = {x = 8, y = 21, face_dir = "east", label = "counter", name = "Inn"},
-        ["25,25"] = {x = 24, y = 25, face_dir = "east", label = "counter"},
+        ["25,25"] = {x = 23, y = 25, face_dir = "east", label = "counter"},
     },
 }
 
@@ -1511,6 +1523,19 @@ function M.mark_adjacent_npc_visited(map_id, px, py)
        and selected.interaction_x == px
        and selected.interaction_y == py then
         return M.mark_visited(selected, map_id)
+    end
+
+    local interaction_best = nil
+    for _, obj in ipairs(object_list) do
+        if obj.type == M.TYPE_NPC
+           and obj.interaction_x == px
+           and obj.interaction_y == py
+           and (not interaction_best or obj.id < interaction_best.id) then
+            interaction_best = obj
+        end
+    end
+    if interaction_best then
+        return M.mark_visited(interaction_best, map_id)
     end
 
     local best = nil

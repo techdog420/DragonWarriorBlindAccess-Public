@@ -140,6 +140,67 @@ function tests.throne_room_door_opens_from_door_ram_array()
     env.restore()
 end
 
+function tests.brecconary_locked_doors_open_from_door_ram_array()
+    local base = 8 * 5
+    local data_start = 0x10
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    for i = 0, 56 do
+        rom_bytes[data_start + i] = 0xFF
+    end
+
+    local closed_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed_ne = closed_env.map_reader.get_walkability_details(0x08, 21, 6)
+    assert_equal(closed_ne.effective_walkable, false, "closed Brecconary northeast door should block movement")
+    assert_equal(closed_ne.reason, "door_closed", "closed Brecconary northeast door should report door_closed")
+    local closed_inn = closed_env.map_reader.get_walkability_details(0x08, 5, 22)
+    assert_equal(closed_inn.effective_walkable, false, "closed Brecconary inn west-room door should block movement")
+    assert_equal(closed_inn.reason, "door_closed", "closed Brecconary inn west-room door should report door_closed")
+    closed_env.restore()
+
+    local open_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+            [0x600C] = 21,
+            [0x600D] = 6,
+            [0x600E] = 5,
+            [0x600F] = 22,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local open_ne = open_env.map_reader.get_walkability_details(0x08, 21, 6)
+    assert_equal(open_ne.effective_walkable, true, "opened Brecconary northeast door should become walkable")
+    assert_equal(open_ne.reason, "door_open", "opened Brecconary northeast door should report door_open")
+    local open_inn = open_env.map_reader.get_walkability_details(0x08, 5, 22)
+    assert_equal(open_inn.effective_walkable, true, "opened Brecconary inn west-room door should become walkable")
+    assert_equal(open_inn.reason, "door_open", "opened Brecconary inn west-room door should report door_open")
+    local snapshot = open_env.map_reader.get_walkability_snapshot(0x08)
+    assert_equal(snapshot[6][21], true, "walkability snapshot should honor opened Brecconary northeast door")
+    assert_equal(snapshot[22][5], true, "walkability snapshot should honor opened Brecconary inn west-room door")
+
+    open_env.restore()
+end
+
 function tests.throne_room_directional_candidates_are_promoted_conservatively()
     local env = make_env()
 
@@ -487,6 +548,11 @@ function tests.brecconary_directional_walls_cover_confirmed_building_bands()
     local env = make_env()
 
     local dirs = env.map_reader.get_directional_blocks(0x08)
+    local function assert_open_approach(cell, approach, message)
+        local entry = dirs[cell]
+        assert_equal(entry and entry[approach] or nil, nil, message)
+    end
+
     assert_equal(dirs["3,4"].west, true, "(3,4) should block west approach")
     assert_equal(dirs["3,4"].east, true, "(3,4) should block east approach after Merchant 2 west pocket exit repro")
     assert_equal(dirs["3,5"].west, true, "(3,5) should block west approach after post-reload survey and brute-force repros from (2,5)")
@@ -504,8 +570,8 @@ function tests.brecconary_directional_walls_cover_confirmed_building_bands()
     assert_equal(dirs["5,5"].east, true, "(5,5) should block east approach after Merchant 2 pocket exit repro")
     assert_equal(dirs["7,5"].west, true, "(7,5) should block west approach after Merchant 2 pocket exit repro")
     assert_equal(dirs["7,5"].east, true, "(7,5) should block east approach after controlled public-side route repro from (8,5)")
-    assert_equal(dirs["5,6"].south, true, "(5,6) should block south approach after selected-NPC teleport trap repro from (5,7)")
-    assert_equal(dirs["5,8"].north, true, "(5,8) should block north approach after selected-NPC teleport trap repro from (5,7)")
+    assert_equal(dirs["5,6"], nil, "(5,6) should stay open; manual/live movement crossed between (5,7) and (5,6) both ways")
+    assert_equal(dirs["5,8"], nil, "(5,8) should stay open; manual movement crossed between (5,7) and (5,8) both ways")
     assert_equal(dirs["6,7"].west, true, "(6,7) should block west approach after selected-NPC teleport trap repro from (5,7)")
     assert_equal(dirs["20,2"].west, true, "(20,2) should block west approach")
     assert_equal(dirs["20,2"].north, true, "(20,2) should block north approach")
@@ -601,6 +667,33 @@ function tests.brecconary_directional_walls_cover_confirmed_building_bands()
     assert_equal(dirs["15,28"].west, true, "(15,28) should block west approach")
     assert_equal(dirs["16,27"].north, true, "(16,27) should block north approach")
     assert_equal(dirs["16,27"].west, true, "(16,27) should block west approach")
+    assert_equal(dirs["23,25"].east, true, "(23,25) should block east movement into Merchant 4's counter trigger while still serving as the public TALK stand")
+    assert_equal(dirs["24,25"].west, true, "(24,25) should block west movement out of Merchant 4's counter trigger")
+    assert_equal(dirs["24,26"].west, true, "(24,26) should block west approach after Merchant 4 false-wall check failed from (23,26)")
+    assert_equal(dirs["25,27"].north, true, "(25,27) should block south exit from Merchant 4's interaction tile")
+    assert_equal(dirs["24,27"].east, true, "(24,27) should block west exit from Merchant 4's southeast pocket")
+    assert_equal(dirs["24,27"].south, true, "(24,27) should block south approach after Merchant 4 row-28 route validation failed from (24,28)")
+    assert_equal(dirs["25,28"].north, true, "(25,28) should block south exit from Merchant 4's southeast pocket")
+    assert_equal(dirs["25,28"].west, true, "(25,28) should block west approach after Merchant 4 row-28 route validation failed from (24,28)")
+    assert_equal(dirs["24,29"].north, true, "(24,29) should block north approach after Merchant 4 bottom-row route validation failed from (24,28)")
+    assert_equal(dirs["23,29"].north, true, "(23,29) should block north approach after Merchant 4 bottom-row route validation failed from (23,28)")
+    assert_equal(dirs["22,29"].north, true, "(22,29) should block north approach after Merchant 4 bottom-row route validation failed from (22,28)")
+    assert_equal(dirs["28,28"].north, true, "(28,28) should block north approach after Merchant 4 lower-right validation failed from (28,27)")
+    assert_equal(dirs["28,28"].west, true, "(28,28) should block west approach after manual Merchant 4 route check from (27,28)")
+    assert_open_approach("22,21", "south", "(22,21) should stay open from south after manual Merchant 4 cluster check")
+    assert_open_approach("22,22", "north", "(22,22) should stay open from north after manual Merchant 4 cluster check")
+    assert_open_approach("22,23", "north", "(22,23) should stay open from north after manual Merchant 4 cluster check")
+    assert_open_approach("22,24", "north", "(22,24) should stay open from north after manual Merchant 4 cluster check")
+    assert_open_approach("22,25", "north", "(22,25) should stay open from north after manual Merchant 4 cluster check")
+    assert_open_approach("22,26", "north", "(22,26) should stay open from north after manual Merchant 4 cluster check")
+    assert_equal(dirs["22,27"].north, true, "(22,27) should block north approach toward Merchant 4's southeast pocket")
+    assert_equal(dirs["21,25"].east, true, "(21,25) should block east approach after manual Merchant 4 route check from (22,25)")
+    assert_equal(dirs["23,23"].north, true, "(23,23) should block north approach after manual Merchant 4 route check from (23,22)")
+    assert_open_approach("25,23", "north", "(25,23) should stay open from north after manual Merchant 4 route check from (25,22)")
+    assert_equal(dirs["26,28"].east, true, "(26,28) should block east approach after manual Merchant 4 route check from (27,28)")
+    assert_equal(dirs["27,29"].north, true, "(27,29) should block north approach after manual Merchant 4 route check from (27,28)")
+    assert_equal(dirs["21,27"].west, true, "(21,27) should block west approach after Merchant 4 route validation failed from (20,27)")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 24, 25), false, "(24,25) should not be fully blocked; only its verified west seam is closed")
 
     env.restore()
 end
@@ -611,8 +704,8 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
         rom_bytes = {
             [base] = 0x00,      -- CPU $8000 -> file offset $0010
             [base + 1] = 0x80,
-            [base + 2] = 11,    -- width 12
-            [base + 3] = 19,    -- height 20
+            [base + 2] = 29,    -- width 30
+            [base + 3] = 29,    -- height 30
             [base + 4] = 0,
             [0x10] = 0x0F, [0x11] = 0x0F, [0x12] = 0x0F, [0x13] = 0x0F,
             [0x14] = 0x0F, [0x15] = 0x0F, [0x16] = 0x0F, [0x17] = 0x0F,
@@ -630,17 +723,59 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     assert_equal(env.map_reader.is_walkable(0x08, 11, 19), true, "(11,19) should be walkable via Brecconary passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 8, 18), true, "(8,18) should be walkable via Brecconary passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 8, 19), true, "(8,19) should be walkable via Brecconary passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 3, 7), true, "(3,7) should be walkable via the west-wing throat passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 2, 9), true, "(2,9) should be walkable via the west-wing throat passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 3, 9), true, "(3,9) should be walkable via the west-wing throat passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 3, 6), false, "(3,6) should remain closed after repeated blocked movement from the south")
+    assert_equal(env.map_reader.is_walkable(0x08, 22, 24), true, "(22,24) should be walkable via the east-wing throat passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 4, 7), true, "(4,7) should be walkable via the Merchant 2 west-side passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 4, 6), false, "(4,6) should be pathfinder-forbidden after Merchant 2 west-side trap repro")
     assert_equal(env.map_reader.is_walkable(0x08, 5, 6), true, "(5,6) should be walkable via the Merchant 2 counter interaction passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 5, 7), true, "(5,7) should be walkable via the Merchant 2 doorway throat passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 20, 26), true, "(20,26) should be walkable via the Merchant 4 lower approach passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 23, 26), true, "(23,26) should be walkable via the Merchant 4 public-side false-wall passthrough")
+    assert_equal(env.map_reader.is_walkable(0x08, 27, 26), true, "(27,26) should be walkable via the Merchant 4 east-side false-wall passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 10, 19), false, "(10,19) should remain non-walkable until confirmed")
     local snapshot = env.map_reader.get_walkability_snapshot(0x08)
     assert_equal(snapshot[18][9], true, "walkability snapshot should honor Brecconary passthrough cells")
+    assert_equal(snapshot[7][3], true, "walkability snapshot should include the west-wing north throat")
+    assert_equal(snapshot[9][2], true, "walkability snapshot should include the west-wing west throat")
+    assert_equal(snapshot[9][3], true, "walkability snapshot should include the west-wing south throat")
+    assert_equal(snapshot[6][3], false, "walkability snapshot should keep the blocked northern cap closed")
+    assert_equal(snapshot[24][22], true, "walkability snapshot should include the east-wing throat")
     assert_equal(snapshot[6][4], false, "walkability snapshot should keep the Merchant 2 west-side trap out of A*")
     assert_equal(snapshot[6][5], true, "walkability snapshot should include the Merchant 2 counter interaction square")
     assert_equal(snapshot[7][5], true, "walkability snapshot should include the Merchant 2 doorway throat")
+    assert_equal(snapshot[26][20], true, "walkability snapshot should include the Merchant 4 lower approach cell")
+    assert_equal(snapshot[26][23], true, "walkability snapshot should include the Merchant 4 public-side false-wall cell")
+    assert_equal(snapshot[26][27], true, "walkability snapshot should include the Merchant 4 east-side false-wall cell")
     assert_equal(snapshot[19][10], false, "walkability snapshot should preserve unconfirmed Brecconary wall cells")
+
+    env.restore()
+end
+
+function tests.brecconary_tool_shop_public_stand_is_passthrough()
+    local base = 8 * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,
+            [base + 1] = 0x80,
+            [base + 2] = 29,
+            [base + 3] = 29,
+            [base + 4] = 0,
+        },
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    local stand = env.map_reader.get_walkability_details(0x08, 25, 26)
+    assert_equal(stand.base_walkable, true, "(25,26) should be treated as passable via the Merchant 4 passthrough")
+    assert_equal(stand.effective_walkable, true, "(25,26) should be pathable as the tool-shop interaction tile")
+    assert_equal(stand.reason, "passthrough", "(25,26) should record passthrough as its walkability source")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x08)
+    assert_equal(snapshot[26][25], true, "walkability snapshot should include the Merchant 4 interaction tile")
 
     env.restore()
 end

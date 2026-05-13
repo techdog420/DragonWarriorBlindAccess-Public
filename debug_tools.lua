@@ -81,6 +81,25 @@ end
 -- Controlled by dw_access.ini: debug_log_level=ERROR|INFO|DEBUG
 local current_log_level = parse_log_level(config.get("debug_log_level"))
 
+local function config_bool(key, fallback)
+    local value = config.get(key)
+    if value == nil then
+        return fallback
+    end
+    value = tostring(value):lower()
+    if value == "true" or value == "1" or value == "yes" or value == "on" then
+        return true
+    end
+    if value == "false" or value == "0" or value == "no" or value == "off" then
+        return false
+    end
+    return fallback
+end
+
+local function legacy_block_log_enabled()
+    return config_bool("auto_step_record_debug_blocks", false)
+end
+
 -- ============================================================
 -- File Paths
 -- ============================================================
@@ -93,10 +112,9 @@ local LOG_FILE    = script_dir .. "dw_debug.log"
 local CMD_FILE    = script_dir .. "dw_commands.txt"
 local CMD_PROCESSING_FILE = script_dir .. "dw_commands.processing.txt"
 local KEYBOARD_BRIDGE_FILE = script_dir .. "dw_keyboard_input.txt"
--- Persistent record of every engine-blocked move discovered this session or
--- in previous sessions. One entry per line: "0xMM:x,y:dir"
--- New discoveries are appended during play. export_blocks formats this file
--- as copy-pasteable MAP_BLOCKED_CELLS Lua table entries.
+-- Optional legacy record of engine-blocked moves. This is disabled by default
+-- because noisy movement/probe collisions should not become persistent map
+-- evidence. Explicit sweep/export debugging can opt back in via config.
 local BLOCKS_FILE = script_dir .. "dw_blocks.log"
 
 -- ============================================================
@@ -192,19 +210,21 @@ if M.DEBUG_MODE then
         f:close()
     end
 
-    -- Load previously recorded block entries from dw_blocks.log so we don't
-    -- re-announce or re-persist discoveries from earlier sessions.
-    local bf = io.open(BLOCKS_FILE, "r")
-    if bf then
-        for line in bf:lines() do
-            local t = line:match("^%s*(.-)%s*$")
-            -- Lines starting with '#' are comments (e.g. header lines written
-            -- by export_blocks). Plain entries look like "0x04:7,5:up".
-            if t ~= "" and t:sub(1,1) ~= "#" then
-                blocked_entries[t] = true
+    if legacy_block_log_enabled() then
+        -- Load previously recorded block entries from dw_blocks.log so we don't
+        -- re-announce or re-persist discoveries from earlier sessions.
+        local bf = io.open(BLOCKS_FILE, "r")
+        if bf then
+            for line in bf:lines() do
+                local t = line:match("^%s*(.-)%s*$")
+                -- Lines starting with '#' are comments (e.g. header lines written
+                -- by export_blocks). Plain entries look like "0x04:7,5:up".
+                if t ~= "" and t:sub(1,1) ~= "#" then
+                    blocked_entries[t] = true
+                end
             end
+            bf:close()
         end
-        bf:close()
     end
 end
 
@@ -1291,6 +1311,7 @@ end
 -- sessions. Duplicate entries are silently ignored.
 function M.record_block(map_id, x, y, dir)
     if not M.DEBUG_MODE then return end
+    if not legacy_block_log_enabled() then return end
     local key = string.format("0x%02X:%d,%d:%s", map_id, x, y, dir)
     if blocked_entries[key] then return end  -- already known; skip
 

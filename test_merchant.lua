@@ -185,6 +185,73 @@ function tests.detects_weapon_shop_layout_and_extracts_offers()
     env.restore()
 end
 
+function tests.detects_brecconary_tool_shop_layout_and_extracts_items()
+    local env = make_env()
+
+    local rows = {
+        [2] = "COMMAND",
+        [4] = "Bill",
+        [5] = "Herb         24",
+        [6] = "LV   5",
+        [7] = "Torch         8",
+        [8] = "HP  35",
+        [9] = "Dragon's     20",
+        [10] = "MP  18  Scale",
+        [12] = "G   42",
+        [14] = "E  111",
+        [19] = "'Welcome.",
+        [20] = "We deal in tools.",
+        [21] = "What can I do for",
+        [22] = "thee?'",
+        [24] = "'What dost thou want?'",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 42})
+    assert_equal(info.active, true, "Brecconary tool shop should be detected")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Herb, Torch, Dragon's Scale",
+        "tool-shop offers should include item catalog entries"
+    )
+    assert_equal(
+        info.summary,
+        "Merchant. Gold 42. Offered: Herb, Torch, Dragon's Scale.",
+        "tool-shop summary should include gold and item offers"
+    )
+
+    env.restore()
+end
+
+function tests.detects_brecconary_buy_sell_action_prompt()
+    local env = make_env()
+
+    local rows = {
+        [2] = "COMMAND",
+        [4] = "Bill    SPELL",
+        [6] = "LV   5 BUY  US  ITEM",
+        [8] = "HP  35 SELL RS  DOOR",
+        [10] = "MP  18 SEARCH  TAKE",
+        [12] = "G   42",
+        [14] = "E  111",
+        [19] = "'Welcome.",
+        [20] = "We deal in tools.",
+        [21] = "What can I do for",
+        [22] = "thee?'",
+    }
+
+    local buy = env.merchant.analyze_rows(rows, {gold = 42, cursor_y = 0})
+    assert_equal(buy.active, true, "Buy/Sell prompt should count as merchant UI")
+    assert_equal(buy.mode, "action", "Buy/Sell prompt should use action mode")
+    assert_equal(buy.action_prompt, true, "Buy/Sell prompt should be identified")
+    assert_equal(buy.action_selection, "Buy", "D9=0 should select Buy")
+    assert_equal(buy.summary, "Merchant. Buy or Sell. Buy.", "action summary should name selected option")
+
+    local sell = env.merchant.analyze_rows(rows, {gold = 42, cursor_y = 1})
+    assert_equal(sell.action_selection, "Sell", "D9=1 should select Sell")
+
+    env.restore()
+end
+
 function tests.ignores_regular_dialogue_rows()
     local env = make_env()
 

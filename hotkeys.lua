@@ -171,8 +171,19 @@ local function refresh_pathability_if_needed()
     end
 end
 
-local function speak_filter(filter_name)
+local function refresh_live_objects_for_browse()
+    if objects.update_npcs then
+        objects.update_npcs()
+    end
+end
+
+local function refresh_object_browser_context()
+    refresh_live_objects_for_browse()
     refresh_pathability_if_needed()
+end
+
+local function speak_filter(filter_name)
+    refresh_object_browser_context()
     local count = objects.get_count()
     local label = objects.get_filter_summary and objects.get_filter_summary() or filter_name
     if count > 0 then
@@ -923,7 +934,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
 
         -- L key (default): Next object in list
         if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_next")) then
-            refresh_pathability_if_needed()
+            refresh_object_browser_context()
             local obj = objects.next_object()
             if obj then
                 queue_object_nav_speech(route_mgr.describe_current_object({
@@ -937,7 +948,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
 
         -- J key (default): Previous object in list
         if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_prev")) then
-            refresh_pathability_if_needed()
+            refresh_object_browser_context()
             local obj = objects.prev_object()
             if obj then
                 queue_object_nav_speech(route_mgr.describe_current_object({
@@ -951,7 +962,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
 
         -- K key (default): Describe current object (re-read with updated distance)
         if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_current")) then
-            refresh_pathability_if_needed()
+            refresh_object_browser_context()
             speak_now(route_mgr.describe_current_object({
                 include_reachability = false,
                 include_debug_coords = false,
@@ -962,12 +973,14 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         if is_key_pressed(keys, config.get("key_pathability_filter")) then
             pathability_filter_handled = true
             clear_object_nav_speech()
+            refresh_live_objects_for_browse()
             speak_pathability_filter(route_mgr.next_object_pathability_filter())
         end
 
         -- R key (default): Start or check curated route guidance for the
         -- selected destination. This keeps O as a plain heading/path preview.
         if route_guidance_key_pressed(keys) then
+            refresh_object_browser_context()
             speak_route_guidance()
         end
 
@@ -978,7 +991,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- that physically block tiles along the way.
         if not pathability_filter_handled and is_key_pressed(keys, config.get("key_pathfind")) then
             clear_object_nav_speech()
-            refresh_pathability_if_needed()
+            refresh_object_browser_context()
             route_mgr.pathfind_to_current()
         end
 
@@ -987,7 +1000,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- so the player actually walks it on interior maps.
         if is_key_pressed(keys, config.get("key_auto_walk")) then
             clear_object_nav_speech()
-            refresh_pathability_if_needed()
+            refresh_object_browser_context()
             route_mgr.autowalk_to_current()
         end
 

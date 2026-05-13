@@ -471,23 +471,8 @@ local function finish_edge_verify(final_status, reason)
     local classification = classify_edge_verify_result(verify, final_status)
     local runtime_added = false
     local runtime_cleared = false
-    if classification == "confirmed_blocked" then
-        runtime_added = route_mgr.confirm_runtime_block_for_step(
-            verify.map_id,
-            verify.from_x,
-            verify.from_y,
-            verify.dir,
-            "verified_probe")
-    elseif classification == "confirmed_passable" then
-        runtime_cleared = route_mgr.clear_runtime_block_for_step(
-            verify.map_id,
-            verify.from_x,
-            verify.from_y,
-            verify.dir,
-            "verified_passable")
-    end
     debug_tools.info(string.format(
-        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d classification=%s reason=%s runtime_added=%s runtime_cleared=%s",
+        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d classification=%s reason=%s runtime_added=%s runtime_cleared=%s manual_promotion_required=%s",
         verify.map_id,
         verify.from_x,
         verify.from_y,
@@ -505,7 +490,8 @@ local function finish_edge_verify(final_status, reason)
         classification,
         tostring(reason or final_status or ""),
         tostring(runtime_added),
-        tostring(runtime_cleared)))
+        tostring(runtime_cleared),
+        tostring(classification == "confirmed_blocked")))
     edge_verify_state = nil
 end
 
@@ -531,6 +517,15 @@ local function record_edge_verify_attempt(status, reason)
         py or -1,
         verify.frames or 0,
         tostring(reason or "")))
+    if status == "moved" and route_mgr.record_seam_result_for_step then
+        route_mgr.record_seam_result_for_step(
+            verify.map_id,
+            verify.from_x,
+            verify.from_y,
+            verify.dir,
+            "moved",
+            "verified_probe_move")
+    end
     auto_step.cancel_active_step(true)
     if verify.attempt >= verify.attempts then
         finish_edge_verify("complete", reason)
@@ -754,7 +749,7 @@ local PREV = {
     upper_stable_count = 0, upper_baseline = "", upper_active = false,
     -- merchant
     merchant_text = "", announced_merchant = "",
-    merchant_selection = nil, merchant_price = nil,
+    merchant_selection = nil, merchant_price = nil, merchant_mode = nil,
     -- battle menu
     battle_menu_open = false, battle_cursor_x = nil, battle_cursor_y = nil,
     battle_spell_mode = false, battle_spell_entry_pending = false,
@@ -1542,6 +1537,7 @@ local function reset_merchant_state(sync_dialogue_baselines)
     PREV.announced_merchant = ""
     PREV.merchant_selection = nil
     PREV.merchant_price = nil
+    PREV.merchant_mode = nil
     MER.intro_pending = false
     MER.stable_count = 0
     MER.scan_present = false
@@ -1558,6 +1554,23 @@ local function reset_merchant_state(sync_dialogue_baselines)
     PREV.announced_upper = PREV.upper_baseline
     PREV.upper_stable_count = 0
     PREV.upper_active = false
+end
+
+local function sync_merchant_lower_dialogue_baseline()
+    local lower = text.read_dialogue_window_filtered(
+        get_scroll_tiles(),
+        get_dialogue_start_row(),
+        DW_QOL_STATE.get_scroll_base_nametable())
+    if lower == "" then
+        return
+    end
+
+    -- The merchant reader owns shop prompts/lists. Keep the lower dialogue
+    -- baseline aligned so closing/error lines append cleanly instead of
+    -- re-speaking the already-visible shop prompt.
+    PREV.dialogue = lower
+    PREV.announced_dialogue = lower
+    PREV.stable_count = 0
 end
 
 local function reset_battle_menu_state()
@@ -1615,11 +1628,42 @@ local function check_merchant_screen(frame_delta)
     if not was_active then
         MER.intro_pending = true
     end
+    sync_merchant_lower_dialogue_baseline()
+
+    if info.mode == "action" then
+        local selection = info.action_selection
+        if selection and (PREV.merchant_mode ~= "action" or selection ~= PREV.merchant_selection) then
+            PREV.merchant_mode = "action"
+            PREV.merchant_selection = selection
+            PREV.merchant_price = nil
+            local msg
+            if MER.intro_pending then
+                msg = string.format("Merchant. %s.", selection)
+                MER.intro_pending = false
+            else
+                msg = selection
+            end
+            debug_tools.info("MERCHANT_ACTION: " .. msg)
+            tolk.output_interrupt(msg)
+            PREV.announced_merchant = info.raw_text
+            MER.stable_count = 0
+            PREV.merchant_text = info.raw_text
+            return true
+        end
+
+        -- The action prompt's raw rows oscillate with the cursor blink. The
+        -- selection branch above owns speech so the stable-summary path does
+        -- not repeat "Buy or Sell" every scan.
+        PREV.merchant_text = info.raw_text
+        PREV.announced_merchant = info.raw_text
+        return true
+    end
 
     local offer = merchant.get_cursor_offer(info.context)
     local selection = offer and offer.name or nil
     local price = offer and offer.price or nil
-    if selection and (selection ~= PREV.merchant_selection or price ~= PREV.merchant_price) then
+    if selection and (PREV.merchant_mode ~= "offers" or selection ~= PREV.merchant_selection or price ~= PREV.merchant_price) then
+        PREV.merchant_mode = "offers"
         PREV.merchant_selection = selection
         PREV.merchant_price = price
         local msg
@@ -3566,9 +3610,12 @@ debug_tools.register_command("report_merchant_state", function()
     local scroll_tiles = get_scroll_tiles()
     local base_nametable = DW_QOL_STATE.get_scroll_base_nametable()
     local msg = string.format(
-        "MERCHANT_STATE active=%s buy_prompt=%s status_markers=%d offers=%q summary=%q cursor_name=%q cursor_price=%s cursor_row=%s context=%s context_scroll=%s context_base=%s context_vertical=%s scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
+        "MERCHANT_STATE active=%s mode=%s buy_prompt=%s action_prompt=%s action_selection=%q status_markers=%d offers=%q summary=%q cursor_name=%q cursor_price=%s cursor_row=%s context=%s context_scroll=%s context_base=%s context_vertical=%s scroll_tiles=%d base_nt=%d dialogue_start_row=%d",
         tostring(info.active),
+        tostring(info.mode or ""),
         tostring(info.buy_prompt),
+        tostring(info.action_prompt),
+        tostring(info.action_selection or ""),
         tonumber(info.status_marker_count) or 0,
         table.concat(info.offers or {}, ", "),
         tostring(info.summary or ""),

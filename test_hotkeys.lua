@@ -34,6 +34,7 @@ local function make_env(options)
     local route_start_objects = {}
     local focused_route_ids = {}
     local object_refresh_calls = 0
+    local live_npc_refresh_calls = 0
     local filter_name = options.filter_name or "NPCs"
     local all_filter_calls = 0
     local debug_errors = {}
@@ -249,6 +250,9 @@ local function make_env(options)
             refresh = function()
                 object_refresh_calls = object_refresh_calls + 1
             end,
+            update_npcs = function()
+                live_npc_refresh_calls = live_npc_refresh_calls + 1
+            end,
             current_object = function()
                 if options.no_current_object then
                     return nil
@@ -405,6 +409,9 @@ local function make_env(options)
         object_refresh_calls = function()
             return object_refresh_calls
         end,
+        live_npc_refresh_calls = function()
+            return live_npc_refresh_calls
+        end,
         pathability_filter_calls = function()
             return pathability_filter_calls
         end,
@@ -484,6 +491,38 @@ function tests.current_object_speaks_immediately_and_clears_pending_nav_speech()
     env.update({})
     env.update({})
     assert_equal(#env.outputs, 1, "cleared pending object speech should not speak later")
+
+    env.restore()
+end
+
+function tests.object_browse_hotkeys_refresh_live_npcs_on_demand()
+    local env = make_env({delay = 0})
+
+    env.update({K = true})
+    assert_equal(env.live_npc_refresh_calls(), 1, "current-object readout should refresh moving NPC positions")
+
+    env.update({})
+    env.update({L = true})
+    assert_equal(env.live_npc_refresh_calls(), 2, "next-object browse should refresh moving NPC positions")
+
+    env.update({})
+    env.update({J = true})
+    assert_equal(env.live_npc_refresh_calls(), 3, "previous-object browse should refresh moving NPC positions")
+
+    env.restore()
+end
+
+function tests.path_actions_refresh_live_npcs_before_planning()
+    local env = make_env({delay = 0})
+
+    env.update({O = true})
+    assert_equal(env.live_npc_refresh_calls(), 1, "pathfind should refresh moving NPC positions before planning")
+    assert_equal(env.pathfind_calls(), 1, "pathfind hotkey should still invoke route planning")
+
+    env.update({})
+    env.update({U = true})
+    assert_equal(env.live_npc_refresh_calls(), 2, "auto-walk should refresh moving NPC positions before planning")
+    assert_equal(env.autowalk_calls(), 1, "auto-walk hotkey should still invoke route execution")
 
     env.restore()
 end

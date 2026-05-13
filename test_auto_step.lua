@@ -25,6 +25,7 @@ local function make_env(opts)
     local frame = 0
     local injected = {}
     local published = {}
+    local recorded_blocks = {}
     local live_joy = {}
     local sticky_joy = {}
     local movement_subpixel = opts.movement_subpixel or 0x10
@@ -75,7 +76,9 @@ local function make_env(opts)
 
     package.preload["debug_tools"] = function()
         return {
-            record_block = function() end,
+            record_block = function(...)
+                recorded_blocks[#recorded_blocks + 1] = {...}
+            end,
             debug = function() end,
             info = function() end,
             error = function() end,
@@ -95,6 +98,13 @@ local function make_env(opts)
             is_hazard_cell = function(mid, x, y)
                 local by_map = opts.hazard_cells and opts.hazard_cells[mid]
                 return by_map and by_map[x .. "," .. y] or false
+            end,
+            is_permanently_blocked_override = function(mid, x, y)
+                local by_map = opts.permanent_blocked_cells and opts.permanent_blocked_cells[mid]
+                return by_map and by_map[x .. "," .. y] or false
+            end,
+            get_directional_blocks = function(mid)
+                return opts.directional_blocks and opts.directional_blocks[mid] or {}
             end,
         }
     end
@@ -156,6 +166,7 @@ local function make_env(opts)
         auto_step = auto_step,
         injected = injected,
         published = published,
+        recorded_blocks = recorded_blocks,
         set_position = function(x, y)
             px, py = x, y
         end,
@@ -264,6 +275,36 @@ function tests.never_moving_step_still_reports_blocked()
     env.restore()
 end
 
+function tests.blocked_step_does_not_record_debug_block_by_default()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 300 do
+        env.update(true)
+    end
+
+    assert_truthy(#env.recorded_blocks == 0, "automatic debug block recording should be opt-in")
+
+    env.restore()
+end
+
+function tests.blocked_step_records_debug_block_when_enabled()
+    local env = make_env({
+        config_values = {
+            auto_step_record_debug_blocks = "true",
+        },
+    })
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 300 do
+        env.update(true)
+    end
+
+    assert_truthy(#env.recorded_blocks > 0, "debug block recording should still be available when explicitly enabled")
+
+    env.restore()
+end
+
 function tests.blocked_step_flushes_stale_direction_with_neutral_frames()
     local env = make_env()
     env.auto_step.inject_step("right")
@@ -313,6 +354,22 @@ function tests.inject_window_does_not_neutralize_live_direction()
     env.restore()
 end
 
+function tests.manual_no_movement_step_keeps_holding_until_turn_repress()
+    local env = make_env()
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 14 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[14] and env.injected[14].right,
+        "manual/probe auto-step should keep holding before turn re-press if movement has not started"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_neutralizes_after_inject_window()
     local env = make_env()
     env.auto_step.start_route({"right"})
@@ -328,7 +385,7 @@ function tests.queued_route_neutralizes_after_inject_window()
     env.restore()
 end
 
-function tests.manual_auto_step_neutralizes_after_inject_window_when_released()
+function tests.manual_auto_step_keeps_holding_after_inject_window_when_not_started()
     local env = make_env()
     env.auto_step.inject_step("right")
 
@@ -337,8 +394,8 @@ function tests.manual_auto_step_neutralizes_after_inject_window_when_released()
     end
 
     assert_truthy(
-        env.injected[13] and not has_any_direction(env.injected[13]),
-        "manual auto-step should clear stale injected D-pad after the inject window"
+        env.injected[13] and env.injected[13].right,
+        "manual auto-step should keep holding after the inject window when movement has not started"
     )
     env.restore()
 end
@@ -371,6 +428,87 @@ function tests.manual_auto_step_refuses_known_hazard_destination()
             string.format("hazard refusal should not inject D-pad input at frame %d", frame)
         )
     end
+
+    env.restore()
+end
+
+function tests.manual_auto_step_does_not_extend_known_directional_wall()
+    local env = make_env({
+        map_id = 0x08,
+        directional_blocks = {
+            [0x08] = {["26,28"] = {east = true}},
+        },
+    })
+    env.set_position(27, 28)
+
+    env.set_joy({left = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        not env.auto_step.is_auto_active(),
+        "manual tap-to-step should not auto-hold into a known directional wall"
+    )
+    for frame, buttons in pairs(env.injected) do
+        assert_truthy(
+            not has_any_direction(buttons),
+            string.format("known directional wall should not inject D-pad input at frame %d", frame)
+        )
+    end
+
+    env.restore()
+end
+
+function tests.manual_auto_step_does_not_extend_known_permanent_block()
+    local env = make_env({
+        map_id = 0x08,
+        permanent_blocked_cells = {
+            [0x08] = {["26,27"] = true},
+        },
+    })
+    env.set_position(27, 27)
+
+    env.set_joy({left = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        not env.auto_step.is_auto_active(),
+        "manual tap-to-step should not auto-hold into a known permanent block"
+    )
+    for frame, buttons in pairs(env.injected) do
+        assert_truthy(
+            not has_any_direction(buttons),
+            string.format("known permanent block should not inject D-pad input at frame %d", frame)
+        )
+    end
+
+    env.restore()
+end
+
+function tests.inject_step_still_tests_known_directional_wall()
+    local env = make_env({
+        map_id = 0x08,
+        directional_blocks = {
+            [0x08] = {["26,28"] = {east = true}},
+        },
+    })
+    env.set_position(27, 28)
+
+    local accepted = env.auto_step.inject_step("left")
+
+    assert_truthy(accepted, "debug/probe injection should still be able to test known directional walls")
+    assert_truthy(env.auto_step.is_auto_active(), "debug/probe injection should still start an active step")
 
     env.restore()
 end
@@ -459,6 +597,71 @@ function tests.timeout_retry_resets_movement_started_flag()
     env.restore()
 end
 
+function tests.manual_tap_collision_uses_manual_retry_limit()
+    local env = make_env({
+        config_values = {
+            auto_step_timeout = "4",
+            auto_step_block_retry_limit = "1",
+            auto_step_manual_block_retry_limit = "0",
+            auto_step_turn_repress_delay = "30",
+        },
+    })
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    for _ = 1, 10 do
+        env.update(true)
+    end
+
+    local blocked_payload = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked_payload = event.payload
+            break
+        end
+    end
+
+    assert_truthy(blocked_payload ~= nil, "manual wall bump should still report a blocked step")
+    assert_truthy(blocked_payload.timeout_retries == 0, "manual wall bump should not pay the route/probe retry window")
+    assert_truthy(blocked_payload.source == "manual_tap", "manual wall bump should be tagged as a player tap")
+    assert_truthy(blocked_payload.queued_route == false, "manual wall bump should not look like a queued route")
+
+    env.restore()
+end
+
+function tests.inject_step_collision_keeps_configured_retry_limit()
+    local env = make_env({
+        config_values = {
+            auto_step_timeout = "4",
+            auto_step_block_retry_limit = "1",
+            auto_step_manual_block_retry_limit = "0",
+            auto_step_turn_repress_delay = "30",
+        },
+    })
+
+    env.auto_step.inject_step("right")
+    for _ = 1, 12 do
+        env.update(true)
+    end
+
+    local blocked_payload = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked_payload = event.payload
+            break
+        end
+    end
+
+    assert_truthy(blocked_payload ~= nil, "probe/debug injected collision should still report a blocked step")
+    assert_truthy(blocked_payload.timeout_retries == 1, "probe/debug injected collision should keep the configured retry")
+    assert_truthy(blocked_payload.source == "inject_step", "probe/debug injected collision should keep its source tag")
+    assert_truthy(blocked_payload.queued_route == false, "inject_step collision should remain separate from queued routes")
+
+    env.restore()
+end
+
 function tests.queued_route_timeout_retry_does_not_hold_early_twitch()
     local env = make_env({
         sticky_joypad_set = true,
@@ -487,11 +690,99 @@ function tests.queued_route_timeout_retry_does_not_hold_early_twitch()
     env.restore()
 end
 
-function tests.movement_start_subpixel_releases_injected_direction()
+function tests.manual_early_subpixel_twitch_keeps_holding_input()
     local env = make_env({
         sticky_joypad_set = true,
         config_values = {
             auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[2] and env.injected[2].right,
+        "manual/probe early subpixel twitches should keep the D-pad held instead of creating a fake blocked step"
+    )
+
+    env.restore()
+end
+
+function tests.physical_manual_early_subpixel_twitch_releases_after_tap()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[3] and not has_any_direction(env.injected[3]),
+        "physical manual taps should release after an early subpixel twitch instead of holding into a wall"
+    )
+
+    for _ = 1, 25 do
+        env.update(true)
+    end
+    local sequences = collect_direction_sequences(env, "right", 35)
+    assert_truthy(
+        #sequences == 1,
+        "physical manual taps should not re-press after releasing an early subpixel twitch"
+    )
+
+    env.restore()
+end
+
+function tests.physical_manual_early_subpixel_twitch_silently_cancels_before_blocked_timeout()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 45 do
+        env.update(true)
+    end
+
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "released physical wall bumps should not publish blocked seam events after early twitch cancellation"
+        )
+    end
+    assert_truthy(
+        not env.auto_step.is_auto_active(),
+        "released physical wall bump should be inactive after early twitch cancellation"
+    )
+
+    env.restore()
+end
+
+function tests.movement_start_subpixel_releases_injected_direction_when_grace_disabled()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "0",
         },
     })
     env.auto_step.inject_step("right")
@@ -502,8 +793,99 @@ function tests.movement_start_subpixel_releases_injected_direction()
 
     assert_truthy(
         env.injected[2] and not has_any_direction(env.injected[2]),
-        "auto_step should release D-pad as soon as movement subpixel changes"
+        "auto_step should still release D-pad on movement start when the early-grace hold is disabled"
     )
+
+    env.restore()
+end
+
+function tests.physical_manual_early_subpixel_twitch_accepts_late_tile_completion_after_release()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 14 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_completion = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.queued_route == false
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_completion = true
+        end
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "late physical manual completion after release should not be reported as a blocked seam"
+        )
+    end
+
+    assert_truthy(saw_completion, "physical manual tap should still accept late tile completion after releasing the synthetic hold")
+
+    env.restore()
+end
+
+function tests.manual_early_subpixel_twitch_accepts_late_tile_completion()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 14 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_completion = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.queued_route == false
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_completion = true
+        end
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "late completion after an early manual twitch should not be reported as a blocked seam"
+        )
+    end
+
+    local right_sequences = collect_direction_sequences(env, "right", 25)
+    assert_truthy(#right_sequences == 1, "early manual twitches should not schedule a same-direction turn re-press")
+    assert_truthy(saw_completion, "manual/probe step should accept late tile completion after an early movement twitch")
 
     env.restore()
 end
@@ -663,6 +1045,27 @@ function tests.cancel_active_step_does_not_emit_sticky_neutral()
     env.restore()
 end
 
+function tests.cancel_active_step_can_force_release_injected_validation_input()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.auto_step.cancel_active_step(false, true)
+
+    assert_truthy(
+        env.injected[1] and not has_any_direction(env.injected[1]),
+        "forced cancel should immediately neutralize injected validation input"
+    )
+
+    env.update(true)
+    assert_truthy(
+        env.injected[2] and not has_any_direction(env.injected[2]),
+        "forced cancel should keep post-step release neutral on the next frame"
+    )
+
+    env.restore()
+end
+
 function tests.can_walk_false_clears_release_state_without_neutralizing()
     local env = make_env({sticky_joypad_set = true})
     env.auto_step.inject_step("right")
@@ -697,8 +1100,8 @@ function tests.turn_repress_uses_full_inject_window_after_turn_only_attempt()
     local repress = sequences[2]
 
     assert_truthy(
-        repress and repress.count >= 8,
-        "turn re-press should restore a full inject window after a turn-only attempt so the follow-up press can start movement reliably"
+        repress and repress.count >= 20,
+        "turn re-press should keep holding after a turn-only attempt so the follow-up press can start movement reliably"
     )
 
     env.restore()
@@ -733,8 +1136,13 @@ function tests.turn_repress_waits_for_release_gap_before_rearming()
     env.restore()
 end
 
-function tests.turn_repress_handles_early_subpixel_turn_without_waiting_for_timeout()
-    local env = make_env()
+function tests.early_subpixel_twitch_does_not_schedule_turn_repress_before_timeout()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
     env.auto_step.inject_step("right")
 
     env.update(true)
@@ -744,11 +1152,17 @@ function tests.turn_repress_handles_early_subpixel_turn_without_waiting_for_time
     end
 
     local sequences = collect_direction_sequences(env, "right", 40)
-    local repress = sequences[2]
+    local repressed_before_timeout = false
+    for _, sequence in ipairs(sequences) do
+        if sequence.start > 18 then
+            repressed_before_timeout = true
+            break
+        end
+    end
 
     assert_truthy(
-        repress and repress.start < 40,
-        "early subpixel-only turn attempts should still re-press before the full timeout"
+        not repressed_before_timeout,
+        "early subpixel twitches should not trigger a same-direction turn re-press before timeout"
     )
 
     env.restore()
@@ -879,7 +1293,7 @@ function tests.post_step_release_preserves_non_direction_buttons()
     env.restore()
 end
 
-function tests.timeout_retry_after_turn_repress_restores_full_inject_window()
+function tests.turn_repress_retry_keeps_holding_instead_of_chattering()
     local env = make_env()
     env.auto_step.inject_step("right")
 
@@ -888,11 +1302,11 @@ function tests.timeout_retry_after_turn_repress_restores_full_inject_window()
     end
 
     local sequences = collect_direction_sequences(env, "right", 140)
-    local retry = sequences[3]
+    local repress = sequences[2]
 
     assert_truthy(
-        retry and retry.count >= 8,
-        "timeout retries after a turn re-press should restore a full inject window before reporting blocked"
+        repress and repress.count >= 60 and sequences[3] == nil,
+        "turn re-press retry should keep holding rather than chattering through short repeated press windows"
     )
 
     env.restore()

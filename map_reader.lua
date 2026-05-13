@@ -408,12 +408,43 @@ local MAP_PASSTHROUGH_CELLS = {
         -- pathfinder-forbidden below until a normal public approach is decoded.
         ["4,6"] = true,
         ["4,7"] = true,
+        -- West-wing throat cells. These ROM-decode as type-0, but 2026-05-11
+        -- live manual movement showed (3,8)->UP into (3,7), (3,8)->DOWN into
+        -- (3,9), and east/west movement between (2,9) and (3,9). The northern
+        -- cap remains closed: repeated (3,7)->UP attempts into (3,6) blocked.
+        ["3,7"] = true,
+        ["2,9"] = true,
+        ["3,9"] = true,
         -- Merchant 2 doorway/counter interaction throat. The ROM tiles decode
         -- as non-walkable type 0, but live movement reaches (5,7) from the
         -- south and then (5,6); TALK opens the weapon/armor shop from (5,6)
         -- while facing north.
         ["5,6"] = true,
         ["5,7"] = true,
+        -- Merchant 4 alternate/debug tool-shop interaction tile. The ROM decodes this tile as
+        -- non-walkable type 0, but 2026-05-11 live probes moved
+        -- (25,27)->UP into (25,26) 3/3 times; TALK from there while facing
+        -- north opens the tool shop. Object routing now prefers the public
+        -- stand at (23,25) facing east, but this tile remains a real
+        -- one-way/isolated interaction pocket and should stay modeled.
+        ["25,26"] = true,
+        -- Lower public approach toward Merchant 4. The ROM decodes (20,26)
+        -- as type-0/non-walkable, but 2026-05-12 manual movement and logs
+        -- repeatedly crossed (20,25)<->(20,26) in both directions.
+        ["20,26"] = true,
+        -- Merchant 4 public-side false wall. Fresh 2026-05-12 edge verifier
+        -- evidence moved (22,26)->RIGHT into (23,26) 5/5 times; leave the
+        -- deeper neighbors closed until their own edges are verified.
+        ["23,26"] = true,
+        -- Merchant 4 east-side false wall. Edge verifier confirmed
+        -- (27,25)->DOWN into (27,26) moved 3/3, with six total moved seam
+        -- observations in the same live map-0x08 log.
+        ["27,26"] = true,
+        -- East-wing false-wall throat. This ROM-decodes as type-0, but
+        -- 2026-05-11 manual movement repeatedly crossed (22,24)->UP into
+        -- (22,23) and (22,23)->DOWN back into (22,24). Leaving it as a wall
+        -- strands the player in a pocket with no reachable objects.
+        ["22,24"] = true,
         ["8,18"] = true,
         ["8,19"] = true,
         ["9,18"] = true,
@@ -508,6 +539,14 @@ local MAP_DOOR_CELLS = {
     -- the cell becomes passable (leading to the corridor and stairs at (8,8)).
     [0x05] = {
         ["4,7"] = {x=4, y=7},
+    },
+    -- Map 0x08: Brecconary
+    -- External guide/map comparison plus local topology frontier analysis found
+    -- two locked doors that the ROM tile scan cannot infer: the northeast
+    -- building door and the west room in the inn.
+    [0x08] = {
+        ["21,6"] = {x=21, y=6},
+        ["5,22"] = {x=5, y=22},
     },
 }
 
@@ -1088,12 +1127,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,4"]  = {east = true, west = true},
         ["5,5"]  = {east = true},
         ["7,5"]  = {east = true, west = true},
-        -- 2026-05-10 selected-NPC teleport repro: Woman 3 at (4,7) could
-        -- choose the east stand at (5,7). From there, live auto-step/input
-        -- accepted the press but engine-blocked every non-NPC exit:
-        -- UP into (5,6), DOWN into (5,8), and RIGHT into (6,7).
-        ["5,6"]  = {south = true},
-        ["5,8"]  = {north = true},
+        -- 2026-05-10 selected-NPC teleport repro over-promoted two noisy
+        -- throat edges. Manual/live rechecks on 2026-05-11 and 2026-05-12
+        -- repeatedly crossed both (5,7)<->(5,8) and (5,7)<->(5,6), so keep
+        -- those vertical seams open. The east wall into (6,7) remains modeled.
         ["6,7"]  = {west = true},
         -- Center-east building west wall (x=18)
         ["18,10"] = {west = true},
@@ -1248,6 +1285,85 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["28,17"] = {east = true, north = true},
         ["15,28"] = {north = true, west = true},
         ["16,27"] = {north = true, west = true},
+        -- Merchant 4 counter movement seam. The raw large-tile trigger at
+        -- (24,25) and the public stand at (23,25) can both open the tool shop
+        -- while facing east, but walking across the seam is still blocked:
+        -- (24,25)->LEFT blocked 5/5 and the reverse (23,25)->RIGHT also
+        -- blocked repeatedly. Keep the movement edge closed while routing
+        -- normal shop interaction to the public stand at (23,25) facing east.
+        ["23,25"] = {east = true},
+        ["24,25"] = {west = true},
+        -- After (23,26) was confirmed as a public-side passthrough, the next
+        -- eastward seam into (24,26) still blocked 5/5. Keep this directional
+        -- so other approaches to (24,26) can be investigated independently.
+        ["24,26"] = {west = true},
+        -- The interaction tile can be entered from the south, but cannot be exited
+        -- back south: (25,27)->UP moved 3/3 into the tool-shop stand at
+        -- (25,26), while (25,26)->DOWN blocked 5/5.
+        ["25,27"] = {north = true},
+        -- The inside row also cannot exit west from Merchant 4's southeast
+        -- pocket: validate_path failed immediately at (25,27)->LEFT, then
+        -- probe_edge_verify confirmed (25,27)->LEFT blocked 5/5 into (24,27).
+        -- After the row-28 bypass was modeled, the next route tried
+        -- (24,28)->UP; probe_edge_verify confirmed that south approach to
+        -- (24,27) also blocked 5/5 on map 0x08.
+        ["24,27"] = {east = true, south = true},
+        -- The planner's next invented exit from the same pocket was south into
+        -- (25,28); probe_edge_verify confirmed (25,27)->DOWN blocked 5/5.
+        -- The later row-28 bypass tried (24,28)->RIGHT into the same cell;
+        -- probe_edge_verify confirmed that west approach blocked 5/5 too.
+        ["25,28"] = {north = true, west = true},
+        -- The bottom-row bypass after the (25,28).west patch tried
+        -- (24,28)->DOWN into (24,29); probe_edge_verify confirmed the north
+        -- approach blocked 5/5 on map 0x08.
+        ["24,29"] = {north = true},
+        -- Continuing the same bypass search, the route then tried
+        -- (23,28)->DOWN into (23,29); probe_edge_verify confirmed the north
+        -- approach blocked 5/5 on map 0x08, with no runtime blocker added.
+        ["23,29"] = {north = true},
+        -- The next bottom-row bypass tried (22,28)->DOWN into (22,29);
+        -- probe_edge_verify confirmed the north approach blocked 5/5 on
+        -- map 0x08, again with runtime blockers left empty.
+        ["22,29"] = {north = true},
+        -- After (27,26) proved passable, the planner tried a lower-right loop.
+        -- Live validate_path failed at (28,27)->DOWN, and a direct verifier
+        -- attempt blocked on the same edge before cancellation. Later, after
+        -- the row-28 west/south exits were modeled, the planner tried
+        -- (27,28)->RIGHT into the same cell; repeated manual right taps
+        -- blocked and the user confirmed the east exit is engine-blocked.
+        ["28,28"] = {north = true, west = true},
+        -- Public-route approach toward Merchant 4's southeast pocket. The
+        -- user manually verified the vertical x=22 cluster is open from
+        -- (22,21) through (22,26)'s north edge, while the south edge out of
+        -- (22,26) is hard engine-blocked. Keep only the confirmed south exit
+        -- closed here; east/west around this cluster is still unverified.
+        ["22,27"] = {north = true},
+        -- Same public-route frontier. The user manually verified
+        -- (22,25)->LEFT into (21,25) as hard engine-blocked, and the live log
+        -- recorded repeated manual blocks on map 0x08 while leaving runtime
+        -- blockers empty. Keep this as a scoped east-approach block.
+        ["21,25"] = {east = true},
+        -- The next Merchant 4 route candidate tried (23,22)->DOWN into
+        -- (23,23). The user manually verified the engine blocks this seam,
+        -- matching repeated live manual blocks on map 0x08. Keep it
+        -- directional so other approaches to (23,23) can be checked later.
+        ["23,23"] = {north = true},
+        -- A later validation-only failure at (25,22)->DOWN was manually
+        -- disproved: the user crossed from (25,22) into (25,23) repeatedly.
+        -- Keep (25,23).north open unless new manual evidence says otherwise.
+        -- The next route reached (27,28) cleanly, then failed west into
+        -- (26,28). Repeated manual left taps from (27,28) also blocked, and
+        -- the user confirmed this is engine-blocked. Keep only the east
+        -- approach closed so other approaches to (26,28) stay investigable.
+        ["26,28"] = {east = true},
+        -- The follow-up detour tried (27,28)->DOWN into (27,29). Validation
+        -- and repeated manual down taps blocked there while inspect still said
+        -- open, and the user confirmed the south exit is engine-blocked.
+        ["27,29"] = {north = true},
+        -- After the (20,26) false-wall fix, A* tried to enter (21,27) from
+        -- the west. Fresh validation plus probe_edge_verify on 2026-05-12
+        -- blocked (20,27)->RIGHT 5/5, while runtime blockers stayed empty.
+        ["21,27"] = {west = true},
     },
 
     -- Map 0x1C: Erdrick's Cave B1

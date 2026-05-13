@@ -106,6 +106,9 @@ local function make_env()
         get_inject_calls = function()
             return inject_calls
         end,
+        is_auto_active = function()
+            return active
+        end,
         tick = function(before_tick)
             tick_count = tick_count + 1
             if before_tick then
@@ -226,6 +229,52 @@ function tests.validate_does_not_mark_success_while_auto_step_is_still_active()
     assert_truthy(
         logs_contain(env.logs, "INFO: VALIDATE COMPLETE: 1/1 steps OK, 0 mismatches"),
         "validation should still complete once auto_step goes idle at the expected tile"
+    )
+
+    env.restore()
+end
+
+function tests.validate_does_not_reinject_while_auto_step_is_active_at_start_tile()
+    local env = make_env()
+    env.path_debug.store_path(0x08, 0, 0, 1, 0, {
+        {x = 1, y = 0, direction = "east"},
+    }, nil)
+    env.path_debug.start_validate(env.auto_step)
+
+    env.run_ticks(50)
+
+    assert_truthy(
+        env.get_inject_calls() == 1,
+        "validator should not inject the same step again while auto_step is still active; calls=" .. tostring(env.get_inject_calls())
+    )
+    assert_truthy(
+        logs_contain(env.logs, "DEBUG: VALIDATE step 1: auto_step still active at (0,0), extending wait"),
+        "validator should extend the wait for an active auto_step instead of racing it"
+    )
+    assert_truthy(
+        not logs_contain(env.logs, "DEBUG: VALIDATE step 1: no movement yet at (0,0), retrying"),
+        "validator should not retry while the original auto_step is still active"
+    )
+
+    env.restore()
+end
+
+function tests.validate_cancels_active_auto_step_after_terminal_mismatch()
+    local env = make_env()
+    env.path_debug.store_path(0x08, 0, 0, 1, 0, {
+        {x = 1, y = 0, direction = "east"},
+    }, nil)
+    env.path_debug.start_validate(env.auto_step)
+
+    env.run_ticks(220)
+
+    assert_truthy(
+        logs_contain(env.logs, "INFO: VALIDATE step 1: MISMATCH expected (1,0) actual (0,0)"),
+        "validation should eventually report a terminal mismatch when movement never arrives"
+    )
+    assert_truthy(
+        not env.is_auto_active(),
+        "validation abort should cancel any still-active injected auto_step"
     )
 
     env.restore()

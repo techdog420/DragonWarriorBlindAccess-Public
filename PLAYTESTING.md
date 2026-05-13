@@ -1,11 +1,217 @@
 # Playtesting Notes
 
-Updated: 2026-05-10
+Updated: 2026-05-12
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Object browsing now refreshes moving NPC positions on demand. The user
+  noticed Person 1 appeared to remain in place while the engine seemed to let
+  the hero pass or route around them. Live logs showed Person 1's NPC slot
+  moving between checks, while BizHawk's background periodic NPC refresh was
+  intentionally disabled to avoid hitching. `J`/`K`/`L`, filter announcements,
+  pathability filter, route guidance, path preview, and auto-walk now refresh
+  live NPC coordinates before speaking or planning. Periodic background refresh
+  remains off.
+
+- Brecconary Merchant 4 public access update: the user found a small walkable
+  pocket at `(22,25)`/`(23,25)`. Fresh live evidence at `map=0x08` confirmed
+  the player at `(23,25)` with no runtime blockers, `(22,25)<->(23,25)` as
+  passable, `(23,25)->RIGHT` into `(24,25)` as directionally blocked, and TALK
+  from `(23,25)` facing east opening the tool shop (`MERCHANT_ACTION:
+  Merchant. Buy.`). This supersedes the earlier conclusion that Merchant 4 was
+  isolated: route the service to `(23,25)` facing east, but keep the movement
+  seam into `(24,25)` blocked.
+
+- Brecconary Merchant 4 noise-hardening pass: the current live map is
+  confirmed as `map=0x08(Brecconary)`, not castle data. `(27,25)->DOWN` into
+  `(27,26)` is a confirmed false-wall passthrough: verifier movement succeeded
+  3/3, with six moved observations total, and post-reload
+  `inspect_move:27,25,DOWN` reports `effective_passable=true`. The lower-right
+  bypass that A* invented after this was false: validation failed at
+  `(28,27)->DOWN`, and a direct check blocked the same edge, so `(28,28).north`
+  is now modeled as a directional block. The remaining clean no-path from
+  `(27,25)` to Merchant 4's stand `(25,26)` is currently caused by live NPC
+  occupancy around `(27,27)/(27,28)`, not by a new map blocker. A parked-NPC
+  survey then reproduced the timing-noise problem by treating the confirmed
+  passable `(27,26)` edge as blocked during auto-step retries, so
+  `route_manager.lua` now keeps blocked-only seam memory diagnostic-only; only
+  explicit manual commands such as `add_blocked_edge` promote runtime blockers.
+  Follow-up manual testing found another public-route frontier seam:
+  `(22,25)->LEFT` into `(21,25)` is hard engine-blocked. Pre-patch
+  `inspect_move:22,25,LEFT` said `effective_passable=true`, so
+  `map_reader.lua` now models `(21,25).east` directionally for Brecconary.
+  The next planned route from live `(23,22)` exposed `(23,22)->DOWN` into
+  `(23,23)`: validation could not move through it, and the user manually
+  confirmed the engine definitely blocks it. `map_reader.lua` now models
+  `(23,23).north` directionally. The validation tool itself was hardened to
+  stop duplicate injected steps and to cancel active auto-step state on abort,
+  which prevents post-abort seam noise from being written. It also uses a
+  validation-only forced D-pad release after injected validation arrivals, so
+  normal manual-cancel behavior stays intact. Final live reload from `(25,22)`
+  reported no path to `(25,26)` with runtime blockers still empty.
+  Follow-up manual cluster check found the vertical x=22 approach open through
+  `(22,26)`'s north edge: `(22,21)` is open from the south, `(22,22)` through
+  `(22,25)` are open north-to-south, and only the south exit from `(22,26)` is
+  closed. East/west on those cells was not checked. The live model already
+  matches this, so this pass added regression coverage rather than new blocker
+  data. A validation pass then reached `(25,22)` cleanly and failed on
+  `(25,22)->DOWN` into `(25,23)`; the user manually confirmed that edge is
+  actually open from north to south, so that failure is treated as validation
+  noise and `(25,23).north` is pinned open. A follow-up validation then reached
+  `(27,28)` and failed on `(27,28)->LEFT` into `(26,28)`; live inspect still
+  said that edge was passable, but repeated manual taps also blocked there and
+  the user confirmed it is engine-blocked. `map_reader.lua` now models
+  `(26,28).east` directionally, leaving other approaches to `(26,28)` open for
+  future checks. Reload proof showed `inspect_move:27,28,LEFT` now blocked by
+  the model with runtime blockers empty. The next generated detour failed
+  immediately on `(27,28)->DOWN` into `(27,29)` even though static inspect still
+  said that down edge is passable. Repeated manual down taps also blocked
+  there, and the user confirmed the south exit is engine-blocked. `map_reader.lua`
+  now models `(27,29).north` directionally too. Reload proof showed
+  `inspect_move:27,28,DOWN` now blocked by the model with runtime blockers
+  empty. The next generated detour failed immediately on `(27,28)->RIGHT` into
+  `(28,28)` while static inspect still said that right edge was passable.
+  Repeated manual right taps also blocked there, and the user confirmed the
+  east exit is engine-blocked. `map_reader.lua` now models `(28,28).west`
+  alongside the existing `(28,28).north` block. Reload proof showed
+  `inspect_move:27,28,RIGHT` now blocked by the model with runtime blockers
+  empty, and from live `(27,28)` the route to Merchant 4's interaction tile
+  `(25,26)` now reports clean no-path (`visited=52`).
+- Manual wall-bump responsiveness follow-up: Brecconary logs showed physical
+  wall bumps producing `manual_tap` auto-step timeouts after 45 frames, which
+  can make real collisions feel much worse than a normal held-key bump. The fix
+  keeps manual movement from adding a synthetic tap-to-step hold when the target
+  edge is already a known static permanent or directional blocker. The player
+  can still deliberately hold a direction into a wall, and debug/probe injected
+  steps can still test known blockers, but quick released taps into known walls
+  now stop at `AUTO_STEP_REFUSED_STATIC_BLOCK` instead of writing another seam
+  observation. Live reload proof: `LAUNCHER_PROBE:
+  codex_static_wall_refusal_reload` at `map=0x08(Brecconary) x=24 y=25`.
+  Follow-up logs showed the same post-release hang still happened on unmodeled
+  wall/NPC collisions from `(24,25)`, so physical `manual_tap` now releases the
+  synthetic D-pad as soon as the movement subpixel twitches instead of holding
+  into the obstruction until timeout. Debug/probe injected steps and queued
+  route verification still keep the more conservative early-twitch behavior.
+  Reload proof: `LAUNCHER_PROBE: codex_manual_tap_release_reload` at
+  `map=0x08(Brecconary) x=24 y=25`.
+  One more log pass showed why this still felt bad: the turn-repress recovery
+  rearmed the same direction after the release, then held it into the wall/NPC
+  until timeout. Physical `manual_tap` now also suppresses that re-press after
+  any movement-subpixel twitch; debug/probe injection and queued routes keep
+  their conservative re-press behavior. Reload proof:
+  `LAUNCHER_PROBE: codex_manual_repress_suppressed_reload` at
+  `map=0x08(Brecconary) x=24 y=25`.
+  The user's half-second timing clue then matched the remaining log path:
+  released physical bumps were still reaching the normal 45-frame blocked-step
+  publication, which writes seam/NPC block evidence. Physical `manual_tap` now
+  silently cancels about 20 frames after a twitch if the tile has not changed,
+  so normal released wall bumps do not publish blocked seam events. Reload
+  proof: `LAUNCHER_PROBE: codex_manual_twitch_silent_cancel_reload` at
+  `map=0x08(Brecconary) x=24 y=25`.
+- Brecconary weapon-shop throat and blocker-policy follow-up: manual movement
+  proved `(5,7)<->(5,6)` is open both ways, matching the earlier manual
+  proof that `(5,7)<->(5,8)` is open. `map_reader.lua` no longer models
+  `(5,6).south` or `(5,8).north`; the remaining local modeled wall is the
+  east edge into `(6,7)`. Fresh live reload
+  `LAUNCHER_PROBE: codex_manual_promotion_reload` plus `inspect_move:5,7,UP`
+  reported `effective_passable=true` with no directional blocker. A hostile
+  verifier repro still reported `probe_edge_verify:5,7,UP,3` as
+  `confirmed_blocked`, but the new policy correctly kept
+  `runtime_added=false`, logged `manual_promotion_required=true`, and left
+  `RUNTIME_BLOCKS map=0x08 none`. Treat verifier consensus as suspect
+  evidence only; use `add_blocked_edge:X,Y,DIR` or `add_blocked_tile:X,Y`
+  only after manual review.
+- Previous Brecconary Merchant 4 alternate-pocket check: the user manually verified
+  `Merchant 4` is the normal tool merchant. The raw trigger at `(24,25)`
+  opens the tool shop while facing east, but it is not public floor:
+  `(24,25)->LEFT` and `(23,25)->RIGHT` both blocked 5/5. The then-confirmed
+  alternate interaction tile is
+  `(25,26)` facing north: `(25,27)->UP` moved into `(25,26)` 3/3 despite a type-0
+  decode, and TALK there opened the tool shop/item list. `map_reader.lua` still
+  treats `(25,26)` as a passthrough, but later manual/live evidence superseded
+  this as the normal service target: `objects.lua` now routes Merchant 4's
+  service interaction to `(23,25)` facing east. The route from public origin
+  `(1,15)` is still blocked, though: after reload, `debug_pathfind_to:25,26`
+  and `debug_pathfind_to:25,27` both returned no path, and the remaining lower
+  southeast frontier seams `(14,28)->RIGHT`, `(15,27)->DOWN`,
+  `(15,27)->RIGHT`, and `(16,26)->DOWN` are all live-blocked. The boundary is
+  one-way in places: `(16,27)->UP` and `(15,28)->LEFT` moved cleanly, and
+  `(25,26)->DOWN` blocked 5/5 despite `(25,27)->UP` entering the stand. A later
+  inside-out validation from `(25,27)` exposed two more false exits:
+  `(25,27)->LEFT` into `(24,27)` and `(25,27)->DOWN` into `(25,28)` both
+  blocked 5/5. With those modeled, `(25,27)` can no longer path back to public
+  space (`visited=2`), and public origin `(1,15)` still cannot path to the
+  tool-shop interaction tile `(25,26)` (`visited=406`) with no runtime blocks.
+  A later public-route attempt reached `(22,26)`, but the user manually
+  verified `(22,26)->DOWN` into `(22,27)` is hard engine-blocked; model that as
+  `(22,27).north`, not a full-cell blocker. This no longer means Merchant 4 is
+  globally isolated; it only means the older `(25,26)` alternate pocket has no
+  public route. A
+  follow-up suspect-cell pass found no safe route-opening patch: `(26,25)` and
+  `(26,27)` blocked 5/5, `(23,27)` blocked from `(23,26)`, and the potential
+  false-wall cells `(23,26)`, `(24,26)`, and `(27,26)` produced passable or
+  mixed evidence without forming a reliable connector to `(25,26)`. Runtime
+  blocks stayed empty, so leave these as manual-check candidates for now.
+- Brecconary Merchant 4 tool-shop item-list speech is fixed. The open list
+  showed `Herb 24`, `Torch 8`, and split `Dragon's 20` / `Scale`, but the
+  merchant detector reported `offers=""` because its catalog only included
+  equipment names. The shop catalog now includes normal item-shop goods, so the
+  live open list reports `offers="Herb, Torch, Dragon's Scale"` and speaks
+  `Herb. 24 gold.`, `Torch. 8 gold.`, and `Dragon's Scale. 20 gold.` as the
+  cursor moves.
+- Brecconary Merchant 4 Buy/Sell prompt speech is fixed. The first shop prompt
+  shows `BUY` and `SELL` over stale command-menu rows, so the field command
+  reader mislabels D9 `0`/`1` as `TALK`/`STATUS`. The merchant reader now has
+  an action mode for `What can I do for thee?`: D9 `0` speaks `Buy`, D9 `1`
+  speaks `Sell`, and cursor-blink row churn does not repeat the prompt.
+- Brecconary Merchant 4 close-out dialogue overlap is fixed. While the merchant
+  reader owns a shop prompt/list, `main.lua` now keeps the lower-dialogue
+  baseline synchronized with the visible prompt. Closing the item list now
+  speaks only `I will be waiting for thy next visit.` instead of dragging the
+  prior welcome / `What dost thou want?` text back into the farewell.
+- Brecconary current door-attribution check: from the public origin `(1,15)`,
+  with NPC blockers skipped and door RAM simulated, the known doors split the
+  current live NPC table cleanly. `Northeast Door` `(21,6)` unlocks `Woman 1`;
+  the user manually verified that `Woman 1` is the Fairy Water merchant, so
+  this target is expected to be locked behind that door. `Inn West Room Door`
+  `(5,22)` unlocks `Old Man 1` at his current `(1,20)` position and `Guard 4`.
+  Opening both doors still does not route to
+  `Weapons Merchant` stand `(5,6)`, the center-east room (`Person 3`,
+  `Old Man 2`, `Guard 2`), the southeast room (`Person 1`, `Person 5`),
+  `Guard 3`'s lower-left room, or `Merchant 4`'s southeast tool-shop region.
+  Treat those as route/seam follow-ups rather than known-door-gated NPCs.
+- Brecconary door/classification pass: Mike's RPG Center labels the services as
+  inn, weapon/armor shop, item shop, Fairy Water/special item shop, and curse
+  remover; Realm of Darkness and Gamer Corner note the Fairy Water shop needs a
+  Magic Key, and Gamer Corner lists two Brecconary locked doors: northeast
+  building and west room in the inn. The object locator previously exposed no
+  doors on map `0x08`; it now exposes `Northeast Door` `(21,6)` and
+  `Inn West Room Door` `(5,22)`, and `map_reader.lua` checks both through the
+  opened-door RAM array. With both doors synthetically open in RAM, the
+  earlier static pass made only `Guard 4` and `Woman 1` reachable; the current
+  live-NPC refinement also puts `Old Man 1` behind the inn west-room door.
+  `Weapons Merchant`, `Person 3`, `Person 5`, `Old Man 2`, `Merchant 4`, and
+  `Person 1` remain no-path, with current live additions `Guard 2` and
+  `Guard 3`, so they are missing route/blocker-data follow-ups rather than
+  known door-gated targets. Older direct verifier evidence that said
+  `(5,7)->(5,6)` was blocked is now considered timing-noise evidence, not a
+  map fact; manual movement and static inspect show the weapon-shop stand seam
+  is open.
+  Closed-door no-path hints are now target-aware: opening the reachable door
+  frontier must actually make the selected object reachable before the player
+  hears the magic-key/door advice.
+- Brecconary false-blocker poke-around: a follow-up topology pass showed that
+  opening one of `(20,12)/(21,12)/(22,12)/(24,12)` would connect the
+  Person 3 / Old Man 2 room in the model, while southeast bridge candidates
+  would connect `Person 5`, `Person 1`, or `Merchant 4`. Live verifier probes
+  blocked all checked candidates, including `(24,13)->UP`, `(21,8)->DOWN`,
+  `(17,10)->RIGHT`, `(21,16)->DOWN`, `(25,14)->DOWN`, `(17,20)->DOWN`,
+  `(16,25)->RIGHT`, `(16,26)->RIGHT`, `(14,28)->RIGHT`,
+  `(15,27)->DOWN`, `(15,27)->RIGHT`, `(22,13)->UP`, `(21,13)->UP`,
+  `(20,13)->UP`, `(19,13)->UP`, and `(16,22)->RIGHT`. Runtime blocks were
+  cleared after each verifier pass, and the player was restored to `(1,15)`.
 - Selected-object NPC teleport follow-up: while checking Brecconary NPCs before
   leaving town, `Shift+Enter` was found to teleport onto the selected NPC's
   occupied tile. The hotkey now resolves an NPC landing first: service NPCs use
@@ -24,13 +230,43 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   key (`Enter` or an arrow), keeps Start/D-pad neutral until release, and only
   then runs the facing tap. A second live repro of the "hung" state showed
   input was actually neutral and the menu was closed; the selected Woman 3
-  teleport had landed at `(5,7)`, whose UP/DOWN/RIGHT exits all engine-blocked
-  while LEFT was the NPC. Brecconary now records those hidden seams, and
-  selected NPC teleport skips adjacent landings that have no non-target escape.
+  teleport had landed at `(5,7)`, where the first read treated UP/DOWN/RIGHT as
+  blocked while LEFT was the NPC. The DOWN edge was later manually disproved
+  and removed from the model; Brecconary still records the confirmed UP and
+  RIGHT seams, and selected NPC teleport skips adjacent landings that have no
+  non-target escape.
+  Post-restore live testing also fixed the auto-visited marker for counter
+  services when another object is selected: TALK from the weapon-shop stand
+  `(5,6)` with `Exit to World Map` selected now marks `Weapons Merchant`
+  visited instead of logging a no-adjacent-NPC skip.
   Next manual check: select a Brecconary NPC and press `Shift+Enter`; the hero
   should land next to or at the interaction stand for that NPC, face the target,
   and then TALK should reach the NPC/counter. Woman 3 at `(4,7)` should land at
   `(4,8)`, facing north, not at the trapped `(5,7)` stand.
+- Brecconary west-wing throat follow-up: manual movement proved the pocket near
+  `(3,7)` was artificially pathability-empty because live-passable type-0
+  cells were missing passthrough entries. `(3,7)`, `(2,9)`, and `(3,9)` are now
+  modeled as passthrough cells. Repeated `(3,7)->UP` attempts into `(3,6)`
+  blocked 5/5 with no NPC or runtime block, so `(3,6)` remains closed. After
+  reload, live inspect reports the throat cells as `reason=passthrough`, and
+  the reachable-object filter from `(3,7)` now exposes 16 reachable objects
+  instead of leaving the pocket empty.
+- Brecconary east-wing throat follow-up: manual movement proved `(22,24)` is
+  another live-passable type-0 false wall. `(22,24)->UP` into `(22,23)` and
+  `(22,23)->DOWN` back into `(22,24)` both moved repeatedly. Before the patch,
+  live inspect reported `(22,24)` as `reason=tile_type` with no permanent,
+  runtime, NPC, or directional block, so this snuck in through the base town
+  tile decoder rather than a learned runtime blocker. `map_reader.lua` now
+  models `(22,24)` as a passthrough; after reload, the reachable-object filter
+  from `(22,24)` reports 18 reachable objects.
+- Brecconary weapon-shop throat bad-blocker bucket: manual movement proved the
+  `(5,7)<->(5,8)` and `(5,7)<->(5,6)` edges are open both ways. These were not
+  ROM tile false walls; they were stale directional blocks promoted from noisy
+  selected-NPC/verifier timing evidence. Before the fixes,
+  `inspect_move:5,7,DOWN` and later `inspect_move:5,7,UP` showed the model
+  alone was blocking the move while tile, permanent, NPC, and runtime blockers
+  were clear. `map_reader.lua` now removes both vertical directional blocks
+  while keeping the still-modeled east seam into `(6,7)`.
 - Combat spell-list narration first pass: after exiting Erdrick's Cave, a world
   map fight with a Red Slime exposed that battle spell menus were not being
   read. Live capture showed the SPELL submenu with cursor `D8=0 D9=0` and upper
@@ -411,7 +647,9 @@ QoL feature check:
   `clear_visited:all` clears all maps. After TALK dialogue, the auto-visited
   marker now falls back to live NPC RAM if the cached object list has stale NPC
   coordinates, which can happen under BizHawk's disabled periodic NPC refresh.
-  The marker also stays armed for slow dialogue stabilization and survives
+  It also recognizes modeled service interaction stands such as Brecconary's
+  weapon-shop counter even when that merchant is not the currently selected
+  object. The marker stays armed for slow dialogue stabilization and survives
   BizHawk source reloads, so delayed NPC text should still mark the talked-to
   NPC without losing existing visited flags on `touch main.lua`.
 - Selected-object teleport uses `Shift+Enter` for the selected object, with
@@ -542,7 +780,10 @@ QoL feature check:
   `(25,25)` is the tool shop; TALK from `(24,25)` while facing east opens
   `Welcome. We deal in tools.` `objects.lua` now exposes these confirmed
   service interaction tiles directly, while keeping the generic adjacent raw
-  large-tile inference for future service counters.
+  large-tile inference for future service counters. Later Merchant 4 probing
+  superseded the route target: `(24,25)` remains a blocked movement seam and
+  `(25,26)` remains an alternate pocket; normal service routing should use the
+  public `(23,25)` stand facing east.
 - Weapon-shop item list follow-up: the buy/yes-no prompt worked, but the item
   list initially spoke field command labels and raw cursor coordinates because
   the shop list also shows a `COMMAND` header and reuses menu cursor RAM.

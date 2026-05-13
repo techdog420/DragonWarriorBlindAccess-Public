@@ -82,10 +82,10 @@ local REROUTE_FAILURE_LIMIT = 3
 local npc_freeze_active = false
 local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
 
--- Runtime engine-blocked cells confirmed by explicit verification commands.
--- Route-timeout observations live in seam_memory first; reroutes may use them
--- as soft same-session evidence, but they do not become hard map facts until a
--- verifier or manual confirmation promotes them.
+-- Runtime engine-blocked cells injected by explicit manual commands.
+-- Route-timeout observations live in seam_memory as diagnostics only. Reroutes
+-- may temporarily block the single edge that just failed, but old seam-memory
+-- noise must not become pathfinding truth until a human promotes it.
 local runtime_blocked = {}
 local seam_memory = {}
 local seam_retry_state = nil
@@ -104,14 +104,8 @@ local object_pathability_signature = nil
 local last_pathability_result = nil
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
 local TARGET_FACE_RELEASE_FRAMES = 2
-local SEAM_CONFIRM_BLOCK_THRESHOLD = 3
 local SEAM_BRUTE_FORCE_RETRY_LIMIT = 2
 local APPROACH_ORDER = {north = 1, south = 2, west = 3, east = 4}
-local RUNTIME_PROMOTION_SOURCES = {
-    verified_probe = true,
-    manual_confirmed = true,
-}
-
 local function cell_key(x, y)
     return x .. "," .. y
 end
@@ -400,24 +394,6 @@ local function is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_di
     return false, dest_x, dest_y
 end
 
-local function record_runtime_block(map_id, from_x, from_y, blocked_dir)
-    if not map_id or from_x == nil or from_y == nil or not blocked_dir then
-        return false
-    end
-
-    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, blocked_dir)
-    local source = string.format("auto_step:%s from (%d,%d)", blocked_dir, from_x, from_y)
-
-    -- Don't record if an NPC occupies the destination (NPC blocks are temporary)
-    local npc_block = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
-    if npc_block then
-        debug_tools.debug("block at (" .. dest_x .. "," .. dest_y .. ") is NPC, not recording")
-        return false
-    end
-
-    return add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
-end
-
 local function add_runtime_block_for_step(map_id, from_x, from_y, dir, source)
     local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
     if not dest_x or not approach then
@@ -506,34 +482,12 @@ local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
         entry.moved_count = entry.moved_count + 1
         entry.consecutive_moved = entry.consecutive_moved + 1
         entry.consecutive_blocked = 0
-        -- Only opportunistically clear a runtime block when this approach has no
-        -- prior blocking evidence. Confirmed passable probe consensus uses the
-        -- explicit public clear helper below.
-        if entry.blocked_count == 0 then
-            clear_runtime_block_direction(map_id, dest_x, dest_y, approach, "successful traversal")
-        end
     end
 
     entry.last_result = result
     entry.last_source = source
     entry.last_from_x = from_x
     entry.last_from_y = from_y
-
-    if result == "blocked"
-    and entry.moved_count == 0
-    and entry.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD
-    and RUNTIME_PROMOTION_SOURCES[tostring(source or "")] == true then
-        add_runtime_block_direction(
-            map_id,
-            dest_x,
-            dest_y,
-            approach,
-            string.format(
-                "seam_confirm:%s blocked=%d moved=%d",
-                tostring(source or "-"),
-                entry.blocked_count,
-                entry.moved_count))
-    end
 
     local new_class = classify_seam_entry(map_id, dest_x, dest_y, approach, entry)
     debug_tools.info(string.format(
@@ -889,21 +843,9 @@ function M.build_path_blocking(map_id, opts)
             end
         end
     end
-    if opts.include_unconfirmed_seams then
-        for _, seam in ipairs(collect_seam_entries(map_id)) do
-            if seam.classification == "blocked_only"
-               and seam.blocked_count >= SEAM_CONFIRM_BLOCK_THRESHOLD then
-                local entry = blocking[seam.key]
-                if entry ~= "npc" then
-                    if type(entry) ~= "table" then
-                        entry = {}
-                        blocking[seam.key] = entry
-                    end
-                    entry[seam.approach] = true
-                end
-            end
-        end
-    end
+    -- `include_unconfirmed_seams` is intentionally ignored. Seam-memory is
+    -- noisy on this engine and remains diagnostic-only; reroute callers add a
+    -- one-off temporary block for the edge that just failed.
     -- Merge runtime directional blocks
     if runtime_blocked[map_id] then
         for k, dirs in pairs(runtime_blocked[map_id]) do
@@ -1001,12 +943,25 @@ function M.inject_runtime_block(map_id, x, y)
     return true
 end
 
+function M.inject_runtime_block_for_step(map_id, from_x, from_y, dir, source)
+    return add_runtime_block_for_step(map_id, from_x, from_y, dir, source or "manual_edge")
+end
+
+-- Compatibility/manual API only. Verifiers and blocked-step observations record
+-- seam evidence; they do not call this helper automatically.
 function M.confirm_runtime_block_for_step(map_id, from_x, from_y, dir, source)
-    return add_runtime_block_for_step(map_id, from_x, from_y, dir, source or "verified_probe")
+    return M.inject_runtime_block_for_step(map_id, from_x, from_y, dir, source or "manual_confirmed")
 end
 
 function M.clear_runtime_block_for_step(map_id, from_x, from_y, dir, source)
     return clear_runtime_block_for_step(map_id, from_x, from_y, dir, source or "verified_passable")
+end
+
+function M.record_seam_result_for_step(map_id, from_x, from_y, dir, result, source)
+    if result ~= "blocked" and result ~= "moved" then
+        return nil, nil
+    end
+    return observe_seam_result(map_id, from_x, from_y, dir, result, source or "manual_probe")
 end
 
 -- is_pathfinding_walkable(map_id, x, y): Static walkability plus runtime overlay.
@@ -1287,49 +1242,8 @@ local function is_standable_for_hint(map_id, x, y, blocking)
     return not block or type(block) == "table"
 end
 
-local function find_closed_door_frontier(map_id, start_x, start_y, blocking)
-    if not map_reader.get_map_dimensions or not map_reader.get_walkability_details then
-        return nil
-    end
-    local width, height = map_reader.get_map_dimensions(map_id)
-    if not width or not height then
-        return nil
-    end
-    if not is_standable_for_hint(map_id, start_x, start_y, blocking) then
-        return nil
-    end
-
-    local queue = {{x = start_x, y = start_y}}
-    local seen = {[cell_key(start_x, start_y)] = true}
-    local head = 1
-
-    while head <= #queue do
-        local current = queue[head]
-        head = head + 1
-
-        for _, dir in pairs(DIR_TO_DELTA) do
-            local nx = current.x + dir.dx
-            local ny = current.y + dir.dy
-            if nx >= 0 and nx < width and ny >= 0 and ny < height then
-                local nk = cell_key(nx, ny)
-                if not seen[nk] then
-                    local details = map_reader.get_walkability_details(map_id, nx, ny)
-                    if details and details.reason == "door_closed" then
-                        return {x = nx, y = ny}
-                    end
-                    if is_standable_for_hint(map_id, nx, ny, blocking) then
-                        seen[nk] = true
-                        queue[#queue + 1] = {x = nx, y = ny}
-                    end
-                end
-            end
-        end
-    end
-
-    return nil
-end
-
 local find_quiet_route_to_adjacent
+local find_relevant_closed_door_frontier
 
 local function find_stationary_npc_on_path(path)
     if not path then
@@ -1393,7 +1307,8 @@ local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, pat
             return "npc_clutter"
         end
     end
-    if find_closed_door_frontier(map_id, start_x, start_y, blocking) then
+    if find_relevant_closed_door_frontier
+       and find_relevant_closed_door_frontier(map_id, start_x, start_y, blocking, obj) then
         return "closed_door"
     end
     return nil
@@ -1726,6 +1641,124 @@ local function object_reachable_from_set(obj, map_id, start_x, start_y, blocking
         end
     end
     return false
+end
+
+local function collect_reachable_closed_door_frontiers(map_id, start_x, start_y, blocking)
+    if not map_reader.get_map_dimensions or not map_reader.get_walkability_details then
+        return {}
+    end
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        return {}
+    end
+    if not is_standable_for_hint(map_id, start_x, start_y, blocking) then
+        return {}
+    end
+
+    local directional_blocks = map_reader.get_directional_blocks
+        and map_reader.get_directional_blocks(map_id)
+        or {}
+    local queue = {{x = start_x, y = start_y}}
+    local seen = {[cell_key(start_x, start_y)] = true}
+    local frontiers = {}
+    local head = 1
+
+    while head <= #queue do
+        local current = queue[head]
+        head = head + 1
+
+        for _, dir in ipairs(PATH_DIRECTIONS) do
+            local nx = current.x + dir.dx
+            local ny = current.y + dir.dy
+            local nk = cell_key(nx, ny)
+            if not seen[nk]
+            and nx >= 0 and nx < width
+            and ny >= 0 and ny < height
+            and not is_blocked_from_approach(blocking, nx, ny, dir.approach)
+            and not is_static_directional_blocked(directional_blocks, nx, ny, dir.approach) then
+                local details = map_reader.get_walkability_details(map_id, nx, ny)
+                if details and details.reason == "door_closed" then
+                    seen[nk] = true
+                    frontiers[#frontiers + 1] = {x = nx, y = ny}
+                elseif is_standable_for_hint(map_id, nx, ny, blocking) then
+                    seen[nk] = true
+                    queue[#queue + 1] = {x = nx, y = ny}
+                end
+            end
+        end
+    end
+
+    return frontiers
+end
+
+local function build_reachable_set_with_open_doors(map_id, start_x, start_y, blocking, open_door_keys)
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        return nil
+    end
+    if start_x < 0 or start_x >= width or start_y < 0 or start_y >= height then
+        return nil
+    end
+    if not is_standable_for_hint(map_id, start_x, start_y, blocking) then
+        return {}
+    end
+
+    local directional_blocks = map_reader.get_directional_blocks
+        and map_reader.get_directional_blocks(map_id)
+        or {}
+    local reachable = {[cell_key(start_x, start_y)] = true}
+    local queue = {{x = start_x, y = start_y}}
+    local head = 1
+
+    while head <= #queue do
+        local current = queue[head]
+        head = head + 1
+
+        for _, dir in ipairs(PATH_DIRECTIONS) do
+            local nx = current.x + dir.dx
+            local ny = current.y + dir.dy
+            local nk = cell_key(nx, ny)
+            if not reachable[nk]
+            and nx >= 0 and nx < width
+            and ny >= 0 and ny < height
+            and not is_blocked_from_approach(blocking, nx, ny, dir.approach)
+            and not is_static_directional_blocked(directional_blocks, nx, ny, dir.approach) then
+                local opened_for_hint = open_door_keys and open_door_keys[nk] == true
+                if opened_for_hint or is_standable_for_hint(map_id, nx, ny, blocking) then
+                    reachable[nk] = true
+                    queue[#queue + 1] = {x = nx, y = ny}
+                end
+            end
+        end
+    end
+
+    return reachable
+end
+
+find_relevant_closed_door_frontier = function(map_id, start_x, start_y, blocking, obj)
+    local frontiers = collect_reachable_closed_door_frontiers(map_id, start_x, start_y, blocking)
+    if #frontiers == 0 then
+        return nil
+    end
+    if not obj then
+        return frontiers[1]
+    end
+
+    local open_door_keys = {}
+    for _, door in ipairs(frontiers) do
+        open_door_keys[cell_key(door.x, door.y)] = true
+    end
+
+    local reachable = build_reachable_set_with_open_doors(
+        map_id,
+        start_x,
+        start_y,
+        blocking,
+        open_door_keys)
+    if object_reachable_from_set(obj, map_id, start_x, start_y, blocking, reachable) then
+        return frontiers[1]
+    end
+    return nil
 end
 
 function M.refresh_object_pathability_filter(opts)
@@ -2531,6 +2564,29 @@ function M.register_debug_commands(get_map_id_fn)
         return default_map, x, y
     end
 
+    local function parse_direction(token)
+        if not token then return nil end
+        local dir = token:match("^%s*(.-)%s*$"):lower()
+        return DIR_NAME_TO_KEY[dir] or (DIR_TO_DELTA[dir] and dir) or nil
+    end
+
+    local function parse_map_xy_dir(arg, default_map)
+        if not arg then return nil end
+        local a, b, c, d = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)%s*$")
+        if a and b and c and d then
+            local mid, x, y = parse_int(a), parse_int(b), parse_int(c)
+            local dir = parse_direction(d)
+            if mid == nil or x == nil or y == nil or dir == nil then return nil end
+            return mid, x, y, dir
+        end
+        local xs, ys, ds = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)%s*$")
+        if not xs then return nil end
+        local x, y = parse_int(xs), parse_int(ys)
+        local dir = parse_direction(ds)
+        if x == nil or y == nil or dir == nil then return nil end
+        return default_map, x, y, dir
+    end
+
     debug_tools.register_command("add_blocked_tile", function(arg)
         local mid, x, y = parse_map_xy(arg, get_map_id_fn())
         if mid == nil then
@@ -2542,6 +2598,20 @@ function M.register_debug_commands(get_map_id_fn)
             tolk.output_interrupt(string.format("Added blocked tile %d,%d on map %02X", x, y, mid))
         else
             tolk.output_interrupt(string.format("Blocked tile %d,%d already injected on map %02X", x, y, mid))
+        end
+    end)
+
+    debug_tools.register_command("add_blocked_edge", function(arg)
+        local mid, x, y, dir = parse_map_xy_dir(arg, get_map_id_fn())
+        if mid == nil then
+            debug_tools.error("add_blocked_edge usage: add_blocked_edge:X,Y,DIR or add_blocked_edge:MAP_ID,X,Y,DIR")
+            return
+        end
+        local added = M.inject_runtime_block_for_step(mid, x, y, dir, "manual_edge_command")
+        if added then
+            tolk.output_interrupt(string.format("Added blocked edge from %d,%d %s on map %02X", x, y, dir, mid))
+        else
+            tolk.output_interrupt(string.format("Blocked edge from %d,%d %s already injected on map %02X", x, y, dir, mid))
         end
     end)
 

@@ -163,6 +163,17 @@ function tests.extract_new_dialogue_keeps_farewell_after_continue_question()
     )
 end
 
+function tests.extract_new_dialogue_keeps_shop_farewell_after_prompt_baseline()
+    local old = "'Welcome. We deal in tools. What can I do for thee?' 'What dost thou want?'"
+    local new = "'Welcome. We deal in tools. What can I do for thee?' 'What dost thou want?' 'I will be waiting for thy next visit."
+
+    assert_equal(
+        text.extract_new_dialogue(old, new),
+        "'I will be waiting for thy next visit.",
+        "merchant prompt baseline should leave only the farewell dialogue"
+    )
+end
+
 function tests.extract_new_dialogue_keeps_non_overlapping_text()
     assert_equal(
         text.extract_new_dialogue("'I am greatly pleased", "'Before reaching thy next level"),

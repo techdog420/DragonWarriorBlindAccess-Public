@@ -108,6 +108,7 @@ local auto_inject_limit = nil
 local auto_start_subpixel = nil
 local auto_movement_started = false
 local auto_movement_start_frame = nil
+local auto_step_source = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
@@ -197,6 +198,25 @@ local function config_int(key, fallback, min_value, max_value)
     return value
 end
 
+local function config_bool(key, fallback)
+    local value = config.get(key)
+    if value == nil then
+        return fallback
+    end
+    value = tostring(value):lower()
+    if value == "true" or value == "1" or value == "yes" or value == "on" then
+        return true
+    end
+    if value == "false" or value == "0" or value == "no" or value == "off" then
+        return false
+    end
+    return fallback
+end
+
+function M.should_record_debug_blocks()
+    return config_bool("auto_step_record_debug_blocks", false)
+end
+
 local function get_inject_limit()
     return config_int("auto_step_inject_limit", INJECT_LIMIT, 1, 120)
 end
@@ -221,6 +241,17 @@ local function get_block_retry_limit()
     return config_int("auto_step_block_retry_limit", BLOCK_RETRY_LIMIT, 0, 10)
 end
 
+local function get_manual_block_retry_limit()
+    return config_int("auto_step_manual_block_retry_limit", 0, 0, 10)
+end
+
+local function get_active_block_retry_limit()
+    if auto_step_source == "manual_tap" then
+        return get_manual_block_retry_limit()
+    end
+    return get_block_retry_limit()
+end
+
 local function get_route_turn_settle_frames()
     return config_int("auto_step_route_turn_settle_frames", ROUTE_TURN_SETTLE_FRAMES, 0, 60)
 end
@@ -242,8 +273,11 @@ local function should_release_on_movement_start()
     return configured == "true" or configured == "1" or configured == "yes"
 end
 
-local function should_hold_early_route_movement_start()
-    if route_steps == nil or auto_movement_start_frame == nil then
+local function should_hold_early_movement_start()
+    if auto_movement_start_frame == nil then
+        return false
+    end
+    if auto_step_source == "manual_tap" then
         return false
     end
     if auto_timeout_retries > 0 then
@@ -311,6 +345,16 @@ local function neutralize_direction(joy)
     joypad.set(1, copy_non_direction_buttons(joy or {}))
 end
 
+local function read_joypad_safe()
+    if joypad and joypad.read then
+        local ok, joy = pcall(joypad.read, 1)
+        if ok and type(joy) == "table" then
+            return joy
+        end
+    end
+    return {}
+end
+
 local function read_movement_subpixel()
     if not addr or not addr.MOVEMENT_SUBPIXEL or not memory or not memory.readbyte then
         return nil
@@ -332,8 +376,8 @@ local function clear_route()
     route_last_y = nil
 end
 
-local function start_post_step_release()
-    post_step_release_frames = POST_STEP_RELEASE_FRAMES
+local function start_post_step_release(force)
+    post_step_release_frames = force and -POST_STEP_RELEASE_FRAMES or POST_STEP_RELEASE_FRAMES
 end
 
 local function begin_step(dir, px, py, state)
@@ -351,12 +395,13 @@ local function begin_step(dir, px, py, state)
     auto_start_subpixel = read_movement_subpixel()
     auto_movement_started = false
     auto_movement_start_frame = nil
+    auto_step_source = state and state.source or (route_steps and "queued_route" or "manual_tap")
     pending_repress = nil
     tracked_dir = nil
     debug_tools.debug(string.format(
-        "auto_step begin_step dir=%s from=(%d,%d) timeout_retries=%d turn_represses=%d inject_limit=%d",
+        "auto_step begin_step dir=%s from=(%d,%d) timeout_retries=%d turn_represses=%d inject_limit=%d source=%s",
         tostring(dir), px or -1, py or -1, auto_timeout_retries, auto_turn_represses,
-        auto_inject_limit or -1))
+        auto_inject_limit or -1, tostring(auto_step_source)))
     joypad.set(1, {[dir] = true})
 end
 
@@ -371,6 +416,78 @@ local function direction_delta(dir)
         return 1, 0
     end
     return 0, 0
+end
+
+local function approach_for_direction(dir)
+    if dir == "up" then
+        return "south"
+    elseif dir == "down" then
+        return "north"
+    elseif dir == "left" then
+        return "east"
+    elseif dir == "right" then
+        return "west"
+    end
+    return nil
+end
+
+local function get_static_blocked_destination(dir, px, py)
+    if not map_reader or px == nil or py == nil then
+        return nil
+    end
+    local dx, dy = direction_delta(dir)
+    local approach = approach_for_direction(dir)
+    if (dx == 0 and dy == 0) or not approach then
+        return nil
+    end
+    local map_id = nav.get_position()
+    local dest_x = px + dx
+    local dest_y = py + dy
+
+    if map_reader.is_permanently_blocked_override
+       and map_reader.is_permanently_blocked_override(map_id, dest_x, dest_y) then
+        return {
+            map_id = map_id,
+            x = dest_x,
+            y = dest_y,
+            approach = approach,
+            reason = "permanent_blocked",
+        }
+    end
+
+    if map_reader.get_directional_blocks then
+        local directional_blocks = map_reader.get_directional_blocks(map_id)
+        local entry = directional_blocks and directional_blocks[dest_x .. "," .. dest_y]
+        if type(entry) == "table" and entry[approach] == true then
+            return {
+                map_id = map_id,
+                x = dest_x,
+                y = dest_y,
+                approach = approach,
+                reason = "directional_blocked",
+            }
+        end
+    end
+
+    return nil
+end
+
+local function refuse_manual_static_blocked_step(dir, px, py)
+    local blocked = get_static_blocked_destination(dir, px, py)
+    if not blocked then
+        return false
+    end
+    debug_tools.debug(string.format(
+        "AUTO_STEP_REFUSED_STATIC_BLOCK map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) approach=%s reason=%s source=manual_tap",
+        blocked.map_id or -1,
+        px or -1,
+        py or -1,
+        tostring(dir),
+        blocked.x or -1,
+        blocked.y or -1,
+        tostring(blocked.approach),
+        tostring(blocked.reason)))
+    return true
 end
 
 local function clear_pending_repress()
@@ -392,6 +509,7 @@ local function schedule_turn_repress(dir)
         release_frames = get_turn_repress_release_frames(),
         start_x = auto_start_x,
         start_y = auto_start_y,
+        source = auto_step_source,
     }
     auto_dir = nil
     auto_frames = 0
@@ -410,6 +528,7 @@ local function reset_active_step()
     auto_start_subpixel = nil
     auto_movement_started = false
     auto_movement_start_frame = nil
+    auto_step_source = nil
     clear_pending_repress()
 end
 
@@ -558,41 +677,47 @@ end
 
 local function refuse_hazard_step(dir, px, py, source)
     local hazard = get_hazard_destination(dir, px, py)
-    if not hazard then
-        return false
+    if hazard then
+        debug_tools.info(string.format(
+            "AUTO_STEP_REFUSED_HAZARD map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s source=%s queued_route=%s",
+            hazard.map_id or -1,
+            px or -1,
+            py or -1,
+            tostring(dir),
+            hazard.x or -1,
+            hazard.y or -1,
+            tostring(hazard.hazard),
+            tostring(source),
+            tostring(route_steps ~= nil)))
+        clear_direction_press_tracking()
+        if source == "pending_repress" then
+            clear_pending_repress()
+        end
+        if route_steps then
+            clear_route()
+            emit_route_cancelled({
+                reason = "dangerous_tile",
+                message = "Dangerous tile ahead",
+                current_x = px,
+                current_y = py,
+                dir = dir,
+                dest_x = hazard.x,
+                dest_y = hazard.y,
+                hazard = hazard.hazard,
+                source = source,
+            })
+        elseif source == "manual_tap" or source == "inject_step" then
+            tolk.output_interrupt("Dangerous tile ahead")
+        end
+        return true
     end
-    debug_tools.info(string.format(
-        "AUTO_STEP_REFUSED_HAZARD map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s source=%s queued_route=%s",
-        hazard.map_id or -1,
-        px or -1,
-        py or -1,
-        tostring(dir),
-        hazard.x or -1,
-        hazard.y or -1,
-        tostring(hazard.hazard),
-        tostring(source),
-        tostring(route_steps ~= nil)))
-    clear_direction_press_tracking()
-    if source == "pending_repress" then
-        clear_pending_repress()
+
+    if source == "manual_tap" and refuse_manual_static_blocked_step(dir, px, py) then
+        clear_direction_press_tracking()
+        return true
     end
-    if route_steps then
-        clear_route()
-        emit_route_cancelled({
-            reason = "dangerous_tile",
-            message = "Dangerous tile ahead",
-            current_x = px,
-            current_y = py,
-            dir = dir,
-            dest_x = hazard.x,
-            dest_y = hazard.y,
-            hazard = hazard.hazard,
-            source = source,
-        })
-    elseif source == "manual_tap" or source == "inject_step" then
-        tolk.output_interrupt("Dangerous tile ahead")
-    end
-    return true
+
+    return false
 end
 
 -- ============================================================
@@ -745,10 +870,14 @@ function M.update(can_walk)
         return
     end
 
-    if post_step_release_frames > 0
-       and (route_steps ~= nil or not is_any_direction_pressed(joy)) then
+    if post_step_release_frames ~= 0
+       and (post_step_release_frames < 0 or route_steps ~= nil or not is_any_direction_pressed(joy)) then
         neutralize_direction(joy)
-        post_step_release_frames = post_step_release_frames - 1
+        if post_step_release_frames < 0 then
+            post_step_release_frames = post_step_release_frames + 1
+        else
+            post_step_release_frames = post_step_release_frames - 1
+        end
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
         end
@@ -903,14 +1032,15 @@ function M.update(can_walk)
                 auto_start_subpixel or -1,
                 current_subpixel or -1,
                 tostring(route_steps ~= nil)))
-            if should_hold_early_route_movement_start() then
+            if should_hold_early_movement_start() then
                 debug_tools.debug(string.format(
-                    "auto_step route early movement twitch held dir=%s from=(%d,%d) frame=%d grace=%d",
+                    "auto_step early movement twitch held dir=%s from=(%d,%d) frame=%d grace=%d queued_route=%s",
                     tostring(auto_dir),
                     auto_start_x or -1,
                     auto_start_y or -1,
                     auto_movement_start_frame or -1,
-                    get_route_early_release_grace_frames()))
+                    get_route_early_release_grace_frames(),
+                    tostring(route_steps ~= nil)))
                 joypad.set(1, {[auto_dir] = true})
             else
                 neutralize_direction(joy)
@@ -922,9 +1052,11 @@ function M.update(can_walk)
            and (
                not auto_movement_started
                or (
+                   auto_step_source ~= "manual_tap"
+                   and
                    auto_movement_start_frame ~= nil
                    and auto_movement_start_frame <= get_route_early_release_grace_frames()
-                   and not should_hold_early_route_movement_start()
+                   and not should_hold_early_movement_start()
                )
            ) then
             debug_tools.debug(string.format(
@@ -938,15 +1070,41 @@ function M.update(can_walk)
             if route_timing_timeout then
                 effective_timeout = math.min(timeout, route_timing_timeout)
             end
+            if route_steps == nil
+               and auto_step_source == "manual_tap"
+               and auto_movement_started
+               and auto_movement_start_frame ~= nil
+               and (auto_frames - auto_movement_start_frame) >= 20
+               and not is_any_direction_pressed(joy) then
+                debug_tools.debug(string.format(
+                    "auto_step cancel manual_tap early-twitch wait dir=%s from=(%d,%d) frames=%d movement_start_frame=%s",
+                    tostring(auto_dir),
+                    auto_start_x or -1,
+                    auto_start_y or -1,
+                    auto_frames or -1,
+                    tostring(auto_movement_start_frame)))
+                reset_active_step()
+                neutralize_direction(joy)
+                start_post_step_release()
+                for _, dir in ipairs(DIRECTIONS) do
+                    prev_held[dir] = joy[dir] or false
+                end
+                return
+            end
             if auto_frames < effective_timeout then
                 -- Only inject during the initiation phase. After INJECT_LIMIT
                 -- frames, the game has committed to the step — stop injecting
                 -- and just wait for position to change. This prevents the game
                 -- from seeing the direction held when the step finishes and
                 -- immediately starting a second step (overshoot).
-                if auto_movement_started and not should_hold_early_route_movement_start() then
+                if auto_movement_started and not should_hold_early_movement_start() then
                     neutralize_direction(joy)
                 elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
+                    joypad.set(1, {[auto_dir] = true})
+                elseif route_steps == nil and not auto_movement_started and not is_any_direction_pressed(joy) then
+                    -- Manual/probe steps that have not started moving yet need
+                    -- a real held press. Releasing at the generic inject window
+                    -- can turn open seams into false blocked observations.
                     joypad.set(1, {[auto_dir] = true})
                 elseif route_steps or not is_any_direction_pressed(joy) then
                     -- Actively release after the initiation window so a sticky
@@ -956,7 +1114,7 @@ function M.update(can_walk)
                 end
                 auto_frames = auto_frames + 1
             else
-                local block_retry_limit = get_block_retry_limit()
+                local block_retry_limit = get_active_block_retry_limit()
                 local timing_suspect_timeout = should_use_route_timing_suspect_timeout()
                 if auto_timeout_retries < block_retry_limit and not timing_suspect_timeout then
                     auto_timeout_retries = auto_timeout_retries + 1
@@ -970,25 +1128,25 @@ function M.update(can_walk)
                     auto_movement_start_frame = nil
                     joypad.set(1, {[auto_dir] = true})
                     debug_tools.debug(string.format(
-                        "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d timeout=%d turn_represses=%d",
+                        "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d timeout=%d turn_represses=%d source=%s",
                         auto_timeout_retries, block_retry_limit,
                         auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
                         auto_inject_limit or -1,
                         effective_timeout or -1,
-                        auto_turn_represses or -1))
+                        auto_turn_represses or -1,
+                        tostring(auto_step_source)))
                     for _, dir in ipairs(DIRECTIONS) do
                         prev_held[dir] = joy[dir] or false
                     end
                     return
                 end
                 if DEBUG then tolk.output("auto-step timeout") end
-                -- Record this blocked move so the collision map accumulates
-                -- automatically during normal play. In debug mode, this writes to
-                -- dw_blocks.log; outside debug mode it's a no-op.
+                -- Optional legacy recorder. Keep it off by default: noisy
+                -- blocked attempts should not accumulate persistent map data.
                 local map_id = nav.get_position()  -- first return value is map_id
                 -- auto_dir is FCEUX joypad key ("up"/"down"/"left"/"right") which
                 -- matches the dir strings used by record_block.
-                if not timing_suspect_timeout then
+                if M.should_record_debug_blocks() and not timing_suspect_timeout then
                     debug_tools.record_block(map_id, auto_start_x, auto_start_y, auto_dir)
                 end
                 -- Save blocked info before clearing auto_dir so on_blocked can use it
@@ -1001,8 +1159,9 @@ function M.update(can_walk)
                 local blocked_timeout_retries = auto_timeout_retries
                 local blocked_turn_represses = auto_turn_represses
                 local blocked_inject_limit = auto_inject_limit
+                local blocked_source = auto_step_source
                 debug_tools.debug(string.format(
-                    "auto_step blocked dir=%s from=(%d,%d) frames=%d timeout_retries=%d/%d turn_represses=%d inject_limit=%d queued_route=%s timeout=%d movement_started=%s movement_start_frame=%s",
+                    "auto_step blocked dir=%s from=(%d,%d) frames=%d timeout_retries=%d/%d turn_represses=%d inject_limit=%d queued_route=%s timeout=%d movement_started=%s movement_start_frame=%s source=%s",
                     tostring(blocked_dir),
                     blocked_from_x or -1,
                     blocked_from_y or -1,
@@ -1014,7 +1173,8 @@ function M.update(can_walk)
                     tostring(blocked_queued_route),
                     effective_timeout or -1,
                     tostring(blocked_movement_started),
-                    tostring(blocked_movement_start_frame)))
+                    tostring(blocked_movement_start_frame),
+                    tostring(blocked_source)))
                 reset_active_step()
                 clear_route()
                 neutralize_direction(joy)
@@ -1034,6 +1194,7 @@ function M.update(can_walk)
                     inject_limit = blocked_inject_limit,
                     timeout = effective_timeout,
                     timing_suspect = timing_suspect_timeout,
+                    source = blocked_source,
                 }
                 event_bus.publish("route_blocked", block_data)
                 if M.on_blocked then
@@ -1176,7 +1337,7 @@ function M.update(can_walk)
                     -- Position didn't change — the tap was too short.
                     -- Start auto-holding this direction to complete the step.
                     if not refuse_hazard_step(tracked_dir, px, py, "manual_tap") then
-                        begin_step(tracked_dir, px, py)
+                        begin_step(tracked_dir, px, py, {source = "manual_tap"})
                         if DEBUG then tolk.output("auto-step " .. auto_dir) end
                     end
                 end
@@ -1206,7 +1367,7 @@ function M.inject_step(dir)
     if refuse_hazard_step(dir, px, py, "inject_step") then
         return false
     end
-    begin_step(dir, px, py)
+    begin_step(dir, px, py, {source = "inject_step"})
     return true
 end
 
@@ -1250,7 +1411,7 @@ function M.clear_route()
     clear_route()
 end
 
-function M.cancel_active_step(clear_queued_route)
+function M.cancel_active_step(clear_queued_route, force_release)
     reset_active_step()
     tracked_dir = nil
     press_start_x = nil
@@ -1258,6 +1419,10 @@ function M.cancel_active_step(clear_queued_route)
     post_step_release_frames = 0
     if clear_queued_route then
         clear_route()
+    end
+    if force_release then
+        neutralize_direction(read_joypad_safe())
+        start_post_step_release(true)
     end
 end
 

@@ -16,13 +16,24 @@ local function refresh_pathability_if_needed()
     end
 end
 
-local function describe_selected(opts)
+local function refresh_live_objects_for_browse()
+    if objects.update_npcs then
+        objects.update_npcs()
+    end
+end
+
+local function refresh_object_browser_context()
+    refresh_live_objects_for_browse()
     refresh_pathability_if_needed()
+end
+
+local function describe_selected(opts)
+    refresh_object_browser_context()
     return route_mgr.describe_current_object(opts)
 end
 
 local function speak_filter(prefix, opts)
-    refresh_pathability_if_needed()
+    refresh_object_browser_context()
     local count = objects.get_count()
     local label = objects.get_filter_summary and objects.get_filter_summary() or prefix
     if count > 0 then
@@ -99,7 +110,7 @@ end
 
 function M.register()
     debug_tools.register_command("next_object", function()
-        refresh_pathability_if_needed()
+        refresh_object_browser_context()
         local obj = objects.next_object()
         if obj then
             local desc = route_mgr.describe_current_object()
@@ -112,7 +123,7 @@ function M.register()
     end)
 
     debug_tools.register_command("prev_object", function()
-        refresh_pathability_if_needed()
+        refresh_object_browser_context()
         local obj = objects.prev_object()
         if obj then
             local desc = route_mgr.describe_current_object()
@@ -143,6 +154,7 @@ function M.register()
     debug_tools.register_command("pathability_filter", function(arg)
         local scope = (arg and arg:match("^%s*(.-)%s*$")) or ""
         local info, err
+        refresh_live_objects_for_browse()
         if scope == "" then
             info, err = route_mgr.next_object_pathability_filter()
         elseif scope:lower() == "refresh" then
@@ -186,12 +198,12 @@ function M.register()
     end)
 
     debug_tools.register_command("pathfind", function()
-        refresh_pathability_if_needed()
+        refresh_object_browser_context()
         route_mgr.pathfind_to_current()
     end)
 
     debug_tools.register_command("auto_walk", function()
-        refresh_pathability_if_needed()
+        refresh_object_browser_context()
         route_mgr.autowalk_to_current()
     end)
 

@@ -522,28 +522,28 @@ function tests.repeated_route_blocked_steps_stay_soft_until_verified()
         "normal path blocking should not include unverified route-only seam memory"
     )
     assert_equal(
-        env.route_manager.build_path_blocking(0x05, {include_unconfirmed_seams = true})["5,3"].south,
-        true,
-        "reroute-specific blocking can still avoid repeated soft seam failures"
+        env.route_manager.build_path_blocking(0x05, {include_unconfirmed_seams = true})["5,3"],
+        nil,
+        "unconfirmed seam memory should stay diagnostic even when callers request it"
     )
 
     env.restore()
 end
 
-function tests.verified_probe_can_promote_and_clear_runtime_block()
+function tests.manual_edge_command_can_promote_and_clear_runtime_block()
     local env = make_env()
 
-    env.route_manager.confirm_runtime_block_for_step(0x05, 5, 4, "up", "verified_probe")
+    env.route_manager.inject_runtime_block_for_step(0x05, 5, 4, "up", "manual_edge")
 
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
         1,
-        "verified probe consensus should be allowed to create a runtime block"
+        "manual edge confirmation should be allowed to create a runtime block"
     )
     assert_equal(
         env.route_manager.build_path_blocking(0x05)["5,3"].south,
         true,
-        "verified runtime block should appear in normal path blocking"
+        "manual edge runtime block should appear in normal path blocking"
     )
 
     env.route_manager.clear_runtime_block_for_step(0x05, 5, 4, "up", "verified_passable")
@@ -557,17 +557,17 @@ function tests.verified_probe_can_promote_and_clear_runtime_block()
     env.restore()
 end
 
-function tests.reroute_temporary_block_does_not_mutate_verified_runtime_dirs()
+function tests.reroute_temporary_block_does_not_mutate_manual_runtime_dirs()
     local env = make_env()
 
-    env.route_manager.confirm_runtime_block_for_step(0x05, 5, 4, "up", "verified_probe")
+    env.route_manager.inject_runtime_block_for_step(0x05, 5, 4, "up", "manual_edge")
     env.route_manager.autowalk_to_current()
     env.auto_step.on_blocked(6, 3, "left")
 
     local entries = env.route_manager.get_runtime_block_entries(0x05)
     assert_equal(#entries, 1, "route-only reroute should not create another hard runtime block")
-    assert_equal(entries[1].key, "5,3", "verified runtime block should remain on the original cell")
-    assert_equal(entries[1].dirs.south, true, "verified approach should remain recorded")
+    assert_equal(entries[1].key, "5,3", "manual runtime block should remain on the original cell")
+    assert_equal(entries[1].dirs.south, true, "manual approach should remain recorded")
     assert_equal(entries[1].dirs.east, nil, "temporary route-only approach should stay out of runtime blocks")
 
     env.restore()
@@ -590,6 +590,48 @@ function tests.repeated_manual_blocked_steps_do_not_promote_runtime_block()
         env.seam_summary(0x05).blocked_only,
         1,
         "manual blocked steps should remain diagnostic seam observations"
+    )
+
+    env.restore()
+end
+
+function tests.repeated_verified_probe_blocks_do_not_promote_runtime_block()
+    local env = make_env()
+
+    env.route_manager.record_seam_result_for_step(0x05, 5, 4, "up", "blocked", "verified_probe")
+    env.route_manager.record_seam_result_for_step(0x05, 5, 4, "up", "blocked", "verified_probe")
+    env.route_manager.record_seam_result_for_step(0x05, 5, 4, "up", "blocked", "verified_probe")
+
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "verified probe observations should stay diagnostic until a human promotes the edge"
+    )
+    assert_equal(
+        env.seam_summary(0x05).blocked_only,
+        1,
+        "verified probe blocks should still be visible in seam observations"
+    )
+
+    env.restore()
+end
+
+function tests.verified_probe_move_marks_prior_manual_blocks_noisy()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = false})
+    env.route_manager.record_seam_result_for_step(0x05, 5, 4, "up", "moved", "verified_probe_move")
+
+    assert_equal(
+        env.seam_summary(0x05).noisy,
+        1,
+        "a successful verifier move should make previous manual block evidence noisy"
+    )
+    assert_equal(
+        env.route_manager.build_path_blocking(0x05, {include_unconfirmed_seams = true})["5,3"],
+        nil,
+        "mixed verifier evidence should not become a soft reroute block"
     )
 
     env.restore()
@@ -1518,6 +1560,35 @@ function tests.autowalk_no_path_mentions_closed_door_hint()
     assert_contains(output, "No path found", "closed-door no-path should still report no path")
     assert_contains(output, "Route is blocked by a closed door", "closed-door no-path should include a recovery hint")
     assert_contains(output, "Get a magic key from a chest", "zero-key closed-door hint should point to the chest/key step")
+
+    env.restore()
+end
+
+function tests.autowalk_no_path_ignores_irrelevant_closed_door_hint()
+    local env = make_env({
+        pathfind_mode = "always_no_path",
+        current_object = {name = "Merchant 4", type = "npc", x = 8, y = 8},
+        closed_door_cells = {
+            ["5,3"] = true,
+        },
+        non_walkable_cells = {
+            ["5,3"] = true,
+            ["8,7"] = true,
+            ["8,9"] = true,
+            ["7,8"] = true,
+            ["9,8"] = true,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(output, "No path found", "irrelevant closed-door no-path should still report no path")
+    assert_not_contains(
+        output,
+        "Route is blocked by a closed door",
+        "closed-door hint should only appear when opening the door reaches the selected target"
+    )
 
     env.restore()
 end
