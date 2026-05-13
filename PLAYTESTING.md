@@ -1,19 +1,24 @@
 # Playtesting Notes
 
-Updated: 2026-05-12
+Updated: 2026-05-13
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
-- Object browsing now refreshes moving NPC positions on demand. The user
-  noticed Person 1 appeared to remain in place while the engine seemed to let
-  the hero pass or route around them. Live logs showed Person 1's NPC slot
-  moving between checks, while BizHawk's background periodic NPC refresh was
-  intentionally disabled to avoid hitching. `J`/`K`/`L`, filter announcements,
-  pathability filter, route guidance, path preview, and auto-walk now refresh
-  live NPC coordinates before speaking or planning. Periodic background refresh
-  remains off.
+- Object browsing now avoids full NPC-list rebuilds on plain browse/readout
+  keys under BizHawk. The first moving-NPC fix made Person 1 and other moving
+  NPCs track again, but calling `objects.update_npcs()` on `J`/`K`/`L` brought
+  back a 1.5-2 second emulator/audio freeze between object-browser presses.
+  `objects.describe_current()` now reads only the selected NPC slot live for
+  spoken direction/distance, while `J`/`K`/`L`, filter readouts, and
+  command-file object browsing skip the full rebuild. Route/planning actions
+  (`R`, `O`, `U`, `pathfind`, `auto_walk`) and explicit pathability refreshes
+  still refresh the full NPC list before planning. Live command-file browse
+  proof after reload produced object descriptions with no `CMD_TIMING` warning;
+  the user's focused physical `J`/`L` retest confirmed this brought the delay
+  down to a fraction of a second between hops. Treat this as a successful first
+  tuning pass unless the remaining small pause becomes a normal-play problem.
 
 - Brecconary Merchant 4 public access update: the user found a small walkable
   pocket at `(22,25)`/`(23,25)`. Fresh live evidence at `map=0x08` confirmed

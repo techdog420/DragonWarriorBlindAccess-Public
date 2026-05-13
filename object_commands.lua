@@ -22,8 +22,11 @@ local function refresh_live_objects_for_browse()
     end
 end
 
-local function refresh_object_browser_context()
-    refresh_live_objects_for_browse()
+local function refresh_object_browser_context(opts)
+    opts = opts or {}
+    if opts.refresh_live_npcs == true then
+        refresh_live_objects_for_browse()
+    end
     refresh_pathability_if_needed()
 end
 
@@ -198,12 +201,12 @@ function M.register()
     end)
 
     debug_tools.register_command("pathfind", function()
-        refresh_object_browser_context()
+        refresh_object_browser_context({refresh_live_npcs = true})
         route_mgr.pathfind_to_current()
     end)
 
     debug_tools.register_command("auto_walk", function()
-        refresh_object_browser_context()
+        refresh_object_browser_context({refresh_live_npcs = true})
         route_mgr.autowalk_to_current()
     end)
 

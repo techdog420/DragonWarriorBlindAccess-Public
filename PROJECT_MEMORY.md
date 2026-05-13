@@ -399,10 +399,11 @@ Emulator compatibility direction:
   movement data modeled for pathfinding, especially `(25,27).north` blocking
   exit back south.
 - On BizHawk, keep background periodic NPC refresh off by default to avoid
-  frame/audio hitches, but object browsing and object-route actions should
-  refresh live NPC coordinates on demand. Otherwise moving NPCs such as
-  Brecconary Person 1 can sound like static blockers because the object browser
-  is describing an old object-list snapshot.
+  frame/audio hitches. Plain object browsing should also avoid full
+  `objects.update_npcs()` rebuilds; instead, `objects.describe_current()` reads
+  only the selected NPC slot live so moving NPC directions update cheaply.
+  Reserve full NPC refresh for route/planning actions and explicit
+  pathability refreshes where current blockers matter.
 - Blocked-step, seam-memory, and `probe_edge_verify` results should remain
   diagnostics and should not automatically promote into pathfinding runtime
   blockers. The engine and input timing can produce convincing false blocker
@@ -466,7 +467,8 @@ Emulator compatibility direction:
   `bizhawk_periodic_npc_refresh=false` because live profiling showed background
   `objects.check_refresh` calls could spike around 1.7-2.0 seconds. Explicit
   route/path/debug commands still call `objects.update_npcs()` when they need
-  current live blockers.
+  current live blockers; plain browser keys should use selected-slot live reads
+  instead of a full list rebuild.
 - Accepted NPC RAM signatures for map-entry object refresh must survive
   BizHawk Lua reloads. `main.lua` clears `package.loaded["objects"]` on reload,
   so `objects.lua` stores accepted signatures in `_G.DW_OBJECTS_RELOAD_STATE`.

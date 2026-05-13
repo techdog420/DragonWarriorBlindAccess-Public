@@ -495,19 +495,19 @@ function tests.current_object_speaks_immediately_and_clears_pending_nav_speech()
     env.restore()
 end
 
-function tests.object_browse_hotkeys_refresh_live_npcs_on_demand()
+function tests.object_browse_hotkeys_do_not_rebuild_full_npc_list()
     local env = make_env({delay = 0})
 
     env.update({K = true})
-    assert_equal(env.live_npc_refresh_calls(), 1, "current-object readout should refresh moving NPC positions")
+    assert_equal(env.live_npc_refresh_calls(), 0, "current-object readout should not rebuild all moving NPC positions")
 
     env.update({})
     env.update({L = true})
-    assert_equal(env.live_npc_refresh_calls(), 2, "next-object browse should refresh moving NPC positions")
+    assert_equal(env.live_npc_refresh_calls(), 0, "next-object browse should not rebuild all moving NPC positions")
 
     env.update({})
     env.update({J = true})
-    assert_equal(env.live_npc_refresh_calls(), 3, "previous-object browse should refresh moving NPC positions")
+    assert_equal(env.live_npc_refresh_calls(), 0, "previous-object browse should not rebuild all moving NPC positions")
 
     env.restore()
 end

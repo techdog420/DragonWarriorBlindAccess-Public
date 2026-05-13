@@ -763,6 +763,28 @@ function tests.npc_occupancy_check_reads_live_ram_without_full_refresh()
     env.restore()
 end
 
+function tests.current_object_description_reads_live_npc_slot_without_full_refresh()
+    local env = make_env({is_bizhawk = true})
+
+    env.set_position(0x04, 10, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+    env.objects.next_filter()
+
+    env.set_npc(0, 0x2A, 0x08) -- x=10, y=8 with sprite type 1
+    assert_equal(env.objects.current_object().x, 5, "object list should stay stale before a refresh")
+    assert_equal(
+        env.objects.describe_current({include_debug_coords = false}),
+        "Guard: 1 north (1 of 1)",
+        "current-object speech should use the selected NPC slot's live position")
+    assert_equal(
+        env.objects.describe_current({include_debug_coords = false, use_live_npc = false}),
+        "Guard: 2 north, 5 west (1 of 1)",
+        "tests and debug callers can still opt into cached object-list coordinates")
+
+    env.restore()
+end
+
 function tests.npc_selected_teleport_landing_uses_adjacent_cell()
     local env = make_env({
         walkable_tiles = {
@@ -967,8 +989,8 @@ function tests.talk_visit_marker_uses_live_npc_ram_when_object_list_position_is_
     assert_equal(env.objects.is_visited(obj, 0x04), true, "visited flag should apply to the cached object with the same NPC slot id")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (visited): 2 north, 5 west (1 of 1)",
-        "stale cached object should show visited once its live slot was marked")
+        "Guard (visited): 1 north (1 of 1)",
+        "visited object speech should use the live selected NPC slot")
 
     env.restore()
 end

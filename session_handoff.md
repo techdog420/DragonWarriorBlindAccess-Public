@@ -1,22 +1,36 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-12
+Updated: 2026-05-13
 
 ## Active Resume
 
-Object-browser moving-NPC follow-up: Person 1 looked like a static blocker
-from the player's side, but live `report_npcs` showed the NPC slot moving while
-the object browser could still be speaking an older object-list snapshot under
-BizHawk. `hotkeys.lua` and `object_commands.lua` now refresh live NPC positions
-on explicit object browse/readout/route actions (`J`/`K`/`L`, filters,
-pathability filter, `R`, `O`, and `U`) without re-enabling background periodic
-NPC refresh. Background `bizhawk_periodic_npc_refresh` remains off; this is an
-on-demand refresh so moving NPCs do not sound pinned in old positions.
-Validation passed with `luac -p hotkeys.lua object_commands.lua
-test_hotkeys.lua` and `lua test_hotkeys.lua` (27 tests). Live reload proof:
-`LAUNCHER_PROBE: npc_browse_live_refresh_reload` at
-`POSITION: map=0x08(Brecconary) x=27 y=22`; a post-reload NPC filter readout
-reported Merchant 4 with the corrected `(23,25)` counter stand.
+Object-browser moving-NPC performance follow-up: the previous on-demand fix
+kept moving NPCs fresh by calling `objects.update_npcs()` on plain browse keys,
+but that brought back the old BizHawk hitch: switching objects could freeze
+emulation and audio for about 1.5-2 seconds. `J`/`K`/`L`, filter readouts, and
+command-file `next_object`/`prev_object`/`current_object` no longer rebuild the
+full object list. Instead, `objects.describe_current()` reads only the selected
+NPC slot live when forming the spoken description, so moving NPC directions can
+update without paying for a full browser rebuild. Full NPC refresh is still
+kept for route/planning actions (`R`, `O`, `U`, `pathfind`, `auto_walk`) and
+the explicit pathability filter refresh, where current blockers matter more
+than instant browse responsiveness.
+
+Validation for this tuning passed:
+`luac -p hotkeys.lua object_commands.lua objects.lua test_hotkeys.lua
+test_objects.lua`, `lua test_hotkeys.lua` (27 tests), `lua test_objects.lua`
+(43 tests), and `git diff --check`. Live BizHawk proof: launched via
+`./launch_dw.sh --no-wait`, accepted `LAUNCHER_PROBE:
+codex_object_browser_tune` at frame 30000, then a command-file browse sample at
+frame 30720 (`reset_scan_stats`, `next_object`, `next_object`, `prev_object`,
+`current_object`, `report_scan_stats`) produced object descriptions with no
+`CMD_TIMING` warning. `report_scan_stats` showed no scan-profile sample because
+profiling was not recording; the important quick check is that the command
+handlers did not cross the 25 ms timing threshold. User-focused retest: this
+brought the object-browser hop delay down from a 1.5-2 second emulator/music
+freeze to a fraction of a second between hops. This is a successful first
+tuning pass; remaining work is optional polish only if the smaller pause still
+feels disruptive during normal play.
 
 Latest Merchant 4 public access update: the user found a small walkable pocket
 at `(22,25)`/`(23,25)` with an access node one tile east of the player. Fresh

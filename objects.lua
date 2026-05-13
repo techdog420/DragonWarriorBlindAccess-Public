@@ -1799,6 +1799,9 @@ function M.describe_current(opts)
     end
 
     local obj = filtered_list[current_index]
+    if opts.use_live_npc ~= false then
+        obj = live_npc_object(obj, opts.map_id)
+    end
     local desc = M.describe_object(obj)
     local with_count = desc .. " (" .. current_index .. " of " .. #filtered_list .. ")"
     if opts.include_debug_coords == false then

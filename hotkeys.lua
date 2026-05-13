@@ -177,8 +177,11 @@ local function refresh_live_objects_for_browse()
     end
 end
 
-local function refresh_object_browser_context()
-    refresh_live_objects_for_browse()
+local function refresh_object_browser_context(opts)
+    opts = opts or {}
+    if opts.refresh_live_npcs == true then
+        refresh_live_objects_for_browse()
+    end
     refresh_pathability_if_needed()
 end
 
@@ -980,7 +983,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- R key (default): Start or check curated route guidance for the
         -- selected destination. This keeps O as a plain heading/path preview.
         if route_guidance_key_pressed(keys) then
-            refresh_object_browser_context()
+            refresh_object_browser_context({refresh_live_npcs = true})
             speak_route_guidance()
         end
 
@@ -991,7 +994,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- that physically block tiles along the way.
         if not pathability_filter_handled and is_key_pressed(keys, config.get("key_pathfind")) then
             clear_object_nav_speech()
-            refresh_object_browser_context()
+            refresh_object_browser_context({refresh_live_npcs = true})
             route_mgr.pathfind_to_current()
         end
 
@@ -1000,7 +1003,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- so the player actually walks it on interior maps.
         if is_key_pressed(keys, config.get("key_auto_walk")) then
             clear_object_nav_speech()
-            refresh_object_browser_context()
+            refresh_object_browser_context({refresh_live_npcs = true})
             route_mgr.autowalk_to_current()
         end
 
