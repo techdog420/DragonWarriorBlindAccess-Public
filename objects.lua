@@ -858,6 +858,13 @@ local EXTRA_DOORS = {
 }
 
 local SERVICE_INTERACTION_OVERRIDES = {
+    -- Tantegel Castle MP-restoring Sage. The NPC occupies (20,26), but the
+    -- live TALK trigger works from the public west-side stand at (18,26)
+    -- while facing east across the counter/seam.
+    [0x04] = {
+        ["20,26"] = {x = 18, y = 26, face_dir = "east", label = "counter", name = "Sage"},
+    },
+
     -- Brecconary weapon/armor shop. The keeper occupies (5,4), but TALK opens
     -- the shop from the doorway/counter square at (5,6) while facing north.
     -- The inn can be opened from the public west-side stand tile at (8,21)
@@ -875,10 +882,11 @@ local SERVICE_INTERACTION_OVERRIDES = {
 }
 
 local SERVICE_ROLE_OVERRIDES = {
-    -- User-validated Tantegel Castle MP restoration service. This NPC routes
-    -- like a normal adjacent NPC, but should appear in Services.
+    -- User-validated Tantegel Castle MP restoration service. The interaction
+    -- stand is modeled in SERVICE_INTERACTION_OVERRIDES above.
     [0x04] = {
         names = {
+            ["Merchant 3"] = {name = "Magic Key Merchant", infer_counter = true},
             ["Old Man 2"] = {name = "Sage", infer_counter = false},
         },
         cells = {
@@ -900,6 +908,13 @@ local SERVICE_ROLE_OVERRIDES = {
 }
 
 local SERVICE_EXCLUSIONS = {
+    -- Tantegel Castle Merchants 1 and 2 only offer dialogue. Keep them
+    -- browsable under NPCs, but keep Services focused on actual shops.
+    [0x04] = {
+        ["Merchant 1"] = true,
+        ["Merchant 2"] = true,
+    },
+
     -- Brecconary Merchant 1 only gives ordinary dialogue, so keep him in NPCs
     -- but out of the Services filter.
     [0x08] = {

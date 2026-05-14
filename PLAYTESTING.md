@@ -9,18 +9,64 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 - Tantegel Castle Sage service: the user manually confirmed Old Man 2 restores
   MP, and external guide/map notes agree that the castle wise man restores MP.
   `objects.lua` now labels the NPC at `(20,26)` as `Sage` and includes him in
-  Services; live reload proof after `LAUNCHER_PROBE:
-  codex_sage_service_reload` shows `NPC_SLOT ... name=Sage x=20 y=26
-  service=true`. The route issue is not live NPC clutter: from castle entrance
-  positions `(11,29)` and `(12,29)`, `debug_pathfind_adjacent_skip_npcs:20,26`
-  still reports `No path found`, while the reverse check from `(20,25)` to the
-  exit object `(11,29)` succeeds in 12 steps via `(20,26)->...->(12,29)`.
-  Raw verifier proof supports keeping the south-gate blockers:
-  `(16,29)->UP`, `(17,29)->UP`, `(18,29)->UP`, `(19,29)->UP`, and
-  `(19,29)->RIGHT` are confirmed blocked. If entrance-to-Sage routing remains
-  a required service route, the next pass should look for an alternate public
-  approach or an over-modeled static blocker elsewhere, not reopen those
-  confirmed south-gate seams.
+  Services. The usable interaction stand is not adjacent to the NPC: live TALK
+  proof from `(18,26)` facing east opened Sage dialogue, and post-reload
+  Services output now says `Sage: 2 east, counter here ... obj 20,26 interact
+  18,26`. From `(12,29)`, the locator describes that stand as `counter 3
+  north, 6 east`. The route is NPC-sensitive but now good enough for play: after
+  the `(20,20)` correction below, the user confirmed a successful
+  entrance-to-Sage route, and the return route can also open when live NPCs are
+  not in the way. The stale full-block override was corrected after raw probes
+  showed
+  `(20,20)` is standable and open north/south/west, while `(20,20)->RIGHT`
+  into `(21,20)` is blocked one-way. After reload, `(20,20)` inspects as
+  passable, `(20,20)->RIGHT` inspects as directionally blocked, and
+  `(21,20)->LEFT` remains passable. From the Sage stand,
+  `debug_pathfind_adjacent:11,29` now finds a 37-step route to the
+  exit-adjacent tile; skip-NPC path debug finds a 29-step route.
+  Raw verifier proof still supports keeping the south-gate blockers
+  `(16,29)->UP`,
+  `(17,29)->UP`, `(18,29)->UP`, `(19,29)->UP`, and `(19,29)->RIGHT` closed. Do
+  not reopen those confirmed south-gate seams just to force shorter routes.
+  Guide cross-checks point away from the Sage being locked-door-gated: the
+  locked-door notes are for the Magic Key shop and Stones of Sunlight route,
+  while the MP-restoring old man is described as a main-floor service. The user
+  also found `(18,27)->DOWN` blocked; `probe_edge_verify:18,27,DOWN,5`
+  confirmed 5/5 blocked into `(18,28)`, so that north approach is now modeled
+  as a directional blocker. This was part of the Sage-route cleanup rather than
+  a locked-door-gating issue.
+  Additional verifier checks found `(17,27)->DOWN` blocked 5/5 and it is now
+  modeled as `(17,28).north`; `(17,27)->LEFT` blocked 5/5 but was already
+  covered by `(16,27)` being a full blocked-cell override. A first
+  `(18,27)->RIGHT` verifier had looked passable, but the later clean-state
+  recheck matched the user's manual observation: two fresh verifier runs stayed
+  blocked 5/5, so `(19,27).west` is now modeled too. After reload,
+  `inspect_move:17,27,DOWN` and `inspect_move:18,27,RIGHT` both report their
+  new directional blockers as effective.
+  The same follow-up confirmed `(18,26)->RIGHT` into `(19,26)` blocked 5/5 twice
+  with clean menu/input state, so `(19,26).west` is now modeled; after reload,
+  `inspect_move:18,26,RIGHT` reports the blocker as effective.
+  The next reroute exposed `(18,25)->RIGHT` into `(19,25)`, which also verified
+  blocked 5/5 twice. `(19,25).west` is now modeled; after reload,
+  `inspect_move:18,25,RIGHT` reports the blocker as effective. The later
+  `(20,20)` correction supersedes the old Sage-stand-to-exit no-path result,
+  and the user later confirmed the entrance-side Sage route can succeed when
+  live NPC traffic cooperates.
+  Castle entrance to `Stairs Up to Tantegel Castle Throne Room` was noisy
+  because the planner tried false north entries from `(12,29)` and `(13,29)`;
+  both verified blocked 5/5 and are now modeled as `(12,28).south` and
+  `(13,28).south`. Current evidence does not show a working public route from
+  the south entrance side to that return stair; after the false entries are
+  closed, post-reload path debug from `(12,29)` reports clean `No path found`
+  instead of a noisy autowalk failure.
+  Merchant cleanup: the user confirmed Tantegel Castle Merchants 1 and 2 only
+  offer dialogue, so they remain browsable as NPCs but are removed from
+  Services. Merchant 3 sells Magic Keys and is now labeled `Magic Key Merchant`
+  in Services. Follow-up research confirmed Merchant 3 cannot be accessed yet,
+  likely because the route is locked-door gated; wait until keys/doors are in
+  play before treating a failed route to him as missing map data. With the Sage
+  and public services handled, Tantegel Castle is clean enough to leave for now
+  and the next playtest focus is the next town.
 
 - Strategic map-completion pivot after Merchant 4: stop treating perfect map
   truth as the immediate bar. For the next maps, first establish reliable

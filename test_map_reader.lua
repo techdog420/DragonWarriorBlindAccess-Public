@@ -387,17 +387,27 @@ function tests.tantegel_castle_south_pocket_false_blocks_are_open()
         false,
         "(14,20) should remain directional-only rather than permanently blocked"
     )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 20, 20),
+        false,
+        "(20,20) should remain standable after raw probes crossed it from multiple sides"
+    )
 
     local seam_a = env.map_reader.get_walkability_details(0x04, 13, 24)
     local seam_b = env.map_reader.get_walkability_details(0x04, 14, 20)
+    local seam_c = env.map_reader.get_walkability_details(0x04, 20, 20)
     assert_equal(seam_a.permanent_blocked, false, "(13,24) should not be marked permanently blocked after stale-block removal")
     assert_equal(seam_b.permanent_blocked, false, "(14,20) should not be marked permanently blocked after stale-block removal")
+    assert_equal(seam_c.permanent_blocked, false, "(20,20) should not be marked permanently blocked after 2026-05-14 retest")
 
     local dirs = env.map_reader.get_directional_blocks(0x04)
     assert_equal(dirs["12,19"].south, true, "(12,19) should block south approach after the restored run-4 evidence")
     assert_equal(dirs["12,19"].east, true, "(12,19) should keep its east-side blocker until directly disproved")
     assert_equal(dirs["13,24"].west, true, "(13,24) should block west approach after repeated live repros from (12,24)")
+    assert_equal(dirs["13,24"].east, true, "(13,24) should block east approach after raw verifier proof from (14,24)")
     assert_equal(dirs["14,20"].west, true, "(14,20) should block west approach after repeated live repros")
+    assert_equal(dirs["21,20"].west, true, "(21,20) should block west approach after raw probe from (20,20)")
+    assert_equal(dirs["20,20"], nil, "(20,20) should not keep stale directional approach blocks after passable reverse probes")
     assert_equal(dirs["12,16"].east, true, "(12,16) should block east approach after repeated live repros from (13,16)")
     assert_equal(dirs["12,16"].north, true, "(12,16) should keep its north-side blocker")
     assert_equal(dirs["6,13"].east, true, "(6,13) should block east approach after repeated direct seam repros from (7,13)")
@@ -439,9 +449,16 @@ function tests.tantegel_castle_south_gate_exit_wall_blocks_are_modeled()
     local dirs = env.map_reader.get_directional_blocks(0x04)
     assert_equal(dirs["16,28"].south, true, "(16,28) should block south approach after direct UP probe from (16,29)")
     assert_equal(dirs["17,28"].south, true, "(17,28) should block south approach after direct UP probe from (17,29)")
+    assert_equal(dirs["17,28"].north, true, "(17,28) should block north approach after raw DOWN verifier from (17,27)")
     assert_equal(dirs["18,28"].south, true, "(18,28) should block south approach after direct UP probe from (18,29)")
+    assert_equal(dirs["18,28"].north, true, "(18,28) should block north approach after raw DOWN verifier from (18,27)")
+    assert_equal(dirs["19,25"].west, true, "(19,25) should block west approach after clean-state raw RIGHT verifier from (18,25)")
+    assert_equal(dirs["19,26"].west, true, "(19,26) should block west approach after clean-state raw RIGHT verifier from (18,26)")
+    assert_equal(dirs["19,27"].west, true, "(19,27) should block west approach after clean-state raw RIGHT verifier from (18,27)")
     assert_equal(dirs["19,28"].south, true, "(19,28) should block south approach after direct UP probe from (19,29)")
     assert_equal(dirs["20,29"].west, true, "(20,29) should block west approach after direct RIGHT probe from (19,29)")
+    assert_equal(dirs["12,28"].south, true, "(12,28) should block south approach after raw UP verifier from (12,29)")
+    assert_equal(dirs["13,28"].south, true, "(13,28) should block south approach after raw UP verifier from (13,29)")
     env.restore()
 end
 

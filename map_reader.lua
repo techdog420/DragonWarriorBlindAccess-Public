@@ -674,11 +674,11 @@ local MAP_BLOCKED_CELLS = {
         -- y=24: room divider confirmed impassable from all sides
         ["19,24"] = true, ["20,24"] = true, ["21,24"] = true, ["22,24"] = true,
         -- South-east hall corner near the merchant wing.
-        -- Empirically confirmed 2026-03-23: from (20,19), both east->(21,19)
-        -- and south->(20,20) fail live movement despite tile=6, walkable=true,
-        -- npc_blocked=false, runtime_blocked=false. Block them so A* does not
-        -- route through hidden engine-collision cells in this corner.
-        ["14,19"] = true, ["20,20"] = true, ["21,19"] = true,
+        -- Empirically confirmed 2026-03-23: from (20,19), east->(21,19)
+        -- fails live movement despite tile=6, walkable=true, npc_blocked=false,
+        -- runtime_blocked=false. Retest on 2026-05-14 proved (20,20) is a
+        -- standable crossing tile; only its east exit is modeled directionally.
+        ["14,19"] = true, ["21,19"] = true,
         -- South-central hall hidden barriers.
         -- Empirically confirmed 2026-03-24 during validate_path recheck:
         -- (15,18)->(15,19) and (17,20)->(17,21) both fail live movement even
@@ -981,6 +981,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- from east (going west). West approach (going east from (20,17)) is engine-blocked.
         -- With (21,18) and (21,19) already full-blocked, east wing is entered via y≤16 only.
         ["21,17"] = {west = true},
+        -- 2026-05-14 southeast hall retest: (20,20) is standable and raw probes
+        -- crossed north/south/west plus reverse east. Only (20,20)->RIGHT into
+        -- (21,20) blocked, so model the west approach to (21,20) one-way.
+        ["21,20"] = {west = true},
         -- (7,3) south=true: engine blocks northward entry from (7,4).
         -- Confirmed 2026-04-22 probe_edge:UP from (7,4) → blocked_despite_open_preview.
         -- (7,3) exits south to (7,4) freely; only entry from below is blocked.
@@ -1005,8 +1009,26 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- were cleared, then split direct probes from each adjacent start all
         -- logged EDGE_PROBE_MODEL_MISMATCH blocked_despite_open_preview.
         ["16,28"] = {south = true},
-        ["17,28"] = {south = true},
-        ["18,28"] = {south = true},
+        -- 2026-05-14 Sage-route follow-up: user reported (17,27)->DOWN
+        -- blocked; probe_edge_verify confirmed 5/5 raw holds stayed at
+        -- (17,27). Keep (17,28) standable but close the north approach too.
+        ["17,28"] = {south = true, north = true},
+        -- 2026-05-14 Sage-route follow-up: user reported (18,27)->DOWN
+        -- blocked; probe_edge_verify confirmed 5/5 raw holds stayed at
+        -- (18,27). Keep (18,28) standable but close the north approach too.
+        ["18,28"] = {south = true, north = true},
+        -- 2026-05-14 Sage-route follow-up: an earlier verifier had reported
+        -- (18,27)->RIGHT passable, but a later clean-state recheck plus a
+        -- repeat after clear_input/cleared seam memory both stayed blocked
+        -- 5/5. Treat the earlier passable result as contaminated.
+        -- (18,26)->RIGHT into (19,26) later showed the same early-twitch
+        -- pattern and verified blocked 5/5 twice, so close that west approach
+        -- too while keeping the counter stand at (18,26) usable.
+        -- (18,25)->RIGHT into (19,25) then verified blocked 5/5 twice after
+        -- the return route rerouted north, so close that west approach too.
+        ["19,25"] = {west = true},
+        ["19,26"] = {west = true},
+        ["19,27"] = {west = true},
         ["19,28"] = {south = true},
         ["20,29"] = {west = true},
         -- Throne-room north-entry seams confirmed 2026-04-24 after full Lua reload.
@@ -1083,9 +1105,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (13,20)->(14,20) failed twice live with no reroute contamination, so
         -- promote that seam to a directional west-side engine block.
         -- (12,24)->(13,24) blocked twice live on 2026-04-12 after runtime
-        -- clears, so keep this south-pocket seam closed from the west side.
+        -- clears. 2026-05-14 raw verifier also confirmed (14,24)->LEFT
+        -- into (13,24) blocked 5/5, so keep both horizontal approaches closed.
         ["12,19"] = {east = true, south = true},
-        ["13,24"] = {west = true},
+        ["13,24"] = {west = true, east = true},
         -- (14,20): north is a wall tile (14,19 in MAP_BLOCKED_CELLS); west/south/east all engine-blocked.
         -- west: (13,20)→(14,20) confirmed 2026-04-14 runtime; south: probe from (14,21) north BLOCKED 2026-04-15;
         -- east: probe from (15,20) west BLOCKED 2026-04-15. Dead-end alcove; unreachable from all live sides.
@@ -1094,8 +1117,14 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- north: probe from (15,20) south BLOCKED 2026-04-15; south: probe from (15,22) north BLOCKED 2026-04-15.
         -- One-way entry from west only (14,21 → 15,21 passable).
         ["15,21"] = {north = true, south = true},
-        -- (12,28): west: run1 count=1 medium; north: auto_step:down from (12,27) 3/3 retry fail + probe confirm 2026-04-15.
-        ["12,28"] = {west = true, north = true},
+        -- (12,28): west: run1 count=1 medium; north: auto_step:down from
+        -- (12,27) 3/3 retry fail + probe confirm 2026-04-15. South approach
+        -- added 2026-05-14 after the castle entrance -> throne-room stair route
+        -- repeatedly tried (12,29)->UP; probe_edge_verify confirmed 5/5 blocked.
+        ["12,28"] = {west = true, north = true, south = true},
+        -- (13,28).south added 2026-05-14 from the same stair-route failure:
+        -- (13,29)->UP verified 5/5 blocked after the route rerouted east.
+        ["13,28"] = {south = true},
     },
 
     -- Map 0x05: Tantegel Castle Throne Room

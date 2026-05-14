@@ -1268,7 +1268,9 @@ function tests.tantegel_castle_sage_service_is_labeled()
 
     assert_equal(sage ~= nil, true, "Old Man 2 should be labeled as Sage")
     assert_equal(sage.service, true, "Sage should appear in Services")
-    assert_equal(sage.interaction_x, nil, "Sage should route as an adjacent NPC")
+    assert_equal(sage.interaction_x, 18, "Sage should use the live-confirmed west-side interaction stand")
+    assert_equal(sage.interaction_y, 26, "Sage interaction stand should stay on the counter row")
+    assert_equal(sage.interaction_face_dir, "east", "Sage interaction should face east toward the NPC")
 
     env.objects.next_filter() -- NPCs
     env.objects.next_filter() -- Services
@@ -1278,6 +1280,58 @@ function tests.tantegel_castle_sage_service_is_labeled()
     end
     local service_text = table.concat(service_names, ", ")
     assert_equal(service_text:find("Sage", 1, true) ~= nil, true, "Services should include Sage")
+
+    env.restore()
+end
+
+function tests.tantegel_castle_dialogue_merchants_stay_out_of_services()
+    local env = make_env({npc_count = 3})
+
+    env.set_position(0x04, 12, 29)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 6, 0x16, 0x00)   -- Merchant 1, dialogue-only
+    env.set_npc(1, 0x60 + 5, 0x12, 0x00)   -- Merchant 2, dialogue-only
+    env.set_npc(2, 0x60 + 24, 0x01, 0x00)  -- Merchant 3, magic-key seller
+    env.objects.refresh(0x04)
+
+    local merchant1 = nil
+    local merchant2 = nil
+    local key_merchant = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Merchant 1" then
+            merchant1 = obj
+        elseif obj.name == "Merchant 2" then
+            merchant2 = obj
+        elseif obj.name == "Magic Key Merchant" then
+            key_merchant = obj
+        end
+    end
+
+    assert_equal(merchant1 ~= nil, true, "Dialogue-only Merchant 1 should stay browsable as an NPC")
+    assert_equal(merchant1.service, false, "Dialogue-only Merchant 1 should not appear in Services")
+    assert_equal(merchant2 ~= nil, true, "Dialogue-only Merchant 2 should stay browsable as an NPC")
+    assert_equal(merchant2.service, false, "Dialogue-only Merchant 2 should not appear in Services")
+    assert_equal(key_merchant ~= nil, true, "Merchant 3 should be labeled as Magic Key Merchant")
+    assert_equal(key_merchant.service, true, "Magic Key Merchant should remain in Services")
+
+    env.objects.next_filter() -- NPCs
+    local npc_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        npc_names[#npc_names + 1] = obj.name
+    end
+    local npc_text = table.concat(npc_names, ", ")
+    assert_equal(npc_text:find("Merchant 1", 1, true) ~= nil, true, "NPCs should include Merchant 1")
+    assert_equal(npc_text:find("Merchant 2", 1, true) ~= nil, true, "NPCs should include Merchant 2")
+
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Merchant 1", 1, true), nil, "Services should omit dialogue-only Merchant 1")
+    assert_equal(service_text:find("Merchant 2", 1, true), nil, "Services should omit dialogue-only Merchant 2")
+    assert_equal(service_text:find("Magic Key Merchant", 1, true) ~= nil, true, "Services should include Magic Key Merchant")
 
     env.restore()
 end
