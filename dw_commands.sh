@@ -90,7 +90,8 @@
 #
 # ── Edge probe commands ──────────────────────────────────────────────
 #   probe_edge:DIR              Probe one step in DIR from current position;
-#                               records whether the engine allows movement and logs result
+#                               holds raw input, records whether the engine allows movement,
+#                               and bypasses auto-step timing
 #                               DIR: UP/DOWN/LEFT/RIGHT
 #   probe_edge:X,Y,DIR          Same but from explicit coordinates (must be standing there)
 #   stop_probe_edge             Cancel an active edge probe

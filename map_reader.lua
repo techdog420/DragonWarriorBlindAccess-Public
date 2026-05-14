@@ -432,15 +432,23 @@ local MAP_PASSTHROUGH_CELLS = {
         -- as type-0/non-walkable, but 2026-05-12 manual movement and logs
         -- repeatedly crossed (20,25)<->(20,26) in both directions.
         ["20,26"] = true,
-        -- Merchant 4 lower-west bridge toward the public stand. The ROM
-        -- decodes (17,25) as type-0/non-walkable, but 2026-05-13 edge
-        -- verifier moved (16,25)->RIGHT into (17,25) 3/3 times.
+        -- East-west corridor near Merchant 4 tracking. Older trap-cell data
+        -- kept this pathfinder-forbidden, but 2026-05-14 manual movement and
+        -- raw verifier proof crossed into (17,22) from both (16,22) and
+        -- (18,22). Keep it explicitly walkable so the model matches the
+        -- engine-passable corridor.
+        ["17,22"] = true,
+        -- Merchant 4 lower-west bridge candidate. The ROM decodes (17,25) as
+        -- type-0/non-walkable, and it remains modeled as a standable
+        -- passthrough so other approaches can be investigated. A later
+        -- 2026-05-14 route/probe pass superseded the older noisy open result:
+        -- (16,25)->RIGHT into (17,25) blocks from the west approach.
         ["17,25"] = true,
         -- Merchant 4 public-side false walls. Fresh 2026-05-12 edge verifier
-        -- evidence moved (22,26)->RIGHT into (23,26) 5/5 times. A 2026-05-13
-        -- return-route verifier then moved (22,26)->LEFT into (21,26) 3/3
-        -- times, giving the public stand a way back out around the one-way
-        -- (22,25)->LEFT blocker.
+        -- evidence moved (22,26)->RIGHT into (23,26) 5/5 times. (21,26)
+        -- remains standable for alternate approaches, but a later 2026-05-14
+        -- retest superseded the older return-route evidence: entering it
+        -- from (22,26)->LEFT blocks from the east approach.
         ["21,26"] = true,
         ["23,26"] = true,
         -- Merchant 4 east-side false wall. Edge verifier confirmed
@@ -452,6 +460,12 @@ local MAP_PASSTHROUGH_CELLS = {
         -- (22,23) and (22,23)->DOWN back into (22,24). Leaving it as a wall
         -- strands the player in a pocket with no reachable objects.
         ["22,24"] = true,
+        -- Old Man 2 / Curse Remover public approach. The ROM decodes (24,12)
+        -- as a wall, but 2026-05-14 manual movement and logs crossed
+        -- (24,13)->UP into (24,12), (24,12)->UP into (24,11), and
+        -- (24,11)->DOWN back into (24,12). This opens the real public TALK
+        -- stand south of Old Man 2 at (24,10).
+        ["24,12"] = true,
         ["8,18"] = true,
         ["8,19"] = true,
         ["9,18"] = true,
@@ -781,11 +795,10 @@ local MAP_BLOCKED_CELLS = {
         -- teleport-normalized start confirmed UP/LEFT/DOWN all block despite
         -- open previews. RIGHT is already a wall tile, so keep A* out entirely.
         ["18,17"] = true,
-        -- East-center one-way/trap cell. The 2026-04-26 parked survey entered
-        -- (17,22) from the west, then LEFT/RIGHT/DOWN direct probes all blocked
-        -- despite open previews; a raw LEFT hold also stayed pinned. NORTH is a
-        -- wall tile, so keep A* out entirely instead of routing into the trap.
-        ["17,22"] = true,
+        -- Superseded 2026-05-14: the older (17,22) trap-cell note was stale.
+        -- Manual movement and raw edge verification now prove the east-west
+        -- corridor through (17,22) is engine-passable from both sides, so keep
+        -- it out of the permanent blocker list.
         -- Weapon-shop service pockets. 2026-05-06 merchant-to-exit auto-walk
         -- first proved the east pocket at (6,4)/(6,5) has no usable exit, then
         -- follow-up routing from (4,4)/(5,5) proved the west/south talk squares
@@ -1181,10 +1194,22 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- NE/southeast corridor north wall band.
         ["21,9"] = {north = true},
         ["22,9"] = {north = true},
-        ["23,9"] = {north = true},
+        ["23,9"] = {north = true, east = true, south = true},
         ["24,9"] = {north = true},
-        ["25,9"] = {north = true},
+        ["25,9"] = {north = true, west = true},
         ["26,9"] = {north = true, east = true},
+        -- 2026-05-13 Old Man 2 / Curse Remover adjacent-cell trap pass:
+        -- raw teleport can place the hero on TALK-adjacent cells around
+        -- (24,10), but the west and north landings have directional trap
+        -- edges. Keep these as directional edges so diagnostics can still
+        -- distinguish the engine-enterable cells from ordinary walls, while
+        -- selected-object teleport and A* avoid false "back out" routes.
+        -- Manual follow-up corrected the noisy south landing: (24,11) and
+        -- (24,12) are vertically passable and form the public path to Old
+        -- Man 2's TALK stand.
+        ["24,8"] = {south = true},
+        ["22,10"] = {east = true},
+        ["23,10"] = {north = true, west = true},
         -- West-pocket gate into the west-side exit corridor. 2026-05-07
         -- BizHawk playtest: auto-walk from Merchant 2 toward the world-map
         -- exit routed through (5,13)->LEFT, timed out, published
@@ -1292,6 +1317,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["28,17"] = {east = true, north = true},
         ["15,28"] = {north = true, west = true},
         ["16,27"] = {north = true, west = true},
+        -- Merchant 4 lower-west bridge candidate. 2026-05-14 live route
+        -- failure plus raw probe_edge_verify from (16,25) confirmed
+        -- (16,25)->RIGHT into (17,25) blocked 3/3 with
+        -- reason=raw_hold_timeout. Keep (17,25) itself as a passthrough, but
+        -- close the west approach so A* stops routing through this seam.
+        ["17,25"] = {west = true},
         -- Merchant 4 counter movement seam. The raw large-tile trigger at
         -- (24,25) and the public stand at (23,25) can both open the tool shop
         -- while facing east, but walking across the seam is still blocked:
@@ -1345,6 +1376,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (22,26) is hard engine-blocked. Keep only the confirmed south exit
         -- closed here; east/west around this cluster is still unverified.
         ["22,27"] = {north = true},
+        -- Return-route retry from the public stand repeatedly failed at
+        -- (22,26)->LEFT into (21,26), then manual movement confirmed the same
+        -- blocked seam. Keep (21,26) standable, but close its east approach.
+        ["21,26"] = {east = true},
         -- Same public-route frontier. The user manually verified
         -- (22,25)->LEFT into (21,25) as hard engine-blocked, and the live log
         -- recorded repeated manual blocks on map 0x08 while leaving runtime

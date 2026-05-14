@@ -1,8 +1,115 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-13
+Updated: 2026-05-14
 
 ## Active Resume
+
+Strategic map-completion pivot after the Merchant 4 push: do not spend the
+next phase trying to make every map perfectly decoded before play can continue.
+Prioritize viable paths to merchants, inns, exits, stairs, locked doors,
+chests, and other essential services. Leave unreachable dialogue-only NPCs for
+the polishing phase unless they provide a progression clue, required hint, or
+other gameplay-critical information.
+
+Latest manual validation closes the Brecconary pass for now. The user tested
+all essential services, and routes both to and from the town entrance pass in
+normal play. The remaining unreachable NPCs were manually chatted up; a couple
+give clues, but none are required for game progression. Treat Brecconary
+`map=0x08` as service-complete and do not resume broad blocker hunting there
+unless normal play exposes a required route failure. Next focus is back in the
+first castle / Tantegel area: a guide mentioned a sage who can restore MP, so
+verify that service/object, route to it, and route back before moving forward in
+game progression or broader mapping.
+
+Tantegel Castle Sage follow-up: the user confirmed Old Man 2 restores MP.
+`objects.lua` now labels the castle Old Man 2 at `(20,26)` as `Sage` and keeps
+him in the Services filter. Live reload proof after `LAUNCHER_PROBE:
+codex_sage_service_reload`: `report_npcs` logged `NPC_SLOT ... name=Sage
+x=20 y=26 service=true` while the hero was restored to `(20,25)`. The current
+route failure from castle entrance to Sage is not NPC clutter: from `(11,29)`,
+normal `debug_pathfind_adjacent:20,26` reports no path; the new
+`debug_pathfind_adjacent_skip_npcs:20,26` also reports no path with
+`RUNTIME_BLOCKS map=0x04 none`. From the standable exit-adjacent tile
+`(12,29)`, the skip-NPC check still reports no path. The reverse route from
+Sage side remains valid: from `(20,25)`,
+`debug_pathfind_adjacent_skip_npcs:11,29` chooses `(12,29)` with a 12-step path
+and `Face west`. Raw verifier proof supports the south-gate blockers rather
+than reopening them: `(16,29)->UP`, `(17,29)->UP`, `(18,29)->UP`,
+`(19,29)->UP`, and `(19,29)->RIGHT` are confirmed blocked. Next Sage-route work
+should look for a different public approach or another over-modeled static
+blocker elsewhere in map `0x04`; do not remove those confirmed south-gate
+seams to force the route.
+
+Brecconary service-table cleanup now reflects that strategy. Merchant 1 only
+gives ordinary Dragonlord dialogue, so `objects.lua` keeps him browsable as an
+NPC but removes him from the Services filter. The confirmed Brecconary services
+now modeled are `Weapons Merchant`, `Inn`, `Tool Merchant` at `(23,25)` facing
+east, `Fairy Water Merchant` behind the northeast door, and `Curse Remover`
+for Old Man 2. The curse-removal service is claim-confirmed from dialogue, not
+yet tested while actually cursed. The Old Man 2 route is now viable: latest
+manual movement and logs proved the real south approach through `(24,12)` and
+`(24,11)`. `map_reader.lua` now promotes `(24,12)` as a Brecconary passthrough
+and leaves the `(24,11)<->(24,12)` vertical seam open, while preserving the
+confirmed trap blockers around the west/north landings:
+`(23,9).east/south`, `(23,10).north/west`, `(24,8).south`,
+`(22,10).east`, and the older `(24,9)`/`(25,9)`/`(26,9)` directional walls.
+Reload proof after `LAUNCHER_PROBE: codex_curse_debug_stats`: from the town
+entrance `(1,15)`, `debug_pathfind_adjacent:24,10` now chooses `(24,11)` with
+a 29-step route and `Face north`; from `(24,11)`, `debug_pathfind_to:1,15`
+returns a 29-step route back to the entrance. Both checks reported
+`RUNTIME_BLOCKS map=0x08 none`. This completes the Curse Remover part of the
+Brecconary service pass, but the Tool Merchant route reopened immediately
+afterward: live route testing found `(16,25)->RIGHT` into `(17,25)` blocked.
+`probe_edge_verify:RIGHT,3` from `(16,25)` with NPCs frozen confirmed
+`moved=0 blocked=3 reason=raw_hold_timeout`, while inspect still thought
+`(17,25)` was a passthrough. `map_reader.lua` now keeps `(17,25)` standable but
+adds `(17,25).west` as a directional blocker. The latest return-route retest
+then superseded the older `(21,26)` open evidence: auto-walk and manual taps
+from `(22,26)->LEFT` repeatedly blocked, ending with
+`SEAM_OBSERVATION cell=(21,26) approach=east blocked=13 moved=0`.
+`map_reader.lua` keeps `(21,26)` standable for other approaches but adds
+`(21,26).east`. The next live/manual clue found the replacement bridge:
+`(17,22)` is part of the long east-west corridor and the older trap-cell
+override was stale. Manual movement plus raw verifiers crossed
+`(16,22)->RIGHT` and `(18,22)->LEFT` into `(17,22)` 3/3 times from each side,
+so `map_reader.lua` now removes `(17,22)` from permanent blockers and promotes
+it as a passthrough. After reload, `inspect_move:18,22,LEFT` reported
+`permanent_blocked=false` and `effective_passable=true`; `(16,22)->RIGHT`
+also reported `permanent_blocked=false` but had a live NPC on the destination.
+From the entrance `(1,15)`, `debug_pathfind_to:23,25` now finds a 38-step
+route to the Tool Merchant public stand. From `(23,25)`, the first reverse
+debug route was blocked only by live NPC clutter at `(12,20)`/`(20,23)`; after
+`unfreeze_npcs` and a short wait, `debug_pathfind_to:1,15` found a 36-step
+return route. User manual testing then confirmed routes to and from the Tool
+Merchant and the other essential Brecconary services pass in normal play. Other fresh blocked/noisy observations
+in this log were not promoted: `(20,14).east` and `(4,16).west` were NPC-sourced, while
+`(1,14).south`, `(1,16).north`, `(19,13).west`, and `(24,12).north` later
+moved and are currently noisy/passable evidence only. Probe tooling was also
+tightened during this pass: `probe_edge` / `probe_edge_verify` now hold raw
+D-pad input and suspend `auto_step` while probing, because the old
+auto-step-driven verifier could report false blockers/openings in this pocket.
+Autowalk's stationary-NPC hint was also softened after the same log showed
+`NO_PATH_STATIONARY_NPC` followed by a tryable route seconds later; it now says
+the route may be blocked by a stationary or out-of-date NPC position and
+suggests retrying rather than claiming waiting cannot help.
+Validation for the `(21,26).east` / stationary-NPC hint patch passed:
+`luac -p map_reader.lua test_map_reader.lua route_manager.lua
+test_route_manager.lua`, `lua test_map_reader.lua` (24 tests),
+`lua test_route_manager.lua` (54 tests), and `git diff --check` with only the
+known `dw_access.ini` CRLF warning. Live reload proof:
+`LAUNCHER_PROBE: codex_2126_east_block` at `(22,26)`, then
+`inspect_move:22,26,LEFT` reported `directional_blocked=true`,
+`blocked_approach=east`, and `effective_passable=false`.
+Validation for the `(17,22)` corridor fix passed:
+`luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`
+(24 tests), and `git diff --check` with only the known `dw_access.ini` CRLF
+warning. Live reload proof: `LAUNCHER_PROBE: codex_1722_corridor`, then the
+route checks listed above.
+
+Adjacent-path debug stats were cleaned up after the Curse Remover proof:
+`pathfinder.lua` / `path_debug.lua` now prevent a successful adjacent route
+from inheriting a stale `no_path` reason from a later failed adjacent candidate.
+Regression coverage lives in `test_pathfinder.lua`.
 
 Object-browser moving-NPC performance follow-up: the previous on-demand fix
 kept moving NPCs fresh by calling `objects.update_npcs()` on plain browse keys,
@@ -31,6 +138,20 @@ brought the object-browser hop delay down from a 1.5-2 second emulator/music
 freeze to a fraction of a second between hops. This is a successful first
 tuning pass; remaining work is optional polish only if the smaller pause still
 feels disruptive during normal play.
+
+Player-facing selected-object teleport follow-up: the latest log showed
+`Shift+Enter` exact teleport on `Exit to World Map` at Brecconary `(0,15)`
+refusing because exact non-NPC selected-object teleport still used the object's
+raw tile. That boundary tile is not walkable, so the hotkey entered the slow
+manual-refusal path. `objects.resolve_teleport_landing()` now validates
+non-NPC exact targets too: walkable objects such as stairs still land exactly,
+while blocked exits/doors/chests look for an adjacent open cell with an escape
+route and facing direction back toward the object. `main.lua` now uses that
+resolver for all exact selected-object teleports, not only NPCs. Validation
+passed: `luac -p objects.lua main.lua test_objects.lua`, `lua
+test_objects.lua` (46 tests), and `git diff --check` with only the known
+`dw_access.ini` CRLF warning. No live reload/repro was run during the user's
+active castle travel, to avoid interfering with movement.
 
 Latest Merchant 4 public access update: the user found a small walkable pocket
 at `(22,25)`/`(23,25)` with an access node one tile east of the player. Fresh
@@ -62,20 +183,14 @@ aborted on an early open-floor overshoot at `(1,16)->RIGHT`, before reaching
 the new Merchant 4 bridge. Treat that as movement-validation timing noise, not
 new blocker evidence. Runtime blockers remained empty.
 
-Latest Merchant 4 return-route follow-up: the route from the public stand back
-to the Brecconary entrance needed one more confirmed false-wall passthrough.
-`inspect_move:22,26,LEFT` originally treated `(21,26)` as nonwalkable, but
-`probe_edge_verify:22,26,LEFT,3` moved into `(21,26)` 3/3 times. `map_reader.lua`
-now records `(21,26)` as a Brecconary passthrough and `test_map_reader.lua`
-pins it. Reload proof: `inspect_move:22,26,LEFT` now reports
-`reason=passthrough`, and a live normal `auto_walk` from `(23,25)` to
-`Exit to World Map` queued 38 steps, used the new
-`(22,26)->(21,26)` connector, recovered one noisy `AUTO_WALK_TIMING_RETRY` at
-`(20,25)->LEFT` via `SEAM_BRUTE_FORCE`, replanned from `(19,25)`, and reached
-the exit landing at `(1,15)`. `RUNTIME_BLOCKS map=0x08 none` after arrival.
-The exit object currently routes adjacent and faces west; `inspect_move:1,15,LEFT`
-still reports `reason=engine_boundary`, so reaching `(1,15)` is the modeled
-stairs/exit landing rather than a world-map transition.
+Latest Merchant 4 return-route follow-up: the previous `(21,26)` return-route
+passthrough is now superseded. A later live route from `(22,26)` tried to move
+west into `(21,26)` repeatedly; queued-route, seam-retry, and manual evidence
+all blocked, ending at `SEAM_OBSERVATION map=0x08 cell=(21,26) approach=east
+blocked=13 moved=0 classification=blocked_only source=manual_block`.
+`map_reader.lua` still records `(21,26)` as standable so other approaches can
+be investigated, but now blocks `(21,26).east`. Treat any older notes saying
+`(22,26)->(21,26)` is the valid return connector as stale.
 
 Latest route-drift follow-up: the user's first successful entrance-to-Merchant
 4 auto-walk exposed route execution drift, not another map blocker. The log
@@ -520,7 +635,10 @@ or `Merchant 4`; live probes then blocked the checked candidates:
 `(21,13)->UP`, `(20,13)->UP`, `(19,13)->UP`, and `(16,22)->RIGHT`.
 Each verifier-added runtime block was cleared; final live state was restored to
 `POSITION: map=0x08(Brecconary) x=1 y=15` with
-`RUNTIME_BLOCKS map=0x08 none`.
+`RUNTIME_BLOCKS map=0x08 none`. Superseding note: the Old Man 2 room was later
+opened by manual/live proof that `(24,12)` is the intended passthrough, and the
+old `(16,22)->RIGHT` block was later disproved by raw verifier proof that
+`(17,22)` is passable from both east and west.
 
 Future tooling/process note: `TASKS.md` now exists as a lightweight backlog.
 It includes the optional image-parsing QoL task: add Pillow support in a

@@ -136,10 +136,26 @@ COMMANDS (write to dw_commands.txt, one per line)
   stop_overworld_route     Clear active overworld route guidance
   ; comment line           Lines starting with ; are ignored
 
+PATHFINDING DEBUG COMMANDS
+--------------------------
+  debug_pathfind_to:X,Y    Run a detailed current-map route search to X,Y and
+                           store the path for trace_path / dump_search_log.
+  debug_pathfind_adjacent:X,Y
+                           Run a detailed route search to a cell adjacent to
+                           X,Y, useful for NPC/object interaction targets.
+  debug_pathfind_adjacent_skip_npcs:X,Y
+                           Same as debug_pathfind_adjacent, but omits live NPC
+                           positions from the blocking table so geometry can
+                           be separated from moving or stale NPC clutter.
+  trace_path               Log the last stored path coordinates and directions.
+  dump_search_log          Log the rejected/visited search details for the last
+                           stored path search.
+
 EDGE PROBE COMMANDS
 -------------------
   probe_edge:DIR           Probe one step in DIR from current position.
-                           Injects movement and records whether the engine allowed it.
+                           Holds raw D-pad input and records whether the engine
+                           allowed movement, bypassing auto-step timing.
                            Use after freeze_npcs to avoid NPC interference.
                            DIR: UP / DOWN / LEFT / RIGHT
   probe_edge:X,Y,DIR       Same, but specifies origin explicitly (player must be there)
@@ -147,6 +163,8 @@ EDGE PROBE COMMANDS
   probe_edge_verify:DIR[,N]
                            Repeat a probe from the same origin N times (default 5,
                            max 15), resetting movement state between attempts.
+                           Uses raw held input, not auto-step, so collision
+                           evidence is not polluted by movement-helper timing.
                            Logs EDGE_VERIFY_* and only reports confirmed_blocked
                            or confirmed_passable when every attempt agrees.
                            Does not inject runtime blockers; use add_blocked_edge

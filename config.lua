@@ -80,6 +80,7 @@ local DEFAULTS_ORDERED = {
     {comment = "; === Movement ==="},
     {key = "enable_auto_step",  value = "true", comment = "; Auto-complete tile steps from quick D-pad taps"},
     {key = "auto_step_timeout", value = "45",   comment = "; Max frames to wait for step to complete (increase if steps aren't finishing)"},
+    {key = "edge_probe_raw_hold_frames", value = "60", comment = "; Frames to hold raw D-pad input for probe_edge/probe_edge_verify collision checks"},
     {key = "auto_step_inject_limit", value = "12", comment = "; Frames to hold each auto-step press before waiting for movement"},
     {key = "auto_step_turn_repress_delay", value = "18", comment = "; Frames before re-pressing after a turn-only attempt"},
     {key = "auto_step_turn_repress_limit", value = "1", comment = "; Number of quick turn-only re-press attempts before timeout retries"},

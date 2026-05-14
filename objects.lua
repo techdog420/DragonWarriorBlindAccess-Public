@@ -870,7 +870,40 @@ local SERVICE_INTERACTION_OVERRIDES = {
     [0x08] = {
         ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter", name = "Weapons Merchant"},
         ["10,21"] = {x = 8, y = 21, face_dir = "east", label = "counter", name = "Inn"},
-        ["25,25"] = {x = 23, y = 25, face_dir = "east", label = "counter"},
+        ["25,25"] = {x = 23, y = 25, face_dir = "east", label = "counter", name = "Tool Merchant"},
+    },
+}
+
+local SERVICE_ROLE_OVERRIDES = {
+    -- User-validated Tantegel Castle MP restoration service. This NPC routes
+    -- like a normal adjacent NPC, but should appear in Services.
+    [0x04] = {
+        names = {
+            ["Old Man 2"] = {name = "Sage", infer_counter = false},
+        },
+        cells = {
+            ["20,26"] = {name = "Sage", infer_counter = false},
+        },
+    },
+    -- Confirmed Brecconary special-service NPCs that are not merchant sprites.
+    -- They should appear in Services, but route like ordinary adjacent NPCs.
+    [0x08] = {
+        names = {
+            ["Woman 1"] = {name = "Fairy Water Merchant", infer_counter = false},
+            ["Old Man 2"] = {name = "Curse Remover", infer_counter = false},
+        },
+        cells = {
+            ["24,4"] = {name = "Fairy Water Merchant", infer_counter = false},
+            ["24,10"] = {name = "Curse Remover", infer_counter = false},
+        },
+    },
+}
+
+local SERVICE_EXCLUSIONS = {
+    -- Brecconary Merchant 1 only gives ordinary dialogue, so keep him in NPCs
+    -- but out of the Services filter.
+    [0x08] = {
+        ["Merchant 1"] = true,
     },
 }
 
@@ -920,6 +953,30 @@ local function confirmed_direct_counter_tile(map_id, obj_key, x, y)
     return entry ~= nil and entry.x == x and entry.y == y
 end
 
+local function is_service_excluded(obj, map_id)
+    local by_map = SERVICE_EXCLUSIONS[map_id]
+    return by_map ~= nil and by_map[obj.name] == true
+end
+
+local function apply_service_role_override(obj, map_id)
+    local by_map = SERVICE_ROLE_OVERRIDES[map_id]
+    if not by_map then
+        return nil
+    end
+    local entry = by_map.names and by_map.names[obj.name]
+    if not entry and by_map.cells then
+        entry = by_map.cells[obj.x .. "," .. obj.y]
+    end
+    if not entry then
+        return nil
+    end
+    obj.service = true
+    if entry.name then
+        obj.name = entry.name
+    end
+    return entry
+end
+
 local function infer_service_interaction(obj, map_id)
     local obj_key = obj.x .. "," .. obj.y
     local fallback = nil
@@ -959,7 +1016,15 @@ local function infer_service_interaction(obj, map_id)
 end
 
 apply_service_interaction_override = function(obj, map_id)
-    if not obj or obj.service ~= true then
+    if not obj then
+        return obj
+    end
+    local role_override = apply_service_role_override(obj, map_id)
+    if obj.service == true and is_service_excluded(obj, map_id) then
+        obj.service = false
+        return obj
+    end
+    if obj.service ~= true then
         return obj
     end
     local by_cell = SERVICE_INTERACTION_OVERRIDES[map_id]
@@ -972,6 +1037,9 @@ apply_service_interaction_override = function(obj, map_id)
         obj.interaction_y = override.y
         obj.interaction_face_dir = override.face_dir
         obj.interaction_label = override.label
+        return obj
+    end
+    if role_override and role_override.infer_counter == false then
         return obj
     end
     return infer_service_interaction(obj, map_id)
@@ -1712,13 +1780,32 @@ function M.resolve_teleport_landing(obj, map_id, opts)
     map_id = active_map_id(map_id)
 
     if obj.type ~= M.TYPE_NPC then
-        return {
-            x = obj.x,
-            y = obj.y,
-            target_x = obj.x,
-            target_y = obj.y,
-            reason = "exact",
-        }, nil
+        local ok = teleport_landing_open(map_id, obj.x, obj.y, opts)
+        if ok then
+            return {
+                x = obj.x,
+                y = obj.y,
+                target_x = obj.x,
+                target_y = obj.y,
+                reason = "exact",
+            }, nil
+        end
+        for _, off in ipairs(NPC_TELEPORT_ADJACENT_OFFSETS) do
+            local nx, ny = obj.x + off.dx, obj.y + off.dy
+            ok = teleport_landing_open(map_id, nx, ny, opts)
+            if ok and teleport_landing_has_escape(map_id, nx, ny, obj.x, obj.y, opts) then
+                return {
+                    x = nx,
+                    y = ny,
+                    target_x = obj.x,
+                    target_y = obj.y,
+                    note = off.note,
+                    face_dir = off.face_dir,
+                    reason = "adjacent",
+                }, nil
+            end
+        end
+        return nil, "no open adjacent cell"
     end
 
     local target = opts.use_live_npc == false and obj or live_npc_object(obj, map_id)

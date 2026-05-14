@@ -20,6 +20,11 @@ Core goals:
 
 Current strategic direction:
 - The first decoded maps are good enough to move from map decoding toward real playtesting.
+- Prefer service-grade routing over perfect map completion. Prioritize viable
+  paths to merchants, inns, exits, stairs, locked doors, chests, and other
+  essential services. Leave unreachable dialogue-only NPCs for polish unless
+  they provide a progression clue, required hint, or other gameplay-critical
+  information.
 - Continue improving pathfinding when real gameplay exposes issues, but avoid broad unrelated refactors.
 - Before starting a new map or major new floor, check external map/walkthrough
   guidance for the intended route and special conditions. Prefer a visual or
@@ -390,30 +395,47 @@ Emulator compatibility direction:
   Closed-door no-path hints should remain target-aware: do not give key/door
   advice merely because a closed door is reachable if opening it would not make
   the selected object reachable.
-- Brecconary `Merchant 4` is the normal tool shop, and it does have a public
-  access node. The user found a small walkable pocket at `(22,25)`/`(23,25)`;
-  fresh logs confirmed repeated movement `(22,25)<->(23,25)`, repeated blocked
-  movement `(23,25)->RIGHT` into `(24,25)`, and `MERCHANT_ACTION: Merchant.
-  Buy.` when TALK was used from `(23,25)` facing east. Model Merchant 4 service
+- Brecconary `Tool Merchant` is the normal tool/item shop; older logs and raw
+  NPC numbering call him `Merchant 4`. He has a public access node. The user
+  found a small walkable pocket at `(22,25)`/`(23,25)`; fresh logs confirmed
+  repeated movement `(22,25)<->(23,25)`, repeated blocked movement
+  `(23,25)->RIGHT` into `(24,25)`, and `MERCHANT_ACTION: Merchant. Buy.` when
+  TALK was used from `(23,25)` facing east. Model the Tool Merchant service
   interaction as `(23,25)` facing east. Keep `(23,25).east` and `(24,25).west`
   as directional movement blockers: the counter can be talked across, but the
-  hero cannot walk across it. The older `(25,26)` north-facing tool-shop tile is
-  still a real alternate/debug interaction pocket reached from `(25,27)->UP`,
-  but it is not the normal public service route. Keep its one-way/isolated
-  movement data modeled for pathfinding, especially `(25,27).north` blocking
-  exit back south.
-- Brecconary `Merchant 4`'s public route also needs `(17,25)` as a passthrough.
-  The ROM decodes it as non-walkable type 0, but 2026-05-13 live verifier proof
-  moved `(16,25)->RIGHT` into `(17,25)` 3/3 times. With that passthrough, the
-  live planner can route from `(1,15)` to the public stand `(23,25)` through
-  `(16,25)->(17,25)->(18,25)`. If validation aborts before that bridge on an
-  open-floor overshoot, treat it as movement timing noise rather than map data.
-- The Merchant 4 return route from the public stand also needs `(21,26)` as a
-  Brecconary passthrough. The ROM decodes it as non-walkable, but
-  `probe_edge_verify:22,26,LEFT,3` moved into `(21,26)` 3/3 times on
-  2026-05-13. With `(21,26)` modeled, normal auto-walk from `(23,25)` reaches
-  the Brecconary exit landing `(1,15)` with runtime blockers empty, though
-  queued-route timing may still log recoverable `AUTO_WALK_TIMING_RETRY` noise.
+  hero cannot walk across it. The older `(25,26)` north-facing tool-shop tile
+  is still a real alternate/debug interaction pocket reached from
+  `(25,27)->UP`, but it is not the normal public service route. Keep its
+  one-way/isolated movement data modeled for pathfinding, especially
+  `(25,27).north` blocking exit back south.
+- Brecconary `Merchant 4` / `Tool Merchant` route recovery after the
+  2026-05-14 retest: the earlier `(17,25)` bridge evidence was superseded
+  when live route execution and raw `probe_edge_verify:RIGHT,3` from `(16,25)`
+  confirmed `(17,25).west` is blocked. Keep `(17,25)` as a standable
+  passthrough for other approaches, but block `(17,25).west`. The replacement
+  bridge is `(17,22)`: later manual movement and raw verifiers crossed into it
+  from both `(16,22)` and `(18,22)` 3/3 times, so remove the stale permanent
+  trap-cell override and keep `(17,22)` as a Brecconary passthrough. After
+  reload, `debug_pathfind_to:23,25` from entrance `(1,15)` reports a 38-step
+  path.
+- The Merchant 4 return-route evidence for `(21,26)` was also superseded by a
+  2026-05-14 retest. Keep `(21,26)` as a standable Brecconary passthrough for
+  other approach checks, but block `(21,26).east`: live auto-walk, seam retries,
+  and manual taps from `(22,26)->LEFT` all blocked, ending with
+  `SEAM_OBSERVATION cell=(21,26) approach=east blocked=13 moved=0`. The
+  current return route from `(23,25)` goes back through the row-22 bridge; a
+  first reverse debug route can still no-path on live NPC clutter, but after
+  NPCs moved it found a 36-step path to `(1,15)`.
+- Brecconary `map=0x08` is service-complete for now as of the 2026-05-14
+  manual pass. Essential services route to and from the town entrance in normal
+  play. Remaining unreachable NPCs were manually checked; a couple provide
+  clues, but none are currently required for progression. Defer those NPCs to
+  polish unless later progression proves a clue is mandatory.
+- Next gameplay verification focus after Brecconary is the first castle /
+  Tantegel area. A guide mentioned a sage who may restore MP; verify whether
+  that object/service exists, whether it should be modeled as an essential
+  service, and whether routes to/from it pass before moving deeper into game
+  progression.
 - On BizHawk, keep background periodic NPC refresh off by default to avoid
   frame/audio hitches. Plain object browsing should also avoid full
   `objects.update_npcs()` rebuilds; instead, `objects.describe_current()` reads
@@ -447,7 +469,11 @@ Emulator compatibility direction:
   map geometry. Check the destination against current NPC RAM before
   seam-bruteforcing or promoting runtime blockers; if the destination is an
   NPC, cancel with an NPC-blocker message instead. Use the decoded movement
-  byte to distinguish ordinary wandering clutter from stationary NPC blockers.
+  byte to distinguish ordinary wandering clutter from stationary NPC blockers,
+  but keep the player-facing stationary-NPC hint cautious: Brecconary logs
+  showed `NO_PATH_STATIONARY_NPC` followed by a tryable route seconds later, so
+  the spoken hint should say the route may be blocked by a stationary or
+  out-of-date NPC position and suggest retrying.
 - Post-arrival facing for auto-walk must not feed back into tap-to-step.
   `route_manager.lua` may inject a short direction press so the hero faces an
   adjacent NPC, but `auto_step.lua` must suppress edge tracking for that
@@ -950,12 +976,27 @@ Brecconary/map `0x08`:
   stand tile `(8,21)` facing east; `(9,21)` can trigger the inn but is blocked
   from the public west approach and should not be the route target. Keep
   `(8,17).west` blocked so the entrance-to-inn route avoids the discovered
-  timeout. Brecconary `Merchant 4` at `(25,25)` is the tool shop. The
+  timeout. Brecconary `Tool Merchant` at `(25,25)` is the tool/item shop. The
   public route-facing TALK tile is `(23,25)`, facing east across a blocked
   movement seam into the counter trigger; the older `(25,26)` north-facing
   stand and raw `(24,25)` trigger also open the shop but are alternate/debug
   pockets, not the normal public route target. These are direct counter
   interactions, not ordinary adjacent-NPC TALK targets.
+- Brecconary `Merchant 1` is dialogue-only, not a service. Keep him browsable
+  as an NPC but exclude him from the Services filter. Woman 1 is the
+  `Fairy Water Merchant` behind the northeast door; do not treat her as
+  public-route cleanup. Old Man 2 is the `Curse Remover` based on his live
+  dialogue claim; verify the actual effect later when the hero is cursed. The
+  2026-05-14 route pass solved Old Man 2's public approach by promoting
+  `(24,12)` as a Brecconary passthrough and leaving `(24,11)<->(24,12)` open.
+  Live proof after reload: `debug_pathfind_adjacent:24,10` from entrance
+  `(1,15)` chooses the TALK stand `(24,11)` with a 29-step route and
+  `Face north`; `debug_pathfind_to:1,15` from `(24,11)` returns in 29 steps;
+  `RUNTIME_BLOCKS map=0x08 none` for both. Keep the west/north trap blockers
+  around the room (`(23,9).east/south`, `(23,10).north/west`,
+  `(24,8).south`, `(22,10).east`, and the older `(24,9)`/`(25,9)`/`(26,9)`
+  directional walls), but do not restore the older noisy `(25,11).west` or
+  `(24,11).north/south` blocks.
 - Survey target copies must preserve service interaction metadata
   (`service`, `interaction_x`, `interaction_y`, `interaction_face_dir`).
   Dropping those fields makes surveys route to raw adjacent NPC cells while
@@ -970,6 +1011,18 @@ Tantegel/castle/interior maps:
 - Confirm live map id before permanent edits.
 - Historical notes sometimes label map `0x04` as Tantegel Castle and `0x05` as throne room/interior.
 - Recent map `0x05` blocked-cell observations looked transient and did not justify permanent map-data changes.
+- Tantegel Castle map `0x04` Old Man 2 at `(20,26)` is the MP-restoring
+  `Sage`, confirmed by user dialogue/effect testing and corroborated by guide
+  notes for the castle wise man. Keep him in the Services filter and route him
+  as an adjacent NPC, not as a counter service.
+- Current 2026-05-14 Sage routing state: from entrance-side `(11,29)` and
+  standable `(12,29)`, NPC-free `debug_pathfind_adjacent_skip_npcs:20,26`
+  reports `No path found`; from Sage-side `(20,25)`,
+  `debug_pathfind_adjacent_skip_npcs:11,29` succeeds to `(12,29)` in 12 steps.
+  This is a one-way/static-graph issue, not live NPC clutter. Keep the raw
+  confirmed south-gate blockers `(16,29)->UP`, `(17,29)->UP`, `(18,29)->UP`,
+  `(19,29)->UP`, and `(19,29)->RIGHT`; future work should find the alternate
+  public approach or an over-modeled blocker elsewhere.
 
 Erdrick's Cave/maps `0x1C` / `0x1D`:
 - The B1 object baseline is static-only: `Exit to World Map` at `(0,0)` and

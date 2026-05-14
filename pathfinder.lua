@@ -723,8 +723,11 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
                     .. " reason=longer_than_best")
             else
                 local path = M.find_path(map_id, start_x, start_y, adj.x, adj.y, blocked, path_opts)
+                local stats = opts and opts._get_stats and opts._get_stats() or nil
                 diag.path_found = path ~= nil
                 diag.path_length = path and #path or nil
+                diag.nodes_visited = stats and stats.nodes_visited or nil
+                diag.reason = stats and stats.reason or nil
                 if path then
                     local path_info = "  path length=" .. #path .. " steps: " .. M.format_path(path)
                     if not best_path or #path < #best_path then
@@ -769,6 +772,15 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
             end
         end
         return nil, nil, nil, diagnostics
+    end
+
+    if opts and opts.on_complete then
+        opts.on_complete({
+            success = true,
+            path_length = #best_path,
+            nodes_visited = best_diag and best_diag.nodes_visited or 0,
+            reason = nil,
+        })
     end
 
     -- Guard: if best_path is empty (shouldn't happen given the dist>1 check

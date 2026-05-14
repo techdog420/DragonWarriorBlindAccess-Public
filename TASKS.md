@@ -1,12 +1,19 @@
 # Task Backlog
 
-Updated: 2026-05-11
+Updated: 2026-05-14
 
 This is a lightweight backlog for useful follow-up work that should not
 interrupt the active debug loop. Keep current live state and resume steps in
 `session_handoff.md`; use this file for small future chores and tooling ideas.
 
 ## Tooling
+
+- Player-facing auto-walk stop: add a command and hotkey to cancel the active
+  auto-walk route immediately, clear queued route/step state, release held
+  direction input, clear route context, and speak a concise confirmation. This
+  came up when an exit route boxed itself into repeated blocked-edge reroutes;
+  players need a reliable "stop trying this route" escape hatch without waiting
+  for reroute failure limits.
 
 - Image parsing helper: consider adding Pillow support in a repo-local Python
   virtual environment, or commit a small built-in PNG sampler for indexed map

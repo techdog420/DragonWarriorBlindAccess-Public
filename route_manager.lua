@@ -1206,7 +1206,7 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
         return msg
     end
     if result == "No path found" and no_path_reason == "stationary_npc_blocker" then
-        msg = msg .. ". Route is blocked by a stationary NPC. Waiting will not clear this route; try another interaction point"
+        msg = msg .. ". Route may be blocked by a stationary NPC or an out-of-date NPC position. Try again in a moment, or choose another interaction point"
         return msg
     end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then

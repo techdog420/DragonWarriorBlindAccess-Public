@@ -220,6 +220,36 @@ function tests.adjacent_pathing_accepts_directional_block_table_landing()
     env.restore()
 end
 
+function tests.adjacent_pathing_debug_stats_keep_success_after_later_failed_candidate()
+    local env = make_stub_env()
+    env.set_grid(5, 5, {
+        {x = 1, y = 2},
+        {x = 2, y = 1},
+        {x = 3, y = 0},
+        {x = 4, y = 1},
+        {x = 4, y = 3},
+    })
+
+    local opts = env.path_debug.build_find_path_opts()
+    local result, face_dir, path = env.pathfinder.pathfind_to_adjacent(
+        0x04,
+        0, 2,
+        3, 2,
+        {["3,2"] = true},
+        opts
+    )
+    local stats = opts._get_stats()
+
+    assert_contains(result, "Approach:", "adjacent path should still find a route")
+    assert_truthy(face_dir ~= nil, "chosen adjacent landing should include a facing direction")
+    assert_truthy(path ~= nil and #path > 0, "adjacent path should return the chosen route")
+    assert_equal(stats.success, true, "debug stats should report the chosen adjacent route as successful")
+    assert_equal(stats.reason, nil, "later failed adjacent candidates should not leave a stale no_path reason")
+    assert_equal(stats.path_length, #path, "debug stats should keep the chosen adjacent route length")
+
+    env.restore()
+end
+
 function tests.runtime_block_rejections_are_exposed_in_debug_log()
     local env = make_stub_env()
     env.set_grid(5, 5)

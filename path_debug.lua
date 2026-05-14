@@ -234,6 +234,7 @@ function M.build_find_path_opts()
     -- nodes_visited, reason (nil on success, "no_path" or "max_iterations").
     opts.on_complete = function(final_stats)
         if final_stats then
+            stats.reason = nil
             for k, v in pairs(final_stats) do
                 stats[k] = v
             end

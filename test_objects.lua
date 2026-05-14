@@ -914,6 +914,53 @@ function tests.service_selected_teleport_landing_uses_interaction_stand()
     env.restore()
 end
 
+function tests.non_npc_selected_teleport_landing_uses_exact_walkable_cell()
+    local env = make_env({
+        walkable_tiles = {
+            ["0x08:9,9"] = true,
+        },
+    })
+
+    local landing = assert(env.objects.resolve_teleport_landing({
+        name = "Stairs Down",
+        type = env.objects.TYPE_STAIR,
+        x = 9,
+        y = 9,
+    }, 0x08, {check_npc = false}))
+
+    assert_equal(landing.x, 9, "walkable non-NPC teleport should use the target x")
+    assert_equal(landing.y, 9, "walkable non-NPC teleport should use the target y")
+    assert_equal(landing.reason, "exact", "walkable non-NPC landing should stay exact")
+
+    env.restore()
+end
+
+function tests.non_npc_selected_teleport_landing_uses_adjacent_cell_when_target_blocked()
+    local env = make_env({
+        walkable_tiles = {
+            ["0x08:1,15"] = true,
+            ["0x08:2,15"] = true,
+        },
+    })
+
+    local landing = assert(env.objects.resolve_teleport_landing({
+        name = "Exit to World Map",
+        type = env.objects.TYPE_EXIT,
+        x = 0,
+        y = 15,
+    }, 0x08, {check_npc = false}))
+
+    assert_equal(landing.x, 1, "blocked non-NPC teleport should use an adjacent landing x")
+    assert_equal(landing.y, 15, "blocked non-NPC teleport should use an adjacent landing y")
+    assert_equal(landing.target_x, 0, "landing should retain the selected object target x")
+    assert_equal(landing.target_y, 15, "landing should retain the selected object target y")
+    assert_equal(landing.note, "east", "landing note should describe the stand cell relative to the object")
+    assert_equal(landing.face_dir, "west", "landing face direction should point back at the object")
+    assert_equal(landing.reason, "adjacent", "blocked non-NPC landing should be marked adjacent")
+
+    env.restore()
+end
+
 function tests.visited_flags_are_map_scoped_and_clearable()
     local env = make_env()
 
@@ -1105,35 +1152,132 @@ function tests.brecconary_confirmed_counter_services_use_live_talk_tiles()
 
     env.set_position(0x08, 12, 23)
     env.set_terrain_offset(0x10)
-    env.set_npc(0, 0x60 + 5, 0x04, 0x00)
-    env.set_npc(1, 0x60 + 1, 0x01, 0x00)
+    env.set_npc(0, 0x60 + 15, 0x08, 0x00) -- Dialogue-only Merchant 1
+    env.set_npc(1, 0x60 + 5, 0x04, 0x00)
     env.set_npc(2, 0x60 + 10, 0x15, 0x00)
     env.set_npc(3, 0x60 + 25, 0x19, 0x00)
     env.objects.refresh(0x08)
 
+    local dialogue_merchant = nil
     local inn = nil
-    local merchant4 = nil
+    local tool_merchant = nil
+    local weapons = nil
     for _, obj in ipairs(env.objects.get_objects()) do
-        if obj.name == "Inn" then
+        if obj.name == "Merchant 1" then
+            dialogue_merchant = obj
+        elseif obj.name == "Inn" then
             inn = obj
-        elseif obj.name == "Merchant 4" then
-            merchant4 = obj
+        elseif obj.name == "Tool Merchant" then
+            tool_merchant = obj
+        elseif obj.name == "Weapons Merchant" then
+            weapons = obj
         end
     end
 
+    assert_equal(dialogue_merchant ~= nil, true, "Brecconary dialogue-only Merchant 1 should stay browsable")
+    assert_equal(dialogue_merchant.service, false, "Dialogue-only Merchant 1 should not appear in Services")
+    assert_equal(weapons ~= nil, true, "Brecconary weapon merchant should remain a service")
+    assert_equal(weapons.service, true, "Weapons Merchant should stay in Services")
     assert_equal(inn ~= nil, true, "Brecconary inn should be present")
     assert_equal(inn.interaction_x, 8, "Inn should use the live-confirmed public stand tile")
     assert_equal(inn.interaction_y, 21, "Inn public stand Y should match the counter row")
     assert_equal(inn.interaction_face_dir, "east", "Inn should face east toward the inn keeper")
 
-    assert_equal(merchant4 ~= nil, true, "Brecconary Merchant 4 should be present")
-    assert_equal(merchant4.interaction_x, 23, "Merchant 4 should use the live-confirmed public pocket stand")
-    assert_equal(merchant4.interaction_y, 25, "Merchant 4 public counter stand should match the counter row")
-    assert_equal(merchant4.interaction_face_dir, "east", "Merchant 4 should face east through the blocked counter edge")
+    assert_equal(tool_merchant ~= nil, true, "Brecconary tool merchant should be present")
+    assert_equal(tool_merchant.service, true, "Tool Merchant should stay in Services")
+    assert_equal(tool_merchant.interaction_x, 23, "Tool Merchant should use the live-confirmed public pocket stand")
+    assert_equal(tool_merchant.interaction_y, 25, "Tool Merchant public counter stand should match the counter row")
+    assert_equal(tool_merchant.interaction_face_dir, "east", "Tool Merchant should face east through the blocked counter edge")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Merchant 1", 1, true), nil, "Services filter should omit dialogue-only Merchant 1")
+    assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services filter should include Weapons Merchant")
+    assert_equal(service_text:find("Inn", 1, true) ~= nil, true, "Services filter should include Inn")
+    assert_equal(service_text:find("Tool Merchant", 1, true) ~= nil, true, "Services filter should include Tool Merchant")
 
     local marked = env.objects.mark_adjacent_npc_visited(0x08, 23, 25)
-    assert_equal(marked.id, merchant4.id, "Merchant 4 public counter stand should mark the tool merchant visited")
-    assert_equal(env.objects.is_visited(merchant4, 0x08), true, "Merchant 4 counter visit should persist from the public stand")
+    assert_equal(marked.id, tool_merchant.id, "Tool Merchant public counter stand should mark the tool merchant visited")
+    assert_equal(env.objects.is_visited(tool_merchant, 0x08), true, "Tool Merchant counter visit should persist from the public stand")
+
+    env.restore()
+end
+
+function tests.brecconary_confirmed_named_services_are_labeled()
+    local env = make_env({npc_count = 4})
+
+    env.set_position(0x08, 20, 10)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0xC0 + 24, 0x04, 0x00) -- Woman 1, Fairy Water merchant
+    env.set_npc(1, 0xC0 + 1, 0x01, 0x00)  -- Woman 2
+    env.set_npc(2, 0xA0 + 1, 0x01, 0x00)  -- Old Man 1
+    env.set_npc(3, 0xA0 + 24, 0x0A, 0x00) -- Old Man 2, curse remover
+    env.objects.refresh(0x08)
+
+    local fairy_water = nil
+    local curse_remover = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Fairy Water Merchant" then
+            fairy_water = obj
+        elseif obj.name == "Curse Remover" then
+            curse_remover = obj
+        end
+    end
+
+    assert_equal(fairy_water ~= nil, true, "Woman 1 should be labeled as Fairy Water Merchant")
+    assert_equal(fairy_water.service, true, "Fairy Water Merchant should appear in Services")
+    assert_equal(fairy_water.interaction_x, nil, "Fairy Water Merchant should route as an adjacent NPC")
+    assert_equal(curse_remover ~= nil, true, "Old Man 2 should be labeled as Curse Remover")
+    assert_equal(curse_remover.service, true, "Curse Remover should appear in Services")
+    assert_equal(curse_remover.interaction_x, nil, "Curse Remover should route as an adjacent NPC")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Fairy Water Merchant", 1, true) ~= nil, true, "Services should include Fairy Water Merchant")
+    assert_equal(service_text:find("Curse Remover", 1, true) ~= nil, true, "Services should include Curse Remover")
+
+    env.restore()
+end
+
+function tests.tantegel_castle_sage_service_is_labeled()
+    local env = make_env({npc_count = 2})
+
+    env.set_position(0x04, 20, 25)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0xA0 + 1, 0x01, 0x00)   -- Old Man 1
+    env.set_npc(1, 0xA0 + 20, 0x1A, 0x00)  -- Old Man 2, MP-restoring sage
+    env.objects.refresh(0x04)
+
+    local sage = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Sage" then
+            sage = obj
+            break
+        end
+    end
+
+    assert_equal(sage ~= nil, true, "Old Man 2 should be labeled as Sage")
+    assert_equal(sage.service, true, "Sage should appear in Services")
+    assert_equal(sage.interaction_x, nil, "Sage should route as an adjacent NPC")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Sage", 1, true) ~= nil, true, "Services should include Sage")
 
     env.restore()
 end

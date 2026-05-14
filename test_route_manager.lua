@@ -1648,7 +1648,7 @@ function tests.autowalk_no_path_mentions_npc_clutter_when_npc_free_route_exists(
     env.restore()
 end
 
-function tests.autowalk_no_path_mentions_stationary_npc_when_blocker_cannot_move()
+function tests.autowalk_no_path_softens_stationary_npc_hint_when_blocker_cannot_move()
     local target = {id = "npc_10", name = "Merchant 2", type = "npc", x = 6, y = 1}
     local stationary = {id = "npc_12", name = "Woman 3", type = "npc", x = 5, y = 3, movement = 0}
     local env = make_env({
@@ -1666,13 +1666,18 @@ function tests.autowalk_no_path_mentions_stationary_npc_when_blocker_cannot_move
     local output = table.concat(env.outputs, "\n")
     assert_contains(
         output,
-        "Route is blocked by a stationary NPC",
-        "stationary NPC blockers should not be announced as temporary NPC movement"
+        "Route may be blocked by a stationary NPC",
+        "stationary NPC blockers should be announced as possible blockers without false certainty"
+    )
+    assert_contains(
+        output,
+        "Try again in a moment",
+        "stationary blocker output should leave room for a quick retry when NPC state changes"
     )
     assert_not_contains(
         output,
-        "Wait for them to move",
-        "stationary blocker output should not tell the player to wait"
+        "Waiting will not clear this route",
+        "stationary blocker output should not claim retrying cannot help"
     )
 
     env.restore()

@@ -288,6 +288,28 @@ local EDGE_VERIFY_MAX_ATTEMPTS = 15
 local EDGE_VERIFY_SETTLE_FRAMES = 18
 local EDGE_VERIFY_BETWEEN_SETTLE_FRAMES = 30
 local get_autowalk_unavailable_reason
+local get_edge_probe_unavailable_reason
+
+local function edge_probe_raw_hold_frames()
+    local configured = tonumber(config.get("edge_probe_raw_hold_frames"))
+    if configured then
+        return math.max(1, math.min(180, math.floor(configured)))
+    end
+    local step_timeout = tonumber(config.get("auto_step_timeout")) or 45
+    return math.max(45, math.min(180, math.floor(step_timeout * 1.5)))
+end
+
+local function set_edge_probe_input(dir)
+    if joypad and joypad.set then
+        joypad.set(1, {[dir] = true})
+    end
+end
+
+local function clear_edge_probe_input()
+    if joypad and joypad.set then
+        joypad.set(1, {})
+    end
+end
 
 local function parse_edge_verify_arg(arg, default_x, default_y)
     if not arg then return nil end
@@ -400,6 +422,7 @@ local function finish_edge_probe(status, reason)
     if not probe then
         return
     end
+    clear_edge_probe_input()
     local map_id, px, py = nav.get_position()
     local blocking = route_mgr.build_path_blocking(probe.map_id)
     local approach = MOVE_DIR_TO_APPROACH[probe.dir]
@@ -467,6 +490,7 @@ local function finish_edge_verify(final_status, reason)
     if not verify then
         return
     end
+    clear_edge_probe_input()
     auto_step.cancel_active_step(true)
     local classification = classify_edge_verify_result(verify, final_status)
     local runtime_added = false
@@ -500,6 +524,7 @@ local function record_edge_verify_attempt(status, reason)
     if not verify then
         return
     end
+    clear_edge_probe_input()
     local _, px, py = nav.get_position()
     verify.results[status] = (verify.results[status] or 0) + 1
     debug_tools.info(string.format(
@@ -558,9 +583,10 @@ local function start_edge_verify_attempt()
     verify.phase = "settle"
     verify.frames = 0
     verify.settle_frames = EDGE_VERIFY_SETTLE_FRAMES
+    verify.raw_hold_frames = edge_probe_raw_hold_frames()
     verify.start_report = start_report
     debug_tools.info(string.format(
-        "EDGE_VERIFY_ATTEMPT_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d preview=%s",
+        "EDGE_VERIFY_ATTEMPT_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d raw_hold_frames=%d preview=%s",
         verify.map_id,
         verify.from_x,
         verify.from_y,
@@ -569,87 +595,100 @@ local function start_edge_verify_attempt()
         verify.dest_y,
         verify.attempt,
         verify.attempts,
+        verify.raw_hold_frames,
         tostring(msg or "")))
 end
 
 local function tick_edge_verify()
     local verify = edge_verify_state
     if not verify then
-        return
+        return false
     end
-    local reason = get_autowalk_unavailable_reason()
+    local reason = get_edge_probe_unavailable_reason()
     if reason then
         verify.results.interrupted = verify.results.interrupted + 1
         finish_edge_verify("interrupted", reason)
-        return
+        return true
     end
     local map_id, px, py = nav.get_position()
     if map_id ~= verify.map_id then
         verify.results.map_changed = verify.results.map_changed + 1
         finish_edge_verify("aborted", "map_changed")
-        return
+        return true
     end
     if verify.phase == "arming" then
         verify.settle_frames = (verify.settle_frames or 1) - 1
         if verify.settle_frames <= 0 then
             verify.phase = "between"
         end
-        return
+        return true
     end
     if verify.phase == "between" then
         verify.settle_frames = (verify.settle_frames or 0) - 1
         if verify.settle_frames > 0 then
-            return
+            return true
         end
         start_edge_verify_attempt()
-        return
+        return true
     end
     if verify.phase == "settle" then
         verify.settle_frames = verify.settle_frames - 1
         if verify.settle_frames <= 0 then
             verify.phase = "running"
             verify.frames = 0
-            if not auto_step.inject_step(verify.dir) then
-                record_edge_verify_attempt("refused", "inject_refused")
-            end
         end
-        return
+        return true
     end
     if verify.phase ~= "running" then
-        return
+        return true
     end
     verify.frames = verify.frames + 1
     if px == verify.dest_x and py == verify.dest_y then
         record_edge_verify_attempt("moved", "position_changed")
-        return
+        return true
     end
     if px ~= verify.from_x or py ~= verify.from_y then
         record_edge_verify_attempt("drifted", "unexpected_position")
-        return
+        return true
     end
-    if verify.frames >= edge_probe_timeout_frames() then
-        record_edge_verify_attempt("timed_out", "timeout")
+    if verify.frames >= (verify.raw_hold_frames or edge_probe_raw_hold_frames()) then
+        record_edge_verify_attempt("blocked", "raw_hold_timeout")
+        return true
     end
+    set_edge_probe_input(verify.dir)
+    return true
 end
 
 local function tick_edge_probe()
     local probe = edge_probe_state
     if not probe then
-        return
+        return false
+    end
+    local reason = get_edge_probe_unavailable_reason()
+    if reason then
+        finish_edge_probe("interrupted", reason)
+        return true
     end
     local map_id, px, py = nav.get_position()
     probe.frames = probe.frames + 1
     if map_id ~= probe.map_id then
         finish_edge_probe("map_changed", "map_changed")
-        return
+        return true
     end
     if px == probe.dest_x and py == probe.dest_y then
         finish_edge_probe("moved", "position_changed")
-        return
+        return true
     end
-    if probe.frames >= edge_probe_timeout_frames() then
-        finish_edge_probe("timed_out", "timeout")
+    if px ~= probe.from_x or py ~= probe.from_y then
+        finish_edge_probe("drifted", "unexpected_position")
+        return true
     end
+    if probe.frames >= (probe.raw_hold_frames or edge_probe_raw_hold_frames()) then
+        finish_edge_probe("blocked", "raw_hold_timeout")
+        return true
+    end
+    set_edge_probe_input(probe.dir)
+    return true
 end
 
 event_bus.subscribe("route_blocked", function(data)
@@ -872,6 +911,32 @@ get_autowalk_unavailable_reason = function()
     end
     if PREV.upper_active then
         return "Wait for the upper dialogue window to clear before auto-walking"
+    end
+    return nil
+end
+
+get_edge_probe_unavailable_reason = function()
+    if game_state.state ~= state.STATE_FIELD then
+        return "Edge probes are only available while walking on the field"
+    end
+    if debug_tools.is_sweep_active() then
+        return "Edge probes are unavailable during map sweep"
+    end
+    if path_debug.is_step_mode() then
+        return "Finish step mode before probing an edge"
+    end
+    if DW_QOL_STATE.command_menu_blocks_field_movement
+       and DW_QOL_STATE.command_menu_blocks_field_movement() then
+        return "Close the command menu before probing an edge"
+    end
+    if submenu_mode ~= nil then
+        return "Close the submenu before probing an edge"
+    end
+    if MER.active then
+        return "Close the merchant interface before probing an edge"
+    end
+    if PREV.dialogue ~= "" then
+        return "Wait for dialogue to finish before probing an edge"
     end
     return nil
 end
@@ -3712,6 +3777,11 @@ debug_tools.register_command("probe_edge", function(arg)
         debug_tools.error("probe_edge: wait for the current auto-walk step/route to finish")
         return
     end
+    local reason = get_edge_probe_unavailable_reason()
+    if reason then
+        debug_tools.error("probe_edge refused: " .. reason)
+        return
+    end
     objects.update_npcs()
     local msg, start_report = log_move_report(from_x, from_y, dir)
     local delta = DIR_TO_DELTA[dir]
@@ -3724,16 +3794,17 @@ debug_tools.register_command("probe_edge", function(arg)
         dest_y = from_y + delta.dy,
         start_report = start_report,
         frames = 0,
+        raw_hold_frames = edge_probe_raw_hold_frames(),
     }
     debug_tools.info(string.format(
-        "EDGE_PROBE_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d)",
+        "EDGE_PROBE_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) raw_hold_frames=%d",
         snapshot.map_id,
         from_x,
         from_y,
         dir,
         edge_probe_state.dest_x,
-        edge_probe_state.dest_y))
-    auto_step.inject_step(dir)
+        edge_probe_state.dest_y,
+        edge_probe_state.raw_hold_frames))
     if msg then
         tolk.output_interrupt("Edge probe started. " .. msg)
     else
@@ -3770,7 +3841,7 @@ debug_tools.register_command("probe_edge_verify", function(arg)
         debug_tools.error("probe_edge_verify: wait for the current auto-walk step/route to finish")
         return
     end
-    local reason = get_autowalk_unavailable_reason()
+    local reason = get_edge_probe_unavailable_reason()
     if reason then
         debug_tools.error("probe_edge_verify refused: " .. reason)
         return
@@ -4310,12 +4381,13 @@ hotkeys.set_teleport_handler(function(mode)
 
     local tx, ty = obj.x, obj.y
     local landing = nil
-    if mode == "exact" and obj.type == objects.TYPE_NPC and objects.resolve_teleport_landing then
+    if mode == "exact" and objects.resolve_teleport_landing then
         local map_id = snapshot.map_id
         local err
         landing, err = objects.resolve_teleport_landing(obj, map_id, {check_npc = true})
         if not landing then
-            local msg = "Teleport refused. No open cell next to " .. tostring(obj.name or "NPC")
+            local target_label = obj.type == objects.TYPE_NPC and "next to " or "near "
+            local msg = "Teleport refused. No open cell " .. target_label .. tostring(obj.name or "object")
             debug_tools.error(string.format(
                 "TELEPORT_SELECTED refused mode=exact target_id=%s target_name=%s target=(%d,%d) reason=%s",
                 tostring(obj.id),
@@ -4399,28 +4471,42 @@ debug_tools.register_command("debug_pathfind_to", function(arg)
     tolk.output_interrupt(msg)
 end)
 
-debug_tools.register_command("debug_pathfind_adjacent", function(arg)
+local function run_debug_pathfind_adjacent(arg, params)
+    params = params or {}
+    local command_name = params.command_name or "debug_pathfind_adjacent"
     local goal_x, goal_y = parse_xy_arg(arg)
     if not goal_x then
-        debug_tools.error("debug_pathfind_adjacent usage: debug_pathfind_adjacent:X,Y")
+        debug_tools.error(command_name .. " usage: " .. command_name .. ":X,Y")
         return
     end
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = route_mgr.build_path_blocking(map_id)
-    local opts = path_debug.build_find_path_opts()
+    local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
+    local find_opts = path_debug.build_find_path_opts()
     local result, face_dir, path = pathfinder.pathfind_to_adjacent(
-        map_id, px, py, goal_x, goal_y, blocking, opts)
-    path_debug.store_path(map_id, px, py, goal_x, goal_y, path, opts)
-    local stats = opts and opts._get_stats() or {}
+        map_id, px, py, goal_x, goal_y, blocking, find_opts)
+    path_debug.store_path(map_id, px, py, goal_x, goal_y, path, find_opts)
+    local stats = find_opts and find_opts._get_stats() or {}
     local reason = stats and stats.reason
-    local msg = string.format("Debug pathfind adjacent to (%d,%d): %s%s (visited=%d path=%d)",
-        goal_x, goal_y, result,
+    local mode_label = params.skip_npcs and " skip NPCs" or ""
+    local msg = string.format("Debug pathfind adjacent%s to (%d,%d): %s%s (visited=%d path=%d)",
+        mode_label, goal_x, goal_y, result,
         reason and (" [" .. reason .. "]") or "",
         stats.nodes_visited or 0, path and #path or 0)
     if face_dir then msg = msg .. ". Face " .. face_dir end
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
+end
+
+debug_tools.register_command("debug_pathfind_adjacent", function(arg)
+    run_debug_pathfind_adjacent(arg)
+end)
+
+debug_tools.register_command("debug_pathfind_adjacent_skip_npcs", function(arg)
+    run_debug_pathfind_adjacent(arg, {
+        command_name = "debug_pathfind_adjacent_skip_npcs",
+        skip_npcs = true,
+    })
 end)
 
 debug_tools.register_command("trace_path", function()
@@ -5188,13 +5274,15 @@ while true do
             end
         end
     end
-    checked_call("tick_edge_probe", tick_edge_probe)
-    checked_call("tick_edge_verify", tick_edge_verify)
+    local edge_probe_active_this_frame = checked_call("tick_edge_probe", tick_edge_probe) == true
+    local edge_verify_active_this_frame = checked_call("tick_edge_verify", tick_edge_verify) == true
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
     if not raw_debug_input_this_frame
+       and not edge_probe_active_this_frame
+       and not edge_verify_active_this_frame
        and not teleport_input_suppressed_this_frame
        and not teleport_face_input_this_frame then
         checked_scan("auto_step.update", auto_step.update, can_walk)
