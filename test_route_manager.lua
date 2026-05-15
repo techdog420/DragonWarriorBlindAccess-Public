@@ -23,7 +23,9 @@ local function make_env(options)
     local outputs = {}
     local published_events = {}
     local start_route_calls = 0
+    local last_start_route_steps = nil
     local last_start_route_opts = nil
+    local overworld_plan_calls = 0
     local inject_step_calls = 0
     local suppress_direction_tracking_calls = 0
     local last_suppress_direction_tracking_frames = nil
@@ -59,6 +61,7 @@ local function make_env(options)
         "maps",
         "navigation",
         "objects",
+        "overworld_routes",
         "path_debug",
         "pathfinder",
         "route_manager",
@@ -341,10 +344,11 @@ local function make_env(options)
 
     package.preload["auto_step"] = function()
         local stub = {
-            start_route = function(_, opts)
+            start_route = function(steps, opts)
                 start_route_calls = start_route_calls + 1
+                last_start_route_steps = steps
                 last_start_route_opts = opts
-                return true
+                return options.start_route_result ~= false
             end,
             inject_step = function(dir)
                 inject_step_calls = inject_step_calls + 1
@@ -362,6 +366,18 @@ local function make_env(options)
         return {
             output_interrupt = function(msg)
                 outputs[#outputs + 1] = msg
+            end,
+        }
+    end
+
+    package.preload["overworld_routes"] = function()
+        return {
+            plan_next_segment = function(map_id, x, y)
+                overworld_plan_calls = overworld_plan_calls + 1
+                if options.overworld_segment_error then
+                    return nil, options.overworld_segment_error
+                end
+                return options.overworld_segment
             end,
         }
     end
@@ -402,7 +418,7 @@ local function make_env(options)
     package.preload["game_snapshot"] = function()
         return {
             keys = 0,
-            terrain_offset = 0x10,
+            terrain_offset = options.snapshot_terrain or 0x10,
         }
     end
 
@@ -420,7 +436,9 @@ local function make_env(options)
         pathability_status_updates = function() return pathability_status_updates end,
         pathability_filter = function() return pathability_filter end,
         start_route_calls = function() return start_route_calls end,
+        last_start_route_steps = function() return last_start_route_steps end,
         last_start_route_opts = function() return last_start_route_opts end,
+        overworld_plan_calls = function() return overworld_plan_calls end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
         suppress_direction_tracking_calls = function() return suppress_direction_tracking_calls end,
@@ -429,6 +447,7 @@ local function make_env(options)
         last_adjacent_call = function() return last_adjacent_call end,
         seam_summary = function(map_id) return route_manager.get_seam_summary(map_id) end,
         seam_entries = function(map_id) return route_manager.get_seam_entries(map_id) end,
+        memory_values = memory_values,
         memory_writes = memory_writes,
         set_position = function(map_id, x, y)
             current_map_id = map_id
@@ -479,6 +498,92 @@ function tests.autowalk_guard_blocks_planning()
         "Wait for the upper dialogue window to clear before auto-walking",
         "guarded autowalk should surface the refusal reason"
     )
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_queues_active_waypoint_segment()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        current_object = {id = "route_garinham_14", name = "Route next: Garinham east ridge", type = "exit", x = 16, y = 6},
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up", "left", "left", "left"},
+            message = "Auto-walk to Garinham east ridge, 1 north, 3 west. 4 step(s).",
+            object_id = "route_garinham_14",
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+
+    assert_equal(plan.status, "queued", "overworld auto-walk should queue the segment")
+    assert_equal(env.overworld_plan_calls(), 1, "overworld segment planner should be used")
+    assert_equal(env.pathfind_calls(), 0, "overworld auto-walk should not call interior pathfinding")
+    assert_equal(env.start_route_calls(), 1, "overworld segment should queue auto_step")
+    assert_equal(env.last_start_route_steps()[1], "up", "queued segment should preserve planned steps")
+    assert_equal(env.last_start_route_opts().settle_frames, 0, "overworld segment should use no interior settle delay")
+    assert_contains(env.outputs[#env.outputs], "Overworld auto-walk", "overworld auto-walk should be announced")
+
+    env.restore()
+end
+
+function tests.overworld_blocked_segment_stops_without_reroute()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        current_object = {id = "route_garinham_14", name = "Route next: Garinham east ridge", type = "exit", x = 16, y = 6},
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up", "left", "left", "left"},
+            message = "Auto-walk to Garinham east ridge, 1 north, 3 west. 4 step(s).",
+            object_id = "route_garinham_14",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(19, 7, "up", {queued_route = true})
+
+    local events = env.published_events()
+    assert_equal(env.pathfind_calls(), 0, "blocked overworld segment should not reroute through interior A*")
+    assert_equal(env.start_route_calls(), 1, "blocked overworld segment should not queue a reroute")
+    assert_equal(events[#events].payload.reason, "overworld_blocked", "blocked overworld segment should publish a stop reason")
+    assert_contains(env.outputs[#env.outputs], "Overworld auto-walk stopped", "blocked segment should tell the player it stopped")
+
+    env.restore()
+end
+
+function tests.overworld_battle_cancel_clears_without_speech_spam()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        current_object = {id = "route_garinham_14", name = "Route next: Garinham east ridge", type = "exit", x = 16, y = 6},
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up", "left", "left", "left"},
+            message = "Auto-walk to Garinham east ridge, 1 north, 3 west. 4 step(s).",
+            object_id = "route_garinham_14",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    local outputs_before_cancel = #env.outputs
+    env.auto_step.on_route_cancelled({reason = "can_walk_false", current_x = 19, current_y = 7})
+
+    assert_equal(env.pathfind_calls(), 0, "battle/menu cancel should not reroute an overworld segment")
+    assert_equal(#env.outputs, outputs_before_cancel, "can_walk_false cancel should leave battle/menu speech in charge")
 
     env.restore()
 end
@@ -1402,7 +1507,7 @@ function tests.autowalk_to_npc_holds_target_after_arrival()
     assert_contains(output, "Target held briefly. Use TALK now", "NPC arrival should prompt the player to talk")
     assert_equal(env.memory_writes[1].address, 6, "NPC hold should write the target slot byte 0")
     assert_equal(env.memory_writes[2].address, 7, "NPC hold should write the target slot byte 1")
-    assert_equal(env.memory_writes[3].address, 8, "NPC hold should write the target slot byte 2")
+    assert_equal(#env.memory_writes, 2, "NPC hold should skip unchanged movement byte writes")
 
     env.restore()
 end
@@ -1429,17 +1534,50 @@ function tests.autowalk_to_moving_npc_holds_planned_target_tile()
     assert_equal(env.memory_writes[1].value, 0x80 + 7, "moving NPC hold should pin target X while preserving sprite bits")
     assert_equal(env.memory_writes[2].address, 1, "moving NPC hold should write slot byte 1 immediately")
     assert_equal(env.memory_writes[2].value, 0x60 + 5, "moving NPC hold should pin target Y while preserving facing bits")
-    assert_equal(env.memory_writes[3].address, 2, "moving NPC hold should preserve movement byte")
-    assert_equal(env.memory_writes[3].value, 0x12, "moving NPC hold should preserve movement byte value")
+    assert_equal(#env.memory_writes, 2, "moving NPC hold should skip unchanged movement byte writes")
 
+    env.memory_values[0] = 0x80 + 4
+    env.memory_values[1] = 0x60 + 4
+    env.memory_values[2] = 0x13
     env.route_manager.apply_npc_freeze()
 
-    assert_equal(env.memory_writes[4].value, 0x80 + 7, "per-frame NPC hold should keep target X pinned")
-    assert_equal(env.memory_writes[5].value, 0x60 + 5, "per-frame NPC hold should keep target Y pinned")
-    assert_equal(env.memory_writes[6].value, 0x12, "per-frame NPC hold should keep movement byte pinned")
+    assert_equal(env.memory_writes[3].value, 0x80 + 7, "per-frame NPC hold should keep target X pinned")
+    assert_equal(env.memory_writes[4].value, 0x60 + 5, "per-frame NPC hold should keep target Y pinned")
+    assert_equal(env.memory_writes[5].value, 0x12, "per-frame NPC hold should keep movement byte pinned")
     assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "arrival should still face the held NPC")
     assert_equal(env.suppress_direction_tracking_calls(), 1, "NPC facing tap should suppress auto-step edge tracking")
     assert_equal(env.last_suppress_direction_tracking_frames(), 8, "suppression should cover face hold, release, and cleanup frames")
+
+    env.restore()
+end
+
+function tests.selected_teleport_can_hold_target_npc_without_autowalk()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+        },
+        memory_values = {
+            [6] = 0x80 + 4,
+            [7] = 0x40 + 4,
+            [8] = 0x22,
+        },
+    })
+
+    local ok = env.route_manager.hold_target_npc({
+        name = "Woman 2",
+        type = "npc",
+        id = "npc_2",
+        x = 10,
+        y = 13,
+    }, "selected teleport", 3)
+
+    assert_equal(ok, true, "selected teleport should be able to pin a target NPC without starting auto-walk")
+    assert_equal(env.memory_writes[1].address, 6, "selected-teleport hold should write the target slot byte 0")
+    assert_equal(env.memory_writes[1].value, 0x80 + 10, "selected-teleport hold should pin the target X")
+    assert_equal(env.memory_writes[2].address, 7, "selected-teleport hold should write the target slot byte 1")
+    assert_equal(env.memory_writes[2].value, 0x40 + 13, "selected-teleport hold should pin the target Y")
+    assert_equal(#env.memory_writes, 2, "selected-teleport hold should skip unchanged movement byte writes")
 
     env.restore()
 end

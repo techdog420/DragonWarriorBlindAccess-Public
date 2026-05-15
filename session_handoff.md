@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-14
+Updated: 2026-05-15
 
 ## Active Resume
 
@@ -25,28 +25,108 @@ moving on toward the next town rather than continuing broad Tantegel cleanup.
 Garinham public-service pass is now complete enough to pause until Magic Keys.
 Confirmed public targets are: town exit/entrance, `Merchant 2` as Tool Merchant,
 `Merchant 3` as Inn, `Merchant 4` as Weapons Merchant, and the public east-end
-locked door at `(19,16)`. Tool and Weapons Merchant routes now have viable
-entrance/return paths with modeled Garinham blockers; one-off drift reroutes
-remain polishing unless they start causing route failures. Leave the internal
-grey-building door, hidden/back-building grave path, locked chests, and any
-remaining hidden/dialogue-only NPCs for the key revisit. Current live state
-after cleanup was `POSITION: map=0x09(Garinham) x=15 y=15`, no runtime blocks,
-and menu closed.
+locked door at `(19,16)`. The town-side `Exit to World Map` object was
+corrected after the user noticed the old `(15,14)` target was just a
+north-south corridor: it now uses the live west entry boundary `(0,14)` with
+interaction stand `(1,14)` facing west. Tool and Weapons Merchant routes now
+have viable entrance/return paths with modeled Garinham blockers; one-off drift
+reroutes remain polishing unless they start causing route failures. Leave the
+internal grey-building door, hidden/back-building grave path, locked chests,
+and any remaining hidden/dialogue-only NPCs for the key revisit. Current live
+state after cleanup is `POSITION: map=0x09(Garinham) x=1 y=14`, menu closed,
+input neutral.
+
+Selected-object teleport follow-up: player-facing NPC teleport now holds the
+target NPC briefly and uses a sturdier facing tap. The latest Garinham repro
+showed selected teleport landing beside `Woman 2`, but by the time TALK was
+used the NPC had wandered, causing `There is no one there.` The hotkey path now
+pins the selected NPC's live target tile with `teleport_npc_hold_frames=600`,
+faces the target for `teleport_face_target_frames=4`, and sets
+`teleport_post_scan_grace_frames=45` to skip the expensive text/menu scan loop
+during the immediate post-teleport suppression/facing window. A new
+`teleport_selected[:MODE]` debug command exercises the same landing/facing path
+as the player hotkey. Live validation after reload selected Garinham `Woman 2`,
+ran `teleport_selected`, logged `target_held=true`, `TELEPORT_FACE ... frames=4`,
+and `TELEPORT_SELECTED_TIMING ... ms=3.000`; subsequent TALK opened `Welcome to
+Garinham. May thy stay be a peaceful one.` instead of the miss dialogue. Follow
+up lag tuning made the selected-teleport NPC hold diff-only, releases it as
+soon as TALK dialogue opens or misses, and profiles
+`route_manager.apply_npc_freeze`; a live Old Man 2 teleport logged
+`TELEPORT_SCAN_GRACE frames=45`, `frames=600`, and
+`route_manager.apply_npc_freeze avg_ms=0.016 max_ms=2`. Idle text/menu scanner
+cadence is now throttled while no input/menu/dialogue needs fast scanning; the
+post-reload idle sample showed `check_command_menu calls=113`,
+`check_yesno_prompt calls=75`, `check_merchant_screen calls=56`,
+`check_dialogue calls=90`, and `check_upper_dialogue calls=50` over 900 frames.
+Final cleanup restored the hero to `POSITION: map=0x09(Garinham) x=15 y=14`,
+menu closed, input neutral.
+
+Overworld landmark teleport is live-validated. The user reached Tantegel Castle,
+saved, and then hit the first failure: selected-object exact teleport to
+`overworld_garinham` refused with `reason=no open adjacent cell`, because world
+map Travel tiles do not have reliable interior-map-reader walkability data. The
+fix treats overworld Travel objects (`overworld_*` landmarks and `route_*`
+waypoints) as exact same-map teleport landings and lets those trusted Travel
+targets bypass the map-reader walkability gate while still using the normal
+teleport refusal checks. `perform_teleport_to()` also updates the dedicated
+overworld shadow bytes whenever `snapshot.is_overworld` is true, not only for
+obsolete synthetic map `0x00`. New debug commands `teleport_landmark:NAME` and
+alias `teleport_overworld:NAME` resolve named overworld Travel landmarks by
+exact name, object id, or unique prefix, refuse off the world map, and reuse the
+same trusted Travel landing path. Live proof after reload:
+`LAUNCHER_PROBE: codex_landmark_reload`, `POSITION: map=0x01(World Map) x=43
+y=43`, `teleport_landmark:Garinham` logged `TELEPORT_LANDMARK ...
+landing=(1,2)`, split `report_position` confirmed `POSITION: map=0x01(World
+Map) x=1 y=2`, and selected-object `teleport_selected` on `Garinham` logged
+`landing_reason=overworld_travel` / `ok=true`.
+
+First-phase overworld auto-walk is implemented in the worktree and FCEUX live
+validated. On the world map, `auto_walk` now
+uses the active overworld route rather than refusing outright: it asks
+`overworld_routes.plan_next_segment()` for the next waypoint segment, queues
+those directional steps through `auto_step`, and suppresses the interior
+pathfinder/reroute path. The segment stops when the waypoint route completes,
+when a queued movement step blocks (`reason=overworld_blocked`), or when
+`can_walk_false` cancels movement for battle/menu/dialogue. This is deliberately
+not full world-map A*: blockers stop the segment and leave evidence in the log
+instead of trying to reroute around unknown terrain. Static proof so far:
+`luac -p overworld_routes.lua route_manager.lua test_overworld_routes.lua
+test_route_manager.lua`, `lua test_overworld_routes.lua` (31 tests), and
+`lua test_route_manager.lua` (58 tests).
+
+FCEUX live proof after the follow-up reload: `launcher_probe` matched
+`codex_fceux_autowalk_patch`, current position was `map=0x01(World Map)
+x=28 y=13`, and `start_overworld_route:cave` replaced the active route with
+`route=erdrick waypoint=Erdrick's Cave index=11`. Running `auto_walk` logged
+`OVERWORLD_AUTO_WALK: event=start route=erdrick ... steps=1 from=(28,13)
+to=(28,12)`, then `auto_step begin_step ... source=queued_route`, proving the
+command path now drives `auto_step` in FCEUX. The step stopped cleanly on an
+engine block: `SEAM_OBSERVATION map=0x01 cell=(28,12) approach=south
+result=blocked ... source=queued_route_block` followed by
+`OVERWORLD_AUTO_WALK: event=blocked route=erdrick waypoint=Erdrick's Cave`.
+This validates the first-phase stop-on-blocker behavior and leaves a route-data
+investigation target around the Erdrick's Cave south approach. Before this
+patch, FCEUX's stuck-Alt external keyboard bridge emitted neutral raw frames
+every tick; `main.lua` now lets neutral raw frames clear stale input without
+suppressing `auto_step.update`, so queued routes are no longer starved while
+the bridge is idle.
 
 Garinham overworld route setup is now in the worktree. External orientation
 cross-checks matched the plan: StrategyWiki describes Garinham as far north
 and west / northwest of Tantegel and warns that bridge crossings increase
 monster danger, while the GameFAQs coordinate table lists Galenholm/Garinham
-as 41 north and 41-42 west of Tantegel. The repo's wrapped live-coordinate
-landmark is therefore `(2,2)` from the Tantegel anchor `(43,43)`, and the new
-route completes on map `0x09`. `overworld_routes.lua` now adds a Garinham /
-Galenholm route that reuses the already-tested Tantegel/Brecconary to
-Erdrick's Cave lane, then guides through `Garinham east field` `(20,9)`,
+as 41 north and 41-42 west of Tantegel. The western coordinate variant is the
+correct landmark: `(2,2)` is the north-south approach corridor, and the
+Garinham Travel landmark is now `(1,2)` from the Tantegel anchor `(43,43)`.
+The route still completes on map `0x09`. `overworld_routes.lua` now adds a
+Garinham / Galenholm route that reuses the already-tested Tantegel/Brecconary
+to Erdrick's Cave lane, then guides through `Garinham east field` `(20,9)`,
 `Garinham ridge entry` `(19,6)`, `Garinham east ridge` `(16,6)`,
 `Garinham shoulder bend` `(16,5)`, `Garinham shoulder east step` `(15,4)`,
 `Garinham mountain shoulder` `(14,4)`, `Garinham north coast lane` `(14,3)`,
-`Garinham north coast west lane` `(8,3)`, `Garinham outskirts` `(5,4)`, and
-`Garinham` `(2,2)`. The Brecconary and Tantegel Castle safety routes now
+`Garinham north coast west lane` `(8,3)`, `Garinham outskirts` `(5,4)`,
+`Garinham approach` `(2,2)`, and `Garinham` `(1,2)`. The Brecconary and
+Tantegel Castle safety routes now
 include that northwest leg in reverse, so selecting either safety destination
 from Garinham starts by leaving town toward Erdrick's Cave road. The first live
 try exposed why the old single `(12,6)` woods marker was too coarse: from
@@ -66,6 +146,9 @@ Earlier live proof before the split: `LAUNCHER_PROBE:
 codex_garinham_route_reload`, then `POSITION: map=0x01(World Map) x=43 y=43`;
 `start_overworld_route:garinham` logged `OVERWORLD_ROUTE: event=start
 route=garinham waypoint=Brecconary road index=2`.
+Latest static proof after the coordinate correction: `lua test_overworld_routes.lua`
+includes `garinham_corridor_points_west_to_town`, proving world `(2,2)` now
+points `1 west` to the corrected town landmark instead of completing early.
 
 Garinham map-cracking context is now staged. The user reached the town, and
 entry-side live position confirmed `POSITION: map=0x09(Garinham) x=0 y=14`. A

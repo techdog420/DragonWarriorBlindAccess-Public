@@ -136,6 +136,10 @@ COMMANDS (write to dw_commands.txt, one per line)
   recalculate_overworld_route
                            Alias for route_recalculate
   stop_overworld_route     Clear active overworld route guidance
+  auto_walk                On the world map, if an overworld route is active,
+                           queue one segment to the next waypoint. Stops when
+                           the waypoint is reached, movement is blocked, or
+                           field movement is interrupted by battle/menu/dialogue.
   ; comment line           Lines starting with ; are ignored
 
 PATHFINDING DEBUG COMMANDS
@@ -186,6 +190,15 @@ menus, dialogue, battle, sweeps, active auto-walk, surveys, and edge probes.
                            diagonal neighbor (N,E,S,W,NE,SE,SW,NW) if target is blocked
   teleport_to:X,Y,force    Bypass the walkability check (unstick/debug). Can strand
                            the player inside a wall; use with care and save first.
+  teleport_selected        Teleport to the currently selected object, using the
+                           same player-facing landing/facing path as Shift+Enter
+  teleport_selected:MODE   MODE is exact, north, south, west, or east
+                           NPC targets are briefly held for TALK, face the
+                           target after landing, and log TELEPORT_SCAN_GRACE /
+                           TELEPORT_SELECTED_TIMING for lag checks.
+  teleport_landmark:NAME   Same-map debug teleport to a named overworld Travel
+                           landmark. World map only. Accepts exact names, object
+                           ids, and unique prefixes; alias: teleport_overworld.
 
 MAP SURVEY COMMANDS
 -------------------

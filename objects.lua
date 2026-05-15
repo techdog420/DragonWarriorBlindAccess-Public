@@ -237,7 +237,17 @@ local EXITS = {
     -- Brecconary's confirmed world-map handoff is on the west edge.
     {map = 0x07, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Kol
     {map = 0x08, x = 0,  y = 15, name = "Exit", dest = "World Map"},      -- Brecconary (confirmed via live PPU dump)
-    {map = 0x09, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Garinham
+    {
+        map = 0x09,
+        x = 0,
+        y = 14,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 1,
+        interaction_y = 14,
+        interaction_face_dir = "west",
+        interaction_label = "exit",
+    },                                                                      -- Garinham
     {map = 0x0A, x = 14, y = 29, name = "Exit", dest = "World Map"},      -- Cantlin
     {map = 0x0B, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Rimuldar
 
@@ -281,7 +291,7 @@ local OVERWORLD_LANDMARKS = {
     {dx =   0, dy =   0, name = "Tantegel Castle"},
     {dx =   5, dy =  -2, name = "Brecconary"},
     {dx = -15, dy = -31, name = "Erdrick's Cave"},
-    {dx = -41, dy = -41, name = "Garinham"},
+    {dx = -42, dy = -41, name = "Garinham"},
     {dx =  61, dy = -33, name = "Kol"},
     {dx =  38, dy = -42, name = "Northern Cave"},
     {dx = -14, dy =  14, name = "Mountain Cave"},
@@ -299,6 +309,34 @@ local function wrap_overworld_coord(value)
         value = value + OVERWORLD_SIZE
     end
     return value
+end
+
+local function trim(value)
+    return tostring(value or ""):match("^%s*(.-)%s*$")
+end
+
+local function landmark_slug(value)
+    local slug = trim(value):lower():gsub("[^%w]+", "_")
+    slug = slug:gsub("^_+", ""):gsub("_+$", "")
+    return slug
+end
+
+local function landmark_compact(value)
+    return trim(value):lower():gsub("[^%w]+", "")
+end
+
+local function overworld_landmark_id(name)
+    return "overworld_" .. landmark_slug(name)
+end
+
+local function build_overworld_landmark_object(landmark)
+    return {
+        x = wrap_overworld_coord(OVERWORLD_TANTEGEL_X + landmark.dx),
+        y = wrap_overworld_coord(OVERWORLD_TANTEGEL_Y + landmark.dy),
+        name = landmark.name,
+        type = M.TYPE_EXIT,
+        id = overworld_landmark_id(landmark.name),
+    }
 end
 
 -- ============================================================
@@ -755,6 +793,10 @@ local function get_exits(map_id)
                 name = "Exit to " .. exit.dest,
                 type = M.TYPE_EXIT,
                 id = "exit_" .. exit.x .. "_" .. exit.y,
+                interaction_x = exit.interaction_x,
+                interaction_y = exit.interaction_y,
+                interaction_face_dir = exit.interaction_face_dir,
+                interaction_label = exit.interaction_label,
             }
         end
     end
@@ -764,18 +806,60 @@ end
 local function get_overworld_landmarks()
     local result = {}
     for _, landmark in ipairs(OVERWORLD_LANDMARKS) do
-        result[#result + 1] = {
-            x = wrap_overworld_coord(OVERWORLD_TANTEGEL_X + landmark.dx),
-            y = wrap_overworld_coord(OVERWORLD_TANTEGEL_Y + landmark.dy),
-            name = landmark.name,
-            type = M.TYPE_EXIT,
-            id = "overworld_" .. landmark.name:gsub("[^%w]+", "_"):lower(),
-        }
+        result[#result + 1] = build_overworld_landmark_object(landmark)
     end
     for _, waypoint in ipairs(overworld_routes.get_active_waypoint_objects()) do
         result[#result + 1] = waypoint
     end
     return result
+end
+
+local function is_overworld_travel_object(obj)
+    if not obj or obj.type ~= M.TYPE_EXIT then
+        return false
+    end
+    local id = tostring(obj.id or "")
+    return id:match("^overworld_") ~= nil or id:match("^route_") ~= nil
+end
+
+function M.find_overworld_landmark(query)
+    local needle_slug = landmark_slug(query)
+    local needle_compact = landmark_compact(query)
+    if needle_slug == "" then
+        return nil, "missing landmark name"
+    end
+
+    local exact_match = nil
+    local prefix_matches = {}
+    for _, landmark in ipairs(OVERWORLD_LANDMARKS) do
+        local obj = build_overworld_landmark_object(landmark)
+        local name_slug = landmark_slug(obj.name)
+        local id_slug = landmark_slug(obj.id)
+        local name_compact = landmark_compact(obj.name)
+        local id_compact = landmark_compact(obj.id)
+        if needle_slug == name_slug
+            or needle_slug == id_slug
+            or needle_compact == name_compact
+            or needle_compact == id_compact then
+            exact_match = obj
+            break
+        end
+        if name_slug:sub(1, #needle_slug) == needle_slug
+            or name_compact:sub(1, #needle_compact) == needle_compact then
+            prefix_matches[#prefix_matches + 1] = obj
+        end
+    end
+
+    if exact_match then
+        return exact_match, nil
+    end
+    if #prefix_matches == 1 then
+        return prefix_matches[1], nil
+    end
+    if #prefix_matches > 1 then
+        return nil, "ambiguous overworld landmark: " .. trim(query)
+    end
+    return nil, "unknown overworld landmark: " .. trim(query)
 end
 
 -- ============================================================
@@ -1820,6 +1904,15 @@ function M.resolve_teleport_landing(obj, map_id, opts)
     map_id = active_map_id(map_id)
 
     if obj.type ~= M.TYPE_NPC then
+        if is_overworld_context() and is_overworld_travel_object(obj) then
+            return {
+                x = obj.x,
+                y = obj.y,
+                target_x = obj.x,
+                target_y = obj.y,
+                reason = "overworld_travel",
+            }, nil
+        end
         local ok = teleport_landing_open(map_id, obj.x, obj.y, opts)
         if ok then
             return {

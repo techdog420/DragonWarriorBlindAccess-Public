@@ -293,6 +293,23 @@ Emulator compatibility direction:
   `start_overworld_route:brecconary` (alias `breconary`),
   `start_overworld_route:castle`, `route_status`, `route_recalculate`, and
   `stop_overworld_route`.
+  Overworld Travel landmarks also participate in same-map teleport support:
+  selected-object teleport can land on the current world-map Travel object, and
+  debug command `teleport_landmark:NAME` (alias `teleport_overworld:NAME`)
+  resolves a named landmark by exact name, object id, or unique prefix. These
+  trusted Travel targets intentionally bypass map-reader walkability because the
+  world map does not expose reliable interior-style tile metadata here. Keep it
+  world-map only; it should refuse from towns/caves rather than cross-map warp.
+  First-phase overworld auto-walk now reuses the active guided route: `auto_walk`
+  on the world map asks `overworld_routes.plan_next_segment()` for a short
+  straight segment to the next waypoint and queues those steps through
+  `auto_step`. It intentionally stops rather than rerouting when a blocker is
+  encountered, and `can_walk_false` cancels the segment quietly so battle/menu
+  narration remains in charge. This is not full world-map A* yet.
+  In FCEUX, be careful with the stuck-Alt external keyboard bridge: neutral raw
+  bridge frames must not suppress `auto_step.update`, or queued routes will log
+  `OVERWORLD_AUTO_WALK: event=start` but never begin stepping. The bridge should
+  only suppress auto-step for raw frames that actually contain a button.
   Active route waypoints are
   injected as a small Travel layer, currently capped at the next two markers,
   so the player can browse guidance without cluttering the major destination
@@ -320,8 +337,10 @@ Emulator compatibility direction:
   `(19,6)`, `Garinham east ridge` `(16,6)`, `Garinham shoulder bend`
   `(16,5)`, `Garinham shoulder east step` `(15,4)`, `Garinham mountain
   shoulder` `(14,4)`, `Garinham north coast lane` `(14,3)`, `Garinham north
-  coast west lane` `(8,3)`, `Garinham outskirts` `(5,4)`, and the town at
-  `(2,2)`. Brecconary and Tantegel Castle safety routes include those markers
+  coast west lane` `(8,3)`, `Garinham outskirts` `(5,4)`, `Garinham approach`
+  `(2,2)`, and the town at `(1,2)`. The `(2,2)` tile is only the north-south
+  approach corridor; use the western guide coordinate for the actual Garinham
+  landmark. Brecconary and Tantegel Castle safety routes include those markers
   in reverse so a route back from Garinham can start with the selected safety
   destination. Garinham completes on map `0x09`. Entering
   Erdrick's Cave maps `0x1C` / `0x1D` completes the first-dungeon route even
@@ -428,9 +447,12 @@ Emulator compatibility direction:
 - Garinham is public-service complete until Magic Keys. Treat exit/entrance,
   `Merchant 2` / `Tool Merchant`, `Merchant 3` / `Inn`, `Merchant 4` /
   `Weapons Merchant`, and the public east door at `(19,16)` as the current
-  service set. Leave the internal grey-building door, locked chests, hidden
-  grave/back-building route, and remaining hidden/dialogue-only NPCs for the
-  key revisit unless normal play exposes a progression blocker first.
+  service set. The town-side `Exit to World Map` object should target the live
+  west entry boundary `(0,14)` and route/teleport to interaction stand `(1,14)`
+  facing west; the old `(15,14)` target is only a corridor near the inn. Leave
+  the internal grey-building door, locked chests, hidden grave/back-building
+  route, and remaining hidden/dialogue-only NPCs for the key revisit unless
+  normal play exposes a progression blocker first.
 - Garinham's confirmed town-scope locked door is the public east-end door at
   `(19,16)`. Live no-key movement from `(19,17)->UP` stayed on `(19,17)` and
   logged a blocked seam into `(19,16)`, matching the guide's east-end town door
@@ -664,6 +686,17 @@ Emulator compatibility direction:
   A manual teleport retest found the apparent lost-keyboard state was actually
   a boxed-in landing at map `0x05` `(4,6)` with NPC blockers on both sides, a
   door south, and a noisy north seam.
+- Selected-object NPC teleport also needs to keep the target in place long
+  enough for the player to use TALK. A Garinham repro landed beside live
+  `Woman 2`, faced the old target tile, and later TALK missed because the NPC
+  had wandered. The teleport hotkey path now uses `route_manager.hold_target_npc`
+  to pin the selected NPC's live target tile with `teleport_npc_hold_frames`,
+  holds the facing direction for `teleport_face_target_frames` frames, logs
+  `TELEPORT_SELECTED_TIMING` / `TELEPORT_SCAN_GRACE`, and gives the field loop
+  a short `teleport_post_scan_grace_frames` window to avoid expensive text/menu
+  scans during immediate input suppression/facing. Keep the selected-teleport
+  hold shorter than the auto-walk hold, write NPC hold bytes only when they
+  drift, and release the hold as soon as TALK dialogue opens or misses.
 - BizHawk ROM domains can be exposed as headerless PRG data even when the
   project expects FCEUX-style `rom.readbyte()` file offsets that include the
   16-byte iNES header. `emulator_compat.lua` must score candidate ROM domains

@@ -6,10 +6,38 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Overworld landmarks are now hooked into the same-map teleport system in the
+  worktree. On the world map, selected Travel landmarks can use exact
+  selected-object teleport, and debug builds also accept
+  `teleport_landmark:NAME` / `teleport_overworld:NAME` for named destinations
+  such as `Garinham`, `Brecconary`, or `Tantegel Castle`. The command refuses
+  off-map use and uses the normal teleport guards. Live validation after the
+  user's Garinham error: named teleport to `Garinham` landed on world-map
+  `(1,2)`, and selected-object `teleport_selected` on the `Garinham` Travel
+  object logged `landing_reason=overworld_travel` / `ok=true`.
+
+- Selected-object teleport is safer for talking to hard-to-reach NPCs. The
+  live Garinham repro landed beside `Woman 2`, but the NPC wandered before
+  TALK, so the old one-frame face tap still produced `There is no one there.`
+  Teleport now briefly pins the selected NPC's live target tile, faces the
+  target for 4 frames, and skips heavy text/menu scans for 45 frames after the
+  RAM jump. The selected-NPC hold now has its own shorter 600-frame window,
+  uses diff-only RAM writes, and releases as soon as TALK dialogue opens or
+  misses. Validation used `teleport_selected` on Garinham `Woman 2`, then TALK
+  reached `Welcome to Garinham. May thy stay be a peaceful one.` Follow-up
+  profiling showed the target hold itself is cheap; the remaining lag was
+  mainly steady text/menu scanning, so idle scanner cadence was throttled while
+  preserving faster checks during input/menu/dialogue. Final player state after
+  cleanup: `map=0x09(Garinham) x=15 y=14`, menu closed.
+
 - Garinham public-service pass is done for now. Public routing is good enough
   for normal play to continue: Tool Merchant, Inn, Weapons Merchant, town
-  exit/entrance, and the public east locked door are modeled. Circle back after
-  Magic Keys for the internal grey-building door, locked chests, hidden
+  exit/entrance, and the public east locked door are modeled. The town-side
+  exit object no longer targets the `(15,14)` corridor; it now uses the west
+  entry boundary `(0,14)` with interaction stand `(1,14)` facing west. The
+  overworld Garinham landmark also moved west from `(2,2)` to `(1,2)`, leaving
+  `(2,2)` as the approach corridor that points `1 west` to town. Circle back
+  after Magic Keys for the internal grey-building door, locked chests, hidden
   grave/back-building path, and any remaining hidden/dialogue-only NPCs.
 
 - Garinham has been reached in live play. Current confirmed entry state:
@@ -869,11 +897,18 @@ QoL feature check:
   active route waypoint recalculates the next marker from the current position;
   `route_recalculate` / `recalculate_overworld_route` do the same from the
   command file. `stop_overworld_route` cancels the active route.
-  This is manual guidance only: it does not enable overworld auto-walk, so the
-  player still fights normal random encounters and grows during the trip.
+  First-phase overworld auto-walk is available while a route is active: press
+  the normal auto-walk command or send `auto_walk` to queue one straight segment
+  to the next waypoint. It stops at that waypoint, on a movement blocker, or
+  when battle/menu/dialogue state interrupts field movement; it does not yet do
+  full world-map A* or automatic rerouting around terrain.
+  FCEUX live smoke proved the command path can begin a queued route segment:
+  from `(28,13)`, `auto_walk` toward Erdrick's Cave started `source=queued_route`
+  and then stopped on a blocker entering `(28,12)` from the south. Treat that
+  cave approach as a route-data follow-up, not an auto-walk executor failure.
   After starting the route, `current_object` should report a `Route next`
   waypoint rather than the plain landmark. `O` remains the plain heading/path
-  preview for the selected object, and `U` remains reserved for auto-walk
+  preview for the selected object, and `U` drives the one-segment auto-walk
   behavior.
 - The Erdrick's Cave route includes a one-time bridge warning about stronger
   monsters beyond the crossing. During live testing, check whether this is
@@ -909,7 +944,8 @@ QoL feature check:
   `Garinham east field`, `Garinham ridge entry`, `Garinham east ridge`,
   `Garinham shoulder bend`, `Garinham shoulder east step`, `Garinham mountain
   shoulder`, `Garinham north coast lane`, `Garinham north coast west lane`,
-  and `Garinham outskirts` before the town. It completes on map `0x09`. The
+  `Garinham outskirts`, and `Garinham approach` `(2,2)` before the town at
+  `(1,2)`. It completes on map `0x09`. The
   safety routes still complete on the destination maps (`0x08` for
   Brecconary; `0x04` / `0x05` for Tantegel Castle).
 - Read-only hotkey speech now queues instead of interrupting current speech:

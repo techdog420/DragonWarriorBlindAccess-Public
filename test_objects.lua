@@ -650,6 +650,73 @@ function tests.brecconary_exit_matches_live_west_edge_probe()
     env.restore()
 end
 
+function tests.garinham_exit_uses_live_west_entry_not_inn_corridor()
+    local env = make_env()
+
+    env.set_position(0x09, 1, 14)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x09)
+
+    local obj = env.objects.select_object_by_id("exit_0_14")
+    assert_equal(obj ~= nil, true, "Garinham should expose the live west-side town exit")
+    assert_equal(obj.name, "Exit to World Map", "Garinham should keep the normal town-exit label")
+    assert_equal(obj.x, 0, "Garinham exit should use the live entry boundary X")
+    assert_equal(obj.y, 14, "Garinham exit should use the live entry row")
+    assert_equal(obj.interaction_x, 1, "Garinham exit route should stop on the west entry stand")
+    assert_equal(obj.interaction_y, 14, "Garinham exit stand should share the entry row")
+    assert_equal(obj.interaction_face_dir, "west", "Garinham exit stand should face out toward the world")
+
+    env.restore()
+end
+
+function tests.garinham_overworld_landmark_uses_western_coordinate()
+    local env = make_env()
+
+    env.set_position(0x01, 2, 2)
+    env.set_terrain_offset(0x00)
+    env.objects.refresh(0x01)
+
+    local obj = env.objects.select_object_by_id("overworld_garinham")
+    assert_equal(obj ~= nil, true, "World map should expose Garinham as a Travel object")
+    assert_equal(obj.x, 1, "Garinham overworld landmark should use the western guide coordinate")
+    assert_equal(obj.y, 2, "Garinham overworld landmark should keep the guide northing")
+
+    local landing = assert(env.objects.resolve_teleport_landing(obj, 0x01, {check_npc = false}))
+    assert_equal(landing.x, 1, "overworld landmark teleport should land on the landmark x")
+    assert_equal(landing.y, 2, "overworld landmark teleport should land on the landmark y")
+    assert_equal(landing.reason, "overworld_travel", "overworld landmark teleport should bypass missing map-reader walkability")
+
+    env.restore()
+end
+
+function tests.find_overworld_landmark_supports_names_ids_and_prefixes()
+    local env = make_env()
+
+    local garinham = assert(env.objects.find_overworld_landmark("Garinham"))
+    assert_equal(garinham.id, "overworld_garinham", "landmark lookup should accept display names")
+    assert_equal(garinham.x, 1, "landmark lookup should return the same coordinate used by Travel objects")
+    assert_equal(garinham.y, 2, "landmark lookup should return the same coordinate used by Travel objects")
+
+    local by_id = assert(env.objects.find_overworld_landmark("overworld_garinham"))
+    assert_equal(by_id.name, "Garinham", "landmark lookup should accept object ids")
+
+    local erdrick = assert(env.objects.find_overworld_landmark("erdricks"))
+    assert_equal(erdrick.id, "overworld_erdrick_s_cave", "landmark lookup should tolerate missing apostrophes")
+
+    env.restore()
+end
+
+function tests.find_overworld_landmark_rejects_ambiguous_prefixes()
+    local env = make_env()
+
+    local landmark, err = env.objects.find_overworld_landmark("c")
+    assert_equal(landmark, nil, "ambiguous landmark prefixes should not pick an arbitrary destination")
+    assert_equal(err, "ambiguous overworld landmark: c", "ambiguous landmark prefixes should explain the refusal")
+
+    env.restore()
+end
+
 function tests.service_filter_lists_merchant_npcs()
     local env = make_env()
 

@@ -32,6 +32,7 @@ local path_debug = require "path_debug"
 local snapshot   = require "game_snapshot"
 local event_bus  = require "event_bus"
 local config     = require "config"
+local overworld_routes = require "overworld_routes"
 local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 
 local M = {}
@@ -98,6 +99,7 @@ local active_route_completion_actions = true
 local active_route_speak_completion = true
 local active_route_total_steps = 0
 local active_route_completed_steps = 0
+local active_overworld_segment = nil
 local target_npc_hold = nil
 local target_face_input = nil
 local object_pathability_signature = nil
@@ -687,16 +689,28 @@ end
 
 local function write_target_npc_snapshot(slot, snapshot)
     local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
-    memory.writebyte(base, snapshot[1])
-    memory.writebyte(base + 1, snapshot[2])
-    memory.writebyte(base + 2, snapshot[3])
+    if memory.readbyte(base) ~= snapshot[1] then
+        memory.writebyte(base, snapshot[1])
+    end
+    if memory.readbyte(base + 1) ~= snapshot[2] then
+        memory.writebyte(base + 1, snapshot[2])
+    end
+    if memory.readbyte(base + 2) ~= snapshot[3] then
+        memory.writebyte(base + 2, snapshot[3])
+    end
 end
 
-local function start_target_npc_hold(obj)
+local function start_target_npc_hold(obj, opts)
+    opts = opts or {}
     if not obj or obj.type ~= objects.TYPE_NPC then
         return false
     end
-    local frames = config_int("auto_walk_npc_hold_frames", 480, 0, 3600)
+    local frames = tonumber(opts.frames)
+    if frames == nil then
+        frames = config_int("auto_walk_npc_hold_frames", 480, 0, 3600)
+    else
+        frames = math.max(0, math.min(3600, math.floor(frames)))
+    end
     if frames <= 0 then
         return false
     end
@@ -732,6 +746,18 @@ local function start_target_npc_hold(obj)
         used_target_x and tostring(obj.x) or "live",
         used_target_y and tostring(obj.y) or "live"))
     return true
+end
+
+function M.hold_target_npc(obj, reason, frames)
+    local ok = start_target_npc_hold(obj, {frames = frames})
+    if ok and reason then
+        debug_tools.info("NPC target hold requested: " .. tostring(reason))
+    end
+    return ok
+end
+
+function M.release_target_npc_hold(reason)
+    release_target_npc_hold(reason)
 end
 
 local function freeze_npcs_for_pathing()
@@ -1052,6 +1078,7 @@ local function clear_active_route_context(reason, refresh_objects)
     active_route_speak_completion = true
     active_route_total_steps = 0
     active_route_completed_steps = 0
+    active_overworld_segment = nil
     release_target_face(reason or "route context cleared")
     clear_seam_retry_state()
     release_npc_freeze(reason)
@@ -2024,6 +2051,117 @@ function M.plan_path_to_object(obj, opts)
     return plan_path_to_object(obj, opts)
 end
 
+local queue_overworld_segment_steps
+local overworld_segment_target
+
+function M.autowalk_overworld_segment(opts)
+    opts = opts or {}
+    if autowalk_guard and not opts.skip_guard then
+        local ok, reason = autowalk_guard()
+        if ok == false then
+            debug_tools.info(string.format(
+                "OVERWORLD_AUTO_WALK: event=guard_blocked reason=%s",
+                tostring(reason or "unspecified")))
+            if opts.speak ~= false then
+                tolk.output_interrupt(reason or "Cannot auto-walk right now")
+            end
+            return {
+                status = "guard_blocked",
+                ok = false,
+                message = reason or "Cannot auto-walk right now",
+            }
+        end
+    end
+
+    local map_id, px, py = nav.get_position()
+    local segment, err = overworld_routes.plan_next_segment(map_id, px, py)
+    if not segment then
+        local message = err or "No overworld route active"
+        debug_tools.info(string.format(
+            "OVERWORLD_AUTO_WALK: event=unavailable map=0x%02X position=(%s,%s) reason=%s",
+            map_id or -1,
+            tostring(px),
+            tostring(py),
+            tostring(message)))
+        if opts.speak ~= false then
+            tolk.output_interrupt(message)
+        end
+        return {
+            status = "unavailable",
+            ok = false,
+            message = message,
+        }
+    end
+
+    if not segment.steps or #segment.steps == 0 then
+        debug_tools.info(string.format(
+            "OVERWORLD_AUTO_WALK: event=already route=%s waypoint=%s index=%s position=(%s,%s)",
+            tostring(segment.route and segment.route.id or "-"),
+            tostring(segment.waypoint and segment.waypoint.name or "-"),
+            tostring(segment.index),
+            tostring(px),
+            tostring(py)))
+        if opts.speak ~= false then
+            tolk.output_interrupt(segment.message or "Already at overworld waypoint")
+        end
+        segment.status = segment.status or "already_at_waypoint"
+        segment.ok = true
+        return segment
+    end
+
+    release_target_face("new overworld auto-walk")
+    release_target_npc_hold("new overworld auto-walk")
+    release_npc_freeze("new overworld auto-walk")
+    last_pathfind_obj = nil
+    reroute_failures = 0
+
+    if not queue_overworld_segment_steps(segment.steps) then
+        debug_tools.error(string.format(
+            "OVERWORLD_AUTO_WALK: event=queue_failed route=%s waypoint=%s index=%s steps=%d",
+            tostring(segment.route and segment.route.id or "-"),
+            tostring(segment.waypoint and segment.waypoint.name or "-"),
+            tostring(segment.index),
+            #segment.steps))
+        if opts.speak ~= false then
+            tolk.output_interrupt("Overworld auto-walk could not queue the route")
+        end
+        segment.status = "queue_failed"
+        segment.ok = false
+        segment.message = "Overworld auto-walk could not queue the route"
+        return segment
+    end
+
+    active_overworld_segment = {
+        route_id = segment.route and segment.route.id or nil,
+        route_title = segment.route and segment.route.title or nil,
+        waypoint_name = segment.waypoint and segment.waypoint.name or nil,
+        waypoint_x = segment.waypoint and segment.waypoint.x or nil,
+        waypoint_y = segment.waypoint and segment.waypoint.y or nil,
+        index = segment.index,
+        steps = #segment.steps,
+    }
+    set_active_route_context(overworld_segment_target(segment), #segment.steps, nil, {
+        post_arrival_actions = false,
+        speak = false,
+    })
+    debug_tools.info(string.format(
+        "OVERWORLD_AUTO_WALK: event=start route=%s waypoint=%s index=%s steps=%d from=(%d,%d) to=(%s,%s)",
+        tostring(active_overworld_segment.route_id or "-"),
+        tostring(active_overworld_segment.waypoint_name or "-"),
+        tostring(active_overworld_segment.index),
+        #segment.steps,
+        px or -1,
+        py or -1,
+        tostring(active_overworld_segment.waypoint_x),
+        tostring(active_overworld_segment.waypoint_y)))
+    segment.status = "queued"
+    segment.ok = true
+    if opts.speak ~= false then
+        tolk.output_interrupt("Overworld auto-walk. " .. tostring(segment.message or "Next waypoint queued"))
+    end
+    return segment
+end
+
 -- queue_path_steps(path): Convert A* path to auto_step route directions.
 -- Returns true if the route was queued successfully.
 local function queue_path_steps(path, opts)
@@ -2059,6 +2197,36 @@ local function queue_path_steps(path, opts)
         return true
     end
     return false
+end
+
+queue_overworld_segment_steps = function(steps)
+    if not steps or #steps == 0 then
+        return false
+    end
+    if auto_step.start_route(steps, {
+        settle_frames = 0,
+        settle_same_direction = true,
+    }) then
+        active_route_settle_frames = 0
+        active_route_settle_same_direction = true
+        reroute_failures = 0
+        return true
+    end
+    return false
+end
+
+overworld_segment_target = function(segment)
+    local point = segment and segment.waypoint or {}
+    return {
+        id = segment and segment.object_id or nil,
+        name = point.name and ("Route waypoint: " .. point.name) or "Route waypoint",
+        type = objects.TYPE_EXIT,
+        x = point.x,
+        y = point.y,
+        route_id = segment and segment.route and segment.route.id or nil,
+        route_index = segment and segment.index or nil,
+        route_waypoint = true,
+    }
 end
 
 -- ============================================================
@@ -2113,6 +2281,12 @@ function M.autowalk_to_object(obj, opts)
         end
     end
     local map_id = nav.get_position()
+    if maps.is_overworld(map_id, snapshot.terrain_offset) then
+        return M.autowalk_overworld_segment({
+            speak = opts.speak,
+            skip_guard = true,
+        })
+    end
     if should_freeze_npcs_for_autowalk(opts) then
         freeze_npcs_for_pathing()
     else
@@ -2122,16 +2296,6 @@ function M.autowalk_to_object(obj, opts)
     local plan = plan_path_to_object(obj, opts)
     plan.status = "planned"
     plan.ok = false
-    if maps.is_overworld(map_id, snapshot.terrain_offset) then
-        release_npc_freeze("autowalk unavailable on overworld")
-        debug_tools.info("AUTO_WALK: unavailable on overworld for " .. obj.name)
-        if opts.speak ~= false then
-            tolk.output_interrupt("Auto-walk is only available on interior maps. " .. plan.message)
-        end
-        plan.status = "unavailable"
-        plan.message = "Auto-walk is only available on interior maps. " .. plan.message
-        return plan
-    end
     if plan.result == "No path found" then
         release_npc_freeze("autowalk immediate no-path")
         debug_tools.info("AUTO_WALK: no path for " .. obj.name)
@@ -2213,16 +2377,19 @@ function M.autowalk_to_object(obj, opts)
 end
 
 -- autowalk_to_current(): Plan and auto-walk to the currently selected object.
--- Only works on interior maps (not overworld). FCEUX keeps the old NPC-freeze
--- behavior; BizHawk skips per-frame NPC RAM freezing by default for performance
--- and relies on reroute handling if an NPC moves into the path.
+-- Interior maps use A* object pathing. On the overworld, an active guided
+-- route can queue one waypoint segment without invoking interior pathfinding.
 function M.autowalk_to_current()
     local obj = objects.current_object()
     if not obj then
+        local map_id = nav.get_position()
+        if maps.is_overworld(map_id, snapshot.terrain_offset) then
+            return M.autowalk_overworld_segment({speak = true})
+        end
         tolk.output_interrupt("No object selected")
         return
     end
-    M.autowalk_to_object(obj, {speak = true})
+    return M.autowalk_to_object(obj, {speak = true})
 end
 
 local function reroute_after_route_drift(cancel_data, target)
@@ -2327,6 +2494,29 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     end
     if is_manual_block and not is_seam_retry_block then
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
+        return
+    end
+    if active_overworld_segment then
+        event_bus.publish("route_cancelled", {
+            reason = "overworld_blocked",
+            target = active_route_target,
+            map_id = map_id,
+            from_x = from_x,
+            from_y = from_y,
+            blocked_dir = blocked_dir,
+        })
+        debug_tools.info(string.format(
+            "OVERWORLD_AUTO_WALK: event=blocked route=%s waypoint=%s index=%s from=(%s,%s) dir=%s source=%s",
+            tostring(active_overworld_segment.route_id or "-"),
+            tostring(active_overworld_segment.waypoint_name or "-"),
+            tostring(active_overworld_segment.index),
+            tostring(from_x),
+            tostring(from_y),
+            tostring(blocked_dir),
+            tostring(source)))
+        local waypoint_name = active_overworld_segment.waypoint_name or "the next waypoint"
+        clear_active_route_context("overworld auto-walk blocked", should_refresh_objects_after_route())
+        tolk.output_interrupt("Overworld auto-walk stopped. Blocked moving " .. tostring(blocked_dir) .. " toward " .. waypoint_name)
         return
     end
     if not last_pathfind_obj then return end
@@ -2515,12 +2705,21 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
 end
 
 auto_step.on_route_complete = function()
+    local overworld_segment = active_overworld_segment
     local target = active_route_target or last_pathfind_obj
     local face_dir = active_route_face_dir
     local total_steps = active_route_total_steps
     local completion_actions = active_route_completion_actions
     local speak_completion = active_route_speak_completion
     clear_active_route_context("autowalk route complete", should_refresh_objects_after_route())
+    if overworld_segment then
+        debug_tools.info(string.format(
+            "OVERWORLD_AUTO_WALK: event=complete route=%s waypoint=%s index=%s steps=%s",
+            tostring(overworld_segment.route_id or "-"),
+            tostring(overworld_segment.waypoint_name or "-"),
+            tostring(overworld_segment.index),
+            tostring(overworld_segment.steps)))
+    end
     if target then
         local msg = string.format("Auto-walk complete. Arrived at %s", target.name or "destination")
         if total_steps and total_steps > 0 then
@@ -2543,7 +2742,23 @@ end
 auto_step.on_route_cancelled = function(cancel_data)
     local reason = cancel_data and cancel_data.reason or "auto_step_cancelled"
     local message = cancel_data and cancel_data.message
+    local overworld_segment = active_overworld_segment
     local had_target = active_route_target or last_pathfind_obj
+    if overworld_segment then
+        debug_tools.info(string.format(
+            "OVERWORLD_AUTO_WALK: event=cancel route=%s waypoint=%s index=%s reason=%s current=(%s,%s)",
+            tostring(overworld_segment.route_id or "-"),
+            tostring(overworld_segment.waypoint_name or "-"),
+            tostring(overworld_segment.index),
+            tostring(reason),
+            tostring(cancel_data and cancel_data.current_x),
+            tostring(cancel_data and cancel_data.current_y)))
+        clear_active_route_context("overworld auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
+        if reason ~= "can_walk_false" then
+            tolk.output_interrupt("Overworld auto-walk cancelled. " .. tostring(message or reason))
+        end
+        return
+    end
     if reason == "route_drift_off_path"
        and reroute_after_route_drift(cancel_data, had_target) then
         return

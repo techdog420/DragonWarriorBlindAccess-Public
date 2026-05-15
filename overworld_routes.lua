@@ -80,7 +80,8 @@ local ROUTES = {
             {x = 14, y = 3, name = "Garinham north coast lane", radius = 0},
             {x = 8, y = 3, name = "Garinham north coast west lane", radius = 1},
             {x = 5, y = 4, name = "Garinham outskirts", radius = 1},
-            {x = 2, y = 2, name = "Garinham", radius = 0, final = true},
+            {x = 2, y = 2, name = "Garinham approach", radius = 0},
+            {x = 1, y = 2, name = "Garinham", radius = 0, final = true},
         },
     },
     erdrick = {
@@ -213,6 +214,37 @@ local function direction_string(px, py, tx, ty)
         parts[#parts + 1] = (px - tx) .. " west"
     end
     return table.concat(parts, ", ")
+end
+
+local function append_axis_steps(steps, axis, px, py, tx, ty)
+    if axis == "vertical" then
+        while py ~= ty do
+            if ty < py then
+                steps[#steps + 1] = "up"
+                py = py - 1
+            else
+                steps[#steps + 1] = "down"
+                py = py + 1
+            end
+        end
+    elseif axis == "horizontal" then
+        while px ~= tx do
+            if tx < px then
+                steps[#steps + 1] = "left"
+                px = px - 1
+            else
+                steps[#steps + 1] = "right"
+                px = px + 1
+            end
+        end
+    end
+
+    return px, py
+end
+
+local function waypoint_axis_order(route, point, opts)
+    opts = opts or {}
+    return point and point.axis_order or route and route.axis_order or opts.axis_order or {"vertical", "horizontal"}
 end
 
 local function distance(px, py, point)
@@ -472,6 +504,73 @@ function M.recalculate(map_id, px, py)
         recalculate = true,
         force_recalculate_message = true,
     })
+end
+
+function M.plan_next_segment(map_id, px, py, opts)
+    opts = opts or {}
+    local route = active_route()
+    if not route then
+        return nil, "No overworld route active"
+    end
+    if not is_overworld(map_id) then
+        return nil, "Overworld auto-walk is only available on the world map"
+    end
+    if px == nil or py == nil then
+        return nil, "Current world-map position unavailable"
+    end
+
+    local index = clamp_next_index(route)
+    local point = route.waypoints[index]
+    if not point then
+        return nil, "No next overworld waypoint"
+    end
+
+    local direction = direction_string(px, py, point.x, point.y)
+    if distance(px, py, point) <= (point.radius or 0) then
+        return {
+            route = route,
+            waypoint = point,
+            index = index,
+            steps = {},
+            path_length = 0,
+            status = "already_at_waypoint",
+            message = "Already at " .. point.name,
+            log = make_log("autowalk_already", route, point, index),
+            object_id = route_object_id(route, index),
+            refresh = true,
+        }
+    end
+
+    local steps = {}
+    local cx = px
+    local cy = py
+    for _, axis in ipairs(waypoint_axis_order(route, point, opts)) do
+        cx, cy = append_axis_steps(steps, axis, cx, cy, point.x, point.y)
+    end
+    if cx ~= point.x then
+        cx, cy = append_axis_steps(steps, "horizontal", cx, cy, point.x, point.y)
+    end
+    if cy ~= point.y then
+        cx, cy = append_axis_steps(steps, "vertical", cx, cy, point.x, point.y)
+    end
+
+    local max_steps = tonumber(opts.max_steps) or 64
+    if #steps > max_steps then
+        return nil, string.format("Overworld segment too long: %d steps", #steps)
+    end
+
+    return {
+        route = route,
+        waypoint = point,
+        index = index,
+        steps = steps,
+        path_length = #steps,
+        status = "planned",
+        direction = direction,
+        message = string.format("Auto-walk to %s, %s. %d step(s).", point.name, direction, #steps),
+        log = make_log("autowalk_plan", route, point, index),
+        object_id = route_object_id(route, index),
+    }
 end
 
 function M.guidance_for_object(obj, map_id, px, py)

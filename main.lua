@@ -1093,6 +1093,7 @@ DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
 DW_QOL_STATE.TELEPORT_INPUT_RELEASE_MAX_FRAMES = 90
 DW_QOL_STATE.teleport_input_suppress_until_release = nil
 DW_QOL_STATE.pending_teleport_face = nil
+DW_QOL_STATE.teleport_post_scan_grace_frames = 0
 
 -- Sub-menu tracking: STATUS, SPELL, and ITEM screens opened from the command menu.
 -- When the player selects STATUS, SPELL, or ITEM, the game opens a sub-menu that
@@ -1204,6 +1205,9 @@ DW_QOL_STATE.mark_pending_talk_visit = function(event)
     local dialogue_text = event and event.text or ""
     if tostring(dialogue_text):lower():find("there is no one there", 1, true) then
         debug_tools.debug("VISITED_AUTO skipped: TALK did not find anyone")
+        if route_mgr.release_target_npc_hold then
+            route_mgr.release_target_npc_hold("talk miss")
+        end
         DW_QOL_STATE.pending_talk_visit = nil
         return
     end
@@ -1218,6 +1222,9 @@ DW_QOL_STATE.mark_pending_talk_visit = function(event)
             tostring(obj.name)))
     else
         debug_tools.debug("VISITED_AUTO skipped: no adjacent NPC matched TALK dialogue")
+    end
+    if route_mgr.release_target_npc_hold then
+        route_mgr.release_target_npc_hold("talk dialogue opened")
     end
     DW_QOL_STATE.pending_talk_visit = nil
 end
@@ -4140,19 +4147,17 @@ DW_QOL_STATE.apply_pending_teleport_face = function()
     if not face then
         return false
     end
-    DW_QOL_STATE.pending_teleport_face = nil
-    if auto_step.suppress_direction_tracking then
-        auto_step.suppress_direction_tracking(4)
+    if face.frames > 0 then
+        neutralize_teleport_input({[face.dir] = true})
+        face.frames = face.frames - 1
+        return true
     end
-    neutralize_teleport_input({[face.dir] = true})
-    DW_QOL_STATE.teleport_input_suppress_frames = 2
-    debug_tools.info(string.format(
-        "TELEPORT_FACE target=%s face=%s dir=%s landing=(%s,%s)",
-        tostring(face.target_name),
-        tostring(face.face_dir),
-        tostring(face.dir),
-        face.landing_x ~= nil and tostring(face.landing_x) or "?",
-        face.landing_y ~= nil and tostring(face.landing_y) or "?"))
+    if face.release_frames > 0 then
+        neutralize_teleport_input()
+        face.release_frames = face.release_frames - 1
+        return true
+    end
+    DW_QOL_STATE.pending_teleport_face = nil
     return true
 end
 
@@ -4161,14 +4166,40 @@ DW_QOL_STATE.queue_teleport_face = function(face_dir, target_name, landing)
     if not dir then
         return false
     end
+    local frames = tonumber(config.get("teleport_face_target_frames")) or 4
+    frames = math.max(1, math.min(30, math.floor(frames)))
+    local release_frames = 2
     DW_QOL_STATE.pending_teleport_face = {
         dir = dir,
         face_dir = face_dir,
         target_name = target_name or "target",
         landing_x = landing and landing.x or nil,
         landing_y = landing and landing.y or nil,
+        frames = frames,
+        release_frames = release_frames,
     }
+    if auto_step.suppress_direction_tracking then
+        auto_step.suppress_direction_tracking(frames + release_frames + 4)
+    end
+    debug_tools.info(string.format(
+        "TELEPORT_FACE target=%s face=%s dir=%s landing=(%s,%s) frames=%d",
+        tostring(target_name or "target"),
+        tostring(face_dir),
+        tostring(dir),
+        landing and landing.x ~= nil and tostring(landing.x) or "?",
+        landing and landing.y ~= nil and tostring(landing.y) or "?",
+        frames))
     return true
+end
+
+local function teleport_post_scan_grace_frames()
+    local frames = tonumber(config.get("teleport_post_scan_grace_frames")) or 45
+    return math.max(0, math.min(60, math.floor(frames)))
+end
+
+local function teleport_npc_hold_frames()
+    local frames = tonumber(config.get("teleport_npc_hold_frames")) or 600
+    return math.max(0, math.min(3600, math.floor(frames)))
 end
 
 -- Always refuses during menus, dialogue, battle, sweeps, active routes, and
@@ -4247,8 +4278,9 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
 
     local landing_x, landing_y = tx, ty
     local landing_note = nil
+    local trust_walkable = opts.trust_walkable == true
 
-    if flag ~= "force" then
+    if flag ~= "force" and not trust_walkable then
         local walkable = map_reader.is_walkable(map_id, tx, ty)
         if walkable ~= true then
             if flag == "near" then
@@ -4318,7 +4350,7 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
 
     memory.writebyte(addr.PLAYER_X, landing_x)
     memory.writebyte(addr.PLAYER_Y, landing_y)
-    if map_id == 0x00 then
+    if snapshot.is_overworld then
         memory.writebyte(addr.OVERWORLD_X, landing_x)
         memory.writebyte(addr.OVERWORLD_Y, landing_y)
     end
@@ -4331,6 +4363,8 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
     -- Keep later commands in the same command poll from reading the pre-teleport
     -- cached position via navigation/game_snapshot.
     snapshot.update()
+    DW_QOL_STATE.teleport_post_scan_grace_frames = teleport_post_scan_grace_frames()
+    debug_tools.info("TELEPORT_SCAN_GRACE frames=" .. tostring(DW_QOL_STATE.teleport_post_scan_grace_frames))
 
     if debug_tools.DEBUG_MODE then
         local bytes = {}
@@ -4370,13 +4404,33 @@ DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS = {
     east = {dx = 1, dy = 0, face_dir = "west"},
 }
 
-hotkeys.set_teleport_handler(function(mode)
-    DW_QOL_STATE.suppress_teleport_input(mode)
+local function hold_selected_teleport_target(obj, landing)
+    if not obj or obj.type ~= objects.TYPE_NPC or not landing then
+        return false
+    end
+    local hold_obj = {}
+    for k, v in pairs(obj) do
+        hold_obj[k] = v
+    end
+    hold_obj.x = landing.target_x or obj.x
+    hold_obj.y = landing.target_y or obj.y
+    return route_mgr.hold_target_npc
+        and route_mgr.hold_target_npc(hold_obj, "selected teleport", teleport_npc_hold_frames())
+        or false
+end
+
+local function teleport_selected_object(mode, opts)
+    opts = opts or {}
+    mode = mode or "exact"
+    local started = os.clock()
+    if opts.suppress_input ~= false then
+        DW_QOL_STATE.suppress_teleport_input(mode)
+    end
 
     local obj = objects.current_object()
     if not obj then
         tolk.output_interrupt("No object selected")
-        return
+        return false
     end
 
     local tx, ty = obj.x, obj.y
@@ -4396,14 +4450,14 @@ hotkeys.set_teleport_handler(function(mode)
                 obj.y,
                 tostring(err)))
             tolk.output_interrupt(msg)
-            return
+            return false
         end
         tx, ty = landing.x, landing.y
     elseif mode ~= "exact" then
         local off = DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS[mode]
         if not off then
             tolk.output_interrupt("Teleport: unknown direction")
-            return
+            return false
         end
         tx = obj.x + off.dx
         ty = obj.y + off.dy
@@ -4420,27 +4474,95 @@ hotkeys.set_teleport_handler(function(mode)
         end
     end
 
-    local ok = DW_QOL_STATE.perform_teleport_to(tx, ty, nil, {check_npc = true, manual = true})
+    local teleport_opts = {check_npc = true, manual = true}
+    if landing and landing.reason == "overworld_travel" then
+        teleport_opts.check_npc = false
+        teleport_opts.trust_walkable = true
+    end
+    local ok = DW_QOL_STATE.perform_teleport_to(tx, ty, nil, teleport_opts)
     if ok then
+        local held = hold_selected_teleport_target(obj, landing)
         if landing and landing.face_dir then
             DW_QOL_STATE.queue_teleport_face(landing.face_dir, obj.name, {x = tx, y = ty})
         end
         debug_tools.info(string.format(
-            "TELEPORT_SELECTED mode=%s target_id=%s target_name=%s target=(%d,%d) landing=(%d,%d)",
+            "TELEPORT_SELECTED mode=%s target_id=%s target_name=%s target=(%d,%d) landing=(%d,%d) target_held=%s",
             tostring(mode),
             tostring(obj.id),
             tostring(obj.name),
             landing and landing.target_x or obj.x,
             landing and landing.target_y or obj.y,
             tx,
-            ty)
+            ty,
+            tostring(held))
             .. (landing and string.format(
                 " landing_reason=%s landing_note=%s face_dir=%s",
                 tostring(landing.reason),
                 tostring(landing.note),
                 tostring(landing.face_dir)) or ""))
     end
+    local elapsed_ms = (os.clock() - started) * 1000
+    debug_tools.info(string.format(
+        "TELEPORT_SELECTED_TIMING mode=%s ok=%s ms=%.3f",
+        tostring(mode),
+        tostring(ok),
+        elapsed_ms))
+    return ok
+end
+
+hotkeys.set_teleport_handler(function(mode)
+    teleport_selected_object(mode, {suppress_input = true})
 end)
+
+debug_tools.register_command("teleport_selected", function(arg)
+    local mode = (arg and arg:match("^%s*(.-)%s*$")) or ""
+    if mode == "" then
+        mode = "exact"
+    end
+    teleport_selected_object(mode, {suppress_input = false})
+end)
+
+local function teleport_overworld_landmark(arg)
+    local landmark, err = objects.find_overworld_landmark(arg)
+    if not landmark then
+        debug_tools.error("teleport_landmark refused: " .. tostring(err))
+        tolk.output_interrupt("Teleport refused. " .. tostring(err))
+        return false
+    end
+    if not snapshot.is_overworld then
+        local msg = "Teleport refused. Overworld landmarks are only available on the world map"
+        debug_tools.error("teleport_landmark refused: not on world map")
+        tolk.output_interrupt(msg)
+        return false
+    end
+
+    local ok, reason = DW_QOL_STATE.perform_teleport_to(
+        landmark.x,
+        landmark.y,
+        nil,
+        {check_npc = false, manual = true, speak = false, trust_walkable = true})
+    if not ok then
+        tolk.output_interrupt("Teleport refused. " .. tostring(reason))
+        return false, reason
+    end
+
+    local msg = string.format(
+        "Teleported to %s (%d,%d)",
+        tostring(landmark.name),
+        landmark.x,
+        landmark.y)
+    debug_tools.info(string.format(
+        "TELEPORT_LANDMARK target_id=%s target_name=%s landing=(%d,%d)",
+        tostring(landmark.id),
+        tostring(landmark.name),
+        landmark.x,
+        landmark.y))
+    tolk.output_interrupt(msg)
+    return true
+end
+
+debug_tools.register_command("teleport_landmark", teleport_overworld_landmark)
+debug_tools.register_command("teleport_overworld", teleport_overworld_landmark)
 
 -- ============================================================
 -- Path Debug Commands
@@ -4995,9 +5117,17 @@ while true do
         -- prompt state. Guard 1 reuses the command-menu window and cursor RAM,
         -- so stale prompt state here can leak into false STATUS handling.
         local dialogue_hint = bizhawk_dialogue_hint()
-        local yesno_interval = menu.is_yesno_active() and 2 or (dialogue_hint and 24 or 4)
+        local teleport_grace_active = DW_QOL_STATE.teleport_post_scan_grace_frames > 0
+        local yesno_attention = menu.is_yesno_active()
+            or current_joy_any
+            or CMD.recent_field_action > 0
+            or DW_QOL_STATE.command_menu_blocks_field_movement()
+            or submenu_mode ~= nil
+        local yesno_interval = menu.is_yesno_active()
+            and 2
+            or (dialogue_hint and 24 or (yesno_attention and 4 or 12))
         local run_yesno, yesno_delta = scan_profiler.should_run("yesno_prompt", yesno_interval, frame_count)
-        if run_yesno then
+        if run_yesno and not teleport_grace_active then
             checked_scan("check_yesno_prompt", check_yesno_prompt, yesno_delta)
         end
 
@@ -5088,12 +5218,12 @@ while true do
                     or menu.is_yesno_active()
                     or current_joy_any
                     or CMD.recent_field_action > 0
-                local menu_interval = menu_attention and 2 or 4
+                local menu_interval = menu_attention and 2 or 8
                 local run_menu, menu_delta = false, 0
                 if not dialogue_hint or menu_attention then
                     run_menu, menu_delta = scan_profiler.should_run("command_menu", menu_interval, frame_count)
                 end
-                if run_menu then
+                if run_menu and not teleport_grace_active then
                     checked_scan("check_command_menu", check_command_menu, menu_delta)
                 end
             end
@@ -5107,7 +5237,7 @@ while true do
             if scan_profiler.is_enabled() then
                 if object_refresh_needed then
                     run_object_refresh = true
-                elseif dialogue_hint then
+                elseif dialogue_hint or teleport_grace_active then
                     run_object_refresh = false
                 else
                     run_object_refresh = scan_profiler.should_run("objects.check_refresh", 120, frame_count)
@@ -5131,7 +5261,8 @@ while true do
         -- announcements. check_title_screen() handles all title-screen text.
         if in_gameplay then
             local merchant_active = MER.active
-            local merchant_interval = MER.active and 3 or (dialogue_hint and 12 or 8)
+            local merchant_interval = MER.active and 3
+                or (dialogue_hint and 12 or (CMD.recent_field_action > 0 and 8 or 16))
             local run_merchant = false
             local merchant_delta = 0
             -- The shop item list always includes lower prompt text ("What dost
@@ -5140,18 +5271,24 @@ while true do
             -- merchant scanning, or the command-menu fallback can regain control
             -- after buy/error/continue cycles.
             run_merchant, merchant_delta = scan_profiler.should_run("merchant_screen", merchant_interval, frame_count)
-            if run_merchant then
+            if run_merchant and not teleport_grace_active then
                 merchant_active = checked_scan("check_merchant_screen", check_merchant_screen, merchant_delta)
             end
-            if not merchant_active then
+            if teleport_grace_active then
+                -- Immediately after a RAM teleport, BizHawk can spend expensive
+                -- time in PPU-driven readers while input is still being
+                -- suppressed and the facing tap is pending. Let the field settle
+                -- for a few frames before resuming those scans.
+            elseif not merchant_active then
                 local lower_interval = (game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0) and 3
-                    or (dialogue_hint and 12 or 6)
+                    or (dialogue_hint and 12 or (CMD.recent_field_action > 0 and 6 or 10))
                 local run_lower, lower_delta = scan_profiler.should_run("lower_dialogue", lower_interval, frame_count)
                 if run_lower then
                     checked_scan("check_dialogue", check_dialogue, lower_delta, dialogue_hint)
                 end
 
-                local upper_interval = PREV.upper_active and 8 or (dialogue_hint and 30 or 10)
+                local upper_interval = PREV.upper_active and 8
+                    or (dialogue_hint and 30 or (CMD.recent_field_action > 0 and 10 or 18))
                 local run_upper, upper_delta = scan_profiler.should_run("upper_dialogue", upper_interval, frame_count)
                 if run_upper then
                     checked_scan("check_upper_dialogue", check_upper_dialogue, upper_delta, dialogue_hint)
@@ -5166,12 +5303,18 @@ while true do
     -- Increment frame counter monotonically so debug log frame prefixes stay
     -- ordered across long sessions. Lua numbers can represent this safely.
     frame_count = frame_count + 1
+    if DW_QOL_STATE.teleport_post_scan_grace_frames > 0 then
+        DW_QOL_STATE.teleport_post_scan_grace_frames = DW_QOL_STATE.teleport_post_scan_grace_frames - 1
+    end
 
     -- Debug tools: process command file, flush logs, apply simulated input.
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = checked_scan("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
     checked_scan("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
-    local raw_debug_input_this_frame = sim_input and sim_input._raw
+    -- FCEUX's external keyboard bridge can emit a neutral raw frame while Alt
+    -- is stuck. That neutral frame should clear stale input, but it must not
+    -- starve queued auto-walk routes by suppressing auto_step.update forever.
+    local raw_debug_input_this_frame = sim_input and sim_input._raw and joypad_has_input(sim_input)
     if sim_input then
         if emulator_compat.clear_ppu_cache then
             emulator_compat.clear_ppu_cache()
@@ -5298,6 +5441,6 @@ while true do
     -- The NES game's NPC movement routines ran during frameadvance and may
     -- have written new positions; we undo that here so our code sees stable
     -- NPC coordinates on the next frame.
-    route_mgr.apply_npc_freeze()
-    map_survey.apply_npc_parking()
+    checked_scan("route_manager.apply_npc_freeze", route_mgr.apply_npc_freeze)
+    checked_scan("map_survey.apply_npc_parking", map_survey.apply_npc_parking)
 end

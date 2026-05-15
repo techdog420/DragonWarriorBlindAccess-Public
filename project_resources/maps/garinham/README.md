@@ -22,6 +22,10 @@ Local image:
 Live entry confirmation:
 
 - `POSITION: map=0x09(Garinham) x=0 y=14`
+- The player-facing Travel object should not use the old `(15,14)` corridor.
+  Use exit target `(0,14)` with interaction stand `(1,14)` facing west.
+  Live checks after the correction reported `Exit to World Map: 1 west, exit
+  here` from `(1,14)`.
 
 Live service confirmation:
 

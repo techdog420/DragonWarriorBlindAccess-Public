@@ -266,7 +266,7 @@ function tests.garinham_object_starts_route_from_tantegel_road()
     local info, err = routes.start_for_object({
         id = "overworld_garinham",
         name = "Garinham",
-        x = 2,
+        x = 1,
         y = 2,
     }, 0x01, 43, 43)
 
@@ -274,6 +274,19 @@ function tests.garinham_object_starts_route_from_tantegel_road()
     assert_equal(info.object_id, "route_garinham_02", "route should skip the current Tantegel road anchor")
     assert_contains(info.message, "Route to Garinham", "started route should name Garinham")
     assert_contains(info.message, "Brecconary road", "route should first guide toward the known road")
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_corridor_points_west_to_town()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("garinham", 0x01, 2, 2)
+
+    assert_equal(err, nil, "Garinham route should recalculate from the approach corridor")
+    assert_equal(info.object_id, "route_garinham_22", "corridor should point to the corrected town tile")
+    assert_contains(info.message, "Garinham", "route should keep naming the final town")
+    assert_contains(info.message, "1 west", "route should guide west from the north-south corridor")
 
     routes.reset_for_tests()
 end
@@ -307,10 +320,50 @@ function tests.garinham_route_from_mountain_shoulder_points_north()
     routes.reset_for_tests()
 end
 
+function tests.plan_next_segment_queues_steps_to_active_waypoint()
+    routes.reset_for_tests()
+    routes.start("garinham", 0x01, 19, 7)
+
+    local segment, err = routes.plan_next_segment(0x01, 19, 7)
+
+    assert_equal(err, nil, "active route should plan a next overworld segment")
+    assert_equal(segment.status, "planned", "segment should report a planned route")
+    assert_equal(segment.waypoint.name, "Garinham east ridge", "segment should target the active next waypoint")
+    assert_equal(#segment.steps, 4, "segment should include one step per world-map tile")
+    assert_equal(segment.steps[1], "up", "segment should move vertically first by default")
+    assert_equal(segment.steps[2], "left", "segment should then move horizontally")
+    assert_contains(segment.message, "Garinham east ridge", "segment message should name the waypoint")
+
+    routes.reset_for_tests()
+end
+
+function tests.plan_next_segment_reports_no_active_route()
+    routes.reset_for_tests()
+
+    local segment, err = routes.plan_next_segment(0x01, 19, 7)
+
+    assert_equal(segment, nil, "inactive route should not plan a segment")
+    assert_contains(err, "No overworld route active", "missing active route should be explicit")
+
+    routes.reset_for_tests()
+end
+
+function tests.plan_next_segment_refuses_non_world_map()
+    routes.reset_for_tests()
+    routes.start("garinham", 0x01, 19, 7)
+
+    local segment, err = routes.plan_next_segment(0x09, 19, 7)
+
+    assert_equal(segment, nil, "interior maps should not plan overworld segments")
+    assert_contains(err, "world map", "wrong-map refusal should name the world map requirement")
+
+    routes.reset_for_tests()
+end
+
 function tests.safety_route_starts_from_garinham()
     routes.reset_for_tests()
 
-    local info, err = routes.start("castle", 0x01, 2, 2)
+    local info, err = routes.start("castle", 0x01, 1, 2)
 
     assert_equal(err, nil, "castle safety route should start from Garinham")
     assert_equal(info.object_id, "route_tantegel_02", "route should skip the current Garinham anchor")
