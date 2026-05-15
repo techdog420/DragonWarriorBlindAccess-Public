@@ -1092,23 +1092,23 @@ end
 function tests.service_counter_inference_uses_adjacent_large_tile_public_stand()
     local env = make_env({
         large_tiles = {
-            ["0x09:9,21"] = true,
-            ["0x09:24,25"] = true,
+            ["0x0A:9,21"] = true,
+            ["0x0A:24,25"] = true,
         },
         walkable_tiles = {
-            ["0x09:8,21"] = true,
-            ["0x09:23,25"] = true,
+            ["0x0A:8,21"] = true,
+            ["0x0A:23,25"] = true,
         },
         npc_count = 4,
     })
 
-    env.set_position(0x09, 12, 23)
+    env.set_position(0x0A, 12, 23)
     env.set_terrain_offset(0x10)
     env.set_npc(0, 0x60 + 5, 0x04, 0x00)
     env.set_npc(1, 0x60 + 1, 0x01, 0x00)
     env.set_npc(2, 0x60 + 10, 0x15, 0x00)
     env.set_npc(3, 0x60 + 25, 0x19, 0x00)
-    env.objects.refresh(0x09)
+    env.objects.refresh(0x0A)
 
     local merchant3 = nil
     local merchant4 = nil
@@ -1120,13 +1120,13 @@ function tests.service_counter_inference_uses_adjacent_large_tile_public_stand()
         end
     end
 
-    assert_equal(merchant3 ~= nil, true, "Brecconary Merchant 3 should be present in the service list")
+    assert_equal(merchant3 ~= nil, true, "Generic Merchant 3 should be present in the service list")
     assert_equal(merchant3.interaction_x, 8, "Merchant 3 should use the public stand west of the raw large tile")
     assert_equal(merchant3.interaction_y, 21, "Merchant 3 counter stand Y should match the raw large tile row")
     assert_equal(merchant3.interaction_face_dir, "east", "Merchant 3 should face east through the counter")
     assert_equal(merchant3.interaction_label, "counter", "inferred service stand should be labeled as a counter")
 
-    assert_equal(merchant4 ~= nil, true, "Brecconary Merchant 4 should be present in the service list")
+    assert_equal(merchant4 ~= nil, true, "Generic Merchant 4 should be present in the service list")
     assert_equal(merchant4.interaction_x, 23, "Merchant 4 should use the public stand west of the raw large tile")
     assert_equal(merchant4.interaction_y, 25, "Merchant 4 counter stand Y should match the raw large tile row")
     assert_equal(merchant4.interaction_face_dir, "east", "Merchant 4 should face east through the counter")
@@ -1336,6 +1336,73 @@ function tests.tantegel_castle_dialogue_merchants_stay_out_of_services()
     env.restore()
 end
 
+function tests.garinham_confirmed_public_merchants_are_labeled()
+    local env = make_env({npc_count = 4})
+
+    env.set_position(0x09, 10, 16)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 10, 0x04, 0x00) -- Merchant 1, other shopkeeper
+    env.set_npc(1, 0x60 + 3, 0x0A, 0x00)  -- Merchant 2, live-confirmed item shop
+    env.set_npc(2, 0x60 + 17, 0x0F, 0x00) -- Merchant 3, other shopkeeper
+    env.set_npc(3, 0x60 + 10, 0x12, 0x00) -- Merchant 4, live-confirmed weapon/armor shop
+    env.objects.refresh(0x09)
+
+    local tool_merchant = nil
+    local inn = nil
+    local weapons_merchant = nil
+    local generic_merchant2 = nil
+    local generic_merchant3 = nil
+    local generic_merchant4 = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Tool Merchant" then
+            tool_merchant = obj
+        elseif obj.name == "Inn" then
+            inn = obj
+        elseif obj.name == "Weapons Merchant" then
+            weapons_merchant = obj
+        elseif obj.name == "Merchant 2" then
+            generic_merchant2 = obj
+        elseif obj.name == "Merchant 3" then
+            generic_merchant3 = obj
+        elseif obj.name == "Merchant 4" then
+            generic_merchant4 = obj
+        end
+    end
+
+    assert_equal(tool_merchant ~= nil, true, "Garinham Merchant 2 should be labeled as Tool Merchant")
+    assert_equal(tool_merchant.service, true, "Garinham Tool Merchant should remain in Services")
+    assert_equal(generic_merchant2, nil, "Garinham Merchant 2 should not keep the generic label")
+    assert_equal(inn ~= nil, true, "Garinham Merchant 3 should be labeled as Inn")
+    assert_equal(inn.service, true, "Garinham Inn should remain in Services")
+    assert_equal(inn.interaction_x, 15, "Garinham Inn should use the live-confirmed public counter stand X")
+    assert_equal(inn.interaction_y, 15, "Garinham Inn should use the live-confirmed public counter stand Y")
+    assert_equal(inn.interaction_face_dir, "east", "Garinham Inn should face east through the counter")
+    assert_equal(generic_merchant3, nil, "Garinham Merchant 3 should not keep the generic label")
+    assert_equal(weapons_merchant ~= nil, true, "Garinham Merchant 4 should be labeled as Weapons Merchant")
+    assert_equal(weapons_merchant.service, true, "Garinham Weapons Merchant should remain in Services")
+    assert_equal(weapons_merchant.interaction_x, 10, "Garinham Weapons Merchant should use the live-confirmed counter stand X")
+    assert_equal(weapons_merchant.interaction_y, 16, "Garinham Weapons Merchant should use the live-confirmed counter stand Y")
+    assert_equal(weapons_merchant.interaction_face_dir, "south", "Garinham Weapons Merchant should face south through the counter")
+    assert_equal(generic_merchant4, nil, "Garinham Merchant 4 should not keep the generic label")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Tool Merchant", 1, true) ~= nil, true, "Services should include Garinham Tool Merchant")
+    assert_equal(service_text:find("Inn", 1, true) ~= nil, true, "Services should include Garinham Inn")
+    assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include Garinham Weapons Merchant")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x09, 15, 15)
+    assert_equal(marked.id, inn.id, "Garinham Inn public counter stand should mark the inn visited")
+    assert_equal(env.objects.is_visited(inn, 0x09), true, "Garinham Inn counter visit should persist from the public stand")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_exposes_reachable_navigation_doors()
     local env = make_env()
 
@@ -1409,6 +1476,30 @@ function tests.brecconary_exposes_hidden_locked_doors()
     assert_equal(inn_west.name, "Inn West Room Door", "inn west-room door should have a distinct navigation label")
     assert_equal(inn_west.x, 5, "inn west-room door x should match the topology frontier")
     assert_equal(inn_west.y, 22, "inn west-room door y should match the topology frontier")
+
+    env.restore()
+end
+
+function tests.garinham_exposes_confirmed_east_locked_door()
+    local env = make_env()
+
+    env.set_position(0x09, 19, 17)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x09)
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Exits
+    env.objects.next_filter() -- Chests
+    env.objects.next_filter() -- Stairs
+    env.objects.next_filter() -- Doors
+
+    assert_equal(env.objects.get_count(), 1, "Garinham should expose the confirmed east locked door")
+    local door = env.objects.current_object()
+    assert_equal(door.id, "door_19_16", "Garinham east door id should match the confirmed coordinate")
+    assert_equal(door.name, "East Door", "Garinham east door should have a distinct navigation label")
+    assert_equal(door.x, 19, "Garinham east door x should match the live no-key movement probe")
+    assert_equal(door.y, 16, "Garinham east door y should match the live no-key movement probe")
 
     env.restore()
 end

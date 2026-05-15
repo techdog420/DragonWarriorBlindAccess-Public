@@ -201,6 +201,58 @@ function tests.brecconary_locked_doors_open_from_door_ram_array()
     open_env.restore()
 end
 
+function tests.garinham_east_locked_door_opens_from_door_ram_array()
+    local base = 9 * 5
+    local data_start = 0x10
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    for i = 0, 200 do
+        rom_bytes[data_start + i] = 0xFF
+    end
+
+    local closed_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed = closed_env.map_reader.get_walkability_details(0x09, 19, 16)
+    assert_equal(closed.effective_walkable, false, "closed Garinham east door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Garinham east door should report door_closed")
+    closed_env.restore()
+
+    local open_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+            [0x600C] = 19,
+            [0x600D] = 16,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local open = open_env.map_reader.get_walkability_details(0x09, 19, 16)
+    assert_equal(open.effective_walkable, true, "opened Garinham east door should become walkable")
+    assert_equal(open.reason, "door_open", "opened Garinham east door should report door_open")
+    local snapshot = open_env.map_reader.get_walkability_snapshot(0x09)
+    assert_equal(snapshot[16][19], true, "walkability snapshot should honor opened Garinham east door")
+
+    open_env.restore()
+end
+
 function tests.throne_room_directional_candidates_are_promoted_conservatively()
     local env = make_env()
 
@@ -726,6 +778,68 @@ function tests.brecconary_directional_walls_cover_confirmed_building_bands()
     assert_equal(dirs["27,29"].north, true, "(27,29) should block north approach after manual Merchant 4 route check from (27,28)")
     assert_equal(dirs["21,27"].west, true, "(21,27) should block west approach after Merchant 4 route validation failed from (20,27)")
     assert_equal(env.map_reader.is_permanently_blocked_override(0x08, 24, 25), false, "(24,25) should not be fully blocked; only its verified west seam is closed")
+
+    env.restore()
+end
+
+function tests.garinham_public_shop_route_edges_match_live_checks()
+    local base = 9 * 5
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    for i = 0x10, 0x28 do
+        rom_bytes[i] = 0x2F
+    end
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    local dirs = env.map_reader.get_directional_blocks(0x09)
+    local function assert_open_approach(cell, approach, message)
+        local entry = dirs[cell]
+        assert_equal(entry and entry[approach] or nil, nil, message)
+    end
+
+    assert_equal(dirs["3,12"].north, true, "(3,12) should block north approach after manual check from (3,11)")
+    assert_equal(dirs["4,11"].west, true, "(4,11) should block west approach after manual check from (3,11)")
+    assert_equal(dirs["3,12"].west, true, "(3,12) should block west approach after probe_edge_verify from (2,12)")
+    assert_equal(dirs["4,10"].west, true, "(4,10) should block west approach after probe_edge_verify from (3,10)")
+    assert_equal(dirs["3,9"].south, true, "(3,9) should block south approach after probe_edge_verify from (3,10)")
+    assert_equal(dirs["2,9"].south, true, "(2,9) should block south approach after probe_edge_verify from (2,10)")
+    assert_equal(dirs["1,10"].east, true, "(1,10) should block east approach after probe_edge_verify from (2,10)")
+    assert_equal(dirs["1,11"].east, true, "(1,11) should block east approach after probe_edge_verify from (2,11)")
+    assert_equal(dirs["1,12"].east, true, "(1,12) should block east approach after probe_edge_verify from (2,12)")
+    assert_equal(dirs["6,10"].east, true, "(6,10) should block east approach after entrance-to-Tool-Merchant verifier from (7,10)")
+    assert_equal(dirs["6,11"].east, true, "(6,11) should block east approach after entrance-to-Tool-Merchant verifier from (7,11)")
+    assert_equal(dirs["6,12"].east, true, "(6,12) should block east approach after entrance-to-Tool-Merchant verifier from (7,12)")
+    assert_equal(dirs["11,16"].west, true, "(11,16) should block west approach after Weapons Merchant return verifier from (10,16)")
+    assert_equal(dirs["14,14"].west, true, "(14,14) should block west approach after Weapons Merchant return verifier from (13,14)")
+    assert_equal(dirs["11,15"].east, true, "(11,15) should block east approach after entrance-to-Weapons-Merchant verifier from (12,15)")
+    assert_equal(dirs["11,15"].west, true, "(11,15) should block west approach after successful-route reroute verifier from (10,15)")
+    assert_equal(dirs["11,16"].east, true, "(11,16) should block east approach after entrance-to-Weapons-Merchant verifier from (12,16)")
+    assert_equal(dirs["12,16"].north, true, "(12,16) should block north approach after entrance-to-Weapons-Merchant verifier from (12,15)")
+    assert_equal(dirs["14,14"].north, true, "(14,14) should block north approach after entrance-to-Weapons-Merchant verifier from (14,13)")
+    assert_equal(dirs["14,14"].east, true, "(14,14) should block east approach after entrance-to-Weapons-Merchant verifier from (15,14)")
+    assert_equal(dirs["14,15"].east, true, "(14,15) should block east approach after entrance-to-Weapons-Merchant verifier from (15,15)")
+    assert_equal(dirs["14,15"].west, true, "(14,15) should block west approach after successful-route reroute verifier from (13,15)")
+    assert_equal(dirs["14,16"].east, true, "(14,16) should block east approach after entrance-to-Weapons-Merchant verifier from (15,16)")
+    assert_open_approach("14,17", "east", "(14,17) should stay open from east after probe_edge_verify from (15,17) moved 5/5")
+    assert_open_approach("3,10", "south", "(3,10) should stay open from south; user crossed north from (3,11)")
+    assert_open_approach("3,10", "west", "(3,10) should stay open from west; manual movement crossed from (2,10)")
+    assert_open_approach("2,10", "east", "(2,10) should stay open from east; manual movement crossed from (3,10)")
+    assert_open_approach("2,11", "east", "(2,11) should stay open from east; user crossed west from (3,11)")
+    assert_open_approach("3,11", "north", "(3,11) should stay open from north after reverse movement from (3,10)")
+    assert_open_approach("3,11", "west", "(3,11) should stay open from west after reverse movement from (2,11)")
+    assert_equal(env.map_reader.is_walkable(0x09, 2, 13), true, "(2,13) should be a Garinham passthrough after 5/5 live moves from (2,12)")
+    assert_equal(env.map_reader.is_walkable(0x09, 1, 13), false, "nearby type-2 Garinham walls should stay non-walkable without passthrough proof")
 
     env.restore()
 end

@@ -474,6 +474,15 @@ local MAP_PASSTHROUGH_CELLS = {
         ["11,19"] = true,
     },
 
+    -- Map 0x09: Garinham
+    -- Tool Merchant return-route pocket. The ROM decodes (2,13) as type-2
+    -- wall, but a 2026-05-14 verifier moved (2,12)->DOWN into it 5/5 times.
+    -- Keep this scoped to the confirmed seam; nearby false exits are handled
+    -- by directional blockers below.
+    [0x09] = {
+        ["2,13"] = true,
+    },
+
     -- Map 0x1C: Erdrick's Cave B1 entrance strip.
     -- Live probes on 2026-05-08 confirmed the engine moves
     -- (0,0) -> right -> (1,0) -> down -> (1,1), and the reverse
@@ -568,6 +577,15 @@ local MAP_DOOR_CELLS = {
     [0x08] = {
         ["21,6"] = {x=21, y=6},
         ["5,22"] = {x=5, y=22},
+    },
+    -- Map 0x09: Garinham
+    -- Guide data lists two town-scope locked doors. The public east-end door
+    -- is the first reachable one; live no-key movement from (19,17)->UP
+    -- blocked into (19,16), matching the east-end locked-building entrance.
+    -- Keep the second "inside locked building" door pending until its exact
+    -- coordinate can be verified after keys/opened-door access.
+    [0x09] = {
+        ["19,16"] = {x=19, y=16},
     },
 }
 
@@ -1435,6 +1453,56 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- the west. Fresh validation plus probe_edge_verify on 2026-05-12
         -- blocked (20,27)->RIGHT 5/5, while runtime blockers stayed empty.
         ["21,27"] = {west = true},
+    },
+
+    -- Map 0x09: Garinham
+    [0x09] = {
+        -- 2026-05-14 Tool Merchant return-route check. User manual movement
+        -- from (3,11) confirmed north and west open, while south into (3,12)
+        -- and east into (4,11) are engine-blocked. Keep these directional so
+        -- the open north/west seams and the cell itself remain usable.
+        ["4,11"] = {west = true},
+        -- Follow-up exit autowalks wandered around the same building pocket.
+        -- Direct probe_edge_verify checks after stopping the loop confirmed:
+        -- (2,12)->RIGHT, (3,10)->RIGHT, and (3,10)->UP all blocked 5/5 with
+        -- reason=raw_hold_timeout, despite open tile previews. The next route
+        -- attempt then looped at (2,10); verifiers confirmed (2,10)->UP and
+        -- (2,10)->LEFT blocked 5/5 too. Follow-up manual movement confirmed
+        -- (2,10)<->(3,10) crosses both ways despite a bump sound, so keep that
+        -- seam open. The next loop moved to (2,11)/(2,12); verifiers confirmed
+        -- both left exits blocked 5/5. The entrance-to-Tool-Merchant route
+        -- then bounced along the x=7 lane; verifiers confirmed left movement
+        -- into the x=6 wall line blocked 5/5 at y=10, y=11, and y=12.
+        -- The Weapons Merchant return route exposed the southeast exit lane:
+        -- verifiers confirmed (10,16)->RIGHT and (13,14)->RIGHT blocked 5/5.
+        -- The entrance-to-Weapons-Merchant route then bounced around the same
+        -- counter throat; raw verifiers confirmed (12,15)->LEFT,
+        -- (12,16)->LEFT, and (12,15)->DOWN blocked 5/5. The first replan then
+        -- tried (15,14)->LEFT into (14,14), which is also blocked 5/5 even
+        -- though the reverse exit step (14,14)->RIGHT is valid. The next
+        -- replan then verified (15,16)->LEFT and (15,15)->LEFT blocked 5/5
+        -- as well. Another replan used the noisy-but-passable
+        -- (15,13)->LEFT seam, then verified (14,13)->DOWN blocked 5/5. A
+        -- later successful round trip still bumped on (10,15)->RIGHT and
+        -- (13,15)->RIGHT; raw verifiers confirmed both blocked 5/5. The
+        -- nearby (15,17)->LEFT edge looked suspicious in route logs but raw
+        -- verification moved 5/5, so keep (14,17).east open.
+        ["11,15"] = {east = true, west = true},
+        ["11,16"] = {east = true, west = true},
+        ["12,16"] = {north = true},
+        ["14,14"] = {east = true, north = true, west = true},
+        ["14,15"] = {east = true, west = true},
+        ["14,16"] = {east = true},
+        ["6,10"] = {east = true},
+        ["6,11"] = {east = true},
+        ["6,12"] = {east = true},
+        ["3,12"] = {north = true, west = true},
+        ["4,10"] = {west = true},
+        ["3,9"] = {south = true},
+        ["2,9"] = {south = true},
+        ["1,10"] = {east = true},
+        ["1,11"] = {east = true},
+        ["1,12"] = {east = true},
     },
 
     -- Map 0x1C: Erdrick's Cave B1

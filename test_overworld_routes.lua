@@ -152,7 +152,7 @@ function tests.brecconary_object_starts_safety_route_from_cave()
     }, 0x01, 28, 12)
 
     assert_equal(err, nil, "Brecconary Travel object should start a safety route")
-    assert_equal(info.object_id, "route_brecconary_02", "route should skip the cave anchor when already there")
+    assert_equal(info.object_id, "route_brecconary_12", "route should skip the cave anchor when already there")
     assert_contains(info.message, "Route to Brecconary", "start should name the safety route")
     assert_contains(info.message, "North trail marker", "safety route should first guide back down the cave road")
 
@@ -170,7 +170,7 @@ function tests.tantegel_object_starts_safety_route_from_cave()
     }, 0x01, 28, 12)
 
     assert_equal(err, nil, "Tantegel Castle Travel object should start a safety route")
-    assert_equal(info.object_id, "route_tantegel_02", "route should skip the cave anchor when already there")
+    assert_equal(info.object_id, "route_tantegel_12", "route should skip the cave anchor when already there")
     assert_contains(info.message, "Route to Tantegel Castle", "start should name the castle route")
     assert_contains(info.message, "North trail marker", "castle route should first guide back down the cave road")
 
@@ -222,7 +222,7 @@ function tests.brecconary_safety_route_uses_upper_bridge_lane_after_choke()
     local info, err = routes.start("brecconary", 0x01, 30, 32)
 
     assert_equal(err, nil, "Brecconary route should start from the mountain-pinch area")
-    assert_equal(info.object_id, "route_brecconary_05", "pinch area should point east before the bridge detour")
+    assert_equal(info.object_id, "route_brecconary_15", "pinch area should point east before the bridge detour")
     assert_contains(info.message, "East choke approach", "route should avoid the old west-then-east reversal")
 
     local east_choke = routes.observe_position(0x01, 35, 32)
@@ -254,8 +254,67 @@ function tests.tantegel_safety_route_uses_upper_bridge_lane_after_choke()
     local info, err = routes.start("castle", 0x01, 30, 32)
 
     assert_equal(err, nil, "Tantegel route should start from the mountain-pinch area")
-    assert_equal(info.object_id, "route_tantegel_05", "castle return should share the east-choke recovery")
+    assert_equal(info.object_id, "route_tantegel_15", "castle return should share the east-choke recovery")
     assert_contains(info.message, "East choke approach", "castle route should avoid the old west-then-east reversal")
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_object_starts_route_from_tantegel_road()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_garinham",
+        name = "Garinham",
+        x = 2,
+        y = 2,
+    }, 0x01, 43, 43)
+
+    assert_equal(err, nil, "Garinham Travel object should start a route")
+    assert_equal(info.object_id, "route_garinham_02", "route should skip the current Tantegel road anchor")
+    assert_contains(info.message, "Route to Garinham", "started route should name Garinham")
+    assert_contains(info.message, "Brecconary road", "route should first guide toward the known road")
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_route_extends_from_cave_to_town()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("galenholm", 0x01, 28, 12)
+
+    assert_equal(err, nil, "alternate Garinham name should resolve")
+    assert_equal(info.object_id, "route_garinham_12", "route should skip the cave anchor when already there")
+    assert_contains(info.message, "Garinham east field", "route should begin the northwest town leg from the cave")
+
+    local east_field = routes.observe_position(0x01, 20, 9)
+    assert_contains(east_field.message, "Reached Garinham east field", "northwest leg should advance from the field marker")
+    assert_contains(east_field.message, "Next: Garinham ridge entry", "field marker should point toward the ridge entry")
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_route_from_mountain_shoulder_points_north()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("garinham", 0x01, 14, 4)
+
+    assert_equal(err, nil, "Garinham route should recalculate from the obstacle pocket")
+    assert_equal(info.object_id, "route_garinham_18", "mountain shoulder should skip to the north coast lane")
+    assert_contains(info.message, "Garinham north coast lane", "route should point out of the pocket before going west")
+    assert_contains(info.message, "1 north", "route should tell the player to leave the obstacle pocket north")
+
+    routes.reset_for_tests()
+end
+
+function tests.safety_route_starts_from_garinham()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("castle", 0x01, 2, 2)
+
+    assert_equal(err, nil, "castle safety route should start from Garinham")
+    assert_equal(info.object_id, "route_tantegel_02", "route should skip the current Garinham anchor")
+    assert_contains(info.message, "Garinham outskirts", "safety route should first leave town toward the cave road")
 
     routes.reset_for_tests()
 end
@@ -264,14 +323,14 @@ function tests.unmatched_object_reports_no_guided_route()
     routes.reset_for_tests()
 
     local info, err = routes.start_for_object({
-        id = "overworld_garinham",
-        name = "Garinham",
-        x = 6,
-        y = 6,
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
     }, 0x01, 43, 43)
 
     assert_equal(info, nil, "unknown destination should not start a route")
-    assert_contains(err, "No guided route for Garinham", "missing route should name the selected object")
+    assert_contains(err, "No guided route for Kol", "missing route should name the selected object")
     assert_contains(err, "Use O for heading", "missing route should preserve the plain heading workflow")
 
     routes.reset_for_tests()
@@ -328,6 +387,19 @@ function tests.entering_tantegel_stops_safety_route()
     routes.reset_for_tests()
 end
 
+function tests.entering_garinham_stops_route()
+    routes.reset_for_tests()
+    routes.start("garinham", 0x01, 2, 3)
+
+    local event = routes.observe_position(0x09, 15, 14)
+
+    assert_contains(event.message, "Arrived at Garinham", "entering town should complete the Garinham route")
+    assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "route should stop after entering Garinham")
+
+    routes.reset_for_tests()
+end
+
 function tests.selected_destination_replaces_active_route()
     routes.reset_for_tests()
     routes.start("cave", 0x01, 30, 32)
@@ -341,7 +413,7 @@ function tests.selected_destination_replaces_active_route()
 
     assert_equal(err, nil, "selecting another guided destination should replace the active route")
     assert_contains(info.message, "Route changed. Route to Brecconary", "replacement should be audible")
-    assert_equal(info.object_id, "route_brecconary_02", "replacement should calculate from the current position")
+    assert_equal(info.object_id, "route_brecconary_12", "replacement should calculate from the current position")
     assert_contains(info.log, "event=replace route=brecconary", "replacement should be logged distinctly")
     assert_equal(routes.active_route_id(), "brecconary", "new destination should become active")
 

@@ -168,6 +168,10 @@ local ROUTE_TURN_SETTLE_FRAMES = 16
 -- settling/turning. For queued routes, keep holding through very early twitches
 -- instead of treating them as confirmed walking movement.
 local ROUTE_EARLY_RELEASE_GRACE_FRAMES = 10
+-- Physical tap-to-step needs a little more help on open floor after an early
+-- subpixel twitch, but not the long hold used by probes/routes. Keep this
+-- short so released wall/NPC bumps still stop quickly.
+local MANUAL_EARLY_HOLD_FRAMES = 8
 -- If a queued route already needed a turn re-press and only sees another early
 -- subpixel twitch, retry sooner than the normal wall timeout.
 local ROUTE_TURN_REPRESS_TIMEOUT_FRAMES = 24
@@ -260,6 +264,10 @@ local function get_route_early_release_grace_frames()
     return config_int("auto_step_route_early_release_grace_frames", ROUTE_EARLY_RELEASE_GRACE_FRAMES, 0, 30)
 end
 
+local function get_manual_early_hold_frames()
+    return config_int("auto_step_manual_early_hold_frames", MANUAL_EARLY_HOLD_FRAMES, 0, 30)
+end
+
 local function get_route_turn_repress_timeout_frames()
     return config_int("auto_step_route_turn_repress_timeout_frames", ROUTE_TURN_REPRESS_TIMEOUT_FRAMES, 1, 120)
 end
@@ -273,11 +281,36 @@ local function should_release_on_movement_start()
     return configured == "true" or configured == "1" or configured == "yes"
 end
 
+local function queued_route_turn_after_current_step()
+    if route_steps == nil or auto_dir == nil then
+        return false
+    end
+    local next_dir = route_steps[route_index]
+    return next_dir ~= nil and next_dir ~= auto_dir
+end
+
 local function should_hold_early_movement_start()
     if auto_movement_start_frame == nil then
         return false
     end
     if auto_step_source == "manual_tap" then
+        local grace = get_route_early_release_grace_frames()
+        local hold_frames = get_manual_early_hold_frames()
+        if grace <= 0
+           or hold_frames <= 0
+           or auto_movement_start_frame > grace then
+            return false
+        end
+        local hold_until = auto_movement_start_frame + hold_frames
+        local inject_limit = auto_inject_limit or get_inject_limit()
+        if inject_limit and hold_until > inject_limit then
+            hold_until = inject_limit
+        end
+        return auto_frames <= hold_until
+    end
+    -- Holding through an early twitch is useful on straightaways, but before a
+    -- route turn it can commit one extra tile in the old direction.
+    if queued_route_turn_after_current_step() then
         return false
     end
     if auto_timeout_retries > 0 then
@@ -1057,6 +1090,12 @@ function M.update(can_walk)
                    auto_movement_start_frame ~= nil
                    and auto_movement_start_frame <= get_route_early_release_grace_frames()
                    and not should_hold_early_movement_start()
+                   and not (
+                       route_steps ~= nil
+                       and auto_dir ~= nil
+                       and route_steps[route_index] ~= nil
+                       and route_steps[route_index] ~= auto_dir
+                   )
                )
            ) then
             debug_tools.debug(string.format(

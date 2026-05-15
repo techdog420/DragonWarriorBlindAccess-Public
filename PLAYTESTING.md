@@ -6,6 +6,118 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Garinham public-service pass is done for now. Public routing is good enough
+  for normal play to continue: Tool Merchant, Inn, Weapons Merchant, town
+  exit/entrance, and the public east locked door are modeled. Circle back after
+  Magic Keys for the internal grey-building door, locked chests, hidden
+  grave/back-building path, and any remaining hidden/dialogue-only NPCs.
+
+- Garinham has been reached in live play. Current confirmed entry state:
+  `map=0x09(Garinham) x=0 y=14`. The guide/image pass is staged at
+  `project_resources/maps/garinham/`: local image
+  `realmofdarkness_garinham.png`, with a text transcription in `README.md`.
+  Early public-service priorities are the exit, inn, item shop, and
+  weapon/armor shop. Guide data says the inn costs 25 G; the item shop sells
+  Herb, Torch, and Dragon's Scale; the weapon/armor shop sells Club, Copper
+  Sword, Hand Axe / Iron Axe, Leather Armor, Chain Mail, Half Plate, and Large
+  Shield / Iron Shield. The large grey/north building is Magic-Key/later
+  content. Its visible chests are 10-17 G, Torch, and Herb; Garin's Grave
+  entrance is hidden through the building's dark back-wall path. The internal
+  locked-door guards are not progression-critical according to StrategyWiki.
+  First service pass: Garinham `Merchant 2` is live-confirmed as the item/tool
+  shop via the Herb, Torch, and Dragon's Scale menu, and is now labeled `Tool
+  Merchant` in Services. The attempted autowalk back from that shop stalled at
+  `(3,11)`, repeatedly testing `(3,12)` and `(4,11)`. A reload stopped the loop
+  cleanly; current live checks show no runtime blocks and no active path. The
+  user manually checked `(3,11)`: north and west are open, while south and east
+  are engine-blocked. `map_reader.lua` now closes `(3,12).north` and
+  `(4,11).west` directionally. Post-reload `inspect_move` confirmed down/right
+  are now modeled blocked and up/left remain passable. Retry the return route
+  from the Tool Merchant next. The next exit autowalk no longer hit those two
+  exact edges, but wandered around the same building pocket. Raw verifiers now
+  confirm three more blocked seams from that loop: `(2,12)->RIGHT` into
+  `(3,12)`, `(3,10)->RIGHT` into `(4,10)`, and `(3,10)->UP` into `(3,9)` each
+  blocked 5/5 with `classification=confirmed_blocked`. Those are now modeled
+  as `(3,12).west`, `(4,10).west`, and `(3,9).south`. A fresh debug path from
+  `(3,10)` to the exit now starts west/north instead of cycling through the
+  blocked east entries. The follow-up route then found a second loop from
+  `(2,10)`: `(3,10)->LEFT` was noisy but passable after seam retry, while
+  `(2,10)->UP` into `(2,9)` and `(2,10)->LEFT` into `(1,10)` both verified
+  blocked 5/5. These are now modeled as `(2,9).south` and `(1,10).east`.
+  Another live loop confirmed the user's note that `(2,10)<->(3,10)` remains
+  passable despite the bump sound, then verified `(2,11)->LEFT` and
+  `(2,12)->LEFT` blocked 5/5; these are now `(1,11).east` and
+  `(1,12).east`. The planner's resulting no-path state exposed a decoder gap:
+  `(2,13)` is type-2/non-walkable in the static grid, but
+  `probe_edge_verify:2,12,DOWN,5` moved into it 5/5. It is now a Garinham
+  passthrough cell, and the live planner from `(2,13)` reaches the exit target
+  with `1 south, 13 east`.
+  The reverse trip from entrance back to the Tool Merchant then bounced near
+  the x=7 lane. Clean verifiers promoted `(6,10).east`, `(6,11).east`, and
+  `(6,12).east` after `(7,10)->LEFT`, `(7,11)->LEFT`, and `(7,12)->LEFT` each
+  blocked 5/5. After reload, the entrance/exit tile `(15,14)` plans to
+  Merchant 2's stand with `1 north, 9 west, 3 north, 2 west`, facing west from
+  `(4,10)`. The replacement route's critical seams through `(6,13)`,
+  `(6,12)`, `(6,11)`, `(6,10)`, `(5,10)`, and `(4,10)` all moved 5/5 in raw
+  verification.
+  Drift follow-up showed the remaining reroutes on both successful Tool
+  Merchant routes were execution overshoot rather than new map geometry. The
+  exit route drifted one extra tile during turn settle at `(10,10)->(11,10)`,
+  `(12,11)->(12,12)`, and `(13,13)->(13,14)`; the entrance-to-tool route did
+  the same at `(7,13)->(6,13)`. Suspect seams were timing-noisy but passable
+  after brute-force retry, so no new Garinham blockers were promoted from that
+  evidence. `auto_step.lua` now releases queued early-twitch movement before a
+  route turn while keeping straightaway early-twitch holding. User retest says
+  both Tool Merchant routes are usable now, each with one remaining drift
+  reroute; defer that drift to polishing unless it begins causing route
+  failures.
+  Next service pass: Garinham `Merchant 4` is live-confirmed as the
+  weapon/armor shop. Selection landed at public stand `(10,16)`, facing south
+  toward target `(10,18)`, and TALK opened the shop menu: Club 60 G, Copper
+  Sword 180 G, Hand Axe 560 G, Leather Armor 70 G, Chain Mail 300 G, Half
+  Plate 1000 G, and Large Shield 800 G. `objects.lua` now labels him
+  `Weapons Merchant` and uses `(10,16)` facing south as the interaction stand.
+  Return-route noise from the Weapons Merchant stand exposed two more
+  Garinham engine blockers: `(10,16)->RIGHT` into `(11,16)` and
+  `(13,14)->RIGHT` into `(14,14)`. Both verified blocked 5/5 with raw holds and
+  are now modeled as `(11,16).west` and `(14,14).west`. After reload, the
+  planner chose `1 north, 4 east, 1 north, 1 east` from `(10,16)` to the exit,
+  and `validate_path` walked all 7 steps with 0 mismatches.
+  The return-to-merchant direction then exposed the other side of the same
+  counter throat. Raw verifiers blocked 5/5 on `(12,15)->LEFT`,
+  `(12,16)->LEFT`, `(12,15)->DOWN`, `(15,14)->LEFT`, `(15,16)->LEFT`,
+  `(15,15)->LEFT`, and `(14,13)->DOWN`, now modeled as directional blockers.
+  The mixed `(15,13)->LEFT` seam stays open because validation crossed it on
+  retry. The current validated entrance-to-Weapons-Merchant route from
+  `(15,14)` is `1 north, 3 west, 1 south, 2 west, 2 south`, and
+  `validate_path` walked all 9 steps with 0 mismatches.
+  Follow-up on the viable round trip found no drift-reroute log entries, but
+  raw verifiers confirmed two remaining seam bumps as real blockers:
+  `(10,15)->RIGHT` into `(11,15)` and `(13,15)->RIGHT` into `(14,15)` both
+  blocked 5/5, now modeled as `(11,15).west` and `(14,15).west`. A suspicious
+  `(15,17)->LEFT` bump was only timing noise; the raw verifier moved into
+  `(14,17)` 5/5, so keep that seam open.
+  The inn is now confirmed too: Garinham `Merchant 3` at `(17,15)` opens
+  `Welcome to the traveler's Inn. Room and board is 25 GOLD per night...` from
+  public stand `(15,15)` facing east. `objects.lua` now labels him `Inn` and
+  keeps him in Services.
+  The first Garinham locked door is now exposed too. Guide data points to an
+  east-end town door, and a live no-key probe from `(19,17)->UP` blocked into
+  `(19,16)`. `map_reader.lua` now models `(19,16)` as a door that can open from
+  opened-door RAM, and `objects.lua` exposes it as `East Door`. Post-reload
+  `inspect_move:19,17,UP` reports `reason=door_closed` with no runtime blocks.
+  Leave the guide-mentioned internal grey-building door for the Magic Key
+  revisit, since its exact coordinate still needs live confirmation from
+  inside.
+  Manual movement may share the same timing root: the user reported some
+  ordinary taps do not move while others overshoot. The manual wall-bump fixes
+  were probably too eager to release physical tap-to-step input on open floor,
+  so released `manual_tap` now gets a short extra hold after an early movement
+  twitch (`auto_step_manual_early_hold_frames=8`) before it releases and, if no
+  tile move follows, silently cancels as before. User retest says manual
+  movement is working better; try it on the overworld next, but Garinham's Tool
+  Merchant is no longer an active blocker.
+
 - Tantegel Castle Sage service: the user manually confirmed Old Man 2 restores
   MP, and external guide/map notes agree that the castle wise man restores MP.
   `objects.lua` now labels the NPC at `(20,26)` as `Sage` and includes him in
@@ -744,11 +856,12 @@ QoL feature check:
   Unreachable. This stacks with the object category filter, ignores moving NPC
   occupancy, and is intended for sanity-checking larger maps without making
   rapid J/K/L browsing run pathfinding every tap.
-- Overworld route guidance exists for the first dungeon and the first safety
-  returns. Select the `Erdrick's Cave`, `Brecconary`, or `Tantegel Castle`
-  Travel object and press `R`, or use `route_guidance`,
-  `start_overworld_route:cave`, `start_overworld_route:brecconary`, or
-  `start_overworld_route:castle` from the command file. Press `R` again, run
+- Overworld route guidance exists for the first dungeon, Garinham, and the
+  early safety returns. Select the `Erdrick's Cave`, `Garinham`, `Brecconary`,
+  or `Tantegel Castle` Travel object and press `R`, or use `route_guidance`,
+  `start_overworld_route:cave`, `start_overworld_route:garinham`,
+  `start_overworld_route:brecconary`, or `start_overworld_route:castle` from
+  the command file. Press `R` again, run
   `route_status`, or browse the Travel filter to hear the next route waypoint.
   If a route is active and another guided Travel destination is selected,
   pressing `R` replaces the old route with a route to the new destination. If
@@ -788,8 +901,17 @@ QoL feature check:
   through `(44,38)` reached town cleanly. The old safety marker at `(45,34)`
   was removed because it sent the player north, then immediately back south
   toward town. These routes warn once that monsters
-  should become safer after the bridge and complete on the destination maps
-  (`0x08` for Brecconary; `0x04` / `0x05` for Tantegel Castle).
+  should become safer beyond the bridge. From Garinham, these safety routes
+  now first guide through the north-coast and shoulder markers back toward
+  `Garinham east field` and `Erdrick's Cave road` before using the already
+  tested cave-to-safety route. The Garinham-bound route uses those same
+  markers in reverse after `Erdrick's Cave road`; it currently includes
+  `Garinham east field`, `Garinham ridge entry`, `Garinham east ridge`,
+  `Garinham shoulder bend`, `Garinham shoulder east step`, `Garinham mountain
+  shoulder`, `Garinham north coast lane`, `Garinham north coast west lane`,
+  and `Garinham outskirts` before the town. It completes on map `0x09`. The
+  safety routes still complete on the destination maps (`0x08` for
+  Brecconary; `0x04` / `0x05` for Tantegel Castle).
 - Read-only hotkey speech now queues instead of interrupting current speech:
   position, HP/MP, level, gold, experience, stats, screen text, and `R` route
   guidance/status use non-interrupting speech. While a manual step is still

@@ -717,6 +717,7 @@ function tests.physical_manual_early_subpixel_twitch_releases_after_tap()
         config_values = {
             auto_step_release_on_movement_start = "true",
             auto_step_route_early_release_grace_frames = "10",
+            auto_step_manual_early_hold_frames = "6",
         },
     })
 
@@ -728,8 +729,8 @@ function tests.physical_manual_early_subpixel_twitch_releases_after_tap()
     env.update(true)
 
     assert_truthy(
-        env.injected[3] and not has_any_direction(env.injected[3]),
-        "physical manual taps should release after an early subpixel twitch instead of holding into a wall"
+        env.injected[3] and env.injected[3].right,
+        "physical manual taps should briefly hold after an early subpixel twitch so open-floor taps can commit"
     )
 
     for _ = 1, 25 do
@@ -738,7 +739,11 @@ function tests.physical_manual_early_subpixel_twitch_releases_after_tap()
     local sequences = collect_direction_sequences(env, "right", 35)
     assert_truthy(
         #sequences == 1,
-        "physical manual taps should not re-press after releasing an early subpixel twitch"
+        "physical manual taps should not re-press after the short early-twitch hold"
+    )
+    assert_truthy(
+        sequences[1].count < 20,
+        "physical manual early-twitch hold should stay short enough to avoid long wall/NPC pressure"
     )
 
     env.restore()
@@ -906,6 +911,39 @@ function tests.queued_route_early_subpixel_twitch_keeps_holding_input()
     assert_truthy(
         env.injected[2] and env.injected[2].right,
         "queued-route early subpixel twitches should keep the D-pad held instead of creating a fake blocked step"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_early_subpixel_twitch_releases_before_turn()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_turn_repress_delay = "3",
+        },
+    })
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[2] and not has_any_direction(env.injected[2]),
+        "queued route should release early movement twitches when the next step turns"
+    )
+
+    for _ = 1, 12 do
+        env.update(true)
+    end
+
+    local right_sequences = collect_direction_sequences(env, "right", 20)
+    assert_truthy(
+        #right_sequences == 1,
+        "queued route should not re-press the old direction before a turn after an early twitch"
     )
 
     env.restore()

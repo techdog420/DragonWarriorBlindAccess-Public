@@ -855,6 +855,13 @@ local EXTRA_DOORS = {
         {x=21, y=6, name="Northeast Door", type=M.TYPE_DOOR, id="door_21_6"},
         {x=5, y=22, name="Inn West Room Door", type=M.TYPE_DOOR, id="door_5_22"},
     },
+    -- Map 0x09: Garinham. Guide data lists two town-scope locked doors, but
+    -- only the public east-end locked-building entrance has a live coordinate
+    -- so far. The internal grey-building door should be added after keys let us
+    -- confirm its exact cell from inside.
+    [0x09] = {
+        {x=19, y=16, name="East Door", type=M.TYPE_DOOR, id="door_19_16"},
+    },
 }
 
 local SERVICE_INTERACTION_OVERRIDES = {
@@ -878,6 +885,15 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter", name = "Weapons Merchant"},
         ["10,21"] = {x = 8, y = 21, face_dir = "east", label = "counter", name = "Inn"},
         ["25,25"] = {x = 23, y = 25, face_dir = "east", label = "counter", name = "Tool Merchant"},
+    },
+
+    -- Garinham public shops. The inn keeper occupies (17,15); live TALK proof
+    -- from the public counter stand at (15,15) facing east opened the inn
+    -- prompt. The weapon/armor keeper occupies (10,18), while live TALK proof
+    -- from the public counter stand at (10,16) facing south opened the shop.
+    [0x09] = {
+        ["17,15"] = {x = 15, y = 15, face_dir = "east", label = "counter", name = "Inn"},
+        ["10,18"] = {x = 10, y = 16, face_dir = "south", label = "counter", name = "Weapons Merchant"},
     },
 }
 
@@ -903,6 +919,15 @@ local SERVICE_ROLE_OVERRIDES = {
         cells = {
             ["24,4"] = {name = "Fairy Water Merchant", infer_counter = false},
             ["24,10"] = {name = "Curse Remover", infer_counter = false},
+        },
+    },
+    -- Garinham public shops. Live play opened the item list from Merchant 2,
+    -- the inn prompt from Merchant 3, and the weapon/armor list from Merchant 4.
+    [0x09] = {
+        names = {
+            ["Merchant 2"] = {name = "Tool Merchant", infer_counter = true},
+            ["Merchant 3"] = {name = "Inn", infer_counter = true},
+            ["Merchant 4"] = {name = "Weapons Merchant", infer_counter = true},
         },
     },
 }

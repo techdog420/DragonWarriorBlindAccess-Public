@@ -124,6 +124,8 @@ COMMANDS (write to dw_commands.txt, one per line)
                            Start safety route guidance back to Brecconary
   start_overworld_route:castle
                            Start safety route guidance back to Tantegel Castle
+  start_overworld_route:garinham
+                           Start route guidance to Garinham / Galenholm
   route_guidance           Start guidance for selected Travel destination,
                            replace an active route if another guided Travel
                            destination is selected, or recalculate/status the
