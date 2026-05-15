@@ -22,9 +22,14 @@ local ROUTES = {
             {x = 15, y = 4, name = "Garinham shoulder east step", radius = 0},
             {x = 16, y = 5, name = "Garinham shoulder bend", radius = 0},
             {x = 16, y = 6, name = "Garinham east ridge", radius = 0},
-            {x = 19, y = 6, name = "Garinham ridge entry", radius = 1},
-            {x = 20, y = 9, name = "Garinham east field", radius = 1},
-            {x = 28, y = 12, name = "Erdrick's Cave road", radius = 1},
+            {x = 19, y = 6, name = "Garinham ridge entry", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 20, y = 7, name = "Garinham field east lane", radius = 0},
+            {x = 20, y = 9, name = "Garinham east field", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 21, y = 10, name = "Garinham field road bend", radius = 0},
+            {x = 21, y = 11, name = "Cave road north edge", radius = 0},
+            {x = 23, y = 11, name = "Cave road west lane", radius = 0},
+            {x = 23, y = 13, name = "Cave road south lane", radius = 1},
+            {x = 28, y = 13, name = "Erdrick's Cave road", radius = 1},
             {x = 28, y = 20, name = "North trail marker", radius = 1},
             {x = 32, y = 19, name = "North ridge bend", radius = 1},
             {x = 35, y = 24, name = "Eastern mountain lane", radius = 0},
@@ -70,9 +75,14 @@ local ROUTES = {
             {x = 35, y = 24, name = "Eastern mountain lane", radius = 0},
             {x = 32, y = 19, name = "North ridge bend", radius = 1},
             {x = 28, y = 20, name = "North trail marker", radius = 1},
-            {x = 28, y = 12, name = "Erdrick's Cave road", radius = 1},
-            {x = 20, y = 9, name = "Garinham east field", radius = 1},
-            {x = 19, y = 6, name = "Garinham ridge entry", radius = 1},
+            {x = 28, y = 13, name = "Erdrick's Cave road", radius = 1},
+            {x = 23, y = 13, name = "Cave road south lane", radius = 1},
+            {x = 23, y = 11, name = "Cave road west lane", radius = 0},
+            {x = 21, y = 11, name = "Cave road north edge", radius = 0},
+            {x = 21, y = 10, name = "Garinham field road bend", radius = 0},
+            {x = 20, y = 9, name = "Garinham east field", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 20, y = 7, name = "Garinham field east lane", radius = 0},
+            {x = 19, y = 6, name = "Garinham ridge entry", radius = 1, axis_order = {"horizontal", "vertical"}},
             {x = 16, y = 6, name = "Garinham east ridge", radius = 0},
             {x = 16, y = 5, name = "Garinham shoulder bend", radius = 0},
             {x = 15, y = 4, name = "Garinham shoulder east step", radius = 0},
@@ -82,6 +92,64 @@ local ROUTES = {
             {x = 5, y = 4, name = "Garinham outskirts", radius = 1},
             {x = 2, y = 2, name = "Garinham approach", radius = 0},
             {x = 1, y = 2, name = "Garinham", radius = 0, final = true},
+        },
+    },
+    kol = {
+        id = "kol",
+        title = "Kol",
+        aliases = {"kol", "kol town", "kol village", "fairy flute", "faerie flute", "faeries flute"},
+        target_object_ids = {"overworld_kol"},
+        destination_maps = {0x07},
+        waypoints = {
+            {x = 43, y = 43, name = "Tantegel Castle road", radius = 1},
+            {x = 48, y = 41, name = "Brecconary road", radius = 1},
+            {
+                x = 44,
+                y = 38,
+                name = "Bridge south bend",
+                radius = 1,
+                warning = "Bridge crossing. Monsters may become more dangerous beyond this point.",
+            },
+            {x = 38, y = 36, name = "Bridge lower west lane", radius = 0},
+            {x = 38, y = 34, name = "Bridge west bend", radius = 0},
+            {x = 38, y = 32, name = "Upper bridge lane", radius = 0},
+            {x = 35, y = 32, name = "East choke approach", radius = 0},
+            {x = 35, y = 24, name = "Eastern mountain lane", radius = 0},
+            {x = 32, y = 19, name = "North ridge bend", radius = 1},
+            {x = 28, y = 20, name = "North trail marker", radius = 1},
+            {x = 28, y = 13, name = "Erdrick's Cave road", radius = 1},
+            {x = 35, y = 13, name = "North Alefgard west road", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 45, y = 13, name = "North Alefgard east road", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 54, y = 15, name = "Northeast bridge west approach", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 58, y = 18, name = "Northeast bridge west bend", radius = 0, axis_order = {"vertical", "horizontal"}},
+            {x = 59, y = 19, name = "Northeast bridge lower west lane", radius = 0},
+            {x = 61, y = 19, name = "Northeast bridge south lane", radius = 0},
+            {
+                x = 61,
+                y = 18,
+                name = "Northeast bridge",
+                radius = 1,
+                axis_order = {"horizontal", "vertical"},
+                warning = "Northeast bridge crossing. Monsters may become more dangerous beyond this point.",
+            },
+            {x = 74, y = 18, name = "North Alefgard bridge road", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 84, y = 26, name = "Kol southwest track", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {
+                x = 90,
+                y = 37,
+                name = "Kol southwest bridge",
+                radius = 0,
+                warning = "Kol southwest bridge crossing. Stronger Kol-area monsters may appear beyond this point.",
+            },
+            {x = 92, y = 37, name = "Kol bridge east lane", radius = 0},
+            {x = 92, y = 36, name = "Kol lower south lane", radius = 0},
+            {x = 93, y = 36, name = "Kol south road bend", radius = 0},
+            {x = 93, y = 35, name = "Kol south road lower bend", radius = 0},
+            {x = 96, y = 35, name = "Kol south road east lane", radius = 0},
+            {x = 96, y = 32, name = "Kol south road", radius = 1},
+            {x = 96, y = 21, name = "West of Kol north lane", radius = 1},
+            {x = 96, y = 13, name = "Kol forest west edge", radius = 1},
+            {x = 104, y = 10, name = "Kol", radius = 0, final = true},
         },
     },
     erdrick = {
@@ -125,9 +193,14 @@ local ROUTES = {
             {x = 15, y = 4, name = "Garinham shoulder east step", radius = 0},
             {x = 16, y = 5, name = "Garinham shoulder bend", radius = 0},
             {x = 16, y = 6, name = "Garinham east ridge", radius = 0},
-            {x = 19, y = 6, name = "Garinham ridge entry", radius = 1},
-            {x = 20, y = 9, name = "Garinham east field", radius = 1},
-            {x = 28, y = 12, name = "Erdrick's Cave road", radius = 1},
+            {x = 19, y = 6, name = "Garinham ridge entry", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 20, y = 7, name = "Garinham field east lane", radius = 0},
+            {x = 20, y = 9, name = "Garinham east field", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 21, y = 10, name = "Garinham field road bend", radius = 0},
+            {x = 21, y = 11, name = "Cave road north edge", radius = 0},
+            {x = 23, y = 11, name = "Cave road west lane", radius = 0},
+            {x = 23, y = 13, name = "Cave road south lane", radius = 1},
+            {x = 28, y = 13, name = "Erdrick's Cave road", radius = 1},
             {x = 28, y = 20, name = "North trail marker", radius = 1},
             {x = 32, y = 19, name = "North ridge bend", radius = 1},
             {x = 35, y = 24, name = "Eastern mountain lane", radius = 0},
@@ -286,7 +359,7 @@ local function choose_next_index(route, map_id, px, py)
     local nearest_distance = nil
     for i, point in ipairs(route.waypoints) do
         local d = distance(px, py, point)
-        if nearest_distance == nil or d < nearest_distance then
+        if nearest_distance == nil or d < nearest_distance or (d == nearest_distance and i > nearest_index) then
             nearest_index = i
             nearest_distance = d
         end
@@ -576,15 +649,6 @@ end
 function M.guidance_for_object(obj, map_id, px, py)
     local route = active_route()
     if route then
-        local selected_id = M.route_id_for_object(obj)
-        if selected_id then
-            if selected_id ~= route.id then
-                return M.start(selected_id, map_id, px, py)
-            end
-            if not (obj and obj.route_waypoint) then
-                return M.start(selected_id, map_id, px, py)
-            end
-        end
         return M.status(map_id, px, py, {recalculate = true})
     end
 

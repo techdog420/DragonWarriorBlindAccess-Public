@@ -34,6 +34,7 @@ local function make_env(options)
     local route_start_objects = {}
     local focused_route_ids = {}
     local object_refresh_calls = 0
+    local object_refresh_request_calls = 0
     local live_npc_refresh_calls = 0
     local filter_name = options.filter_name or "NPCs"
     local all_filter_calls = 0
@@ -250,6 +251,9 @@ local function make_env(options)
             refresh = function()
                 object_refresh_calls = object_refresh_calls + 1
             end,
+            request_refresh = function()
+                object_refresh_request_calls = object_refresh_request_calls + 1
+            end,
             update_npcs = function()
                 live_npc_refresh_calls = live_npc_refresh_calls + 1
             end,
@@ -408,6 +412,9 @@ local function make_env(options)
         focused_route_ids = focused_route_ids,
         object_refresh_calls = function()
             return object_refresh_calls
+        end,
+        object_refresh_request_calls = function()
+            return object_refresh_request_calls
         end,
         live_npc_refresh_calls = function()
             return live_npc_refresh_calls
@@ -791,8 +798,9 @@ function tests.r_starts_guided_route_from_selected_travel_object()
     assert_equal(env.route_start_calls(), 1, "R should start route guidance from the selected object")
     assert_equal(env.route_status_calls(), 0, "inactive route should start instead of only reporting status")
     assert_equal(env.route_start_objects[1].name, "Erdrick's Cave", "route start should receive the selected object")
-    assert_equal(env.object_refresh_calls(), 1, "route start should refresh the object list")
-    assert_equal(env.focused_route_ids[1], "route_erdrick_05", "route start should focus the active waypoint")
+    assert_equal(env.object_refresh_calls(), 0, "route start should avoid an immediate object-list rebuild")
+    assert_equal(env.object_refresh_request_calls(), 1, "route start should request a deferred route-marker refresh")
+    assert_equal(env.focused_route_ids[1], nil, "route start should preserve the selected destination focus")
     assert_equal(#env.outputs, 1, "route guidance should speak one route message")
     assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
         "route guidance should speak the next waypoint")
@@ -810,7 +818,9 @@ function tests.r_reports_active_route_status_without_restarting()
 
     assert_equal(env.route_status_calls(), 1, "R should report active route status")
     assert_equal(env.route_start_calls(), 0, "active route status should not restart the route")
-    assert_equal(env.focused_route_ids[1], "route_erdrick_05", "active route status should keep the next waypoint focused")
+    assert_equal(env.object_refresh_calls(), 0, "active route status should avoid an immediate object-list rebuild")
+    assert_equal(env.object_refresh_request_calls(), 0, "active route status should not refresh route markers without a route change")
+    assert_equal(env.focused_route_ids[1], nil, "active route status should preserve the selected destination focus")
     assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
         "active route status should speak the next waypoint")
     assert_equal(env.outputs[1].interrupt, false, "active route status should not interrupt route progress speech")

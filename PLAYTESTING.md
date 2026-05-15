@@ -1,10 +1,160 @@
 # Playtesting Notes
 
-Updated: 2026-05-14
+Updated: 2026-05-15
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Dialogue polish from the Garinham/grinding session is working in live play.
+  The STATUS command now reads the full status line from memory and no longer
+  gets interrupted by the lower visual equipment rows. After combat, object
+  navigation no longer remains stuck behind the stale "Wait for dialogue to
+  finish" guard once rewards are cleared; a Ghost fight with a level-up logged
+  `dialogue cache cleared: lower window empty`, then object navigation worked
+  normally. Current wrap-up position check: world map `(21,10)`.
+
+- Combat fast-action speech is now queued instead of interrupting. The
+  previous fast path still detects complete attack/damage sentences quickly,
+  but normal round messages no longer call interrupting speech, so closely
+  spaced lines such as `Bill attacks`, enemy attacks, and HP loss should stop
+  cutting one another off. Battle start/opening lines still interrupt so a new
+  encounter is announced promptly.
+
+- Overworld safety-route waypoints around Garinham east field and Erdrick's
+  Cave road have been tightened from live grinding evidence. The old route
+  aimed too coarsely from `Garinham ridge entry` to `Garinham east field`, and
+  then from `(21,11)` straight south toward `Erdrick's Cave road`; logs showed
+  those south moves timing out while the player successfully used an east-first
+  jog through `(20,7)`, `(21,10)`, `(23,11)`, and `(23,13)`. The safety routes
+  now use explicit `Garinham field east lane`, `Garinham field road bend`, and
+  cave-road lane markers, with regression coverage proving auto-walk starts
+  east rather than south from `(19,7)` and `(21,11)`. Live reload/retest is
+  still needed because the command log was stale when this patch was made.
+
+- Route guidance should no longer steal object focus. Starting or checking an
+  active overworld route was explicitly selecting the current `route_*`
+  waypoint object, so normal route progress could appear to change the focused
+  destination automatically. Guidance now requests a deferred route-marker
+  refresh without selecting the marker; the original Travel destination should
+  remain focused while `auto_walk` still follows the active route.
+
+- Kol is now available as an overworld guided route. Select the `Kol` Travel
+  landmark or run `start_overworld_route:kol`; aliases also include `kol town`,
+  `kol village`, `fairy flute`, `faerie flute`, and `faeries flute`. Live
+  shakedown disproved the earlier direct east-pocket lane: raw probes from
+  `(57,38)` blocked east into `(58,38)` and also blocked north/south from that
+  tile. The route now follows the Galenholm/Garinham-style path: western bridge
+  road, cave road, east across the northeast bridge, southeast to the bridge
+  southwest of Kol, then north and east into Kol's forest. The northeast bridge
+  route now uses a lower-lane jog through `(58,18)`, `(59,19)`, `(61,19)`, and
+  `(61,18)` after logs showed row-18 pullbacks near `(60,18)`. Static tests
+  expect the north-side approach from `(60,17)` to start `right`, not `down`.
+  The final reload did pick up the source change: live movement from `(60,17)`
+  still showed `down` into `(60,18)` as bad, while `right` to `(61,17)` and
+  then `down` to `(61,18)` moved cleanly. A Red Slime battle interrupted before
+  a clean queued `auto_walk` retest, so retry that command near the bridge.
+  The later south-road issue was also patched from live movement: after
+  `Kol southwest bridge`, the route should now go east through `(92,37)`,
+  jog through `(92,36)`, `(93,36)`, `(93,35)`, and `(96,35)`, then treat
+  `(96,32)` as `Kol south road` before continuing north to `(96,21)`. This
+  avoids the stale `(90,30)` south-road pullback. After reload, the user reached
+  Kol; the fresh current-state probe reports `map=0x07(Kol) x=19 y=23`.
+
+- Kol service decoding is staged. Local reference images and a text
+  transcription are now in `project_resources/maps/kol/`: Mike's map page,
+  Realm/VGMaps town map, Gamer Corner, StrategyWiki, and related guide facts
+  agree on the important first services. The inn is 20 G and appears in the
+  northeast building; the item/tool shop sells Herb, Torch, Dragon's Scale, and
+  Wings; the weapon/armor shop sells Copper Sword, Hand Axe, Half Plate, Full
+  Plate, and Small Shield; the Fairy Flute is hidden four steps south of the
+  bath. Next playtest/survey target is to confirm live coordinates for the
+  entry/exit, service NPCs, public counter stands and facing directions, and
+  the Fairy Flute search tile before patching `objects.lua`.
+
+- First Kol service-survey patch: the town exit is now the live south entry
+  tile `(19,23)`, not the stale `(15,14)`. The decoder saw `(19,23)` and
+  adjacent `(20,23)` as type-0 walls, but live movement proved them as
+  passable entry/exit strip cells, so they are now Kol passthroughs. The
+  stopped parked survey also found a real loop near `Person 1`: from `(20,18)`,
+  north into `(20,17)` blocked repeatedly and east into `(21,18)` blocked
+  repeatedly. These are modeled as directional blocks only, preserving nearby
+  passable seams. Reload Lua before rerunning the Kol survey; the automatic
+  touch/probe did not appear to reload the active FCEUX script.
+
+- Kol Merchant 1 autowalk keeps exposing narrow service-route wall bands, and
+  the current model has been tightened from two live runs. The first run proved
+  `(10,18).east` and `(10,19).east`. After a clean reload, the route advanced
+  deeper, then proved `(11,20).north`, `(12,19).west`, `(16,21).east`,
+  `(16,20).east`, `(16,19).east`, `(10,16).east`, `(10,16).north`,
+  `(9,16).north`, `(8,16).north`, and `(7,15).east`. The final loop at
+  `(8,15)` reached 45+ blocked observations on the last two seams before a
+  small right tap broke the route and moved the hero to `(9,15)`. Reload Lua
+  before retesting Merchant 1; the touch/probe path was consumed but did not
+  refresh the log header. The next manual-reload retest confirmed the
+  `stop_auto_walk` command works and exposed the next south-entry band toward
+  adjacent goal `(11,21)`: `(12,19).north` and `(13,19).north` are the strong
+  blockers, with lower-count directional evidence at `(15,19).north`,
+  `(14,19).north`, and `(16,19).north`. Merchant 4 path testing later
+  disproved the stale `(16,22).east` candidate, so the
+  `(16,22)<->(17,22)` seam should stay open both ways.
+  The follow-up touch/probe reload succeeded with a fresh `Started:
+  2026-05-15 13:29:38` log header and position `(12,18)`, so this blocker
+  batch is live. A read-only path preview from `(12,18)` to the current
+  Merchant 1 target at `(11,21)` now returns no path even with NPCs skipped,
+  so this likely needs service/interaction-tile decoding rather than another
+  blind autowalk retry to that live target. The user then selected/teleported
+  to `npc_7` / `Merchant 1`, and TALK proved he is a dialogue-only
+  southern-island/Rimuldar hint NPC. He now stays in NPC browsing but is
+  excluded from Services. `report_door_state` at position `(12,21)` showed
+  `keys=0` and no opened-door RAM slots, so do not claim a confirmed door
+  coordinate for him yet.
+
+- Kol Merchant 2 is the Inn. Selected teleport placed the hero at `(19,2)`
+  facing south toward Merchant 2 at `(19,4)`, and TALK opened the 20 GOLD inn
+  prompt. The route back from that Inn stand toward the town entrance looped
+  between `(21,2)` and `(22,2)`, repeatedly trying to go south into row 3.
+  `map_reader.lua` now blocks only the proven north approaches into `(21,3)`
+  and `(22,3)`; row-2 movement stays open. After reload, the next loop advanced
+  to the east wall and repeatedly tried to enter `(23,1)` and `(23,2)` from the
+  west. Those west approaches are now blocked directionally too. The next pass
+  drifted one tile west, recovered, then found `(10,4).north` and
+  `(11,3).west`; `(10,3).north` moved on retry and stays open. After another
+  reload, Inn-to-exit completed. The reverse route from town entrance back to
+  Inn then got close and looped between `(21,4)` and `(22,4)`, repeatedly
+  trying to enter `(21,3)` and `(22,3)` from the south. Those south approaches
+  are now blocked directionally too; the side seams on row 4 moved repeatedly
+  and stay open. The next entrance-to-Inn retest looped across row 4 and proved
+  `(23,3).south` plus `(20,4).east`, both `blocked=36 moved=0`. Those are now
+  directional blockers; row-4 movement through `(21,4)`, `(22,4)`, and
+  `(23,4)` stays open. The next retest routed farther west and looped around
+  `(11,5)`, `(12,5)`, and `(12,4)`, proving `(11,4).south` and `(11,4).east`.
+  Those are now directional blockers; nearby connector seams moved repeatedly
+  and low-count row-5 hits remain diagnostic. A later working round trip still
+  rerouted noisily. Cleanup now also models `(10,4).south` and `(9,2).south`
+  from the success log, plus repeated low-count reroute seams `(11,3).north`,
+  `(19,17).south`, and `(18,17).south`. Noisy/moved seams such as
+  `(10,3).west` and `(18,18).east` stay open. Retest entrance-to-Inn after Lua
+  reload.
+
+- Kol Merchant 3 is live-confirmed as the weapon/armor shop. Selected teleport
+  to `npc_13` / `Merchant 3` held the target at `(22,12)`, landed at `(20,12)`,
+  and faced east. TALK opened the buy list, and the merchant reader spoke the
+  live inventory: Copper Sword 180 G, Hand Axe 560 G, Half Plate 1000 G, Full
+  Plate 3000 G, and Small Shield 90 G. `objects.lua` now labels him
+  `Weapons Merchant` and routes through `(20,12)` facing east.
+
+- Kol Merchant 4 is live-confirmed as the item/tool shop. Selected teleport to
+  `npc_15` / `Merchant 4` held the target at `(14,21)`, landed at `(12,21)`,
+  and faced east. TALK opened the buy list, and the merchant reader spoke Herb
+  24 G, Torch 8 G, Dragon's Scale 20 G, and Wings 70 G. `objects.lua` now
+  labels him `Tool Merchant` and routes through `(12,21)` facing east.
+
+- FCEUX stale-Alt remains a polishing issue, separate from dialogue state.
+  Logs show `keys=LeftAlt`, `joy1=-`, and an empty external bridge while idle;
+  movement or a real key clears it temporarily, then idle can re-trigger the
+  warning. Treat this as an input-bridge/focus quirk, not a route or dialogue
+  blocker.
 
 - Overworld landmarks are now hooked into the same-map teleport system in the
   worktree. On the world map, selected Travel landmarks can use exact
@@ -604,12 +754,13 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   confirmed battle starts announce properly but action/damage lines were still
   arriving late in the round. Battle dialogue now has a narrowly-scoped fast
   path for complete action/damage sentence prefixes (`attacks`, HP
-  reduced/decreased, misses/dodges) after a short 6-frame confirmation, using
-  interrupting speech so stale menu chatter does not delay the result. Victory
-  and reward pages intentionally stay on the normal stable reader, and leaked
-  gold macro artifacts such as `GOLD Gold increases` are normalized. Next fight
-  should judge whether attacks and damage land soon enough without making
-  combat speech too chattery.
+  reduced/decreased, misses/dodges) after a short 6-frame confirmation. This
+  path originally used interrupting speech to avoid stale menu chatter, but the
+  latest audio tuning queues fast action speech instead so close combat lines
+  do not cut one another off. Victory and reward pages intentionally stay on
+  the normal stable reader, and leaked gold macro artifacts such as `GOLD Gold
+  increases` are normalized. Next fight should judge whether attacks and damage
+  land soon enough without making combat speech too chattery.
 - Combat action-line miss follow-up: fresh logs showed a quick Slime fight at
   frame 7800 going from `A Slime draws near!` directly to reward text, while
   longer Red Slime rounds spoke attacks and damage. This pointed at one-hit

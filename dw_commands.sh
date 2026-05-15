@@ -55,6 +55,7 @@
 #   pathfind_adjacent:X,Y  Run adjacent pathfinding to explicit coordinates
 #   report_path_state      Log current path target, blockers, and runtime blocks
 #   auto_walk              Auto-walk to the current selected object using pathfinder
+#   stop_auto_walk         Cancel the current object auto-walk and release route state
 #
 # ── Navigation commands ──────────────────────────────────────────────
 #   next_object            Next object in list (like L key)
@@ -64,6 +65,7 @@
 #   pathfind               Pathfind to current object (like O key)
 #   route_guidance         Start/check selected-destination route guidance (like R key)
 #   auto_walk              Auto-walk to current object (like U key)
+#   stop_auto_walk         Stop current object auto-walk without adding movement input
 #   freeze_npcs            Lock NPC positions in RAM
 #   unfreeze_npcs          Unlock NPC positions
 #   start_overworld_route  Start manual Travel-filter route guidance to Erdrick's Cave

@@ -93,24 +93,6 @@ local function speak_route_event(prefix, info)
     tolk.output_interrupt(info.message)
 end
 
-local function focus_route_waypoint(map_id, info)
-    if map_id ~= 0x01 or not info or not info.object_id then
-        return
-    end
-    if objects.refresh then
-        objects.refresh(map_id)
-    end
-    if objects.all_pathability_filter then
-        objects.all_pathability_filter()
-    end
-    if objects.travel_filter then
-        objects.travel_filter()
-    end
-    if objects.select_object_by_id then
-        objects.select_object_by_id(info.object_id)
-    end
-end
-
 function M.register()
     debug_tools.register_command("next_object", function()
         refresh_object_browser_context()
@@ -218,7 +200,6 @@ function M.register()
             tolk.output_interrupt(tostring(err))
             return
         end
-        focus_route_waypoint(map_id, info)
         speak_route_event("OVERWORLD_ROUTE", info)
     end)
 
@@ -230,14 +211,12 @@ function M.register()
             tolk.output_interrupt(tostring(err))
             return
         end
-        focus_route_waypoint(map_id, info)
         speak_route_event("OVERWORLD_ROUTE", info)
     end)
 
     local function recalculate_route_command()
         local map_id, x, y = current_position()
         local info = overworld_routes.recalculate(map_id, x, y)
-        focus_route_waypoint(map_id, info)
         speak_route_event("OVERWORLD_ROUTE", info)
     end
 

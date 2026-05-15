@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-14
+Updated: 2026-05-15
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -47,6 +47,15 @@ Avoid:
 - Screenshot-dependent explanations
 - Visual-only descriptions
 - Large speculative rewrites
+
+## Object Navigation Policy
+
+Object focus should represent the player's selected target, not an internal
+route marker. Overworld route guidance may add `route_*` waypoint objects to
+the Travel list and may request a deferred object refresh, but it should not
+automatically switch filters or select the active waypoint. If the player
+selected a landmark such as Garinham or Erdrick's Cave, that destination should
+remain focused while `auto_walk` follows the active guided route internally.
 
 ## Runtime Command Model
 
@@ -348,12 +357,112 @@ Emulator compatibility direction:
   should remain the plain heading/path preview, and `U` should remain
   available for future overworld auto-walk until the world-map decoder and
   encounter-flow behavior are proven live.
+- The Garinham-to-cave-road leg should not be a single diagonal target.
+  Live grinding showed south moves from `(19,7)` and `(21,11)` timing out,
+  while east-first movement through `(20,7)`, `(21,10)`, `(23,11)`, and
+  `(23,13)` worked. Keep the explicit `Garinham field east lane`,
+  `Garinham field road bend`, `Cave road north edge`, `Cave road west lane`,
+  and `Cave road south lane` markers in `overworld_routes.lua`; they are route
+  evidence, not permanent world-map blocked-tile data.
+- The first Kol route should not use the direct east pocket from Brecconary.
+  Live raw holds from `(57,38)` blocked east into `(58,38)` and also blocked
+  north/south, with nearby row-39/40 and north-branch checks dead-ending. Keep
+  Kol on the Galenholm/Garinham-style north road: proven western bridge/cave
+  road first, then the lower northeast bridge lane before the southwest bridge
+  toward Kol. Northeast bridge evidence is route-lane evidence, not permanent
+  world-map blocked-tile data: `(59,19)->(60,19)`, `(61,19)->(61,18)`, and
+  `(60,19)->(60,18)` moved live, while route attempts from the north/row-18
+  pinch blocked or pulled back. The route should avoid vertical-first entry
+  into `(60,18)` from `(60,17)`.
+- The Kol south-road leg should not target `(90,30)` after the southwest
+  bridge. Live player movement from the first Kol run worked around the old
+  pullback by going east from `(90,37)` and then north through the x=92/93/96
+  lane: `(92,37)`, `(92,36)`, `(93,36)`, `(93,35)`, `(96,35)`, and `(96,32)`.
+  Treat `(96,32)` as the south-road marker and continue north toward
+  `(96,21)`. After this lane patch and reload, the user reached Kol and a fresh
+  position probe confirmed `map=0x07(Kol) x=19 y=23`.
+- Kol service work should start from `project_resources/maps/kol/README.md`,
+  which now has local map images and a screen-reader service transcription.
+  External guides agree on these first priorities: Inn 20 G, weapon/armor shop
+  selling Copper Sword, Hand Axe, Half Plate, Full Plate, and Small Shield,
+  item/tool shop selling Herb, Torch, Dragon's Scale, and Wings, and the Fairy
+  Flute hidden four steps south of the bath. Treat those guide facts as
+  orientation; patch `objects.lua` only after live survey/TALK evidence proves
+  service NPC slots, public stand/facing tiles, exit coordinates, and hidden
+  search-tile coordinates.
+- Kol's live town entry/exit is `(19,23)`, not the old `(15,14)` placeholder.
+  Entering from the world map lands at `(19,23)`, moving south from `(19,23)`
+  exits town, and movement from `(19,22)->(19,23)` plus `(19,23)->(20,23)`
+  proved the bottom strip is engine-passable despite type-0 ROM tiles. Keep
+  `(19,23)` and `(20,23)` as map-0x07 passthrough cells.
+- The first Kol parked survey exposed a tight route loop near Person 1:
+  `(20,17)` blocks from the south and `(21,18)` blocks from the west. The
+  stopped run logged 51 and 50 blocked observations respectively, while
+  surrounding entry-lane seams had moved evidence. Keep these as directional
+  blockers only; do not promote whole cells from that survey.
+- Merchant 1 routing in Kol has narrow directional wall evidence from two live
+  autowalk runs. Keep these map-0x07 blockers directional-only: `(10,18).east`,
+  `(10,19).east`, `(11,20).north`, `(12,19).west`, `(16,21).east`,
+  `(16,20).east`, `(16,19).east`, `(10,16).east`, `(10,16).north`,
+  `(9,16).north`, `(8,16).north`, and `(7,15).east`. The strongest loop was at
+  `(8,15)`, where `(8,16).north` and `(7,15).east` each reached 45+ blocked
+  observations with no moves. The current manual escape to `(9,15)` should not
+  be treated as service-route proof beyond showing `(9,15).west` can move. A
+  later retest toward adjacent goal `(11,21)` added `(12,19).north`,
+  `(13,19).north`, `(15,19).north`, `(14,19).north`, and
+  `(16,19).north`; keep noisy moved seams like `(15,16).west` and
+  `(17,21).east` open. Merchant 4 path testing later disproved the stale
+  `(16,22).east` candidate; keep the `(16,22)<->(17,22)` seam open both ways.
+- Kol `Merchant 1` is dialogue-only. Live TALK after selected teleport to
+  `npc_7` produced the southern-island/Rimuldar hint, not a shop or inn prompt.
+  Keep him browsable under NPCs but excluded from Services; continue service
+  decoding with the remaining Kol merchants. A same-turn `report_door_state`
+  showed `keys=0` and no opened-door RAM slots, so do not record a confirmed
+  Kol door coordinate from this NPC yet.
+- Kol `Merchant 2` is the Inn. Live TALK from public stand `(19,2)` facing
+  south toward `npc_12` at `(19,4)` opened the 20 GOLD inn prompt. The first
+  Inn-to-exit autowalk loop exposed directional-only row-3 blockers:
+  `(21,3).north` and `(22,3).north`; keep row-2 horizontal movement open. The
+  follow-up retest exposed the next east-wall pair, `(23,1).west` and
+  `(23,2).west`, while `(22,1)<->(22,2)` kept moved evidence. A later pass
+  drifted one tile west, recovered, and exposed `(10,4).north` and
+  `(11,3).west`; leave `(10,3).north` open because its retry moved and the seam
+  was reclassified noisy. The reverse route from the town entrance back to the
+  Inn then exposed `(21,3).south` and `(22,3).south` with `blocked=20 moved=0`
+  each; keep `(21,4).east` and `(22,4).west` open because they moved repeatedly.
+  The next entrance-to-Inn retest looped across row 4 and exposed
+  `(23,3).south` plus `(20,4).east`, both `blocked=36 moved=0`; keep the
+  row-4 connector through `(21,4)`, `(22,4)`, and `(23,4)` open. A later pass
+  routed west and exposed `(11,4).south` plus `(11,4).east`; keep the connector
+  around `(11,5)`, `(12,5)`, and `(12,4)` open, and treat the two-block row-5
+  hits as diagnostic until they repeat. The first working noisy round trip then
+  justified cleanup blockers `(10,4).south`, `(9,2).south`, `(11,3).north`,
+  `(19,17).south`, and `(18,17).south`; keep noisy/moved seams like
+  `(10,3).west` and `(18,18).east` open.
+- Kol `Merchant 3` is the weapon/armor shop. Live proof selected `npc_13` at
+  `(22,12)`, landed at public stand `(20,12)`, faced east, and opened the buy
+  list. The live inventory is Copper Sword 180 G, Hand Axe 560 G, Half Plate
+  1000 G, Full Plate 3000 G, and Small Shield 90 G. `objects.lua` labels map
+  `0x07` `Merchant 3` as `Weapons Merchant` and routes him through `(20,12)`
+  facing east.
+- Kol `Merchant 4` is the item/tool shop. Live proof selected `npc_15` at
+  `(14,21)`, landed at public stand `(12,21)`, faced east, and opened the buy
+  list. The live inventory is Herb 24 G, Torch 8 G, Dragon's Scale 20 G, and
+  Wings 70 G. `objects.lua` labels map `0x07` `Merchant 4` as `Tool Merchant`
+  and routes him through `(12,21)` facing east.
 - Read-only hotkey speech should avoid cutting off route progress
   announcements. `hotkeys.lua` uses non-interrupting `tolk.output` for
   position, HP/MP, level, gold, experience, stats, screen text, and `R` route
   guidance/status. During auto-step movement, `R` may still report an active
   route's status, but starting a new route or running movement-changing object
   controls remains blocked until movement is stable.
+- Fast combat action dialogue should also avoid cutting off current speech.
+  Keep `Battle!` and the first coherent `draws near` opening line interrupting
+  so encounters are announced promptly, but queue ordinary attack, damage,
+  miss/dodge, and reward text with non-interrupting speech. The FCEUX bridge log
+  can confirm the policy: pre-patch multi-action rounds showed player attack,
+  enemy attack, and HP-loss lines as repeated `interrupt:` commands one or two
+  seconds apart.
 - When adding a new safe BizHawk hotkey, update both `config.lua` defaults and
   the checked-in `dw_access.ini` allowlist. Existing explicit allowlists
   override default allowlist changes, so a newly appended key binding can still

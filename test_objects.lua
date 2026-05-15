@@ -634,6 +634,38 @@ function tests.route_waypoint_can_be_selected_after_route_start()
     env.restore()
 end
 
+function tests.active_route_refresh_preserves_selected_destination_focus()
+    local env = make_env()
+    local routes = require("overworld_routes")
+
+    env.set_position(0x01, 30, 32)
+    env.set_terrain_offset(0x00)
+    routes.reset_for_tests()
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+    local selected = env.objects.select_object_by_id("overworld_erdrick_s_cave")
+    assert_equal(selected ~= nil, true, "test should start with Erdrick's Cave selected")
+
+    routes.start_for_object(selected, 0x01, 30, 32)
+    env.objects.request_refresh()
+    env.objects.check_refresh(0x01)
+    assert_equal(
+        env.objects.current_object().id,
+        "overworld_erdrick_s_cave",
+        "starting a route should not move focus from the selected destination to the waypoint marker")
+
+    routes.observe_position(0x01, 35, 32)
+    env.objects.request_refresh()
+    env.objects.check_refresh(0x01)
+    assert_equal(
+        env.objects.current_object().id,
+        "overworld_erdrick_s_cave",
+        "advancing an active route should not steal destination focus during object refresh")
+
+    routes.reset_for_tests()
+    env.restore()
+end
+
 function tests.brecconary_exit_matches_live_west_edge_probe()
     local env = make_env()
 
@@ -646,6 +678,26 @@ function tests.brecconary_exit_matches_live_west_edge_probe()
     assert_equal(obj.name, "Exit to World Map", "Brecconary should expose its town exit object")
     assert_equal(obj.x, 0, "Brecconary exit should sit on the west-edge entry column")
     assert_equal(obj.y, 15, "Brecconary exit should match the live entry row")
+
+    env.restore()
+end
+
+function tests.kol_exit_uses_live_south_entry_tile()
+    local env = make_env()
+
+    env.set_position(0x07, 19, 23)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x07)
+
+    local obj = env.objects.select_object_by_id("exit_19_23")
+    assert_equal(obj ~= nil, true, "Kol should expose the live south town exit")
+    assert_equal(obj.name, "Exit to World Map", "Kol should keep the normal town-exit label")
+    assert_equal(obj.x, 19, "Kol exit should use the live arrival X")
+    assert_equal(obj.y, 23, "Kol exit should use the live arrival/exit row")
+    assert_equal(obj.interaction_x, 19, "Kol exit route should stand on the south exit tile")
+    assert_equal(obj.interaction_y, 23, "Kol exit stand should match the live exit row")
+    assert_equal(obj.interaction_face_dir, "south", "Kol exit stand should face south toward the world")
 
     env.restore()
 end
@@ -1271,6 +1323,76 @@ function tests.brecconary_confirmed_counter_services_use_live_talk_tiles()
     local marked = env.objects.mark_adjacent_npc_visited(0x08, 23, 25)
     assert_equal(marked.id, tool_merchant.id, "Tool Merchant public counter stand should mark the tool merchant visited")
     assert_equal(env.objects.is_visited(tool_merchant, 0x08), true, "Tool Merchant counter visit should persist from the public stand")
+
+    env.restore()
+end
+
+function tests.kol_confirmed_services_and_dialogue_merchant_filtering()
+    local env = make_env({npc_count = 4})
+
+    env.set_position(0x07, 12, 21)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 5, 0x14, 0x00)  -- Merchant 1, Rimuldar hint NPC
+    env.set_npc(1, 0x60 + 19, 0x04, 0x00) -- Merchant 2, confirmed Inn
+    env.set_npc(2, 0x60 + 22, 0x0C, 0x00) -- Merchant 3, confirmed weapon/armor shop
+    env.set_npc(3, 0x60 + 14, 0x15, 0x00) -- Merchant 4, confirmed tool shop
+    env.objects.refresh(0x07)
+
+    local merchant1 = nil
+    local inn = nil
+    local weapons = nil
+    local tools = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Merchant 1" then
+            merchant1 = obj
+        elseif obj.name == "Inn" then
+            inn = obj
+        elseif obj.name == "Weapons Merchant" then
+            weapons = obj
+        elseif obj.name == "Tool Merchant" then
+            tools = obj
+        end
+    end
+
+    assert_equal(merchant1 ~= nil, true, "Kol dialogue-only Merchant 1 should stay browsable as an NPC")
+    assert_equal(merchant1.service, false, "Kol dialogue-only Merchant 1 should not appear in Services")
+    assert_equal(inn ~= nil, true, "Kol Merchant 2 should be labeled as Inn after live TALK proof")
+    assert_equal(inn.service, true, "Kol Inn should remain in Services")
+    assert_equal(inn.interaction_x, 19, "Kol Inn should use the live-confirmed public stand X")
+    assert_equal(inn.interaction_y, 2, "Kol Inn should use the live-confirmed public stand Y")
+    assert_equal(inn.interaction_face_dir, "south", "Kol Inn should face south toward the keeper")
+    assert_equal(weapons ~= nil, true, "Kol Merchant 3 should be labeled as Weapons Merchant after live shop-menu proof")
+    assert_equal(weapons.service, true, "Kol Weapons Merchant should remain in Services")
+    assert_equal(weapons.interaction_x, 20, "Kol Weapons Merchant should use the live-confirmed public stand X")
+    assert_equal(weapons.interaction_y, 12, "Kol Weapons Merchant should use the live-confirmed public stand Y")
+    assert_equal(weapons.interaction_face_dir, "east", "Kol Weapons Merchant should face east through the counter")
+    assert_equal(tools ~= nil, true, "Kol Merchant 4 should be labeled as Tool Merchant after live shop-menu proof")
+    assert_equal(tools.service, true, "Kol Tool Merchant should remain in Services")
+    assert_equal(tools.interaction_x, 12, "Kol Tool Merchant should use the live-confirmed public stand X")
+    assert_equal(tools.interaction_y, 21, "Kol Tool Merchant should use the live-confirmed public stand Y")
+    assert_equal(tools.interaction_face_dir, "east", "Kol Tool Merchant should face east through the counter")
+
+    env.objects.next_filter() -- NPCs
+    local npc_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        npc_names[#npc_names + 1] = obj.name
+    end
+    local npc_text = table.concat(npc_names, ", ")
+    assert_equal(npc_text:find("Merchant 1", 1, true) ~= nil, true, "NPCs should include Kol Merchant 1")
+
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Merchant 1", 1, true), nil, "Services should omit Kol dialogue-only Merchant 1")
+    assert_equal(service_text:find("Merchant 2", 1, true), nil, "Services should not keep the stale Kol Merchant 2 label")
+    assert_equal(service_text:find("Merchant 3", 1, true), nil, "Services should not keep the stale Kol Merchant 3 label")
+    assert_equal(service_text:find("Merchant 4", 1, true), nil, "Services should not keep the stale Kol Merchant 4 label")
+    assert_equal(service_text:find("Inn", 1, true) ~= nil, true, "Services should include the confirmed Kol Inn")
+    assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include the confirmed Kol Weapons Merchant")
+    assert_equal(service_text:find("Tool Merchant", 1, true) ~= nil, true, "Services should include the confirmed Kol Tool Merchant")
 
     env.restore()
 end

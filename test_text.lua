@@ -94,6 +94,31 @@ function tests.dialogue_filter_keeps_real_bill_dialogue()
     )
 end
 
+function tests.dialogue_filter_skips_status_equipment_rows()
+    clear_ppu()
+    write_row(19, "WEAPON:Club")
+    write_row(20, "ARMOR:Leather  Armor")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19),
+        "",
+        "lower dialogue reader should ignore STATUS menu equipment rows"
+    )
+end
+
+function tests.status_equipment_detector_requires_status_labels()
+    assert_equal(
+        text.is_status_equipment_text("The weapon shop is north."),
+        false,
+        "ordinary dialogue mentioning weapons should not look like the STATUS equipment block"
+    )
+    assert_equal(
+        text.is_status_equipment_text("WEAPON:Club ARMOR:Leather Armor"),
+        true,
+        "STATUS equipment block should be detectable after row concatenation"
+    )
+end
+
 function tests.decode_row_handles_nt1_first_horizontal_wrap()
     clear_ppu()
     write_visible_row(19, "I am greatly pleased", 22, 1)

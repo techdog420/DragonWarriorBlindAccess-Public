@@ -224,21 +224,9 @@ local function log_route_event(prefix, info)
     end
 end
 
-local function focus_route_waypoint(map_id, info)
-    if tonumber(map_id) ~= 0x01 or not info or not info.object_id then
-        return
-    end
-    if objects.refresh then
-        objects.refresh(map_id)
-    end
-    if objects.all_pathability_filter then
-        objects.all_pathability_filter()
-    end
-    if objects.travel_filter then
-        objects.travel_filter()
-    end
-    if objects.select_object_by_id then
-        objects.select_object_by_id(info.object_id)
+local function request_route_object_refresh(info)
+    if info and info.refresh and objects.request_refresh then
+        objects.request_refresh()
     end
 end
 
@@ -258,7 +246,7 @@ local function speak_route_guidance()
         return
     end
 
-    focus_route_waypoint(map_id, info)
+    request_route_object_refresh(info)
     log_route_event("OVERWORLD_ROUTE", info)
     speak_info(info.message)
 end
@@ -268,7 +256,7 @@ local function speak_active_route_status()
     local map_id, x, y = nav.get_position()
     local info = overworld_routes.status(map_id, x, y)
 
-    focus_route_waypoint(map_id, info)
+    request_route_object_refresh(info)
     log_route_event("OVERWORLD_ROUTE", info)
     speak_info(info.message)
 end

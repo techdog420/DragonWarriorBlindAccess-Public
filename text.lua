@@ -213,6 +213,7 @@ end
 
 function M.read_dialogue_window_filtered(scroll_tiles, start_row, base_nametable)
     local primary = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
+    local result = primary
 
     -- BizHawk can report a transient PPUCTRL base bit that does not match the
     -- nametable order holding dialogue after Yes/No transitions. When the
@@ -222,11 +223,14 @@ function M.read_dialogue_window_filtered(scroll_tiles, start_row, base_nametable
         local alternate_base = (math.floor(tonumber(base_nametable) or 0) + 1) % 2
         local alternate = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, alternate_base)
         if dialogue_score(alternate) > dialogue_score(primary) then
-            return alternate
+            result = alternate
         end
     end
 
-    return primary
+    if M.is_status_equipment_text(result) then
+        return ""
+    end
+    return result
 end
 
 -- extract_new_dialogue(old, new): Return only the text that was not already
@@ -317,6 +321,17 @@ function M.is_status_text(text)
     end
 
     return letters_only:find("VLPHPMGE") ~= nil
+end
+
+function M.is_status_equipment_text(text)
+    text = tostring(text or "")
+    local compact = text:gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+    if #compact == 0 or #compact > 100 then
+        return false
+    end
+    local weapon_pos = compact:find("WEAPON:", 1, true)
+    local armor_pos = compact:find("ARMOR:", 1, true)
+    return weapon_pos == 1 and armor_pos ~= nil and armor_pos > weapon_pos
 end
 
 -- is_status_anywhere(start_row, end_row): Check if the status bar is

@@ -235,7 +235,17 @@ local STAIRS = {
 local EXITS = {
     -- Towns — exits are at the town entrance. Most face south, but
     -- Brecconary's confirmed world-map handoff is on the west edge.
-    {map = 0x07, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Kol
+    {
+        map = 0x07,
+        x = 19,
+        y = 23,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 19,
+        interaction_y = 23,
+        interaction_face_dir = "south",
+        interaction_label = "exit",
+    },                                                                      -- Kol
     {map = 0x08, x = 0,  y = 15, name = "Exit", dest = "World Map"},      -- Brecconary (confirmed via live PPU dump)
     {
         map = 0x09,
@@ -956,6 +966,18 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["20,26"] = {x = 18, y = 26, face_dir = "east", label = "counter", name = "Sage"},
     },
 
+    -- Kol services. Merchant 2 occupies (19,4); live TALK from the public stand
+    -- at (19,2) facing south opened the 20 GOLD inn prompt. Merchant 3 occupies
+    -- (22,12); selected teleport landed at the public stand (20,12), faced east,
+    -- and TALK opened the live weapon/armor shop menu. Merchant 4 occupies
+    -- (14,21); selected teleport landed at (12,21), faced east, and TALK opened
+    -- the live tool shop menu.
+    [0x07] = {
+        ["19,4"] = {x = 19, y = 2, face_dir = "south", label = "counter", name = "Inn"},
+        ["22,12"] = {x = 20, y = 12, face_dir = "east", label = "counter", name = "Weapons Merchant"},
+        ["14,21"] = {x = 12, y = 21, face_dir = "east", label = "counter", name = "Tool Merchant"},
+    },
+
     -- Brecconary weapon/armor shop. The keeper occupies (5,4), but TALK opens
     -- the shop from the doorway/counter square at (5,6) while facing north.
     -- The inn can be opened from the public west-side stand tile at (8,21)
@@ -993,6 +1015,15 @@ local SERVICE_ROLE_OVERRIDES = {
             ["20,26"] = {name = "Sage", infer_counter = false},
         },
     },
+    -- Kol public services; stand/facing data is modeled in
+    -- SERVICE_INTERACTION_OVERRIDES above.
+    [0x07] = {
+        names = {
+            ["Merchant 2"] = {name = "Inn", infer_counter = true},
+            ["Merchant 3"] = {name = "Weapons Merchant", infer_counter = true},
+            ["Merchant 4"] = {name = "Tool Merchant", infer_counter = true},
+        },
+    },
     -- Confirmed Brecconary special-service NPCs that are not merchant sprites.
     -- They should appear in Services, but route like ordinary adjacent NPCs.
     [0x08] = {
@@ -1017,6 +1048,12 @@ local SERVICE_ROLE_OVERRIDES = {
 }
 
 local SERVICE_EXCLUSIONS = {
+    -- Kol Merchant 1 gives the southern-island/Rimuldar hint, not a shop
+    -- prompt. Keep him browsable under NPCs without sending Services to him.
+    [0x07] = {
+        ["Merchant 1"] = true,
+    },
+
     -- Tantegel Castle Merchants 1 and 2 only offer dialogue. Keep them
     -- browsable under NPCs, but keep Services focused on actual shops.
     [0x04] = {

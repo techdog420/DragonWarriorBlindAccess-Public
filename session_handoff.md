@@ -11,6 +11,386 @@ chests, and other essential services. Leave unreachable dialogue-only NPCs for
 the polishing phase unless they provide a progression clue, required hint, or
 other gameplay-critical information.
 
+Latest dialogue/accessibility polish is live-validated in FCEUX but not yet
+committed. The STATUS command now interrupts with the full memory-backed status
+readout and suppresses the visual equipment rows from being re-read as generic
+dialogue; the user confirmed the status box reads well after reload. A
+post-combat stale-dialogue blocker was also fixed: when the lower dialogue
+window clears, the idle field reader now clears `PREV.announced_dialogue`, and
+object hotkeys no longer treat that historical announcement cache as active
+dialogue. Live proof after a Ghost fight with a level-up logged `dialogue cache
+cleared: lower window empty`; afterward the command menu opened/closed and
+object navigation speech queued/flushed normally instead of saying "Wait for
+dialogue to finish." Current wrap-up position probe: `POSITION:
+map=0x01(World Map) x=21 y=10`.
+
+Current audio-tuning patch in the worktree: fast combat action dialogue still
+uses the quick complete-sentence detector, but it now queues speech instead of
+calling `tolk.output_interrupt()`. This should stop closely spaced combat
+messages from cutting off the previous announcement mid-sentence. Battle
+start/opening lines still interrupt so a new encounter is announced promptly.
+Next live check: reload the Lua script and judge one or two normal fights,
+especially multi-action Magician/Ghost rounds where player attack, enemy
+action, and HP loss arrive close together.
+
+Current overworld route patch in the worktree: the safety-route leg around
+Garinham east field and Erdrick's Cave road now uses explicit small waypoints
+instead of one coarse diagonal segment. Log evidence from the user's grinding
+run showed the old active `tantegel` route aiming at `Erdrick's Cave road`
+from `(21,11)` and auto-walk trying `DOWN` into `(21,12)`, which blocked;
+nearby manual movement then succeeded by going east first, then south through
+`(23,11)`, `(23,12)`, `(23,13)`, and onward. Earlier in the same log,
+southward movement from `(19,7)` near `Garinham east field` also timed out
+while the route became usable after moving east toward `(20,7)`. The route
+table now adds `Garinham field east lane`, `Garinham field road bend`,
+`Cave road north edge`, `Cave road west lane`, and `Cave road south lane`;
+tests prove safety-route auto-walk starts east rather than south from both
+`(19,7)` and `(21,11)`. Live command verification was not run because
+`dw_debug.log` was stale and `--require-live` refused to queue commands; after
+Lua reload, retest `route_recalculate` / `auto_walk` near `(21,11)` or the
+current cave-road area.
+
+Latest focused-destination fix in the worktree: route guidance was changing the
+selected Travel object to the active route waypoint. The immediate cause was
+`focus_route_waypoint()` in both `hotkeys.lua` and `object_commands.lua`; it
+refreshed the object list, switched to Travel, and selected IDs such as
+`route_garinham_04` whenever guidance started or status was requested. After
+that, route-advance refreshes could keep shifting focus to the next route
+waypoint. The helper has been removed/replaced with deferred route-object
+refresh only, so the selected destination should stay on the original landmark
+while active route waypoint markers remain available in Travel. Static proof:
+`lua test_hotkeys.lua` (27 tests), `lua test_objects.lua` (55 tests),
+`lua test_overworld_routes.lua` (34 tests), `lua test_route_manager.lua` (58
+tests), `luac -p hotkeys.lua object_commands.lua objects.lua
+overworld_routes.lua test_hotkeys.lua test_objects.lua`, and `git diff
+--check`.
+
+Current Kol route patch in the worktree: `overworld_routes.lua` now has a
+guided `kol` route, with aliases `kol`, `kol town`, `kol village`, `fairy
+flute`, `faerie flute`, and `faeries flute`, targeting the existing
+`overworld_kol` Travel landmark and completing on map `0x07`. External
+orientation came from Gamer Corner, GameFAQs, StrategyWiki, and the NESMaps
+overworld. Live shakedown disproved the initial direct east-pocket route:
+`probe_edge:57,38,RIGHT` blocked into `(58,38)`, and raw probes also blocked
+north/south from `(57,38)`; nearby row-39/40 and north-branch checks around
+`(56,39)`, `(54,40)`, `(53,41)`, `(54,35)`, and `(53,34)` found dead ends.
+The route now follows the Galenholm/Garinham-style road: western bridge road,
+cave road, east across the northeast bridge, southeast to the bridge southwest
+of Kol, then north/east into the forest. Waypoints include `Bridge south bend`,
+`Upper bridge lane`, `Erdrick's Cave road`, `Northeast bridge west bend`,
+`Northeast bridge lower west lane`, `Northeast bridge south lane`,
+`Northeast bridge`, `North Alefgard bridge road`, `Kol southwest bridge`,
+`Kol south road`, `West of Kol north lane`, `Kol forest west edge`, and `Kol`.
+The north bridge was tightened from pre-reload log evidence saved at
+`handoff_archive/dw_debug_2026-05-15_kol_waypoint_blocker_pre_reload.log`:
+row 18 around `(59,18)/(60,18)` produced route blocks/noisy pullbacks, while
+raw probes after reload moved through `(59,19)->(60,19)`,
+`(61,19)->(61,18)`, and forced-origin `(60,19)->(60,18)`. A follow-up live
+auto-walk from `(60,17)` still tried `down` into `(60,18)` and blocked, so the
+final worktree patch makes the crossing horizontal-first from the north side
+and prevents `(61,18)` from pulling the route back west. Static proof after the
+north-bridge fix: `luac -p overworld_routes.lua test_overworld_routes.lua`,
+`lua test_overworld_routes.lua` (41 tests), `lua test_objects.lua` (55 tests),
+`lua test_route_manager.lua` (58 tests), and `git diff --check`. Final source
+reload landed at `dw_debug.log` start `2026-05-15 11:56:50`; live movement then
+matched the patch shape: `down` from `(60,17)` still early-twitch-canceled,
+but `right` to `(61,17)` moved and then `down` to `(61,18)` moved cleanly,
+advancing the Kol route toward `North Alefgard bridge road`. A Red Slime battle
+interrupted before a clean queued `auto_walk` segment could be run, but the
+subsequent run reached Kol successfully.
+Latest same-run south-road follow-up: the user worked around trouble after the
+`Kol southwest bridge` marker and reached `West of Kol north lane`. The log
+showed the old `Kol south road` waypoint at `(90,30)` pulling guidance west
+from the live road: from `(90,37)`, north/down attempts were unreliable while
+`right` to `(91,37)` worked; the successful workaround used the east-side lane
+through `(92,37)`, `(92,36)`, `(93,36)`, `(93,35)`, `(96,35)`, `(96,32)`,
+then north toward `(96,21)`. `overworld_routes.lua` now replaces the coarse
+`(90,30)` south-road leg with explicit `Kol bridge east lane`, `Kol lower
+south lane`, `Kol south road bend`, `Kol south road lower bend`,
+`Kol south road east lane`, and a corrected `Kol south road` at `(96,32)`.
+Static proof after this lane patch: `luac -p overworld_routes.lua
+test_overworld_routes.lua`, `lua test_overworld_routes.lua` (42 tests),
+`lua test_objects.lua` (55 tests), `lua test_route_manager.lua` (58 tests), and
+`git diff --check`. The user then reloaded and reached Kol; the old log just
+before reload showed `EVENT: map change -> 0x07 (Kol)` and
+`OVERWORLD_ROUTE: event=arrived route=kol waypoint=Kol index=25`, and the fresh
+post-reload probe confirms `POSITION: map=0x07(Kol) x=19 y=23`. Treat the
+Tantegel-to-Kol route as playtested enough to move on to Kol services unless a
+return route exposes a new issue.
+Kol service decoding has started. Local reference images were downloaded to
+`project_resources/maps/kol/external/`: `mikesrpgcenter_kol.png` and
+`realmofdarkness_kol.png` (plus a duplicate `vgmaps_kol.png` mirror). The
+screen-reader transcription in `project_resources/maps/kol/README.md` now
+lists the service guide facts: Inn 20 G in the northeast building,
+weapon/armor shop with Copper Sword, Hand Axe, Half Plate, Full Plate, and
+Small Shield, item/tool shop with Herb, Torch, Dragon's Scale, and Wings, and
+the Fairy Flute hidden four steps south of the bath. Next step: use the user's
+Kol survey to confirm live entry/exit coordinates, shopkeeper NPC slots,
+public stand/facing tiles, the Fairy Flute search tile, and any locked-door
+coordinates before patching `objects.lua`. Watch the mismatch between the old
+hardcoded Kol exit `(15,14)` and the fresh post-arrival live position
+`map=0x07(Kol) x=19 y=23`.
+Latest Kol service-survey patch: the user confirmed `(19,23)` is both the
+world-map arrival tile and the town-side tile where moving south exits Kol.
+The first parked survey also proved why the old start looked isolated:
+`teleport_to:19,23` refused because the decoder read tile type `0x00`, while
+manual movement then crossed `(19,22)->(19,23)`, exited from `(19,23)->DOWN`,
+re-entered Kol back to `(19,23)`, and had moved evidence into `(20,23)` from
+the west. `objects.lua` now exposes Kol's exit as `(19,23)` facing south, and
+`map_reader.lua` treats `(19,23)` and `(20,23)` as map-0x07 passthrough cells.
+The same survey targeted `Person 1` from start `(20,21)` and looped at
+`(20,18)`: seam memory ended with `(20,17)` from the south blocked 51/51 and
+`(21,18)` from the west blocked 50/50, while nearby entry-lane seams stayed
+passable/noisy. Those two edges are now narrow directional blockers:
+`(20,17).south` and `(21,18).west`; no full cells were blocked. The useful
+pre-reload log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_service_survey_pre_reload.log`.
+Static proof: `luac -p map_reader.lua objects.lua test_map_reader.lua
+test_objects.lua`, `lua test_map_reader.lua` (28 tests), `lua
+test_objects.lua` (56 tests), `lua test_route_manager.lua` (58 tests), `lua
+test_map_survey.lua` (45 tests), `lua test_overworld_routes.lua` (42 tests),
+and `git diff --check`. Live source reload was not confirmed: `touch main.lua`
+plus `launcher_probe:codex_kol_service_patch` was consumed, but `dw_debug.log`
+kept the old `Started: 2026-05-15 12:10:00` header, so the active FCEUX script
+likely still needs a manual Lua reload before rerunning the Kol survey.
+`report_npcs` after the stopped survey listed Kol service NPC slots as
+Merchant 1 `(8,19)`, Merchant 2 `(19,4)`, Merchant 3 `(22,12)`, and Merchant 4
+`(14,21)`, all `service=true`; do not relabel them until TALK/shop-menu proof
+confirms which one is inn, weapon/armor, and item/tool.
+Latest Kol Merchant 1 follow-up: the user had autowalk bouncing while trying
+to reach Merchant 1. Three evidence logs are archived:
+`handoff_archive/dw_debug_2026-05-15_kol_merchant1_bounce_pre_reload.log` and
+`handoff_archive/dw_debug_2026-05-15_kol_merchant1_inner_bounce_pre_reload.log`,
+plus `handoff_archive/dw_debug_2026-05-15_kol_post_stop_autowalk_blockers.log`.
+The first run showed the route from the entry area toward Merchant 1 `(8,19)`
+bouncing between `(11,18)` and `(11,19)`: left into `(10,18)` from the east
+reached `blocked=38 moved=0`, and left into `(10,19)` from the east reached
+`blocked=36 moved=0`. A later clean reload proved the old `(12,19).west`
+observation was not just manual noise: the queued route reproduced it six
+times with no moves, and also proved `(11,20).north` seven times. The second
+run advanced from `(21,21)` toward the target near `(6,17)`, found
+directional-only route blockers at `(16,21).east`, `(16,20).east`,
+`(16,19).east`, `(10,16).east`, `(10,16).north`, and `(9,16).north`, then
+looped hard at `(8,15)`: `(7,15).east` reached `blocked=46 moved=0` and
+`(8,16).north` reached `blocked=47 moved=0`. A small right tap broke the loop
+and moved the hero to `POSITION: map=0x07(Kol) x=9 y=15`; treat that as a
+manual escape, not as service-route target proof. `map_reader.lua` now models
+all of those as map-0x07 directional blockers only. Static proof for this
+follow-up: `luac -p main.lua map_reader.lua test_map_reader.lua`, `lua
+test_map_reader.lua` (28 tests), `lua test_map_survey.lua` (45 tests), `lua
+test_route_manager.lua` (58 tests), `lua test_objects.lua` (56 tests), and
+`git diff --check`. Live source reload is still pending: `touch main.lua` plus
+`launcher_probe:codex_kol_m1_inner_patch` was consumed and reported the hero at
+`map=0x07(Kol) x=9 y=15`, but the log header stayed at `Started:
+2026-05-15 13:12:25`, so the active FCEUX script likely has not loaded the new
+blockers or command yet. Reload Lua manually before the next Merchant 1 retest.
+There is also now a `stop_auto_walk` debug command for future object-route
+loops; it cancels the active auto-step route and releases route/NPC-freeze state
+without injecting movement. The next manual-reload retest confirmed that command
+worked: it logged `CMD: stop_auto_walk`, `NPC freeze released: manual
+stop_auto_walk`, and `AUTO_WALK: manually stopped`, leaving the hero at
+`POSITION: map=0x07(Kol) x=12 y=18`. That run targeted Merchant 1 with adjacent
+goal `(11,21)`. The route looped between `(12,18)` and `(13,18)` because
+`(12,19).north` reached `blocked=18 moved=0` and `(13,19).north` reached
+`blocked=22 moved=0`; both are now map-0x07 directional blockers. Lower-count
+but clean queued-step plus seam-retry evidence from the same run also added
+`(15,19).north`, `(14,19).north`, and `(16,19).north`.
+Noisy seams `(15,16).west` and `(17,21).east` had moved evidence and are not
+modeled. Reload for this batch is confirmed: `touch main.lua` plus
+`launcher_probe:codex_kol_post_stop_patch` produced a fresh log header
+`Started: 2026-05-15 13:29:38` and reported `POSITION: map=0x07(Kol) x=12
+y=18`, so the new blockers are live. A read-only follow-up preview from
+`(12,18)` to adjacent target `(11,21)` now returns `No path found`, and
+`debug_pathfind_adjacent_skip_npcs:11,21` also returns no path, so the current
+Merchant 1 target appears geometrically isolated/counter-side rather than
+blocked by live NPC traffic. The user then selected/teleported to `npc_7` /
+`Merchant 1`; TALK proved he is a dialogue-only southern-island/Rimuldar hint
+NPC, not a shop. `objects.lua` now excludes Kol `Merchant 1` from Services
+while keeping him browsable under NPCs. A sequential `report_door_state` from
+`POSITION: map=0x07(Kol) x=12 y=21` reported `keys=0` and all opened-door RAM
+slots as `(0,0)`, so his exact locked-door relationship is not confirmed yet.
+The next service proof identified `npc_12` / `Merchant 2` as the Inn: selected
+teleport landed at `(19,2)`, faced south toward the keeper at `(19,4)`, and
+TALK opened the 20 GOLD inn prompt. `objects.lua` now labels Merchant 2 as
+`Inn` and pins `(19,2)` facing south as the interaction stand. The user's
+autowalk from the Inn stand back to the town entrance looped on row 2 until
+`stop_auto_walk`; `dw_debug.log` is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_inn_exit_loop_pre_patch.log`. The
+route repeatedly moved between `(21,2)` and `(22,2)` while trying to enter
+`(21,3)` and `(22,3)` from the north. Final seam counts were
+`(21,3).north blocked=36 moved=0` and `(22,3).north blocked=34 moved=0`; both
+are now map-0x07 directional blockers. Current live position after stop/probe:
+`POSITION: map=0x07(Kol) x=22 y=2`; `report_runtime_blocks` says none. Treat
+the next step as reload plus retest Inn-to-exit, then continue
+service/interaction-tile identification for the remaining Kol merchants. The
+post-reload retest found the next pair immediately: the route got past the
+row-3 pair, alternated between `(22,1)` and `(22,2)`, and tried to enter
+`(23,1)` and `(23,2)` from the west. The log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_inn_exit_loop_pair2_pre_patch.log`.
+Final seam counts were `(23,1).west blocked=17 moved=0` and
+`(23,2).west blocked=18 moved=0`; both are now map-0x07 directional blockers.
+Current live position after stop/probe: `POSITION: map=0x07(Kol) x=22 y=1`;
+`report_runtime_blocks` still says none. The next retest drifted one tile west
+during turn settle, logged `AUTO_WALK_DRIFT_REROUTE map=0x07 target=Exit to
+World Map current=(10,2)`, then recovered into a stable loop from `(10,3)`.
+That log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_inn_exit_loop_pair3_pre_patch.log`.
+Do not model `(10,3).north`: it first looked blocked but immediately moved on
+the brute-force retry and was reclassified noisy. The real pair was
+`(10,4).north blocked=19 moved=0` and `(11,3).west blocked=18 moved=0`; both
+are now map-0x07 directional blockers. Current live position after stop/probe:
+`POSITION: map=0x07(Kol) x=10 y=3`; `report_runtime_blocks` still says none.
+The latest reload/test completed the Inn-to-exit route, then the return route
+from the town entrance got close to the Inn before looping at the northeast
+approach. The full pre-patch log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_inn_return_loop_pre_patch.log`.
+Final strong blockers were `(21,3).south blocked=20 moved=0` and
+`(22,3).south blocked=20 moved=0`, so `map_reader.lua` now models those south
+approaches in addition to the previous north approaches. The side seams
+`(21,4).east blocked=1 moved=10` and `(22,4).west blocked=2 moved=10` are noisy
+but repeatedly moved, so they stay open. Low-count recovered blockers from the
+same run, including `(11,3).north`, `(19,17).south`, `(18,17).south`,
+`(18,5).south`, `(19,5).south`, and `(20,5).south`, were left diagnostic only.
+Post-investigation read-only probe reported
+`POSITION: map=0x07(Kol) x=21 y=4` and `RUNTIME_BLOCKS map=0x07 none`; the
+same probe accidentally queued the wait flags as literal commands afterward, so
+ignore the harmless `Unknown command: '--wait'/'POSITION'/'--timeout'/'8'`
+noise after frame 22440 in the live log.
+The follow-up entrance-to-Inn retest after reload started at `(21,4)`, queued
+8 steps for Inn, and looped across row 4. The full pre-patch log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_entrance_to_inn_loop_pre_patch.log`.
+Strong blockers were `(23,3).south blocked=36 moved=0` and
+`(20,4).east blocked=36 moved=0`; both are now map-0x07 directional blockers.
+Keep the row-4 connector open: `(21,4).east moved=18`, `(22,4).east moved=18`,
+`(22,4).west blocked=3 moved=19` noisy, and `(23,4).west moved=19`. The stop
+probe reported `POSITION: map=0x07(Kol) x=23 y=4` and
+`RUNTIME_BLOCKS map=0x07 none`. Next live step: reload Lua and retest
+entrance-to-Inn again. The next reload/test started from `(23,4)`, queued
+24 steps for Inn, worked through some low-count row-5 obstacles, then looped
+around `(11,5)`, `(12,5)`, and `(12,4)`. The full pre-patch log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_entrance_to_inn_loop2_pre_patch.log`.
+Strong blockers were `(11,4).south blocked=18 moved=0` and
+`(11,4).east blocked=19 moved=0`; both are now map-0x07 directional blockers.
+The surrounding seams moved and stay open: `(11,5).east moved=9`,
+`(12,4).south moved=9`, `(12,5).north moved=9`, and
+`(12,5).west moved=9`. Earlier low-count row-5 hits in the same run, including
+`(18,5).south`, `(19,5).south`, `(20,5).east`, and `(20,5).south`, remained at
+two blocks each and were bypassed, so they stay diagnostic only. Stop probe:
+`POSITION: map=0x07(Kol) x=12 y=4`, `RUNTIME_BLOCKS map=0x07 none`. Next live
+step: reload Lua and retest entrance-to-Inn again. The latest reload produced a
+working noisy round trip: Inn was reached at `AUTO_WALK_FACE target=Inn`, then
+Exit to World Map completed, then entrance-to-Inn completed again with
+`AUTO_WALK_FACE target=Inn`. That success log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_inn_roundtrip_noisy_success.log`.
+Manual cleanup promoted the highest suspects: `(10,4).south blocked=4 moved=0`
+and `(9,2).south blocked=4 moved=0` from the success log, plus repeated
+two-block reroute seams `(11,3).north`, `(19,17).south`, and `(18,17).south`
+that appeared in both the success log and earlier return evidence. Read-only
+`inspect_move` at frame 15480 confirmed the pre-patch model still allowed those
+approaches. Noisy/moved seams stayed open, including `(10,3).west blocked=2
+moved=2`, `(18,18).east blocked=1 moved=1`, and the row-5 two-count seams.
+Kol Merchant 3 is now live-confirmed as the weapon/armor shop. The user opened
+the buy list, and `dw_debug.log` is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_merchant3_weapons_menu.log`. The log
+shows selected teleport to `npc_13` / `Merchant 3`, target `(22,12)`, landing
+`(20,12)`, face east, then `VISITED_AUTO`. The spoken menu entries were:
+Copper Sword 180 G, Hand Axe 560 G, Half Plate 1000 G, Full Plate 3000 G, and
+Small Shield 90 G. `objects.lua` now labels Kol `Merchant 3` as
+`Weapons Merchant` and routes him through the public stand `(20,12)` facing
+east. `merchant.lua` already recognized this item list; `test_merchant.lua`
+now pins the exact Kol offer set. Before reloading, the user tried an autowalk
+from the Weapons Merchant stand to the town exit and stopped the resulting
+loop; the raw log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_weapon_to_entrance_loop_pre_patch.log`.
+The route queued 12 steps for Exit to World Map, moved from `(20,12)` to
+`(19,12)`, then eventually into `(19,13)` after one noisy retry. From there it
+looped between south into `(19,14)` and west into `(18,13)`. Final evidence:
+`(19,14).north blocked=22 moved=0` and `(18,13).east blocked=21 moved=0`, while
+`(19,13).north` had moved evidence and stays open. `map_reader.lua` now models
+only those two new map-0x07 directional blockers. After reload, the outbound
+Weapons Merchant-to-exit route made it back to the entrance, then the inbound
+route from entrance back to Weapons Merchant looped between `(20,19)` and
+`(20,20)` while trying right into `(21,19)` and `(21,20)`. That log is archived
+at `handoff_archive/dw_debug_2026-05-15_kol_entrance_to_weapon_loop_pre_patch.log`.
+Final inbound evidence reached `(21,19).west blocked=28 moved=0` and
+`(21,20).west blocked=26 moved=0`; both are now map-0x07 directional blockers.
+The vertical seam between `(20,19)` and `(20,20)` moved repeatedly, so no full
+cell was blocked. Low-count outbound reroute hits in the same log,
+`(21,12).west`, `(18,13).north`, and `(18,14).west`, were initially left
+diagnostic-only; later clean-route evidence repeated them and they are now
+promoted as directional-only blockers. The next reload got closer again:
+entrance-to-Weapons-Merchant routed
+around the old west-approach pair, then looped between `(20,15)` and `(21,15)`
+trying north into `(20,14)` and `(21,14)`. The log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_entrance_to_weapon_loop2_pre_patch.log`.
+Final stopped evidence reached `(20,14).south blocked=24 moved=0` and
+`(21,14).south blocked=24 moved=0`; both are now map-0x07 directional blockers.
+The horizontal seam between `(20,15)` and `(21,15)` moved repeatedly. The early
+two-count `(21,20).south` block is left diagnostic-only because the route
+recovered around it through `(22,21)->(22,20)`. The next entrance-to-Weapons-
+Merchant retry got closer again and looped between `(18,15)` and `(19,15)`
+while trying to move north into `(18,14)/(19,14)`; the raw log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_entrance_to_weapon_loop3_pre_patch.log`.
+Final stopped evidence reached `(18,14).south blocked=24 moved=0` and
+`(19,14).south blocked=25 moved=0`, so both are now map-0x07 directional
+blockers. The horizontal row-15 seam moved repeatedly, with `(18,15).east`
+ending noisy but moved and `(19,15).west` passable-only, so those stay open.
+The next retest successfully reached Weapons Merchant from the prior position,
+returned to the entrance, then looped on the entrance-to-Weapons-Merchant route
+between `(22,15)` and `(23,15)`. The raw stopped log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_entrance_to_weapon_loop4_pre_patch.log`.
+Final evidence reached `(22,14).south blocked=27 moved=0` and
+`(23,14).south blocked=26 moved=0`, so both are now map-0x07 directional
+blockers. The row-15 horizontal seams stayed open: `(22,15).east` and
+`(23,15).west` both ended noisy with 13 moved observations. Earlier low-count
+blocks in the same log, such as `(21,12).west`, `(18,13).north`, and
+`(18,14).west`, were left diagnostic-only at that point because those routes
+recovered and completed. A fresh return-to-exit success log is now archived at
+`handoff_archive/dw_debug_2026-05-15_kol_weapon_to_entrance_noisy_success_pre_patch.log`.
+It completed Weapons Merchant -> exit, then entrance -> Weapons Merchant, but
+the return leg repeated `(21,12).west blocked=2 moved=0`,
+`(18,13).north blocked=2 moved=0`, and `(18,14).west blocked=2 moved=0`.
+It also added `(18,17).west blocked=2 moved=0`, matching the existing row-17
+wall-band evidence. These four are now map-0x07 directional blockers. The
+route's successful recovery path kept `(17,12)`, `(17,13)`, `(17,14)`, the
+vertical strip down x=17, and the lower exit lane passable. After reload, that
+geometry made the return-to-exit planner choose a row-16 approach and expose
+another row-17 wall band. The stopped log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_weapon_to_entrance_loop5_pre_patch.log`.
+Evidence: `(18,17).north blocked=2 moved=0` on the early alternate route, then
+a stable loop between `(19,16)` and `(20,16)` trying down into
+`(19,17)/(20,17)`, with final counts `(19,17).north blocked=22 moved=0` and
+`(20,17).north blocked=22 moved=0`. These three north approaches are now
+map-0x07 directional blockers. The row-16 horizontal seam stayed open:
+`(19,16).east` and `(20,16).west` both ended passable-only with 11 moved
+observations. Next live step: reload Lua and smoke-test Weapons Merchant ->
+exit again. The user then reported both Weapons Merchant routes clean and
+live-confirmed Kol `Merchant 4` / `npc_15` as the item/tool shop. The proof log
+is archived at `handoff_archive/dw_debug_2026-05-15_kol_merchant4_tool_menu.log`:
+selected teleport targeted `(14,21)`, landed at the public counter stand
+`(12,21)`, faced east, TALK opened Buy, and the merchant reader saw Herb 24 G,
+Torch 8 G, Dragon's Scale 20 G, and Wings 70 G. `objects.lua` now labels
+Merchant 4 as `Tool Merchant` and routes him through `(12,21)` facing east;
+`test_merchant.lua` pins the exact Kol tool-shop offer list.
+
+Merchant 4 route testing then disproved the older Kol `(16,22).east`
+directional blocker. The proof log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_merchant4_1622_false_blocker.log`:
+the script moved `(16,22)->RIGHT` into `(17,22)` repeatedly, then refused
+`(17,22)->LEFT` before touching the engine because the static map table still
+marked `(16,22).east` blocked. The user confirmed west-to-east and
+east-to-west are both passable, so map `0x07` now keeps both sides of the
+`(16,22)<->(17,22)` seam open. Reload Lua before the next Tool Merchant route
+retest so the planner can use that corridor.
+
+Polish item to revisit: FCEUX still sometimes reports `keys=LeftAlt` while
+`joy1=-` and the external bridge is empty. This appears to be FCEUX/Windows
+retaining a stale Alt key state after focus/menu interactions, not Dragon
+Warrior dialogue state. Movement or a real key clears it temporarily, but idle
+can re-trigger the warning. Good follow-up: make the FCEUX bridge treat
+LeftAlt-only/idle/empty-bridge as a stale modifier after a grace period instead
+of repeatedly warning unless controls are truly blocked.
+
 Latest manual validation closes the Brecconary pass for now. The user tested
 all essential services, and routes both to and from the town entrance pass in
 normal play. The remaining unreachable NPCs were manually chatted up; a couple

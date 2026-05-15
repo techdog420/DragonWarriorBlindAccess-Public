@@ -2204,7 +2204,7 @@ local function check_command_menu(frame_delta)
             "lower=" .. tostring(lower_dialogue_active),
             "cursor=" .. tostring(cursor_visible),
         })
-        tolk.output("Status. " .. items.read_status_string())
+        tolk.output_interrupt("Status. " .. items.read_status_string())
         return
     elseif a_just and live_x == 0 and live_y == 1 and CMD.rearm_required then
         trace_row1("CMD_STATUS_GATE_BLOCK", changes, {
@@ -2988,7 +2988,9 @@ local function maybe_announce_fast_battle_dialogue(dialogue, frame_delta)
         return true
     end
 
-    speak_new_dialogue(complete_text, true, "interrupt")
+    -- Fast battle text can arrive several times in one round. Queue it so
+    -- incoming attack/damage lines do not cut off the previous announcement.
+    speak_new_dialogue(complete_text, true)
     PREV.announced_dialogue = announced_prefix
     PREV.dialogue = dialogue
     PREV.stable_count = 0
@@ -3019,6 +3021,19 @@ local function check_dialogue(frame_delta, refresh_ppu)
     local lower_dialogue_visible = (dialogue ~= "")
     local stable_threshold = lower_dialogue_stable_threshold(dialogue)
 
+    -- STATUS is already spoken from memory when the player selects it from the
+    -- command menu. Its visual window reuses the lower dialogue rows for
+    -- equipment text, so the generic dialogue reader would otherwise interrupt
+    -- the full status readout with only the bottom half of the box.
+    if submenu_mode == "STATUS" then
+        PREV.dialogue = dialogue
+        PREV.announced_dialogue = dialogue
+        PREV.stable_count = 0
+        PREV.clean_y1 = dialogue
+        PREV.clean_stable_count = 0
+        return
+    end
+
     if maybe_announce_battle_opening(dialogue) then
         return
     end
@@ -3031,6 +3046,10 @@ local function check_dialogue(frame_delta, refresh_ppu)
        (CMD.movement_dialogue > 0 and not has_blocking_live_input() and not DW_QOL_STATE.command_menu_blocks_field_movement()
         and submenu_mode == nil and not menu.is_yesno_active()) then
         PREV.dialogue = dialogue
+        if not lower_dialogue_visible and PREV.announced_dialogue ~= "" then
+            debug_tools.debug("dialogue cache cleared: lower window empty")
+            PREV.announced_dialogue = ""
+        end
         PREV.stable_count = 0
         if at_y1 then
             local y1_dialogue = read_y1_dialogue(dialogue)
@@ -3969,6 +3988,13 @@ debug_tools.register_command("report_path_state", function()
     end
     report_blockers_for_current_map()
     tolk.output_interrupt("Path state reported")
+end)
+
+debug_tools.register_command("stop_auto_walk", function()
+    auto_step.cancel_active_step(true, true)
+    route_mgr.clear_active_route_context("manual stop_auto_walk")
+    debug_tools.info("AUTO_WALK: manually stopped")
+    tolk.output_interrupt("Auto-walk stopped")
 end)
 
 debug_tools.register_command("__config_reloaded", function()
@@ -4934,7 +4960,7 @@ while true do
         if MER.active then
             return "Close the merchant interface first"
         end
-        if PREV.dialogue ~= "" or PREV.announced_dialogue ~= "" then
+        if PREV.dialogue ~= "" then
             return "Wait for dialogue to finish"
         end
         if PREV.upper_active then

@@ -483,6 +483,18 @@ local MAP_PASSTHROUGH_CELLS = {
         ["2,13"] = true,
     },
 
+    -- Map 0x07: Kol
+    -- South entrance/exit false-wall strip. Live arrival from the world map
+    -- lands at (19,23), and manual movement from (19,22)->DOWN moved into
+    -- (19,23). A second DOWN from (19,23) exited town. The adjacent
+    -- (20,23) tile also moved from the west during the same survey setup.
+    -- Both ROM-decode as type-0 walls, so expose only these confirmed
+    -- bottom-edge cells as passthroughs.
+    [0x07] = {
+        ["19,23"] = true,
+        ["20,23"] = true,
+    },
+
     -- Map 0x1C: Erdrick's Cave B1 entrance strip.
     -- Live probes on 2026-05-08 confirmed the engine moves
     -- (0,0) -> right -> (1,0) -> down -> (1,1), and the reverse
@@ -1159,6 +1171,141 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["9,3"] = {west = true},
         ["9,4"] = {west = true},
         ["9,5"] = {west = true},
+    },
+
+    -- Map 0x07: Kol
+    -- First parked survey from the live entry lane targeted Person 1 and
+    -- looped at (20,18), alternating between north into (20,17) and east into
+    -- (21,18). The stopped run logged 51 blocked south-approach observations
+    -- for (20,17) and 50 blocked west-approach observations for (21,18), while
+    -- surrounding seams such as (20,18), (20,19), (20,21), and the bottom
+    -- entrance strip moved. Keep these directional so the standable target-side
+    -- cells are not over-blocked before the rest of Kol is decoded.
+    [0x07] = {
+        -- Merchant 1 autowalk from (19,23) to the service NPC at (8,19)
+        -- repeatedly bounced between (11,18) and (11,19). Entering (10,18)
+        -- and (10,19) from the east blocked 35+ times each with no moved
+        -- observations, while nearby seams such as (11,18) from the south and
+        -- (11,19) from the north remained passable/noisy.
+        ["10,18"] = {east = true},
+        ["10,19"] = {east = true},
+        -- Follow-up Merchant 1 attempts after a clean reload advanced into
+        -- Kol's inner west approach. The route repeatedly rediscovered these
+        -- counter/building seams while trying to reach the target near
+        -- (6,17)/(6,19). The strongest loop was at (8,15): (7,15) from the
+        -- east and (8,16) from the north both reached 45+ blocked observations
+        -- with no moves before the route was manually broken by moving right
+        -- to (9,15).
+        ["7,15"] = {east = true},
+        ["8,16"] = {north = true},
+        ["9,16"] = {north = true},
+        ["10,16"] = {east = true, north = true},
+        ["11,20"] = {north = true},
+        -- The next clean run routed from (9,15) toward Merchant 1's stand at
+        -- (11,21). It looped between (12,18) and (13,18), repeatedly trying
+        -- to enter (12,19) and (13,19) from the north. Earlier in the same
+        -- route, one queued step plus its seam retry also proved the adjacent
+        -- north/east seams below. Noisy seams such as (15,16).west and
+        -- (17,21).east had moved evidence and are intentionally left open.
+        -- Later Merchant 4 path testing disproved the old (16,22).east
+        -- candidate; the (16,22)<->(17,22) seam is passable both ways.
+        ["12,19"] = {west = true, north = true},
+        ["13,19"] = {north = true},
+        ["14,19"] = {north = true},
+        ["15,19"] = {north = true},
+        ["16,19"] = {east = true, north = true},
+        ["16,20"] = {east = true},
+        ["16,21"] = {east = true},
+        -- Inn-to-exit autowalk from the confirmed Inn stand at (19,2)
+        -- repeatedly bounced along row 2, trying to enter (21,3) and (22,3)
+        -- from the north. The later return-to-Inn route reached the same cells
+        -- from the south and looped between (21,4)/(22,4). Both approaches are
+        -- proven blocked-only, while row-2 movement and the (21,4)<->(22,4)
+        -- side seams had moved evidence and stay open.
+        ["21,3"] = {north = true, south = true},
+        ["22,3"] = {north = true, south = true},
+        -- Follow-up Inn-to-exit retest after the row-3 fix advanced the loop
+        -- to the east wall. The route alternated between row 1 and row 2,
+        -- trying to enter (23,1) and (23,2) from the west; both remained
+        -- blocked-only while (22,1)<->(22,2) and row-2 west/east approaches
+        -- kept moved evidence.
+        ["23,1"] = {west = true},
+        ["23,2"] = {west = true},
+        -- Third Inn-to-exit pass drifted one tile west during turn settle,
+        -- recovered with AUTO_WALK_DRIFT_REROUTE, then got into a stable loop
+        -- from (10,3). The initial (10,3).north observation moved on retry and
+        -- is left open; the real pair was south into (10,4) and east into
+        -- (11,3), both blocked-only with repeated seam retries. Later noisy
+        -- but successful round-trip evidence also showed (10,4) blocking from
+        -- the south, and (11,3) from the north.
+        ["10,4"] = {north = true, south = true},
+        ["11,3"] = {west = true, north = true},
+        -- Entrance-to-Inn retest after the row-3 south blocks routed around the
+        -- northeast wall and looped across row 4. The repeated blockers were
+        -- entering (23,3) from the south and entering (20,4) from the east;
+        -- adjacent row-4 movement through (21,4), (22,4), and (23,4) moved
+        -- repeatedly and stays open.
+        ["20,4"] = {east = true},
+        ["23,3"] = {south = true},
+        -- The next entrance-to-Inn pass routed west and settled into a loop
+        -- around (11,5), (12,5), and (12,4). Entering (11,4) from the south
+        -- and east stayed blocked-only, while the surrounding seams through
+        -- (11,5), (12,5), and (12,4) moved repeatedly.
+        ["11,4"] = {east = true, south = true},
+        -- Successful Inn/exit round-trip cleanup: these seams caused runtime
+        -- reroutes but did not strand the path. (9,2).south and (10,4).south
+        -- reached four blocked observations in the fresh success log. The
+        -- row-17 pair and (11,3).north repeated across the fresh success log
+        -- and earlier return evidence. Noisy seams such as (10,3).west and
+        -- (18,18).east moved on retry and stay open.
+        ["9,2"] = {south = true},
+        -- Weapon/armor merchant-to-exit autowalk from the confirmed public
+        -- stand at (20,12) first reached (19,13); entry into (19,13) from
+        -- the north was noisy and eventually moved, but the route then looped
+        -- between south into (19,14) and west into (18,13). The stopped run
+        -- ended with (19,14).north at 22 blocked / 0 moved and (18,13).east
+        -- at 21 blocked / 0 moved. A later entrance-to-weapon/armor-merchant
+        -- retest found the south approaches into (18,14)/(19,14) blocked
+        -- repeatedly while the horizontal seam at row 15 moved repeatedly.
+        -- A later clean-but-noisy return to the exit repeated the earlier
+        -- low-count return-lane blockers: the weapon-counter edge at
+        -- (21,12).west, the north entry into (18,13), and the west entry into
+        -- (18,14) all stayed blocked-only across reloads, while the route
+        -- recovered around them and still completed.
+        ["18,13"] = {east = true, north = true},
+        ["18,14"] = {south = true, west = true},
+        ["19,14"] = {north = true, south = true},
+        ["21,12"] = {west = true},
+        -- Entrance-to-weapon/armor-merchant retest after the prior patch
+        -- reached the east approach lane, then looped between (20,19) and
+        -- (20,20) while trying to enter (21,19)/(21,20) from the west. Both
+        -- targets reached 20+ blocked observations with no moved observations;
+        -- the vertical seam between (20,19) and (20,20) moved repeatedly.
+        ["21,19"] = {west = true},
+        ["21,20"] = {west = true},
+        -- Next entrance-to-weapon/armor-merchant retest routed around the west
+        -- approaches above, then looped between (20,15) and (21,15) while
+        -- trying to move north into (20,14)/(21,14). The stopped run reached
+        -- 24 blocked / 0 moved on both south approaches, while the horizontal
+        -- seam between (20,15) and (21,15) moved repeatedly. A later retest
+        -- made it to the east side and looped between (22,15)/(23,15), with
+        -- the north moves into (22,14)/(23,14) blocked repeatedly and row-15
+        -- horizontal movement confirmed noisy-but-passable.
+        ["20,14"] = {south = true},
+        ["21,14"] = {south = true},
+        ["22,14"] = {south = true},
+        ["23,14"] = {south = true},
+        -- The same noisy return lane also re-hit (18,17).west as blocked-only
+        -- before recovering through the lower path. After the return-lane
+        -- cleanup changed route geometry, the next return-to-exit attempt
+        -- found the row-17 north approaches too: a low-count blocked-only
+        -- hit on (18,17).north, then a stable loop between (19,16)/(20,16)
+        -- trying to enter (19,17)/(20,17) from the north. The row-16
+        -- horizontal seam moved repeatedly and stays open.
+        ["18,17"] = {north = true, south = true, west = true},
+        ["19,17"] = {north = true, south = true},
+        ["20,17"] = {north = true, south = true},
+        ["21,18"] = {west = true},
     },
 
     -- Map 0x08: Brecconary (30x30 town)

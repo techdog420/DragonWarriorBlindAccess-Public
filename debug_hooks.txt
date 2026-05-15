@@ -140,6 +140,9 @@ COMMANDS (write to dw_commands.txt, one per line)
                            queue one segment to the next waypoint. Stops when
                            the waypoint is reached, movement is blocked, or
                            field movement is interrupted by battle/menu/dialogue.
+                           On local maps, auto-walk to the current selected object.
+  stop_auto_walk           Cancel the current object auto-walk and release route
+                           state without adding movement input.
   ; comment line           Lines starting with ; are ignored
 
 PATHFINDING DEBUG COMMANDS

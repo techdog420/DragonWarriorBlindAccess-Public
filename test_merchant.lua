@@ -222,6 +222,81 @@ function tests.detects_brecconary_tool_shop_layout_and_extracts_items()
     env.restore()
 end
 
+function tests.detects_kol_weapon_shop_layout_and_extracts_live_offers()
+    local env = make_env()
+
+    local rows = {
+        [2] = "COMMAND",
+        [4] = "Bill",
+        [5] = "Copper     180",
+        [6] = "LV   6  Sword",
+        [7] = "Hand       560",
+        [8] = "HP  38  Axe",
+        [9] = "Half      1000",
+        [10] = "MP  21  Plate",
+        [11] = "Full      3000",
+        [12] = "G  155  Plate",
+        [13] = "Small       90",
+        [14] = "E  425  Shield",
+        [21] = "What dost thou wish to buy",
+        [22] = "anything today?",
+        [24] = "What dost thou wish",
+        [25] = "to buy?",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 155})
+    assert_equal(info.active, true, "Kol weapon shop should be detected")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Copper Sword, Hand Axe, Half Plate, Full Plate, Small Shield",
+        "Kol weapon shop offers should match the live menu"
+    )
+    assert_equal(
+        info.summary,
+        "Merchant. Gold 155. Offered: Copper Sword, Hand Axe, Half Plate, Full Plate, Small Shield.",
+        "Kol weapon shop summary should include the live offers"
+    )
+
+    env.restore()
+end
+
+function tests.detects_kol_tool_shop_layout_and_extracts_live_offers()
+    local env = make_env()
+
+    local rows = {
+        [2] = "COMMAND",
+        [4] = "Bill",
+        [5] = "Herb         24",
+        [6] = "LV   6",
+        [7] = "Torch         8",
+        [8] = "HP  38",
+        [9] = "Dragon's     20",
+        [10] = "MP  21  Scale",
+        [11] = "Wings        70",
+        [12] = "G  155",
+        [14] = "E  425",
+        [21] = "What dost thou wish to buy",
+        [22] = "anything today?",
+        [24] = "What dost thou wish",
+        [25] = "to buy?",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 155})
+    assert_equal(info.active, true, "Kol tool shop should be detected")
+    assert_equal(
+        table.concat(info.offers, ", "),
+        "Herb, Torch, Dragon's Scale, Wings",
+        "Kol tool shop offers should match the live menu"
+    )
+    assert_equal(
+        info.summary,
+        "Merchant. Gold 155. Offered: Herb, Torch, Dragon's Scale, Wings.",
+        "Kol tool shop summary should include the live offers"
+    )
+
+    env.restore()
+end
+
 function tests.detects_brecconary_buy_sell_action_prompt()
     local env = make_env()
 
