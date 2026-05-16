@@ -152,6 +152,54 @@ local ROUTES = {
             {x = 104, y = 10, name = "Kol", radius = 0, final = true},
         },
     },
+    northern_cave = {
+        id = "northern_cave",
+        title = "Northern Cave",
+        aliases = {
+            "northern cave",
+            "north cave",
+            "cave of rain",
+            "rain cave",
+            "rain shrine",
+            "shrine of rain",
+            "staff of rain",
+            "harp shrine",
+            "silver harp",
+            "cave west of kol",
+            "shrine west of kol",
+        },
+        target_object_ids = {"overworld_northern_cave"},
+        destination_maps = {0x0D},
+        waypoints = {
+            {x = 104, y = 10, name = "Kol", radius = 1},
+            {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 92, y = 10, name = "West of Kol forest bend", radius = 1, axis_order = {"vertical", "horizontal"}},
+            {x = 92, y = 17, name = "Rain shrine east-shore detour", radius = 1},
+            {x = 90, y = 17, name = "Rain shrine east-shore west step", radius = 0},
+            {x = 90, y = 18, name = "Rain shrine east-shore lower turn", radius = 0},
+            {x = 89, y = 18, name = "Rain shrine lower shore west step", radius = 0},
+            {x = 89, y = 19, name = "Rain shrine lower shore turn", radius = 0},
+            {x = 83, y = 19, name = "Rain shrine south shore road", radius = 1},
+            {x = 83, y = 18, name = "Rain shrine southwest rise", radius = 0},
+            {x = 82, y = 18, name = "Rain shrine southwest jog", radius = 0},
+            {x = 82, y = 17, name = "Rain shrine west-side lower road", radius = 0},
+            {x = 80, y = 17, name = "Rain shrine west-side west step", radius = 0},
+            {x = 80, y = 16, name = "Rain shrine west-side rise", radius = 0},
+            {x = 79, y = 16, name = "Rain shrine west-side jog", radius = 0},
+            {x = 79, y = 15, name = "Rain shrine west-side road", radius = 0},
+            {x = 76, y = 15, name = "Rain shrine west coast south bend", radius = 0},
+            {x = 76, y = 14, name = "Rain shrine west coast lower lane", radius = 0},
+            {x = 75, y = 14, name = "Rain shrine west coast turn", radius = 0},
+            {x = 75, y = 5, name = "Rain shrine west coast north road", radius = 1},
+            {x = 76, y = 5, name = "Rain shrine northwest coast step", radius = 0},
+            {x = 76, y = 4, name = "Rain shrine northwest coast lane", radius = 0},
+            {x = 77, y = 4, name = "Rain shrine island lower step", radius = 0},
+            {x = 77, y = 3, name = "Rain shrine island west lane", radius = 0},
+            {x = 78, y = 3, name = "Rain shrine island approach", radius = 1},
+            {x = 80, y = 1, name = "Rain shrine entrance approach", radius = 1, axis_order = {"vertical", "horizontal"}},
+            {x = 81, y = 1, name = "Northern Cave", radius = 0, final = true},
+        },
+    },
     erdrick = {
         id = "erdrick",
         title = "Erdrick's Cave",
@@ -223,10 +271,77 @@ local ROUTES = {
             {x = 43, y = 43, name = "Tantegel Castle", radius = 0, final = true},
         },
     },
+    tantegel_kol = {
+        id = "tantegel_kol",
+        title = "Tantegel Castle",
+        aliases = {"kol to tantegel", "kol to castle", "tantegel from kol", "castle from kol", "return from kol"},
+        target_object_ids = {"overworld_tantegel_castle"},
+        destination_maps = {0x04, 0x05},
+        waypoints = {
+            {x = 104, y = 10, name = "Kol", radius = 1},
+            {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 96, y = 21, name = "West of Kol north lane", radius = 1},
+            {x = 96, y = 32, name = "Kol south road", radius = 1},
+            {x = 96, y = 35, name = "Kol south road east lane", radius = 0},
+            {x = 93, y = 35, name = "Kol south road lower bend", radius = 0},
+            {x = 93, y = 36, name = "Kol south road bend", radius = 0},
+            {x = 92, y = 36, name = "Kol lower south lane", radius = 0},
+            {x = 92, y = 37, name = "Kol bridge east lane", radius = 0},
+            {x = 90, y = 37, name = "Kol southwest bridge", radius = 0},
+            {x = 84, y = 26, name = "Kol southwest track", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 74, y = 18, name = "North Alefgard bridge road", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {
+                x = 61,
+                y = 18,
+                name = "Northeast bridge",
+                radius = 1,
+                axis_order = {"horizontal", "vertical"},
+                warning = "Northeast bridge crossing. Monsters should become safer beyond this point.",
+            },
+            {x = 61, y = 19, name = "Northeast bridge south lane", radius = 0},
+            {x = 59, y = 19, name = "Northeast bridge lower west lane", radius = 0},
+            {x = 58, y = 18, name = "Northeast bridge west bend", radius = 0, axis_order = {"horizontal", "vertical"}},
+            {x = 54, y = 15, name = "Northeast bridge west approach", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 45, y = 13, name = "North Alefgard east road", radius = 1, axis_order = {"vertical", "horizontal"}},
+            {x = 35, y = 13, name = "North Alefgard west road", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 28, y = 13, name = "Erdrick's Cave road", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 28, y = 20, name = "North trail marker", radius = 1},
+            {x = 32, y = 19, name = "North ridge bend", radius = 1},
+            {x = 35, y = 24, name = "Eastern mountain lane", radius = 0},
+            {x = 35, y = 32, name = "East choke approach", radius = 0},
+            {x = 38, y = 32, name = "Upper bridge lane", radius = 0},
+            {x = 38, y = 34, name = "Bridge west bend", radius = 0},
+            {x = 38, y = 36, name = "Bridge lower west lane", radius = 0},
+            {
+                x = 44,
+                y = 38,
+                name = "Bridge south bend",
+                radius = 1,
+                warning = "Bridge crossing. Monsters should become safer beyond this point.",
+            },
+            {x = 43, y = 43, name = "Tantegel Castle", radius = 0, final = true},
+        },
+    },
+}
+
+-- Keep lookup deterministic, especially when several routes share a Travel target.
+local ROUTE_IDS = {
+    "brecconary",
+    "garinham",
+    "kol",
+    "northern_cave",
+    "erdrick",
+    "tantegel",
+    "tantegel_kol",
+}
+
+local ROUTE_ALTERNATES = {
+    tantegel = {"tantegel", "tantegel_kol"},
 }
 
 local alias_to_id = {}
-for id, route in pairs(ROUTES) do
+for _, id in ipairs(ROUTE_IDS) do
+    local route = ROUTES[id]
     alias_to_id[id] = id
     for _, alias in ipairs(route.aliases or {}) do
         alias_to_id[alias] = id
@@ -372,6 +487,40 @@ local function choose_next_index(route, map_id, px, py)
     return nearest_index
 end
 
+local function route_start_score(route, map_id, px, py)
+    if not route then
+        return math.huge
+    end
+    local index = choose_next_index(route, map_id, px, py)
+    local point = route.waypoints[index]
+    if not point then
+        return math.huge
+    end
+    return distance(px, py, point)
+end
+
+local function choose_best_route_id(ids, map_id, px, py)
+    local fallback = ids and ids[1]
+    if not is_overworld(map_id) or px == nil or py == nil then
+        return fallback
+    end
+
+    local best_id = fallback
+    local best_score = nil
+    for _, id in ipairs(ids or {}) do
+        local score = route_start_score(ROUTES[id], map_id, px, py)
+        if best_score == nil or score < best_score then
+            best_id = id
+            best_score = score
+        end
+    end
+    return best_id
+end
+
+local function choose_start_route_id(id, map_id, px, py)
+    return choose_best_route_id(ROUTE_ALTERNATES[id] or {id}, map_id, px, py)
+end
+
 local function waypoint_status(route, index, px, py)
     if not route or not index then
         return "No overworld route active"
@@ -457,13 +606,15 @@ local function object_matches_route(route, obj)
     return normalize_label(obj.name) == normalize_label(route.title)
 end
 
-function M.route_id_for_object(obj)
-    for id, route in pairs(ROUTES) do
+function M.route_id_for_object(obj, map_id, px, py)
+    local matches = {}
+    for _, id in ipairs(ROUTE_IDS) do
+        local route = ROUTES[id]
         if object_matches_route(route, obj) then
-            return id
+            matches[#matches + 1] = id
         end
     end
-    return nil
+    return choose_best_route_id(matches, map_id, px, py)
 end
 
 function M.start(route_name, map_id, px, py)
@@ -471,6 +622,7 @@ function M.start(route_name, map_id, px, py)
     if not id then
         return nil, "Unknown overworld route"
     end
+    id = choose_start_route_id(id, map_id, px, py)
 
     local route = ROUTES[id]
     local previous_id = state.active_id
@@ -507,7 +659,7 @@ function M.start_for_object(obj, map_id, px, py)
         return nil, "No object selected"
     end
 
-    local id = M.route_id_for_object(obj)
+    local id = M.route_id_for_object(obj, map_id, px, py)
     if not id then
         return nil, "No guided route for " .. tostring(obj.name or "selected object") .. ". Use O for heading."
     end

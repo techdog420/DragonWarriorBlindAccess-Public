@@ -390,16 +390,69 @@ Emulator compatibility direction:
   orientation; patch `objects.lua` only after live survey/TALK evidence proves
   service NPC slots, public stand/facing tiles, exit coordinates, and hidden
   search-tile coordinates.
+- Kol's Fairy Flute search tile is modeled at `(9,6)`. Evidence: `Woman 2`
+  at `(12,1)` says the bath cures rheumatism, Mike's local Kol map has the
+  only blue bath/water tile at `(9,2)`, guide wording says four steps south of
+  the bath, live `inspect_tile:9,6` reported walkable, and
+  `debug_pathfind_to:9,6` from `(1,22)` found a route. `objects.lua` exposes
+  it under Treasure with the player-facing label `Disturbed Earth Near Bath`
+  so the hidden reward is not spoiled before SEARCH succeeds.
+- The harp/Staff of Rain target west of Kol is an overworld shrine/cave, not a
+  Kol town cellar. The existing Travel landmark is `Northern Cave` at `(81,1)`,
+  and entering it uses map `0x0D` (`Rain Shrine`). `overworld_routes.lua` now
+  has a Kol-side `northern_cave` route with aliases such as `rain shrine`,
+  `staff of rain`, `harp shrine`, and `cave west of kol`. First live testing
+  showed the short `(88,6)->(83,3)` approach was wrong: from the east-shore
+  pocket around `(91,5)`, the route must recover south and west around the
+  water/mountain gap before approaching `(81,1)`. The user reached the cave
+  live after this change.
+- Rain Shrine / Northern Cave map `0x0D` has the wise man / old man at `(4,4)`
+  and the live bottom entry/exit tile at `(4,9)`. The first old-man route pass
+  proved the south approaches into row 6 are engine-blocked even though the
+  ROM/model marks those cells as walkable tile `14`; keep `(2,6).south`,
+  `(3,6).south`, `(4,6).south`, and `(5,6).south` as directional-only blocks
+  so side approaches remain usable. A later loop proved the west face of the
+  same hidden wall cluster: keep `(2,3).west`, `(2,4).west`, `(2,5).west`, and
+  `(2,6).west` as directional-only blocks, while preserving the open movement
+  along column `x=1`. The later manual route to the old man proved a top-wall
+  approach too: keep `(3,2).north`, `(4,2).north`, `(5,2).north`, and
+  `(6,2).north` as directional-only blocks; the valid detour goes east along
+  row 1, descends on the far east side, and returns west along row 4. The
+  route back out then verified `(5,5).north`, `(5,5).east`, and
+  `(6,6).north` as blocked 5/5. After live injection of those edges, the next
+  reroute verified `(7,5).west` and `(7,5).north` as blocked 5/5. A later
+  entrance-to-old-man pass verified `(6,6).south` and `(7,6).south` as blocked
+  5/5. Keep them directional-only, with `(6,4).west/south`, `(6,5).north`,
+  `(6,7).east/west`, `(7,4).west`, and `(7,7).west` open. Final noisy
+  cleanup promoted `(7,6).east`, `(5,3).east`, `(7,5).east`,
+  `(7,9).north`, and `(6,9).north` after raw 5/5 verifiers; keep
+  `(5,3).south` open because its raw verifier was mixed/passable, and keep
+  `(8,9).north` open because its raw verifier hit a map-change case instead
+  of a stable block. Follow-up playtest reported both old-man routes complete
+  smoothly; the one recovered return-route reroute is polish-level, and the
+  remaining chest access is progression-gated by the old-man interaction.
+- The route system can model positional variants for the same Travel target.
+  `Tantegel Castle` now has a Kol-side `tantegel_kol` variant that shares
+  `overworld_tantegel_castle`; object and alias route starts score matching
+  variants by their nearest next waypoint so Kol starts do not snap to the
+  Garinham/cave-road safety branch.
 - Kol's live town entry/exit is `(19,23)`, not the old `(15,14)` placeholder.
   Entering from the world map lands at `(19,23)`, moving south from `(19,23)`
   exits town, and movement from `(19,22)->(19,23)` plus `(19,23)->(20,23)`
-  proved the bottom strip is engine-passable despite type-0 ROM tiles. Keep
-  `(19,23)` and `(20,23)` as map-0x07 passthrough cells.
+  proved the bottom strip is engine-passable despite type-0 ROM tiles. A later
+  pathability-filter repro from live `(18,23)` proved the west neighbor is also
+  part of this strip; keep `(18,23)`, `(19,23)`, and `(20,23)` as map-0x07
+  passthrough cells.
 - The first Kol parked survey exposed a tight route loop near Person 1:
   `(20,17)` blocks from the south and `(21,18)` blocks from the west. The
   stopped run logged 51 and 50 blocked observations respectively, while
   surrounding entry-lane seams had moved evidence. Keep these as directional
   blockers only; do not promote whole cells from that survey.
+- Kol west-NPC browsing after the service pass exposed Old Man 1 at object
+  `(2,13)`, with route loops between `(8,11)` and `(8,12)` trying west into
+  `(7,11)` and `(7,12)`. Keep `(7,11).east` and `(7,12).east` as map-0x07
+  directional blockers only; the `(8,11)<->(8,12)` vertical connector moved
+  repeatedly and stays open.
 - Merchant 1 routing in Kol has narrow directional wall evidence from two live
   autowalk runs. Keep these map-0x07 blockers directional-only: `(10,18).east`,
   `(10,19).east`, `(11,20).north`, `(12,19).west`, `(16,21).east`,

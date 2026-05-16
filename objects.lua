@@ -275,7 +275,17 @@ local EXITS = {
 
     -- Shrines
     {map = 0x0C, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Sun Shrine
-    {map = 0x0D, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Rain Shrine
+    {
+        map = 0x0D,
+        x = 4,
+        y = 9,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 4,
+        interaction_y = 9,
+        interaction_face_dir = "south",
+        interaction_label = "exit",
+    },                                                                      -- Rain Shrine
     {map = 0x0E, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Magic Temple
 
     -- Cave entrances (the "stairs up" at the entrance)
@@ -958,6 +968,15 @@ local EXTRA_DOORS = {
     },
 }
 
+local EXTRA_TREASURES = {
+    -- Kol: guides place the Fairy Flute four steps south of the bath. Mike's
+    -- map image has one bath/water tile at (9,2), and live inspection proved
+    -- the four-south search tile (9,6) is walkable.
+    [0x07] = {
+        {x=9, y=6, name="Disturbed Earth Near Bath", type=M.TYPE_CHEST, id="chest_kol_fairy_flute"},
+    },
+}
+
 local SERVICE_INTERACTION_OVERRIDES = {
     -- Tantegel Castle MP-restoring Sage. The NPC occupies (20,26), but the
     -- live TALK trigger works from the public west-side stand at (18,26)
@@ -1224,6 +1243,10 @@ local function get_static_objects(map_id)
     append_objects(objects, parse_doors(map_id))
 
     local extra = EXTRA_DOORS[map_id]
+    if extra then
+        append_objects(objects, extra)
+    end
+    extra = EXTRA_TREASURES[map_id]
     if extra then
         append_objects(objects, extra)
     end

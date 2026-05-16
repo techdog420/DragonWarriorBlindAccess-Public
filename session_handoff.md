@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-15
+Updated: 2026-05-16
 
 ## Active Resume
 
@@ -10,6 +10,129 @@ Prioritize viable paths to merchants, inns, exits, stairs, locked doors,
 chests, and other essential services. Leave unreachable dialogue-only NPCs for
 the polishing phase unless they provide a progression clue, required hint, or
 other gameplay-critical information.
+
+Current Kol clue/object patch in the worktree: Woman 2 at `(12,1)` is the bath
+clue NPC and talks from stand `(12,2)` facing north. Local image analysis of
+`project_resources/maps/kol/external/mikesrpgcenter_kol.png` found the only
+blue bath/water tile at `(9,2)`, so the guide clue "four steps south of the
+bath" points to `(9,6)`. Live `inspect_tile:9,6` reported it walkable and
+`debug_pathfind_to:9,6` from `(1,22)` found a route, so `objects.lua` now
+exposes `Disturbed Earth Near Bath` at `(9,6)` in the Treasure filter. The user
+then found the flute there live, confirming the coordinate. Old Man 1 is the
+flute clue NPC; current `debug_pathfind_adjacent:2,13` from `(1,22)` chooses
+stand `(3,13)` facing west. Old Man 4 is the better-weapons clue NPC at
+`(1,1)`; current `debug_pathfind_adjacent:1,1` chooses stand `(1,2)` facing
+north. The earlier Old Man 4 row-2 loop proved additional directional blockers
+at `(9,2).east`, `(2,1).east`, and `(2,2).east`.
+
+Current Northern Cave route patch in the worktree: `overworld_routes.lua` now
+has a `northern_cave` route for the harp/Staff of Rain shrine west of Kol. It
+targets the existing `overworld_northern_cave` Travel landmark at `(81,1)` and
+completes when the player enters map `0x0D` (`Rain Shrine`). Aliases include
+`northern cave`, `rain shrine`, `staff of rain`, `harp shrine`, `silver harp`,
+`cave west of kol`, and `shrine west of kol`. This is a Kol-side route first:
+from world-map Kol `(104,10)`, it guides through `Kol forest west edge`
+`(96,13)` and `West of Kol forest bend` `(92,10)`, then takes a long
+south-and-west detour around the water/mountain gap before approaching
+`Northern Cave` `(81,1)`. Live testing exposed why the first short route was
+wrong: the user reached `(91,5)` on the east shore pocket, with active route
+`northern_cave` still targeting `Rain shrine west approach`; the route then
+tried to pull west/north toward `(83,3)` even though the NESMaps overworld
+orientation and live movement showed a water/mountain gap there. The corrected
+route now recovers from `(91,5)` by targeting `West of Kol forest bend` and
+heading south toward the detour. The user then reached the cave live with only
+minor route noise. Static proof after the first Rain Shrine interior patch:
+`lua test_overworld_routes.lua` (50 tests), `lua test_objects.lua` (59 tests),
+`lua test_map_reader.lua` (29 tests), `lua test_route_manager.lua` (58 tests),
+`luac -p` on route/object/map-reader files and tests, and `git diff --check`.
+After reload from the old `(91,5)` overworld pocket, the likely retest remains
+`route_recalculate`, then `auto_walk`.
+
+Current Rain Shrine / Northern Cave interior patch in the worktree: map `0x0D`
+is the Staff of Rain shrine described by Realm of Darkness as the Northern
+Shrine. The live old man / wise man NPC is at `(4,4)`, and the path-grid route
+dump from the entry route showed the live bottom entry/exit at `(4,9)`.
+`objects.lua` now moves Rain Shrine's `Exit to World Map` object from the stale
+`(4,4)` coordinate to `(4,9)` with a south-facing interaction point. The first
+old-man autowalk looped between `(4,7)` and `(5,7)` while trying to move north
+into `(4,6)` and `(5,6)`. `inspect_tile` / `inspect_move` said both target
+cells are model-walkable tile `14`, but live movement proved the south
+approaches blocked-only: `(4,6).south` reached 20 blocked / 0 moved and
+`(5,6).south` reached 18 blocked / 0 moved. The next pass from the rerouted
+path found the same row-6 wall farther west: `(3,6).south` reached 6 blocked /
+0 moved and `(2,6).south` reached 4 blocked / 0 moved, while horizontal/lower
+connectors at `(3,7)` and `(2,7)` moved. `map_reader.lua` now models only
+`(2,6).south`, `(3,6).south`, `(4,6).south`, and `(5,6).south` as directional
+blocks from that pass. The latest old-man route then looped between `(1,3)`
+and `(1,4)` while repeatedly trying east into column `x=2`: `(2,3).west`
+reached 36 blocked / 0 moved and `(2,4).west` reached 37 blocked / 0 moved,
+while `(2,5).west` and `(2,6).west` had route-context blocked-only hits.
+Movement along column `x=1` stayed open, including repeated
+`(1,3)<->(1,4)` movement, so `map_reader.lua` now models `(2,3).west`,
+`(2,4).west`, `(2,5).west`, and `(2,6).west` as directional-only blocks too.
+The source edit triggered the active Lua reload, clearing temporary runtime
+edges; fresh `report_runtime_blocks` on map `0x0D` reports none. With the
+permanent map patch live, `debug_pathfind_adjacent:4,4` from current `(4,1)`
+planned `2 south`, landing at `(4,3)` and facing south. The user's next live
+test proved that direct top approach was still wrong: auto-walk from `(4,1)`
+blocked entering `(4,2)` from the north four times, then rerouted via `(3,1)`
+and blocked entering `(3,2)` from the north three times. Manual routing then
+worked by going east along row 1, descending on the far east side, and coming
+back west along row 4 to talk to the old man. The successful route logged
+open seams `(5,1).west`, `(6,1).west`, `(7,1).west`, `(8,2).north`,
+`(8,4).north`, `(7,4).east`, `(6,4).east`, and `(5,4).east`. `map_reader.lua`
+now models `(3,2).north`, `(4,2).north`, `(5,2).north`, and `(6,2).north` as
+directional-only top-wall blocks; keep `(7,2).north` as a watch item because
+there was no clean failed-edge log for that cell yet. The first route back out
+toward `Exit to World Map` started from the old-man side and queued six steps.
+It first proved `(5,5).north` blocked from `(5,4)->DOWN` (route count 2/0,
+then raw `probe_edge_verify:5,4,down,5` confirmed 5 blocked / 0 moved). The
+reroute moved `(5,4)->RIGHT` into `(6,4)` and `(6,4)->DOWN` into `(6,5)`,
+then looped between attempts to enter `(5,5)` from the east and `(6,6)` from
+the north. Those reached 40+ blocked-only observations before stop, then raw
+verifiers confirmed `(5,5).east` and `(6,6).north` blocked 5/5 each.
+`map_reader.lua` now models `(5,5).north/east` and `(6,6).north` as
+directional-only blocks. After those edges were runtime-injected, the route
+shifted east and proved the next wall face too: `(7,5).west` from
+`(6,5)->RIGHT` and `(7,5).north` from `(7,4)->DOWN` both verified blocked 5/5.
+`map_reader.lua` now models those as directional-only blocks as well. Keep
+`(6,4).west/south`, `(6,5).north`, and `(7,4).west/east` open because they
+moved during the exit attempt. The next entrance-to-old-man route from `(4,9)`
+was clean through `(4,8)`, `(4,7)`, `(5,7)`, and `(6,7)`, then found another
+pair: `(6,6).south` from `(6,7)->UP` and `(7,6).south` from `(7,7)->UP`.
+Both had repeated route evidence over 20 blocked / 0 moved and raw
+`probe_edge_verify` confirmed each 5 blocked / 0 moved. `map_reader.lua` now
+models `(6,6).south` and `(7,6).south` as directional-only blocks. Keep
+`(6,7).east/west` and `(7,7).west` open because they moved repeatedly during
+the loop. Final noisy-cleanup pass after both old-man directions were working
+promoted two more verifier-grade edges: `(7,6).east` from `(8,6)->LEFT` and
+`(5,3).east` from `(6,3)->LEFT`, both 5 blocked / 0 moved. The tempting
+`(5,3).south` route hit was checked with `probe_edge_verify:5,4,up,5` and
+came back mixed/passable, 3 moved / 2 blocked, so it must stay open. A later
+live exit route from `(6,3)` completed to `(4,9)` but exposed three more
+verifier-grade walls: `(7,5).east` from `(8,5)->LEFT`, `(7,9).north` from
+`(7,8)->DOWN`, and `(6,9).north` from `(6,8)->DOWN` all confirmed 5 blocked /
+0 moved. `(8,9).north` is deliberately not modeled: its raw verifier was
+inconclusive with one moved attempt followed by a map-change abort, not a
+stable blocked edge.
+User playtest after this cleanup reported both old-man routes finished
+smoothly. The return route had one reroute, but it recovered and is deferred to
+polishing rather than treated as an active blocker. The remaining chest access
+is progression-gated until the old man receives what he is waiting for.
+
+Current Kol-to-Tantegel return patch in the worktree: selecting `Tantegel
+Castle` from near Kol no longer snaps to the old Garinham/cave-road safety
+route and asks for a huge west push. `overworld_routes.lua` now has a
+`tantegel_kol` route variant sharing the same `overworld_tantegel_castle`
+Travel target, and object/alias route starts choose the closest matching route
+variant from the current world-map position. From world-map Kol `(104,10)`, the
+castle route now leaves through `Kol forest west edge` `(96,13)`, retraces the
+live south-road and northeast-bridge chain, reconnects at `Erdrick's Cave road`
+`(28,13)`, then follows the existing castle return through `North trail
+marker`, `East choke approach`, `Upper bridge lane`, and `Bridge south bend`.
+Static proof: `luac -p` on the changed route/object files and tests, `lua
+test_overworld_routes.lua` (49 tests), `lua test_objects.lua` (58 tests), `lua
+test_route_manager.lua` (58 tests), and `git diff --check`.
 
 Latest dialogue/accessibility polish is live-validated in FCEUX but not yet
 committed. The STATUS command now interrupts with the full memory-backed status
@@ -136,8 +259,22 @@ The first parked survey also proved why the old start looked isolated:
 `teleport_to:19,23` refused because the decoder read tile type `0x00`, while
 manual movement then crossed `(19,22)->(19,23)`, exited from `(19,23)->DOWN`,
 re-entered Kol back to `(19,23)`, and had moved evidence into `(20,23)` from
-the west. `objects.lua` now exposes Kol's exit as `(19,23)` facing south, and
-`map_reader.lua` treats `(19,23)` and `(20,23)` as map-0x07 passthrough cells.
+the west. A later object pathability-filter repro from live `(18,23)` showed
+all NPCs as unreachable because `(18,23)` also ROM-decodes as type `0x00` and
+was missing from the passthrough set; live position proves it is part of the
+same entrance strip. `objects.lua` now exposes Kol's exit as `(19,23)` facing
+south, and `map_reader.lua` treats `(18,23)`, `(19,23)`, and `(20,23)` as
+map-0x07 passthrough cells.
+Latest Kol west-NPC route patch: after the services were decoded, the reachable
+NPC filter exposed `Old Man 1` at object `(2,13)`. Autowalk toward him from
+the west approach looped between `(8,11)` and `(8,12)`, repeatedly trying left
+into `(7,11)` and `(7,12)`. The log is archived at
+`handoff_archive/dw_debug_2026-05-15_kol_west_npc_loop_pre_patch.log`;
+evidence reached `(7,11).east blocked=23 moved=0` and
+`(7,12).east blocked=24 moved=0`, with seam retries and no runtime blockers.
+The vertical connector stayed open: `(8,11)->DOWN` and `(8,12)->UP` moved
+repeatedly. `map_reader.lua` now models only `(7,11).east` and `(7,12).east`
+as directional blockers.
 The same survey targeted `Person 1` from start `(20,21)` and looped at
 `(20,18)`: seam memory ended with `(20,17)` from the south blocked 51/51 and
 `(21,18)` from the west blocked 50/50, while nearby entry-lane seams stayed

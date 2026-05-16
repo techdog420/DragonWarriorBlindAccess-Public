@@ -722,6 +722,26 @@ function tests.garinham_exit_uses_live_west_entry_not_inn_corridor()
     env.restore()
 end
 
+function tests.rain_shrine_exit_uses_live_bottom_entry_tile()
+    local env = make_env()
+
+    env.set_position(0x0D, 4, 9)
+    env.set_terrain_offset(0x20)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0D)
+
+    local obj = env.objects.select_object_by_id("exit_4_9")
+    assert_equal(obj ~= nil, true, "Rain Shrine should expose the live bottom exit")
+    assert_equal(obj.name, "Exit to World Map", "Rain Shrine should keep the normal exit label")
+    assert_equal(obj.x, 4, "Rain Shrine exit should use the live entry X")
+    assert_equal(obj.y, 9, "Rain Shrine exit should use the live entry row")
+    assert_equal(obj.interaction_x, 4, "Rain Shrine exit route should stand on the bottom entry tile")
+    assert_equal(obj.interaction_y, 9, "Rain Shrine exit stand should match the live entry row")
+    assert_equal(obj.interaction_face_dir, "south", "Rain Shrine exit stand should face south toward the world")
+
+    env.restore()
+end
+
 function tests.garinham_overworld_landmark_uses_western_coordinate()
     local env = make_env()
 
@@ -1393,6 +1413,35 @@ function tests.kol_confirmed_services_and_dialogue_merchant_filtering()
     assert_equal(service_text:find("Inn", 1, true) ~= nil, true, "Services should include the confirmed Kol Inn")
     assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include the confirmed Kol Weapons Merchant")
     assert_equal(service_text:find("Tool Merchant", 1, true) ~= nil, true, "Services should include the confirmed Kol Tool Merchant")
+
+    env.restore()
+end
+
+function tests.kol_hidden_fairy_flute_search_tile_is_treasure()
+    local env = make_env({npc_count = 0})
+
+    env.set_position(0x07, 1, 22)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x07)
+
+    local flute = env.objects.find_object_by_id("chest_kol_fairy_flute")
+    assert_equal(flute ~= nil, true, "Kol should expose the hidden Fairy Flute search tile")
+    assert_equal(flute.name, "Disturbed Earth Near Bath", "hidden Kol treasure should hint at the search spot without naming the reward")
+    assert_equal(flute.type, env.objects.TYPE_CHEST, "hidden Kol treasure should appear under Treasure")
+    assert_equal(flute.x, 9, "Fairy Flute search tile X should be four steps south of the bath")
+    assert_equal(flute.y, 6, "Fairy Flute search tile Y should be four steps south of the bath")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    env.objects.next_filter() -- Treasure
+    local found = false
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        if obj.id == "chest_kol_fairy_flute" then
+            found = true
+            break
+        end
+    end
+    assert_equal(found, true, "Treasure filter should include the Kol Fairy Flute search tile")
 
     env.restore()
 end

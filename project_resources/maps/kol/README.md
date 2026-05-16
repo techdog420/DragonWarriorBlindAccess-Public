@@ -69,8 +69,13 @@ patching `objects.lua`:
   and item/tool shop.
 - For each service, confirm the public stand tile and facing direction by
   opening the actual inn or shop prompt, then add service interaction overrides.
-- Confirm whether the hidden Fairy Flute should be represented as a Treasure
-  object and record the exact live coordinate of the bath and search tile.
+- Hidden Fairy Flute coordinates are now decoded enough for object browsing.
+  Mike's 24x24 Kol map has a single bath/water tile at `(9,2)`; the guide
+  clue "four steps south of the bath" therefore points to `(9,6)`. Live
+  `inspect_tile:9,6` reported it walkable, and `debug_pathfind_to:9,6` from
+  `(1,22)` found a route. `objects.lua` exposes `(9,6)` as `Fairy Flute Search
+  Tile` internally, but the player-facing Treasure label is `Disturbed Earth
+  Near Bath` so the reward is not spoiled before SEARCH succeeds.
 - Add locked-door objects only after live door coordinates are confirmed.
 
 ## First Survey Evidence
@@ -81,6 +86,7 @@ Archived pre-reload log:
 - `handoff_archive/dw_debug_2026-05-15_kol_merchant1_bounce_pre_reload.log`
 - `handoff_archive/dw_debug_2026-05-15_kol_merchant1_inner_bounce_pre_reload.log`
 - `handoff_archive/dw_debug_2026-05-15_kol_post_stop_autowalk_blockers.log`
+- `handoff_archive/dw_debug_2026-05-15_kol_bath_flute_oldmen_pre_patch.log`
 
 Live findings from the stopped survey:
 
@@ -88,8 +94,10 @@ Live findings from the stopped survey:
   isolated because both bottom-edge entry tiles ROM-decode as type-0 walls.
   Manual movement then proved `(19,22)->DOWN` enters `(19,23)`,
   `(19,23)->DOWN` exits to the world map, and `(19,23)->RIGHT` enters
-  `(20,23)`. `map_reader.lua` now treats `(19,23)` and `(20,23)` as
-  map-0x07 passthrough cells.
+  `(20,23)`. A later object pathability-filter repro from live `(18,23)`
+  showed that west neighbor is also part of the false-wall entrance strip.
+  `map_reader.lua` now treats `(18,23)`, `(19,23)`, and `(20,23)` as map-0x07
+  passthrough cells.
 - A survey from `(20,21)` targeted `Person 1` and looped at `(20,18)` between
   north into `(20,17)` and east into `(21,18)`. The stopped run logged
   `blocked=51 moved=0` for `(20,17)` from the south and `blocked=50 moved=0`
@@ -99,9 +107,44 @@ Live findings from the stopped survey:
   `(20,18)`, `(20,19)`, `(20,21)`, `(19,22)`, `(20,22)`, `(21,22)`,
   `(19,23)`, and `(20,23)` all had live moved evidence. Do not promote those
   to blockers from this run.
+- After the service pass exposed more NPCs, the route to `Old Man 1` at object
+  `(2,13)` looped between `(8,11)` and `(8,12)`. The archived log
+  `handoff_archive/dw_debug_2026-05-15_kol_west_npc_loop_pre_patch.log` shows
+  repeated blocked-only attempts entering `(7,11)` and `(7,12)` from the east.
+  `map_reader.lua` models `(7,11).east` and `(7,12).east` only; the vertical
+  connector between `(8,11)` and `(8,12)` moved repeatedly and stays open.
 - `report_survey_findings` after stopping reported no strong reroute
   candidates because the run was manually stopped, but the repeated seam list
   gives enough evidence for the two narrow directional blockers above.
+
+## Bath And Clue NPCs
+
+- `Woman 2` is the bath clue NPC. Live route evidence targeted `npc_11` at
+  `(12,1)`, used public stand `(12,2)` facing north, and TALK read "This bath
+  cures rheumatism."
+- Local image analysis of `external/mikesrpgcenter_kol.png` found only one
+  blue bath/water tile: `(9,2)`. The hidden search tile is modeled at `(9,6)`,
+  four steps south, and is labeled `Disturbed Earth Near Bath` in Treasure.
+  The user found the flute there live after this coordinate was added.
+- `Old Man 1` is the flute clue NPC. Live TALK after selected teleport to
+  `npc_3` read "Hast thou found the flute? Howard had it, but he went to
+  Rimuldar and never returned." Current NPC RAM later placed him at `(2,13)`;
+  `debug_pathfind_adjacent:2,13` from `(1,22)` found a stand at `(3,13)`
+  facing west.
+- `Old Man 4` is the better-weapons clue NPC at `(1,1)`. Live TALK read that
+  Bill cannot defeat the Dragonlord with current weapons and should come back
+  again. `debug_pathfind_adjacent:1,1` from `(1,22)` now chooses stand `(1,2)`
+  facing north. The earlier row-2 route loop proved directional blockers
+  `(9,2).east`, `(2,1).east`, and `(2,2).east`; those are modeled in
+  `map_reader.lua` without closing the neighboring cells wholesale.
+- The guide note about a cellar west of Kol refers to the overworld
+  `Northern Cave` / `Rain Shrine`, not a Kol town basement. The staged route
+  starts from world-map Kol `(104,10)` and targets the existing
+  `overworld_northern_cave` landmark at `(81,1)`. First live testing reached
+  the east-shore pocket around `(91,5)`, where the old short approach tried to
+  go west/north across a water/mountain gap. The current staged route should
+  recover by heading south around that bay before crossing back toward the
+  cave; final entry at `(81,1)` still needs live validation.
 
 Follow-up Merchant 1 autowalk evidence:
 

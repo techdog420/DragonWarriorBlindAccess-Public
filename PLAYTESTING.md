@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-05-15
+Updated: 2026-05-16
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
@@ -68,19 +68,93 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   northeast building; the item/tool shop sells Herb, Torch, Dragon's Scale, and
   Wings; the weapon/armor shop sells Copper Sword, Hand Axe, Half Plate, Full
   Plate, and Small Shield; the Fairy Flute is hidden four steps south of the
-  bath. Next playtest/survey target is to confirm live coordinates for the
-  entry/exit, service NPCs, public counter stands and facing directions, and
-  the Fairy Flute search tile before patching `objects.lua`.
+  bath. The bath/search clue is now decoded: Woman 2 at `(12,1)` talks about
+  the bath, the local map image has the bath/water tile at `(9,2)`, and the
+  modeled hidden search tile is `(9,6)` in the Treasure filter as `Disturbed
+  Earth Near Bath`. Old Man 1 has a current pathable flute-clue route at
+  `(2,13)`, and Old Man 4 has a current pathable better-weapons clue route at
+  `(1,1)`.
+
+- A Kol-side route to the harp/Staff of Rain shrine is staged as `Northern
+  Cave`. Select the `Northern Cave` Travel object or run
+  `start_overworld_route:rain shrine`; aliases also include `staff of rain`,
+  `harp shrine`, `silver harp`, `cave west of kol`, and `shrine west of kol`.
+  From world-map Kol `(104,10)`, the route should leave through `Kol forest
+  west edge` `(96,13)`, then `West of Kol forest bend` `(92,10)`, then take a
+  long south-and-west detour around the water/mountain gap before approaching
+  `Northern Cave` `(81,1)`. Live testing exposed the old bad pocket: from
+  `(91,5)`, the route was trying to pull west/north toward `(83,3)`, but that
+  side is separated by water and mountains. After reload, a route recalculation
+  from `(91,5)` should target `West of Kol forest bend` and head south toward
+  the new detour, not west into the gap. The user later reached the cave live.
+
+- Rain Shrine / Northern Cave first interior pass: map `0x0D` is a 10x10
+  shrine with the wise man / old man at `(4,4)` and the live bottom
+  entrance/exit at `(4,9)`. Route evidence toward the old man repeatedly
+  bounced between `(4,7)` and `(5,7)` while trying to move north into `(4,6)`
+  and `(5,6)`. Both target cells decode as tile `14` and model-walkable, but
+  live movement proved the south approaches blocked-only: `(4,6).south`
+  reached 20 blocked / 0 moved and `(5,6).south` reached 18 blocked / 0 moved.
+  The next live pass found the same pattern farther west: `(3,6).south`
+  reached 6 blocked / 0 moved and `(2,6).south` reached 4 blocked / 0 moved,
+  while `(3,7)` and `(2,7)` had horizontal moved evidence. The follow-up route
+  exposed the west face of the same hidden wall cluster: `(2,3).west` reached
+  36 blocked / 0 moved and `(2,4).west` reached 37 blocked / 0 moved, with
+  route-context hits also on `(2,5).west` and `(2,6).west`. Movement along
+  column `x=1` stayed open, including repeated `(1,3)<->(1,4)` movement. These
+  are now modeled as directional-only blockers. After the script reloaded,
+  `report_runtime_blocks` was empty, confirming the permanent map patch is the
+  active source of truth; `debug_pathfind_adjacent:4,4` from current `(4,1)`
+  initially planned `2 south`, landing at `(4,3)` facing south, but live
+  auto-walk proved that top approach wrong: `(4,2).north` reached 4 blocked /
+  0 moved and the reroute also found `(3,2).north` at 3 blocked / 0 moved. The
+  successful manual route went east along row 1, descended on the far east
+  side, then came back west along row 4; those moved seams stay open. The
+  current model treats `(3,2).north`, `(4,2).north`, `(5,2).north`, and
+  `(6,2).north` as directional-only top-wall blocks. The return route toward
+  the exit then exposed a mid-wall loop around `(6,5)`: raw
+  `probe_edge_verify` confirmed `(5,5).east`, `(6,6).north`, and
+  `(5,5).north` as blocked 5/5 each. After those were injected live, the next
+  reroute also confirmed `(7,5).west` and `(7,5).north` as blocked 5/5 each.
+  The next entrance-to-old-man route from `(4,9)` then confirmed
+  `(6,6).south` and `(7,6).south` as blocked 5/5 each. These are all
+  directional-only; the earlier `(6,4).west`, `(6,4).south`, `(6,5).north`,
+  `(6,7).east/west`, `(7,4).west/east`, and `(7,7).west` moved seams stay
+  open. Final noisy-cleanup verifiers promoted `(7,6).east`, `(5,3).east`,
+  `(7,5).east`, `(7,9).north`, and `(6,9).north` after each confirmed blocked
+  5/5. `(5,3).south` was checked but mixed 3 moved / 2 blocked, so it stays
+  open. `(8,9).north` stays open because its raw verifier hit a map-change
+  case instead of a stable block. Follow-up live testing reported both routes
+  to and from the old man finishing smoothly. The return route still had one
+  recovered reroute, which is polish-level rather than a blocker. The chest is
+  progression-gated until the old man receives what he is waiting for.
+
+- The reverse route from Kol back to Tantegel now has its own connected
+  variant. Before this patch, selecting the `Tantegel Castle` Travel landmark
+  from near Kol could bind to the old Garinham/cave-road safety route and
+  produce a huge direct west segment toward the cave road. Route starts now
+  choose the closest matching castle variant from the current world-map
+  position. From Kol, the castle route should first target `Kol forest west
+  edge` `(96,13)`, then retrace the known Kol south-road and northeast-bridge
+  waypoints before reconnecting at `Erdrick's Cave road` `(28,13)`.
 
 - First Kol service-survey patch: the town exit is now the live south entry
   tile `(19,23)`, not the stale `(15,14)`. The decoder saw `(19,23)` and
   adjacent `(20,23)` as type-0 walls, but live movement proved them as
-  passable entry/exit strip cells, so they are now Kol passthroughs. The
-  stopped parked survey also found a real loop near `Person 1`: from `(20,18)`,
-  north into `(20,17)` blocked repeatedly and east into `(21,18)` blocked
-  repeatedly. These are modeled as directional blocks only, preserving nearby
-  passable seams. Reload Lua before rerunning the Kol survey; the automatic
-  touch/probe did not appear to reload the active FCEUX script.
+  passable entry/exit strip cells. A later pathability-filter repro from live
+  `(18,23)` showed every object as unreachable until that west strip tile was
+  also marked as a passthrough. The stopped parked survey also found a real
+  loop near `Person 1`: from `(20,18)`, north into `(20,17)` blocked
+  repeatedly and east into `(21,18)` blocked repeatedly. These are modeled as
+  directional blocks only, preserving nearby passable seams. Reload Lua before
+  rerunning the Kol survey; the automatic touch/probe did not appear to reload
+  the active FCEUX script.
+
+- Kol west-side NPC browsing is opening up after the service pass. The route to
+  `Old Man 1` at object `(2,13)` looped between `(8,11)` and `(8,12)` while
+  trying to enter `(7,11)` and `(7,12)` from the east. Both are now modeled as
+  narrow directional blockers; the vertical connector between `(8,11)` and
+  `(8,12)` stays open because it moved repeatedly.
 
 - Kol Merchant 1 autowalk keeps exposing narrow service-route wall bands, and
   the current model has been tightened from two live runs. The first run proved

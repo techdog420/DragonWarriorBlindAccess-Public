@@ -491,6 +491,168 @@ function tests.kol_route_backs_out_of_dead_east_bridge_pocket()
     routes.reset_for_tests()
 end
 
+function tests.northern_cave_object_starts_route_from_kol()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_northern_cave",
+        name = "Northern Cave",
+        x = 81,
+        y = 1,
+    }, 0x01, 104, 10)
+
+    assert_equal(err, nil, "Northern Cave Travel object should start a route")
+    assert_equal(info.object_id, "route_northern_cave_02", "route should leave Kol toward the west forest edge")
+    assert_contains(info.message, "Route to Northern Cave", "started route should name Northern Cave")
+    assert_contains(info.message, "Kol forest west edge", "route should begin with the known west edge from Kol")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_aliases_use_kol_side_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("staff of rain", 0x01, 104, 10)
+
+    assert_equal(err, nil, "Staff of Rain alias should resolve to the northern cave route")
+    assert_equal(info.object_id, "route_northern_cave_02", "route should start by leaving Kol")
+    assert_contains(info.message, "Kol forest west edge", "route should avoid a direct diagonal to the shrine")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge", "first segment should target the west forest edge")
+    assert_equal(segment.steps[1], "left", "first segment should retrace the Kol forest lane west before turning south")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_route_steps_through_rain_shrine_approach()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 104, 10)
+
+    local forest = routes.observe_position(0x01, 96, 13)
+    assert_contains(forest.message, "Reached Kol forest west edge", "route should advance at the known west edge")
+    assert_contains(forest.message, "Next: West of Kol forest bend", "west edge should point toward the northern shrine trail")
+
+    local bend = routes.observe_position(0x01, 92, 10)
+    assert_contains(bend.message, "Reached West of Kol forest bend", "route should use an intermediate bend west of Kol")
+    assert_contains(bend.message, "Next: Rain shrine east-shore detour", "bend should route south around the bay")
+
+    routes.observe_position(0x01, 92, 17)
+    routes.observe_position(0x01, 90, 17)
+    routes.observe_position(0x01, 90, 18)
+    routes.observe_position(0x01, 89, 18)
+    routes.observe_position(0x01, 89, 19)
+    routes.observe_position(0x01, 83, 19)
+    routes.observe_position(0x01, 83, 18)
+    routes.observe_position(0x01, 82, 18)
+    routes.observe_position(0x01, 82, 17)
+    routes.observe_position(0x01, 80, 17)
+    routes.observe_position(0x01, 80, 16)
+    routes.observe_position(0x01, 79, 16)
+    routes.observe_position(0x01, 79, 15)
+    routes.observe_position(0x01, 76, 15)
+    routes.observe_position(0x01, 76, 14)
+    routes.observe_position(0x01, 75, 14)
+    routes.observe_position(0x01, 75, 5)
+    routes.observe_position(0x01, 76, 5)
+    routes.observe_position(0x01, 76, 4)
+    routes.observe_position(0x01, 77, 4)
+    routes.observe_position(0x01, 77, 3)
+    local island = routes.observe_position(0x01, 78, 3)
+    assert_contains(island.message, "Reached Rain shrine island approach", "route should reach the shrine-side landmass")
+    assert_contains(island.message, "Next: Rain shrine entrance approach", "island approach should stage near the entrance")
+
+    local approach = routes.observe_position(0x01, 80, 1)
+    assert_contains(approach.message, "Reached Rain shrine entrance approach", "route should stage near the shrine entrance")
+    assert_contains(approach.message, "Next: Northern Cave", "last approach should point to the cave")
+
+    local arrival = routes.observe_position(0x01, 81, 1)
+    assert_contains(arrival.message, "Arrived at Northern Cave", "final waypoint should complete the route")
+    assert_equal(routes.is_active(), false, "route should stop after reaching the cave")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_live_snag_routes_around_east_shore()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("rain shrine", 0x01, 91, 5)
+
+    assert_equal(err, nil, "route should recalculate from the live snag position")
+    assert_equal(info.object_id, "route_northern_cave_03", "live east-shore pocket should recover toward the forest bend")
+    assert_contains(info.message, "West of Kol forest bend", "route should not target the old water-gap approach")
+
+    local segment = assert(routes.plan_next_segment(0x01, 91, 5))
+    assert_equal(segment.waypoint.name, "West of Kol forest bend", "live snag should back out to the detour route")
+    assert_equal(segment.steps[1], "down", "live snag recovery should head south, not west into the mountain/water gap")
+
+    routes.reset_for_tests()
+end
+
+function tests.tantegel_object_from_kol_uses_kol_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }, 0x01, 104, 10)
+
+    assert_equal(err, nil, "Tantegel Castle Travel object should start from Kol")
+    assert_equal(info.object_id, "route_tantegel_kol_02", "Kol-side return should leave town through the forest edge")
+    assert_contains(info.message, "Route to Tantegel Castle", "variant should still speak the castle destination")
+    assert_contains(info.message, "Kol forest west edge", "Kol start should not snap to the distant cave-road route")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge", "first Kol return segment should target the west forest edge")
+    assert_equal(segment.steps[1], "left", "Kol return should start west instead of making a long cave-road push")
+
+    routes.reset_for_tests()
+end
+
+function tests.tantegel_alias_from_kol_uses_kol_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("castle", 0x01, 104, 10)
+
+    assert_equal(err, nil, "generic castle alias should start near Kol")
+    assert_equal(info.object_id, "route_tantegel_kol_02", "castle alias should choose the Kol-side route variant by position")
+    assert_contains(info.message, "Kol forest west edge", "castle alias should not aim at Erdrick's Cave road from Kol")
+
+    routes.reset_for_tests()
+end
+
+function tests.tantegel_kol_return_reconnects_to_cave_road_route()
+    routes.reset_for_tests()
+    routes.start("castle", 0x01, 104, 10)
+
+    routes.observe_position(0x01, 96, 13)
+    routes.observe_position(0x01, 96, 21)
+    routes.observe_position(0x01, 96, 32)
+    routes.observe_position(0x01, 96, 35)
+    routes.observe_position(0x01, 93, 35)
+    routes.observe_position(0x01, 93, 36)
+    routes.observe_position(0x01, 92, 36)
+    routes.observe_position(0x01, 92, 37)
+    routes.observe_position(0x01, 90, 37)
+    routes.observe_position(0x01, 84, 26)
+    routes.observe_position(0x01, 74, 18)
+    routes.observe_position(0x01, 61, 18)
+    routes.observe_position(0x01, 61, 19)
+    routes.observe_position(0x01, 59, 19)
+    routes.observe_position(0x01, 58, 18)
+    routes.observe_position(0x01, 54, 15)
+    routes.observe_position(0x01, 45, 13)
+    routes.observe_position(0x01, 35, 13)
+    local cave_road = routes.observe_position(0x01, 28, 13)
+
+    assert_contains(cave_road.message, "Reached Erdrick's Cave road", "Kol return should reconnect to the known cave road")
+    assert_contains(cave_road.message, "Next: North trail marker", "Kol return should continue down the existing castle route")
+
+    routes.reset_for_tests()
+end
+
 function tests.safety_route_uses_live_east_field_lane()
     routes.reset_for_tests()
 
@@ -686,6 +848,19 @@ function tests.entering_kol_stops_route()
     assert_contains(event.message, "Arrived at Kol", "entering town should complete the Kol route")
     assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
     assert_equal(routes.is_active(), false, "route should stop after entering Kol")
+
+    routes.reset_for_tests()
+end
+
+function tests.entering_rain_shrine_stops_northern_cave_route()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 81, 2)
+
+    local event = routes.observe_position(0x0D, 4, 4)
+
+    assert_contains(event.message, "Arrived at Northern Cave", "entering Rain Shrine should complete the northern cave route")
+    assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "route should stop after entering Rain Shrine")
 
     routes.reset_for_tests()
 end

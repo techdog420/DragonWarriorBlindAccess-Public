@@ -486,11 +486,13 @@ local MAP_PASSTHROUGH_CELLS = {
     -- Map 0x07: Kol
     -- South entrance/exit false-wall strip. Live arrival from the world map
     -- lands at (19,23), and manual movement from (19,22)->DOWN moved into
-    -- (19,23). A second DOWN from (19,23) exited town. The adjacent
-    -- (20,23) tile also moved from the west during the same survey setup.
-    -- Both ROM-decode as type-0 walls, so expose only these confirmed
-    -- bottom-edge cells as passthroughs.
+    -- (19,23). A second DOWN from (19,23) exited town. Adjacent bottom-edge
+    -- cells also moved live: (20,23) from the west during service setup and
+    -- (18,23) as the player's current pathability-filter start tile. These
+    -- ROM-decode as type-0 walls, so expose only the confirmed strip cells as
+    -- passthroughs.
     [0x07] = {
+        ["18,23"] = true,
         ["19,23"] = true,
         ["20,23"] = true,
     },
@@ -1197,6 +1199,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- with no moves before the route was manually broken by moving right
         -- to (9,15).
         ["7,15"] = {east = true},
+        -- After the service routes opened up more Kol NPC browsing, the route
+        -- toward the west-side Old Man 1 looped between (8,11) and (8,12).
+        -- Entering (7,11)/(7,12) from the east repeatedly blocked with no
+        -- moves, while the vertical connector between (8,11) and (8,12)
+        -- remained passable.
+        ["7,11"] = {east = true},
+        ["7,12"] = {east = true},
         ["8,16"] = {north = true},
         ["9,16"] = {north = true},
         ["10,16"] = {east = true, north = true},
@@ -1255,10 +1264,15 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- Successful Inn/exit round-trip cleanup: these seams caused runtime
         -- reroutes but did not strand the path. (9,2).south and (10,4).south
         -- reached four blocked observations in the fresh success log. The
-        -- row-17 pair and (11,3).north repeated across the fresh success log
-        -- and earlier return evidence. Noisy seams such as (10,3).west and
-        -- (18,18).east moved on retry and stay open.
-        ["9,2"] = {south = true},
+        -- later Old Man 4/clue route also proved the east approach into the
+        -- bath tile at (9,2), then repeatedly blocked the east approaches into
+        -- the northwest old-man pocket at (2,1)/(2,2). The row-17 pair and
+        -- (11,3).north repeated across the fresh success log and earlier
+        -- return evidence. Noisy seams such as (10,3).west and (18,18).east
+        -- moved on retry and stay open.
+        ["2,1"] = {east = true},
+        ["2,2"] = {east = true},
+        ["9,2"] = {east = true, south = true},
         -- Weapon/armor merchant-to-exit autowalk from the confirmed public
         -- stand at (20,12) first reached (19,13); entry into (19,13) from
         -- the north was noisy and eventually moved, but the route then looped
@@ -1306,6 +1320,47 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,17"] = {north = true, south = true},
         ["20,17"] = {north = true, south = true},
         ["21,18"] = {west = true},
+    },
+
+    -- Map 0x0D: Rain Shrine / Northern Cave
+    --
+    -- First old-man routes from the cave entrance tried to walk straight north
+    -- through row 6. The ROM model marks the shrine floor as tile=14 and
+    -- walkable, but live auto-walk repeatedly blocked northward entry into
+    -- these cells from below while surrounding horizontal/lower seams moved.
+    -- Keep these as directional south-approach blocks so the side approaches
+    -- around the Staff of Rain wise man remain available. A follow-up route
+    -- then proved the west face of the same hidden wall cluster: movement
+    -- along column x=1 is valid, but entry eastward into x=2 at rows 3-6
+    -- repeatedly blocks. Manual old-man routing later proved the top approach
+    -- is also directional: southward entry into row 2 blocks through the early
+    -- corridor, while the far-east descent and row-4 return path moved. The
+    -- return route from the wise man later exposed the mid-wall: entry into
+    -- (5,5), (6,6), (7,5), and (7,6) from the listed approaches verified
+    -- blocked 5/5. The final noisy-cleanup passes added (5,3).east,
+    -- (7,6).east, (7,5).east, and the lower row north-approach blocks at
+    -- (6,9)/(7,9). A raw verifier left (5,3).south open because that edge was
+    -- mixed/passable; (8,9).north also stays open because the verifier hit a
+    -- map-change case instead of a stable block.
+    [0x0D] = {
+        ["3,2"] = {north = true},
+        ["4,2"] = {north = true},
+        ["5,2"] = {north = true},
+        ["6,2"] = {north = true},
+        ["2,3"] = {west = true},
+        ["2,4"] = {west = true},
+        ["2,5"] = {west = true},
+        ["2,6"] = {south = true, west = true},
+        ["5,3"] = {east = true},
+        ["3,6"] = {south = true},
+        ["4,6"] = {south = true},
+        ["5,5"] = {north = true, east = true},
+        ["5,6"] = {south = true},
+        ["6,6"] = {north = true, south = true},
+        ["6,9"] = {north = true},
+        ["7,5"] = {east = true, north = true, west = true},
+        ["7,6"] = {east = true, south = true},
+        ["7,9"] = {north = true},
     },
 
     -- Map 0x08: Brecconary (30x30 town)
