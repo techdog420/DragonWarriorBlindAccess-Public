@@ -6,6 +6,14 @@ local M = {}
 local WORLD_MAP_ID = 0x01
 local MAX_VISIBLE_ACTIVE_WAYPOINTS = 2
 
+local SWAMP_CAVE_STAGING = {
+    route_id = "kol",
+    max_start_distance = 24,
+    min_x = 84,
+    min_y = 8,
+    max_y = 50,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -170,6 +178,12 @@ local ROUTES = {
         },
         target_object_ids = {"overworld_northern_cave"},
         destination_maps = {0x0D},
+        staging = {
+            route_id = "kol",
+            max_start_distance = 24,
+            min_x = 75,
+            max_y = 21,
+        },
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
@@ -198,6 +212,139 @@ local ROUTES = {
             {x = 78, y = 3, name = "Rain shrine island approach", radius = 1},
             {x = 80, y = 1, name = "Rain shrine entrance approach", radius = 1, axis_order = {"vertical", "horizontal"}},
             {x = 81, y = 1, name = "Northern Cave", radius = 0, final = true},
+        },
+    },
+    kol_rain_shrine = {
+        id = "kol_rain_shrine",
+        title = "Kol",
+        aliases = {"kol from rain shrine", "rain shrine to kol", "northern cave to kol"},
+        target_object_ids = {"overworld_kol"},
+        destination_maps = {0x07},
+        waypoints = {
+            {x = 81, y = 1, name = "Northern Cave", radius = 1},
+            {x = 80, y = 1, name = "Rain shrine entrance approach", radius = 0, axis_order = {"horizontal", "vertical"}},
+            {x = 78, y = 3, name = "Rain shrine island approach", radius = 1},
+            {x = 77, y = 3, name = "Rain shrine island west lane", radius = 0},
+            {x = 77, y = 4, name = "Rain shrine island lower step", radius = 0},
+            {x = 76, y = 4, name = "Rain shrine northwest coast lane", radius = 0},
+            {x = 76, y = 5, name = "Rain shrine northwest coast step", radius = 0},
+            {x = 75, y = 5, name = "Rain shrine west coast north road", radius = 1},
+            {x = 75, y = 14, name = "Rain shrine west coast turn", radius = 0},
+            {x = 76, y = 14, name = "Rain shrine west coast lower lane", radius = 0},
+            {x = 76, y = 15, name = "Rain shrine west coast south bend", radius = 0},
+            {x = 79, y = 15, name = "Rain shrine west-side road", radius = 0},
+            {x = 79, y = 16, name = "Rain shrine west-side jog", radius = 0},
+            {x = 80, y = 16, name = "Rain shrine west-side rise", radius = 0},
+            {x = 80, y = 17, name = "Rain shrine west-side west step", radius = 0},
+            {x = 82, y = 17, name = "Rain shrine west-side lower road", radius = 0},
+            {x = 82, y = 18, name = "Rain shrine southwest jog", radius = 0},
+            {x = 83, y = 18, name = "Rain shrine southwest rise", radius = 0},
+            {x = 83, y = 19, name = "Rain shrine south shore road", radius = 1},
+            {x = 89, y = 19, name = "Rain shrine lower shore turn", radius = 0},
+            {x = 89, y = 18, name = "Rain shrine lower shore west step", radius = 0},
+            {x = 90, y = 18, name = "Rain shrine east-shore lower turn", radius = 0},
+            {x = 90, y = 17, name = "Rain shrine east-shore west step", radius = 0},
+            {x = 92, y = 17, name = "Rain shrine east-shore detour", radius = 1},
+            {x = 92, y = 10, name = "West of Kol forest bend", radius = 1, axis_order = {"vertical", "horizontal"}},
+            {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 104, y = 10, name = "Kol", radius = 0, final = true},
+        },
+    },
+    kol_swamp_cave = {
+        id = "kol_swamp_cave",
+        title = "Kol",
+        aliases = {"kol from swamp cave", "swamp cave to kol", "swamp to kol", "rimuldar cave to kol"},
+        target_object_ids = {"overworld_kol"},
+        destination_maps = {0x07},
+        waypoints = {
+            {x = 104, y = 44, name = "Swamp Cave", radius = 1},
+            {
+                x = 104,
+                y = 43,
+                name = "Swamp Cave doorstep",
+                radius = 0,
+                warning = "Poison swamp return to Kol. Watch HP while crossing.",
+            },
+            {x = 102, y = 43, name = "Swamp Cave entrance row", radius = 0},
+            {x = 102, y = 42, name = "Swamp Cave entrance west lane", radius = 0},
+            {x = 97, y = 42, name = "Swamp Cave lower swamp turn", radius = 0},
+            {x = 97, y = 41, name = "Swamp Cave lower swamp lane", radius = 0},
+            {x = 94, y = 41, name = "Swamp Cave lower swamp drop", radius = 0},
+            {x = 94, y = 40, name = "Swamp Cave lower west approach", radius = 0},
+            {x = 92, y = 37, name = "Kol bridge east lane", radius = 0, axis_order = {"horizontal", "vertical"}},
+            {x = 92, y = 36, name = "Kol lower south lane", radius = 0},
+            {x = 93, y = 36, name = "Kol south road bend", radius = 0},
+            {x = 93, y = 35, name = "Kol south road lower bend", radius = 0},
+            {x = 96, y = 35, name = "Kol south road east lane", radius = 0},
+            {x = 96, y = 32, name = "Kol south road", radius = 1},
+            {x = 96, y = 21, name = "West of Kol north lane", radius = 1},
+            {x = 96, y = 13, name = "Kol forest west edge", radius = 1},
+            {x = 104, y = 10, name = "Kol", radius = 0, final = true},
+        },
+    },
+    swamp_cave = {
+        id = "swamp_cave",
+        title = "Swamp Cave",
+        aliases = {
+            "swamp cave",
+            "swamp",
+            "rimuldar cave",
+            "cave to rimuldar",
+            "quagmire cave",
+        },
+        target_object_ids = {"overworld_swamp_cave"},
+        destination_maps = {0x15},
+        staging = SWAMP_CAVE_STAGING,
+        waypoints = {
+            {x = 104, y = 10, name = "Kol", radius = 1},
+            {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 96, y = 21, name = "West of Kol north lane", radius = 1},
+            {x = 96, y = 32, name = "Kol south road", radius = 1},
+            {x = 96, y = 35, name = "Kol south road east lane", radius = 0},
+            {x = 93, y = 35, name = "Kol south road lower bend", radius = 0},
+            {x = 93, y = 36, name = "Kol south road bend", radius = 0},
+            {x = 92, y = 36, name = "Kol lower south lane", radius = 0},
+            {x = 92, y = 37, name = "Kol bridge east lane", radius = 0},
+            {
+                x = 94,
+                y = 40,
+                name = "Swamp Cave lower west approach",
+                radius = 0,
+                warning = "Poison swamp ahead before the cave. Watch HP before continuing.",
+            },
+            {x = 94, y = 41, name = "Swamp Cave lower swamp drop", radius = 0},
+            {x = 97, y = 41, name = "Swamp Cave lower swamp lane", radius = 0},
+            {x = 97, y = 42, name = "Swamp Cave lower swamp turn", radius = 0},
+            {x = 102, y = 42, name = "Swamp Cave entrance west lane", radius = 0},
+            {x = 102, y = 43, name = "Swamp Cave entrance row", radius = 0},
+            {x = 104, y = 43, name = "Swamp Cave doorstep", radius = 0},
+            {x = 104, y = 44, name = "Swamp Cave", radius = 0, final = true},
+        },
+    },
+    swamp_cave_bridge = {
+        id = "swamp_cave_bridge",
+        title = "Swamp Cave",
+        aliases = {"swamp cave from bridge", "kol bridge to swamp cave"},
+        target_object_ids = {"overworld_swamp_cave"},
+        destination_maps = {0x15},
+        staging = SWAMP_CAVE_STAGING,
+        waypoints = {
+            {x = 90, y = 37, name = "Kol southwest bridge", radius = 0},
+            {x = 92, y = 37, name = "Kol bridge east lane", radius = 0},
+            {
+                x = 94,
+                y = 40,
+                name = "Swamp Cave lower west approach",
+                radius = 0,
+                warning = "Poison swamp ahead before the cave. Watch HP before continuing.",
+            },
+            {x = 94, y = 41, name = "Swamp Cave lower swamp drop", radius = 0},
+            {x = 97, y = 41, name = "Swamp Cave lower swamp lane", radius = 0},
+            {x = 97, y = 42, name = "Swamp Cave lower swamp turn", radius = 0},
+            {x = 102, y = 42, name = "Swamp Cave entrance west lane", radius = 0},
+            {x = 102, y = 43, name = "Swamp Cave entrance row", radius = 0},
+            {x = 104, y = 43, name = "Swamp Cave doorstep", radius = 0},
+            {x = 104, y = 44, name = "Swamp Cave", radius = 0, final = true},
         },
     },
     erdrick = {
@@ -330,13 +477,23 @@ local ROUTE_IDS = {
     "garinham",
     "kol",
     "northern_cave",
+    "kol_rain_shrine",
+    "kol_swamp_cave",
+    "swamp_cave",
+    "swamp_cave_bridge",
     "erdrick",
     "tantegel",
     "tantegel_kol",
 }
 
 local ROUTE_ALTERNATES = {
+    kol = {"kol", "kol_rain_shrine", "kol_swamp_cave"},
+    kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave"},
+    kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine"},
+    swamp_cave = {"swamp_cave_bridge", "swamp_cave"},
+    swamp_cave_bridge = {"swamp_cave_bridge", "swamp_cave"},
     tantegel = {"tantegel", "tantegel_kol"},
+    tantegel_kol = {"tantegel", "tantegel_kol"},
 }
 
 local alias_to_id = {}
@@ -521,6 +678,45 @@ local function choose_start_route_id(id, map_id, px, py)
     return choose_best_route_id(ROUTE_ALTERNATES[id] or {id}, map_id, px, py)
 end
 
+local function staging_start_for(id, map_id, px, py)
+    local route = ROUTES[id]
+    local staging = route and route.staging
+    if not staging or not is_overworld(map_id) or px == nil or py == nil then
+        return nil
+    end
+
+    local close_enough = true
+    local start_score = route_start_score(route, map_id, px, py)
+    if staging.max_start_distance and start_score > staging.max_start_distance then
+        close_enough = false
+    end
+    if staging.min_x and px < staging.min_x then
+        close_enough = false
+    end
+    if staging.max_x and px > staging.max_x then
+        close_enough = false
+    end
+    if staging.min_y and py < staging.min_y then
+        close_enough = false
+    end
+    if staging.max_y and py > staging.max_y then
+        close_enough = false
+    end
+    if close_enough then
+        return nil
+    end
+
+    local fallback_id = choose_start_route_id(staging.route_id, map_id, px, py)
+    if not fallback_id or fallback_id == id or not ROUTES[fallback_id] then
+        return nil
+    end
+
+    return {
+        requested_route = route,
+        route_id = fallback_id,
+    }
+end
+
 local function waypoint_status(route, index, px, py)
     if not route or not index then
         return "No overworld route active"
@@ -617,12 +813,33 @@ function M.route_id_for_object(obj, map_id, px, py)
     return choose_best_route_id(matches, map_id, px, py)
 end
 
+local function route_destinations_match(a, b)
+    if not a or not b then
+        return false
+    end
+    if a.id == b.id then
+        return true
+    end
+    for _, a_id in ipairs(a.target_object_ids or {}) do
+        for _, b_id in ipairs(b.target_object_ids or {}) do
+            if a_id == b_id then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function M.start(route_name, map_id, px, py)
     local id = normalize_route_id(route_name)
     if not id then
         return nil, "Unknown overworld route"
     end
     id = choose_start_route_id(id, map_id, px, py)
+    local staging = staging_start_for(id, map_id, px, py)
+    if staging then
+        id = staging.route_id
+    end
 
     local route = ROUTES[id]
     local previous_id = state.active_id
@@ -644,11 +861,24 @@ function M.start(route_name, map_id, px, py)
     elseif event == "recalculate" then
         message = "Route recalculated. " .. message
     end
+    if staging then
+        message = string.format(
+            "%s route starts from %s. Starting route to %s first. %s",
+            staging.requested_route.title,
+            route.title,
+            route.title,
+            message)
+    end
+
+    local log = make_log(event, route, route.waypoints[state.next_index])
+    if staging then
+        log = log .. " staged_from=" .. tostring(staging.requested_route.id)
+    end
 
     return {
         route = route,
         message = message,
-        log = make_log(event, route, route.waypoints[state.next_index]),
+        log = log,
         object_id = route_object_id(route, state.next_index),
         refresh = true,
     }
@@ -700,6 +930,16 @@ function M.status(map_id, px, py, opts)
     local index = clamp_next_index(route)
     local recalculated = false
     if opts.recalculate and is_overworld(map_id) and px ~= nil and py ~= nil then
+        local new_route_id = choose_start_route_id(route.id, map_id, px, py)
+        if new_route_id and new_route_id ~= state.active_id then
+            state.active_id = new_route_id
+            state.warned = {}
+            route = active_route()
+            index = choose_next_index(route, map_id, px, py)
+            state.next_index = index
+            state.last_position_key = nil
+            recalculated = true
+        end
         local new_index = choose_next_index(route, map_id, px, py)
         if new_index ~= index then
             state.next_index = new_index
@@ -801,6 +1041,10 @@ end
 function M.guidance_for_object(obj, map_id, px, py)
     local route = active_route()
     if route then
+        local selected_id = M.route_id_for_object(obj, map_id, px, py)
+        if selected_id and not route_destinations_match(route, ROUTES[selected_id]) then
+            return M.start(selected_id, map_id, px, py)
+        end
         return M.status(map_id, px, py, {recalculate = true})
     end
 

@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-15
+Updated: 2026-05-16
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -381,6 +381,31 @@ Emulator compatibility direction:
   Treat `(96,32)` as the south-road marker and continue north toward
   `(96,21)`. After this lane patch and reload, the user reached Kol and a fresh
   position probe confirmed `map=0x07(Kol) x=19 y=23`.
+- The Swamp Cave overworld route is Kol-side, not an all-map route.
+  External orientation puts the entrance south of Kol near the bridge, and
+  Gamer Corner's coordinate `(1S,61E)` matches the existing Travel landmark at
+  `(104,44)`. `overworld_routes.lua` should stage far starts through Kol, then
+  use the proven Kol south-road chain before the cave spur. From Kol, start
+  through `Kol forest west edge`, `West of Kol north lane`, `Kol south road`,
+  and `Kol south road east lane`, then back out through `(93,35)`, `(93,36)`,
+  `(92,36)`, and `Kol bridge east lane` instead of entering the old x104 north
+  pocket. Live probes showed the old `(100,35)->(104,39)->(104,42)` spur can
+  route into a blocked pocket; later live testing also proved the x92/x93 drop
+  into row 41 is blocked. The corrected lower approach descends to `(94,40)`,
+  drops at `(94,40)->DOWN` to `(94,41)`, crosses the rechecked row-41 lane to
+  `(97,41)`, then uses `(97,42)`, `(102,42)`, `(102,43)`, and `(104,43)` before
+  stepping down into the cave at `(104,44)`. Do not route into row 41 at x92 or
+  x93; enter at x94 or farther east. Keep the bridge-side variant for starts
+  around `Kol southwest bridge`; it should join the same lower approach at
+  `Kol bridge east lane`. The route completes on Swamp Cave map `0x15`; live
+  play reached that map after the x94 patch. The return to Kol uses
+  `kol_swamp_cave`, sharing the `overworld_kol` destination. It reverses the
+  cave spur through `(104,43)`, `(102,43)`, `(102,42)`, `(97,42)`, `(97,41)`,
+  `(94,41)`, and `(94,40)`, then uses horizontal-first routing back to
+  `(92,37)` so it follows the verified row-40/bridge-lane path before returning
+  through the Kol south-road and forest waypoints to `(104,10)`. The user
+  tested the Swamp Cave route in both directions live; remaining issues are
+  polish-level rough edges, not major blockers.
 - Kol service work should start from `project_resources/maps/kol/README.md`,
   which now has local map images and a screen-reader service transcription.
   External guides agree on these first priorities: Inn 20 G, weapon/armor shop
@@ -405,7 +430,14 @@ Emulator compatibility direction:
   showed the short `(88,6)->(83,3)` approach was wrong: from the east-shore
   pocket around `(91,5)`, the route must recover south and west around the
   water/mountain gap before approaching `(81,1)`. The user reached the cave
-  live after this change.
+  live after this change. Returning to Kol from the shrine needs its own
+  reverse variant, `kol_rain_shrine`; otherwise the plain `kol` chain can snap
+  to the far southern Kol approach. Route recalculation may switch between
+  same-destination variants based on the current world-map position. Do not
+  treat Northern Cave as an all-overworld route yet: from far starts such as
+  Tantegel, start the Kol route first and tell the player that Northern Cave
+  starts from Kol. Keep this staged-hub behavior until a real overworld route
+  graph replaces the current ordered waypoint chains.
 - Rain Shrine / Northern Cave map `0x0D` has the wise man / old man at `(4,4)`
   and the live bottom entry/exit tile at `(4,9)`. The first old-man route pass
   proved the south approaches into row 6 are engine-blocked even though the

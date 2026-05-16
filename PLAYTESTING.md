@@ -6,6 +6,56 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Fresh overworld-route grinding notes: Tantegel to Kol now works rather well.
+  A few points still needed manual navigation, but side-stepping a couple of
+  tiles was enough to get back on course, so this is polish rather than a
+  blocker. The reverse route from Kol back toward Tantegel also solved the
+  major navigation problems and only needed minor manual adjustments. Kol to
+  Northern Cave worked perfectly; the reverse had a few minor hiccups but
+  worked well. A later Tantegel-to-Northern-Cave request exposed an unsupported
+  far start: it tried to begin the Kol-side route near Rain Shrine and gave an
+  unfeasible long segment. The route system now stages that request through
+  Kol first, with speech explaining that Northern Cave starts from Kol. A
+  follow-up route-guidance bug is also patched: with a route already active,
+  selecting a different supported Travel destination and pressing route
+  guidance should replace the active route instead of only rereading the old
+  route.
+
+- Swamp Cave overworld routing has been corrected after live probes showed the
+  first cave spur was a dead pocket. The earlier north approach through
+  `(100,35)`, `(104,39)`, and `(104,42)` can lure the route into x104/x107
+  pockets where southward movement blocks before the entrance row. The current
+  route backs out through the Kol south-road jog to `Kol bridge east lane`,
+  descends to `Swamp Cave lower west approach` at `(94,40)`, drops onto the
+  lower swamp lane at `(94,41)`, crosses the freshly rechecked row-41 lane to
+  `(97,41)`, then uses `(97,42)`, `(102,42)`, `(102,43)`, and `(104,43)` before
+  stepping down into the cave trigger at `(104,44)`. Live testing found the
+  x92 entry was still blocked: `(92,40)->DOWN` and `(93,40)->DOWN` blocked,
+  while `(94,40)->DOWN`, `(95,40)->DOWN`, `(96,40)->DOWN`, and
+  `(97,40)->DOWN` moved. The row-41 connector from `(94,41)` eastward was
+  rechecked after the emulator lockup and moved cleanly. After this patch, the
+  user reached Swamp Cave live: the log recorded map change to `0x15` and
+  `OVERWORLD_ROUTE: event=arrived route=swamp_cave_bridge waypoint=Swamp Cave`.
+
+- Swamp Cave remains a Kol-side route for the next push toward
+  Rimuldar. External orientation: Gamer Corner lists the Swamp Cave entrance
+  as `(1S,61E)`, matching the existing `overworld_swamp_cave` landmark at
+  `(104,44)`; Mike's RPG Center places the cave far south of Kol near the
+  bridge; Gamer Corner's Rimuldar walkthrough confirms the cave is south of
+  Kol and warns that the approach crosses poison swamp. The route is staged
+  as a Kol-side destination rather than a full all-map route. From far starts,
+  selecting `Swamp Cave` should start the Kol route first. From Kol it reuses
+  the known `Kol forest west edge` / `West of Kol north lane` / `Kol south
+  road` chain, then uses the lower bridge/swamp approach above. A bridge-side
+  variant starts from `Kol southwest bridge` and joins at `Kol bridge east
+  lane`. Return routing is now wired as `kol_swamp_cave`: from the cave exit it
+  backs out through `(104,43)`, `(102,43)`, `(102,42)`, `(97,42)`, `(97,41)`,
+  `(94,41)`, `(94,40)`, crosses west at row 40 before climbing to
+  `Kol bridge east lane`, then follows the Kol south-road and forest return to
+  `(104,10)`. It warns about the poison swamp on the return. The user tested
+  both directions live after wiring the return; there are a few polish-level
+  rough edges, but no major blocker remains before entering Swamp Cave.
+
 - Dialogue polish from the Garinham/grinding session is working in live play.
   The STATUS command now reads the full status line from memory and no longer
   gets interrupted by the lower visual equipment rows. After combat, object
@@ -87,6 +137,10 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   side is separated by water and mountains. After reload, a route recalculation
   from `(91,5)` should target `West of Kol forest bend` and head south toward
   the new detour, not west into the gap. The user later reached the cave live.
+  The return to Kol now has a `kol_rain_shrine` variant that reverses the Rain
+  Shrine approach from `(81,1)` back to Kol; selecting Kol or recalculating
+  near the shrine should start west toward `Rain shrine entrance approach`
+  instead of far south toward the old Kol chain.
 
 - Rain Shrine / Northern Cave first interior pass: map `0x0D` is a 10x10
   shrine with the wise man / old man at `(4,4)` and the live bottom

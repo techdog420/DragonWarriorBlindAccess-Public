@@ -126,6 +126,11 @@ COMMANDS (write to dw_commands.txt, one per line)
                            Start safety route guidance back to Tantegel Castle
   start_overworld_route:garinham
                            Start route guidance to Garinham / Galenholm
+  start_overworld_route:kol
+                           Start route guidance to Kol, including local return
+                           variants from Rain Shrine or Swamp Cave
+  start_overworld_route:swamp cave
+                           Start route guidance to Swamp Cave / Rimuldar cave
   route_guidance           Start guidance for selected Travel destination,
                            replace an active route if another guided Travel
                            destination is selected, or recalculate/status the

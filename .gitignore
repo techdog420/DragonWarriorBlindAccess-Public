@@ -23,6 +23,7 @@ launch_dw_shim.log
 
 # Local environment / package installs
 .env
+.tools/
 node_modules/
 package.json
 package-lock.json

@@ -525,6 +525,57 @@ function tests.northern_cave_aliases_use_kol_side_route()
     routes.reset_for_tests()
 end
 
+function tests.northern_cave_from_tantegel_starts_kol_staging_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("rain shrine", 0x01, 43, 43)
+
+    assert_equal(err, nil, "Rain Shrine alias should resolve from Tantegel")
+    assert_equal(info.route.id, "kol", "far Northern Cave requests should stage through Kol")
+    assert_equal(info.object_id, "route_kol_02", "staging route should leave Tantegel on the Kol route")
+    assert_contains(info.message, "Northern Cave route starts from Kol", "staging should explain the required hub")
+    assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
+    assert_contains(info.message, "Route to Kol", "staging should include normal route guidance")
+    assert_contains(info.log, "staged_from=northern_cave", "staged starts should be visible in logs")
+
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary road", "Kol staging should use the proven Kol route")
+    assert_equal(segment.steps[1], "up", "Tantegel-to-Kol staging should leave toward Brecconary road")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_object_from_tantegel_starts_kol_staging_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_northern_cave",
+        name = "Northern Cave",
+        x = 81,
+        y = 1,
+    }, 0x01, 43, 43)
+
+    assert_equal(err, nil, "Northern Cave Travel object should resolve from Tantegel")
+    assert_equal(info.route.id, "kol", "Travel-object starts should use the same Kol staging guard")
+    assert_equal(info.object_id, "route_kol_02", "Travel-object staging should start the Kol route")
+    assert_contains(info.message, "Northern Cave route starts from Kol", "Travel-object staging should explain the hub route")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_near_entrance_does_not_stage_to_kol()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("rain shrine", 0x01, 81, 1)
+
+    assert_equal(err, nil, "Rain Shrine route should start near the entrance")
+    assert_equal(info.route.id, "northern_cave", "local Rain Shrine starts should keep the destination route")
+    assert_equal(info.object_id, "route_northern_cave_27", "entrance starts should target the cave itself")
+    assert_contains(info.message, "Route to Northern Cave", "local start should speak normal destination guidance")
+
+    routes.reset_for_tests()
+end
+
 function tests.northern_cave_route_steps_through_rain_shrine_approach()
     routes.reset_for_tests()
     routes.start("rain shrine", 0x01, 104, 10)
@@ -573,18 +624,237 @@ function tests.northern_cave_route_steps_through_rain_shrine_approach()
     routes.reset_for_tests()
 end
 
+function tests.kol_route_from_rain_shrine_uses_shrine_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("kol", 0x01, 81, 1)
+
+    assert_equal(err, nil, "Kol alias should resolve outside the Rain Shrine")
+    assert_equal(info.route.id, "kol_rain_shrine", "route should use the Rain Shrine return variant")
+    assert_equal(info.object_id, "route_kol_rain_shrine_02", "route should not skip to the south Kol chain")
+    assert_contains(info.message, "Rain shrine entrance approach", "route should begin by backing out of the shrine approach")
+
+    local segment = assert(routes.plan_next_segment(0x01, 81, 1))
+    assert_equal(segment.waypoint.name, "Rain shrine entrance approach", "first segment should target the shrine entrance approach")
+    assert_equal(segment.steps[1], "left", "first step from the shrine should move west, not far south")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_object_from_rain_shrine_uses_shrine_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
+    }, 0x01, 81, 2)
+
+    assert_equal(err, nil, "Kol Travel object should start from the Rain Shrine")
+    assert_equal(info.route.id, "kol_rain_shrine", "Kol object should choose the shrine return route")
+    assert_equal(info.object_id, "route_kol_rain_shrine_02", "exit-adjacent shrine starts should target the local return waypoint")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_recalculate_switches_to_rain_shrine_variant_after_drift()
+    routes.reset_for_tests()
+
+    routes.start("kol", 0x01, 74, 7)
+    local info = routes.recalculate(0x01, 90, 20)
+
+    assert_equal(info.route.id, "kol_rain_shrine", "legacy active Kol route should switch to shrine return variant")
+    assert_contains(info.message, "Rain shrine", "recalculated route should use the local shrine approach chain")
+    assert_equal(info.waypoint.name ~= "North Alefgard bridge road", true, "recalculation should not keep the far south bridge road")
+
+    routes.reset_for_tests()
+end
+
 function tests.northern_cave_live_snag_routes_around_east_shore()
     routes.reset_for_tests()
 
     local info, err = routes.start("rain shrine", 0x01, 91, 5)
 
     assert_equal(err, nil, "route should recalculate from the live snag position")
+    assert_equal(info.route.id, "northern_cave", "live east-shore pocket should keep the Northern Cave route")
     assert_equal(info.object_id, "route_northern_cave_03", "live east-shore pocket should recover toward the forest bend")
     assert_contains(info.message, "West of Kol forest bend", "route should not target the old water-gap approach")
 
     local segment = assert(routes.plan_next_segment(0x01, 91, 5))
     assert_equal(segment.waypoint.name, "West of Kol forest bend", "live snag should back out to the detour route")
     assert_equal(segment.steps[1], "down", "live snag recovery should head south, not west into the mountain/water gap")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_object_starts_route_from_kol()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }, 0x01, 104, 10)
+
+    assert_equal(err, nil, "Swamp Cave Travel object should start a route")
+    assert_equal(info.route.id, "swamp_cave", "Kol starts should use the Kol-side route")
+    assert_equal(info.object_id, "route_swamp_cave_02", "route should leave Kol toward the west forest edge")
+    assert_contains(info.message, "Route to Swamp Cave", "started route should name Swamp Cave")
+    assert_contains(info.message, "Kol forest west edge", "route should begin with the known west edge from Kol")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge", "first segment should target the west forest edge")
+    assert_equal(segment.steps[1], "left", "first step from Kol should move west, not south into an untested lane")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_bridge_start_uses_bridge_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("swamp cave", 0x01, 90, 37)
+
+    assert_equal(err, nil, "Swamp Cave alias should resolve from the southwest bridge")
+    assert_equal(info.route.id, "swamp_cave_bridge", "bridge starts should use the local bridge variant")
+    assert_equal(info.object_id, "route_swamp_cave_bridge_02", "bridge start should advance to the east lane")
+    assert_contains(info.message, "Kol bridge east lane", "bridge variant should reuse the proven Kol south-road jog")
+
+    local segment = assert(routes.plan_next_segment(0x01, 90, 37))
+    assert_equal(segment.waypoint.name, "Kol bridge east lane", "bridge segment should target the east lane")
+    assert_equal(segment.steps[1], "right", "bridge segment should move east instead of pulling north at x=90")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_from_tantegel_starts_kol_staging_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("quagmire cave", 0x01, 43, 43)
+
+    assert_equal(err, nil, "Swamp Cave alias should resolve from Tantegel")
+    assert_equal(info.route.id, "kol", "far Swamp Cave requests should stage through Kol")
+    assert_equal(info.object_id, "route_kol_02", "staging route should leave Tantegel on the Kol route")
+    assert_contains(info.message, "Swamp Cave route starts from Kol", "staging should explain the required hub")
+    assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
+    assert_contains(info.message, "Route to Kol", "staging should include normal route guidance")
+    assert_contains(info.log, "staged_from=swamp_cave", "staged starts should be visible in logs")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_route_uses_lower_bridge_swamp_approach()
+    routes.reset_for_tests()
+    routes.start("swamp", 0x01, 104, 10)
+
+    routes.observe_position(0x01, 96, 13)
+    routes.observe_position(0x01, 96, 21)
+    routes.observe_position(0x01, 96, 32)
+    local south_road = routes.observe_position(0x01, 96, 35)
+
+    assert_contains(south_road.message, "Reached Kol south road east lane", "route should reuse the proven Kol south-road lane")
+    assert_contains(south_road.message, "Next: Kol south road lower bend", "south-road lane should back toward the bridge jog")
+
+    local spur = assert(routes.plan_next_segment(0x01, 96, 35))
+    assert_equal(spur.waypoint.name, "Kol south road lower bend", "new spur should start by backing out through the bridge jog")
+    assert_equal(spur.steps[1], "left", "cave spur should not head east into the dead north pocket")
+
+    routes.observe_position(0x01, 93, 35)
+    routes.observe_position(0x01, 93, 36)
+    routes.observe_position(0x01, 92, 36)
+    local bridge_lane = routes.observe_position(0x01, 92, 37)
+    assert_contains(bridge_lane.message, "Reached Kol bridge east lane", "route should reuse the bridge-side lane before the swamp")
+    assert_contains(bridge_lane.message, "Next: Swamp Cave lower west approach", "bridge lane should descend to the lower swamp approach")
+
+    local lower_approach_segment = assert(routes.plan_next_segment(0x01, 92, 37))
+    assert_equal(lower_approach_segment.waypoint.name, "Swamp Cave lower west approach", "bridge lane should target the x94 approach")
+    assert_equal(lower_approach_segment.steps[#lower_approach_segment.steps], "right", "route should cross east at y=40 before dropping onto row 41")
+
+    local lower_approach = routes.observe_position(0x01, 94, 40)
+    assert_contains(lower_approach.message, "Poison swamp ahead", "route should warn before the poison swamp steps")
+    assert_contains(lower_approach.message, "Next: Swamp Cave lower swamp drop", "lower approach should use the x94 drop instead of the blocked x92 seam")
+
+    routes.observe_position(0x01, 94, 41)
+    routes.observe_position(0x01, 97, 41)
+    routes.observe_position(0x01, 97, 42)
+    routes.observe_position(0x01, 102, 42)
+    routes.observe_position(0x01, 102, 43)
+    routes.observe_position(0x01, 104, 43)
+    local arrival = routes.observe_position(0x01, 104, 44)
+    assert_contains(arrival.message, "Arrived at Swamp Cave", "final waypoint should complete the route")
+    assert_equal(routes.is_active(), false, "route should stop after reaching the cave")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_route_from_swamp_cave_uses_swamp_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("kol", 0x01, 104, 44)
+
+    assert_equal(err, nil, "Kol alias should resolve outside Swamp Cave")
+    assert_equal(info.route.id, "kol_swamp_cave", "route should use the Swamp Cave return variant")
+    assert_equal(info.object_id, "route_kol_swamp_cave_02", "cave start should back out from the doorstep")
+    assert_contains(info.message, "Swamp Cave doorstep", "return route should begin at the cave doorstep")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 44))
+    assert_equal(segment.waypoint.name, "Swamp Cave doorstep", "first return segment should target the doorstep")
+    assert_equal(segment.steps[1], "up", "first return step should leave the cave trigger row")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_object_from_swamp_cave_uses_swamp_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
+    }, 0x01, 104, 43)
+
+    assert_equal(err, nil, "Kol Travel object should start from Swamp Cave")
+    assert_equal(info.route.id, "kol_swamp_cave", "Kol object should choose the cave return route")
+    assert_equal(info.object_id, "route_kol_swamp_cave_03", "doorstep starts should advance to the entrance row")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_swamp_cave_return_uses_x94_drop_and_bridge_jog()
+    routes.reset_for_tests()
+    routes.start("swamp cave to kol", 0x01, 104, 44)
+
+    local doorstep = routes.observe_position(0x01, 104, 43)
+    assert_contains(doorstep.message, "Poison swamp return to Kol", "return route should warn before poison swamp")
+    assert_contains(doorstep.message, "Next: Swamp Cave entrance row", "return route should continue along the entrance row")
+
+    routes.observe_position(0x01, 102, 43)
+    routes.observe_position(0x01, 102, 42)
+    routes.observe_position(0x01, 97, 42)
+    routes.observe_position(0x01, 97, 41)
+    routes.observe_position(0x01, 94, 41)
+    local lower_approach = routes.observe_position(0x01, 94, 40)
+    assert_contains(lower_approach.message, "Reached Swamp Cave lower west approach", "return route should use the x94 row-40 tile")
+    assert_contains(lower_approach.message, "Next: Kol bridge east lane", "x94 approach should route back to the bridge lane")
+
+    local bridge_segment = assert(routes.plan_next_segment(0x01, 94, 40))
+    assert_equal(bridge_segment.waypoint.name, "Kol bridge east lane", "route should target the bridge lane after the x94 approach")
+    assert_equal(bridge_segment.steps[1], "left", "route should cross west at y=40 before going north")
+    assert_equal(bridge_segment.steps[#bridge_segment.steps], "up", "route should finish by climbing to the bridge lane")
+
+    routes.observe_position(0x01, 92, 37)
+    routes.observe_position(0x01, 92, 36)
+    routes.observe_position(0x01, 93, 36)
+    routes.observe_position(0x01, 93, 35)
+    routes.observe_position(0x01, 96, 35)
+    routes.observe_position(0x01, 96, 32)
+    routes.observe_position(0x01, 96, 21)
+    routes.observe_position(0x01, 96, 13)
+    local arrival = routes.observe_position(0x01, 104, 10)
+    assert_contains(arrival.message, "Arrived at Kol", "final waypoint should complete the return route")
+    assert_equal(routes.is_active(), false, "route should stop after reaching Kol")
 
     routes.reset_for_tests()
 end
@@ -865,7 +1135,20 @@ function tests.entering_rain_shrine_stops_northern_cave_route()
     routes.reset_for_tests()
 end
 
-function tests.selected_destination_does_not_replace_active_route()
+function tests.entering_swamp_cave_stops_swamp_cave_route()
+    routes.reset_for_tests()
+    routes.start("swamp cave", 0x01, 104, 42)
+
+    local event = routes.observe_position(0x15, 0, 0)
+
+    assert_contains(event.message, "Arrived at Swamp Cave", "entering Swamp Cave should complete the route")
+    assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "route should stop after entering Swamp Cave")
+
+    routes.reset_for_tests()
+end
+
+function tests.selected_different_destination_replaces_active_route()
     routes.reset_for_tests()
     routes.start("cave", 0x01, 30, 32)
 
@@ -876,14 +1159,10 @@ function tests.selected_destination_does_not_replace_active_route()
         y = 41,
     }, 0x01, 28, 12)
 
-    assert_equal(err, nil, "active route guidance should ignore unrelated selected destinations")
-    assert_contains(info.message, "Route to Erdrick's Cave", "R should keep reporting the active route")
-    assert_contains(info.log, "route=erdrick", "status should remain attached to the active route")
-    assert_equal(routes.active_route_id(), "erdrick", "selected object drift should not replace the active route")
-
-    local replacement = routes.start("brecconary", 0x01, 28, 12)
-    assert_contains(replacement.message, "Route changed. Route to Brecconary", "explicit route start should still replace the active route")
-    assert_equal(routes.active_route_id(), "brecconary", "explicit command replacement should remain available")
+    assert_equal(err, nil, "active route guidance should accept a different Travel destination")
+    assert_contains(info.message, "Route changed. Route to Brecconary", "R should replace the active route")
+    assert_contains(info.log, "event=replace route=brecconary", "route replacement should be visible in logs")
+    assert_equal(routes.active_route_id(), "brecconary", "selected destination should replace the active route")
 
     routes.reset_for_tests()
 end

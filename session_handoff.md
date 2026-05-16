@@ -45,8 +45,72 @@ minor route noise. Static proof after the first Rain Shrine interior patch:
 `lua test_overworld_routes.lua` (50 tests), `lua test_objects.lua` (59 tests),
 `lua test_map_reader.lua` (29 tests), `lua test_route_manager.lua` (58 tests),
 `luac -p` on route/object/map-reader files and tests, and `git diff --check`.
-After reload from the old `(91,5)` overworld pocket, the likely retest remains
-`route_recalculate`, then `auto_walk`.
+After the first shrine visit, the route back to Kol exposed the reverse-side
+gap: an active plain `kol` route near the shrine could try to pick up the
+southern `North Alefgard bridge road` / later Kol chain instead of backing out
+through the Rain Shrine approach. `overworld_routes.lua` now has a
+`kol_rain_shrine` route variant sharing the `overworld_kol` destination. It
+reverses the Northern Cave approach from `(81,1)` back to Kol, and
+`route_recalculate` can switch an already-active `kol` route onto that variant
+when the current world-map position is near the shrine. Fresh user grinding
+playtest after this patch: Kol to Northern Cave worked perfectly, and the
+reverse route back to Kol had only a few minor hiccups. Treat remaining issues
+on this route pair as polish unless later logs show a repeatable blocker. A
+follow-up test found that requesting Northern Cave from Tantegel started the
+Kol-side route at a disconnected Rain Shrine waypoint and produced an
+unfeasible long segment. `overworld_routes.lua` now guards that case: Northern
+Cave starts are accepted only in the local Kol/Rain Shrine corridor; from
+Tantegel or other far western/southern starts, the request automatically starts
+the Kol route first and explains that Northern Cave starts from Kol. Follow-up
+route-selection bug fix: while a route is active, pressing route guidance on a
+different supported Travel destination now replaces the active route again.
+Same-destination selections still recalculate/status the current route, and
+non-route selections still leave the active route in control.
+
+Current Swamp Cave route patch in the worktree: `overworld_routes.lua` now has
+Kol-side `swamp_cave`, bridge-side `swamp_cave_bridge`, and return-side
+`kol_swamp_cave` variants. The forward variants target the existing
+`overworld_swamp_cave` Travel landmark at `(104,44)` and complete when entering
+map `0x15` (`Swamp Cave`); the return variant shares the `overworld_kol`
+Travel destination and completes on Kol map `0x07`. External orientation came
+from Gamer Corner's `(1S,61E)` Swamp Cave coordinate, the NESMaps labeled
+overworld, Mike's RPG Center placing the cave far south of Kol near the bridge,
+and Gamer Corner's Rimuldar walkthrough warning that the approach crosses
+poison swamp. The route is intentionally staged through Kol from far starts
+rather than treated as an all-map route.
+
+Forward route details: from Kol `(104,10)`, it reuses `Kol forest west edge`
+`(96,13)`, `West of Kol north lane` `(96,21)`, `Kol south road` `(96,32)`, and
+`Kol south road east lane` `(96,35)`, then backs through the proven south-road
+jog at `(93,35)`, `(93,36)`, `(92,36)`, and `Kol bridge east lane` `(92,37)`.
+The first cave spur through `(100,35)`, `(104,39)`, and `(104,42)` was wrong:
+live probes showed it routes into a blocked x104/x107 pocket before the
+entrance row. A later live shakedown then reached the swamp edge but hung on
+the x92 transition: auto-walk reached `(92,40)` and blocked trying `DOWN` into
+`(92,41)`. Fresh probe proof: `(92,40)->DOWN` and `(93,40)->DOWN` blocked,
+while `(94,40)->DOWN`, `(95,40)->DOWN`, `(96,40)->DOWN`, and `(97,40)->DOWN`
+moved; `(92,40)->RIGHT` and `(93,40)->RIGHT` also moved. The corrected route
+now descends to `Swamp Cave lower west approach` `(94,40)`, drops to
+`(94,41)`, crosses the rechecked row-41 lane through `(97,41)`, then uses
+`(97,42)`, `(102,42)`, `(102,43)`, and `Swamp Cave doorstep` `(104,43)` before
+stepping down into the cave trigger at `(104,44)`. From the southwest bridge
+`(90,37)`, the bridge variant starts at `Kol bridge east lane` and joins the
+same x94 lower approach. Live proof after the x94 patch: the user reached the
+cave and `dw_debug.log` recorded `EVENT: map change -> 0x15 (Swamp Cave)` plus
+`OVERWORLD_ROUTE: event=arrived route=swamp_cave_bridge waypoint=Swamp Cave`.
+
+Return route details: `kol_swamp_cave` starts near Swamp Cave `(104,44)` and
+backs out through `(104,43)`, `(102,43)`, `(102,42)`, `(97,42)`, `(97,41)`,
+`(94,41)`, and `(94,40)`. From `(94,40)` it targets `Kol bridge east lane`
+`(92,37)` with horizontal-first routing so it crosses west on row 40 and then
+climbs the verified bridge lane instead of trying an untested x94 north climb.
+It then returns through `(92,36)`, `(93,36)`, `(93,35)`, `(96,35)`, `(96,32)`,
+`(96,21)`, `(96,13)`, and Kol `(104,10)`. Static proof after wiring the return:
+`lua test_overworld_routes.lua` (64 tests) and `luac -p overworld_routes.lua
+test_overworld_routes.lua`. The user then tested the route live in both
+directions. Both sides are usable; a few rough edges remain for future route
+polishing, but there is no major blocker before the next Swamp Cave interior
+exploration pass.
 
 Current Rain Shrine / Northern Cave interior patch in the worktree: map `0x0D`
 is the Staff of Rain shrine described by Realm of Darkness as the Northern
@@ -132,7 +196,10 @@ live south-road and northeast-bridge chain, reconnects at `Erdrick's Cave road`
 marker`, `East choke approach`, `Upper bridge lane`, and `Bridge south bend`.
 Static proof: `luac -p` on the changed route/object files and tests, `lua
 test_overworld_routes.lua` (49 tests), `lua test_objects.lua` (58 tests), `lua
-test_route_manager.lua` (58 tests), and `git diff --check`.
+test_route_manager.lua` (58 tests), and `git diff --check`. Fresh user
+grinding playtest: the reverse path from Kol back toward Tantegel solved the
+major navigation problems. It still needed minor manual adjustment, but worked
+well enough to treat remaining issues as polishing work.
 
 Latest dialogue/accessibility polish is live-validated in FCEUX but not yet
 committed. The STATUS command now interrupts with the full memory-backed status
@@ -239,7 +306,9 @@ before reload showed `EVENT: map change -> 0x07 (Kol)` and
 `OVERWORLD_ROUTE: event=arrived route=kol waypoint=Kol index=25`, and the fresh
 post-reload probe confirms `POSITION: map=0x07(Kol) x=19 y=23`. Treat the
 Tantegel-to-Kol route as playtested enough to move on to Kol services unless a
-return route exposes a new issue.
+return route exposes a new issue. Fresh user grinding playtest later reported
+that Tantegel to Kol works rather well, with a few manual side-steps needed to
+get back on course; smooth those points later as route polish.
 Kol service decoding has started. Local reference images were downloaded to
 `project_resources/maps/kol/external/`: `mikesrpgcenter_kol.png` and
 `realmofdarkness_kol.png` (plus a duplicate `vgmaps_kol.png` mirror). The
