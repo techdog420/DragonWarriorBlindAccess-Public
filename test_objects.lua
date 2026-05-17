@@ -281,6 +281,66 @@ function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     env.restore()
 end
 
+function tests.swamp_cave_exposes_distinct_north_and_south_travel_objects()
+    local env = make_env()
+
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x15)
+
+    local north_exit
+    local south_stair
+    local stale_corridor_exit
+    local entrance_stair
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.type == env.objects.TYPE_STAIR then
+            if obj.x == 0 and obj.y == 29 then
+                south_stair = obj
+            elseif obj.x == 0 and obj.y == 0 then
+                entrance_stair = obj
+            end
+        elseif obj.type == env.objects.TYPE_EXIT then
+            if obj.x == 0 and obj.y == 0 then
+                north_exit = obj
+            elseif obj.x == 0 and obj.y == 25 then
+                stale_corridor_exit = obj
+            end
+        end
+    end
+
+    assert_equal(north_exit ~= nil, true, "Swamp Cave should expose the north world-map exit")
+    assert_equal(south_stair ~= nil, true, "Swamp Cave should expose the south-island stairs")
+    assert_equal(entrance_stair, nil, "Swamp Cave should not duplicate the north exit as a stairs object")
+    assert_equal(stale_corridor_exit, nil, "Swamp Cave west-corridor bend should not be modeled as the south exit")
+    assert_equal(north_exit.id, "exit_0_0", "Swamp Cave north exit id should match the entrance tile")
+    assert_equal(north_exit.name, "North Exit to World Map", "Swamp Cave north exit should have a distinct label")
+    assert_equal(south_stair.id, "stair_0_29", "Swamp Cave south stairs id should match the ROM exit tile")
+    assert_equal(south_stair.name, "Stairs Up to South Island", "Swamp Cave south stairs should have a distinct label")
+
+    env.objects.travel_filter()
+    local filtered = env.objects.get_objects({filtered = true})
+    local swamp_travel_count = 0
+    for _, obj in ipairs(filtered) do
+        if obj.id == "exit_0_0" or obj.id == "stair_0_29" then
+            swamp_travel_count = swamp_travel_count + 1
+        end
+    end
+    assert_equal(swamp_travel_count, 2, "Travel filter should expose both Swamp Cave travel objects for route testing")
+
+    env.objects.set_filter(env.objects.FILTER_DOOR)
+    local doors = env.objects.get_objects({filtered = true})
+    assert_equal(#doors, 1, "Swamp Cave should expose the live-confirmed Gwaelin locked door")
+    local door = doors[1]
+    assert_equal(door.id, "door_5_20", "Swamp Cave Gwaelin door id should match the locked-door coordinate")
+    assert_equal(door.name, "Gwaelin Door", "Swamp Cave locked door should have a useful navigation label")
+    assert_equal(door.x, 5, "Swamp Cave Gwaelin door x should match the live OPEN probes")
+    assert_equal(door.y, 20, "Swamp Cave Gwaelin door y should match the live OPEN probes")
+    assert_equal(door.interaction_x, 5, "Swamp Cave Gwaelin door should route to the south stand x")
+    assert_equal(door.interaction_y, 21, "Swamp Cave Gwaelin door should route to the south stand y")
+    assert_equal(door.interaction_face_dir, "north", "Swamp Cave Gwaelin door should face north from the stand")
+
+    env.restore()
+end
+
 function tests.terrain_flip_forces_refresh_even_when_map_id_sticks()
     local env = make_env()
 
@@ -583,7 +643,7 @@ function tests.inactive_overworld_route_does_not_clutter_travel_filter()
     end
 
     assert_equal(found_route_marker, false, "inactive route waypoints should stay out of the Travel list")
-    assert_equal(env.objects.get_count(), 13, "plain world-map Travel should only list major destinations")
+    assert_equal(env.objects.get_count(), 14, "plain world-map Travel should only list major destinations")
 
     env.restore()
 end
@@ -722,6 +782,26 @@ function tests.garinham_exit_uses_live_west_entry_not_inn_corridor()
     env.restore()
 end
 
+function tests.rimuldar_exit_uses_live_east_entry_tile()
+    local env = make_env()
+
+    env.set_position(0x0B, 29, 13)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0B)
+
+    local obj = env.objects.select_object_by_id("exit_29_13")
+    assert_equal(obj ~= nil, true, "Rimuldar should expose the live east-side town exit")
+    assert_equal(obj.name, "Exit to World Map", "Rimuldar should keep the normal town-exit label")
+    assert_equal(obj.x, 29, "Rimuldar exit should use the live east-edge entry X")
+    assert_equal(obj.y, 13, "Rimuldar exit should use the live entry row")
+    assert_equal(obj.interaction_x, 29, "Rimuldar exit route should stand on the east entry tile")
+    assert_equal(obj.interaction_y, 13, "Rimuldar exit stand should match the live entry row")
+    assert_equal(obj.interaction_face_dir, "east", "Rimuldar exit stand should face out toward the world")
+
+    env.restore()
+end
+
 function tests.rain_shrine_exit_uses_live_bottom_entry_tile()
     local env = make_env()
 
@@ -758,6 +838,29 @@ function tests.garinham_overworld_landmark_uses_western_coordinate()
     assert_equal(landing.x, 1, "overworld landmark teleport should land on the landmark x")
     assert_equal(landing.y, 2, "overworld landmark teleport should land on the landmark y")
     assert_equal(landing.reason, "overworld_travel", "overworld landmark teleport should bypass missing map-reader walkability")
+
+    env.restore()
+end
+
+function tests.swamp_cave_south_entrance_is_available_as_overworld_landmark()
+    local env = make_env()
+
+    env.set_position(0x01, 104, 49)
+    env.set_terrain_offset(0x00)
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+
+    local south = env.objects.select_object_by_id("overworld_swamp_cave_south_entrance")
+    assert_equal(south ~= nil, true, "World map should expose the south Swamp Cave entrance")
+    assert_equal(south.name, "Swamp Cave South Entrance", "south entrance should have a distinct Travel label")
+    assert_equal(south.x, 104, "south entrance should use the validated overworld X")
+    assert_equal(south.y, 49, "south entrance should use the validated overworld Y")
+
+    local north = env.objects.find_overworld_landmark("Swamp Cave")
+    assert_equal(north.id, "overworld_swamp_cave", "plain Swamp Cave lookup should still resolve to the north entrance")
+
+    local lookup = env.objects.find_overworld_landmark("swamp cave south")
+    assert_equal(lookup.id, "overworld_swamp_cave_south_entrance", "south entrance should be findable by prefix")
 
     env.restore()
 end
@@ -1637,6 +1740,50 @@ function tests.garinham_confirmed_public_merchants_are_labeled()
     local marked = env.objects.mark_adjacent_npc_visited(0x09, 15, 15)
     assert_equal(marked.id, inn.id, "Garinham Inn public counter stand should mark the inn visited")
     assert_equal(env.objects.is_visited(inn, 0x09), true, "Garinham Inn counter visit should persist from the public stand")
+
+    env.restore()
+end
+
+function tests.rimuldar_merchant2_weapon_shop_uses_live_counter_stand()
+    local env = make_env({npc_count = 2})
+
+    env.set_position(0x0B, 23, 9)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 2, 0x04, 0x00) -- Merchant 1, other service slot
+    env.set_npc(1, 0x60 + 23, 0x47, 0x00) -- Merchant 2, live weapon/armor shop at (23,7)
+    env.objects.refresh(0x0B)
+
+    local weapons_merchant = nil
+    local generic_merchant2 = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Weapons Merchant" then
+            weapons_merchant = obj
+        elseif obj.name == "Merchant 2" then
+            generic_merchant2 = obj
+        end
+    end
+
+    assert_equal(weapons_merchant ~= nil, true, "Rimuldar Merchant 2 should be labeled as Weapons Merchant")
+    assert_equal(weapons_merchant.service, true, "Rimuldar Weapons Merchant should remain in Services")
+    assert_equal(weapons_merchant.x, 23, "Rimuldar Weapons Merchant NPC X should match live NPC RAM")
+    assert_equal(weapons_merchant.y, 7, "Rimuldar Weapons Merchant NPC Y should match live NPC RAM")
+    assert_equal(weapons_merchant.interaction_x, 23, "Rimuldar Weapons Merchant should use the live-confirmed counter stand X")
+    assert_equal(weapons_merchant.interaction_y, 9, "Rimuldar Weapons Merchant should use the live-confirmed counter stand Y")
+    assert_equal(weapons_merchant.interaction_face_dir, "north", "Rimuldar Weapons Merchant should face north from the counter")
+    assert_equal(generic_merchant2, nil, "Rimuldar Merchant 2 should not keep the generic label")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include Rimuldar Weapons Merchant")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x0B, 23, 9)
+    assert_equal(marked.id, weapons_merchant.id, "Rimuldar counter stand should mark the weapon merchant visited")
+    assert_equal(env.objects.is_visited(weapons_merchant, 0x0B), true, "Rimuldar counter visit should persist on the merchant")
 
     env.restore()
 end

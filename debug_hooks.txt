@@ -131,6 +131,12 @@ COMMANDS (write to dw_commands.txt, one per line)
                            variants from Rain Shrine or Swamp Cave
   start_overworld_route:swamp cave
                            Start route guidance to Swamp Cave / Rimuldar cave
+  start_overworld_route:rimuldar
+                           Start guide-derived candidate route guidance from the
+                           Swamp Cave south exit to Rimuldar
+  start_overworld_route:swamp cave south
+                           Start guide-derived candidate return route guidance
+                           from Rimuldar to the Swamp Cave south entrance
   route_guidance           Start guidance for selected Travel destination,
                            replace an active route if another guided Travel
                            destination is selected, or recalculate/status the

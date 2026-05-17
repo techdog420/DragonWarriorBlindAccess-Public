@@ -188,9 +188,6 @@ local STAIRS = {
     -- Confirmed live: STAIRS at (8,9) moves to B1 (map 0x1C) at (9,9).
     {map = 0x1D, x = 8, y = 9, name = "Stairs Up", dest = "B1"},
 
-    -- Swamp Cave (0x15)
-    {map = 0x15, x = 0, y = 0, name = "Stairs Up", dest = "World Map"},
-
     -- Mountain Cave (0x16)
     {map = 0x16, x = 6, y = 5, name = "Stairs Down", dest = "B2"},
 
@@ -223,6 +220,12 @@ local STAIRS = {
     {map = 0x10, x = 7, y = 7, name = "Stairs Up", dest = "B1"},
     {map = 0x10, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
     {map = 0x11, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
+
+    -- Swamp Cave (0x15)
+    -- ROM up-stair table entry 15 00 1D at file offset 0xF486. Live checks
+    -- showed (5,29) is only a bottom-right alcove; the exit is the west-edge
+    -- tile reached from row 29.
+    {map = 0x15, x = 0, y = 29, name = "Stairs Up", dest = "South Island"},
 }
 
 -- ============================================================
@@ -259,7 +262,17 @@ local EXITS = {
         interaction_label = "exit",
     },                                                                      -- Garinham
     {map = 0x0A, x = 14, y = 29, name = "Exit", dest = "World Map"},      -- Cantlin
-    {map = 0x0B, x = 15, y = 14, name = "Exit", dest = "World Map"},      -- Rimuldar
+    {
+        map = 0x0B,
+        x = 29,
+        y = 13,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 29,
+        interaction_y = 13,
+        interaction_face_dir = "east",
+        interaction_label = "exit",
+    },                                                                      -- Rimuldar
 
     -- Castles — exits are typically at the south entrance
     -- NOTE: map 0x05 = Tantegel Throne Room (empirically confirmed, 9x9).
@@ -289,7 +302,14 @@ local EXITS = {
     {map = 0x0E, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Magic Temple
 
     -- Cave entrances (the "stairs up" at the entrance)
-    {map = 0x15, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Swamp Cave
+    {
+        map = 0x15,
+        x = 0,
+        y = 0,
+        name = "Exit",
+        dest = "World Map",
+        object_name = "North Exit to World Map",
+    },                                                                      -- Swamp Cave
     {map = 0x16, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Mountain Cave
     {map = 0x18, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Garin's Grave B1
     {map = 0x1C, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Erdrick's Cave B1
@@ -316,6 +336,7 @@ local OVERWORLD_LANDMARKS = {
     {dx =  38, dy = -42, name = "Northern Cave"},
     {dx = -14, dy =  14, name = "Mountain Cave"},
     {dx =  61, dy =   1, name = "Swamp Cave"},
+    {dx =  61, dy =   6, name = "Swamp Cave South Entrance"},
     {dx =  59, dy =  29, name = "Rimuldar"},
     {dx =  65, dy =  66, name = "Southern Cave"},
     {dx =  30, dy =  59, name = "Cantlin"},
@@ -810,7 +831,7 @@ local function get_exits(map_id)
             result[#result + 1] = {
                 x = exit.x,
                 y = exit.y,
-                name = "Exit to " .. exit.dest,
+                name = exit.object_name or ("Exit to " .. exit.dest),
                 type = M.TYPE_EXIT,
                 id = "exit_" .. exit.x .. "_" .. exit.y,
                 interaction_x = exit.interaction_x,
@@ -966,6 +987,15 @@ local EXTRA_DOORS = {
     [0x09] = {
         {x=19, y=16, name="East Door", type=M.TYPE_DOOR, id="door_19_16"},
     },
+    -- Map 0x15: Swamp Cave / Quagmire Cave. Live OPEN probes from both (5,21)
+    -- and (5,19) reported the no-key door message, triangulating the door cell
+    -- at (5,20). Route to the south stand tile for normal key-side access.
+    [0x15] = {
+        {
+            x=5, y=20, name="Gwaelin Door", type=M.TYPE_DOOR, id="door_5_20",
+            interaction_x=5, interaction_y=21, interaction_face_dir="north",
+        },
+    },
 }
 
 local EXTRA_TREASURES = {
@@ -1020,6 +1050,12 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["17,15"] = {x = 15, y = 15, face_dir = "east", label = "counter", name = "Inn"},
         ["10,18"] = {x = 10, y = 16, face_dir = "south", label = "counter", name = "Weapons Merchant"},
     },
+
+    -- Rimuldar weapon/armor shop. Merchant 2 occupies (23,7); live TALK proof
+    -- from the public counter stand at (23,9) facing north opened the shop.
+    [0x0B] = {
+        ["23,7"] = {x = 23, y = 9, face_dir = "north", label = "counter", name = "Weapons Merchant"},
+    },
 }
 
 local SERVICE_ROLE_OVERRIDES = {
@@ -1062,6 +1098,13 @@ local SERVICE_ROLE_OVERRIDES = {
             ["Merchant 2"] = {name = "Tool Merchant", infer_counter = true},
             ["Merchant 3"] = {name = "Inn", infer_counter = true},
             ["Merchant 4"] = {name = "Weapons Merchant", infer_counter = true},
+        },
+    },
+    -- Rimuldar Merchant 2 is the live-confirmed weapon/armor shop. The
+    -- interaction stand is modeled in SERVICE_INTERACTION_OVERRIDES above.
+    [0x0B] = {
+        names = {
+            ["Merchant 2"] = {name = "Weapons Merchant", infer_counter = true},
         },
     },
 }

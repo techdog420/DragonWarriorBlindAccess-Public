@@ -82,6 +82,15 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local function path_has_step(path, x, y, direction)
+    for _, step in ipairs(path or {}) do
+        if step.x == x and step.y == y and step.direction == direction then
+            return true
+        end
+    end
+    return false
+end
+
 local tests = {}
 
 function tests.throne_room_keeps_east_descent_open()
@@ -1239,6 +1248,163 @@ function tests.erdricks_cave_b1_entrance_passthrough_overrides_edge_boundary()
     assert_equal(snapshot[0][1], true, "walkability snapshot should include the Erdrick B1 entrance strip")
     assert_equal(snapshot[1][0], false, "walkability snapshot should keep the unconfirmed west edge blocked")
     assert_equal(snapshot[1][1], true, "walkability snapshot should include the Erdrick B1 entrance floor")
+
+    env.restore()
+end
+
+function tests.swamp_cave_west_edge_corridor_overrides_boundary()
+    local base = 0x15 * 5
+    local memory_bytes = {
+        [0] = 0x20, -- TERRAIN_OFFSET stubbed to 0 in make_env()
+    }
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,      -- CPU $8000 -> file offset $0010
+            [base + 1] = 0x80,
+            [base + 2] = 5,     -- width 6
+            [base + 3] = 29,    -- height 30
+            [base + 4] = 0,
+            [0x10] = 0x00, [0x11] = 0x00, [0x12] = 0x00,
+            [0x13] = 0x00, [0x14] = 0x00, [0x15] = 0x00,
+            [0x16] = 0x00, [0x17] = 0x00, [0x18] = 0x00,
+            [0x19] = 0x00, [0x1A] = 0x00, [0x1B] = 0x00,
+        },
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    for _, y in ipairs({0, 1, 10, 16, 24, 25}) do
+        local details = env.map_reader.get_walkability_details(0x15, 0, y)
+        assert_equal(details.base_walkable, true, "Swamp Cave x=0 corridor should be passable")
+        assert_equal(details.reason, "passthrough", "Swamp Cave x=0 corridor should override boundary")
+    end
+
+    local south_exit = env.map_reader.get_walkability_details(0x15, 0, 29)
+    assert_equal(south_exit.base_walkable, true, "Swamp Cave south-island stairs should be passable")
+    assert_equal(south_exit.reason, "passthrough", "Swamp Cave south-island stairs should override boundary")
+
+    local lower_turn = env.map_reader.get_walkability_details(0x15, 0, 28)
+    assert_equal(lower_turn.base_walkable, true, "Swamp Cave lower west turn should be passable")
+    assert_equal(lower_turn.reason, "passthrough", "Swamp Cave lower west turn should override boundary")
+
+    local closed_gwaelin_door = env.map_reader.get_walkability_details(0x15, 5, 20)
+    assert_equal(closed_gwaelin_door.base_walkable, false, "Swamp Cave Gwaelin door should block while closed")
+    assert_equal(closed_gwaelin_door.reason, "door_closed", "Swamp Cave Gwaelin door should report door_closed")
+
+    memory_bytes[0x600C] = 5
+    memory_bytes[0x600D] = 20
+    local open_gwaelin_door = env.map_reader.get_walkability_details(0x15, 5, 20)
+    assert_equal(open_gwaelin_door.base_walkable, true, "Swamp Cave Gwaelin door should open from door RAM")
+    assert_equal(open_gwaelin_door.reason, "door_open", "Swamp Cave Gwaelin door should report door_open")
+    memory_bytes[0x600C] = 0
+    memory_bytes[0x600D] = 0
+
+    for _, y in ipairs({26, 27}) do
+        local closed_south = env.map_reader.get_walkability_details(0x15, 0, y)
+        assert_equal(closed_south.base_walkable, false, "Swamp Cave x=0 corridor should stop south of (0,25)")
+        assert_equal(closed_south.reason, "engine_boundary", "Swamp Cave lower west edge should keep the boundary rule")
+    end
+
+    local dirs = env.map_reader.get_directional_blocks(0x15)
+    assert_equal(dirs["1,24"].south, true, "Swamp Cave should block northward entry from (1,25) into (1,24)")
+    assert_equal(dirs["1,27"].north, true, "Swamp Cave should block southward entry from (1,26) into (1,27)")
+    assert_equal(dirs["1,27"].south, true, "Swamp Cave should block northward entry from (1,28) into (1,27)")
+    assert_equal(dirs["2,27"].north, true, "Swamp Cave should block southward entry from (2,26) into (2,27)")
+    assert_equal(dirs["2,28"].south, true, "Swamp Cave should block northward entry from (2,29) into (2,28)")
+    assert_equal(dirs["2,28"].east, true, "Swamp Cave should block westward entry from (3,28) into (2,28)")
+    assert_equal(dirs["2,28"].west, true, "Swamp Cave should block eastward entry from (1,28) into (2,28)")
+    assert_equal(dirs["2,27"].east, true, "Swamp Cave should block westward entry from (3,27) into (2,27)")
+    local row8 = dirs["1,8"]
+    assert_equal(type(row8) == "table" and row8.west or nil, nil, "Swamp Cave should leave (0,8)->RIGHT open as the first x=0 re-entry")
+    for y = 9, 18 do
+        assert_equal(dirs["1," .. y].west, true, "Swamp Cave should block eastward entry from x=0 corridor through row 18")
+    end
+    assert_equal(dirs["1,19"].west, true, "Swamp Cave should block eastward entry from (0,19) into (1,19)")
+    assert_equal(dirs["1,20"].west, true, "Swamp Cave should block eastward entry from (0,20) into (1,20)")
+    assert_equal(dirs["1,21"].west, true, "Swamp Cave should block eastward entry from (0,21) into (1,21)")
+    assert_equal(dirs["1,22"].south, true, "Swamp Cave should block northward entry from (1,23) into (1,22)")
+    assert_equal(dirs["1,22"].west, true, "Swamp Cave should block eastward entry from (0,22) into (1,22)")
+    assert_equal(dirs["2,22"].south, true, "Swamp Cave should block northward entry from (2,23) into (2,22)")
+    assert_equal(dirs["3,22"].south, true, "Swamp Cave should block northward entry from (3,23) into (3,22)")
+    assert_equal(dirs["4,23"].west, true, "Swamp Cave should block eastward entry from (3,23) into (4,23)")
+    assert_equal(dirs["4,23"].east, true, "Swamp Cave should block westward entry from (5,23) into (4,23)")
+    assert_equal(dirs["4,24"].west, true, "Swamp Cave should block eastward entry from (3,24) into (4,24)")
+    assert_equal(dirs["4,24"].south, true, "Swamp Cave should block northward entry from (4,25) into (4,24)")
+    assert_equal(dirs["4,24"].east, nil, "Swamp Cave should leave mixed (5,24)->LEFT evidence unmodeled")
+    assert_equal(dirs["5,22"].south, true, "Swamp Cave should block northward entry from (5,23) into (5,22)")
+
+    local out_of_bounds = env.map_reader.get_walkability_details(0x15, 0, 30)
+    assert_equal(out_of_bounds.base_walkable, false, "Swamp Cave y=30 should stay out of bounds")
+    assert_equal(out_of_bounds.reason, "out_of_bounds", "Swamp Cave y=30 should not become a corridor cell")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x15)
+    assert_equal(snapshot[0][0], true, "walkability snapshot should include the north entrance")
+    assert_equal(snapshot[25][0], true, "walkability snapshot should include the south end of the x=0 corridor")
+    assert_equal(snapshot[26][0], false, "walkability snapshot should keep the lower x=0 wall closed")
+    assert_equal(snapshot[28][0], true, "walkability snapshot should include the lower return-route west turn")
+    assert_equal(snapshot[29][0], true, "walkability snapshot should include the ROM south-island stairs")
+
+    save_module("pathfinder")
+    package.loaded["pathfinder"] = nil
+    local pathfinder = require "pathfinder"
+    local corridor_path = pathfinder.find_path(0x15, 0, 0, 0, 25, {})
+    assert_equal(corridor_path ~= nil, true, "Swamp Cave should pathfind from the north exit to the west-corridor bend")
+    assert_equal(#corridor_path, 25, "Swamp Cave north-to-bend route should follow the x=0 corridor")
+
+    local south_stairs_path = pathfinder.find_path(0x15, 0, 0, 0, 29, {})
+    assert_equal(south_stairs_path ~= nil, true, "Swamp Cave should pathfind from the north exit to the south-island stairs")
+    assert_equal(#south_stairs_path, 35, "Swamp Cave south-stairs route should detour around the lower directional blocks")
+    assert_equal(path_has_step(south_stairs_path, 1, 27, "south"), false, "Swamp Cave south-stairs path should not retry the blocked (1,26)->DOWN seam")
+    assert_equal(path_has_step(south_stairs_path, 2, 27, "south"), false, "Swamp Cave south-stairs path should not retry the blocked (2,26)->DOWN seam")
+
+    local return_path = pathfinder.find_path(0x15, 0, 29, 0, 0, {})
+    assert_equal(return_path ~= nil, true, "Swamp Cave should pathfind from the south-island stairs back to the north exit")
+    assert_equal(path_has_step(return_path, 1, 24, "north"), false, "Swamp Cave return path should not retry the blocked (1,25)->UP seam")
+    assert_equal(path_has_step(return_path, 1, 27, "north"), false, "Swamp Cave return path should not retry the blocked (1,28)->UP seam")
+    assert_equal(path_has_step(return_path, 2, 28, "north"), false, "Swamp Cave return path should not retry the blocked (2,29)->UP seam")
+    assert_equal(path_has_step(return_path, 2, 28, "east"), false, "Swamp Cave return path should not retry the blocked (1,28)->RIGHT seam")
+    assert_equal(path_has_step(return_path, 2, 28, "west"), false, "Swamp Cave return path should not retry the blocked (3,28)->LEFT seam")
+    assert_equal(path_has_step(return_path, 2, 27, "west"), false, "Swamp Cave return path should not retry the blocked (3,27)->LEFT seam")
+
+    local blocked_path = pathfinder.find_path(0x15, 0, 0, 0, 26, {})
+    assert_equal(blocked_path, nil, "Swamp Cave pathfinder should not route south past (0,25)")
+
+    local closed_door_path = pathfinder.find_path(0x15, 0, 29, 5, 20, {})
+    assert_equal(closed_door_path, nil, "Swamp Cave should not path through the closed Gwaelin door cell")
+
+    local door_stand_path = pathfinder.find_path(0x15, 0, 29, 5, 21, {})
+    assert_equal(door_stand_path ~= nil, true, "Swamp Cave should route from south stairs to the Gwaelin door stand")
+    assert_equal(path_has_step(door_stand_path, 3, 22, "north"), false, "Swamp Cave door route should not retry the blocked (3,23)->UP seam")
+    assert_equal(path_has_step(door_stand_path, 4, 23, "east"), false, "Swamp Cave door route should not retry the blocked (3,23)->RIGHT seam")
+
+    local north_to_door_stand = pathfinder.find_path(0x15, 0, 0, 5, 21, {})
+    assert_equal(north_to_door_stand ~= nil, true, "Swamp Cave should route from north exit to the Gwaelin door stand")
+
+    local door_stand_to_south = pathfinder.find_path(0x15, 5, 21, 0, 29, {})
+    assert_equal(door_stand_to_south ~= nil, true, "Swamp Cave should route from the Gwaelin door stand to the south-island stairs")
+
+    local door_stand_to_north = pathfinder.find_path(0x15, 5, 21, 0, 0, {})
+    assert_equal(door_stand_to_north ~= nil, true, "Swamp Cave should route from the Gwaelin door stand to the north exit")
+
+    local post_battle_to_door = pathfinder.find_path(0x15, 3, 26, 5, 21, {})
+    assert_equal(post_battle_to_door ~= nil, true, "Swamp Cave should route from the post-battle lower branch back to the Gwaelin door stand")
+    for y = 9, 18 do
+        assert_equal(path_has_step(post_battle_to_door, 1, y, "east"), false, "Swamp Cave post-battle door route should not retry blocked x=0 east re-entries")
+    end
+    assert_equal(path_has_step(post_battle_to_door, 1, 19, "east"), false, "Swamp Cave post-battle door route should not retry the blocked (0,19)->RIGHT seam")
+    assert_equal(path_has_step(post_battle_to_door, 1, 20, "east"), false, "Swamp Cave post-battle door route should not retry the blocked (0,20)->RIGHT seam")
+    assert_equal(path_has_step(post_battle_to_door, 1, 21, "east"), false, "Swamp Cave post-battle door route should not retry the blocked (0,21)->RIGHT seam")
+    assert_equal(path_has_step(post_battle_to_door, 1, 22, "east"), false, "Swamp Cave post-battle door route should not retry the blocked (0,22)->RIGHT seam")
+    assert_equal(path_has_step(post_battle_to_door, 4, 24, "east"), false, "Swamp Cave post-battle door route should not retry the blocked (3,24)->RIGHT seam")
+    assert_equal(path_has_step(post_battle_to_door, 4, 24, "north"), false, "Swamp Cave post-battle door route should not retry the blocked (4,25)->UP seam")
+    assert_equal(path_has_step(post_battle_to_door, 1, 22, "north"), false, "Swamp Cave post-battle door route should not retry the blocked (1,23)->UP seam")
+    assert_equal(path_has_step(post_battle_to_door, 2, 22, "north"), false, "Swamp Cave post-battle door route should not retry the blocked (2,23)->UP seam")
+    assert_equal(path_has_step(post_battle_to_door, 5, 22, "north"), false, "Swamp Cave post-battle door route should not retry the blocked (5,23)->UP seam")
+    assert_equal(path_has_step(post_battle_to_door, 4, 23, "west"), false, "Swamp Cave post-battle door route should not retry the blocked (5,23)->LEFT seam")
+    restore_modules({"pathfinder"})
 
     env.restore()
 end

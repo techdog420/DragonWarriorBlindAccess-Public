@@ -497,6 +497,47 @@ local MAP_PASSTHROUGH_CELLS = {
         ["20,23"] = true,
     },
 
+    -- Map 0x15: Swamp Cave north-south west-edge corridor.
+    -- The generic dungeon edge rule marks x=0 as a boundary, but live play on
+    -- 2026-05-16 walked the x=0 corridor in both directions. The proven
+    -- corridor bend at (0,25): repeated south attempts from there did not
+    -- complete a tile step. The south-island exit is a separate west-edge
+    -- cell at (0,29), identified from the ROM up-stair table entry
+    -- 15 00 1D at file offset 0xF486 and reached from row 29.
+    -- A later route from the island exit back to the original entrance proved
+    -- (0,28) passable from the south/east side. Keep (0,26)..(0,27) closed
+    -- until live movement proves otherwise.
+    [0x15] = {
+        ["0,0"] = true,
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["0,7"] = true,
+        ["0,8"] = true,
+        ["0,9"] = true,
+        ["0,10"] = true,
+        ["0,11"] = true,
+        ["0,12"] = true,
+        ["0,13"] = true,
+        ["0,14"] = true,
+        ["0,15"] = true,
+        ["0,16"] = true,
+        ["0,17"] = true,
+        ["0,18"] = true,
+        ["0,19"] = true,
+        ["0,20"] = true,
+        ["0,21"] = true,
+        ["0,22"] = true,
+        ["0,23"] = true,
+        ["0,24"] = true,
+        ["0,25"] = true,
+        ["0,28"] = true,
+        ["0,29"] = true,
+    },
+
     -- Map 0x1C: Erdrick's Cave B1 entrance strip.
     -- Live probes on 2026-05-08 confirmed the engine moves
     -- (0,0) -> right -> (1,0) -> down -> (1,1), and the reverse
@@ -600,6 +641,13 @@ local MAP_DOOR_CELLS = {
     -- coordinate can be verified after keys/opened-door access.
     [0x09] = {
         ["19,16"] = {x=19, y=16},
+    },
+    -- Map 0x15: Swamp Cave / Quagmire Cave locked Gwaelin branch.
+    -- The first (5,22) hypothesis was disproven live. Follow-up OPEN probes
+    -- found the real door at (5,20): both (5,21) and (5,19) reported "Thou
+    -- hast not a key to use", and OPEN checks only the four adjacent cells.
+    [0x15] = {
+        ["5,20"] = {x=5, y=20},
     },
 }
 
@@ -1705,6 +1753,55 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["1,10"] = {east = true},
         ["1,11"] = {east = true},
         ["1,12"] = {east = true},
+    },
+
+    -- Map 0x15: Swamp Cave lower return route
+    --
+    -- 2026-05-16 route from the south-island exit area back to the original
+    -- entrance exposed one-way cave seams below the west-corridor bend. Keep
+    -- these directional-only: the route-shaped log proves specific failed
+    -- approaches, while other approaches should remain available until direct
+    -- probes say otherwise.
+    [0x15] = {
+        ["1,24"] = {south = true}, -- (1,25)->UP blocked, retried, then became PATH_RUNTIME_BLOCK
+        ["1,27"] = {north = true, south = true}, -- north blocked 28x from (1,26); south blocked from (1,28)
+        ["2,28"] = {south = true, east = true, west = true}, -- failed from (2,29), (3,28), and (1,28)
+        ["2,27"] = {north = true, east = true}, -- north blocked 26x from (2,26); east blocked from (3,27)
+        -- Gwaelin Door route: south-exit-to-door auto-walk looped at (3,23)
+        -- until stopped, then direct edge probes confirmed both approaches
+        -- block despite walkable tile previews.
+        ["3,22"] = {south = true}, -- (3,23)->UP blocked 37x, then direct probe blocked
+        ["4,23"] = {west = true, east = true}, -- blocked from (3,23)->RIGHT and (5,23)->LEFT
+        -- Follow-up post-battle route from (3,26) toward Gwaelin Door looped
+        -- on (3,24)->RIGHT. probe_edge_verify:3,24,RIGHT,3 confirmed 3/3
+        -- blocked despite an open tile preview. The nearby (2,23)->UP seam
+        -- was initially mixed, then later confirmed blocked 3/3 after the
+        -- lower detour reached the west side. The next loops confirmed the
+        -- north edge into (5,22), west edge into (4,23), (4,25)->UP into
+        -- (4,24), (1,23)->UP into (1,22), and west-edge re-entries from
+        -- (0,19)->RIGHT into (1,19), (0,20)->RIGHT into (1,20),
+        -- (0,21)->RIGHT into (1,21), and (0,22)->RIGHT into (1,22) as
+        -- blocked 3/3. Follow-up manual validation found the x=0 corridor's
+        -- east re-entry blocked through (0,9)->RIGHT, with (0,8) the first
+        -- open eastward cell. The nearby
+        -- (5,24)->LEFT into (4,24) result was mixed and remains unmodeled.
+        ["1,9"] = {west = true},
+        ["1,10"] = {west = true},
+        ["1,11"] = {west = true},
+        ["1,12"] = {west = true},
+        ["1,13"] = {west = true},
+        ["1,14"] = {west = true},
+        ["1,15"] = {west = true},
+        ["1,16"] = {west = true},
+        ["1,17"] = {west = true},
+        ["1,18"] = {west = true},
+        ["1,19"] = {west = true},
+        ["1,20"] = {west = true},
+        ["1,21"] = {west = true},
+        ["1,22"] = {south = true, west = true},
+        ["2,22"] = {south = true},
+        ["4,24"] = {west = true, south = true},
+        ["5,22"] = {south = true},
     },
 
     -- Map 0x1C: Erdrick's Cave B1

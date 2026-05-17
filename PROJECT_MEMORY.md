@@ -406,6 +406,106 @@ Emulator compatibility direction:
   through the Kol south-road and forest waypoints to `(104,10)`. The user
   tested the Swamp Cave route in both directions live; remaining issues are
   polish-level rough edges, not major blockers.
+- Swamp Cave (`map 0x15`) interior is a 6x30 one-floor tunnel. Guide
+  orientation puts the north entrance at `(1S,61E)` and south exit at
+  `(6S,61E)`, with one locked door, no chests, and Princess Gwaelin behind a
+  Green Dragon side objective. Live play and user testing showed the `x=0`
+  corridor is passable in both directions from `(0,0)` through `(0,25)`, where
+  south access ends, so `MAP_PASSTHROUGH_CELLS[0x15]` models
+  `x=0,y=0..25` as walkable despite the generic interior boundary rule.
+  Later live evidence corrected the south-island object coordinate twice:
+  `(0,25)` is the west-corridor bend and reports no stairs, and `(5,29)` is only
+  the bottom-right alcove. The ROM up-stair table entry `15 00 1D` at file
+  offset `0xF486` points to the actual south-island stairs at `(0,29)`, reached
+  from row 29. Swamp Cave should expose two Travel objects, `North Exit to World
+  Map` at `(0,0)` and `Stairs Up to South Island` at `(0,29)`. A later
+  south-exit return-route log proved `(0,28)` passable, while `(0,26)..(0,27)`
+  stay closed until live movement proves otherwise. `MAP_DIRECTIONAL_BLOCKS`
+  for map `0x15` covers lower-route failed approaches into `(1,24)`, `(1,27)`,
+  `(2,28)`, and `(2,27)` so A* avoids the loop-prone seams. A later auto-walk
+  loop toward `Stairs Up to South Island` repeatedly bounced between
+  `(1,26)->DOWN` into `(1,27)` and `(2,26)->DOWN` into `(2,27)`, with queued
+  route and seam-retry failures, so `(1,27).north` and `(2,27).north` are also
+  modeled as directional blocks. The south-exit
+  stairs path from the row-29 exit area lands on the world map at `(104,49)`,
+  exactly five tiles south of the known north entrance `(104,44)` and consistent
+  with the guide coordinate pair `(1S,61E)` / `(6S,61E)`. World-map Travel
+  should expose `Swamp Cave South Entrance` at `(104,49)` separately from the
+  north `Swamp Cave` landmark at `(104,44)`. Later live route looping produced
+  working auto-walk routes between `North Exit to World Map` and
+  `Stairs Up to South Island` in both directions. Treat later lower-route
+  entries that time out after movement starts and then move on seam retry as
+  timing noise unless a fresh direct verifier proves the edge blocked-only.
+  Realm of Darkness' Swamp Cave map places Gwaelin and the Green Dragon behind
+  the lower-right branch door. The first `(5,22)` coordinate hypothesis was
+  disproven live: from `(5,23)`, OPEN reported "There is no door here."
+  Follow-up no-key OPEN probes from `(5,21)` and `(5,19)` both reported "Thou
+  hast not a key to use." DW1's OPEN routine checks only the four adjacent
+  cells, so the shared adjacent coordinate is the confirmed door cell `(5,20)`.
+  Model `Gwaelin Door` at `(5,20)` with the normal route stand `(5,21)` facing
+  north. A later south-stairs-to-door auto-walk loop exposed two more confirmed
+  lower-branch directional seams: `(3,22).south` blocks entry from `(3,23)`,
+  and `(4,23).west` blocks entry from `(3,23)`. With those modeled, live
+  `debug_pathfind` routes work between the `Gwaelin Door` stand and both cave
+  exits in both directions. A later post-battle loop from `(3,26)` confirmed
+  `(4,24).west` as another real lower-branch directional seam; `(2,22).south`
+  had mixed verifier results and should not be promoted without stronger
+  evidence. The next loop at `(5,23)` confirmed `(5,22).south` and
+  `(4,23).east` as additional blocked approach seams, both with 3/3
+  `probe_edge_verify` results; static routes still detour from `(5,23)` to the
+  door stand through `(5,24)->(4,24)->(4,23)->(4,22)->(4,21)->(5,21)`.
+  The next lower-branch loop confirmed `(4,24).south` from `(4,25)->UP` with a
+  3/3 verifier, while `(4,24).east` from `(5,24)->LEFT` stayed mixed despite
+  heavy loop evidence. Keep `(4,24).east` runtime-only unless a future verifier
+  reaches consensus.
+  The following lower-left detour run promoted more confirmed approach-only
+  seams: `(2,22).south`, `(1,22).south/west`, `(1,21).west`, `(1,20).west`,
+  and `(1,19).west`, all from 3/3 `probe_edge_verify` results. The next
+  candidate re-entry was row 18, but manual follow-up confirmed the x=0 east
+  re-entry stays blocked through row 9 and first opens at `(0,8)`. Model
+  `(1,9).west` through `(1,18).west`, while keeping `(1,8).west` open.
+  The Green Dragon fixed encounter is log-confirmed at `(4,14)`: after
+  auto-walk reached `(4,14)` and attempted `DOWN`, battle started at field
+  position `(4,14)`, followed by `A Green Dragon draws near!`. Later restarts
+  also reported Green Dragon snapshots at `(4,14)`, so the dragon is on the
+  rescue branch before the door-route continuation rather than behind the door.
+  Random encounters can still interrupt auto-walk. If a touch-plus-probe
+  source reload appears to succeed but `inspect_move` still lacks those latest
+  disk directions, inject matching runtime edges or manually reload before
+  judging the live session.
+- Rimuldar is the next south-island target after Swamp Cave. Gamer Corner lists
+  Rimuldar at `(29S,59E)`, which maps to local world coordinate `(102,72)` from
+  the current Tantegel anchor. Rimuldar has an inn for 55 G, 2 locked doors,
+  Wings treasure, a Weapons/Armor shop, and the first Magic Key shop that does
+  not require a key; Magic Keys cost 53 G there. Mike's RPG Center agrees on
+  the 53 G Magic Key shop and lists the weapon/armor stock as Copper Sword,
+  Hand Axe, Broad Sword, Half Plate, Full Plate, and Magic Armor. Gamer Corner
+  recommends the west route around the craggy mountains from the Swamp Cave
+  south side because it is safer, and warns that the Rimuldar area is dangerous
+  for a level 8-9 hero; SLEEP is useful on the approach. `overworld_routes.lua`
+  has live-corrected route guidance `rimuldar` and `swamp_cave_south` between
+  `Swamp Cave South Entrance` `(104,49)` and Rimuldar `(102,72)`. First
+  shakedown evidence showed the initial `(104,49)->LEFT` seam was noisy but
+  passable, then found two real route-shape bugs: the old `(92,56)` notch made
+  autowalk retry blocked `(93,57)->UP`, and the old final row-72 push hit the
+  north-side town wall at `(97,72)->RIGHT`. The route now drops from `(93,56)`
+  to `(93,57)`, stays west through `(90,57)`, and approaches Rimuldar from the
+  proven east doorstep `(103,72)->LEFT` instead of cutting straight east from
+  `(90,72)`. The reverse route to Swamp Cave South Entrance is not a simple
+  mirror: `(92,57)->UP` into `(92,56)` is engine-blocked, so the return now
+  uses the live-probed west-pocket detour through `(85,58)`, `(85,56)`,
+  `(83,56)`, `(83,54)`, `(86,54)`, `(86,52)`, `(92,52)`, `(92,48)`,
+  `(100,48)`, `(100,50)`, and `(104,50)`, with a recovery route for starts or
+  recalculations at the bad notch. First Rimuldar service proof: `Merchant 2`
+  occupies `(23,7)` and
+  is the weapon/armor shop, opened from public counter stand `(23,9)` facing
+  north. Live inventory is Copper Sword 180 G, Hand Axe 560 G, Broad Sword
+  1500 G, Half Plate 1000 G, Full Plate 3000 G, and Magic Armor 7700 G. The
+  Rimuldar town exit is not the old `(15,14)` object; that tile is ordinary
+  interior floor. Live edge proof from `(29,13)->RIGHT` changed to the world
+  map and landed at `(102,72)`, so model Rimuldar's `Exit to World Map` at
+  `(29,13)` with east-facing interaction. A follow-up user check confirmed the
+  corrected exit object lines up from inside town.
 - Kol service work should start from `project_resources/maps/kol/README.md`,
   which now has local map images and a screen-reader service transcription.
   External guides agree on these first priorities: Inn 20 G, weapon/armor shop

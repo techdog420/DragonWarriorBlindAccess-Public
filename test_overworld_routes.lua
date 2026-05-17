@@ -859,6 +859,232 @@ function tests.kol_swamp_cave_return_uses_x94_drop_and_bridge_jog()
     routes.reset_for_tests()
 end
 
+function tests.rimuldar_object_from_south_swamp_cave_starts_candidate_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_rimuldar",
+        name = "Rimuldar",
+        x = 102,
+        y = 72,
+    }, 0x01, 104, 49)
+
+    assert_equal(err, nil, "Rimuldar Travel object should start guidance from the south cave landing")
+    assert_equal(info.route.id, "rimuldar", "Rimuldar object should choose the Rimuldar candidate route")
+    assert_equal(info.object_id, "route_rimuldar_02", "south cave start should skip the current entrance anchor")
+    assert_contains(info.message, "North Rimuldar west safer route", "route should begin with the guide-recommended west approach")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 49))
+    assert_equal(segment.waypoint.name, "North Rimuldar west safer route", "first candidate segment should target the west approach")
+    assert_equal(segment.steps[1], "left", "candidate route should initially try the west side")
+    assert_equal(#segment.steps, 11, "candidate route should queue the westbound cave-landing test segment")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_candidate_route_follows_guide_west_side()
+    routes.reset_for_tests()
+    routes.start("rimuldar", 0x01, 104, 49)
+
+    local west_route = routes.observe_position(0x01, 93, 49)
+    assert_contains(west_route.message, "Reached North Rimuldar west safer route", "route should confirm the initial west-side approach")
+    assert_contains(west_route.message, "Next: Craggy mountain west wall", "route should continue south along the western mountain route")
+
+    routes.observe_position(0x01, 93, 56)
+    routes.observe_position(0x01, 93, 57)
+    routes.observe_position(0x01, 90, 57)
+    routes.observe_position(0x01, 90, 58)
+    routes.observe_position(0x01, 88, 58)
+    local lake = routes.observe_position(0x01, 88, 71)
+    assert_contains(lake.message, "Rimuldar-area monsters are dangerous", "route should warn before the final Rimuldar-area push")
+    assert_contains(lake.message, "Next: Rimuldar west lake bend", "route should proceed around the lake approach")
+
+    routes.observe_position(0x01, 90, 71)
+    routes.observe_position(0x01, 90, 72)
+    routes.observe_position(0x01, 97, 72)
+    routes.observe_position(0x01, 97, 71)
+    routes.observe_position(0x01, 98, 70)
+    routes.observe_position(0x01, 98, 69)
+    routes.observe_position(0x01, 99, 69)
+    routes.observe_position(0x01, 99, 68)
+    routes.observe_position(0x01, 100, 67)
+    routes.observe_position(0x01, 101, 67)
+    routes.observe_position(0x01, 102, 68)
+    routes.observe_position(0x01, 103, 68)
+    routes.observe_position(0x01, 105, 68)
+    routes.observe_position(0x01, 106, 69)
+    routes.observe_position(0x01, 106, 70)
+    routes.observe_position(0x01, 107, 70)
+    routes.observe_position(0x01, 108, 70)
+    routes.observe_position(0x01, 108, 71)
+    routes.observe_position(0x01, 107, 71)
+    routes.observe_position(0x01, 107, 72)
+    routes.observe_position(0x01, 103, 72)
+    local arrival = routes.observe_position(0x01, 102, 72)
+    assert_contains(arrival.message, "Arrived at Rimuldar", "final waypoint should complete the Rimuldar route")
+    assert_equal(routes.is_active(), false, "route should stop at Rimuldar")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_route_avoids_north_town_wall()
+    routes.reset_for_tests()
+    routes.start("rimuldar", 0x01, 97, 72)
+
+    local segment = assert(routes.plan_next_segment(0x01, 97, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar north wall bypass", "route should bypass the blocked north town wall")
+    assert_equal(segment.steps[1], "up", "route should not retry east from the blocked row-72 wall")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_route_avoids_noisy_west_lake_up_step()
+    routes.reset_for_tests()
+    routes.start("rimuldar", 0x01, 104, 49)
+
+    routes.observe_position(0x01, 93, 49)
+    routes.observe_position(0x01, 93, 56)
+    routes.observe_position(0x01, 93, 57)
+    routes.observe_position(0x01, 90, 57)
+    routes.observe_position(0x01, 90, 58)
+    routes.observe_position(0x01, 88, 58)
+    routes.observe_position(0x01, 88, 71)
+
+    local segment = assert(routes.plan_next_segment(0x01, 89, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar west lake bend", "route should still target the lake bend")
+    assert_equal(segment.steps[1], "right", "route should avoid retrying the noisy north step from 89,72")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_route_avoids_north_wall_corner_block()
+    routes.reset_for_tests()
+    routes.start("rimuldar", 0x01, 104, 49)
+
+    routes.observe_position(0x01, 93, 49)
+    routes.observe_position(0x01, 93, 56)
+    routes.observe_position(0x01, 93, 57)
+    routes.observe_position(0x01, 90, 57)
+    routes.observe_position(0x01, 90, 58)
+    routes.observe_position(0x01, 88, 58)
+    routes.observe_position(0x01, 88, 71)
+    routes.observe_position(0x01, 90, 71)
+    routes.observe_position(0x01, 90, 72)
+    routes.observe_position(0x01, 97, 72)
+    routes.observe_position(0x01, 97, 71)
+
+    local segment = assert(routes.plan_next_segment(0x01, 97, 71))
+    assert_equal(segment.waypoint.name, "Rimuldar north wall corner", "route should still target the north wall corner")
+    assert_equal(segment.steps[1], "up", "route should avoid blocked 97,71 east into 98,71")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_route_avoids_craggy_notch_up_block()
+    routes.reset_for_tests()
+    routes.start("rimuldar", 0x01, 93, 57)
+
+    local segment = assert(routes.plan_next_segment(0x01, 93, 57))
+    assert_equal(segment.waypoint.name, "Safer west route north lane", "route should skip the bad upper notch waypoint")
+    assert_equal(segment.steps[1], "left", "route should not retry north from the blocked craggy notch")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_object_from_rimuldar_starts_return_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+        x = 104,
+        y = 49,
+    }, 0x01, 102, 72)
+
+    assert_equal(err, nil, "south Swamp Cave Travel object should start from Rimuldar")
+    assert_equal(info.route.id, "swamp_cave_south", "south entrance object should choose the Rimuldar return route")
+    assert_equal(info.object_id, "route_swamp_cave_south_02", "Rimuldar start should skip the current town anchor")
+    assert_contains(info.message, "Rimuldar east doorstep", "return route should leave town by the live east approach")
+
+    local segment = assert(routes.plan_next_segment(0x01, 102, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar east doorstep", "first return segment should target the live east doorstep")
+    assert_equal(segment.steps[1], "right", "return route should step back out along the live entry approach")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_return_reverses_candidate_rimuldar_path()
+    routes.reset_for_tests()
+    routes.start("rimuldar to cave", 0x01, 102, 72)
+
+    routes.observe_position(0x01, 103, 72)
+    routes.observe_position(0x01, 107, 72)
+    routes.observe_position(0x01, 107, 71)
+    routes.observe_position(0x01, 108, 71)
+    routes.observe_position(0x01, 108, 70)
+    routes.observe_position(0x01, 107, 70)
+    routes.observe_position(0x01, 106, 70)
+    routes.observe_position(0x01, 106, 69)
+    routes.observe_position(0x01, 105, 68)
+    routes.observe_position(0x01, 103, 68)
+    routes.observe_position(0x01, 102, 68)
+    routes.observe_position(0x01, 101, 67)
+    routes.observe_position(0x01, 100, 67)
+    routes.observe_position(0x01, 99, 68)
+    routes.observe_position(0x01, 99, 69)
+    routes.observe_position(0x01, 98, 69)
+    routes.observe_position(0x01, 98, 70)
+    routes.observe_position(0x01, 97, 71)
+    routes.observe_position(0x01, 97, 72)
+    routes.observe_position(0x01, 90, 72)
+    routes.observe_position(0x01, 90, 71)
+    local lake = routes.observe_position(0x01, 88, 71)
+    assert_contains(lake.message, "Leaving Rimuldar by the guide's safer west route", "return route should warn on the west-side exit")
+
+    routes.observe_position(0x01, 88, 58)
+    routes.observe_position(0x01, 85, 58)
+    routes.observe_position(0x01, 85, 56)
+    routes.observe_position(0x01, 83, 56)
+    routes.observe_position(0x01, 83, 54)
+    routes.observe_position(0x01, 86, 54)
+    routes.observe_position(0x01, 86, 52)
+    routes.observe_position(0x01, 92, 52)
+    routes.observe_position(0x01, 92, 48)
+    routes.observe_position(0x01, 100, 48)
+    routes.observe_position(0x01, 100, 50)
+    routes.observe_position(0x01, 104, 50)
+    local arrival = routes.observe_position(0x01, 104, 49)
+    assert_contains(arrival.message, "Arrived at Swamp Cave South Entrance", "final waypoint should complete the cave return")
+    assert_equal(routes.is_active(), false, "return route should stop at the south cave entrance")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_return_avoids_blocked_mountain_notch()
+    routes.reset_for_tests()
+    routes.start("rimuldar to cave", 0x01, 88, 58)
+
+    local segment = assert(routes.plan_next_segment(0x01, 88, 58))
+    assert_equal(segment.waypoint.name, "South island west pocket lower lane", "return should use the west-pocket detour")
+    assert_equal(segment.steps[1], "left", "return route should not head east toward the blocked mountain notch")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_recovery_routes_stuck_notch_west()
+    routes.reset_for_tests()
+    local info = assert(routes.start("rimuldar to cave", 0x01, 92, 57))
+
+    assert_equal(info.route.id, "swamp_cave_south_recovery", "stuck notch starts should choose the recovery variant")
+    assert_contains(info.message, "Safer west route north lane", "recovery should target the west escape lane")
+
+    local segment = assert(routes.plan_next_segment(0x01, 92, 57))
+    assert_equal(segment.waypoint.name, "Safer west route north lane", "recovery should not retry the blocked north edge")
+    assert_equal(segment.steps[1], "left", "recovery should step west away from the blocked notch")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_object_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
@@ -1032,14 +1258,14 @@ function tests.unmatched_object_reports_no_guided_route()
     routes.reset_for_tests()
 
     local info, err = routes.start_for_object({
-        id = "overworld_rimuldar",
-        name = "Rimuldar",
-        x = 102,
-        y = 72,
+        id = "overworld_unknown_shrine",
+        name = "Unknown Shrine",
+        x = 10,
+        y = 10,
     }, 0x01, 43, 43)
 
     assert_equal(info, nil, "unknown destination should not start a route")
-    assert_contains(err, "No guided route for Rimuldar", "missing route should name the selected object")
+    assert_contains(err, "No guided route for Unknown Shrine", "missing route should name the selected object")
     assert_contains(err, "Use O for heading", "missing route should preserve the plain heading workflow")
 
     routes.reset_for_tests()
@@ -1144,6 +1370,32 @@ function tests.entering_swamp_cave_stops_swamp_cave_route()
     assert_contains(event.message, "Arrived at Swamp Cave", "entering Swamp Cave should complete the route")
     assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
     assert_equal(routes.is_active(), false, "route should stop after entering Swamp Cave")
+
+    routes.reset_for_tests()
+end
+
+function tests.entering_rimuldar_stops_rimuldar_route()
+    routes.reset_for_tests()
+    routes.start("rimuldar", 0x01, 90, 72)
+
+    local event = routes.observe_position(0x0B, 15, 14)
+
+    assert_contains(event.message, "Arrived at Rimuldar", "entering Rimuldar should complete the route")
+    assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "route should stop after entering Rimuldar")
+
+    routes.reset_for_tests()
+end
+
+function tests.entering_swamp_cave_stops_south_entrance_return_route()
+    routes.reset_for_tests()
+    routes.start("swamp cave south", 0x01, 93, 49)
+
+    local event = routes.observe_position(0x15, 0, 29)
+
+    assert_contains(event.message, "Arrived at Swamp Cave South Entrance", "entering Swamp Cave should complete the south-entrance route")
+    assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "return route should stop after entering Swamp Cave")
 
     routes.reset_for_tests()
 end

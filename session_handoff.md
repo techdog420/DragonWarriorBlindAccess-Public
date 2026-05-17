@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-16
+Updated: 2026-05-17
 
 ## Active Resume
 
@@ -111,6 +111,231 @@ test_overworld_routes.lua`. The user then tested the route live in both
 directions. Both sides are usable; a few rough edges remain for future route
 polishing, but there is no major blocker before the next Swamp Cave interior
 exploration pass.
+
+Current Swamp Cave interior patch in the worktree: external orientation agrees
+that Swamp Cave / Quagmire Cave is the one-floor tunnel from north Alefgard to
+the south/Rimuldar island, with a second objective behind one locked door:
+Princess Gwaelin is held here by a Green Dragon. Gamer Corner lists the north
+entrance at `(1S,61E)`, the south exit at `(6S,61E)`, one floor B1, one locked
+door, random monsters Scorpion/Magician/Ghost/Druin, and the Green Dragon boss.
+Realm of Darkness notes that the cave has no treasure chests and is the only
+way to reach the southern world section that includes Rimuldar. Local live
+state confirms map `0x15` (`Swamp Cave`) is 6x30. The user tested the `x=0`
+corridor both northbound and southbound: it is open from `(0,0)` through
+`(0,25)`, and south access ends there. Current evidence shows `(0,25)` is only
+the west-corridor bend: using STAIRS there produced "There are no stairs here",
+and repeated manual `DOWN` attempts from `(0,25)` started twitch movement but
+did not complete a tile step. A later live check showed `(5,29)` is only the
+bottom-right alcove: STAIRS also says no stairs there, south/east are out of
+bounds, and north is open. The south-island stairs coordinate is `(0,29)`,
+identified from the ROM up-stair table entry `15 00 1D` at file offset
+`0xF486`; it should be reached from row 29, not by walking south from `(0,25)`.
+`map_reader.lua` now exposes `MAP_PASSTHROUGH_CELLS[0x15]` for `x=0,y=0..25`
+plus the separate lower west-edge `(0,28)` return-route turn and `(0,29)` exit
+cell; `(0,26)..(0,27)` stay closed. The user then manually worked the route
+from the island exit area back toward the original entrance. Log evidence
+promoted directional-only lower-route blockers for `(1,25)->UP` into `(1,24)`,
+repeated `(1,28)->UP` into `(1,27)`, approaches into `(2,28)` from `(2,29)`,
+`(3,28)`, and `(1,28)`, and `(3,27)->LEFT` into `(2,27)`. A follow-up
+auto-walk loop toward `Stairs Up to South Island` was manually stopped at frame
+`09480` after repeatedly alternating between `(1,26)->DOWN` into `(1,27)` and
+`(2,26)->DOWN` into `(2,27)`. The loop reached blocked counts 28 and 26,
+respectively, with both queued-route and seam-retry failures; `map_reader.lua`
+now adds `(1,27).north` and `(2,27).north` to those directional blockers.
+`objects.lua` removes the duplicate `Stairs Up` entry at `(0,0)` and exposes
+two Swamp Cave interior Travel objects: `North Exit to World Map` at `(0,0)`
+and `Stairs Up to South Island` at `(0,29)`. Static proof:
+`luac -p map_reader.lua objects.lua test_map_reader.lua test_objects.lua`,
+`lua test_map_reader.lua` (30 tests, including A* path from `(0,0)` to
+`(0,25)`, no path to `(0,26)`, and route continuation to `(0,29)` through row
+29 in an open fixture, plus south-to-north return path rejection of the newly
+modeled lower-cave blocked approaches), and `lua test_objects.lua` (61 tests).
+Live validation
+after using the south-exit stairs path from the row-29 exit area confirmed the
+expected south-island overworld landing: `EVENT: map change -> 0x01 (World Map)`
+and the next world movement started from `(104,49)`; a fresh `report_position`
+later reported `map=0x01(World Map) x=104 y=49`. This matches the existing
+north entrance at `(104,44)` plus the guide offset from `(1S,61E)` to
+`(6S,61E)`. World-map Travel now exposes `Swamp Cave South Entrance` at
+`(104,49)` separately from plain `Swamp Cave` at `(104,44)`. Follow-up live
+route looping now has working auto-walk routes between `North Exit to World Map`
+and `Stairs Up to South Island` in both directions. The remaining scary-looking
+route log entries on the lower path were timing/noisy seam cases: examples
+include `(2,26)->RIGHT` into `(3,26)` and `(3,28)->DOWN` into `(3,29)`, where a
+queued step timed out after movement had started and the seam-bruteforce retry
+then moved successfully. A battle interruption also contaminated one pass. Do
+not promote those latest noisy cells into permanent map data without fresh raw
+probe evidence. Cleanup after the route pass cleared map `0x15` runtime blocks
+and seam memory; `report_runtime_blocks:0x15` reported none and
+`report_seam_cells:0x15` reported `total=0`. Locked-door follow-up: Realm of
+Darkness' Swamp Cave map places Gwaelin and the Green Dragon behind a
+lower-right branch door, but the first local coordinate hypothesis is now
+disproven. The user stood at the reachable lower-right branch tile `(5,23)` and
+OPEN reported "There is no door here." Follow-up probes also disproved the west
+approach from `(4,22)` and the lower branch seam from `(3,23)`. The real door
+coordinate is `(5,20)`: live no-key OPEN from `(5,21)` and from `(5,19)` both
+reported "Thou hast not a key to use." The Dragon Warrior disassembly confirms
+OPEN checks only the four adjacent cells, so the shared adjacent tile from those
+two successful probes is `(5,20)`. `map_reader.lua` now treats `(5,20)` as the
+Swamp Cave magic-key door cell, and `objects.lua` exposes `Gwaelin Door` at
+`(5,20)` with interaction stand `(5,21)` facing north. Static tests cover
+closed/open door RAM behavior and routing to the `(5,21)` stand from both cave
+exits. Follow-up auto-walk from the south stairs toward `Gwaelin Door` exposed
+two more false lower-branch exits: `(3,23)->UP` into `(3,22)` blocked 37 times
+and direct `probe_edge:UP` confirmed `status=blocked`; `(3,23)->RIGHT` into
+`(4,23)` blocked 36 times and direct `probe_edge:RIGHT` confirmed
+`status=blocked`. `map_reader.lua` now models these as directional blockers
+`["3,22"]={south=true}` and `["4,23"]={west=true}`. After the source reload,
+`inspect_move:3,23,UP` and `inspect_move:3,23,RIGHT` both report
+`directional_blocked=true`, runtime blocks are clear, and live `debug_pathfind`
+routes work in all four useful directions: door stand `(5,21)` to south stairs
+`(0,29)` is 13 steps, door stand to north exit `(0,0)` is 26 steps, south
+stairs to door stand is 13 steps, and north exit to door stand is 26 steps.
+A final live auto-walk attempt from south stairs was interrupted by a random
+Magician at `(3,26)` before reaching the old loop; Bill won for 4 XP and 11 G.
+Follow-up looping from that post-battle tile confirmed one more permanent seam:
+`probe_edge_verify:3,24,RIGHT,3` was 3/3 blocked into `(4,24)`, so
+`map_reader.lua` also models `["4,24"]={west=true}`. The nearby
+`(2,23)->UP` into `(2,22)` looked blocked in auto-walk, but direct/verify
+evidence was mixed (1 moved, 2 blocked), so it is intentionally left unmodeled.
+After reloading and clearing runtime blocks, `inspect_move:3,24,RIGHT` reports
+`directional_blocked=true`, while `inspect_move:2,23,UP` remains open. Live
+`debug_pathfind_to:5,21` from `(3,26)` now traces cleanly through
+`(3,26)->(4,26)->(5,26)->(5,25)->(5,24)->(5,23)->(5,22)->(5,21)`.
+Latest lower-branch auto-walk loop at `(5,23)` exposed two more confirmed
+edges: `(5,23)->UP` into `(5,22)` and `(5,23)->LEFT` into `(4,23)` both
+verified 3 blocked / 0 moved with `probe_edge_verify`, so disk now models
+`["5,22"]={south=true}` and adds `east=true` to `["4,23"]`. Static validation
+passes and still finds door routes. Live caveat: the touch-plus-probe reload
+did not pick up this newest disk patch in the running Lua instance, so the
+current play session has matching runtime edges injected with
+`add_blocked_edge:0x15,5,23,UP` and `add_blocked_edge:0x15,5,23,LEFT`.
+With those runtime edges active, `debug_pathfind_to:5,21` from `(5,23)` finds
+a 6-step detour:
+`(5,23)->(5,24)->(4,24)->(4,23)->(4,22)->(4,21)->(5,21)`.
+Next auto-walk loop moved one step farther down the same lower-branch detour.
+Direct verification confirmed `(4,25)->UP` into `(4,24)` as 3 blocked / 0
+moved, so disk now adds `south=true` to `["4,24"]`. The sibling edge
+`(5,24)->LEFT` into `(4,24)` had strong loop evidence but mixed verifier
+results (1 moved, 2 blocked), so it is not permanent map data; the current
+live session has it injected runtime-only as `(4,24).east` to keep the route
+from immediately retrying that loop. With runtime `(4,24).east,south`, live
+`debug_pathfind_to:5,21` from `(5,24)` finds an 11-step detour:
+`(5,24)->(5,25)->(4,25)->(3,25)->(3,24)->(3,23)->(2,23)->(2,22)->(2,21)->(3,21)->(4,21)->(5,21)`.
+Validation of that detour got 2/11 steps OK, then a random Druin started a
+battle at `(4,25)` and the validator aborted for battle state rather than map
+geometry. Bill won. Current live state after the fight: field, map `0x15`,
+position `(4,25)`, runtime block `(4,24)` with `east,south`.
+Latest lower-left detour run confirmed a wider west-edge re-entry wall. The
+loop repeatedly hit `(2,23)->UP` into `(2,22)` and `(1,23)->UP` into `(1,22)`;
+fresh `probe_edge_verify` calls confirmed both 3 blocked / 0 moved, so disk
+now models `["2,22"]={south=true}` and `["1,22"]={south=true}`. Follow-up
+validation then exposed west-edge re-entry blocks from `(0,21)->RIGHT`,
+`(0,20)->RIGHT`, `(0,22)->RIGHT`, and `(0,19)->RIGHT`; each verified 3/3
+blocked and disk now models `["1,21"]={west=true}`, `["1,20"]={west=true}`,
+adds `west=true` to `["1,22"]`, and adds `["1,19"]={west=true}`. With those
+runtime-injected, the live planner from `(0,19)` detoured through
+`(0,18)->(1,18)->(1,19)->(1,20)->(2,20)->(3,20)->(3,21)->(4,21)->(5,21)`.
+Validation of that row-18 re-entry got one clean step, then a Magician started
+a fight while `(0,18)->RIGHT` was just beginning. The user later manually
+validated `(0,18)->RIGHT` as engine-blocked and checked the x=0 corridor
+eastward: re-entry stays blocked through `(0,9)->RIGHT`, with `(0,8)` the
+first eastward opening. Disk now models `(1,9).west` through `(1,18).west`;
+`(1,8).west` intentionally stays open. Runtime guards for those rows are active
+in the live session too. After injection, live `debug_pathfind_to:5,21` from
+the current `(3,8)` position traces:
+`(3,8)->(3,9)->(3,10)->(4,10)->(4,11)->(4,12)->(4,13)->(4,14)->(4,15)->(4,16)->(4,17)->(4,18)->(4,19)->(4,20)->(4,21)->(5,21)`.
+Green Dragon location is now log-confirmed without further live poking: the
+first clean Green Dragon battle started at frame `04027` on map `0x15`, field
+position `(4,14)`, immediately after auto-walk reached `(4,14)` and attempted
+`DOWN` toward `(4,15)` while routing to `Gwaelin Door`; frame `04095` then
+reported `A Green Dragon draws near!`. Later manual checks/battle restarts
+again showed Green Dragon snapshots at `(4,14)` (`enemy_hp` around 52/55), so
+the dragon is a fixed rescue-branch encounter before the modeled door route, not
+behind the door. Hero level 9 is not ready; avoid using the door route as a
+player-safe objective until keys/dragon readiness are handled.
+Remember `(4,24).east` is still runtime-only mixed evidence.
+The rescue branch itself still needs magic-key testing and a future safe plan
+for handling or warning about the Green Dragon.
+
+Current Rimuldar route state: external guide prep is recorded and the first
+live shakedown corrected the guide-derived overworld route. Gamer Corner lists
+Rimuldar at `(29S,59E)`, matching the existing
+`overworld_rimuldar` object at local world coordinate `(102,72)`, with inn
+55 G, 2 locked doors, Wings treasure, a Weapons/Armor shop, and the first
+no-key Magic Key shop. Gamer Corner's Magic Key page lists Magic Keys at 53 G
+in Rimuldar and notes the other key shops require keys first; Mike's RPG Center
+agrees that Rimuldar's Magic Key shop sells keys for 53 G and lists the
+weapon/armor stock as Copper Sword, Hand Axe, Broad Sword, Half Plate, Full
+Plate, and Magic Armor. Gamer Corner's walkthrough recommends reaching
+Rimuldar from the Swamp Cave south side by taking the west route around the
+craggy mountains because it is safer, and warns that the Rimuldar area is
+dangerous at level 8-9; SLEEP is useful.
+
+`overworld_routes.lua` now adds `rimuldar` targeting `overworld_rimuldar` and
+`swamp_cave_south` targeting `overworld_swamp_cave_south_entrance`. The first
+westbound segment from `(104,49)` toward `(93,49)` looked blocked at first, but
+later moved and is classified as noisy rather than a permanent route blocker.
+Two route-shape bugs were corrected from the successful manual run: the old
+`(92,56)` notch made autowalk retry blocked `(93,57)->UP`, so the forward route
+now drops to `(93,57)` and heads west through `(90,57)`; the old final push
+from `(90,72)` straight east to Rimuldar ran into the north-side town wall at
+`(97,72)->RIGHT`, so the route now takes the manual north/east bypass and
+enters from the proven east doorstep `(103,72)->LEFT`. The return
+`swamp_cave_south` route was updated to use the same east approach before
+rejoining the west lake. Follow-up auto-walk from Rimuldar toward the cave
+exposed a non-reversible mountain notch: live `probe_edge:UP` from `(92,57)`
+blocked into `(92,56)`, and nearby row-57/56 northbound probes showed the old
+reverse chute was the wrong return hinge. A live west-pocket investigation
+found the viable return detour through `(85,58)`, `(85,56)`, `(83,56)`,
+`(83,54)`, `(86,54)`, `(86,52)`, `(92,52)`, `(92,48)`, `(100,48)`,
+`(100,50)`, and `(104,50)`; probing `UP` from `(104,50)` triggered the Swamp
+Cave south entrance and landed inside at `(0,29)`. `swamp_cave_south` now uses
+that west-pocket return detour, and `swamp_cave_south_recovery` catches route
+starts/recalculations from the bad `(92,57)` notch by steering west first.
+Latest forward-route user check from Swamp Cave South Entrance to Rimuldar
+completed successfully. Log review found two polish-level route-shape issues:
+the west-lake bend from `(89,72)` should step right before going north, and the
+north-wall corner from `(97,71)` should step up before going east because
+`(97,71)->RIGHT` into `(98,71)` blocked twice. `overworld_routes.lua` now
+sets those two waypoint axis orders accordingly; other scary cells from the
+pass, such as `(102,49).east`, `(88,65).north`, and `(94,72).west`, later moved
+and are still treated as timing/noisy seam observations rather than map data.
+Static proof:
+`luac -p overworld_routes.lua test_overworld_routes.lua` and
+`lua test_overworld_routes.lua` (76 tests). Live caveat: the bypass is derived
+from the successful manual route through hostile overworld terrain, so further
+auto-walk polishing may still find isolated timing noise or encounter
+interruptions.
+
+Rimuldar service proof from the current live session: the user left the
+weapon/armor merchant dialogue open. Fresh read-only probes reported
+`POSITION: map=0x0B(Rimuldar) x=23 y=9`; `report_npcs` showed `Merchant 2` as
+slot 13 at `(23,7)`; and `report_merchant_state` reported active offers
+`Copper Sword, Hand Axe, Broad Sword, Half Plate, Full Plate, Magic Armor`.
+Visible merchant rows gave prices: Copper Sword 180 G, Hand Axe 560 G, Broad
+Sword 1500 G, Half Plate 1000 G, Full Plate 3000 G, and Magic Armor 7700 G.
+`objects.lua` now labels Rimuldar `Merchant 2` as `Weapons Merchant` and routes
+him through the public counter stand `(23,9)` facing north. Static proof:
+`luac -p objects.lua test_objects.lua` and `lua test_objects.lua` (62 tests).
+Live caveat: `touch main.lua` plus
+`launcher_probe:codex_rimuldar_service_patch` was consumed, but it did not
+actually reload the running FCEUX Lua instance; a follow-up `report_npcs` still
+showed slot 13 as `name=Merchant 2`. Manually reload Lua or relaunch before
+judging the patched service label or the corrected Rimuldar route live.
+
+Rimuldar exit correction from the same follow-up: the old `Exit to World Map`
+object at `(15,14)` is invalid. The user selected/teleported to it, walked
+around, and auto-walk completed there without leaving town; `(15,14)` and nearby
+tiles behaved as ordinary interior floor. Static inspection showed east-edge
+tiles `(29,13)` and `(29,14)` are walkable, and the earlier town-entry log had
+already hinted at an east-edge arrival. Fresh live proof: after teleporting to
+`(29,13)`, `probe_edge:RIGHT` produced `EVENT: map change -> 0x01 (World Map)`,
+and `report_position` landed at `(102,72)`. `objects.lua` now models Rimuldar's
+exit at `(29,13)` with interaction stand `(29,13)` facing east. Static proof:
+`luac -p objects.lua test_objects.lua` and `lua test_objects.lua` (63 tests).
+Follow-up user check confirmed the new town-side `Exit to World Map` lines up
+correctly from inside Rimuldar.
 
 Current Rain Shrine / Northern Cave interior patch in the worktree: map `0x0D`
 is the Staff of Rain shrine described by Realm of Darkness as the Northern
