@@ -2,6 +2,79 @@
 
 Updated: 2026-05-18
 
+## Current Emulator Note
+
+FCEUX stale-Alt/menu-focus stabilization is now the active emulator follow-up,
+but the default launcher has not been switched back yet. `SDL.AutoResume` is
+old-session restore, so the FCEUX launcher leaves it untouched and relies on
+explicit `--state-slot` / `--loadstate` for slots. The FCEUX path now launches
+with `-bginput 0`, enables Hide Menu through `SDL.ToggleMenu = 1`, blanks
+`SDL.Hotkeys.MainMenuHide` and `SDL.Hotkeys.FullScreen`, and has a manual
+recovery helper: `./recover_fceux_input.sh`. That helper focuses qfceux, sends
+LeftAlt/RightAlt/generic Alt key-up, taps Escape, resets
+`dw_keyboard_input.txt` to `-`, and queues `input_status:fceux_recovery`.
+FCEUX command-line ROM/Lua startup is still unreliable; if readiness fails but
+qfceux is open, manual ROM plus `main.lua` loading remains the practical
+fallback.
+
+Next emulator bakeoff: use the same save slot and short loop in FCEUX and
+BizHawk: launch, confirm command polling, browse objects, perform one
+route/autowalk action, perform one menu/dialogue interaction, and move normally
+for a few minutes. Switch `./launch_dw.sh` back to FCEUX only if FCEUX Alt
+recovery is reliable, startup/manual-load friction is acceptable, and BizHawk
+still has noticeable lag/audio glitches in the same loop. If both pass, prefer
+FCEUX for player feel; if FCEUX still interrupts normal play or cannot launch
+reliably enough for agents, keep BizHawk primary.
+Static validation for this patch passed `luac -p debug_tools.lua main.lua
+test_debug_tools.lua`, `lua test_debug_tools.lua`, `bash -n launch_dw.sh
+launch_fceux.sh recover_fceux_input.sh`, `git diff --check`,
+`./launch_dw.sh --dry-run`, `./launch_dw.sh --state-slot 1 --dry-run`,
+`./launch_dw.sh --emulator fceux --dry-run`, `./launch_dw.sh --emulator fceux
+--state-slot 1 --dry-run`, PowerShell `launch_dw.ps1 -DryRun` and
+`-StateSlot 1 -DryRun`, and `recover_fceux_input.ps1` / `.sh` dry-runs. The
+live FCEUX-vs-BizHawk bakeoff is still pending because it needs the hands-on
+play loop and player-feel/audio judgement before changing the default.
+Live FCEUX follow-up on 2026-05-18 shows Hide Menu plus the recovery helper
+alone was not enough, but the new hotkey-blanking and benign-idle handling are
+live. The patched launcher blanked `SDL.Hotkeys.MainMenuHide` (`Alt+/`) and
+`SDL.Hotkeys.FullScreen` (`Alt+Return`), and the config now shows both blank
+with `SDL.ToggleMenu = 1`. FCEUX still did not reliably honor the command-line
+ROM/Lua startup, so the user manually loaded the ROM and script. After manual
+load, command polling worked: `input_status:manual_after_load` at frame `04440`
+reported `keys=LeftAlt joy1=- left_alt=true`. The patched Lua treated this as
+benign idle noise: `INPUT_STALE_ALT_IGNORED ... reason=fceux_alt_tab_latch`
+and `INPUT_STUCK_ALT ... spoken=false ... benign=true`. Running
+`./recover_fceux_input.sh` cleared the latch at frame `04920`
+(`keys=- joy1=- left_alt=false`), but FCEUX relatched by frame `05100`; the
+follow-up `input_status:after_helper` at frame `05160` again reported
+`left_alt=true`, and `input_status:final_fceux_alt_check` at frame `13440`
+still reported `keys=LeftAlt joy1=- left_alt=true`. Current verdict: FCEUX
+still has the native Alt latch, but idle latch state no longer speaks or
+synthesizes joypad input. Do not switch the default away from BizHawk unless a
+same-save play loop confirms this stays benign during real Alt+Tab-heavy use.
+The follow-up FCEUX grinding pass supports the quarantine model. In the fresh
+`dw_debug.log` started at `2026-05-18 14:08:31`, the log showed 18
+`INPUT_STALE_ALT_IGNORED` entries and 3 `INPUT_STUCK_ALT` entries; all stuck
+Alt warnings were `spoken=false` and `benign=true`, with no `spoken=true`
+regression. Real bridge input still worked while FCEUX thought Alt was held:
+217 bridge activations, including 16 with `keys=LeftAlt`, and no neutral bridge
+activation. The only blocked seam observations were queued overworld route
+blocks at `(106,72).west` and `(105,68).east`, both outside stale-Alt episodes.
+Post-grind probe `input_status:post_grind_log_review` at frame `70920` still
+reported `keys=LeftAlt joy1=- left_alt=true`, and `report_position` put Bill on
+world map `(102,72)`. Treat the native latch as still present but quarantined
+for ordinary manual play unless a later log shows route evidence, speech spam,
+or menu focus contamination during `keys=LeftAlt joy1=-`.
+Follow-up window-switch stress pass stayed clean. After the frame `70920`
+post-grind marker, the user's heavy Alt+Tab/window switching produced no new
+log events at all until the review probe. The fresh
+`input_status:post_window_switch_stress` at frame `90000` still reported
+`keys=LeftAlt joy1=- left_alt=true`, and `report_position` still put Bill on
+world map `(102,72)`. Between frames `70920` and `90000` there were no new
+`INPUT_STALE_ALT_IGNORED`, `INPUT_STUCK_ALT`, bridge, menu, seam, autowalk, or
+speech-warning anomalies. This strengthens the current verdict: FCEUX's native
+Alt latch persists but stays inert under window switching.
+
 ## Active Resume
 
 Strategic map-completion pivot after the Merchant 4 push: do not spend the

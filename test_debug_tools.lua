@@ -45,6 +45,7 @@ local function make_env(options)
         "debug_tools",
         "map_reader",
         "maps",
+        "tolk",
     }
 
     for _, name in ipairs(module_names) do
@@ -77,6 +78,17 @@ local function make_env(options)
 
     package.preload["map_reader"] = function()
         return {}
+    end
+
+    local tolk_outputs = options.tolk_outputs
+    package.preload["tolk"] = function()
+        return {
+            output = function(text)
+                if tolk_outputs then
+                    tolk_outputs[#tolk_outputs + 1] = text
+                end
+            end,
+        }
     end
 
     _G.DW_EMULATOR_COMPAT = {is_fceux = true, is_bizhawk = false}
@@ -137,14 +149,11 @@ end
 
 local tests = {}
 
-function tests.fceux_stale_alt_neutral_bridge_marks_input_as_stale()
+function tests.fceux_stale_alt_neutral_bridge_is_ignored()
     local env = make_env({input_state = {LeftAlt = true}, bridge_text = "-\n"})
 
     local input = env.debug_tools.tick(1, "field")
-    assert_equal(input ~= nil, true, "stale FCEUX Alt should return a neutral sentinel frame")
-    assert_equal(input._raw, nil, "stale FCEUX Alt sentinel should not be raw joypad input")
-    assert_equal(input._stale_fceux_keyboard, true, "stale FCEUX Alt frame should pause auto_step")
-    assert_no_buttons(input)
+    assert_equal(input, nil, "idle stale FCEUX Alt should not synthesize joypad input")
 
     env.restore()
 end
@@ -166,6 +175,38 @@ function tests.fceux_idle_input_without_stale_alt_has_no_bridge_input()
 
     local input = env.debug_tools.tick(1, "field")
     assert_equal(input, nil, "idle FCEUX input should not synthesize bridge input")
+
+    env.restore()
+end
+
+function tests.fceux_stale_alt_warning_is_log_only()
+    local spoken = {}
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "-\n", tolk_outputs = spoken})
+
+    for frame = 1, 120 do
+        env.debug_tools.tick(frame, "field")
+    end
+    assert_equal(#spoken, 0, "idle stale-Alt should not speak when treated as benign")
+
+    env.set_input({})
+    env.debug_tools.tick(121, "field")
+    env.set_input({LeftAlt = true})
+    for frame = 122, 241 do
+        env.debug_tools.tick(frame, "field")
+    end
+    assert_equal(#spoken, 0, "repeated idle stale-Alt should stay log-only")
+
+    env.restore()
+end
+
+function tests.fceux_stale_alt_with_real_bridge_input_does_not_warn()
+    local spoken = {}
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "up\n", tolk_outputs = spoken})
+
+    for frame = 1, 180 do
+        env.debug_tools.tick(frame, "field")
+    end
+    assert_equal(#spoken, 0, "bridged controls should not trigger idle stuck-Alt speech")
 
     env.restore()
 end

@@ -48,10 +48,22 @@ The project uses a command queue file and emulator polling loop.
 Important behavior:
 - Current default emulator path is `D:\emulation\bizhawk\EmuHawk.exe`
 - FCEUX fallback path is `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
-- FCEUX command-line Lua loading on this build works with `--loadlua=PATH`
-- `D:\emulation\fceux\bin\fceux.cfg` should keep `SDL.AutoResume = 1` so startup launches advance frames and poll commands
+- FCEUX command-line ROM/Lua loading is best-effort on this build; if launch
+  readiness fails, manually load the ROM and `main.lua` in FCEUX or use BizHawk
+  for automated startup
+- FCEUX `SDL.AutoResume` is old-session restore, not the command-polling fix;
+  leave it untouched and use explicit `--state-slot` / `--loadstate` when a
+  launch slot is needed
+- The FCEUX launcher uses `-bginput 0`, enables Hide Menu via
+  `SDL.ToggleMenu = 1`, blanks FCEUX Alt-based menu/fullscreen hotkeys, and has
+  a recovery helper for stale Alt/menu focus
 - Preferred WSL startup path is `./launch_dw.sh`; it defaults to BizHawk, loads the ROM plus `main.lua`, and supports `--emulator fceux` for the older FCEUX workflow
 - `./launch_fceux.sh` and `launch_fceux.ps1` are convenience aliases for the explicit FCEUX fallback
+- If FCEUX reports stuck `LeftAlt` or menu focus, run
+  `./recover_fceux_input.sh`; it focuses qfceux, releases Alt, taps Escape,
+  resets `dw_keyboard_input.txt`, and queues `input_status:fceux_recovery`
+- FCEUX can relatch `LeftAlt` after Alt+Tab. Idle `LeftAlt` with no bridge
+  buttons should be treated as a benign FCEUX/SDL latch, not map evidence.
 - Commands are sent through `./dw_commands.ps1` from PowerShell/Codex, or `./dw_commands.sh` from bash
 - Commands are written to `dw_commands.txt`
 - The mod polls the command file roughly once per second

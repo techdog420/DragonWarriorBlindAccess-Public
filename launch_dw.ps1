@@ -118,6 +118,148 @@ function Wait-ForDebugLog {
     return $false
 }
 
+$script:lastReadinessProbeDiagnostics = ""
+
+function Get-ReadinessDiagnostics {
+    param(
+        [string] $CommandFile,
+        [string] $LogPath,
+        [string] $StartupLoopDiag,
+        [string] $ProbeCommand,
+        [string] $SuccessPattern,
+        [datetime] $LaunchStartUtc,
+        [datetime] $ProbeStartUtc,
+        [System.Diagnostics.Process] $Process
+    )
+
+    $commandConsumed = $false
+    $queueState = "missing"
+    if (Test-Path -LiteralPath $CommandFile -PathType Leaf) {
+        try {
+            $queueText = [System.IO.File]::ReadAllText($CommandFile)
+            if ([string]::IsNullOrWhiteSpace($queueText)) {
+                $commandConsumed = $true
+                $queueState = "empty"
+            } elseif ($queueText.Contains($ProbeCommand)) {
+                $queueState = "probe_pending"
+            } else {
+                $queueState = "other_pending"
+            }
+        } catch {
+            $queueState = "unreadable"
+        }
+    }
+
+    $debugFreshSinceProbe = $false
+    $debugFreshSinceLaunch = $false
+    $debugStamp = "missing"
+    $probeSeen = $false
+    if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
+        try {
+            $item = Get-Item -LiteralPath $LogPath
+            $debugStamp = $item.LastWriteTimeUtc.ToString("u")
+            $debugFreshSinceProbe = $item.Length -gt 0 -and $item.LastWriteTimeUtc -ge $ProbeStartUtc
+            $debugFreshSinceLaunch = $item.Length -gt 0 -and $item.LastWriteTimeUtc -ge $LaunchStartUtc
+            if ($debugFreshSinceLaunch) {
+                $recentLines = Get-Content -LiteralPath $LogPath -Tail 200
+                foreach ($line in $recentLines) {
+                    if ($line.Contains($SuccessPattern)) {
+                        $probeSeen = $true
+                        break
+                    }
+                }
+            }
+        } catch {
+            $debugStamp = "unreadable"
+        }
+    }
+
+    $loopFresh = "missing"
+    $loopAdvanced = "unknown"
+    $loopLastFrame = "n/a"
+    if (Test-Path -LiteralPath $StartupLoopDiag -PathType Leaf) {
+        try {
+            $item = Get-Item -LiteralPath $StartupLoopDiag
+            $loopFresh = if ($item.LastWriteTimeUtc -ge $LaunchStartUtc) { "yes" } else { "stale" }
+            $loopLines = Get-Content -LiteralPath $StartupLoopDiag -Tail 80
+            $sawAfterFrameadvance = $false
+            foreach ($line in $loopLines) {
+                if ($line -match "frame=(\d+)") {
+                    $loopLastFrame = $Matches[1]
+                }
+                if ($line.Contains("event=after_frameadvance")) {
+                    $sawAfterFrameadvance = $true
+                }
+            }
+            if ($sawAfterFrameadvance) {
+                $loopAdvanced = "yes"
+            } elseif ($loopFresh -eq "yes") {
+                $loopAdvanced = "no"
+            }
+        } catch {
+            $loopFresh = "unreadable"
+        }
+    }
+
+    $processRunning = "no"
+    $processResponding = "unknown"
+    if ($Process) {
+        try {
+            $Process.Refresh()
+            if (-not $Process.HasExited) {
+                $processRunning = "yes"
+                try {
+                    $processResponding = if ($Process.Responding) { "yes" } else { "no" }
+                } catch {
+                    $processResponding = "unknown"
+                }
+            }
+        } catch {
+            $processRunning = "unknown"
+        }
+    }
+
+    $paused = "unknown"
+    if ($loopAdvanced -eq "yes" -or $debugFreshSinceProbe -or $probeSeen) {
+        $paused = "not_indicated"
+    } elseif (-not $commandConsumed -and -not $debugFreshSinceProbe -and ($loopAdvanced -eq "no" -or $loopFresh -eq "stale" -or $loopFresh -eq "missing")) {
+        $paused = "possible"
+    }
+
+    return [pscustomobject]@{
+        ProcessRunning = $processRunning
+        ProcessResponding = $processResponding
+        Paused = $paused
+        StartupLoopFresh = $loopFresh
+        StartupLoopAfterFrameadvance = $loopAdvanced
+        StartupLoopLastFrame = $loopLastFrame
+        DebugLogFreshSinceProbe = if ($debugFreshSinceProbe) { "yes" } else { "no" }
+        DebugLogFreshSinceLaunch = if ($debugFreshSinceLaunch) { "yes" } else { "no" }
+        DebugLogStamp = $debugStamp
+        CommandConsumed = if ($commandConsumed) { "yes" } else { "no" }
+        ProbeSeen = if ($probeSeen) { "yes" } else { "no" }
+        QueueState = $queueState
+    }
+}
+
+function Format-ReadinessDiagnostics {
+    param([pscustomobject] $Diagnostics)
+
+    return ("process_running={0} responding={1} paused={2} startup_loop_fresh={3} startup_loop_after_frameadvance={4} startup_loop_last_frame={5} debug_log_fresh_since_probe={6} debug_log_fresh_since_launch={7} debug_log_stamp={8} command_consumed={9} probe_seen={10} queue_state={11}" -f
+        $Diagnostics.ProcessRunning,
+        $Diagnostics.ProcessResponding,
+        $Diagnostics.Paused,
+        $Diagnostics.StartupLoopFresh,
+        $Diagnostics.StartupLoopAfterFrameadvance,
+        $Diagnostics.StartupLoopLastFrame,
+        $Diagnostics.DebugLogFreshSinceProbe,
+        $Diagnostics.DebugLogFreshSinceLaunch,
+        $Diagnostics.DebugLogStamp,
+        $Diagnostics.CommandConsumed,
+        $Diagnostics.ProbeSeen,
+        $Diagnostics.QueueState)
+}
+
 function Wait-ForNewEmulatorProcess {
     param(
         [datetime] $LaunchStartUtc,
@@ -192,6 +334,25 @@ function Send-VirtualKeyTap {
     [DragonWarrior.InputRecovery]::keybd_event($VirtualKey, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
 }
 
+function Invoke-AltReleasePulse {
+    # Release every Alt flavor before and after Escape. The repeated key-up
+    # pulses are deliberately harmless if Alt is already up, and they help when
+    # FCEUX/SDL missed one side of an Alt+Tab focus transition.
+    Send-VirtualKeyUp -VirtualKey 0xA4  # VK_LMENU / Left Alt
+    Send-VirtualKeyUp -VirtualKey 0xA5  # VK_RMENU / Right Alt
+    Send-VirtualKeyUp -VirtualKey 0x12  # VK_MENU / generic Alt
+    Start-Sleep -Milliseconds 60
+    Send-VirtualKeyTap -VirtualKey 0x1B # VK_ESCAPE / dismiss menu focus
+    Start-Sleep -Milliseconds 60
+    Send-VirtualKeyUp -VirtualKey 0xA4
+    Send-VirtualKeyUp -VirtualKey 0xA5
+    Send-VirtualKeyUp -VirtualKey 0x12
+    Start-Sleep -Milliseconds 60
+    Send-VirtualKeyUp -VirtualKey 0xA4
+    Send-VirtualKeyUp -VirtualKey 0xA5
+    Send-VirtualKeyUp -VirtualKey 0x12
+}
+
 function Focus-EmulatorWindow {
     param(
         [System.Diagnostics.Process] $Process
@@ -233,7 +394,10 @@ function Focus-EmulatorWindow {
 function Invoke-StartupInputRecovery {
     param(
         [System.Diagnostics.Process] $Process,
-        [string] $Phase = "startup"
+        [string] $Phase = "startup",
+        [string] $KeyboardBridgePath,
+        [string] $CommandFile,
+        [switch] $QueueStatus
     )
 
     # FCEUX/SDL can occasionally report LeftAlt as still held after script/ROM
@@ -243,11 +407,16 @@ function Invoke-StartupInputRecovery {
     # dismisses that UI mode so keyboard input returns to the game canvas.
     try {
         [void] (Focus-EmulatorWindow -Process $Process)
-        Send-VirtualKeyUp -VirtualKey 0xA4  # VK_LMENU / Left Alt
-        Send-VirtualKeyUp -VirtualKey 0x12  # VK_MENU / generic Alt
-        Start-Sleep -Milliseconds 100
-        Send-VirtualKeyTap -VirtualKey 0x1B # VK_ESCAPE / dismiss menu focus
-        Write-Host ("Startup input recovery ({0}): sent LeftAlt key-up and Escape tap." -f $Phase)
+        Invoke-AltReleasePulse
+        if (-not [string]::IsNullOrWhiteSpace($KeyboardBridgePath)) {
+            [System.IO.File]::WriteAllText($KeyboardBridgePath, "-" + [Environment]::NewLine)
+            Write-Host ("Startup input recovery ({0}): reset keyboard bridge state." -f $Phase)
+        }
+        if ($QueueStatus -and -not [string]::IsNullOrWhiteSpace($CommandFile)) {
+            Add-Content -LiteralPath $CommandFile -Value "input_status:fceux_recovery"
+            Write-Host ("Startup input recovery ({0}): queued input_status:fceux_recovery." -f $Phase)
+        }
+        Write-Host ("Startup input recovery ({0}): sent repeated LeftAlt/RightAlt/generic Alt key-up pulse and Escape tap." -f $Phase)
     } catch {
         Write-Warning ("Startup input recovery failed: {0}" -f $_.Exception.Message)
     }
@@ -310,12 +479,47 @@ function Disable-FceuxNativeKeyboardGamepad {
     Write-Host "Configured FCEUX GamePad.0 native keyboard input: disabled; using project keyboard bridge."
 }
 
+function Enable-FceuxHideMenu {
+    param([string] $ConfigPath)
+
+    $current = Get-ConfigValue -ConfigPath $ConfigPath -Key "SDL.ToggleMenu"
+    if ($current -eq "1") {
+        Write-Host "FCEUX Hide Menu already enabled: SDL.ToggleMenu = 1."
+        return
+    }
+
+    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.ToggleMenu" -Value "1"
+    Write-Host ("Configured FCEUX Hide Menu: SDL.ToggleMenu {0} -> 1. Escape restores the menu if needed." -f $(if ($null -ne $current) { $current } else { "(missing)" }))
+}
+
+function Disable-FceuxAltHotkeys {
+    param([string] $ConfigPath)
+
+    $altHotkeys = @(
+        "SDL.Hotkeys.MainMenuHide",
+        "SDL.Hotkeys.FullScreen"
+    )
+
+    foreach ($key in $altHotkeys) {
+        $current = Get-ConfigValue -ConfigPath $ConfigPath -Key $key
+        if ([string]::IsNullOrWhiteSpace($current)) {
+            Write-Host ("FCEUX Alt hotkey already blank: {0}" -f $key)
+        } else {
+            Set-ConfigValue -ConfigPath $ConfigPath -Key $key -Value ""
+            Write-Host ("Blanked FCEUX Alt hotkey: {0} was '{1}'" -f $key, $current)
+        }
+    }
+}
+
 function Wait-ForCommandPolling {
     param(
         [string] $CommandFile,
         [string] $LogPath,
         [string] $ProbeCommand,
         [string] $SuccessPattern,
+        [string] $StartupLoopDiag,
+        [datetime] $LaunchStartUtc,
+        [System.Diagnostics.Process] $Process,
         [int] $TimeoutSeconds = 12
     )
 
@@ -325,36 +529,20 @@ function Wait-ForCommandPolling {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
-        $queueEmpty = $false
-        if (Test-Path -LiteralPath $CommandFile -PathType Leaf) {
-            try {
-                $queueText = [System.IO.File]::ReadAllText($CommandFile)
-                $queueEmpty = [string]::IsNullOrWhiteSpace($queueText)
-            } catch {
-                $queueEmpty = $false
-            }
-        }
+        $diagnostics = Get-ReadinessDiagnostics `
+            -CommandFile $CommandFile `
+            -LogPath $LogPath `
+            -StartupLoopDiag $StartupLoopDiag `
+            -ProbeCommand $ProbeCommand `
+            -SuccessPattern $SuccessPattern `
+            -LaunchStartUtc $LaunchStartUtc `
+            -ProbeStartUtc $probeStartUtc `
+            -Process $Process
+        $script:lastReadinessProbeDiagnostics = Format-ReadinessDiagnostics -Diagnostics $diagnostics
 
-        $probeSeen = $false
-        if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
-            try {
-                $item = Get-Item -LiteralPath $LogPath
-                if ($item.Length -gt 0 -and $item.LastWriteTimeUtc -ge $probeStartUtc) {
-                    $recentLines = Get-Content -LiteralPath $LogPath -Tail 200
-                    foreach ($line in $recentLines) {
-                        if ($line.Contains($SuccessPattern)) {
-                            $probeSeen = $true
-                            break
-                        }
-                    }
-                }
-            } catch {
-                $probeSeen = $false
-            }
-        }
-
-        if ($queueEmpty -and $probeSeen) {
+        if ($diagnostics.CommandConsumed -eq "yes" -and $diagnostics.ProbeSeen -eq "yes") {
             Write-Host ("Ready: command polling confirmed via {0}" -f $ProbeCommand)
+            Write-Host ("Readiness diagnostics: {0}" -f $script:lastReadinessProbeDiagnostics)
             return $true
         }
 
@@ -394,6 +582,9 @@ $launchShim = Join-Path $scriptDir "launch_dw.cmd"
 
 $loadStateEnabled = $StateSlot -ge 0
 $autoResumeValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.AutoResume"
+$hideMenuValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.ToggleMenu"
+$mainMenuHotkeyValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.Hotkeys.MainMenuHide"
+$fullscreenHotkeyValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.Hotkeys.FullScreen"
 
 Assert-FileExists -PathValue $launchShim -Label "Launcher shim"
 Assert-FileExists -PathValue $keyboardBridgeScript -Label "Keyboard bridge script"
@@ -404,14 +595,16 @@ Write-Host ("  ROM:      {0}" -f $RomPath)
 Write-Host ("  Lua:      {0}" -f $LuaPath)
 Write-Host ("  Save:     {0}" -f $(if ($BatterySavePath) { $BatterySavePath } else { "(none)" }))
 Write-Host ("  Slot:     {0}" -f $(if ($loadStateEnabled) { $StateSlot } else { "(none)" }))
-Write-Host ("  AutoResume: {0}" -f $(if ($null -ne $autoResumeValue) { $autoResumeValue } else { "(unknown)" }))
+Write-Host ("  AutoResume: {0} (old-session restore; not used for command polling)" -f $(if ($null -ne $autoResumeValue) { $autoResumeValue } else { "(unknown)" }))
+Write-Host ("  Hide menu: {0}" -f $(if ($null -ne $hideMenuValue) { $hideMenuValue } else { "(unknown)" }))
+Write-Host ("  Alt menu hotkey: {0}" -f $(if ($null -ne $mainMenuHotkeyValue -and $mainMenuHotkeyValue -ne "") { $mainMenuHotkeyValue } else { "(blank)" }))
+Write-Host ("  Alt fullscreen hotkey: {0}" -f $(if ($null -ne $fullscreenHotkeyValue -and $fullscreenHotkeyValue -ne "") { $fullscreenHotkeyValue } else { "(blank)" }))
+Write-Host "  Background input: disabled via -bginput 0"
 Write-Host ("  Wait:     {0}" -f (Format-Bool (-not $NoWait)))
 Write-Host ("  Dry run:  {0}" -f (Format-Bool $DryRun))
 
 if ($null -eq $autoResumeValue) {
-    Write-Warning ("Could not read SDL.AutoResume from {0}" -f $configPath)
-} elseif ($autoResumeValue -ne "1") {
-    Write-Warning ("SDL.AutoResume = {0} in {1}. FCEUX may start paused, which prevents dw_commands.txt polling." -f $autoResumeValue, $configPath)
+    Write-Warning ("Could not read SDL.AutoResume from {0}; launcher will leave it unchanged." -f $configPath)
 }
 
 $existingProcesses = @(Get-Process -Name qfceux, fceux -ErrorAction SilentlyContinue)
@@ -451,6 +644,8 @@ if ($DryRun) {
         $previewArgs += "--loadstate"
         $previewArgs += [string] $StateSlot
     }
+    $previewArgs += "-bginput"
+    $previewArgs += "0"
     $previewArgs += ("--loadlua=" + $LuaPath)
     $previewArgs += (Quote-Argument $RomPath)
     $shimPreviewArgs = @(
@@ -497,6 +692,8 @@ if ($existingProcesses.Count -gt 0) {
 }
 
 Disable-FceuxNativeKeyboardGamepad -ConfigPath $configPath
+Enable-FceuxHideMenu -ConfigPath $configPath
+Disable-FceuxAltHotkeys -ConfigPath $configPath
 
 $existingBridgeProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*keyboard_bridge.ps1*" })
@@ -537,6 +734,8 @@ if ($loadStateEnabled) {
     $launchArgs += "--loadstate"
     $launchArgs += [string] $StateSlot
 }
+$launchArgs += "-bginput"
+$launchArgs += "0"
 $launchArgs += ("--loadlua=" + $LuaPath)
 $launchArgs += (Quote-Argument $RomPath)
 
@@ -566,7 +765,7 @@ if (-not $process) {
 
 Write-Host ("Started emulator PID {0}" -f $process.Id)
 Write-Host ("Launch args: {0}" -f ($launchArgs -join " "))
-Invoke-StartupInputRecovery -Process $process -Phase "post-start"
+Invoke-StartupInputRecovery -Process $process -Phase "post-start" -KeyboardBridgePath $keyboardBridgeFile
 
 if ($NoWait) {
     Write-Host "Skipping readiness wait."
@@ -574,23 +773,34 @@ if ($NoWait) {
 }
 
 if (-not (Wait-ForDebugLog -LogPath $debugLog -LaunchStartUtc $launchStartUtc -TimeoutSeconds 20)) {
-    throw "Timed out waiting for dw_debug.log to update after launch."
+    $diagnostics = Get-ReadinessDiagnostics `
+        -CommandFile $commandFile `
+        -LogPath $debugLog `
+        -StartupLoopDiag $startupLoopDiag `
+        -ProbeCommand "__startup_log_probe_not_sent__" `
+        -SuccessPattern "__startup_log_probe_not_sent__" `
+        -LaunchStartUtc $launchStartUtc `
+        -ProbeStartUtc $launchStartUtc `
+        -Process $process
+    $script:lastReadinessProbeDiagnostics = Format-ReadinessDiagnostics -Diagnostics $diagnostics
+    $hint = "Timed out waiting for dw_debug.log to update after launch."
+    $hint += (" Readiness diagnostics: {0}." -f $script:lastReadinessProbeDiagnostics)
+    $hint += " FCEUX command-line ROM/Lua startup is unreliable on this machine; if qfceux is open, manually load the ROM and main.lua, then verify command polling with input_status."
+    $hint += " BizHawk remains the dependable automated startup path."
+    throw $hint
 }
 
 $probeTag = [guid]::NewGuid().ToString("N")
 $probeCommand = "launcher_probe:" + $probeTag
 $probeSuccessPattern = "LAUNCHER_PROBE: " + $probeTag
 
-if (-not (Wait-ForCommandPolling -CommandFile $commandFile -LogPath $debugLog -ProbeCommand $probeCommand -SuccessPattern $probeSuccessPattern -TimeoutSeconds 12)) {
+if (-not (Wait-ForCommandPolling -CommandFile $commandFile -LogPath $debugLog -ProbeCommand $probeCommand -SuccessPattern $probeSuccessPattern -StartupLoopDiag $startupLoopDiag -LaunchStartUtc $launchStartUtc -Process $process -TimeoutSeconds 12)) {
     $hint = "The emulator started but did not consume the readiness probe from dw_commands.txt."
-    if ($autoResumeValue -eq "0") {
-        $hint += (" Likely cause: FCEUX is paused because SDL.AutoResume = 0 in {0}. Set SDL.AutoResume = 1 and relaunch." -f $configPath)
-    } else {
-        $hint += " Check whether FCEUX is paused or otherwise not advancing frames."
-    }
+    $hint += (" Readiness diagnostics: {0}." -f $script:lastReadinessProbeDiagnostics)
+    $hint += " AutoResume is only old-session restore; this launcher leaves it unchanged and uses explicit --loadstate when requested."
     $hint += (" Probe marker: {0}." -f $probeSuccessPattern)
     $hint += (" Inspect {0} for before/after frameadvance markers." -f $startupLoopDiag)
     throw $hint
 }
 
-Invoke-StartupInputRecovery -Process $process -Phase "post-ready"
+Invoke-StartupInputRecovery -Process $process -Phase "post-ready" -KeyboardBridgePath $keyboardBridgeFile -CommandFile $commandFile -QueueStatus

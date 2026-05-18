@@ -31,15 +31,15 @@ if "%DW_LAUNCH_ROM_FIRST%"=="1" goto rom_first
 if "%STATE_SLOT%"=="" goto launch_without_slot
 
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] branch=launch_with_slot
-if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "--loadstate" "%STATE_SLOT%" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
-start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "--loadstate" "%STATE_SLOT%" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
+if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "--loadstate" "%STATE_SLOT%" "-bginput" "0" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
+start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "--loadstate" "%STATE_SLOT%" "-bginput" "0" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] start_errorlevel=%ERRORLEVEL%
 exit /b %ERRORLEVEL%
 
 :launch_without_slot
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] branch=launch_without_slot
-if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
-start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
+if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "-bginput" "0" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
+start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "-bginput" "0" "--loadlua=%LUA_PATH%" "%ROM_PATH%"
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] start_errorlevel=%ERRORLEVEL%
 exit /b %ERRORLEVEL%
 
@@ -47,15 +47,15 @@ exit /b %ERRORLEVEL%
 if "%STATE_SLOT%"=="" goto launch_without_slot_rom_first
 
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] branch=launch_with_slot_rom_first
-if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "--loadstate" "%STATE_SLOT%" "--loadlua=%LUA_PATH%"
-start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "--loadstate" "%STATE_SLOT%" "--loadlua=%LUA_PATH%"
+if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "--loadstate" "%STATE_SLOT%" "-bginput" "0" "--loadlua=%LUA_PATH%"
+start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "--loadstate" "%STATE_SLOT%" "-bginput" "0" "--loadlua=%LUA_PATH%"
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] start_errorlevel=%ERRORLEVEL%
 exit /b %ERRORLEVEL%
 
 :launch_without_slot_rom_first
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] branch=launch_without_slot_rom_first
-if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "--loadlua=%LUA_PATH%"
-start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "--loadlua=%LUA_PATH%"
+if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] command=start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "-bginput" "0" "--loadlua=%LUA_PATH%"
+start "" /D "%EMULATOR_DIR%" "%FCEUX_EXE%" "%ROM_PATH%" "-bginput" "0" "--loadlua=%LUA_PATH%"
 if "%DW_LAUNCH_DEBUG%"=="1" echo [launch_dw.cmd] start_errorlevel=%ERRORLEVEL%
 exit /b %ERRORLEVEL%
 

@@ -181,11 +181,36 @@ Durable FCEUX facts:
   `./launch_fceux.sh`, or `launch_fceux.ps1`
 - Current tested emulator baseline has been `qfceux.exe`
 - The launcher disables FCEUX native keyboard GamePad.0 and uses the project keyboard bridge when needed
+- FCEUX command-line ROM/Lua startup is unreliable on this machine. A failed
+  readiness wait may still leave qfceux open; manually loading the ROM and
+  `main.lua` can produce a usable fallback session, but BizHawk remains the
+  dependable automated startup path.
+- FCEUX `SDL.AutoResume` is old-session restore. Do not force it as a polling
+  fix; this repo uses explicit `--state-slot` / `--loadstate` when a launch
+  should resume from a slot.
+- The FCEUX path now launches with `-bginput 0` and enables Hide Menu
+  (`SDL.ToggleMenu = 1`) as the first mitigation for Alt/menu focus problems.
+  The launcher also blanks FCEUX's Alt-based menu/fullscreen hotkeys
+  (`SDL.Hotkeys.MainMenuHide` and `SDL.Hotkeys.FullScreen`) so Alt+Tab does
+  not also activate emulator UI shortcuts.
+- `./recover_fceux_input.sh` is the manual recovery command for the stale-Alt
+  condition. It focuses qfceux, sends LeftAlt/RightAlt/generic Alt key-up,
+  taps Escape, resets `dw_keyboard_input.txt` to `-`, and queues
+  `input_status:fceux_recovery`.
 - `dw_keyboard_input.txt` is runtime bridge state and should stay ignored
 - FCEUX can retain `LeftAlt` after Alt-tab/window focus changes. LeftAlt-only
-  neutral bridge frames are tagged as stale sentinel input, pause `auto_step`,
-  and should not be written repeatedly through `joypad.set`; do not promote
-  route blockers gathered while logs show `keys=LeftAlt joy1=-`.
+  idle frames are logged as `INPUT_STALE_ALT_IGNORED` and return no synthetic
+  joypad input; repeated idle stale-Alt warnings are log-only and
+  `spoken=false` unless real bridge input is active. Do not promote route
+  blockers gathered while logs show `keys=LeftAlt joy1=-`.
+
+Current emulator decision rule:
+- Keep BizHawk as the launcher default until the same short loop has been run
+  in both emulators. Switch the default back to FCEUX only if Alt recovery is
+  reliable, FCEUX startup/manual-load friction is acceptable, and BizHawk still
+  has noticeable lag/audio glitches in that loop. If both pass, prefer FCEUX
+  for player feel; if FCEUX still interrupts normal play or cannot launch
+  reliably enough for agents, keep BizHawk primary.
 
 Emulator compatibility direction:
 - Keep existing gameplay code FCEUX-shaped for now

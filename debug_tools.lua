@@ -132,8 +132,11 @@ local input_trace = nil     -- Per-frame input trace state for keyboard/joypad d
 local stuck_alt_frames = 0  -- Consecutive frames where LeftAlt appears stuck and joy1 is idle.
 local stuck_alt_warned = false
 local STUCK_ALT_WARN_FRAMES = 120
+local STUCK_ALT_SPEAK_COOLDOWN_FRAMES = 1800
+local stuck_alt_last_spoken_frame = -STUCK_ALT_SPEAK_COOLDOWN_FRAMES
 local keyboard_bridge_active = false
 local external_keyboard_bridge_active = false
+local external_stale_alt_ignored_active = false
 local external_keyboard_bridge_missing_logged = false
 -- Content cache for the keyboard_bridge.ps1 sidecar's output file. The sidecar
 -- only rewrites the file when key state changes, so the same bytes show up on
@@ -665,6 +668,7 @@ local function build_external_keyboard_bridge_input(frame)
             ))
         end
         external_keyboard_bridge_active = false
+        external_stale_alt_ignored_active = false
         return nil
     end
 
@@ -673,12 +677,34 @@ local function build_external_keyboard_bridge_input(frame)
     end
 
     if fceux_stale and not bridge_active then
-        -- Sentinel only: main.lua should pause auto_step for this stale FCEUX
-        -- keyboard state, but must not write a neutral joypad frame every poll.
-        bridge._stale_fceux_keyboard = true
+        -- Alt+Tab can leave FCEUX/SDL reporting LeftAlt forever even though
+        -- the physical key is up. Treat LeftAlt-only idle state as diagnostic
+        -- noise, not synthetic joypad input, so the bug stays benign during
+        -- normal Windows window-switching.
+        if external_keyboard_bridge_active then
+            M.info(string.format(
+                "INPUT_EXTERNAL_BRIDGE_CLEAR frame=%d reason=fceux_stale_alt_ignored keys=%s joy1=%s",
+                frame or current_frame,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy)
+            ))
+        end
+        external_keyboard_bridge_active = false
+        if not external_stale_alt_ignored_active then
+            M.info(string.format(
+                "INPUT_STALE_ALT_IGNORED frame=%d keys=%s joy1=%s bridge=%s reason=fceux_alt_tab_latch",
+                frame or current_frame,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy),
+                format_joy_buttons(bridge)
+            ))
+        end
+        external_stale_alt_ignored_active = true
+        return nil
     else
         bridge._raw = true
     end
+    external_stale_alt_ignored_active = false
     if not external_keyboard_bridge_active then
         M.info(string.format(
             "INPUT_EXTERNAL_BRIDGE_ACTIVE frame=%d keys=%s native_joy1=%s bridge=%s reason=fceux_stale_keyboard_state",
@@ -718,7 +744,7 @@ local function speak_stuck_alt_warning()
         return
     end
 
-    pcall(tolk_module.output, "FCEUX menu focus appears stuck. Focus the emulator, then press Escape to restore controls.")
+    pcall(tolk_module.output, "FCEUX menu focus appears stuck. Run the FCEUX recovery helper, or focus the emulator and press Alt then Escape.")
 end
 
 local function update_stuck_alt_watch(frame)
@@ -731,19 +757,31 @@ local function update_stuck_alt_watch(frame)
     local joy = joypad.read(1)
     local left_alt = is_left_alt_pressed(keys)
     local joy_idle = not has_joy_buttons(joy)
-
+    local bridge_active = false
     if left_alt and joy_idle then
+        local bridge = parse_external_keyboard_bridge()
+        bridge_active = bridge and has_joy_buttons(bridge) or false
+    end
+
+    if left_alt and joy_idle and not bridge_active then
         stuck_alt_frames = stuck_alt_frames + 1
         if not stuck_alt_warned and stuck_alt_frames >= STUCK_ALT_WARN_FRAMES then
             stuck_alt_warned = true
+            local cooldown_remaining = (stuck_alt_last_spoken_frame + STUCK_ALT_SPEAK_COOLDOWN_FRAMES) - (frame or current_frame)
+            local should_speak = false
             M.info(string.format(
-                "INPUT_STUCK_ALT frame=%d frames=%d keys=%s joy1=%s recovery=press_escape_or_alt_then_escape",
+                "INPUT_STUCK_ALT frame=%d frames=%d keys=%s joy1=%s recovery=stale_alt_ignored_or_run_recover_fceux_input spoken=%s cooldown_remaining=%d benign=true",
                 frame or current_frame,
                 stuck_alt_frames,
                 format_pressed_keys(keys),
-                format_joy_buttons(joy)
+                format_joy_buttons(joy),
+                tostring(should_speak),
+                math.max(0, cooldown_remaining)
             ))
-            speak_stuck_alt_warning()
+            if should_speak then
+                stuck_alt_last_spoken_frame = frame or current_frame
+                speak_stuck_alt_warning()
+            end
         end
         return
     end

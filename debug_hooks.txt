@@ -81,6 +81,9 @@ COMMANDS (write to dw_commands.txt, one per line)
   trace_input:FRAMES       Same, with frame count clamped to 1..1800
   launcher_probe           Write a launcher readiness marker to dw_debug.log
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
+  ./recover_fceux_input.sh Reset FCEUX stuck-Alt/menu focus from WSL, reset
+                           dw_keyboard_input.txt to "-", and queue
+                           input_status:fceux_recovery
   report_scan_stats        BizHawk only: log PPU read/cache totals and scan profiles
   reset_scan_stats         BizHawk only: reset PPU read/cache totals and scan profiles
   report_title_state       Log title/name-entry cursor state and decoded title rows

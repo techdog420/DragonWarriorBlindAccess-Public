@@ -6,6 +6,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Emulator A/B note: keep BizHawk as the default launcher until a short
+  same-save bakeoff is complete. FCEUX should pass if `input_status` starts
+  clean or `./recover_fceux_input.sh` makes `left_alt=false`, no unrecoverable
+  menu-focus state interrupts play, object browsing works, one route/autowalk
+  action works, one menu/dialogue interaction works, and any manual ROM/Lua
+  loading friction is acceptable for the fallback workflow. BizHawk should pass
+  if the same loop has no recurring audio glitching or obvious lag; if lag
+  appears, capture `reset_scan_stats` / `report_scan_stats` around the repro
+  before tuning. If both pass, prefer FCEUX for player feel; if FCEUX still
+  interrupts normal play or remains too awkward to launch reliably, keep BizHawk
+  primary.
+
 - Rimuldar is now the next guide target after exiting Swamp Cave to the south
   island. External orientation from Gamer Corner: Rimuldar entrance is
   `(29S,59E)`, which is local world coordinate `(102,72)` from the current
