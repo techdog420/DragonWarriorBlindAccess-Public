@@ -483,6 +483,158 @@ local MAP_PASSTHROUGH_CELLS = {
         ["2,13"] = true,
     },
 
+    -- Map 0x0B: Rimuldar
+    -- Magic Key shop north/water-edge approach. The route from the east side
+    -- reaches the weapon-shop stand at (24,7); live edge probing moved
+    -- (24,7)->UP into (24,6) even though the ROM decodes (24,6) as tile 0.
+    -- Once north of this bridge, the existing grid routes cleanly west to
+    -- Old Man 1's Magic Key shop stand at (4,6).
+    --
+    -- The entrance-to-key-shop route also needs the x=19 hidden connector:
+    -- 2026-05-17 raw probes moved (19,10)->UP into (19,9) 3/3, then
+    -- (19,9)->UP into (19,8), and (18,9)->RIGHT into (19,9) 3/3 even though
+    -- (19,9) decodes as tile 15. This is the actual bridge around the
+    -- false north pocket near (24,9).
+    --
+    -- After that bridge, the route crosses row 8 at (14,8): (14,9)->UP
+    -- verified 3/3 into this tile, and live position then continued to the
+    -- row-7 lane with both (14,8)->UP and (14,8)->DOWN inspecting open.
+    -- Neighboring (15,8) also moved but is occupied by Woman 3, so keep the
+    -- public route on the clean (14,8) connector.
+    --
+    -- The northwest key-shop search exposed (2,7) as a standable hidden cell,
+    -- but later route-shaped evidence superseded the early west-entry probe:
+    -- repeated attempts from (1,7)->RIGHT into (2,7) blocked cleanly. Keep
+    -- (2,7) as passable for non-west approaches, and close its west approach
+    -- in MAP_DIRECTIONAL_BLOCKS below.
+    --
+    -- (14,9)->LEFT into (13,9) verified 3/3, then a forced current-position
+    -- probe moved (13,9)->UP into (13,8); held movement continued to (13,7).
+    -- The earlier x=1 strip is also engine-passable, but the later route
+    -- found one-way walls before it can reach the key counter.
+    --
+    -- The next hidden turn in the one-way maze is at (16,8). After the
+    -- row-10 north entries at x=13..17 proved blocked, live raw-hold probes
+    -- found the valid entrance-side route: (18,10)->UP into (18,9), west to
+    -- (16,9), then (16,9)->UP into hidden (16,8) and onward to row 7 before
+    -- dropping back through (14,8)/(14,9) toward the key counter.
+    --
+    -- The final key-counter maze turns through the upper one-way lane:
+    -- (7,3)->LEFT into (6,3) verified 3/3 passable even though (6,3)
+    -- decodes as tile 0, and the held move continued through to (5,3).
+    -- From there, live seam observations moved (5,3)->DOWN into (5,4),
+    -- (5,4)->DOWN into (5,5), (5,5)->LEFT into (4,5), and
+    -- (4,5)->DOWN into the public key-shop stand at (4,6).
+    --
+    -- A later return-side pass showed the lower escape strip is also real:
+    -- the user crossed down through the key-shop lane, including the
+    -- one-way-looking (4,8)->DOWN into (4,9), and local ROM-backed A* needs
+    -- (4,7)..(4,9) open to reconnect the stand to the exit route after the
+    -- upper row-6 false drops were sealed.
+    --
+    -- The next loop pass sealed both exits from (3,11), which means the
+    -- return route must leave the key seller by the lower hidden lane instead
+    -- of dropping into that dead pocket. Live proof moved (4,7)->RIGHT into
+    -- (5,7) in 2/3 raw attempts, earlier user movement stepped through the
+    -- (6,7)/(6,8)/(6,9) column, and route-shaped A* reconnects through
+    -- (7,9)->(7,10) once those false-wall cells are exposed.
+    --
+    -- Follow-up testing showed (5,7) itself is a tiny one-way pocket east of
+    -- the key merchant, so the return route should not use it. The inbound
+    -- route instead needs the south-side hidden turn: live manual movement
+    -- walked (13,15)->DOWN into false-wall (13,16), then continued through
+    -- row 17 toward the proven west/key-shop lane. Once the false entry into
+    -- (7,10) was sealed, the return route needed the adjacent live-walked
+    -- connector (8,9): manual movement crossed (7,9)<->(8,9) twice. The
+    -- next noisy manual pass also stepped through false-wall cells on the west
+    -- pocket and upper return route: (1,14)->(2,14)->(3,14), (4,14)/(5,14),
+    -- (8,7)/(8,8), and (14,5). The later route simulation uses the row-14
+    -- cells as the shorter entrance/recovery corridor after new false exits
+    -- around rows 8, 11, and 16 are sealed.
+    --
+    -- The next manual return-side probe exposed the upper false-wall exit
+    -- lane: (3,5)->UP moved into (3,4), and the player was able to stand on
+    -- false-wall (4,3) before pressing north and changing to the world map.
+    -- Model (4,3) as the northwest exit stand, but block the edge into (4,2)
+    -- below so ordinary in-town paths do not route through the map transition.
+    --
+    -- The next FCEUX pass added more manually walked false-wall cells while
+    -- chasing the Magic Key counter and return route. (1,13), (1,5), and
+    -- (3,9) are recovery/approach pockets on the west side; (15,5) is the
+    -- upper return connector that keeps the east-exit route open after
+    -- (14,5)->DOWN into (14,6) proved blocked.
+    --
+    -- After the (5,15) south/east exits were confirmed blocked, the nearest
+    -- component bridge was (1,12): (1,13)->UP into it moved 4/5, and
+    -- (1,11)->DOWN into it moved 5/5. A local ROM-backed route simulation with
+    -- only this passthrough added reconnects (5,15) to the key stand at (4,6).
+    -- That first route still used the noisy (1,7)->RIGHT into (2,7) connector,
+    -- and the latest focused route evidence now closes that west entry. The
+    -- next probe batch exposed an alternate one-way bridge candidate through
+    -- (3,8), but later route-shaped evidence superseded the noisy/manual
+    -- north-entry proof: (3,9)->UP into (3,8) blocked repeatedly under queued
+    -- route plus seam retries. The reverse target-side entry from
+    -- (4,8)->LEFT also blocked 5/5, so (3,8) remains a standable hidden cell
+    -- but has blocked south and east approaches. Do not expose (2,13) yet:
+    -- (2,14)->UP moved 5/5, but (3,13)->LEFT into it blocked 5/5 and
+    -- (1,13)->RIGHT was mixed.
+    --
+    -- After (2,7).west closed, the next frontier pass found another real
+    -- false-wall tile on the lower lane: (4,9)->RIGHT into (5,9) verified
+    -- 5/5 passable. The candidate north break from (5,9) into (5,8) then
+    -- blocked from a forced origin, so (5,9) is useful as lane data but is
+    -- not the missing key-counter bridge. The later (2,5) lead was a stale /
+    -- noisy bridge too: fresh route and probe evidence block westward entry
+    -- from (1,5). The (3,7) lead still proves a standable hidden cell, but
+    -- the south approach into (3,8) is now closed, so it is not yet a solved
+    -- entrance-to-counter route.
+    [0x0B] = {
+        ["1,5"] = true,
+        ["1,7"] = true,
+        ["1,8"] = true,
+        ["1,12"] = true,
+        ["1,13"] = true,
+        ["1,14"] = true,
+        ["2,5"] = true,
+        ["2,7"] = true,
+        ["2,14"] = true,
+        ["3,4"] = true,
+        ["3,5"] = true,
+        ["3,7"] = true,
+        ["3,8"] = true,
+        ["3,9"] = true,
+        ["3,14"] = true,
+        ["4,3"] = true,
+        ["4,5"] = true,
+        ["4,14"] = true,
+        ["4,7"] = true,
+        ["4,8"] = true,
+        ["4,9"] = true,
+        ["5,3"] = true,
+        ["5,5"] = true,
+        ["5,7"] = true,
+        ["5,9"] = true,
+        ["5,14"] = true,
+        ["6,3"] = true,
+        ["6,7"] = true,
+        ["6,8"] = true,
+        ["6,9"] = true,
+        ["7,9"] = true,
+        ["8,7"] = true,
+        ["8,8"] = true,
+        ["8,9"] = true,
+        ["13,8"] = true,
+        ["13,9"] = true,
+        ["13,15"] = true,
+        ["13,16"] = true,
+        ["14,5"] = true,
+        ["14,8"] = true,
+        ["15,5"] = true,
+        ["16,8"] = true,
+        ["19,9"] = true,
+        ["24,6"] = true,
+    },
+
     -- Map 0x07: Kol
     -- South entrance/exit false-wall strip. Live arrival from the world map
     -- lands at (19,23), and manual movement from (19,22)->DOWN moved into
@@ -1753,6 +1905,226 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["1,10"] = {east = true},
         ["1,11"] = {east = true},
         ["1,12"] = {east = true},
+    },
+
+    -- Map 0x0B: Rimuldar
+    [0x0B] = {
+        -- 2026-05-17 first town walkabout. The exit-route replan from
+        -- (28,14) repeatedly failed moving UP into (28,13), including the
+        -- seam brute-force retry, while (29,14)->UP into the confirmed east
+        -- exit tile at (29,13) moved cleanly. Fresh NPC dump showed no NPC at
+        -- (28,13)/(28,14), so keep this as a directional south-approach wall
+        -- rather than NPC clutter or a full-cell block.
+        -- The later clean entrance-to-key-shop pass also found the east
+        -- approach blocked from (29,13)->LEFT, while the route into and out of
+        -- the actual exit tile (29,13) remained open.
+        ["28,13"] = {east = true, south = true},
+
+        -- 2026-05-17 Magic Key route shakedown. These edges each verified
+        -- 3/3 blocked with probe_edge_verify while routing from the east
+        -- entrance toward Old Man 1's key counter. Keep them directional.
+        -- Earlier (25,12).south/east evidence was mixed, but the later
+        -- weapon-route loop blocked both approaches repeatedly before stale
+        -- Alt returned, so those edges are promoted below.
+        ["24,12"] = {north = true, south = true},
+        ["23,12"] = {south = true},
+        ["25,11"] = {east = true, west = true},
+        ["25,12"] = {east = true, south = true},
+        ["20,10"] = {south = true, west = true},
+        ["21,6"] = {west = true},
+        ["21,7"] = {west = true},
+        ["21,11"] = {west = true},
+        ["21,12"] = {south = true, west = true},
+        ["24,8"] = {south = true},
+        ["13,6"] = {north = true, south = true},
+        ["13,8"] = {east = true},
+        ["14,6"] = {east = true, north = true, south = true},
+        -- Final key-counter maze walls. Autowalk and seam retries repeatedly
+        -- found the false exits around the (4,6) public stand: (3,5)->DOWN
+        -- into (3,6) blocked 3/3 during the queued route, while stand-side
+        -- loops found (4,6)->LEFT into (3,6) and (4,6)->RIGHT into (5,6)
+        -- blocked 26+ times each. A follow-up forced raw probe also found
+        -- the tempting x=6 descent blocked: (6,3)->DOWN into (6,4) blocked
+        -- twice, and (5,5)->DOWN into (5,6) plus (5,5)->RIGHT into (6,5)
+        -- blocked after many manual twitches plus direct forced probes. The
+        -- return-side shortcut (6,4)->DOWN into (6,5) then verified 3/3
+        -- blocked too, so the planner must turn through (5,5)->(4,5)->(4,6)
+        -- into the stand. A later reloaded return route repeatedly blocked
+        -- (5,4)->RIGHT into (6,4) and (5,3)->RIGHT into (6,3) before stale
+        -- Alt resumed, so the viable return now climbs through the upper
+        -- hidden lane instead of the x=6 west approaches.
+        ["3,6"] = {north = true, east = true},
+        ["5,6"] = {north = true, west = true},
+        ["6,4"] = {east = true, north = true, west = true},
+        ["6,5"] = {east = true, north = true, west = true},
+        ["6,6"] = {east = true},
+        ["2,6"] = {west = true},
+        ["17,6"] = {east = true},
+        ["17,7"] = {east = true},
+        -- Entrance-side one-way maze cleanup from the final Magic Key route
+        -- pass. The false row-10 north entries into row 9 blocked under raw
+        -- verification, while the proven connector is farther east:
+        -- (18,10)->UP, then west through row 9, then up through hidden
+        -- (16,8). A later fresh run showed the (12,7) false exits are real
+        -- after all: both (12,7)->UP into (12,6) and (12,7)->RIGHT into
+        -- (13,7) blocked 5/5, then reconfirmed 3/3 after a script restart.
+        -- Keep the still-mixed seam at (5,3).east open. A later clean
+        -- FCEUX autowalk run showed the false row-6 return drops are real:
+        -- (8,6)->RIGHT into (9,6), (9,5)->DOWN into (9,6),
+        -- (11,6)->RIGHT into (12,6), (12,5)->DOWN into (12,6), and
+        -- (13,5)->DOWN into (13,6) all blocked before stale Alt resumed.
+        -- The same entrance-side pass also repeatedly blocked
+        -- (18,9)->LEFT into (17,9), superseding the earlier mixed
+        -- (17,9).east evidence.
+        -- Later return-side autowalk passes through the key-shop lower lane
+        -- found multiple false pocket exits before stale Alt reappeared. The
+        -- first reached (6,10) cleanly, then repeatedly failed
+        -- (6,10)->DOWN into (6,11) and (6,10)->RIGHT into (7,10). A follow-up
+        -- after the one-way (4,8)->(4,9) discovery queued a route from
+        -- (4,10) and looped cleanly on (4,10)->DOWN into (4,11) and
+        -- (5,10)->DOWN into (5,11). Keep these directional-only so the
+        -- planner can still use any separately proven approaches later. The
+        -- next entrance-side pass then cleanly looped on the false west/down
+        -- exits around x=9: (9,10)->LEFT into (8,10), (9,10)->DOWN into
+        -- (9,11), (9,13)->UP into (9,12), and (9,13)->LEFT into (8,13).
+        -- These happened before stale LeftAlt returned and each had repeated
+        -- queued-route plus seam-retry block observations.
+        -- The next both-direction test found another clean entrance-side
+        -- trio before Alt returned: (22,13)->UP into (22,12),
+        -- (10,12)->LEFT into (9,12), and (9,14)->LEFT into (8,14). The return
+        -- route then proved the pocket below (3,11) is closed from both
+        -- visible exits: (3,11)->DOWN into (3,12) and (3,11)->RIGHT into
+        -- (4,11) repeatedly blocked. Exposing the lower hidden lane above is
+        -- what keeps the key-shop stand connected after these dead ends are
+        -- sealed.
+        -- The next loop batch proved the visible south connector into row 17
+        -- is also one-way/closed from the east: (18,17)->LEFT into (17,17)
+        -- blocked across queued routes and seam retries. That same batch
+        -- showed (5,7) is a tiny trap east of the key seller: attempts out of
+        -- it to (5,6), (4,7), (6,7), and (5,8) all repeatedly blocked, while
+        -- (4,7)->RIGHT into (5,7) remained the earlier one-way entry. The
+        -- latest both-direction pass then found high-confidence entrance-side
+        -- loops at (7,16)->UP into (7,15) and (7,16)->LEFT into (6,16), each
+        -- reaching 80+ blocked observations with no moves before stale Alt
+        -- returned. Return-side walking through the lower lane repeatedly
+        -- blocked (7,9)->DOWN into (7,10), while nearby (4,9).north,
+        -- (4,10).north, and row-14 blips moved on retry and stay open. The
+        -- next reloaded pass added clean blocker evidence at the false north
+        -- entries from row 17 into (5,16)/(6,16), the dead pocket exits from
+        -- (3,14) into (3,13)/(3,15), the lower return drop into (8,10), the
+        -- row-6 return entry into (10,6), and the repeatedly blocked east
+        -- approach into (6,3). The older (6,3).east move note is superseded
+        -- by this later route-shaped 6x block cluster. The latest pre-Alt
+        -- FCEUX route batch then added the remaining false entries:
+        -- (4,17)->UP into (4,16), (3,17)->UP into (3,16),
+        -- (7,12)->UP into (7,11), (4,9)->UP into (4,8),
+        -- (6,9)->UP into (6,8), (5,4)->RIGHT into (6,4), and
+        -- (5,3)->RIGHT into (6,3). Nearby seams such as (4,5).south,
+        -- (5,5).west, (5,3).south, (4,10).north, (6,10).north,
+        -- (26,14).east, and (29,14).north all moved on retry or were stale-Alt
+        -- contaminated, so they stay unmodeled. The next route/manual pass
+        -- sealed the south/west row-15 pocket from (2,16), the row-13 pocket
+        -- from (4,13), and the false upper return target (5,2). Manual
+        -- movement then found a northwest exit from (4,3)->UP; keep the exit
+        -- stand passable, but block (4,2).south so normal in-town A* treats
+        -- that edge as a world transition rather than a walkable corridor.
+        -- The follow-up FCEUX pass added the next clean one-way walls:
+        -- (2,15)->RIGHT into (3,15), (5,12)->LEFT into (4,12), and
+        -- (5,12)->UP into (5,11) on the entrance side; (14,5)->DOWN into
+        -- (14,6), (24,11)->RIGHT into (25,11), and (24,11)->DOWN into
+        -- (24,12) on return. The same run repeatedly blocked (1,7)->RIGHT
+        -- into (2,7), and the latest route-shaped pass repeated that failure
+        -- cleanly enough to supersede the earlier mixed/open probes. Close
+        -- (2,7).west while leaving the cell itself passable. The alternate
+        -- one-way connector through (3,8) looked promising, but the later
+        -- route-shaped pass repeatedly blocked (3,9)->UP into (3,8) before
+        -- stale Alt returned; the earlier manual/probe open result is treated
+        -- as noisy. (4,8)->LEFT into (3,8) also blocked 5/5, so model both
+        -- (3,8).south and (3,8).east below.
+        -- The next log also showed that the selected
+        -- Magic Key stand at (4,6) is correct: TALK from there opened the key
+        -- shop, but trying to leave south repeatedly hit Old Man 1's occupied
+        -- NPC cell at (4,7). Keep (4,6).north open so the public stand is
+        -- reachable from the maze, and let object NPC blocking handle (4,7).
+        -- The same clean pre-Alt section promoted more one-way maze walls:
+        -- (1,15)->RIGHT into (2,15), (6,12)->UP into (6,11),
+        -- (7,12)->RIGHT into (8,12), (4,5)->UP into (4,4), and
+        -- (4,4)->UP into (4,3). The next route-to-merchant attempt reached
+        -- (6,14), then repeatedly alternated between (6,14)->RIGHT into
+        -- (7,14) and (6,14)->DOWN into (6,15), both blocked cleanly before
+        -- stale Alt returned. The subsequent key-route attempt looped from
+        -- (7,13), repeatedly blocking (7,13)->RIGHT into (8,13) and
+        -- (7,13)->DOWN into (7,14), also before stale Alt returned.
+        -- The stricter manual/projection loop then promoted only the clean
+        -- seam-list blockers: (4,15)->LEFT into (3,15), (4,15)->DOWN into
+        -- (4,16), and (5,15)->RIGHT into (6,15). After reload, autowalk
+        -- reached (5,15) and the fresh seam list showed (5,15)->DOWN into
+        -- (5,16) blocked 3/3 with no moves before the next stale-Alt warning.
+        -- Direct edge verifiers then confirmed both exits from (5,15):
+        -- DOWN into (5,16) and RIGHT into (6,15) each blocked 3/3.
+        -- After (2,7).west closed, the upper-left bridge candidates were
+        -- checked directly: (1,5)->UP into (1,4) and (1,5)->LEFT into (0,5)
+        -- each blocked 5/5, and the later (1,5)->RIGHT into (2,5) candidate
+        -- rechecked as a clean route/probe blocker. Follow-up frontier checks
+        -- then closed the candidate south entries into (2,8) and (5,8), plus
+        -- the x=7 candidate exits left into (6,8), (6,7), and (6,2). The
+        -- (3,8)->(3,7)->(3,6) false-wall turn still keeps (3,7) and
+        -- (3,6).south open, but it is not the solved bridge after
+        -- (3,8).south closed.
+        -- The lower-lane candidate also self-disproved: (4,8)->RIGHT into
+        -- (5,8) blocked 5/5, so do not let A* enter that pocket from the west.
+        ["0,5"] = {east = true},
+        ["1,4"] = {south = true},
+        ["2,5"] = {west = true},
+        ["2,7"] = {west = true},
+        ["2,8"] = {south = true},
+        ["2,15"] = {south = true, west = true},
+        ["3,12"] = {north = true},
+        ["3,13"] = {south = true, east = true},
+        ["3,15"] = {north = true, east = true, west = true},
+        ["3,16"] = {south = true, west = true},
+        ["3,8"] = {east = true, south = true},
+        ["4,2"] = {south = true},
+        ["4,3"] = {south = true},
+        ["4,4"] = {south = true},
+        ["4,7"] = {east = true},
+        ["4,8"] = {south = true},
+        ["4,12"] = {south = true, east = true},
+        ["4,11"] = {north = true, west = true},
+        ["4,16"] = {north = true, south = true},
+        ["5,2"] = {south = true},
+        ["5,6"] = {north = true, south = true, west = true},
+        ["5,8"] = {north = true, south = true, west = true},
+        ["5,11"] = {north = true, south = true},
+        ["5,16"] = {north = true, south = true},
+        ["6,3"] = {east = true, west = true},
+        ["6,2"] = {east = true},
+        ["6,7"] = {east = true, west = true},
+        ["6,8"] = {east = true, south = true},
+        ["6,11"] = {north = true, south = true},
+        ["6,15"] = {north = true, west = true},
+        ["6,16"] = {east = true, south = true},
+        ["7,14"] = {north = true, west = true},
+        ["8,10"] = {east = true, north = true},
+        ["8,12"] = {west = true},
+        ["8,13"] = {east = true, west = true},
+        ["8,14"] = {east = true},
+        ["7,10"] = {north = true, west = true},
+        ["7,11"] = {south = true},
+        ["7,15"] = {south = true},
+        ["9,6"] = {north = true, west = true},
+        ["9,11"] = {north = true},
+        ["9,12"] = {east = true, south = true},
+        ["10,6"] = {east = true, north = true},
+        ["12,6"] = {north = true, south = true, west = true},
+        ["13,7"] = {east = true, west = true},
+        ["13,9"] = {south = true},
+        ["14,9"] = {east = true, south = true},
+        ["15,9"] = {south = true},
+        ["16,9"] = {south = true},
+        ["17,9"] = {east = true, south = true},
+        ["17,17"] = {east = true},
+        ["22,12"] = {south = true},
     },
 
     -- Map 0x15: Swamp Cave lower return route

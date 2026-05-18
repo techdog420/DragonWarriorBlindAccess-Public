@@ -138,6 +138,52 @@ local function log_route_plan_timing(plan, elapsed_ms)
         elapsed_ms))
 end
 
+local function count_plan_blockers(blocking)
+    local counts = {
+        npc = 0,
+        runtime = 0,
+        directional = 0,
+        full = 0,
+    }
+    for _, value in pairs(blocking or {}) do
+        if value == "npc" then
+            counts.npc = counts.npc + 1
+        elseif value == "runtime" then
+            counts.runtime = counts.runtime + 1
+        elseif type(value) == "table" then
+            counts.directional = counts.directional + 1
+        else
+            counts.full = counts.full + 1
+        end
+    end
+    return counts
+end
+
+local function log_auto_walk_no_path_detail(plan)
+    if not plan then
+        return
+    end
+    local target = plan.target or {}
+    local counts = count_plan_blockers(plan.blocking)
+    debug_tools.info(string.format(
+        "AUTO_WALK_NO_PATH_DETAIL map=0x%02X start=(%d,%d) target_id=%s target_name=%s goal=(%d,%d) mode=%s reason=%s goal_block=%s target_walkable=%s npc_blocks=%d runtime_blocks=%d directional_blocks=%d full_blocks=%d",
+        plan.map_id or -1,
+        plan.start_x or -1,
+        plan.start_y or -1,
+        tostring(target.id or "-"),
+        tostring(target.name or "-"),
+        plan.goal_x or -1,
+        plan.goal_y or -1,
+        tostring(plan.path_mode or "-"),
+        tostring(plan.no_path_reason or "-"),
+        tostring(plan.goal_block_reason or "-"),
+        tostring(plan.target_walkable),
+        counts.npc,
+        counts.runtime,
+        counts.directional,
+        counts.full))
+end
+
 local function config_bool(key, default)
     local value = config.get(key)
     if value == nil then
@@ -2298,6 +2344,7 @@ function M.autowalk_to_object(obj, opts)
     plan.ok = false
     if plan.result == "No path found" then
         release_npc_freeze("autowalk immediate no-path")
+        log_auto_walk_no_path_detail(plan)
         debug_tools.info("AUTO_WALK: no path for " .. obj.name)
         if opts.speak ~= false then
             tolk.output_interrupt(plan.message)

@@ -273,6 +273,18 @@ local EXITS = {
         interaction_face_dir = "east",
         interaction_label = "exit",
     },                                                                      -- Rimuldar
+    {
+        map = 0x0B,
+        x = 4,
+        y = 3,
+        name = "Exit",
+        dest = "World Map",
+        object_name = "Northwest Exit to World Map",
+        interaction_x = 4,
+        interaction_y = 3,
+        interaction_face_dir = "north",
+        interaction_label = "exit",
+    },                                                                      -- Rimuldar Magic Key maze exit
 
     -- Castles — exits are typically at the south entrance
     -- NOTE: map 0x05 = Tantegel Throne Room (empirically confirmed, 9x9).
@@ -594,6 +606,10 @@ end
 -- NPC Parsing
 -- ============================================================
 
+local function npc_blocks_movement(_map_id, _x, _y)
+    return true
+end
+
 -- parse_npcs(map_id): Read NPC data from RAM and return a list of
 -- NPC objects. Each NPC entry in RAM is 3 bytes starting at 0x0051:
 --   Byte 0: bits 7-5 = sprite type (0-7), bits 4-0 = X position
@@ -693,6 +709,7 @@ local function parse_npcs(map_id)
             service = is_service,
             direction = entry.direction,
             movement = entry.movement,
+            blocks_movement = npc_blocks_movement(map_id, entry.x, entry.y),
             id = "npc_" .. entry.slot,  -- Stable ID survives list reordering
         }
         npcs[#npcs + 1] = apply_service_interaction_override(npc, map_id)
@@ -1051,10 +1068,22 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["10,18"] = {x = 10, y = 16, face_dir = "south", label = "counter", name = "Weapons Merchant"},
     },
 
-    -- Rimuldar weapon/armor shop. Merchant 2 occupies (23,7); live TALK proof
-    -- from the public counter stand at (23,9) facing north opened the shop.
+    -- Rimuldar services. Old Man 1 occupies (4,7); the Magic Key shop opens
+    -- from the public north-side stand at (4,6), facing south. Merchant 1 at
+    -- (2,4) only says "Welcome!" from the hidden adjacent shop cells, so keep
+    -- him browsable but out of Services. Merchant 2 occupies (23,7). The first
+    -- key-shop route bridge is modeled in map_reader.lua at (24,6).
+    --
+    -- The first weapon-shop proof saw the shop prompt while standing at
+    -- (23,9), but the public route from the entrance could not reach that
+    -- stale stand. Later selected teleport and TALK proof confirmed the
+    -- accessible counter stand at (24,7), facing west. Merchant 3 occupies
+    -- (16,18); the route from the east entrance reached (16,17), faced south,
+    -- and TALK opened the 55 GOLD inn prompt.
     [0x0B] = {
-        ["23,7"] = {x = 23, y = 9, face_dir = "north", label = "counter", name = "Weapons Merchant"},
+        ["4,7"] = {x = 4, y = 6, face_dir = "south", label = "counter", name = "Magic Key Merchant"},
+        ["23,7"] = {x = 24, y = 7, face_dir = "west", label = "counter", name = "Weapons Merchant"},
+        ["16,18"] = {x = 16, y = 17, face_dir = "south", label = "counter", name = "Inn"},
     },
 }
 
@@ -1100,11 +1129,17 @@ local SERVICE_ROLE_OVERRIDES = {
             ["Merchant 4"] = {name = "Weapons Merchant", infer_counter = true},
         },
     },
-    -- Rimuldar Merchant 2 is the live-confirmed weapon/armor shop. The
-    -- interaction stand is modeled in SERVICE_INTERACTION_OVERRIDES above.
+    -- Rimuldar Old Man 1 is the live-confirmed Magic Key seller, Merchant 2 is
+    -- the weapon/armor shop, and Merchant 3 is the inn keeper. Interaction
+    -- stands are modeled in SERVICE_INTERACTION_OVERRIDES above.
     [0x0B] = {
         names = {
+            ["Old Man 1"] = {name = "Magic Key Merchant", infer_counter = false},
             ["Merchant 2"] = {name = "Weapons Merchant", infer_counter = true},
+            ["Merchant 3"] = {name = "Inn", infer_counter = true},
+        },
+        cells = {
+            ["4,7"] = {name = "Magic Key Merchant", infer_counter = false},
         },
     },
 }
@@ -1126,6 +1161,12 @@ local SERVICE_EXCLUSIONS = {
     -- Brecconary Merchant 1 only gives ordinary dialogue, so keep him in NPCs
     -- but out of the Services filter.
     [0x08] = {
+        ["Merchant 1"] = true,
+    },
+
+    -- Rimuldar Merchant 1 only gives the short "Welcome!" greeting. The live
+    -- Magic Key seller is Old Man 1 at (4,7), modeled as a service above.
+    [0x0B] = {
         ["Merchant 1"] = true,
     },
 }
@@ -1897,7 +1938,7 @@ end
 function M.get_blocking_positions()
     local result = {}
     for _, obj in ipairs(object_list) do
-        if obj.type == M.TYPE_NPC then
+        if obj.type == M.TYPE_NPC and obj.blocks_movement ~= false then
             result[#result + 1] = {x = obj.x, y = obj.y}
         end
     end

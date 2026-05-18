@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-16
+Updated: 2026-05-18
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -182,6 +182,10 @@ Durable FCEUX facts:
 - Current tested emulator baseline has been `qfceux.exe`
 - The launcher disables FCEUX native keyboard GamePad.0 and uses the project keyboard bridge when needed
 - `dw_keyboard_input.txt` is runtime bridge state and should stay ignored
+- FCEUX can retain `LeftAlt` after Alt-tab/window focus changes. LeftAlt-only
+  neutral bridge frames are tagged as stale sentinel input, pause `auto_step`,
+  and should not be written repeatedly through `joypad.set`; do not promote
+  route blockers gathered while logs show `keys=LeftAlt joy1=-`.
 
 Emulator compatibility direction:
 - Keep existing gameplay code FCEUX-shaped for now
@@ -496,16 +500,125 @@ Emulator compatibility direction:
   uses the live-probed west-pocket detour through `(85,58)`, `(85,56)`,
   `(83,56)`, `(83,54)`, `(86,54)`, `(86,52)`, `(92,52)`, `(92,48)`,
   `(100,48)`, `(100,50)`, and `(104,50)`, with a recovery route for starts or
-  recalculations at the bad notch. First Rimuldar service proof: `Merchant 2`
-  occupies `(23,7)` and
-  is the weapon/armor shop, opened from public counter stand `(23,9)` facing
-  north. Live inventory is Copper Sword 180 G, Hand Axe 560 G, Broad Sword
-  1500 G, Half Plate 1000 G, Full Plate 3000 G, and Magic Armor 7700 G. The
-  Rimuldar town exit is not the old `(15,14)` object; that tile is ordinary
+  recalculations at the bad notch. Rimuldar public services now have live
+  proof: `Merchant 2` occupies `(23,7)` and is the weapon/armor shop, with the
+  planner-safe public counter stand at `(24,7)` facing west. Live inventory is
+  Copper Sword 180 G, Hand Axe 560 G, Broad Sword 1500 G, Half Plate 1000 G,
+  Full Plate 3000 G, and Magic Armor 7700 G. `Merchant 3` at `(16,18)` is the
+  inn keeper, reached from `(16,17)` facing south. The Magic Key seller is
+  `Old Man 1` at `(4,7)`, reached from `(4,6)` facing south, and TALK opens the
+  53 G key prompt. Rimuldar `Merchant 1` only says `Welcome!` and should stay
+  out of Services. The entrance-side key-shop route requires hidden connector
+  cells: `(24,7)->UP` into `(24,6)`, the false-wall bridge at `(19,9)` proved
+  by `(19,10)->UP` and `(18,9)->RIGHT` verifier/probe evidence, the row-8 /
+  column-13 connectors `(14,8)`, `(13,9)`, and `(13,8)`, the upper hidden
+  turn `(16,8)`, plus the northwest strip `(1,8)` and `(1,7)`. The earlier
+  `(1,7)->RIGHT` proof into `(2,7)` was later superseded by repeated
+  route-shaped blocks, so `(2,7)` stays standable but `(2,7).west` is now
+  closed. The final key-counter maze adds passthroughs `(6,3)`, `(5,3)`, `(5,5)`, `(4,5)`, and
+  `(3,5)`. A later return-side pass explored the lower false-wall area around
+  `(4,8)` and `(4,9)`, including the one-way-looking `(4,8)->DOWN` into
+  `(4,9)`. Fresh return evidence showed Old Man 1's occupied `(4,7)` cell
+  blocks movement, so the seller is no longer treated as a walk-through escape
+  tile. A later loop
+  pass closed the visible return pocket at `(3,11)`. A follow-up showed `(5,7)`
+  is a one-way trap east of the key seller, not the real return lane; close its
+  exits but keep the cell passthrough because `(4,7)->RIGHT` can enter it.
+  The replacement entrance connector is the live-walked south-side turn
+  `(13,15)` and `(13,16)`. The latest batches sealed `(7,15).south`,
+  `(6,16).east/south`, `(5,16).south`, `(3,13).south`, `(3,15).north`,
+  `(7,10).north`, `(8,10).north`, `(10,6).east`, and `(6,3).east`; manual
+  movement crossed `(7,9)<->(8,9)` and proved false-wall cells `(1,14)`,
+  `(2,14)`, `(3,14)`, `(8,7)`, `(8,8)`, and `(14,5)`. The newest pre-Alt
+  FCEUX route batch adds `(4,16).south`, `(3,16).south`, `(7,11).south`,
+  `(4,8).south`, `(6,8).south`, `(6,4).west`, and `(6,3).west`, and exposes
+  live-walked row-14 false-wall cells `(4,14)` and `(5,14)` for the shorter
+  inbound/recovery route. The next route/manual pass adds `(2,15).south`,
+  `(3,16).west`, `(4,12).south`, `(3,13).east`, and `(5,2).south`, plus
+  false-wall cells `(3,4)` and `(4,3)`. `(4,6).north` was reopened after TALK
+  confirmed `(4,6)` as the public key stand and static proof showed it must be
+  reachable from `(4,5)->DOWN`. `(4,3)->UP`
+  exits to the world map, so `objects.lua` exposes `Northwest Exit to World Map`
+  there and `map_reader.lua` blocks `(4,2).south` as an in-town transition
+  guard. Later northwest-exit routing also promoted `(4,3).south` and
+  `(4,4).south`, forcing the key-stand-to-northwest-exit route through
+  `(5,3)->LEFT`. `objects.lua` treats the Magic Key seller as movement-blocking
+  again; the interaction override still targets `(4,6)` facing south. Older
+  local A* solved an entrance route, but that proof is superseded by later
+  live blockers; current local A* reports no entrance-to-key-stand path. The
+  stand-to-northwest-exit route still survives as 5 steps. The old east-exit
+  return is geometry-only and invalid while the seller occupies `(4,7)`. A
+  follow-up route/manual pass adds passthroughs `(1,5)`, `(1,13)`, `(3,9)`,
+  and `(15,5)`, and blockers `(3,15).west`, `(4,12).east`, `(5,11).south`,
+  `(14,6).north`, `(24,12).north`, and `(25,11).west`, followed by
+  `(2,15).west`, `(6,11).south`, `(8,12).west`, `(7,14).west`,
+  `(6,15).north`, `(25,12).east/south`, `(21,6).west`, `(21,7).west`,
+  `(8,13).west`, and `(7,14).north`. The
+  key-route shakedown adds directional-only blockers for confirmed pocket walls:
+  `(24,12).south`, `(23,12).south`, `(25,11).east`,
+  `(20,10).south/west`, `(21,11).west`, `(21,12).south/west`,
+  `(24,8).south`, `(13,6).north/south`, `(13,8).east`, `(14,6).east/south`,
+  `(13,7).east`, `(3,6).north/east`, `(4,7).east`,
+  `(5,6).north/south/west`,
+  `(6,3).east/west`, `(6,4).east/north/west`, `(6,5).east/north/west`,
+  `(6,6).east`, `(2,6).west`,
+  `(17,6).east`, `(17,7).east`, `(28,13).east`, `(10,6).north`,
+  `(9,6).north/west`, `(12,6).north/south/west`, `(13,7).west`,
+  `(13,9).south`, `(14,9).east/south`, `(15,9).south`, `(16,9).south`, and
+  `(17,9).east/south`. Follow-up return-side lower-lane loops proved the false
+  exits `(4,11).north`, `(5,11).north`, `(6,11).north`, and
+  `(7,10).north/west`.
+  The following entrance-side route loop also proved `(8,10).east`,
+  `(9,11).north`, `(9,12).south`, and `(8,13).east`. The next pass added
+  `(22,12).south`, `(9,12).east`, `(8,14).east`, `(3,12).north`,
+  `(4,11).west`, `(5,8).north`, `(6,7).west`, `(7,15).south`, `(6,16).east`,
+  and `(17,17).east`, followed by the newest `(4,16).south`, `(3,16).south`,
+  `(7,11).south`, `(4,8).south`, `(6,8).south`, `(2,15).south/west`,
+  `(3,16).west`, `(4,12).south`, `(3,13).east`, `(5,2).south`,
+  `(4,2).south`, `(4,3).south`, `(4,4).south`, `(6,11).south`,
+  `(8,12).west`, `(7,14).north/west`, `(6,15).north`,
+  `(25,12).east/south`, `(21,6).west`, `(21,7).west`, and
+  `(8,13).west`, then the manual/projection seam sift promoted
+  `(3,15).east`, `(4,16).north`, and `(6,15).west`. The next post-reload
+  autowalk superseded the earlier noisy hold on `(5,16).north`: it stopped at
+  `(5,15)` and showed `(5,15)->DOWN` into `(5,16)` blocked 3/3 with no moves,
+  then direct verifiers confirmed `(5,15)->DOWN` and `(5,15)->RIGHT` each
+  blocked 3/3. `(5,16).north` is now modeled too. The break-in probe batch
+  found the real west-side bridge at `(1,12)`: `(1,13)->UP` moved 4/5 and
+  `(1,11)->DOWN` moved 5/5, and local ROM-backed routing reconnects `(5,15)`
+  to `(4,6)` with only `(1,12)` added. Keep `(2,13)` unmodeled for now:
+  `(2,14)->UP` moved 5/5, but `(3,13)->LEFT` blocked 5/5 and
+  `(1,13)->RIGHT` was mixed. The route then choked on the old `(1,7)->RIGHT`
+  into `(2,7)` connector; later route-shaped evidence repeatedly blocked that
+  seam and reached `blocked=18 moved=0`, so `(2,7).west` is now closed while
+  `(2,7)` remains a passable hidden cell for other approaches. A better
+  one-way bridge candidate is `(3,8)`: earlier `(3,9)->UP` moved 5/5 into it,
+  while `(4,8)->LEFT` blocked 5/5, so expose `(3,8)` and model `(3,8).east`
+  as blocked. Later live route evidence superseded the south-entry proof:
+  queued-route plus seam retries from `(3,9)->UP` reached 9 blocked / 0 moved,
+  so `(3,8).south` is now modeled too. The next frontier pass found `(5,9)` as another real lower-lane
+  false-wall tile: `(4,9)->RIGHT` moved 5/5 into it. That branch did not reach
+  the counter lane because `(5,9)->UP` into `(5,8)` verified blocked 5/5.
+  Upper-left shortcuts through `(1,4)` and `(0,5)` are closed:
+  `(1,5)->UP` and `(1,5)->LEFT` each verified blocked 5/5. The later `(2,5)`
+  bridge lead was stale/noisy: fresh route and direct verifier evidence block
+  `(1,5)->RIGHT`, so `(2,5).west` is modeled while `(2,5)` stays standable for
+  other approaches. The `(3,7)` lead is useful map data but not a solved route:
+  `(3,7)->UP` moved into `(3,6)`, but `(3,8).south` is now closed. The latest
+  frontier closures also model `(2,8).south`, `(5,8).south`, `(6,8).east`,
+  `(6,7).east`, and `(6,2).east`. Local ROM-backed A* currently reports no
+  entrance-to-key-stand path; the only one-cell frontier left is noisy
+  `(1,8)->RIGHT` into `(2,8)`, which needs a clean post-reload verifier before
+  exposing `(2,8)`.
+  Suspicious `(6,8)` live behavior should be treated as hidden
+  passability, not a full-cell blocker: only the south approach is now modeled.
+  Keep `(5,3).east` open for now. The Rimuldar town exit is not the old
+  `(15,14)` object; that tile is ordinary
   interior floor. Live edge proof from `(29,13)->RIGHT` changed to the world
   map and landed at `(102,72)`, so model Rimuldar's `Exit to World Map` at
   `(29,13)` with east-facing interaction. A follow-up user check confirmed the
-  corrected exit object lines up from inside town.
+  corrected exit object lines up from inside town. A later manual pass found
+  the northwest exit from `(4,3)->UP`; keep both exit objects available.
 - Kol service work should start from `project_resources/maps/kol/README.md`,
   which now has local map images and a screen-reader service transcription.
   External guides agree on these first priorities: Inn 20 G, weapon/armor shop

@@ -853,6 +853,172 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     env.restore()
 end
 
+function tests.rimuldar_exit_route_avoids_false_north_entry()
+    local env = make_env()
+
+    local dirs = env.map_reader.get_directional_blocks(0x0B)
+    local function assert_open_approach(cell, approach, message)
+        assert_equal(dirs[cell] and dirs[cell][approach] or nil, nil, message)
+    end
+
+    assert_equal(dirs["28,13"].south, true, "Rimuldar (28,13) should block entry from the south after exit-route repro from (28,14)")
+    assert_equal(dirs["28,13"].east, true, "Rimuldar (28,13) should block entry from the east after entrance-route repro from (29,13)")
+    assert_equal(dirs["24,12"].south, true, "Rimuldar (24,12) should block entry from the south after key-route verifier from (24,13)")
+    assert_equal(dirs["24,12"].north, true, "Rimuldar (24,12) should block entry from the north after latest return-route loop from (24,11)")
+    assert_equal(dirs["23,12"].south, true, "Rimuldar (23,12) should block entry from the south after key-route verifier from (23,13)")
+    assert_equal(dirs["25,11"].east, true, "Rimuldar (25,11) should block entry from the east after key-route verifier from (26,11)")
+    assert_equal(dirs["25,11"].west, true, "Rimuldar (25,11) should block entry from the west after latest return-route loop from (24,11)")
+    assert_equal(dirs["25,12"].east, true, "Rimuldar (25,12) should block entry from the east after latest Weapons Merchant route loop from (26,12)")
+    assert_equal(dirs["25,12"].south, true, "Rimuldar (25,12) should block entry from the south after latest Weapons Merchant route loop from (25,13)")
+    assert_equal(dirs["20,10"].south, true, "Rimuldar (20,10) should block entry from the south after key-route verifier from (20,11)")
+    assert_equal(dirs["20,10"].west, true, "Rimuldar (20,10) should block entry from the west after key-route verifier from (19,10)")
+    assert_equal(dirs["21,6"].west, true, "Rimuldar (21,6) should block entry from the west after latest Weapons Merchant route loop from (20,6)")
+    assert_equal(dirs["21,7"].west, true, "Rimuldar (21,7) should block entry from the west after latest Weapons Merchant route loop from (20,7)")
+    assert_equal(dirs["21,11"].west, true, "Rimuldar (21,11) should block entry from the west after key-route verifier from (20,11)")
+    assert_equal(dirs["21,12"].south, true, "Rimuldar (21,12) should block entry from the south after key-route verifier from (21,13)")
+    assert_equal(dirs["21,12"].west, true, "Rimuldar (21,12) should block entry from the west after key-route verifier from (20,12)")
+    assert_equal(dirs["24,8"].south, true, "Rimuldar (24,8) should block entry from the south after key-route verifier from (24,9)")
+    assert_equal(dirs["13,6"].south, true, "Rimuldar (13,6) should block entry from the south after key-route verifier from (13,7)")
+    assert_equal(dirs["13,8"].east, true, "Rimuldar (13,8) should block entry from the east after forced key-route probe from (14,8)")
+    assert_equal(dirs["14,6"].south, true, "Rimuldar (14,6) should block entry from the south after key-route verifier from (14,7)")
+    assert_equal(dirs["14,6"].east, true, "Rimuldar (14,6) should block entry from the east after key-route verifier from (15,6)")
+    assert_equal(dirs["14,6"].north, true, "Rimuldar (14,6) should block entry from the north after latest return-route loop from (14,5)")
+    assert_equal(dirs["13,7"].east, true, "Rimuldar (13,7) should block entry from the east after key-route verifier from (14,7)")
+    assert_equal(dirs["3,6"].north, true, "Rimuldar (3,6) should block entry from the north after the key-counter maze route hit from (3,5)")
+    assert_equal(dirs["3,6"].east, true, "Rimuldar (3,6) should block entry from the east after repeated key-stand loop hits from (4,6)")
+    assert_open_approach("3,6", "south", "Rimuldar (3,6).south must stay open for the (3,8)->(3,7)->(3,6) Magic Key bridge")
+    assert_equal(dirs["5,6"].west, true, "Rimuldar (5,6) should block entry from the west after repeated key-stand loop hits from (4,6)")
+    assert_equal(dirs["5,6"].north, true, "Rimuldar (5,6) should block entry from the north after forced maze probe from (5,5)")
+    assert_equal(dirs["5,6"].south, true, "Rimuldar (5,6) should block entry from the south after repeated trap-pocket hits from (5,7)")
+    assert_equal(dirs["4,7"].east, true, "Rimuldar (4,7) should block entry from the east after repeated trap-pocket hits from (5,7)")
+    assert_equal(dirs["6,7"].west, true, "Rimuldar (6,7) should block entry from the west after repeated trap-pocket hits from (5,7)")
+    assert_equal(dirs["5,8"].north, true, "Rimuldar (5,8) should block entry from the north after repeated trap-pocket hits from (5,7)")
+    assert_equal(dirs["5,8"].west, true, "Rimuldar (5,8) should block entry from the west after focused verifier from (4,8)")
+    assert_equal(dirs["6,3"].east, true, "Rimuldar (6,3) should block entry from the east after repeated reloaded return-route hits from (7,3)")
+    assert_equal(dirs["6,4"].east, true, "Rimuldar (6,4) should block entry from the east after key-route verifier from (7,4)")
+    assert_equal(dirs["6,4"].north, true, "Rimuldar (6,4) should block entry from the north after forced maze probe from (6,3)")
+    assert_equal(dirs["6,5"].east, true, "Rimuldar (6,5) should block entry from the east after key-route verifier from (7,5)")
+    assert_equal(dirs["6,5"].north, true, "Rimuldar (6,5) should block entry from the north after verifier from (6,4)")
+    assert_equal(dirs["6,5"].west, true, "Rimuldar (6,5) should block entry from the west after forced maze probe from (5,5)")
+    assert_equal(dirs["6,6"].east, true, "Rimuldar (6,6) should block entry from the east after key-route verifier from (7,6)")
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x0B, 6, 6), false, "Rimuldar (6,6) should not be modeled as a full-cell blocker")
+    assert_open_approach("6,6", "north", "Rimuldar (6,6).north moved/mixed and should stay open")
+    assert_open_approach("6,6", "south", "Rimuldar (6,6).south should stay open; only the east approach is confirmed blocked")
+    assert_open_approach("6,6", "west", "Rimuldar (6,6).west moved repeatedly and should stay open")
+    assert_equal(dirs["2,6"].west, true, "Rimuldar (2,6) should block entry from the west after key-route verifier from (1,6)")
+    assert_equal(dirs["17,6"].east, true, "Rimuldar (17,6) should block entry from the east after key-route verifier from (18,6)")
+    assert_equal(dirs["17,7"].east, true, "Rimuldar (17,7) should block entry from the east after key-route verifier from (18,7)")
+    assert_equal(dirs["22,12"].south, true, "Rimuldar (22,12) should block entry from the south after repeated entrance-route loop hits from (22,13)")
+    assert_equal(dirs["9,12"].east, true, "Rimuldar (9,12) should block entry from the east after repeated entrance-route loop hits from (10,12)")
+    assert_equal(dirs["8,14"].east, true, "Rimuldar (8,14) should block entry from the east after repeated entrance-route loop hits from (9,14)")
+    assert_equal(dirs["3,12"].north, true, "Rimuldar (3,12) should block entry from the north after repeated return-route loop hits from (3,11)")
+    assert_equal(dirs["4,11"].north, true, "Rimuldar (4,11) should block entry from the north after return-route loop from (4,10)")
+    assert_equal(dirs["4,11"].west, true, "Rimuldar (4,11) should block entry from the west after repeated return-route loop hits from (3,11)")
+    assert_equal(dirs["5,11"].north, true, "Rimuldar (5,11) should block entry from the north after return-route loop from (5,10)")
+    assert_equal(dirs["6,11"].north, true, "Rimuldar (6,11) should block entry from the north after return-route loop from (6,10)")
+    assert_equal(dirs["7,10"].west, true, "Rimuldar (7,10) should block entry from the west after return-route loop from (6,10)")
+    assert_equal(dirs["7,10"].north, true, "Rimuldar (7,10) should block entry from the north after repeated lower-lane return loops from (7,9)")
+    assert_equal(dirs["7,11"].south, true, "Rimuldar (7,11) should block entry from the south after latest entrance-route loop from (7,12)")
+    assert_equal(dirs["7,15"].south, true, "Rimuldar (7,15) should block entry from the south after repeated entrance-route loops from (7,16)")
+    assert_equal(dirs["6,16"].east, true, "Rimuldar (6,16) should block entry from the east after repeated entrance-route loops from (7,16)")
+    assert_equal(dirs["6,16"].south, true, "Rimuldar (6,16) should block entry from the south after repeated reloaded entrance-route loops from (6,17)")
+    assert_equal(dirs["7,14"].west, true, "Rimuldar (7,14) should block entry from the west after latest entrance-route loop from (6,14)")
+    assert_equal(dirs["7,14"].north, true, "Rimuldar (7,14) should block entry from the north after latest key-route loop from (7,13)")
+    assert_equal(dirs["6,15"].north, true, "Rimuldar (6,15) should block entry from the north after latest entrance-route loop from (6,14)")
+    assert_equal(dirs["5,16"].south, true, "Rimuldar (5,16) should block entry from the south after repeated reloaded entrance-route loops from (5,17)")
+    assert_equal(dirs["5,16"].north, true, "Rimuldar (5,16) should block entry from the north after reload autowalk stopped at (5,15)")
+    assert_equal(dirs["4,16"].south, true, "Rimuldar (4,16) should block entry from the south after latest entrance-route loop from (4,17)")
+    assert_equal(dirs["3,16"].south, true, "Rimuldar (3,16) should block entry from the south after latest entrance-route loop from (3,17)")
+    assert_equal(dirs["3,16"].west, true, "Rimuldar (3,16) should block entry from the west after latest entrance-route loop from (2,16)")
+    assert_equal(dirs["2,15"].south, true, "Rimuldar (2,15) should block entry from the south after latest entrance-route loop from (2,16)")
+    assert_equal(dirs["2,15"].west, true, "Rimuldar (2,15) should block entry from the west after latest entrance-route loop from (1,15)")
+    assert_equal(dirs["3,13"].south, true, "Rimuldar (3,13) should block entry from the south after repeated key-route loops from (3,14)")
+    assert_equal(dirs["3,13"].east, true, "Rimuldar (3,13) should block entry from the east after latest recovery route loop from (4,13)")
+    assert_equal(dirs["3,15"].north, true, "Rimuldar (3,15) should block entry from the north after repeated key-route loops from (3,14)")
+    assert_equal(dirs["3,15"].east, true, "Rimuldar (3,15) should block entry from the east after manual projection loop from (4,15)")
+    assert_equal(dirs["3,15"].west, true, "Rimuldar (3,15) should block entry from the west after latest entrance-route loop from (2,15)")
+    assert_equal(dirs["4,12"].south, true, "Rimuldar (4,12) should block entry from the south after latest recovery route loop from (4,13)")
+    assert_equal(dirs["4,12"].east, true, "Rimuldar (4,12) should block entry from the east after latest entrance-route loop from (5,12)")
+    assert_equal(dirs["5,11"].south, true, "Rimuldar (5,11) should block entry from the south after latest entrance-route loop from (5,12)")
+    assert_equal(dirs["4,8"].south, true, "Rimuldar (4,8) should block entry from the south after latest key-route loop from (4,9)")
+    assert_equal(dirs["4,3"].south, true, "Rimuldar (4,3) should block entry from the south after latest northwest-exit route loop from (4,4)")
+    assert_equal(dirs["4,4"].south, true, "Rimuldar (4,4) should block entry from the south after latest northwest-exit route loop from (4,5)")
+    assert_open_approach("4,6", "north", "Rimuldar (4,6).north must stay open so the key-merchant public stand is reachable from (4,5)")
+    assert_equal(dirs["4,2"].south, true, "Rimuldar (4,2) should block entry from the south because (4,3)->UP is a world-map transition")
+    assert_equal(dirs["5,2"].south, true, "Rimuldar (5,2) should block entry from the south after latest return-route loop from (5,3)")
+    assert_equal(dirs["6,8"].south, true, "Rimuldar (6,8) should block entry from the south after latest key-route loop from (6,9)")
+    assert_equal(dirs["6,11"].south, true, "Rimuldar (6,11) should block entry from the south after latest entrance-route loop from (6,12)")
+    assert_equal(dirs["6,15"].west, true, "Rimuldar (6,15) should block entry from the west after direct verifier from (5,15)")
+    assert_equal(dirs["4,16"].north, true, "Rimuldar (4,16) should block entry from the north after repeated manual projection loops from (4,15)")
+    assert_equal(dirs["8,10"].east, true, "Rimuldar (8,10) should block entry from the east after repeated entrance-route loops from (9,10)")
+    assert_equal(dirs["8,10"].north, true, "Rimuldar (8,10) should block entry from the north after repeated lower-lane return loops from (8,9)")
+    assert_equal(dirs["8,12"].west, true, "Rimuldar (8,12) should block entry from the west after latest entrance-route loop from (7,12)")
+    assert_equal(dirs["9,11"].north, true, "Rimuldar (9,11) should block entry from the north after repeated entrance-route loops from (9,10)")
+    assert_equal(dirs["9,12"].south, true, "Rimuldar (9,12) should block entry from the south after repeated route loops from (9,13)")
+    assert_equal(dirs["8,13"].east, true, "Rimuldar (8,13) should block entry from the east after repeated route loops from (9,13)")
+    assert_equal(dirs["8,13"].west, true, "Rimuldar (8,13) should block entry from the west after latest key-route loop from (7,13)")
+    assert_equal(dirs["9,6"].west, true, "Rimuldar (9,6) should block entry from the west after return-route loop from (8,6)")
+    assert_equal(dirs["9,6"].north, true, "Rimuldar (9,6) should block entry from the north after return-route loop from (9,5)")
+    assert_equal(dirs["10,6"].north, true, "Rimuldar (10,6) should block entry from the north after return-route verifier from (10,5)")
+    assert_equal(dirs["10,6"].east, true, "Rimuldar (10,6) should block entry from the east after repeated return-route loops from (11,6)")
+    assert_equal(dirs["12,6"].south, true, "Rimuldar (12,6) should block entry from the south after repeated verifier proof from (12,7)")
+    assert_equal(dirs["12,6"].west, true, "Rimuldar (12,6) should block entry from the west after return-route loop from (11,6)")
+    assert_equal(dirs["12,6"].north, true, "Rimuldar (12,6) should block entry from the north after return-route loop from (12,5)")
+    assert_equal(dirs["13,6"].north, true, "Rimuldar (13,6) should block entry from the north after return-route loop from (13,5)")
+    assert_equal(dirs["13,7"].west, true, "Rimuldar (13,7) should block entry from the west after repeated verifier proof from (12,7)")
+    assert_equal(dirs["13,9"].south, true, "Rimuldar (13,9) should block entry from the south after row-10 loop verifier from (13,10)")
+    assert_equal(dirs["14,9"].south, true, "Rimuldar (14,9) should block entry from the south after row-10 loop verifier from (14,10)")
+    assert_equal(dirs["14,9"].east, true, "Rimuldar (14,9) should block entry from the east after row-9 verifier from (15,9)")
+    assert_equal(dirs["15,9"].south, true, "Rimuldar (15,9) should block entry from the south after 7/7 verifier from (15,10)")
+    assert_equal(dirs["16,9"].south, true, "Rimuldar (16,9) should block entry from the south after verifier from (16,10)")
+    assert_equal(dirs["17,9"].south, true, "Rimuldar (17,9) should block entry from the south after verifier from (17,10)")
+    assert_equal(dirs["17,9"].east, true, "Rimuldar (17,9) should block entry from the east after repeated entrance-route loop from (18,9)")
+    assert_equal(dirs["0,5"].east, true, "Rimuldar (0,5) should block entry from the east after left-edge verifier from (1,5)")
+    assert_equal(dirs["1,4"].south, true, "Rimuldar (1,4) should block entry from the south after upper-left verifier from (1,5)")
+    assert_equal(dirs["2,5"].west, true, "Rimuldar (2,5) should block entry from the west after fresh route/probe proof from (1,5)")
+    assert_equal(dirs["2,7"].west, true, "Rimuldar (2,7) should block entry from the west after repeated route-shaped failures from (1,7)")
+    assert_equal(dirs["2,8"].south, true, "Rimuldar (2,8) should block entry from the south after direct verifier from (2,9)")
+    assert_equal(dirs["3,8"].east, true, "Rimuldar (3,8) should block entry from the east after focused verifier from (4,8)")
+    assert_equal(dirs["3,8"].south, true, "Rimuldar (3,8) should block entry from the south after repeated route/seam failures from (3,9)")
+    assert_equal(dirs["5,8"].south, true, "Rimuldar (5,8) should block entry from the south after direct verifier from (5,9)")
+    assert_equal(dirs["6,2"].east, true, "Rimuldar (6,2) should block entry from the east after top-pocket direct probe from (7,2)")
+    assert_equal(dirs["6,7"].east, true, "Rimuldar (6,7) should block entry from the east after direct probe from (7,7)")
+    assert_equal(dirs["6,8"].east, true, "Rimuldar (6,8) should block entry from the east after direct probe from (7,8)")
+    assert_equal(dirs["17,17"].east, true, "Rimuldar (17,17) should block entry from the east after repeated south-pocket route loops from (18,17)")
+    assert_equal(dirs["6,3"].west, true, "Rimuldar (6,3) should block entry from the west after latest reloaded return-route cluster from (5,3)")
+    assert_equal(dirs["6,4"].west, true, "Rimuldar (6,4) should block entry from the west after latest reloaded return-route cluster from (5,4)")
+
+    local cell_29_13 = dirs["29,13"] or {}
+    assert_equal(cell_29_13.south, nil, "Rimuldar (29,13) should stay open from the south for the live-confirmed exit route")
+    assert_equal(cell_29_13.east, nil, "Rimuldar (29,13) should not gain an east-side block; it is the confirmed world-map exit")
+    assert_open_approach("27,15", "west", "Rimuldar (27,15).west was noisy and should stay unmodeled")
+    assert_open_approach("23,10", "south", "Rimuldar (23,10).south was passable/noisy and affected by Guard 2 clutter")
+    assert_open_approach("14,8", "south", "Rimuldar (14,8) should stay open from the south after 3/3 passable verifier proof")
+    assert_open_approach("5,3", "east", "Rimuldar (5,3).east moved 3/3 on direct follow-up and should stay open")
+    assert_open_approach("5,3", "south", "Rimuldar (5,3).south moved repeatedly during the latest return route and should stay open")
+    assert_open_approach("4,5", "south", "Rimuldar (4,5).south moved on retry during the latest return route and should stay open")
+    assert_open_approach("5,5", "west", "Rimuldar (5,5).west moved on retry during the latest return route and should stay open")
+    assert_open_approach("4,7", "north", "Rimuldar (4,7).north is not a terrain wall; the Magic Key seller's NPC occupancy blocks that cell during routing")
+    assert_open_approach("4,9", "north", "Rimuldar (4,9).north moved from the one-way (4,8)->(4,9) return connector")
+    assert_open_approach("4,10", "north", "Rimuldar (4,10).north moved from the lower key-shop lane and should stay open")
+    assert_open_approach("5,10", "west", "Rimuldar (5,10).west moved repeatedly during the lower-lane return loop")
+    assert_open_approach("6,10", "north", "Rimuldar (6,10).north moved during the latest key-route loop and should stay open")
+    assert_open_approach("25,14", "east", "Rimuldar (25,14).east moved on retry during the latest entrance route and should stay open")
+    assert_open_approach("26,14", "east", "Rimuldar (26,14).east moved on retry during the latest entrance route and should stay open")
+    assert_open_approach("28,14", "east", "Rimuldar (28,14).east moved on retry during the latest entrance route and should stay open")
+    assert_open_approach("29,14", "north", "Rimuldar (29,14).north moved repeatedly during the latest entrance route and should stay open")
+    assert_open_approach("6,8", "north", "Rimuldar (6,8).north should stay open; only the south/east approaches have fresh blocker evidence")
+    assert_open_approach("8,10", "south", "Rimuldar (8,10) should remain available from the row-11 detour")
+    assert_open_approach("9,11", "south", "Rimuldar (9,11) should remain available from the row-12 detour")
+    assert_open_approach("15,9", "east", "Rimuldar (15,9).east moved 3/3 from (16,9) and should stay open")
+    assert_open_approach("16,9", "east", "Rimuldar (16,9).east moved 3/3 from (17,9) and should stay open")
+    assert_open_approach("18,9", "south", "Rimuldar (18,9).south moved 3/3 from (18,10) and should stay open")
+    assert_open_approach("4,15", "east", "Rimuldar (4,15).east moved during the manual projection loop and should stay open")
+    assert_open_approach("5,15", "west", "Rimuldar (5,15).west moved repeatedly during the manual projection loop and should stay open")
+
+    env.restore()
+end
+
 function tests.kol_entry_exit_tiles_are_passthrough_false_walls()
     local base = 7 * 5
     local env = make_env({
@@ -1203,6 +1369,193 @@ function tests.brecconary_tool_shop_public_stand_is_passthrough()
 
     local snapshot = env.map_reader.get_walkability_snapshot(0x08)
     assert_equal(snapshot[26][25], true, "walkability snapshot should include the Merchant 4 interaction tile")
+
+    env.restore()
+end
+
+function tests.rimuldar_magic_key_route_bridge_is_passthrough()
+    local base = 0x0B * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,
+            [base + 1] = 0x80,
+            [base + 2] = 29,
+            [base + 3] = 29,
+            [base + 4] = 0,
+        },
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    local bridge = env.map_reader.get_walkability_details(0x0B, 24, 6)
+    assert_equal(bridge.base_walkable, true, "Rimuldar (24,6) should be passable via the Magic Key shop approach bridge")
+    assert_equal(bridge.effective_walkable, true, "Rimuldar (24,6) should be available to A*")
+    assert_equal(bridge.reason, "passthrough", "Rimuldar (24,6) should record passthrough as its walkability source")
+
+    local connector = env.map_reader.get_walkability_details(0x0B, 19, 9)
+    assert_equal(connector.base_walkable, true, "Rimuldar (19,9) should be passable via the key-route hidden connector")
+    assert_equal(connector.effective_walkable, true, "Rimuldar (19,9) should be available to A*")
+    assert_equal(connector.reason, "passthrough", "Rimuldar (19,9) should record passthrough as its walkability source")
+
+    local row8_connector = env.map_reader.get_walkability_details(0x0B, 14, 8)
+    assert_equal(row8_connector.base_walkable, true, "Rimuldar (14,8) should be passable via the key-route row-8 connector")
+    assert_equal(row8_connector.effective_walkable, true, "Rimuldar (14,8) should be available to A*")
+    assert_equal(row8_connector.reason, "passthrough", "Rimuldar (14,8) should record passthrough as its walkability source")
+
+    local key_column_lower = env.map_reader.get_walkability_details(0x0B, 13, 9)
+    assert_equal(key_column_lower.base_walkable, true, "Rimuldar (13,9) should be passable via the key-route hidden column")
+    assert_equal(key_column_lower.effective_walkable, true, "Rimuldar (13,9) should be available to A*")
+    assert_equal(key_column_lower.reason, "passthrough", "Rimuldar (13,9) should record passthrough as its walkability source")
+
+    local key_column_upper = env.map_reader.get_walkability_details(0x0B, 13, 8)
+    assert_equal(key_column_upper.base_walkable, true, "Rimuldar (13,8) should be passable via the key-route hidden column")
+    assert_equal(key_column_upper.effective_walkable, true, "Rimuldar (13,8) should be available to A*")
+    assert_equal(key_column_upper.reason, "passthrough", "Rimuldar (13,8) should record passthrough as its walkability source")
+
+    local row8_upper_turn = env.map_reader.get_walkability_details(0x0B, 16, 8)
+    assert_equal(row8_upper_turn.base_walkable, true, "Rimuldar (16,8) should be passable via the key-route upper hidden turn")
+    assert_equal(row8_upper_turn.effective_walkable, true, "Rimuldar (16,8) should be available to A*")
+    assert_equal(row8_upper_turn.reason, "passthrough", "Rimuldar (16,8) should record passthrough as its walkability source")
+
+    local northwest_strip_a = env.map_reader.get_walkability_details(0x0B, 1, 8)
+    assert_equal(northwest_strip_a.base_walkable, true, "Rimuldar (1,8) should be passable via the key-shop northwest hidden strip")
+    assert_equal(northwest_strip_a.effective_walkable, true, "Rimuldar (1,8) should be available to A*")
+    assert_equal(northwest_strip_a.reason, "passthrough", "Rimuldar (1,8) should record passthrough as its walkability source")
+
+    local northwest_strip_b = env.map_reader.get_walkability_details(0x0B, 1, 7)
+    assert_equal(northwest_strip_b.base_walkable, true, "Rimuldar (1,7) should be passable via the key-shop northwest hidden strip")
+    assert_equal(northwest_strip_b.effective_walkable, true, "Rimuldar (1,7) should be available to A*")
+    assert_equal(northwest_strip_b.reason, "passthrough", "Rimuldar (1,7) should record passthrough as its walkability source")
+
+    local northwest_connector = env.map_reader.get_walkability_details(0x0B, 2, 7)
+    assert_equal(northwest_connector.base_walkable, true, "Rimuldar (2,7) should be passable via the key-shop west-strip connector")
+    assert_equal(northwest_connector.effective_walkable, true, "Rimuldar (2,7) should be available to A*")
+    assert_equal(northwest_connector.reason, "passthrough", "Rimuldar (2,7) should record passthrough as its walkability source")
+
+    for _, cell in ipairs({
+        {"3,4", 3, 4},
+        {"4,3", 4, 3},
+        {"6,3", 6, 3},
+        {"5,3", 5, 3},
+        {"5,5", 5, 5},
+        {"4,5", 4, 5},
+        {"3,5", 3, 5},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the final key-counter maze")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    for _, cell in ipairs({
+        {"4,7", 4, 7},
+        {"4,8", 4, 8},
+        {"4,9", 4, 9},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the lower key-shop escape strip")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    for _, cell in ipairs({
+        {"5,7", 5, 7},
+        {"5,9", 5, 9},
+        {"6,7", 6, 7},
+        {"6,8", 6, 8},
+        {"6,9", 6, 9},
+        {"7,9", 7, 9},
+        {"8,9", 8, 9},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the lower key-shop return lane")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    for _, cell in ipairs({
+        {"1,5", 1, 5},
+        {"1,12", 1, 12},
+        {"1,13", 1, 13},
+        {"1,14", 1, 14},
+        {"2,5", 2, 5},
+        {"2,14", 2, 14},
+        {"3,7", 3, 7},
+        {"3,8", 3, 8},
+        {"3,9", 3, 9},
+        {"3,14", 3, 14},
+        {"4,14", 4, 14},
+        {"5,14", 5, 14},
+        {"8,7", 8, 7},
+        {"8,8", 8, 8},
+        {"14,5", 14, 5},
+        {"15,5", 15, 5},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable after the latest manual false-wall route proof")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    for _, cell in ipairs({
+        {"13,15", 13, 15},
+        {"13,16", 13, 16},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the south-side Magic Key route connector")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    local nearby_wall = env.map_reader.get_walkability_details(0x0B, 24, 4)
+    assert_equal(nearby_wall.base_walkable, false, "nearby Rimuldar hidden cells should stay closed until needed")
+    local npc_connector = env.map_reader.get_walkability_details(0x0B, 15, 8)
+    assert_equal(npc_connector.base_walkable, false, "Rimuldar (15,8) should stay unmodeled because Woman 3 occupies that alternate connector")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x0B)
+    assert_equal(snapshot[6][24], true, "walkability snapshot should include the Magic Key shop approach bridge")
+    assert_equal(snapshot[9][19], true, "walkability snapshot should include the Magic Key route hidden connector")
+    assert_equal(snapshot[8][14], true, "walkability snapshot should include the clean row-8 Magic Key route connector")
+    assert_equal(snapshot[9][13], true, "walkability snapshot should include the lower hidden key-route column")
+    assert_equal(snapshot[8][13], true, "walkability snapshot should include the upper hidden key-route column")
+    assert_equal(snapshot[8][16], true, "walkability snapshot should include the upper hidden key-route turn")
+    assert_equal(snapshot[8][1], true, "walkability snapshot should include the first northwest key-shop strip cell")
+    assert_equal(snapshot[7][1], true, "walkability snapshot should include the second northwest key-shop strip cell")
+    assert_equal(snapshot[4][3], true, "walkability snapshot should include the northwest key-shop exit false-wall turn")
+    assert_equal(snapshot[3][4], true, "walkability snapshot should include the northwest key-shop exit false-wall stand")
+    assert_equal(snapshot[3][6], true, "walkability snapshot should include the final key-counter upper connector")
+    assert_equal(snapshot[7][3], true, "walkability snapshot should include the real Magic Key counter bridge")
+    assert_equal(snapshot[8][3], true, "walkability snapshot should include the alternate one-way key-route bridge")
+    assert_equal(snapshot[3][5], true, "walkability snapshot should include the final key-counter upper turn")
+    assert_equal(snapshot[5][5], true, "walkability snapshot should include the final key-counter lower turn")
+    assert_equal(snapshot[5][4], true, "walkability snapshot should include the final key-counter west turn")
+    assert_equal(snapshot[5][3], true, "walkability snapshot should include the final key-counter west dead-end")
+    assert_equal(snapshot[7][4], true, "walkability snapshot should include the lower key-shop escape strip start")
+    assert_equal(snapshot[8][4], true, "walkability snapshot should include the lower key-shop escape strip middle")
+    assert_equal(snapshot[9][4], true, "walkability snapshot should include the lower key-shop escape strip exit")
+    assert_equal(snapshot[7][5], true, "walkability snapshot should include the lower key-shop return lane west entry")
+    assert_equal(snapshot[7][6], true, "walkability snapshot should include the lower key-shop return lane upper turn")
+    assert_equal(snapshot[8][6], true, "walkability snapshot should include the lower key-shop return lane middle")
+    assert_equal(snapshot[9][6], true, "walkability snapshot should include the lower key-shop return lane lower turn")
+    assert_equal(snapshot[9][7], true, "walkability snapshot should include the lower key-shop return lane exit")
+    assert_equal(snapshot[9][8], true, "walkability snapshot should include the lower key-shop return lane east connector")
+    assert_equal(snapshot[5][1], true, "walkability snapshot should include the west upper false-wall pocket")
+    assert_equal(snapshot[12][1], true, "walkability snapshot should include the west-side key-route bridge")
+    assert_equal(snapshot[13][1], true, "walkability snapshot should include the west recovery false-wall pocket")
+    assert_equal(snapshot[9][3], true, "walkability snapshot should include the lower west false-wall connector")
+    assert_equal(snapshot[14][1], true, "walkability snapshot should include the west pocket false-wall cell")
+    assert_equal(snapshot[14][2], true, "walkability snapshot should include the west pocket false-wall connector")
+    assert_equal(snapshot[14][3], true, "walkability snapshot should include the west pocket false-wall route point")
+    assert_equal(snapshot[14][4], true, "walkability snapshot should include the row-14 false-wall recovery cell")
+    assert_equal(snapshot[14][5], true, "walkability snapshot should include the row-14 false-wall recovery connector")
+    assert_equal(snapshot[7][8], true, "walkability snapshot should include the upper lower-lane false-wall cell")
+    assert_equal(snapshot[8][8], true, "walkability snapshot should include the lower-lane false-wall turn")
+    assert_equal(snapshot[5][15], true, "walkability snapshot should include the upper return false-wall bypass")
+    assert_equal(snapshot[5][14], true, "walkability snapshot should include the upper return false-wall connector")
+    assert_equal(snapshot[15][13], true, "walkability snapshot should include the south-side Magic Key route connector")
+    assert_equal(snapshot[16][13], true, "walkability snapshot should include the south-side Magic Key route lower connector")
+    assert_equal(snapshot[8][15], false, "walkability snapshot should keep the Woman 3 alternate connector closed")
 
     env.restore()
 end

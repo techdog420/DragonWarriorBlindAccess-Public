@@ -26,11 +26,14 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   route now drops through `(93,57)` on the west side and uses the manually
   proven east approach, entering Rimuldar from `(103,72)->LEFT`. First service
   proof: Rimuldar `Merchant 2` is the weapon/armor merchant at `(23,7)`, opened
-  from public counter stand `(23,9)` facing north. Live merchant rows list
-  Copper Sword 180 G, Hand Axe 560 G, Broad Sword 1500 G, Half Plate 1000 G,
-  Full Plate 3000 G, and Magic Armor 7700 G. The old town exit object at
-  `(15,14)` is invalid: teleporting there and walking around showed it is just
-  an ordinary interior tile. Live `probe_edge:RIGHT` from `(29,13)` triggered
+  first from the stale south counter stand `(23,9)` facing north. Follow-up
+  selected-teleport and TALK proof found the planner-safe public stand at
+  `(24,7)` facing west, which fixes the inbound route from the town entrance.
+  Live merchant rows list Copper Sword 180 G, Hand Axe 560 G, Broad Sword
+  1500 G, Half Plate 1000 G, Full Plate 3000 G, and Magic Armor 7700 G. The
+  old town exit object at `(15,14)` is invalid: teleporting there and walking
+  around showed it is just an ordinary interior tile. Live `probe_edge:RIGHT`
+  from `(29,13)` triggered
   `EVENT: map change -> 0x01 (World Map)` and landed at `(102,72)`, so Rimuldar
   now uses `(29,13)` facing east as its `Exit to World Map`. Follow-up user
   check confirmed the new exit object lines up correctly from the town side.
@@ -47,7 +50,126 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   goes up from `(97,71)` before going east, avoiding the repeatedly blocked
   `(97,71)->RIGHT` edge into `(98,71)`. Other blocked-looking entries in that
   run later moved and remain timing/noisy seam observations, not permanent map
-  blockers.
+  blockers. The first in-town walkabout to the weapon/armor merchant produced
+  one real Rimuldar town seam worth modeling: `(28,14)->UP` into `(28,13)`
+  blocked on both the queued route and seam retry, no NPC occupied either tile,
+  and the valid exit route moved through `(29,14)->(29,13)` instead. The noisy
+  `(27,15).west` seam self-disproved with a moved retry and stays open. Keep
+  the weapon/armor route target on `(24,7)` facing west; `(23,9)` can open the
+  shop in some stale/live contexts, but is not the planner-safe entrance-side
+  target. Rimuldar `Merchant 3` is now live-confirmed as the inn keeper at
+  `(16,18)`: autowalk from the east entrance routed cleanly to `(16,17)`,
+  faced south, and TALK opened the 55 GOLD inn prompt. No additional town
+  blockers were needed for either direction of that route. Rimuldar's Magic Key
+  seller is now live-confirmed too: it is `Old Man 1` at `(4,7)`, not
+  `Merchant 1`. TALK from `(4,6)` facing south opened the 53 GOLD Magic Key
+  prompt, while probes around `Merchant 1` only produced the short `Welcome!`
+  greeting. `objects.lua` now labels Old Man 1 as `Magic Key Merchant`, keeps
+  `Merchant 1` out of Services, and routes the key seller through `(4,6)`
+  facing south. The entrance-side route needs hidden north/water-edge
+  connectors: live `(24,7)->UP` moved into `(24,6)` even though the ROM tile
+  decodes as blocked, and the later key-route shakedown proved `(19,9)` is the
+  real bridge around the false `(24,9)` north pocket. Further probing added
+  the hidden row-8/column-13 connectors `(14,8)`, `(13,9)`, and `(13,8)`,
+  the upper hidden turn `(16,8)`, plus the northwest strip `(1,8)` and
+  `(1,7)`. A later live verifier found the missing west-strip connector:
+  `(1,7)->RIGHT` into false-wall `(2,7)` moved 5/5, so `(2,7)` is now a
+  passthrough. The same shakedown promoted confirmed directional-only blocks at
+  `(24,12).south`, `(23,12).south`, `(25,11).east`, `(20,10).south/west`,
+  `(21,11).west`, `(21,12).south/west`, `(24,8).south`, `(13,6).south`,
+  `(13,8).east`, `(14,6).east/south`, `(13,7).east`, `(6,4).east`,
+  `(6,5).east`, `(6,6).east`, `(2,6).west`, `(17,6).east`, and
+  `(17,7).east`; the later weapon-route loop superseded the older
+  `(25,12).south/east` uncertainty, but keep mixed or NPC-tainted seams such
+  as `(23,10).south` and `(14,8).south` open. A live
+  check after restart clarified that `(6,6)` itself is still standable:
+  `(5,6)->RIGHT` moved manually and was mixed/passable under raw verifier, but
+  `(7,6)->LEFT` into `(6,6)` confirmed 3/3 blocked. The guide was right that
+  the key seller is trapped behind a small maze. Follow-up live/raw work added
+  final maze passthroughs `(6,3)`, `(5,3)`, `(5,5)`, `(4,5)`, and `(3,5)`.
+  It also sealed false exits `(3,6).north/east`, `(5,6).north/west`,
+  `(6,4).north`, and `(6,5).north/west`. The latest loop investigation added real blockers at
+  `(10,6).north`, `(12,6).south`, `(13,7).west`, `(13,9).south`,
+  `(14,9).east/south`, `(15,9).south`, `(16,9).south`, and
+  `(17,9).south`. The `(12,7)->RIGHT` and `(12,7)->UP` exits blocked 5/5,
+  then reconfirmed 3/3 after a script restart. The next clean route pass added
+  `(28,13).east`, `(17,9).east`, `(9,6).north/west`,
+  `(12,6).north/west`, and `(13,6).north`, superseding the earlier
+  mixed/unmodeled notes for `(9,6)` and `(17,9).east`. The return-side
+  lower-lane loop then cleanly reached `(6,10)` and repeatedly proved two false
+  exits before stale Alt resumed: `(6,10)->DOWN` into `(6,11)` and
+  `(6,10)->RIGHT` into `(7,10)`, so `(6,11).north` and `(7,10).west` are now
+  modeled. A follow-up manual pass discovered the one-way lower connector
+  `(4,8)->DOWN` into `(4,9)`, and autowalk from `(4,10)` then proved two more
+  bad-pocket exits: `(4,10)->DOWN` into `(4,11)` and `(5,10)->DOWN` into
+  `(5,11)`, so `(4,11).north` and `(5,11).north` are now modeled. The next
+  entrance-side route pass cleanly looped before stale Alt returned on
+  `(9,10)->LEFT` into `(8,10)`, `(9,10)->DOWN` into `(9,11)`,
+  `(9,13)->UP` into `(9,12)`, and `(9,13)->LEFT` into `(8,13)`, so those four
+  directional approaches are now modeled too. The next both-direction pass
+  sealed `(22,12).south`, `(9,12).east`, and `(8,14).east` on the inbound
+  route, then showed the visible return pocket below `(3,11)` is a dead end:
+  `(3,12).north` and `(4,11).west` are now modeled. Keep `(5,3).east` open for
+  now. The route-back no-path was an NPC/model issue in the other direction:
+  fresh attempts to leave `(4,6)` by walking south into Old Man 1 at `(4,7)`
+  repeatedly blocked, while TALK from `(4,6)` facing south still opened the
+  Magic Key shop. The seller now blocks movement again; the valid service stand
+  remains `(4,6)`. The lower false-wall area around `(4,8)` and `(4,9)` is
+  passthrough, but the seller's occupied `(4,7)` cell is not a return corridor.
+  Follow-up testing showed `(5,7)` is only a one-way trap east of the seller: exits into
+  `(5,6)`, `(4,7)`, `(6,7)`, and `(5,8)` all repeatedly blocked, so
+  `(5,6).south`, `(4,7).east`, `(6,7).west`, and `(5,8).north` are modeled.
+  The same route batch closed `(17,17).east`; the replacement entrance-side
+  connector is the live-walked south turn `(13,15)` and `(13,16)`. The latest
+  blocker batch added `(7,15).south`, `(6,16).east`, and `(7,10).north`. Manual
+  movement also proved `(7,9)<->(8,9)`, so `(8,9)` is now the return connector
+  around the blocked `(7,10)` drop. The next pass added `(6,16).south`,
+  `(5,16).south`, `(3,13).south`, `(3,15).north`, `(8,10).north`,
+  `(10,6).east`, and `(6,3).east`, while manual walking proved the false-wall
+  passthroughs `(1,14)`, `(2,14)`, `(3,14)`, `(8,7)`, `(8,8)`, and `(14,5)`.
+  The newest clean pre-Alt batch adds blockers at `(4,16).south`,
+  `(3,16).south`, `(7,11).south`, `(4,8).south`, `(6,8).south`,
+  `(6,4).west`, and `(6,3).west`, and adds the live-walked false-wall cells
+  `(4,14)` and `(5,14)`. The suspicious `(6,8)` behavior is still hidden
+  passability, not a full-cell blocker; only the south approach is modeled.
+  The latest route/manual pass adds blockers `(2,15).south`, `(3,16).west`,
+  `(4,12).south`, `(3,13).east`, and `(5,2).south`, plus false-wall cells
+  `(3,4)` and `(4,3)`. A later check reopened `(4,6).north` because the
+  Magic Key stand must be reachable from `(4,5)->DOWN`. `(4,3)->UP` is a live northwest
+  world-map exit, now exposed as `Northwest Exit to World Map`; `(4,2).south`
+  is blocked so pathfinding treats that edge as an exit transition instead of
+  an in-town corridor.
+  Follow-up route/manual evidence adds
+  false-wall cells `(1,5)`, `(1,13)`, `(3,9)`, and `(15,5)`, plus blockers
+  `(3,15).west`, `(4,12).east`, `(5,11).south`, `(14,6).north`,
+  `(24,12).north`, and `(25,11).west`. The newest clean log promotes
+  `(2,15).west`, `(6,11).south`, `(8,12).west`, `(4,4).south`, and
+  `(4,3).south`. The latest route-to-merchant loop then added `(7,14).west`
+  and `(6,15).north` after repeated clean blocks from `(6,14)` before stale
+  Alt returned. The next weapon/key-route pass promoted `(25,12).east/south`,
+  `(21,6).west`, `(21,7).west`, `(8,13).west`, and `(7,14).north`; the
+  initial no-path in that batch was likely `Old Man 2` occupying `(6,13)`,
+  not terrain. Later route-shaped evidence superseded the old noisy/open
+  `(1,7)->RIGHT` probe: repeated movement into `(2,7)` from the west failed and
+  reached `blocked=18 moved=0`, so `(2,7).west` is now modeled as blocked while
+  `(2,7)` stays a passable hidden cell. With that west approach closed, the
+  current model needed an alternate bridge into the key-counter lane. Key-to-east-exit
+  remains no-path when NPC occupancy is modeled because the geometry-only route
+  walks through the seller. Follow-up probing found `(5,9)` is a real lower-lane
+  false-wall tile from `(4,9)->RIGHT` 5/5, but `(5,9)->UP` into `(5,8)` blocked
+  from a forced origin. The upper-left candidate through `(1,4)/(0,5)` also
+  failed: `(1,5)->UP` and `(1,5)->LEFT` each blocked 5/5. `(1,6)->LEFT` moved
+  into `(0,6)` and then changed to the world map, so that is an exit-transition
+  clue, not the Magic Key counter route. The later `(2,5)` lead was also
+  stale/noisy: fresh route and direct verifier evidence block
+  `(1,5)->RIGHT` into `(2,5)`, so `(2,5).west` is now modeled while the cell
+  stays standable for other approaches. The `(3,7)` counter-lane lead is not
+  solved after all: live route/seam retries proved `(3,9)->UP` into `(3,8)`
+  blocked 9/9, so `(3,8).south` is now modeled. Follow-up frontier probes also
+  close `(2,8).south`, `(5,8).south`, `(6,8).east`, `(6,7).east`, and
+  `(6,2).east`. Local routing currently reports no entrance-to-key-stand path;
+  the remaining one-cell lead is noisy `(1,8)->RIGHT` into `(2,8)`, which needs
+  a clean post-reload verifier before exposing `(2,8)`.
 
 - Swamp Cave interior first-pass orientation is now recorded. External guides
   agree it is a one-floor north/south tunnel to the Rimuldar island, with no

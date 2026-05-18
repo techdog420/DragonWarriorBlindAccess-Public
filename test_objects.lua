@@ -799,6 +799,15 @@ function tests.rimuldar_exit_uses_live_east_entry_tile()
     assert_equal(obj.interaction_y, 13, "Rimuldar exit stand should match the live entry row")
     assert_equal(obj.interaction_face_dir, "east", "Rimuldar exit stand should face out toward the world")
 
+    local northwest_exit = env.objects.select_object_by_id("exit_4_3")
+    assert_equal(northwest_exit ~= nil, true, "Rimuldar should expose the live northwest Magic Key maze exit")
+    assert_equal(northwest_exit.name, "Northwest Exit to World Map", "Rimuldar alternate exit should be labeled distinctly")
+    assert_equal(northwest_exit.x, 4, "Rimuldar northwest exit should use the live false-wall exit X")
+    assert_equal(northwest_exit.y, 3, "Rimuldar northwest exit should use the live false-wall exit Y")
+    assert_equal(northwest_exit.interaction_x, 4, "Rimuldar northwest exit route should stand on the false-wall exit tile")
+    assert_equal(northwest_exit.interaction_y, 3, "Rimuldar northwest exit stand should match the live false-wall exit row")
+    assert_equal(northwest_exit.interaction_face_dir, "north", "Rimuldar northwest exit stand should face north toward the world transition")
+
     env.restore()
 end
 
@@ -1744,33 +1753,73 @@ function tests.garinham_confirmed_public_merchants_are_labeled()
     env.restore()
 end
 
-function tests.rimuldar_merchant2_weapon_shop_uses_live_counter_stand()
-    local env = make_env({npc_count = 2})
+function tests.rimuldar_confirmed_services_use_live_counter_stands()
+    local env = make_env({npc_count = 4})
 
-    env.set_position(0x0B, 23, 9)
+    env.set_position(0x0B, 24, 7)
     env.set_terrain_offset(0x10)
     env.set_npc(0, 0x60 + 2, 0x04, 0x00) -- Merchant 1, other service slot
     env.set_npc(1, 0x60 + 23, 0x47, 0x00) -- Merchant 2, live weapon/armor shop at (23,7)
+    env.set_npc(2, 0x60 + 16, 0x12, 0x00) -- Merchant 3, live 55 G inn at (16,18)
+    env.set_npc(3, 0xA0 + 4, 0x07, 0x00) -- Old Man 1, live Magic Key shop at (4,7)
     env.objects.refresh(0x0B)
 
+    local magic_key_merchant = nil
     local weapons_merchant = nil
+    local inn = nil
+    local dialogue_merchant1 = nil
     local generic_merchant2 = nil
+    local generic_merchant3 = nil
     for _, obj in ipairs(env.objects.get_objects()) do
-        if obj.name == "Weapons Merchant" then
+        if obj.name == "Magic Key Merchant" then
+            magic_key_merchant = obj
+        elseif obj.name == "Weapons Merchant" then
             weapons_merchant = obj
+        elseif obj.name == "Inn" then
+            inn = obj
+        elseif obj.name == "Merchant 1" then
+            dialogue_merchant1 = obj
         elseif obj.name == "Merchant 2" then
             generic_merchant2 = obj
+        elseif obj.name == "Merchant 3" then
+            generic_merchant3 = obj
         end
     end
 
+    assert_equal(magic_key_merchant ~= nil, true, "Rimuldar Old Man 1 should be labeled as Magic Key Merchant")
+    assert_equal(magic_key_merchant.service, true, "Rimuldar Magic Key Merchant should appear in Services")
+    assert_equal(magic_key_merchant.x, 4, "Rimuldar Magic Key Merchant NPC X should match live NPC RAM")
+    assert_equal(magic_key_merchant.y, 7, "Rimuldar Magic Key Merchant NPC Y should match live NPC RAM")
+    assert_equal(magic_key_merchant.interaction_x, 4, "Rimuldar Magic Key Merchant should use the live-confirmed public stand X")
+    assert_equal(magic_key_merchant.interaction_y, 6, "Rimuldar Magic Key Merchant should use the live-confirmed public stand Y")
+    assert_equal(magic_key_merchant.interaction_face_dir, "south", "Rimuldar Magic Key Merchant should face south toward the seller")
+    assert_equal(magic_key_merchant.blocks_movement, true, "Rimuldar Magic Key Merchant should block movement while still using the north-side counter stand")
+    assert_equal(dialogue_merchant1 ~= nil, true, "Rimuldar Merchant 1 should stay browsable as an NPC")
+    assert_equal(dialogue_merchant1.service, false, "Rimuldar Merchant 1 greeting NPC should not appear in Services")
     assert_equal(weapons_merchant ~= nil, true, "Rimuldar Merchant 2 should be labeled as Weapons Merchant")
     assert_equal(weapons_merchant.service, true, "Rimuldar Weapons Merchant should remain in Services")
     assert_equal(weapons_merchant.x, 23, "Rimuldar Weapons Merchant NPC X should match live NPC RAM")
     assert_equal(weapons_merchant.y, 7, "Rimuldar Weapons Merchant NPC Y should match live NPC RAM")
-    assert_equal(weapons_merchant.interaction_x, 23, "Rimuldar Weapons Merchant should use the live-confirmed counter stand X")
-    assert_equal(weapons_merchant.interaction_y, 9, "Rimuldar Weapons Merchant should use the live-confirmed counter stand Y")
-    assert_equal(weapons_merchant.interaction_face_dir, "north", "Rimuldar Weapons Merchant should face north from the counter")
+    assert_equal(weapons_merchant.interaction_x, 24, "Rimuldar Weapons Merchant should use the live-confirmed counter stand X")
+    assert_equal(weapons_merchant.interaction_y, 7, "Rimuldar Weapons Merchant should use the live-confirmed counter stand Y")
+    assert_equal(weapons_merchant.interaction_face_dir, "west", "Rimuldar Weapons Merchant should face west from the counter")
     assert_equal(generic_merchant2, nil, "Rimuldar Merchant 2 should not keep the generic label")
+    assert_equal(inn ~= nil, true, "Rimuldar Merchant 3 should be labeled as Inn")
+    assert_equal(inn.service, true, "Rimuldar Inn should remain in Services")
+    assert_equal(inn.x, 16, "Rimuldar Inn NPC X should match live NPC RAM")
+    assert_equal(inn.y, 18, "Rimuldar Inn NPC Y should match live NPC RAM")
+    assert_equal(inn.interaction_x, 16, "Rimuldar Inn should use the live-confirmed public stand X")
+    assert_equal(inn.interaction_y, 17, "Rimuldar Inn should use the live-confirmed public stand Y")
+    assert_equal(inn.interaction_face_dir, "south", "Rimuldar Inn should face south toward the inn keeper")
+    assert_equal(generic_merchant3, nil, "Rimuldar Merchant 3 should not keep the generic label")
+
+    local blocking_cells = {}
+    for _, pos in ipairs(env.objects.get_blocking_positions()) do
+        blocking_cells[pos.x .. "," .. pos.y] = true
+    end
+    assert_equal(blocking_cells["4,7"], true, "Rimuldar Magic Key Merchant should block routing through the occupied seller cell")
+    assert_equal(blocking_cells["23,7"], true, "Rimuldar Weapons Merchant should still block movement")
+    assert_equal(blocking_cells["16,18"], true, "Rimuldar Inn keeper should still block movement")
 
     env.objects.next_filter() -- NPCs
     env.objects.next_filter() -- Services
@@ -1779,11 +1828,21 @@ function tests.rimuldar_merchant2_weapon_shop_uses_live_counter_stand()
         service_names[#service_names + 1] = obj.name
     end
     local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Magic Key Merchant", 1, true) ~= nil, true, "Services should include Rimuldar Magic Key Merchant")
     assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include Rimuldar Weapons Merchant")
+    assert_equal(service_text:find("Inn", 1, true) ~= nil, true, "Services should include Rimuldar Inn")
+    assert_equal(service_text:find("Merchant 1", 1, true), nil, "Services should omit Rimuldar greeting-only Merchant 1")
+    assert_equal(service_text:find("Merchant 3", 1, true), nil, "Services should not keep the stale Rimuldar Merchant 3 label")
 
-    local marked = env.objects.mark_adjacent_npc_visited(0x0B, 23, 9)
+    local marked_key = env.objects.mark_adjacent_npc_visited(0x0B, 4, 6)
+    assert_equal(marked_key.id, magic_key_merchant.id, "Rimuldar key-shop public stand should mark the Magic Key Merchant visited")
+    assert_equal(env.objects.is_visited(magic_key_merchant, 0x0B), true, "Rimuldar key-shop visit should persist on the seller")
+    local marked = env.objects.mark_adjacent_npc_visited(0x0B, 24, 7)
     assert_equal(marked.id, weapons_merchant.id, "Rimuldar counter stand should mark the weapon merchant visited")
     assert_equal(env.objects.is_visited(weapons_merchant, 0x0B), true, "Rimuldar counter visit should persist on the merchant")
+    local marked_inn = env.objects.mark_adjacent_npc_visited(0x0B, 16, 17)
+    assert_equal(marked_inn.id, inn.id, "Rimuldar inn public stand should mark the inn visited")
+    assert_equal(env.objects.is_visited(inn, 0x0B), true, "Rimuldar inn visit should persist on the merchant")
 
     env.restore()
 end

@@ -672,7 +672,13 @@ local function build_external_keyboard_bridge_input(frame)
         return nil
     end
 
-    bridge._raw = true
+    if fceux_stale and not bridge_active then
+        -- Sentinel only: main.lua should pause auto_step for this stale FCEUX
+        -- keyboard state, but must not write a neutral joypad frame every poll.
+        bridge._stale_fceux_keyboard = true
+    else
+        bridge._raw = true
+    end
     if not external_keyboard_bridge_active then
         M.info(string.format(
             "INPUT_EXTERNAL_BRIDGE_ACTIVE frame=%d keys=%s native_joy1=%s bridge=%s reason=fceux_stale_keyboard_state",

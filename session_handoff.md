@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-17
+Updated: 2026-05-18
 
 ## Active Resume
 
@@ -10,6 +10,255 @@ Prioritize viable paths to merchants, inns, exits, stairs, locked doors,
 chests, and other essential services. Leave unreachable dialogue-only NPCs for
 the polishing phase unless they provide a progression clue, required hint, or
 other gameplay-critical information.
+
+Tomorrow start state for Rimuldar: the Magic Key seller is identified and his
+counter stand is correct, but the entrance-to-key-stand maze is sealed again in
+the current model. The freshest live log after the latest patch reports
+`AUTO_WALK_NO_PATH_DETAIL map=0x0B start=(29,14) target_name=Magic Key Merchant
+goal=(4,6) ... runtime_blocks=0 directional_blocks=72`, followed by repeated
+`AUTO_WALK: no path for Magic Key Merchant`. Bill was moved back to Rimuldar
+`(29,14)`. FCEUX is still intermittently latching `LeftAlt`; do Alt/Escape
+recovery or reload before trusting the next probe. Best next live check:
+retest the only remaining one-cell frontier, `(1,8)->RIGHT` into `(2,8)`,
+after a clean reload/Alt recovery. Do not expose `(2,8)` unless that west
+approach verifies cleanly; one run was mixed 2 moved / 3 blocked, then a harder
+10-attempt run blocked 10/10 while stale Alt kept recurring.
+
+Current Rimuldar Magic Key route patch in the worktree: `Old Man 1` at `(4,7)`
+is the live-confirmed Magic Key seller, using public stand `(4,6)` facing
+south. The route is a one-way maze, matching the guide warning that the key
+seller is reached by walking around the outside/water edge. `map_reader.lua`
+now includes Rimuldar passthrough cells `(24,6)`, `(19,9)`, `(14,8)`,
+`(13,9)`, `(13,8)`, `(16,8)`, `(1,8)`, `(1,7)`, `(2,7)`, and final maze
+cells `(6,3)`, `(5,3)`, `(5,5)`, `(4,5)`, `(3,5)`, and the bridge-candidate
+cell `(3,7)`, plus the lower
+escape strip `(4,7)`, `(4,8)`, and `(4,9)`, the one-way trap cell `(5,7)`,
+the hidden lower lane `(5,9)`, `(6,7)`, `(6,8)`, `(6,9)`, and `(7,9)`, plus the
+south-side connector `(13,15)` and `(13,16)`, plus the latest manual false-wall
+cells `(1,14)`, `(2,14)`, `(3,14)`, `(4,14)`, `(5,14)`, `(8,7)`, `(8,8)`,
+and `(14,5)`, plus the northwest exit false-wall cells `(3,4)` and `(4,3)`.
+Directional-only key-route blockers
+now include `(24,12).south`, `(23,12).south`, `(25,11).east`,
+`(20,10).south/west`, `(21,11).west`, `(21,12).south/west`,
+`(24,8).south`, `(13,6).north/south`, `(13,8).east`, `(14,6).east/south`,
+`(13,7).east`, `(3,6).north/east`, `(4,7).east`, `(5,6).north/south/west`,
+`(6,3).east/west`, `(6,4).east/north/west`, `(6,5).east/north/west`,
+`(6,6).east`, `(0,5).east`, `(1,4).south`, `(2,5).west`, `(2,6).west`, `(2,7).west`, `(2,8).south`, `(17,6).east`, `(17,7).east`, `(28,13).east`,
+`(10,6).east/north`,
+`(9,6).north/west`, `(12,6).north/south/west`, `(13,9).south`,
+`(13,7).west`, `(14,9).east/south`, `(15,9).south`, `(16,9).south`, and
+`(17,9).east/south`, plus the newest entrance-side blocks `(22,12).south`,
+`(9,12).east`, `(8,14).east`, `(7,15).south`, `(6,16).east/south`,
+`(5,16).south`, `(3,13).south`, `(3,15).north`, and
+`(17,17).east`, plus the latest maze seals `(4,16).south`, `(3,16).south`,
+`(7,11).south`, `(4,8).south`, and `(6,8).south`, plus lower-lane pocket blocks
+`(3,12).north`, `(4,11).north/west`,
+`(5,8).north/west`, `(5,11).north`, `(6,7).west`, `(6,11).north/south`, and
+`(7,10).north/west`, `(3,8).south`, `(5,8).south`,
+`(6,2).east`, `(6,7).east`, and `(6,8).east`, and entrance-loop blocks
+`(8,10).east/north`, `(9,11).north`, `(9,12).south`, and `(8,13).east/west`, plus
+the newest blockers `(2,15).south`, `(3,16).west`, `(4,12).south`,
+`(3,13).east`, `(5,2).south`, `(2,15).west`, `(4,3).south`, `(4,4).south`,
+`(8,12).west`, `(6,15).north`, `(7,14).north/west`, `(25,12).east/south`,
+`(21,6).west`, `(21,7).west`, and the northwest-exit transition guard `(4,2).south`. The newest
+FCEUX passes
+reconfirmed the dead-end exits from `(12,7)` as real blockers, then found a
+clean entrance-side block at `(18,9)->LEFT` into `(17,9)` and return-side false
+drops into `(9,6)`, `(12,6)`, and `(13,6)`. The user then found the one-way
+lower return connector `(4,8)->DOWN` into `(4,9)`; follow-up autowalk from
+`(4,10)` proved the bad pocket exits `(4,10)->DOWN` into `(4,11)` and
+`(5,10)->DOWN` into `(5,11)` before stale Alt returned. The old missing
+entrance-side false wall note is now split: `(2,7)` remains a Rimuldar
+passthrough cell, but later route-shaped evidence closes its west approach from
+`(1,7)`. Keep `(5,3).east` open for now. The latest both-direction pass added the three
+entrance-side blocks `(22,12).south`, `(9,12).east`, and `(8,14).east`, then
+proved the visible pocket exits from `(3,11)` are closed:
+`(3,11)->DOWN` into `(3,12)` and `(3,11)->RIGHT` into `(4,11)` repeatedly
+blocked. Route-back failure was NPC/model related in the other direction:
+fresh attempts to leave `(4,6)` by walking south into Old Man 1 at `(4,7)`
+repeatedly blocked, while TALK from `(4,6)` facing south still opened the Magic
+Key shop. `objects.lua` now treats the seller as movement-blocking again; the
+valid service stand remains `(4,6)`. The next route batch showed `(5,7)` is a
+tiny one-way pocket, not the actual return lane: attempts from `(5,7)` into
+`(5,6)`, `(4,7)`, `(6,7)`, and `(5,8)` all blocked, while the earlier
+`(4,7)->RIGHT` proof only proves entry into the pocket. The same batch proved
+`(18,17)->LEFT` into `(17,17)` is closed, and
+manual movement walked the south-side false cells `(13,15)` and `(13,16)`,
+which reconnect the entrance route without using `(17,17)`. The suspicious
+`(6,8)` sequence remains hidden passability, not a full-cell blocker: earlier
+logs moved through it, but the latest clean route-shaped batch proves the south
+approach from `(6,9)->UP` into `(6,8)` is blocked and should be modeled
+directionally. The latest FCEUX
+batch proved the prior south-side connector patch was live by walking through
+`(13,15)` and `(13,16)`, then found clean blockers at `(7,16)->UP` into
+`(7,15)` and `(7,16)->LEFT` into `(6,16)` before stale Alt returned. The return
+route then repeatedly blocked `(7,9)->DOWN` into `(7,10)`, but manual movement
+crossed `(7,9)<->(8,9)` twice, so `(8,9)` is now a passthrough connector.
+The next reloaded/manual pass showed neither route was fully solved yet:
+entrance-side autowalk looped at `(6,17)->UP` into `(6,16)` and
+`(5,17)->UP` into `(5,16)`, then a manual left-side pocket reached false-wall
+cells `(1,14)->(2,14)->(3,14)` before route-to-key looped on `(3,14)->UP`
+into `(3,13)` and `(3,14)->DOWN` into `(3,15)`. Return-side walking proved
+`(8,9)->DOWN` into `(8,10)`, `(11,6)->LEFT` into `(10,6)`, and later
+`(7,3)->LEFT` into `(6,3)` as blocked; `(14,5)` is now the upper false-wall
+connector that keeps the return graph open after those seals. The newest
+pre-Alt FCEUX snapshot found the next real blockers at `(4,17)->UP` into
+`(4,16)`, `(3,17)->UP` into `(3,16)`, `(7,12)->UP` into `(7,11)`,
+`(4,9)->UP` into `(4,8)`, `(6,9)->UP` into `(6,8)`, `(5,4)->RIGHT` into
+`(6,4)`, and `(5,3)->RIGHT` into `(6,3)`. The row-14 false-wall cells
+`(4,14)` and `(5,14)` are now passthroughs; they shorten the inbound/recovery
+route after those seals. The latest route/manual pass added clean blockers at
+`(2,16)->UP` into `(2,15)`, `(2,16)->RIGHT` into `(3,16)`,
+`(4,13)->UP` into `(4,12)`, `(4,13)->LEFT` into `(3,13)`, and
+`(5,3)->UP` into `(5,2)`. The earlier `(4,6).north` closure was later
+disproved because the Magic Key public stand must be reachable from
+`(4,5)->DOWN`. Manual movement
+then found the alternate northwest world-map exit: the player stood on
+false-wall `(4,3)`, pressed north, and the log changed to map `0x01` at world
+position `(102,72)`; re-entering from `(102,71)->DOWN` landed at Rimuldar
+`(29,14)`. `objects.lua` now exposes this as `Northwest Exit to World Map` at
+`(4,3)` facing north, while `(4,2).south` is blocked so normal in-town A*
+does not route through the exit transition as if it were a corridor. The latest
+patch also blocks `(4,3).south`, so the route from the key stand reaches the
+northwest exit through `(5,3)->LEFT` instead of the blocked `(4,4)->UP` seam.
+Older local ROM-backed A* briefly found service-grade routes here, but that
+entrance proof is superseded by later live blockers. Current local ROM-backed
+A* reports no entrance-to-key-stand path with the seller blocking movement; the
+return from the stand to the northwest exit still survives as 5 steps. The old
+east-exit return is geometry-only and tries to walk through the seller, so it
+is intentionally no-path when NPC occupancy is modeled. Starting in the trap
+cell `(5,7)` correctly has no route to the east exit.
+Validation after this patch passed `luac`, `test_map_reader.lua`,
+`test_objects.lua`, `test_route_manager.lua`, `test_debug_tools.lua`,
+`git diff --check`, and the ROM-backed route proof above. Manually
+reload/restart FCEUX Lua before trusting the next live autowalk test.
+`route_manager.lua` now logs `AUTO_WALK_NO_PATH_DETAIL` with start, goal,
+target, mode, reason, goal block, and blocker counts when autowalk immediately
+fails to plan.
+The next live autowalk attempt should restart/reload FCEUX Lua before testing:
+the latest route attempts happened while FCEUX reported stale `LeftAlt`
+(`keys=LeftAlt`, `joy1=-`). Treat the stale-Alt blocked seams such as
+`(4,5).south` and `(29,14).north` as contaminated, not map evidence. Runtime
+seam memory and runtime blocks for map `0x0B` were cleared afterward.
+`debug_tools.lua`/`main.lua` now tag FCEUX LeftAlt-only neutral bridge frames
+as sentinel-only stale input. `main.lua` releases any active `auto_step` once,
+then pauses without repeatedly calling `joypad.set(1, neutral)`, so future
+Alt-tab focus quirks should be less likely to manufacture blockers or fight
+manual recovery movement. This does not clear FCEUX's native latched `LeftAlt`;
+manual Alt/Escape recovery or a reload may still be needed. Final live cleanup
+cleared map `0x0B` runtime blocks and seam memory, left autowalk stopped and
+NPCs unfrozen, kept Bill at
+`(4,10)`, and `input_status` still reported `left_alt=true`; press/release
+Alt/Escape or restart/reload before trusting the next live blocker pass. The
+latest log again ended with stale `LeftAlt` at frames `18937`/`19056`, after
+the northwest exit re-entry proof, so clear Alt or restart/reload before the
+next live autowalk attempt.
+Follow-up FCEUX route/manual evidence promoted another Rimuldar Magic Key patch:
+false-wall passthroughs `(1,5)`, `(1,13)`, `(3,9)`, and `(15,5)` are now
+modeled. The new directional blockers are `(3,15).west`, `(4,12).east`,
+`(5,11).south`, `(14,6).north`, `(24,12).north`, and `(25,11).west`. The
+next log promoted `(2,15).west`, `(6,11).south`, `(8,12).west`,
+`(4,4).south`, and `(4,3).south`; it also reopened `(4,6).north` because the
+counter stand must be reachable from `(4,5)->DOWN`. The latest route-to-merchant
+attempt got to `(6,14)`, then repeatedly looped on `(6,14)->RIGHT` into
+`(7,14)` and `(6,14)->DOWN` into `(6,15)` before stale Alt returned, so
+`(7,14).west` and `(6,15).north` are now modeled. The latest log repeatedly
+blocked `(1,7)->RIGHT` into `(2,7)`, and follow-up route-shaped evidence now
+supersedes the earlier noisy/open probe: `(2,7).west` is modeled as a
+directional blocker while `(2,7)` remains a passable hidden cell for other
+approaches. Next best live check after FCEUX reload/Alt recovery: the initial
+no-path to the key seller may still involve live NPC contamination from
+`Old Man 2` at `(6,13)`, but terrain now also needs a new alternate bridge into
+the key-counter lane. The user then walked
+to the Weapons Merchant, canceled the loop, and a new key path opened; the clean
+pre-Alt weapon-route loop promoted `(25,12).east/south`, `(21,6).west`, and
+`(21,7).west`. The later key-route loop reached `(7,13)` and promoted
+`(8,13).west` plus `(7,14).north`. Stale Alt returned only after those key-route
+blocks (`9585`/`9704`), so they are modeled. After reload, test
+entrance-to-key and key-to-`Northwest Exit to World Map`; if entrance-to-key
+fails immediately again, check current NPC occupancy around `(6,13)` before
+adding more terrain blockers. Validation for this patch passed `luac`,
+`test_map_reader.lua`, `test_objects.lua`, and ROM-backed route proof.
+Newest runtime-only Rimuldar pass switched to the stricter manual/projection
+loop. From `(4,15)`, the live log repeatedly blocked `(4,15)->LEFT` into
+`(3,15)` and `(4,15)->DOWN` into `(4,16)` before stale Alt reactivated; counts
+reached `(3,15).east` 22 blocked / 0 moved and `(4,16).north` 23 blocked / 0
+moved. A follow-up seam-list pull after manual wandering promoted those two
+edges permanently and also promoted `(6,15).west`, which was still 22 blocked /
+0 moved. The first sift held `(5,16).north` open as noisy, but the post-reload
+autowalk reached `(5,15)` and the fresh seam list showed `(5,15)->DOWN` into
+`(5,16)` blocked 3/3 with no moves and no runtime block left behind. That edge
+is now modeled too. Direct verifiers after the patch confirmed both suspected
+exits from `(5,15)`: `(5,15)->DOWN` into `(5,16)` blocked 3/3, and
+`(5,15)->RIGHT` into `(6,15)` blocked 3/3. Current live position after the
+latest pull was `(5,15)`. Even with NPCs skipped,
+`debug_pathfind_adjacent_skip_npcs:4,7` now reports no path from `(5,15)` to
+any square adjacent to Old Man 1 (`visited=207`, `path=0`), so the split is
+geometry, not just live NPC clutter. A local ROM-backed component/frontier pass
+showed the nearest one-hop false-wall candidates that could reconnect the
+current component to the key-stand component are `(1,12)` and `(2,13)`; farther
+candidates include `(8,16)`, `(10,11)`, and `(9,9)`. The follow-up verifier
+batch found the clean bridge at `(1,12)`: `(1,13)->UP` moved 4/5 and
+`(1,11)->DOWN` moved 5/5. Local ROM-backed routing with only `(1,12)` added
+finds a 16-step route from `(5,15)` to stand `(4,6)`:
+`1 north, 4 west, 7 north, 1 east, 1 north, 2 east`. `(2,13)` is not modeled
+yet: `(2,14)->UP` moved 5/5, but `(3,13)->LEFT` into it blocked 5/5 and
+`(1,13)->RIGHT` was mixed 2 moved / 3 blocked. After the permanent patch,
+reload FCEUX Lua and retest entrance-to-key and key-to-`Northwest Exit to World
+Map`. Validation after the `(5,16).north` promotion passed `luac -p
+map_reader.lua test_map_reader.lua debug_tools.lua main.lua
+test_debug_tools.lua`, `lua test_map_reader.lua`, `lua test_debug_tools.lua`,
+`lua test_route_manager.lua`, and `git diff --check`; the same focused checks
+also pass after the new `(1,12)` passthrough patch.
+The next live route reached the new bridge and proved `(1,12)->UP` with
+`probe_edge_verify:1,12,UP,5` as 5/5 passable, then choked later at the old
+`(1,7)->RIGHT` into `(2,7)` connector. Later route-shaped evidence repeatedly
+blocked that same seam and reached `blocked=18 moved=0`; a live runtime edge
+was injected for `(2,7).west`, and `debug_pathfind_to:4,6 trace_path` from the
+east entrance then returned no path. `map_reader.lua` now closes `(2,7).west`
+permanently while leaving `(2,7)` itself exposed as a hidden passable cell.
+The alternate `(3,8)` bridge is still not solved. Earlier
+`probe_edge_verify:3,9,UP,5` moved 5/5 into `(3,8)`, while
+`probe_edge_verify:4,8,LEFT,5` blocked 5/5 entering the same cell from the
+east, but the latest live route superseded the south-entry proof:
+`(3,9)->UP` into `(3,8)` blocked repeatedly under queued route plus seam
+retries, reaching 9 blocked / 0 moved. `map_reader.lua` now models
+`(3,8).south` as well as `(3,8).east`.
+Fresh focused probing showed several tempting cells are pockets or real walls:
+`(2,9)->UP` into `(2,8)` verified 0/5 moved, `(5,9)->UP` into `(5,8)`
+verified 0/5 moved, `(7,9)->UP` into `(7,8)` verified 5/5 passable, but
+forced/current probes from `(7,8)->LEFT`, `(7,7)->LEFT`, and `(7,2)->LEFT`
+each blocked into the x=6 lane. `map_reader.lua` now models `(2,8).south`,
+`(5,8).south`, `(6,8).east`, `(6,7).east`, and `(6,2).east`. The remaining
+one-cell static frontier is `(2,8)` from `(1,8)->RIGHT`, but it is
+contradictory while stale FCEUX `LeftAlt` is active: one verifier was mixed
+2 moved / 3 blocked, then a harder 10-attempt run blocked 10/10. Do not expose
+`(2,8)` until a clean post-reload verifier resolves that west approach.
+The upper maze seams `(7,3)->LEFT`, `(7,4)->LEFT`, `(7,5)->LEFT`, and
+`(7,6)->LEFT` each verified blocked 5/5, so do not remove the existing east
+approach blockers around `(6,3)`..`(6,6)`.
+Follow-up frontier probing found one more real lower-lane passthrough:
+`probe_edge_verify:4,9,RIGHT,5` moved 5/5 into `(5,9)`, so `(5,9)` is now
+modeled. That candidate does not break into the counter lane yet:
+`probe_edge:UP` from forced `(5,9)` blocked into `(5,8)`, and the later
+focused verifier closed west entry into that same pocket:
+`probe_edge_verify:4,8,RIGHT,5` blocked `(5,8).west` 5/5. The upper-left
+shortcuts through `(1,4)/(0,5)` also failed: `(1,5)->UP` and `(1,5)->LEFT`
+each blocked 5/5. A stale/noisy `(2,5)` lead was disproved by the latest
+route/probe pass: the route reached `(1,5)` and repeatedly blocked east into
+`(2,5)`, then direct verifier classified `(1,5)->RIGHT` confirmed_blocked
+5/5, so `(2,5).west` is now modeled while `(2,5)` remains standable for any
+future non-west approach. The `(3,7)` lead is still valuable map data:
+weighted static search picked `(3,8)->(3,7)->(3,6)`, a forced probe from
+`(3,7)->UP` moved into `(3,6)`, and `map_reader.lua` exposes `(3,7)` while
+keeping `(3,6).south` open. It is not currently a solved entrance route,
+because `(3,8).south` is now closed. Local ROM-backed A* with town terrain and
+Old Man 1 blocking movement now reports no path from `(29,14)` to the Magic
+Key stand `(4,6)`. The return from the stand to the northwest exit still
+survives as 5 steps. Reload FCEUX Lua before the next live autowalk/probe test;
+`input_status` still reports stale `LeftAlt`, so treat the unresolved
+`(1,8)->RIGHT` / `(2,8)` west approach with extra caution until the modifier
+latch is cleared or the emulator is restarted.
 
 Current Kol clue/object patch in the worktree: Woman 2 at `(12,1)` is the bath
 clue NPC and talks from stand `(12,2)` facing north. Local image analysis of
@@ -259,7 +508,10 @@ The rescue branch itself still needs magic-key testing and a future safe plan
 for handling or warning about the Green Dragon.
 
 Current Rimuldar route state: external guide prep is recorded and the first
-live shakedown corrected the guide-derived overworld route. Gamer Corner lists
+live shakedown corrected the guide-derived overworld route. Local guide images
+and text notes are now archived in `project_resources/maps/rimuldar/README.md`
+with Mike's RPG Center and Realm of Darkness map PNGs under
+`project_resources/maps/rimuldar/external/`. Gamer Corner lists
 Rimuldar at `(29S,59E)`, matching the existing
 `overworld_rimuldar` object at local world coordinate `(102,72)`, with inn
 55 G, 2 locked doors, Wings treasure, a Weapons/Armor shop, and the first
@@ -315,14 +567,83 @@ slot 13 at `(23,7)`; and `report_merchant_state` reported active offers
 `Copper Sword, Hand Axe, Broad Sword, Half Plate, Full Plate, Magic Armor`.
 Visible merchant rows gave prices: Copper Sword 180 G, Hand Axe 560 G, Broad
 Sword 1500 G, Half Plate 1000 G, Full Plate 3000 G, and Magic Armor 7700 G.
-`objects.lua` now labels Rimuldar `Merchant 2` as `Weapons Merchant` and routes
-him through the public counter stand `(23,9)` facing north. Static proof:
-`luac -p objects.lua test_objects.lua` and `lua test_objects.lua` (62 tests).
-Live caveat: `touch main.lua` plus
-`launcher_probe:codex_rimuldar_service_patch` was consumed, but it did not
-actually reload the running FCEUX Lua instance; a follow-up `report_npcs` still
-showed slot 13 as `name=Merchant 2`. Manually reload Lua or relaunch before
-judging the patched service label or the corrected Rimuldar route live.
+`objects.lua` first labeled Rimuldar `Merchant 2` as `Weapons Merchant` and
+used the south counter stand `(23,9)` facing north. Follow-up selected
+teleport/TALK proof found the planner-safe public counter stand at `(24,7)`
+facing west: teleport dropped the player on `(24,7)`, `TELEPORT_FACE` set west,
+and TALK opened the weapon/armor prompt. The stale `(23,9)` target explained
+why the exit-to-merchant route could fail even after the merchant-to-exit route
+worked. `objects.lua` now routes the service interaction through `(24,7)`
+facing west. Static proof after the route-target and inn correction:
+`luac -p objects.lua test_objects.lua map_reader.lua test_map_reader.lua`,
+`lua test_objects.lua` (63 tests), `lua test_map_reader.lua` (32 tests), and
+`git diff --check`.
+Rimuldar inn confirmation came next without exposing more map geometry issues:
+`Merchant 3` is the inn keeper at `(16,18)`. The live route from the east
+entrance `(29,13)` to `Merchant 3` queued 17 clean steps to `(16,17)`, faced
+south, and TALK opened `Welcome to the traveler's Inn. Room and board is 55
+GOLD per night...`. `objects.lua` now labels Rimuldar `Merchant 3` as `Inn`
+and routes him through `(16,17)` facing south. No directional blockers were
+added for this inn pass because the user confirmed the route worked smoothly
+both ways.
+Rimuldar Magic Key seller proof followed after a clean relaunch so required
+modules were definitely refreshed. `report_npcs` showed `Merchant 1` at
+`(2,4)` and `Old Man 1` at `(4,7)`. Hidden-cell probes around `Merchant 1`
+could reach some adjacent cells, but TALK only produced the short `Welcome!`
+greeting; `Merchant 1` is therefore dialogue-only and stays out of Services.
+The real key seller is `Old Man 1`: from `(4,6)` facing south, TALK opened
+`Magic keys! They will unlock any door. Dost thou wish to purchase one for 53
+GOLD?`. The purchase was cancelled, leaving key count unchanged. `objects.lua`
+now labels Old Man 1 as `Magic Key Merchant`, routes him through `(4,6)` facing
+south, and keeps `Merchant 1` browsable but non-service. Route investigation
+from the east entrance found the required north/water-edge bridge at `(24,6)`:
+`probe_edge:UP` from `(24,7)` moved into `(24,6)` even though the ROM tile
+decoded as blocked. Fresh live proof after relaunch: Services contains
+`Weapons Merchant`, `Inn`, and `Magic Key Merchant`; `Magic Key Merchant`
+reports stand `(4,6)`; and the first `debug_pathfind_to:4,6 trace_path` from
+the east entrance succeeded via `(24,7)->(24,6)` and then west to the key-shop
+stand. `pathfind` on the selected service still produced little/no speech in
+that session, but the debug path and Services object data are valid.
+Follow-up autowalk toward the key merchant looped in the east/north pocket and
+exposed the real entrance-side key-route connector. Confirmed permanent
+directional blockers are `(24,12).south`, `(23,12).south`, `(25,11).east`,
+`(20,10).south`, `(20,10).west`, `(21,11).west`, `(21,12).south`,
+`(21,12).west`, and `(24,8).south`; each had `probe_edge_verify` 3/3 blocked
+evidence. Do not promote `(25,12).south`, `(25,12).east`, or `(23,10).south`:
+the first two were mixed/passable later, and `(23,10)` was affected by Guard 2
+clutter before moving cleanly after NPCs were released. The planner was then
+cut off only by `(24,9)->UP` into `(24,8)`, which is a real blocked edge; the
+missing bridge is instead `(19,9)`. Live proof: `(19,10)->UP` into `(19,9)`
+moved 3/3 despite tile `0x0F`, `(19,9)->UP` moved into `(19,8)`,
+`(19,8)->DOWN` moved back into `(19,9)`, and `(18,9)->RIGHT` into `(19,9)`
+moved 3/3. `map_reader.lua` now models `(19,9)` and `(24,6)` as Rimuldar
+passthroughs and adds the confirmed directional blockers above. Static proof:
+`luac -p map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`
+(32 tests), and `git diff --check`. FCEUX needs a manual script restart to pick
+up the new `(19,9)` passthrough before live `debug_pathfind_to:4,6` can succeed
+again from the east entrance. The live session was left with autowalk stopped,
+NPCs unfrozen, and Bill at Rimuldar's east entrance `(29,13)`.
+Follow-up route cleanup from the same live town walkabout: the user bumped
+around Rimuldar and warned that some apparent blockers could be NPC occupancy.
+Fresh `report_npcs` at frame `166440` showed all NPCs stationary and no NPC at
+`(28,13)` or `(28,14)`. `report_seam_cells:0x0B` showed 55 observed seams:
+53 passable-only, one noisy seam, and exactly one blocked-only seam. The noisy
+`(27,15).west` had one block and one moved observation and is intentionally
+left open. The blocked-only seam was `(28,13).south`: the exit-route replan
+from `(28,14)` tried `UP` into `(28,13)`, then the seam brute-force retry
+blocked again, while the reroute through `(29,14)->(29,13)` moved cleanly and
+the user later exited east from `(29,13)`. That first cleanup modeled
+`["28,13"] = {south = true}` for Rimuldar, with a regression test preserving
+the open `(29,13)` exit route and leaving `(27,15).west` unmodeled. Because the
+current FCEUX-flavored session may not source-reload cleanly, the matching
+runtime edge was also injected for the live session:
+`add_blocked_edge:0x0B,28,14,UP`, and
+`report_runtime_blocks:0x0B` confirmed the runtime block at map `0x0B`,
+cell `(28,13)`, direction `south`.
+Reload caveat resolved for the latest checks: the earlier touch-plus-probe path
+did not reload required modules, but a clean `./launch_dw.sh` relaunch did pick
+up the patched service labels, the Rimuldar `(24,6)` passthrough, and the
+latest object data.
 
 Rimuldar exit correction from the same follow-up: the old `Exit to World Map`
 object at `(15,14)` is invalid. The user selected/teleported to it, walked
