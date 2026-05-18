@@ -22,10 +22,12 @@ Avoid archived handoffs unless investigating old map-data decisions.
 
 ## Runtime Baseline
 
-- BizHawk is the primary emulator path.
-- FCEUX is an explicit fallback.
+- FCEUX is the primary gameplay emulator path.
+- BizHawk is the explicit automation/debug path, especially for script reloads
+  and profiling.
 - Use `./launch_dw.sh` for normal launch.
-- Use `./launch_dw.sh --emulator fceux` only when testing fallback behavior.
+- Use `./launch_dw.sh --emulator bizhawk` or `./launch_bizhawk.sh` when
+  testing automation/debug behavior.
 - Quick-slot loops may use `./launch_dw.sh --state-slot N --no-wait`.
 
 ## Preferred Live Loop

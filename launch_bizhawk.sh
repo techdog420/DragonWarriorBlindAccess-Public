@@ -10,6 +10,7 @@ default_lua_path="${DW_LUA_PATH:-$script_dir/main.lua}"
 bizhawk_path="$default_bizhawk_path"
 rom_path="$default_rom_path"
 lua_path="$default_lua_path"
+battery_save=""
 state_slot="${DW_STATE_SLOT:-}"
 wait_for_exit=1
 dry_run=0
@@ -25,6 +26,7 @@ Options:
   --bizhawk-path PATH   Override the Windows EmuHawk executable path
   --rom-path PATH       Override the Dragon Warrior ROM path
   --lua-path PATH       Override the Lua script path
+  --battery-save PATH   Copy raw battery data to BizHawk SaveRAM before launch
   --state-slot N        Load BizHawk savestate slot N on startup (0-9)
   --no-wait             Return immediately after launching BizHawk
   --dry-run             Print resolved launch values without launching
@@ -83,6 +85,11 @@ while [ $# -gt 0 ]; do
             lua_path="$2"
             shift 2
             ;;
+        --battery-save)
+            [ $# -ge 2 ] || { echo "Missing value for --battery-save" >&2; exit 1; }
+            battery_save="$2"
+            shift 2
+            ;;
         --state-slot)
             [ $# -ge 2 ] || { echo "Missing value for --state-slot" >&2; exit 1; }
             state_slot="$2"
@@ -116,6 +123,9 @@ fi
 bizhawk_path="$(resolve_posix_path "$bizhawk_path")"
 rom_path="$(resolve_posix_path "$rom_path")"
 lua_path="$(resolve_posix_path "$lua_path")"
+if [ -n "$battery_save" ]; then
+    battery_save="$(resolve_posix_path "$battery_save")"
+fi
 
 if [ -n "$state_slot" ] && ! [[ "$state_slot" =~ ^[0-9]$ ]]; then
     echo "--state-slot must be a single digit from 0 to 9." >&2
@@ -129,15 +139,38 @@ for required_path in "$bizhawk_path" "$rom_path" "$lua_path"; do
     fi
 done
 
+if [ -n "$battery_save" ]; then
+    case "${battery_save##*.}" in
+        [sS][aA][vV]|[sS][aA][vV][eE][rR][aA][mM])
+            ;;
+        *)
+            echo "--battery-save must point to a .sav or .SaveRAM file." >&2
+            exit 1
+            ;;
+    esac
+    if ! is_windows_path "$battery_save" && [ ! -f "$battery_save" ]; then
+        echo "Battery save data file not found: $battery_save" >&2
+        exit 1
+    fi
+fi
+
 bizhawk_path_win="$(to_windows_path "$bizhawk_path")"
 rom_path_win="$(to_windows_path "$rom_path")"
 lua_path_win="$(to_windows_path "$lua_path")"
+battery_save_win=""
+if [ -n "$battery_save" ]; then
+    battery_save_win="$(to_windows_path "$battery_save")"
+fi
 
 if [ "$dry_run" -eq 1 ]; then
     echo "BizHawk launcher"
     echo "  Emulator: $bizhawk_path_win"
     echo "  ROM:      $rom_path_win"
     echo "  Lua:      $lua_path_win"
+    if [ -n "$battery_save_win" ]; then
+        echo "  Battery:  $battery_save_win"
+        echo "  SaveRAM:  resolved by launch_bizhawk.ps1"
+    fi
     if [ "$wait_for_exit" -eq 1 ]; then
         echo "  Wait:     yes"
     else
@@ -172,6 +205,10 @@ ps_args=(
 
 if [ -n "$state_slot" ]; then
     ps_args+=(-StateSlot "$state_slot")
+fi
+
+if [ -n "$battery_save" ]; then
+    ps_args+=(-BatterySavePath "$battery_save_win")
 fi
 
 if [ "$wait_for_exit" -eq 0 ]; then

@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. BizHawk is the default emulator path; FCEUX remains a supported fallback while compatibility work settles.
+This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the default gameplay emulator path; BizHawk remains the explicit automation/debug path because its Lua reload workflow is useful even though player-facing lag is worse.
 
 Primary project goals:
 - Add reliable screen reader narration for gameplay systems
@@ -46,19 +46,29 @@ Do not:
 The project uses a command queue file and emulator polling loop.
 
 Important behavior:
-- Current default emulator path is `D:\emulation\bizhawk\EmuHawk.exe`
-- FCEUX fallback path is `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
+- Current default gameplay emulator path is
+  `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
+- Explicit BizHawk automation/debug path is
+  `D:\emulation\bizhawk\EmuHawk.exe`
 - FCEUX command-line ROM/Lua loading is best-effort on this build; if launch
   readiness fails, manually load the ROM and `main.lua` in FCEUX or use BizHawk
   for automated startup
 - FCEUX `SDL.AutoResume` is old-session restore, not the command-polling fix;
   leave it untouched and use explicit `--state-slot` / `--loadstate` when a
   launch slot is needed
+- Cross-emulator bakeoffs should use raw battery save data, not emulator
+  savestates. `--battery-save PATH` accepts `.sav` or `.SaveRAM` data and seeds
+  the selected emulator's save path before launch.
 - The FCEUX launcher uses `-bginput 0`, enables Hide Menu via
   `SDL.ToggleMenu = 1`, blanks FCEUX Alt-based menu/fullscreen hotkeys, and has
   a recovery helper for stale Alt/menu focus
-- Preferred WSL startup path is `./launch_dw.sh`; it defaults to BizHawk, loads the ROM plus `main.lua`, and supports `--emulator fceux` for the older FCEUX workflow
-- `./launch_fceux.sh` and `launch_fceux.ps1` are convenience aliases for the explicit FCEUX fallback
+- Preferred WSL startup path is `./launch_dw.sh`; it defaults to FCEUX for
+  normal gameplay, loads the ROM plus `main.lua`, and supports
+  `--emulator bizhawk` for the automation/debug workflow
+- `./launch_bizhawk.sh` and `launch_bizhawk.ps1` are convenience aliases for
+  the explicit BizHawk path
+- `./launch_fceux.sh` and `launch_fceux.ps1` remain convenience aliases for
+  the FCEUX path
 - If FCEUX reports stuck `LeftAlt` or menu focus, run
   `./recover_fceux_input.sh`; it focuses qfceux, releases Alt, taps Escape,
   resets `dw_keyboard_input.txt`, and queues `input_status:fceux_recovery`

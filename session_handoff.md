@@ -4,36 +4,76 @@ Updated: 2026-05-18
 
 ## Current Emulator Note
 
-FCEUX stale-Alt/menu-focus stabilization is now the active emulator follow-up,
-but the default launcher has not been switched back yet. `SDL.AutoResume` is
-old-session restore, so the FCEUX launcher leaves it untouched and relies on
-explicit `--state-slot` / `--loadstate` for slots. The FCEUX path now launches
-with `-bginput 0`, enables Hide Menu through `SDL.ToggleMenu = 1`, blanks
-`SDL.Hotkeys.MainMenuHide` and `SDL.Hotkeys.FullScreen`, and has a manual
-recovery helper: `./recover_fceux_input.sh`. That helper focuses qfceux, sends
+FCEUX is now the default gameplay launcher again after the same-save emulator
+bakeoff. BizHawk remains the explicit automation/debug path because its script
+reload workflow is useful and its lag did not appear to corrupt automated
+results. `SDL.AutoResume` is old-session restore, so the FCEUX launcher leaves
+it untouched and relies on explicit `--state-slot` / `--loadstate` for slots.
+The FCEUX path now launches with `-bginput 0`, enables Hide Menu through
+`SDL.ToggleMenu = 1`, blanks `SDL.Hotkeys.MainMenuHide` and
+`SDL.Hotkeys.FullScreen`, and has a manual recovery helper:
+`./recover_fceux_input.sh`. That helper focuses qfceux, sends
 LeftAlt/RightAlt/generic Alt key-up, taps Escape, resets
 `dw_keyboard_input.txt` to `-`, and queues `input_status:fceux_recovery`.
-FCEUX command-line ROM/Lua startup is still unreliable; if readiness fails but
-qfceux is open, manual ROM plus `main.lua` loading remains the practical
-fallback.
+FCEUX command-line ROM/Lua startup is still less reliable than BizHawk's
+reload path; if readiness fails but qfceux is open, manual ROM plus `main.lua`
+loading remains the practical gameplay fallback.
 
-Next emulator bakeoff: use the same save slot and short loop in FCEUX and
-BizHawk: launch, confirm command polling, browse objects, perform one
-route/autowalk action, perform one menu/dialogue interaction, and move normally
-for a few minutes. Switch `./launch_dw.sh` back to FCEUX only if FCEUX Alt
-recovery is reliable, startup/manual-load friction is acceptable, and BizHawk
-still has noticeable lag/audio glitches in the same loop. If both pass, prefer
-FCEUX for player feel; if FCEUX still interrupts normal play or cannot launch
-reliably enough for agents, keep BizHawk primary.
-Static validation for this patch passed `luac -p debug_tools.lua main.lua
-test_debug_tools.lua`, `lua test_debug_tools.lua`, `bash -n launch_dw.sh
+Same-save emulator bakeoff: use raw battery data as the portable baseline, not
+FCEUX `.fc*` savestates or BizHawk `.State` files. `./launch_dw.sh
+--battery-save PATH` now accepts either `.sav` or `.SaveRAM` and copies it to
+the selected emulator's expected save path. The local FCEUX and BizHawk battery
+files both present as 8192-byte raw save data:
+`D:\emulation\fceux\bin\sav\Dragon Warrior (USA) (Rev 1).sav` and
+`D:\emulation\bizhawk\NES\SaveRAM\Dragon Warrior.SaveRAM`. The current bakeoff
+baseline is the FCEUX king-save copy at
+`project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav`
+with SHA-256
+`fdbf2150210b8761301ed75285885caf806d1c58f4cc08eb569dee148a099c4d`.
+Detailed bakeoff results are recorded in
+`project_resources/emulator_bakeoff/README.md`. FCEUX passed the first
+player-feel run on 2026-05-18: no observed emulator lag during castle
+autowalk, sage dialogue, object navigation/mode switching, overworld movement,
+or combat. The log window from `bakeoff_fceux_start` to `bakeoff_end` still
+showed the native `LeftAlt` latch, but it stayed quarantined: 10
+`INPUT_STALE_ALT_IGNORED` and 10 `INPUT_STUCK_ALT` entries, all
+`spoken=false`, with no `spoken=true` regression and 57 bridge active/clear
+pairs. The route blemishes were script-side rather than emulator-side:
+`AUTO_WALK_NO_PATH_DETAIL ... reason=stationary_npc_blocker` at the castle exit
+and two Rimuldar overworld route blocks near `(93,49)` / `(93,52)`.
+BizHawk's same-save run is also recorded in
+`project_resources/emulator_bakeoff/README.md`. It transferred the save
+correctly and kept clean input (`left_alt=false`, no stale/stuck Alt, no bridge
+events), but lost the player-feel comparison: startup had a small hitch, route
+start/seam crossings caused 1-2 second lag/audio cut-outs, `Shift+O` mode
+switching lagged around a second per swap, map transitions had small spikes,
+and battle spell-menu navigation hitched. Log evidence supports the rough
+route/seam profile: 2 `ROUTE_PLAN_TIMING` entries at 550 ms and 1268 ms, 24
+`SEAM_BRUTE_FORCE`, 23 `AUTO_WALK_TIMING_RETRY`, 3 `PATH_RUNTIME_BLOCK`, 4
+overworld blocked events, and post-run `PPU_STATS reads=149279028`. Current
+verdict: FCEUX is the normal gameplay launcher again, while BizHawk remains the
+explicit automated-debugging path unless we decide to tune BizHawk's
+route/object/menu scanning further. `./launch_dw.sh` now defaults to FCEUX; use
+`./launch_dw.sh --emulator bizhawk` or `./launch_bizhawk.sh` for BizHawk.
+Launcher flip validation passed `bash -n launch_dw.sh launch_bizhawk.sh
 launch_fceux.sh recover_fceux_input.sh`, `git diff --check`,
+`./launch_dw.sh --dry-run`, `./launch_dw.sh --emulator bizhawk --dry-run`,
+`./launch_dw.sh --state-slot 1 --dry-run`, `./launch_dw.sh --emulator bizhawk
+--state-slot 1 --dry-run`, and FCEUX/BizHawk `--battery-save` dry-runs against
+the bakeoff save. Earlier save-transfer PowerShell dry runs also passed:
+`launch_bizhawk.ps1 -BatterySavePath <FCEUX .sav> -DryRun` and
+`launch_dw.ps1 -BatterySavePath <BizHawk .SaveRAM> -DryRun`. The PowerShell
+BizHawk dry run resolved the target to
+`D:\emulation\bizhawk\NES\SaveRAM\Dragon Warrior.SaveRAM`; the FCEUX dry run
+resolved the target to
+`D:\emulation\fceux\bin\sav\Dragon Warrior (USA) (Rev 1).sav`.
+Earlier FCEUX Alt-stabilization static validation passed `luac -p
+debug_tools.lua main.lua test_debug_tools.lua`, `lua test_debug_tools.lua`,
+`bash -n launch_dw.sh launch_fceux.sh recover_fceux_input.sh`, `git diff --check`,
 `./launch_dw.sh --dry-run`, `./launch_dw.sh --state-slot 1 --dry-run`,
 `./launch_dw.sh --emulator fceux --dry-run`, `./launch_dw.sh --emulator fceux
 --state-slot 1 --dry-run`, PowerShell `launch_dw.ps1 -DryRun` and
-`-StateSlot 1 -DryRun`, and `recover_fceux_input.ps1` / `.sh` dry-runs. The
-live FCEUX-vs-BizHawk bakeoff is still pending because it needs the hands-on
-play loop and player-feel/audio judgement before changing the default.
+`-StateSlot 1 -DryRun`, and `recover_fceux_input.ps1` / `.sh` dry-runs.
 Live FCEUX follow-up on 2026-05-18 shows Hide Menu plus the recovery helper
 alone was not enough, but the new hotkey-blanking and benign-idle handling are
 live. The patched launcher blanked `SDL.Hotkeys.MainMenuHide` (`Alt+/`) and
@@ -48,10 +88,11 @@ and `INPUT_STUCK_ALT ... spoken=false ... benign=true`. Running
 (`keys=- joy1=- left_alt=false`), but FCEUX relatched by frame `05100`; the
 follow-up `input_status:after_helper` at frame `05160` again reported
 `left_alt=true`, and `input_status:final_fceux_alt_check` at frame `13440`
-still reported `keys=LeftAlt joy1=- left_alt=true`. Current verdict: FCEUX
-still has the native Alt latch, but idle latch state no longer speaks or
-synthesizes joypad input. Do not switch the default away from BizHawk unless a
-same-save play loop confirms this stays benign during real Alt+Tab-heavy use.
+still reported `keys=LeftAlt joy1=- left_alt=true`. Pre-bakeoff verdict: FCEUX
+still had the native Alt latch, but idle latch state no longer spoke or
+synthesized joypad input. That caution is now superseded by the same-save
+bakeoff recorded above; the latch stayed benign during real Alt+Tab-heavy use,
+so `./launch_dw.sh` is back to FCEUX by default.
 The follow-up FCEUX grinding pass supports the quarantine model. In the fresh
 `dw_debug.log` started at `2026-05-18 14:08:31`, the log showed 18
 `INPUT_STALE_ALT_IGNORED` entries and 3 `INPUT_STUCK_ALT` entries; all stuck
@@ -4259,11 +4300,12 @@ That commit includes:
 - `enable_keyboard_input_bridge=true` config default.
 - Runtime bridge file `dw_keyboard_input.txt` ignored.
 
-The BizHawk default transition contains:
+Historical BizHawk default transition contained:
 - `main.lua` loads `emulator_compat.lua` before the existing modules.
 - `emulator_compat.lua` supplies FCEUX-shaped globals under BizHawk.
-- `launch_dw.sh` now defaults to BizHawk. Use `./launch_dw.sh --emulator fceux`,
-  `./launch_fceux.sh`, or `launch_fceux.ps1` for the FCEUX fallback.
+- At that time, `launch_dw.sh` defaulted to BizHawk. This was superseded by
+  the 2026-05-18 bakeoff: `launch_dw.sh` now defaults to FCEUX, with BizHawk
+  available through `./launch_dw.sh --emulator bizhawk` or `./launch_bizhawk.sh`.
 - `launch_bizhawk.sh` and `launch_bizhawk.ps1` still explicitly launch EmuHawk
   with `--lua=main.lua`.
 - BizHawk-only PPU scan throttling now reduces gameplay-loop screen scans
@@ -4315,12 +4357,13 @@ The BizHawk default transition contains:
   while EmuHawk is running and expect it to stick; close BizHawk first or patch
   immediately before launch.
 
-Lightweight checks passed during the BizHawk default transition:
+Historical lightweight checks passed during the BizHawk default transition:
 - `git diff --check`
 - Lua parse checks for `main.lua` and `emulator_compat.lua`
 - `bash -n launch_dw.sh launch_bizhawk.sh launch_fceux.sh`
-- `./launch_dw.sh --dry-run` reports BizHawk as the default emulator
-- `./launch_dw.sh --emulator fceux --dry-run` reports the FCEUX fallback
+- At that time, `./launch_dw.sh --dry-run` reported BizHawk as the default
+  emulator and `./launch_dw.sh --emulator fceux --dry-run` reported the FCEUX
+  fallback; this is now historical rather than current launcher behavior.
 - `python3 run_tests.py --allow-missing-speech-dep` passed locally; the only
   warning was the expected missing `accessible_output2` package for WSL
   `/usr/bin/python`.

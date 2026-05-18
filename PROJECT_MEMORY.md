@@ -8,8 +8,9 @@ interrupt the active debug loop.
 
 ## Project Shape
 
-This repository contains a Lua accessibility mod for Dragon Warrior. BizHawk is
-now the default emulator path, with FCEUX kept as a supported fallback.
+This repository contains a Lua accessibility mod for Dragon Warrior. FCEUX is
+the default gameplay emulator path, with BizHawk kept as the explicit
+automation/debug path.
 
 Core goals:
 - Reliable screen reader narration for normal gameplay
@@ -62,9 +63,14 @@ remain focused while `auto_walk` follows the active guided route internally.
 The mod uses a command queue file and emulator polling loop.
 
 Important details:
-- Preferred launcher: `./launch_dw.sh` (defaults to BizHawk)
-- FCEUX fallback launcher: `./launch_dw.sh --emulator fceux`,
-  `./launch_fceux.sh`, or `launch_fceux.ps1`
+- Preferred gameplay launcher: `./launch_dw.sh` (defaults to FCEUX)
+- Explicit BizHawk automation/debug launcher:
+  `./launch_dw.sh --emulator bizhawk` or `./launch_bizhawk.sh`
+- Cross-emulator save transfer should use raw battery save data, not emulator
+  savestates. `./launch_dw.sh --battery-save PATH` accepts `.sav` and
+  `.SaveRAM` sources and copies them to the selected emulator's expected save
+  location before launch. The current bakeoff baseline lives at
+  `project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav`.
 - Commands are sent through `./dw_commands.ps1` or `./dw_commands.sh`
 - Commands are written to `dw_commands.txt`
 - Debug output is written to `dw_debug.log`
@@ -156,30 +162,36 @@ Durable tooling facts:
   Keep the real rules in `AGENTS.md` and docs, and keep the guard focused on
   catching common hazardous command shapes.
 - Repo-specific Codex skills belong under `.agents/skills/`. The
-  `dw-debug-loop` skill should stay BizHawk-first and should only trigger for
-  live emulator/log/timing workflows, not ordinary static edits.
+  `dw-debug-loop` skill should treat FCEUX as the normal gameplay launcher and
+  BizHawk as the reload/profiling-friendly automation path; it should only
+  trigger for live emulator/log/timing workflows, not ordinary static edits.
 
 ## Emulator Strategy
 
-BizHawk is the current default runtime.
+FCEUX is the current default gameplay runtime. BizHawk remains the explicit
+automation/debug runtime.
 
 Durable BizHawk facts:
-- Preferred launcher: `./launch_dw.sh`
-- Explicit BizHawk launcher: `./launch_bizhawk.sh`
-- The emulator swap is now considered successful enough to resume normal
-  playtesting from the BizHawk path. Keep FCEUX as an explicit fallback rather
-  than the primary workflow.
-- `launch_dw.sh --dry-run` should show `Emulator: BizHawk`
-- The default path is chosen because BizHawk launches cleanly from the command
-  line and JAWS/menu navigation does not inject random player movement the way
-  FCEUX can
+- Explicit BizHawk launcher: `./launch_dw.sh --emulator bizhawk` or
+  `./launch_bizhawk.sh`
+- BizHawk's local DW1 battery save target is
+  `D:\emulation\bizhawk\NES\SaveRAM\Dragon Warrior.SaveRAM`; the launchers can
+  seed it from a raw `.sav` / `.SaveRAM` source with `--battery-save`.
+- Keep BizHawk for automated debugging, script reload/profiling, and
+  compatibility work. It launches cleanly from the command line and has useful
+  Lua Console reload behavior, but the same-save bakeoff showed player-facing
+  lag/audio cut-outs around route/seam work, object mode switching, map
+  transitions, and battle spell-menu navigation.
 - Keep emulator differences in `emulator_compat.lua` and launcher scripts, not
   scattered through gameplay modules
 
 Durable FCEUX facts:
-- Fallback launcher: `./launch_dw.sh --emulator fceux`,
-  `./launch_fceux.sh`, or `launch_fceux.ps1`
+- Preferred gameplay launcher: `./launch_dw.sh`, `./launch_fceux.sh`, or
+  `launch_fceux.ps1`
 - Current tested emulator baseline has been `qfceux.exe`
+- FCEUX's local DW1 battery save target is
+  `D:\emulation\fceux\bin\sav\Dragon Warrior (USA) (Rev 1).sav`; the launcher
+  can seed it from a raw `.sav` / `.SaveRAM` source with `--battery-save`.
 - The launcher disables FCEUX native keyboard GamePad.0 and uses the project keyboard bridge when needed
 - FCEUX command-line ROM/Lua startup is unreliable on this machine. A failed
   readiness wait may still leave qfceux open; manually loading the ROM and
@@ -205,21 +217,22 @@ Durable FCEUX facts:
   blockers gathered while logs show `keys=LeftAlt joy1=-`.
 
 Current emulator decision rule:
-- Keep BizHawk as the launcher default until the same short loop has been run
-  in both emulators. Switch the default back to FCEUX only if Alt recovery is
-  reliable, FCEUX startup/manual-load friction is acceptable, and BizHawk still
-  has noticeable lag/audio glitches in that loop. If both pass, prefer FCEUX
-  for player feel; if FCEUX still interrupts normal play or cannot launch
-  reliably enough for agents, keep BizHawk primary.
+- The same-save bakeoff has now been run in both emulators. FCEUX won the
+  player-feel pass: its native Alt latch stayed quarantined and benign, while
+  BizHawk still showed noticeable lag/audio cut-outs around route start,
+  route/seam retry work, object mode switching, map transitions, and battle
+  spell-menu navigation. The current recommendation is to switch normal
+  gameplay launches back to FCEUX while keeping BizHawk as the explicit
+  automation/debug path. `./launch_dw.sh` has been switched back to FCEUX by
+  default.
 
 Emulator compatibility direction:
 - Keep existing gameplay code FCEUX-shaped for now
 - Put emulator differences in `emulator_compat.lua`
 - Preserve FCEUX globals where practical: `FCEU`, `memory`, `joypad`, `input`, `ppu`, `rom`, `AND`, and `BIT`
 - Use `launch_dw.sh` as the default WSL-to-Windows launcher; it routes to
-  BizHawk unless `--emulator fceux` is requested
-- Keep FCEUX runnable until BizHawk has survived enough real gameplay that the
-  fallback is clearly unnecessary
+  FCEUX unless `--emulator bizhawk` is requested
+- Keep BizHawk runnable for automated debugging and reload-heavy work
 - Patch `D:\emulation\bizhawk\config.ini` only while EmuHawk is closed or
   immediately before launch. Live edits can be overwritten when BizHawk exits,
   because shutdown may write its in-memory settings back to `config.ini`.
@@ -1173,7 +1186,20 @@ Latest pre-commit validation:
 
 Do not assume this remains current after new edits. Re-run targeted checks when asked or when preparing a commit.
 
-Latest BizHawk default validation:
+Current FCEUX default validation:
+- 2026-05-18 launcher flip: `./launch_dw.sh --dry-run` reports FCEUX as the
+  default emulator, `./launch_dw.sh --emulator bizhawk --dry-run` reports the
+  explicit BizHawk path, and state-slot plus `--battery-save` dry runs route to
+  the selected emulator as expected.
+- Local checks passed: `bash -n launch_dw.sh launch_bizhawk.sh
+  launch_fceux.sh recover_fceux_input.sh`, `git diff --check`,
+  `./launch_dw.sh --dry-run`, `./launch_dw.sh --emulator bizhawk --dry-run`,
+  `./launch_dw.sh --state-slot 1 --dry-run`, `./launch_dw.sh --emulator
+  bizhawk --state-slot 1 --dry-run`, and FCEUX/BizHawk `--battery-save`
+  dry-runs against
+  `project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav`.
+
+Historical BizHawk default validation:
 - 2026-04-29 docs follow-up: `CLAUDE.md` and `prompt1.txt` now describe
   BizHawk as the primary emulator and FCEUX as an explicit fallback. Refreshed
   local checks passed: `git diff --check`, `bash -n launch_dw.sh
@@ -1194,8 +1220,10 @@ Latest BizHawk default validation:
 - `python3 run_tests.py --allow-missing-speech-dep` passed after adding the
   BizHawk scan-throttle/profiler patches, default-launcher routing, and
   launcher shell-syntax validation.
-- `./launch_dw.sh --dry-run` reports BizHawk as the default emulator, while
-  `./launch_dw.sh --emulator fceux --dry-run` reports the FCEUX fallback.
+- At that historical checkpoint, `./launch_dw.sh --dry-run` reported BizHawk
+  as the default emulator and `./launch_dw.sh --emulator fceux --dry-run`
+  reported the FCEUX fallback. Current launcher behavior is recorded in the
+  FCEUX default validation above.
 - The only warning was expected in WSL: `/usr/bin/python` lacks
   `accessible_output2`, so speech dependency validation must still be checked
   from the Windows/FCEUX/BizHawk runtime.

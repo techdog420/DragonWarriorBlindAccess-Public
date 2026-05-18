@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-default_emulator="${DW_EMULATOR:-bizhawk}"
+default_emulator="${DW_EMULATOR:-fceux}"
 default_bizhawk_path="${DW_BIZHAWK_PATH:-/mnt/d/emulation/bizhawk/EmuHawk.exe}"
 default_fceux_path="${DW_FCEUX_PATH:-/mnt/d/emulation/fceux/bin/qfceux.exe}"
 default_rom_path="${DW_ROM_PATH:-/mnt/d/emulation/nes/Dragon Warrior (USA) (Rev 1).nes}"
@@ -28,12 +28,12 @@ Usage:
   ./launch_dw.sh [options]
 
 Options:
-  --emulator NAME       Emulator backend: bizhawk (default) or fceux
+  --emulator NAME       Emulator backend: fceux (default) or bizhawk
   --bizhawk-path PATH   Override the Windows EmuHawk executable path
   --fceux-path PATH     Override the Windows FCEUX executable path
   --rom-path PATH       Override the Dragon Warrior ROM path
   --lua-path PATH       Override the Lua script path
-  --battery-save PATH   FCEUX only: copy PATH to the ROM-matched .sav before launch
+  --battery-save PATH   Copy raw battery data to the emulator's save path before launch
   --state-slot N        Load savestate slot N on startup (0-9)
   --no-wait             Return immediately after launching the emulator
   --dry-run             Print resolved actions without killing or launching
@@ -165,12 +165,22 @@ if { [ "$emulator" = "fceux" ] || [ "$state_slot_cli" -eq 1 ]; } \
     exit 1
 fi
 
-if [ "$emulator" = "bizhawk" ]; then
-    if [ -n "$battery_save" ]; then
-        echo "--battery-save is currently FCEUX-only. Use --emulator fceux for that workflow." >&2
+if [ -n "$battery_save" ]; then
+    case "${battery_save##*.}" in
+        [sS][aA][vV]|[sS][aA][vV][eE][rR][aA][mM])
+            ;;
+        *)
+            echo "--battery-save must point to a .sav or .SaveRAM file." >&2
+            exit 1
+            ;;
+    esac
+    if ! is_windows_path "$battery_save" && [ ! -f "$battery_save" ]; then
+        echo "Battery save data file not found: $battery_save" >&2
         exit 1
     fi
+fi
 
+if [ "$emulator" = "bizhawk" ]; then
     bizhawk_path="$(resolve_posix_path "$bizhawk_path")"
     for required_path in "$bizhawk_path" "$rom_path" "$lua_path"; do
         if ! is_windows_path "$required_path" && [ ! -f "$required_path" ]; then
@@ -189,6 +199,10 @@ if [ "$emulator" = "bizhawk" ]; then
     bizhawk_path_win="$(to_windows_path "$bizhawk_path")"
     rom_path_win="$(to_windows_path "$rom_path")"
     lua_path_win="$(to_windows_path "$lua_path")"
+    battery_save_win=""
+    if [ -n "$battery_save" ]; then
+        battery_save_win="$(to_windows_path "$battery_save")"
+    fi
 
     if [ "$dry_run" -eq 1 ]; then
         echo "Dragon Warrior launcher"
@@ -196,6 +210,10 @@ if [ "$emulator" = "bizhawk" ]; then
         echo "  Executable: $bizhawk_path_win"
         echo "  ROM:        $rom_path_win"
         echo "  Lua:        $lua_path_win"
+        if [ -n "$battery_save_win" ]; then
+            echo "  Battery:    $battery_save_win"
+            echo "  SaveRAM:    resolved by launch_bizhawk.ps1"
+        fi
         if [ -n "$state_slot" ]; then
             echo "  State:      slot $state_slot"
         fi
@@ -224,6 +242,10 @@ if [ "$emulator" = "bizhawk" ]; then
         ps_args+=(-StateSlot "$state_slot")
     fi
 
+    if [ -n "$battery_save" ]; then
+        ps_args+=(-BatterySavePath "$battery_save_win")
+    fi
+
     if [ "$wait_for_ready" -eq 0 ]; then
         ps_args+=(-NoWait)
     fi
@@ -239,17 +261,6 @@ for required_path in "$fceux_path" "$rom_path" "$lua_path"; do
         exit 1
     fi
 done
-
-if [ -n "$battery_save" ]; then
-    if [[ "${battery_save##*.}" != [sS][aA][vV] ]]; then
-        echo "--battery-save must point to a .sav file." >&2
-        exit 1
-    fi
-    if ! is_windows_path "$battery_save" && [ ! -f "$battery_save" ]; then
-        echo "Battery save file not found: $battery_save" >&2
-        exit 1
-    fi
-fi
 
 ps_script="$script_dir/launch_dw.ps1"
 if [ ! -f "$ps_script" ]; then

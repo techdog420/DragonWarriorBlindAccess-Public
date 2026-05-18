@@ -562,8 +562,9 @@ Assert-FileExists -PathValue $LuaPath -Label "Lua script"
 
 if (-not [string]::IsNullOrWhiteSpace($BatterySavePath)) {
     Assert-FileExists -PathValue $BatterySavePath -Label "Battery save"
-    if ([System.IO.Path]::GetExtension($BatterySavePath).ToLowerInvariant() -ne ".sav") {
-        throw "Battery save must use a .sav extension: $BatterySavePath"
+    $saveExt = [System.IO.Path]::GetExtension($BatterySavePath).ToLowerInvariant()
+    if ($saveExt -ne ".sav" -and $saveExt -ne ".saveram") {
+        throw "Battery save data must use .sav or .SaveRAM extension: $BatterySavePath"
     }
 }
 

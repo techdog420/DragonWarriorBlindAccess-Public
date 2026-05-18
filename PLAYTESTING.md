@@ -1,22 +1,39 @@
 # Playtesting Notes
 
-Updated: 2026-05-17
+Updated: 2026-05-18
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
-- Emulator A/B note: keep BizHawk as the default launcher until a short
-  same-save bakeoff is complete. FCEUX should pass if `input_status` starts
-  clean or `./recover_fceux_input.sh` makes `left_alt=false`, no unrecoverable
-  menu-focus state interrupts play, object browsing works, one route/autowalk
-  action works, one menu/dialogue interaction works, and any manual ROM/Lua
-  loading friction is acceptable for the fallback workflow. BizHawk should pass
-  if the same loop has no recurring audio glitching or obvious lag; if lag
-  appears, capture `reset_scan_stats` / `report_scan_stats` around the repro
-  before tuning. If both pass, prefer FCEUX for player feel; if FCEUX still
-  interrupts normal play or remains too awkward to launch reliably, keep BizHawk
-  primary.
+- Emulator A/B note: the same-save bakeoff is complete, and `./launch_dw.sh`
+  now defaults to FCEUX for normal gameplay. Use raw battery save data as the shared
+  baseline, not emulator-native savestates: `--battery-save PATH` now accepts
+  either FCEUX `.sav` or BizHawk `.SaveRAM` data and copies it to the selected
+  emulator's expected save path. Current contest baseline:
+  `project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav`,
+  captured after a normal king save in FCEUX and verified as an 8192-byte raw
+  save. Detailed bakeoff notes live in
+  `project_resources/emulator_bakeoff/README.md`. The first FCEUX pass on
+  2026-05-18 passed from a player-feel perspective: no observed emulator lag
+  during castle routes, sage dialogue, object navigation/mode switching,
+  overworld movement, or combat. Logs still showed the native `LeftAlt` latch,
+  but it stayed quarantined: 10 `INPUT_STALE_ALT_IGNORED` and 10
+  `INPUT_STUCK_ALT` entries, all `spoken=false`, with no player movement,
+  speech spam, menu-focus issue, or route evidence contamination attributed to
+  Alt. The only route blemishes were script-side: repeated
+  `AUTO_WALK_NO_PATH_DETAIL ... reason=stationary_npc_blocker` at the castle
+  exit and two Rimuldar overworld route blocks near `(93,49)` / `(93,52)`.
+  BizHawk's same-save pass transferred the save cleanly and kept input clean
+  (`left_alt=false` throughout), but player feel was worse than FCEUX:
+  route start/seam work caused 1-2 second lag/audio cut-outs, `Shift+O` mode
+  switching caused roughly one-second lag bursts, map transitions hitched
+  slightly, and spell-menu navigation had small spikes. Logs support this:
+  2 `ROUTE_PLAN_TIMING` entries at 550 ms and 1268 ms, 24
+  `SEAM_BRUTE_FORCE`, 23 `AUTO_WALK_TIMING_RETRY`, 3 `PATH_RUNTIME_BLOCK`, and
+  post-run `PPU_STATS reads=149279028`. Current bakeoff verdict: FCEUX is the
+  better gameplay-feel path; BizHawk remains the better automated debugging
+  path unless it gets tuned further.
 
 - Rimuldar is now the next guide target after exiting Swamp Cave to the south
   island. External orientation from Gamer Corner: Rimuldar entrance is
@@ -1737,16 +1754,17 @@ Severity: High
 Area: Emulator default / BizHawk performance
 
 Status:
-BizHawk swap accepted as successful enough to continue normal playtesting from
-the BizHawk path. First clean early-game flow was confirmed manually on
-2026-04-30, and basic manual testing on the first two maps after the conversion
-found scripts behaving as expected. Remaining audio stutters or small narration
-bugs should be handled as ordinary gameplay polish unless fresh logs show a new
-large script spike.
+Historical BizHawk transition note: the swap was accepted as successful enough
+to continue normal playtesting from the BizHawk path on 2026-04-30, and basic
+manual testing on the first two maps after the conversion found scripts
+behaving as expected. The 2026-05-18 same-save bakeoff later moved normal
+gameplay launches back to FCEUX because BizHawk still had player-facing lag and
+audio cut-outs around route/seam work. Keep this entry as the historical lag
+context for future BizHawk tuning.
 
 Description:
-BizHawk is now the default emulator path. It can launch the ROM and
-accessibility script, and the script can speak through title/continue flow.
+BizHawk remains the explicit automation/debug emulator path. It can launch the
+ROM and accessibility script, and the script can speak through title/continue flow.
 Early gameplay was initially super laggy once the game proper started, but the
 current BizHawk-only throttles have substantially reduced scan load during the
 king's boot dialogue.
