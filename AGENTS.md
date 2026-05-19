@@ -1,6 +1,6 @@
 # Dragon Warrior Accessibility Mod — Codex Agent Guide
 
-``## Project overview
+## Project overview
 
 This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the default gameplay emulator path; BizHawk remains the explicit automation/debug path because its Lua reload workflow is useful even though player-facing lag is worse.
 
