@@ -11,8 +11,8 @@ Do not use it for pure static code edits unless the task asks for live Dragon Wa
 ## Context Order
 
 1. Read `AGENTS.md` first.
-2. Read the current sections of `session_handoff.md`, especially Current Focus, Current Baseline, Recommended Next Work, and validation/watch items.
-3. Read `PROJECT_MEMORY.md` only when durable architecture, map, or command-contract context matters.
+2. Read only the top active-resume sections of `session_handoff.md`: Current Focus, Known Good Baseline, Active Blockers / Watch Items, and Best Next Work.
+3. Do not read the entire handoff or archived evidence unless the current task specifically depends on old map decisions.
 4. Read `PLAYTESTING.md` for player-facing gameplay findings.
 5. Use `debug_hooks.txt` or `dw_commands.sh` for exact command names and argument shapes.
 6. Read recent `dw_debug.log` lines before sending new live commands.
@@ -40,6 +40,18 @@ Avoid archived handoffs unless investigating old map-data decisions.
 6. Repeat.
 
 Prefer short, evidence-driven loops over large queued command batches.
+
+## Investigation versus Wrap-up
+
+When this skill is invoked for exploratory route/pathfinding work, stay in investigation mode until a stop condition is reached.
+
+Do not switch to wrap-up mode merely because:
+- one or two blocked tiles were found,
+- a small patch was applied,
+- local tests passed,
+- or a handoff file exists.
+
+Prefer another focused live check over documentation when the next check is obvious and safe.
 
 ## Command Rules
 
@@ -77,7 +89,7 @@ Preferred split pattern:
 ## Script Reload / Restart
 
 - For `dw_access.ini` changes only, use `reload_config`.
-- For Lua source changes, BizHawk file-change reload can pick up `touch main.lua` while the Lua loop is alive.
+- For Lua source changes, BizHawk file-change reload can pick up `touch main.lua` while the Lua loop is alive.  Fceux currently requires a manual script reload from the user.
 - After source reload, verify the running script with `launcher_probe:TAG`, `--wait-ready TAG`, or another fresh state probe before judging behavior.
 - If the probe times out, `dw_debug.log` is stale, or `dw_script_error.log` changed, assume the Lua loop is not polling and relaunch with `./launch_dw.sh`.
 
@@ -127,6 +139,55 @@ Known local noise:
 
 For live behavior changes, validate with reload/relaunch, fresh log/probe confirmation, one focused live repro, and a concise handoff update.
 
+## Investigation Scratchpad
+
+During live pathfinding, map decoding, route debugging, blocker discovery, or other exploratory QA, use a scratchpad before updating durable handoff files.
+
+Preferred scratchpad path:
+
+`work_notes/current_investigation.md`
+
+Use the scratchpad for:
+- raw command sequences,
+- suspected blocked edges,
+- uncertain or contaminated findings,
+- temporary route hypotheses,
+- log tags worth checking later,
+- NPC/stale-input/timing contamination notes,
+- evidence that has not yet met the threshold for permanent map data.
+
+Do not put routine exploratory findings directly into `session_handoff.md`.
+
+At the end of the session:
+1. Promote only durable, verified facts into permanent code/data or concise project docs.
+2. Summarize unresolved scratchpad findings in the final response.
+3. Update `session_handoff.md` only if active route status, map status, emulator/tooling assumptions, or recommended next work materially changed.
+4. Leave detailed evidence in a focused evidence file only when it would be expensive to reconstruct.
+
+Scratchpad notes are working memory, not project truth. They should not become another large handoff file.
+
+## Scratchpad Cleanup
+
+Before wrapping a long investigation:
+- Delete or condense resolved scratchpad items.
+- Mark unresolved items as `UNRESOLVED`.
+- Mark contaminated findings as `DO NOT PROMOTE`.
+- If the scratchpad grows beyond a few screens, summarize it and move detailed historical evidence to a focused file under `handoff_archive/` or `project_resources/evidence/`.
+
+## Findings
+
+### CLEAN / PROMOTED
+- Map 0x0B `(5,15)->DOWN`: blocked 3/3 after reload; promoted to map data.
+
+### RUNTIME ONLY
+- `(6,15).west`: suspected from route failure; needs direct verifier.
+
+### CONTAMINATED / DO NOT PROMOTE
+- `(29,14).north`: observed during stale Alt / queued-input contamination.
+
+### NEXT CHECK
+- Verify route from entrance to Magic Key seller after reload.
+
 ## Handoff Discipline
 
 - Put current shared truth in `session_handoff.md`.
@@ -134,3 +195,4 @@ For live behavior changes, validate with reload/relaunch, fresh log/probe confir
 - Put gameplay findings in `PLAYTESTING.md`.
 - Treat `handoff_archive/` as historical evidence.
 - Do not rely on assistant-private memory as the only record of live findings.
+Keep handoff updates short. For minor live findings, summarize in the final response instead of editing durable docs. Update `session_handoff.md` only when active resume state or next recommended work changes.
