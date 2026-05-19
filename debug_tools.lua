@@ -132,8 +132,6 @@ local input_trace = nil     -- Per-frame input trace state for keyboard/joypad d
 local stuck_alt_frames = 0  -- Consecutive frames where LeftAlt appears stuck and joy1 is idle.
 local stuck_alt_warned = false
 local STUCK_ALT_WARN_FRAMES = 120
-local STUCK_ALT_SPEAK_COOLDOWN_FRAMES = 1800
-local stuck_alt_last_spoken_frame = -STUCK_ALT_SPEAK_COOLDOWN_FRAMES
 local keyboard_bridge_active = false
 local external_keyboard_bridge_active = false
 local external_stale_alt_ignored_active = false
@@ -672,10 +670,6 @@ local function build_external_keyboard_bridge_input(frame)
         return nil
     end
 
-    if not fceux_stale and not bridge_active then
-        return nil
-    end
-
     if fceux_stale and not bridge_active then
         -- Alt+Tab can leave FCEUX/SDL reporting LeftAlt forever even though
         -- the physical key is up. Treat LeftAlt-only idle state as diagnostic
@@ -738,15 +732,6 @@ local function log_input_status(tag)
     ))
 end
 
-local function speak_stuck_alt_warning()
-    local ok, tolk_module = pcall(require, "tolk")
-    if not ok or not tolk_module or not tolk_module.output then
-        return
-    end
-
-    pcall(tolk_module.output, "FCEUX menu focus appears stuck. Run the FCEUX recovery helper, or focus the emulator and press Alt then Escape.")
-end
-
 local function update_stuck_alt_watch(frame)
     -- FCEUX-only: BizHawk doesn't lose joypad focus on Alt, so the watch
     -- has nothing to detect there.
@@ -767,21 +752,13 @@ local function update_stuck_alt_watch(frame)
         stuck_alt_frames = stuck_alt_frames + 1
         if not stuck_alt_warned and stuck_alt_frames >= STUCK_ALT_WARN_FRAMES then
             stuck_alt_warned = true
-            local cooldown_remaining = (stuck_alt_last_spoken_frame + STUCK_ALT_SPEAK_COOLDOWN_FRAMES) - (frame or current_frame)
-            local should_speak = false
             M.info(string.format(
-                "INPUT_STUCK_ALT frame=%d frames=%d keys=%s joy1=%s recovery=stale_alt_ignored_or_run_recover_fceux_input spoken=%s cooldown_remaining=%d benign=true",
+                "INPUT_STUCK_ALT frame=%d frames=%d keys=%s joy1=%s recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true",
                 frame or current_frame,
                 stuck_alt_frames,
                 format_pressed_keys(keys),
-                format_joy_buttons(joy),
-                tostring(should_speak),
-                math.max(0, cooldown_remaining)
+                format_joy_buttons(joy)
             ))
-            if should_speak then
-                stuck_alt_last_spoken_frame = frame or current_frame
-                speak_stuck_alt_warning()
-            end
         end
         return
     end
