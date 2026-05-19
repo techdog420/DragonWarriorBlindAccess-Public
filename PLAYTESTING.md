@@ -216,6 +216,31 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     clutter from teleport/FCEUX bridge state, not map evidence: `(29,14).north`
     changed from 9 blocked observations to `noisy` when the same edge later
     moved, and `(2,7).south` also moved on retry. Do not promote either edge.
+  - Follow-up NPC chat found two useful clue NPCs. `Old Man 3` at `(3,23)`
+    asks about a magic temple with a yes/no prompt; its public west stand is
+    `(2,23)`, reached through the false-wall seam `(1,23)<->(2,23)` that moved
+    both directions. `Old Man 4` / Howard at `(20,23)` repeats the Kol bath
+    clue: four steps south of the bath is a magic item.
+  - Practical Rimuldar verdict: all player-facing services and useful clue NPCs
+    have enough live coverage for now. Leave full dialogue-only NPC route
+    validation for optional polish. The first locked inn / Wings chest door is
+    pinned at `(22,23)`: after the user opened it from inside,
+    `report_door_state` reported opened-door slot `(22,23)` while Bill stood at
+    `(23,23)`, and the tile still decoded as ordinary type-6 floor. The model
+    now gates that cell as a magic-key door until opened-door RAM lists it; the
+    nearby Wings chest object is `chest_7` at `(24,23)`. Important correction:
+    the walk-out route from the opened door pocket is still unresolved. Clean
+    FCEUX movement proved `(13,18)` is a real false-wall connector from
+    `(13,19)` to the public side and back, but later corrected blocker work
+    showed it is not currently reachable from `(23,23)`. The row-22 branch is
+    real but dead-ended, and the lower row-25 hidden strip is real but isolated.
+    The apparent `(21,23)->DOWN` throat into `(21,24)` moved only from a fresh
+    forced origin; every legitimate door-side approach blocked there, raw held
+    DOWN did not move, and OPEN while facing south reported "There is no door
+    here." The final parked-NPC survey from `(23,23)` to `exit_29_13` reports
+    `path_found=false`, `blocked_events=0`, and `reason=no_path`. Do not treat
+    `(13,18)` as the Wings-room escape until a real access point is found. Do
+    not promote `(19,25).east`; that verifier was NPC-contaminated.
   The later `(2,5)` lead was also stale/noisy: fresh route and direct verifier
   evidence block
   `(1,5)->RIGHT` into `(2,5)`, so `(2,5).west` is now modeled while the cell

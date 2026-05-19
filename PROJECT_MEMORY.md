@@ -659,6 +659,33 @@ Emulator compatibility direction:
   `(29,13)->DOWN` failures and the first `(2,8)->UP` failure as input/timing
   clutter, not permanent blocker evidence; both later moved in the successful
   route.
+  Rimuldar NPC clue follow-up: `Old Man 3` at `(3,23)` asks about a magic
+  temple with a yes/no prompt. Its public stand is `(2,23)` facing east, reached
+  by the live-open false-wall seam `(1,23)<->(2,23)`. `Old Man 4` / Howard at
+  `(20,23)` repeats the Kol clue about searching four steps south of the bath
+  for a magic item.
+  Public Rimuldar is playability-cracked, but the opened Wings chest room
+  pocket is not solved as a walk-out route. The first inn / Wings chest door is
+  live-pinned at `(22,23)`:
+  after the user opened it from inside, `report_door_state` showed opened-door
+  slot `(22,23)` while Bill stood at `(23,23)`. `inspect_tile:22,23` still
+  decoded as type-6 walkable floor, so this coordinate must stay manually
+  magic-key-gated in `map_reader.lua` until opened-door RAM lists it. The
+  nearby chest object is `chest_7` at `(24,23)`. Clean FCEUX probes proved
+  `(13,18)` is a real false-wall connector from `(13,19)` to the public side
+  and back, but later locked-room return testing disproved it as a current
+  escape from the opened door-side start. The row-22 branch is real but
+  dead-ended, and the lower row-25 hidden strip is real but isolated. The
+  apparent `(21,23)->DOWN` throat into `(21,24)` moved only from a fresh forced
+  origin; every legitimate approach from east, west, or north blocked there,
+  raw held DOWN did not move, and OPEN while facing south reported "There is
+  no door here." The final parked-NPC survey from `(23,23)` to `exit_29_13`
+  reports `path_found=false`, `blocked_events=0`, and `reason=no_path`.
+  Do not treat `(13,18)` as the Wings-room escape until a real access point is
+  found. Do not promote `(19,25).east` because that verifier was
+  NPC-contaminated.
+  Full dialogue-only NPC route validation is optional polish unless a later
+  transcript proves progression-critical.
   Suspicious `(6,8)` live behavior should be treated as hidden
   passability, not a full-cell blocker: only the south approach is now modeled.
   Keep `(5,3).east` open for now. The Rimuldar town exit is not the old

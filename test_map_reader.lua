@@ -262,6 +262,61 @@ function tests.garinham_east_locked_door_opens_from_door_ram_array()
     open_env.restore()
 end
 
+function tests.rimuldar_wings_chest_door_overrides_walkable_floor_until_open()
+    local base = 0x0B * 5
+    local data_start = 0x100
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    for i = 0, 56 do
+        rom_bytes[data_start + i] = 0x6F
+    end
+
+    local closed_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed = closed_env.map_reader.get_walkability_details(0x0B, 22, 23)
+    assert_equal(closed.tile_type, 6, "Rimuldar Wings chest door ROM tile should decode as floor")
+    assert_equal(closed.effective_walkable, false, "closed Rimuldar Wings chest door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Rimuldar Wings chest door should report door_closed")
+    closed_env.restore()
+
+    local open_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+            [0x600C] = 22,
+            [0x600D] = 23,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local open = open_env.map_reader.get_walkability_details(0x0B, 22, 23)
+    assert_equal(open.tile_type, 6, "opened Rimuldar Wings chest door should still decode as floor")
+    assert_equal(open.effective_walkable, true, "opened Rimuldar Wings chest door should become walkable")
+    assert_equal(open.reason, "door_open", "opened Rimuldar Wings chest door should report door_open")
+    local snapshot = open_env.map_reader.get_walkability_snapshot(0x0B)
+    assert_equal(snapshot[23][22], true, "walkability snapshot should honor opened Rimuldar Wings chest door")
+
+    open_env.restore()
+end
+
 function tests.throne_room_directional_candidates_are_promoted_conservatively()
     local env = make_env()
 
@@ -979,8 +1034,35 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["2,5"].west, true, "Rimuldar (2,5) should block entry from the west after fresh route/probe proof from (1,5)")
     assert_equal(dirs["2,7"].west, true, "Rimuldar (2,7) should block entry from the west after repeated route-shaped failures from (1,7)")
     assert_equal(dirs["2,8"].south, true, "Rimuldar (2,8) should block entry from the south after direct verifier from (2,9)")
+    assert_equal(dirs["23,21"].south, true, "Rimuldar (23,21) should block entry from the south after Wings shelf verifier from (23,22)")
+    assert_equal(dirs["23,24"].north, true, "Rimuldar (23,24) should block entry from the north after Wings room shelf verifier from (23,23)")
+    assert_equal(dirs["15,19"].west, true, "Rimuldar (15,19) should block entry from the west after max Wings route verifier from (14,19)")
+    assert_equal(dirs["22,20"].west, true, "Rimuldar (22,20) should block entry from the west after Wings route verifier from (21,20)")
+    assert_equal(dirs["24,21"].south, true, "Rimuldar (24,21) should block entry from the south after Wings shelf verifier from (24,22)")
+    assert_equal(dirs["25,22"].west, true, "Rimuldar (25,22) should block entry from the west after Wings shelf east verifier from (24,22)")
+    assert_equal(dirs["20,26"].north, true, "Rimuldar (20,26) should block entry from the north after lower-room reroute verifier from (20,25)")
+    assert_equal(dirs["21,26"].north, true, "Rimuldar (21,26) should block entry from the north after lower-room reroute verifier from (21,25)")
+    assert_equal(dirs["22,26"].north, true, "Rimuldar (22,26) should block entry from the north after lower-room reroute verifier from (22,25)")
+    assert_equal(dirs["23,25"].west, true, "Rimuldar (23,25) should block entry from the west after lower-room reroute verifier from (22,25)")
+    assert_equal(dirs["20,21"].south, true, "Rimuldar (20,21) should block entry from the south after parked Wings survey and direct verifier from (20,22)")
+    assert_equal(dirs["19,22"].east, true, "Rimuldar (19,22) should block entry from the east after parked Wings survey and direct verifier from (20,22)")
+    assert_equal(dirs["19,23"].east, true, "Rimuldar (19,23) should block entry from the east after parked Wings survey and 10/10 verifier from (20,23)")
+    assert_equal(dirs["20,24"].north, true, "Rimuldar (20,24) should block entry from the north after lower-room verifier from (20,23)")
+    assert_equal(dirs["20,24"].south, true, "Rimuldar (20,24) should block entry from the south after lower-room side probe from (20,25)")
+    assert_equal(dirs["22,24"].north, true, "Rimuldar (22,24) should block entry from the north after lower-room verifier from (22,23)")
+    assert_equal(dirs["16,24"].south, true, "Rimuldar (16,24) should block entry from the south after lower-strip forced probe from (16,25)")
+    assert_equal(dirs["21,21"].south, true, "Rimuldar (21,21) should block entry from the south after row-22 branch probe from (21,22)")
+    assert_equal(dirs["22,21"].south, true, "Rimuldar (22,21) should block entry from the south after row-22 branch probe from (22,22)")
+    assert_equal(dirs["21,24"].north, true, "Rimuldar (21,24) should block entry from the north after legitimate door-side approaches failed")
+    assert_equal(dirs["25,23"].west, true, "Rimuldar (25,23) should block entry from the west after chest-side verifier from (24,23)")
+    assert_equal(dirs["24,24"].north, true, "Rimuldar (24,24) should block entry from the north after chest-side verifier from (24,23)")
+    assert_open_approach("20,21", "north", "Rimuldar (20,21).north moved 5/5 after route-noise and should stay open")
+    assert_open_approach("21,21", "north", "Rimuldar (21,21).north stayed mixed and should not be promoted")
+    assert_open_approach("19,25", "east", "Rimuldar (19,25).east evidence was NPC-contaminated and should not be promoted")
     assert_open_approach("2,8", "west", "Rimuldar (2,8).west moved 5/5 after clean recovery and must stay open")
     assert_open_approach("1,8", "east", "Rimuldar (1,8).east moved on forced-origin reverse probe and must stay open")
+    assert_open_approach("1,23", "east", "Rimuldar (1,23).east moved from the Old Man 3 west-side seam and must stay open")
+    assert_open_approach("2,23", "west", "Rimuldar (2,23).west moved from the Old Man 3 west-side seam and must stay open")
     assert_equal(dirs["3,8"].east, true, "Rimuldar (3,8) should block entry from the east after focused verifier from (4,8)")
     assert_equal(dirs["3,8"].south, true, "Rimuldar (3,8) should block entry from the south after repeated route/seam failures from (3,9)")
     assert_equal(dirs["5,8"].south, true, "Rimuldar (5,8) should block entry from the south after direct verifier from (5,9)")
@@ -1508,11 +1590,37 @@ function tests.rimuldar_magic_key_route_bridge_is_passthrough()
     end
 
     for _, cell in ipairs({
-        {"13,15", 13, 15},
-        {"13,16", 13, 16},
+        {"1,23", 1, 23},
+        {"2,23", 2, 23},
     }) do
         local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
-        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the south-side Magic Key route connector")
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the Old Man 3 west-side seam")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    for _, cell in ipairs({
+        {"13,15", 13, 15},
+        {"13,16", 13, 16},
+        {"13,18", 13, 18},
+        {"18,25", 18, 25},
+        {"19,25", 19, 25},
+        {"21,22", 21, 22},
+        {"21,24", 21, 24},
+        {"22,22", 22, 22},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the south-side false-wall connector or locked-room hidden strip")
+        assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
+        assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
+    end
+
+    for _, cell in ipairs({
+        {"23,22", 23, 22},
+        {"24,22", 24, 22},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
+        assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the Wings room row-22 shelf")
         assert_equal(details.effective_walkable, true, "Rimuldar (" .. cell[1] .. ") should be available to A*")
         assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
     end
@@ -1564,6 +1672,16 @@ function tests.rimuldar_magic_key_route_bridge_is_passthrough()
     assert_equal(snapshot[5][14], true, "walkability snapshot should include the upper return false-wall connector")
     assert_equal(snapshot[15][13], true, "walkability snapshot should include the south-side Magic Key route connector")
     assert_equal(snapshot[16][13], true, "walkability snapshot should include the south-side Magic Key route lower connector")
+    assert_equal(snapshot[18][13], true, "walkability snapshot should include the south-side false-wall connector")
+    assert_equal(snapshot[25][18], true, "walkability snapshot should include the Wings room lower hidden strip west cell")
+    assert_equal(snapshot[25][19], true, "walkability snapshot should include the Wings room lower hidden strip middle cell")
+    assert_equal(snapshot[22][21], true, "walkability snapshot should include the Wings room row-22 dead-end branch west cell")
+    assert_equal(snapshot[22][22], true, "walkability snapshot should include the Wings room row-22 dead-end branch east cell")
+    assert_equal(snapshot[24][21], true, "walkability snapshot should include the Wings room lower hidden strip entry cell")
+    assert_equal(snapshot[22][23], true, "walkability snapshot should include the Wings room row-22 shelf west cell")
+    assert_equal(snapshot[22][24], true, "walkability snapshot should include the Wings room row-22 shelf east cell")
+    assert_equal(snapshot[23][1], true, "walkability snapshot should include the Old Man 3 west-side seam")
+    assert_equal(snapshot[23][2], true, "walkability snapshot should include the Old Man 3 public stand seam")
     assert_equal(snapshot[8][15], false, "walkability snapshot should keep the Woman 3 alternate connector closed")
 
     env.restore()

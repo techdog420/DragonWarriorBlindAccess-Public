@@ -593,6 +593,32 @@ local MAP_PASSTHROUGH_CELLS = {
     -- The corrected town-tileset route then reached the row-10 frontier, where
     -- (9,10)->LEFT into (8,10) reconfirmed blocked 5/5 but (9,10)->UP into
     -- (9,9) moved 5/5. Expose only (9,9) here; keep (8,10).east closed.
+    --
+    -- The post-merchant NPC walkabout found Old Man 3's west-side access seam:
+    -- the player moved (2,23)->LEFT into false-wall (1,23) twice, then moved
+    -- (1,23)->RIGHT into false-wall (2,23). Expose both cells so the public
+    -- route can stand at (2,23) facing east for Old Man 3's temple clue.
+    --
+    -- South-side false-wall connector: live FCEUX movement proved
+    -- (13,19)->UP moves into false-wall (13,18) and continues to the
+    -- public-side row, while the reverse route moves back down through
+    -- (13,18) to (13,19). Nearby row-18 shelf cells at (22,18)..(24,18)
+    -- are real but dead-ended north/east/west in follow-up probes. Later
+    -- locked-room bashing showed this connector is not currently reachable
+    -- from the opened Wings door pocket at (23,23); do not treat it as a
+    -- solved walk-out route from that pocket.
+    -- Later chest-room bashing found a separate row-22 false-wall shelf:
+    -- (24,23)->UP entered (24,22), (24,22)->LEFT entered (23,22) repeatedly,
+    -- and (23,22)->RIGHT returned to (24,22). Expose only those live-proven
+    -- shelf cells; the top and lower exits are handled directionally below.
+    -- More locked-room probing showed the row-22 branch is real but currently
+    -- dead-ended: (22,23)->UP moved into (22,22), then (22,22)->LEFT moved
+    -- into (21,22), but the north/west exits loop into known blockers.
+    -- The lower row-25 hidden strip is also real: forced-origin
+    -- (21,24)->DOWN moved to (21,25), (20,25)->LEFT verified passable 5/5
+    -- into (19,25), and forced-origin (19,25)->LEFT moved into (18,25).
+    -- However, the apparent (21,23)->DOWN throat is not usable from the
+    -- door-side approach; keep its north entry blocked directionally below.
     [0x0B] = {
         ["1,5"] = true,
         ["1,7"] = true,
@@ -600,10 +626,12 @@ local MAP_PASSTHROUGH_CELLS = {
         ["1,12"] = true,
         ["1,13"] = true,
         ["1,14"] = true,
+        ["1,23"] = true,
         ["2,5"] = true,
         ["2,7"] = true,
         ["2,8"] = true,
         ["2,14"] = true,
+        ["2,23"] = true,
         ["3,4"] = true,
         ["3,5"] = true,
         ["3,7"] = true,
@@ -634,12 +662,20 @@ local MAP_PASSTHROUGH_CELLS = {
         ["13,9"] = true,
         ["13,15"] = true,
         ["13,16"] = true,
+        ["13,18"] = true,
         ["14,5"] = true,
         ["14,8"] = true,
         ["15,5"] = true,
         ["16,8"] = true,
+        ["18,25"] = true,
         ["19,9"] = true,
+        ["19,25"] = true,
+        ["21,22"] = true,
+        ["21,24"] = true,
+        ["22,22"] = true,
+        ["23,22"] = true,
         ["24,6"] = true,
+        ["24,22"] = true,
     },
 
     -- Map 0x07: Kol
@@ -800,6 +836,14 @@ local MAP_DOOR_CELLS = {
     -- coordinate can be verified after keys/opened-door access.
     [0x09] = {
         ["19,16"] = {x=19, y=16},
+    },
+    -- Map 0x0B: Rimuldar Wings chest / inn locked door.
+    -- Live FCEUX door RAM after opening from inside reported slot 0=(22,23)
+    -- while Bill stood at (23,23). The tile itself decodes as type 6 floor, so
+    -- this manual door override keeps pathfinding from treating it as public
+    -- floor until the opened-door RAM says it is open.
+    [0x0B] = {
+        ["22,23"] = {x=22, y=23},
     },
     -- Map 0x15: Swamp Cave / Quagmire Cave locked Gwaelin branch.
     -- The first (5,22) hypothesis was disproven live. Follow-up OPEN probes
@@ -2081,6 +2125,37 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- west-side bridge while the lower (2,9)->UP approach remains closed.
         -- The lower-lane candidate also self-disproved: (4,8)->RIGHT into
         -- (5,8) blocked 5/5, so do not let A* enter that pocket from the west.
+        -- Wings chest room shelf follow-up: after NPCs were frozen,
+        -- probe_edge_verify:23,23,DOWN,5 confirmed (23,23)->DOWN into
+        -- (23,24) blocked 5/5 despite an open type-8 tile preview. The older
+        -- (14,19)->RIGHT candidate was mixed, but a later max verifier
+        -- confirmed it blocked 15/15, so (15,19).west is now promoted. After
+        -- the row-22 shelf was modeled and the user reloaded FCEUX,
+        -- probe_edge_verify:23,22,UP,5 confirmed (23,22)->UP into (23,21)
+        -- blocked 5/5 too. The next Wings route loops directly confirmed
+        -- (21,20)->RIGHT into (22,20) blocked 5/5, then the locked-room
+        -- return search found the row-22 shelf and lower/right branches are
+        -- one-way pockets. Keep these directional: (24,22)->UP into (24,21),
+        -- (24,22)->RIGHT into (25,22), (20,25)->DOWN into (20,26),
+        -- (21,25)->DOWN into (21,26), (22,25)->DOWN into (22,26),
+        -- (22,25)->RIGHT into (23,25), (20,22)->UP into (20,21),
+        -- (20,22)->LEFT into (19,22), (20,25)->UP into (20,24),
+        -- (24,23)->RIGHT into (25,23), and (24,23)->DOWN into (24,24) all
+        -- direct-verified blocked. After those were patched, the next
+        -- parked-NPC return survey reached (20,23) and hit (20,23)->LEFT
+        -- into (19,23); probe_edge_verify confirmed that east approach
+        -- blocked 10/10. The same lower-room sweep confirmed (20,23)->DOWN
+        -- into (20,24), (22,23)->DOWN into (22,24), and forced-origin
+        -- (16,25)->UP into (16,24) as blocked. A fresh teleport/probe could
+        -- move (21,23)->DOWN into (21,24), but every legitimate door-side
+        -- approach failed: parked survey blocked the edge three times, raw
+        -- holds after entering (21,23) from east/west/north all timed out,
+        -- and OPEN while facing south reported no door. Keep (21,24).north
+        -- closed so A* does not choose that false throat. Forced-origin
+        -- checks from the now-proven row-22 branch also blocked
+        -- (21,22)->UP and (22,22)->UP, so close the south approaches into
+        -- (21,21)/(22,21). Leave (20,21).north open after it moved 5/5, and
+        -- leave (21,21).north open after it stayed mixed.
         ["0,5"] = {east = true},
         ["1,4"] = {south = true},
         ["2,5"] = {west = true},
@@ -2131,10 +2206,31 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["13,9"] = {south = true},
         ["14,9"] = {east = true, south = true},
         ["15,9"] = {south = true},
+        ["15,19"] = {west = true},
         ["16,9"] = {south = true},
+        ["16,24"] = {south = true},
         ["17,9"] = {east = true, south = true},
         ["17,17"] = {east = true},
+        ["19,22"] = {east = true},
+        ["19,23"] = {east = true},
+        ["20,21"] = {south = true},
+        ["20,24"] = {north = true, south = true},
+        ["20,26"] = {north = true},
+        ["21,21"] = {south = true},
+        ["21,24"] = {north = true},
+        ["21,26"] = {north = true},
         ["22,12"] = {south = true},
+        ["22,20"] = {west = true},
+        ["22,21"] = {south = true},
+        ["22,24"] = {north = true},
+        ["22,26"] = {north = true},
+        ["23,21"] = {south = true},
+        ["23,24"] = {north = true},
+        ["23,25"] = {west = true},
+        ["24,21"] = {south = true},
+        ["24,24"] = {north = true},
+        ["25,22"] = {west = true},
+        ["25,23"] = {west = true},
     },
 
     -- Map 0x15: Swamp Cave lower return route

@@ -163,17 +163,68 @@ classification from `blocked_only` to `noisy`. Do not promote `(29,14).north`
 as a blocker. The successful route also had one timing retry at `(2,8)->UP`
 into `(2,7)`; the retry moved, so do not promote `(2,7).south` either.
 
+Post-merchant Rimuldar NPC pass: the remaining useful clue NPCs are
+documented. `Old Man 3` at `(3,23)` asks about a magic temple with a yes/no
+prompt. The access seam `(1,23)<->(2,23)` moved both directions in FCEUX, so
+`map_reader.lua` exposes both false-wall cells; `(2,23)` is the practical
+public stand facing east. `Old Man 4` / Howard at `(20,23)` gives the Kol bath
+clue, "Four steps south of the bath in Kol thou shalt find a magic item."
+Current scope: public Rimuldar remains cracked for playability, but the opened
+Wings chest room pocket is not solved as a walk-out route. The first Rimuldar
+inn / Wings chest door is pinned at `(22,23)`: live `report_door_state` after
+the user opened it from inside reported `slots=0=(22,23)` while Bill stood at
+`(23,23)`, and `inspect_tile:22,23` showed tile 6 walkable floor, so
+`map_reader.lua` manually gates it as a magic-key door until opened-door RAM
+lists it. Post-patch reload probe `rimuldar_door_pin_reload` succeeded, and
+live `inspect_tile:22,23` then reported `reason=door_open`. `objects.lua`
+exposes it as `Wings Chest Door`; the nearby chest object is `chest_7` at
+`(24,23)`.
+
+Earlier clean FCEUX probes proved `(13,18)` is a real false-wall connector:
+`(13,19)->UP` entered `(13,18)` and continued to the public row, and the
+reverse route moved back down through `(13,18)` to `(13,19)`. Later locked-room
+return testing disproved that connector as a current escape from the opened
+door-side start. The corrected model now leaves a final parked-NPC survey from
+`(23,23)` to `exit_29_13` at clean no-path:
+`path_found=false`, `blocked_events=0`, `suspected_tiles=-`, `reason=no_path`.
+The row-22 branch is real but dead-ended: `(22,23)->UP` moved into `(22,22)`
+and `(22,22)->LEFT` moved into `(21,22)`, while `(21,22)->UP`,
+`(22,22)->UP`, `(20,22)->UP`, and `(20,22)->LEFT` are blocked. The lower
+row-25 strip is also real: `(20,25)->LEFT` verified passable 5/5 into
+`(19,25)`, and `(19,25)->LEFT` moved into `(18,25)`. The apparent throat from
+`(21,23)->DOWN` into `(21,24)` is false from all legitimate approaches, though
+a fresh forced-origin probe once moved through it; routes from east, west, and
+north all blocked, raw held DOWN did not move, and OPEN while facing south
+reported "There is no door here." `report_door_state` still showed only
+`slots=0=(22,23)`.
+
+Do not promote `(19,25).east`; the 15-attempt verifier blocked there with
+`npc_blocked=true`, so that lead is occupancy-contaminated. The next useful
+locked-room step is not more blind blocker promotion: verify whether the second
+guide-mentioned inn door/access point is wrong or missing, whether this pocket
+expects item/teleport behavior, or cross-check the external inn/chest layout
+before adding more permanent map data.
+Validation after the corrected locked-room patch passed `luac -p map_reader.lua
+test_map_reader.lua objects.lua test_objects.lua`, `lua test_map_reader.lua`,
+`lua test_objects.lua`, and `git diff --check`.
+Full validation of every dialogue-only NPC route can wait for a later polish
+pass; it is not worth re-entering the one-way maze unless one of those NPCs
+proves progression-critical.
+
 Current Rimuldar Magic Key route patch in the worktree: `Old Man 1` at `(4,7)`
 is the live-confirmed Magic Key seller, using public stand `(4,6)` facing
 south. The route is a one-way maze, matching the guide warning that the key
 seller is reached by walking around the outside/water edge. `map_reader.lua`
 now includes Rimuldar passthrough cells `(24,6)`, `(19,9)`, `(14,8)`,
-`(13,9)`, `(13,8)`, `(16,8)`, `(1,8)`, `(1,7)`, `(2,7)`, and final maze
+`(13,9)`, `(13,8)`, `(16,8)`, `(1,8)`, `(1,7)`, `(2,7)`,
+`(1,23)`, `(2,23)`, and final maze
 cells `(6,3)`, `(5,3)`, `(5,5)`, `(4,5)`, `(3,5)`, and the confirmed bridge
 cells `(2,8)`, `(3,7)`, and `(9,9)`, plus the lower
 escape strip `(4,7)`, `(4,8)`, and `(4,9)`, the one-way trap cell `(5,7)`,
 the hidden lower lane `(5,9)`, `(6,7)`, `(6,8)`, `(6,9)`, and `(7,9)`, plus the
-south-side connector `(13,15)` and `(13,16)`, plus the latest manual false-wall
+south-side connector `(13,15)` and `(13,16)`, the real south-side connector
+`(13,18)` that is not a confirmed door-pocket escape, plus the latest manual
+false-wall
 cells `(1,14)`, `(2,14)`, `(3,14)`, `(4,14)`, `(5,14)`, `(8,7)`, `(8,8)`,
 and `(14,5)`, plus the northwest exit false-wall cells `(3,4)` and `(4,3)`.
 Directional-only key-route blockers

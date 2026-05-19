@@ -89,11 +89,23 @@ hidden seams, locked doors, and service interaction tiles.
   to a sage who repeats the Kol clue: search four steps south of the bath for a
   magic item. Since the player already found the Fairy Flute, this is useful as
   a clue transcript rather than a new progression blocker.
+- Practical status: weapon/armor, inn, Magic Keys, exits, and useful clue NPCs
+  are cracked for playability. The first Wings chest door is pinned, but the
+  opened chest-room pocket still has no confirmed walk-out route to the public
+  network. `(13,18)` is a real false-wall connector elsewhere on the south side,
+  but it is not currently reachable from the opened door-side start at `(23,23)`.
+  Any remaining inn door/chest looting work should start by confirming whether a
+  second guide-mentioned door/access point is missing or wrong.
 - Rimuldar gives several main-quest hints:
   - Stones of Sunlight are hidden in Tantegel Castle.
   - Erdrick created a rainbow on the west side of the island.
   - The Dragonlord's castle has a hidden entrance behind the throne.
+  - Old Man 3 asks, "Hast thou found a magic temple?", with a yes/no prompt.
+    The access seam at `(1,23)<->(2,23)` is open both ways even though both
+    cells decode as blocked; `(2,23)` is the public stand facing east.
   - A magic temple lies to the south.
+  - Old Man 4 / Howard says that four steps south of the bath in Kol is a
+    magic item, matching the Fairy Flute clue.
   - The Fighter's Ring hint is intentionally misleading/flavor; Gamer Corner
     notes the NPC mocks the ring if the player returns wearing it.
 - South of Rimuldar is a strong gold-grinding area. Gamer Corner highlights
@@ -121,6 +133,28 @@ hidden seams, locked doors, and service interaction tiles.
   Key prompt. `Merchant 1` at `(2,4)` is dialogue-only; reachable hidden-cell
   probes only produced the short `Welcome!` greeting, so he should stay out of
   Services.
+- Rimuldar `Old Man 3` is live-confirmed as a temple-clue NPC at `(3,23)`.
+  The practical public stand is `(2,23)` facing east; the west-side seam
+  `(1,23)<->(2,23)` moved both ways during manual FCEUX play.
+- Rimuldar `Old Man 4` / Howard is live-confirmed at `(20,23)` with a north
+  stand at `(20,22)`. His dialogue gives the Kol bath / hidden magic item clue.
+- Rimuldar `Wings Chest Door` is live-pinned at `(22,23)`. After the user
+  opened the door from inside, `report_door_state` reported opened-door slot
+  `0=(22,23)` while Bill stood at `(23,23)`. `inspect_tile:22,23` still decoded
+  it as type-6 walkable floor, so `map_reader.lua` must treat it as a manual
+  magic-key door until opened-door RAM lists it. The nearby Wings chest object
+  is `chest_7` at `(24,23)`.
+- Rimuldar Wings chest room walk-out is unresolved. `(13,18)` is live-confirmed
+  as a real false-wall connector from `(13,19)` to the public-side row and back,
+  but later locked-room return testing showed it is not reachable from the
+  opened door pocket at `(23,23)` under the corrected blocker model. The row-22
+  branch is real but dead-ended, and the lower row-25 hidden strip is real but
+  isolated. The apparent `(21,23)->DOWN` throat into `(21,24)` moved only from a
+  fresh forced origin; every legitimate door-side approach blocked, raw held
+  DOWN did not move, and OPEN while facing south reported "There is no door
+  here." Final parked-NPC survey from `(23,23)` to `exit_29_13` reports
+  `path_found=false`, `blocked_events=0`, and `reason=no_path`. Do not promote
+  `(19,25).east`; the verifier there was NPC-contaminated.
 - The key-shop approach uses confirmed hidden connector cells. `(24,7)->UP`
   moves into `(24,6)` even though tile `(24,6)` decodes blocked. The later
   entrance-to-key-shop shakedown proved `(19,9)` as the route bridge around the
@@ -232,20 +266,26 @@ hidden seams, locked doors, and service interaction tiles.
 - `(6,6)` is not a full-cell blocker. It remains walkable from the modeled west
   lane, but the east approach from `(7,6)->LEFT` is a confirmed 3/3 raw verifier
   block. Do not delete `(6,6).east` to fix route planning.
-- Inn doors, Wings chest, and quest-hint NPC route stands still need live
-  service confirmation before permanent object patches beyond the existing
-  route/weapon-shop/inn/key-shop/exit work.
+- One Rimuldar inn / Wings chest door is pinned at `(22,23)`. Any additional
+  guide-mentioned inn door and the chest contents still need live confirmation
+  if the user wants the town completely looted.
 
 ## Suggested Survey Targets
 
-For the next Rimuldar town pass, prove these before patching `objects.lua`:
+For the next Rimuldar town pass:
 
 - Locked inn doors:
-  - Confirm exact door cells with OPEN from adjacent tiles before adding door
-    objects or map door cells.
-  - Track key count before/after if possible.
+  - Keep `(22,23)` as confirmed and pinned.
+  - Confirm any other guide-mentioned door cell with OPEN from adjacent tiles
+    before adding another door object or map door cell.
 - Wings chest:
-  - Confirm chest coordinate and whether the route requires both inn doors.
+  - Do not route the opened door pocket back to public Rimuldar via `(13,18)`
+    yet. That connector is real, but the corrected door-side model still gives
+    no path from `(23,23)` to `exit_29_13`.
+  - Before adding more blockers, verify whether a second inn door/access point
+    is missing or whether the chest room is intended as an item/teleport pocket.
+  - `chest_7` is at `(24,23)` in the object list; confirm contents/loot state
+    live if desired.
 - Quest-hint NPCs:
   - Prioritize NPCs with progression hints: Stones of Sunlight, Rainbow Drop /
     Dragonlord hidden entrance, Southern Cave, and Kol bath clue transcript.

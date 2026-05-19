@@ -1847,6 +1847,30 @@ function tests.rimuldar_confirmed_services_use_live_counter_stands()
     env.restore()
 end
 
+function tests.rimuldar_exposes_wings_chest_door()
+    local env = make_env()
+
+    env.set_position(0x0B, 23, 23)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0B)
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Exits
+    env.objects.next_filter() -- Chests
+    env.objects.next_filter() -- Stairs
+    env.objects.next_filter() -- Doors
+
+    assert_equal(env.objects.get_count(), 1, "Rimuldar should expose the pinned Wings chest door")
+    local door = env.objects.current_object()
+    assert_equal(door.id, "door_22_23", "Rimuldar Wings chest door id should match the confirmed coordinate")
+    assert_equal(door.name, "Wings Chest Door", "Rimuldar Wings chest door should have a distinct navigation label")
+    assert_equal(door.x, 22, "Rimuldar Wings chest door x should match opened-door RAM")
+    assert_equal(door.y, 23, "Rimuldar Wings chest door y should match opened-door RAM")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_exposes_reachable_navigation_doors()
     local env = make_env()
 

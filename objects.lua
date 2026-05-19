@@ -1004,6 +1004,12 @@ local EXTRA_DOORS = {
     [0x09] = {
         {x=19, y=16, name="East Door", type=M.TYPE_DOOR, id="door_19_16"},
     },
+    -- Map 0x0B: Rimuldar inn / Wings chest door. Live opened-door RAM after
+    -- opening from inside reported the door cell as (22,23), with the player
+    -- standing immediately east at (23,23).
+    [0x0B] = {
+        {x=22, y=23, name="Wings Chest Door", type=M.TYPE_DOOR, id="door_22_23"},
+    },
     -- Map 0x15: Swamp Cave / Quagmire Cave. Live OPEN probes from both (5,21)
     -- and (5,19) reported the no-key door message, triangulating the door cell
     -- at (5,20). Route to the south stand tile for normal key-side access.
