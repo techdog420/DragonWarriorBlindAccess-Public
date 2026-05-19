@@ -1458,6 +1458,53 @@ function tests.selected_same_destination_recalculates_active_route()
     routes.reset_for_tests()
 end
 
+function tests.terrain_offset_zero_satisfies_overworld_predicate_when_map_id_lags()
+    -- During the single-frame transition out of a town, snapshot.map_id can
+    -- still report the town while terrain_offset has already flipped to 0.
+    -- plan_next_segment must accept that as overworld so callers don't get
+    -- a spurious "only available on the world map" error.
+    routes.reset_for_tests()
+    routes.start("brecconary", 0x01, 50, 40)
+
+    local segment, err = routes.plan_next_segment(0x08, 50, 40, {terrain_offset = 0x00})
+
+    assert_equal(err, nil, "terrain_offset=0 should satisfy the overworld predicate")
+    assert_equal(segment ~= nil, true, "segment should plan when terrain_offset proves overworld")
+
+    routes.reset_for_tests()
+end
+
+function tests.autowalk_advances_past_already_at_waypoint_with_opt_in()
+    -- When the player is sitting exactly on a waypoint, plan_next_segment
+    -- without advance_if_at_waypoint returns a status record so observe_position
+    -- can drive arrival. autowalk callers pass advance_if_at_waypoint=true so
+    -- a single press never stalls when the player is on a waypoint tile.
+    routes.reset_for_tests()
+
+    -- Start from a position near (but outside the radius of) the first
+    -- waypoint so choose_next_index lands on it without auto-advancing.
+    local start = routes.start("cave", 0x01, 45, 45)
+    assert_equal(start ~= nil, true, "route should start")
+
+    local route = routes._route_for_tests("erdrick")
+    local wp1 = route.waypoints[1]
+    local wp2 = route.waypoints[2]
+
+    -- Status-only plan reports "already at waypoint" without advancing.
+    local status_only = routes.plan_next_segment(0x01, wp1.x, wp1.y)
+    assert_equal(status_only.status, "already_at_waypoint", "default plan should report status when at waypoint")
+    assert_equal(#status_only.steps, 0, "status-only plan should not emit steps")
+
+    -- Opt-in plan advances state.next_index and returns a planned segment.
+    local advanced = routes.plan_next_segment(0x01, wp1.x, wp1.y, {advance_if_at_waypoint = true})
+    assert_equal(advanced.status, "planned", "advance_if_at_waypoint should produce a planned segment")
+    assert_equal(#advanced.steps > 0, true, "advanced plan should emit at least one step toward the next waypoint")
+    assert_equal(advanced.waypoint.x, wp2.x, "advanced plan should target the next waypoint")
+    assert_equal(advanced.waypoint.y, wp2.y, "advanced plan should target the next waypoint")
+
+    routes.reset_for_tests()
+end
+
 local failures = 0
 local total = 0
 

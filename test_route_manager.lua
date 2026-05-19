@@ -372,13 +372,16 @@ local function make_env(options)
 
     package.preload["overworld_routes"] = function()
         return {
-            plan_next_segment = function(map_id, x, y)
+            plan_next_segment = function(map_id, x, y, plan_opts)
                 overworld_plan_calls = overworld_plan_calls + 1
                 if options.overworld_segment_error then
                     return nil, options.overworld_segment_error
                 end
                 return options.overworld_segment
             end,
+            route_id_for_object = function() return nil end,
+            active_route_id = function() return nil end,
+            start = function() return nil, "test stub does not start routes" end,
         }
     end
 

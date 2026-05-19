@@ -133,11 +133,16 @@ local function make_env(options)
     end
 
     package.preload["maps"] = function()
-        return {
+        local M = {
+            WORLD_MAP_ID = 0x01,
             get_name = function(map_id)
                 return string.format("Map %02X", map_id)
             end,
         }
+        function M.is_overworld(map_id, terrain_offset_arg)
+            return terrain_offset_arg == 0x00 or map_id == M.WORLD_MAP_ID
+        end
+        return M
     end
 
     package.preload["config"] = function()

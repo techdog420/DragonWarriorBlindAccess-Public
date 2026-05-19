@@ -2120,7 +2120,10 @@ function M.autowalk_overworld_segment(opts)
     end
 
     local map_id, px, py = nav.get_position()
-    local segment, err = overworld_routes.plan_next_segment(map_id, px, py)
+    local segment, err = overworld_routes.plan_next_segment(map_id, px, py, {
+        terrain_offset = snapshot.terrain_offset,
+        advance_if_at_waypoint = true,
+    })
     if not segment then
         local message = err or "No overworld route active"
         debug_tools.info(string.format(
@@ -2326,8 +2329,32 @@ function M.autowalk_to_object(obj, opts)
             }
         end
     end
-    local map_id = nav.get_position()
+    local map_id, px, py = nav.get_position()
     if maps.is_overworld(map_id, snapshot.terrain_offset) then
+        -- On the overworld, autowalk follows the active guided route rather
+        -- than running interior pathfinding. If the selected object maps to a
+        -- different route than the active one, switch routes first so the
+        -- caller doesn't silently advance a stale destination.
+        local target_route_id = overworld_routes.route_id_for_object(obj, map_id, px, py)
+        local active_route_id = overworld_routes.active_route_id()
+        if target_route_id and target_route_id ~= active_route_id then
+            local started, start_err = overworld_routes.start(target_route_id, map_id, px, py)
+            if not started then
+                debug_tools.info(string.format(
+                    "AUTO_WALK: overworld route switch failed for %s reason=%s",
+                    tostring(obj.name),
+                    tostring(start_err or "unspecified")))
+                if opts.speak ~= false then
+                    tolk.output_interrupt(start_err or "Could not start route")
+                end
+                return {
+                    status = "route_start_failed",
+                    ok = false,
+                    message = start_err or "Could not start route",
+                    target = obj,
+                }
+            end
+        end
         return M.autowalk_overworld_segment({
             speak = opts.speak,
             skip_guard = true,

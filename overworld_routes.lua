@@ -1,9 +1,11 @@
 -- overworld_routes.lua
 -- Lightweight manual route guidance for the large Dragon Warrior world map.
 
+local maps = require("maps")
+
 local M = {}
 
-local WORLD_MAP_ID = 0x01
+local WORLD_MAP_ID = maps.WORLD_MAP_ID
 local MAX_VISIBLE_ACTIVE_WAYPOINTS = 2
 
 local SWAMP_CAVE_STAGING = {
@@ -758,8 +760,11 @@ local function distance(px, py, point)
     return math.abs((px or 0) - point.x) + math.abs((py or 0) - point.y)
 end
 
-local function is_overworld(map_id)
-    return tonumber(map_id) == WORLD_MAP_ID
+-- terrain_offset is optional; when supplied, callers benefit from the
+-- canonical maps.is_overworld() rule (terrain_offset==0 also counts as
+-- overworld, which avoids single-frame disagreement during map transitions).
+local function is_overworld(map_id, terrain_offset)
+    return maps.is_overworld(tonumber(map_id), terrain_offset)
 end
 
 local function is_destination_map(route, map_id)
@@ -1139,7 +1144,7 @@ function M.plan_next_segment(map_id, px, py, opts)
     if not route then
         return nil, "No overworld route active"
     end
-    if not is_overworld(map_id) then
+    if not is_overworld(map_id, opts.terrain_offset) then
         return nil, "Overworld auto-walk is only available on the world map"
     end
     if px == nil or py == nil then
@@ -1152,8 +1157,15 @@ function M.plan_next_segment(map_id, px, py, opts)
         return nil, "No next overworld waypoint"
     end
 
-    local direction = direction_string(px, py, point.x, point.y)
+    -- "Already at waypoint" without advance_if_at_waypoint returns a status-only
+    -- record. With it, advance one slot and replan so a single autowalk press
+    -- doesn't stall the route when the player is sitting exactly on a waypoint.
+    -- Bail at the final waypoint — observe_position handles arrival.
     if distance(px, py, point) <= (point.radius or 0) then
+        if opts.advance_if_at_waypoint and index < #route.waypoints then
+            state.next_index = index + 1
+            return M.plan_next_segment(map_id, px, py, opts)
+        end
         return {
             route = route,
             waypoint = point,
@@ -1167,6 +1179,7 @@ function M.plan_next_segment(map_id, px, py, opts)
             refresh = true,
         }
     end
+    local direction = direction_string(px, py, point.x, point.y)
 
     local steps = {}
     local cx = px
@@ -1213,7 +1226,7 @@ function M.guidance_for_object(obj, map_id, px, py)
     return M.start_for_object(obj, map_id, px, py)
 end
 
-function M.observe_position(map_id, px, py)
+function M.observe_position(map_id, px, py, terrain_offset)
     local route = active_route()
     if not route then
         return nil
@@ -1223,7 +1236,7 @@ function M.observe_position(map_id, px, py)
         return finish_route(route, route_final_waypoint(route), "arrived")
     end
 
-    if not is_overworld(map_id) or px == nil or py == nil then
+    if not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
         return nil
     end
 
