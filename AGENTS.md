@@ -308,7 +308,7 @@ Scratchpad rule:
 - Do not require every scratchpad finding to be promoted into `session_handoff.md`.
 - Promote only verified durable facts, changed route/map status, changed tooling assumptions, or changed next-step guidance.
 
-After substantial work:
+## After substantial work:
 After substantial work, update project docs only if shared project state changed materially.
 
 Substantial work means:
