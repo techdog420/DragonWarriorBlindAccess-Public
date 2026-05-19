@@ -193,6 +193,7 @@ The entries below are examples only; do not treat them as current project eviden
 
 ### NEXT CHECK
 - Verify route from entrance to Magic Key seller after reload.
+```
 
 ## Handoff Discipline
 
@@ -201,4 +202,4 @@ The entries below are examples only; do not treat them as current project eviden
 - Put gameplay findings in `PLAYTESTING.md`.
 - Treat `handoff_archive/` as historical evidence.
 - Do not rely on assistant-private memory as the only record of live findings.
-Keep handoff updates short. For minor live findings, summarize in the final response instead of editing durable docs. Update `session_handoff.md` only when active resume state or next recommended work changes.
+- Keep handoff updates short. For minor live findings, summarize in the final response instead of editing durable docs.  Update `session_handoff.md` only when active resume state or next recommended work changes.
