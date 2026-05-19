@@ -1,6 +1,6 @@
 # Dragon Warrior Accessibility Mod — Codex Agent Guide
 
-## Project overview
+``## Project overview
 
 This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the default gameplay emulator path; BizHawk remains the explicit automation/debug path because its Lua reload workflow is useful even though player-facing lag is worse.
 
@@ -115,6 +115,28 @@ Preferred loop:
 6. Repeat
 
 Prefer automated test/debug hooks over manual exploration whenever possible.
+
+## Productive Investigation Mode
+
+For live QA, pathfinding, map decoding, and blocked-tile discovery, default to Productive Investigation Mode.
+
+In this mode, the agent should spend most of the session on evidence collection, focused fixes, and verification. Do not stop after one or two small findings if more route evidence can be gathered safely.
+
+Minimum useful loop for exploratory sessions:
+1. Establish fresh baseline.
+2. Investigate first failure.
+3. Apply runtime or permanent patch only if evidence meets threshold.
+4. Verify.
+5. Continue to the next likely failure.
+6. Repeat for at least 3 focused cycles unless a stop condition is reached.
+
+Stop conditions:
+- requested route works live,
+- emulator/log state is contaminated and cannot be cleaned,
+- command polling or script reload is broken,
+- next step requires user input,
+- no next useful test is clear,
+- user explicitly asked for a narrow/short pass.
 
 ## Important commands
 
@@ -280,11 +302,24 @@ Repo files are the source of truth:
   when it is writable; older `.codex/skills/` content is legacy compatibility
   only
 
+Scratchpad rule:
+- For exploratory live debugging, use `work_notes/current_investigation.md` for temporary evidence, suspected blockers, command sequences, and uncertain findings.
+- Treat scratchpad notes as working memory, not durable project truth.
+- Do not require every scratchpad finding to be promoted into `session_handoff.md`.
+- Promote only verified durable facts, changed route/map status, changed tooling assumptions, or changed next-step guidance.
+
 After substantial work:
-- Update `session_handoff.md` with current state and best next step
-- Update `PROJECT_MEMORY.md` only for durable facts
-- Update `PLAYTESTING.md` for player-facing findings and gameplay priorities
-- Avoid creating new dated handoff files unless a large investigation needs a detailed evidence packet
+After substantial work, update project docs only if shared project state changed materially.
+
+Substantial work means:
+- route/service status changed,
+- a map/floor moved to a new completion state,
+- a durable workflow/tooling rule changed,
+- a major bug was identified or fixed,
+- next-step guidance changed,
+- or the user explicitly asked for handoff maintenance.
+
+A few routine tile patches or one small local fix do not require full handoff maintenance.
 
 Codex memory access notes:
 - The project-local `.codex/` directory may be mounted read-only inside Codex even when the surrounding repo is writable
