@@ -89,7 +89,7 @@ Preferred split pattern:
 ## Script Reload / Restart
 
 - For `dw_access.ini` changes only, use `reload_config`.
-- For Lua source changes, BizHawk file-change reload can pick up `touch main.lua` while the Lua loop is alive.  Fceux currently requires a manual script reload from the user.
+- For Lua source changes, BizHawk file-change reload can pick up `touch main.lua` while the Lua loop is alive.  FCEUX currently requires a manual script reload from the user.
 - After source reload, verify the running script with `launcher_probe:TAG`, `--wait-ready TAG`, or another fresh state probe before judging behavior.
 - If the probe times out, `dw_debug.log` is stale, or `dw_script_error.log` changed, assume the Lua loop is not polling and relaunch with `./launch_dw.sh`.
 
@@ -174,6 +174,12 @@ Before wrapping a long investigation:
 - Mark contaminated findings as `DO NOT PROMOTE`.
 - If the scratchpad grows beyond a few screens, summarize it and move detailed historical evidence to a focused file under `handoff_archive/` or `project_resources/evidence/`.
 
+## Scratchpad Template Example
+
+Use a structure like this inside `work_notes/current_investigation.md`.
+The entries below are examples only; do not treat them as current project evidence.
+
+```markdown
 ## Findings
 
 ### CLEAN / PROMOTED
