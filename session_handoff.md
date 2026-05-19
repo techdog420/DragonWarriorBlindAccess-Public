@@ -1,6 +1,10 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-18
+Updated: 2026-05-19
+
+## Latest Code Review (2026-05-19)
+
+See `HANDOFF_2026-05-19_code_review.md` for the full breakdown of the post-weekend code review and follow-on fixes. Five commits landed (`095865a`, `5d873f3`, `9661190`, `ac7a0a6`, plus the doc). Open items still on the board: Tantegel `4,11-4,15` evidence conflict, radius-0 waypoint stalls, waypoint load-time validation, `position_key` string allocation, and `safety`/`safe` alias scope.
 
 ## Current Emulator Note
 
