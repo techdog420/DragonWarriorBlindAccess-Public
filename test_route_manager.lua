@@ -370,18 +370,36 @@ local function make_env(options)
         }
     end
 
+    local overworld_plan_opts_log = {}
+    local overworld_start_calls = {}
     package.preload["overworld_routes"] = function()
         return {
             plan_next_segment = function(map_id, x, y, plan_opts)
                 overworld_plan_calls = overworld_plan_calls + 1
+                overworld_plan_opts_log[#overworld_plan_opts_log + 1] = plan_opts or false
                 if options.overworld_segment_error then
                     return nil, options.overworld_segment_error
                 end
                 return options.overworld_segment
             end,
-            route_id_for_object = function() return nil end,
-            active_route_id = function() return nil end,
-            start = function() return nil, "test stub does not start routes" end,
+            route_id_for_object = function(obj)
+                if options.overworld_route_for_object_fn then
+                    return options.overworld_route_for_object_fn(obj)
+                end
+                return options.overworld_route_for_object
+            end,
+            active_route_id = function()
+                return options.overworld_active_route_id
+            end,
+            start = function(route_id, map_id, x, y)
+                overworld_start_calls[#overworld_start_calls + 1] = {
+                    route_id = route_id, map_id = map_id, x = x, y = y,
+                }
+                if options.overworld_start_error then
+                    return nil, options.overworld_start_error
+                end
+                return options.overworld_start_result or {message = "started"}
+            end,
         }
     end
 
@@ -442,6 +460,8 @@ local function make_env(options)
         last_start_route_steps = function() return last_start_route_steps end,
         last_start_route_opts = function() return last_start_route_opts end,
         overworld_plan_calls = function() return overworld_plan_calls end,
+        overworld_plan_opts_log = function() return overworld_plan_opts_log end,
+        overworld_start_calls = function() return overworld_start_calls end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
         suppress_direction_tracking_calls = function() return suppress_direction_tracking_calls end,
@@ -587,6 +607,121 @@ function tests.overworld_battle_cancel_clears_without_speech_spam()
 
     assert_equal(env.pathfind_calls(), 0, "battle/menu cancel should not reroute an overworld segment")
     assert_equal(#env.outputs, outputs_before_cancel, "can_walk_false cancel should leave battle/menu speech in charge")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_forwards_advance_opt_to_planner()
+    -- autowalk_overworld_segment must pass advance_if_at_waypoint=true so
+    -- the planner advances past a waypoint the player is already standing on.
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 16,
+        start_y = 6,
+        current_object = {id = "route_garinham_14", name = "Route next: Garinham east ridge", type = "exit", x = 16, y = 6},
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up"},
+            message = "Auto-walk to Garinham east ridge.",
+            object_id = "route_garinham_14",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local opts_log = env.overworld_plan_opts_log()
+    assert_equal(#opts_log, 1, "overworld planner should be invoked once")
+    assert_equal(opts_log[1].advance_if_at_waypoint, true, "autowalk should opt into already-at-waypoint advance")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_to_object_switches_routes_when_destination_differs()
+    -- Selecting an object whose route differs from the active route should
+    -- start the new route before queuing a segment, so the player doesn't
+    -- silently advance the wrong destination.
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 48,
+        start_y = 41,
+        overworld_active_route_id = "brecconary",
+        overworld_route_for_object = "garinham",
+        overworld_start_result = {message = "Route to Garinham started"},
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham south lane", x = 5, y = 4},
+            index = 1,
+            steps = {"up"},
+            message = "Auto-walk to Garinham south lane.",
+            object_id = "route_garinham_01",
+        },
+    })
+
+    local garinham_obj = {id = "overworld_garinham", name = "Garinham", x = 2, y = 2}
+    env.route_manager.autowalk_to_object(garinham_obj, {speak = true})
+
+    local starts = env.overworld_start_calls()
+    assert_equal(#starts, 1, "differing destination should trigger route switch")
+    assert_equal(starts[1].route_id, "garinham", "switch should target the new route")
+    assert_equal(env.overworld_plan_calls(), 1, "segment planner should still queue after the switch")
+    assert_equal(env.pathfind_calls(), 0, "overworld route switch must not fall through to interior pathfinding")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_to_object_skips_switch_when_same_destination()
+    -- When the selected object's route matches the active route, no switch
+    -- is needed — autowalk should just advance the active route's segment.
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 48,
+        start_y = 41,
+        overworld_active_route_id = "garinham",
+        overworld_route_for_object = "garinham",
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham south lane", x = 5, y = 4},
+            index = 1,
+            steps = {"up"},
+            message = "Auto-walk to Garinham south lane.",
+            object_id = "route_garinham_01",
+        },
+    })
+
+    local garinham_obj = {id = "overworld_garinham", name = "Garinham", x = 2, y = 2}
+    env.route_manager.autowalk_to_object(garinham_obj, {speak = true})
+
+    assert_equal(#env.overworld_start_calls(), 0, "same destination should not call start")
+    assert_equal(env.overworld_plan_calls(), 1, "same-destination autowalk should still plan")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_to_object_reports_start_error_without_planning()
+    -- If the route switch itself errors, autowalk_to_object must surface the
+    -- failure and not call the segment planner.
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 48,
+        start_y = 41,
+        overworld_active_route_id = "brecconary",
+        overworld_route_for_object = "garinham",
+        overworld_start_error = "Unknown overworld route",
+    })
+
+    local garinham_obj = {id = "overworld_garinham", name = "Garinham", x = 2, y = 2}
+    local result = env.route_manager.autowalk_to_object(garinham_obj, {speak = true})
+
+    assert_equal(result.status, "route_start_failed", "failed switch should surface a status")
+    assert_equal(result.ok, false, "failed switch should not report ok")
+    assert_equal(env.overworld_plan_calls(), 0, "failed switch should not invoke the planner")
+    assert_contains(env.outputs[#env.outputs], "Unknown overworld route", "failed switch should be spoken")
 
     env.restore()
 end
