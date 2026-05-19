@@ -125,18 +125,43 @@ chests, and other essential services. Leave unreachable dialogue-only NPCs for
 the polishing phase unless they provide a progression clue, required hint, or
 other gameplay-critical information.
 
-Tomorrow start state for Rimuldar: the Magic Key seller is identified and his
-counter stand is correct, but the entrance-to-key-stand maze is sealed again in
-the current model. The freshest live log after the latest patch reports
-`AUTO_WALK_NO_PATH_DETAIL map=0x0B start=(29,14) target_name=Magic Key Merchant
-goal=(4,6) ... runtime_blocks=0 directional_blocks=72`, followed by repeated
-`AUTO_WALK: no path for Magic Key Merchant`. Bill was moved back to Rimuldar
-`(29,14)`. FCEUX is still intermittently latching `LeftAlt`; do Alt/Escape
-recovery or reload before trusting the next probe. Best next live check:
-retest the only remaining one-cell frontier, `(1,8)->RIGHT` into `(2,8)`,
-after a clean reload/Alt recovery. Do not expose `(2,8)` unless that west
-approach verifies cleanly; one run was mixed 2 moved / 3 blocked, then a harder
-10-attempt run blocked 10/10 while stale Alt kept recurring.
+Rimuldar Magic Key route status: the seller and counter stand are correct, and
+the missing west-side bridge is now identified. Earlier `2026-05-18` work had
+temporarily promoted `(2,8).west` after noisy/misaligned checks, but a clean
+post-recovery verifier disproved it: `probe_edge_verify:1,8,RIGHT,5` moved
+5/5 into `(2,8)`. A single forced-origin raw reverse probe from `(2,8)->LEFT`
+also moved back to `(1,8)`. The patch now exposes `(2,8)` as a Rimuldar
+passthrough, removes the false `(2,8).west` / `(1,8).east` closures, and keeps
+only `(2,8).south` blocked because `(2,9)->UP` still reports the south approach
+closed. The corrected town-tileset route then found one more required
+connector: `(9,10)->LEFT` into `(8,10)` reconfirmed blocked 5/5, but
+`probe_edge_verify:9,10,UP,5` moved 5/5 into `(9,9)`. `map_reader.lua` now
+exposes `(9,9)` as the row-9 connector while keeping `(8,10).east` closed.
+Follow-up raw/probe evidence also confirmed the route corridor west of it:
+forced-origin `(9,9)->LEFT` moved into `(8,9)`, then repeated verifiers showed
+`(8,9)->LEFT`, `(7,9)->LEFT`, `(6,9)->LEFT`, `(5,9)->LEFT`, `(4,9)->LEFT`,
+`(3,9)->LEFT`, `(2,9)->LEFT`, and `(1,9)->UP` each moved 5/5.
+
+The validated live entrance strip is:
+`(1,8)->RIGHT` into `(2,8)` confirmed passable 5/5,
+`(2,8)->RIGHT` into `(3,8)` moved by raw probe,
+`(3,8)->UP` into `(3,7)` confirmed passable 5/5,
+`(3,7)->UP` into `(3,6)` confirmed passable 5/5, and
+`(3,6)->RIGHT` into the key stand `(4,6)` confirmed passable 5/5.
+The running FCEUX script picked up the `(2,8)` bridge after manual reload, then
+live `debug_pathfind_to:4,6` failed at the row-10 frontier until `(9,9)` was
+added. A ROM-backed local A* using the patched files, real ROM, and town
+terrain finds `(29,14)->(4,6)` as a 39-step route while blocking Old Man 1 at
+`(4,7)`. After another manual reload, the live FCEUX autowalk from the town
+entrance `(29,13)` queued 40 steps and reached the Magic Key stand `(4,6)`,
+faced south, held the key merchant, and opened the 53 G Magic Key prompt. Treat
+the early failures in that log as input/state contamination: three attempts
+from `(29,13)` falsely classified `(29,14).north` as blocked after leftover
+teleport/FCEUX bridge input (`Return+RightShift`, later Down/Left/A/B/Start
+bursts). The successful run later moved the same edge and changed the seam
+classification from `blocked_only` to `noisy`. Do not promote `(29,14).north`
+as a blocker. The successful route also had one timing retry at `(2,8)->UP`
+into `(2,7)`; the retry moved, so do not promote `(2,7).south` either.
 
 Current Rimuldar Magic Key route patch in the worktree: `Old Man 1` at `(4,7)`
 is the live-confirmed Magic Key seller, using public stand `(4,6)` facing
@@ -144,8 +169,8 @@ south. The route is a one-way maze, matching the guide warning that the key
 seller is reached by walking around the outside/water edge. `map_reader.lua`
 now includes Rimuldar passthrough cells `(24,6)`, `(19,9)`, `(14,8)`,
 `(13,9)`, `(13,8)`, `(16,8)`, `(1,8)`, `(1,7)`, `(2,7)`, and final maze
-cells `(6,3)`, `(5,3)`, `(5,5)`, `(4,5)`, `(3,5)`, and the bridge-candidate
-cell `(3,7)`, plus the lower
+cells `(6,3)`, `(5,3)`, `(5,5)`, `(4,5)`, `(3,5)`, and the confirmed bridge
+cells `(2,8)`, `(3,7)`, and `(9,9)`, plus the lower
 escape strip `(4,7)`, `(4,8)`, and `(4,9)`, the one-way trap cell `(5,7)`,
 the hidden lower lane `(5,9)`, `(6,7)`, `(6,8)`, `(6,9)`, and `(7,9)`, plus the
 south-side connector `(13,15)` and `(13,16)`, plus the latest manual false-wall
@@ -235,13 +260,13 @@ position `(102,72)`; re-entering from `(102,71)->DOWN` landed at Rimuldar
 does not route through the exit transition as if it were a corridor. The latest
 patch also blocks `(4,3).south`, so the route from the key stand reaches the
 northwest exit through `(5,3)->LEFT` instead of the blocked `(4,4)->UP` seam.
-Older local ROM-backed A* briefly found service-grade routes here, but that
-entrance proof is superseded by later live blockers. Current local ROM-backed
-A* reports no entrance-to-key-stand path with the seller blocking movement; the
-return from the stand to the northwest exit still survives as 5 steps. The old
-east-exit return is geometry-only and tries to walk through the seller, so it
-is intentionally no-path when NPC occupancy is modeled. Starting in the trap
-cell `(5,7)` correctly has no route to the east exit.
+The latest local ROM-backed A* again finds a service-grade entrance route after
+the corrected `(2,8)` bridge patch: `(29,14)->(4,6)` is a 39-step route with
+Old Man 1 at `(4,7)` blocked. The return from the stand to the northwest exit
+still survives as 5 steps. The old east-exit return is geometry-only and tries
+to walk through the seller, so it is intentionally no-path when NPC occupancy
+is modeled. Starting in the trap cell `(5,7)` correctly has no route to the
+east exit.
 Validation after this patch passed `luac`, `test_map_reader.lua`,
 `test_objects.lua`, `test_route_manager.lua`, `test_debug_tools.lua`,
 `git diff --check`, and the ROM-backed route proof above. Manually
@@ -343,11 +368,10 @@ Fresh focused probing showed several tempting cells are pockets or real walls:
 verified 0/5 moved, `(7,9)->UP` into `(7,8)` verified 5/5 passable, but
 forced/current probes from `(7,8)->LEFT`, `(7,7)->LEFT`, and `(7,2)->LEFT`
 each blocked into the x=6 lane. `map_reader.lua` now models `(2,8).south`,
-`(5,8).south`, `(6,8).east`, `(6,7).east`, and `(6,2).east`. The remaining
-one-cell static frontier is `(2,8)` from `(1,8)->RIGHT`, but it is
-contradictory while stale FCEUX `LeftAlt` is active: one verifier was mixed
-2 moved / 3 blocked, then a harder 10-attempt run blocked 10/10. Do not expose
-`(2,8)` until a clean post-reload verifier resolves that west approach.
+`(5,8).south`, `(6,8).east`, `(6,7).east`, and `(6,2).east`. A later clean
+post-recovery verifier resolved the remaining `(1,8)->RIGHT` frontier:
+`probe_edge_verify:1,8,RIGHT,5` moved 5/5 into `(2,8)`, so `(2,8)` is now
+exposed as passthrough and `(2,8).west` must stay open.
 The upper maze seams `(7,3)->LEFT`, `(7,4)->LEFT`, `(7,5)->LEFT`, and
 `(7,6)->LEFT` each verified blocked 5/5, so do not remove the existing east
 approach blockers around `(6,3)`..`(6,6)`.
@@ -363,16 +387,15 @@ route/probe pass: the route reached `(1,5)` and repeatedly blocked east into
 `(2,5)`, then direct verifier classified `(1,5)->RIGHT` confirmed_blocked
 5/5, so `(2,5).west` is now modeled while `(2,5)` remains standable for any
 future non-west approach. The `(3,7)` lead is still valuable map data:
-weighted static search picked `(3,8)->(3,7)->(3,6)`, a forced probe from
-`(3,7)->UP` moved into `(3,6)`, and `map_reader.lua` exposes `(3,7)` while
-keeping `(3,6).south` open. It is not currently a solved entrance route,
-because `(3,8).south` is now closed. Local ROM-backed A* with town terrain and
-Old Man 1 blocking movement now reports no path from `(29,14)` to the Magic
-Key stand `(4,6)`. The return from the stand to the northwest exit still
-survives as 5 steps. Reload FCEUX Lua before the next live autowalk/probe test;
-`input_status` still reports stale `LeftAlt`, so treat the unresolved
-`(1,8)->RIGHT` / `(2,8)` west approach with extra caution until the modifier
-latch is cleared or the emulator is restarted.
+weighted static search picked `(3,8)->(3,7)->(3,6)`, and the follow-up clean
+verifiers proved the complete final approach: `(3,8)->UP`, `(3,7)->UP`, and
+`(3,6)->RIGHT` each moved 5/5. The corrected town-tileset run then reached the
+row-10 frontier and found one more missing connector: `(9,10)->LEFT` into
+`(8,10)` reconfirmed blocked 5/5, but `(9,10)->UP` into `(9,9)` moved 5/5.
+With `(2,8)` and `(9,9)` exposed, local ROM-backed A* with town terrain and Old
+Man 1 blocking movement now finds a 39-step route from `(29,14)` to the Magic
+Key stand `(4,6)`. Reload FCEUX Lua before the next live autowalk test; the
+running script needs to pick up the new `(9,9)` map patch.
 
 Current Kol clue/object patch in the worktree: Woman 2 at `(12,1)` is the bath
 clue NPC and talks from stand `(12,2)` facing north. Local image analysis of

@@ -194,8 +194,13 @@ hidden seams, locked doors, and service interaction tiles.
   `(5,3).east` open unless fresh proof supersedes this: they were
   mixed/passable later, affected by NPC occupancy, or explicitly passable.
 - The entrance route from the town entrance `(29,13)` to the key stand `(4,6)`
-  is not solved yet. Older static proofs were superseded by live route/seam
-  evidence. The newly found northwest exit at `(4,3)` facing north still gives
+  is solved in the patched model after the clean `(2,8)` bridge check and the
+  row-10 `(9,9)` connector check. Older static proofs were superseded by live
+  route/seam evidence, then the final west-side verifier corrected the noisy
+  `(2,8).west` closure:
+  `(1,8)->RIGHT` moved 5/5 into `(2,8)`, and a raw forced-origin reverse probe
+  moved `(2,8)->LEFT` back to `(1,8)`. The newly found northwest exit at
+  `(4,3)` facing north still gives
   a 5-step route from the key stand and is exposed as `Northwest Exit to World
   Map`; the old key-to-east-exit route is geometry-only and invalid while Old
   Man 1 occupies `(4,7)`, because it walks south through the seller. The user
@@ -203,18 +208,27 @@ hidden seams, locked doors, and service interaction tiles.
   evidence says the seller's own `(4,7)` cell blocks movement; `objects.lua`
   now blocks that NPC while keeping the `(4,6)` interaction override. The
   latest frontier pass closes `(3,8).south`, `(2,8).south`, `(5,8).south`,
-  `(6,8).east`, `(6,7).east`, and `(6,2).east`. `(3,7)` remains a modeled
-  hidden cell and `(3,6).south` remains open, but it is not a solved bridge
-  after `(3,8).south` closed. Local ROM-backed A* currently reports no path
-  from `(29,14)` to the key stand with the seller blocking movement. The only
-  one-cell frontier left is noisy `(1,8)->RIGHT` into `(2,8)`: one verifier was
-  mixed, then a harder run blocked 10/10 while stale FCEUX `LeftAlt` was still
-  active. Do not expose `(2,8)` until a clean post-reload verifier resolves
-  that west approach. A later clean trace superseded the earlier
+  `(6,8).east`, `(6,7).east`, and `(6,2).east`; `(2,8).south` stays closed,
+  but `(2,8).west` stays open. The corrected town-tileset live check also
+  reconfirmed `(9,10)->LEFT` into `(8,10)` blocked 5/5, while
+  `(9,10)->UP` into `(9,9)` moved 5/5; `(9,9)` is now the row-9 connector.
+  The row-9 lane west of it is live-confirmed too: forced-origin
+  `(9,9)->LEFT` moved into `(8,9)`, and repeated verifiers showed
+  `(8,9)->LEFT`, `(7,9)->LEFT`, `(6,9)->LEFT`, `(5,9)->LEFT`,
+  `(4,9)->LEFT`, `(3,9)->LEFT`, `(2,9)->LEFT`, and `(1,9)->UP` each moved
+  5/5.
+  The final approach through `(3,8)->UP`,
+  `(3,7)->UP`, and `(3,6)->RIGHT` each verified 5/5 passable. ROM-backed A*
+  with the real ROM now finds a 39-step route from `(29,14)` to the key stand
+  with the seller blocking movement. After manual FCEUX reload, live autowalk
+  from `(29,13)` queued 40 steps, reached `(4,6)`, faced south, and opened the
+  53 G Magic Key prompt. Early failed attempts from the same start were input
+  clutter, not map evidence: `(29,14).north` changed from blocked-only to noisy
+  after the successful run, and `(2,7).south` moved on retry. A later clean trace superseded the earlier
   `(28,13).east` uncertainty, so that approach is now modeled as blocked. If
   the live planner reports no path again, inspect the new
-  `AUTO_WALK_NO_PATH_DETAIL` line and `report_path_state` before patching more
-  map data.
+  `AUTO_WALK_NO_PATH_DETAIL` line and confirm the running Lua has actually
+  reloaded the map patch before patching more map data.
 - `(6,6)` is not a full-cell blocker. It remains walkable from the modeled west
   lane, but the east approach from `(7,6)->LEFT` is a confirmed 3/3 raw verifier
   block. Do not delete `(6,6).east` to fix route planning.

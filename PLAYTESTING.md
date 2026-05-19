@@ -188,17 +188,42 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   false-wall tile from `(4,9)->RIGHT` 5/5, but `(5,9)->UP` into `(5,8)` blocked
   from a forced origin. The upper-left candidate through `(1,4)/(0,5)` also
   failed: `(1,5)->UP` and `(1,5)->LEFT` each blocked 5/5. `(1,6)->LEFT` moved
-  into `(0,6)` and then changed to the world map, so that is an exit-transition
-  clue, not the Magic Key counter route. The later `(2,5)` lead was also
-  stale/noisy: fresh route and direct verifier evidence block
+  into `(0,6)` and changed to world map, so that was exit behavior, not the key
+  stand route.
+
+  Latest clean check (`2026-05-18`):
+  - A post-recovery verifier disproved the noisy `(2,8).west` blocker:
+    `probe_edge_verify:1,8,RIGHT,5` moved 5/5 into `(2,8)`.
+  - A raw forced-origin reverse probe from `(2,8)->LEFT` moved back to `(1,8)`,
+    so do not block `(1,8).east`.
+  - Keep `(2,8).south` closed: `inspect_move:2,9,UP` still reports
+    `approach_blocked=true`.
+  - The corrected town-tileset live route then found one more connector:
+    `(9,10)->LEFT` into `(8,10)` reconfirmed blocked 5/5, while
+    `probe_edge_verify:9,10,UP,5` moved 5/5 into `(9,9)`.
+  - Follow-up row-9 corridor checks matched the route: forced-origin
+    `(9,9)->LEFT` moved into `(8,9)`, then `(8,9)->LEFT`, `(7,9)->LEFT`,
+    `(6,9)->LEFT`, `(5,9)->LEFT`, `(4,9)->LEFT`, `(3,9)->LEFT`,
+    `(2,9)->LEFT`, and `(1,9)->UP` each verified 5/5 passable.
+  - The rest of the key-stand approach is live-confirmed:
+    `(3,8)->UP`, `(3,7)->UP`, and `(3,6)->RIGHT` each verified 5/5 passable.
+  - A ROM-backed local A* using the patched files and real ROM finds a
+    39-step route from `(29,14)` to the key stand `(4,6)` while treating
+    Old Man 1 at `(4,7)` as blocked.
+  - After manual FCEUX reload, live autowalk from the town entrance `(29,13)`
+    queued 40 steps and reached `(4,6)`, faced south, held the merchant, and
+    opened the 53 G Magic Key prompt. The first few failed attempts were input
+    clutter from teleport/FCEUX bridge state, not map evidence: `(29,14).north`
+    changed from 9 blocked observations to `noisy` when the same edge later
+    moved, and `(2,7).south` also moved on retry. Do not promote either edge.
+  The later `(2,5)` lead was also stale/noisy: fresh route and direct verifier
+  evidence block
   `(1,5)->RIGHT` into `(2,5)`, so `(2,5).west` is now modeled while the cell
-  stays standable for other approaches. The `(3,7)` counter-lane lead is not
-  solved after all: live route/seam retries proved `(3,9)->UP` into `(3,8)`
-  blocked 9/9, so `(3,8).south` is now modeled. Follow-up frontier probes also
+  stays standable for other approaches. The `(3,7)` counter-lane lead is solved
+  through the newly exposed `(2,8)` bridge; `(3,9)->UP` into `(3,8)` remains
+  blocked, so `(3,8).south` is still modeled. Follow-up frontier probes also
   close `(2,8).south`, `(5,8).south`, `(6,8).east`, `(6,7).east`, and
-  `(6,2).east`. Local routing currently reports no entrance-to-key-stand path;
-  the remaining one-cell lead is noisy `(1,8)->RIGHT` into `(2,8)`, which needs
-  a clean post-reload verifier before exposing `(2,8)`.
+  `(6,2).east`.
 
 - Swamp Cave interior first-pass orientation is now recorded. External guides
   agree it is a one-floor north/south tunnel to the Rimuldar island, with no

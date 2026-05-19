@@ -952,6 +952,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["4,16"].north, true, "Rimuldar (4,16) should block entry from the north after repeated manual projection loops from (4,15)")
     assert_equal(dirs["8,10"].east, true, "Rimuldar (8,10) should block entry from the east after repeated entrance-route loops from (9,10)")
     assert_equal(dirs["8,10"].north, true, "Rimuldar (8,10) should block entry from the north after repeated lower-lane return loops from (8,9)")
+    assert_open_approach("9,9", "south", "Rimuldar (9,9).south moved 5/5 from (9,10) and must stay open")
     assert_equal(dirs["8,12"].west, true, "Rimuldar (8,12) should block entry from the west after latest entrance-route loop from (7,12)")
     assert_equal(dirs["9,11"].north, true, "Rimuldar (9,11) should block entry from the north after repeated entrance-route loops from (9,10)")
     assert_equal(dirs["9,12"].south, true, "Rimuldar (9,12) should block entry from the south after repeated route loops from (9,13)")
@@ -978,6 +979,8 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["2,5"].west, true, "Rimuldar (2,5) should block entry from the west after fresh route/probe proof from (1,5)")
     assert_equal(dirs["2,7"].west, true, "Rimuldar (2,7) should block entry from the west after repeated route-shaped failures from (1,7)")
     assert_equal(dirs["2,8"].south, true, "Rimuldar (2,8) should block entry from the south after direct verifier from (2,9)")
+    assert_open_approach("2,8", "west", "Rimuldar (2,8).west moved 5/5 after clean recovery and must stay open")
+    assert_open_approach("1,8", "east", "Rimuldar (1,8).east moved on forced-origin reverse probe and must stay open")
     assert_equal(dirs["3,8"].east, true, "Rimuldar (3,8) should block entry from the east after focused verifier from (4,8)")
     assert_equal(dirs["3,8"].south, true, "Rimuldar (3,8) should block entry from the south after repeated route/seam failures from (3,9)")
     assert_equal(dirs["5,8"].south, true, "Rimuldar (5,8) should block entry from the south after direct verifier from (5,9)")
@@ -1433,6 +1436,11 @@ function tests.rimuldar_magic_key_route_bridge_is_passthrough()
     assert_equal(northwest_connector.effective_walkable, true, "Rimuldar (2,7) should be available to A*")
     assert_equal(northwest_connector.reason, "passthrough", "Rimuldar (2,7) should record passthrough as its walkability source")
 
+    local northwest_bridge = env.map_reader.get_walkability_details(0x0B, 2, 8)
+    assert_equal(northwest_bridge.base_walkable, true, "Rimuldar (2,8) should be passable after clean (1,8)->RIGHT verifier proof")
+    assert_equal(northwest_bridge.effective_walkable, true, "Rimuldar (2,8) should be available to A*")
+    assert_equal(northwest_bridge.reason, "passthrough", "Rimuldar (2,8) should record passthrough as its walkability source")
+
     for _, cell in ipairs({
         {"3,4", 3, 4},
         {"4,3", 4, 3},
@@ -1467,6 +1475,7 @@ function tests.rimuldar_magic_key_route_bridge_is_passthrough()
         {"6,9", 6, 9},
         {"7,9", 7, 9},
         {"8,9", 8, 9},
+        {"9,9", 9, 9},
     }) do
         local details = env.map_reader.get_walkability_details(0x0B, cell[2], cell[3])
         assert_equal(details.base_walkable, true, "Rimuldar (" .. cell[1] .. ") should be passable via the lower key-shop return lane")

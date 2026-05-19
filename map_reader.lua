@@ -585,9 +585,14 @@ local MAP_PASSTHROUGH_CELLS = {
     -- blocked from a forced origin, so (5,9) is useful as lane data but is
     -- not the missing key-counter bridge. The later (2,5) lead was a stale /
     -- noisy bridge too: fresh route and probe evidence block westward entry
-    -- from (1,5). The (3,7) lead still proves a standable hidden cell, but
-    -- the south approach into (3,8) is now closed, so it is not yet a solved
-    -- entrance-to-counter route.
+    -- from (1,5). A clean post-recovery edge verifier later corrected the
+    -- last west-side candidate: (1,8)->RIGHT into (2,8) moved 5/5, and a raw
+    -- forced-origin reverse probe from (2,8)->LEFT also moved. This makes
+    -- (2,8) the missing standable false-wall connector into the (3,8)->(3,7)
+    -- turn; keep the lower south approach from (2,9) blocked directionally.
+    -- The corrected town-tileset route then reached the row-10 frontier, where
+    -- (9,10)->LEFT into (8,10) reconfirmed blocked 5/5 but (9,10)->UP into
+    -- (9,9) moved 5/5. Expose only (9,9) here; keep (8,10).east closed.
     [0x0B] = {
         ["1,5"] = true,
         ["1,7"] = true,
@@ -597,6 +602,7 @@ local MAP_PASSTHROUGH_CELLS = {
         ["1,14"] = true,
         ["2,5"] = true,
         ["2,7"] = true,
+        ["2,8"] = true,
         ["2,14"] = true,
         ["3,4"] = true,
         ["3,5"] = true,
@@ -623,6 +629,7 @@ local MAP_PASSTHROUGH_CELLS = {
         ["8,7"] = true,
         ["8,8"] = true,
         ["8,9"] = true,
+        ["9,9"] = true,
         ["13,8"] = true,
         ["13,9"] = true,
         ["13,15"] = true,
@@ -2069,13 +2076,16 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- then closed the candidate south entries into (2,8) and (5,8), plus
         -- the x=7 candidate exits left into (6,8), (6,7), and (6,2). The
         -- (3,8)->(3,7)->(3,6) false-wall turn still keeps (3,7) and
-        -- (3,6).south open, but it is not the solved bridge after
-        -- (3,8).south closed.
+        -- (3,6).south open. A clean post-recovery verifier later proved
+        -- (1,8)->RIGHT into (2,8) 5/5 passable, making this the missing
+        -- west-side bridge while the lower (2,9)->UP approach remains closed.
         -- The lower-lane candidate also self-disproved: (4,8)->RIGHT into
         -- (5,8) blocked 5/5, so do not let A* enter that pocket from the west.
         ["0,5"] = {east = true},
         ["1,4"] = {south = true},
         ["2,5"] = {west = true},
+        -- Block the west approach into (2,7); keep (2,7) itself as a passthrough
+        -- hidden-cell connector.
         ["2,7"] = {west = true},
         ["2,8"] = {south = true},
         ["2,15"] = {south = true, west = true},

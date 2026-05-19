@@ -1085,7 +1085,6 @@ local TITLE = {
 -- Some checks don't need to run every frame; we use this to
 -- spread work across frames.
 local frame_count = 0
-local stale_fceux_keyboard_paused = false
 DW_QOL_STATE = rawget(_G, "DW_QOL_STATE") or {}
 _G.DW_QOL_STATE = DW_QOL_STATE
 DW_QOL_STATE.pending_talk_visit = nil
@@ -5338,21 +5337,7 @@ while true do
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = checked_scan("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
     checked_scan("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
-    -- FCEUX can keep LeftAlt latched after Alt+Tab/window switching. Treat the
-    -- neutral stale-Alt bridge frame as a pause sentinel only: release an
-    -- active auto-step once, then avoid repeated neutral joypad writes while
-    -- the player is trying to recover control. Real bridged directions still
-    -- suppress auto_step as raw input.
-    local stale_fceux_keyboard_this_frame = sim_input and sim_input._stale_fceux_keyboard
-    local stale_fceux_keyboard_only = stale_fceux_keyboard_this_frame and not joypad_has_input(sim_input)
-    local raw_debug_input_this_frame = (sim_input and sim_input._raw and joypad_has_input(sim_input))
-        or stale_fceux_keyboard_only
-    if stale_fceux_keyboard_this_frame then
-        auto_step.cancel_active_step(false, not stale_fceux_keyboard_paused)
-        stale_fceux_keyboard_paused = true
-    else
-        stale_fceux_keyboard_paused = false
-    end
+    local raw_debug_input_this_frame = sim_input and sim_input._raw and joypad_has_input(sim_input)
     if sim_input then
         if emulator_compat.clear_ppu_cache then
             emulator_compat.clear_ppu_cache()
@@ -5366,10 +5351,7 @@ while true do
         -- full tap-to-step hold sequence fires (auto_step reads joypad.read(),
         -- not joypad.set() output, so a bare joypad.set() of a direction would
         -- only turn the character without moving).
-        if stale_fceux_keyboard_only then
-            -- Already handled above. Do not let a stale Alt sentinel become a
-            -- neutral joypad.set() that can overwrite real/manual recovery.
-        elseif sim_input._sweep or sim_input._raw then
+        if sim_input._sweep or sim_input._raw then
             joypad.set(1, sim_input)
         else
             local dir_sim = sim_input.up or sim_input.down or sim_input.left or sim_input.right

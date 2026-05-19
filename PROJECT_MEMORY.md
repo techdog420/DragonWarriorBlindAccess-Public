@@ -581,9 +581,7 @@ Emulator compatibility direction:
   guard. Later northwest-exit routing also promoted `(4,3).south` and
   `(4,4).south`, forcing the key-stand-to-northwest-exit route through
   `(5,3)->LEFT`. `objects.lua` treats the Magic Key seller as movement-blocking
-  again; the interaction override still targets `(4,6)` facing south. Older
-  local A* solved an entrance route, but that proof is superseded by later
-  live blockers; current local A* reports no entrance-to-key-stand path. The
+  again; the interaction override still targets `(4,6)` facing south. The
   stand-to-northwest-exit route still survives as 5 steps. The old east-exit
   return is geometry-only and invalid while the seller occupies `(4,7)`. A
   follow-up route/manual pass adds passthroughs `(1,5)`, `(1,13)`, `(3,9)`,
@@ -641,13 +639,26 @@ Emulator compatibility direction:
   `(1,5)->UP` and `(1,5)->LEFT` each verified blocked 5/5. The later `(2,5)`
   bridge lead was stale/noisy: fresh route and direct verifier evidence block
   `(1,5)->RIGHT`, so `(2,5).west` is modeled while `(2,5)` stays standable for
-  other approaches. The `(3,7)` lead is useful map data but not a solved route:
-  `(3,7)->UP` moved into `(3,6)`, but `(3,8).south` is now closed. The latest
-  frontier closures also model `(2,8).south`, `(5,8).south`, `(6,8).east`,
-  `(6,7).east`, and `(6,2).east`. Local ROM-backed A* currently reports no
-  entrance-to-key-stand path; the only one-cell frontier left is noisy
-  `(1,8)->RIGHT` into `(2,8)`, which needs a clean post-reload verifier before
-  exposing `(2,8)`.
+  other approaches. The `(3,7)` lead is now solved through the corrected
+  `(2,8)` bridge: a clean post-recovery verifier showed `(1,8)->RIGHT` into
+  `(2,8)` moved 5/5, and a forced-origin raw probe showed `(2,8)->LEFT` moved
+  back to `(1,8)`. Keep `(2,8).south` closed because `(2,9)->UP` still blocks,
+  but expose `(2,8)` as a passthrough and do not block `(2,8).west` or
+  `(1,8).east`. The corrected town-tileset live route then found one more
+  connector: `(9,10)->LEFT` into `(8,10)` reconfirmed blocked 5/5, while
+  `(9,10)->UP` into `(9,9)` moved 5/5, so expose `(9,9)` as a passthrough.
+  Follow-up raw/probe checks confirmed the row-9 lane west of it through
+  `(8,9)`, `(7,9)`, `(6,9)`, `(5,9)`, `(4,9)`, `(3,9)`, `(2,9)`, and then
+  `(1,9)->UP` into `(1,8)`. The rest of the stand approach is live-confirmed:
+  `(3,8)->UP`, `(3,7)->UP`, and `(3,6)->RIGHT` each verified 5/5 passable.
+  ROM-backed local A* with the real ROM now finds a 39-step
+  entrance-to-key-stand route from `(29,14)` to `(4,6)` while treating Old Man
+  1 at `(4,7)` as blocked. After manual FCEUX reload, live autowalk from the
+  town entrance `(29,13)` queued 40 steps, reached `(4,6)`, faced south, held
+  Old Man 1, and opened the 53 G Magic Key prompt. Treat the earlier
+  `(29,13)->DOWN` failures and the first `(2,8)->UP` failure as input/timing
+  clutter, not permanent blocker evidence; both later moved in the successful
+  route.
   Suspicious `(6,8)` live behavior should be treated as hidden
   passability, not a full-cell blocker: only the south approach is now modeled.
   Keep `(5,3).east` open for now. The Rimuldar town exit is not the old
