@@ -2005,7 +2005,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- Alt resumed, so the viable return now climbs through the upper
         -- hidden lane instead of the x=6 west approaches.
         ["3,6"] = {north = true, east = true},
-        ["5,6"] = {north = true, west = true},
+        -- (5,6) directional is the systematic entry below ({north,south,west});
+        -- this slot used to repeat it as {north,west} and was silently dropped
+        -- by Lua's last-key-wins rule.
         ["6,4"] = {east = true, north = true, west = true},
         ["6,5"] = {east = true, north = true, west = true},
         ["6,6"] = {east = true},
