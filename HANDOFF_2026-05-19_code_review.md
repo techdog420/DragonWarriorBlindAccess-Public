@@ -87,10 +87,10 @@ Three review findings turned out not to be real bugs after deeper investigation:
 
 ## Open items still on the review board
 
-These were flagged but not addressed. None are urgent; all need a design call from you:
+Updated 2026-05-20 after Codex follow-up cleanup:
 
-- **Tantegel `4,11–4,15`** — pick between the April 18 reopen evidence and the April 23 survey, then update either `MAP_BLOCKED_CELLS` or the directional entries (not both).
-- **Radius-0 waypoint chains.** Most mid-route waypoints have `radius=0`. Any single-tile drift past one silently stalls `observe_position`. Worth either widening default radius or adding a load-time validation that adjacent waypoints are reachable.
-- **Waypoint coordinates aren't validated against `map_reader` walkability at load time.** A typo dropping a waypoint on a tree leaves the user stuck with no diagnostic.
-- **`overworld_routes.observe_position` allocates a fresh `position_key` string per frame.** Cheap, but a 3-int tuple compare would avoid GC pressure under BizHawk's longer-running sessions.
-- **`safety` / `safe` aliases always mean Brecconary** regardless of where the safer destination actually is (e.g. Tantegel after crossing the bridge).
+- **Resolved: terrain-offset propagation.** Route start/status/guidance paths now accept and pass `terrain_offset`, matching autowalk/observe behavior during one-frame town-exit map-id lag.
+- **Resolved: `position_key` allocation.** `overworld_routes.observe_position` now compares cached numeric map/x/y fields instead of concatenating a string each observed frame.
+- **Resolved: `safety` / `safe` alias scope.** `safe` and `safety` are now contextual pseudo-aliases over Brecconary and Tantegel; `town` and `first town` still mean Brecconary.
+- **Still open: Tantegel `4,11–4,15`.** Defer until the upcoming Tantegel locked-door/quest-item mapping pass; clean live evidence should pick between the April 18 reopen evidence and the April 23 survey before changing `MAP_BLOCKED_CELLS` or directional entries.
+- **Still open: radius-0 waypoint chains / waypoint validation.** `map_reader` explicitly skips overworld grids, so true load-time walkability validation against `map_reader` is not available yet. Do not widen radius-0 waypoints blindly; first decide whether to build a real overworld passability/route-validation source or add a narrower route-data diagnostic.

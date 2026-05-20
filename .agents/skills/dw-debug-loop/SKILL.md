@@ -11,7 +11,7 @@ Do not use it for pure static code edits unless the task asks for live Dragon Wa
 ## Context Order
 
 1. Read `AGENTS.md` first.
-2. Read only the top active-resume sections of `session_handoff.md`: Current Focus, Known Good Baseline, Active Blockers / Watch Items, and Best Next Work.
+2. Read only the top active-resume sections of `session_handoff.md`: usually Latest Code Review, Current Emulator Note, and Active Resume. If headings changed, skim only until the active state, watch items, and best next work are clear.
 3. Do not read the entire handoff or archived evidence unless the current task specifically depends on old map decisions.
 4. Read `PLAYTESTING.md` for player-facing gameplay findings.
 5. Use `debug_hooks.txt` or `dw_commands.sh` for exact command names and argument shapes.

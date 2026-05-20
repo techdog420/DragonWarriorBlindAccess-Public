@@ -1419,7 +1419,8 @@ local function plan_object_reachability(obj, opts)
 
     -- On the overworld we intentionally keep object browsing to bearing and
     -- distance. Interior A* is not available or useful there.
-    if maps.is_overworld(map_id, snapshot.terrain_offset) then
+    local terrain_offset = snapshot.terrain_offset
+    if maps.is_overworld(map_id, terrain_offset) then
         return {
             target = obj,
             map_id = map_id,
@@ -2330,15 +2331,18 @@ function M.autowalk_to_object(obj, opts)
         end
     end
     local map_id, px, py = nav.get_position()
-    if maps.is_overworld(map_id, snapshot.terrain_offset) then
+    local terrain_offset = snapshot.terrain_offset
+    if maps.is_overworld(map_id, terrain_offset) then
         -- On the overworld, autowalk follows the active guided route rather
         -- than running interior pathfinding. If the selected object maps to a
         -- different route than the active one, switch routes first so the
         -- caller doesn't silently advance a stale destination.
-        local target_route_id = overworld_routes.route_id_for_object(obj, map_id, px, py)
+        local target_route_id = overworld_routes.route_id_for_object(obj, map_id, px, py, terrain_offset)
         local active_route_id = overworld_routes.active_route_id()
         if target_route_id and target_route_id ~= active_route_id then
-            local started, start_err = overworld_routes.start(target_route_id, map_id, px, py)
+            local started, start_err = overworld_routes.start(target_route_id, map_id, px, py, {
+                terrain_offset = terrain_offset,
+            })
             if not started then
                 debug_tools.info(string.format(
                     "AUTO_WALK: overworld route switch failed for %s reason=%s",

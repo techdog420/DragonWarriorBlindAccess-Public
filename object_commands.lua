@@ -7,6 +7,7 @@ local objects = require "objects"
 local overworld_routes = require "overworld_routes"
 local route_mgr = require "route_manager"
 local tolk = require "tolk"
+local snapshot = require "game_snapshot"
 
 local M = {}
 
@@ -79,7 +80,7 @@ end
 
 local function current_position()
     local map_id, x, y = nav.get_position()
-    return map_id, x, y
+    return map_id, x, y, snapshot.terrain_offset
 end
 
 local function speak_route_event(prefix, info)
@@ -193,8 +194,10 @@ function M.register()
     end)
 
     debug_tools.register_command("start_overworld_route", function(arg)
-        local map_id, x, y = current_position()
-        local info, err = overworld_routes.start(arg, map_id, x, y)
+        local map_id, x, y, terrain_offset = current_position()
+        local info, err = overworld_routes.start(arg, map_id, x, y, {
+            terrain_offset = terrain_offset,
+        })
         if not info then
             debug_tools.error("OVERWORLD_ROUTE: " .. tostring(err))
             tolk.output_interrupt(tostring(err))
@@ -204,8 +207,10 @@ function M.register()
     end)
 
     debug_tools.register_command("route_guidance", function()
-        local map_id, x, y = current_position()
-        local info, err = overworld_routes.guidance_for_object(objects.current_object(), map_id, x, y)
+        local map_id, x, y, terrain_offset = current_position()
+        local info, err = overworld_routes.guidance_for_object(objects.current_object(), map_id, x, y, {
+            terrain_offset = terrain_offset,
+        })
         if not info then
             debug_tools.info("OVERWORLD_ROUTE: event=no_route message=" .. tostring(err))
             tolk.output_interrupt(tostring(err))
@@ -215,8 +220,10 @@ function M.register()
     end)
 
     local function recalculate_route_command()
-        local map_id, x, y = current_position()
-        local info = overworld_routes.recalculate(map_id, x, y)
+        local map_id, x, y, terrain_offset = current_position()
+        local info = overworld_routes.recalculate(map_id, x, y, {
+            terrain_offset = terrain_offset,
+        })
         speak_route_event("OVERWORLD_ROUTE", info)
     end
 
@@ -224,8 +231,10 @@ function M.register()
     debug_tools.register_command("recalculate_overworld_route", recalculate_route_command)
 
     debug_tools.register_command("route_status", function()
-        local map_id, x, y = current_position()
-        speak_route_event("OVERWORLD_ROUTE", overworld_routes.status(map_id, x, y))
+        local map_id, x, y, terrain_offset = current_position()
+        speak_route_event("OVERWORLD_ROUTE", overworld_routes.status(map_id, x, y, {
+            terrain_offset = terrain_offset,
+        }))
     end)
 
     debug_tools.register_command("stop_overworld_route", function()

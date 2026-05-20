@@ -20,7 +20,7 @@ local ROUTES = {
     brecconary = {
         id = "brecconary",
         title = "Brecconary",
-        aliases = {"brecconary", "breconary", "town", "first town", "safety", "safe"},
+        aliases = {"brecconary", "breconary", "town", "first town"},
         target_object_ids = {"overworld_brecconary"},
         destination_maps = {0x08},
         waypoints = {
@@ -649,6 +649,7 @@ local ROUTE_IDS = {
 }
 
 local ROUTE_ALTERNATES = {
+    safety = {"brecconary", "tantegel"},
     kol = {"kol", "kol_rain_shrine", "kol_swamp_cave"},
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave"},
     kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine"},
@@ -673,6 +674,8 @@ for _, id in ipairs(ROUTE_IDS) do
     end
     route.destination_map_lookup = destination_map_lookup
 end
+alias_to_id["safe"] = "safety"
+alias_to_id["safety"] = "safety"
 
 local state = rawget(_G, "DW_OVERWORLD_ROUTE_STATE")
 if type(state) ~= "table" then
@@ -680,7 +683,9 @@ if type(state) ~= "table" then
         active_id = nil,
         next_index = nil,
         warned = {},
-        last_position_key = nil,
+        last_map_id = nil,
+        last_x = nil,
+        last_y = nil,
     }
     _G.DW_OVERWORLD_ROUTE_STATE = state
 end
@@ -789,8 +794,8 @@ local function clamp_next_index(route)
     return index
 end
 
-local function choose_next_index(route, map_id, px, py)
-    if not route or not is_overworld(map_id) or px == nil or py == nil then
+local function choose_next_index(route, map_id, px, py, terrain_offset)
+    if not route or not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
         return 1
     end
 
@@ -811,11 +816,11 @@ local function choose_next_index(route, map_id, px, py)
     return nearest_index
 end
 
-local function route_start_score(route, map_id, px, py)
+local function route_start_score(route, map_id, px, py, terrain_offset)
     if not route then
         return math.huge
     end
-    local index = choose_next_index(route, map_id, px, py)
+    local index = choose_next_index(route, map_id, px, py, terrain_offset)
     local point = route.waypoints[index]
     if not point then
         return math.huge
@@ -823,16 +828,16 @@ local function route_start_score(route, map_id, px, py)
     return distance(px, py, point)
 end
 
-local function choose_best_route_id(ids, map_id, px, py)
+local function choose_best_route_id(ids, map_id, px, py, terrain_offset)
     local fallback = ids and ids[1]
-    if not is_overworld(map_id) or px == nil or py == nil then
+    if not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
         return fallback
     end
 
     local best_id = fallback
     local best_score = nil
     for _, id in ipairs(ids or {}) do
-        local score = route_start_score(ROUTES[id], map_id, px, py)
+        local score = route_start_score(ROUTES[id], map_id, px, py, terrain_offset)
         if best_score == nil or score < best_score then
             best_id = id
             best_score = score
@@ -841,19 +846,19 @@ local function choose_best_route_id(ids, map_id, px, py)
     return best_id
 end
 
-local function choose_start_route_id(id, map_id, px, py)
-    return choose_best_route_id(ROUTE_ALTERNATES[id] or {id}, map_id, px, py)
+local function choose_start_route_id(id, map_id, px, py, terrain_offset)
+    return choose_best_route_id(ROUTE_ALTERNATES[id] or {id}, map_id, px, py, terrain_offset)
 end
 
-local function staging_start_for(id, map_id, px, py)
+local function staging_start_for(id, map_id, px, py, terrain_offset)
     local route = ROUTES[id]
     local staging = route and route.staging
-    if not staging or not is_overworld(map_id) or px == nil or py == nil then
+    if not staging or not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
         return nil
     end
 
     local close_enough = true
-    local start_score = route_start_score(route, map_id, px, py)
+    local start_score = route_start_score(route, map_id, px, py, terrain_offset)
     if staging.max_start_distance and start_score > staging.max_start_distance then
         close_enough = false
     end
@@ -873,7 +878,7 @@ local function staging_start_for(id, map_id, px, py)
         return nil
     end
 
-    local fallback_id = choose_start_route_id(staging.route_id, map_id, px, py)
+    local fallback_id = choose_start_route_id(staging.route_id, map_id, px, py, terrain_offset)
     if not fallback_id or fallback_id == id or not ROUTES[fallback_id] then
         return nil
     end
@@ -931,7 +936,9 @@ local function clear_active_route()
     state.active_id = nil
     state.next_index = nil
     state.warned = {}
-    state.last_position_key = nil
+    state.last_map_id = nil
+    state.last_x = nil
+    state.last_y = nil
 end
 
 local function finish_route(route, point, event)
@@ -969,7 +976,7 @@ local function object_matches_route(route, obj)
     return normalize_label(obj.name) == normalize_label(route.title)
 end
 
-function M.route_id_for_object(obj, map_id, px, py)
+function M.route_id_for_object(obj, map_id, px, py, terrain_offset)
     local matches = {}
     for _, id in ipairs(ROUTE_IDS) do
         local route = ROUTES[id]
@@ -977,7 +984,7 @@ function M.route_id_for_object(obj, map_id, px, py)
             matches[#matches + 1] = id
         end
     end
-    return choose_best_route_id(matches, map_id, px, py)
+    return choose_best_route_id(matches, map_id, px, py, terrain_offset)
 end
 
 local function route_destinations_match(a, b)
@@ -997,13 +1004,15 @@ local function route_destinations_match(a, b)
     return false
 end
 
-function M.start(route_name, map_id, px, py)
+function M.start(route_name, map_id, px, py, opts)
+    opts = opts or {}
+    local terrain_offset = opts.terrain_offset
     local id = normalize_route_id(route_name)
     if not id then
         return nil, "Unknown overworld route"
     end
-    id = choose_start_route_id(id, map_id, px, py)
-    local staging = staging_start_for(id, map_id, px, py)
+    id = choose_start_route_id(id, map_id, px, py, terrain_offset)
+    local staging = staging_start_for(id, map_id, px, py, terrain_offset)
     if staging then
         id = staging.route_id
     end
@@ -1019,10 +1028,12 @@ function M.start(route_name, map_id, px, py)
 
     state.active_id = id
     state.warned = {}
-    state.last_position_key = nil
-    state.next_index = choose_next_index(route, map_id, px, py)
+    state.last_map_id = nil
+    state.last_x = nil
+    state.last_y = nil
+    state.next_index = choose_next_index(route, map_id, px, py, terrain_offset)
 
-    local message = waypoint_status(route, state.next_index, is_overworld(map_id) and px or nil, is_overworld(map_id) and py or nil)
+    local message = waypoint_status(route, state.next_index, is_overworld(map_id, terrain_offset) and px or nil, is_overworld(map_id, terrain_offset) and py or nil)
     if event == "replace" then
         message = "Route changed. " .. message
     elseif event == "recalculate" then
@@ -1051,17 +1062,18 @@ function M.start(route_name, map_id, px, py)
     }
 end
 
-function M.start_for_object(obj, map_id, px, py)
+function M.start_for_object(obj, map_id, px, py, opts)
+    opts = opts or {}
     if not obj then
         return nil, "No object selected"
     end
 
-    local id = M.route_id_for_object(obj, map_id, px, py)
+    local id = M.route_id_for_object(obj, map_id, px, py, opts.terrain_offset)
     if not id then
         return nil, "No guided route for " .. tostring(obj.name or "selected object") .. ". Use O for heading."
     end
 
-    return M.start(id, map_id, px, py)
+    return M.start(id, map_id, px, py, opts)
 end
 
 function M.stop()
@@ -1086,6 +1098,7 @@ end
 
 function M.status(map_id, px, py, opts)
     opts = opts or {}
+    local terrain_offset = opts.terrain_offset
     local route = active_route()
     if not route then
         return {
@@ -1096,27 +1109,31 @@ function M.status(map_id, px, py, opts)
 
     local index = clamp_next_index(route)
     local recalculated = false
-    if opts.recalculate and is_overworld(map_id) and px ~= nil and py ~= nil then
-        local new_route_id = choose_start_route_id(route.id, map_id, px, py)
+    if opts.recalculate and is_overworld(map_id, terrain_offset) and px ~= nil and py ~= nil then
+        local new_route_id = choose_start_route_id(route.id, map_id, px, py, terrain_offset)
         if new_route_id and new_route_id ~= state.active_id then
             state.active_id = new_route_id
             state.warned = {}
             route = active_route()
-            index = choose_next_index(route, map_id, px, py)
+            index = choose_next_index(route, map_id, px, py, terrain_offset)
             state.next_index = index
-            state.last_position_key = nil
+            state.last_map_id = nil
+            state.last_x = nil
+            state.last_y = nil
             recalculated = true
         end
-        local new_index = choose_next_index(route, map_id, px, py)
+        local new_index = choose_next_index(route, map_id, px, py, terrain_offset)
         if new_index ~= index then
             state.next_index = new_index
-            state.last_position_key = nil
+            state.last_map_id = nil
+            state.last_x = nil
+            state.last_y = nil
             index = new_index
             recalculated = true
         end
     end
 
-    local use_position = is_overworld(map_id)
+    local use_position = is_overworld(map_id, terrain_offset)
     local message = waypoint_status(route, index, use_position and px or nil, use_position and py or nil)
     if recalculated or opts.force_recalculate_message then
         message = "Route recalculated. " .. message
@@ -1131,10 +1148,12 @@ function M.status(map_id, px, py, opts)
     }
 end
 
-function M.recalculate(map_id, px, py)
+function M.recalculate(map_id, px, py, opts)
+    opts = opts or {}
     return M.status(map_id, px, py, {
         recalculate = true,
         force_recalculate_message = true,
+        terrain_offset = opts.terrain_offset,
     })
 end
 
@@ -1213,17 +1232,21 @@ function M.plan_next_segment(map_id, px, py, opts)
     }
 end
 
-function M.guidance_for_object(obj, map_id, px, py)
+function M.guidance_for_object(obj, map_id, px, py, opts)
+    opts = opts or {}
     local route = active_route()
     if route then
-        local selected_id = M.route_id_for_object(obj, map_id, px, py)
+        local selected_id = M.route_id_for_object(obj, map_id, px, py, opts.terrain_offset)
         if selected_id and not route_destinations_match(route, ROUTES[selected_id]) then
-            return M.start(selected_id, map_id, px, py)
+            return M.start(selected_id, map_id, px, py, opts)
         end
-        return M.status(map_id, px, py, {recalculate = true})
+        return M.status(map_id, px, py, {
+            recalculate = true,
+            terrain_offset = opts.terrain_offset,
+        })
     end
 
-    return M.start_for_object(obj, map_id, px, py)
+    return M.start_for_object(obj, map_id, px, py, opts)
 end
 
 function M.observe_position(map_id, px, py, terrain_offset)
@@ -1240,11 +1263,12 @@ function M.observe_position(map_id, px, py, terrain_offset)
         return nil
     end
 
-    local position_key = map_id .. ":" .. px .. "," .. py
-    if state.last_position_key == position_key then
+    if state.last_map_id == map_id and state.last_x == px and state.last_y == py then
         return nil
     end
-    state.last_position_key = position_key
+    state.last_map_id = map_id
+    state.last_x = px
+    state.last_y = py
 
     local index = clamp_next_index(route)
     local point = route.waypoints[index]
@@ -1328,7 +1352,9 @@ function M.reset_for_tests()
     state.active_id = nil
     state.next_index = nil
     state.warned = {}
-    state.last_position_key = nil
+    state.last_map_id = nil
+    state.last_x = nil
+    state.last_y = nil
 end
 
 function M._route_for_tests(id)

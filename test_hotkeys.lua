@@ -27,6 +27,8 @@ local function make_env(options)
     local visited_calls = 0
     local route_status_calls = 0
     local route_start_calls = 0
+    local route_status_opts = {}
+    local route_guidance_opts = {}
     local pathability_filter_calls = 0
     local pathability_refresh_calls = 0
     local teleport_modes = {}
@@ -52,6 +54,7 @@ local function make_env(options)
         "config",
         "debug_tools",
         "emulator_compat",
+        "game_snapshot",
         "hotkeys",
         "items",
         "key_combo",
@@ -172,6 +175,12 @@ local function make_env(options)
         }
     end
 
+    package.preload["game_snapshot"] = function()
+        return {
+            terrain_offset = options.snapshot_terrain_offset or 0x00,
+        }
+    end
+
     package.preload["text"] = function()
         return {
             get_full_screen_text = function()
@@ -286,8 +295,9 @@ local function make_env(options)
             is_active = function()
                 return options.route_active == true
             end,
-            status = function()
+            status = function(_, _, _, opts)
                 route_status_calls = route_status_calls + 1
+                route_status_opts[#route_status_opts + 1] = opts or false
                 return options.route_status_info or {
                     message = "Route to Erdrick's Cave. Next: North trail marker, 12 north",
                     log = "event=status route=erdrick waypoint=North trail marker index=5",
@@ -307,7 +317,8 @@ local function make_env(options)
                     refresh = true,
                 }
             end,
-            guidance_for_object = function(obj)
+            guidance_for_object = function(obj, _, _, _, opts)
+                route_guidance_opts[#route_guidance_opts + 1] = opts or false
                 if options.route_active == true and not options.route_guidance_starts_when_active then
                     route_status_calls = route_status_calls + 1
                     return options.route_status_info or {
@@ -408,6 +419,8 @@ local function make_env(options)
         route_start_calls = function()
             return route_start_calls
         end,
+        route_status_opts = route_status_opts,
+        route_guidance_opts = route_guidance_opts,
         route_start_objects = route_start_objects,
         focused_route_ids = focused_route_ids,
         object_refresh_calls = function()
@@ -637,11 +650,12 @@ function tests.blocked_object_hotkey_uses_specific_reason_when_available()
 end
 
 function tests.r_reports_active_route_status_while_movement_blocks_actions()
-    local env = make_env({delay = 0, route_active = true})
+    local env = make_env({delay = 0, route_active = true, snapshot_terrain_offset = 0x00})
 
     env.update({R = true}, {state = "field"}, false, "Wait for movement to finish")
 
     assert_equal(env.route_status_calls(), 1, "R should report active route status while movement is settling")
+    assert_equal(env.route_status_opts[1].terrain_offset, 0x00, "blocked active-route status should pass snapshot terrain_offset")
     assert_equal(env.route_start_calls(), 0, "R should not restart an active route while blocked")
     assert_equal(#env.outputs, 1, "route status should speak without the block message")
     assert_equal(env.outputs[1].message, "Route to Erdrick's Cave. Next: North trail marker, 12 north",
@@ -791,13 +805,14 @@ function tests.route_actions_clear_pending_object_speech_without_speaking_it()
 end
 
 function tests.r_starts_guided_route_from_selected_travel_object()
-    local env = make_env({delay = 0})
+    local env = make_env({delay = 0, snapshot_terrain_offset = 0x00})
 
     env.update({R = true})
 
     assert_equal(env.route_start_calls(), 1, "R should start route guidance from the selected object")
     assert_equal(env.route_status_calls(), 0, "inactive route should start instead of only reporting status")
     assert_equal(env.route_start_objects[1].name, "Erdrick's Cave", "route start should receive the selected object")
+    assert_equal(env.route_guidance_opts[1].terrain_offset, 0x00, "route start should pass snapshot terrain_offset")
     assert_equal(env.object_refresh_calls(), 0, "route start should avoid an immediate object-list rebuild")
     assert_equal(env.object_refresh_request_calls(), 1, "route start should request a deferred route-marker refresh")
     assert_equal(env.focused_route_ids[1], nil, "route start should preserve the selected destination focus")
@@ -812,12 +827,13 @@ function tests.r_starts_guided_route_from_selected_travel_object()
 end
 
 function tests.r_reports_active_route_status_without_restarting()
-    local env = make_env({delay = 0, route_active = true})
+    local env = make_env({delay = 0, route_active = true, snapshot_terrain_offset = 0x00})
 
     env.update({R = true})
 
     assert_equal(env.route_status_calls(), 1, "R should report active route status")
     assert_equal(env.route_start_calls(), 0, "active route status should not restart the route")
+    assert_equal(env.route_guidance_opts[1].terrain_offset, 0x00, "active route status should pass snapshot terrain_offset")
     assert_equal(env.object_refresh_calls(), 0, "active route status should avoid an immediate object-list rebuild")
     assert_equal(env.object_refresh_request_calls(), 0, "active route status should not refresh route markers without a route change")
     assert_equal(env.focused_route_ids[1], nil, "active route status should preserve the selected destination focus")

@@ -28,6 +28,7 @@ local overworld_routes = require "overworld_routes"
 local debug_tools = require "debug_tools"
 local key_combo  = require "key_combo"
 local emulator_compat = require "emulator_compat"
+local snapshot   = require "game_snapshot"
 
 local M = {}
 
@@ -235,7 +236,9 @@ local function speak_route_guidance()
     local map_id, x, y = nav.get_position()
     local info, err
 
-    info, err = overworld_routes.guidance_for_object(objects.current_object(), map_id, x, y)
+    info, err = overworld_routes.guidance_for_object(objects.current_object(), map_id, x, y, {
+        terrain_offset = snapshot.terrain_offset,
+    })
 
     if not info then
         local message = tostring(err or "No guided route for selected object. Use O for heading.")
@@ -254,7 +257,9 @@ end
 local function speak_active_route_status()
     clear_object_nav_speech()
     local map_id, x, y = nav.get_position()
-    local info = overworld_routes.status(map_id, x, y)
+    local info = overworld_routes.status(map_id, x, y, {
+        terrain_offset = snapshot.terrain_offset,
+    })
 
     request_route_object_refresh(info)
     log_route_event("OVERWORLD_ROUTE", info)

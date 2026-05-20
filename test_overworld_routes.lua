@@ -1254,6 +1254,30 @@ function tests.safety_route_starts_from_garinham()
     routes.reset_for_tests()
 end
 
+function tests.safe_alias_is_contextual_near_brecconary()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("safe", 0x01, 48, 41)
+
+    assert_equal(err, nil, "safe alias should resolve")
+    assert_equal(info.route.id, "brecconary", "safe should still mean Brecconary when that is the nearest safety destination")
+    assert_contains(info.message, "Route to Brecconary", "safe route should name the selected safety destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.safe_alias_is_contextual_after_bridge()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("safety", 0x01, 44, 38)
+
+    assert_equal(err, nil, "safety alias should resolve")
+    assert_equal(info.route.id, "tantegel", "safety should route to Tantegel after crossing the bridge toward the castle")
+    assert_contains(info.message, "Route to Tantegel Castle", "safety route should name the contextual destination")
+
+    routes.reset_for_tests()
+end
+
 function tests.unmatched_object_reports_no_guided_route()
     routes.reset_for_tests()
 
@@ -1470,6 +1494,48 @@ function tests.terrain_offset_zero_satisfies_overworld_predicate_when_map_id_lag
 
     assert_equal(err, nil, "terrain_offset=0 should satisfy the overworld predicate")
     assert_equal(segment ~= nil, true, "segment should plan when terrain_offset proves overworld")
+
+    routes.reset_for_tests()
+end
+
+function tests.route_start_uses_terrain_offset_when_map_id_lags()
+    -- Route selection should use the canonical overworld predicate too, not
+    -- only autowalk segment planning.
+    routes.reset_for_tests()
+
+    local info, err = routes.start("kol", 0x08, 81, 1, {terrain_offset = 0x00})
+
+    assert_equal(err, nil, "terrain_offset=0 should let route start treat the frame as overworld")
+    assert_equal(info.route.id, "kol_rain_shrine", "lagging map_id should still choose the nearest Kol variant")
+
+    routes.reset_for_tests()
+end
+
+function tests.route_status_uses_terrain_offset_when_map_id_lags()
+    routes.reset_for_tests()
+
+    routes.start("kol", 0x01, 74, 7)
+    local info = routes.recalculate(0x08, 90, 20, {terrain_offset = 0x00})
+
+    assert_equal(info.route.id, "kol_rain_shrine", "recalculate should honor terrain_offset while map_id lags")
+    assert_contains(info.message, "Rain shrine", "recalculate should choose the local shrine return path")
+
+    routes.reset_for_tests()
+end
+
+function tests.route_guidance_uses_terrain_offset_when_map_id_lags()
+    routes.reset_for_tests()
+    routes.start("cave", 0x01, 30, 32)
+
+    local info = routes.guidance_for_object({
+        id = "overworld_erdrick_s_cave",
+        name = "Erdrick's Cave",
+        x = 28,
+        y = 12,
+    }, 0x08, 48, 41, {terrain_offset = 0x00})
+
+    assert_contains(info.message, "Route recalculated", "route guidance should recalculate on terrain-backed overworld frames")
+    assert_equal(info.object_id, "route_erdrick_03", "same-destination guidance should use current position despite lagging map_id")
 
     routes.reset_for_tests()
 end
