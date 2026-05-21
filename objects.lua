@@ -1004,10 +1004,11 @@ local EXTRA_DOORS = {
     [0x09] = {
         {x=19, y=16, name="East Door", type=M.TYPE_DOOR, id="door_19_16"},
     },
-    -- Map 0x0B: Rimuldar inn / Wings chest door. Live opened-door RAM after
-    -- opening from inside reported the door cell as (22,23), with the player
-    -- standing immediately east at (23,23).
+    -- Map 0x0B: Rimuldar inn / Wings chest doors. Gamer Corner lists the inn
+    -- treasure as behind an outer and inner door; live opened-door RAM confirmed
+    -- (21,21) from the south stand and (22,23) from inside the chest room.
     [0x0B] = {
+        {x=21, y=21, name="Rimuldar Inn Outer Door", type=M.TYPE_DOOR, id="door_21_21"},
         {x=22, y=23, name="Wings Chest Door", type=M.TYPE_DOOR, id="door_22_23"},
     },
     -- Map 0x15: Swamp Cave / Quagmire Cave. Live OPEN probes from both (5,21)

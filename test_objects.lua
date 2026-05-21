@@ -1852,7 +1852,7 @@ function tests.rimuldar_confirmed_services_use_live_counter_stands()
     env.restore()
 end
 
-function tests.rimuldar_exposes_wings_chest_door()
+function tests.rimuldar_exposes_inn_and_wings_chest_doors()
     local env = make_env()
 
     env.set_position(0x0B, 23, 23)
@@ -1866,12 +1866,21 @@ function tests.rimuldar_exposes_wings_chest_door()
     env.objects.next_filter() -- Stairs
     env.objects.next_filter() -- Doors
 
-    assert_equal(env.objects.get_count(), 1, "Rimuldar should expose the pinned Wings chest door")
-    local door = env.objects.current_object()
-    assert_equal(door.id, "door_22_23", "Rimuldar Wings chest door id should match the confirmed coordinate")
-    assert_equal(door.name, "Wings Chest Door", "Rimuldar Wings chest door should have a distinct navigation label")
-    assert_equal(door.x, 22, "Rimuldar Wings chest door x should match opened-door RAM")
-    assert_equal(door.y, 23, "Rimuldar Wings chest door y should match opened-door RAM")
+    assert_equal(env.objects.get_count(), 2, "Rimuldar should expose both inn doors")
+    local by_id = {}
+    for _, door in ipairs(env.objects.get_objects({filtered = true})) do
+        by_id[door.id] = door
+    end
+    local outer = by_id.door_21_21
+    assert_equal(outer ~= nil, true, "Rimuldar inn outer door should be listed")
+    assert_equal(outer.name, "Rimuldar Inn Outer Door", "Rimuldar inn outer door should have a distinct navigation label")
+    assert_equal(outer.x, 21, "Rimuldar inn outer door x should match opened-door RAM")
+    assert_equal(outer.y, 21, "Rimuldar inn outer door y should match opened-door RAM")
+    local inner = by_id.door_22_23
+    assert_equal(inner ~= nil, true, "Rimuldar Wings chest door should be listed")
+    assert_equal(inner.name, "Wings Chest Door", "Rimuldar Wings chest door should have a distinct navigation label")
+    assert_equal(inner.x, 22, "Rimuldar Wings chest door x should match opened-door RAM")
+    assert_equal(inner.y, 23, "Rimuldar Wings chest door y should match opened-door RAM")
 
     env.restore()
 end

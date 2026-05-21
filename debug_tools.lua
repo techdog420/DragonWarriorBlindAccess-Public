@@ -36,7 +36,8 @@
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
 --   export_blocks        -- format all recorded blocked moves as MAP_BLOCKED_CELLS Lua entries
---   sweep_map            -- start systematic walkability sweep of current map
+--   sweep_map            -- legacy systematic walkability sweep of current map
+--   crawl_map_frontier   -- review-only frontier crawl for candidate map data
 --   stop_sweep           -- cancel active sweep
 --   Lines beginning with ; are treated as comments and ignored.
 

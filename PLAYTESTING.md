@@ -223,24 +223,44 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     clue: four steps south of the bath is a magic item.
   - Practical Rimuldar verdict: all player-facing services and useful clue NPCs
     have enough live coverage for now. Leave full dialogue-only NPC route
-    validation for optional polish. The first locked inn / Wings chest door is
-    pinned at `(22,23)`: after the user opened it from inside,
-    `report_door_state` reported opened-door slot `(22,23)` while Bill stood at
-    `(23,23)`, and the tile still decoded as ordinary type-6 floor. The model
-    now gates that cell as a magic-key door until opened-door RAM lists it; the
-    nearby Wings chest object is `chest_7` at `(24,23)`. Important correction:
-    the walk-out route from the opened door pocket is still unresolved. Clean
-    FCEUX movement proved `(13,18)` is a real false-wall connector from
-    `(13,19)` to the public side and back, but later corrected blocker work
-    showed it is not currently reachable from `(23,23)`. The row-22 branch is
-    real but dead-ended, and the lower row-25 hidden strip is real but isolated.
-    The apparent `(21,23)->DOWN` throat into `(21,24)` moved only from a fresh
-    forced origin; every legitimate door-side approach blocked there, raw held
-    DOWN did not move, and OPEN while facing south reported "There is no door
-    here." The final parked-NPC survey from `(23,23)` to `exit_29_13` reports
-    `path_found=false`, `blocked_events=0`, and `reason=no_path`. Do not treat
-    `(13,18)` as the Wings-room escape until a real access point is found. Do
+    validation for optional polish. The inn / Wings chest pocket has two
+    confirmed magic-key doors: the outer door at `(21,21)` and the inner Wings
+    chest door at `(22,23)`. The inner door was pinned first from opened-door
+    RAM while Bill stood at `(23,23)`; the phantom outer door was later found
+    by opening from `(21,22)` facing north, after which `report_door_state`
+    reported `slots=0=(22,23) 1=(21,21)` and
+    `probe_edge_verify:21,22,UP,3` moved 3/3 through the opened door. The model
+    now gates both floor-decoding cells as magic-key doors until opened-door
+    RAM lists them; the nearby Wings chest object is `chest_7` at `(24,23)`.
+    Clean FCEUX movement proved `(13,18)` is a real false-wall connector from
+    `(13,19)` to the public side and back, but it is not the Wings-room escape.
+    The lower row-25 hidden strip is real but isolated. The apparent
+    `(21,23)->DOWN` throat into `(21,24)` moved only from a fresh forced
+    origin; every legitimate door-side approach blocked there, raw held DOWN
+    did not move, and OPEN while facing south reported "There is no door here."
+    The earlier no-path from `(23,23)` to `exit_29_13` was missing the outer
+    door and should not be treated as current route truth. Do
     not promote `(19,25).east`; that verifier was NPC-contaminated.
+    Later door-side retesting explains the current no-route behavior around
+    `(22,23)`: with opened-door RAM empty, `(22,24)->UP` into `(22,23)` and
+    `(21,22)->UP` into `(21,21)` both inspect as `door_closed`, while
+    user confirmation explains the empty slots: at least in Rimuldar, leaving
+    the map closes opened magic-key doors and reopening them costs another key.
+    Treat the inn doors as map-entry session state, not permanently unlocked
+    doors. The direct north edge
+    `(22,22)->UP` into `(22,21)` is a real directional wall
+    (`probe_edge_verify:22,22,UP,3` blocked 3/3). After the user got north of
+    that wall, exit autowalk exposed two clean blockers now modeled as
+    directional-only seams: `(16,19).south` and `(17,19).south`. Do not promote
+    `(17,19).east` (mixed 1 moved / 2 blocked), `(21,24).south` (moved 3/3),
+    or `(15,24).south` (mixed 1 moved / 2 blocked).
+    A later manual/autowalk mix reached the outer door route network and did
+    leave town once: the log changed to World Map after stepping
+    `(28,16)->RIGHT` into `(29,16)`. Since the clean current planner route to
+    the modeled exit `(29,13)` does not use `(29,16)`, `(29,16).west` is now a
+    transition guard, not a corridor seam. The user believes the throne-room
+    door stays open after unlocking; keep that as a possible special case, not
+    a contradiction of Rimuldar doors resetting after map leave.
   The later `(2,5)` lead was also stale/noisy: fresh route and direct verifier
   evidence block
   `(1,5)->RIGHT` into `(2,5)`, so `(2,5).west` is now modeled while the cell

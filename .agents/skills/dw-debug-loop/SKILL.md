@@ -41,6 +41,60 @@ Avoid archived handoffs unless investigating old map-data decisions.
 
 Prefer short, evidence-driven loops over large queued command batches.
 
+## Target Blocker Harvest Loop
+
+Use this pattern when the user asks to make a specific target reachable, when
+autowalk loops near a target, or when a planner route exists but live movement
+keeps discovering hidden blockers.
+
+Inputs:
+- Current map/position, confirmed with `report_position`.
+- Target coordinate or current selected object.
+- Any state assumptions such as doors open, NPCs parked, or manual reload done.
+
+Loop:
+1. Confirm baseline with `report_position`, `report_door_state` if doors matter,
+   and `report_runtime_blocks`.
+2. Try the route:
+   - Coordinate target: `auto_walk:X,Y`.
+   - Selected object: `pathfind` or `auto_walk`.
+   - If NPC occupancy may hide the route, compare `debug_pathfind_to:X,Y` with
+     `debug_pathfind_to_skip_npcs:X,Y`.
+3. Let autowalk run long enough to accumulate seam evidence, then stop with
+   `stop_auto_walk report_position report_runtime_blocks`.
+4. Read recent `dw_debug.log` and extract candidates from repeated
+   `SEAM_OBSERVATION ... classification=blocked_only`,
+   `SEAM_BRUTE_FORCE`, and `PATH_RUNTIME_BLOCK`.
+5. Directly verify candidates with `probe_edge_verify:X,Y,DIR,5`.
+6. Promote only clean verifier results:
+   - `classification=confirmed_blocked`
+   - `moved=0 blocked=5`
+   - no drift, map change, interrupt, or NPC/state contamination.
+7. Immediately inject confirmed blockers with `add_blocked_edge:X,Y,DIR`, then
+   re-run planner/autowalk from the same side.
+8. Record confirmed, mixed, and contaminated findings in
+   `work_notes/current_investigation.md`.
+
+When the route collapses:
+- Run both normal and skip-NPC path debug from each side.
+- Bracket the reachable component by querying intermediate targets along the
+  last known route.
+- Look for one-way seams: if reverse succeeds but forward fails, inspect the
+  reverse path and test the corresponding forward entries.
+- Treat hidden passthrough candidates separately: live movement into a decoded
+  wall can justify a passthrough only when repeated movement and onward route
+  evidence are clean enough. Leave mixed hidden-cell evidence as suspicious,
+  not promoted.
+
+Stop when:
+- the target is reached,
+- planner and skip-NPC planner both collapse with no clear next bridge,
+- emulator/script state is stale or contaminated,
+- the user asks to stop,
+- about an hour has elapsed,
+- or a good batch of verified blockers has been collected and should be
+  patched/tested before continuing.
+
 ## Investigation versus Wrap-up
 
 When this skill is invoked for exploratory route/pathfinding work, stay in investigation mode until a stop condition is reached.

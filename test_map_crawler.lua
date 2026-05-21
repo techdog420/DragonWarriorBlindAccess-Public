@@ -1,0 +1,703 @@
+-- test_map_crawler.lua
+-- Focused unit tests for the review-only frontier crawler.
+
+local original_preload = {}
+local original_loaded = {}
+local original_memory = _G.memory
+local original_and = _G.AND
+
+local function save_module(name)
+    original_preload[name] = package.preload[name]
+    original_loaded[name] = package.loaded[name]
+end
+
+local function restore_modules(names)
+    for _, name in ipairs(names) do
+        package.preload[name] = original_preload[name]
+        package.loaded[name] = original_loaded[name]
+    end
+end
+
+local function shallow_copy(tbl)
+    local copy = {}
+    for k, v in pairs(tbl or {}) do
+        copy[k] = v
+    end
+    return copy
+end
+
+local function make_env(options)
+    options = options or {}
+    local logs = {}
+    local outputs = {}
+    local subscribers = {}
+    local route_active = false
+    local injects = {}
+    local cancellations = {}
+    local record_block_calls = 0
+    local nav_map_id = options.map_id or 0x0B
+    local nav_x = options.x or 5
+    local nav_y = options.y or 5
+    local npc_bytes = {
+        [0x00C5] = options.hp or 30,
+        [0x0016] = options.terrain or 0x10,
+    }
+    local module_names = {
+        "addresses",
+        "auto_step",
+        "debug_tools",
+        "event_bus",
+        "map_crawler",
+        "map_reader",
+        "maps",
+        "navigation",
+        "tolk",
+    }
+
+    for _, name in ipairs(module_names) do
+        save_module(name)
+        package.loaded[name] = nil
+    end
+
+    if options.npc_bytes then
+        for address, value in pairs(options.npc_bytes) do
+            npc_bytes[address] = value
+        end
+    end
+
+    _G.AND = function(a, b)
+        local result = 0
+        local bit = 1
+        a = tonumber(a) or 0
+        b = tonumber(b) or 0
+        while a > 0 and b > 0 do
+            if (a % 2 == 1) and (b % 2 == 1) then
+                result = result + bit
+            end
+            a = math.floor(a / 2)
+            b = math.floor(b / 2)
+            bit = bit * 2
+        end
+        return result
+    end
+
+    _G.memory = {
+        readbyte = function(address)
+            return npc_bytes[address] or 0
+        end,
+        writebyte = function(address, value)
+            npc_bytes[address] = value
+        end,
+    }
+
+    package.preload["addresses"] = function()
+        return {
+            NPC_COUNT = 20,
+            NPC_DATA_START = 0x0051,
+            NPC_ENTRY_SIZE = 3,
+            CURRENT_HP = 0x00C5,
+            TERRAIN_OFFSET = 0x0016,
+        }
+    end
+
+    package.preload["debug_tools"] = function()
+        return {
+            DEBUG_MODE = true,
+            info = function(msg) logs[#logs + 1] = tostring(msg) end,
+            debug = function(msg) logs[#logs + 1] = tostring(msg) end,
+            error = function(msg) logs[#logs + 1] = tostring(msg) end,
+            record_block = function()
+                record_block_calls = record_block_calls + 1
+            end,
+        }
+    end
+
+    package.preload["tolk"] = function()
+        return {
+            output_interrupt = function(msg)
+                outputs[#outputs + 1] = tostring(msg)
+            end,
+        }
+    end
+
+    package.preload["event_bus"] = function()
+        return {
+            subscribe = function(event_name, fn)
+                if not subscribers[event_name] then
+                    subscribers[event_name] = {}
+                end
+                subscribers[event_name][#subscribers[event_name] + 1] = fn
+                return #subscribers[event_name]
+            end,
+            publish = function(event_name, data)
+                for _, fn in ipairs(subscribers[event_name] or {}) do
+                    fn(data)
+                end
+            end,
+        }
+    end
+
+    package.preload["navigation"] = function()
+        return {
+            get_position = function()
+                return nav_map_id, nav_x, nav_y
+            end,
+        }
+    end
+
+    package.preload["maps"] = function()
+        return {
+            WORLD_MAP_ID = 0x01,
+            is_overworld = function(map_id, terrain)
+                return options.overworld == true or map_id == 0x01 or terrain == 0x00
+            end,
+        }
+    end
+
+    package.preload["auto_step"] = function()
+        return {
+            inject_step = function(dir)
+                injects[#injects + 1] = dir
+                if options.inject_refuse then
+                    return false
+                end
+                route_active = true
+                return true
+            end,
+            is_route_active = function()
+                return route_active
+            end,
+            cancel_active_step = function(clear_queued_route, force_release)
+                cancellations[#cancellations + 1] = {
+                    clear_queued_route = clear_queued_route,
+                    force_release = force_release,
+                }
+                route_active = false
+            end,
+        }
+    end
+
+    package.preload["map_reader"] = function()
+        local width = options.width or 10
+        local height = options.height or 10
+        local details = options.details or {}
+        local hazards = options.hazards or {}
+        local doors = options.doors or {}
+        local default_walkable = options.default_walkable
+        if default_walkable == nil then default_walkable = true end
+        return {
+            get_tile_grid = function()
+                return {}
+            end,
+            get_map_dimensions = function()
+                return width, height
+            end,
+            is_hazard_cell = function(_, x, y)
+                return hazards[x .. "," .. y] == true
+            end,
+            get_door_cell_context = function(_, x, y)
+                local door = doors[x .. "," .. y]
+                if not door then return nil end
+                local copy = shallow_copy(door)
+                copy.is_door = true
+                copy.x = x
+                copy.y = y
+                copy.door_x = copy.door_x or x
+                copy.door_y = copy.door_y or y
+                return copy
+            end,
+            get_walkability_details = function(_, x, y)
+                if x < 0 or y < 0 or x >= width or y >= height then
+                    return {
+                        effective_walkable = false,
+                        permanent_blocked = false,
+                        reason = "out_of_bounds",
+                    }
+                end
+                local door = doors[x .. "," .. y]
+                if door then
+                    return {
+                        effective_walkable = door.open == true,
+                        permanent_blocked = false,
+                        reason = door.open and "door_open" or "door_closed",
+                        tile_type = door.tile_type or 6,
+                    }
+                end
+                local detail = details[x .. "," .. y]
+                if detail then
+                    local copy = shallow_copy(detail)
+                    if copy.effective_walkable == nil then
+                        copy.effective_walkable = copy.permanent_blocked ~= true
+                    end
+                    if copy.permanent_blocked == nil then
+                        copy.permanent_blocked = false
+                    end
+                    return copy
+                end
+                return {
+                    effective_walkable = default_walkable,
+                    permanent_blocked = default_walkable ~= true,
+                    reason = "tile_type",
+                    tile_type = 1,
+                }
+            end,
+        }
+    end
+
+    local crawler = require "map_crawler"
+    local bus = require "event_bus"
+
+    return {
+        crawler = crawler,
+        logs = logs,
+        outputs = outputs,
+        injects = injects,
+        cancellations = cancellations,
+        record_block_calls = function() return record_block_calls end,
+        set_hp = function(value) npc_bytes[0x00C5] = value end,
+        set_position = function(map_id, x, y)
+            nav_map_id = map_id or nav_map_id
+            nav_x = x or nav_x
+            nav_y = y or nav_y
+        end,
+        tick = function(can_walk)
+            crawler.tick(can_walk ~= false)
+        end,
+        publish_blocked = function(dir, from_x, from_y)
+            route_active = false
+            bus.publish("route_blocked", {
+                from_x = from_x or nav_x,
+                from_y = from_y or nav_y,
+                dir = dir,
+                source = "inject_step",
+            })
+        end,
+        publish_step = function(dir, from_x, from_y, to_x, to_y, new_map_id)
+            route_active = false
+            nav_map_id = new_map_id or nav_map_id
+            nav_x = to_x
+            nav_y = to_y
+            bus.publish("route_step_completed", {
+                from_x = from_x,
+                from_y = from_y,
+                dir = dir,
+                to_x = to_x,
+                to_y = to_y,
+                source = "inject_step",
+            })
+        end,
+        read_npc_slot = function(slot)
+            local base = 0x0051 + slot * 3
+            return npc_bytes[base] or 0, npc_bytes[base + 1] or 0, npc_bytes[base + 2] or 0
+        end,
+        restore = function()
+            restore_modules(module_names)
+            _G.memory = original_memory
+            _G.AND = original_and
+        end,
+    }
+end
+
+local function assert_equal(actual, expected, message)
+    if actual ~= expected then
+        error(string.format("%s: expected %s, got %s", message, tostring(expected), tostring(actual)), 2)
+    end
+end
+
+local function assert_contains(haystack, needle, message)
+    if not string.find(haystack, needle, 1, true) then
+        error(string.format("%s: missing %s in %s", message, needle, haystack), 2)
+    end
+end
+
+local function assert_not_contains(haystack, needle, message)
+    if string.find(haystack, needle, 1, true) then
+        error(string.format("%s: unexpected %s in %s", message, needle, haystack), 2)
+    end
+end
+
+local function count_occurrences(haystack, needle)
+    local count = 0
+    local pos = 1
+    while true do
+        local found = string.find(haystack, needle, pos, true)
+        if not found then
+            return count
+        end
+        count = count + 1
+        pos = found + #needle
+    end
+end
+
+local tests = {}
+
+function tests.mobile_npcs_are_parked_and_restored_while_stationary_npcs_stay()
+    local env = make_env({
+        npc_bytes = {
+            [0x0051] = 10, [0x0052] = 10, [0x0053] = 2,
+            [0x0054] = 7,  [0x0055] = 5,  [0x0056] = 0,
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    local mob0, mob1, mob2 = env.read_npc_slot(0)
+    local stat0, stat1, stat2 = env.read_npc_slot(1)
+    assert_equal(mob0 % 32, 31, "mobile NPC x should be parked")
+    assert_equal(mob1 % 32, 31, "mobile NPC y should be parked")
+    assert_equal(mob2, 2, "mobile movement byte should be preserved")
+    assert_equal(stat0, 7, "stationary NPC x byte should stay in place")
+    assert_equal(stat1, 5, "stationary NPC y byte should stay in place")
+    assert_equal(stat2, 0, "stationary NPC movement byte should stay zero")
+
+    env.crawler.stop()
+    mob0, mob1, mob2 = env.read_npc_slot(0)
+    assert_equal(mob0, 10, "mobile NPC x should restore")
+    assert_equal(mob1, 10, "mobile NPC y should restore")
+    assert_equal(mob2, 2, "mobile movement byte should restore")
+
+    env.restore()
+end
+
+function tests.abort_on_low_hp_restores_parked_npcs()
+    local env = make_env({
+        npc_bytes = {
+            [0x0051] = 10, [0x0052] = 10, [0x0053] = 2,
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "low HP test should have an active probe before abort")
+    env.set_hp(8)
+    env.tick(true)
+    local b0, b1, b2 = env.read_npc_slot(0)
+    assert_equal(#env.cancellations, 1, "low HP abort should cancel the active step")
+    assert_equal(env.cancellations[1].force_release, true, "low HP abort should force input release")
+    assert_equal(b0, 10, "low HP abort should restore mobile NPC x")
+    assert_equal(b1, 10, "low HP abort should restore mobile NPC y")
+    assert_equal(b2, 2, "low HP abort should restore mobile NPC movement")
+    assert_equal(env.crawler.is_active(), false, "crawler should stop after low HP abort")
+
+    env.restore()
+end
+
+function tests.manual_stop_force_releases_active_step()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should be active")
+    env.crawler.stop()
+    assert_equal(#env.cancellations, 1, "manual stop should cancel auto_step")
+    assert_equal(env.cancellations[1].clear_queued_route, true, "manual stop should clear queued route")
+    assert_equal(env.cancellations[1].force_release, true, "manual stop should force input release")
+
+    env.restore()
+end
+
+function tests.false_wall_movement_exports_passthrough_candidate()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should go north")
+    env.publish_step("up", 5, 5, 5, 4)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=false_wall_candidate", "false wall movement should be classified")
+    assert_contains(joined, "MAP_CRAWL_EXPORT_PASSTHROUGH map=0x0B line='[\"5,4\"] = true,'",
+        "false wall movement should export passthrough")
+    assert_equal(env.record_block_calls(), 0, "crawler should not write legacy block records")
+
+    env.restore()
+end
+
+function tests.modeled_floor_block_exports_directional_candidate()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=2,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=directional_block_candidate", "open modeled floor block should be classified")
+    assert_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL map=0x0B line='[\"5,4\"] = {south = true},'",
+        "open modeled floor block should export directional approach")
+    assert_equal(env.record_block_calls(), 0, "crawler should not write legacy block records")
+
+    env.restore()
+end
+
+function tests.mixed_probe_stays_diagnostic_and_exports_nothing()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=2,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+    env.tick(true)
+    env.publish_step("up", 5, 5, 5, 4)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=mixed_probe", "blocked then moved edge should stay mixed")
+    assert_contains(joined, "no_review_candidates=true", "mixed probe should not export candidates")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_PASSTHROUGH", "mixed probe should not export passthrough")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL", "mixed probe should not export directional block")
+
+    env.restore()
+end
+
+function tests.hazard_destination_is_skipped_without_injection()
+    local env = make_env({
+        hazards = {["5,4"] = true},
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(#env.injects, 0, "hazard destination should not be probed")
+    assert_contains(joined, "class=hazard_skipped", "hazard skip should be logged")
+
+    env.restore()
+end
+
+function tests.boundary_destination_is_logged_without_leaving_map()
+    local env = make_env({
+        y = 1,
+        details = {
+            ["5,0"] = {effective_walkable = false, permanent_blocked = false, reason = "engine_boundary", tile_type = 2},
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(#env.injects, 0, "engine boundary destination should not be probed")
+    assert_contains(joined,
+        "MAP_CRAWL_EDGE run=1 map=0x0B index=1 from=(5,1) dir=up dest=(5,0) class=boundary_frontier",
+        "boundary should be logged against the active crawl run and map")
+    assert_contains(joined, "note=destination_boundary", "boundary log should explain the skip")
+
+    env.restore()
+end
+
+function tests.boundary_from_false_wall_origin_removes_passthrough_candidate()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+            ["5,3"] = {effective_walkable = false, permanent_blocked = false, reason = "engine_boundary", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=10"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should discover false wall")
+    env.publish_step("up", 5, 5, 5, 4)
+    env.tick(true)
+    assert_equal(env.injects[2], "down", "unstable boundary-origin cell should backtrack instead of probing sideways")
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=false_wall_candidate", "false wall movement should first be classified")
+    assert_contains(joined, "class=boundary_frontier", "boundary from the false-wall cell should be classified")
+    assert_contains(joined, "MAP_CRAWL_UNSTABLE_CANDIDATE map=0x0B cell=(5,4) reason=origin_boundary_frontier",
+        "boundary-frontier origin should mark the prior passthrough candidate unstable")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_PASSTHROUGH map=0x0B line='[\"5,4\"] = true,'",
+        "unstable boundary-adjacent false-wall cell should not export as a normal passthrough")
+
+    env.restore()
+end
+
+function tests.return_to_frontier_completion_does_not_ping_pong()
+    local env = make_env({
+        doors = {
+            ["5,3"] = {open = false, door_x = 5, door_y = 3},
+            ["4,4"] = {open = false, door_x = 4, door_y = 4},
+            ["6,4"] = {open = false, door_x = 6, door_y = 4},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=10"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should discover the northern cell")
+    env.publish_step("up", 5, 5, 5, 4)
+
+    env.tick(true)
+    assert_equal(env.injects[2], "down", "known parent edge should be probed from child")
+    env.publish_step("down", 5, 4, 5, 5)
+
+    env.tick(true)
+    assert_equal(env.injects[3], "up", "crawler should return to the child frontier")
+    env.publish_step("up", 5, 5, 5, 4)
+
+    env.tick(true)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(count_occurrences(joined, "kind=return_to_frontier"), 1,
+        "completed frontier return should not schedule a ping-pong return")
+    assert_contains(joined, "kind=backtrack", "crawler should resume DFS backtracking after frontier return")
+
+    env.restore()
+end
+
+function tests.unexpected_landing_aborts_without_promoting_candidate()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=10"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should start")
+    env.publish_step("up", 5, 5, 5, 6)
+    assert_equal(env.crawler.is_active(), false, "unexpected landing should stop crawler")
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=movement_drift", "unexpected landing should be diagnostic")
+    assert_contains(joined, "reason=movement_drift", "unexpected landing should finish as movement drift")
+    assert_contains(joined, "no_review_candidates=true", "movement drift should not export passthroughs")
+
+    env.restore()
+end
+
+function tests.pending_return_origin_drift_aborts_before_injection()
+    local env = make_env({
+        doors = {
+            ["5,3"] = {open = false, door_x = 5, door_y = 3},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=10"), true, "crawler should start")
+    env.tick(true)
+    env.publish_step("up", 5, 5, 5, 4)
+    env.tick(true)
+    env.publish_step("down", 5, 4, 5, 5)
+    env.set_position(0x0B, 5, 6)
+    local before = #env.injects
+    env.tick(true)
+    assert_equal(env.crawler.is_active(), false, "pending return origin drift should stop crawler")
+    assert_equal(#env.injects, before, "origin drift should abort before injecting another step")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=position_drift", "pending return origin drift should be logged")
+    assert_contains(joined, "note=start_edge_position_mismatch", "position drift should explain start-edge mismatch")
+
+    env.restore()
+end
+
+function tests.map_change_records_transition_and_stops()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=10"), true, "crawler should start")
+    env.tick(true)
+    env.publish_step("up", 5, 5, 102, 72, 0x01)
+    assert_equal(env.crawler.is_active(), false, "map transition should stop crawler")
+    assert_equal(env.crawler.report(), 1, "default report should use latest crawl map after transition")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=transition_candidate", "map change should record transition")
+    assert_contains(joined, "reason=map_change", "map change should finish crawl")
+    assert_contains(joined, "MAP_CRAWL_SUMMARY map=0x0B edges=1", "post-transition report should not default to world map")
+
+    env.restore()
+end
+
+function tests.tick_detected_map_change_records_active_transition_before_finish()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=10"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should start")
+    env.set_position(0x01, 102, 72)
+    env.tick(true)
+    assert_equal(env.crawler.is_active(), false, "tick-detected map transition should stop crawler")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=transition_candidate", "tick-detected map change should record active edge")
+    assert_contains(joined, "reason=map_change edges=1", "map-change finish should retain transition edge")
+
+    env.restore()
+end
+
+function tests.closed_door_is_reported_without_probe()
+    local env = make_env({
+        doors = {
+            ["5,4"] = {open = false, door_x = 5, door_y = 4, open_slots = {"0:1,1"}},
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(#env.injects, 0, "closed door should not be probed")
+    assert_contains(joined, "class=door_frontier", "closed door should be a frontier")
+    assert_contains(joined, "door=(5,4) open=false", "closed door log should include RAM/open-state context")
+
+    env.restore()
+end
+
+function tests.open_door_is_crawled_with_door_context()
+    local env = make_env({
+        doors = {
+            ["5,4"] = {open = true, door_x = 5, door_y = 4, open_slots = {"0:5,4"}},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "open door should be probed")
+    env.publish_step("up", 5, 5, 5, 4)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=open_door_passage", "open door movement should be classified")
+    assert_contains(joined, "door=(5,4) open=true", "open door log should include RAM/open-state context")
+
+    env.restore()
+end
+
+function tests.stationary_npc_blocks_cell_without_geometry_candidate()
+    local env = make_env({
+        npc_bytes = {
+            [0x0051] = 5, [0x0052] = 4, [0x0053] = 0,
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(#env.injects, 0, "stationary NPC destination should not be probed")
+    assert_contains(joined, "class=stationary_npc_blocked", "stationary NPC block should be logged")
+    assert_contains(joined, "no_review_candidates=true", "stationary NPC block should not export geometry")
+
+    env.restore()
+end
+
+function tests.overworld_crawl_is_refused()
+    local env = make_env({overworld = true})
+
+    local ok, err = env.crawler.start()
+    assert_equal(ok, false, "overworld crawl should be refused")
+    assert_contains(err, "overworld", "overworld refusal should explain why")
+
+    env.restore()
+end
+
+local names = {}
+for name in pairs(tests) do
+    names[#names + 1] = name
+end
+table.sort(names)
+
+local passed = 0
+for _, name in ipairs(names) do
+    tests[name]()
+    passed = passed + 1
+    print("PASS " .. name)
+end
+
+print(string.format("test_map_crawler.lua: %d tests passed", passed))

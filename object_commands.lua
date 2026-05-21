@@ -83,6 +83,85 @@ local function current_position()
     return map_id, x, y, snapshot.terrain_offset
 end
 
+local function parse_int(token)
+    if not token then
+        return nil
+    end
+    token = token:match("^%s*(.-)%s*$")
+    if token == "" then
+        return nil
+    end
+    if token:match("^[-+]?0[xX][%da-fA-F]+$") then
+        return tonumber(token)
+    end
+    if token:match("^[-+]?%d+$") then
+        return tonumber(token)
+    end
+    return nil
+end
+
+local function parse_xy_arg(arg)
+    if type(arg) ~= "string" then
+        return nil
+    end
+    local comma = arg:find(",", 1, true)
+    if not comma then
+        return nil
+    end
+    local xs = arg:sub(1, comma - 1)
+    local ys = arg:sub(comma + 1)
+    if xs == "" or ys == "" then
+        return nil
+    end
+    local x = parse_int(xs)
+    local y = parse_int(ys)
+    if x == nil or y == nil then
+        return nil
+    end
+    return x, y
+end
+
+local function find_object_by_target_coords(goal_x, goal_y, px, py, opts)
+    opts = opts or {}
+    local candidates = objects.get_objects()
+    local exact = nil
+    local exact_dist
+    local interaction = nil
+    local interaction_dist
+
+    for _, obj in ipairs(candidates) do
+        if obj.x == goal_x and obj.y == goal_y then
+            local dist = math.abs(obj.x - px) + math.abs(obj.y - py)
+            if exact == nil or dist < exact_dist or (dist == exact_dist and tostring(obj.id) < tostring(exact.id)) then
+                exact = obj
+                exact_dist = dist
+            end
+        end
+    end
+
+    if exact then
+        return exact
+    end
+
+    if opts.require_exact then
+        return nil
+    end
+
+    for _, obj in ipairs(candidates) do
+        local ix = obj.interaction_x or obj.x
+        local iy = obj.interaction_y or obj.y
+        if ix == goal_x and iy == goal_y then
+            local dist = math.abs(obj.x - px) + math.abs(obj.y - py)
+            if interaction == nil or dist < interaction_dist or (dist == interaction_dist and tostring(obj.id) < tostring(interaction.id)) then
+                interaction = obj
+                interaction_dist = dist
+            end
+        end
+    end
+
+    return interaction
+end
+
 local function speak_route_event(prefix, info)
     if not info then
         return
@@ -188,8 +267,45 @@ function M.register()
         route_mgr.pathfind_to_current()
     end)
 
-    debug_tools.register_command("auto_walk", function()
+    debug_tools.register_command("auto_walk", function(arg)
         refresh_object_browser_context({refresh_live_npcs = true})
+        local target = nil
+        if arg then
+            local goal_x, goal_y = parse_xy_arg(arg)
+            if goal_x == nil then
+                debug_tools.error("auto_walk usage: auto_walk:X,Y")
+                tolk.output_interrupt("auto_walk usage: auto_walk:X,Y")
+                return
+            end
+            local _, px, py = current_position()
+            target = find_object_by_target_coords(goal_x, goal_y, px, py, {
+                require_exact = true,
+            })
+            if target == nil then
+                target = {
+                    id = "coord_" .. goal_x .. "_" .. goal_y,
+                    type = objects.TYPE_EXIT,
+                    name = "Tile " .. goal_x .. "," .. goal_y,
+                    x = goal_x,
+                    y = goal_y,
+                }
+            end
+            if target.x ~= goal_x or target.y ~= goal_y then
+                target = {
+                    id = "coord_" .. goal_x .. "_" .. goal_y,
+                    type = objects.TYPE_EXIT,
+                    name = "Tile " .. goal_x .. "," .. goal_y,
+                    x = goal_x,
+                    y = goal_y,
+                }
+            end
+            local result = route_mgr.autowalk_to_object(target, {speak = true})
+            if result and result.message then
+                -- Explicit autowalk path commands already handle speech from autowalk.
+                return
+            end
+            return
+        end
         route_mgr.autowalk_to_current()
     end)
 

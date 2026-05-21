@@ -664,23 +664,43 @@ Emulator compatibility direction:
   by the live-open false-wall seam `(1,23)<->(2,23)`. `Old Man 4` / Howard at
   `(20,23)` repeats the Kol clue about searching four steps south of the bath
   for a magic item.
-  Public Rimuldar is playability-cracked, but the opened Wings chest room
-  pocket is not solved as a walk-out route. The first inn / Wings chest door is
-  live-pinned at `(22,23)`:
-  after the user opened it from inside, `report_door_state` showed opened-door
-  slot `(22,23)` while Bill stood at `(23,23)`. `inspect_tile:22,23` still
-  decoded as type-6 walkable floor, so this coordinate must stay manually
-  magic-key-gated in `map_reader.lua` until opened-door RAM lists it. The
-  nearby chest object is `chest_7` at `(24,23)`. Clean FCEUX probes proved
-  `(13,18)` is a real false-wall connector from `(13,19)` to the public side
-  and back, but later locked-room return testing disproved it as a current
-  escape from the opened door-side start. The row-22 branch is real but
-  dead-ended, and the lower row-25 hidden strip is real but isolated. The
-  apparent `(21,23)->DOWN` throat into `(21,24)` moved only from a fresh forced
-  origin; every legitimate approach from east, west, or north blocked there,
-  raw held DOWN did not move, and OPEN while facing south reported "There is
-  no door here." The final parked-NPC survey from `(23,23)` to `exit_29_13`
-  reports `path_found=false`, `blocked_events=0`, and `reason=no_path`.
+  Public Rimuldar is playability-cracked, and the opened Wings chest room
+  pocket now has its two guide-backed doors pinned. The outer inn door is
+  `(21,21)`: after opening from `(21,22)` facing north, `report_door_state`
+  showed opened-door slot `(21,21)`, and `probe_edge_verify:21,22,UP,3` moved
+  3/3 through it. The inner Wings chest door is `(22,23)`: after the user
+  opened it from inside, `report_door_state` showed opened-door slot `(22,23)`
+  while Bill stood at `(23,23)`. Both cells decode as type-6 walkable floor, so
+  they must stay manually magic-key-gated in `map_reader.lua` until opened-door
+  RAM lists them. The nearby chest object is `chest_7` at `(24,23)`. Clean
+  FCEUX probes proved `(13,18)` is a real false-wall connector from `(13,19)`
+  to the public side and back, but later locked-room return testing disproved
+  it as the Wings-room escape. The old no-path from `(23,23)` to `exit_29_13`
+  was missing the outer door and is stale. The lower row-25 hidden strip is
+  real but isolated. The apparent `(21,23)->DOWN` throat into `(21,24)` moved
+  only from a fresh forced origin; every legitimate approach from east, west,
+  or north blocked there, raw held DOWN did not move, and OPEN while facing
+  south reported "There is no door here."
+  Later follow-up explains the live no-route behavior around the inner door:
+  if opened-door RAM is empty, `(22,24)->UP` into `(22,23)` and
+  `(21,22)->UP` into `(21,21)` are correctly `door_closed`, and
+  user confirmation explains the empty slots: at least in Rimuldar, leaving
+  the map closes opened magic-key doors, so reopening them consumes another
+  key. Treat door RAM as map-entry session state, not a permanent unlock.
+  `(22,22)->UP` into `(22,21)` is a real directional wall
+  (`probe_edge_verify:22,22,UP,3` blocked 3/3). Once north of that wall, the
+  exit route exposed two clean row-19 blockers now modeled as
+  `(16,19).south` and `(17,19).south`. Keep `(17,19).east`,
+  `(21,24).south`, and `(15,24).south` unpromoted because direct verifiers
+  were mixed/passable.
+  Follow-up user testing reached the outer-door route network and confirmed
+  one autowalk did leave town: the log changed to World Map after
+  `(28,16)->RIGHT` entered `(29,16)`. The clean current planner route to
+  `(29,13)` does not use `(29,16)`, so `map_reader.lua` treats `(29,16).west`
+  as a transition guard, not a corridor seam. The user reports the throne-room
+  door likely stays open after unlocking; treat that as a possible special
+  case and do not generalize Rimuldar's map-leave door reset to every
+  magic-key door without live proof.
   Do not treat `(13,18)` as the Wings-room escape until a real access point is
   found. Do not promote `(19,25).east` because that verifier was
   NPC-contaminated.

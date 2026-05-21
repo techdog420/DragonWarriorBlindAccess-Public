@@ -1,0 +1,1029 @@
+-- map_crawler.lua
+-- Review-only live frontier crawler for map decoding.
+--
+-- This probes outward from the player's current tile, records what the engine
+-- actually accepts, and exports candidate Lua snippets for human review. It
+-- intentionally does not write map_reader.lua, runtime blockers, or dw_blocks.log.
+
+local addr        = require "addresses"
+local auto_step   = require "auto_step"
+local debug_tools = require "debug_tools"
+local event_bus   = require "event_bus"
+local map_reader  = require "map_reader"
+local maps        = require "maps"
+local nav         = require "navigation"
+local tolk        = require "tolk"
+
+local M = {}
+
+local LOW_HP_ABORT_THRESHOLD = 8
+local PARKED_NPC_COORD = 31
+local DEFAULT_ATTEMPTS = 3
+local DEFAULT_MAX_EDGES = 200
+local MAX_ATTEMPTS = 15
+local MAX_EDGES = 2000
+
+local DIRECTIONS = {
+    {key = "up",    name = "north", dx = 0,  dy = -1, approach = "south", reverse = "down"},
+    {key = "down",  name = "south", dx = 0,  dy = 1,  approach = "north", reverse = "up"},
+    {key = "left",  name = "west",  dx = -1, dy = 0,  approach = "east",  reverse = "right"},
+    {key = "right", name = "east",  dx = 1,  dy = 0,  approach = "west",  reverse = "left"},
+}
+
+local DIR_BY_KEY = {}
+for _, dir in ipairs(DIRECTIONS) do
+    DIR_BY_KEY[dir.key] = dir
+end
+
+local crawler_state = nil
+local reports_by_map = {}
+local run_counter = 0
+local last_report_map_id = nil
+
+local function bit_and(a, b)
+    if type(AND) == "function" then
+        return AND(a, b)
+    end
+    local result = 0
+    local bit = 1
+    a = tonumber(a) or 0
+    b = tonumber(b) or 0
+    while a > 0 and b > 0 do
+        if (a % 2 == 1) and (b % 2 == 1) then
+            result = result + bit
+        end
+        a = math.floor(a / 2)
+        b = math.floor(b / 2)
+        bit = bit * 2
+    end
+    return result
+end
+
+local function trim(value)
+    if value == nil then return nil end
+    return tostring(value):match("^%s*(.-)%s*$")
+end
+
+local function parse_bool(value)
+    value = trim(value)
+    if not value then return nil end
+    value = value:lower()
+    if value == "true" or value == "1" or value == "yes" or value == "on" then
+        return true
+    end
+    if value == "false" or value == "0" or value == "no" or value == "off" then
+        return false
+    end
+    return nil
+end
+
+local function parse_options(arg)
+    local opts = {
+        attempts = DEFAULT_ATTEMPTS,
+        max_edges = DEFAULT_MAX_EDGES,
+        park_mobile_npcs = true,
+    }
+    if not arg or trim(arg) == "" then
+        return opts
+    end
+    for token in tostring(arg):gmatch("[^,]+") do
+        local key, value = token:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+        if not key then
+            return nil, "Unknown crawl option: " .. tostring(trim(token))
+        end
+        key = key:lower()
+        if key == "attempts" then
+            local n = tonumber(value)
+            if not n then return nil, "attempts must be a number" end
+            opts.attempts = math.max(1, math.min(MAX_ATTEMPTS, math.floor(n)))
+        elseif key == "max_edges" then
+            local n = tonumber(value)
+            if not n then return nil, "max_edges must be a number" end
+            opts.max_edges = math.max(1, math.min(MAX_EDGES, math.floor(n)))
+        elseif key == "park_mobile_npcs" then
+            local b = parse_bool(value)
+            if b == nil then return nil, "park_mobile_npcs must be true or false" end
+            opts.park_mobile_npcs = b
+        else
+            return nil, "Unknown crawl option: " .. tostring(key)
+        end
+    end
+    return opts
+end
+
+local function cell_key(x, y)
+    return tostring(x) .. "," .. tostring(y)
+end
+
+local function edge_key(from_x, from_y, dir)
+    return string.format("%d,%d:%s", from_x, from_y, tostring(dir))
+end
+
+local function is_active_npc_slot(byte0, byte1)
+    local x = bit_and(byte0, 0x1F)
+    local y = bit_and(byte1, 0x1F)
+    return not ((x == 0 and y == 0) or (x == PARKED_NPC_COORD and y == PARKED_NPC_COORD))
+end
+
+local function write_npc_bytes(slot, byte0, byte1, byte2)
+    local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+    memory.writebyte(base, byte0)
+    memory.writebyte(base + 1, byte1)
+    memory.writebyte(base + 2, byte2)
+end
+
+local function capture_mobile_npc_parking_state(map_id)
+    local state = {
+        map_id = map_id,
+        slots = {},
+    }
+    for slot = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+        local byte0 = memory.readbyte(base)
+        local byte1 = memory.readbyte(base + 1)
+        local byte2 = memory.readbyte(base + 2)
+        if is_active_npc_slot(byte0, byte1) and tonumber(byte2) ~= 0 then
+            state.slots[slot] = {
+                byte0 = byte0,
+                byte1 = byte1,
+                byte2 = byte2,
+                parked_byte0 = bit_and(byte0, 0xE0) + PARKED_NPC_COORD,
+                parked_byte1 = bit_and(byte1, 0xE0) + PARKED_NPC_COORD,
+            }
+        end
+    end
+    return state
+end
+
+local function apply_npc_parking_state(state)
+    if not state then return 0 end
+    local map_id = nav.get_position()
+    if map_id ~= state.map_id then
+        return 0
+    end
+    local parked = 0
+    for slot, snapshot in pairs(state.slots or {}) do
+        write_npc_bytes(slot, snapshot.parked_byte0, snapshot.parked_byte1, snapshot.byte2)
+        parked = parked + 1
+    end
+    return parked
+end
+
+local function restore_npc_parking_state(state)
+    if not state then return 0, true end
+    local map_id = nav.get_position()
+    if map_id ~= state.map_id then
+        return 0, false
+    end
+    local restored = 0
+    for slot, snapshot in pairs(state.slots or {}) do
+        write_npc_bytes(slot, snapshot.byte0, snapshot.byte1, snapshot.byte2)
+        restored = restored + 1
+    end
+    return restored, true
+end
+
+local function stationary_npc_at(x, y)
+    for slot = 0, addr.NPC_COUNT - 1 do
+        local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
+        local byte0 = memory.readbyte(base)
+        local byte1 = memory.readbyte(base + 1)
+        local byte2 = memory.readbyte(base + 2)
+        if is_active_npc_slot(byte0, byte1) and tonumber(byte2) == 0 then
+            local nx = bit_and(byte0, 0x1F)
+            local ny = bit_and(byte1, 0x1F)
+            if nx == x and ny == y then
+                return {slot = slot, x = nx, y = ny, byte0 = byte0, byte1 = byte1, byte2 = byte2}
+            end
+        end
+    end
+    return nil
+end
+
+local function get_door_context(map_id, x, y)
+    if type(map_reader.get_door_cell_context) == "function" then
+        local ok, ctx = pcall(map_reader.get_door_cell_context, map_id, x, y)
+        if ok and ctx then
+            return ctx
+        end
+    end
+    local details = map_reader.get_walkability_details(map_id, x, y)
+    if details and (details.reason == "door_closed" or details.reason == "door_open") then
+        return {
+            is_door = true,
+            open = details.reason == "door_open",
+            context = details.reason,
+        }
+    end
+    return nil
+end
+
+local function get_report(map_id, create)
+    local report = reports_by_map[map_id]
+    if not report and create then
+        report = {
+            map_id = map_id,
+            edges = {},
+            counts = {},
+            passthroughs = {},
+            directionals = {},
+            stationary_npcs = {},
+            transitions = {},
+            door_frontiers = {},
+            unstable_cells = {},
+        }
+        reports_by_map[map_id] = report
+    end
+    if create then
+        last_report_map_id = map_id
+    end
+    return report
+end
+
+local function add_count(report, classification)
+    report.counts[classification] = (report.counts[classification] or 0) + 1
+end
+
+local function format_door_context(ctx)
+    if not ctx or not ctx.is_door then return "-" end
+    local slots = ctx.open_slots and table.concat(ctx.open_slots, "|") or "-"
+    return string.format("door=(%s,%s) open=%s slots=%s",
+        tostring(ctx.door_x or ctx.x or "-"),
+        tostring(ctx.door_y or ctx.y or "-"),
+        tostring(ctx.open == true),
+        slots)
+end
+
+local function mark_unstable_candidate(report, x, y, reason)
+    if not report or x == nil or y == nil then
+        return
+    end
+    local key = cell_key(x, y)
+    if not report.unstable_cells then
+        report.unstable_cells = {}
+    end
+    report.unstable_cells[key] = {
+        x = x,
+        y = y,
+        reason = reason,
+    }
+    if crawler_state and crawler_state.report == report then
+        crawler_state.unstable_cells[key] = reason or true
+    end
+    if report.passthroughs and report.passthroughs[key] then
+        report.passthroughs[key] = nil
+        debug_tools.info(string.format(
+            "MAP_CRAWL_UNSTABLE_CANDIDATE map=0x%02X cell=(%d,%d) reason=%s",
+            report.map_id or 0,
+            x,
+            y,
+            tostring(reason or "unstable_origin")))
+    end
+end
+
+local function record_edge(record)
+    local state = crawler_state
+    local report = state and state.report or get_report(record.map_id, true)
+    record.index = #report.edges + 1
+    report.edges[#report.edges + 1] = record
+    add_count(report, record.classification)
+
+    if record.classification == "false_wall_candidate" then
+        local key = cell_key(record.dest_x, record.dest_y)
+        if not (report.unstable_cells and report.unstable_cells[key]) then
+            report.passthroughs[key] = {
+                x = record.dest_x,
+                y = record.dest_y,
+            }
+        end
+    elseif record.classification == "directional_block_candidate" or record.classification == "backtrack_blocked" then
+        local key = cell_key(record.dest_x, record.dest_y)
+        if not report.directionals[key] then
+            report.directionals[key] = {x = record.dest_x, y = record.dest_y, dirs = {}}
+        end
+        report.directionals[key].dirs[record.approach] = true
+    elseif record.classification == "stationary_npc_blocked" then
+        report.stationary_npcs[cell_key(record.dest_x, record.dest_y)] = record.npc_slot or true
+    elseif record.classification == "transition_candidate" then
+        mark_unstable_candidate(report, record.from_x, record.from_y, "origin_transition")
+        report.transitions[#report.transitions + 1] = record
+    elseif record.classification == "boundary_frontier" then
+        mark_unstable_candidate(report, record.from_x, record.from_y, "origin_boundary_frontier")
+        report.transitions[#report.transitions + 1] = record
+    elseif record.classification == "door_frontier" then
+        report.door_frontiers[cell_key(record.dest_x, record.dest_y)] = record
+    elseif record.classification == "movement_drift" or record.classification == "position_drift" then
+        mark_unstable_candidate(report, record.from_x, record.from_y, "origin_" .. tostring(record.classification))
+    end
+
+    debug_tools.info(string.format(
+        "MAP_CRAWL_EDGE run=%d map=0x%02X index=%d from=(%d,%d) dir=%s dest=(%d,%d) class=%s attempts=%d blocked_attempts=%d model_walkable=%s model_reason=%s tile=%s approach=%s door_context=%s note=%s",
+        record.run_id or 0,
+        record.map_id or 0,
+        record.index,
+        record.from_x or -1,
+        record.from_y or -1,
+        tostring(record.dir or "-"),
+        record.dest_x or -1,
+        record.dest_y or -1,
+        tostring(record.classification),
+        record.attempts or 0,
+        record.blocked_attempts or 0,
+        tostring(record.model_walkable),
+        tostring(record.model_reason or "-"),
+        tostring(record.tile_type or "-"),
+        tostring(record.approach or "-"),
+        format_door_context(record.door_context),
+        tostring(record.note or "-")))
+end
+
+local function model_context(map_id, x, y)
+    local details = map_reader.get_walkability_details(map_id, x, y)
+    if not details then
+        return {model_walkable = nil, model_reason = "no_details", tile_type = nil}
+    end
+    return {
+        details = details,
+        model_walkable = details.effective_walkable,
+        model_reason = details.reason,
+        tile_type = details.tile_type,
+        hazard = details.hazard == true,
+    }
+end
+
+local function in_bounds(map_id, x, y)
+    local width, height = map_reader.get_map_dimensions(map_id)
+    return width and height and x >= 0 and y >= 0 and x < width and y < height
+end
+
+local function make_record(edge, classification, extra)
+    local state = crawler_state
+    local map_id = edge.map_id or (state and state.map_id)
+    local ctx = model_context(map_id, edge.dest_x, edge.dest_y)
+    local record = {
+        run_id = edge.run_id or (state and state.run_id),
+        map_id = map_id,
+        from_x = edge.from_x,
+        from_y = edge.from_y,
+        dir = edge.dir,
+        dest_x = edge.dest_x,
+        dest_y = edge.dest_y,
+        approach = edge.approach,
+        classification = classification,
+        attempts = edge.attempt or 0,
+        blocked_attempts = edge.blocked_attempts or 0,
+        model_walkable = ctx.model_walkable,
+        model_reason = ctx.model_reason,
+        tile_type = ctx.tile_type,
+        door_context = edge.door_context,
+    }
+    if extra then
+        for k, v in pairs(extra) do
+            record[k] = v
+        end
+    end
+    return record
+end
+
+local function finish_run(completed, reason)
+    local state = crawler_state
+    if not state then
+        return
+    end
+
+    if state.npc_parking then
+        local restored_slots, restored = restore_npc_parking_state(state.npc_parking)
+        debug_tools.info(string.format(
+            "MAP_CRAWL_NPC_PARK_RESTORE run=%d map=0x%02X restored=%s restored_slots=%d reason=%s",
+            state.run_id,
+            state.map_id,
+            restored and "true" or "false",
+            restored_slots,
+            tostring(reason or "complete")))
+    end
+
+    local report = state.report
+    debug_tools.info(string.format(
+        "MAP_CRAWL_FINISH run=%d map=0x%02X completed=%s reason=%s edges=%d passthrough_candidates=%d directional_candidates=%d stationary_npc_cells=%d transitions=%d",
+        state.run_id,
+        state.map_id,
+        tostring(completed == true),
+        tostring(reason or "complete"),
+        #(report.edges or {}),
+        M.count_passthrough_candidates(state.map_id),
+        M.count_directional_candidate_cells(state.map_id),
+        M.count_stationary_npc_cells(state.map_id),
+        #(report.transitions or {})))
+    crawler_state = nil
+end
+
+local function classify_blocked(edge)
+    local stationary = stationary_npc_at(edge.dest_x, edge.dest_y)
+    if stationary then
+        return "stationary_npc_blocked", {npc_slot = stationary.slot}
+    end
+    local door = edge.door_context or get_door_context(edge.map_id, edge.dest_x, edge.dest_y)
+    if door and door.is_door and not door.open then
+        return "door_frontier", {door_context = door}
+    end
+    local ctx = model_context(edge.map_id, edge.dest_x, edge.dest_y)
+    if ctx.model_walkable == true then
+        return "directional_block_candidate", nil
+    end
+    if ctx.model_reason == "out_of_bounds" then
+        return "boundary_blocked", nil
+    end
+    return "modeled_blocked", nil
+end
+
+local function start_edge(edge)
+    local state = crawler_state
+    if not state then return false end
+    edge.run_id = state.run_id
+    edge.map_id = state.map_id
+    edge.attempt = (edge.attempt or 0) + 1
+
+    local current_map, px, py = nav.get_position()
+    if current_map ~= state.map_id or px ~= edge.from_x or py ~= edge.from_y then
+        record_edge(make_record(edge, "position_drift", {
+            final_x = px,
+            final_y = py,
+            new_map_id = current_map,
+            note = "start_edge_position_mismatch",
+        }))
+        finish_run(false, "position_drift")
+        return false
+    end
+
+    state.active_edge = edge
+    debug_tools.info(string.format(
+        "MAP_CRAWL_PROBE run=%d map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d kind=%s",
+        state.run_id,
+        state.map_id,
+        edge.from_x,
+        edge.from_y,
+        edge.dir,
+        edge.dest_x,
+        edge.dest_y,
+        edge.attempt,
+        state.options.attempts,
+        tostring(edge.kind or "probe")))
+    local ok = auto_step.inject_step(edge.dir)
+    if not ok then
+        state.active_edge = nil
+        record_edge(make_record(edge, "probe_refused", {note = "auto_step_refused"}))
+        return false
+    end
+    return true
+end
+
+local function build_edge(from_x, from_y, dir, kind)
+    local meta = DIR_BY_KEY[dir]
+    return {
+        kind = kind or "probe",
+        from_x = from_x,
+        from_y = from_y,
+        dir = dir,
+        dest_x = from_x + meta.dx,
+        dest_y = from_y + meta.dy,
+        approach = meta.approach,
+        blocked_attempts = 0,
+        attempt = 0,
+    }
+end
+
+local function start_return_edge(edge)
+    return start_edge(edge)
+end
+
+local function maybe_start_pending_return()
+    local state = crawler_state
+    if not state or not state.pending_return then
+        return false
+    end
+    local edge = state.pending_return
+    state.pending_return = nil
+    return start_return_edge(edge)
+end
+
+local function record_preflight_skip(edge, classification, extra)
+    record_edge(make_record(edge, classification, extra))
+    crawler_state.probed_edges[edge_key(edge.from_x, edge.from_y, edge.dir)] = true
+end
+
+local function maybe_prepare_probe(edge)
+    local state = crawler_state
+    local ctx = model_context(state.map_id, edge.dest_x, edge.dest_y)
+    edge.door_context = get_door_context(state.map_id, edge.dest_x, edge.dest_y)
+
+    if not in_bounds(state.map_id, edge.dest_x, edge.dest_y) or ctx.model_reason == "engine_boundary" then
+        record_preflight_skip(edge, "boundary_frontier", {note = "destination_boundary"})
+        return false
+    end
+
+    if ctx.hazard or map_reader.is_hazard_cell(state.map_id, edge.dest_x, edge.dest_y) then
+        record_preflight_skip(edge, "hazard_skipped", {note = "destination_hazard"})
+        return false
+    end
+
+    if edge.door_context and edge.door_context.is_door and not edge.door_context.open then
+        record_preflight_skip(edge, "door_frontier", {door_context = edge.door_context})
+        return false
+    end
+
+    local stationary = stationary_npc_at(edge.dest_x, edge.dest_y)
+    if stationary then
+        record_preflight_skip(edge, "stationary_npc_blocked", {npc_slot = stationary.slot})
+        return false
+    end
+
+    return true
+end
+
+local function start_next_edge()
+    local state = crawler_state
+    if not state then return end
+
+    if maybe_start_pending_return() then
+        return
+    end
+
+    while crawler_state do
+        if state.probed_edge_count >= state.options.max_edges then
+            finish_run(false, "max_edges")
+            return
+        end
+
+        local frame = state.stack[#state.stack]
+        if not frame then
+            finish_run(true, "complete")
+            return
+        end
+
+        local _, px, py = nav.get_position()
+        if px ~= frame.x or py ~= frame.y then
+            debug_tools.error(string.format(
+                "MAP_CRAWL_ABORT run=%d map=0x%02X reason=position_drift expected=(%d,%d) current=(%d,%d)",
+                state.run_id, state.map_id, frame.x, frame.y, px or -1, py or -1))
+            finish_run(false, "position_drift")
+            return
+        end
+
+        if state.unstable_cells[cell_key(frame.x, frame.y)] then
+            frame.next_dir = #DIRECTIONS + 1
+        end
+
+        if frame.next_dir > #DIRECTIONS then
+            if #state.stack == 1 then
+                finish_run(true, "complete")
+                return
+            end
+            local child = table.remove(state.stack)
+            local parent = state.stack[#state.stack]
+            local edge = build_edge(child.x, child.y, child.parent_reverse_dir, "backtrack")
+            edge.dest_x = parent.x
+            edge.dest_y = parent.y
+            edge.approach = DIR_BY_KEY[edge.dir].approach
+            start_edge(edge)
+            return
+        end
+
+        local dir_meta = DIRECTIONS[frame.next_dir]
+        frame.next_dir = frame.next_dir + 1
+        local ekey = edge_key(frame.x, frame.y, dir_meta.key)
+        if not state.probed_edges[ekey] then
+            local edge = build_edge(frame.x, frame.y, dir_meta.key, "probe")
+            state.probed_edges[ekey] = true
+            state.probed_edge_count = state.probed_edge_count + 1
+            if maybe_prepare_probe(edge) then
+                start_edge(edge)
+                return
+            end
+        end
+    end
+end
+
+local function handle_step_complete(data)
+    local state = crawler_state
+    if not state or not state.active_edge then return end
+    local edge = state.active_edge
+    if data and (data.from_x ~= edge.from_x or data.from_y ~= edge.from_y or data.dir ~= edge.dir) then
+        return
+    end
+    state.active_edge = nil
+
+    local current_map, px, py = nav.get_position()
+    if current_map ~= state.map_id then
+        record_edge(make_record(edge, "transition_candidate", {
+            note = string.format("map_changed_to_0x%02X", current_map or 0),
+            new_map_id = current_map,
+            final_x = px,
+            final_y = py,
+        }))
+        finish_run(false, "map_change")
+        return
+    end
+
+    if px ~= edge.dest_x or py ~= edge.dest_y then
+        record_edge(make_record(edge, "movement_drift", {
+            note = "unexpected_landing",
+            final_x = px,
+            final_y = py,
+        }))
+        finish_run(false, "movement_drift")
+        return
+    end
+
+    local classification = "open_floor"
+    if (edge.blocked_attempts or 0) > 0 then
+        classification = "mixed_probe"
+    else
+        local ctx = model_context(edge.map_id, edge.dest_x, edge.dest_y)
+        if ctx.model_walkable == false then
+            classification = "false_wall_candidate"
+        elseif edge.door_context and edge.door_context.is_door and edge.door_context.open then
+            classification = "open_door_passage"
+        end
+    end
+
+    record_edge(make_record(edge, classification, {
+        final_x = px,
+        final_y = py,
+        door_context = edge.door_context,
+    }))
+
+    if edge.kind == "backtrack" or edge.kind == "return_to_frontier" then
+        return
+    end
+
+    local dest_key = cell_key(edge.dest_x, edge.dest_y)
+    if state.cells[dest_key] then
+        state.pending_return = build_edge(edge.dest_x, edge.dest_y, DIR_BY_KEY[edge.dir].reverse, "return_to_frontier")
+        return
+    end
+
+    state.cells[dest_key] = true
+    if in_bounds(state.map_id, edge.dest_x, edge.dest_y) then
+        state.stack[#state.stack + 1] = {
+            x = edge.dest_x,
+            y = edge.dest_y,
+            next_dir = 1,
+            parent_reverse_dir = DIR_BY_KEY[edge.dir].reverse,
+        }
+    else
+        state.pending_return = build_edge(edge.dest_x, edge.dest_y, DIR_BY_KEY[edge.dir].reverse, "return_to_frontier")
+    end
+end
+
+local function handle_blocked(data)
+    local state = crawler_state
+    if not state or not state.active_edge then return end
+    local edge = state.active_edge
+    if data and (data.from_x ~= edge.from_x or data.from_y ~= edge.from_y or data.dir ~= edge.dir) then
+        return
+    end
+
+    edge.blocked_attempts = (edge.blocked_attempts or 0) + 1
+    if edge.attempt < state.options.attempts then
+        debug_tools.info(string.format(
+            "MAP_CRAWL_RETRY run=%d map=0x%02X from=(%d,%d) dir=%s blocked_attempts=%d next_attempt=%d/%d",
+            state.run_id,
+            state.map_id,
+            edge.from_x,
+            edge.from_y,
+            edge.dir,
+            edge.blocked_attempts,
+            edge.attempt + 1,
+            state.options.attempts))
+        state.active_edge = nil
+        state.pending_retry = edge
+        return
+    end
+
+    state.active_edge = nil
+    local classification, extra = classify_blocked(edge)
+    record_edge(make_record(edge, classification, extra))
+    if edge.kind == "backtrack" then
+        finish_run(false, "backtrack_blocked")
+    end
+end
+
+local function tick_impl(can_walk)
+    local state = crawler_state
+    if not debug_tools.DEBUG_MODE or not state then
+        return
+    end
+
+    local map_id, px, py = nav.get_position()
+    if map_id ~= state.map_id then
+        if state.active_edge then
+            local edge = state.active_edge
+            state.active_edge = nil
+            record_edge(make_record(edge, "transition_candidate", {
+                note = string.format("map_changed_to_0x%02X", map_id or 0),
+                new_map_id = map_id,
+                final_x = px,
+                final_y = py,
+            }))
+        end
+        finish_run(false, "map_change")
+        return
+    end
+
+    local cur_hp = memory.readbyte(addr.CURRENT_HP)
+    if cur_hp <= LOW_HP_ABORT_THRESHOLD then
+        if state.active_edge then
+            auto_step.cancel_active_step(true, true)
+        end
+        debug_tools.info(string.format(
+            "MAP_CRAWL_ABORT run=%d map=0x%02X reason=low_hp hp=%d threshold=%d",
+            state.run_id, state.map_id, cur_hp, LOW_HP_ABORT_THRESHOLD))
+        tolk.output_interrupt(string.format("Map crawl aborted: HP critical (%d).", cur_hp))
+        finish_run(false, "low_hp")
+        return
+    end
+
+    if state.active_edge then
+        return
+    end
+    if auto_step.is_route_active and auto_step.is_route_active() then
+        return
+    end
+    if not can_walk then
+        return
+    end
+
+    if state.pending_retry then
+        local retry = state.pending_retry
+        state.pending_retry = nil
+        start_edge(retry)
+        return
+    end
+
+    start_next_edge()
+end
+
+function M.start(arg)
+    if crawler_state then
+        return false, "Map crawl already active"
+    end
+    local opts, err = parse_options(arg)
+    if not opts then
+        return false, err
+    end
+
+    local map_id, px, py = nav.get_position()
+    local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
+    if maps.is_overworld(map_id, terrain) then
+        return false, "Map crawl refuses overworld maps in V1"
+    end
+    if not map_reader.get_tile_grid(map_id) then
+        return false, string.format("No interior map grid for map %02X", map_id)
+    end
+    local start = model_context(map_id, px, py)
+    if start.model_reason == "out_of_bounds" or start.hazard then
+        return false, "Current tile is not a safe crawl start"
+    end
+
+    run_counter = run_counter + 1
+    local report = get_report(map_id, true)
+    report.edges = {}
+    report.counts = {}
+    report.passthroughs = {}
+    report.directionals = {}
+    report.stationary_npcs = {}
+    report.transitions = {}
+    report.door_frontiers = {}
+    report.unstable_cells = {}
+
+    crawler_state = {
+        run_id = run_counter,
+        map_id = map_id,
+        options = opts,
+        start_x = px,
+        start_y = py,
+        stack = {{x = px, y = py, next_dir = 1}},
+        cells = {[cell_key(px, py)] = true},
+        probed_edges = {},
+        probed_edge_count = 0,
+        report = report,
+        npc_parking = nil,
+        unstable_cells = {},
+    }
+
+    if opts.park_mobile_npcs then
+        crawler_state.npc_parking = capture_mobile_npc_parking_state(map_id)
+        local parked = apply_npc_parking_state(crawler_state.npc_parking)
+        debug_tools.info(string.format(
+            "MAP_CRAWL_NPC_PARK_START run=%d map=0x%02X parked_slots=%d",
+            crawler_state.run_id,
+            map_id,
+            parked))
+    end
+
+    debug_tools.info(string.format(
+        "MAP_CRAWL_START run=%d map=0x%02X start=(%d,%d) attempts=%d max_edges=%d park_mobile_npcs=%s start_model_walkable=%s start_reason=%s",
+        crawler_state.run_id,
+        map_id,
+        px,
+        py,
+        opts.attempts,
+        opts.max_edges,
+        tostring(opts.park_mobile_npcs),
+        tostring(start.model_walkable),
+        tostring(start.model_reason or "-")))
+    tolk.output_interrupt(string.format("Map frontier crawl started on map %02X", map_id))
+    return true
+end
+
+function M.stop()
+    if not crawler_state then
+        return false, "No active map crawl"
+    end
+    auto_step.cancel_active_step(true, true)
+    local map_id = crawler_state.map_id
+    finish_run(false, "manual_stop")
+    return true, string.format("Stopped map crawl on map %02X", map_id)
+end
+
+function M.tick(can_walk)
+    local ok, err = pcall(tick_impl, can_walk)
+    if not ok then
+        if crawler_state and crawler_state.active_edge then
+            auto_step.cancel_active_step(true, true)
+        end
+        debug_tools.error("MAP_CRAWL_ABORT reason=script_error error=" .. tostring(err))
+        finish_run(false, "script_error")
+    end
+end
+
+function M.apply_npc_parking()
+    if crawler_state and crawler_state.npc_parking then
+        apply_npc_parking_state(crawler_state.npc_parking)
+    end
+end
+
+function M.is_active()
+    return crawler_state ~= nil
+end
+
+function M.count_passthrough_candidates(map_id)
+    local report = get_report(map_id)
+    local n = 0
+    if report then
+        for _ in pairs(report.passthroughs or {}) do n = n + 1 end
+    end
+    return n
+end
+
+function M.count_directional_candidate_cells(map_id)
+    local report = get_report(map_id)
+    local n = 0
+    if report then
+        for _ in pairs(report.directionals or {}) do n = n + 1 end
+    end
+    return n
+end
+
+function M.count_stationary_npc_cells(map_id)
+    local report = get_report(map_id)
+    local n = 0
+    if report then
+        for _ in pairs(report.stationary_npcs or {}) do n = n + 1 end
+    end
+    return n
+end
+
+local function sorted_keys(tbl)
+    local keys = {}
+    for key in pairs(tbl or {}) do
+        keys[#keys + 1] = key
+    end
+    table.sort(keys)
+    return keys
+end
+
+local function direction_list(dirs)
+    local names = {}
+    for _, name in ipairs({"north", "south", "east", "west"}) do
+        if dirs and dirs[name] then
+            names[#names + 1] = name
+        end
+    end
+    return names
+end
+
+function M.report(map_id)
+    map_id = map_id or (crawler_state and crawler_state.map_id) or last_report_map_id or nav.get_position()
+    local report = get_report(map_id)
+    if not report then
+        debug_tools.info(string.format("MAP_CRAWL_SUMMARY map=0x%02X none", map_id or 0))
+        return 0
+    end
+    debug_tools.info(string.format(
+        "MAP_CRAWL_SUMMARY map=0x%02X edges=%d passthrough_candidates=%d directional_candidate_cells=%d stationary_npc_cells=%d door_frontiers=%d transitions=%d",
+        map_id,
+        #(report.edges or {}),
+        M.count_passthrough_candidates(map_id),
+        M.count_directional_candidate_cells(map_id),
+        M.count_stationary_npc_cells(map_id),
+        #sorted_keys(report.door_frontiers or {}),
+        #(report.transitions or {})))
+    for _, key in ipairs(sorted_keys(report.passthroughs or {})) do
+        local cell = report.passthroughs[key]
+        debug_tools.info(string.format("MAP_CRAWL_HIGH_VALUE map=0x%02X type=passthrough cell=(%d,%d)", map_id, cell.x, cell.y))
+    end
+    for _, key in ipairs(sorted_keys(report.directionals or {})) do
+        local cell = report.directionals[key]
+        debug_tools.info(string.format(
+            "MAP_CRAWL_HIGH_VALUE map=0x%02X type=directional cell=(%d,%d) approaches=%s",
+            map_id, cell.x, cell.y, table.concat(direction_list(cell.dirs), ",")))
+    end
+    return #(report.edges or {})
+end
+
+function M.dump_report(map_id)
+    map_id = map_id or (crawler_state and crawler_state.map_id) or last_report_map_id or nav.get_position()
+    local report = get_report(map_id)
+    if not report then
+        debug_tools.info(string.format("MAP_CRAWL_DUMP map=0x%02X none", map_id or 0))
+        return 0
+    end
+    for _, record in ipairs(report.edges or {}) do
+        debug_tools.info(string.format(
+            "MAP_CRAWL_DUMP_EDGE map=0x%02X index=%d from=(%d,%d) dir=%s dest=(%d,%d) class=%s attempts=%d blocked_attempts=%d model_walkable=%s reason=%s note=%s",
+            map_id,
+            record.index or 0,
+            record.from_x or -1,
+            record.from_y or -1,
+            tostring(record.dir or "-"),
+            record.dest_x or -1,
+            record.dest_y or -1,
+            tostring(record.classification or "-"),
+            record.attempts or 0,
+            record.blocked_attempts or 0,
+            tostring(record.model_walkable),
+            tostring(record.model_reason or "-"),
+            tostring(record.note or "-")))
+    end
+    return #(report.edges or {})
+end
+
+local function format_direction_table(dirs)
+    local parts = {}
+    for _, name in ipairs(direction_list(dirs)) do
+        parts[#parts + 1] = name .. " = true"
+    end
+    return "{" .. table.concat(parts, ", ") .. "}"
+end
+
+function M.export_candidates(map_id)
+    map_id = map_id or (crawler_state and crawler_state.map_id) or last_report_map_id or nav.get_position()
+    local report = get_report(map_id)
+    if not report then
+        debug_tools.info(string.format("MAP_CRAWL_EXPORT map=0x%02X none", map_id or 0))
+        return 0
+    end
+    local count = 0
+    for _, key in ipairs(sorted_keys(report.passthroughs or {})) do
+        debug_tools.info(string.format(
+            "MAP_CRAWL_EXPORT_PASSTHROUGH map=0x%02X line='[\"%s\"] = true,'",
+            map_id, key))
+        count = count + 1
+    end
+    for _, key in ipairs(sorted_keys(report.directionals or {})) do
+        local cell = report.directionals[key]
+        debug_tools.info(string.format(
+            "MAP_CRAWL_EXPORT_DIRECTIONAL map=0x%02X line='[\"%s\"] = %s,'",
+            map_id, key, format_direction_table(cell.dirs)))
+        count = count + 1
+    end
+    if count == 0 then
+        debug_tools.info(string.format("MAP_CRAWL_EXPORT map=0x%02X no_review_candidates=true", map_id))
+    end
+    return count
+end
+
+function M.reset(map_id)
+    map_id = map_id or (crawler_state and crawler_state.map_id) or nav.get_position()
+    reports_by_map[map_id] = nil
+    debug_tools.info(string.format("MAP_CRAWL_RESET map=0x%02X", map_id or 0))
+end
+
+local function safe_event_handler(fn, data)
+    local ok, err = pcall(fn, data or {})
+    if not ok then
+        debug_tools.error("MAP_CRAWL_ABORT reason=script_error error=" .. tostring(err))
+        finish_run(false, "script_error")
+    end
+end
+
+event_bus.subscribe("route_step_completed", function(data)
+    safe_event_handler(handle_step_complete, data)
+end)
+
+event_bus.subscribe("route_blocked", function(data)
+    safe_event_handler(handle_blocked, data)
+end)
+
+return M

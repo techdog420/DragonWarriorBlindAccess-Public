@@ -1,10 +1,157 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-20
+Updated: 2026-05-21
 
 ## Latest Code Review (2026-05-19)
 
 See `HANDOFF_2026-05-19_code_review.md` for the full breakdown of the post-weekend code review and follow-on fixes. Five commits landed (`095865a`, `5d873f3`, `9661190`, `ac7a0a6`, plus the doc). Follow-up cleanup on 2026-05-20 fixed the remaining terrain-offset propagation gap in route guidance/status/start paths, removed the per-frame `position_key` string allocation in `overworld_routes.observe_position`, made `safe`/`safety` contextual between Brecconary and Tantegel, and corrected the `dw-debug-loop` handoff-heading guidance. Open review-board items still worth carrying: resolve the Tantegel `4,11-4,15` evidence conflict during the upcoming locked-door/item mapping pass, and decide whether overworld route waypoint validation needs a real overworld passability source before changing radius-0 behavior.
+
+## Rimuldar Chest Exit Blocker Fix (2026-05-20)
+
+- Confirmed remaining false one-way blockers were blocking chest-to-exit routes in
+  Rimuldar even with both inn doors open:
+  - `Rimuldar` `MAP_DIRECTIONAL_BLOCKS[0x0B]["22,21"].south` (from `(22,22)->UP`)
+  - `Rimuldar` `MAP_DIRECTIONAL_BLOCKS[0x0B]["23,24"].north` (from `(23,23)->DOWN`)
+- Both were removed from the directional table after direct `probe_edge` mismatch logs:
+  - `(22,22)->UP` actually reaches `(22,21)` in live checks.
+  - `(23,23)->DOWN` actually reaches `(23,24)` in live checks.
+- Follow-up live probing found the next route blockers:
+  - `(14,19)->RIGHT` into `(15,19)` is a real one-way block after the command
+    menu is closed: 3/3 blocked, while `(15,19)->LEFT` moved 3/3. Keep
+    `MAP_DIRECTIONAL_BLOCKS[0x0B]["15,19"].west`.
+  - `(13,20)` is a hidden passable bridge between the chest-side component and
+    the exit route: `(13,21)->UP` moved 5/5 and force-origin `(13,20)->UP`
+    moved into `(13,19)`. It is now a Rimuldar passthrough cell.
+- After FCEUX reload, `pathfind_to` and `debug_pathfind_to` find open routes in
+  both directions. The return-side planner then exposed two more clean blocked
+  approaches: `(14,23)->RIGHT` into `(15,23)` and `(14,24)->RIGHT` into
+  `(15,24)` both blocked 5/5, so `MAP_DIRECTIONAL_BLOCKS[0x0B]["15,23"].west`
+  and `["15,24"].west` are now modeled. With those runtime-injected, live
+  planning still finds `(29,13)->(23,23)` via row 25 and `(23,23)->(29,13)` via
+  `(13,20)`.
+- The next autowalk loop exposed two lower-row false exits: `(21,25)->UP` into
+  `(21,24)` and `(15,25)->UP` into `(15,24)`. Direct verifiers confirmed both
+  as blocked 5/5 with no drift/map change, so `["21,24"].south` and
+  `["15,24"].south` are now modeled.
+- A fresh entrance-to-chest autowalk then reached `(16,27)` and looped on
+  `(16,27)->RIGHT` into `(17,27)` plus `(16,27)->DOWN` into `(16,28)`. Direct
+  verifiers confirmed both blocked 5/5, so `["17,27"].west` and
+  `["16,28"].north` are now modeled.
+- The next reroute reached `(15,27)` and looped on `(15,27)->DOWN` into
+  `(15,28)`. Direct verifier confirmed blocked 5/5, so `["15,28"].north` is
+  now modeled. `(15,27)->UP` showed noisy retry/passable behavior and was not
+  promoted.
+- A parked-NPC forward route then exposed the lower west branch as false:
+  `(13,26)->LEFT` into `(12,26)` and `(13,25)->LEFT` into `(12,25)` both
+  verified blocked 5/5, so `["12,26"].east` and `["12,25"].east` are now
+  modeled.
+- The next lower-west reroute exposed `(13,23)->LEFT` into `(12,23)` and
+  `(13,24)->LEFT` into `(12,24)` as the same class of false branch. Both
+  verified blocked 5/5, so `["12,23"].east` and `["12,24"].east` are now
+  modeled too.
+- The next skip-NPC route shifted to `(13,22)->LEFT` into `(12,22)`, which also
+  verified blocked 5/5; `["12,22"].east` is now modeled.
+- The final upper entry in that west branch, `(13,21)->LEFT` into `(12,21)`,
+  also verified blocked 5/5; `["12,21"].east` is now modeled.
+- Follow-up return-route harvesting from the chest/door shelf found and modeled
+  the next confirmed blockers:
+  - `(23,20)->DOWN` into `(23,21)`, `(23,22)->UP` into `(23,21)`, and
+    `(23,22)->LEFT` into `(22,22)` all verified blocked 5/5.
+  - `(24,22)->UP` into `(24,21)` verified blocked 5/5.
+  - `(17,21)->LEFT` into `(16,21)`, `(16,22)->UP` into `(16,21)`,
+    `(16,22)->LEFT` into `(15,22)`, `(16,23)->DOWN` into `(16,24)`, and
+    `(16,23)->LEFT` into `(15,23)` each verified blocked 5/5.
+  - These are now modeled as directional blockers on `["23,21"].north/south`,
+    `["22,22"].east`, `["24,21"].south`, `["16,21"].east/south`,
+    `["15,22"].east`, `["16,24"].north`, and `["15,23"].east`.
+- The same pass found `(14,20)` is a hidden passable spur from the west-side
+  component (`(14,21)->UP` moved 5/5 and `(13,20)->RIGHT` was mixed/passable),
+  but it does not bridge eastward because `(14,20)->RIGHT` stayed blocked. Do
+  not promote it as the missing entrance-to-chest bridge yet.
+- Reload follow-up after the user cleared/reloaded the script found five more
+  clean return-route blockers:
+  - `(23,20)->LEFT` into `(22,20)` verified blocked 5/5, so `["22,20"].east`
+    is now modeled.
+  - `(20,20)->DOWN`, `(19,20)->DOWN`, and `(18,20)->DOWN` into row 21 each
+    verified blocked 5/5, so `["20,21"].north`, `["19,21"].north`, and
+    `["18,21"].north` are now modeled.
+  - `(17,21)->RIGHT` into `(18,21)` verified blocked 5/5, so
+    `["18,21"].west` is now modeled.
+  Direct `probe_edge_verify:16,20,DOWN,5` moved 5/5, so keep
+  `["16,21"].north` open despite noisy autowalk timeout loops on that seam.
+  With the new runtime blockers active, live `debug_pathfind_to:29,13` from
+  `(17,21)` still finds a 30-step return route through `(13,20)` to the
+  Rimuldar entrance.
+- Current live runtime has the newly confirmed return blockers injected. The
+  planner still finds a return route from the lower fallback area to the
+  Rimuldar entrance, but autowalk still has noisy executor timeouts around
+  `(16,20)->DOWN` and has not yet arrived at the entrance in a full live run.
+  Entrance-to-chest still has no clean durable route even with skip-NPC
+  planning and both inn doors open. The latest search reaches
+  `(13,20)->(13,21)->(14,21)` and rejects `(14,21)->RIGHT` into `(15,21)` as a
+  modeled directional block, so the missing bridge remains east of the
+  west-side component and is not solved by the row-20 return blockers.
+- Follow-up on the entrance side checked the lower row-25 throat:
+  `(22,25)->UP` into `(22,24)` first moved 5/5, so a temporary local
+  passthrough made both `debug_pathfind_to_skip_npcs:23,23` and
+  `debug_pathfind_adjacent_skip_npcs:24,23` plan through
+  `(22,25)->(22,24)->(22,23)->(23,23)`. After input recovery/config reload and
+  a fresh teleport, `probe_edge_verify:22,25,UP,3` blocked 3/3. The temporary
+  passthrough was backed out; treat `(22,24)` as mixed/disproved for now, not
+  permanent map data.
+- `auto_step_timeout` was raised from 45 to 60 in `config.lua`/`dw_access.ini`
+  because several noisy-but-passable route steps were reaching the old timeout
+  edge. This is executor tolerance, not evidence for new map blockers.
+- Do not promote the other autowalk blocker-looking seams yet: `(23,21)->LEFT`
+  was mixed 2 moved / 3 blocked, `(15,16)->DOWN` was mixed 2 moved / 3
+  blocked, `(22,25)->UP` became mixed after the fresh 3/3 block, and
+  `(23,20)->LEFT` stayed mixed/noisy on the latest recheck. A `validate_path`
+  run aborted early from row-14 overshoot after retries, not from a map
+  blocker. The older `(23,20)->DOWN` mixed note is superseded by the clean 5/5
+  verifier above.
+- `test_map_reader.lua` was updated for the open approaches/latest blockers and
+  now passes all 33 tests. `test_auto_step.lua` also passes all 51 tests after
+  the timeout default/config update.
+
+## Rimuldar Frontier Crawler Shakedown (2026-05-21)
+
+- A bounded `crawl_map_frontier:attempts=2,max_edges=60` from `(13,20)` walked
+  the west-side vertical strip and safely stopped when `(13,1)->DOWN` intended
+  `(13,2)` but landed at `(13,0)`. The crawler restored the parked mobile NPC
+  and logged `reason=movement_drift` instead of treating the drift edge as map
+  geometry.
+- Direct follow-up promoted only the clean passthroughs:
+  `probe_edge_verify:13,5,UP,5` moved into `(13,4)` 5/5, and
+  `probe_edge_verify:13,3,UP,5` moved into `(13,2)` 5/5. These are now in
+  `MAP_PASSTHROUGH_CELLS[0x0B]`.
+- Do not promote `(13,1)` yet. Force-origin raw probes from `(13,2)->UP` moved
+  into `(13,1)` 3/3, but the hero later settled at `(13,0)` before a reverse
+  probe could start. Treat it as an unstable north-edge frontier until a
+  post-patch verifier or dedicated exit model classifies it.
+- `map_crawler.lua` now removes a false-wall passthrough candidate from export
+  if that cell later becomes the origin of a boundary, transition,
+  position-drift, or movement-drift edge. This prevents `(13,1)`-style
+  frontier/exit artifacts from appearing as normal review snippets.
+- Post-reload live retest showed that `(13,4)` and `(13,2)` now classify as
+  normal modeled passthroughs, and `(13,1)` correctly logs
+  `MAP_CRAWL_UNSTABLE_CANDIDATE`. It also showed the crawler should not keep
+  exploring sideways from such an unstable frontier: the old runtime continued
+  through `(12,1)` and exported `(12,2)`. Treat that `(12,2)` export as
+  frontier-contaminated and do not patch it. `map_crawler.lua` now makes
+  unstable cells backtrack-only during the same crawl; reload before retesting
+  this live.
+- Post-backtrack-only reload confirmed the fix: `(13,1)` immediately
+  backtracked to `(13,2)` instead of probing sideways into `(12,1)`. The crawl
+  then found a clean adjacent x=12 strip from stable origins. Direct verifiers
+  promoted `(12,2)`, `(12,8)`, `(12,9)`, and `(12,11)` as passthroughs:
+  `probe_edge_verify:13,2,LEFT,5`, `probe_edge_verify:12,7,DOWN,5`,
+  `probe_edge_verify:12,10,UP,5`, and `probe_edge_verify:12,10,DOWN,5` all
+  moved 5/5 with no drift, map change, refusal, timeout, or interruption.
+- Verification: `luac -p map_crawler.lua main.lua test_map_crawler.lua
+  test_map_reader.lua`, `lua test_map_crawler.lua` (18 tests),
+  `lua test_map_reader.lua` (33 tests), `lua test_map_survey.lua` (45 tests),
+  and `lua test_debug_tools.lua` (5 tests) passed. `git diff --check` only
+  reported the existing `dw_access.ini` CRLF warning.
 
 ## Current Emulator Note
 
@@ -173,44 +320,75 @@ prompt. The access seam `(1,23)<->(2,23)` moved both directions in FCEUX, so
 `map_reader.lua` exposes both false-wall cells; `(2,23)` is the practical
 public stand facing east. `Old Man 4` / Howard at `(20,23)` gives the Kol bath
 clue, "Four steps south of the bath in Kol thou shalt find a magic item."
-Current scope: public Rimuldar remains cracked for playability, but the opened
-Wings chest room pocket is not solved as a walk-out route. The first Rimuldar
-inn / Wings chest door is pinned at `(22,23)`: live `report_door_state` after
-the user opened it from inside reported `slots=0=(22,23)` while Bill stood at
+Current scope: the Rimuldar Wings chest room phantom door is solved. External
+guide data says the inn treasure is behind an outer and inner door; live FCEUX
+confirmed the outer door at `(21,21)` and the inner Wings chest door at
+`(22,23)`. The first known door was `(22,23)`: `report_door_state` after the
+user opened it from inside reported `slots=0=(22,23)` while Bill stood at
 `(23,23)`, and `inspect_tile:22,23` showed tile 6 walkable floor, so
-`map_reader.lua` manually gates it as a magic-key door until opened-door RAM
-lists it. Post-patch reload probe `rimuldar_door_pin_reload` succeeded, and
-live `inspect_tile:22,23` then reported `reason=door_open`. `objects.lua`
-exposes it as `Wings Chest Door`; the nearby chest object is `chest_7` at
-`(24,23)`.
+`map_reader.lua` gates it as a magic-key door until opened-door RAM lists it.
+The missing outer door was found by opening from `(21,22)` facing north:
+`report_door_state` then reported `keys=4 slots=0=(22,23) 1=(21,21)`, and
+`probe_edge_verify:21,22,UP,3` moved 3/3 through `(21,21)` after opening.
+`objects.lua` now exposes `Rimuldar Inn Outer Door` and `Wings Chest Door`; the
+nearby chest object is `chest_7` at `(24,23)`.
 
 Earlier clean FCEUX probes proved `(13,18)` is a real false-wall connector:
 `(13,19)->UP` entered `(13,18)` and continued to the public row, and the
 reverse route moved back down through `(13,18)` to `(13,19)`. Later locked-room
 return testing disproved that connector as a current escape from the opened
-door-side start. The corrected model now leaves a final parked-NPC survey from
-`(23,23)` to `exit_29_13` at clean no-path:
-`path_found=false`, `blocked_events=0`, `suspected_tiles=-`, `reason=no_path`.
-The row-22 branch is real but dead-ended: `(22,23)->UP` moved into `(22,22)`
-and `(22,22)->LEFT` moved into `(21,22)`, while `(21,22)->UP`,
-`(22,22)->UP`, `(20,22)->UP`, and `(20,22)->LEFT` are blocked. The lower
-row-25 strip is also real: `(20,25)->LEFT` verified passable 5/5 into
+inner-door-side start. The old clean no-path from `(23,23)` to `exit_29_13`
+was missing the outer door at `(21,21)`, so do not reuse it as current route
+truth. A patched-code local route simulation with opened-door RAM slots
+`(22,23)` and `(21,21)` now finds `(23,23)->exit_29_13` and
+`(21,22)->exit_29_13`; live raw verification confirms `(21,22)->UP` through
+the opened door, even though the still-running FCEUX script had not reloaded
+the source patch and previewed the old static directional block. The row-22
+branch is the outer-door approach, not a dead end. The lower row-25 strip is
+also real: `(20,25)->LEFT` verified passable 5/5 into
 `(19,25)`, and `(19,25)->LEFT` moved into `(18,25)`. The apparent throat from
 `(21,23)->DOWN` into `(21,24)` is false from all legitimate approaches, though
 a fresh forced-origin probe once moved through it; routes from east, west, and
 north all blocked, raw held DOWN did not move, and OPEN while facing south
-reported "There is no door here." `report_door_state` still showed only
-`slots=0=(22,23)`.
+reported "There is no door here."
 
 Do not promote `(19,25).east`; the 15-attempt verifier blocked there with
-`npc_blocked=true`, so that lead is occupancy-contaminated. The next useful
-locked-room step is not more blind blocker promotion: verify whether the second
-guide-mentioned inn door/access point is wrong or missing, whether this pocket
-expects item/teleport behavior, or cross-check the external inn/chest layout
-before adding more permanent map data.
-Validation after the corrected locked-room patch passed `luac -p map_reader.lua
-test_map_reader.lua objects.lua test_objects.lua`, `lua test_map_reader.lua`,
-`lua test_objects.lua`, and `git diff --check`.
+`npc_blocked=true`, so that lead is occupancy-contaminated. Validation after
+the outer-door patch passed `luac -p map_reader.lua test_map_reader.lua
+objects.lua test_objects.lua`, `lua test_map_reader.lua`,
+`lua test_objects.lua`, and `git diff --check`. The running FCEUX script
+reloaded the patch afterward: live `inspect_tile:21,21` reports
+`reason=door_open`, `directional_blocked=false`, and `effective_passable=true`.
+Follow-up door-side routing confirms the weirdness is real door/edge geometry:
+the later live door RAM had `keys=4` but all opened-door slots were `(0,0)`.
+User confirmation explains why: at least in Rimuldar, leaving the map closes
+opened magic-key doors, and reopening them consumes another key. Treat door
+slots as map-entry session state, not a permanent "unlocked" flag.
+With the doors closed, `(22,24)->UP` into the inner door `(22,23)` and
+`(21,22)->UP` into the outer door `(21,21)` both inspect as `reason=door_closed`.
+The direct north edge from `(22,22)->UP` into `(22,21)` is also a real wall:
+`probe_edge_verify:22,22,UP,3` blocked 3/3. The open route from the inner-door
+side is therefore left to `(21,22)` and then through the outer door after it is
+opened, not straight north through `(22,21)`.
+The user's exit autowalk after breaking into the route network exposed two
+clean new directional blockers: `probe_edge_verify:16,20,UP,3` and
+`probe_edge_verify:17,20,UP,3` both blocked 3/3, so `map_reader.lua` now models
+`(16,19).south` and `(17,19).south`. Do not promote the other tempting seams:
+`(17,19).east` stayed mixed at 1 moved / 2 blocked, `(21,24).south` moved 3/3,
+and `(15,24).south` stayed mixed at 1 moved / 2 blocked. Follow-up user
+testing then confirmed the route did leave town once: the live log changed to
+World Map at frame `11968` after autowalk stepped `(28,16)->RIGHT` into
+`(29,16)`. That was a drifted/rerouted exit path, not the clean current plan:
+fresh `debug_pathfind_to:29,13` from `(21,20)` traces through
+`(21,20)->...->(13,18)->...->(29,13)` and does not include `(29,16)`.
+`map_reader.lua` now guards `(29,16).west` so ordinary in-town routing does not
+treat that row-16 transition as a corridor. Current live cleanup state:
+`POSITION: map=0x0B(Rimuldar) x=21 y=20`, `PATH_STATE target=nil`,
+`RUNTIME_BLOCKS map=0x0B none`, and `DOOR_STATE keys=1 slots=0=(21,21)`,
+so the outer door is open and the inner door is closed. The user also reports
+the throne-room door likely stays open after unlocking; treat that as a
+possible special case and do not generalize Rimuldar's map-leave door reset to
+all magic-key doors without a live check.
 Full validation of every dialogue-only NPC route can wait for a later polish
 pass; it is not worth re-entering the one-way maze unless one of those NPCs
 proves progression-critical.
@@ -241,7 +419,8 @@ now include `(24,12).south`, `(23,12).south`, `(25,11).east`,
 `(10,6).east/north`,
 `(9,6).north/west`, `(12,6).north/south/west`, `(13,9).south`,
 `(13,7).west`, `(14,9).east/south`, `(15,9).south`, `(16,9).south`, and
-`(17,9).east/south`, plus the newest entrance-side blocks `(22,12).south`,
+`(17,9).east/south`, `(16,19).south`, and `(17,19).south`, plus the newest
+entrance-side blocks `(22,12).south`,
 `(9,12).east`, `(8,14).east`, `(7,15).south`, `(6,16).east/south`,
 `(5,16).south`, `(3,13).south`, `(3,15).north`, and
 `(17,17).east`, plus the latest maze seals `(4,16).south`, `(3,16).south`,

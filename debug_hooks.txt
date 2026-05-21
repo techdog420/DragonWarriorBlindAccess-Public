@@ -110,12 +110,26 @@ COMMANDS (write to dw_commands.txt, one per line)
   clear_seam_cells         Clear current map seam observations
   is_blocked_tile:X,Y      Inspect runtime blocked/effective passability state
   dump_blocked_tiles       Dump current map runtime blocked tiles as Lua lines
-  sweep_map                Start systematic engine-collision sweep of current map.
+  sweep_map                Legacy forensic engine-collision sweep of current map.
                            Teleports player to every walkable-looking tile,
                            probes all 4 directions, records hidden engine walls.
                            auto_step is suspended while sweep runs.
                            Outputs ready-to-paste MAP_BLOCKED_CELLS entries.
   stop_sweep               Cancel an active sweep mid-run
+  crawl_map_frontier       Start a review-only frontier crawl from the current
+                           live tile. Parks mobile NPCs by default, leaves
+                           stationary NPCs in place, skips hazards, stops on
+                           map transitions, and logs candidates only.
+  crawl_map_frontier:attempts=5,max_edges=300,park_mobile_npcs=false
+                           Same, with optional overrides. Defaults:
+                           attempts=3, max_edges=200, park_mobile_npcs=true.
+  stop_map_crawl           Stop the active frontier crawl and restore parked NPCs
+  report_map_crawl         Log summary counts and high-value crawl candidates
+  dump_map_crawl_report    Log every probed crawl edge and classification
+  export_map_crawl_candidates
+                           Log review-only MAP_PASSTHROUGH_CELLS and
+                           MAP_DIRECTIONAL_BLOCKS candidate snippets
+  reset_map_crawl          Clear the current map's crawl report
   report_upper_dialogue_state  Dump upper-window state to log (active flag, lengths,
                            menu/submenu status, current window content)
   report_merchant_state    Dump merchant/shop detector state, visible decoded rows,

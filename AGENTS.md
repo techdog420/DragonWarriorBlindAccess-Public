@@ -154,8 +154,18 @@ Stop conditions:
 - `report_runtime_blocks`
 - `export_blocks`
 - `survey_map`
+- `crawl_map_frontier`
+- `stop_map_crawl`
+- `report_map_crawl`
+- `dump_map_crawl_report`
+- `export_map_crawl_candidates`
+- `reset_map_crawl`
 - `probe_edge`
 - `survey_target`
+
+`sweep_map` is legacy forensic tooling. Prefer `crawl_map_frontier` for new
+false-wall, one-way seam, hazard, door, and NPC-clutter decoding passes because
+it produces review-only candidates instead of persistent block data.
 
 ### Runtime blocked tile controls
 - `add_blocked_tile:X,Y`

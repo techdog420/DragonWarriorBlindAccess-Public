@@ -82,6 +82,7 @@ local REROUTE_FAILURE_LIMIT = 3
 -- values after every FCEU.frameadvance(), undoing any AI movement.
 local npc_freeze_active = false
 local frozen_npc_snapshot = {}  -- Array [0..19] of {b0, b1, b2}
+local autowalk_npc_parking = nil
 
 -- Runtime engine-blocked cells injected by explicit manual commands.
 -- Route-timeout observations live in seam_memory as diagnostics only. Reroutes
@@ -110,6 +111,22 @@ local SEAM_BRUTE_FORCE_RETRY_LIMIT = 2
 local APPROACH_ORDER = {north = 1, south = 2, west = 3, east = 4}
 local function cell_key(x, y)
     return x .. "," .. y
+end
+
+-- Hot-reload the static pathing sources from disk without resetting
+-- runtime route state. This is used in live debugging when map_reader
+-- changes after the current session started (for example manual script
+-- edits in a long-running FCEUX run).
+local function refresh_navigation_modules()
+    package.loaded["map_reader"] = nil
+    package.loaded["pathfinder"] = nil
+    map_reader = require "map_reader"
+    pathfinder = require "pathfinder"
+end
+
+-- Explicit manual/diagnostic hook for main.lua.
+function M.refresh_navigation_modules()
+    refresh_navigation_modules()
 end
 
 local function copy_direction_table(dirs)
@@ -312,6 +329,17 @@ local function should_freeze_npcs_for_autowalk(opts)
         return config_bool("bizhawk_autowalk_freeze_npcs", false)
     end
     return true
+end
+
+local function should_park_mobile_npcs_for_autowalk(opts)
+    opts = opts or {}
+    if opts.survey_safe then
+        return false
+    end
+    if opts.park_mobile_npcs ~= nil then
+        return opts.park_mobile_npcs ~= false
+    end
+    return config_bool("auto_walk_park_mobile_npcs", false)
 end
 
 local function should_refresh_objects_after_route()
@@ -717,6 +745,136 @@ local function parse_npc_slot(obj)
     return slot
 end
 
+local function decode_npc_coords(byte0, byte1)
+    return byte0 % 32, byte1 % 32
+end
+
+local function is_active_npc_slot(byte0, byte1)
+    local x, y = decode_npc_coords(byte0, byte1)
+    return not ((x == 0 and y == 0) or (x == 31 and y == 31))
+end
+
+local function write_npc_bytes_if_changed(slot, byte0, byte1, byte2)
+    local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+    if memory.readbyte(base) ~= byte0 then
+        memory.writebyte(base, byte0)
+    end
+    if memory.readbyte(base + 1) ~= byte1 then
+        memory.writebyte(base + 1, byte1)
+    end
+    if memory.readbyte(base + 2) ~= byte2 then
+        memory.writebyte(base + 2, byte2)
+    end
+end
+
+local function apply_autowalk_npc_parking_state(state)
+    if not state then
+        return 0
+    end
+    local parked = 0
+    for slot, snapshot in pairs(state.slots or {}) do
+        write_npc_bytes_if_changed(slot, snapshot.parked_byte0, snapshot.parked_byte1, snapshot.byte2)
+        parked = parked + 1
+    end
+    return parked
+end
+
+local function release_autowalk_npc_parking(reason)
+    if not autowalk_npc_parking then
+        return
+    end
+    local map_id, px, py = nav.get_position()
+    local state = autowalk_npc_parking
+    if map_id ~= state.map_id then
+        debug_tools.info(string.format(
+            "AUTO_WALK_NPC_PARK_RESTORE map=0x%02X restored=false restored_slots=0 deferred_slots=0 reason=%s map_changed=true",
+            state.map_id or 0,
+            tostring(reason or "release")))
+        autowalk_npc_parking = nil
+        return
+    end
+
+    local restored = 0
+    local deferred = {}
+    local deferred_count = 0
+    for slot, snapshot in pairs(state.slots or {}) do
+        if snapshot.x == px and snapshot.y == py then
+            deferred[slot] = snapshot
+            deferred_count = deferred_count + 1
+        else
+            write_npc_bytes_if_changed(slot, snapshot.byte0, snapshot.byte1, snapshot.byte2)
+            restored = restored + 1
+        end
+    end
+
+    debug_tools.info(string.format(
+        "AUTO_WALK_NPC_PARK_RESTORE map=0x%02X restored=true restored_slots=%d deferred_slots=%d reason=%s",
+        state.map_id or 0,
+        restored,
+        deferred_count,
+        tostring(reason or "release")))
+
+    if deferred_count > 0 then
+        autowalk_npc_parking = {
+            map_id = state.map_id,
+            slots = deferred,
+            pending_restore = true,
+        }
+    else
+        autowalk_npc_parking = nil
+    end
+end
+
+local function start_autowalk_npc_parking(target)
+    release_autowalk_npc_parking("new autowalk parking")
+    if autowalk_npc_parking then
+        debug_tools.info("AUTO_WALK_NPC_PARK_START skipped: pending restore still active")
+        return 0
+    end
+    local map_id = nav.get_position()
+    local exempt_slot = parse_npc_slot(target)
+    local state = {
+        map_id = map_id,
+        slots = {},
+        exempt_slot = exempt_slot,
+        pending_restore = false,
+    }
+    local count = 0
+    for slot = 0, addr.NPC_COUNT - 1 do
+        if slot ~= exempt_slot then
+            local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+            local byte0 = memory.readbyte(base)
+            local byte1 = memory.readbyte(base + 1)
+            local byte2 = memory.readbyte(base + 2)
+            if is_active_npc_slot(byte0, byte1) and tonumber(byte2) ~= 0 then
+                local x, y = decode_npc_coords(byte0, byte1)
+                state.slots[slot] = {
+                    byte0 = byte0,
+                    byte1 = byte1,
+                    byte2 = byte2,
+                    parked_byte0 = (byte0 - (byte0 % 32)) + 31,
+                    parked_byte1 = (byte1 - (byte1 % 32)) + 31,
+                    x = x,
+                    y = y,
+                }
+                count = count + 1
+            end
+        end
+    end
+
+    autowalk_npc_parking = state
+    local parked = apply_autowalk_npc_parking_state(state)
+    debug_tools.info(string.format(
+        "AUTO_WALK_NPC_PARK_START map=0x%02X parked_slots=%d exempt_slot=%s",
+        map_id or 0,
+        parked,
+        exempt_slot and tostring(exempt_slot) or "-"))
+    if count == 0 then
+        autowalk_npc_parking = nil
+    end
+    return parked
+end
+
 local function release_target_npc_hold(reason)
     if target_npc_hold and reason then
         debug_tools.info("NPC target hold released: " .. reason)
@@ -734,16 +892,7 @@ local function encode_npc_coordinate_byte(current_byte, coord)
 end
 
 local function write_target_npc_snapshot(slot, snapshot)
-    local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
-    if memory.readbyte(base) ~= snapshot[1] then
-        memory.writebyte(base, snapshot[1])
-    end
-    if memory.readbyte(base + 1) ~= snapshot[2] then
-        memory.writebyte(base + 1, snapshot[2])
-    end
-    if memory.readbyte(base + 2) ~= snapshot[3] then
-        memory.writebyte(base + 2, snapshot[3])
-    end
+    write_npc_bytes_if_changed(slot, snapshot[1], snapshot[2], snapshot[3])
 end
 
 local function start_target_npc_hold(obj, opts)
@@ -827,6 +976,13 @@ function M.apply_npc_freeze()
             if memory.readbyte(base + 2) ~= snap[3] then memory.writebyte(base + 2, snap[3]) end
         end
     end
+    if autowalk_npc_parking then
+        if autowalk_npc_parking.pending_restore then
+            release_autowalk_npc_parking("deferred restore retry")
+        else
+            apply_autowalk_npc_parking_state(autowalk_npc_parking)
+        end
+    end
     if target_npc_hold then
         write_target_npc_snapshot(target_npc_hold.slot, target_npc_hold.snapshot)
         target_npc_hold.frames = target_npc_hold.frames - 1
@@ -843,10 +999,12 @@ function M.toggle_npc_freeze()
     if npc_freeze_active then
         npc_freeze_active = false
         frozen_npc_snapshot = {}
+        release_autowalk_npc_parking("manual unfreeze")
         release_target_npc_hold("manual unfreeze")
         tolk.output_interrupt("NPCs unfrozen.")
         return false
     else
+        release_autowalk_npc_parking("manual full freeze")
         release_target_npc_hold("manual full freeze")
         capture_npc_snapshot()
         npc_freeze_active = true
@@ -857,6 +1015,7 @@ end
 
 -- freeze_npcs() / unfreeze_npcs(): Direct control for remote commands.
 function M.freeze_npcs()
+    release_autowalk_npc_parking("full freeze requested")
     release_target_npc_hold("full freeze requested")
     capture_npc_snapshot()
     npc_freeze_active = true
@@ -865,12 +1024,17 @@ end
 function M.unfreeze_npcs()
     npc_freeze_active = false
     frozen_npc_snapshot = {}
+    release_autowalk_npc_parking("manual unfreeze")
     release_target_npc_hold("manual unfreeze")
 end
 
 -- is_npc_freeze_active(): Query freeze state (for can_walk guard, etc.)
 function M.is_npc_freeze_active()
     return npc_freeze_active
+end
+
+function M.is_autowalk_npc_parking_active()
+    return autowalk_npc_parking ~= nil
 end
 
 -- set_autowalk_guard(fn): Install a main-loop-owned predicate used to veto
@@ -1001,6 +1165,10 @@ function M.is_cell_runtime_blocked(map_id, x, y)
     return false
 end
 
+local function is_fully_blocked_directionally(dirs)
+    return dirs and dirs.north and dirs.south and dirs.east and dirs.west
+end
+
 -- inject_runtime_block(map_id, x, y): Manually add a runtime blocked tile
 -- (blocks all 4 approach directions).
 function M.inject_runtime_block(map_id, x, y)
@@ -1041,8 +1209,11 @@ function M.is_pathfinding_walkable(map_id, x, y)
     if map_reader.is_walkable(map_id, x, y) ~= true then
         return false
     end
-    if M.is_cell_runtime_blocked(map_id, x, y) then
+    local runtime_blocked = M.is_cell_runtime_blocked(map_id, x, y)
+    if runtime_blocked and is_fully_blocked_directionally(runtime_blocked) then
         return false
+    elseif runtime_blocked then
+        return true
     end
     return true
 end
@@ -1113,6 +1284,11 @@ local function release_npc_freeze(reason)
     end
 end
 
+local function release_route_npc_controls(reason)
+    release_npc_freeze(reason)
+    release_autowalk_npc_parking(reason)
+end
+
 local function clear_active_route_context(reason, refresh_objects)
     last_pathfind_obj = nil
     reroute_failures = 0
@@ -1127,7 +1303,7 @@ local function clear_active_route_context(reason, refresh_objects)
     active_overworld_segment = nil
     release_target_face(reason or "route context cleared")
     clear_seam_retry_state()
-    release_npc_freeze(reason)
+    release_route_npc_controls(reason)
     if refresh_objects then
         objects.request_refresh()
     end
@@ -2022,6 +2198,7 @@ end
 -- object. Returns (result, face_dir, path, message, map_id).
 local function plan_path_to_object(obj, opts)
     opts = opts or {}
+    refresh_navigation_modules()
     local plan_start_clock = os.clock()
     local map_id, px, py = resolve_plan_origin(opts)
     -- `survey_safe` is used by map_survey for classification/retry behavior,
@@ -2364,7 +2541,10 @@ function M.autowalk_to_object(obj, opts)
             skip_guard = true,
         })
     end
-    if should_freeze_npcs_for_autowalk(opts) then
+    if should_park_mobile_npcs_for_autowalk(opts) then
+        start_autowalk_npc_parking(obj)
+        objects.update_npcs()
+    elseif should_freeze_npcs_for_autowalk(opts) then
         freeze_npcs_for_pathing()
     else
         debug_tools.debug("AUTO_WALK: NPC freeze skipped for this route")
@@ -2374,7 +2554,7 @@ function M.autowalk_to_object(obj, opts)
     plan.status = "planned"
     plan.ok = false
     if plan.result == "No path found" then
-        release_npc_freeze("autowalk immediate no-path")
+        release_route_npc_controls("autowalk immediate no-path")
         log_auto_walk_no_path_detail(plan)
         debug_tools.info("AUTO_WALK: no path for " .. obj.name)
         if opts.speak ~= false then
@@ -2385,7 +2565,7 @@ function M.autowalk_to_object(obj, opts)
         return plan
     end
     if not plan.path or #plan.path == 0 then
-        release_npc_freeze("autowalk already at destination")
+        release_route_npc_controls("autowalk already at destination")
         debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
         plan.status = "already_there"
         plan.message = "Already there. " .. build_pathfind_message(obj, "Adjacent", plan.face_dir)
@@ -2403,7 +2583,7 @@ function M.autowalk_to_object(obj, opts)
     if opts.prequeue_hook then
         local ok, override = opts.prequeue_hook(plan)
         if ok == false then
-            release_npc_freeze("autowalk prequeue deferred")
+            release_route_npc_controls("autowalk prequeue deferred")
             if type(override) == "table" then
                 for k, v in pairs(override) do
                     plan[k] = v
@@ -2434,7 +2614,7 @@ function M.autowalk_to_object(obj, opts)
     }) then
         active_route_settle_frames = 0
         active_route_settle_same_direction = true
-        release_npc_freeze("autowalk queue failure")
+        release_route_npc_controls("autowalk queue failure")
         debug_tools.error("AUTO_WALK: failed to queue route for " .. obj.name)
         plan.status = "queue_failed"
         plan.message = "Auto-walk could not queue the route"

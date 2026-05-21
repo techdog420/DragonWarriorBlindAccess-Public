@@ -658,11 +658,34 @@ local MAP_PASSTHROUGH_CELLS = {
         ["8,8"] = true,
         ["8,9"] = true,
         ["9,9"] = true,
+        -- 2026-05-21 post-reload frontier-crawler run: after the crawler
+        -- correctly treated (13,1) as an unstable north-edge frontier and
+        -- backtracked to (13,2), direct verifiers confirmed this adjacent
+        -- x=12 strip: (13,2)->LEFT, (12,7)->DOWN, (12,10)->UP, and
+        -- (12,10)->DOWN each moved 5/5.
+        ["12,2"] = true,
+        ["12,8"] = true,
+        ["12,9"] = true,
+        ["12,11"] = true,
+        -- 2026-05-21 frontier-crawler/verifier follow-up from the Rimuldar
+        -- west-side vertical strip: (13,5)->UP into (13,4) and
+        -- (13,3)->UP into (13,2) each moved 5/5. Do not promote (13,1)
+        -- yet; it behaves like an unstable north-edge frontier and can settle
+        -- at (13,0) after raw probes.
+        ["13,2"] = true,
+        ["13,4"] = true,
         ["13,8"] = true,
         ["13,9"] = true,
         ["13,15"] = true,
         ["13,16"] = true,
         ["13,18"] = true,
+        -- 2026-05-20 FCEUX: (13,21)->UP into (13,20) moved 5/5, and a
+        -- force-origin raw probe from (13,20)->UP moved into (13,19).
+        ["13,20"] = true,
+        -- 2026-05-20 FCEUX raw probe: (14,16)->RIGHT moved into (15,16)
+        -- while both cells decoded as blocked false-wall tiles.
+        ["14,16"] = true,
+        ["15,16"] = true,
         ["14,5"] = true,
         ["14,8"] = true,
         ["15,5"] = true,
@@ -676,6 +699,17 @@ local MAP_PASSTHROUGH_CELLS = {
         ["23,22"] = true,
         ["24,6"] = true,
         ["24,22"] = true,
+        -- 2026-05-21 frontier-crawler follow-up: direct verifiers confirmed
+        -- (29,1)->DOWN into (29,2), (29,5)->UP into (29,4),
+        -- (29,5)->DOWN into (29,6), and (29,8)->UP into (29,7) 5/5.
+        -- (29,3) is the chained strip cell: force-origin raw probes moved
+        -- into it from both (29,2)->DOWN and (29,4)->UP. Recheck with
+        -- probe_edge_verify after these passthroughs are live if needed.
+        ["29,2"] = true,
+        ["29,3"] = true,
+        ["29,4"] = true,
+        ["29,6"] = true,
+        ["29,7"] = true,
     },
 
     -- Map 0x07: Kol
@@ -837,12 +871,15 @@ local MAP_DOOR_CELLS = {
     [0x09] = {
         ["19,16"] = {x=19, y=16},
     },
-    -- Map 0x0B: Rimuldar Wings chest / inn locked door.
-    -- Live FCEUX door RAM after opening from inside reported slot 0=(22,23)
-    -- while Bill stood at (23,23). The tile itself decodes as type 6 floor, so
-    -- this manual door override keeps pathfinding from treating it as public
-    -- floor until the opened-door RAM says it is open.
+    -- Map 0x0B: Rimuldar inn / Wings chest locked doors.
+    -- External guide data lists two inn doors. Live FCEUX door RAM confirmed
+    -- the outer door at (21,21) after OPEN from (21,22) facing north, and the
+    -- inner Wings chest door at (22,23) after OPEN from inside while Bill stood
+    -- at (23,23). Both decode as ordinary floor, so these manual door overrides
+    -- keep pathfinding from treating them as public floor until opened-door RAM
+    -- says they are open.
     [0x0B] = {
+        ["21,21"] = {x=21, y=21},
         ["22,23"] = {x=22, y=23},
     },
     -- Map 0x15: Swamp Cave / Quagmire Cave locked Gwaelin branch.
@@ -1396,10 +1433,6 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- west: (13,20)→(14,20) confirmed 2026-04-14 runtime; south: probe from (14,21) north BLOCKED 2026-04-15;
         -- east: probe from (15,20) west BLOCKED 2026-04-15. Dead-end alcove; unreachable from all live sides.
         ["14,20"] = {west = true, south = true, east = true},
-        -- (15,21): east is a wall tile (16,21 in MAP_BLOCKED_CELLS); north+south engine-blocked; west clear.
-        -- north: probe from (15,20) south BLOCKED 2026-04-15; south: probe from (15,22) north BLOCKED 2026-04-15.
-        -- One-way entry from west only (14,21 → 15,21 passable).
-        ["15,21"] = {north = true, south = true},
         -- (12,28): west: run1 count=1 medium; north: auto_step:down from
         -- (12,27) 3/3 retry fail + probe confirm 2026-04-15. South approach
         -- added 2026-05-14 after the castle entrance -> throne-room stair route
@@ -1969,7 +2002,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- The later clean entrance-to-key-shop pass also found the east
         -- approach blocked from (29,13)->LEFT, while the route into and out of
         -- the actual exit tile (29,13) remained open.
-        ["28,13"] = {east = true, south = true},
+        -- (29,13)->LEFT was verified passable 5/5 on 2026-05-20, so the east
+        -- approach into (28,13) is not a permanent engine blocker.
+        ["28,13"] = {south = true},
 
         -- 2026-05-17 Magic Key route shakedown. These edges each verified
         -- 3/3 blocked with probe_edge_verify while routing from the east
@@ -2129,21 +2164,22 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (5,8) blocked 5/5, so do not let A* enter that pocket from the west.
         -- Wings chest room shelf follow-up: after NPCs were frozen,
         -- probe_edge_verify:23,23,DOWN,5 confirmed (23,23)->DOWN into
-        -- (23,24) blocked 5/5 despite an open type-8 tile preview. The older
-        -- (14,19)->RIGHT candidate was mixed, but a later max verifier
-        -- confirmed it blocked 15/15, so (15,19).west is now promoted. After
-        -- the row-22 shelf was modeled and the user reloaded FCEUX,
+        -- (23,24) blocked 5/5 despite an open type-8 tile preview. A later
+        -- max verifier also flagged (14,19)->RIGHT, but that edge proved noisy
+        -- in a fresh run after reload; it now needs to stay open for the main
+        -- in-town path. After the row-22 shelf was modeled and the user
+        -- reloaded FCEUX,
         -- probe_edge_verify:23,22,UP,5 confirmed (23,22)->UP into (23,21)
         -- blocked 5/5 too. The next Wings route loops directly confirmed
         -- (21,20)->RIGHT into (22,20) blocked 5/5, then the locked-room
         -- return search found the row-22 shelf and lower/right branches are
-        -- one-way pockets. Keep these directional: (24,22)->UP into (24,21),
-        -- (24,22)->RIGHT into (25,22), (20,25)->DOWN into (20,26),
-        -- (21,25)->DOWN into (21,26), (22,25)->DOWN into (22,26),
-        -- (22,25)->RIGHT into (23,25), (20,22)->UP into (20,21),
-        -- (20,22)->LEFT into (19,22), (20,25)->UP into (20,24),
-        -- (24,23)->RIGHT into (25,23), and (24,23)->DOWN into (24,24) all
-        -- direct-verified blocked. After those were patched, the next
+        -- one-way pockets. Keep these directional: (20,25)->DOWN into
+        -- (20,26), (21,25)->DOWN into (21,26), (22,25)->DOWN into
+        -- (22,26), (22,25)->RIGHT into (23,25), (20,22)->UP into
+        -- (20,21), (20,22)->LEFT into (19,22), and (20,25)->UP into
+        -- (20,24) remain blocked. A later probe batch showed
+        -- (24,23)->RIGHT into (25,23) and (24,23)->DOWN into (24,24)
+        -- are passable; those earlier blocks were removed.
         -- parked-NPC return survey reached (20,23) and hit (20,23)->LEFT
         -- into (19,23); probe_edge_verify confirmed that east approach
         -- blocked 10/10. The same lower-room sweep confirmed (20,23)->DOWN
@@ -2157,7 +2193,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- checks from the now-proven row-22 branch also blocked
         -- (21,22)->UP and (22,22)->UP, so close the south approaches into
         -- (21,21)/(22,21). Leave (20,21).north open after it moved 5/5, and
-        -- leave (21,21).north open after it stayed mixed.
+        -- leave (21,21).north open after it stayed mixed. The next inn-to-exit
+        -- autowalk/direct verifiers confirmed the row-19 south approaches at
+        -- (16,20)->UP and (17,20)->UP block, while (17,19).east and
+        -- (15,24).south stayed mixed and (21,24).south moved 3/3.
+        -- A later drifted exit route stepped (28,16)->RIGHT into (29,16) and
+        -- immediately changed to the world map, so guard that transition row
+        -- the same way the northwest exit guards (4,2).south.
         ["0,5"] = {east = true},
         ["1,4"] = {south = true},
         ["2,5"] = {west = true},
@@ -2203,36 +2245,125 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["9,11"] = {north = true},
         ["9,12"] = {east = true, south = true},
         ["10,6"] = {east = true, north = true},
+        -- 2026-05-21: parked-NPC entrance-to-chest reroutes tried the lower
+        -- west branch; direct verifiers confirmed these entries blocked 5/5.
+        ["12,21"] = {east = true},
+        ["12,22"] = {east = true},
+        ["12,23"] = {east = true},
+        ["12,24"] = {east = true},
+        ["12,25"] = {east = true},
+        ["12,26"] = {east = true},
         ["12,6"] = {north = true, south = true, west = true},
         ["13,7"] = {east = true, west = true},
         ["13,9"] = {south = true},
         ["14,9"] = {east = true, south = true},
-        ["15,9"] = {south = true},
+        -- (15,19): one-way row-19 connector. Fresh FCEUX verification after
+        -- closing the command menu blocked (14,19)->RIGHT 3/3, while the
+        -- reverse (15,19)->LEFT moved 3/3. Close only the west approach.
         ["15,19"] = {west = true},
+        -- (15,21): east is a wall tile (16,21 in MAP_BLOCKED_CELLS); north+south engine-blocked; west now confirmed blocked.
+        -- North from (15,20) and south from (15,22) were blocked earlier; latest direct probes (14,21->right,5)
+        -- stayed blocked with raw hold timeouts even with open directional preview.
+        ["15,21"] = {north = true, south = true, west = true},
+        -- (15,22): west approach from (14,22) also stays blocked after direct probe 5/5 raw hold timeout.
+        -- 2026-05-21 return-route fallback from (16,22) confirmed the east
+        -- approach blocked 5/5 too.
+        ["15,22"] = {east = true, west = true},
+        -- Return-side lower pocket edges. Planned entrance-to-chest routes tried
+        -- crossing east from (14,23)/(14,24), but direct FCEUX verifiers blocked
+        -- both 5/5. Keep these as directional so nearby row-23/24 cells remain
+        -- available from their legitimate approaches.
+        -- The later chest-return route also tried entering (15,23) from the
+        -- east via (16,23)->LEFT; direct verifier confirmed that approach
+        -- blocked 5/5 too.
+        ["15,23"] = {east = true, west = true},
+        -- 2026-05-21: live autowalk looped between lower-row fallback routes;
+        -- direct probe_edge_verify:15,25,UP,5 confirmed this south approach
+        -- blocked 5/5 by raw holds.
+        ["15,24"] = {west = true, south = true},
+        -- 2026-05-21: after the (16,27) reroute, autowalk tried dropping
+        -- from (15,27); probe_edge_verify:15,27,DOWN,5 confirmed blocked 5/5.
+        ["15,28"] = {north = true},
+        -- (15,17): west approach from (14,17) confirmed blocked 5/5 in FCEUX
+        -- on 2026-05-20. Reverse (15,17)->LEFT evidence stays modeled separately
+        -- as open on (14,17).east.
+        ["15,17"] = {west = true},
+        ["15,9"] = {south = true},
         ["16,9"] = {south = true},
-        ["16,24"] = {south = true},
+        -- (16,19): west approach from (15,19) is now confirmed 5/5 blocked in direct `probe_edge_verify` checks.
+        ["16,19"] = {south = true, west = true, east = true},
+        -- 2026-05-21: return-route fallback reached (17,21) and repeatedly
+        -- tried to enter (16,21) from the east; direct
+        -- probe_edge_verify:17,21,LEFT,5 confirmed blocked 5/5. A later
+        -- fallback from (16,22)->UP confirmed the south approach blocked 5/5
+        -- too. The north approach from (16,20)->DOWN stayed mixed, so keep it
+        -- open.
+        ["16,21"] = {east = true, south = true},
+        -- 2026-05-21: return-route fallback from (16,23)->DOWN confirmed the
+        -- north approach into (16,24) blocked 5/5. The older south approach
+        -- blocker remains from the lower-strip forced probe.
+        ["16,24"] = {north = true, south = true},
+        -- 2026-05-21: lower fallback reroute from the entrance side reached
+        -- (16,27), but probe_edge_verify:16,27,DOWN,5 confirmed this north
+        -- approach blocked 5/5.
+        ["16,28"] = {north = true},
         ["17,9"] = {east = true, south = true},
         ["17,17"] = {east = true},
+        ["17,19"] = {south = true},
+        -- 2026-05-21: same lower fallback reached (16,27), but
+        -- probe_edge_verify:16,27,RIGHT,5 confirmed this west approach
+        -- blocked 5/5.
+        ["17,27"] = {west = true},
+        -- 2026-05-21 chest-return route harvesting: after the noisy
+        -- (16,20)->DOWN seam stayed direct-passable, successive fallback
+        -- routes tried the row-20 south exits. Direct verifiers confirmed
+        -- (18,20)->DOWN, (19,20)->DOWN, and (20,20)->DOWN all blocked 5/5.
+        -- The next reroute crossed through (17,21) and tried (17,21)->RIGHT;
+        -- direct verifier confirmed that west approach into (18,21) too.
+        ["18,21"] = {north = true, west = true},
+        ["19,21"] = {north = true},
         ["19,22"] = {east = true},
         ["19,23"] = {east = true},
-        ["20,21"] = {south = true},
+        ["20,21"] = {north = true, south = true},
         ["20,24"] = {north = true, south = true},
         ["20,26"] = {north = true},
-        ["21,21"] = {south = true},
-        ["21,24"] = {north = true},
+        -- 2026-05-21: row-25 fallback tried entering from the south, but
+        -- probe_edge_verify:21,25,UP,5 confirmed blocked 5/5.
+        ["21,24"] = {north = true, south = true},
         ["21,26"] = {north = true},
+        -- (21,20) west approach is a confirmed one-way seam:
+        -- `probe_edge_verify:21,20,right,10` stayed blocked 10/10 on clean
+        -- probe runs, while `22,20`->LEFT is confirmed passable 10/10.
+        ["21,20"] = {west = true},
         ["22,12"] = {south = true},
-        ["22,20"] = {west = true},
-        ["22,21"] = {south = true},
-        ["22,24"] = {north = true},
-        ["22,26"] = {north = true},
-        ["23,21"] = {south = true},
-        ["23,24"] = {north = true},
-        ["23,25"] = {west = true},
+        -- 2026-05-21: chest-return autowalk from the lower fallback area
+        -- looped on (23,20)->LEFT into (22,20); direct verifier confirmed
+        -- the east approach blocked 5/5. The older west approach remains
+        -- from the Wings route verifier.
+        ["22,20"] = {east = true, west = true},
+        -- 2026-05-20: `probe_edge_verify:24,20,RIGHT,5` was confirmed
+        -- blocked 5/5 as a one-way wall. Keep reverse approach open.
+        ["24,20"] = {east = true},
+        -- The follow-up return-route fallback from (24,22) repeatedly tried
+        -- to enter the upper shelf at (24,21); direct
+        -- probe_edge_verify:24,22,UP,5 confirmed this south approach blocked
+        -- 5/5. Keep (24,22)<->(24,23) open; that edge moved during the same
+        -- run and is only noisy.
         ["24,21"] = {south = true},
-        ["24,24"] = {north = true},
-        ["25,22"] = {west = true},
-        ["25,23"] = {west = true},
+        -- 2026-05-21: after the outer-door-to-chest route succeeded, the
+        -- chest-to-exit/entrance return planner looped on (23,20)->DOWN.
+        -- Direct probe_edge_verify:23,20,DOWN,5 confirmed the north approach
+        -- into (23,21) blocked 5/5. The next live return-route run then
+        -- looped on (23,22)->UP; direct probe_edge_verify:23,22,UP,5
+        -- confirmed the south approach blocked 5/5 too.
+        ["23,21"] = {north = true, south = true},
+        -- Same return-route run alternated with (23,22)->LEFT into the
+        -- row-22 shelf; direct probe_edge_verify:23,22,LEFT,5 confirmed this
+        -- east approach into (22,22) blocked 5/5.
+        ["22,22"] = {east = true},
+        ["22,26"] = {north = true},
+        ["23,25"] = {west = true},
+        ["29,16"] = {west = true},
     },
 
     -- Map 0x15: Swamp Cave lower return route
@@ -2489,6 +2620,38 @@ local function build_open_door_set()
         end
     end
     return opened
+end
+
+function M.get_door_cell_context(map_id, x, y)
+    local door_cells = MAP_DOOR_CELLS[map_id]
+    local key = x .. "," .. y
+    local dc = door_cells and door_cells[key]
+    if not dc then
+        return nil
+    end
+
+    local open_slots = {}
+    local open = false
+    for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+        local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+        local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+        if dx ~= 0 then
+            open_slots[#open_slots + 1] = string.format("%d:%d,%d", i, dx, dy)
+            if dx == dc.x and dy == dc.y then
+                open = true
+            end
+        end
+    end
+
+    return {
+        is_door = true,
+        x = x,
+        y = y,
+        door_x = dc.x,
+        door_y = dc.y,
+        open = open,
+        open_slots = open_slots,
+    }
 end
 
 function M.get_walkability_snapshot(map_id)

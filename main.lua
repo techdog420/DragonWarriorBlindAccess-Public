@@ -83,7 +83,7 @@ for _, mod_name in ipairs({
     "addresses", "auto_step", "battle", "chars", "config",
     "debug_tools", "emulator_compat", "event_bus", "game_snapshot",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
-    "map_survey", "maps", "menu", "merchant", "navigation",
+    "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "text",
 }) do
@@ -111,6 +111,7 @@ local merchant = require "merchant"    -- Dedicated merchant/shop UI detection
 local debug_tools = require "debug_tools"  -- Debug logging and automation (no-op when debug_mode=false)
 local path_debug = require "path_debug"    -- Pathfinding debug/test tools (no-op when debug_mode=false)
 local map_survey = require "map_survey"    -- Autonomous map/object survey workflow
+local map_crawler = require "map_crawler"  -- Review-only frontier crawler for map decoding
 local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
 local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
@@ -159,6 +160,21 @@ local function parse_map_xy_arg(arg, default_map_id)
     local x, y = parse_xy_arg(arg)
     if x == nil then return nil end
     return default_map_id, x, y
+end
+
+local function refresh_navigation_modules()
+    package.loaded["map_reader"] = nil
+    package.loaded["pathfinder"] = nil
+    map_reader = require "map_reader"
+    pathfinder = require "pathfinder"
+    if route_mgr.refresh_navigation_modules then
+        route_mgr.refresh_navigation_modules()
+    end
+    debug_tools.info("NAVIGATION_MODULES_REFRESHED")
+end
+
+local function ensure_navigation_modules_fresh()
+    refresh_navigation_modules()
 end
 
 local function has_directional_block(entry)
@@ -3759,6 +3775,7 @@ debug_tools.register_command("inspect_tile", function(arg)
         debug_tools.error("inspect_tile usage: inspect_tile:X,Y")
         return
     end
+    ensure_navigation_modules_fresh()
     objects.update_npcs()
     local map_id = snapshot.map_id
     local msg = log_tile_report(map_id, x, y)
@@ -3772,6 +3789,7 @@ debug_tools.register_command("inspect_move", function(arg)
         debug_tools.error("inspect_move usage: inspect_move:DIR or inspect_move:X,Y,DIR")
         return
     end
+    ensure_navigation_modules_fresh()
     objects.update_npcs()
     local msg = log_move_report(from_x, from_y, dir)
     if msg then
@@ -3798,6 +3816,10 @@ debug_tools.register_command("probe_edge", function(arg)
     end
     if map_survey.is_active() then
         debug_tools.error("probe_edge: stop the active survey first")
+        return
+    end
+    if map_crawler.is_active() then
+        debug_tools.error("probe_edge: stop the active map crawl first")
         return
     end
     if auto_step.is_route_active() then
@@ -3862,6 +3884,10 @@ debug_tools.register_command("probe_edge_verify", function(arg)
     end
     if map_survey.is_active() then
         debug_tools.error("probe_edge_verify: stop the active survey first")
+        return
+    end
+    if map_crawler.is_active() then
+        debug_tools.error("probe_edge_verify: stop the active map crawl first")
         return
     end
     if auto_step.is_route_active() then
@@ -3941,6 +3967,7 @@ debug_tools.register_command("pathfind_to", function(arg)
         debug_tools.error("pathfind_to usage: pathfind_to:X,Y")
         return
     end
+    ensure_navigation_modules_fresh()
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
     local blocking = route_mgr.build_path_blocking(map_id)
@@ -3961,6 +3988,7 @@ debug_tools.register_command("pathfind_adjacent", function(arg)
         debug_tools.error("pathfind_adjacent usage: pathfind_adjacent:X,Y")
         return
     end
+    ensure_navigation_modules_fresh()
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
     local blocking = route_mgr.build_path_blocking(map_id)
@@ -4005,6 +4033,11 @@ debug_tools.register_command("__config_reloaded", function()
     if hotkey_filter.reload_config then
         hotkey_filter.reload_config()
     end
+end)
+
+debug_tools.register_command("reload_navigation_modules", function()
+    ensure_navigation_modules_fresh()
+    tolk.output_interrupt("Navigation modules reloaded")
 end)
 
 debug_tools.register_command("freeze_npcs", function()
@@ -4597,27 +4630,45 @@ debug_tools.register_command("teleport_overworld", teleport_overworld_landmark)
 -- These commands provide detailed pathfinding diagnostics.
 -- All output goes to dw_debug.log. Requires debug_mode=true.
 
-debug_tools.register_command("debug_pathfind_to", function(arg)
+local function run_debug_pathfind_to(arg, params)
+    params = params or {}
+    local command_name = params.command_name or "debug_pathfind_to"
     local goal_x, goal_y = parse_xy_arg(arg)
     if not goal_x then
-        debug_tools.error("debug_pathfind_to usage: debug_pathfind_to:X,Y")
+        debug_tools.error(command_name .. " usage: " .. command_name .. ":X,Y")
         return
     end
+    ensure_navigation_modules_fresh()
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
-    local blocking = route_mgr.build_path_blocking(map_id)
+    local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
     local opts = path_debug.build_find_path_opts()
     local result, face_dir, path = pathfinder.pathfind_to(
         map_id, px, py, goal_x, goal_y, blocking, opts)
     path_debug.store_path(map_id, px, py, goal_x, goal_y, path, opts)
     local stats = opts and opts._get_stats() or {}
     local reason = stats and stats.reason
-    local msg = string.format("Debug pathfind to (%d,%d): %s%s (visited=%d path=%d)",
-        goal_x, goal_y, result,
+    local mode_label = params.skip_npcs and " skip NPCs" or ""
+    local msg = string.format("Debug pathfind_to%s (%d,%d): %s%s (visited=%d path=%d)",
+        mode_label, goal_x, goal_y, result,
         reason and (" [" .. reason .. "]") or "",
         stats.nodes_visited or 0, path and #path or 0)
+    if face_dir then
+        msg = msg .. ". Face " .. face_dir
+    end
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
+end
+
+debug_tools.register_command("debug_pathfind_to", function(arg)
+    run_debug_pathfind_to(arg)
+end)
+
+debug_tools.register_command("debug_pathfind_to_skip_npcs", function(arg)
+    run_debug_pathfind_to(arg, {
+        command_name = "debug_pathfind_to_skip_npcs",
+        skip_npcs = true,
+    })
 end)
 
 local function run_debug_pathfind_adjacent(arg, params)
@@ -4628,6 +4679,7 @@ local function run_debug_pathfind_adjacent(arg, params)
         debug_tools.error(command_name .. " usage: " .. command_name .. ":X,Y")
         return
     end
+    ensure_navigation_modules_fresh()
     local map_id, px, py = nav.get_position()
     objects.update_npcs()
     local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
@@ -4720,6 +4772,11 @@ debug_tools.register_command("dump_path_grid", function()
 end)
 
 debug_tools.register_command("survey_map", function(arg)
+    if map_crawler.is_active() then
+        debug_tools.error("survey_map: stop the active map crawl first")
+        tolk.output_interrupt("Stop the active map crawl first")
+        return
+    end
     local ok, err = map_survey.start_object_survey(arg)
     if not ok then
         debug_tools.error("survey_map: " .. tostring(err))
@@ -4748,6 +4805,11 @@ debug_tools.register_command("report_survey_start", function(arg)
 end)
 
 debug_tools.register_command("survey_objects", function(arg)
+    if map_crawler.is_active() then
+        debug_tools.error("survey_objects: stop the active map crawl first")
+        tolk.output_interrupt("Stop the active map crawl first")
+        return
+    end
     local ok, err = map_survey.start_object_survey(arg)
     if not ok then
         debug_tools.error("survey_objects: " .. tostring(err))
@@ -4756,6 +4818,11 @@ debug_tools.register_command("survey_objects", function(arg)
 end)
 
 debug_tools.register_command("survey_target", function(arg)
+    if map_crawler.is_active() then
+        debug_tools.error("survey_target: stop the active map crawl first")
+        tolk.output_interrupt("Stop the active map crawl first")
+        return
+    end
     local ok, err = map_survey.start_target_survey(arg)
     if not ok then
         debug_tools.error("survey_target: " .. tostring(err))
@@ -4861,6 +4928,70 @@ debug_tools.register_command("reset_survey_candidates", function(arg)
     local map_id = parse_int_arg(arg) or snapshot.map_id
     map_survey.reset_candidates(map_id)
     tolk.output_interrupt(string.format("Cleared survey candidates for map %02X", map_id))
+end)
+
+debug_tools.register_command("crawl_map_frontier", function(arg)
+    if map_survey.is_active() then
+        debug_tools.error("crawl_map_frontier: stop the active survey first")
+        tolk.output_interrupt("Stop the active survey first")
+        return
+    end
+    if auto_step.is_route_active() then
+        debug_tools.error("crawl_map_frontier: wait for the current auto-walk step/route to finish")
+        tolk.output_interrupt("Wait for auto-walk to finish")
+        return
+    end
+    local ok, err = map_crawler.start(arg)
+    if not ok then
+        debug_tools.error("crawl_map_frontier: " .. tostring(err))
+        tolk.output_interrupt(tostring(err))
+    end
+end)
+
+debug_tools.register_command("stop_map_crawl", function()
+    local ok, msg = map_crawler.stop()
+    if not ok then
+        debug_tools.error("stop_map_crawl: " .. tostring(msg))
+        tolk.output_interrupt(tostring(msg))
+        return
+    end
+    tolk.output_interrupt(msg)
+end)
+
+debug_tools.register_command("report_map_crawl", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_crawler.report(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No map crawl report for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Reported map crawl with %d edges for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("dump_map_crawl_report", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_crawler.dump_report(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No map crawl report for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Dumped %d map crawl edges for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("export_map_crawl_candidates", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    local count = map_crawler.export_candidates(map_id)
+    if count == 0 then
+        tolk.output_interrupt(string.format("No map crawl candidates for map %02X", map_id))
+    else
+        tolk.output_interrupt(string.format("Exported %d map crawl candidates for map %02X", count, map_id))
+    end
+end)
+
+debug_tools.register_command("reset_map_crawl", function(arg)
+    local map_id = parse_int_arg(arg) or snapshot.map_id
+    map_crawler.reset(map_id)
+    tolk.output_interrupt(string.format("Cleared map crawl report for map %02X", map_id))
 end)
 
 -- ============================================================
@@ -5444,6 +5575,7 @@ while true do
     local edge_probe_active_this_frame = checked_call("tick_edge_probe", tick_edge_probe) == true
     local edge_verify_active_this_frame = checked_call("tick_edge_verify", tick_edge_verify) == true
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
+    checked_scan("map_crawler.tick", map_crawler.tick, can_walk)
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
@@ -5467,4 +5599,5 @@ while true do
     -- NPC coordinates on the next frame.
     checked_scan("route_manager.apply_npc_freeze", route_mgr.apply_npc_freeze)
     checked_scan("map_survey.apply_npc_parking", map_survey.apply_npc_parking)
+    checked_scan("map_crawler.apply_npc_parking", map_crawler.apply_npc_parking)
 end

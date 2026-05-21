@@ -1034,6 +1034,53 @@ function tests.preview_planning_can_override_origin_and_blocking_state()
     env.restore()
 end
 
+function tests.runtime_directional_block_does_not_block_chest_target_walkability()
+    local env = make_env()
+    env.route_manager.inject_runtime_block_for_step(0x05, 7, 1, "left", "directional_test")
+
+    local plan = env.route_manager.plan_path_to_object({
+        name = "Blocked Directional Chest",
+        type = "chest",
+        x = 6,
+        y = 1,
+    })
+
+    assert_equal(
+        plan.path_mode,
+        "direct",
+        "partial directional runtime block should still allow direct chest routing"
+    )
+    assert_equal(
+        env.route_manager.is_pathfinding_walkable(0x05, 6, 1),
+        true,
+        "runtime blocks with open approaches should remain pathfinding-walkable"
+    )
+    assert_equal(env.last_direct_call().goal_x, 6, "direct call should still target the chest X")
+    assert_equal(env.last_direct_call().goal_y, 1, "direct call should still target the chest Y")
+    assert_equal(env.last_adjacent_call(), nil, "one-way runtime block should not force adjacent fallback")
+
+    env.route_manager.inject_runtime_block(0x05, 6, 1)
+    assert_equal(
+        env.route_manager.is_pathfinding_walkable(0x05, 6, 1),
+        false,
+        "fully blocked runtime cell should remain non-walkable"
+    )
+
+    local plan_after_full_block = env.route_manager.plan_path_to_object({
+        name = "Now Fully Blocked Chest",
+        type = "chest",
+        x = 6,
+        y = 1,
+    })
+    assert_equal(
+        plan_after_full_block.path_mode,
+        "adjacent",
+        "fully blocked runtime cell should fall back to adjacent planning"
+    )
+
+    env.restore()
+end
+
 function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service()
     local merchant = {
         name = "Merchant 2",
@@ -1593,6 +1640,131 @@ function tests.bizhawk_autowalk_freeze_can_be_opted_in()
         true,
         "BizHawk autowalk freeze option should preserve the old NPC freeze behavior when requested"
     )
+
+    env.restore()
+end
+
+function tests.autowalk_parks_mobile_non_target_npcs_when_enabled()
+    local env = make_env({
+        is_bizhawk = true,
+        current_object = {id = "npc_2", name = "Merchant", type = "npc", x = 6, y = 1},
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+            auto_walk_npc_hold_frames = "0",
+        },
+        memory_values = {
+            [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x12, -- mobile non-target
+            [3] = 0x80 + 5,  [4] = 0x60 + 5,  [5] = 0x00, -- stationary
+            [6] = 0x80 + 6,  [7] = 0x60 + 1,  [8] = 0x12, -- selected target
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.route_manager.is_npc_freeze_active(), false, "mobile parking should use targeted parking instead of full freeze")
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "autowalk parking should stay active while route is queued")
+    assert_equal(env.memory_writes[1].address, 0, "parking should write the mobile non-target slot X")
+    assert_equal(env.memory_writes[1].value, 0x80 + 31, "parking should move mobile NPC X to sentinel coordinate")
+    assert_equal(env.memory_writes[2].address, 1, "parking should write the mobile non-target slot Y")
+    assert_equal(env.memory_writes[2].value, 0x60 + 31, "parking should move mobile NPC Y to sentinel coordinate")
+    assert_equal(#env.memory_writes, 2, "parking should not write stationary or selected target NPC slots")
+
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "route completion should release mobile NPC parking")
+    assert_equal(env.memory_writes[3].address, 0, "restore should write the original mobile NPC X")
+    assert_equal(env.memory_writes[3].value, 0x80 + 4, "restore should put the mobile NPC X back")
+    assert_equal(env.memory_writes[4].address, 1, "restore should write the original mobile NPC Y")
+    assert_equal(env.memory_writes[4].value, 0x60 + 4, "restore should put the mobile NPC Y back")
+
+    env.restore()
+end
+
+function tests.autowalk_parking_defers_restore_when_player_occupies_original_npc_tile()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 3,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.set_position(0x05, 5, 3)
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "restore should defer while player occupies the NPC's original tile")
+    assert_equal(#env.memory_writes, 2, "deferred restore should leave the NPC parked")
+
+    env.set_position(0x05, 5, 2)
+    env.route_manager.apply_npc_freeze()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "deferred restore should finish once the player leaves the original NPC tile")
+    assert_equal(env.memory_writes[3].value, 0x80 + 5, "deferred restore should put the NPC X back")
+    assert_equal(env.memory_writes[4].value, 0x60 + 3, "deferred restore should put the NPC Y back")
+
+    env.restore()
+end
+
+function tests.autowalk_parking_does_not_overwrite_pending_deferred_restore()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 3,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.set_position(0x05, 5, 3)
+    env.auto_step.on_route_complete()
+    env.memory_values[3] = 0x80 + 7
+    env.memory_values[4] = 0x60 + 4
+    env.memory_values[5] = 0x12
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "new autowalk should leave the deferred restore owned by the original parking state")
+    assert_equal(#env.memory_writes, 2, "new autowalk should not park a new slot while a deferred restore is pending")
+
+    env.set_position(0x05, 5, 2)
+    env.route_manager.apply_npc_freeze()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "pending restore should still complete after the player moves")
+    assert_equal(env.memory_writes[3].value, 0x80 + 5, "pending restore should preserve the original NPC X")
+    assert_equal(env.memory_writes[4].value, 0x60 + 3, "pending restore should preserve the original NPC Y")
+
+    env.restore()
+end
+
+function tests.autowalk_parking_restores_on_immediate_no_path()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "always_no_path",
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 4,
+            [1] = 0x60 + 4,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "immediate no-path should restore parked NPCs")
+    assert_equal(env.memory_writes[1].value, 0x80 + 31, "no-path setup should park the mobile NPC")
+    assert_equal(env.memory_writes[2].value, 0x60 + 31, "no-path setup should park the mobile NPC")
+    assert_equal(env.memory_writes[3].value, 0x80 + 4, "no-path cleanup should restore the mobile NPC X")
+    assert_equal(env.memory_writes[4].value, 0x60 + 4, "no-path cleanup should restore the mobile NPC Y")
 
     env.restore()
 end
