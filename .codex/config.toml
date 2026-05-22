@@ -17,4 +17,4 @@ web_search = "cached"
 hooks = true
 
 [sandbox_workspace_write]
-network_access = false
+network_access = true
