@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-18
+Updated: 2026-05-22
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -145,13 +145,22 @@ edge. Current policy:
 
 ## Codex Tooling Contract
 
-Codex is the primary project agent; Claude-style docs are legacy fallback
-context only.
+Codex is the primary implementation/debugging agent. Claude bandwidth is now
+reserved mainly for second-eyes code review, not parallel active development.
+Claude-style docs and `.claude/agent-memory/` are review aids and legacy
+fallback context only.
 
 Durable tooling facts:
 - `AGENTS.md` is the repo contract; `session_handoff.md`,
   `PROJECT_MEMORY.md`, and `PLAYTESTING.md` are the durable project truth
   sources.
+- For normal workflow, Codex should make the implementation/debugging changes,
+  keep repo docs current, and prepare concise review context when Claude is
+  asked to review. Do not assume Claude has current project state unless it is
+  in repo docs or in the review packet.
+- Claude review feedback should be evaluated by Codex against the actual code,
+  tests, and current handoff before changes are accepted. Treat review output
+  as useful input, not as authoritative project memory.
 - `.codex/config.toml` should keep project safety/tooling defaults only.
   Model choice, memory enablement, and account-level trust belong in global
   Codex config.
@@ -1230,13 +1239,14 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
-Latest BizHawk transition checkpoint:
+Historical BizHawk-default transition checkpoint, superseded by the current
+FCEUX player-facing default:
 - `a5386bc Make BizHawk the default emulator path`
 
 Previous FCEUX keyboard bridge checkpoint:
 - `a79bd6f Stabilize FCEUX keyboard input bridge`
 
-Latest pre-commit validation:
+Historical pre-commit validation from that transition:
 - Full plain Lua `test_*.lua` run passed with 126 unit tests
 - FCEUX-only diagnostic tests skipped cleanly under plain Lua
 - `luac -p *.lua` passed
@@ -1257,10 +1267,11 @@ Current FCEUX default validation:
   dry-runs against
   `project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav`.
 
-Historical BizHawk default validation:
-- 2026-04-29 docs follow-up: `CLAUDE.md` and `prompt1.txt` now describe
-  BizHawk as the primary emulator and FCEUX as an explicit fallback. Refreshed
-  local checks passed: `git diff --check`, `bash -n launch_dw.sh
+Historical launcher validation from the superseded BizHawk-default period:
+- 2026-04-29 docs follow-up: `CLAUDE.md` and `prompt1.txt` were updated for
+  the then-current BizHawk-default experiment. That experiment is no longer the
+  current player-facing policy. Refreshed local checks passed:
+  `git diff --check`, `bash -n launch_dw.sh
   launch_bizhawk.sh launch_fceux.sh`, `./launch_dw.sh --dry-run`,
   `./launch_dw.sh --emulator fceux --dry-run`, and
   `python3 run_tests.py --allow-missing-speech-dep`. The first sandboxed test
@@ -1280,8 +1291,8 @@ Historical BizHawk default validation:
   launcher shell-syntax validation.
 - At that historical checkpoint, `./launch_dw.sh --dry-run` reported BizHawk
   as the default emulator and `./launch_dw.sh --emulator fceux --dry-run`
-  reported the FCEUX fallback. Current launcher behavior is recorded in the
-  FCEUX default validation above.
+  reported the explicit FCEUX path. Current launcher behavior is recorded in
+  the FCEUX default validation above.
 - The only warning was expected in WSL: `/usr/bin/python` lacks
   `accessible_output2`, so speech dependency validation must still be checked
   from the Windows/FCEUX/BizHawk runtime.

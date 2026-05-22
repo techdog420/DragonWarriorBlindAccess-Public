@@ -10,8 +10,8 @@ param(
     [switch] $DryRun
 )
 
-# FCEUX fallback launcher. The WSL entry point `launch_dw.sh` now defaults to
-# BizHawk and calls this script only when `--emulator fceux` is requested.
+# FCEUX launcher. The WSL entry point `launch_dw.sh` currently defaults to
+# FCEUX for player-facing gameplay and calls this script for that path.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"

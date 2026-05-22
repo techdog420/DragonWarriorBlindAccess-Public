@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the default gameplay emulator path; BizHawk remains the explicit automation/debug path because its Lua reload workflow is useful even though player-facing lag is worse.
+This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the current player-facing gameplay path; BizHawk remains the explicit automation/debug path because its Lua reload workflow is useful even though player-facing lag is worse.
 
 Primary project goals:
 - Add reliable screen reader narration for gameplay systems
@@ -50,6 +50,9 @@ Important behavior:
   `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
 - Explicit BizHawk automation/debug path is
   `D:\emulation\bizhawk\EmuHawk.exe`
+- If older handoff text, assistant-local memory, or Claude memory says BizHawk
+  is the default player-facing runtime, treat that as superseded by the
+  current repo docs.
 - FCEUX command-line ROM/Lua loading is best-effort on this build; if launch
   readiness fails, manually load the ROM and `main.lua` in FCEUX or use BizHawk
   for automated startup
@@ -308,6 +311,10 @@ Repo files are the source of truth:
 - Treat `PLAYTESTING.md` as the active gameplay/playability notes file
 - Treat `handoff_archive/` as historical evidence, not active context
 - Treat `~/.codex/memories/` and `.claude/agent-memory/` as assistant-local aids, not the source of truth for project state
+- Codex is the primary implementation/debugging agent. Claude is used mainly
+  for limited-bandwidth second-eyes code review, so review packets should
+  cite the current diff, focused tests, and repo docs instead of expecting
+  Claude memory to carry active project state.
 - Treat project-local `.agents/skills/` as the documented repo-skill location
   when it is writable; older `.codex/skills/` content is legacy compatibility
   only

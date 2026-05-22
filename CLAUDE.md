@@ -4,17 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Accessibility mod for Dragon Warrior (NES) that makes the game playable for blind and visually impaired players. Lua scripts now run primarily in BizHawk through the repository's emulator compatibility layer; FCEUX remains supported as an explicit fallback. The scripts read game state from RAM and output speech via the Tolk library or Python speech bridge to screen readers (NVDA, JAWS, Narrator).
+Accessibility mod for Dragon Warrior (NES) that makes the game playable for blind and visually impaired players. Current player-facing gameplay work leans FCEUX-first; BizHawk remains the preferred automation/debug/reload-heavy runtime through the repository's emulator compatibility layer. The scripts read game state from RAM and output speech via the Tolk library or Python speech bridge to screen readers (NVDA, JAWS, Narrator).
 
 This project is modeled after the **pokemon-access** scripts (`D:\games\pokemon-access\`) which accomplish the same goal for Game Boy/GBA Pokemon titles. That codebase serves as the primary architectural reference.
 
 The developer is using this project to learn Lua. Provide well-commented code with explanations of Lua-specific patterns when writing new code.
 
-## Cross-Agent Handoff Contract
+## Review-Agent Contract
 
-When sharing work with Codex:
+Codex is the primary implementation/debugging agent for this repository.
+Claude is used mainly for limited-bandwidth second-eyes code review.
+
+When reviewing Codex work:
 
 - Read `session_handoff.md` first for the active handoff set and current state
+- Review the concrete diff, nearby code, and relevant tests
+- Lead with actionable findings: bug, risk, regression, or missing test
+- Separate must-fix issues from optional polish
+- Do not assume `.claude/agent-memory/` is current
+- Do not rewrite project direction from older handoff/archive text
+
+When Claude does make implementation changes instead of review-only notes:
+
 - Keep concise current truth in `session_handoff.md`
 - Put deeper evidence, experiment logs, and detailed investigation notes in dated `HANDOFF_YYYY-MM-DD_*.md` files
 - Refresh the active handoff set after substantial work instead of relying on `.claude/agent-memory` alone
@@ -24,7 +35,7 @@ When sharing work with Codex:
 
 - **This project**: `D:\modding\dragonwarrior1\`
 - **BizHawk emulator**: `D:\emulation\bizhawk\EmuHawk.exe`
-- **FCEUX fallback emulator**: `D:\emulation\fceux\bin\qfceux.exe`
+- **FCEUX player-facing emulator**: `D:\emulation\fceux\bin\qfceux.exe`
 - **ROM**: `D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes`
 - **Pokemon Access reference**: `D:\games\pokemon-access\lua\`
 - **DataCrystal RAM map**: https://datacrystal.tcrf.net/wiki/Dragon_Warrior/RAM_map
@@ -33,7 +44,7 @@ When sharing work with Codex:
 ## Technology Stack
 
 - **Language**: Lua in the active emulator runtime, kept close to Lua 5.1-compatible patterns
-- **Emulator**: BizHawk (`EmuHawk.exe`) by default, FCEUX Qt build (`qfceux.exe`) 2.6.6 as fallback
+- **Emulator**: FCEUX Qt build (`qfceux.exe`) 2.6.6 for player-facing gameplay, BizHawk (`EmuHawk.exe`) for automation/debug/reload-heavy work
 - **Speech**: Tolk wrapper with Python bridge fallback for NVDA, JAWS, or Narrator
 - **Game**: Dragon Warrior (USA) (Rev 1) — NES NROM mapper, 32KB PRG, 2KB RAM
 
@@ -52,7 +63,7 @@ Useful launcher variants:
 ./launch_fceux.sh
 ```
 
-FCEUX-only launcher variants:
+FCEUX launcher variants:
 ```
 ./launch_dw.sh --emulator fceux --state-slot 0
 ./launch_dw.sh --emulator fceux --battery-save /mnt/d/path/to/testing_area.sav
@@ -63,7 +74,7 @@ Direct Windows BizHawk command-line launch is still supported when needed:
 D:\emulation\bizhawk\EmuHawk.exe --lua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 ```
 
-Direct Windows FCEUX fallback launch:
+Direct Windows FCEUX launch:
 ```
 D:\emulation\fceux\bin\qfceux.exe --loadlua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 ```
@@ -72,12 +83,12 @@ To reload after editing: in BizHawk, use the Lua Console reload/open-script work
 
 ### Current tested environment
 
-- `./launch_dw.sh` is the preferred WSL entrypoint and defaults to BizHawk.
-- BizHawk launch should show `Emulator: BizHawk` in `./launch_dw.sh --dry-run`.
-- FCEUX remains available through `./launch_dw.sh --emulator fceux`, `./launch_fceux.sh`, or `launch_fceux.ps1`.
-- The current tested FCEUX fallback baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
+- `./launch_dw.sh` is the preferred WSL entrypoint and defaults to FCEUX unless `DW_EMULATOR` overrides it.
+- FCEUX launch should show `Emulator: FCEUX` in `./launch_dw.sh --dry-run`.
+- BizHawk remains available through `./launch_dw.sh --emulator bizhawk`, `./launch_bizhawk.sh`, or `launch_bizhawk.ps1`.
+- The current tested FCEUX player-facing baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
 - The FCEUX build accepts startup Lua loading via `--loadlua=<path>`. The spaced form `--loadlua <path>` did not reliably load scripts in local testing.
-- `D:\emulation\fceux\bin\fceux.cfg` should have `SDL.AutoResume = 1` so FCEUX advances frames after startup and the mod can poll `dw_commands.txt`.
+- `SDL.AutoResume` is old-session restore, not the command-polling fix. Leave it alone and use explicit `--state-slot` / `--loadstate` when a launch slot is needed.
 - A fresh `dw_debug.log` header only proves that startup code ran. Treat the emulator as truly ready only after it consumes a queued command from `dw_commands.txt`.
 
 ## Emulator Lua Architecture
