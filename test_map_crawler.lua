@@ -35,6 +35,8 @@ local function make_env(options)
     local injects = {}
     local cancellations = {}
     local record_block_calls = 0
+    local active_step_state = nil
+    local seam_observations = shallow_copy(options.seam_observations or {})
     local nav_map_id = options.map_id or 0x0B
     local nav_x = options.x or 5
     local nav_y = options.y or 5
@@ -51,6 +53,7 @@ local function make_env(options)
         "map_reader",
         "maps",
         "navigation",
+        "route_manager",
         "tolk",
     }
 
@@ -154,15 +157,50 @@ local function make_env(options)
         }
     end
 
+    package.preload["route_manager"] = function()
+        return {
+            get_seam_observation = function(_, x, y, approach)
+                local entry = seam_observations[x .. "," .. y .. ":" .. tostring(approach)]
+                if not entry then
+                    return nil
+                end
+                return shallow_copy(entry)
+            end,
+        }
+    end
+
     package.preload["auto_step"] = function()
         return {
             inject_step = function(dir)
                 injects[#injects + 1] = dir
+                if options.active_step_state then
+                    if type(options.active_step_state) == "function" then
+                        active_step_state = options.active_step_state(dir, nav_x, nav_y)
+                    else
+                        active_step_state = shallow_copy(options.active_step_state)
+                    end
+                else
+                    active_step_state = {
+                        dir = dir,
+                        start_x = nav_x,
+                        start_y = nav_y,
+                        movement_started = false,
+                        source = "inject_step",
+                    }
+                end
+                if active_step_state then
+                    active_step_state.dir = active_step_state.dir or dir
+                    active_step_state.start_x = active_step_state.start_x or nav_x
+                    active_step_state.start_y = active_step_state.start_y or nav_y
+                end
                 if options.inject_refuse then
                     return false
                 end
                 route_active = true
                 return true
+            end,
+            get_active_step_state = function()
+                return active_step_state and shallow_copy(active_step_state) or nil
             end,
             is_route_active = function()
                 return route_active
@@ -173,6 +211,7 @@ local function make_env(options)
                     force_release = force_release,
                 }
                 route_active = false
+                active_step_state = nil
             end,
         }
     end
@@ -183,6 +222,7 @@ local function make_env(options)
         local details = options.details or {}
         local hazards = options.hazards or {}
         local doors = options.doors or {}
+        local directional_blocks = options.directional_blocks or {}
         local default_walkable = options.default_walkable
         if default_walkable == nil then default_walkable = true end
         return {
@@ -191,6 +231,9 @@ local function make_env(options)
             end,
             get_map_dimensions = function()
                 return width, height
+            end,
+            get_directional_blocks = function()
+                return directional_blocks
             end,
             is_hazard_cell = function(_, x, y)
                 return hazards[x .. "," .. y] == true
@@ -260,11 +303,20 @@ local function make_env(options)
             nav_x = x or nav_x
             nav_y = y or nav_y
         end,
+        set_seam_observation = function(x, y, approach, classification)
+            local key = x .. "," .. y .. ":" .. tostring(approach)
+            if not classification then
+                seam_observations[key] = nil
+                return
+            end
+            seam_observations[key] = {classification = classification}
+        end,
         tick = function(can_walk)
             crawler.tick(can_walk ~= false)
         end,
         publish_blocked = function(dir, from_x, from_y)
             route_active = false
+            active_step_state = nil
             bus.publish("route_blocked", {
                 from_x = from_x or nav_x,
                 from_y = from_y or nav_y,
@@ -272,18 +324,24 @@ local function make_env(options)
                 source = "inject_step",
             })
         end,
-        publish_step = function(dir, from_x, from_y, to_x, to_y, new_map_id)
+        publish_step = function(dir, from_x, from_y, to_x, to_y, new_map_id, extra)
             route_active = false
+            active_step_state = nil
             nav_map_id = new_map_id or nav_map_id
             nav_x = to_x
             nav_y = to_y
+            extra = extra or {}
             bus.publish("route_step_completed", {
                 from_x = from_x,
                 from_y = from_y,
                 dir = dir,
                 to_x = to_x,
                 to_y = to_y,
-                source = "inject_step",
+                source = extra.source or "inject_step",
+                timeout_retries = extra.timeout_retries,
+                turn_represses = extra.turn_represses,
+                frames = extra.frames,
+                inject_limit = extra.inject_limit,
             })
         end,
         read_npc_slot = function(slot)
@@ -395,6 +453,50 @@ function tests.manual_stop_force_releases_active_step()
     env.restore()
 end
 
+function tests.manual_stop_waits_for_committed_step_to_settle()
+    local env = make_env({
+        npc_bytes = {
+            [0x0051] = 10, [0x0052] = 10, [0x0053] = 2,
+        },
+        active_step_state = {
+            movement_started = true,
+            movement_start_frame = 1,
+            source = "inject_step",
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    local ok, msg = env.crawler.stop()
+    assert_equal(ok, true, "manual stop should succeed")
+    assert_equal(msg, "Stopping map crawl on map 0B", "committed stop should stay active until movement settles")
+    assert_equal(env.crawler.is_active(), true, "crawler should remain active while the committed step settles")
+    assert_equal(#env.cancellations, 1, "manual stop should cancel auto_step")
+    local parked0, parked1, parked2 = env.read_npc_slot(0)
+    assert_equal(parked0 % 32, 31, "mobile NPC x should stay parked until stop settling completes")
+    assert_equal(parked1 % 32, 31, "mobile NPC y should stay parked until stop settling completes")
+    assert_equal(parked2, 2, "mobile NPC movement byte should stay preserved while settling")
+
+    env.tick(true)
+    assert_equal(env.crawler.is_active(), true, "crawler should still wait while the player remains on the stop origin tile")
+
+    env.set_position(0x0B, 5, 4)
+    env.tick(true)
+    assert_equal(env.crawler.is_active(), false, "crawler should finish once the committed stop step lands")
+    local b0, b1, b2 = env.read_npc_slot(0)
+    assert_equal(b0, 10, "mobile NPC x should restore after stop settling finishes")
+    assert_equal(b1, 10, "mobile NPC y should restore after stop settling finishes")
+    assert_equal(b2, 2, "mobile NPC movement byte should restore after stop settling finishes")
+
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "MAP_CRAWL_STOP_WAIT", "manual stop should log the deferred settle state")
+    assert_contains(joined, "MAP_CRAWL_STOP_SETTLED", "manual stop should log the final settled position")
+    assert_contains(joined, "MAP_CRAWL_FINISH run=1 map=0x0B completed=false reason=manual_stop",
+        "manual stop should finish only after settle completes")
+
+    env.restore()
+end
+
 function tests.false_wall_movement_exports_passthrough_candidate()
     local env = make_env({
         details = {
@@ -434,6 +536,28 @@ function tests.modeled_floor_block_exports_directional_candidate()
     env.restore()
 end
 
+function tests.already_modeled_directional_block_is_not_reexported()
+    local env = make_env({
+        directional_blocks = {
+            ["5,4"] = {south = true},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=2,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=modeled_blocked", "existing directional block should stay modeled")
+    assert_contains(joined, "note=approach_already_modeled", "existing directional block should explain why it was skipped")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL", "existing directional block should not export again")
+    assert_equal(env.record_block_calls(), 0, "crawler should not write legacy block records")
+
+    env.restore()
+end
+
 function tests.mixed_probe_stays_diagnostic_and_exports_nothing()
     local env = make_env({
         details = {
@@ -452,6 +576,78 @@ function tests.mixed_probe_stays_diagnostic_and_exports_nothing()
     assert_contains(joined, "no_review_candidates=true", "mixed probe should not export candidates")
     assert_not_contains(joined, "MAP_CRAWL_EXPORT_PASSTHROUGH", "mixed probe should not export passthrough")
     assert_not_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL", "mixed probe should not export directional block")
+
+    env.restore()
+end
+
+function tests.pending_repress_false_wall_stays_diagnostic_and_exports_nothing()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_step("up", 5, 5, 5, 4, nil, {
+        source = "pending_repress",
+        timeout_retries = 1,
+        turn_represses = 1,
+        frames = 38,
+        inject_limit = 12,
+    })
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=timing_suspect_false_wall",
+        "pending-repress false wall should stay timing-suspect")
+    assert_contains(joined, "MAP_CRAWL_UNSTABLE_CANDIDATE map=0x0B cell=(5,4) reason=timing_suspect_false_wall",
+        "timing-suspect false wall should be marked unstable for the rest of the run")
+    assert_contains(joined, "no_review_candidates=true",
+        "pending-repress false wall should not export as a normal candidate")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_PASSTHROUGH",
+        "pending-repress false wall should not export passthrough")
+
+    env.restore()
+end
+
+function tests.noisy_seam_prunes_stale_passthrough_candidate_from_report_and_export()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_step("up", 5, 5, 5, 4)
+    env.set_seam_observation(5, 4, "south", "noisy")
+    env.crawler.report(0x0B)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined,
+        "MAP_CRAWL_SUMMARY map=0x0B edges=1 passthrough_candidates=0 directional_candidate_cells=0",
+        "noisy seam updates should prune stale passthrough candidates from the summary")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_PASSTHROUGH map=0x0B line='[\"5,4\"] = true,'",
+        "noisy seam updates should prune stale passthrough exports")
+
+    env.restore()
+end
+
+function tests.noisy_seam_prunes_stale_directional_candidate_from_report_and_export()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+    env.set_seam_observation(5, 4, "south", "noisy")
+    env.crawler.report(0x0B)
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined,
+        "MAP_CRAWL_SUMMARY map=0x0B edges=1 passthrough_candidates=0 directional_candidate_cells=0",
+        "noisy seam updates should prune stale directional candidates from the summary")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL map=0x0B line='[\"5,4\"] = {south = true},'",
+        "noisy seam updates should prune stale directional exports")
 
     env.restore()
 end

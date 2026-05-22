@@ -12,6 +12,7 @@ local event_bus   = require "event_bus"
 local map_reader  = require "map_reader"
 local maps        = require "maps"
 local nav         = require "navigation"
+local route_mgr   = require "route_manager"
 local tolk        = require "tolk"
 
 local M = {}
@@ -22,6 +23,7 @@ local DEFAULT_ATTEMPTS = 3
 local DEFAULT_MAX_EDGES = 200
 local MAX_ATTEMPTS = 15
 local MAX_EDGES = 2000
+local MANUAL_STOP_SETTLE_FRAMES = 30
 
 local DIRECTIONS = {
     {key = "up",    name = "north", dx = 0,  dy = -1, approach = "south", reverse = "down"},
@@ -262,6 +264,7 @@ local function mark_unstable_candidate(report, x, y, reason)
     if not report.unstable_cells then
         report.unstable_cells = {}
     end
+    local existing = report.unstable_cells[key]
     report.unstable_cells[key] = {
         x = x,
         y = y,
@@ -270,14 +273,16 @@ local function mark_unstable_candidate(report, x, y, reason)
     if crawler_state and crawler_state.report == report then
         crawler_state.unstable_cells[key] = reason or true
     end
-    if report.passthroughs and report.passthroughs[key] then
-        report.passthroughs[key] = nil
+    if not existing or existing.reason ~= reason then
         debug_tools.info(string.format(
             "MAP_CRAWL_UNSTABLE_CANDIDATE map=0x%02X cell=(%d,%d) reason=%s",
             report.map_id or 0,
             x,
             y,
             tostring(reason or "unstable_origin")))
+    end
+    if report.passthroughs and report.passthroughs[key] then
+        report.passthroughs[key] = nil
     end
 end
 
@@ -291,10 +296,16 @@ local function record_edge(record)
     if record.classification == "false_wall_candidate" then
         local key = cell_key(record.dest_x, record.dest_y)
         if not (report.unstable_cells and report.unstable_cells[key]) then
-            report.passthroughs[key] = {
-                x = record.dest_x,
-                y = record.dest_y,
-            }
+            if not report.passthroughs[key] then
+                report.passthroughs[key] = {
+                    x = record.dest_x,
+                    y = record.dest_y,
+                    approaches = {},
+                }
+            end
+            if record.approach then
+                report.passthroughs[key].approaches[record.approach] = true
+            end
         end
     elseif record.classification == "directional_block_candidate" or record.classification == "backtrack_blocked" then
         local key = cell_key(record.dest_x, record.dest_y)
@@ -417,6 +428,35 @@ local function finish_run(completed, reason)
     crawler_state = nil
 end
 
+local function begin_manual_stop_settle(active_edge)
+    local state = crawler_state
+    if not state then
+        return
+    end
+    local _, px, py = nav.get_position()
+    state.stop_requested = true
+    state.stop_reason = "manual_stop"
+    state.stop_wait_frames = MANUAL_STOP_SETTLE_FRAMES
+    state.stop_origin_x = px
+    state.stop_origin_y = py
+    state.stop_expected_x = active_edge and active_edge.dest_x or nil
+    state.stop_expected_y = active_edge and active_edge.dest_y or nil
+    state.stop_dir = active_edge and active_edge.dir or nil
+    state.pending_retry = nil
+    state.pending_return = nil
+    state.active_edge = nil
+    debug_tools.info(string.format(
+        "MAP_CRAWL_STOP_WAIT run=%d map=0x%02X origin=(%d,%d) dir=%s expected=(%s,%s) wait_frames=%d",
+        state.run_id,
+        state.map_id,
+        px or -1,
+        py or -1,
+        tostring(state.stop_dir or "-"),
+        tostring(state.stop_expected_x or "-"),
+        tostring(state.stop_expected_y or "-"),
+        state.stop_wait_frames))
+end
+
 local function classify_blocked(edge)
     local stationary = stationary_npc_at(edge.dest_x, edge.dest_y)
     if stationary then
@@ -427,6 +467,11 @@ local function classify_blocked(edge)
         return "door_frontier", {door_context = door}
     end
     local ctx = model_context(edge.map_id, edge.dest_x, edge.dest_y)
+    local directional_blocks = map_reader.get_directional_blocks and map_reader.get_directional_blocks(edge.map_id) or nil
+    local existing_entry = directional_blocks and directional_blocks[edge.dest_x .. "," .. edge.dest_y] or nil
+    if existing_entry and edge.approach and existing_entry[edge.approach] == true then
+        return "modeled_blocked", {note = "approach_already_modeled"}
+    end
     if ctx.model_walkable == true then
         return "directional_block_candidate", nil
     end
@@ -635,12 +680,25 @@ local function handle_step_complete(data)
     end
 
     local classification = "open_floor"
+    local note = nil
     if (edge.blocked_attempts or 0) > 0 then
         classification = "mixed_probe"
     else
         local ctx = model_context(edge.map_id, edge.dest_x, edge.dest_y)
         if ctx.model_walkable == false then
-            classification = "false_wall_candidate"
+            local timeout_retries = tonumber(data and data.timeout_retries) or 0
+            local turn_represses = tonumber(data and data.turn_represses) or 0
+            local source = data and data.source or nil
+            if source == "pending_repress" or timeout_retries > 0 or turn_represses > 0 then
+                classification = "timing_suspect_false_wall"
+                note = string.format(
+                    "source=%s timeout_retries=%d turn_represses=%d",
+                    tostring(source or "-"),
+                    timeout_retries,
+                    turn_represses)
+            else
+                classification = "false_wall_candidate"
+            end
         elseif edge.door_context and edge.door_context.is_door and edge.door_context.open then
             classification = "open_door_passage"
         end
@@ -650,7 +708,11 @@ local function handle_step_complete(data)
         final_x = px,
         final_y = py,
         door_context = edge.door_context,
+        note = note,
     }))
+    if classification == "timing_suspect_false_wall" then
+        mark_unstable_candidate(state.report, edge.dest_x, edge.dest_y, "timing_suspect_false_wall")
+    end
 
     if edge.kind == "backtrack" or edge.kind == "return_to_frontier" then
         return
@@ -715,6 +777,44 @@ local function tick_impl(can_walk)
     end
 
     local map_id, px, py = nav.get_position()
+    if state.stop_requested then
+        if map_id ~= state.map_id then
+            debug_tools.info(string.format(
+                "MAP_CRAWL_STOP_SETTLED run=%d map=0x%02X final_map=0x%02X final=(%d,%d) reason=map_changed_after_stop",
+                state.run_id,
+                state.map_id,
+                map_id or 0,
+                px or -1,
+                py or -1))
+            finish_run(false, state.stop_reason or "manual_stop")
+            return
+        end
+        if px ~= state.stop_origin_x or py ~= state.stop_origin_y then
+            debug_tools.info(string.format(
+                "MAP_CRAWL_STOP_SETTLED run=%d map=0x%02X final=(%d,%d) expected=(%s,%s) reason=position_changed_after_stop",
+                state.run_id,
+                state.map_id,
+                px or -1,
+                py or -1,
+                tostring(state.stop_expected_x or "-"),
+                tostring(state.stop_expected_y or "-")))
+            finish_run(false, state.stop_reason or "manual_stop")
+            return
+        end
+        state.stop_wait_frames = (state.stop_wait_frames or 0) - 1
+        if state.stop_wait_frames <= 0 then
+            debug_tools.info(string.format(
+                "MAP_CRAWL_STOP_SETTLED run=%d map=0x%02X final=(%d,%d) expected=(%s,%s) reason=no_post_stop_movement",
+                state.run_id,
+                state.map_id,
+                px or -1,
+                py or -1,
+                tostring(state.stop_expected_x or "-"),
+                tostring(state.stop_expected_y or "-")))
+            finish_run(false, state.stop_reason or "manual_stop")
+        end
+        return
+    end
     if map_id ~= state.map_id then
         if state.active_edge then
             local edge = state.active_edge
@@ -840,7 +940,20 @@ function M.stop()
     if not crawler_state then
         return false, "No active map crawl"
     end
+    local active_edge = crawler_state.active_edge
+    local active_step_state = nil
+    if type(auto_step.get_active_step_state) == "function" then
+        active_step_state = auto_step.get_active_step_state()
+    end
     auto_step.cancel_active_step(true, true)
+    if active_edge
+       and active_step_state
+       and active_step_state.dir == active_edge.dir
+       and active_step_state.movement_started == true then
+        local map_id = crawler_state.map_id
+        begin_manual_stop_settle(active_edge)
+        return true, string.format("Stopping map crawl on map %02X", map_id)
+    end
     local map_id = crawler_state.map_id
     finish_run(false, "manual_stop")
     return true, string.format("Stopped map crawl on map %02X", map_id)
@@ -871,7 +984,9 @@ function M.count_passthrough_candidates(map_id)
     local report = get_report(map_id)
     local n = 0
     if report then
-        for _ in pairs(report.passthroughs or {}) do n = n + 1 end
+        for _ in pairs(M.get_passthrough_candidates(report.map_id) or {}) do
+            n = n + 1
+        end
     end
     return n
 end
@@ -880,7 +995,9 @@ function M.count_directional_candidate_cells(map_id)
     local report = get_report(map_id)
     local n = 0
     if report then
-        for _ in pairs(report.directionals or {}) do n = n + 1 end
+        for _ in pairs(M.get_directional_candidates(report.map_id) or {}) do
+            n = n + 1
+        end
     end
     return n
 end
@@ -913,6 +1030,82 @@ local function direction_list(dirs)
     return names
 end
 
+local function current_seam_classification(map_id, x, y, approach)
+    if not route_mgr or type(route_mgr.get_seam_observation) ~= "function" then
+        return nil
+    end
+    local ok, observation = pcall(route_mgr.get_seam_observation, map_id, x, y, approach)
+    if not ok or not observation then
+        return nil
+    end
+    return observation.classification
+end
+
+local function keep_passthrough_candidate(map_id, cell)
+    local approaches = cell and cell.approaches
+    if type(approaches) ~= "table" or next(approaches) == nil then
+        return true
+    end
+    local saw_observation = false
+    for approach in pairs(approaches) do
+        local classification = current_seam_classification(map_id, cell.x, cell.y, approach)
+        if classification == nil then
+            return true
+        end
+        saw_observation = true
+        if classification == "passable_only" then
+            return true
+        end
+    end
+    return not saw_observation
+end
+
+local function filtered_directional_dirs(map_id, cell)
+    local kept = {}
+    for approach in pairs((cell and cell.dirs) or {}) do
+        local classification = current_seam_classification(map_id, cell.x, cell.y, approach)
+        if classification == nil
+           or classification == "blocked_only"
+           or classification == "confirmed_blocked" then
+            kept[approach] = true
+        end
+    end
+    return kept
+end
+
+function M.get_passthrough_candidates(map_id)
+    local report = get_report(map_id)
+    local filtered = {}
+    if not report then
+        return filtered
+    end
+    for key, cell in pairs(report.passthroughs or {}) do
+        if keep_passthrough_candidate(report.map_id, cell) then
+            filtered[key] = cell
+        end
+    end
+    return filtered
+end
+
+function M.get_directional_candidates(map_id)
+    local report = get_report(map_id)
+    local filtered = {}
+    if not report then
+        return filtered
+    end
+    for key, cell in pairs(report.directionals or {}) do
+        local dirs = filtered_directional_dirs(report.map_id, cell)
+        if next(dirs) ~= nil then
+            filtered[key] = {
+                x = cell.x,
+                y = cell.y,
+                dirs = dirs,
+            }
+        end
+    end
+    return filtered
+end
+
 function M.report(map_id)
     map_id = map_id or (crawler_state and crawler_state.map_id) or last_report_map_id or nav.get_position()
     local report = get_report(map_id)
@@ -920,6 +1113,8 @@ function M.report(map_id)
         debug_tools.info(string.format("MAP_CRAWL_SUMMARY map=0x%02X none", map_id or 0))
         return 0
     end
+    local passthroughs = M.get_passthrough_candidates(map_id)
+    local directionals = M.get_directional_candidates(map_id)
     debug_tools.info(string.format(
         "MAP_CRAWL_SUMMARY map=0x%02X edges=%d passthrough_candidates=%d directional_candidate_cells=%d stationary_npc_cells=%d door_frontiers=%d transitions=%d",
         map_id,
@@ -929,12 +1124,12 @@ function M.report(map_id)
         M.count_stationary_npc_cells(map_id),
         #sorted_keys(report.door_frontiers or {}),
         #(report.transitions or {})))
-    for _, key in ipairs(sorted_keys(report.passthroughs or {})) do
-        local cell = report.passthroughs[key]
+    for _, key in ipairs(sorted_keys(passthroughs)) do
+        local cell = passthroughs[key]
         debug_tools.info(string.format("MAP_CRAWL_HIGH_VALUE map=0x%02X type=passthrough cell=(%d,%d)", map_id, cell.x, cell.y))
     end
-    for _, key in ipairs(sorted_keys(report.directionals or {})) do
-        local cell = report.directionals[key]
+    for _, key in ipairs(sorted_keys(directionals)) do
+        local cell = directionals[key]
         debug_tools.info(string.format(
             "MAP_CRAWL_HIGH_VALUE map=0x%02X type=directional cell=(%d,%d) approaches=%s",
             map_id, cell.x, cell.y, table.concat(direction_list(cell.dirs), ",")))
@@ -984,15 +1179,17 @@ function M.export_candidates(map_id)
         debug_tools.info(string.format("MAP_CRAWL_EXPORT map=0x%02X none", map_id or 0))
         return 0
     end
+    local passthroughs = M.get_passthrough_candidates(map_id)
+    local directionals = M.get_directional_candidates(map_id)
     local count = 0
-    for _, key in ipairs(sorted_keys(report.passthroughs or {})) do
+    for _, key in ipairs(sorted_keys(passthroughs)) do
         debug_tools.info(string.format(
             "MAP_CRAWL_EXPORT_PASSTHROUGH map=0x%02X line='[\"%s\"] = true,'",
             map_id, key))
         count = count + 1
     end
-    for _, key in ipairs(sorted_keys(report.directionals or {})) do
-        local cell = report.directionals[key]
+    for _, key in ipairs(sorted_keys(directionals)) do
+        local cell = directionals[key]
         debug_tools.info(string.format(
             "MAP_CRAWL_EXPORT_DIRECTIONAL map=0x%02X line='[\"%s\"] = %s,'",
             map_id, key, format_direction_table(cell.dirs)))
