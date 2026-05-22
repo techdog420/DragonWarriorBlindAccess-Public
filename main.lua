@@ -4971,6 +4971,16 @@ debug_tools.register_command("crawl_map_frontier", function(arg)
         tolk.output_interrupt("Wait for auto-walk to finish")
         return
     end
+    if game_state.state ~= state.STATE_FIELD then
+        debug_tools.error("crawl_map_frontier: must be on the field (current state " .. tostring(game_state.state) .. ")")
+        tolk.output_interrupt("Field state required to start a map crawl")
+        return
+    end
+    if menu.is_open() or PREV.dialogue ~= "" or PREV.upper_active then
+        debug_tools.error("crawl_map_frontier: close menus and dialogue before starting")
+        tolk.output_interrupt("Close menus and dialogue first")
+        return
+    end
     local ok, err = map_crawler.start(arg)
     if not ok then
         debug_tools.error("crawl_map_frontier: " .. tostring(err))
@@ -4985,7 +4995,12 @@ debug_tools.register_command("stop_map_crawl", function()
         tolk.output_interrupt(tostring(msg))
         return
     end
-    tolk.output_interrupt(msg)
+    -- The immediate-stop path returns a nil msg because finish_run already
+    -- spoke the summary. Only the deferred settle path returns a real
+    -- "Stopping ..." message that needs surfacing here.
+    if msg then
+        tolk.output_interrupt(msg)
+    end
 end)
 
 debug_tools.register_command("report_map_crawl", function(arg)

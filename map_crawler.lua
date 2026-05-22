@@ -37,10 +37,22 @@ for _, dir in ipairs(DIRECTIONS) do
     DIR_BY_KEY[dir.key] = dir
 end
 
+-- Derive the script directory from this file's source path so the export
+-- file lands next to the rest of the project's runtime files (dw_debug.log,
+-- dw_commands.txt, ...). Matches the convention used in debug_tools.lua.
+local _src       = debug.getinfo(1, "S").source
+local script_dir = _src:match("@?(.*[\\/])") or ""
+
 local crawler_state = nil
 local reports_by_map = {}
 local run_counter = 0
 local last_report_map_id = nil
+
+-- Forward declarations: finish_run calls these, but their bodies depend on
+-- helpers and module functions defined further down (format_direction_table,
+-- M.get_passthrough_candidates, M.get_directional_candidates).
+local write_export_file
+local speak_finish_summary
 
 local function bit_and(a, b)
     if type(AND) == "function" then
@@ -256,6 +268,16 @@ local function format_door_context(ctx)
         slots)
 end
 
+-- Mark a cell as unstable. The DFS will then skip remaining probes from this
+-- cell (start_next_edge bumps frame.next_dir past #DIRECTIONS) and any
+-- passthrough candidate already recorded AT this cell is dropped.
+--
+-- Directional candidates are intentionally NOT pruned here: they are keyed by
+-- destination, not origin, so a candidate at cell D recorded via a probe from
+-- the now-unstable cell X is about what we observed AT D. The current unstable
+-- reasons (origin_transition, origin_boundary_frontier, origin_movement_drift,
+-- origin_position_drift, timing_suspect_false_wall) all describe issues with
+-- the cell itself rather than with prior probes that completed cleanly.
 local function mark_unstable_candidate(report, x, y, reason)
     if not report or x == nil or y == nil then
         return
@@ -307,7 +329,7 @@ local function record_edge(record)
                 report.passthroughs[key].approaches[record.approach] = true
             end
         end
-    elseif record.classification == "directional_block_candidate" or record.classification == "backtrack_blocked" then
+    elseif record.classification == "directional_block_candidate" then
         local key = cell_key(record.dest_x, record.dest_y)
         if not report.directionals[key] then
             report.directionals[key] = {x = record.dest_x, y = record.dest_y, dirs = {}}
@@ -414,6 +436,8 @@ local function finish_run(completed, reason)
     end
 
     local report = state.report
+    local pt_count = M.count_passthrough_candidates(state.map_id)
+    local dir_count = M.count_directional_candidate_cells(state.map_id)
     debug_tools.info(string.format(
         "MAP_CRAWL_FINISH run=%d map=0x%02X completed=%s reason=%s edges=%d passthrough_candidates=%d directional_candidates=%d stationary_npc_cells=%d transitions=%d",
         state.run_id,
@@ -421,10 +445,23 @@ local function finish_run(completed, reason)
         tostring(completed == true),
         tostring(reason or "complete"),
         #(report.edges or {}),
-        M.count_passthrough_candidates(state.map_id),
-        M.count_directional_candidate_cells(state.map_id),
+        pt_count,
+        dir_count,
         M.count_stationary_npc_cells(state.map_id),
         #(report.transitions or {})))
+
+    -- Write the per-map export file on every finish (option A: even aborted
+    -- runs may have salvageable candidates). Failures are logged but never
+    -- block the speech announcement or the state cleanup that follow.
+    local export_path = write_export_file(state, completed == true, reason)
+    if export_path then
+        debug_tools.info(string.format(
+            "MAP_CRAWL_EXPORT_FILE run=%d map=0x%02X path=%s",
+            state.run_id, state.map_id, export_path))
+    end
+
+    speak_finish_summary(completed == true, reason, pt_count, dir_count)
+
     crawler_state = nil
 end
 
@@ -458,6 +495,12 @@ local function begin_manual_stop_settle(active_edge)
 end
 
 local function classify_blocked(edge)
+    -- Re-check for a stationary NPC even though maybe_prepare_probe already
+    -- did so before injecting. The two checks fire at different points in the
+    -- step lifecycle and can legitimately disagree: a mobile NPC could
+    -- escape its parked slot during frameadvance and become a fresh blocker
+    -- by the time the step is reported as blocked. Caching the preflight
+    -- result would mask that case, so the duplicate scan is intentional.
     local stationary = stationary_npc_at(edge.dest_x, edge.dest_y)
     if stationary then
         return "stationary_npc_blocked", {npc_slot = stationary.slot}
@@ -733,6 +776,11 @@ local function handle_step_complete(data)
             parent_reverse_dir = DIR_BY_KEY[edge.dir].reverse,
         }
     else
+        -- Defensive: maybe_prepare_probe already rejects out-of-bounds
+        -- destinations as boundary_frontier before we ever inject, so this
+        -- branch is unreachable in normal flow. Kept in case a future
+        -- map_reader edit allows in-bounds preflight to disagree with the
+        -- crawler's in_bounds check at landing time.
         state.pending_return = build_edge(edge.dest_x, edge.dest_y, DIR_BY_KEY[edge.dir].reverse, "return_to_frontier")
     end
 end
@@ -763,7 +811,19 @@ local function handle_blocked(data)
     end
 
     state.active_edge = nil
-    local classification, extra = classify_blocked(edge)
+    local classification, extra
+    if edge.kind == "backtrack" then
+        -- A failed backtrack means we cannot safely return to the parent
+        -- frame. It is more likely a transient (mobile NPC re-spawn,
+        -- timing edge, position desync) than real one-way geometry, and
+        -- we already walked the opposite direction across this edge.
+        -- Keep it purely diagnostic and abort the run instead of writing
+        -- a directional candidate for the parent cell.
+        classification = "backtrack_blocked"
+        extra = {note = "backtrack_to_parent_blocked"}
+    else
+        classification, extra = classify_blocked(edge)
+    end
     record_edge(make_record(edge, classification, extra))
     if edge.kind == "backtrack" then
         finish_run(false, "backtrack_blocked")
@@ -844,6 +904,27 @@ local function tick_impl(can_walk)
     end
 
     if state.active_edge then
+        local auto_step_state = nil
+        if type(auto_step.get_active_step_state) == "function" then
+            auto_step_state = auto_step.get_active_step_state()
+        end
+        if auto_step_state == nil then
+            -- auto_step silently cleared the in-flight step (can_walk
+            -- dropped, a different live direction interrupted it, the
+            -- config flag toggled, ...) without firing
+            -- route_step_completed or route_blocked. Don't hang waiting
+            -- for an event that will never arrive. The classification is
+            -- diagnostic-only -- record_edge does not promote it into
+            -- passthroughs or directionals.
+            local edge = state.active_edge
+            state.active_edge = nil
+            record_edge(make_record(edge, "auto_step_lost", {
+                note = "active_step_cleared_without_event",
+                final_x = px,
+                final_y = py,
+            }))
+            finish_run(false, "auto_step_lost")
+        end
         return
     end
     if auto_step.is_route_active and auto_step.is_route_active() then
@@ -954,9 +1035,10 @@ function M.stop()
         begin_manual_stop_settle(active_edge)
         return true, string.format("Stopping map crawl on map %02X", map_id)
     end
-    local map_id = crawler_state.map_id
     finish_run(false, "manual_stop")
-    return true, string.format("Stopped map crawl on map %02X", map_id)
+    -- finish_run already spoke the "Map crawl stopped ..." summary; return a
+    -- nil message so the stop_map_crawl command does not double-announce.
+    return true, nil
 end
 
 function M.tick(can_walk)
@@ -1172,6 +1254,141 @@ local function format_direction_table(dirs)
     return "{" .. table.concat(parts, ", ") .. "}"
 end
 
+local function export_file_path(map_id)
+    return script_dir .. string.format("dw_crawl_%02x.txt", map_id or 0)
+end
+
+-- Body for the forward-declared write_export_file. Writes a per-map Lua
+-- snippet file (overwrites on each run) with a comment header, paste-ready
+-- MAP_PASSTHROUGH_CELLS / MAP_DIRECTIONAL_BLOCKS entries, and informational
+-- comment blocks for stationary NPCs, closed doors, and unstable cells.
+write_export_file = function(state, completed, reason)
+    local map_id = state.map_id
+    local report = state.report
+    local passthroughs = M.get_passthrough_candidates(map_id)
+    local directionals = M.get_directional_candidates(map_id)
+    local pt_keys = sorted_keys(passthroughs)
+    local dir_keys = sorted_keys(directionals)
+    local npc_keys = sorted_keys(report.stationary_npcs or {})
+    local door_keys = sorted_keys(report.door_frontiers or {})
+    local unstable_keys = sorted_keys(report.unstable_cells or {})
+
+    local path = export_file_path(map_id)
+    local file, err = io.open(path, "w")
+    if not file then
+        debug_tools.error(string.format(
+            "MAP_CRAWL_EXPORT_FILE_FAIL run=%d map=0x%02X path=%s error=%s",
+            state.run_id or 0, map_id or 0, path, tostring(err)))
+        return nil
+    end
+
+    local map_name = (type(maps.get_name) == "function") and maps.get_name(map_id) or "?"
+    file:write("-- Map crawler export\n")
+    file:write(string.format("-- map: 0x%02X (%s)\n", map_id, map_name))
+    file:write(string.format("-- run: %d\n", state.run_id or 0))
+    file:write(string.format("-- completed: %s\n", tostring(completed == true)))
+    file:write(string.format("-- reason: %s\n", tostring(reason or "complete")))
+    file:write(string.format("-- timestamp: %s\n", os.date("!%Y-%m-%dT%H:%M:%SZ")))
+    file:write(string.format(
+        "-- edges: %d  passthrough: %d  directional: %d  stationary_npc: %d  door_frontier: %d  unstable: %d\n",
+        #(report.edges or {}),
+        #pt_keys,
+        #dir_keys,
+        #npc_keys,
+        #door_keys,
+        #unstable_keys))
+    file:write("--\n\n")
+
+    file:write(string.format("-- MAP_PASSTHROUGH_CELLS additions (%d):\n", #pt_keys))
+    if #pt_keys == 0 then
+        file:write("--   (none)\n")
+    else
+        for _, key in ipairs(pt_keys) do
+            file:write(string.format('["%s"] = true,\n', key))
+        end
+    end
+    file:write("\n")
+
+    file:write(string.format("-- MAP_DIRECTIONAL_BLOCKS additions (%d):\n", #dir_keys))
+    if #dir_keys == 0 then
+        file:write("--   (none)\n")
+    else
+        for _, key in ipairs(dir_keys) do
+            local cell = directionals[key]
+            file:write(string.format('["%s"] = %s,\n', key, format_direction_table(cell.dirs)))
+        end
+    end
+    file:write("\n")
+
+    if #npc_keys > 0 then
+        file:write(string.format("-- Stationary NPC cells (%d, informational):\n", #npc_keys))
+        for _, key in ipairs(npc_keys) do
+            file:write(string.format('--   "%s" -> npc_slot %s\n', key, tostring(report.stationary_npcs[key])))
+        end
+        file:write("\n")
+    end
+
+    if #door_keys > 0 then
+        file:write(string.format("-- Closed door frontiers (%d, informational):\n", #door_keys))
+        for _, key in ipairs(door_keys) do
+            local entry = report.door_frontiers[key]
+            local door_x, door_y = "-", "-"
+            if entry and entry.door_context then
+                door_x = tostring(entry.door_context.door_x or entry.door_context.x or "-")
+                door_y = tostring(entry.door_context.door_y or entry.door_context.y or "-")
+            end
+            file:write(string.format('--   "%s" -> door at (%s,%s)\n', key, door_x, door_y))
+        end
+        file:write("\n")
+    end
+
+    if #unstable_keys > 0 then
+        file:write(string.format("-- Unstable cells excluded from candidates (%d):\n", #unstable_keys))
+        for _, key in ipairs(unstable_keys) do
+            local entry = report.unstable_cells[key]
+            local reason_text = "unknown"
+            if type(entry) == "table" then
+                reason_text = tostring(entry.reason or "unknown")
+            elseif entry ~= nil then
+                reason_text = tostring(entry)
+            end
+            file:write(string.format('--   "%s" -> reason: %s\n', key, reason_text))
+        end
+        file:write("\n")
+    end
+
+    file:close()
+    return path
+end
+
+-- Body for the forward-declared speak_finish_summary. Always emits a single
+-- tolk message describing the outcome and salvaged candidate counts, except
+-- for low-HP aborts (which already spoke their own message) and script
+-- errors (where we may be in a half-broken state and don't want to claim
+-- counts that could mislead).
+speak_finish_summary = function(completed, reason, pt_count, dir_count)
+    if reason == "low_hp" then
+        return
+    end
+    if reason == "script_error" then
+        tolk.output_interrupt("Map crawl errored. Check log.")
+        return
+    end
+    local prefix
+    if completed then
+        prefix = "Map crawl complete"
+    elseif reason == "manual_stop" then
+        prefix = "Map crawl stopped"
+    else
+        prefix = "Map crawl ended: " .. tostring(reason or "unknown")
+    end
+    tolk.output_interrupt(string.format(
+        "%s. %d passthrough, %d directional.",
+        prefix,
+        pt_count or 0,
+        dir_count or 0))
+end
+
 function M.export_candidates(map_id)
     map_id = map_id or (crawler_state and crawler_state.map_id) or last_report_map_id or nav.get_position()
     local report = get_report(map_id)
@@ -1215,6 +1432,11 @@ local function safe_event_handler(fn, data)
     end
 end
 
+-- Subscriptions are at module load. If the emulator hot-reloads this script
+-- without resetting the Lua state, the event bus will end up with duplicate
+-- handlers. That is harmless: each handler returns early when crawler_state
+-- is nil or when the event's (from_x, from_y, dir) does not match the active
+-- edge, so duplicates either no-op or repeat identical work.
 event_bus.subscribe("route_step_completed", function(data)
     safe_event_handler(handle_step_complete, data)
 end)

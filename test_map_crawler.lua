@@ -5,6 +5,7 @@ local original_preload = {}
 local original_loaded = {}
 local original_memory = _G.memory
 local original_and = _G.AND
+local original_io_open = io.open
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -92,6 +93,25 @@ local function make_env(options)
             npc_bytes[address] = value
         end,
     }
+
+    -- Intercept write-mode io.open so the crawler's export-file writer can
+    -- run in tests without touching disk. Read-mode opens still pass through
+    -- to the real io.open so package loading is unaffected.
+    local captured_writes = {}
+    io.open = function(path, mode)
+        if mode == "w" or mode == "wb" then
+            local buffer = {}
+            captured_writes[path] = buffer
+            return {
+                write = function(self, str)
+                    buffer[#buffer + 1] = tostring(str)
+                    return self
+                end,
+                close = function() return true end,
+            }
+        end
+        return original_io_open(path, mode)
+    end
 
     package.preload["addresses"] = function()
         return {
@@ -348,10 +368,28 @@ local function make_env(options)
             local base = 0x0051 + slot * 3
             return npc_bytes[base] or 0, npc_bytes[base + 1] or 0, npc_bytes[base + 2] or 0
         end,
+        clear_auto_step_state = function()
+            active_step_state = nil
+            route_active = false
+        end,
+        list_captured_paths = function()
+            local paths = {}
+            for path in pairs(captured_writes) do
+                paths[#paths + 1] = path
+            end
+            table.sort(paths)
+            return paths
+        end,
+        get_captured_file = function(path)
+            local buffer = captured_writes[path]
+            if not buffer then return nil end
+            return table.concat(buffer)
+        end,
         restore = function()
             restore_modules(module_names)
             _G.memory = original_memory
             _G.AND = original_and
+            io.open = original_io_open
         end,
     }
 end
@@ -879,6 +917,347 @@ function tests.overworld_crawl_is_refused()
     local ok, err = env.crawler.start()
     assert_equal(ok, false, "overworld crawl should be refused")
     assert_contains(err, "overworld", "overworld refusal should explain why")
+
+    env.restore()
+end
+
+function tests.failed_backtrack_finishes_without_promoting_parent_candidate()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=20"), true, "crawler should start")
+
+    -- DFS into (5,4) so a backtrack frame is queued behind it.
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe goes up into the child cell")
+    env.publish_step("up", 5, 5, 5, 4)
+
+    -- Exhaust the child's directions: up blocks, down returns to parent, then
+    -- left and right both block.
+    env.tick(true)
+    assert_equal(env.injects[2], "up", "next probe from (5,4) goes up")
+    env.publish_blocked("up", 5, 4)
+
+    env.tick(true)
+    assert_equal(env.injects[3], "down", "next probe from (5,4) revisits the parent")
+    env.publish_step("down", 5, 4, 5, 5)
+
+    -- pending_return walks the player back to the frontier cell.
+    env.tick(true)
+    assert_equal(env.injects[4], "up", "pending_return restores the frontier position")
+    env.publish_step("up", 5, 5, 5, 4)
+
+    env.tick(true)
+    assert_equal(env.injects[5], "left", "next probe from (5,4) goes left")
+    env.publish_blocked("left", 5, 4)
+
+    env.tick(true)
+    assert_equal(env.injects[6], "right", "next probe from (5,4) goes right")
+    env.publish_blocked("right", 5, 4)
+
+    -- All four directions exhausted at (5,4). Crawler issues a backtrack down
+    -- to the parent (5,5). Make that backtrack itself fail.
+    env.tick(true)
+    assert_equal(env.injects[7], "down", "exhausted child triggers a backtrack down")
+    env.publish_blocked("down", 5, 4)
+
+    assert_equal(env.crawler.is_active(), false, "failed backtrack should finish the crawler")
+
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=backtrack_blocked",
+        "failed backtrack should be classified diagnostically")
+    assert_contains(joined, "reason=backtrack_blocked",
+        "finish_run should record the backtrack_blocked reason")
+    assert_not_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL map=0x0B line='[\"5,5\"] = ",
+        "failed backtrack must not promote the parent cell as a directional candidate")
+    assert_contains(joined, "MAP_CRAWL_EXPORT_DIRECTIONAL map=0x0B line='[\"5,3\"] = {south = true},'",
+        "legitimate directional candidates collected before the backtrack should still export")
+
+    env.restore()
+end
+
+function tests.deep_dfs_backtracks_through_multiple_frames()
+    local env = make_env()
+    assert_equal(env.crawler.start("attempts=1,max_edges=50"), true, "crawler should start")
+
+    -- DFS straight up: (5,5) -> (5,4) -> (5,3) -> (5,2).
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "up", "depth 1 probe goes up")
+    env.publish_step("up", 5, 5, 5, 4)
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "up", "depth 2 probe goes up")
+    env.publish_step("up", 5, 4, 5, 3)
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "up", "depth 3 probe goes up")
+    env.publish_step("up", 5, 3, 5, 2)
+
+    -- Exhaust (5,2): north blocks, south revisits (5,3) via pending_return,
+    -- west and east block.
+    env.tick(true)
+    env.publish_blocked("up", 5, 2)
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "down", "(5,2) tries down toward already-visited (5,3)")
+    env.publish_step("down", 5, 2, 5, 3)
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "up", "pending_return takes player back to the frontier")
+    env.publish_step("up", 5, 3, 5, 2)
+    env.tick(true)
+    env.publish_blocked("left", 5, 2)
+    env.tick(true)
+    env.publish_blocked("right", 5, 2)
+
+    -- Backtrack: (5,2) frame exhausted, crawler injects "down" toward (5,3).
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "down", "backtrack from depth 3 to depth 2 injects down")
+    env.publish_step("down", 5, 2, 5, 3)
+
+    -- (5,3) resumes with next_dir=2 (down). (5,4) is already visited.
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "down", "(5,3) next probe revisits (5,4)")
+    env.publish_step("down", 5, 3, 5, 4)
+    env.tick(true)
+    env.publish_step("up", 5, 4, 5, 3)
+    env.tick(true)
+    env.publish_blocked("left", 5, 3)
+    env.tick(true)
+    env.publish_blocked("right", 5, 3)
+
+    -- Backtrack from depth 2 to depth 1.
+    env.tick(true)
+    assert_equal(env.injects[#env.injects], "down", "backtrack from depth 2 to depth 1 injects down")
+    env.publish_step("down", 5, 3, 5, 4)
+
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(count_occurrences(joined, "kind=backtrack"), 2,
+        "two backtrack edges should fire as the DFS pops back through depths 3 and 2")
+    assert_equal(env.crawler.is_active(), true,
+        "crawler should still be active while root frame (5,5) has unexplored directions")
+
+    env.restore()
+end
+
+function tests.max_edges_limit_finishes_with_max_edges_reason()
+    local env = make_env()
+    assert_equal(env.crawler.start("attempts=1,max_edges=2"), true, "crawler should start")
+
+    env.tick(true)
+    env.publish_blocked("up", 5, 5)
+
+    env.tick(true)
+    env.publish_blocked("down", 5, 5)
+
+    -- Third tick should hit the max_edges cap before injecting again.
+    env.tick(true)
+    assert_equal(env.crawler.is_active(), false, "crawler should finish at the max_edges cap")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "reason=max_edges",
+        "max_edges exhaustion should finish with reason=max_edges")
+    assert_contains(joined, "completed=false",
+        "max_edges exhaustion is not a clean completion")
+
+    env.restore()
+end
+
+function tests.pending_repress_into_open_floor_stays_open_floor()
+    -- The existing pending_repress test exercises a model-walkable=false
+    -- destination (timing_suspect_false_wall). Guard the other branch too:
+    -- when the model says the destination IS walkable, a pending_repress
+    -- source must NOT escalate the classification to timing_suspect.
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    env.publish_step("up", 5, 5, 5, 4, nil, {
+        source = "pending_repress",
+        timeout_retries = 1,
+        turn_represses = 1,
+        frames = 40,
+        inject_limit = 12,
+    })
+
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=open_floor",
+        "pending_repress into a model-walkable destination should classify as open_floor")
+    assert_not_contains(joined, "class=timing_suspect_false_wall",
+        "open destinations should never escalate to timing_suspect")
+    assert_not_contains(joined, "MAP_CRAWL_UNSTABLE_CANDIDATE",
+        "open destinations from pending_repress should not be marked unstable")
+
+    env.restore()
+end
+
+function tests.open_door_pushes_dfs_frame_for_further_exploration()
+    local env = make_env({
+        doors = {
+            ["5,4"] = {open = true, door_x = 5, door_y = 4, open_slots = {"0:5,4"}},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=5"), true, "crawler should start")
+
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe walks into the open door")
+    env.publish_step("up", 5, 5, 5, 4)
+
+    -- DFS should push (5,4) onto the stack and continue probing from there.
+    env.tick(true)
+    assert_equal(env.injects[2], "up", "DFS continues probing past the open door")
+    env.publish_blocked("up", 5, 4)
+
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=open_door_passage",
+        "walking through an open door should be classified as open_door_passage")
+    assert_contains(joined, "door=(5,4) open=true",
+        "door context should accompany the open-door log line")
+    assert_contains(joined,
+        "MAP_CRAWL_PROBE run=1 map=0x0B from=(5,4) dir=up dest=(5,3) attempt=1/1 kind=probe",
+        "next probe should originate from inside the door cell")
+
+    env.restore()
+end
+
+function tests.complete_finish_writes_export_file_with_lua_snippets()
+    local env = make_env({
+        details = {
+            ["5,4"] = {effective_walkable = false, permanent_blocked = false, reason = "tile_type", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=20"), true, "crawler should start")
+
+    -- Walk into a false-wall cell (passthrough candidate at (5,4)).
+    env.tick(true); env.publish_step("up", 5, 5, 5, 4)
+
+    -- Block up from (5,4) -> directional candidate at (5,3).
+    env.tick(true); env.publish_blocked("up", 5, 4)
+
+    -- Down from (5,4) is a pending_return to the visited (5,5), then back up.
+    env.tick(true); env.publish_step("down", 5, 4, 5, 5)
+    env.tick(true); env.publish_step("up", 5, 5, 5, 4)
+
+    -- Block remaining cardinal directions at (5,4).
+    env.tick(true); env.publish_blocked("left", 5, 4)
+    env.tick(true); env.publish_blocked("right", 5, 4)
+
+    -- Backtrack to (5,5), then exhaust the root frame.
+    env.tick(true); env.publish_step("down", 5, 4, 5, 5)
+    env.tick(true); env.publish_blocked("down", 5, 5)
+    env.tick(true); env.publish_blocked("left", 5, 5)
+    env.tick(true); env.publish_blocked("right", 5, 5)
+    env.tick(true)
+
+    assert_equal(env.crawler.is_active(), false, "DFS should finish cleanly")
+
+    local paths = env.list_captured_paths()
+    assert_equal(#paths, 1, "exactly one export file should be written")
+    assert_contains(paths[1], "dw_crawl_0b.txt",
+        "export filename should include the lowercase hex map id")
+
+    local content = env.get_captured_file(paths[1])
+    assert_contains(content, "-- Map crawler export", "header line present")
+    assert_contains(content, "-- map: 0x0B", "header includes map id")
+    assert_contains(content, "-- completed: true", "header reports completion")
+    assert_contains(content, "-- reason: complete", "header reports reason")
+    assert_contains(content, "-- MAP_PASSTHROUGH_CELLS additions",
+        "passthrough section header present")
+    assert_contains(content, '["5,4"] = true,', "false-wall cell exported as passthrough")
+    assert_contains(content, "-- MAP_DIRECTIONAL_BLOCKS additions",
+        "directional section header present")
+    assert_contains(content, '["5,3"] = {south = true},',
+        "blocked direction exported as directional candidate")
+
+    local joined_logs = table.concat(env.logs, "\n")
+    assert_contains(joined_logs, "MAP_CRAWL_EXPORT_FILE",
+        "export path should be logged for grepping")
+
+    -- Speech announcement: exactly one "complete" line after the start banner.
+    local last_output = env.outputs[#env.outputs]
+    assert_contains(last_output, "Map crawl complete",
+        "finish speech should announce completion")
+    assert_contains(last_output, "1 passthrough",
+        "finish speech should include passthrough count")
+    -- 6 directional candidates were recorded: (5,3) south, (4,4) east,
+    -- (6,4) west from probes at (5,4); plus (5,6) north, (4,5) east,
+    -- (6,5) west from probes at the root (5,5).
+    assert_contains(last_output, "6 directional",
+        "finish speech should include directional count")
+
+    env.restore()
+end
+
+function tests.aborted_finish_still_writes_export_file_with_failure_reason()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=2"), true, "crawler should start")
+    env.tick(true); env.publish_blocked("up", 5, 5)
+    env.tick(true); env.publish_blocked("down", 5, 5)
+    env.tick(true)  -- hits max_edges
+
+    assert_equal(env.crawler.is_active(), false, "max_edges abort finishes the run")
+
+    local paths = env.list_captured_paths()
+    assert_equal(#paths, 1, "abort still writes the export file")
+
+    local content = env.get_captured_file(paths[1])
+    assert_contains(content, "-- completed: false", "abort flagged in header")
+    assert_contains(content, "-- reason: max_edges", "abort reason in header")
+    assert_contains(content, '["5,4"] = {south = true},',
+        "directional candidate from before the abort survives the export")
+
+    local last_output = env.outputs[#env.outputs]
+    assert_contains(last_output, "Map crawl ended: max_edges",
+        "finish speech should announce the abort reason")
+
+    env.restore()
+end
+
+function tests.manual_immediate_stop_speaks_finish_summary_only_once()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    local outputs_before = #env.outputs
+
+    -- Stop before any probe injects so the stop path takes the immediate
+    -- finish_run branch (no active_edge to settle around).
+    local ok, msg = env.crawler.stop()
+    assert_equal(ok, true, "stop should succeed")
+    assert_equal(msg, nil,
+        "immediate stop should return nil msg so the command does not double-speak")
+
+    assert_equal(#env.outputs - outputs_before, 1,
+        "immediate stop should emit exactly one tolk announcement")
+    local finish_text = env.outputs[#env.outputs]
+    assert_contains(finish_text, "Map crawl stopped",
+        "finish speech should use 'stopped' phrasing for manual stop")
+
+    env.restore()
+end
+
+function tests.auto_step_silently_cleared_aborts_without_hanging()
+    local env = make_env()
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "up", "first probe should start")
+
+    -- Simulate auto_step silently dropping the in-flight step (can_walk fell,
+    -- a different live direction interrupted, config toggled, ...). No
+    -- route_step_completed or route_blocked event will arrive.
+    env.clear_auto_step_state()
+
+    env.tick(true)
+    assert_equal(env.crawler.is_active(), false, "orphaned step should abort the crawler")
+
+    env.crawler.export_candidates(0x0B)
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "class=auto_step_lost",
+        "orphan abort should be classified diagnostically")
+    assert_contains(joined, "reason=auto_step_lost",
+        "finish_run should record the auto_step_lost reason")
+    assert_contains(joined, "note=active_step_cleared_without_event",
+        "orphan log should explain the silent clear")
+    assert_contains(joined, "no_review_candidates=true",
+        "orphan abort should not promote any review candidates")
 
     env.restore()
 end

@@ -1,8 +1,22 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-05-21
+Updated: 2026-05-22
 
-## Latest Code Review (2026-05-19)
+## Latest: Map Crawler Review + Hardening (2026-05-22)
+
+See `HANDOFF_2026-05-22_map_crawler_review.md` for the full breakdown. Single commit on `main`. Highlights:
+
+- **Critical 1 fix** — orphan-step detection in `map_crawler.tick_impl`. When `auto_step` silently drops an in-flight inject_step (can_walk drop, different live direction, config toggle), the crawler now polls `auto_step.get_active_step_state()` and aborts with `auto_step_lost` instead of hanging forever.
+- **Critical 2 fix** — failed backtracks no longer pollute directional candidates. Classification overridden to `backtrack_blocked` (diagnostic-only); dropped from the directional-promote `elif` in `record_edge`.
+- **Game-state guard** in `main.lua`'s `crawl_map_frontier` command — refuses start unless `STATE_FIELD` and no menus/dialogue.
+- **Export file feature** — every `finish_run` writes `dw_crawl_<mapid_hex>.txt` next to `dw_debug.log`. Lua-snippet format with comment header, paste-ready `MAP_PASSTHROUGH_CELLS` / `MAP_DIRECTIONAL_BLOCKS` lines, and informational sections for stationary NPCs, closed doors, unstable cells. Per user preference: Lua format (not JSON), auto-write on every finish (option A).
+- **TTS finish announcements** — `finish_run` always speaks exactly one summary; `M.stop()` returns nil msg for the immediate path to avoid double-speak; deferred-settle branch keeps its "Stopping..." message.
+- **Comment cleanup** — `mark_unstable_candidate` asymmetry, dead OOB branch, intentional duplicate `stationary_npc_at` scan, event_bus hot-reload safety.
+- **9 new tests** — 32 passing total (was 23). Includes `io.open` interception in `make_env` for testing the export writer without touching disk.
+
+Pending follow-ups: none critical. Optional: configurable `MANUAL_STOP_SETTLE_FRAMES`, per-map export cleanup helper.
+
+## Previous: Code Review (2026-05-19)
 
 See `HANDOFF_2026-05-19_code_review.md` for the full breakdown of the post-weekend code review and follow-on fixes. Five commits landed (`095865a`, `5d873f3`, `9661190`, `ac7a0a6`, plus the doc). Follow-up cleanup on 2026-05-20 fixed the remaining terrain-offset propagation gap in route guidance/status/start paths, removed the per-frame `position_key` string allocation in `overworld_routes.observe_position`, made `safe`/`safety` contextual between Brecconary and Tantegel, and corrected the `dw-debug-loop` handoff-heading guidance. Open review-board items still worth carrying: resolve the Tantegel `4,11-4,15` evidence conflict during the upcoming locked-door/item mapping pass, and decide whether overworld route waypoint validation needs a real overworld passability source before changing radius-0 behavior.
 
