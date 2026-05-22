@@ -349,14 +349,28 @@ local function should_refresh_objects_after_route()
     return true
 end
 
-local function adjacent_path_opts(opts)
+local function copy_opts(opts)
+    local next_opts = {}
+    for k, v in pairs(opts or {}) do
+        next_opts[k] = v
+    end
+    return next_opts
+end
+
+local function pathfinder_opts_for_plan(opts)
     opts = opts or {}
-    if opts.use_adjacent_metrics ~= nil or opts.survey_safe == true then
+    local path_opts = opts.pathfinder_opts or opts
+    if path_opts == opts then
         return opts
     end
-    local next_opts = {}
-    for k, v in pairs(opts) do
-        next_opts[k] = v
+    return copy_opts(path_opts)
+end
+
+local function adjacent_path_opts(opts)
+    opts = opts or {}
+    local next_opts = pathfinder_opts_for_plan(opts)
+    if next_opts.use_adjacent_metrics ~= nil or opts.survey_safe == true then
+        return next_opts
     end
     next_opts.use_adjacent_metrics = false
     return next_opts
@@ -2232,7 +2246,14 @@ local function plan_path_to_object(obj, opts)
             result, face_dir, path = "No path found", nil, nil
             no_path_reason = "goal_blocked_runtime"
         else
-            result, face_dir, path = pathfinder.pathfind_to(map_id, px, py, goal_x, goal_y, blocking)
+            result, face_dir, path = pathfinder.pathfind_to(
+                map_id,
+                px,
+                py,
+                goal_x,
+                goal_y,
+                blocking,
+                pathfinder_opts_for_plan(opts))
             if uses_interaction and path then
                 face_dir = get_plan_face_dir(obj, uses_interaction) or face_dir
             end
@@ -2273,6 +2294,42 @@ end
 function M.plan_path_to_object(obj, opts)
     if not obj then return nil end
     return plan_path_to_object(obj, opts)
+end
+
+function M.plan_path_to_coordinates(goal_x, goal_y, opts)
+    opts = opts or {}
+    local target = {
+        id = string.format("coord_%s_%s", tostring(goal_x), tostring(goal_y)),
+        name = opts.name or string.format("Coordinate %s,%s", tostring(goal_x), tostring(goal_y)),
+        type = opts.target_type or "coordinate",
+        x = goal_x,
+        y = goal_y,
+    }
+    if opts.interaction_x ~= nil and opts.interaction_y ~= nil then
+        target.interaction_x = opts.interaction_x
+        target.interaction_y = opts.interaction_y
+        target.interaction_face_dir = opts.interaction_face_dir
+    end
+
+    local parked = false
+    if opts.park_mobile_npcs == true then
+        start_autowalk_npc_parking(target)
+        objects.update_npcs()
+        parked = true
+    end
+
+    local plan = plan_path_to_object(target, opts)
+    if plan then
+        plan.coordinate_target = true
+        plan.npc_mode = opts.skip_npcs and "skip_npcs"
+            or (opts.park_mobile_npcs and "park_mobile_npcs")
+            or "live_npcs"
+    end
+
+    if parked then
+        release_autowalk_npc_parking("coordinate debug plan complete")
+    end
+    return plan
 end
 
 local queue_overworld_segment_steps

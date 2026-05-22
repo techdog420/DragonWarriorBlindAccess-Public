@@ -895,6 +895,44 @@ function tests.manual_early_subpixel_twitch_accepts_late_tile_completion()
     env.restore()
 end
 
+function tests.inject_step_retry_after_movement_twitch_does_not_turn_repress()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "6",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_limit = "1",
+        },
+    })
+    env.auto_step.inject_step("right")
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_subpixel(0x30)
+    env.update(true)
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    local right_sequences = collect_direction_sequences(env, "right", 30)
+    assert_truthy(
+        #right_sequences <= 2,
+        "debug/probe inject_step should not add a turn re-press after a retry already saw movement start"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_early_subpixel_twitch_keeps_holding_input()
     local env = make_env({
         config_values = {
@@ -1305,6 +1343,33 @@ function tests.successful_step_flushes_stale_direction_with_neutral_frames()
     assert_truthy(
         env.injected[9] and not has_any_direction(env.injected[9]),
         "auto_step should keep the D-pad neutral long enough to flush stale held input"
+    )
+
+    env.restore()
+end
+
+function tests.inject_step_success_force_releases_sticky_direction_after_completion()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right")
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[8] and not has_any_direction(env.injected[8]),
+        "debug/probe injected steps should force a neutral frame even if the emulator still reports the old direction"
+    )
+    assert_truthy(
+        env.injected[9] and not has_any_direction(env.injected[9]),
+        "debug/probe injected steps should keep neutral long enough to prevent post-arrival overshoot"
     )
 
     env.restore()

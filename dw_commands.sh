@@ -77,7 +77,11 @@
 #
 # ── Path debug commands ─────────────────────────────────────────────
 #   debug_pathfind_to:X,Y       Pathfind with full A* search logging
+#   debug_pathfind_to_park_npcs:X,Y
+#                                Pathfind with mobile NPCs temporarily parked
 #   debug_pathfind_adjacent:X,Y Adjacent pathfind with full A* search logging
+#   debug_pathfind_adjacent_park_npcs:X,Y
+#                                Adjacent pathfind with mobile NPCs parked
 #   trace_path                  Output last computed path (coords + directions)
 #   dump_search_log             Output per-node A* visit/reject log (verbose!)
 #   start_step_mode             Load last path into step buffer

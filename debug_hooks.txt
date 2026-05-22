@@ -177,6 +177,13 @@ PATHFINDING DEBUG COMMANDS
 --------------------------
   debug_pathfind_to:X,Y    Run a detailed current-map route search to X,Y and
                            store the path for trace_path / dump_search_log.
+  debug_pathfind_to_skip_npcs:X,Y
+                           Same as debug_pathfind_to, but omits live NPC
+                           positions from the blocking table.
+  debug_pathfind_to_park_npcs:X,Y
+                           Same as debug_pathfind_to, but temporarily parks
+                           mobile NPCs before planning so diagnostics match
+                           parked-NPC autowalk/survey route assumptions.
   debug_pathfind_adjacent:X,Y
                            Run a detailed route search to a cell adjacent to
                            X,Y, useful for NPC/object interaction targets.
@@ -184,6 +191,9 @@ PATHFINDING DEBUG COMMANDS
                            Same as debug_pathfind_adjacent, but omits live NPC
                            positions from the blocking table so geometry can
                            be separated from moving or stale NPC clutter.
+  debug_pathfind_adjacent_park_npcs:X,Y
+                           Same as debug_pathfind_adjacent, but temporarily
+                           parks mobile NPCs before planning.
   trace_path               Log the last stored path coordinates and directions.
   dump_search_log          Log the rejected/visited search details for the last
                            stored path search.

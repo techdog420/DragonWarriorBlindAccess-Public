@@ -207,7 +207,7 @@ local function make_env(options)
             return path
         end
         return {
-            pathfind_to = function(_, start_x, start_y, goal_x, goal_y, blocking)
+            pathfind_to = function(_, start_x, start_y, goal_x, goal_y, blocking, opts)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
                 last_direct_call = {
@@ -216,6 +216,7 @@ local function make_env(options)
                     goal_x = goal_x,
                     goal_y = goal_y,
                     blocking = blocking,
+                    opts = opts,
                 }
                 if pathfind_mode == "always_no_path" then
                     return "No path found", nil, nil
@@ -1238,6 +1239,48 @@ function tests.survey_safe_adjacent_planning_keeps_metrics()
         nil,
         "survey-safe planning should keep adjacent diagnostics enabled"
     )
+
+    env.restore()
+end
+
+function tests.direct_route_planning_passes_debug_pathfinder_options()
+    local env = make_env({
+        current_object = {name = "Chest", type = "chest", x = 6, y = 1},
+    })
+    local marker_opts = {on_visit = function() end}
+
+    env.route_manager.plan_path_to_object({
+        name = "Chest",
+        type = "chest",
+        x = 6,
+        y = 1,
+    }, {
+        path_mode = "direct",
+        pathfinder_opts = marker_opts,
+    })
+
+    assert_equal(
+        env.last_direct_call().opts.on_visit,
+        marker_opts.on_visit,
+        "direct route-manager plans should pass debug pathfinder callbacks through to A*"
+    )
+
+    env.restore()
+end
+
+function tests.coordinate_debug_planning_uses_route_manager_path_policy()
+    local env = make_env()
+    local marker_opts = {on_complete = function() end}
+
+    local plan = env.route_manager.plan_path_to_coordinates(6, 1, {
+        path_mode = "direct",
+        pathfinder_opts = marker_opts,
+        store_debug_path = false,
+    })
+
+    assert_equal(plan.coordinate_target, true, "coordinate plans should be marked for debug callers")
+    assert_equal(plan.path_mode, "direct", "coordinate direct debug plans should keep direct path mode")
+    assert_equal(env.last_direct_call().opts.on_complete, marker_opts.on_complete, "coordinate debug plans should use the shared route-manager A* options")
 
     env.restore()
 end

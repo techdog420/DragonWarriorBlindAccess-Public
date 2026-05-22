@@ -4639,16 +4639,24 @@ local function run_debug_pathfind_to(arg, params)
         return
     end
     ensure_navigation_modules_fresh()
-    local map_id, px, py = nav.get_position()
-    objects.update_npcs()
-    local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
     local opts = path_debug.build_find_path_opts()
-    local result, face_dir, path = pathfinder.pathfind_to(
-        map_id, px, py, goal_x, goal_y, blocking, opts)
+    local plan = route_mgr.plan_path_to_coordinates(goal_x, goal_y, {
+        path_mode = "direct",
+        skip_npcs = params.skip_npcs == true,
+        park_mobile_npcs = params.park_mobile_npcs == true,
+        pathfinder_opts = opts,
+        store_debug_path = false,
+    })
+    local result = plan and plan.result or "No path found"
+    local face_dir = plan and plan.face_dir or nil
+    local path = plan and plan.path or nil
+    local map_id = plan and plan.map_id or nav.get_position()
+    local px = plan and plan.start_x or select(2, nav.get_position())
+    local py = plan and plan.start_y or select(3, nav.get_position())
     path_debug.store_path(map_id, px, py, goal_x, goal_y, path, opts)
     local stats = opts and opts._get_stats() or {}
     local reason = stats and stats.reason
-    local mode_label = params.skip_npcs and " skip NPCs" or ""
+    local mode_label = params.park_mobile_npcs and " park NPCs" or (params.skip_npcs and " skip NPCs" or "")
     local msg = string.format("Debug pathfind_to%s (%d,%d): %s%s (visited=%d path=%d)",
         mode_label, goal_x, goal_y, result,
         reason and (" [" .. reason .. "]") or "",
@@ -4671,6 +4679,13 @@ debug_tools.register_command("debug_pathfind_to_skip_npcs", function(arg)
     })
 end)
 
+debug_tools.register_command("debug_pathfind_to_park_npcs", function(arg)
+    run_debug_pathfind_to(arg, {
+        command_name = "debug_pathfind_to_park_npcs",
+        park_mobile_npcs = true,
+    })
+end)
+
 local function run_debug_pathfind_adjacent(arg, params)
     params = params or {}
     local command_name = params.command_name or "debug_pathfind_adjacent"
@@ -4680,16 +4695,24 @@ local function run_debug_pathfind_adjacent(arg, params)
         return
     end
     ensure_navigation_modules_fresh()
-    local map_id, px, py = nav.get_position()
-    objects.update_npcs()
-    local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
     local find_opts = path_debug.build_find_path_opts()
-    local result, face_dir, path = pathfinder.pathfind_to_adjacent(
-        map_id, px, py, goal_x, goal_y, blocking, find_opts)
+    local plan = route_mgr.plan_path_to_coordinates(goal_x, goal_y, {
+        path_mode = "adjacent",
+        skip_npcs = params.skip_npcs == true,
+        park_mobile_npcs = params.park_mobile_npcs == true,
+        pathfinder_opts = find_opts,
+        store_debug_path = false,
+    })
+    local result = plan and plan.result or "No path found"
+    local face_dir = plan and plan.face_dir or nil
+    local path = plan and plan.path or nil
+    local map_id = plan and plan.map_id or nav.get_position()
+    local px = plan and plan.start_x or select(2, nav.get_position())
+    local py = plan and plan.start_y or select(3, nav.get_position())
     path_debug.store_path(map_id, px, py, goal_x, goal_y, path, find_opts)
     local stats = find_opts and find_opts._get_stats() or {}
     local reason = stats and stats.reason
-    local mode_label = params.skip_npcs and " skip NPCs" or ""
+    local mode_label = params.park_mobile_npcs and " park NPCs" or (params.skip_npcs and " skip NPCs" or "")
     local msg = string.format("Debug pathfind adjacent%s to (%d,%d): %s%s (visited=%d path=%d)",
         mode_label, goal_x, goal_y, result,
         reason and (" [" .. reason .. "]") or "",
@@ -4707,6 +4730,13 @@ debug_tools.register_command("debug_pathfind_adjacent_skip_npcs", function(arg)
     run_debug_pathfind_adjacent(arg, {
         command_name = "debug_pathfind_adjacent_skip_npcs",
         skip_npcs = true,
+    })
+end)
+
+debug_tools.register_command("debug_pathfind_adjacent_park_npcs", function(arg)
+    run_debug_pathfind_adjacent(arg, {
+        command_name = "debug_pathfind_adjacent_park_npcs",
+        park_mobile_npcs = true,
     })
 end)
 

@@ -584,7 +584,8 @@ local function route_settle_after_step(completed_dir)
     return settle_frames
 end
 
-local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
+local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source, extra)
+    extra = extra or {}
     local step_data = {
         from_x = from_x,
         from_y = from_y,
@@ -593,6 +594,10 @@ local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
         to_y = to_y,
         source = source,
         queued_route = (route_steps ~= nil),
+        timeout_retries = extra.timeout_retries or 0,
+        turn_represses = extra.turn_represses or 0,
+        frames = extra.frames,
+        inject_limit = extra.inject_limit,
     }
     event_bus.publish("route_step_completed", step_data)
     if M.on_step_complete then
@@ -852,7 +857,7 @@ function M.update(can_walk)
         clear_pending_repress()
         cooldown = COOLDOWN_FRAMES
         neutralize_direction(joy)
-        start_post_step_release()
+        start_post_step_release(route_steps ~= nil or completed.source == "inject_step")
         local expected_x = completed.start_x
         local expected_y = completed.start_y
         if completed.dir == "up" then
@@ -896,7 +901,11 @@ function M.update(can_walk)
             route_last_y = py
             route_settle_frames = route_settle_after_step(completed.dir)
         end
-        emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress")
+        emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress", {
+            timeout_retries = completed.timeout_retries,
+            turn_represses = completed.turn_represses,
+            inject_limit = completed.inject_limit,
+        })
         for _, dir in ipairs(DIRECTIONS) do
             prev_held[dir] = joy[dir] or false
         end
@@ -984,6 +993,7 @@ function M.update(can_walk)
             local completed_turn_represses = auto_turn_represses
             local completed_inject_limit = auto_inject_limit
             local completed_queued_route = (route_steps ~= nil)
+            local completed_source = auto_step_source
             local expected_x = completed_from_x
             local expected_y = completed_from_y
             if completed_dir == "up" then
@@ -1042,13 +1052,18 @@ function M.update(can_walk)
             reset_active_step()
             cooldown = COOLDOWN_FRAMES  -- Prevent double-step
             neutralize_direction(joy)
-            start_post_step_release()
+            start_post_step_release(completed_queued_route or completed_source == "inject_step")
             if route_steps then
                 route_last_x = px
                 route_last_y = py
                 route_settle_frames = route_settle_after_step(completed_dir)
             end
-            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold")
+            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
+                timeout_retries = completed_retries,
+                turn_represses = completed_turn_represses,
+                frames = completed_frames,
+                inject_limit = completed_inject_limit,
+            })
         elseif should_release_on_movement_start()
            and auto_start_subpixel ~= nil
            and current_subpixel ~= nil
@@ -1085,6 +1100,8 @@ function M.update(can_walk)
            and (
                not auto_movement_started
                or (
+                   route_steps ~= nil
+                   and
                    auto_step_source ~= "manual_tap"
                    and
                    auto_movement_start_frame ~= nil
@@ -1217,7 +1234,7 @@ function M.update(can_walk)
                 reset_active_step()
                 clear_route()
                 neutralize_direction(joy)
-                start_post_step_release()
+                start_post_step_release(blocked_queued_route or blocked_source == "inject_step")
                 -- Notify the main loop so it can re-route around the obstacle.
                 -- Pass the blocked starting position and direction so the handler
                 -- can record the destination cell and avoid routing through it again.
@@ -1448,6 +1465,38 @@ end
 
 function M.clear_route()
     clear_route()
+end
+
+function M.get_active_step_state()
+    if auto_dir then
+        return {
+            dir = auto_dir,
+            start_x = auto_start_x,
+            start_y = auto_start_y,
+            frames = auto_frames,
+            timeout_retries = auto_timeout_retries,
+            turn_represses = auto_turn_represses,
+            inject_limit = auto_inject_limit,
+            movement_started = auto_movement_started,
+            movement_start_frame = auto_movement_start_frame,
+            source = auto_step_source,
+        }
+    end
+    if pending_repress then
+        return {
+            dir = pending_repress.dir,
+            start_x = pending_repress.start_x,
+            start_y = pending_repress.start_y,
+            frames = 0,
+            timeout_retries = pending_repress.timeout_retries,
+            turn_represses = pending_repress.turn_represses,
+            inject_limit = pending_repress.inject_limit,
+            movement_started = false,
+            movement_start_frame = nil,
+            source = pending_repress.source or auto_step_source,
+        }
+    end
+    return nil
 end
 
 function M.cancel_active_step(clear_queued_route, force_release)
