@@ -607,6 +607,10 @@ local MAP_PASSTHROUGH_CELLS = {
     -- locked-room bashing showed this connector is not currently reachable
     -- from the opened Wings door pocket at (23,23); do not treat it as a
     -- solved walk-out route from that pocket.
+    -- The forward entrance-to-Wings route later found the clean public-side
+    -- approach into that shelf: direct probe_edge_verify:23,17,DOWN,5 moved
+    -- into (23,18) 5/5. The south approach from (23,19)->UP stayed mixed, so
+    -- keep this as a passthrough cell rather than changing directional blocks.
     -- Later chest-room bashing found a separate row-22 false-wall shelf:
     -- (24,23)->UP entered (24,22), (24,22)->LEFT entered (23,22) repeatedly,
     -- and (23,22)->RIGHT returned to (24,22). Expose only those live-proven
@@ -619,6 +623,11 @@ local MAP_PASSTHROUGH_CELLS = {
     -- into (19,25), and forced-origin (19,25)->LEFT moved into (18,25).
     -- However, the apparent (21,23)->DOWN throat is not usable from the
     -- door-side approach; keep its north entry blocked directionally below.
+    -- Entrance-to-Weapons follow-up: once (21,8).west was sealed, the
+    -- planner needed the east x=29 hidden north strip. Verified
+    -- (29,13)->UP into (29,12) moved 5/5, then forced raw probes moved
+    -- (29,12)->UP, (29,11)->UP, (29,10)->UP, and (29,9)->UP cleanly 5/5
+    -- each. (29,8) is ordinary floor, so no passthrough is needed there.
     [0x0B] = {
         ["1,5"] = true,
         ["1,7"] = true,
@@ -658,15 +667,28 @@ local MAP_PASSTHROUGH_CELLS = {
         ["8,8"] = true,
         ["8,9"] = true,
         ["9,9"] = true,
+        -- 2026-05-21 frontier-crawler follow-up after the x=12 regression
+        -- rerun: `(11,17)->UP` into `(11,16)` moved 5/5, and five forced raw
+        -- probes from `(11,16)->UP` into `(11,15)` all moved cleanly.
+        ["11,15"] = true,
+        ["11,16"] = true,
         -- 2026-05-21 post-reload frontier-crawler run: after the crawler
         -- correctly treated (13,1) as an unstable north-edge frontier and
         -- backtracked to (13,2), direct verifiers confirmed this adjacent
         -- x=12 strip: (13,2)->LEFT, (12,7)->DOWN, (12,10)->UP, and
         -- (12,10)->DOWN each moved 5/5.
+        -- A later regression pass from (13,20) extended the same live-proven
+        -- x=12 column farther south: direct verifiers confirmed
+        -- (12,14)->DOWN into (12,15), (12,17)->UP into (12,16), and
+        -- (12,17)->DOWN into (12,18) 5/5. Keep `(12,20)` review-only for now;
+        -- its first verifier came back mixed.
         ["12,2"] = true,
         ["12,8"] = true,
         ["12,9"] = true,
         ["12,11"] = true,
+        ["12,15"] = true,
+        ["12,16"] = true,
+        ["12,18"] = true,
         -- 2026-05-21 frontier-crawler/verifier follow-up from the Rimuldar
         -- west-side vertical strip: (13,5)->UP into (13,4) and
         -- (13,3)->UP into (13,2) each moved 5/5. Do not promote (13,1)
@@ -697,6 +719,7 @@ local MAP_PASSTHROUGH_CELLS = {
         ["21,24"] = true,
         ["22,22"] = true,
         ["23,22"] = true,
+        ["23,18"] = true,
         ["24,6"] = true,
         ["24,22"] = true,
         -- 2026-05-21 frontier-crawler follow-up: direct verifiers confirmed
@@ -705,11 +728,52 @@ local MAP_PASSTHROUGH_CELLS = {
         -- (29,3) is the chained strip cell: force-origin raw probes moved
         -- into it from both (29,2)->DOWN and (29,4)->UP. Recheck with
         -- probe_edge_verify after these passthroughs are live if needed.
+        -- The forced-start upper-strip crawl later exported (28,2), and
+        -- probe_edge_verify:29,2,LEFT,5 reconfirmed the east entry 5/5 with
+        -- no drift, timeout, or map change.
+        -- The next west-advanced frontier pass from (28,2) confirmed
+        -- (28,2)->DOWN into (28,3), (28,5)->UP into (28,4), and
+        -- (28,5)->DOWN into (28,6) 5/5. After reloading those live,
+        -- probe_edge_verify:DOWN,5 from (28,6) also moved into (28,7) 5/5
+        -- with no drift, timeout, or map change.
+        -- The next post-reload frontier pass starting from (28,7) advanced
+        -- one column farther west. `probe_edge_verify:LEFT,5` from (28,2)
+        -- confirmed `(27,2)` passable 5/5, and five forced raw
+        -- `probe_edge:DOWN` checks from `(27,2)` consistently moved into
+        -- `(27,3)`.
+        -- The following pass from `(27,3)` continued the strip into x=26/x=25:
+        -- `probe_edge_verify:LEFT,5` from `(27,2)` confirmed `(26,2)` 5/5,
+        -- then five forced raw probes each confirmed `(26,2)->DOWN` into
+        -- `(26,3)`, `(26,3)->LEFT` into `(25,3)`, and `(25,3)->UP` into
+        -- `(25,2)`.
+        -- The next post-reload crawl from `(25,3)` kept extending the same
+        -- hidden run westward: repeated moved edges proved `(24,2)`, `(24,3)`,
+        -- and even the tile-type-2 cell `(24,4)` are traversable, with the
+        -- crawler then continuing onward through `(24,5)` and the already
+        -- modeled `(24,6)` bridge.
+        ["24,2"] = true,
+        ["24,3"] = true,
+        ["24,4"] = true,
+        ["25,2"] = true,
+        ["25,3"] = true,
+        ["26,2"] = true,
+        ["26,3"] = true,
+        ["27,2"] = true,
+        ["27,3"] = true,
+        ["28,2"] = true,
+        ["28,3"] = true,
+        ["28,4"] = true,
+        ["28,6"] = true,
+        ["28,7"] = true,
         ["29,2"] = true,
         ["29,3"] = true,
         ["29,4"] = true,
         ["29,6"] = true,
         ["29,7"] = true,
+        ["29,9"] = true,
+        ["29,10"] = true,
+        ["29,11"] = true,
+        ["29,12"] = true,
     },
 
     -- Map 0x07: Kol
@@ -2002,9 +2066,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- The later clean entrance-to-key-shop pass also found the east
         -- approach blocked from (29,13)->LEFT, while the route into and out of
         -- the actual exit tile (29,13) remained open.
-        -- (29,13)->LEFT was verified passable 5/5 on 2026-05-20, so the east
-        -- approach into (28,13) is not a permanent engine blocker.
-        ["28,13"] = {south = true},
+        -- 2026-05-21 live recheck on a restored two-door save changed the
+        -- earlier interpretation: `probe_edge_verify:29,13,LEFT,5` blocked 5/5
+        -- with no drift, while the reverse `probe_edge_verify:28,13,RIGHT,5`
+        -- stepped onto `(29,13)` and then immediately changed to world map.
+        -- Model this as a one-way exit seam: `(28,13)` blocks entry from the
+        -- east, but `(29,13)` remains the live exit tile.
+        ["28,13"] = {south = true, east = true},
 
         -- 2026-05-17 Magic Key route shakedown. These edges each verified
         -- 3/3 blocked with probe_edge_verify while routing from the east
@@ -2017,6 +2085,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["25,11"] = {east = true, west = true},
         ["25,12"] = {east = true, south = true},
         ["20,10"] = {south = true, west = true},
+        -- 2026-05-21 entrance-to-Weapons route follow-up:
+        -- `probe_edge_verify:20,8,RIGHT,5` blocked entry into (21,8) from
+        -- the west 5/5 after the route found the next x=21 barrier.
+        ["21,8"] = {west = true},
         ["21,6"] = {west = true},
         ["21,7"] = {west = true},
         ["21,11"] = {west = true},
@@ -2257,6 +2329,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["13,7"] = {east = true, west = true},
         ["13,9"] = {south = true},
         ["14,9"] = {east = true, south = true},
+        -- 2026-05-21: after the entrance-to-Wings route stopped overshooting,
+        -- direct raw verifiers exposed a real north-approach barrier along
+        -- row 17. These entries each blocked 5/5 from y=16; (18,16)->DOWN and
+        -- (28,16)->DOWN moved 5/5 and remain open crossings.
+        ["19,17"] = {north = true},
+        ["20,17"] = {north = true},
+        ["21,17"] = {north = true, west = true},
+        ["22,17"] = {north = true},
+        ["23,17"] = {north = true},
+        ["24,17"] = {north = true},
+        ["25,17"] = {north = true},
         -- (15,19): one-way row-19 connector. Fresh FCEUX verification after
         -- closing the command menu blocked (14,19)->RIGHT 3/3, while the
         -- reverse (15,19)->LEFT moved 3/3. Close only the west approach.
@@ -2296,9 +2379,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- tried to enter (16,21) from the east; direct
         -- probe_edge_verify:17,21,LEFT,5 confirmed blocked 5/5. A later
         -- fallback from (16,22)->UP confirmed the south approach blocked 5/5
-        -- too. The north approach from (16,20)->DOWN stayed mixed, so keep it
-        -- open.
-        ["16,21"] = {east = true, south = true},
+        -- too. A later chest-return autowalk loop and fresh direct
+        -- probe_edge_verify:16,20,DOWN,5 then blocked the north approach 5/5
+        -- as well, so all three confirmed entries stay closed.
+        ["16,21"] = {east = true, south = true, north = true},
         -- 2026-05-21: return-route fallback from (16,23)->DOWN confirmed the
         -- north approach into (16,24) blocked 5/5. The older south approach
         -- blocker remains from the lower-strip forced probe.
@@ -2344,6 +2428,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- 2026-05-20: `probe_edge_verify:24,20,RIGHT,5` was confirmed
         -- blocked 5/5 as a one-way wall. Keep reverse approach open.
         ["24,20"] = {east = true},
+        -- 2026-05-21: once row-17 north approaches were modeled, the next
+        -- entrance-to-chest route tried (21,21)->RIGHT into (22,21). Direct
+        -- raw verification blocked 5/5, so close only the west approach.
+        ["22,21"] = {west = true},
         -- The follow-up return-route fallback from (24,22) repeatedly tried
         -- to enter the upper shelf at (24,21); direct
         -- probe_edge_verify:24,22,UP,5 confirmed this south approach blocked
@@ -2363,6 +2451,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["22,22"] = {east = true},
         ["22,26"] = {north = true},
         ["23,25"] = {west = true},
+        -- 2026-05-21: full entrance-to-chest validation first tried crossing
+        -- west from (29,17); probe_edge_verify:29,17,LEFT,5 blocked 5/5.
+        -- (28,16)->DOWN into this cell moved 5/5, so keep the north approach
+        -- open and close only the east approach.
+        ["28,17"] = {east = true},
         ["29,16"] = {west = true},
     },
 
