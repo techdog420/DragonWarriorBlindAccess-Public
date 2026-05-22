@@ -82,15 +82,12 @@ See `HANDOFF_2026-05-19_code_review.md` for the full breakdown of the post-weeke
   With the new runtime blockers active, live `debug_pathfind_to:29,13` from
   `(17,21)` still finds a 30-step return route through `(13,20)` to the
   Rimuldar entrance.
-- Current live runtime has the newly confirmed return blockers injected. The
-  planner still finds a return route from the lower fallback area to the
-  Rimuldar entrance, but autowalk still has noisy executor timeouts around
+- The return-side planner still finds a route from the lower fallback area to
+  the Rimuldar entrance, but autowalk has noisy executor timeouts around
   `(16,20)->DOWN` and has not yet arrived at the entrance in a full live run.
-  Entrance-to-chest still has no clean durable route even with skip-NPC
-  planning and both inn doors open. The latest search reaches
-  `(13,20)->(13,21)->(14,21)` and rejects `(14,21)->RIGHT` into `(15,21)` as a
-  modeled directional block, so the missing bridge remains east of the
-  west-side component and is not solved by the row-20 return blockers.
+  Older entrance-to-chest searches still had no clean durable route through the
+  west-side component: the search reached `(13,20)->(13,21)->(14,21)` and
+  rejected `(14,21)->RIGHT` into `(15,21)` as a modeled directional block.
 - Follow-up on the entrance side checked the lower row-25 throat:
   `(22,25)->UP` into `(22,24)` first moved 5/5, so a temporary local
   passthrough made both `debug_pathfind_to_skip_npcs:23,23` and
@@ -99,9 +96,73 @@ See `HANDOFF_2026-05-19_code_review.md` for the full breakdown of the post-weeke
   a fresh teleport, `probe_edge_verify:22,25,UP,3` blocked 3/3. The temporary
   passthrough was backed out; treat `(22,24)` as mixed/disproved for now, not
   permanent map data.
+- Follow-up chest-side crawling found the missing public-side bridge at
+  `(23,18)`. Direct verification from the stable approach
+  `(23,17)->DOWN` moved 5/5, while the south approach `(23,19)->UP` remained
+  mixed/noisy, so only the passthrough cell was promoted and no directional
+  block was changed. After reload, live `debug_pathfind_to:23,23` from the town
+  entrance `(29,14)` found a 17-step route through
+  `(29,14)->(29,15)->(28,15)->...->(23,17)->(23,18)->(23,19)->...->(23,23)`.
+  `auto_walk:23,23` and exact `validate_path` still fail from executor/timing
+  behavior near the entrance row, including overshoot/deviation after the first
+  step; treat that as the next route-following bug, not new map-block evidence
+  yet.
+- Follow-up tooling sync after that route find: coordinate debug path commands
+  now route through `route_manager.plan_path_to_coordinates(...)` instead of
+  calling `pathfinder` directly, and route-manager direct plans pass
+  `path_debug` callbacks into A*. New `debug_pathfind_to_park_npcs:X,Y` and
+  `debug_pathfind_adjacent_park_npcs:X,Y` commands temporarily park mobile NPCs
+  before planning, giving an apples-to-apples comparison with parked-NPC
+  autowalk/survey routes.
+- The first reloaded `validate_path` against that parked-NPC debug route proved
+  the remaining failure is executor timing: step 3 reached expected `(28,15)`,
+  then overshot to `(27,15)` during the confirm window. `auto_step.lua` now
+  forces the post-step neutral-release path after synthetic `inject_step`
+  completions/blocks and queued-route completions/blocks, while preserving the
+  softer release behavior for ordinary manual holds. After reload, that old
+  step-3 overshoot was fixed, but the next run exposed the companion retry path:
+  step 4 `(28,15)->WEST` retried after an early movement twitch, scheduled a
+  synthetic turn re-press, reached `(27,15)`, then overshot to `(26,15)`.
+  `auto_step.lua` now prevents non-route `inject_step` retries from scheduling
+  that queued-route-only twitch/re-press path once movement has already started.
+  After reload, that change removed the observed overshoot class in the traced
+  `validate_path` runs. The remaining failures were real engine blockers, not
+  timing: direct raw verifiers confirmed `(25,16)->DOWN`, `(24,16)->DOWN`,
+  `(23,16)->DOWN`, `(22,16)->DOWN`, `(21,16)->DOWN`, `(20,16)->DOWN`,
+  `(19,16)->DOWN`, `(21,21)->RIGHT`, and `(29,17)->LEFT` as blocked 5/5, while
+  `(18,16)->DOWN` and `(28,16)->DOWN` moved 5/5 and remain open. With those
+  blockers runtime-injected, the parked-NPC planner found and `validate_path`
+  completed a full entrance-to-chest route from `(29,13)` to `(23,23)`:
+  `(29,13)->(29,14)->(29,15)->(28,15)->(27,15)->(27,16)->(27,17)->(26,17)->(25,17)->(24,17)->(23,17)->(23,18)->(23,19)->(23,20)->(24,20)->(24,21)->(23,21)->(23,22)->(23,23)`.
+  The final live result was `VALIDATE COMPLETE: 18/18 steps OK, 0 mismatches`.
+  The confirmed blockers have now been promoted to
+  `MAP_DIRECTIONAL_BLOCKS[0x0B]`; the verified-open `(18,16)->DOWN` and
+  `(28,16)->DOWN` crossings remain unblocked. Reload Lua before rerunning
+  important-target routes against the permanent data.
 - `auto_step_timeout` was raised from 45 to 60 in `config.lua`/`dw_access.ini`
   because several noisy-but-passable route steps were reaching the old timeout
   edge. This is executor tolerance, not evidence for new map blockers.
+- Entrance-to-Weapons Merchant follow-up after the geometry changes found one
+  new confirmed blocker and the missing bridge for the replacement route.
+  `probe_edge_verify:20,8,RIGHT,5` blocked entry into `(21,8)` from the west
+  5/5, so `MAP_DIRECTIONAL_BLOCKS[0x0B]["21,8"].west` is now modeled. With
+  that barrier active, the planner needed the east x=29 hidden north strip:
+  `(29,13)->UP` moved into `(29,12)` 5/5, and forced raw probes moved
+  `(29,12)->UP`, `(29,11)->UP`, `(29,10)->UP`, and `(29,9)->UP` 5/5 each.
+  `(29,9)`, `(29,10)`, `(29,11)`, and `(29,12)` are now Rimuldar passthrough
+  cells. Reload Lua before retesting the Weapons Merchant route.
+- Post-reload important-target route sweep looked good. Weapons Merchant, Inn,
+  Magic Key Merchant, Chest, and exit routes all completed with NPC parking
+  restored. The Magic Key route had one recovery near the end: `(2,8)->UP`
+  into `(2,7)` blocked during the queued route/retry, then the planner
+  recovered through `(2,8)->RIGHT` into `(3,8)` and finished at the merchant.
+  Direct follow-up verifiers showed the suspicious edges were timing/noisy
+  artifacts, not new map blockers: `(2,8)->UP`, `(16,17)->RIGHT`, and
+  `(4,9)->RIGHT` each moved 5/5. No new map patch is indicated from this pass.
+  The crawler-opened hidden paths also produced a working route from the Magic
+  Key Merchant back to the main entrance. Rimuldar is now clean enough to leave;
+  next route/map work should move on to another town, cave, or gameplay target
+  instead of continuing broad Rimuldar blocker harvesting.
 - Do not promote the other autowalk blocker-looking seams yet: `(23,21)->LEFT`
   was mixed 2 moved / 3 blocked, `(15,16)->DOWN` was mixed 2 moved / 3
   blocked, `(22,25)->UP` became mixed after the fresh 3/3 block, and
