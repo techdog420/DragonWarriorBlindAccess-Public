@@ -82,6 +82,42 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local MAP_NAMES = {
+    [0x04] = "Tantegel Castle",
+    [0x08] = "Brecconary",
+}
+
+local function map_label(map_id)
+    return MAP_NAMES[map_id] or string.format("map 0x%02X", map_id)
+end
+
+local function assert_directional_block(env, map_id, cell, approach, message)
+    local dirs = env.map_reader.get_directional_blocks(map_id)
+    local entry = dirs[cell]
+    assert_equal(
+        entry and entry[approach] or nil,
+        true,
+        string.format("%s [%s 0x%02X %s.%s]", message, map_label(map_id), map_id, cell, approach)
+    )
+end
+
+local function assert_no_directional_entry(env, map_id, cell, message)
+    local dirs = env.map_reader.get_directional_blocks(map_id)
+    assert_equal(
+        dirs[cell],
+        nil,
+        string.format("%s [%s 0x%02X %s]", message, map_label(map_id), map_id, cell)
+    )
+end
+
+local function assert_tantegel_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x04, cell, approach, message)
+end
+
+local function assert_not_brecconary_dir(env, cell, message)
+    assert_no_directional_entry(env, 0x08, cell, message)
+end
+
 local function path_has_step(path, x, y, direction)
     for _, step in ipairs(path or {}) do
         if step.x == x and step.y == y and step.direction == direction then
@@ -92,6 +128,61 @@ local function path_has_step(path, x, y, direction)
 end
 
 local tests = {}
+
+function tests.directional_block_comments_match_their_map_block()
+    local path = "map_reader.lua"
+    local fh = assert(io.open(path, "r"))
+    local line_no = 0
+    local in_directional_blocks = false
+    local current_map = nil
+    local failures = {}
+
+    for raw_line in fh:lines() do
+        line_no = line_no + 1
+        if raw_line:match("^local MAP_DIRECTIONAL_BLOCKS%s*=") then
+            in_directional_blocks = true
+        elseif in_directional_blocks then
+            local map_hex = raw_line:match("^%s*%[(0x[%da-fA-F]+)%]%s*=%s*{")
+            if map_hex then
+                current_map = tonumber(map_hex)
+            end
+
+            if current_map and raw_line:match("^%s*%-%-") then
+                local lower = raw_line:lower()
+                local wrong_for_brecconary = current_map == 0x08 and (
+                    lower:find("tantegel", 1, true)
+                    or lower:find("sun shrine", 1, true)
+                    or lower:find("throne-room route", 1, true)
+                    or lower:find("throne room route", 1, true)
+                    or lower:find("castle entrance", 1, true)
+                )
+                local wrong_for_tantegel = current_map == 0x04 and (
+                    lower:find("brecconary", 1, true)
+                    or lower:find("map 0x08", 1, true)
+                )
+
+                if wrong_for_brecconary or wrong_for_tantegel then
+                    failures[#failures + 1] = string.format(
+                        "%s:%d: map 0x%02X comment looks like it belongs to another map: %s",
+                        path,
+                        line_no,
+                        current_map,
+                        raw_line
+                    )
+                end
+            end
+
+            if current_map and raw_line:match("^%s%s%s%s},%s*$") then
+                current_map = nil
+            elseif raw_line:match("^}%s*$") then
+                in_directional_blocks = false
+            end
+        end
+    end
+    fh:close()
+
+    assert_equal(#failures, 0, table.concat(failures, "\n"))
+end
 
 function tests.throne_room_keeps_east_descent_open()
     local env = make_env()
@@ -147,6 +238,72 @@ function tests.throne_room_door_opens_from_door_ram_array()
     assert_equal(snapshot[7][4], true, "walkability snapshot should honor opened throne-room door RAM")
 
     env.restore()
+end
+
+function tests.tantegel_castle_locked_doors_open_from_door_ram_array()
+    local base = 4 * 5
+    local data_start = 0x10
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    for i = 0, 56 do
+        rom_bytes[data_start + i] = 0xFF
+    end
+
+    local closed_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed_west = closed_env.map_reader.get_walkability_details(0x04, 4, 13)
+    assert_equal(closed_west.effective_walkable, false, "closed Tantegel west treasure door should block movement")
+    assert_equal(closed_west.reason, "door_closed", "closed Tantegel west treasure door should report door_closed")
+    local closed_north = closed_env.map_reader.get_walkability_details(0x04, 18, 6)
+    assert_equal(closed_north.effective_walkable, false, "closed Tantegel north magic-key-area door should block movement")
+    assert_equal(closed_north.reason, "door_closed", "closed Tantegel north magic-key-area door should report door_closed")
+    assert_equal(closed_env.map_reader.get_door_cell_context(0x04, 14, 6), nil, "old Tantegel center y=6 model should not be a door")
+    closed_env.restore()
+
+    local open_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+            [0x600C] = 4,
+            [0x600D] = 13,
+            [0x600E] = 18,
+            [0x600F] = 6,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local open_west = open_env.map_reader.get_walkability_details(0x04, 4, 13)
+    assert_equal(open_west.effective_walkable, true, "opened Tantegel west treasure door should become walkable")
+    assert_equal(open_west.reason, "door_open", "opened Tantegel west treasure door should report door_open")
+    local open_north = open_env.map_reader.get_walkability_details(0x04, 18, 6)
+    assert_equal(open_north.effective_walkable, true, "opened Tantegel north magic-key-area door should become walkable")
+    assert_equal(open_north.reason, "door_open", "opened Tantegel north magic-key-area door should report door_open")
+    assert_equal(open_env.map_reader.is_permanently_blocked_override(0x04, 4, 13), false, "(4,13) should not remain a full blocked cell after door proof")
+    local dirs = open_env.map_reader.get_directional_blocks(0x04)
+    assert_equal(dirs["4,13"], nil, "(4,13) should not keep stale directional blockers after door proof")
+    assert_equal(dirs["18,6"], nil, "(18,6) should not keep stale north blocker after door proof")
+    local snapshot = open_env.map_reader.get_walkability_snapshot(0x04)
+    assert_equal(snapshot[13][4], true, "walkability snapshot should honor opened Tantegel west treasure door")
+    assert_equal(snapshot[6][18], true, "walkability snapshot should honor opened Tantegel north magic-key-area door")
+
+    open_env.restore()
 end
 
 function tests.brecconary_locked_doors_open_from_door_ram_array()
@@ -427,6 +584,16 @@ function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
     local mid_0 = env.map_reader.get_walkability_details(0x04, 15, 16)
     local mid_a = env.map_reader.get_walkability_details(0x04, 16, 16)
     local mid_b = env.map_reader.get_walkability_details(0x04, 17, 16)
+    local north_connector = env.map_reader.get_walkability_details(0x04, 14, 6)
+    local door_side_connector = env.map_reader.get_walkability_details(0x04, 22, 8)
+    local exterior_strip = {
+        env.map_reader.get_walkability_details(0x04, 23, 8),
+        env.map_reader.get_walkability_details(0x04, 24, 8),
+        env.map_reader.get_walkability_details(0x04, 25, 8),
+        env.map_reader.get_walkability_details(0x04, 26, 8),
+    }
+    local x25_descent = env.map_reader.get_walkability_details(0x04, 25, 11)
+    local lower_gap = env.map_reader.get_walkability_details(0x04, 14, 14)
 
     assert_equal(left.base_walkable, true, "(13,16) should be treated as passable via passthrough override")
     assert_equal(left.effective_walkable, true, "(13,16) should be pathable after the decoder fix")
@@ -448,10 +615,32 @@ function tests.tantegel_castle_decoder_gap_cells_are_passthrough()
     assert_equal(mid_b.effective_walkable, true, "(17,16) should be pathable after the decoder fix")
     assert_equal(mid_b.reason, "passthrough", "(17,16) should record passthrough as its walkability source")
 
+    assert_equal(north_connector.base_walkable, true, "(14,6) should be treated as passable via passthrough override")
+    assert_equal(north_connector.effective_walkable, true, "(14,6) should be pathable after the forward Sun Shrine route verifier")
+    assert_equal(north_connector.reason, "passthrough", "(14,6) should record passthrough as its walkability source")
+
+    assert_equal(door_side_connector.base_walkable, true, "(22,8) should be treated as passable via passthrough override")
+    assert_equal(door_side_connector.effective_walkable, true, "(22,8) should connect the open key-area door side toward the Sun Shrine route")
+    assert_equal(door_side_connector.reason, "passthrough", "(22,8) should record passthrough as its walkability source")
+    for index, strip_cell in ipairs(exterior_strip) do
+        local x = 22 + index
+        assert_equal(strip_cell.base_walkable, true, string.format("(%d,8) should be treated as passable via top exterior-strip passthrough", x))
+        assert_equal(strip_cell.effective_walkable, true, string.format("(%d,8) should connect the top exterior strip toward the Sun Shrine route", x))
+        assert_equal(strip_cell.reason, "passthrough", string.format("(%d,8) should record passthrough as its walkability source", x))
+    end
+
+    assert_equal(x25_descent.base_walkable, true, "(25,11) should be treated as passable via passthrough override")
+    assert_equal(x25_descent.effective_walkable, true, "(25,11) should expose the x=25 Sun Shrine descent")
+    assert_equal(x25_descent.reason, "passthrough", "(25,11) should record passthrough as its walkability source")
+
+    assert_equal(lower_gap.base_walkable, true, "(14,14) should be treated as passable via passthrough override")
+    assert_equal(lower_gap.effective_walkable, true, "(14,14) should be pathable after direct crawler/verifier proof")
+    assert_equal(lower_gap.reason, "passthrough", "(14,14) should record passthrough as its walkability source")
+
     env.restore()
 end
 
-function tests.tantegel_castle_death_tile_is_modeled_as_hazard()
+function tests.tantegel_castle_damage_tiles_are_modeled_as_hazards()
     local data_start = 0x110
     local rom_bytes = {
         [20] = 0x00,
@@ -471,22 +660,76 @@ function tests.tantegel_castle_death_tile_is_modeled_as_hazard()
         },
     })
 
-    assert_equal(env.map_reader.is_hazard_cell(0x04, 10, 18), "damage", "(10,18) should be tracked as a damage hazard")
+    local expected_hazards = {
+        {x = 9, y = 18},
+        {x = 10, y = 18},
+        {x = 11, y = 18},
+        {x = 11, y = 19},
+        {x = 23, y = 18},
+        {x = 23, y = 19},
+        {x = 23, y = 20},
+        {x = 23, y = 21},
+        {x = 25, y = 18},
+        {x = 26, y = 18},
+        {x = 26, y = 19},
+        {x = 26, y = 20},
+    }
+    for _, cell in ipairs(expected_hazards) do
+        local label = string.format("(%d,%d)", cell.x, cell.y)
+        assert_equal(env.map_reader.is_hazard_cell(0x04, cell.x, cell.y), "damage", label .. " should be tracked as a damage hazard")
+        local cell_details = env.map_reader.get_walkability_details(0x04, cell.x, cell.y)
+        assert_equal(cell_details.hazard, "damage", label .. " should report the hazard type")
+        assert_equal(cell_details.effective_walkable, false, label .. " should be forbidden for pathfinding")
+        assert_equal(cell_details.reason, "hazard", label .. " should report hazard rather than wall/permanent_blocked")
+        assert_equal(env.map_reader.is_walkable(0x04, cell.x, cell.y), false, label .. " should not be pathfinder-walkable")
+    end
 
     local details = env.map_reader.get_walkability_details(0x04, 10, 18)
     assert_equal(details.base_walkable, true, "(10,18) should remain engine-walkable in the base model")
-    assert_equal(details.hazard, "damage", "(10,18) should report the hazard type")
-    assert_equal(details.effective_walkable, false, "(10,18) should be forbidden for pathfinding")
-    assert_equal(details.reason, "hazard", "(10,18) should report hazard rather than wall/permanent_blocked")
-    assert_equal(env.map_reader.is_walkable(0x04, 10, 18), false, "(10,18) should not be pathfinder-walkable")
 
     local snapshot = env.map_reader.get_walkability_snapshot(0x04)
     assert_equal(snapshot[18][10], false, "walkability snapshot should exclude the death tile")
+    assert_equal(snapshot[18][9], false, "walkability snapshot should exclude the west damage tile")
+    assert_equal(snapshot[18][11], false, "walkability snapshot should exclude the east damage tile")
+    assert_equal(snapshot[19][11], false, "walkability snapshot should exclude the south-east damage tile")
+    assert_equal(snapshot[18][23], false, "walkability snapshot should exclude the west-lane north damage tile")
+    assert_equal(snapshot[19][23], false, "walkability snapshot should exclude the west-lane damage tile")
+    assert_equal(snapshot[20][23], false, "walkability snapshot should exclude the west-lane south damage tile")
+    assert_equal(snapshot[21][23], false, "walkability snapshot should exclude the west-lane terminal damage tile")
+    assert_equal(snapshot[18][25], false, "walkability snapshot should exclude the lower-route west damage tile")
+    assert_equal(snapshot[18][26], false, "walkability snapshot should exclude the lower-route east damage tile")
+    assert_equal(snapshot[19][26], false, "walkability snapshot should exclude the lower-route north-south damage tile")
+    assert_equal(snapshot[20][26], false, "walkability snapshot should exclude the lower-route south damage tile")
+
+    local expected_non_hazards = {
+        {x = 25, y = 16},
+        {x = 25, y = 17},
+    }
+    for _, cell in ipairs(expected_non_hazards) do
+        local label = string.format("(%d,%d)", cell.x, cell.y)
+        assert_equal(env.map_reader.is_hazard_cell(0x04, cell.x, cell.y), false, label .. " should not be modeled as a hazard")
+        local cell_details = env.map_reader.get_walkability_details(0x04, cell.x, cell.y)
+        assert_equal(cell_details.hazard, false, label .. " should report no hazard in walkability details")
+    end
+
+    local hazard_snapshot = env.map_reader.get_walkability_snapshot(0x04, {allow_hazards = true})
+    assert_equal(hazard_snapshot[18][10], true, "hazard-aware snapshot should allow the central damage tile")
+    assert_equal(hazard_snapshot[18][9], true, "hazard-aware snapshot should allow the west damage tile")
+    assert_equal(hazard_snapshot[18][11], true, "hazard-aware snapshot should allow the east damage tile")
+    assert_equal(hazard_snapshot[19][11], true, "hazard-aware snapshot should allow the south-east damage tile")
+    assert_equal(hazard_snapshot[18][23], true, "hazard-aware snapshot should allow the west-lane north damage tile")
+    assert_equal(hazard_snapshot[19][23], true, "hazard-aware snapshot should allow the west-lane damage tile")
+    assert_equal(hazard_snapshot[20][23], true, "hazard-aware snapshot should allow the west-lane south damage tile")
+    assert_equal(hazard_snapshot[21][23], true, "hazard-aware snapshot should allow the west-lane terminal damage tile")
+    assert_equal(hazard_snapshot[18][25], true, "hazard-aware snapshot should allow the lower-route west damage tile")
+    assert_equal(hazard_snapshot[18][26], true, "hazard-aware snapshot should allow the lower-route east damage tile")
+    assert_equal(hazard_snapshot[19][26], true, "hazard-aware snapshot should allow the lower-route north-south damage tile")
+    assert_equal(hazard_snapshot[20][26], true, "hazard-aware snapshot should allow the lower-route south damage tile")
 
     env.restore()
 end
 
-function tests.tantegel_castle_west_wing_boundary_cell_is_fully_blocked()
+function tests.tantegel_castle_west_wing_boundary_cell_is_confirmed_open()
     local env = make_env()
 
     assert_equal(
@@ -494,9 +737,21 @@ function tests.tantegel_castle_west_wing_boundary_cell_is_fully_blocked()
         true,
         "(6,9) should be a permanent block after the direct two-sided live retest"
     )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 28, 11),
+        false,
+        "(28,11) should remain walkable in the permanent model (south step from 28,10 can enter it)"
+    )
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x04, 28, 10),
+        false,
+        "(28,10) should remain unblocked in the permanent map model"
+    )
 
     local dirs = env.map_reader.get_directional_blocks(0x04)
     assert_equal(dirs["6,9"], nil, "(6,9) should no longer remain directional-only")
+    assert_equal(dirs["28,11"], nil, "(28,11) should not be directional-only when fully walkable")
+    assert_equal(dirs["28,10"], nil, "(28,10) should stay fully open and not have one-way approach blockers")
 
     env.restore()
 end
@@ -539,7 +794,19 @@ function tests.tantegel_castle_south_pocket_false_blocks_are_open()
     assert_equal(dirs["12,16"].north, true, "(12,16) should keep its north-side blocker")
     assert_equal(dirs["6,13"].east, true, "(6,13) should block east approach after repeated direct seam repros from (7,13)")
     assert_equal(dirs["6,13"].west, true, "(6,13) should block west approach after fresh post-reload direct seam repros from (5,13)")
-    assert_equal(dirs["4,13"].east, true, "(4,13) should block east approach after post-reload direct seam repro from (5,13)")
+    for _, y in ipairs({11, 12, 14, 15}) do
+        assert_equal(
+            env.map_reader.is_permanently_blocked_override(0x04, 4, y),
+            true,
+            "(4," .. y .. ") should stay a full blocked cell after the 2026-05-22 Tantegel strip recheck"
+        )
+        assert_equal(
+            dirs["4," .. y],
+            nil,
+            "(4," .. y .. ") should not keep redundant directional shadows over the full blocked cell"
+        )
+    end
+    assert_equal(env.map_reader.is_permanently_blocked_override(0x04, 4, 13), false, "(4,13) is the live-confirmed west door, not a full blocked cell")
     assert_equal(dirs["3,16"], nil, "(3,16) should stay fully open until a stable directional block repro emerges")
     assert_equal(dirs["4,16"].east, true, "(4,16) should keep its east approach block after direct probe from (5,16)")
     assert_equal(dirs["4,16"].west, true, "(4,16) should block west approach after repeated direct probes from (3,16)")
@@ -561,11 +828,26 @@ function tests.tantegel_castle_east_connector_raw_confirmed_blocks_are_modeled()
     local env = make_env()
     local dirs = env.map_reader.get_directional_blocks(0x04)
     assert_equal(dirs["17,6"].north, true, "(17,6) north approach should block after raw DOWN,90 stayed at (17,5)")
-    assert_equal(dirs["18,6"].north, true, "(18,6) north approach should block after raw DOWN,90 stayed at (18,5)")
+    assert_equal(dirs["18,6"], nil, "(18,6) is now the live-confirmed magic-key door, not a directional blocker")
     assert_equal(dirs["19,6"].north, true, "(19,6) north approach should block after raw DOWN,90 stayed at (19,5)")
     assert_equal(dirs["20,6"].north, true, "(20,6) north approach should block after post-reload raw DOWN,90 stayed at (20,5)")
+    assert_equal(dirs["20,6"].south, true, "(20,6) south approach should block after key-merchant route verifier from (20,7)")
+    assert_equal(dirs["21,6"].south, true, "(21,6) south approach should block after key-merchant route verifier from (21,7)")
+    assert_equal(dirs["22,6"].south, true, "(22,6) south approach should block after key-merchant route verifier from (22,7)")
+    assert_equal(dirs["23,6"].south, true, "(23,6) south approach should block after key-merchant route verifier from (23,7)")
+    assert_equal(dirs["19,6"].west, nil, "(19,6) west approach should stay open after repeat verifier from (18,6) moved 5/5")
+    assert_equal(dirs["19,6"].south, nil, "(19,6) south approach should stay open after repeat verifier from (19,7) moved 5/5")
     assert_equal(dirs["21,4"].west, true, "(21,4) west approach should block after post-reload raw RIGHT,90 stayed at (20,4)")
     assert_equal(dirs["21,5"].west, true, "(21,5) west approach should block after post-reload raw RIGHT,90 stayed at (20,5)")
+    env.restore()
+end
+
+function tests.tantegel_castle_key_merchant_counter_blocks_are_modeled()
+    local env = make_env()
+    local dirs = env.map_reader.get_directional_blocks(0x04)
+    assert_equal(dirs["24,2"].south, true, "(24,2) south approach should block after key-merchant counter verifier from (24,3)")
+    assert_equal(dirs["25,2"].south, true, "(25,2) south approach should block after key-merchant counter verifier from (25,3)")
+    assert_equal(dirs["24,3"], nil, "(24,3) should stay open; entrance-to-merchant route reached the stand from (23,3)")
     env.restore()
 end
 
@@ -586,6 +868,19 @@ function tests.tantegel_castle_south_gate_exit_wall_blocks_are_modeled()
     assert_equal(dirs["20,29"].west, true, "(20,29) should block west approach after direct RIGHT probe from (19,29)")
     assert_equal(dirs["12,28"].south, true, "(12,28) should block south approach after raw UP verifier from (12,29)")
     assert_equal(dirs["13,28"].south, true, "(13,28) should block south approach after raw UP verifier from (13,29)")
+    assert_tantegel_dir(env, "26,28", "east", "(26,28) should block east approach after Sun Shrine pocket verifier from (27,28)")
+    assert_tantegel_dir(env, "27,27", "south", "(27,27) should block south approach after Sun Shrine pocket verifier from (27,28)")
+    assert_tantegel_dir(env, "27,29", "north", "(27,29) should block north approach after Sun Shrine pocket verifier from (27,28)")
+    assert_tantegel_dir(env, "28,28", "west", "(28,28) should block west approach after Sun Shrine pocket verifier from (27,28)")
+    assert_tantegel_dir(env, "24,22", "north", "(24,22) should block north approach after fixed-verifier Sun Shrine route retest from (24,21)")
+    assert_tantegel_dir(env, "26,22", "north", "(26,22) should block north approach after fixed-verifier Sun Shrine route retest from (26,21)")
+    assert_tantegel_dir(env, "27,21", "west", "(27,21) should block west approach after fixed-verifier Sun Shrine route retest from (26,21)")
+    assert_tantegel_dir(env, "29,9", "west", "(29,9) should guard the upper-right world-map transition from ordinary Sun Shrine routing")
+    assert_tantegel_dir(env, "29,10", "west", "(29,10) should guard the upper-right world-map transition from ordinary Sun Shrine routing")
+    assert_tantegel_dir(env, "28,29", "east", "(28,29) should block east approach after Sun Shrine stair-tile LEFT verifier from (29,29)")
+    assert_equal(dirs["29,28"] and dirs["29,28"].south or nil, nil, "(29,28)->DOWN should remain open after live proof that it reaches the southeast world-map exit")
+    assert_equal(dirs["29,29"] and dirs["29,29"].north or nil, nil, "(29,29) north approach should remain open after live southeast exit proof")
+    assert_tantegel_dir(env, "29,29", "west", "(29,29) should block west approach after adjacent-entry verifier from (28,29)")
     env.restore()
 end
 
@@ -601,6 +896,29 @@ function tests.tantegel_castle_x15_east_entries_are_engine_blocked()
     assert_equal(dirs["15,2"].east, true, "(15,2) engine-blocks east approach: confirmed by natural walk")
     assert_equal(dirs["15,3"].east, true, "(15,3) engine-blocks east approach: confirmed by natural walk")
     assert_equal(dirs["15,3"].south, true, "(15,3) keeps confirmed south-entry blocker from (15,4)")
+    assert_tantegel_dir(env, "15,7", "east", "(15,7) east approach should block after key-merchant route verifier from (16,7)")
+    assert_tantegel_dir(env, "15,7", "west", "(15,7) west approach should stay blocked after route-shaped Sun Shrine stalls from (14,7)")
+    assert_tantegel_dir(env, "15,8", "east", "(15,8) east approach should block after key-merchant route verifier from (16,8)")
+    assert_tantegel_dir(env, "16,9", "north", "(16,9) north approach should block after key-merchant return verifier from (16,8)")
+    assert_tantegel_dir(env, "14,5", "north", "(14,5) should block north approach after Sun Shrine route shakedown from (14,4)")
+    assert_tantegel_dir(env, "14,5", "south", "(14,5) should block south approach after reloaded route stall from (14,6)")
+    assert_tantegel_dir(env, "15,5", "north", "(15,5) should block north approach after Sun Shrine route shakedown from (15,4)")
+    assert_tantegel_dir(env, "13,9", "west", "(13,9) west approach should block after stable post-reload verifier from (12,9)")
+    assert_tantegel_dir(env, "13,9", "north", "(13,9) north approach stays closed after mixed north-entry evidence")
+    assert_tantegel_dir(env, "13,9", "south", "(13,9) south approach should block after stable south-entry verifier from (13,10)")
+    assert_tantegel_dir(env, "14,9", "north", "(14,9) north approach should block after fixed-verifier retest from (14,8)")
+    assert_equal(dirs["14,9"].west, nil, "(14,9) west approach should stay open after manual 13,9 east bridge proof")
+    assert_tantegel_dir(env, "14,9", "south", "(14,9) south approach should remain blocked")
+    assert_tantegel_dir(env, "17,9", "north", "(17,9) should block north approach after entrance-to-Sun-Shrine route verifier from (17,8)")
+    assert_tantegel_dir(env, "18,9", "north", "(18,9) should block north approach after entrance-to-Sun-Shrine route verifier from (18,8)")
+    assert_tantegel_dir(env, "19,9", "north", "(19,9) should block north approach after entrance-to-Sun-Shrine route verifier from (19,8)")
+    assert_tantegel_dir(env, "20,9", "north", "(20,9) should block north approach after Sun Shrine route shakedown from (20,8)")
+    assert_tantegel_dir(env, "21,9", "north", "(21,9) should block north approach after Sun Shrine route shakedown from (21,8)")
+    assert_tantegel_dir(env, "22,9", "north", "(22,9) should block north approach after top-right Sun Shrine route verifier from (22,8)")
+
+    for _, cell in ipairs({"14,5", "15,5", "17,9", "18,9", "19,9", "20,9"}) do
+        assert_not_brecconary_dir(env, cell, "recent Tantegel Sun Shrine route blocker should not be present on Brecconary")
+    end
 
     env.restore()
 end
@@ -646,6 +964,12 @@ function tests.tantegel_castle_upper_chamber_row_16_updates_are_modeled()
         "(20,17) should no longer be marked permanently blocked"
     )
 
+    local lower_bridge = env.map_reader.get_walkability_details(0x04, 19, 21)
+    assert_equal(
+        lower_bridge.permanent_blocked,
+        false,
+        "(19,21) should not be a full-cell blocker after 2026-05-23 crawl/probe evidence"
+    )
     local west_entry = env.map_reader.get_walkability_details(0x04, 19, 16)
     assert_equal(
         west_entry.permanent_blocked,
@@ -657,7 +981,7 @@ function tests.tantegel_castle_upper_chamber_row_16_updates_are_modeled()
     assert_equal(dirs["16,16"].east, nil, "(16,16) should stay open from east after later direct west-step repros")
     assert_equal(dirs["16,16"].north, nil, "(16,16) should stay open from north after the direct down-step repro")
     assert_equal(dirs["16,16"].south, true, "(16,16) should block the south approach: survey runtime block moving up from (16,17) on 2026-04-13")
-    assert_equal(dirs["15,16"].west, true, "(15,16) should block the west approach: survey runtime block moving right from (14,16) on 2026-04-13")
+    assert_equal(dirs["15,16"].west, true, "(15,16) west approach should block after 2026-05-23 throne-room-to-Sun-Shrine verifier from (14,16)")
     assert_equal(dirs["17,16"].south, true, "(17,16) should block the south approach after the 2026-04-13 repro")
     assert_equal(dirs["17,16"].north, nil, "(17,16) should stay open from north after the direct down-step repro")
     assert_equal(dirs["17,16"].east, nil, "(17,16) should stay open from east after the direct west-step repro")
@@ -665,6 +989,30 @@ function tests.tantegel_castle_upper_chamber_row_16_updates_are_modeled()
     assert_equal(dirs["18,16"].north, nil, "(18,16) should stay open from north after the direct down-step repro")
     assert_equal(dirs["19,16"].south, true, "(19,16) should block the south approach after the restored one-way y=16 evidence")
     assert_equal(dirs["19,16"].north, nil, "(19,16) should stay open from north after the direct down-step repro")
+    assert_equal(dirs["19,21"] and dirs["19,21"].north or nil, nil, "(19,21) should stay open from north after probe_edge_verify from (19,20)")
+    assert_equal(dirs["19,21"] and dirs["19,21"].south or nil, nil, "(19,21) should stay open from south after probe_edge from (19,22)")
+    assert_equal(dirs["19,21"] and dirs["19,21"].east or nil, nil, "(19,21) should stay open from east after probe_edge from (20,21)")
+    assert_equal(dirs["21,17"].west, true, "(21,17) west approach should block after post-reload fixed-verifier retest from (20,17)")
+    assert_tantegel_dir(env, "26,16", "south", "(26,16) south approach should block after hazard-patched Sun Shrine route verifier from (26,17)")
+    assert_tantegel_dir(env, "26,16", "west", "(26,16) west approach should block after frozen-NPC Sun Shrine route verifier from (25,16)")
+    assert_tantegel_dir(env, "26,15", "west", "(26,15) west approach should block after live route loop and direct verifier from (25,15)")
+    assert_tantegel_dir(env, "26,15", "north", "(26,15) north approach should block after direct probe_edge_verify:26,14,DOWN,5")
+    assert_tantegel_dir(env, "27,17", "east", "(27,17) should block east approach after throne-room route shakedown from (28,17)")
+    assert_tantegel_dir(env, "27,17", "west", "(27,17) west approach should block after hazard-patched Sun Shrine route verifier from (26,17)")
+    assert_tantegel_dir(env, "27,12", "west", "(27,12) west approach should block after hazard-patched Sun Shrine route verifier from (26,12)")
+    assert_tantegel_dir(env, "27,13", "west", "(27,13) west approach should block after top-strip reload route verifier from (26,13)")
+    assert_tantegel_dir(env, "27,14", "west", "(27,14) west approach should block after x=25 descent route verifier from (26,14)")
+    assert_tantegel_dir(env, "27,20", "east", "(27,20) should block east approach after throne-room route shakedown from (28,20)")
+    assert_tantegel_dir(env, "25,22", "north", "(25,22) north approach should block after quiet pinball verifier from (25,21)")
+    assert_tantegel_dir(env, "25,6", "north", "(25,6) north approach should block after top-strip reload route verifier from (25,5)")
+    assert_tantegel_dir(env, "26,6", "north", "(26,6) north approach should block after top-strip reload route verifier from (26,5)")
+    assert_not_brecconary_dir(env, "15,16", "recent Tantegel throne-to-shrine blocker should not be present on Brecconary")
+    assert_not_brecconary_dir(env, "27,12", "recent Tantegel throne-route blocker should not be present on Brecconary")
+    assert_not_brecconary_dir(env, "27,13", "recent Tantegel throne-route blocker should not be present on Brecconary")
+    assert_not_brecconary_dir(env, "27,14", "recent Tantegel throne-route blocker should not be present on Brecconary")
+    assert_not_brecconary_dir(env, "27,17", "recent Tantegel throne-route blocker should not be present on Brecconary")
+    assert_not_brecconary_dir(env, "27,20", "recent Tantegel throne-route blocker should not be present on Brecconary")
+    assert_not_brecconary_dir(env, "25,22", "recent Tantegel throne-route blocker should not be present on Brecconary")
 
     env.restore()
 end

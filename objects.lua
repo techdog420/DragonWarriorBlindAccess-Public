@@ -166,10 +166,9 @@ end
 
 local STAIRS = {
     -- Tantegel Castle (0x04)
-    -- Stairs down to throne room
-    {map = 0x04, x = 1, y = 1, name = "Stairs Down", dest = "Throne Room"},
-    -- Stairs leading to the courtyard treasure room
-    {map = 0x04, x = 29, y = 1, name = "Stairs Down", dest = "Treasure Room"},
+    -- Southeast corner special tile: STAIRS works here, while south/east
+    -- movement exits the castle to the World Map.
+    {map = 0x04, x = 29, y = 29, name = "Stairs Down", dest = "Sun Shrine"},
 
     -- Map 0x05 (Tantegel Castle Throne Room, empirically confirmed)
     -- Staircase at east end of the south corridor (x=8, y=8). Player stands
@@ -296,10 +295,22 @@ local EXITS = {
     -- interior bottom row at (11,29); the visible gate door panels sit just
     -- south of it at (10,30) and (11,30).
     {map = 0x04, x = 11, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle
+    {
+        map = 0x04,
+        x = 29,
+        y = 29,
+        name = "Exit",
+        dest = "World Map",
+        object_name = "Southeast Exit to World Map",
+        interaction_x = 29,
+        interaction_y = 29,
+        interaction_face_dir = "south",
+        interaction_label = "exit",
+    },                                                                      -- Tantegel Castle southeast corner exit
     {map = 0x02, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
 
     -- Shrines
-    {map = 0x0C, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Sun Shrine
+    {map = 0x0C, x = 0, y = 4, name = "Exit", dest = "World Map"},        -- Sun Shrine
     {
         map = 0x0D,
         x = 4,
@@ -606,7 +617,21 @@ end
 -- NPC Parsing
 -- ============================================================
 
-local function npc_blocks_movement(_map_id, _x, _y)
+local NONBLOCKING_NPC_CELLS = {
+    -- 2026-05-23 Tantegel Castle Sun Shrine route: Guard 3 can appear at
+    -- (26,15) in the object list and block the only safe post-hazard route,
+    -- but probe_edge_verify:26,14,DOWN,5 moved into that cell 3/5 despite
+    -- npc_blocked=true. Treat this specific occupancy as non-blocking.
+    [0x04] = {
+        ["26,15"] = true,
+    },
+}
+
+local function npc_blocks_movement(map_id, x, y)
+    local by_map = NONBLOCKING_NPC_CELLS[map_id]
+    if by_map and by_map[x .. "," .. y] then
+        return false
+    end
     return true
 end
 
@@ -971,18 +996,12 @@ end
 -- ROM, so parse_doors() cannot find them. Cache these with other static object
 -- sources; opened status is checked live when the object is described.
 local EXTRA_DOORS = {
-    -- Map 0x04: Tantegel Castle south gate to the world map. The gate is
-    -- visually two tiles wide, but live pathing confirms only the west door
-    -- tile is actionable from inside the castle. The east visual half at
-    -- (11,30) has no reachable adjacent stand tile, so exposing it as a
-    -- separate object just creates a permanent false survey failure.
-    --
-    -- Keep this object for explicit door navigation, but exclude it from
-    -- autonomous surveys: approaching it from (10,29) can step through the
-    -- castle exit and end the run on the world map.
+    -- Map 0x04: Tantegel Castle.
+    -- Keep only confirmed locked-key doors here; gate access at the south
+    -- entrance is modeled via exit_11_29 in EXITS.
     [0x04] = {
-        {x=10, y=30, name="Door", type=M.TYPE_DOOR, id="door_10_30", survey_exclude=true},
-        {x=14, y=6, name="Center Door", type=M.TYPE_DOOR, id="door_14_6", survey_exclude=true},
+        {x=4, y=13, name="Treasure Room Door", type=M.TYPE_DOOR, id="door_4_13"},
+        {x=18, y=6, name="Magic Key Area Door", type=M.TYPE_DOOR, id="door_18_6"},
     },
     -- Map 0x05: Tantegel Castle Throne Room, south-wall arch at (4,7).
     -- The ROM tile is type-15; is_walkable() in map_reader.lua checks the

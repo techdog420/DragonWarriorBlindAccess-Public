@@ -286,6 +286,45 @@ function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     env.restore()
 end
 
+function tests.tantegel_castle_southeast_corner_exposes_stairs_and_exit()
+    local env = make_env()
+
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x04)
+
+    local southeast_exit
+    local sun_shrine_stair
+    local stale_top_right_stair
+    local stale_throne_stair
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.type == env.objects.TYPE_STAIR then
+            if obj.id == "stair_29_29" then
+                sun_shrine_stair = obj
+            elseif obj.id == "stair_29_1" then
+                stale_top_right_stair = obj
+            elseif obj.id == "stair_1_1" then
+                stale_throne_stair = obj
+            end
+        elseif obj.type == env.objects.TYPE_EXIT and obj.id == "exit_29_29" then
+            southeast_exit = obj
+        end
+    end
+
+    assert_equal(southeast_exit ~= nil, true, "Tantegel Castle should expose the live southeast world-map exit")
+    assert_equal(southeast_exit.x, 29, "southeast exit should use the live-confirmed x coordinate")
+    assert_equal(southeast_exit.y, 29, "southeast exit should use the live-confirmed y coordinate")
+    assert_equal(southeast_exit.name, "Southeast Exit to World Map", "southeast exit should have a distinct label")
+    assert_equal(southeast_exit.interaction_face_dir, "south", "southeast exit should face south after routing")
+    assert_equal(sun_shrine_stair ~= nil, true, "Tantegel Castle should expose the live STAIRS command at the southeast corner")
+    assert_equal(sun_shrine_stair.x, 29, "Sun Shrine stairs should use the live-confirmed x coordinate")
+    assert_equal(sun_shrine_stair.y, 29, "Sun Shrine stairs should use the live-confirmed y coordinate")
+    assert_equal(sun_shrine_stair.name, "Stairs Down to Sun Shrine", "Sun Shrine stairs should name the STAIRS-command destination")
+    assert_equal(stale_top_right_stair, nil, "Tantegel Castle should not expose the disproved top-right stairs marker")
+    assert_equal(stale_throne_stair, nil, "Tantegel Castle should not expose the disproved throne-room stairs marker at (1,1)")
+
+    env.restore()
+end
+
 function tests.swamp_cave_exposes_distinct_north_and_south_travel_objects()
     local env = make_env()
 
@@ -875,6 +914,23 @@ function tests.swamp_cave_south_entrance_is_available_as_overworld_landmark()
 
     local lookup = env.objects.find_overworld_landmark("swamp cave south")
     assert_equal(lookup.id, "overworld_swamp_cave_south_entrance", "south entrance should be findable by prefix")
+
+    env.restore()
+end
+
+function tests.sun_shrine_exit_uses_live_west_entry_tile()
+    local env = make_env()
+
+    env.set_position(0x0C, 0, 4)
+    env.set_terrain_offset(0x20)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0C)
+
+    local obj = env.objects.select_object_by_id("exit_0_4")
+    assert_equal(obj ~= nil, true, "Sun Shrine should expose the live west exit")
+    assert_equal(obj.name, "Exit to World Map", "Sun Shrine should keep the normal exit label")
+    assert_equal(obj.x, 0, "Sun Shrine exit should use the live entry X")
+    assert_equal(obj.y, 4, "Sun Shrine exit should use the live entry row")
 
     env.restore()
 end
@@ -1899,26 +1955,50 @@ function tests.tantegel_castle_exposes_reachable_navigation_doors()
     env.objects.next_filter() -- Stairs
     env.objects.next_filter() -- Doors
 
-    assert_equal(env.objects.get_count(), 2, "Tantegel Castle should expose the south gate and useful center crossing doors")
-    local obj = env.objects.current_object()
-    assert_equal(obj.id, "door_10_30", "the west south-gate tile should be the remaining door object")
-    assert_equal(obj.x, 10, "south gate door x should match the reachable gate tile")
-    assert_equal(obj.y, 30, "south gate door y should match the reachable gate tile")
-    assert_equal(obj.survey_exclude, true, "south gate door should stay excluded from autonomous surveys")
-
     local doors = env.objects.get_objects({filtered = true})
-    local center = nil
+    assert_equal(#doors, 2, "Tantegel Castle should expose only the two live-confirmed 1F locked doors")
+    local west_treasure = nil
+    local magic_key_area = nil
     for _, door in ipairs(doors) do
-        if door.id == "door_14_6" then
-            center = door
-            break
+        if door.id == "door_4_13" then
+            west_treasure = door
+        elseif door.id == "door_18_6" then
+            magic_key_area = door
+        elseif door.id == "door_10_30" then
+            assert_equal(true, false, "door_10_30 should no longer be modeled as a door object")
         end
     end
-    assert_equal(center ~= nil, true, "Tantegel Castle should expose the useful center crossing door")
-    assert_equal(center.name, "Center Door", "center crossing door should have a distinct navigation label")
-    assert_equal(center.x, 14, "center crossing door x should match the useful y=6 crossing")
-    assert_equal(center.y, 6, "center crossing door y should match the useful y=6 crossing")
-    assert_equal(center.survey_exclude, true, "center crossing door should stay excluded from autonomous surveys")
+    assert_equal(west_treasure ~= nil, true, "Tantegel Castle should expose the west treasure-room door")
+    assert_equal(west_treasure.name, "Treasure Room Door", "west treasure-room door should have a distinct navigation label")
+    assert_equal(west_treasure.x, 4, "west treasure-room door x should match opened-door RAM")
+    assert_equal(west_treasure.y, 13, "west treasure-room door y should match opened-door RAM")
+    assert_equal(west_treasure.survey_exclude, nil, "west treasure-room door should be available to normal surveys")
+    assert_equal(magic_key_area ~= nil, true, "Tantegel Castle should expose the north magic-key-area door")
+    assert_equal(magic_key_area.name, "Magic Key Area Door", "north magic-key-area door should have a distinct navigation label")
+    assert_equal(magic_key_area.x, 18, "north magic-key-area door x should match opened-door RAM")
+    assert_equal(magic_key_area.y, 6, "north magic-key-area door y should match opened-door RAM")
+    assert_equal(magic_key_area.survey_exclude, nil, "north magic-key-area door should be available to normal surveys")
+
+    env.restore()
+end
+
+function tests.tantegel_route_false_npc_cell_does_not_block_movement()
+    local env = make_env({npc_count = 1})
+
+    env.set_position(0x04, 26, 14)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x20 + 26, 0x0F, 0x00) -- Guard at live-verified false blocker (26,15)
+    env.objects.refresh(0x04)
+
+    local guard = env.objects.find_object_by_id("npc_0")
+    assert_equal(guard ~= nil, true, "Tantegel guard object should still be browsable")
+    assert_equal(guard.blocks_movement, false, "Tantegel (26,15) guard should not block the Sun Shrine route after live movement proof")
+
+    local blocking_cells = {}
+    for _, pos in ipairs(env.objects.get_blocking_positions()) do
+        blocking_cells[pos.x .. "," .. pos.y] = true
+    end
+    assert_equal(blocking_cells["26,15"], nil, "Tantegel (26,15) should not be reported as an NPC blocker")
 
     env.restore()
 end
