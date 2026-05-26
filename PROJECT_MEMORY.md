@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-22
+Updated: 2026-05-25
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -26,6 +26,9 @@ Current strategic direction:
   essential services. Leave unreachable dialogue-only NPCs for polish unless
   they provide a progression clue, required hint, or other gameplay-critical
   information.
+- Tantegel Castle map `0x04` is the current example of "good enough": the Sun
+  Shrine stairs and Magic Key Merchant routes are live-working but noisy, and
+  should stay parked unless fresh gameplay failures recur.
 - Continue improving pathfinding when real gameplay exposes issues, but avoid broad unrelated refactors.
 - Before starting a new map or major new floor, check external map/walkthrough
   guidance for the intended route and special conditions. Prefer a visual or
@@ -142,6 +145,11 @@ edge. Current policy:
   drift, not map evidence by itself. Recover by replanning from the drifted
   tile to the same active target and log `AUTO_WALK_DRIFT_REROUTE`; only promote
   map data when independent movement evidence supports it.
+- Tantegel Castle map `0x04` shrine/key-merchant wrap-up (`2026-05-25`): noisy
+  route-local cells such as `(23,9)`, `(24,9)`, `(18,14)`, `(18,15)`,
+  `(24,10)`, `(25,6)`, `(17,6)`, and `(15,5)` remain diagnostic. Do not
+  promote them to permanent map data without clean post-reload verifier or
+  manual movement evidence.
 
 ## Codex Tooling Contract
 
@@ -216,8 +224,14 @@ Durable FCEUX facts:
   not also activate emulator UI shortcuts.
 - `./recover_fceux_input.sh` is the manual recovery command for the stale-Alt
   condition. It focuses qfceux, sends LeftAlt/RightAlt/generic Alt key-up,
-  taps Escape, resets `dw_keyboard_input.txt` to `-`, and queues
+  taps Escape, resets `dw_keyboard_input.txt` to `-`, restarts the
+  `keyboard_bridge.ps1` sidecar if it is missing, and queues
   `input_status:fceux_recovery`.
+- FCEUX bridge input can leave scripted joypad state sticky after focus/menu or
+  teleport weirdness. `debug_tools.lua` should emit a raw neutral joypad frame
+  when bridge input transitions from active to clear. If an older loaded script
+  predates that fix, `clear_input` or `./recover_fceux_input.sh` can be used as
+  a live neutral-pulse recovery.
 - `dw_keyboard_input.txt` is runtime bridge state and should stay ignored
 - FCEUX can retain `LeftAlt` after Alt-tab/window focus changes. LeftAlt-only
   idle frames are logged as `INPUT_STALE_ALT_IGNORED` and return no synthetic

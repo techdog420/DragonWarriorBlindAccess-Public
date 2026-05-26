@@ -227,6 +227,17 @@ When debugging pathfinding:
 - If a route fails after path planning succeeded, inspect the failure point before changing permanent data
 - Prefer runtime blocked-tile injection during iterative testing
 - Only recommend permanent map-data patching after evidence is reasonably strong
+- When promoting live directional/blocker evidence into `map_reader.lua`, add
+  map-specific regression assertions. Prefer helpers such as
+  `assert_tantegel_dir(...)` over raw `get_directional_blocks(0x04)` calls for
+  newly discovered live cells.
+- If a newly promoted cell could plausibly be pasted into a neighboring map
+  block by mistake, add a focused absence assertion for that wrong map. Do not
+  add blanket absence assertions for coordinates that are legitimately blocked
+  on multiple maps.
+- Keep evidence comments map-specific. `test_map_reader.lua` includes a narrow
+  lint check for obvious `MAP_DIRECTIONAL_BLOCKS` comment/map mismatches; if it
+  fails, fix the map block rather than weakening the guard.
 
 ## Rules for map-decoding work
 

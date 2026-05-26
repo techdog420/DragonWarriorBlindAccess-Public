@@ -1,10 +1,27 @@
 # Playtesting Notes
 
-Updated: 2026-05-18
+Updated: 2026-05-25
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Tantegel Castle map `0x04` route wrap-up (`2026-05-25`): routes to the Sun
+  Shrine stairs/southeast exit and Magic Key Merchant are now usable enough for
+  gameplay. They are still noisy, especially through the shrine approach and
+  lower/key-merchant lanes, but live validation and user manual checks confirmed
+  they can complete. The shrine is a rare/one-time destination, so do not spend
+  more time polishing it unless failures recur. Latest Magic Key Merchant route
+  readback completed at `(11,29)` with `PATH_STATE target=nil` and
+  `RUNTIME_BLOCKS map=0x04 none`.
+
+- Tantegel Sun Shrine stairs route revalidation (`2026-05-24`): after removing
+  `(26,20)` from the modeled hazard cells and manually reloading Lua in FCEUX,
+  the route completed cleanly from the throne/entrance side to the Sun Shrine
+  stairs and also cleanly on the return route back to the throne-room stairs.
+  The only remaining route blemish was a couple of drift-triggered reroutes near
+  the throne-room stair cluster. Treat that as the existing stair-area drift
+  polish issue, not as new blocker or hazard evidence.
 
 - Emulator A/B note: the same-save bakeoff is complete, and `./launch_dw.sh`
   now defaults to FCEUX for normal gameplay. Use raw battery save data as the shared
