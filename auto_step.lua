@@ -109,16 +109,20 @@ local auto_start_subpixel = nil
 local auto_movement_started = false
 local auto_movement_start_frame = nil
 local auto_step_source = nil
+local auto_hold_after_movement_start = false
+local auto_hold_after_movement_start_frames = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
 local route_settle_frames = 0
 local route_settle_default = 0
 local route_settle_same_direction = true
+local route_final_settle_active = false
 local route_last_x = nil
 local route_last_y = nil
 local post_step_release_frames = 0
 local suppress_direction_tracking_frames = 0
+local manual_hazard_confirm = nil
 
 -- Cooldown: after a successful auto-step, wait a few frames before
 -- allowing another one. This prevents accidental double-steps when
@@ -158,12 +162,14 @@ local TURN_REPRESS_INJECT_LIMIT = INJECT_LIMIT
 -- that the engine treats the re-press as a continuation of the old hold and
 -- chains into a second tile of movement.
 local TURN_REPRESS_RELEASE_FRAMES = 2
+local MANUAL_HAZARD_CONFIRM_SECONDS = 2.0
 local ROUTE_DRIFT_CATCHUP_LIMIT = 3
 -- Tile coordinates can update before the walking animation and old D-pad
 -- state have fully settled. Queued auto-walk can chain straight segments
 -- immediately, but direction changes need a short pause or the engine may
 -- continue the previous direction for one more cell.
 local ROUTE_TURN_SETTLE_FRAMES = 16
+local ROUTE_FINAL_SETTLE_FRAMES = 16
 -- BizHawk's movement subpixel byte can twitch while the engine is only
 -- settling/turning. For queued routes, keep holding through very early twitches
 -- instead of treating them as confirmed walking movement.
@@ -173,12 +179,15 @@ local ROUTE_EARLY_RELEASE_GRACE_FRAMES = 10
 -- short so released wall/NPC bumps still stop quickly.
 local MANUAL_EARLY_HOLD_FRAMES = 8
 -- If a queued route already needed a turn re-press and only sees another early
--- subpixel twitch, retry sooner than the normal wall timeout.
+-- subpixel twitch, retry sooner than the normal wall timeout, counted from the
+-- frame where movement first twitched.
 local ROUTE_TURN_REPRESS_TIMEOUT_FRAMES = 24
 -- Early queued-route twitches may be real movement that just has not reached
 -- the next tile yet. Give them enough time to finish before route_manager
--- tries a direct seam retry, which can otherwise re-press into a tile boundary.
+-- tries a direct seam retry, counting from the movement-start twitch so a late
+-- turn re-press is not retried at the tile boundary.
 local ROUTE_EARLY_TWITCH_TIMEOUT_FRAMES = 32
+local SEAM_RETRY_HOLD_AFTER_MOVEMENT_START_FRAMES = 12
 
 -- Before reporting a blocked move, allow a few internal retries of the same
 -- step from the same tile/direction. Live probing on Map 0x04 showed that
@@ -276,6 +285,14 @@ local function get_route_early_twitch_timeout_frames()
     return config_int("auto_step_route_early_twitch_timeout_frames", ROUTE_EARLY_TWITCH_TIMEOUT_FRAMES, 1, 120)
 end
 
+local function get_route_final_settle_frames()
+    return config_int("auto_step_route_final_settle_frames", ROUTE_FINAL_SETTLE_FRAMES, 0, 60)
+end
+
+local function get_seam_retry_hold_after_movement_start_frames()
+    return config_int("auto_step_seam_retry_hold_after_start_frames", SEAM_RETRY_HOLD_AFTER_MOVEMENT_START_FRAMES, 0, 60)
+end
+
 local function should_release_on_movement_start()
     local configured = config.get("auto_step_release_on_movement_start")
     return configured == "true" or configured == "1" or configured == "yes"
@@ -289,7 +306,13 @@ local function queued_route_turn_after_current_step()
     return next_dir ~= nil and next_dir ~= auto_dir
 end
 
-local function should_hold_early_movement_start()
+local function should_hold_after_movement_start()
+    if auto_hold_after_movement_start then
+        if auto_movement_start_frame ~= nil and auto_hold_after_movement_start_frames ~= nil then
+            return auto_frames < (auto_movement_start_frame + auto_hold_after_movement_start_frames)
+        end
+        return true
+    end
     if auto_movement_start_frame == nil then
         return false
     end
@@ -343,6 +366,17 @@ local function get_route_timing_suspect_timeout_frames()
         return get_route_early_twitch_timeout_frames()
     end
     return nil
+end
+
+local function get_route_timing_suspect_deadline_frame()
+    local timeout_frames = get_route_timing_suspect_timeout_frames()
+    if timeout_frames == nil then
+        return nil
+    end
+    if auto_movement_start_frame ~= nil then
+        return auto_movement_start_frame + timeout_frames
+    end
+    return timeout_frames
 end
 
 local function should_use_route_timing_suspect_timeout()
@@ -399,18 +433,62 @@ local function read_movement_subpixel()
     return nil
 end
 
+local function reset_movement_engine_state(reason, opts)
+    opts = opts or {}
+    if not addr
+       or not addr.MOVEMENT_STATE
+       or not addr.MOVEMENT_SUBPIXEL
+       or not memory
+       or not memory.readbyte
+       or not memory.writebyte then
+        return false
+    end
+
+    local ok_move, before_move = pcall(memory.readbyte, addr.MOVEMENT_STATE)
+    local ok_sub, before_sub = pcall(memory.readbyte, addr.MOVEMENT_SUBPIXEL)
+    if not ok_move or not ok_sub then
+        return false
+    end
+
+    local ok_write_move = pcall(memory.writebyte, addr.MOVEMENT_STATE, 0x00)
+    local ok_write_sub = pcall(memory.writebyte, addr.MOVEMENT_SUBPIXEL, 0x00)
+    if ok_write_move and ok_write_sub then
+        if opts.log ~= false then
+            local map_id, px, py = nav.get_position()
+            debug_tools.info(string.format(
+                "AUTO_STEP_MOVEMENT_STATE_RESET reason=%s map=0x%02X player=(%d,%d) before_move=0x%02X before_sub=0x%02X",
+                tostring(reason or "auto_step"),
+                map_id or -1,
+                px or -1,
+                py or -1,
+                before_move or 0,
+                before_sub or 0))
+        end
+        return true
+    end
+
+    return false
+end
+
 local function clear_route()
     route_steps = nil
     route_index = 1
     route_settle_frames = 0
     route_settle_default = 0
     route_settle_same_direction = true
+    route_final_settle_active = false
     route_last_x = nil
     route_last_y = nil
 end
 
 local function start_post_step_release(force)
     post_step_release_frames = force and -POST_STEP_RELEASE_FRAMES or POST_STEP_RELEASE_FRAMES
+end
+
+local function should_force_post_step_release(source, queued_route)
+    return queued_route
+        or source == "inject_step"
+        or source == "seam_retry"
 end
 
 local function begin_step(dir, px, py, state)
@@ -429,6 +507,10 @@ local function begin_step(dir, px, py, state)
     auto_movement_started = false
     auto_movement_start_frame = nil
     auto_step_source = state and state.source or (route_steps and "queued_route" or "manual_tap")
+    auto_hold_after_movement_start = state and state.hold_after_movement_start == true or false
+    auto_hold_after_movement_start_frames = state and tonumber(state.hold_after_movement_start_frames) or nil
+    route_final_settle_active = false
+    route_settle_frames = 0
     pending_repress = nil
     tracked_dir = nil
     debug_tools.debug(string.format(
@@ -533,6 +615,19 @@ local function clear_direction_press_tracking()
     press_start_y = nil
 end
 
+local refuse_hazard_step
+
+local function sync_prev_held(joy)
+    for _, dir in ipairs(DIRECTIONS) do
+        prev_held[dir] = joy[dir] or false
+    end
+end
+
+local function step_destination(from_x, from_y, dir)
+    local dx, dy = direction_delta(dir)
+    return from_x + dx, from_y + dy
+end
+
 local function schedule_turn_repress(dir)
     pending_repress = {
         dir = dir,
@@ -562,11 +657,24 @@ local function reset_active_step()
     auto_movement_started = false
     auto_movement_start_frame = nil
     auto_step_source = nil
+    auto_hold_after_movement_start = false
+    auto_hold_after_movement_start_frames = nil
     clear_pending_repress()
 end
 
 local function route_settle_after_step(completed_dir)
     local next_dir = route_steps and route_steps[route_index]
+    if route_steps and not next_dir then
+        local final_settle = get_route_final_settle_frames()
+        route_final_settle_active = final_settle > 0
+        if final_settle > 0 then
+            debug_tools.debug(string.format(
+                "auto_step route final settle prev=%s frames=%d",
+                tostring(completed_dir), final_settle))
+        end
+        return final_settle
+    end
+    route_final_settle_active = false
     local direction_change = next_dir and completed_dir and next_dir ~= completed_dir
     local settle_frames = 0
     if route_settle_same_direction or direction_change then
@@ -593,6 +701,7 @@ local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source, extra
         to_x = to_x,
         to_y = to_y,
         source = source,
+        input_source = extra.input_source,
         queued_route = (route_steps ~= nil),
         timeout_retries = extra.timeout_retries or 0,
         turn_represses = extra.turn_represses or 0,
@@ -690,6 +799,503 @@ local function consume_route_drift(px, py, source)
     return matched, false
 end
 
+local function handle_pending_repress_state(joy, px, py)
+    if pending_repress and is_any_direction_pressed(joy) then
+        debug_tools.debug("auto_step cancel pending repress: live direction input detected")
+        clear_pending_repress()
+    end
+
+    if pending_repress
+       and pending_repress.start_x ~= nil
+       and pending_repress.start_y ~= nil
+       and (px ~= pending_repress.start_x or py ~= pending_repress.start_y) then
+        local completed = pending_repress
+        debug_tools.debug(string.format(
+            "auto_step cancel pending repress: position changed to (%d,%d) from (%d,%d)",
+            px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
+        clear_pending_repress()
+        cooldown = COOLDOWN_FRAMES
+        neutralize_direction(joy)
+        start_post_step_release(should_force_post_step_release(completed.source, route_steps ~= nil))
+        local expected_x, expected_y = step_destination(completed.start_x, completed.start_y, completed.dir)
+        if route_steps ~= nil and (px ~= expected_x or py ~= expected_y) then
+            debug_tools.debug(string.format(
+                "auto_step clear_route: step landed off direction dir=%s from=(%d,%d) expected=(%d,%d) current=(%d,%d) source=pending_repress_mismatch",
+                tostring(completed.dir),
+                completed.start_x or -1,
+                completed.start_y or -1,
+                expected_x or -1,
+                expected_y or -1,
+                px or -1,
+                py or -1))
+            clear_route()
+            emit_route_cancelled({
+                reason = "route_drift_off_path",
+                from_x = completed.start_x,
+                from_y = completed.start_y,
+                expected_x = expected_x,
+                expected_y = expected_y,
+                current_x = px,
+                current_y = py,
+                active_dir = completed.dir,
+                source = "pending_repress_mismatch",
+            })
+            sync_prev_held(joy)
+            return true
+        end
+        if route_steps then
+            route_last_x = px
+            route_last_y = py
+            route_settle_frames = route_settle_after_step(completed.dir)
+        end
+        if completed.source == "seam_retry" then
+            reset_movement_engine_state("seam_retry_complete")
+        elseif route_steps ~= nil and route_steps[route_index] == nil then
+            reset_movement_engine_state("queued_route_final_complete")
+        end
+        emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress", {
+            input_source = completed.source,
+            timeout_retries = completed.timeout_retries,
+            turn_represses = completed.turn_represses,
+            inject_limit = completed.inject_limit,
+        })
+        sync_prev_held(joy)
+        return true
+    end
+
+    if post_step_release_frames ~= 0
+       and (post_step_release_frames < 0 or route_steps ~= nil or not is_any_direction_pressed(joy)) then
+        neutralize_direction(joy)
+        if route_final_settle_active then
+            reset_movement_engine_state("queued_route_final_settle", {log = false})
+        end
+        if post_step_release_frames < 0 then
+            post_step_release_frames = post_step_release_frames + 1
+        else
+            post_step_release_frames = post_step_release_frames - 1
+        end
+        sync_prev_held(joy)
+        return true
+    end
+
+    if pending_repress and pending_repress.release_frames and pending_repress.release_frames > 0 then
+        neutralize_direction(joy)
+        pending_repress.release_frames = pending_repress.release_frames - 1
+        sync_prev_held(joy)
+        return true
+    end
+
+    if pending_repress and not auto_dir and cooldown <= 0 and not is_any_direction_pressed(joy) then
+        debug_tools.debug("auto_step resume pending repress")
+        if refuse_hazard_step(pending_repress.dir, px, py, "pending_repress") then
+            sync_prev_held(joy)
+            return true
+        end
+        begin_step(pending_repress.dir, px, py, pending_repress)
+        sync_prev_held(joy)
+        return true
+    end
+
+    return false
+end
+
+local function handle_active_auto_step(joy, px, py, timeout)
+    if not auto_dir then
+        return false
+    end
+
+    local current_subpixel = read_movement_subpixel()
+    local different_dir = false
+    for _, dir in ipairs(DIRECTIONS) do
+        if joy[dir] and dir ~= auto_dir then
+            different_dir = true
+            break
+        end
+    end
+
+    if different_dir then
+        local had_route = (route_steps ~= nil)
+        local interrupted_dir = auto_dir
+        debug_tools.debug("auto_step cancel: different live direction pressed")
+        if DEBUG then tolk.output("auto-step cancelled, different direction") end
+        reset_active_step()
+        clear_route()
+        if had_route then
+            emit_route_cancelled({
+                reason = "live_input_interrupt",
+                current_x = px,
+                current_y = py,
+                active_dir = interrupted_dir,
+            })
+        end
+    elseif px ~= auto_start_x or py ~= auto_start_y then
+        local completed_from_x = auto_start_x
+        local completed_from_y = auto_start_y
+        local completed_dir = auto_dir
+        local completed_frames = auto_frames
+        local completed_retries = auto_timeout_retries
+        local completed_turn_represses = auto_turn_represses
+        local completed_inject_limit = auto_inject_limit
+        local completed_queued_route = (route_steps ~= nil)
+        local completed_source = auto_step_source
+        local expected_x, expected_y = step_destination(completed_from_x, completed_from_y, completed_dir)
+        if completed_queued_route and (px ~= expected_x or py ~= expected_y) then
+            reset_active_step()
+            cooldown = COOLDOWN_FRAMES
+            neutralize_direction(joy)
+            start_post_step_release()
+            debug_tools.debug(string.format(
+                "auto_step clear_route: step landed off direction dir=%s from=(%d,%d) expected=(%d,%d) current=(%d,%d) source=auto_hold_mismatch",
+                tostring(completed_dir),
+                completed_from_x or -1,
+                completed_from_y or -1,
+                expected_x or -1,
+                expected_y or -1,
+                px or -1,
+                py or -1))
+            clear_route()
+            emit_route_cancelled({
+                reason = "route_drift_off_path",
+                from_x = completed_from_x,
+                from_y = completed_from_y,
+                expected_x = expected_x,
+                expected_y = expected_y,
+                current_x = px,
+                current_y = py,
+                active_dir = completed_dir,
+                source = "auto_hold_mismatch",
+            })
+            sync_prev_held(joy)
+            return true
+        end
+        debug_tools.debug(string.format(
+            "auto_step complete dir=%s from=(%d,%d) to=(%d,%d) frames=%d timeout_retries=%d turn_represses=%d inject_limit=%d queued_route=%s",
+            tostring(completed_dir),
+            completed_from_x or -1,
+            completed_from_y or -1,
+            px or -1,
+            py or -1,
+            completed_frames or -1,
+            completed_retries or -1,
+            completed_turn_represses or -1,
+            completed_inject_limit or -1,
+            tostring(completed_queued_route)))
+        if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
+        reset_active_step()
+        cooldown = COOLDOWN_FRAMES
+        neutralize_direction(joy)
+            start_post_step_release(should_force_post_step_release(completed_source, completed_queued_route))
+            if route_steps then
+                route_last_x = px
+                route_last_y = py
+                route_settle_frames = route_settle_after_step(completed_dir)
+            end
+            if completed_source == "seam_retry" then
+                reset_movement_engine_state("seam_retry_complete")
+            elseif completed_queued_route and route_steps ~= nil and route_steps[route_index] == nil then
+                reset_movement_engine_state("queued_route_final_complete")
+            end
+            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
+                input_source = completed_source,
+                timeout_retries = completed_retries,
+                turn_represses = completed_turn_represses,
+                frames = completed_frames,
+                inject_limit = completed_inject_limit,
+        })
+    elseif route_settle_frames > 0 then
+        neutralize_direction(joy)
+        if route_final_settle_active then
+            reset_movement_engine_state("queued_route_final_settle", {log = false})
+        end
+        route_settle_frames = route_settle_frames - 1
+        debug_tools.debug(string.format(
+            "auto_step post-release settle dir=%s from=(%d,%d) frames_left=%d queued_route=%s",
+            tostring(auto_dir),
+            auto_start_x or -1,
+            auto_start_y or -1,
+            route_settle_frames,
+            tostring(route_steps ~= nil)))
+        if route_settle_frames > 0 then
+            sync_prev_held(joy)
+            return true
+        end
+        route_final_settle_active = false
+        route_settle_frames = -1
+    elseif should_release_on_movement_start()
+       and auto_start_subpixel ~= nil
+       and current_subpixel ~= nil
+       and not auto_movement_started
+       and current_subpixel ~= auto_start_subpixel then
+        auto_movement_started = true
+        auto_movement_start_frame = auto_frames
+        debug_tools.debug(string.format(
+            "auto_step movement started dir=%s from=(%d,%d) frame=%d subpixel=0x%02X->0x%02X queued_route=%s",
+            tostring(auto_dir),
+            auto_start_x or -1,
+            auto_start_y or -1,
+            auto_frames or -1,
+            auto_start_subpixel or -1,
+            current_subpixel or -1,
+            tostring(route_steps ~= nil)))
+        if should_hold_after_movement_start() then
+            debug_tools.debug(string.format(
+                "auto_step early movement twitch held dir=%s from=(%d,%d) frame=%d grace=%d queued_route=%s",
+                tostring(auto_dir),
+                auto_start_x or -1,
+                auto_start_y or -1,
+                auto_movement_start_frame or -1,
+                get_route_early_release_grace_frames(),
+                tostring(route_steps ~= nil)))
+            joypad.set(1, {[auto_dir] = true})
+        else
+            neutralize_direction(joy)
+        end
+    elseif auto_frames >= get_turn_repress_delay()
+       and auto_turn_represses < get_turn_repress_limit()
+       and (
+           not auto_movement_started
+           or (
+               route_steps ~= nil
+               and auto_step_source ~= "manual_tap"
+               and auto_movement_start_frame ~= nil
+               and auto_movement_start_frame <= get_route_early_release_grace_frames()
+               and not should_hold_after_movement_start()
+               and not (
+                   route_steps ~= nil
+                   and auto_dir ~= nil
+                   and route_steps[route_index] ~= nil
+                   and route_steps[route_index] ~= auto_dir
+               )
+           )
+       ) then
+        debug_tools.debug(string.format(
+            "auto_step schedule turn repress dir=%s from=(%d,%d) frame=%d",
+            tostring(auto_dir), auto_start_x or -1, auto_start_y or -1, auto_frames))
+        schedule_turn_repress(auto_dir)
+    else
+        local effective_timeout = timeout
+        local route_timing_deadline = get_route_timing_suspect_deadline_frame()
+        if route_timing_deadline then
+            effective_timeout = math.min(timeout, route_timing_deadline)
+        end
+        if route_steps == nil
+           and auto_step_source == "manual_tap"
+           and auto_movement_started
+           and auto_movement_start_frame ~= nil
+           and (auto_frames - auto_movement_start_frame) >= 20
+           and not is_any_direction_pressed(joy) then
+            debug_tools.debug(string.format(
+                "auto_step cancel manual_tap early-twitch wait dir=%s from=(%d,%d) frames=%d movement_start_frame=%s",
+                tostring(auto_dir),
+                auto_start_x or -1,
+                auto_start_y or -1,
+                auto_frames or -1,
+                tostring(auto_movement_start_frame)))
+            reset_active_step()
+            neutralize_direction(joy)
+            start_post_step_release()
+            sync_prev_held(joy)
+            return true
+        end
+        if auto_frames < effective_timeout then
+            if auto_movement_started and should_hold_after_movement_start() then
+                joypad.set(1, {[auto_dir] = true})
+            elseif auto_movement_started then
+                neutralize_direction(joy)
+            elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
+                joypad.set(1, {[auto_dir] = true})
+            elseif route_steps == nil and not auto_movement_started and not is_any_direction_pressed(joy) then
+                joypad.set(1, {[auto_dir] = true})
+            elseif route_steps or not is_any_direction_pressed(joy) then
+                neutralize_direction(joy)
+            end
+            auto_frames = auto_frames + 1
+        else
+            local block_retry_limit = get_active_block_retry_limit()
+            local timing_suspect_timeout = should_use_route_timing_suspect_timeout()
+            if auto_movement_started
+               and route_steps == nil
+               and should_hold_after_movement_start()
+               and route_settle_frames == 0 then
+                local settle_frames = 60
+                if settle_frames > 0 then
+                    route_settle_frames = settle_frames
+                    neutralize_direction(joy)
+                    debug_tools.debug(string.format(
+                        "auto_step begin post-release settle dir=%s from=(%d,%d) frames=%d queued_route=%s source=%s",
+                        tostring(auto_dir),
+                        auto_start_x or -1,
+                        auto_start_y or -1,
+                        settle_frames,
+                        tostring(route_steps ~= nil),
+                        tostring(auto_step_source)))
+                    sync_prev_held(joy)
+                    return true
+                end
+            end
+            if auto_timeout_retries < block_retry_limit and not timing_suspect_timeout then
+                auto_timeout_retries = auto_timeout_retries + 1
+                auto_frames = 1
+                auto_inject_limit = get_inject_limit()
+                auto_start_subpixel = read_movement_subpixel()
+                auto_movement_started = false
+                auto_movement_start_frame = nil
+                joypad.set(1, {[auto_dir] = true})
+                debug_tools.debug(string.format(
+                    "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d timeout=%d turn_represses=%d source=%s",
+                    auto_timeout_retries, block_retry_limit,
+                    auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
+                    auto_inject_limit or -1,
+                    effective_timeout or -1,
+                    auto_turn_represses or -1,
+                    tostring(auto_step_source)))
+                sync_prev_held(joy)
+                return true
+            end
+            if DEBUG then tolk.output("auto-step timeout") end
+            local map_id = nav.get_position()
+            if M.should_record_debug_blocks() and not timing_suspect_timeout then
+                debug_tools.record_block(map_id, auto_start_x, auto_start_y, auto_dir)
+            end
+            local blocked_from_x = auto_start_x
+            local blocked_from_y = auto_start_y
+            local blocked_dir = auto_dir
+            local blocked_queued_route = (route_steps ~= nil)
+            local blocked_movement_started = auto_movement_started
+            local blocked_movement_start_frame = auto_movement_start_frame
+            local blocked_timeout_retries = auto_timeout_retries
+            local blocked_turn_represses = auto_turn_represses
+            local blocked_inject_limit = auto_inject_limit
+            local blocked_source = auto_step_source
+            debug_tools.debug(string.format(
+                "auto_step blocked dir=%s from=(%d,%d) frames=%d timeout_retries=%d/%d turn_represses=%d inject_limit=%d queued_route=%s timeout=%d movement_started=%s movement_start_frame=%s source=%s",
+                tostring(blocked_dir),
+                blocked_from_x or -1,
+                blocked_from_y or -1,
+                auto_frames or -1,
+                auto_timeout_retries or -1,
+                block_retry_limit or -1,
+                auto_turn_represses or -1,
+                auto_inject_limit or -1,
+                tostring(blocked_queued_route),
+                effective_timeout or -1,
+                tostring(blocked_movement_started),
+                tostring(blocked_movement_start_frame),
+                tostring(blocked_source)))
+            reset_active_step()
+            clear_route()
+            neutralize_direction(joy)
+            start_post_step_release(should_force_post_step_release(blocked_source, blocked_queued_route))
+            local block_data = {
+                from_x = blocked_from_x,
+                from_y = blocked_from_y,
+                dir = blocked_dir,
+                queued_route = blocked_queued_route,
+                movement_started = blocked_movement_started,
+                movement_start_frame = blocked_movement_start_frame,
+                timeout_retries = blocked_timeout_retries,
+                turn_represses = blocked_turn_represses,
+                inject_limit = blocked_inject_limit,
+                timeout = effective_timeout,
+                timing_suspect = timing_suspect_timeout,
+                source = blocked_source,
+            }
+            event_bus.publish("route_blocked", block_data)
+            if M.on_blocked then
+                M.on_blocked(blocked_from_x, blocked_from_y, blocked_dir, block_data)
+            end
+        end
+    end
+
+    sync_prev_held(joy)
+    return true
+end
+
+local function handle_route_progress(joy, px, py)
+    if route_steps and route_settle_frames > 0 then
+        if is_any_direction_pressed(joy) then
+            debug_tools.debug("auto_step clear_route: live direction input interrupted queued route during settle")
+            clear_route()
+            emit_route_cancelled({
+                reason = "live_input_interrupt",
+                current_x = px,
+                current_y = py,
+                source = "route_settle",
+            })
+            sync_prev_held(joy)
+            return true
+        end
+        neutralize_direction(joy)
+        if route_final_settle_active then
+            reset_movement_engine_state("queued_route_final_settle", {log = false})
+        end
+        local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
+        if consumed > 0 then
+            route_final_settle_active = false
+            route_settle_frames = route_settle_default or 0
+            sync_prev_held(joy)
+            return true
+        end
+        if off_path then
+            cancel_route_for_drift(px, py, "route_settle_catchup")
+            sync_prev_held(joy)
+            return true
+        end
+        route_settle_frames = route_settle_frames - 1
+        if route_settle_frames <= 0 then
+            route_final_settle_active = false
+        end
+        sync_prev_held(joy)
+        return true
+    end
+
+    if route_steps and is_any_direction_pressed(joy) then
+        debug_tools.debug("auto_step clear_route: live direction input interrupted queued route")
+        clear_route()
+        emit_route_cancelled({
+            reason = "live_input_interrupt",
+            current_x = px,
+            current_y = py,
+            source = "route_step",
+        })
+    end
+
+    if route_steps and cooldown <= 0 then
+        local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
+        if consumed > 0 then
+            route_settle_frames = route_settle_default or 0
+            sync_prev_held(joy)
+            return true
+        end
+        if off_path then
+            cancel_route_for_drift(px, py, "route_settle_catchup")
+            sync_prev_held(joy)
+            return true
+        end
+        local next_dir = route_steps[route_index]
+        if next_dir then
+            route_index = route_index + 1
+            if refuse_hazard_step(next_dir, px, py, "queued_route") then
+                sync_prev_held(joy)
+                return true
+            end
+            begin_step(next_dir, px, py)
+            sync_prev_held(joy)
+            return true
+        end
+        clear_route()
+        event_bus.publish("route_completed")
+        if M.on_route_complete then
+            local ok, err = pcall(M.on_route_complete)
+            if not ok then
+                debug_tools.error("on_route_complete error: " .. tostring(err))
+            end
+        end
+    end
+
+    return false
+end
+
 local function get_hazard_destination(dir, px, py)
     if not map_reader or not map_reader.is_hazard_cell or px == nil or py == nil then
         return nil
@@ -713,9 +1319,46 @@ local function get_hazard_destination(dir, px, py)
     }
 end
 
-local function refuse_hazard_step(dir, px, py, source)
+local function hazard_label(hazard)
+    if hazard == "damage" then
+        return "Damage floor"
+    end
+    return "Dangerous tile"
+end
+
+local function clear_manual_hazard_confirm()
+    manual_hazard_confirm = nil
+end
+
+local function hazard_confirmation_matches(hazard, dir, px, py)
+    if not manual_hazard_confirm then
+        return false
+    end
+    return manual_hazard_confirm.map_id == hazard.map_id
+       and manual_hazard_confirm.from_x == px
+       and manual_hazard_confirm.from_y == py
+       and manual_hazard_confirm.dir == dir
+       and manual_hazard_confirm.dest_x == hazard.x
+       and manual_hazard_confirm.dest_y == hazard.y
+       and os.clock() - manual_hazard_confirm.clock <= MANUAL_HAZARD_CONFIRM_SECONDS
+end
+
+refuse_hazard_step = function(dir, px, py, source)
     local hazard = get_hazard_destination(dir, px, py)
     if hazard then
+        if source == "manual_tap" and hazard_confirmation_matches(hazard, dir, px, py) then
+            debug_tools.info(string.format(
+                "AUTO_STEP_CONFIRMED_HAZARD map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s",
+                hazard.map_id or -1,
+                px or -1,
+                py or -1,
+                tostring(dir),
+                hazard.x or -1,
+                hazard.y or -1,
+                tostring(hazard.hazard)))
+            clear_manual_hazard_confirm()
+            return false
+        end
         debug_tools.info(string.format(
             "AUTO_STEP_REFUSED_HAZARD map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s source=%s queued_route=%s",
             hazard.map_id or -1,
@@ -745,9 +1388,26 @@ local function refuse_hazard_step(dir, px, py, source)
                 source = source,
             })
         elseif source == "manual_tap" or source == "inject_step" then
-            tolk.output_interrupt("Dangerous tile ahead")
+            if source == "manual_tap" then
+                manual_hazard_confirm = {
+                    map_id = hazard.map_id,
+                    from_x = px,
+                    from_y = py,
+                    dir = dir,
+                    dest_x = hazard.x,
+                    dest_y = hazard.y,
+                    clock = os.clock(),
+                }
+                tolk.output_interrupt(hazard_label(hazard.hazard) .. " ahead. Press " .. tostring(dir) .. " again to enter.")
+            else
+                tolk.output_interrupt("Dangerous tile ahead")
+            end
         end
         return true
+    end
+
+    if source == "manual_tap" then
+        clear_manual_hazard_confirm()
     end
 
     if source == "manual_tap" and refuse_manual_static_blocked_step(dir, px, py) then
@@ -771,10 +1431,8 @@ end
 -- This function reads joypad input, tracks direction presses/releases,
 -- and injects joypad input when auto-holding a direction.
 function M.update(can_walk)
-    -- Check if the feature is enabled in config
     local enabled = config.get("enable_auto_step")
     if enabled == "false" then
-        -- Feature disabled — reset all state and return
         reset_active_step()
         clear_direction_press_tracking()
         cooldown = 0
@@ -783,18 +1441,10 @@ function M.update(can_walk)
         return
     end
 
-    -- Read current joypad state (player 1)
     local joy = joypad.read(1)
-
-    -- Read current tile position
     local _, px, py = nav.get_position()
-
-    -- Get the configured timeout (max frames to wait for position change).
-    -- This covers the full step: injection phase + animation completion.
-    -- A turn (~8 frames) + step (~16 frames) = ~24 frames, so 45 gives margin.
     local timeout = tonumber(config.get("auto_step_timeout")) or 45
 
-    -- If we can't walk right now, cancel any active auto-hold
     if not can_walk then
         local had_route = (route_steps ~= nil)
         if auto_dir or pending_repress then
@@ -814,12 +1464,7 @@ function M.update(can_walk)
                 current_y = py,
             })
         end
-        -- Don't update prev_held here — we still need to track joypad
-        -- state so we detect fresh presses correctly when can_walk
-        -- becomes true again.
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
+        sync_prev_held(joy)
         return
     end
 
@@ -830,585 +1475,55 @@ function M.update(can_walk)
        and route_settle_frames <= 0 then
         suppress_direction_tracking_frames = suppress_direction_tracking_frames - 1
         clear_direction_press_tracking()
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
+        sync_prev_held(joy)
         return
     end
 
-    -- Tick down cooldown
     if cooldown > 0 then
         cooldown = cooldown - 1
     end
 
-    if pending_repress and is_any_direction_pressed(joy) then
-        debug_tools.debug("auto_step cancel pending repress: live direction input detected")
-        clear_pending_repress()
-    end
-
-    if pending_repress
-       and pending_repress.start_x ~= nil
-       and pending_repress.start_y ~= nil
-       and (px ~= pending_repress.start_x or py ~= pending_repress.start_y) then
-        local completed = pending_repress
-        debug_tools.debug(string.format(
-            "auto_step cancel pending repress: position changed to (%d,%d) from (%d,%d)",
-            px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
-        clear_pending_repress()
-        cooldown = COOLDOWN_FRAMES
-        neutralize_direction(joy)
-        start_post_step_release(route_steps ~= nil or completed.source == "inject_step")
-        local expected_x = completed.start_x
-        local expected_y = completed.start_y
-        if completed.dir == "up" then
-            expected_y = expected_y - 1
-        elseif completed.dir == "down" then
-            expected_y = expected_y + 1
-        elseif completed.dir == "left" then
-            expected_x = expected_x - 1
-        elseif completed.dir == "right" then
-            expected_x = expected_x + 1
-        end
-        if route_steps ~= nil and (px ~= expected_x or py ~= expected_y) then
-            debug_tools.debug(string.format(
-                "auto_step clear_route: step landed off direction dir=%s from=(%d,%d) expected=(%d,%d) current=(%d,%d) source=pending_repress_mismatch",
-                tostring(completed.dir),
-                completed.start_x or -1,
-                completed.start_y or -1,
-                expected_x or -1,
-                expected_y or -1,
-                px or -1,
-                py or -1))
-            clear_route()
-            emit_route_cancelled({
-                reason = "route_drift_off_path",
-                from_x = completed.start_x,
-                from_y = completed.start_y,
-                expected_x = expected_x,
-                expected_y = expected_y,
-                current_x = px,
-                current_y = py,
-                active_dir = completed.dir,
-                source = "pending_repress_mismatch",
-            })
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        if route_steps then
-            route_last_x = px
-            route_last_y = py
-            route_settle_frames = route_settle_after_step(completed.dir)
-        end
-        emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress", {
-            timeout_retries = completed.timeout_retries,
-            turn_represses = completed.turn_represses,
-            inject_limit = completed.inject_limit,
-        })
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
+    if handle_pending_repress_state(joy, px, py) then
         return
     end
 
-    if post_step_release_frames ~= 0
-       and (post_step_release_frames < 0 or route_steps ~= nil or not is_any_direction_pressed(joy)) then
-        neutralize_direction(joy)
-        if post_step_release_frames < 0 then
-            post_step_release_frames = post_step_release_frames + 1
-        else
-            post_step_release_frames = post_step_release_frames - 1
-        end
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
+    if handle_active_auto_step(joy, px, py, timeout) then
         return
     end
 
-    if pending_repress and pending_repress.release_frames and pending_repress.release_frames > 0 then
-        -- Make the repress gap a real neutral release on live hardware. A
-        -- passive wait was not enough to clear the held direction reliably.
-        neutralize_direction(joy)
-        pending_repress.release_frames = pending_repress.release_frames - 1
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
+    if handle_route_progress(joy, px, py) then
         return
     end
 
-    if pending_repress and not auto_dir and cooldown <= 0 and not is_any_direction_pressed(joy) then
-        debug_tools.debug("auto_step resume pending repress")
-        if refuse_hazard_step(pending_repress.dir, px, py, "pending_repress") then
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        begin_step(pending_repress.dir, px, py, pending_repress)
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
-        return
-    end
-
-    -- --------------------------------------------------------
-    -- Phase 1: Check if auto-hold should stop
-    -- --------------------------------------------------------
-    if auto_dir then
-        local current_subpixel = read_movement_subpixel()
-        -- Cancel if player pressed a DIFFERENT direction (they want
-        -- to go another way). Pressing the SAME direction we're already
-        -- auto-holding is fine — just let it continue.
-        local different_dir = false
-        for _, dir in ipairs(DIRECTIONS) do
-            if joy[dir] and dir ~= auto_dir then
-                different_dir = true
-                break
-            end
-        end
-
-        if different_dir then
-            local had_route = (route_steps ~= nil)
-            local interrupted_dir = auto_dir
-            debug_tools.debug("auto_step cancel: different live direction pressed")
-            if DEBUG then tolk.output("auto-step cancelled, different direction") end
-            reset_active_step()
-            clear_route()
-            if had_route then
-                emit_route_cancelled({
-                    reason = "live_input_interrupt",
-                    current_x = px,
-                    current_y = py,
-                    active_dir = interrupted_dir,
-                })
-            end
-        -- Cancel if position changed (step completed!)
-        elseif px ~= auto_start_x or py ~= auto_start_y then
-            local completed_from_x = auto_start_x
-            local completed_from_y = auto_start_y
-            local completed_dir = auto_dir
-            local completed_frames = auto_frames
-            local completed_retries = auto_timeout_retries
-            local completed_turn_represses = auto_turn_represses
-            local completed_inject_limit = auto_inject_limit
-            local completed_queued_route = (route_steps ~= nil)
-            local completed_source = auto_step_source
-            local expected_x = completed_from_x
-            local expected_y = completed_from_y
-            if completed_dir == "up" then
-                expected_y = expected_y - 1
-            elseif completed_dir == "down" then
-                expected_y = expected_y + 1
-            elseif completed_dir == "left" then
-                expected_x = expected_x - 1
-            elseif completed_dir == "right" then
-                expected_x = expected_x + 1
-            end
-            if completed_queued_route and (px ~= expected_x or py ~= expected_y) then
-                reset_active_step()
-                cooldown = COOLDOWN_FRAMES
-                neutralize_direction(joy)
-                start_post_step_release()
-                debug_tools.debug(string.format(
-                    "auto_step clear_route: step landed off direction dir=%s from=(%d,%d) expected=(%d,%d) current=(%d,%d) source=auto_hold_mismatch",
-                    tostring(completed_dir),
-                    completed_from_x or -1,
-                    completed_from_y or -1,
-                    expected_x or -1,
-                    expected_y or -1,
-                    px or -1,
-                    py or -1))
-                clear_route()
-                emit_route_cancelled({
-                    reason = "route_drift_off_path",
-                    from_x = completed_from_x,
-                    from_y = completed_from_y,
-                    expected_x = expected_x,
-                    expected_y = expected_y,
-                    current_x = px,
-                    current_y = py,
-                    active_dir = completed_dir,
-                    source = "auto_hold_mismatch",
-                })
-                for _, dir in ipairs(DIRECTIONS) do
-                    prev_held[dir] = joy[dir] or false
-                end
-                return
-            end
-            debug_tools.debug(string.format(
-                "auto_step complete dir=%s from=(%d,%d) to=(%d,%d) frames=%d timeout_retries=%d turn_represses=%d inject_limit=%d queued_route=%s",
-                tostring(completed_dir),
-                completed_from_x or -1,
-                completed_from_y or -1,
-                px or -1,
-                py or -1,
-                completed_frames or -1,
-                completed_retries or -1,
-                completed_turn_represses or -1,
-                completed_inject_limit or -1,
-                tostring(completed_queued_route)))
-            if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
-            reset_active_step()
-            cooldown = COOLDOWN_FRAMES  -- Prevent double-step
-            neutralize_direction(joy)
-            start_post_step_release(completed_queued_route or completed_source == "inject_step")
-            if route_steps then
-                route_last_x = px
-                route_last_y = py
-                route_settle_frames = route_settle_after_step(completed_dir)
-            end
-            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
-                timeout_retries = completed_retries,
-                turn_represses = completed_turn_represses,
-                frames = completed_frames,
-                inject_limit = completed_inject_limit,
-            })
-        elseif should_release_on_movement_start()
-           and auto_start_subpixel ~= nil
-           and current_subpixel ~= nil
-           and not auto_movement_started
-           and current_subpixel ~= auto_start_subpixel then
-            auto_movement_started = true
-            auto_movement_start_frame = auto_frames
-            debug_tools.debug(string.format(
-                "auto_step movement started dir=%s from=(%d,%d) frame=%d subpixel=0x%02X->0x%02X queued_route=%s",
-                tostring(auto_dir),
-                auto_start_x or -1,
-                auto_start_y or -1,
-                auto_frames or -1,
-                auto_start_subpixel or -1,
-                current_subpixel or -1,
-                tostring(route_steps ~= nil)))
-            if should_hold_early_movement_start() then
-                debug_tools.debug(string.format(
-                    "auto_step early movement twitch held dir=%s from=(%d,%d) frame=%d grace=%d queued_route=%s",
-                    tostring(auto_dir),
-                    auto_start_x or -1,
-                    auto_start_y or -1,
-                    auto_movement_start_frame or -1,
-                    get_route_early_release_grace_frames(),
-                    tostring(route_steps ~= nil)))
-                joypad.set(1, {[auto_dir] = true})
-            else
-                neutralize_direction(joy)
-            end
-        -- If the first press only turned the player, release for one frame and
-        -- issue a fresh press instead of waiting for the full blocked timeout.
-        elseif auto_frames >= get_turn_repress_delay()
-           and auto_turn_represses < get_turn_repress_limit()
-           and (
-               not auto_movement_started
-               or (
-                   route_steps ~= nil
-                   and
-                   auto_step_source ~= "manual_tap"
-                   and
-                   auto_movement_start_frame ~= nil
-                   and auto_movement_start_frame <= get_route_early_release_grace_frames()
-                   and not should_hold_early_movement_start()
-                   and not (
-                       route_steps ~= nil
-                       and auto_dir ~= nil
-                       and route_steps[route_index] ~= nil
-                       and route_steps[route_index] ~= auto_dir
-                   )
-               )
-           ) then
-            debug_tools.debug(string.format(
-                "auto_step schedule turn repress dir=%s from=(%d,%d) frame=%d",
-                tostring(auto_dir), auto_start_x or -1, auto_start_y or -1, auto_frames))
-            schedule_turn_repress(auto_dir)
-        -- Cancel if timeout reached (blocked by wall / step never started)
-        else
-            local effective_timeout = timeout
-            local route_timing_timeout = get_route_timing_suspect_timeout_frames()
-            if route_timing_timeout then
-                effective_timeout = math.min(timeout, route_timing_timeout)
-            end
-            if route_steps == nil
-               and auto_step_source == "manual_tap"
-               and auto_movement_started
-               and auto_movement_start_frame ~= nil
-               and (auto_frames - auto_movement_start_frame) >= 20
-               and not is_any_direction_pressed(joy) then
-                debug_tools.debug(string.format(
-                    "auto_step cancel manual_tap early-twitch wait dir=%s from=(%d,%d) frames=%d movement_start_frame=%s",
-                    tostring(auto_dir),
-                    auto_start_x or -1,
-                    auto_start_y or -1,
-                    auto_frames or -1,
-                    tostring(auto_movement_start_frame)))
-                reset_active_step()
-                neutralize_direction(joy)
-                start_post_step_release()
-                for _, dir in ipairs(DIRECTIONS) do
-                    prev_held[dir] = joy[dir] or false
-                end
-                return
-            end
-            if auto_frames < effective_timeout then
-                -- Only inject during the initiation phase. After INJECT_LIMIT
-                -- frames, the game has committed to the step — stop injecting
-                -- and just wait for position to change. This prevents the game
-                -- from seeing the direction held when the step finishes and
-                -- immediately starting a second step (overshoot).
-                if auto_movement_started and not should_hold_early_movement_start() then
-                    neutralize_direction(joy)
-                elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
-                    joypad.set(1, {[auto_dir] = true})
-                elseif route_steps == nil and not auto_movement_started and not is_any_direction_pressed(joy) then
-                    -- Manual/probe steps that have not started moving yet need
-                    -- a real held press. Releasing at the generic inject window
-                    -- can turn open seams into false blocked observations.
-                    joypad.set(1, {[auto_dir] = true})
-                elseif route_steps or not is_any_direction_pressed(joy) then
-                    -- Actively release after the initiation window so a sticky
-                    -- joypad.set cannot commit the next tile. Preserve a real
-                    -- live hold for manual movement; queued routes own their input.
-                    neutralize_direction(joy)
-                end
-                auto_frames = auto_frames + 1
-            else
-                local block_retry_limit = get_active_block_retry_limit()
-                local timing_suspect_timeout = should_use_route_timing_suspect_timeout()
-                if auto_timeout_retries < block_retry_limit and not timing_suspect_timeout then
-                    auto_timeout_retries = auto_timeout_retries + 1
-                    auto_frames = 1
-                    -- If the short turn re-press was not enough to start movement,
-                    -- escalate retries back to a full inject window before treating
-                    -- the destination as blocked.
-                    auto_inject_limit = get_inject_limit()
-                    auto_start_subpixel = read_movement_subpixel()
-                    auto_movement_started = false
-                    auto_movement_start_frame = nil
-                    joypad.set(1, {[auto_dir] = true})
-                    debug_tools.debug(string.format(
-                        "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d timeout=%d turn_represses=%d source=%s",
-                        auto_timeout_retries, block_retry_limit,
-                        auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
-                        auto_inject_limit or -1,
-                        effective_timeout or -1,
-                        auto_turn_represses or -1,
-                        tostring(auto_step_source)))
-                    for _, dir in ipairs(DIRECTIONS) do
-                        prev_held[dir] = joy[dir] or false
-                    end
-                    return
-                end
-                if DEBUG then tolk.output("auto-step timeout") end
-                -- Optional legacy recorder. Keep it off by default: noisy
-                -- blocked attempts should not accumulate persistent map data.
-                local map_id = nav.get_position()  -- first return value is map_id
-                -- auto_dir is FCEUX joypad key ("up"/"down"/"left"/"right") which
-                -- matches the dir strings used by record_block.
-                if M.should_record_debug_blocks() and not timing_suspect_timeout then
-                    debug_tools.record_block(map_id, auto_start_x, auto_start_y, auto_dir)
-                end
-                -- Save blocked info before clearing auto_dir so on_blocked can use it
-                local blocked_from_x = auto_start_x
-                local blocked_from_y = auto_start_y
-                local blocked_dir    = auto_dir
-                local blocked_queued_route = (route_steps ~= nil)
-                local blocked_movement_started = auto_movement_started
-                local blocked_movement_start_frame = auto_movement_start_frame
-                local blocked_timeout_retries = auto_timeout_retries
-                local blocked_turn_represses = auto_turn_represses
-                local blocked_inject_limit = auto_inject_limit
-                local blocked_source = auto_step_source
-                debug_tools.debug(string.format(
-                    "auto_step blocked dir=%s from=(%d,%d) frames=%d timeout_retries=%d/%d turn_represses=%d inject_limit=%d queued_route=%s timeout=%d movement_started=%s movement_start_frame=%s source=%s",
-                    tostring(blocked_dir),
-                    blocked_from_x or -1,
-                    blocked_from_y or -1,
-                    auto_frames or -1,
-                    auto_timeout_retries or -1,
-                    block_retry_limit or -1,
-                    auto_turn_represses or -1,
-                    auto_inject_limit or -1,
-                    tostring(blocked_queued_route),
-                    effective_timeout or -1,
-                    tostring(blocked_movement_started),
-                    tostring(blocked_movement_start_frame),
-                    tostring(blocked_source)))
-                reset_active_step()
-                clear_route()
-                neutralize_direction(joy)
-                start_post_step_release(blocked_queued_route or blocked_source == "inject_step")
-                -- Notify the main loop so it can re-route around the obstacle.
-                -- Pass the blocked starting position and direction so the handler
-                -- can record the destination cell and avoid routing through it again.
-                local block_data = {
-                    from_x = blocked_from_x,
-                    from_y = blocked_from_y,
-                    dir = blocked_dir,
-                    queued_route = blocked_queued_route,
-                    movement_started = blocked_movement_started,
-                    movement_start_frame = blocked_movement_start_frame,
-                    timeout_retries = blocked_timeout_retries,
-                    turn_represses = blocked_turn_represses,
-                    inject_limit = blocked_inject_limit,
-                    timeout = effective_timeout,
-                    timing_suspect = timing_suspect_timeout,
-                    source = blocked_source,
-                }
-                event_bus.publish("route_blocked", block_data)
-                if M.on_blocked then
-                    M.on_blocked(blocked_from_x, blocked_from_y, blocked_dir, block_data)
-                end
-            end
-        end
-
-        -- Update prev_held and return — while auto-holding, we don't
-        -- process new press/release tracking
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
-        return
-    end
-
-    if route_steps and route_settle_frames > 0 then
-        if is_any_direction_pressed(joy) then
-            debug_tools.debug("auto_step clear_route: live direction input interrupted queued route during settle")
-            clear_route()
-            emit_route_cancelled({
-                reason = "live_input_interrupt",
-                current_x = px,
-                current_y = py,
-                source = "route_settle",
-            })
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        neutralize_direction(joy)
-        local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
-        if consumed > 0 then
-            route_settle_frames = route_settle_default or 0
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        if off_path then
-            cancel_route_for_drift(px, py, "route_settle_catchup")
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        route_settle_frames = route_settle_frames - 1
-        for _, dir in ipairs(DIRECTIONS) do
-            prev_held[dir] = joy[dir] or false
-        end
-        return
-    end
-
-    if route_steps and is_any_direction_pressed(joy) then
-        debug_tools.debug("auto_step clear_route: live direction input interrupted queued route")
-        clear_route()
-        emit_route_cancelled({
-            reason = "live_input_interrupt",
-            current_x = px,
-            current_y = py,
-            source = "route_step",
-        })
-    end
-
-    if route_steps and cooldown <= 0 then
-        local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
-        if consumed > 0 then
-            route_settle_frames = route_settle_default or 0
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        if off_path then
-            cancel_route_for_drift(px, py, "route_settle_catchup")
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        local next_dir = route_steps[route_index]
-        if next_dir then
-            route_index = route_index + 1
-            if refuse_hazard_step(next_dir, px, py, "queued_route") then
-                for _, dir in ipairs(DIRECTIONS) do
-                    prev_held[dir] = joy[dir] or false
-                end
-                return
-            end
-            begin_step(next_dir, px, py)
-            for _, dir in ipairs(DIRECTIONS) do
-                prev_held[dir] = joy[dir] or false
-            end
-            return
-        end
-        -- All steps have been walked (auto_dir is nil here, so the last step's
-        -- position change has already been processed). Fire the completion callback.
-        clear_route()
-        event_bus.publish("route_completed")
-        if M.on_route_complete then
-            local ok, err = pcall(M.on_route_complete)
-            if not ok then
-                debug_tools.error("on_route_complete error: " .. tostring(err))
-            end
-        end
-    end
-
-    -- --------------------------------------------------------
-    -- Phase 2: Detect new direction presses
-    -- --------------------------------------------------------
-    -- A "new press" is a direction that's held this frame but wasn't
-    -- held last frame (rising edge).
     for _, dir in ipairs(DIRECTIONS) do
         local held_now = joy[dir] or false
         local held_prev = prev_held[dir] or false
 
         if held_now and not held_prev then
-            -- Fresh press — record starting position
             tracked_dir = dir
             press_start_x = px
             press_start_y = py
         end
     end
 
-    -- --------------------------------------------------------
-    -- Phase 3: Detect direction releases
-    -- --------------------------------------------------------
-    -- If the tracked direction was released and the position didn't
-    -- change, trigger auto-step.
     if tracked_dir then
         local held_now = joy[tracked_dir] or false
         local held_prev = prev_held[tracked_dir] or false
 
         if not held_now and held_prev then
-            -- Direction was just released
             if cooldown <= 0 then
-                -- Check if position changed during the press
                 if px == press_start_x and py == press_start_y then
-                    -- Position didn't change — the tap was too short.
-                    -- Start auto-holding this direction to complete the step.
                     if not refuse_hazard_step(tracked_dir, px, py, "manual_tap") then
                         begin_step(tracked_dir, px, py, {source = "manual_tap"})
                         if DEBUG then tolk.output("auto-step " .. auto_dir) end
                     end
                 end
             end
-            -- Either way, stop tracking this press
             clear_direction_press_tracking()
         end
     end
 
-    -- --------------------------------------------------------
-    -- Update previous-frame state
-    -- --------------------------------------------------------
-    for _, dir in ipairs(DIRECTIONS) do
-        prev_held[dir] = joy[dir] or false
-    end
+    sync_prev_held(joy)
 end
 
 -- inject_step(dir): Directly trigger an auto-held step without physical joypad input.
@@ -1416,14 +1531,29 @@ end
 -- 'dir' must be one of: "up", "down", "left", "right".
 -- The step executes only if can_walk is true when update() runs this frame.
 -- Calling joypad.set() here covers the current frame; update() covers subsequent frames.
-function M.inject_step(dir)
+function M.inject_step(dir, opts)
+    opts = opts or {}
     local _, px, py = nav.get_position()
     clear_route()
     debug_tools.debug(string.format("auto_step inject_step dir=%s at=(%d,%d)", tostring(dir), px or -1, py or -1))
-    if refuse_hazard_step(dir, px, py, "inject_step") then
+    local source = opts.source or "inject_step"
+    if refuse_hazard_step(dir, px, py, source) then
         return false
     end
-    begin_step(dir, px, py, {source = "inject_step"})
+    local hold_after_movement_start_frames = opts.hold_after_movement_start_frames
+    if opts.hold_after_movement_start == true
+       and hold_after_movement_start_frames == nil
+       and source == "seam_retry" then
+        hold_after_movement_start_frames = get_seam_retry_hold_after_movement_start_frames()
+    end
+    begin_step(dir, px, py, {
+        source = source,
+        inject_limit = opts.inject_limit,
+        timeout_retries = opts.timeout_retries,
+        turn_represses = opts.turn_represses,
+        hold_after_movement_start = opts.hold_after_movement_start == true,
+        hold_after_movement_start_frames = hold_after_movement_start_frames,
+    })
     return true
 end
 
@@ -1444,7 +1574,7 @@ function M.suppress_direction_tracking(frames)
     clear_direction_press_tracking()
 end
 
--- opts: { settle_frames = N, settle_same_direction = true|false }
+-- opts: { settle_frames = N, settle_same_direction = true|false, start_x = X, start_y = Y }
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
@@ -1459,7 +1589,21 @@ function M.start_route(steps, opts)
     route_index = 1
     route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
     route_settle_same_direction = opts.settle_same_direction ~= false
-    route_settle_frames = 0
+    local start_x = tonumber(opts.start_x)
+    local start_y = tonumber(opts.start_y)
+    if start_x ~= nil and start_y ~= nil then
+        route_last_x = start_x
+        route_last_y = start_y
+    end
+    route_settle_frames = math.max(0, tonumber(opts.initial_settle_frames) or 0)
+    if route_settle_frames > 0 then
+        debug_tools.debug(string.format(
+            "auto_step route initial settle frames=%d steps=%d start=(%d,%d)",
+            route_settle_frames,
+            #route_steps,
+            route_last_x or -1,
+            route_last_y or -1))
+    end
     return true
 end
 

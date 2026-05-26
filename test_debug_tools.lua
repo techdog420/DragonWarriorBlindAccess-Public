@@ -170,6 +170,47 @@ function tests.fceux_external_bridge_direction_is_not_marked_as_neutral_stale()
     env.restore()
 end
 
+function tests.fceux_external_bridge_release_with_stale_alt_emits_neutral_raw_frame()
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "A\n"})
+
+    local press = env.debug_tools.tick(1, "field")
+    assert_equal(press ~= nil, true, "bridge press should emit raw input")
+    assert_equal(press._raw, true, "bridge press should be raw")
+    assert_equal(press.A, true, "bridge press should include A")
+
+    env.set_bridge("-\n")
+    local release = env.debug_tools.tick(2, "field")
+    assert_equal(release ~= nil, true, "bridge release should emit one neutral frame")
+    assert_equal(release._raw, true, "bridge release should be raw so auto_step ignores it")
+    assert_no_buttons(release)
+
+    local idle = env.debug_tools.tick(3, "field")
+    assert_equal(idle, nil, "bridge release should only emit one neutral frame")
+
+    env.restore()
+end
+
+function tests.fceux_external_bridge_release_after_focus_recovery_emits_neutral_raw_frame()
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "start\n"})
+
+    local press = env.debug_tools.tick(1, "field")
+    assert_equal(press ~= nil, true, "bridge start press should emit raw input")
+    assert_equal(press._raw, true, "bridge start press should be raw")
+    assert_equal(press.start, true, "bridge press should include start")
+
+    env.set_input({})
+    env.set_bridge("-\n")
+    local release = env.debug_tools.tick(2, "field")
+    assert_equal(release ~= nil, true, "focus-recovery bridge clear should emit one neutral frame")
+    assert_equal(release._raw, true, "focus-recovery bridge release should be raw")
+    assert_no_buttons(release)
+
+    local idle = env.debug_tools.tick(3, "field")
+    assert_equal(idle, nil, "focus-recovery bridge release should only emit one neutral frame")
+
+    env.restore()
+end
+
 function tests.fceux_idle_input_without_stale_alt_has_no_bridge_input()
     local env = make_env({input_state = {}, bridge_text = "-\n"})
 
@@ -208,6 +249,34 @@ function tests.fceux_stale_alt_with_real_bridge_input_does_not_warn()
     end
     assert_equal(#spoken, 0, "bridged controls should not trigger idle stuck-Alt speech")
 
+    env.restore()
+end
+
+function tests.raw_sequence_release_frame_stays_raw()
+    local env = make_env({input_state = {}, bridge_text = "-\n"})
+    local original_commands = read_file("dw_commands.txt")
+
+    write_file("dw_commands.txt", "simulate_raw_sequence:RIGHT,2,0\n")
+
+    local first = env.debug_tools.tick(60, "field")
+    assert_equal(first ~= nil, true, "raw sequence should emit first frame")
+    assert_equal(first._raw, true, "raw sequence first frame should be raw")
+    assert_equal(first.right, true, "raw sequence should press right")
+
+    local second = env.debug_tools.tick(61, "field")
+    assert_equal(second ~= nil, true, "raw sequence should emit second frame")
+    assert_equal(second._raw, true, "raw sequence second frame should be raw")
+    assert_equal(second.right, true, "raw sequence should keep pressing right")
+
+    local release = env.debug_tools.tick(62, "field")
+    assert_equal(release ~= nil, true, "raw sequence should emit a neutral release frame")
+    assert_equal(release._raw, true, "raw sequence release should stay raw so auto_step ignores it")
+    assert_no_buttons(release)
+
+    local idle = env.debug_tools.tick(63, "field")
+    assert_equal(idle, nil, "raw sequence should be done after the raw release frame")
+
+    write_file("dw_commands.txt", original_commands or "")
     env.restore()
 end
 

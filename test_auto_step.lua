@@ -5,6 +5,7 @@ local original_preload = {}
 local original_loaded = {}
 local original_joypad = _G.joypad
 local original_memory = _G.memory
+local original_os_clock = os.clock
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -26,9 +27,13 @@ local function make_env(opts)
     local injected = {}
     local published = {}
     local recorded_blocks = {}
+    local outputs = {}
     local live_joy = {}
     local sticky_joy = {}
+    local movement_state = opts.movement_state or 0x10
     local movement_subpixel = opts.movement_subpixel or 0x10
+    local memory_writes = {}
+    local clock_now = 0
 
     local module_names = {
         "addresses",
@@ -64,6 +69,7 @@ local function make_env(opts)
 
     package.preload["addresses"] = function()
         return {
+            MOVEMENT_STATE = 0x003C,
             MOVEMENT_SUBPIXEL = 0x003D,
         }
     end
@@ -120,7 +126,9 @@ local function make_env(opts)
     package.preload["tolk"] = function()
         return {
             output = function() end,
-            output_interrupt = function() end,
+            output_interrupt = function(message)
+                outputs[#outputs + 1] = message
+            end,
         }
     end
 
@@ -153,12 +161,26 @@ local function make_env(opts)
     }
     _G.memory = {
         readbyte = function(address)
+            if address == 0x003C then
+                return movement_state
+            end
             if address == 0x003D then
                 return movement_subpixel
             end
             return 0
         end,
+        writebyte = function(address, value)
+            memory_writes[#memory_writes + 1] = {address = address, value = value}
+            if address == 0x003C then
+                movement_state = value
+            elseif address == 0x003D then
+                movement_subpixel = value
+            end
+        end,
     }
+    os.clock = function()
+        return clock_now
+    end
 
     local auto_step = require "auto_step"
 
@@ -167,6 +189,8 @@ local function make_env(opts)
         injected = injected,
         published = published,
         recorded_blocks = recorded_blocks,
+        outputs = outputs,
+        memory_writes = memory_writes,
         set_position = function(x, y)
             px, py = x, y
         end,
@@ -176,6 +200,12 @@ local function make_env(opts)
         set_subpixel = function(value)
             movement_subpixel = value
         end,
+        set_movement_state = function(value)
+            movement_state = value
+        end,
+        advance_clock = function(seconds)
+            clock_now = clock_now + seconds
+        end,
         update = function(can_walk)
             frame = frame + 1
             auto_step.update(can_walk)
@@ -184,6 +214,7 @@ local function make_env(opts)
             restore_modules(module_names)
             _G.joypad = original_joypad
             _G.memory = original_memory
+            os.clock = original_os_clock
         end,
     }
 end
@@ -271,6 +302,53 @@ function tests.never_moving_step_still_reports_blocked()
     end
 
     assert_truthy(saw_blocked, "blocked steps should still publish route_blocked after retries are exhausted")
+
+    env.restore()
+end
+
+function tests.movement_started_timeout_waits_for_post_release_settle()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "4",
+            auto_step_block_retry_limit = "0",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        hold_after_movement_start = true,
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    for _ = 1, 64 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.auto_step.is_auto_active(),
+        "movement-started timeout should stay active during the post-release settle window"
+    )
+
+    env.set_position(5, 1)
+    env.update(true)
+
+    local saw_complete = false
+    local saw_blocked = false
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then
+            local payload = event.payload or {}
+            if payload.from_x == 3 and payload.from_y == 1 and payload.to_x == 5 and payload.to_y == 1 then
+                saw_complete = true
+            end
+        elseif event.name == "route_blocked" then
+            saw_blocked = true
+        end
+    end
+
+    assert_truthy(saw_complete, "post-release settle should treat delayed movement as a completed step")
+    assert_truthy(not saw_blocked, "post-release settle should avoid publishing route_blocked when movement lands after release")
 
     env.restore()
 end
@@ -428,6 +506,74 @@ function tests.manual_auto_step_refuses_known_hazard_destination()
             string.format("hazard refusal should not inject D-pad input at frame %d", frame)
         )
     end
+
+    env.restore()
+end
+
+function tests.manual_auto_step_allows_confirmed_known_hazard_destination()
+    local env = make_env({
+        map_id = 0x04,
+        hazard_cells = {
+            [0x04] = {["10,18"] = "damage"},
+        },
+    })
+    env.set_position(10, 19)
+
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    assert_truthy(
+        not env.auto_step.is_auto_active(),
+        "first manual tap should warn and avoid auto-holding into a known hazard"
+    )
+    assert_truthy(
+        env.outputs[1] == "Damage floor ahead. Press up again to enter.",
+        "first manual hazard tap should give an explicit confirmation instruction"
+    )
+
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    assert_truthy(
+        env.auto_step.is_auto_active(),
+        "second same-direction manual tap should confirm and auto-hold into the hazard"
+    )
+
+    env.restore()
+end
+
+function tests.manual_hazard_confirmation_expires()
+    local env = make_env({
+        map_id = 0x04,
+        hazard_cells = {
+            [0x04] = {["10,18"] = "damage"},
+        },
+    })
+    env.set_position(10, 19)
+
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    env.advance_clock(3)
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    assert_truthy(
+        not env.auto_step.is_auto_active(),
+        "expired hazard confirmation should require a fresh warning tap"
+    )
+    assert_truthy(
+        #env.outputs == 2,
+        "expired hazard confirmation should warn again instead of entering"
+    )
 
     env.restore()
 end
@@ -707,6 +853,70 @@ function tests.manual_early_subpixel_twitch_keeps_holding_input()
     assert_truthy(
         env.injected[2] and env.injected[2].right,
         "manual/probe early subpixel twitches should keep the D-pad held instead of creating a fake blocked step"
+    )
+
+    env.restore()
+end
+
+function tests.seam_retry_late_subpixel_twitch_keeps_holding_input()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        hold_after_movement_start = true,
+    })
+
+    for _ = 1, 14 do
+        env.update(true)
+    end
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.update(true)
+
+    assert_truthy(
+        env.injected[15] and env.injected[15].right,
+        "seam retry should keep holding when movement starts after the normal early-twitch grace window"
+    )
+    assert_truthy(
+        env.injected[16] and env.injected[16].right,
+        "seam retry should continue holding on the frame after a late twitch"
+    )
+
+    env.restore()
+end
+
+function tests.seam_retry_bounded_hold_releases_before_tile_completion()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        hold_after_movement_start = true,
+        hold_after_movement_start_frames = 4,
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[6] and env.injected[6].right,
+        "seam retry should hold through the configured post-movement-start window"
+    )
+    assert_truthy(
+        env.injected[7] and not has_any_direction(env.injected[7]),
+        "seam retry should release before tile completion once the bounded hold expires"
     )
 
     env.restore()
@@ -1026,7 +1236,7 @@ function tests.queued_route_early_twitch_reports_short_timing_block_without_repr
     end
 
     assert_truthy(
-        blocked_event and blocked_event.frame < 35,
+        blocked_event and blocked_event.frame < 45,
         "queued-route early movement twitches should report to the route manager before the full wall timeout"
     )
     assert_truthy(
@@ -1101,6 +1311,73 @@ function tests.queued_route_early_twitch_waits_for_late_tile_completion()
     assert_truthy(
         saw_completion,
         "queued route should accept late completion after an early movement twitch"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_turn_repress_timing_timeout_counts_after_movement_start()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_repress_timeout_frames = "12",
+            auto_step_inject_limit = "3",
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_release_frames = "1",
+        },
+    })
+    env.auto_step.start_route({"right", "up"})
+
+    local saw_repress = false
+    for _ = 1, 20 do
+        env.update(true)
+        local state = env.auto_step.get_active_step_state()
+        if state and (state.turn_represses or 0) > 0 then
+            saw_repress = true
+            break
+        end
+    end
+    assert_truthy(saw_repress, "test setup should reach a turn re-press step")
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "turn re-press movement twitches should not time out from the original press frame"
+        )
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_completion = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.queued_route == true
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_completion = true
+        end
+    end
+    assert_truthy(
+        saw_completion,
+        "queued route should accept late completion after a turn re-press movement twitch"
     )
 
     env.restore()
@@ -1375,6 +1652,95 @@ function tests.inject_step_success_force_releases_sticky_direction_after_complet
     env.restore()
 end
 
+function tests.seam_retry_success_force_releases_sticky_direction_after_completion()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        hold_after_movement_start = true,
+    })
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[8] and not has_any_direction(env.injected[8]),
+        "seam retries should force a neutral frame even if the emulator still reports the old direction"
+    )
+    assert_truthy(
+        env.injected[9] and not has_any_direction(env.injected[9]),
+        "seam retries should keep neutral long enough to prevent post-arrival overshoot"
+    )
+
+    env.restore()
+end
+
+function tests.seam_retry_success_resets_movement_state_after_completion()
+    local env = make_env({
+        movement_state = 0xE0,
+        movement_subpixel = 0x90,
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        hold_after_movement_start = true,
+    })
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    assert_truthy(
+        env.memory_writes[1]
+            and env.memory_writes[1].address == 0x003C
+            and env.memory_writes[1].value == 0x00,
+        "seam retry completion should clear movement state before follow-up planning"
+    )
+    assert_truthy(
+        env.memory_writes[2]
+            and env.memory_writes[2].address == 0x003D
+            and env.memory_writes[2].value == 0x00,
+        "seam retry completion should clear movement subpixel before follow-up planning"
+    )
+
+    env.restore()
+end
+
+function tests.inject_step_completion_preserves_original_input_source()
+    local env = make_env()
+    env.auto_step.inject_step("right", {source = "seam_retry"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local completed_payload = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then
+            completed_payload = event.payload
+            break
+        end
+    end
+
+    assert_truthy(completed_payload ~= nil, "successful injected steps should publish completion")
+    assert_truthy(completed_payload.source == "auto_hold", "completion should keep the existing auto-hold source label")
+    assert_truthy(
+        completed_payload.input_source == "seam_retry",
+        "completion should preserve the original injected source for route-manager follow-up planning"
+    )
+
+    env.restore()
+end
+
 function tests.post_step_release_preserves_non_direction_buttons()
     local env = make_env()
     env.auto_step.inject_step("right")
@@ -1450,6 +1816,111 @@ function tests.queued_routes_wait_for_configured_settle_gap_before_next_step()
     assert_truthy(
         saw_second_step,
         "queued route should resume once the settle gap has elapsed"
+    )
+
+    env.restore()
+end
+
+function tests.queued_routes_honor_initial_settle_before_first_step()
+    local env = make_env()
+    env.auto_step.start_route({"right"}, {initial_settle_frames = 5})
+
+    for _ = 1, 5 do
+        env.update(true)
+    end
+
+    for frame = 1, 5 do
+        assert_truthy(
+            not has_any_direction(env.injected[frame]),
+            "queued route should stay neutral during the initial settle window"
+        )
+    end
+
+    env.update(true)
+
+    assert_truthy(
+        env.injected[6] and env.injected[6].right,
+        "queued route should start the first step after the initial settle window"
+    )
+
+    env.restore()
+end
+
+function tests.queued_routes_consume_matching_drift_during_initial_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right", "down"}, {
+        initial_settle_frames = 5,
+        start_x = 3,
+        start_y = 1,
+    })
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_catchup = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "route_settle_catchup"
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_catchup = true
+            break
+        end
+    end
+    assert_truthy(
+        saw_catchup,
+        "queued route should consume drift that matches the first planned step during initial settle"
+    )
+
+    for frame = 1, 5 do
+        local buttons = env.injected[frame]
+        assert_truthy(
+            not (buttons and buttons.right),
+            "queued route should not re-press a first step consumed during initial settle"
+        )
+    end
+
+    env.restore()
+end
+
+function tests.queued_routes_cancel_unmatched_drift_during_initial_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right"}, {
+        initial_settle_frames = 5,
+        start_x = 3,
+        start_y = 1,
+    })
+
+    env.set_position(3, 2)
+    env.update(true)
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "route_drift_off_path"
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.current_x == 3
+           and payload.current_y == 2
+           and payload.source == "route_settle_catchup" then
+            saw_cancel = true
+            break
+        end
+    end
+    assert_truthy(
+        saw_cancel,
+        "queued route should cancel when initial-settle drift does not match the planned path"
+    )
+
+    env.update(true)
+    assert_truthy(
+        not (env.injected[2] and env.injected[2].right),
+        "queued route should not continue after unmatched initial-settle drift"
     )
 
     env.restore()
@@ -1554,6 +2025,124 @@ function tests.queued_route_post_step_release_ignores_stale_direction_blip()
     assert_truthy(
         #right_sequences >= 2,
         "a stale direction blip during queued-route post-step release should not clear the route"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_final_step_neutralizes_before_route_complete()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    for frame = 3, 6 do
+        assert_truthy(
+            env.injected[frame] and not has_any_direction(env.injected[frame]),
+            "queued route final settle should actively neutralize the D-pad before completion"
+        )
+    end
+
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_completed",
+            "queued route should not publish completion during final neutral settle"
+        )
+    end
+
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    local complete_frame = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_completed" then
+            complete_frame = event.frame
+            break
+        end
+    end
+    assert_truthy(
+        complete_frame ~= nil and complete_frame >= 9,
+        "queued route completion should wait until after the final neutral settle"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_final_step_resets_movement_state()
+    local env = make_env({
+        movement_state = 0x05,
+        movement_subpixel = 0x20,
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local cleared_move = false
+    local cleared_subpixel = false
+    for _, write in ipairs(env.memory_writes) do
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_move = true
+        elseif write.address == 0x003D and write.value == 0x00 then
+            cleared_subpixel = true
+        end
+    end
+
+    assert_truthy(
+        cleared_move and cleared_subpixel,
+        "queued route final step should clear movement engine state before waiting on completion"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_final_settle_keeps_resetting_movement_state()
+    local env = make_env({
+        movement_state = 0x05,
+        movement_subpixel = 0x20,
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local writes_after_completion = #env.memory_writes
+    env.set_movement_state(0x06)
+    env.set_subpixel(0x40)
+    env.update(true)
+
+    local cleared_again = false
+    for i = writes_after_completion + 1, #env.memory_writes do
+        local write = env.memory_writes[i]
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_again = true
+            break
+        end
+    end
+
+    assert_truthy(
+        cleared_again,
+        "queued route final settle should keep clearing movement state if the engine re-arms it"
     )
 
     env.restore()

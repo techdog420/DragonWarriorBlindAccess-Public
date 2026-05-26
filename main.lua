@@ -105,6 +105,7 @@ local config = require "config"     -- User-configurable settings
 local objects = require "objects"   -- Map object detection and navigation
 local pathfinder = require "pathfinder" -- A* pathfinding for interior maps
 local map_reader = require "map_reader" -- ROM map data (tile grids)
+local maps = require "maps"             -- Map names and overworld checks
 local auto_step = require "auto_step"  -- Tap-to-step D-pad extension
 local items = require "items"          -- Item/equipment/spell lookup tables
 local merchant = require "merchant"    -- Dedicated merchant/shop UI detection
@@ -300,12 +301,30 @@ end
 
 local edge_probe_state = nil
 local edge_verify_state = nil
+local seeded_edge_probe_state = nil
 local EDGE_VERIFY_DEFAULT_ATTEMPTS = 5
 local EDGE_VERIFY_MAX_ATTEMPTS = 15
 local EDGE_VERIFY_SETTLE_FRAMES = 18
 local EDGE_VERIFY_BETWEEN_SETTLE_FRAMES = 30
+local EDGE_VERIFY_STABILITY_RECHECK_FRAMES = 240
+local EDGE_PROBE_MOVED_SETTLE_FRAMES = 60
 local get_autowalk_unavailable_reason
 local get_edge_probe_unavailable_reason
+
+local function config_frame_count(key, fallback, min_value, max_value)
+    local value = tonumber(config.get(key))
+    if not value then
+        return fallback
+    end
+    value = math.floor(value)
+    if min_value and value < min_value then
+        return min_value
+    end
+    if max_value and value > max_value then
+        return max_value
+    end
+    return value
+end
 
 local function edge_probe_raw_hold_frames()
     local configured = tonumber(config.get("edge_probe_raw_hold_frames"))
@@ -314,6 +333,22 @@ local function edge_probe_raw_hold_frames()
     end
     local step_timeout = tonumber(config.get("auto_step_timeout")) or 45
     return math.max(45, math.min(180, math.floor(step_timeout * 1.5)))
+end
+
+local function edge_verify_stability_recheck_frames()
+    return config_frame_count(
+        "edge_verify_stability_recheck_frames",
+        EDGE_VERIFY_STABILITY_RECHECK_FRAMES,
+        EDGE_VERIFY_BETWEEN_SETTLE_FRAMES,
+        900)
+end
+
+local function edge_probe_moved_settle_frames()
+    return config_frame_count(
+        "edge_probe_moved_settle_frames",
+        EDGE_PROBE_MOVED_SETTLE_FRAMES,
+        0,
+        300)
 end
 
 local function set_edge_probe_input(dir)
@@ -359,6 +394,67 @@ local function parse_edge_verify_arg(arg, default_x, default_y)
     return nil
 end
 
+local function parse_seeded_edge_probe_arg(arg)
+    local parts = {}
+    for part in tostring(arg or ""):gmatch("[^,]+") do
+        parts[#parts + 1] = part:match("^%s*(.-)%s*$")
+    end
+    if #parts ~= 4 then
+        return nil
+    end
+
+    local seed_dir = parts[1] and parts[1]:lower()
+    seed_dir = CARDINAL_TO_KEY[seed_dir] or seed_dir
+    local seed_frames = parse_int_arg(parts[2])
+    local wait_frames = parse_int_arg(parts[3])
+    local probe_dir = parts[4] and parts[4]:lower()
+    probe_dir = CARDINAL_TO_KEY[probe_dir] or probe_dir
+
+    if not DIR_TO_DELTA[seed_dir] or not DIR_TO_DELTA[probe_dir] then
+        return nil
+    end
+    if not seed_frames or seed_frames < 1 or seed_frames > 300 then
+        return nil
+    end
+    if wait_frames == nil or wait_frames < 0 or wait_frames > 300 then
+        return nil
+    end
+    return seed_dir, seed_frames, wait_frames, probe_dir
+end
+
+local function parse_seeded_edge_probe_to_arg(arg)
+    local parts = {}
+    for part in tostring(arg or ""):gmatch("[^,]+") do
+        parts[#parts + 1] = part:match("^%s*(.-)%s*$")
+    end
+    if #parts ~= 6 then
+        return nil
+    end
+
+    local seed_dir = parts[1] and parts[1]:lower()
+    seed_dir = CARDINAL_TO_KEY[seed_dir] or seed_dir
+    local max_frames = parse_int_arg(parts[2])
+    local target_x = parse_int_arg(parts[3])
+    local target_y = parse_int_arg(parts[4])
+    local wait_frames = parse_int_arg(parts[5])
+    local probe_dir = parts[6] and parts[6]:lower()
+    probe_dir = CARDINAL_TO_KEY[probe_dir] or probe_dir
+
+    if not DIR_TO_DELTA[seed_dir] or not DIR_TO_DELTA[probe_dir] then
+        return nil
+    end
+    if not max_frames or max_frames < 1 or max_frames > 600 then
+        return nil
+    end
+    if target_x == nil or target_y == nil then
+        return nil
+    end
+    if wait_frames == nil or wait_frames < 0 or wait_frames > 300 then
+        return nil
+    end
+    return seed_dir, max_frames, target_x, target_y, wait_frames, probe_dir
+end
+
 local function get_edge_probe_source_flags(map_id, x, y, approach)
     local key = x .. "," .. y
     local static_entry = map_reader.get_directional_blocks(map_id)[key]
@@ -383,28 +479,155 @@ local function get_edge_probe_source_flags(map_id, x, y, approach)
     }
 end
 
-local function log_edge_probe_mismatch(probe, final_report, status)
-    if not probe or not probe.start_report then
+local function read_hex_window(start_addr, end_addr)
+    local bytes = {}
+    for a = start_addr, end_addr do
+        bytes[#bytes + 1] = string.format("%02X", memory.readbyte(a))
+    end
+    return table.concat(bytes, " ")
+end
+
+local function capture_edge_movement_state()
+    local map_id = memory.readbyte(addr.MAP_ID)
+    return {
+        map_id = map_id,
+        map_name = maps.get_name(map_id),
+        terrain = memory.readbyte(addr.TERRAIN_OFFSET),
+        player_x = memory.readbyte(addr.PLAYER_X),
+        player_y = memory.readbyte(addr.PLAYER_Y),
+        overworld_x = memory.readbyte(addr.OVERWORLD_X),
+        overworld_y = memory.readbyte(addr.OVERWORLD_Y),
+        movement_state = memory.readbyte(addr.MOVEMENT_STATE),
+        movement_subpixel = memory.readbyte(addr.MOVEMENT_SUBPIXEL),
+        ppu_ctrl = addr.PPU_CTRL and memory.readbyte(addr.PPU_CTRL) or 0,
+        scroll_x = addr.SCROLL_X and memory.readbyte(addr.SCROLL_X) or 0,
+        scroll_y = addr.SCROLL_Y and memory.readbyte(addr.SCROLL_Y) or 0,
+        buttons = addr.BUTTONS_PRESSED and memory.readbyte(addr.BUTTONS_PRESSED) or 0,
+        ram0038_0043 = read_hex_window(0x0038, 0x0043),
+        ram0030_004F = read_hex_window(0x0030, 0x004F),
+    }
+end
+
+local function format_edge_movement_state(state)
+    if not state then
+        return "state=nil"
+    end
+    return string.format(
+        "map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) move=0x%02X sub=0x%02X ppu_ctrl=0x%02X scroll_x=0x%02X scroll_y=0x%02X buttons=0x%02X ram0038_0043=%s ram0030_004F=%s",
+        state.map_id or 0,
+        tostring(state.map_name or ""),
+        state.terrain or 0,
+        state.player_x or -1,
+        state.player_y or -1,
+        state.overworld_x or -1,
+        state.overworld_y or -1,
+        state.movement_state or 0,
+        state.movement_subpixel or 0,
+        state.ppu_ctrl or 0,
+        state.scroll_x or 0,
+        state.scroll_y or 0,
+        state.buttons or 0,
+        tostring(state.ram0038_0043 or ""),
+        tostring(state.ram0030_004F or ""))
+end
+
+local function log_edge_movement_state(context, state, extra)
+    debug_tools.info(string.format(
+        "EDGE_MOTION_STATE context=%s %s%s",
+        tostring(context or "-"),
+        format_edge_movement_state(state),
+        extra and (" " .. extra) or ""))
+end
+
+local function edge_probe_settle_sample_signature(state)
+    if not state then
+        return "nil"
+    end
+    return table.concat({
+        tostring(state.player_x or -1),
+        tostring(state.player_y or -1),
+        tostring(state.overworld_x or -1),
+        tostring(state.overworld_y or -1),
+        tostring(state.movement_state or 0),
+        tostring(state.movement_subpixel or 0),
+        tostring(state.scroll_x or 0),
+        tostring(state.scroll_y or 0),
+        tostring(state.buttons or 0),
+    }, ":")
+end
+
+local function format_edge_probe_settle_sample(sample)
+    return string.format(
+        "f%02d:(%d,%d) ow=(%d,%d) move=0x%02X sub=0x%02X scroll=(0x%02X,0x%02X) buttons=0x%02X ram0038_0043=%s",
+        sample.frame or 0,
+        sample.player_x or -1,
+        sample.player_y or -1,
+        sample.overworld_x or -1,
+        sample.overworld_y or -1,
+        sample.movement_state or 0,
+        sample.movement_subpixel or 0,
+        sample.scroll_x or 0,
+        sample.scroll_y or 0,
+        sample.buttons or 0,
+        tostring(sample.ram0038_0043 or ""))
+end
+
+local function record_edge_probe_settle_sample(probe, state)
+    if not probe or not state then
         return
+    end
+    local signature = edge_probe_settle_sample_signature(state)
+    if signature == probe.settle_trace_last_signature then
+        return
+    end
+    probe.settle_trace_last_signature = signature
+    local samples = probe.settle_trace_samples
+    if not samples then
+        samples = {}
+        probe.settle_trace_samples = samples
+    end
+    samples[#samples + 1] = {
+        frame = probe.settle_trace_frame or 0,
+        player_x = state.player_x,
+        player_y = state.player_y,
+        overworld_x = state.overworld_x,
+        overworld_y = state.overworld_y,
+        movement_state = state.movement_state,
+        movement_subpixel = state.movement_subpixel,
+        scroll_x = state.scroll_x,
+        scroll_y = state.scroll_y,
+        buttons = state.buttons,
+        ram0038_0043 = state.ram0038_0043,
+    }
+end
+
+local function edge_probe_mismatch_kind(probe, status)
+    if not probe or not probe.start_report then
+        return nil
     end
 
     local start_report = probe.start_report
-    local kind = nil
 
     if status == "moved" and (start_report.approach_blocked or start_report.effective_passable == false) then
-        kind = "moved_through_modeled_block"
+        return "moved_through_modeled_block"
     elseif status == "blocked"
         and start_report.permanent_blocked ~= true
         and start_report.npc_blocked ~= true
         and start_report.approach_blocked ~= true
         and start_report.effective_passable == true then
-        kind = "blocked_despite_open_preview"
+        return "blocked_despite_open_preview"
     end
 
+    return nil
+end
+
+local function log_edge_probe_mismatch(probe, final_report, status)
+    local kind = edge_probe_mismatch_kind(probe, status)
     if not kind then
         return
     end
 
+    local start_report = probe.start_report
     local approach = MOVE_DIR_TO_APPROACH[probe.dir]
     local source_flags = get_edge_probe_source_flags(probe.map_id, probe.dest_x, probe.dest_y, approach)
     debug_tools.info(string.format(
@@ -444,8 +667,9 @@ local function finish_edge_probe(status, reason)
     local blocking = route_mgr.build_path_blocking(probe.map_id)
     local approach = MOVE_DIR_TO_APPROACH[probe.dir]
     local report = build_tile_report(probe.map_id, probe.dest_x, probe.dest_y, blocking, approach)
+    local final_state = capture_edge_movement_state()
     local msg = string.format(
-        "EDGE_PROBE_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) status=%s final=(%d,%d) tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s blocked_approach=%s approach_blocked=%s effective_passable=%s reason=%s",
+        "EDGE_PROBE_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) status=%s final=(%d,%d) reached_dest=%s settle_frames=%d tile=%s base_walkable=%s walkable=%s permanent_blocked=%s npc_blocked=%s directional_blocked=%s blocked_approach=%s approach_blocked=%s effective_passable=%s reason=%s",
         probe.map_id,
         probe.from_x,
         probe.from_y,
@@ -455,6 +679,8 @@ local function finish_edge_probe(status, reason)
         tostring(status),
         px or -1,
         py or -1,
+        tostring(probe.reached_dest == true),
+        probe.result_settle_frames or 0,
         tostring(report.tile_type),
         tostring(report.base_walkable),
         tostring(report.walkable),
@@ -466,6 +692,48 @@ local function finish_edge_probe(status, reason)
         tostring(report.effective_passable),
         tostring(reason or ""))
     debug_tools.info(msg)
+    log_edge_movement_state("probe_result", final_state, string.format(
+        "from=(%d,%d) dir=%s dest=(%d,%d) status=%s reached_dest=%s reason=%s",
+        probe.from_x,
+        probe.from_y,
+        tostring(probe.dir),
+        probe.dest_x,
+        probe.dest_y,
+        tostring(status),
+        tostring(probe.reached_dest == true),
+        tostring(reason or "")))
+    if status == "moved" and (px ~= probe.dest_x or py ~= probe.dest_y) then
+        debug_tools.info(string.format(
+            "EDGE_PROBE_CARRY map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) final=(%d,%d) carry_dx=%d carry_dy=%d",
+            probe.map_id,
+            probe.from_x,
+            probe.from_y,
+            tostring(probe.dir),
+            probe.dest_x,
+            probe.dest_y,
+            px or -1,
+            py or -1,
+            (px or probe.dest_x) - probe.dest_x,
+            (py or probe.dest_y) - probe.dest_y))
+    end
+    if status == "moved" and probe.settle_trace_samples and #probe.settle_trace_samples > 0 then
+        local parts = {}
+        for i, sample in ipairs(probe.settle_trace_samples) do
+            parts[i] = format_edge_probe_settle_sample(sample)
+        end
+        debug_tools.info(string.format(
+            "EDGE_PROBE_SETTLE_TRACE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) final=(%d,%d) samples=%d trace=%s",
+            probe.map_id,
+            probe.from_x,
+            probe.from_y,
+            tostring(probe.dir),
+            probe.dest_x,
+            probe.dest_y,
+            px or -1,
+            py or -1,
+            #probe.settle_trace_samples,
+            table.concat(parts, "; ")))
+    end
     log_edge_probe_mismatch(probe, report, status)
     tolk.output_interrupt(string.format(
         "Edge probe %s from %d,%d to %d,%d.",
@@ -494,6 +762,9 @@ local function classify_edge_verify_result(verify, final_status)
         return "confirmed_blocked"
     end
     if r.moved == verify.attempts and r.blocked == 0 then
+        if (r.moved_model_mismatch or 0) > 0 then
+            return "suspect_passable_model_mismatch"
+        end
         return "confirmed_passable"
     end
     if r.moved > 0 and r.blocked > 0 then
@@ -513,7 +784,7 @@ local function finish_edge_verify(final_status, reason)
     local runtime_added = false
     local runtime_cleared = false
     debug_tools.info(string.format(
-        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d classification=%s reason=%s runtime_added=%s runtime_cleared=%s manual_promotion_required=%s",
+        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d moved_model_mismatch=%d blocked_model_mismatch=%d stability_recheck=%s classification=%s reason=%s runtime_added=%s runtime_cleared=%s manual_promotion_required=%s",
         verify.map_id,
         verify.from_x,
         verify.from_y,
@@ -528,11 +799,23 @@ local function finish_edge_verify(final_status, reason)
         verify.results.drifted,
         verify.results.map_changed,
         verify.results.interrupted,
+        verify.results.moved_model_mismatch or 0,
+        verify.results.blocked_model_mismatch or 0,
+        tostring(verify.stability_recheck_done == true),
         classification,
         tostring(reason or final_status or ""),
         tostring(runtime_added),
         tostring(runtime_cleared),
-        tostring(classification == "confirmed_blocked")))
+        tostring(classification == "confirmed_blocked" or classification == "suspect_passable_model_mismatch")))
+    if classification == "confirmed_passable" and route_mgr.record_seam_result_for_step then
+        route_mgr.record_seam_result_for_step(
+            verify.map_id,
+            verify.from_x,
+            verify.from_y,
+            verify.dir,
+            "moved",
+            "verified_probe_confirmed_passable")
+    end
     edge_verify_state = nil
 end
 
@@ -543,9 +826,19 @@ local function record_edge_verify_attempt(status, reason)
     end
     clear_edge_probe_input()
     local _, px, py = nav.get_position()
+    local blocking = route_mgr.build_path_blocking(verify.map_id)
+    local approach = MOVE_DIR_TO_APPROACH[verify.dir]
+    local final_report = build_tile_report(verify.map_id, verify.dest_x, verify.dest_y, blocking, approach)
+    local final_state = capture_edge_movement_state()
+    local mismatch = edge_probe_mismatch_kind(verify, status)
+    if mismatch == "moved_through_modeled_block" then
+        verify.results.moved_model_mismatch = (verify.results.moved_model_mismatch or 0) + 1
+    elseif mismatch == "blocked_despite_open_preview" then
+        verify.results.blocked_model_mismatch = (verify.results.blocked_model_mismatch or 0) + 1
+    end
     verify.results[status] = (verify.results[status] or 0) + 1
     debug_tools.info(string.format(
-        "EDGE_VERIFY_ATTEMPT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d status=%s final=(%d,%d) frames=%d reason=%s",
+        "EDGE_VERIFY_ATTEMPT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d status=%s final=(%d,%d) frames=%d reason=%s mismatch=%s",
         verify.map_id,
         verify.from_x,
         verify.from_y,
@@ -558,15 +851,59 @@ local function record_edge_verify_attempt(status, reason)
         px or -1,
         py or -1,
         verify.frames or 0,
-        tostring(reason or "")))
-    if status == "moved" and route_mgr.record_seam_result_for_step then
-        route_mgr.record_seam_result_for_step(
+        tostring(reason or ""),
+        tostring(mismatch or "none")))
+    log_edge_movement_state("verify_attempt_result", final_state, string.format(
+        "from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d status=%s reason=%s mismatch=%s",
+        verify.from_x,
+        verify.from_y,
+        tostring(verify.dir),
+        verify.dest_x,
+        verify.dest_y,
+        verify.attempt,
+        verify.attempts,
+        tostring(status),
+        tostring(reason or ""),
+        tostring(mismatch or "none")))
+    if status == "moved" and (px ~= verify.dest_x or py ~= verify.dest_y) then
+        debug_tools.info(string.format(
+            "EDGE_VERIFY_CARRY map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d final=(%d,%d) carry_dx=%d carry_dy=%d",
+            verify.map_id,
+            verify.from_x,
+            verify.from_y,
+            tostring(verify.dir),
+            verify.dest_x,
+            verify.dest_y,
+            verify.attempt,
+            verify.attempts,
+            px or -1,
+            py or -1,
+            (px or verify.dest_x) - verify.dest_x,
+            (py or verify.dest_y) - verify.dest_y))
+    end
+    log_edge_probe_mismatch(verify, final_report, status)
+    if status == "moved"
+       and verify.attempt >= verify.attempts
+       and not verify.stability_recheck_done
+       and verify.results.moved == verify.attempts
+       and verify.results.blocked == 0 then
+        local wait_frames = edge_verify_stability_recheck_frames()
+        verify.stability_recheck_done = true
+        verify.attempts = verify.attempts + 1
+        verify.phase = "stability_wait"
+        verify.frames = 0
+        verify.settle_frames = wait_frames
+        debug_tools.info(string.format(
+            "EDGE_VERIFY_STABILITY_RECHECK map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) wait_frames=%d reason=all_attempts_moved",
             verify.map_id,
             verify.from_x,
             verify.from_y,
             verify.dir,
-            "moved",
-            "verified_probe_move")
+            verify.dest_x,
+            verify.dest_y,
+            wait_frames))
+        auto_step.cancel_active_step(true)
+        return
     end
     auto_step.cancel_active_step(true)
     if verify.attempt >= verify.attempts then
@@ -596,14 +933,21 @@ local function start_edge_verify_attempt()
     snapshot.update()
     objects.update_npcs()
     local msg, start_report = log_move_report(verify.from_x, verify.from_y, verify.dir)
+    local start_state = capture_edge_movement_state()
     verify.attempt = verify.attempt + 1
     verify.phase = "settle"
     verify.frames = 0
-    verify.settle_frames = EDGE_VERIFY_SETTLE_FRAMES
+    -- A verifier attempt starts by teleporting back to the origin. Raw input
+    -- during the post-teleport scan grace can produce false raw-hold timeouts
+    -- on narrow bridge/one-way seams, so wait until that grace has cleared.
+    verify.settle_frames = math.max(
+        EDGE_VERIFY_SETTLE_FRAMES,
+        (DW_QOL_STATE.teleport_post_scan_grace_frames or 0) + 4)
     verify.raw_hold_frames = edge_probe_raw_hold_frames()
     verify.start_report = start_report
+    verify.start_state = start_state
     debug_tools.info(string.format(
-        "EDGE_VERIFY_ATTEMPT_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d raw_hold_frames=%d preview=%s",
+        "EDGE_VERIFY_ATTEMPT_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d settle_frames=%d raw_hold_frames=%d preview=%s",
         verify.map_id,
         verify.from_x,
         verify.from_y,
@@ -612,8 +956,18 @@ local function start_edge_verify_attempt()
         verify.dest_y,
         verify.attempt,
         verify.attempts,
+        verify.settle_frames,
         verify.raw_hold_frames,
         tostring(msg or "")))
+    log_edge_movement_state("verify_attempt_start", start_state, string.format(
+        "from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d",
+        verify.from_x,
+        verify.from_y,
+        tostring(verify.dir),
+        verify.dest_x,
+        verify.dest_y,
+        verify.attempt,
+        verify.attempts))
 end
 
 local function tick_edge_verify()
@@ -643,6 +997,15 @@ local function tick_edge_verify()
     if verify.phase == "between" then
         verify.settle_frames = (verify.settle_frames or 0) - 1
         if verify.settle_frames > 0 then
+            return true
+        end
+        start_edge_verify_attempt()
+        return true
+    end
+    if verify.phase == "stability_wait" then
+        verify.settle_frames = (verify.settle_frames or 0) - 1
+        if verify.settle_frames > 0 then
+            clear_edge_probe_input()
             return true
         end
         start_edge_verify_attempt()
@@ -681,6 +1044,17 @@ local function tick_edge_probe()
     if not probe then
         return false
     end
+    if probe.phase == "settling_moved" then
+        clear_edge_probe_input()
+        record_edge_probe_settle_sample(probe, capture_edge_movement_state())
+        probe.settle_trace_frame = (probe.settle_trace_frame or 0) + 1
+        probe.settle_frames = (probe.settle_frames or 0) - 1
+        if probe.settle_frames > 0 then
+            return true
+        end
+        finish_edge_probe(probe.result_status or "moved", probe.result_reason or "position_changed")
+        return true
+    end
     local reason = get_edge_probe_unavailable_reason()
     if reason then
         finish_edge_probe("interrupted", reason)
@@ -693,7 +1067,22 @@ local function tick_edge_probe()
         return true
     end
     if px == probe.dest_x and py == probe.dest_y then
-        finish_edge_probe("moved", "position_changed")
+        local settle_frames = edge_probe_moved_settle_frames()
+        probe.reached_dest = true
+        probe.result_status = "moved"
+        probe.result_reason = "position_changed"
+        probe.result_settle_frames = settle_frames
+        if settle_frames > 0 then
+            probe.phase = "settling_moved"
+            probe.settle_frames = settle_frames
+            probe.settle_trace_samples = {}
+            probe.settle_trace_frame = 0
+            probe.settle_trace_last_signature = nil
+            record_edge_probe_settle_sample(probe, capture_edge_movement_state())
+            clear_edge_probe_input()
+        else
+            finish_edge_probe("moved", "position_changed")
+        end
         return true
     end
     if px ~= probe.from_x or py ~= probe.from_y then
@@ -705,6 +1094,225 @@ local function tick_edge_probe()
         return true
     end
     set_edge_probe_input(probe.dir)
+    return true
+end
+
+local function start_edge_probe_from_current(dir, source, speak)
+    local map_id, px, py = nav.get_position()
+    local delta = DIR_TO_DELTA[dir]
+    if not delta then
+        return false, "invalid direction"
+    end
+    if edge_probe_state then
+        return false, "probe active"
+    end
+
+    ensure_navigation_modules_fresh()
+    objects.update_npcs()
+    local msg, start_report = log_move_report(px, py, dir)
+    local start_state = capture_edge_movement_state()
+    edge_probe_state = {
+        map_id = map_id,
+        from_x = px,
+        from_y = py,
+        dir = dir,
+        dest_x = px + delta.dx,
+        dest_y = py + delta.dy,
+        start_report = start_report,
+        start_state = start_state,
+        frames = 0,
+        phase = "running",
+        raw_hold_frames = edge_probe_raw_hold_frames(),
+        source = source,
+    }
+    debug_tools.info(string.format(
+        "EDGE_PROBE_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) raw_hold_frames=%d moved_settle_frames=%d source=%s",
+        map_id,
+        px,
+        py,
+        dir,
+        edge_probe_state.dest_x,
+        edge_probe_state.dest_y,
+        edge_probe_state.raw_hold_frames,
+        edge_probe_moved_settle_frames(),
+        tostring(source or "command")))
+    log_edge_movement_state("probe_start", start_state, string.format(
+        "from=(%d,%d) dir=%s dest=(%d,%d) source=%s",
+        px,
+        py,
+        tostring(dir),
+        edge_probe_state.dest_x,
+        edge_probe_state.dest_y,
+        tostring(source or "command")))
+    if speak ~= false then
+        if msg then
+            tolk.output_interrupt("Edge probe started. " .. msg)
+        else
+            tolk.output_interrupt("Edge probe started")
+        end
+    end
+    return true
+end
+
+local function seeded_edge_probe_frames_used(seed)
+    if not seed then
+        return 0
+    end
+    if seed.seed_frames_used ~= nil then
+        return seed.seed_frames_used
+    end
+    return math.max(0, (seed.seed_frames or 0) - (seed.frames_remaining or 0))
+end
+
+local function finish_seeded_edge_probe(status, reason)
+    local seed = seeded_edge_probe_state
+    if not seed then
+        return
+    end
+    clear_edge_probe_input()
+    local _, px, py = nav.get_position()
+    debug_tools.info(string.format(
+        "EDGE_SEED_PROBE_END map=0x%02X start=(%d,%d) seed_dir=%s seed_frames=%d seed_frames_used=%d wait_frames=%d probe_dir=%s final=(%d,%d) status=%s reason=%s",
+        seed.map_id,
+        seed.start_x,
+        seed.start_y,
+        tostring(seed.seed_dir),
+        seed.seed_frames,
+        seeded_edge_probe_frames_used(seed),
+        seed.wait_frames,
+        tostring(seed.probe_dir),
+        px or -1,
+        py or -1,
+        tostring(status),
+        tostring(reason or "")))
+    seeded_edge_probe_state = nil
+end
+
+local function tick_seeded_edge_probe()
+    local seed = seeded_edge_probe_state
+    if not seed then
+        return false
+    end
+
+    local reason = get_edge_probe_unavailable_reason()
+    if reason then
+        finish_seeded_edge_probe("aborted", reason)
+        return true
+    end
+
+    local map_id, px, py = nav.get_position()
+    if map_id ~= seed.map_id then
+        finish_seeded_edge_probe("aborted", "map_changed")
+        return true
+    end
+
+    record_edge_probe_settle_sample(seed, capture_edge_movement_state())
+    seed.settle_trace_frame = (seed.settle_trace_frame or 0) + 1
+
+    if seed.phase == "seed" then
+        if seed.target_x ~= nil and seed.target_y ~= nil then
+            if px == seed.target_x and py == seed.target_y then
+                seed.seed_frames_used = seeded_edge_probe_frames_used(seed)
+                seed.phase = "wait"
+                -- Always spend at least one neutral frame after releasing the
+                -- seed input so the follow-up probe does not inherit that hold.
+                seed.wait_remaining = (seed.wait_frames or 0) + 1
+                debug_tools.info(string.format(
+                    "EDGE_SEED_PROBE_TARGET_REACHED map=0x%02X start=(%d,%d) target=(%d,%d) current=(%d,%d) seed_dir=%s max_seed_frames=%d seed_frames_used=%d wait_frames=%d probe_dir=%s",
+                    seed.map_id,
+                    seed.start_x,
+                    seed.start_y,
+                    seed.target_x,
+                    seed.target_y,
+                    px or -1,
+                    py or -1,
+                    tostring(seed.seed_dir),
+                    seed.seed_frames,
+                    seed.seed_frames_used,
+                    seed.wait_frames,
+                    tostring(seed.probe_dir)))
+                clear_edge_probe_input()
+                return true
+            end
+            if seed.frames_remaining <= 0 then
+                finish_seeded_edge_probe("aborted", "target_not_reached")
+                return true
+            end
+            set_edge_probe_input(seed.seed_dir)
+            seed.frames_remaining = seed.frames_remaining - 1
+            return true
+        end
+        if seed.frames_remaining > 0 then
+            set_edge_probe_input(seed.seed_dir)
+            seed.frames_remaining = seed.frames_remaining - 1
+            return true
+        end
+        seed.seed_frames_used = seed.seed_frames
+        seed.phase = "wait"
+        seed.wait_remaining = seed.wait_frames
+    end
+
+    if seed.phase == "wait" then
+        clear_edge_probe_input()
+        if seed.wait_remaining > 0 then
+            seed.wait_remaining = seed.wait_remaining - 1
+            return true
+        end
+
+        local arm_state = capture_edge_movement_state()
+        debug_tools.info(string.format(
+            "EDGE_SEED_PROBE_ARM map=0x%02X start=(%d,%d) current=(%d,%d) seed_dir=%s seed_frames=%d seed_frames_used=%d wait_frames=%d probe_dir=%s",
+            seed.map_id,
+            seed.start_x,
+            seed.start_y,
+            px or -1,
+            py or -1,
+            tostring(seed.seed_dir),
+            seed.seed_frames,
+            seeded_edge_probe_frames_used(seed),
+            seed.wait_frames,
+            tostring(seed.probe_dir)))
+        if seed.settle_trace_samples and #seed.settle_trace_samples > 0 then
+            local parts = {}
+            for i, sample in ipairs(seed.settle_trace_samples) do
+                parts[i] = format_edge_probe_settle_sample(sample)
+            end
+            debug_tools.info(string.format(
+                "EDGE_SEED_PROBE_TRACE map=0x%02X start=(%d,%d) current=(%d,%d) seed_dir=%s seed_frames=%d seed_frames_used=%d wait_frames=%d probe_dir=%s samples=%d trace=%s",
+                seed.map_id,
+                seed.start_x,
+                seed.start_y,
+                px or -1,
+                py or -1,
+                tostring(seed.seed_dir),
+                seed.seed_frames,
+                seeded_edge_probe_frames_used(seed),
+                seed.wait_frames,
+                tostring(seed.probe_dir),
+                #seed.settle_trace_samples,
+                table.concat(parts, "; ")))
+        end
+        log_edge_movement_state("seed_probe_arm", arm_state, string.format(
+            "start=(%d,%d) current=(%d,%d) seed_dir=%s seed_frames=%d seed_frames_used=%d wait_frames=%d probe_dir=%s",
+            seed.start_x,
+            seed.start_y,
+            px or -1,
+            py or -1,
+            tostring(seed.seed_dir),
+            seed.seed_frames,
+            seeded_edge_probe_frames_used(seed),
+            seed.wait_frames,
+            tostring(seed.probe_dir)))
+
+        seeded_edge_probe_state = nil
+        local ok, start_reason = start_edge_probe_from_current(seed.probe_dir, "seed_probe", false)
+        if not ok then
+            debug_tools.error("EDGE_SEED_PROBE_START_PROBE_FAILED reason=" .. tostring(start_reason))
+        end
+        return true
+    end
+
+    finish_seeded_edge_probe("aborted", "unknown_phase")
     return true
 end
 
@@ -721,7 +1329,10 @@ event_bus.subscribe("route_blocked", function(data)
     if not probe or not data then
         return
     end
-    if data.from_x == probe.from_x and data.from_y == probe.from_y and data.dir == probe.dir then
+    if probe.phase == "running"
+       and data.from_x == probe.from_x
+       and data.from_y == probe.from_y
+       and data.dir == probe.dir then
         finish_edge_probe("blocked", "route_blocked")
     end
 end)
@@ -955,6 +1566,9 @@ get_edge_probe_unavailable_reason = function()
     if PREV.dialogue ~= "" then
         return "Wait for dialogue to finish before probing an edge"
     end
+    if PREV.upper_active then
+        return "Wait for the upper dialogue window to clear before probing an edge"
+    end
     return nil
 end
 
@@ -1111,6 +1725,7 @@ DW_QOL_STATE.TELEPORT_INPUT_RELEASE_MAX_FRAMES = 90
 DW_QOL_STATE.teleport_input_suppress_until_release = nil
 DW_QOL_STATE.pending_teleport_face = nil
 DW_QOL_STATE.teleport_post_scan_grace_frames = 0
+DW_QOL_STATE.teleport_state_guard = nil
 
 -- Sub-menu tracking: STATUS, SPELL, and ITEM screens opened from the command menu.
 -- When the player selects STATUS, SPELL, or ITEM, the game opens a sub-menu that
@@ -3834,6 +4449,7 @@ debug_tools.register_command("probe_edge", function(arg)
     objects.update_npcs()
     local msg, start_report = log_move_report(from_x, from_y, dir)
     local delta = DIR_TO_DELTA[dir]
+    local start_state = capture_edge_movement_state()
     edge_probe_state = {
         map_id = snapshot.map_id,
         from_x = from_x,
@@ -3842,23 +4458,183 @@ debug_tools.register_command("probe_edge", function(arg)
         dest_x = from_x + delta.dx,
         dest_y = from_y + delta.dy,
         start_report = start_report,
+        start_state = start_state,
         frames = 0,
+        phase = "running",
         raw_hold_frames = edge_probe_raw_hold_frames(),
     }
     debug_tools.info(string.format(
-        "EDGE_PROBE_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) raw_hold_frames=%d",
+        "EDGE_PROBE_START map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) raw_hold_frames=%d moved_settle_frames=%d",
         snapshot.map_id,
         from_x,
         from_y,
         dir,
         edge_probe_state.dest_x,
         edge_probe_state.dest_y,
-        edge_probe_state.raw_hold_frames))
+        edge_probe_state.raw_hold_frames,
+        edge_probe_moved_settle_frames()))
+    log_edge_movement_state("probe_start", start_state, string.format(
+        "from=(%d,%d) dir=%s dest=(%d,%d)",
+        from_x,
+        from_y,
+        tostring(dir),
+        edge_probe_state.dest_x,
+        edge_probe_state.dest_y))
     if msg then
         tolk.output_interrupt("Edge probe started. " .. msg)
     else
         tolk.output_interrupt("Edge probe started")
     end
+end)
+
+debug_tools.register_command("probe_edge_after_raw", function(arg)
+    local seed_dir, seed_frames, wait_frames, probe_dir = parse_seeded_edge_probe_arg(arg)
+    if not seed_dir then
+        debug_tools.error("probe_edge_after_raw usage: probe_edge_after_raw:SEED_DIR,SEED_FRAMES,WAIT_FRAMES,PROBE_DIR")
+        return
+    end
+    if seeded_edge_probe_state then
+        debug_tools.error("probe_edge_after_raw: a seeded probe is already active")
+        return
+    end
+    if edge_probe_state then
+        debug_tools.error("probe_edge_after_raw: wait for the active edge probe to finish")
+        return
+    end
+    if edge_verify_state then
+        debug_tools.error("probe_edge_after_raw: wait for the active edge verification to finish")
+        return
+    end
+    if map_survey.is_active() then
+        debug_tools.error("probe_edge_after_raw: stop the active survey first")
+        return
+    end
+    if map_crawler.is_active() then
+        debug_tools.error("probe_edge_after_raw: stop the active map crawl first")
+        return
+    end
+    if auto_step.is_route_active() then
+        debug_tools.error("probe_edge_after_raw: wait for the current auto-walk step/route to finish")
+        return
+    end
+    local reason = get_edge_probe_unavailable_reason()
+    if reason then
+        debug_tools.error("probe_edge_after_raw refused: " .. reason)
+        return
+    end
+
+    local map_id, px, py = nav.get_position()
+    seeded_edge_probe_state = {
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        seed_dir = seed_dir,
+        seed_frames = seed_frames,
+        wait_frames = wait_frames,
+        probe_dir = probe_dir,
+        phase = "seed",
+        frames_remaining = seed_frames,
+        wait_remaining = 0,
+        settle_trace_samples = {},
+        settle_trace_frame = 0,
+        settle_trace_last_signature = nil,
+    }
+    debug_tools.info(string.format(
+        "EDGE_SEED_PROBE_START map=0x%02X start=(%d,%d) seed_dir=%s seed_frames=%d wait_frames=%d probe_dir=%s",
+        map_id,
+        px or -1,
+        py or -1,
+        tostring(seed_dir),
+        seed_frames,
+        wait_frames,
+        tostring(probe_dir)))
+    log_edge_movement_state("seed_probe_start", capture_edge_movement_state(), string.format(
+        "start=(%d,%d) seed_dir=%s seed_frames=%d wait_frames=%d probe_dir=%s",
+        px or -1,
+        py or -1,
+        tostring(seed_dir),
+        seed_frames,
+        wait_frames,
+        tostring(probe_dir)))
+    tolk.output_interrupt("Seeded edge probe started")
+end)
+
+debug_tools.register_command("probe_edge_after_raw_to", function(arg)
+    local seed_dir, max_frames, target_x, target_y, wait_frames, probe_dir = parse_seeded_edge_probe_to_arg(arg)
+    if not seed_dir then
+        debug_tools.error("probe_edge_after_raw_to usage: probe_edge_after_raw_to:SEED_DIR,MAX_FRAMES,TARGET_X,TARGET_Y,WAIT_FRAMES,PROBE_DIR")
+        return
+    end
+    if seeded_edge_probe_state then
+        debug_tools.error("probe_edge_after_raw_to: a seeded probe is already active")
+        return
+    end
+    if edge_probe_state then
+        debug_tools.error("probe_edge_after_raw_to: wait for the active edge probe to finish")
+        return
+    end
+    if edge_verify_state then
+        debug_tools.error("probe_edge_after_raw_to: wait for the active edge verification to finish")
+        return
+    end
+    if map_survey.is_active() then
+        debug_tools.error("probe_edge_after_raw_to: stop the active survey first")
+        return
+    end
+    if map_crawler.is_active() then
+        debug_tools.error("probe_edge_after_raw_to: stop the active map crawl first")
+        return
+    end
+    if auto_step.is_route_active() then
+        debug_tools.error("probe_edge_after_raw_to: wait for the current auto-walk step/route to finish")
+        return
+    end
+    local reason = get_edge_probe_unavailable_reason()
+    if reason then
+        debug_tools.error("probe_edge_after_raw_to refused: " .. reason)
+        return
+    end
+
+    local map_id, px, py = nav.get_position()
+    seeded_edge_probe_state = {
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        seed_dir = seed_dir,
+        seed_frames = max_frames,
+        frames_remaining = max_frames,
+        target_x = target_x,
+        target_y = target_y,
+        wait_frames = wait_frames,
+        wait_remaining = 0,
+        probe_dir = probe_dir,
+        phase = "seed",
+        settle_trace_samples = {},
+        settle_trace_frame = 0,
+        settle_trace_last_signature = nil,
+    }
+    debug_tools.info(string.format(
+        "EDGE_SEED_PROBE_START map=0x%02X start=(%d,%d) seed_dir=%s max_seed_frames=%d target=(%d,%d) wait_frames=%d probe_dir=%s mode=target",
+        map_id,
+        px or -1,
+        py or -1,
+        tostring(seed_dir),
+        max_frames,
+        target_x,
+        target_y,
+        wait_frames,
+        tostring(probe_dir)))
+    log_edge_movement_state("seed_probe_start", capture_edge_movement_state(), string.format(
+        "start=(%d,%d) seed_dir=%s max_seed_frames=%d target=(%d,%d) wait_frames=%d probe_dir=%s mode=target",
+        px or -1,
+        py or -1,
+        tostring(seed_dir),
+        max_frames,
+        target_x,
+        target_y,
+        wait_frames,
+        tostring(probe_dir)))
+    tolk.output_interrupt("Targeted seeded edge probe started")
 end)
 
 debug_tools.register_command("probe_edge_verify", function(arg)
@@ -4257,6 +5033,123 @@ local function teleport_post_scan_grace_frames()
     return math.max(0, math.min(60, math.floor(frames)))
 end
 
+DW_QOL_STATE.reset_movement_engine_state = function(reason)
+    local before_move = memory.readbyte(addr.MOVEMENT_STATE)
+    local before_sub = memory.readbyte(addr.MOVEMENT_SUBPIXEL)
+    memory.writebyte(addr.MOVEMENT_STATE, 0x00)
+    memory.writebyte(addr.MOVEMENT_SUBPIXEL, 0x00)
+    debug_tools.info(string.format(
+        "MOVEMENT_STATE_RESET reason=%s map=0x%02X player=(%d,%d) before_move=0x%02X before_sub=0x%02X",
+        tostring(reason or "manual"),
+        memory.readbyte(addr.MAP_ID),
+        memory.readbyte(addr.PLAYER_X),
+        memory.readbyte(addr.PLAYER_Y),
+        before_move or 0,
+        before_sub or 0))
+end
+
+DW_QOL_STATE.arm_teleport_state_guard = function(map_id, x, y, reason)
+    local frames = config_frame_count("teleport_state_guard_frames", 12, 0, 60)
+    if frames <= 0 then
+        DW_QOL_STATE.teleport_state_guard = nil
+        return
+    end
+    DW_QOL_STATE.teleport_state_guard = {
+        map_id = map_id,
+        x = x,
+        y = y,
+        frames = frames,
+        reason = reason or "teleport",
+        resets = 0,
+        drift_logged = false,
+    }
+    debug_tools.info(string.format(
+        "TELEPORT_STATE_GUARD map=0x%02X landing=(%d,%d) frames=%d reason=%s",
+        map_id or -1,
+        x or -1,
+        y or -1,
+        frames,
+        tostring(reason or "teleport")))
+end
+
+DW_QOL_STATE.apply_teleport_state_guard = function()
+    local guard = DW_QOL_STATE.teleport_state_guard
+    if not guard or (guard.frames or 0) <= 0 then
+        DW_QOL_STATE.teleport_state_guard = nil
+        return false
+    end
+
+    local map_id = memory.readbyte(addr.MAP_ID)
+    local px = memory.readbyte(addr.PLAYER_X)
+    local py = memory.readbyte(addr.PLAYER_Y)
+    if map_id ~= guard.map_id then
+        debug_tools.info(string.format(
+            "TELEPORT_STATE_GUARD_END map=0x%02X landing=(%d,%d) frames_left=%d resets=%d reason=map_changed current_map=0x%02X",
+            guard.map_id or -1,
+            guard.x or -1,
+            guard.y or -1,
+            guard.frames or 0,
+            guard.resets or 0,
+            map_id or -1))
+        DW_QOL_STATE.teleport_state_guard = nil
+        return false
+    end
+
+    local move = memory.readbyte(addr.MOVEMENT_STATE)
+    local sub = memory.readbyte(addr.MOVEMENT_SUBPIXEL)
+    if (px ~= guard.x or py ~= guard.y) and not guard.drift_logged then
+        guard.drift_logged = true
+        debug_tools.info(string.format(
+            "TELEPORT_STATE_GUARD_DRIFT map=0x%02X landing=(%d,%d) current=(%d,%d) frames_left=%d move=0x%02X sub=0x%02X",
+            guard.map_id or -1,
+            guard.x or -1,
+            guard.y or -1,
+            px or -1,
+            py or -1,
+            guard.frames or 0,
+            move or 0,
+            sub or 0))
+    end
+    if move ~= 0 or sub ~= 0 then
+        guard.resets = (guard.resets or 0) + 1
+        guard.last_move = move
+        guard.last_sub = sub
+        guard.last_x = px
+        guard.last_y = py
+        if guard.resets == 1 then
+            debug_tools.info(string.format(
+                "TELEPORT_STATE_GUARD_RESET map=0x%02X landing=(%d,%d) current=(%d,%d) frames_left=%d before_move=0x%02X before_sub=0x%02X count=%d",
+                guard.map_id or -1,
+                guard.x or -1,
+                guard.y or -1,
+                px or -1,
+                py or -1,
+                guard.frames or 0,
+                move or 0,
+                sub or 0,
+                guard.resets or 0))
+        end
+        memory.writebyte(addr.MOVEMENT_STATE, 0x00)
+        memory.writebyte(addr.MOVEMENT_SUBPIXEL, 0x00)
+    end
+
+    guard.frames = (guard.frames or 0) - 1
+    if guard.frames <= 0 then
+        debug_tools.info(string.format(
+            "TELEPORT_STATE_GUARD_END map=0x%02X landing=(%d,%d) resets=%d last=(%d,%d) last_move=0x%02X last_sub=0x%02X reason=complete",
+            guard.map_id or -1,
+            guard.x or -1,
+            guard.y or -1,
+            guard.resets or 0,
+            guard.last_x or guard.x or -1,
+            guard.last_y or guard.y or -1,
+            guard.last_move or 0,
+            guard.last_sub or 0))
+        DW_QOL_STATE.teleport_state_guard = nil
+    end
+    return true
+end
+
 local function teleport_npc_hold_frames()
     local frames = tonumber(config.get("teleport_npc_hold_frames")) or 600
     return math.max(0, math.min(3600, math.floor(frames)))
@@ -4395,7 +5288,7 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
 
     -- Cancel any in-flight step/repress so the engine doesn't re-inject motion
     -- from the old position after the RAM write.
-    auto_step.cancel_active_step(true)
+    auto_step.cancel_active_step(true, true)
 
     -- Log the full 0x0030-0x004F range before and after the write so we can
     -- compare movement-state bytes (0x003C, 0x003E, 0x0042 etc.) across probe
@@ -4418,8 +5311,7 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
     -- reproducible results. Without this, stale 0x003C (e.g. 0x08 "leftward
     -- arrival") causes the engine to turn-in-place on the first press and then
     -- block on retry, making the same open edge appear engine-blocked.
-    memory.writebyte(addr.MOVEMENT_STATE,    0x00)
-    memory.writebyte(addr.MOVEMENT_SUBPIXEL, 0x00)
+    DW_QOL_STATE.reset_movement_engine_state("teleport_to")
     -- Keep later commands in the same command poll from reading the pre-teleport
     -- cached position via navigation/game_snapshot.
     snapshot.update()
@@ -4435,6 +5327,7 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
     end
 
     DW_QOL_STATE.suppress_teleport_input()
+    DW_QOL_STATE.arm_teleport_state_guard(map_id, landing_x, landing_y, "teleport_to")
 
     local msg
     if landing_note then
@@ -4455,6 +5348,13 @@ end
 debug_tools.register_command("teleport_to", function(arg)
     local tx, ty, flag = parse_teleport_arg(arg)
     DW_QOL_STATE.perform_teleport_to(tx, ty, flag)
+end)
+
+debug_tools.register_command("reset_movement_state", function(arg)
+    DW_QOL_STATE.reset_movement_engine_state(arg or "manual")
+    DW_QOL_STATE.teleport_state_guard = nil
+    DW_QOL_STATE.suppress_teleport_input()
+    tolk.output_interrupt("Movement state reset")
 end)
 
 DW_QOL_STATE.TELEPORT_SELECTED_OFFSETS = {
@@ -4630,6 +5530,24 @@ debug_tools.register_command("teleport_overworld", teleport_overworld_landmark)
 -- These commands provide detailed pathfinding diagnostics.
 -- All output goes to dw_debug.log. Requires debug_mode=true.
 
+local function summarize_path_hazards(map_id, path)
+    local count = 0
+    local cells = {}
+    if not map_reader or not map_reader.is_hazard_cell then
+        return count, cells
+    end
+    for _, step in ipairs(path or {}) do
+        local hazard = map_reader.is_hazard_cell(map_id, step.x, step.y)
+        if hazard then
+            count = count + 1
+            if #cells < 8 then
+                cells[#cells + 1] = string.format("%d,%d:%s", step.x, step.y, tostring(hazard))
+            end
+        end
+    end
+    return count, cells
+end
+
 local function run_debug_pathfind_to(arg, params)
     params = params or {}
     local command_name = params.command_name or "debug_pathfind_to"
@@ -4640,10 +5558,17 @@ local function run_debug_pathfind_to(arg, params)
     end
     ensure_navigation_modules_fresh()
     local opts = path_debug.build_find_path_opts()
+    if params.allow_hazards == true and map_reader.get_walkability_snapshot then
+        local current_map_id = select(1, nav.get_position())
+        opts.walkability_snapshot = map_reader.get_walkability_snapshot(current_map_id, {
+            allow_hazards = true,
+        })
+    end
     local plan = route_mgr.plan_path_to_coordinates(goal_x, goal_y, {
         path_mode = "direct",
         skip_npcs = params.skip_npcs == true,
         park_mobile_npcs = params.park_mobile_npcs == true,
+        park_stationary_npcs = params.park_stationary_npcs == true,
         pathfinder_opts = opts,
         store_debug_path = false,
     })
@@ -4656,13 +5581,29 @@ local function run_debug_pathfind_to(arg, params)
     path_debug.store_path(map_id, px, py, goal_x, goal_y, path, opts)
     local stats = opts and opts._get_stats() or {}
     local reason = stats and stats.reason
-    local mode_label = params.park_mobile_npcs and " park NPCs" or (params.skip_npcs and " skip NPCs" or "")
+    local mode_parts = {}
+    if params.park_mobile_npcs then
+        mode_parts[#mode_parts + 1] = "park NPCs"
+    elseif params.skip_npcs then
+        mode_parts[#mode_parts + 1] = "skip NPCs"
+    end
+    if params.allow_hazards then
+        mode_parts[#mode_parts + 1] = "allow hazards"
+    end
+    local mode_label = #mode_parts > 0 and (" " .. table.concat(mode_parts, " ")) or ""
     local msg = string.format("Debug pathfind_to%s (%d,%d): %s%s (visited=%d path=%d)",
         mode_label, goal_x, goal_y, result,
         reason and (" [" .. reason .. "]") or "",
         stats.nodes_visited or 0, path and #path or 0)
     if face_dir then
         msg = msg .. ". Face " .. face_dir
+    end
+    if params.allow_hazards then
+        local hazard_count, hazard_cells = summarize_path_hazards(map_id, path)
+        msg = msg .. string.format(" hazards=%d", hazard_count)
+        if #hazard_cells > 0 then
+            msg = msg .. " hazard_cells=" .. table.concat(hazard_cells, ";")
+        end
     end
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
@@ -4683,6 +5624,366 @@ debug_tools.register_command("debug_pathfind_to_park_npcs", function(arg)
     run_debug_pathfind_to(arg, {
         command_name = "debug_pathfind_to_park_npcs",
         park_mobile_npcs = true,
+        park_stationary_npcs = true,
+    })
+end)
+
+debug_tools.register_command("debug_pathfind_to_allow_hazards", function(arg)
+    run_debug_pathfind_to(arg, {
+        command_name = "debug_pathfind_to_allow_hazards",
+        allow_hazards = true,
+    })
+end)
+
+debug_tools.register_command("debug_pathfind_to_skip_npcs_allow_hazards", function(arg)
+    run_debug_pathfind_to(arg, {
+        command_name = "debug_pathfind_to_skip_npcs_allow_hazards",
+        skip_npcs = true,
+        allow_hazards = true,
+    })
+end)
+
+local ROUTE_FRONTIER_DIRECTIONS = {
+    {name = "right", dx = 1, dy = 0, approach = "west"},
+    {name = "left",  dx = -1, dy = 0, approach = "east"},
+    {name = "down",  dx = 0, dy = 1, approach = "north"},
+    {name = "up",    dx = 0, dy = -1, approach = "south"},
+}
+
+local function route_frontier_block_reason(map_id, blocking, directional_blocks, x, y, approach)
+    local key = x .. "," .. y
+    local dynamic = blocking and blocking[key]
+
+    if dynamic and type(dynamic) ~= "table" then
+        return dynamic == "runtime" and "blocked_runtime" or "blocked_npc"
+    end
+
+    local runtime = route_mgr.is_cell_runtime_blocked and route_mgr.is_cell_runtime_blocked(map_id, x, y)
+    if type(runtime) == "table" and runtime[approach] == true then
+        return "blocked_runtime"
+    end
+
+    local static = directional_blocks and directional_blocks[key]
+    if static and static[approach] == true then
+        return "blocked_directional"
+    end
+    if type(dynamic) == "table" and dynamic[approach] == true then
+        return "blocked_dynamic"
+    end
+    return nil
+end
+
+local function route_frontier_reason_rank(reason)
+    if reason == "blocked_runtime" then return 0 end
+    if reason == "blocked_directional" then return 1 end
+    if reason == "blocked_dynamic" then return 2 end
+    if reason == "not_walkable" then return 3 end
+    if reason == "blocked_npc" then return 4 end
+    return 5
+end
+
+local function route_frontier_bridge_rank(frontier)
+    if frontier.hidden_bridge_to_target then return 0 end
+    if frontier.bridge_to_target then return 1 end
+    return 2
+end
+
+local function run_debug_route_frontier(arg, params)
+    params = params or {}
+    local command_name = params.command_name or "debug_route_frontier"
+    local goal_x, goal_y = parse_xy_arg(arg)
+    if not goal_x then
+        debug_tools.error(command_name .. " usage: " .. command_name .. ":X,Y")
+        return
+    end
+    ensure_navigation_modules_fresh()
+    objects.update_npcs()
+    local map_id, start_x, start_y = nav.get_position()
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        debug_tools.error(command_name .. ": current map dimensions unavailable")
+        return
+    end
+
+    local walkability_opts = {}
+    if params.allow_hazards == true then
+        walkability_opts.allow_hazards = true
+    end
+    local walkability = map_reader.get_walkability_snapshot(map_id, walkability_opts)
+    if not walkability then
+        debug_tools.error(command_name .. ": walkability snapshot unavailable")
+        return
+    end
+
+    local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
+    local directional_blocks = map_reader.get_directional_blocks(map_id)
+
+    local function key(x, y)
+        return x .. "," .. y
+    end
+
+    local function is_walkable_snapshot(x, y)
+        local row = walkability[y]
+        return row and row[x] == true
+    end
+
+    local reachable = {}
+    local queue = {}
+    local start_key = key(start_x, start_y)
+    reachable[start_key] = true
+    queue[#queue + 1] = {x = start_x, y = start_y, dist = 0}
+
+    local head = 1
+    while queue[head] do
+        local cell = queue[head]
+        head = head + 1
+        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
+            local nx = cell.x + step.dx
+            local ny = cell.y + step.dy
+            if nx >= 0 and nx < width and ny >= 0 and ny < height
+               and is_walkable_snapshot(nx, ny)
+               and not route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach) then
+                local neighbor_key = key(nx, ny)
+                if not reachable[neighbor_key] then
+                    reachable[neighbor_key] = true
+                    queue[#queue + 1] = {x = nx, y = ny, dist = cell.dist + 1}
+                end
+            end
+        end
+    end
+
+    local target_side = {}
+    local target_queue = {}
+    if goal_x >= 0 and goal_x < width and goal_y >= 0 and goal_y < height
+       and is_walkable_snapshot(goal_x, goal_y) then
+        target_side[key(goal_x, goal_y)] = {dist = 0}
+        target_queue[#target_queue + 1] = {x = goal_x, y = goal_y, dist = 0}
+    end
+
+    -- Reverse reachability: a cell is on the target side if it can move,
+    -- using the same directional/NPC/runtime rules, to a cell that can reach
+    -- the target. This is more useful than plain Manhattan distance on maps
+    -- with one-way-looking engine walls.
+    local target_head = 1
+    while target_queue[target_head] do
+        local cell = target_queue[target_head]
+        target_head = target_head + 1
+        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
+            local px = cell.x - step.dx
+            local py = cell.y - step.dy
+            if px >= 0 and px < width and py >= 0 and py < height
+               and is_walkable_snapshot(px, py)
+               and not route_frontier_block_reason(map_id, blocking, directional_blocks, cell.x, cell.y, step.approach) then
+                local predecessor_key = key(px, py)
+                if not target_side[predecessor_key] then
+                    target_side[predecessor_key] = {dist = cell.dist + 1}
+                    target_queue[#target_queue + 1] = {x = px, y = py, dist = cell.dist + 1}
+                end
+            end
+        end
+    end
+
+    local function walkability_detail_for_cell(x, y)
+        if not map_reader.get_walkability_details then
+            return nil
+        end
+        return map_reader.get_walkability_details(map_id, x, y)
+    end
+
+    local function is_hidden_wall_candidate(details)
+        if not details then
+            return false
+        end
+        if details.effective_walkable == true then
+            return false
+        end
+        if details.permanent_blocked == true or details.hazard == true then
+            return false
+        end
+        return details.reason == "tile_type"
+            or details.reason == "wall"
+            or details.reason == "not_walkable"
+    end
+
+    local function find_one_cell_hidden_bridge(x, y, details)
+        if not is_hidden_wall_candidate(details) then
+            return nil
+        end
+        local best
+        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
+            local nx = x + step.dx
+            local ny = y + step.dy
+            if nx >= 0 and nx < width and ny >= 0 and ny < height
+               and is_walkable_snapshot(nx, ny)
+               and not reachable[key(nx, ny)] then
+                local target_side_entry = target_side[key(nx, ny)]
+                if target_side_entry
+                   and not route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach) then
+                    local candidate = {
+                        exit_dir = step.name,
+                        exit_x = nx,
+                        exit_y = ny,
+                        target_side_distance = target_side_entry.dist + 1,
+                    }
+                    if not best
+                       or candidate.target_side_distance < best.target_side_distance
+                       or (candidate.target_side_distance == best.target_side_distance
+                           and candidate.exit_dir < best.exit_dir) then
+                        best = candidate
+                    end
+                end
+            end
+        end
+        return best
+    end
+
+    local frontiers = {}
+    local bridge_candidate_count = 0
+    local hidden_bridge_candidate_count = 0
+    for _, cell in ipairs(queue) do
+        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
+            local nx = cell.x + step.dx
+            local ny = cell.y + step.dy
+            if nx >= 0 and nx < width and ny >= 0 and ny < height
+               and not reachable[key(nx, ny)] then
+                local reason
+                local details = walkability_detail_for_cell(nx, ny)
+                if not is_walkable_snapshot(nx, ny) then
+                    reason = "not_walkable"
+                else
+                    reason = route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach)
+                        or "unknown_unreached"
+                end
+                local target_side_entry = is_walkable_snapshot(nx, ny) and target_side[key(nx, ny)] or nil
+                local hidden_bridge = nil
+                local bridge_to_target = target_side_entry ~= nil
+                if not bridge_to_target and not is_walkable_snapshot(nx, ny) then
+                    hidden_bridge = find_one_cell_hidden_bridge(nx, ny, details)
+                    if hidden_bridge then
+                        bridge_to_target = true
+                        target_side_entry = {
+                            dist = hidden_bridge.target_side_distance,
+                        }
+                        hidden_bridge_candidate_count = hidden_bridge_candidate_count + 1
+                    end
+                end
+                if bridge_to_target then
+                    bridge_candidate_count = bridge_candidate_count + 1
+                end
+                frontiers[#frontiers + 1] = {
+                    from_x = cell.x,
+                    from_y = cell.y,
+                    dir = step.name,
+                    dest_x = nx,
+                    dest_y = ny,
+                    approach = step.approach,
+                    reason = reason,
+                    bridge_to_target = bridge_to_target,
+                    hidden_bridge_to_target = hidden_bridge ~= nil,
+                    hidden_exit_dir = hidden_bridge and hidden_bridge.exit_dir or nil,
+                    hidden_exit_x = hidden_bridge and hidden_bridge.exit_x or nil,
+                    hidden_exit_y = hidden_bridge and hidden_bridge.exit_y or nil,
+                    target_side_distance = target_side_entry and target_side_entry.dist or nil,
+                    target_distance = math.abs(nx - goal_x) + math.abs(ny - goal_y),
+                    start_distance = cell.dist,
+                    tile_type = details and details.tile_type or nil,
+                    walk_reason = details and details.reason or nil,
+                }
+            end
+        end
+    end
+
+    table.sort(frontiers, function(a, b)
+        local ab = route_frontier_bridge_rank(a)
+        local bb = route_frontier_bridge_rank(b)
+        if ab ~= bb then return ab < bb end
+        local ar = route_frontier_reason_rank(a.reason)
+        local br = route_frontier_reason_rank(b.reason)
+        if ar ~= br then return ar < br end
+        if a.bridge_to_target and b.bridge_to_target then
+            local at = a.target_side_distance or 9999
+            local bt = b.target_side_distance or 9999
+            if at ~= bt then return at < bt end
+        end
+        if a.target_distance ~= b.target_distance then
+            return a.target_distance < b.target_distance
+        end
+        if a.start_distance ~= b.start_distance then
+            return a.start_distance < b.start_distance
+        end
+        if a.dest_y ~= b.dest_y then return a.dest_y > b.dest_y end
+        return a.dest_x > b.dest_x
+    end)
+
+    local target_reachable = reachable[key(goal_x, goal_y)] == true
+    debug_tools.info(string.format(
+        "ROUTE_FRONTIER map=0x%02X start=(%d,%d) goal=(%d,%d) allow_hazards=%s skip_npcs=%s reachable=%d target_reachable=%s target_side=%d candidates=%d bridge_candidates=%d hidden_bridge_candidates=%d",
+        map_id,
+        start_x or -1,
+        start_y or -1,
+        goal_x,
+        goal_y,
+        tostring(params.allow_hazards == true),
+        tostring(params.skip_npcs == true),
+        #queue,
+        tostring(target_reachable),
+        #target_queue,
+        #frontiers,
+        bridge_candidate_count,
+        hidden_bridge_candidate_count))
+    local limit = 24
+    for i = 1, math.min(limit, #frontiers) do
+        local f = frontiers[i]
+        debug_tools.info(string.format(
+            "ROUTE_FRONTIER_ENTRY rank=%d from=(%d,%d) dir=%s dest=(%d,%d) approach=%s reason=%s bridge_to_target=%s hidden_bridge=%s hidden_exit=%s tile=%s walk_reason=%s start_dist=%d target_side_dist=%d target_dist=%d",
+            i,
+            f.from_x,
+            f.from_y,
+            f.dir,
+            f.dest_x,
+            f.dest_y,
+            f.approach,
+            tostring(f.reason),
+            tostring(f.bridge_to_target == true),
+            tostring(f.hidden_bridge_to_target == true),
+            f.hidden_exit_dir and string.format("%s:(%d,%d)", f.hidden_exit_dir, f.hidden_exit_x, f.hidden_exit_y) or "-",
+            f.tile_type ~= nil and tostring(f.tile_type) or "-",
+            tostring(f.walk_reason or "-"),
+            f.start_distance or -1,
+            f.target_side_distance or -1,
+            f.target_distance or -1))
+    end
+    tolk.output_interrupt(string.format(
+        "Route frontier logged. Reachable %d. Target reachable %s.",
+        #queue,
+        tostring(target_reachable)))
+end
+
+debug_tools.register_command("debug_route_frontier", function(arg)
+    run_debug_route_frontier(arg, {
+        command_name = "debug_route_frontier",
+    })
+end)
+
+debug_tools.register_command("debug_route_frontier_skip_npcs", function(arg)
+    run_debug_route_frontier(arg, {
+        command_name = "debug_route_frontier_skip_npcs",
+        skip_npcs = true,
+    })
+end)
+
+debug_tools.register_command("debug_route_frontier_allow_hazards", function(arg)
+    run_debug_route_frontier(arg, {
+        command_name = "debug_route_frontier_allow_hazards",
+        allow_hazards = true,
+    })
+end)
+
+debug_tools.register_command("debug_route_frontier_skip_npcs_allow_hazards", function(arg)
+    run_debug_route_frontier(arg, {
+        command_name = "debug_route_frontier_skip_npcs_allow_hazards",
+        skip_npcs = true,
+        allow_hazards = true,
     })
 end)
 
@@ -4700,6 +6001,7 @@ local function run_debug_pathfind_adjacent(arg, params)
         path_mode = "adjacent",
         skip_npcs = params.skip_npcs == true,
         park_mobile_npcs = params.park_mobile_npcs == true,
+        park_stationary_npcs = params.park_stationary_npcs == true,
         pathfinder_opts = find_opts,
         store_debug_path = false,
     })
@@ -4737,6 +6039,7 @@ debug_tools.register_command("debug_pathfind_adjacent_park_npcs", function(arg)
     run_debug_pathfind_adjacent(arg, {
         command_name = "debug_pathfind_adjacent_park_npcs",
         park_mobile_npcs = true,
+        park_stationary_npcs = true,
     })
 end)
 
@@ -5514,7 +6817,7 @@ while true do
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = checked_scan("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
     checked_scan("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
-    local raw_debug_input_this_frame = sim_input and sim_input._raw and joypad_has_input(sim_input)
+    local raw_debug_input_this_frame = sim_input and sim_input._raw
     if sim_input then
         if emulator_compat.clear_ppu_cache then
             emulator_compat.clear_ppu_cache()
@@ -5537,7 +6840,7 @@ while true do
                          or sim_input.down and "down"
                          or sim_input.left and "left"
                          or sim_input.right and "right"
-                auto_step.inject_step(dir)
+                auto_step.inject_step(dir, {source = "manual_tap"})
             else
                 joypad.set(1, sim_input)
             end
@@ -5552,7 +6855,9 @@ while true do
         "teleport_hotkey_release",
         DW_QOL_STATE.teleport_hotkey_still_held,
         keys) == true
-    if DW_QOL_STATE.teleport_input_suppress_frames > 0 or teleport_hotkey_held then
+    if DW_QOL_STATE.teleport_input_suppress_frames > 0
+       or teleport_hotkey_held
+       or (DW_QOL_STATE.teleport_state_guard and (DW_QOL_STATE.teleport_state_guard.frames or 0) > 0) then
         neutralize_teleport_input()
         if DW_QOL_STATE.teleport_input_suppress_frames > 0 then
             DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.teleport_input_suppress_frames - 1
@@ -5617,6 +6922,7 @@ while true do
             end
         end
     end
+    local seeded_edge_probe_active_this_frame = checked_call("tick_seeded_edge_probe", tick_seeded_edge_probe) == true
     local edge_probe_active_this_frame = checked_call("tick_edge_probe", tick_edge_probe) == true
     local edge_verify_active_this_frame = checked_call("tick_edge_verify", tick_edge_verify) == true
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
@@ -5625,6 +6931,7 @@ while true do
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
     if not raw_debug_input_this_frame
+       and not seeded_edge_probe_active_this_frame
        and not edge_probe_active_this_frame
        and not edge_verify_active_this_frame
        and not teleport_input_suppressed_this_frame
@@ -5642,6 +6949,7 @@ while true do
     -- The NES game's NPC movement routines ran during frameadvance and may
     -- have written new positions; we undo that here so our code sees stable
     -- NPC coordinates on the next frame.
+    checked_scan("teleport_state_guard", DW_QOL_STATE.apply_teleport_state_guard)
     checked_scan("route_manager.apply_npc_freeze", route_mgr.apply_npc_freeze)
     checked_scan("map_survey.apply_npc_parking", map_survey.apply_npc_parking)
     checked_scan("map_crawler.apply_npc_parking", map_crawler.apply_npc_parking)

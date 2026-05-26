@@ -20,6 +20,7 @@
 #   log_state              Full game-state snapshot to dw_debug.log
 #   report_position        Map/coordinates to dw_debug.log
 #   report_door_state      Magic-key count and opened-door RAM slots
+#   debug_seed_open_doors:X,Y[;X,Y...]  Seed opened-door RAM slots for route tests
 #   toggle_debug           Toggle debug_mode on/off at runtime
 #   dump_grid              Dump walkability grid for current map
 #   reload_config          Re-read dw_access.ini (picks up setting changes)
@@ -51,6 +52,8 @@
 #                          and final effective path passability
 #   inspect_move:DIR       Inspect a move from current position (UP/DOWN/LEFT/RIGHT)
 #   inspect_move:X,Y,DIR   Inspect a move from an explicit origin
+#   reset_movement_state[:TAG]  Zero movement state/subpixel bytes and clear
+#                          injected teleport input after lock diagnostics
 #   pathfind_to:X,Y        Run direct pathfinding to explicit coordinates
 #   pathfind_adjacent:X,Y  Run adjacent pathfinding to explicit coordinates
 #   report_path_state      Log current path target, blockers, and runtime blocks
@@ -77,9 +80,19 @@
 #
 # ── Path debug commands ─────────────────────────────────────────────
 #   debug_pathfind_to:X,Y       Pathfind with full A* search logging
+#   debug_pathfind_to_skip_npcs_allow_hazards:X,Y
+#                                Pathfind with live NPCs omitted and modeled
+#                                hazard cells allowed
 #   debug_pathfind_to_park_npcs:X,Y
 #                                Pathfind with mobile NPCs temporarily parked
 #   debug_pathfind_adjacent:X,Y Adjacent pathfind with full A* search logging
+#   debug_route_frontier:X,Y    Log nearest rejected edges around the current
+#                                reachable component toward X,Y, including
+#                                target-side and one-cell hidden-wall bridge
+#                                candidates
+#   debug_route_frontier_skip_npcs_allow_hazards:X,Y
+#                                Same, with live NPCs omitted and modeled
+#                                hazard cells allowed
 #   debug_pathfind_adjacent_park_npcs:X,Y
 #                                Adjacent pathfind with mobile NPCs parked
 #   trace_path                  Output last computed path (coords + directions)

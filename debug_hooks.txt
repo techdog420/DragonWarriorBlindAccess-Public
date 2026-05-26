@@ -60,9 +60,15 @@ COMMANDS (write to dw_commands.txt, one per line)
   log_state                Write full game state snapshot to log
   report_position          Write current map/x/y to log
   report_door_state        Write magic-key count and opened-door RAM slots
+  debug_seed_open_doors:X,Y[;X,Y...]
+                           Seed opened-door RAM slots for route/debug tests
   report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
   report_movement_state    Dump movement/camera-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons
+  reset_movement_state[:TAG]
+                           Zero movement state/subpixel bytes and clear injected
+                           teleport input; useful after teleport/control-lock
+                           diagnostics.
   report_menu_state        Dump command-menu parser/cursor state
   report_npcs              Dump active NPC slots with decoded names, coordinates,
                            facing, movement byte, service flag, and raw bytes
@@ -81,8 +87,11 @@ COMMANDS (write to dw_commands.txt, one per line)
   trace_input:FRAMES       Same, with frame count clamped to 1..1800
   launcher_probe           Write a launcher readiness marker to dw_debug.log
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
+  input_status[:TAG]       Log current input.get(), joypad.read(1), bridge-file
+                           state, and LeftAlt status.
   ./recover_fceux_input.sh Reset FCEUX stuck-Alt/menu focus from WSL, reset
-                           dw_keyboard_input.txt to "-", and queue
+                           dw_keyboard_input.txt to "-", restart the keyboard
+                           bridge sidecar if missing, and queue
                            input_status:fceux_recovery
   report_scan_stats        BizHawk only: log PPU read/cache totals and scan profiles
   reset_scan_stats         BizHawk only: reset PPU read/cache totals and scan profiles
@@ -96,6 +105,10 @@ COMMANDS (write to dw_commands.txt, one per line)
   simulate_raw_input:B     Inject one raw frame of B button
   simulate_raw_input:START Inject one raw frame of Start
   simulate_raw_input:SELECT Inject one raw frame of Select
+  simulate_sequence:BTN,FRAMES,WAIT[;...]
+                           Queue timed debug-owned input frames with neutral waits
+  simulate_raw_sequence:BTN,FRAMES,WAIT[;...]
+                           Same, but every step bypasses auto-step tracking
   dump_grid                Dump tile type + walkability grid for current map
   export_blocks            Format all recorded blocked moves as MAP_BLOCKED_CELLS
                            Lua entries (check dw_debug.log for output)
@@ -184,6 +197,25 @@ PATHFINDING DEBUG COMMANDS
                            Same as debug_pathfind_to, but temporarily parks
                            mobile NPCs before planning so diagnostics match
                            parked-NPC autowalk/survey route assumptions.
+  debug_pathfind_to_allow_hazards:X,Y
+                           Same as debug_pathfind_to, but permits modeled
+                           damage/hazard cells while searching.
+  debug_pathfind_to_skip_npcs_allow_hazards:X,Y
+                           Same as debug_pathfind_to, but omits live NPCs
+                           and permits modeled damage/hazard cells.
+  debug_route_frontier:X,Y Log nearest rejected edges around the currently
+                           reachable component toward X,Y, including whether
+                           each edge would bridge into the target-side
+                           component. Wall-looking one-cell false-wall
+                           candidates that would bridge into the target side
+                           are surfaced with hidden_bridge=true.
+  debug_route_frontier_skip_npcs:X,Y
+                           Same, but omits live NPC blockers.
+  debug_route_frontier_allow_hazards:X,Y
+                           Same, but permits modeled damage/hazard cells.
+  debug_route_frontier_skip_npcs_allow_hazards:X,Y
+                           Same, but omits live NPCs and permits modeled
+                           damage/hazard cells.
   debug_pathfind_adjacent:X,Y
                            Run a detailed route search to a cell adjacent to
                            X,Y, useful for NPC/object interaction targets.
@@ -206,6 +238,14 @@ EDGE PROBE COMMANDS
                            Use after freeze_npcs to avoid NPC interference.
                            DIR: UP / DOWN / LEFT / RIGHT
   probe_edge:X,Y,DIR       Same, but specifies origin explicitly (player must be there)
+  probe_edge_after_raw:SEED_DIR,SEED_FRAMES,WAIT_FRAMES,PROBE_DIR
+                           Hold raw SEED_DIR for a fixed frame count, release for
+                           WAIT_FRAMES, then run a normal probe in PROBE_DIR.
+                           Logs EDGE_SEED_PROBE_* plus movement-state traces.
+  probe_edge_after_raw_to:SEED_DIR,MAX_FRAMES,TARGET_X,TARGET_Y,WAIT_FRAMES,PROBE_DIR
+                           Hold raw SEED_DIR until TARGET_X,TARGET_Y is reached
+                           or MAX_FRAMES expires, release, then run PROBE_DIR.
+                           Useful for stateful corridor/carry timing checks.
   stop_probe_edge          Cancel an active probe
   probe_edge_verify:DIR[,N]
                            Repeat a probe from the same origin N times (default 5,

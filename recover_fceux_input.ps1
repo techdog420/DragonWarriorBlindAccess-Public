@@ -5,6 +5,7 @@ param(
     [string] $Tag = "fceux_recovery",
     [int] $ProcessId = 0,
     [switch] $NoQueue,
+    [switch] $NoBridgeStart,
     [switch] $DryRun
 )
 
@@ -21,6 +22,7 @@ if ([string]::IsNullOrWhiteSpace($CommandFile)) {
 if ([string]::IsNullOrWhiteSpace($Tag)) {
     $Tag = "fceux_recovery"
 }
+$KeyboardBridgeScript = Join-Path $scriptDir "keyboard_bridge.ps1"
 
 function Ensure-InputRecoveryType {
     if (-not ("DragonWarrior.FceuxInputRecovery" -as [type])) {
@@ -126,6 +128,72 @@ function Invoke-AltReleasePulse {
     Send-VirtualKeyUp -VirtualKey 0x12
 }
 
+function Test-CommandLineContains {
+    param(
+        [string] $CommandLine,
+        [string] $Needle
+    )
+
+    if ([string]::IsNullOrWhiteSpace($CommandLine) -or [string]::IsNullOrWhiteSpace($Needle)) {
+        return $false
+    }
+    return $CommandLine.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Get-KeyboardBridgeProcess {
+    param(
+        [string] $BridgeScript,
+        [string] $OutputPath
+    )
+
+    if (-not (Test-Path -LiteralPath $BridgeScript -PathType Leaf)) {
+        return @()
+    }
+
+    $scriptFullPath = [System.IO.Path]::GetFullPath($BridgeScript)
+    $outputFullPath = [System.IO.Path]::GetFullPath($OutputPath)
+
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -like "powershell*" -and
+            (Test-CommandLineContains -CommandLine $_.CommandLine -Needle $scriptFullPath) -and
+            (Test-CommandLineContains -CommandLine $_.CommandLine -Needle $outputFullPath)
+        })
+}
+
+function Ensure-KeyboardBridgeRunning {
+    param(
+        [string] $BridgeScript,
+        [string] $OutputPath
+    )
+
+    if ($NoBridgeStart) {
+        Write-Host "FCEUX input recovery: keyboard bridge start skipped by -NoBridgeStart."
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $BridgeScript -PathType Leaf)) {
+        Write-Warning ("FCEUX input recovery: keyboard bridge script not found: {0}" -f $BridgeScript)
+        return
+    }
+
+    $existing = @(Get-KeyboardBridgeProcess -BridgeScript $BridgeScript -OutputPath $OutputPath)
+    if ($existing.Count -gt 0) {
+        $ids = ($existing | ForEach-Object { $_.ProcessId }) -join ","
+        Write-Host ("FCEUX input recovery: keyboard bridge already running: PID {0}" -f $ids)
+        return
+    }
+
+    $bridgeProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $BridgeScript,
+        "-OutputPath", $OutputPath
+    ) -WindowStyle Hidden -PassThru
+    Start-Sleep -Milliseconds 150
+    Write-Host ("FCEUX input recovery: started keyboard bridge PID {0}" -f $bridgeProcess.Id)
+}
+
 $process = Get-FceuxProcess
 if ($DryRun) {
     Write-Host "FCEUX input recovery dry run"
@@ -133,6 +201,11 @@ if ($DryRun) {
     Write-Host "  Key-up:    repeated LeftAlt, RightAlt, generic Alt"
     Write-Host "  Tap:       Escape"
     Write-Host ("  Bridge:    reset {0} to '-'" -f $KeyboardBridgePath)
+    if ($NoBridgeStart) {
+        Write-Host "  Sidecar:   start skipped"
+    } else {
+        Write-Host ("  Sidecar:   ensure {0} is running" -f $KeyboardBridgeScript)
+    }
     if ($NoQueue) {
         Write-Host "  Queue:     skipped"
     } else {
@@ -150,6 +223,7 @@ Invoke-AltReleasePulse
 
 [System.IO.File]::WriteAllText($KeyboardBridgePath, "-" + [Environment]::NewLine)
 Write-Host ("FCEUX input recovery: reset keyboard bridge state: {0}" -f $KeyboardBridgePath)
+Ensure-KeyboardBridgeRunning -BridgeScript $KeyboardBridgeScript -OutputPath $KeyboardBridgePath
 
 if (-not $NoQueue) {
     Add-Content -LiteralPath $CommandFile -Value ("input_status:{0}" -f $Tag)

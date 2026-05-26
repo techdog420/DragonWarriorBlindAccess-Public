@@ -17,12 +17,14 @@
 --   log_state            -- write a full game-state snapshot to the log
 --   report_position      -- write effective map/x/y to the log
 --   report_coords        -- write effective + raw coordinate bytes to the log
+--   debug_seed_open_doors:X,Y;X,Y -- seed opened-door RAM slots for route tests
 --   report_movement_state[:TAG] -- dump movement/camera-adjacent RAM bytes
 --   toggle_debug         -- flip DEBUG_MODE on/off at runtime
 --   simulate_input:UP    -- inject a one-frame D-pad or button press
 --   simulate_input:UP,12 -- inject 12 consecutive frames of the same press
 --   simulate_raw_input:UP -- inject a one-frame raw D-pad or button press
 --   simulate_raw_input:UP,12 -- inject 12 consecutive raw frames (bypasses auto_step)
+--   simulate_raw_sequence:RIGHT,40,0;LEFT,40,0 -- raw timed sequence, bypasses auto_step
 --   simulate_input:DOWN
 --   simulate_input:LEFT
 --   simulate_input:RIGHT
@@ -31,7 +33,7 @@
 --   simulate_input:START
 --   simulate_input:SELECT
 --   clear_input          -- inject a neutral joypad frame to clear stale held input
---   input_status[:TAG]   -- log current input.get() keys and joypad.read(1)
+--   input_status[:TAG]   -- log current input.get(), joypad.read(1), and bridge state
 --   trace_input[:FRAMES] -- log input.get() and joypad.read(1) changes
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
@@ -129,6 +131,7 @@ local pending_input  = nil    -- Joypad table to apply on next frame, or nil
 local pending_input_hold = nil  -- {buttons=table, frames_remaining=n}, or nil
 local pending_input_release = false -- Clear stale joypad.set state after debug-owned input.
 local pending_input_release_raw = false -- Keep raw debug-input release invisible to auto_step.
+local pending_input_sequence = nil -- Timed debug-owned input script, one step at a time.
 local input_trace = nil     -- Per-frame input trace state for keyboard/joypad diagnostics.
 local stuck_alt_frames = 0  -- Consecutive frames where LeftAlt appears stuck and joy1 is idle.
 local stuck_alt_warned = false
@@ -401,6 +404,10 @@ local function full_joypad_state(buttons)
     return state
 end
 
+local function neutral_raw_joypad_state()
+    return full_joypad_state({_raw = true})
+end
+
 local function parse_button_command_args(arg_text)
     local btn_str, frames_str = tostring(arg_text or ""):match("^%s*([^,]+)%s*,?%s*(.-)%s*$")
     btn_str = btn_str and btn_str:upper() or ""
@@ -423,11 +430,124 @@ local function parse_button_command_args(arg_text)
     return btn_key, btn_str, frames
 end
 
+local function parse_input_sequence(arg_text, force_raw)
+    local sequence = {}
+    for part in tostring(arg_text or ""):gmatch("[^;]+") do
+        local btn_str, frames_str, wait_str =
+            part:match("^%s*([^,]+)%s*,%s*(%d+)%s*,?%s*(%d*)%s*$")
+        btn_str = btn_str and btn_str:upper() or ""
+        local raw_step = force_raw == true
+        if btn_str:sub(1, 4) == "RAW_" then
+            raw_step = true
+            btn_str = btn_str:sub(5)
+        end
+        local btn_key = BUTTON_MAP[btn_str]
+        if not btn_key then
+            return nil, "unknown button '" .. tostring(btn_str) .. "'"
+        end
+        local frames = tonumber(frames_str)
+        local wait_frames = tonumber(wait_str) or 0
+        if not frames or frames < 1 then
+            return nil, "invalid frame count for " .. btn_str
+        end
+        if wait_frames < 0 then
+            return nil, "invalid wait count for " .. btn_str
+        end
+        local buttons = full_joypad_state({ [btn_key] = true })
+        if raw_step then
+            buttons._raw = true
+        end
+        sequence[#sequence + 1] = {
+            buttons = buttons,
+            frames = frames,
+            wait_after = wait_frames,
+            label = (raw_step and "RAW_" or "") .. btn_str,
+        }
+    end
+    if #sequence == 0 then
+        return nil, "empty sequence"
+    end
+    return sequence
+end
+
+local function queue_input_sequence(sequence)
+    pending_input = nil
+    pending_input_hold = nil
+    pending_input_release = false
+    pending_input_release_raw = false
+    pending_input_sequence = {
+        steps = sequence,
+        index = 1,
+        frames_remaining = 0,
+        wait_remaining = 0,
+        active_buttons = nil,
+        release_raw = false,
+        wait_raw = false,
+    }
+    M.debug("Queued input sequence steps=" .. tostring(#sequence))
+end
+
+local function input_sequence_tick()
+    local seq = pending_input_sequence
+    if not seq then
+        return nil
+    end
+
+    if seq.wait_remaining and seq.wait_remaining > 0 then
+        seq.wait_remaining = seq.wait_remaining - 1
+        local neutral = full_joypad_state({})
+        if seq.wait_raw then
+            neutral._raw = true
+        end
+        return neutral
+    end
+
+    if not seq.active_buttons then
+        local step = seq.steps[seq.index]
+        if not step then
+            local release_raw = seq.release_raw == true
+            M.debug(string.format(
+                "INPUT_SEQUENCE_DONE steps=%d release_raw=%s",
+                #seq.steps,
+                tostring(release_raw)))
+            pending_input_sequence = nil
+            local neutral = full_joypad_state({})
+            if release_raw then
+                neutral._raw = true
+            end
+            return neutral
+        end
+        seq.active_buttons = step.buttons
+        seq.frames_remaining = step.frames
+        seq.wait_after = step.wait_after or 0
+        seq.wait_raw = step.buttons and step.buttons._raw == true
+        seq.release_raw = false
+        M.debug(string.format(
+            "INPUT_SEQUENCE step=%d/%d button=%s frames=%d wait_after=%d",
+            seq.index,
+            #seq.steps,
+            tostring(step.label),
+            seq.frames_remaining,
+            seq.wait_after))
+        seq.index = seq.index + 1
+    end
+
+    local buttons = seq.active_buttons
+    seq.frames_remaining = seq.frames_remaining - 1
+    if seq.frames_remaining <= 0 then
+        seq.release_raw = buttons and buttons._raw == true
+        seq.active_buttons = nil
+        seq.wait_remaining = seq.wait_after
+    end
+    return buttons
+end
+
 local function queue_pending_input(buttons, frames, description)
     pending_input = nil
     pending_input_hold = nil
     pending_input_release = false
     pending_input_release_raw = false
+    pending_input_sequence = nil
 
     if frames and frames > 1 then
         pending_input_hold = {
@@ -542,6 +662,7 @@ local function build_keyboard_bridge_input(frame)
     local keys = input.get()
     local joy = joypad.read(1)
     if not is_left_alt_pressed(keys) or has_joy_buttons(joy) then
+        local was_active = keyboard_bridge_active
         if keyboard_bridge_active then
             M.info(string.format(
                 "INPUT_BRIDGE_CLEAR frame=%d keys=%s joy1=%s",
@@ -551,6 +672,9 @@ local function build_keyboard_bridge_input(frame)
             ))
         end
         keyboard_bridge_active = false
+        if was_active then
+            return neutral_raw_joypad_state()
+        end
         return nil
     end
 
@@ -565,6 +689,7 @@ local function build_keyboard_bridge_input(frame)
     if is_key_pressed(keys, "S", "s") then bridge.select = true end
 
     if not has_joy_buttons(bridge) then
+        local was_active = keyboard_bridge_active
         if keyboard_bridge_active then
             M.info(string.format(
                 "INPUT_BRIDGE_CLEAR frame=%d keys=%s joy1=%s",
@@ -574,6 +699,9 @@ local function build_keyboard_bridge_input(frame)
             ))
         end
         keyboard_bridge_active = false
+        if was_active then
+            return neutral_raw_joypad_state()
+        end
         return nil
     end
 
@@ -636,6 +764,20 @@ local function parse_external_keyboard_bridge()
     return shallow_copy(bridge)
 end
 
+local function read_keyboard_bridge_line()
+    local f = io.open(KEYBOARD_BRIDGE_FILE, "r")
+    if not f then
+        return "(missing)"
+    end
+    local line = f:read("*l") or ""
+    f:close()
+    line = line:match("^%s*(.-)%s*$") or ""
+    if line == "" then
+        return "(empty)"
+    end
+    return line
+end
+
 local function build_external_keyboard_bridge_input(frame)
     -- External bridge feeds the FCEUX-only keyboard_bridge.ps1 sidecar, which
     -- watches the OS keyboard while FCEUX's menu has focus. BizHawk reads the
@@ -658,6 +800,7 @@ local function build_external_keyboard_bridge_input(frame)
 
     local bridge_active = has_joy_buttons(bridge)
     if not fceux_stale and not bridge_active then
+        local was_active = external_keyboard_bridge_active
         if external_keyboard_bridge_active then
             M.info(string.format(
                 "INPUT_EXTERNAL_BRIDGE_CLEAR frame=%d reason=fceux_input_recovered keys=%s joy1=%s",
@@ -668,6 +811,9 @@ local function build_external_keyboard_bridge_input(frame)
         end
         external_keyboard_bridge_active = false
         external_stale_alt_ignored_active = false
+        if was_active then
+            return neutral_raw_joypad_state()
+        end
         return nil
     end
 
@@ -676,6 +822,7 @@ local function build_external_keyboard_bridge_input(frame)
         -- the physical key is up. Treat LeftAlt-only idle state as diagnostic
         -- noise, not synthetic joypad input, so the bug stays benign during
         -- normal Windows window-switching.
+        local was_active = external_keyboard_bridge_active
         if external_keyboard_bridge_active then
             M.info(string.format(
                 "INPUT_EXTERNAL_BRIDGE_CLEAR frame=%d reason=fceux_stale_alt_ignored keys=%s joy1=%s",
@@ -695,6 +842,9 @@ local function build_external_keyboard_bridge_input(frame)
             ))
         end
         external_stale_alt_ignored_active = true
+        if was_active then
+            return neutral_raw_joypad_state()
+        end
         return nil
     else
         bridge._raw = true
@@ -724,11 +874,13 @@ end
 local function log_input_status(tag)
     local keys = input.get()
     local joy = joypad.read(1)
+    local bridge_line = read_keyboard_bridge_line()
     M.info(string.format(
-        "INPUT_STATUS tag=%s keys=%s joy1=%s left_alt=%s",
+        "INPUT_STATUS tag=%s keys=%s joy1=%s bridge=%s left_alt=%s",
         tostring(tag or "manual"),
         format_pressed_keys(keys),
         format_joy_buttons(joy),
+        bridge_line,
         tostring(is_left_alt_pressed(keys))
     ))
 end
@@ -855,6 +1007,45 @@ local function process_command(cmd)
             memory.readbyte(addr.KEYS),
             table.concat(entries, " ")))
 
+    elseif cmd:sub(1, 21) == "debug_seed_open_doors" then
+        local arg = cmd:match("^debug_seed_open_doors:%s*(.-)%s*$")
+        if not arg or arg == "" then
+            M.error("debug_seed_open_doors usage: debug_seed_open_doors:X,Y[;X,Y...]")
+        else
+            local doors = {}
+            local bad_part = nil
+            for part in arg:gmatch("[^;]+") do
+                local x_s, y_s = part:match("^%s*(%d+)%s*,%s*(%d+)%s*$")
+                local x, y = tonumber(x_s), tonumber(y_s)
+                if not x or not y then
+                    bad_part = part
+                    break
+                end
+                doors[#doors + 1] = {x = x, y = y}
+            end
+
+            if bad_part then
+                M.error("debug_seed_open_doors: invalid coordinate '" .. tostring(bad_part) .. "'")
+            elseif #doors > addr.DOOR_ARRAY_MAX then
+                M.error(string.format(
+                    "debug_seed_open_doors: too many doors (%d > %d)",
+                    #doors,
+                    addr.DOOR_ARRAY_MAX))
+            else
+                for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+                    local door = doors[i + 1]
+                    memory.writebyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE, door and door.x or 0)
+                    memory.writebyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE, door and door.y or 0)
+                end
+
+                local entries = {}
+                for i, door in ipairs(doors) do
+                    entries[#entries + 1] = string.format("%d=(%d,%d)", i - 1, door.x, door.y)
+                end
+                M.info("DEBUG_SEED_OPEN_DOORS slots=" .. (#entries > 0 and table.concat(entries, " ") or "none"))
+            end
+        end
+
     elseif cmd == "report_coords" then
         -- Write both effective coordinates and the raw interior/overworld RAM bytes.
         local map_id = memory.readbyte(addr.MAP_ID)
@@ -954,6 +1145,27 @@ local function process_command(cmd)
             M.error("simulate_raw_input: " .. err .. ". Usage: simulate_raw_input:BTN or simulate_raw_input:BTN,FRAMES")
         else
             M.error("simulate_raw_input: unknown button. Valid buttons: UP DOWN LEFT RIGHT A B START SELECT")
+        end
+
+    elseif cmd:sub(1, 18) == "simulate_sequence:" then
+        -- Queue a timed sequence: BTN,FRAMES,WAIT;BTN,FRAMES,WAIT;...
+        -- WAIT emits neutral input frames before the next step.
+        local sequence, err = parse_input_sequence(cmd:sub(19))
+        if sequence then
+            queue_input_sequence(sequence)
+        else
+            M.error("simulate_sequence: " .. tostring(err)
+                .. ". Usage: simulate_sequence:A,8,40;RIGHT,12,30;DOWN,12,30;A,4,0")
+        end
+
+    elseif cmd:sub(1, 22) == "simulate_raw_sequence:" then
+        -- Queue a timed raw sequence that bypasses auto_step for every step.
+        local sequence, err = parse_input_sequence(cmd:sub(23), true)
+        if sequence then
+            queue_input_sequence(sequence)
+        else
+            M.error("simulate_raw_sequence: " .. tostring(err)
+                .. ". Usage: simulate_raw_sequence:RIGHT,40,0;LEFT,40,0")
         end
 
     elseif cmd == "clear_input" or cmd == "neutral_input" then
@@ -1259,8 +1471,12 @@ function M.tick(frame, game_state_str)
 
     -- Return and clear any pending simulated input.
     -- Sweep input takes priority over queued button commands.
+    local sequence_inp = nil
+    if not sweep_inp then
+        sequence_inp = input_sequence_tick()
+    end
     local held_inp = nil
-    if not sweep_inp and pending_input_hold then
+    if not sweep_inp and not sequence_inp and pending_input_hold then
         held_inp = pending_input_hold.buttons
         pending_input_hold.frames_remaining = pending_input_hold.frames_remaining - 1
         if pending_input_hold.frames_remaining <= 0 then
@@ -1273,8 +1489,8 @@ function M.tick(frame, game_state_str)
     -- pending_input and pending_input_hold are mutually exclusive: queue_pending_input
     -- sets one or the other but never both. So when held_inp is active, pending_input
     -- is already nil — the guard below is defensive insurance, not for the multi-frame case.
-    local inp = sweep_inp or held_inp or pending_input
-    if not sweep_inp and not held_inp then
+    local inp = sweep_inp or sequence_inp or held_inp or pending_input
+    if not sweep_inp and not sequence_inp and not held_inp then
         if pending_input then
             pending_input_release_raw = pending_input._raw or false
             pending_input_release = true
