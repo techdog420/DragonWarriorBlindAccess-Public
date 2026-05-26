@@ -355,8 +355,47 @@ local MAP_PASSTHROUGH_CELLS = {
         ["14,3"] = true,
         ["14,4"] = true,
         ["14,5"] = true,
+        -- 2026-05-23 focused crawler from the Sun Shrine forward-route
+        -- boundary exported (14,14), and probe_edge_verify:14,15,UP,5 moved
+        -- into it 6/6 including the stability recheck.
+        ["14,14"] = true,
         ["15,4"] = true,
         ["15,5"] = true,
+        -- 2026-05-24 west-pocket continuation uncovered a hidden vertical
+        -- decoder-gap alcove above `(16,15)`: direct current-position probes
+        -- moved `(16,15)->UP` through tile-0 `(16,14)` and settled at
+        -- `(16,13)`, while `(16,13)->DOWN` moved back out to `(16,15)`.
+        ["16,13"] = true,
+        ["16,14"] = true,
+        -- 2026-05-23 forward Sun Shrine route: x=15 was mixed and x=16 was
+        -- blocked, but probe_edge_verify:14,5,DOWN,5 moved into (14,6) 6/6.
+        -- Forced-origin probes then exited down to (14,7) and back up.
+        ["14,6"] = true,
+        -- 2026-05-23 door-side Sun Shrine route: with the Magic Key Area Door
+        -- open, probe_edge_verify:21,8,RIGHT,5 entered (22,8) 6/6 despite
+        -- tile=0, and a forced-origin follow-up moved (22,8)->DOWN into
+        -- (22,9). This is the hidden top-right exterior strip connector.
+        ["22,8"] = true,
+        -- Follow-up after (22,8)->DOWN was proven blocked: the same exterior
+        -- strip continues east across tile-0 cells. Direct/raw probes moved
+        -- (22,8)->(23,8), forced (23,8)->(24,8), (24,8)->(25,8),
+        -- forced (25,8)->(26,8), then (26,8)->DOWN into normal floor (26,9).
+        ["23,8"] = true,
+        ["24,8"] = true,
+        ["25,8"] = true,
+        ["26,8"] = true,
+        -- 2026-05-25 hidden-bridge frontier follow-up: with the route split
+        -- between the normal castle side and the southeast x=29 lane,
+        -- probe_edge_verify:29,7,DOWN,5 moved into tile-0 (29,8) 6/6
+        -- including the stability recheck. This opens the proven vertical
+        -- strip toward (29,9) without reopening the guarded west entries into
+        -- the world-map transition cells.
+        ["29,8"] = true,
+        -- 2026-05-23 Sun Shrine forward route: user manual play found the
+        -- x=25 north/south descent. Direct probe_edge_verify:25,10,DOWN,5
+        -- entered (25,11) 6/6 despite tile=0, and a force-positioned raw probe
+        -- from (25,11)->DOWN entered ordinary floor at (25,12).
+        ["25,11"] = true,
         -- x=5 column y=6 decoder gap: tile=0 but engine-walkable.
         -- Connects (5,7) [tile=6, walkable] to (5,5) [tile=6, walkable].
         -- Confirmed 2026-04-22 via probe_edge: status=moved, tile=0, moved_through_modeled_block.
@@ -367,6 +406,13 @@ local MAP_PASSTHROUGH_CELLS = {
         --   (4,5)→north→(4,4)→east→(5,4)→east→(6,4)→east→(7,4)[passthrough]→north→east wing.
         -- Also resolves (5,5) dead-end: from (5,5) north→(5,4)→(6,4)→(7,4) is now viable.
         ["4,4"] = true, ["5,4"] = true, ["6,4"] = true,
+        -- South gate exit tile. Live FCEUX validation on 2026-05-25 showed
+        -- queued movement from the south gate row can settle on tile-0
+        -- `(11,29)`, and pathfinding from that tile reaches the open
+        -- Magic Key Merchant route via `(11,28)`. Keep the surrounding
+        -- verified south-gate wall blockers intact; this opens only the
+        -- standable exit cell itself.
+        ["11,29"] = true,
         -- x=7-8, y=3-5 northwest corridor decoder gaps: tile=0 but engine-walkable.
         -- (7,3)+(7,4): confirmed 2026-04-21 via probe_edge (status=moved, tile=0).
         -- (7,3) south=true: engine blocks northward entry from (7,4) — confirmed 2026-04-22
@@ -882,33 +928,18 @@ local MAP_PASSTHROUGH_CELLS = {
 -- door at (x,y) appears in the opened-door array; otherwise false.
 local MAP_DOOR_CELLS = {
     -- Map 0x04: Tantegel Castle main hall
-    -- y=6 magic-key door band: five F- (type 15) tiles confirmed by dump_grid
-    -- (2026-04-26). These are the ONLY type-15 tiles on this map.
+    -- Live FCEUX door checks on 2026-05-22 found the two real 1F
+    -- magic-key doors. The old y=6 type-15 band is not a door band: OPEN
+    -- returns "There is no door here" there, and live movement can enter
+    -- several of those cells without consuming keys or writing door RAM.
     --
-    -- These doors provide the DIRECT CENTER crossing from the main hall (y=7+)
-    -- to the north section (y=5 and above). Of the five, only (14,6) is useful
-    -- for pathfinding: it leads to (14,5)[passthrough]→(14,4)[passthrough]→east
-    -- wing. Doors (10,6)–(13,6) exit to cells in the antechamber north wall
-    -- (y=5, x=8-12 in MAP_BLOCKED_CELLS) and provide no viable path.
-    --
-    -- NOTE: The x=5 decoder gap bypass reaches the y=4 east connector up to the
-    -- west side of the confirmed east-wall seams: (5,7)→(5,6)[passthrough]→
-    -- (5,5)→(5,4)[passthrough]→(6,4)[passthrough]→(7,4)[passthrough]→
-    -- (8,4)[passthrough]→y=4 corridor. It does NOT prove all east-side targets
-    -- are key-free: the far-east cluster past the confirmed 21,4/21,5 west
-    -- blocks remains no-path from (10,8)/(10,10) in parked-NPC checks
-    -- (2026-04-26). The magic-key doors provide a shorter center crossing once opened.
-    --
-    -- Opening any door (facing north + OPEN command + magic key) records that
-    -- door's (x,y) in the opened-door RAM array ($600C/$600D, up to 8 slots).
-    -- The pathfinder then routes through whichever door(s) are open. Doors reset
-    -- to closed on each map re-entry (RAM clears on map load).
+    -- Opening a door records that door's (x,y) in the opened-door RAM array
+    -- ($600C/$600D, up to 8 slots). The pathfinder then routes through
+    -- whichever door(s) are open. Doors reset to closed on each map re-entry
+    -- (RAM clears on map load).
     [0x04] = {
-        ["10,6"] = {x=10, y=6},
-        ["11,6"] = {x=11, y=6},
-        ["12,6"] = {x=12, y=6},
-        ["13,6"] = {x=13, y=6},
-        ["14,6"] = {x=14, y=6},
+        ["4,13"] = {x=4, y=13},
+        ["18,6"] = {x=18, y=6},
     },
     -- Map 0x05: Tantegel Castle Throne Room
     -- (4,7) = south-wall arch doorway. ROM tile is type-15 (wall), but the
@@ -1074,21 +1105,23 @@ local MAP_BLOCKED_CELLS = {
         -- are bidirectional; x=15,16,17 are one-way southward (south=true in directional
         -- blocks). x=18,19,20 are floor tiles with the same one-way pattern. (15,16) also
         -- has west=true. See MAP_PASSTHROUGH_CELLS and MAP_DIRECTIONAL_BLOCKS below.
-        ["19,21"] = true,
+        -- Do not block (19,21): the 2026-05-23 frontier crawl flagged it as a
+        -- timing-suspect false wall, then direct live probes moved into it from
+        -- (19,20), (19,22), and (20,21). Its west exit still cannot progress
+        -- because (18,21) remains a full-cell blocker.
         -- (13,13): one-way-entry trap. Tile type=4 (floor), accepts entry from west (x=12
         -- going east), but all 4 exits blocked (engine refuses south/west/north/east).
         -- Confirmed by survey run 5 (2026-04-15): blocked_events=4, all directions 3-for-3 timeout.
         -- Pathfinder chose it as adj to Guard 3 (14,13) with 3-step path; (14,12) is the
         -- safe 5-step alternative. Blocking (13,13) makes A* pick (14,12) instead.
         ["13,13"] = true,
-        -- (28,11): one-way-entry trap. Tile type=8 (walkable in ROM), but all 4 engine exits
-        -- blocked: north→(28,10) refused, south→(28,12) refused, east→(29,11) refused,
-        -- west→(27,11) is void tile. Confirmed 2026-04-16 via survey runtime blocks during
-        -- Guard 1 path (approach from south via (28,12)→north is the only way in).
-        -- A* currently routes through here on the only model path to Guard 1's cluster (y=4,
-        -- x=9-15). Blocking it forces A* to route one step east via (29,12)→(29,11)→(29,9)
-        -- instead, which the engine has not blocked.
-        ["28,11"] = true,
+        -- (28,11): was previously modeled as a full blocker from one-way data, but live
+        -- probing proved it is physically walkable:
+        -- - (28,10)->DOWN entered (28,11) repeatedly during probe_edge_verify
+        -- - (28,11)->UP moved back to (28,10) on probe_edge
+        -- - (28,11)->RIGHT moved to the World Map at (29,11)
+        -- Keep this cell in the standard walkability model (tile=8) and do not add
+        -- full-cell or directional blocks here.
         -- x=12 column engine barriers at y=17-18 confirmed 2026-04-09 via survey_map:
         -- survey consistently suspects these as blocking the northward path from (13,19).
         -- A* routes through (12,19)→(12,18)→(12,17) to reach north hall; engine refuses.
@@ -1096,7 +1129,7 @@ local MAP_BLOCKED_CELLS = {
         ["12,17"] = true, ["12,18"] = true,
         -- South-west full block confirmed 2026-04-09 via survey_map (all 4 approaches blocked, count=13)
         ["3,22"] = true,
-        ["16,24"] = true, ["17,24"] = true, ["18,24"] = true, ["21,22"] = true, ["21,23"] = true,
+        ["16,24"] = true, ["17,24"] = true, ["18,24"] = true,
         ["13,25"] = true, ["12,26"] = true, ["13,26"] = true, ["16,25"] = true, ["16,27"] = true, ["13,27"] = true, ["15,28"] = true,
         ["21,18"] = true,
         ["14,28"] = true,
@@ -1116,22 +1149,29 @@ local MAP_BLOCKED_CELLS = {
         -- pathfinding report tile=6 walkable=true.
         ["19,2"] = true,
         -- East-wing pocket walls confirmed by survey run (2026-04-19).
-        -- Start at (22,22) routes south to (22,23); from there (22,22) is a
-        -- one-way entry (can't re-enter from south) and (23,23) is blocked
-        -- from the west. Two confirmed blocks cut the pocket off entirely.
-        ["22,22"] = true, ["23,23"] = true,
+        -- Later FCEUX rechecks disproved (22,22) as a full blocker:
+        -- (23,22)->LEFT moved into it cleanly on 2026-05-24. Keep the
+        -- remaining shelf throat directional and leave only the confirmed
+        -- row-23 wall as a full blocker here.
+        ["23,23"] = true,
         -- West alcove walls confirmed by survey run (2026-04-19).
         -- The west alcove (x=1-3, y=11-15) is a sealed room; the only entrance
         -- is through (4,16) to the south. Tile type is 6 (carpet) in ROM for all
         -- of these, so A* treats them as walkable — but the engine refuses entry.
         -- Seam observer confirmed all 11 cells as engine-blocked during survey.
+        -- Live FCEUX recheck on 2026-05-22 kept most of the x=4 strip
+        -- sealed: (3,11..15)->RIGHT, (5,12..15)->LEFT, and (4,16)->UP all
+        -- verified blocked 5/5; (5,11)->LEFT repeated as blocked 10/10.
+        -- The later door investigation split out (4,13) as the real west
+        -- treasure-room magic-key door, so that coordinate belongs in
+        -- MAP_DOOR_CELLS instead of this full-block list.
         -- Adding them here prevents A* from routing through the walls and
         -- triggering the confirm→reroute→no-path failure cascade.
         --
-        --   East wall:  x=4, y=11-15 (player at x≤3 can't move east past column 4)
+        --   East wall:  x=4, y=11-12 and 14-15 (4,13 is a door)
         --   North wall: y=10, x=1-3  (player at y≥11 can't move north into y=10)
         --   South wall: y=16, x=1-3  (player at y≤15 can't move south into y=16)
-        ["4,11"] = true, ["4,12"] = true, ["4,13"] = true, ["4,14"] = true, ["4,15"] = true,
+        ["4,11"] = true, ["4,12"] = true, ["4,14"] = true, ["4,15"] = true,
         ["1,10"] = true, ["2,10"] = true, ["3,10"] = true,
         ["1,16"] = true, ["2,16"] = true, ["3,16"] = true,
     },
@@ -1214,6 +1254,32 @@ local MAP_HAZARD_CELLS = {
         -- and led directly into the "Thou art dead." sequence. Treat as
         -- pathfinder-forbidden for normal auto-walk/teleport/auto-step use.
         ["10,18"] = "damage",
+        -- 2026-05-22 Sun Shrine route: autowalk from the entrance to (29,29)
+        -- crossed the neighboring barrier pocket and left HP at 9. The route
+        -- stepped through these passable tile-6 cells while avoiding only the
+        -- previously modeled (10,18) hazard. Follow-up FCEUX live checks
+        -- cleared (11,19): raw probe movement into that cell succeeded and HP
+        -- stayed 54/54 afterward, so keep only the north pair hazardous.
+        ["9,18"] = "damage",
+        ["11,18"] = "damage",
+        -- 2026-05-23 Sun Shrine forward route: a natural BizHawk autowalk
+        -- from the both-doors-open throne-side save crossed this lower
+        -- x=25/x=26 pocket and later died in the same cluster. Follow-up
+        -- live probes cleared (26,20) specifically, but repeated evidence
+        -- still supports the remaining three-cell damage segment so A* uses
+        -- the far-east descent instead of routing through the damage.
+        ["25,18"] = "damage",
+        ["26,18"] = "damage",
+        ["26,19"] = "damage",
+        -- 2026-05-23 throne-side reroute after (26,16)/(27,17) fixes:
+        -- a natural BizHawk autowalk detoured through the x=23 barrier lane
+        -- and HP dropped from 54/54 before the lane to 9/54 at (23,21).
+        -- Keep the observed vertical segment hazard-forbidden so A* does not
+        -- trade a hidden-wall loop for a lethal damage route.
+        ["23,18"] = "damage",
+        ["23,19"] = "damage",
+        ["23,20"] = "damage",
+        ["23,21"] = "damage",
     },
 }
 
@@ -1243,11 +1309,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
     --   y=9 at x=6 is the ONLY valid antechamber→west wing crossing — NOT blocked.
     --   y=11-12 at x=6: unconfirmed; speculative entries removed 2026-04-08.
     --
-    -- Antechamber south corridor (x=13-14, y=9) confirmed 2026-04-09:
-    --   These cells form a one-way east-entry corridor along the antechamber south wall.
-    --   (13,9): blocked from west, north, south — only reachable from east (from (14,9))
-    --   (14,9): blocked from north, south — reachable from east (x=15) and west (x=13)
-    --   A* must not attempt to use these cells as a vertical shortcut at y=9.
+    -- Antechamber south corridor (x=13-14, y=9):
+    --   This corridor appears state/order sensitive. A 2026-05-24 fresh FCEUX
+    --   recheck moved (12,9)->RIGHT, but a later restored-state autowalk and
+    --   direct verifier blocked (12,9)->RIGHT 5/5 while (13,9)->LEFT moved 6/6.
+    --   Keep the west approach open in the default map model because closing it
+    --   can make the entrance-side route impossible when Guard 7 occupies
+    --   (8,8). Live failures are handled with route-local temp blocks.
     --
     -- x=15 wall north extension confirmed 2026-04-09:
     --   The engine wall at x=15 (confirmed y=10-16 in MAP_BLOCKED_CELLS) continues
@@ -1257,7 +1325,6 @@ local MAP_DIRECTIONAL_BLOCKS = {
     --
     -- Interior directional barriers:
     --   (4,9): blocked from east and north — antechamber south door region
-    --   (4,15): blocked from east
     --   (4,16): blocked from east and south
     [0x04] = {
         -- x=6 east wall: y=14-16 confirmed via runtime reroutes 2026-04-08.
@@ -1281,9 +1348,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- twice on immediate retest; south ((4,17)->(4,16)) moved through the
         -- old modeled block twice. Keep east+west and drop the stale south face.
         ["4,16"] = {east = true, west = true},
-        -- x=4 east wall (y=9-16): west wing interior east boundary.
-        -- y=9 and y=15-16 previously confirmed; y=10-12 and y=14 confirmed 2026-04-09 via survey_map
-        -- (count=5-6 high confidence each, east=true = can't enter from east/move west into cell).
+        -- x=4 east wall: west wing interior east boundary.
+        -- y=11-15 are full blocked cells in MAP_BLOCKED_CELLS, not
+        -- directional-only entries. The old directional shadows were removed
+        -- after the 2026-05-22 live recheck resolved the evidence conflict.
         -- (4,7): east wall confirmed 2026-04-13 (approach=east, auto_step:left from (5,7)).
         -- west=true added 2026-04-26: post-reload direct probe from (3,7) RIGHT
         -- stayed at (3,7), while neighboring reroute-only candidates (3,6 south
@@ -1295,21 +1363,65 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (4,5)→north→(4,4)→east→(5,4)→east→(6,4)→east→(7,4)→east→(8,4)→east wing via y=4.
         -- (4,4),(5,4),(6,4) confirmed 2026-04-22 as engine-walkable decoder gaps.
         -- (8,4) confirmed 2026-04-22 as decoder gap (tile=0); bridges (7,4) to regular floor at (9,4)+.
-        -- y=13 reopened 2026-04-18: direct probe from (5,13)->(4,13) moved cleanly,
-        -- and once inside, west-side targets regained short valid paths.
         ["4,7"]  = {east = true, west = true, south = true},
         ["4,9"]  = {east = true, north = true},  -- antechamber south door region; confirmed
         ["4,10"] = {east = true},                -- survey run4 count=5 high
-        ["4,11"] = {east = true},                -- survey run4 count=5 high
-        ["4,12"] = {east = true},                -- survey run4 count=5 high
-        ["4,14"] = {east = true},                -- survey run4 count=5 high
-        ["4,15"] = {east = true},                -- confirmed via runtime reroute
         -- Antechamber south corridor: confirmed 2026-04-09 via inspect_move probing
-        ["13,9"] = {west = true, north = true, south = true},
+        -- 2026-05-22 Sun Shrine route after hazard expansion: the planner
+        -- detoured through the east wing and repeatedly tried north approaches
+        -- from the y=4 corridor; queued step plus seam retry stayed blocked.
+        -- 2026-05-23 post-(22,8) reload route test: the new top-right route
+        -- looped at (14,6)->UP. Direct probe_edge_verify:14,6,UP,5 blocked
+        -- 5/5, so close the south approach too while leaving (14,5) itself
+        -- standable for routes that can naturally reach it from valid sides.
+        ["14,5"] = {north = true, south = true},
+        ["15,5"] = {north = true},
+        -- 2026-05-25 restored-state autowalk and direct verifier:
+        -- (12,9)->RIGHT blocked 5/5 while reverse (13,9)->LEFT moved 6/6,
+        -- but closing west by default can remove the only entrance-side route
+        -- around stationary Guard 7. Keep west open here and let route-local
+        -- temp blocks handle live gate rejection.
+        ["13,9"] = {north = true, south = true},
+        -- 2026-05-23 fixed-verifier retest: (14,8)->DOWN into (14,9)
+        -- blocked 5/5 with blocked_model_mismatch=5. Earlier moved evidence
+        -- was another unstable row-9 latch result. Keep west open but close
+        -- north and south approaches.
         ["14,9"] = {north = true, south = true},
-        -- x=15 wall north extension: confirmed 2026-04-09 via inspect_move probing
-        ["15,7"] = {west = true},
-        ["15,8"] = {west = true},
+        -- x=15 wall north extension: confirmed 2026-04-09 via inspect_move probing.
+        -- 2026-05-22 key-merchant return route repeatedly hit the same wall from
+        -- the east side; direct probe_edge_verify from (16,7)->LEFT and
+        -- (16,8)->LEFT each blocked 5/5.
+        -- 2026-05-23 Sun Shrine route bracketing later found a verifier-only
+        -- moved_model_mismatch on (14,7)->RIGHT, but route-shaped autowalk
+        -- evidence blocked 9/9 at this edge. Keep both horizontal approaches
+        -- closed until a natural route proves otherwise.
+        ["15,7"] = {west = true, east = true},
+        ["15,8"] = {west = true, east = true},
+        -- Key-merchant return cleanup. Autowalk from the opened (18,6) door
+        -- toward the exit repeatedly tried (16,8)->DOWN; direct verifier
+        -- confirmed the north approach into (16,9) blocked 5/5.
+        ["16,9"] = {north = true},
+        -- 2026-05-22 Sun Shrine route after hazard expansion: the planner
+        -- detoured through the east wing and repeatedly tried north approaches
+        -- from row 8; queued step plus seam retry stayed blocked.
+        -- Entrance-route verification then confirmed (18,8)->DOWN and
+        -- (19,8)->DOWN blocked 5/5 after the first four patches.
+        ["17,9"] = {north = true},
+        ["18,9"] = {north = true},
+        ["19,9"] = {north = true},
+        ["20,9"] = {north = true},
+        ["21,9"] = {north = true},
+        -- 2026-05-23 top-right Sun Shrine route: after (22,8) was promoted as
+        -- the hidden exterior-strip passthrough, route-shaped movement and a
+        -- clean direct probe_edge_verify:22,8,DOWN,5 both stayed blocked at
+        -- the north approach into (22,9). Keep the row-8 connector open while
+        -- closing this southward descent.
+        ["22,9"] = {north = true},
+        -- 2026-05-24 Sage-route alternate-path check: after routing around the
+        -- mixed (21,17).east seam, direct probe_edge_verify:24,8,DOWN,5
+        -- blocked 5/5 with blocked_model_mismatch=5. Keep the top strip
+        -- horizontal-only here instead of letting A* descend through (24,9).
+        ["24,9"] = {north = true},
         -- Survey-confirmed directional blocks 2026-04-09 (survey_map run, 22 failures / 30 targets)
         -- All entries confidence=high unless noted. Approach conventions:
         --   north=true: approaching from north (moving south into cell) is blocked
@@ -1327,11 +1439,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- checks also block (5,13)->(6,13) from the west twice and promote the
         -- seam to confirmed_blocked after the survey hit.
         ["6,13"] = {east = true, west = true},
-        -- Reconfirmed 2026-04-19 after reload:
-        -- (5,13)->(4,13) now blocks cleanly on direct probe, while
-        -- (4,13)->(5,13) still moves. Model the west-pocket gate as a one-way
-        -- east-approach block without sealing the corridor from inside.
-        ["4,13"] = {east = true},
+        -- The older (4,13) directional-only note was superseded by the
+        -- 2026-05-22 live recheck; (4,13) is now modeled as the live
+        -- treasure-room magic-key door in MAP_DOOR_CELLS.
         -- West corridor band (y=16-18, x=9-12):
         -- x=9-12 at y=16 form a north-approach wall extending the y=16 barrier westward.
         ["9,16"]  = {north = true, west = true},   -- count=30
@@ -1341,34 +1451,128 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- also failed during a long Guard 2 survey route, so this cell blocks
         -- east approach in addition to the earlier north-side evidence.
         ["12,16"] = {north = true, east = true},
-        -- (15,16): west=true confirmed real (probe_edge:RIGHT from (14,16) blocked 2026-04-21).
-        -- south=true restored 2026-04-21: MAP_PASSTHROUGH_CELL (tile=11 but engine-walkable).
-        -- All of x=15..20 at y=16 are one-way southward — northward entry blocked by engine.
-        -- Only x=13,14 at y=16 are bidirectional (confirmed by probe 2026-04-21).
-        ["15,16"] = {west = true, south = true},
+        -- (15,16): south=true restored 2026-04-21: MAP_PASSTHROUGH_CELL
+        -- (tile=11 but engine-walkable). A 2026-05-23 throne-room-to-Sun-
+        -- Shrine route failure at (14,16)->RIGHT was reproduced with
+        -- probe_edge_verify:14,16,RIGHT,5, which blocked 5/5 with no drift,
+        -- map change, or NPC contamination. Close only the west approach.
+        ["15,16"] = {south = true, west = true},
         -- (16,16): south=true restored — same one-way southward pattern as (15,16).
         -- east=true was a false positive (probe_edge:LEFT from (17,16) moved freely 2026-04-21).
-        ["16,16"] = {south = true},
-        -- (17,16): south=true restored — same one-way southward pattern.
-        ["17,16"] = {south = true},
+        -- 2026-05-25 key-merchant-to-exit route shakedown, after clean restore
+        -- and input recovery, confirmed (16,15)->DOWN blocks 5/5. Keep the
+        -- cell standable via MAP_PASSTHROUGH_CELLS but close its north entry.
+        ["16,16"] = {south = true, north = true},
+        -- (17,16): south=true restored — same one-way southward pattern. The
+        -- same clean 2026-05-25 shakedown confirmed (17,15)->DOWN blocks 5/5.
+        ["17,16"] = {south = true, north = true},
         -- (18,16): floor tile (type 4). South=true confirmed real — re-verify probe from
         -- (18,17) UP blocked; northward entry from (18,15) DOWN moved freely (one-way).
         ["18,16"] = {south = true},
-        -- (19,16): south=true confirmed real 2026-04-21. Northward entry from (19,15) free.
-        ["19,16"] = {south = true},
-        -- (20,16) south: blocks north step from (20,17). Confirmed by 10 independent survey
-        -- failures in run 4 (2026-04-15). Previously removed as "false positive" after run 2,
-        -- but run 4 with the cache-coherence bug fixed still fails consistently. Real block.
-        ["20,16"] = {south = true},
-        -- (21,17) west: blocks east step from (20,17). Same run-4 evidence (10 failures).
-        -- Manual test on session S115 verified (20,17)↔(21,17) but only tested approach
-        -- from east (going west). West approach (going east from (20,17)) is engine-blocked.
-        -- With (21,18) and (21,19) already full-blocked, east wing is entered via y≤16 only.
-        ["21,17"] = {west = true},
+        -- (19,16): south=true confirmed real 2026-04-21. A later 2026-05-24
+        -- Sage-route verifier from (19,15)->DOWN blocked 5/5 with no drift,
+        -- map change, or interruption, so the north approach is also closed.
+        ["19,16"] = {south = true, north = true},
+        -- (20,16) south: blocks north step from (20,17). Confirmed by 10
+        -- independent survey failures in run 4 (2026-04-15). A later
+        -- 2026-05-24 Sage-route verifier from (20,15)->DOWN also blocked 5/5,
+        -- so close the north approach too.
+        ["20,16"] = {south = true, north = true},
+        -- 2026-05-23 post-reload fixed-verifier retest confirmed the
+        -- one-way seam: (20,17)->RIGHT blocked 5/5, while reverse
+        -- (21,17)->LEFT moved 6/6 including the stability recheck.
+        -- A later 2026-05-24 post-row-22-corridor autowalk retest exposed
+        -- the sibling east-side face too: direct probe_edge_verify from
+        -- live `(22,17)->LEFT` blocked 5/5 with no drift, map change, or
+        -- interruption, so the east approach is also closed.
+        ["21,17"] = {east = true, west = true},
+        -- The same 2026-05-24 retest repeatedly rerouted into
+        -- `(22,17)->UP`; direct probe_edge_verify there also blocked 5/5
+        -- with no drift, map change, or interruption, so close the south
+        -- approach into `(22,16)`.
+        -- A later north-pocket reroute from live `(22,15)` also blocked 5/5
+        -- on `(22,15)->DOWN`, so the north approach is closed too.
+        ["22,16"] = {south = true, north = true},
+        -- 2026-05-24 follow-up after the row-22 corridor restoration:
+        -- live autowalk then exposed the next west-face walls in this row-15/16
+        -- pocket. Direct probe_edge_verify from forced `(25,15)` blocked 5/5
+        -- with no drift, map change, or interruption, so close the east
+        -- approach into `(24,15)`.
+        ["24,15"] = {east = true},
+        -- 2026-05-24 rerouted shrine continuation after promoting
+        -- `(21,14).north`: direct probe_edge_verify from forced `(25,14)`
+        -- blocked 5/5 with no drift, map change, or interruption, so close
+        -- the east approach into `(24,14)`.
+        ["24,14"] = {east = true},
+        -- 2026-05-24 clean restore after rejecting `(23,16).south` as a false
+        -- candidate: the rerouted shrine path then repeatedly stalled on
+        -- `(21,13)->DOWN`. Direct probe_edge_verify from forced `(21,13)`
+        -- blocked 5/5 with no drift, map change, or interruption, so close
+        -- the north approach into `(21,14)`.
+        -- A later reroute from live `(22,14)` also blocked 5/5 on
+        -- `(22,14)->LEFT`, so the east approach is closed too.
+        ["21,14"] = {north = true, east = true, west = true},
+        -- The sibling row directly below also blocked on direct verifier from
+        -- forced `(25,16)`, so keep the east approach into `(24,16)` closed.
+        ["24,16"] = {east = true},
+        -- 2026-05-24 recovered shrine-route rerun from live `(25,15)` kept
+        -- looping on the row-17 north faces. Fresh direct probe_edge_verify
+        -- from forced `(23,17)` then blocked 5/5 with no drift, map change, or
+        -- interruption, so close the south approach into `(23,16)`.
+        -- A later reroute from live `(23,15)` also blocked 5/5 on
+        -- `(23,15)->DOWN`, so the north approach is closed too.
+        ["23,16"] = {south = true, north = true},
+        -- The sibling face at `(24,17)->UP` verified the same way from a clean
+        -- stopped origin, so also close the south approach into `(24,16)`.
+        -- A later reroute from live `(24,15)` also blocked 5/5 on
+        -- `(24,15)->DOWN`, so the north approach is closed too.
+        ["24,16"] = {east = true, south = true, north = true},
+        -- 2026-05-24 rerouted north-pocket follow-up after the row-17
+        -- promotions: direct probe_edge_verify from live `(22,15)` blocked 5/5
+        -- with no drift, map change, or interruption, so close the east
+        -- approach into `(21,15)`.
+        ["21,15"] = {east = true, west = true},
+        -- 2026-05-24 west-pocket continuation after emulator recovery:
+        -- direct probe_edge_verify from live `(19,14)` blocked 5/5 on the west
+        -- approach into `(18,14)`, while forced `(18,14)->RIGHT` moved back
+        -- through and settled east. Keep only the east approach closed; the
+        -- north face stayed mixed and should remain unmodeled for now.
+        ["18,14"] = {east = true},
+        -- 2026-05-24 west-pocket continuation after the hidden-alcove bridge:
+        -- live `(19,15)->LEFT` blocked cleanly from a natural routed arrival,
+        -- while forced `(18,15)->RIGHT` moved back through and later
+        -- `(17,15)->RIGHT` also moved into `(18,15)`. Keep only the east
+        -- approach closed; the old west-side runtime helper was disproved and
+        -- removed after the direct reverse probe.
+        ["18,15"] = {east = true},
+        -- 2026-05-24 southeast-pocket bridge retest after user manual run-up:
+        -- live `(20,22)->RIGHT` kept blocking from a natural route arrival and
+        -- from a clean reloaded standstill, while forced `(21,22)->LEFT` moved
+        -- back through and settled at `(19,22)`. Mirroring this one-way seam
+        -- at runtime collapsed west-side hazards-allowed planning from
+        -- `(17,15)` to `No path found`, while forced `(21,22)` still had a
+        -- clean remainder route `8 east, 7 south`. Keep the east approach into
+        -- `(21,22)` closed even though the teleported verifier stayed mixed.
+        ["21,22"] = {west = true},
+        -- 2026-05-24 west-pocket continuation after the row-23 bridge fix:
+        -- natural routed `(20,23)->RIGHT` into `(21,23)` blocked repeatedly,
+        -- and a quiet current-position `probe_edge:RIGHT` from `(20,23)` also
+        -- blocked with `raw_hold_timeout`, while forced `(21,23)->LEFT` moved
+        -- back through and settled at `(20,23)`. Close only the west approach
+        -- into `(21,23)`.
+        ["21,23"] = {west = true},
+        -- 2026-05-24 same row-23 bracket from the east side:
+        -- current-position `(21,23)->RIGHT` into `(22,23)` also blocked on a
+        -- quiet direct probe, while forced `(22,23)->LEFT` moved back through
+        -- and settled at `(20,23)`. Close only the west approach into
+        -- `(22,23)`.
+        ["22,23"] = {west = true},
         -- 2026-05-14 southeast hall retest: (20,20) is standable and raw probes
         -- crossed north/south/west plus reverse east. Only (20,20)->RIGHT into
         -- (21,20) blocked, so model the west approach to (21,20) one-way.
-        ["21,20"] = {west = true},
+        -- 2026-05-24 Sage-route verifier from (22,20) then confirmed the east
+        -- approach blocked 5/5 with no drift, map change, or interruption.
+        ["21,20"] = {west = true, east = true},
         -- (7,3) south=true: engine blocks northward entry from (7,4).
         -- Confirmed 2026-04-22 probe_edge:UP from (7,4) → blocked_despite_open_preview.
         -- (7,3) exits south to (7,4) freely; only entry from below is blocked.
@@ -1427,10 +1631,32 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- full script reload and normalized adjacent-start controls, raw input also
         -- stayed in place for 20,6 north and 21,4/21,5 west. Treat the earlier
         -- "moved" result as contaminated by stale movement/subtile state.
+        -- 2026-05-22 follow-up found (18,6) is a real magic-key door:
+        -- OPEN from (18,5) facing south consumed a key and wrote door RAM
+        -- slot 1=(18,6), so it is modeled in MAP_DOOR_CELLS instead of as
+        -- a permanent directional blocker.
         ["17,6"]  = {north = true},
-        ["18,6"]  = {north = true},
         ["19,6"]  = {north = true},
-        ["20,6"]  = {north = true},
+        -- 2026-05-22 key-merchant entrance-route follow-up: the actual route
+        -- to the merchant stand can traverse row 6 horizontally, but row 7
+        -- cannot enter the row-6 counter/wall band from below at x=20..23.
+        -- Direct probe_edge_verify checks from (20,7)..(23,7) UP each blocked
+        -- 5/5; (18,6)->RIGHT and (19,7)->UP later rechecked passable 5/5, so
+        -- keep (19,6).west/south open.
+        ["20,6"]  = {north = true, south = true},
+        ["21,6"]  = {south = true},
+        ["22,6"]  = {south = true},
+        ["23,6"]  = {south = true},
+        -- 2026-05-25 follow-up after the southeast-stairs detour: later clean
+        -- verifiers moved 6/6 for (25,5)->DOWN, (26,5)->DOWN, (25,7)->UP,
+        -- (26,7)->UP, and (26,7)->RIGHT. Keep (25,6), (26,6), and the
+        -- west approach into (27,7) open; the earlier route blockers were
+        -- state/timing contamination.
+        -- Magic-key merchant counter/wall pocket. The service stand is (24,3)
+        -- facing north; (24,2)/(25,2) look walkable to the ROM decoder but
+        -- direct raw verifiers from below blocked 5/5.
+        ["24,2"]  = {south = true},
+        ["25,2"]  = {south = true},
         ["21,4"]  = {west = true},
         ["21,5"]  = {west = true},
         -- x=15 east-entry: re-confirmed 2026-04-24 via natural walk (teleport
@@ -1505,6 +1731,212 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (13,28).south added 2026-05-14 from the same stair-route failure:
         -- (13,29)->UP verified 5/5 blocked after the route rerouted east.
         ["13,28"] = {south = true},
+        -- Sun Shrine stair pocket. Started from the small pocket side on
+        -- 2026-05-22; direct verifiers from (27,28) in all four directions
+        -- blocked 5/5, proving this is not the entrance bridge.
+        ["26,28"] = {east = true},
+        ["27,27"] = {south = true},
+        ["27,29"] = {north = true},
+        ["28,28"] = {west = true},
+        -- 2026-05-22 accidental throne-room route shakedown: the route looped
+        -- between (28,16)/(28,17), and direct queued + seam-retry evidence
+        -- showed the east approach into (27,17) blocked in that run.
+        -- Same shakedown found the initial westward entry from (28,20) into
+        -- this southeast pocket blocked on queued route plus seam retry.
+        ["27,20"] = {east = true, west = true, south = true},
+        -- 2026-05-23 throne-room-to-Sun-Shrine autowalk reached the southeast
+        -- pocket after the (21,17).west fix. Hardened direct verifiers then
+        -- confirmed these false exits blocked 5/5 with no drift, map change,
+        -- or interruption. (25,22).north supersedes an earlier mixed result
+        -- after a later quiet verifier from the live pinball point.
+        -- After the x=25 descent passthrough was added, the next clean route
+        -- loop hit (26,14)->RIGHT; direct verifier blocked 5/5.
+        -- The top-strip reload route then reached the x=25 descent and hit
+        -- (26,13)->RIGHT repeatedly; direct probe_edge_verify:26,13,RIGHT,5
+        -- confirmed the west approach into (27,13) blocked 5/5.
+        -- After the lower damage pocket was modeled as hazard-forbidden,
+        -- probe_edge_verify:26,12,RIGHT,5 confirmed the row-12 approach
+        -- into (27,12) blocked 5/5 with no drift, map change, or interruption.
+        -- The same route then reached (26,17). After a later direct forced-origin
+        -- passability signal was observed once, fresh autowalk and direct verifier
+        -- checks now consistently block the bridge step to the west. Treat this as
+        -- a confirmed one-way wall.
+        -- 2026-05-24 live hazard-pocket continuation from the revived FCEUX
+        -- state confirmed the next two east exits are the same kind of hidden
+        -- west-approach wall. From live current positions on the hazard tiles,
+        -- raw `probe_edge:RIGHT` from (26,18) and from (26,19) each blocked
+        -- three times with `raw_hold_timeout`, while `inspect_move` still
+        -- previewed ordinary floor and no modeled directional block.
+        -- The same restored-save branch then reached (27,20), where the
+        -- southward continuation into (27,21) blocked 3/3 from a live current
+        -- position even though the model still previewed the north approach as
+        -- open. Once that north approach was blocked at runtime, the planner
+        -- immediately rerouted through (28,20)->(28,21)->(28,22), and
+        -- current-position raw probing confirmed (27,20)->RIGHT into (28,20)
+        -- moved cleanly.
+        -- 2026-05-24 later FCEUX shrine-route continuation from live position
+        -- (26,21) reached (26,20), then repeatedly failed on the eastward
+        -- continuation into (27,20). Direct probe_edge_verify:26,20,RIGHT,5
+        -- blocked 5/5 with no drift, map change, or interruption, while
+        -- reverse probe_edge_verify:27,20,LEFT,5 moved 6/6 including the
+        -- delayed stability recheck. Keep this as a west-approach one-way
+        -- seam too.
+        -- Its reroute then tried (26,17)->UP; probe_edge_verify:26,17,UP,5
+        -- confirmed the south approach into (26,16) blocked 5/5.
+        -- After the x=23 damage lane was made hazard-forbidden, the only
+        -- remaining safe-looking bridge repeatedly stalled at (25,16)->RIGHT;
+        -- a frozen-NPC probe_edge_verify:25,16,RIGHT,10 confirmed the west
+        -- approach into (26,16) blocked 10/10.
+        -- The later live route then looped on the neighboring (25,15)->RIGHT
+        -- face; direct probe_edge_verify:25,15,RIGHT,5 confirmed the west
+        -- approach into (26,15) blocked 5/5. Hardened follow-up from
+        -- (26,14) confirmed the north approach into (26,15) blocked 5/5
+        -- with no drift, no map changes, and no interruptions.
+        -- 2026-05-24 follow-up after the seam-retry/autowalk patch restored
+        -- the west approach into (27,21) as a real blocker. Fresh FCEUX
+        -- retests after reload all failed from live state:
+        -- probe_edge:RIGHT from (26,21) blocked, simulate_raw_sequence and
+        -- simulate_raw_input holds from (26,21) stayed put, and long raw
+        -- RIGHT,80 from (25,21) only reached/stopped at (26,21).
+        -- Runtime reblocking (27,21).west also collapsed hazards-allowed
+        -- planning to (29,29) from both checked entrances, so the shrine
+        -- bridge is unresolved again rather than executable through 26,21.
+        ["26,15"] = {west = true, north = true},
+        ["26,16"] = {south = true, west = true},
+        ["27,18"] = {west = true},
+        ["27,19"] = {west = true},
+        ["27,21"] = {north = true, west = true},
+        ["27,12"] = {west = true},
+        ["27,13"] = {west = true},
+        ["27,14"] = {west = true},
+        ["27,17"] = {west = true},
+        -- 2026-05-24 FCEUX lower-shelf retest around the shrine approach:
+        -- (23,21)->DOWN into (23,22) blocked on raw hold timeout, while
+        -- reverse (23,22)->UP moved cleanly. The adjacent west shelf showed
+        -- the same one-way shape: (22,21)->DOWN into (22,22) blocked, but
+        -- (23,22)->LEFT moved into (22,22). A same-day recheck at the x=26
+        -- descent settled the earlier mixed evidence too:
+        -- probe_edge_verify:26,21,DOWN,5 blocked 5/5, while
+        -- probe_edge_verify:26,22,UP,5 moved 6/6 including the stability
+        -- recheck. Later same-day current-position probes inside the restored
+        -- pocket also blocked both `(23,22)->RIGHT` into `(24,22)` and the
+        -- reverse `(24,22)->LEFT`, so the east-west seam between those two
+        -- cells is closed as well. Continuing one cell farther east, direct
+        -- probes also blocked both `(24,22)->RIGHT` into `(25,22)` and the
+        -- reverse `(25,22)->LEFT`, while `(24,22)->DOWN` blocked but forced
+        -- `(24,23)->UP` moved back through and settled at `(24,21)`. A
+        -- follow-up pocket dig then found the next shelf is over-open too:
+        -- direct current-position `(25,22)->RIGHT` and forced
+        -- `(26,22)->LEFT` both blocked, and direct current-position
+        -- `(25,22)->DOWN` plus forced `(25,23)->UP` also both blocked. With
+        -- those two seams mirrored at runtime, hazards-allowed planning from
+        -- `(25,22)` finally collapsed to `No path found`, so keep the row-22
+        -- / row-23 throat closed in both directions. A later same-day clean
+        -- verifier pair closed the x=26 throat too:
+        -- - probe_edge_verify:26,22,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:26,23,UP,5 blocked 5/5
+        -- - probe_edge_verify:27,22,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:27,23,UP,5 blocked 5/5
+        -- - probe_edge_verify:27,23,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:27,24,UP,5 blocked 5/5
+        -- - probe_edge_verify:24,23,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:24,24,UP,5 blocked 5/5
+        -- - probe_edge_verify:25,23,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:25,24,UP,5 blocked 5/5
+        -- - probe_edge_verify:26,23,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:26,24,UP,5 blocked 5/5
+        -- - probe_edge_verify:27,23,RIGHT,5 blocked 5/5
+        -- - probe_edge_verify:28,23,LEFT,5 blocked 5/5
+        -- - probe_edge_verify:27,24,LEFT,5 blocked 5/5
+        -- - probe_edge_verify:26,24,RIGHT,5 blocked 5/5
+        -- - probe_edge_verify:27,24,RIGHT,5 blocked 5/5
+        -- - probe_edge_verify:28,24,LEFT,5 blocked 5/5
+        -- - probe_edge_verify:27,24,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:27,25,UP,5 blocked 5/5
+        -- That pair matches the live executor stall where forced
+        -- `(26,22)->auto_walk:29,29` planned `5 south, 3 east, 2 south` but
+        -- never left `(26,22)` on the first south step. The x=27 pair closes
+        -- the sibling south descent that appeared after the x=26 throat was
+        -- corrected, the same x=24/x=25/x=26 columns also close south on the
+        -- way into row 24, the x=27/x=28 handoff at row 23 is closed in both
+        -- directions, the adjacent x=27 lower pair closes the follow-up south
+        -- continuation the planner still tried from `(27,23)`, and the row-24
+        -- shelf itself is now verified boxed on all four sides.
+        ["22,22"] = {north = true},
+        ["23,22"] = {north = true, east = true},
+        ["24,22"] = {north = true, west = true, east = true},
+        ["25,22"] = {north = true, west = true, east = true, south = true},
+        ["26,22"] = {north = true, west = true, east = true, south = true},
+        ["24,23"] = {north = true, south = true},
+        ["24,24"] = {north = true},
+        ["25,23"] = {north = true, south = true},
+        ["25,24"] = {north = true},
+        ["26,23"] = {north = true, south = true},
+        ["26,24"] = {north = true, east = true},
+        ["27,23"] = {north = true, east = true, south = true},
+        ["28,23"] = {west = true, south = true},
+        -- 2026-05-24 post-reload east-pocket bracketing first looked like a
+        -- one-way horizontal shelf plus a real south break at the bottom of
+        -- the x=28 conveyor. Later same-day recheck after the x=26 throat
+        -- closure disproved the west side staying open:
+        -- - probe_edge_verify:26,22,RIGHT,5 blocked 5/5
+        -- - probe_edge_verify:27,22,LEFT,5 blocked 5/5
+        -- Keep the whole x=26/x=27 seam closed in both directions. The x=28
+        -- checks remain:
+        -- - probe_edge_verify:28,22,LEFT,5 blocked 5/5
+        -- - probe_edge_verify:28,23,DOWN,5 blocked 5/5
+        -- - probe_edge_verify:28,24,UP,5 blocked 5/5
+        -- Direct settled probes still move vertically through (28,22) between
+        -- (28,21) and (28,23), but forced `(29,22)->LEFT` also blocked 5/5,
+        -- so only the vertical conveyor stays open there. Keep the west-east
+        -- shelf shut from both confirmed x=27 faces and the east-facing x=28
+        -- side.
+        ["27,22"] = {north = true, west = true, east = true, south = true},
+        -- 2026-05-25 restored row-21 route retest: direct probe_edge from
+        -- live `(27,21)->RIGHT`, probe_edge_verify:27,21,RIGHT,5, and the
+        -- routed autowalk seam retry all blocked entry into `(28,21)` from
+        -- the west. Mirroring this edge collapses the false route to
+        -- `(29,29)`. Keep `(28,21).east` out of permanent data because
+        -- `(29,21)->LEFT` remains state/timing-dependent.
+        ["28,21"] = {west = true},
+        ["28,22"] = {east = true},
+        ["27,24"] = {north = true, west = true, east = true, south = true},
+        ["28,24"] = {north = true, west = true},
+        ["27,25"] = {north = true},
+        -- Upper-right exterior lane: clean route testing with both doors open
+        -- showed westward entries into (29,9) and (29,10) can trigger the
+        -- World Map transition instead of progressing toward the Sun Shrine.
+        -- 2026-05-25 route-temp-block validation found the same behavior
+        -- higher up: entering (29,3) from (28,3) reached the World Map before
+        -- the queued south descent could continue. Keep these as pathfinder
+        -- guards so routes use the x=25 descent.
+        ["29,3"] = {west = true},
+        ["29,9"] = {west = true},
+        ["29,10"] = {west = true},
+        -- 2026-05-23 autowalk stall near the throne-side bridge corridor:
+        -- direct probe_edge_verify showed one-way west-approach blocks into
+        -- (27,9) and (27,10): moving from (26,9)->(27,9) and (26,10)->(27,10)
+        -- was blocked 5/5 while reverse moves stayed open.
+        ["27,9"] = {west = true},
+        ["27,10"] = {west = true},
+        -- Southeast exterior lane / world-map exit pocket. Fresh 2026-05-24
+        -- rechecks showed this east boundary is mixed, not uniformly open:
+        -- - (28,20)->RIGHT changes to the World Map immediately
+        -- - (28,21)->RIGHT enters/stops on the castle-side x=29 lane
+        -- - (28,22)->RIGHT enters/stops on the castle-side x=29 lane
+        -- - (28,23)->RIGHT changes to the World Map immediately
+        -- - (29,21)->RIGHT and (29,22)->RIGHT also exit to the World Map
+        -- So the planner should only consider westward entry into the x=29
+        -- lane at y=21-22; y=20 and y=23 are exterior-exit seams instead.
+        -- A 2026-05-22 recheck with both Tantegel doors open also proved
+        -- (29,28)->DOWN moves into (29,29) and continues to the World Map at
+        -- (43,43). Keep the west approach closed from the earlier
+        -- small-pocket verifier, but do not block the north approach or the
+        -- route cannot reach the exit tile.
+        ["29,20"] = {west = true},
+        ["29,23"] = {west = true},
+        ["28,29"] = {east = true},
+        ["29,29"] = {west = true},
     },
 
     -- Map 0x05: Tantegel Castle Throne Room
@@ -2747,7 +3179,8 @@ function M.get_door_cell_context(map_id, x, y)
     }
 end
 
-function M.get_walkability_snapshot(map_id)
+function M.get_walkability_snapshot(map_id, opts)
+    opts = opts or {}
     local grid = M.get_tile_grid(map_id)
     if not grid then return nil end
 
@@ -2764,6 +3197,7 @@ function M.get_walkability_snapshot(map_id)
     local open_doors = door_cells and build_open_door_set() or nil
     local overrides = MAP_BLOCKED_CELLS[map_id]
     local hazards = MAP_HAZARD_CELLS[map_id]
+    local allow_hazards = opts.allow_hazards == true
 
     for y = 0, meta.height - 1 do
         local row = {}
@@ -2785,7 +3219,7 @@ function M.get_walkability_snapshot(map_id)
             if overrides and overrides[key] then
                 walkable = false
             end
-            if hazards and hazards[key] then
+            if hazards and hazards[key] and not allow_hazards then
                 walkable = false
             end
             row[x] = walkable

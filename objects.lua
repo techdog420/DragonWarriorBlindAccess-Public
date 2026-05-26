@@ -168,7 +168,14 @@ local STAIRS = {
     -- Tantegel Castle (0x04)
     -- Southeast corner special tile: STAIRS works here, while south/east
     -- movement exits the castle to the World Map.
-    {map = 0x04, x = 29, y = 29, name = "Stairs Down", dest = "Sun Shrine"},
+    {
+        map = 0x04,
+        x = 29,
+        y = 29,
+        name = "Stairs Down",
+        dest = "Sun Shrine",
+        object_name = "Sun Shrine Stairs and Southeast Exit",
+    },
 
     -- Map 0x05 (Tantegel Castle Throne Room, empirically confirmed)
     -- Staircase at east end of the south corridor (x=8, y=8). Player stands
@@ -295,18 +302,6 @@ local EXITS = {
     -- interior bottom row at (11,29); the visible gate door panels sit just
     -- south of it at (10,30) and (11,30).
     {map = 0x04, x = 11, y = 29, name = "Exit", dest = "World Map"},      -- Tantegel Castle
-    {
-        map = 0x04,
-        x = 29,
-        y = 29,
-        name = "Exit",
-        dest = "World Map",
-        object_name = "Southeast Exit to World Map",
-        interaction_x = 29,
-        interaction_y = 29,
-        interaction_face_dir = "south",
-        interaction_label = "exit",
-    },                                                                      -- Tantegel Castle southeast corner exit
     {map = 0x02, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
 
     -- Shrines
@@ -856,7 +851,7 @@ local function get_stairs(map_id)
             result[#result + 1] = {
                 x = stair.x,
                 y = stair.y,
-                name = stair.name .. " to " .. stair.dest,
+                name = stair.object_name or (stair.name .. " to " .. stair.dest),
                 type = M.TYPE_STAIR,
                 id = "stair_" .. stair.x .. "_" .. stair.y,
             }
@@ -1123,6 +1118,13 @@ local SERVICE_ROLE_OVERRIDES = {
         },
         cells = {
             ["20,26"] = {name = "Sage", infer_counter = false},
+        },
+    },
+    -- Tantegel Throne Room King. Players visit him to save, so include him in
+    -- Services while keeping normal adjacent-NPC routing.
+    [0x05] = {
+        names = {
+            ["King"] = {name = "King", infer_counter = false},
         },
     },
     -- Kol public services; stand/facing data is modeled in
@@ -1965,7 +1967,20 @@ function M.get_blocking_positions()
     local result = {}
     for _, obj in ipairs(object_list) do
         if obj.type == M.TYPE_NPC and obj.blocks_movement ~= false then
-            result[#result + 1] = {x = obj.x, y = obj.y}
+            local slot = nil
+            if obj.id then
+                slot = tonumber(tostring(obj.id):match("^npc_(%d+)$"))
+            end
+            result[#result + 1] = {
+                x = obj.x,
+                y = obj.y,
+                id = obj.id,
+                name = obj.name,
+                slot = slot,
+                movement = obj.movement,
+                service = obj.service,
+                type = obj.type,
+            }
         end
     end
     return result

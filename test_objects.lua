@@ -286,14 +286,14 @@ function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     env.restore()
 end
 
-function tests.tantegel_castle_southeast_corner_exposes_stairs_and_exit()
+function tests.tantegel_castle_southeast_corner_combines_shrine_stairs_and_exit()
     local env = make_env()
 
     env.set_terrain_offset(0x10)
     env.objects.refresh(0x04)
 
-    local southeast_exit
     local sun_shrine_stair
+    local duplicate_southeast_exit
     local stale_top_right_stair
     local stale_throne_stair
     for _, obj in ipairs(env.objects.get_objects()) do
@@ -306,19 +306,15 @@ function tests.tantegel_castle_southeast_corner_exposes_stairs_and_exit()
                 stale_throne_stair = obj
             end
         elseif obj.type == env.objects.TYPE_EXIT and obj.id == "exit_29_29" then
-            southeast_exit = obj
+            duplicate_southeast_exit = obj
         end
     end
 
-    assert_equal(southeast_exit ~= nil, true, "Tantegel Castle should expose the live southeast world-map exit")
-    assert_equal(southeast_exit.x, 29, "southeast exit should use the live-confirmed x coordinate")
-    assert_equal(southeast_exit.y, 29, "southeast exit should use the live-confirmed y coordinate")
-    assert_equal(southeast_exit.name, "Southeast Exit to World Map", "southeast exit should have a distinct label")
-    assert_equal(southeast_exit.interaction_face_dir, "south", "southeast exit should face south after routing")
     assert_equal(sun_shrine_stair ~= nil, true, "Tantegel Castle should expose the live STAIRS command at the southeast corner")
     assert_equal(sun_shrine_stair.x, 29, "Sun Shrine stairs should use the live-confirmed x coordinate")
     assert_equal(sun_shrine_stair.y, 29, "Sun Shrine stairs should use the live-confirmed y coordinate")
-    assert_equal(sun_shrine_stair.name, "Stairs Down to Sun Shrine", "Sun Shrine stairs should name the STAIRS-command destination")
+    assert_equal(sun_shrine_stair.name, "Sun Shrine Stairs and Southeast Exit", "shared southeast tile should have one combined Travel label")
+    assert_equal(duplicate_southeast_exit, nil, "Tantegel Castle should not duplicate the shared southeast Travel tile")
     assert_equal(stale_top_right_stair, nil, "Tantegel Castle should not expose the disproved top-right stairs marker")
     assert_equal(stale_throne_stair, nil, "Tantegel Castle should not expose the disproved throne-room stairs marker at (1,1)")
 
@@ -1691,6 +1687,35 @@ function tests.tantegel_castle_sage_service_is_labeled()
     end
     local service_text = table.concat(service_names, ", ")
     assert_equal(service_text:find("Sage", 1, true) ~= nil, true, "Services should include Sage")
+
+    env.restore()
+end
+
+function tests.tantegel_throne_room_king_appears_in_services()
+    local env = make_env({npc_count = 1})
+
+    env.set_position(0x05, 4, 4)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x80 + 3, 0x03, 0x00) -- King at the throne
+    env.objects.refresh(0x05)
+
+    local king = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "King" then
+            king = obj
+            break
+        end
+    end
+
+    assert_equal(king ~= nil, true, "Throne Room King should be listed")
+    assert_equal(king.service, true, "Throne Room King should appear in Services for saving")
+    assert_equal(king.interaction_x, nil, "King should keep ordinary adjacent-NPC routing")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service = env.objects.current_object()
+    assert_equal(service ~= nil, true, "Services filter should include the King")
+    assert_equal(service.name, "King", "King should be the throne-room service")
 
     env.restore()
 end
