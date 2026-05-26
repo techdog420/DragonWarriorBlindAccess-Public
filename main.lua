@@ -164,10 +164,18 @@ local function parse_map_xy_arg(arg, default_map_id)
 end
 
 local function refresh_navigation_modules()
+    package.loaded["objects"] = nil
     package.loaded["map_reader"] = nil
     package.loaded["pathfinder"] = nil
+    package.loaded["path_debug"] = nil
+    package.loaded["map_survey"] = nil
+    package.loaded["map_crawler"] = nil
+    objects = require "objects"
     map_reader = require "map_reader"
     pathfinder = require "pathfinder"
+    path_debug = require "path_debug"
+    map_survey = require "map_survey"
+    map_crawler = require "map_crawler"
     if route_mgr.refresh_navigation_modules then
         route_mgr.refresh_navigation_modules()
     end

@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Sun Shrine first decode pass (`2026-05-25`): map `0x0C` is the Stones of
+  Sunlight chamber. User confirmation showed the west-edge stairs return to
+  Tantegel interior, so the object is now labeled `Stairs to Tantegel Castle`.
+  The player lands at `(0,2)`, the return stairs are `(0,4)`, the chest is
+  `(4,5)`, and the stationary old man is `(4,6)`. `MAP_PASSTHROUGH_CELLS[0x0C]`
+  keeps `(0,2)`, `(0,4)`, and manually proven `(0,7)` open despite the generic
+  x=0 interior boundary rule. Survey from interior tile `(1,7)` reached both
+  old man and chest; the old man blocks the chest's south side only, while the
+  chest route itself succeeds by standing on `(4,5)`. A quick entrance/west-edge
+  validation route to the old man drifted heavily around row 7 but eventually
+  reached `(4,7)`, faced north, and opened dialogue; treat this as noisy route
+  execution, not map blockage. The chest was then opened and logged the Stones
+  of Sunlight reward. Current live state is `map=0x0C x=4 y=5`,
+  `OBJECT: Chest (opened): here`, `PATH_STATE target=nil`, and
+  `RUNTIME_BLOCKS map=0x0C none`. The only survey failure was the return
+  stairs, classified as route drift / command timing, not map blockage.
+
 - Tantegel Castle map `0x04` route wrap-up (`2026-05-25`): routes to the Sun
   Shrine stairs/southeast exit and Magic Key Merchant are now usable enough for
   gameplay. They are still noisy, especially through the shrine approach and

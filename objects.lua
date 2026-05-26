@@ -305,7 +305,14 @@ local EXITS = {
     {map = 0x02, x = 10, y = 19, name = "Exit", dest = "World Map"},      -- Charlock Castle
 
     -- Shrines
-    {map = 0x0C, x = 0, y = 4, name = "Exit", dest = "World Map"},        -- Sun Shrine
+    {
+        map = 0x0C,
+        x = 0,
+        y = 4,
+        name = "Exit",
+        dest = "Tantegel Castle",
+        object_name = "Stairs to Tantegel Castle",
+    },                                                                      -- Sun Shrine
     {
         map = 0x0D,
         x = 4,

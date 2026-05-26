@@ -836,6 +836,16 @@ local MAP_PASSTHROUGH_CELLS = {
         ["20,23"] = true,
     },
 
+    -- Map 0x0C: Sun Shrine / Stones of Sunlight chamber.
+    -- The player lands live on (0,2), the return stairs are the west-edge
+    -- object at (0,4), and manual movement proved (1,7)->LEFT reaches (0,7).
+    -- The generic interior boundary rule would otherwise isolate these cells.
+    [0x0C] = {
+        ["0,2"] = true,
+        ["0,4"] = true,
+        ["0,7"] = true,
+    },
+
     -- Map 0x15: Swamp Cave north-south west-edge corridor.
     -- The generic dungeon edge rule marks x=0 as a boundary, but live play on
     -- 2026-05-16 walked the x=0 corridor in both directions. The proven

@@ -924,7 +924,7 @@ function tests.sun_shrine_exit_uses_live_west_entry_tile()
 
     local obj = env.objects.select_object_by_id("exit_0_4")
     assert_equal(obj ~= nil, true, "Sun Shrine should expose the live west exit")
-    assert_equal(obj.name, "Exit to World Map", "Sun Shrine should keep the normal exit label")
+    assert_equal(obj.name, "Stairs to Tantegel Castle", "Sun Shrine should describe the live return stairs")
     assert_equal(obj.x, 0, "Sun Shrine exit should use the live entry X")
     assert_equal(obj.y, 4, "Sun Shrine exit should use the live entry row")
 

@@ -2363,6 +2363,49 @@ function tests.erdricks_cave_b1_entrance_passthrough_overrides_edge_boundary()
     env.restore()
 end
 
+function tests.sun_shrine_west_edge_entry_and_return_stairs_override_boundary()
+    local base = 0x0C * 5
+    local data_offset = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,      -- CPU $9000 -> file offset $1010
+        [base + 1] = 0x90,
+        [base + 2] = 9,     -- width 10
+        [base + 3] = 9,     -- height 10
+        [base + 4] = 0,
+    }
+    for i = 0, 6 do
+        rom_bytes[data_offset + i] = 0x6F
+    end
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    local entry = env.map_reader.get_walkability_details(0x0C, 0, 2)
+    assert_equal(entry.base_walkable, true, "Sun Shrine entry tile should be passable")
+    assert_equal(entry.reason, "passthrough", "Sun Shrine entry tile should override west-edge boundary")
+
+    local return_stairs = env.map_reader.get_walkability_details(0x0C, 0, 4)
+    assert_equal(return_stairs.base_walkable, true, "Sun Shrine return stairs should be passable")
+    assert_equal(return_stairs.reason, "passthrough", "Sun Shrine return stairs should override west-edge boundary")
+
+    local west_edge_corridor = env.map_reader.get_walkability_details(0x0C, 0, 7)
+    assert_equal(west_edge_corridor.base_walkable, true, "Sun Shrine west-edge corridor should be passable")
+    assert_equal(west_edge_corridor.reason, "passthrough", "Sun Shrine west-edge corridor should override west-edge boundary")
+
+    local unconfirmed_edge = env.map_reader.get_walkability_details(0x0C, 0, 3)
+    assert_equal(unconfirmed_edge.base_walkable, false, "unconfirmed Sun Shrine west edge should stay blocked")
+    assert_equal(unconfirmed_edge.reason, "engine_boundary", "unconfirmed Sun Shrine west edge should keep boundary reason")
+
+    local floor = env.map_reader.get_walkability_details(0x0C, 1, 2)
+    assert_equal(floor.base_walkable, true, "Sun Shrine interior floor should stay tile-walkable")
+    assert_equal(floor.reason, "tile_type", "Sun Shrine interior floor should not need passthrough")
+
+    env.restore()
+end
+
 function tests.swamp_cave_west_edge_corridor_overrides_boundary()
     local base = 0x15 * 5
     local memory_bytes = {
