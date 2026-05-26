@@ -424,6 +424,25 @@ function tests.find_path_caches_walkability_per_search()
     env.restore()
 end
 
+function tests.find_path_prefers_straight_progress_on_equal_length_ties()
+    local env = make_stub_env()
+    env.set_grid(5, 3, {
+        {x = 4, y = 1},
+    })
+
+    local path = env.pathfinder.find_path(0x04, 4, 2, 0, 0, {})
+
+    assert_truthy(path ~= nil and #path == 6, "test setup should still produce the shortest route")
+    assert_equal(path[1].direction, "west", "blocked north start should force the initial west step")
+    assert_equal(path[2].direction, "west", "equal-length tie after the forced segment should keep the route moving straight")
+    assert_equal(path[3].direction, "west", "planner should keep delaying the turn while the straight option stays optimal")
+    assert_equal(path[4].direction, "west", "planner should finish the straight run before turning")
+    assert_equal(path[5].direction, "north", "planner should turn only after the straight segment is exhausted")
+    assert_equal(path[6].direction, "north", "remaining shortest path should still finish with the needed north steps")
+
+    env.restore()
+end
+
 function tests.trace_path_distinguishes_no_path_from_already_there()
     local env = make_stub_env()
     env.set_grid(5, 5)

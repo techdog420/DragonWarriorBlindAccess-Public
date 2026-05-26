@@ -26,6 +26,7 @@ end
 
 local M = {}
 local runtime_block_neighbor_log = {}
+local TURN_TIEBREAK_PENALTY = 0.001
 
 local function should_log_path_steps()
     return config and config.get and config.get("pathfind_log_steps") == "true"
@@ -450,6 +451,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     -- A* data structures
     local open = heap_new()           -- Priority queue of nodes to explore
     local g_score = {}                -- Best known cost to reach each node
+    local turn_score = {}             -- Tie-breaker: prefer routes that keep the same heading longer
     local came_from = {}              -- Parent node for path reconstruction
     local came_from_dir = {}          -- Direction taken to reach each node
     local closed = {}                 -- Nodes we've fully explored
@@ -457,6 +459,7 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     -- Initialize with the start node
     local start_key = key(start_x, start_y)
     g_score[start_key] = 0
+    turn_score[start_key] = 0
     heap_push(open, heuristic(start_x, start_y), {x = start_x, y = start_y})
 
     -- Safety limit on A* iterations.
@@ -517,11 +520,18 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
 
             -- Explore neighbors (4 cardinal directions)
             local current_g = g_score[current_key]
+            local current_turns = turn_score[current_key] or 0
+            local previous_dir = came_from_dir[current_key]
 
             for _, dir in ipairs(DIRECTIONS) do
                 local nx = cx + dir.dx
                 local ny = cy + dir.dy
                 local nk = key(nx, ny)
+                local turn_cost = 0
+                if previous_dir and previous_dir ~= dir.name then
+                    turn_cost = 1
+                end
+                local tentative_turns = current_turns + turn_cost
 
                 if closed[nk] then
                     -- Already fully explored
@@ -537,11 +547,15 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                         if on_reject then on_reject(nx, ny, "blocked_directional") end
                     else
                         local tentative_g = current_g + 1
-                        if not g_score[nk] or tentative_g < g_score[nk] then
+                        local better_path = (not g_score[nk])
+                            or tentative_g < g_score[nk]
+                            or (tentative_g == g_score[nk] and tentative_turns < (turn_score[nk] or math.huge))
+                        if better_path then
                             g_score[nk] = tentative_g
+                            turn_score[nk] = tentative_turns
                             came_from[nk] = current_key
                             came_from_dir[nk] = dir.name
-                            heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                            heap_push(open, tentative_g + heuristic(nx, ny) + (tentative_turns * TURN_TIEBREAK_PENALTY), {x = nx, y = ny})
                         else
                             if on_reject then on_reject(nx, ny, "already_better") end
                         end
@@ -578,11 +592,15 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
                         else
                             -- Passable neighbor
                             local tentative_g = current_g + 1
-                            if not g_score[nk] or tentative_g < g_score[nk] then
+                            local better_path = (not g_score[nk])
+                                or tentative_g < g_score[nk]
+                                or (tentative_g == g_score[nk] and tentative_turns < (turn_score[nk] or math.huge))
+                            if better_path then
                                 g_score[nk] = tentative_g
+                                turn_score[nk] = tentative_turns
                                 came_from[nk] = current_key
                                 came_from_dir[nk] = dir.name
-                                heap_push(open, tentative_g + heuristic(nx, ny), {x = nx, y = ny})
+                                heap_push(open, tentative_g + heuristic(nx, ny) + (tentative_turns * TURN_TIEBREAK_PENALTY), {x = nx, y = ny})
                             else
                                 if on_reject then on_reject(nx, ny, "already_better") end
                             end

@@ -75,7 +75,9 @@ local last_pathfind_obj = nil
 -- Consecutive on_blocked calls without a successful step.
 -- After REROUTE_FAILURE_LIMIT, pathfinding is cancelled.
 local reroute_failures = 0
+local route_drift_reroutes = 0
 local REROUTE_FAILURE_LIMIT = 3
+local ROUTE_DRIFT_REROUTE_LIMIT = 6
 
 -- NPC freeze: lock NPC positions in RAM for reliable pathfinding.
 -- When active, apply_npc_freeze() restores NPC bytes to their snapshot
@@ -91,6 +93,7 @@ local autowalk_npc_parking = nil
 local runtime_blocked = {}
 local seam_memory = {}
 local seam_retry_state = nil
+local active_route_temp_blocks = nil
 local autowalk_guard = nil
 local active_route_settle_frames = 0
 local active_route_settle_same_direction = true
@@ -100,6 +103,10 @@ local active_route_completion_actions = true
 local active_route_speak_completion = true
 local active_route_total_steps = 0
 local active_route_completed_steps = 0
+local active_route_allow_hazards = false
+local active_route_hazard_stop = nil
+local active_route_npc_mode = "live_npcs"
+local active_route_parked_slots = nil
 local active_overworld_segment = nil
 local target_npc_hold = nil
 local target_face_input = nil
@@ -107,8 +114,42 @@ local object_pathability_signature = nil
 local last_pathability_result = nil
 local SURVEY_ROUTE_SETTLE_FRAMES = 30
 local TARGET_FACE_RELEASE_FRAMES = 2
+
+local function count_active_route_temp_blocks(map_id)
+    if not active_route_temp_blocks then
+        return 0
+    end
+    local count = 0
+    local function count_map_blocks(map_blocks)
+        for _, dirs in pairs(map_blocks or {}) do
+            if type(dirs) == "table" then
+                for _, enabled in pairs(dirs) do
+                    if enabled then
+                        count = count + 1
+                    end
+                end
+            end
+        end
+    end
+    if map_id ~= nil then
+        count_map_blocks(active_route_temp_blocks[map_id])
+    else
+        for _, map_blocks in pairs(active_route_temp_blocks) do
+            count_map_blocks(map_blocks)
+        end
+    end
+    return count
+end
 local SEAM_BRUTE_FORCE_RETRY_LIMIT = 2
+local NPC_PARK_DEFERRED_RETRY_FRAMES = 30
 local APPROACH_ORDER = {north = 1, south = 2, west = 3, east = 4}
+local TANTEGEL_CASTLE_MAP_ID = 0x04
+local TANTEGEL_SHRINE_EXIT_X = 29
+local TANTEGEL_SHRINE_EXIT_Y = 29
+local TANTEGEL_SHRINE_RISKY_X29_ENTRY_MAX_Y = 7
+local TANTEGEL_SHRINE_RISKY_X29_SUFFIX_MIN = 20
+local apply_autowalk_npc_parking_state
+
 local function cell_key(x, y)
     return x .. "," .. y
 end
@@ -137,19 +178,32 @@ local function copy_direction_table(dirs)
     return copy
 end
 
+local function copy_blocking_table(blocking)
+    local copy = {}
+    for k, value in pairs(blocking or {}) do
+        if type(value) == "table" then
+            copy[k] = copy_direction_table(value)
+        else
+            copy[k] = value
+        end
+    end
+    return copy
+end
+
 local function log_route_plan_timing(plan, elapsed_ms)
     if not plan or elapsed_ms < 25 then
         return
     end
     local target = plan.target or {}
     debug_tools.info(string.format(
-        "ROUTE_PLAN_TIMING map=0x%02X start=(%d,%d) target_id=%s target_name=%s mode=%s result=%s path_len=%d ms=%.3f",
+        "ROUTE_PLAN_TIMING map=0x%02X start=(%d,%d) target_id=%s target_name=%s mode=%s npc_mode=%s result=%s path_len=%d ms=%.3f",
         plan.map_id or -1,
         plan.start_x or -1,
         plan.start_y or -1,
         tostring(target.id or "-"),
         tostring(target.name or "-"),
         tostring(plan.path_mode or "-"),
+        tostring(plan.npc_mode or "-"),
         tostring(plan.result or "-"),
         plan.path and #plan.path or 0,
         elapsed_ms))
@@ -183,7 +237,7 @@ local function log_auto_walk_no_path_detail(plan)
     local target = plan.target or {}
     local counts = count_plan_blockers(plan.blocking)
     debug_tools.info(string.format(
-        "AUTO_WALK_NO_PATH_DETAIL map=0x%02X start=(%d,%d) target_id=%s target_name=%s goal=(%d,%d) mode=%s reason=%s goal_block=%s target_walkable=%s npc_blocks=%d runtime_blocks=%d directional_blocks=%d full_blocks=%d",
+        "AUTO_WALK_NO_PATH_DETAIL map=0x%02X start=(%d,%d) target_id=%s target_name=%s goal=(%d,%d) mode=%s npc_mode=%s reason=%s goal_block=%s target_walkable=%s npc_blocks=%d runtime_blocks=%d directional_blocks=%d full_blocks=%d",
         plan.map_id or -1,
         plan.start_x or -1,
         plan.start_y or -1,
@@ -192,6 +246,7 @@ local function log_auto_walk_no_path_detail(plan)
         plan.goal_x or -1,
         plan.goal_y or -1,
         tostring(plan.path_mode or "-"),
+        tostring(plan.npc_mode or "-"),
         tostring(plan.no_path_reason or "-"),
         tostring(plan.goal_block_reason or "-"),
         tostring(plan.target_walkable),
@@ -200,6 +255,33 @@ local function log_auto_walk_no_path_detail(plan)
         counts.directional,
         counts.full))
 end
+
+local function log_route_planning_snapshot(plan)
+    if not plan then
+        return
+    end
+    local target = plan.target or {}
+    local counts = count_plan_blockers(plan.blocking)
+    debug_tools.info(string.format(
+        "ROUTE_PLAN_SNAPSHOT map=0x%02X context=%s start=(%d,%d) target_id=%s target_name=%s goal=(%d,%d) mode=%s npc_mode=%s parked_slots=%s npc_blocks=%d route_temp_blocks=%d result=%s path_len=%d",
+        plan.map_id or -1,
+        tostring(plan.plan_context or "plan"),
+        plan.start_x or -1,
+        plan.start_y or -1,
+        tostring(target.id or "-"),
+        tostring(target.name or "-"),
+        plan.goal_x or -1,
+        plan.goal_y or -1,
+        tostring(plan.path_mode or "-"),
+        tostring(plan.npc_mode or "-"),
+        plan.parked_slots == nil and "-" or tostring(plan.parked_slots),
+        counts.npc,
+        count_active_route_temp_blocks(plan.map_id),
+        tostring(plan.result or "-"),
+        plan.path and #plan.path or 0))
+end
+
+local copy_opts
 
 local function config_bool(key, default)
     local value = config.get(key)
@@ -216,6 +298,56 @@ local function config_bool(key, default)
     return default
 end
 
+local function normalize_npc_mode(mode)
+    if mode == "skip_npcs" or mode == "park_mobile_npcs" or mode == "live_npcs" then
+        return mode
+    end
+    return nil
+end
+
+local function route_npc_mode_from_opts(opts)
+    opts = opts or {}
+    local mode = normalize_npc_mode(opts.npc_mode)
+    if mode then
+        return mode
+    end
+    if opts.skip_npcs then
+        return "skip_npcs"
+    end
+    if opts.park_mobile_npcs then
+        return "park_mobile_npcs"
+    end
+    return "live_npcs"
+end
+
+local function route_planning_opts(opts, npc_mode, context)
+    local next_opts = copy_opts(opts)
+    npc_mode = normalize_npc_mode(npc_mode) or route_npc_mode_from_opts(next_opts)
+    next_opts.npc_mode = npc_mode
+    if context then
+        next_opts.plan_context = context
+    end
+    if npc_mode == "skip_npcs" then
+        next_opts.skip_npcs = true
+        next_opts.park_mobile_npcs = false
+    elseif npc_mode == "park_mobile_npcs" then
+        next_opts.skip_npcs = false
+        next_opts.park_mobile_npcs = true
+    else
+        next_opts.skip_npcs = false
+        next_opts.park_mobile_npcs = false
+    end
+    return next_opts
+end
+
+local function active_route_planning_opts(opts, context)
+    local next_opts = route_planning_opts(opts, active_route_npc_mode or "live_npcs", context)
+    if active_route_parked_slots ~= nil then
+        next_opts.planning_parked_slots = active_route_parked_slots
+    end
+    return next_opts
+end
+
 local function config_int(key, default, min_value, max_value)
     local value = tonumber(config.get(key))
     if not value then
@@ -229,6 +361,10 @@ local function config_int(key, default, min_value, max_value)
         return max_value
     end
     return value
+end
+
+local function route_turn_settle_frames()
+    return config_int("auto_step_route_turn_settle_frames", 16, 0, 60)
 end
 
 local function neutralize_directions()
@@ -349,7 +485,7 @@ local function should_refresh_objects_after_route()
     return true
 end
 
-local function copy_opts(opts)
+copy_opts = function(opts)
     local next_opts = {}
     for k, v in pairs(opts or {}) do
         next_opts[k] = v
@@ -357,18 +493,29 @@ local function copy_opts(opts)
     return next_opts
 end
 
-local function pathfinder_opts_for_plan(opts)
+local function pathfinder_opts_for_plan(opts, map_id)
     opts = opts or {}
     local path_opts = opts.pathfinder_opts or opts
+    local next_opts
     if path_opts == opts then
-        return opts
+        next_opts = copy_opts(opts)
+    else
+        next_opts = copy_opts(path_opts)
     end
-    return copy_opts(path_opts)
+    if opts.allow_hazards == true
+       and map_id ~= nil
+       and next_opts.walkability_snapshot == nil
+       and map_reader.get_walkability_snapshot then
+        next_opts.walkability_snapshot = map_reader.get_walkability_snapshot(map_id, {
+            allow_hazards = true,
+        })
+    end
+    return next_opts
 end
 
-local function adjacent_path_opts(opts)
+local function adjacent_path_opts(opts, map_id)
     opts = opts or {}
-    local next_opts = pathfinder_opts_for_plan(opts)
+    local next_opts = pathfinder_opts_for_plan(opts, map_id)
     if next_opts.use_adjacent_metrics ~= nil or opts.survey_safe == true then
         return next_opts
     end
@@ -424,6 +571,55 @@ local function get_destination_for_dir(from_x, from_y, dir)
     return from_x + delta.dx, from_y + delta.dy, approach
 end
 
+local function npc_slot_from_id(id)
+    if not id then
+        return nil
+    end
+    local slot = tonumber(tostring(id):match("^npc_(%d+)$"))
+    if slot == nil or slot < 0 or slot >= addr.NPC_COUNT then
+        return nil
+    end
+    return slot
+end
+
+local function normalize_npc_movement(value)
+    if value == nil then
+        return nil
+    end
+    return tonumber(value)
+end
+
+local function is_mobile_npc_blocker(npc)
+    local movement = normalize_npc_movement(npc and npc.movement)
+    return movement ~= nil and movement ~= 0
+end
+
+local function npc_blocker_kind(npc)
+    local movement = normalize_npc_movement(npc and npc.movement)
+    if movement == nil then
+        return "unknown"
+    end
+    if movement == 0 then
+        return "stationary"
+    end
+    return "mobile"
+end
+
+local function format_npc_movement(value)
+    local movement = normalize_npc_movement(value)
+    if movement == nil then
+        return "-"
+    end
+    return string.format("0x%02X", movement % 256)
+end
+
+local function is_npc_slot_parked(slot)
+    return autowalk_npc_parking ~= nil
+        and slot ~= nil
+        and autowalk_npc_parking.slots ~= nil
+        and autowalk_npc_parking.slots[slot] ~= nil
+end
+
 local function add_runtime_block_direction(map_id, dest_x, dest_y, approach, source)
     if not map_id or dest_x == nil or dest_y == nil or not approach then
         return false
@@ -474,11 +670,28 @@ local function is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_di
     if not dest_x or not dest_y then
         return false
     end
+    if active_route_npc_mode == "park_mobile_npcs"
+       and autowalk_npc_parking
+       and apply_autowalk_npc_parking_state then
+        apply_autowalk_npc_parking_state(autowalk_npc_parking)
+    end
     objects.update_npcs()
     local npc_positions = objects.get_blocking_positions()
     for _, npc in ipairs(npc_positions) do
         if npc.x == dest_x and npc.y == dest_y then
-            return true, dest_x, dest_y
+            local slot = npc.slot or npc_slot_from_id(npc.id)
+            local blocker = {
+                x = npc.x,
+                y = npc.y,
+                id = npc.id,
+                name = npc.name,
+                slot = slot,
+                movement = npc.movement,
+                service = npc.service,
+                kind = npc_blocker_kind(npc),
+                parked = is_npc_slot_parked(slot),
+            }
+            return true, dest_x, dest_y, blocker
         end
     end
     return false, dest_x, dest_y
@@ -677,6 +890,172 @@ local function add_temporary_directional_block(blocking, from_x, from_y, dir)
     return dest_x, dest_y, approach
 end
 
+local function record_active_route_temp_block(map_id, from_x, from_y, dir, source)
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    if not map_id or not dest_x or not approach then
+        return false
+    end
+    if not active_route_temp_blocks then
+        active_route_temp_blocks = {}
+    end
+    if not active_route_temp_blocks[map_id] then
+        active_route_temp_blocks[map_id] = {}
+    end
+    local k = cell_key(dest_x, dest_y)
+    if not active_route_temp_blocks[map_id][k] then
+        active_route_temp_blocks[map_id][k] = {}
+    end
+    if active_route_temp_blocks[map_id][k][approach] then
+        return false
+    end
+    active_route_temp_blocks[map_id][k][approach] = true
+    debug_tools.info(string.format(
+        "AUTO_WALK_TEMP_BLOCK map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) approach=%s source=%s count=%d",
+        map_id,
+        from_x or -1,
+        from_y or -1,
+        tostring(dir),
+        dest_x,
+        dest_y,
+        approach,
+        tostring(source or "-"),
+        count_active_route_temp_blocks(map_id)))
+    return true
+end
+
+local function clear_active_route_temp_block_for_step(map_id, from_x, from_y, dir, source)
+    local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    local map_blocks = active_route_temp_blocks and active_route_temp_blocks[map_id]
+    if not map_blocks or not dest_x or not approach then
+        return false
+    end
+    local k = cell_key(dest_x, dest_y)
+    local entry = map_blocks[k]
+    if type(entry) ~= "table" or entry[approach] ~= true then
+        return false
+    end
+    entry[approach] = nil
+    if not next(entry) then
+        map_blocks[k] = nil
+    end
+    if not next(map_blocks) then
+        active_route_temp_blocks[map_id] = nil
+    end
+    if not next(active_route_temp_blocks) then
+        active_route_temp_blocks = nil
+    end
+    debug_tools.info(string.format(
+        "AUTO_WALK_TEMP_BLOCK_CLEAR map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) approach=%s source=%s count=%d",
+        map_id,
+        from_x or -1,
+        from_y or -1,
+        tostring(dir),
+        dest_x,
+        dest_y,
+        approach,
+        tostring(source or "-"),
+        count_active_route_temp_blocks(map_id)))
+    return true
+end
+
+local function clear_active_route_temp_blocks(map_id, source)
+    local count = count_active_route_temp_blocks(map_id)
+    if count == 0 then
+        return 0
+    end
+
+    if map_id then
+        if active_route_temp_blocks then
+            active_route_temp_blocks[map_id] = nil
+            if not next(active_route_temp_blocks) then
+                active_route_temp_blocks = nil
+            end
+        end
+    else
+        active_route_temp_blocks = nil
+    end
+
+    debug_tools.info(string.format(
+        "AUTO_WALK_TEMP_BLOCK_RELAX map=%s source=%s cleared=%d",
+        map_id and string.format("0x%02X", map_id) or "all",
+        tostring(source or "-"),
+        count))
+    return count
+end
+
+local function clear_active_route_temp_blocks_except(map_id, keep_from_x, keep_from_y, keep_dir, source)
+    local map_blocks = active_route_temp_blocks and active_route_temp_blocks[map_id]
+    if not map_blocks then
+        return 0
+    end
+
+    local keep_x, keep_y, keep_approach = get_destination_for_dir(keep_from_x, keep_from_y, keep_dir)
+    local keep_key = keep_x and keep_y and cell_key(keep_x, keep_y) or nil
+    local cleared = 0
+
+    for k, dirs in pairs(map_blocks) do
+        if type(dirs) == "table" then
+            for approach, enabled in pairs(dirs) do
+                if enabled and not (k == keep_key and approach == keep_approach) then
+                    dirs[approach] = nil
+                    cleared = cleared + 1
+                end
+            end
+            if not next(dirs) then
+                map_blocks[k] = nil
+            end
+        end
+    end
+
+    if not next(map_blocks) then
+        active_route_temp_blocks[map_id] = nil
+    end
+    if active_route_temp_blocks and not next(active_route_temp_blocks) then
+        active_route_temp_blocks = nil
+    end
+
+    if cleared > 0 then
+        debug_tools.info(string.format(
+            "AUTO_WALK_TEMP_BLOCK_RELAX map=0x%02X source=%s cleared=%d kept_dest=(%d,%d) kept_approach=%s count=%d",
+            map_id,
+            tostring(source or "-"),
+            cleared,
+            keep_x or -1,
+            keep_y or -1,
+            tostring(keep_approach or "-"),
+            count_active_route_temp_blocks(map_id)))
+    end
+    return cleared
+end
+
+local function apply_active_route_temp_blocks(blocking, map_id)
+    local map_blocks = active_route_temp_blocks and active_route_temp_blocks[map_id]
+    if not blocking or not map_blocks then
+        return 0
+    end
+    local applied = 0
+    for k, dirs in pairs(map_blocks) do
+        if type(dirs) == "table" then
+            for approach, enabled in pairs(dirs) do
+                if enabled then
+                    local entry = blocking[k]
+                    if entry ~= "npc" then
+                        if type(entry) ~= "table" then
+                            entry = {}
+                            blocking[k] = entry
+                        end
+                        if entry[approach] ~= true then
+                            entry[approach] = true
+                        end
+                        applied = applied + 1
+                    end
+                end
+            end
+        end
+    end
+    return applied
+end
+
 local function same_seam_retry(map_id, from_x, from_y, dir)
     return seam_retry_state
         and seam_retry_state.map_id == map_id
@@ -705,7 +1084,7 @@ local function start_seam_bruteforce(map_id, from_x, from_y, dir)
         attempts = attempts,
     }
     debug_tools.info(string.format(
-        "SEAM_BRUTE_FORCE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d",
+        "SEAM_BRUTE_FORCE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d mode=hold_after_twitch",
         map_id,
         from_x,
         from_y,
@@ -714,7 +1093,11 @@ local function start_seam_bruteforce(map_id, from_x, from_y, dir)
         dest_y or -1,
         attempts,
         SEAM_BRUTE_FORCE_RETRY_LIMIT))
-    auto_step.inject_step(dir)
+    auto_step.inject_step(dir, {
+        source = "seam_retry",
+        hold_after_movement_start = true,
+        hold_after_movement_start_frames = config_int("auto_step_seam_retry_hold_after_start_frames", 12, 0, 60),
+    })
     return true
 end
 
@@ -781,7 +1164,7 @@ local function write_npc_bytes_if_changed(slot, byte0, byte1, byte2)
     end
 end
 
-local function apply_autowalk_npc_parking_state(state)
+apply_autowalk_npc_parking_state = function(state)
     if not state then
         return 0
     end
@@ -799,6 +1182,11 @@ local function release_autowalk_npc_parking(reason)
     end
     local map_id, px, py = nav.get_position()
     local state = autowalk_npc_parking
+    local is_deferred_retry = reason == "deferred restore retry"
+    local retry_attempts = state.retry_attempts or 0
+    if is_deferred_retry then
+        retry_attempts = retry_attempts + 1
+    end
     if map_id ~= state.map_id then
         debug_tools.info(string.format(
             "AUTO_WALK_NPC_PARK_RESTORE map=0x%02X restored=false restored_slots=0 deferred_slots=0 reason=%s map_changed=true",
@@ -833,19 +1221,54 @@ local function release_autowalk_npc_parking(reason)
             map_id = state.map_id,
             slots = deferred,
             pending_restore = true,
+            retry_attempts = retry_attempts,
+            retry_delay_frames = is_deferred_retry and NPC_PARK_DEFERRED_RETRY_FRAMES or 0,
         }
     else
         autowalk_npc_parking = nil
     end
 end
 
-local function start_autowalk_npc_parking(target)
-    release_autowalk_npc_parking("new autowalk parking")
-    if autowalk_npc_parking then
-        debug_tools.info("AUTO_WALK_NPC_PARK_START skipped: pending restore still active")
-        return 0
+local function pending_restore_overlaps_player(state)
+    if not state or not state.pending_restore then
+        return false
     end
+    local _, px, py = nav.get_position()
+    for _, snapshot in pairs(state.slots or {}) do
+        if snapshot.x == px and snapshot.y == py then
+            return true
+        end
+    end
+    return false
+end
+
+local function merge_pending_restore_slots_into_parking(state, pending_state)
+    local inherited = 0
+    if not state or not pending_state then
+        return inherited
+    end
+    for slot, snapshot in pairs(pending_state.slots or {}) do
+        if state.slots[slot] == nil then
+            state.slots[slot] = snapshot
+            inherited = inherited + 1
+        end
+    end
+    return inherited
+end
+
+local function start_autowalk_npc_parking(target, opts)
+    opts = opts or {}
     local map_id = nav.get_position()
+    release_autowalk_npc_parking("new autowalk parking")
+    local pending_state = nil
+    if autowalk_npc_parking then
+        if autowalk_npc_parking.pending_restore and autowalk_npc_parking.map_id == map_id then
+            pending_state = autowalk_npc_parking
+        else
+            debug_tools.info("AUTO_WALK_NPC_PARK_START skipped: pending restore still active")
+            return 0
+        end
+    end
     local exempt_slot = parse_npc_slot(target)
     local state = {
         map_id = map_id,
@@ -853,14 +1276,20 @@ local function start_autowalk_npc_parking(target)
         exempt_slot = exempt_slot,
         pending_restore = false,
     }
-    local count = 0
+    local count = merge_pending_restore_slots_into_parking(state, pending_state)
+    if count > 0 then
+        debug_tools.info(string.format(
+            "AUTO_WALK_NPC_PARK_START merged_pending_restore slots=%d",
+            count))
+    end
     for slot = 0, addr.NPC_COUNT - 1 do
-        if slot ~= exempt_slot then
+        if slot ~= exempt_slot and state.slots[slot] == nil then
             local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
             local byte0 = memory.readbyte(base)
             local byte1 = memory.readbyte(base + 1)
             local byte2 = memory.readbyte(base + 2)
-            if is_active_npc_slot(byte0, byte1) and tonumber(byte2) ~= 0 then
+            if is_active_npc_slot(byte0, byte1)
+               and (opts.park_stationary_npcs == true or tonumber(byte2) ~= 0) then
                 local x, y = decode_npc_coords(byte0, byte1)
                 state.slots[slot] = {
                     byte0 = byte0,
@@ -887,6 +1316,126 @@ local function start_autowalk_npc_parking(target)
         autowalk_npc_parking = nil
     end
     return parked
+end
+
+local function add_live_npc_to_autowalk_parking(map_id, npc, reason)
+    if active_route_npc_mode ~= "park_mobile_npcs" then
+        return false, "not_parked_mode"
+    end
+    local slot = npc and (npc.slot or npc_slot_from_id(npc.id))
+    if slot == nil then
+        return false, "missing_slot"
+    end
+    local exempt_slot = parse_npc_slot(active_route_target or last_pathfind_obj)
+    if slot == exempt_slot then
+        return false, "target_exempt"
+    end
+    if autowalk_npc_parking and autowalk_npc_parking.pending_restore then
+        return false, "pending_restore"
+    end
+    if autowalk_npc_parking and autowalk_npc_parking.map_id ~= map_id then
+        return false, "map_mismatch"
+    end
+    if autowalk_npc_parking
+       and autowalk_npc_parking.slots
+       and autowalk_npc_parking.slots[slot] then
+        return false, "already_parked"
+    end
+
+    local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+    local byte0 = memory.readbyte(base)
+    local byte1 = memory.readbyte(base + 1)
+    local byte2 = memory.readbyte(base + 2)
+    if not is_active_npc_slot(byte0, byte1) then
+        return false, "inactive_slot"
+    end
+    if tonumber(byte2) == 0 then
+        return false, "stationary"
+    end
+
+    if not autowalk_npc_parking then
+        autowalk_npc_parking = {
+            map_id = map_id,
+            slots = {},
+            exempt_slot = exempt_slot,
+            pending_restore = false,
+        }
+    end
+
+    local x, y = decode_npc_coords(byte0, byte1)
+    autowalk_npc_parking.slots[slot] = {
+        byte0 = byte0,
+        byte1 = byte1,
+        byte2 = byte2,
+        parked_byte0 = (byte0 - (byte0 % 32)) + 31,
+        parked_byte1 = (byte1 - (byte1 % 32)) + 31,
+        x = x,
+        y = y,
+    }
+    local parked = apply_autowalk_npc_parking_state(autowalk_npc_parking)
+    active_route_parked_slots = parked
+    debug_tools.info(string.format(
+        "AUTO_WALK_NPC_REACTIVE_PARK map=0x%02X slot=%d id=%s name=%s x=%d y=%d movement=0x%02X parked_slots=%d reason=%s",
+        map_id or 0,
+        slot,
+        tostring(npc and npc.id or ("npc_" .. slot)),
+        tostring(npc and npc.name or "NPC"),
+        x or -1,
+        y or -1,
+        byte2 or 0,
+        parked,
+        tostring(reason or "npc_block")))
+    return true
+end
+
+local function npc_blocked_route_message(npc)
+    if npc_blocker_kind(npc) == "stationary" then
+        return "Route may be blocked by a stationary NPC or an out-of-date NPC position. Try again in a moment, or choose another interaction point."
+    end
+    if npc_blocker_kind(npc) == "mobile" then
+        return "Route blocked by NPC movement. Wait for them to move and try again."
+    end
+    return "Route blocked by NPC movement. Wait for them to move and try again."
+end
+
+local function parse_manual_park_npcs_mode(arg)
+    local mode = tostring(arg or ""):match("^%s*(.-)%s*$"):lower()
+    if mode == "" or mode == "all" or mode == "full" then
+        return "all", {park_stationary_npcs = true}
+    end
+    if mode == "mobile" or mode == "moving" then
+        return "mobile", {}
+    end
+    return nil, nil
+end
+
+local function prepare_route_planning_blocking(map_id, opts)
+    opts = opts or {}
+    local npc_mode = route_npc_mode_from_opts(opts)
+    opts.npc_mode = npc_mode
+    local parked_slots = opts.planning_parked_slots
+
+    if npc_mode == "park_mobile_npcs" then
+        if autowalk_npc_parking then
+            parked_slots = apply_autowalk_npc_parking_state(autowalk_npc_parking)
+        end
+        opts.planning_parked_slots = parked_slots
+        if opts.refresh_npcs ~= false then
+            objects.update_npcs()
+        end
+    elseif npc_mode == "skip_npcs" then
+        opts.skip_npcs = true
+    elseif should_refresh_npcs_for_plan(opts) then
+        objects.update_npcs()
+    end
+
+    local build_opts = nil
+    if npc_mode == "skip_npcs" then
+        build_opts = {skip_npcs = true}
+    end
+    local blocking = M.build_path_blocking(map_id, build_opts)
+    apply_active_route_temp_blocks(blocking, map_id)
+    return blocking, npc_mode, parked_slots
 end
 
 local function release_target_npc_hold(reason)
@@ -992,7 +1541,12 @@ function M.apply_npc_freeze()
     end
     if autowalk_npc_parking then
         if autowalk_npc_parking.pending_restore then
-            release_autowalk_npc_parking("deferred restore retry")
+            local retry_delay_frames = tonumber(autowalk_npc_parking.retry_delay_frames) or 0
+            if retry_delay_frames > 0 and pending_restore_overlaps_player(autowalk_npc_parking) then
+                autowalk_npc_parking.retry_delay_frames = retry_delay_frames - 1
+            else
+                release_autowalk_npc_parking("deferred restore retry")
+            end
         else
             apply_autowalk_npc_parking_state(autowalk_npc_parking)
         end
@@ -1051,6 +1605,29 @@ function M.is_autowalk_npc_parking_active()
     return autowalk_npc_parking ~= nil
 end
 
+function M.manual_park_npcs(arg)
+    local mode, opts = parse_manual_park_npcs_mode(arg)
+    if not mode then
+        return nil, "park_npcs usage: park_npcs, park_npcs:all, or park_npcs:mobile"
+    end
+    release_target_npc_hold("manual npc park")
+    local parked = start_autowalk_npc_parking(nil, opts)
+    return {
+        mode = mode,
+        parked_slots = parked,
+        active = autowalk_npc_parking ~= nil,
+    }
+end
+
+function M.restore_manual_parked_npcs(reason)
+    local had_active = autowalk_npc_parking ~= nil
+    release_autowalk_npc_parking(reason or "manual restore parked npcs")
+    return {
+        had_active = had_active,
+        active = autowalk_npc_parking ~= nil,
+    }
+end
+
 -- set_autowalk_guard(fn): Install a main-loop-owned predicate used to veto
 -- auto-walk starts when field-state gates say movement is unsafe.
 -- fn() should return (ok, reason). ok=false prevents route planning and
@@ -1094,8 +1671,9 @@ function M.build_path_blocking(map_id, opts)
         end
     end
     -- `include_unconfirmed_seams` is intentionally ignored. Seam-memory is
-    -- noisy on this engine and remains diagnostic-only; reroute callers add a
-    -- one-off temporary block for the edge that just failed.
+    -- noisy on this engine and remains diagnostic-only; active autowalk
+    -- reroutes keep their own route-local temporary blocks for edges that
+    -- failed during the current route.
     -- Merge runtime directional blocks
     if runtime_blocked[map_id] then
         for k, dirs in pairs(runtime_blocked[map_id]) do
@@ -1306,6 +1884,7 @@ end
 local function clear_active_route_context(reason, refresh_objects)
     last_pathfind_obj = nil
     reroute_failures = 0
+    route_drift_reroutes = 0
     active_route_settle_frames = 0
     active_route_settle_same_direction = true
     active_route_target = nil
@@ -1314,7 +1893,12 @@ local function clear_active_route_context(reason, refresh_objects)
     active_route_speak_completion = true
     active_route_total_steps = 0
     active_route_completed_steps = 0
+    active_route_allow_hazards = false
+    active_route_hazard_stop = nil
+    active_route_npc_mode = "live_npcs"
+    active_route_parked_slots = nil
     active_overworld_segment = nil
+    active_route_temp_blocks = nil
     release_target_face(reason or "route context cleared")
     clear_seam_retry_state()
     release_route_npc_controls(reason)
@@ -1339,12 +1923,18 @@ local function set_active_route_context(target, path_len, face_dir, opts)
     active_route_speak_completion = opts.speak ~= false
     active_route_total_steps = tonumber(path_len) or 0
     active_route_completed_steps = 0
+    active_route_allow_hazards = opts.allow_hazards == true
+    active_route_hazard_stop = opts.hazard_stop
+    active_route_npc_mode = route_npc_mode_from_opts(opts)
+    active_route_parked_slots = opts.planning_parked_slots
+    active_route_temp_blocks = {}
 end
 
-local function update_active_route_remaining(path_len, face_dir)
+local function update_active_route_remaining(path_len, face_dir, hazard_stop)
     local remaining = tonumber(path_len) or 0
     active_route_total_steps = active_route_completed_steps + remaining
     active_route_face_dir = face_dir
+    active_route_hazard_stop = hazard_stop
 end
 
 local function get_plan_goal(obj)
@@ -1420,7 +2010,7 @@ local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, op
     end
 
     local result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
-        map_id, start_x, start_y, obj.x, obj.y, blocking, adjacent_path_opts(opts))
+        map_id, start_x, start_y, obj.x, obj.y, blocking, adjacent_path_opts(opts, map_id))
     if result == "No path found" then
         return current
     end
@@ -1486,6 +2076,302 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
         end
     end
     return msg
+end
+
+local function hazard_label(hazard)
+    if hazard == "damage" then
+        return "damage floor"
+    end
+    return tostring(hazard or "dangerous tile")
+end
+
+local function plural_word(count, singular, plural)
+    if count == 1 then
+        return singular
+    end
+    return plural or (singular .. "s")
+end
+
+local function analyze_path_hazards(map_id, path)
+    if not path or not map_reader.is_hazard_cell then
+        return nil
+    end
+    local summary = {
+        total = 0,
+        first_step = nil,
+        first_hazard = nil,
+        clusters = {},
+        counts_by_hazard = {},
+    }
+    local current = nil
+    for i, step in ipairs(path) do
+        local hazard = map_reader.is_hazard_cell(map_id, step.x, step.y)
+        if hazard then
+            summary.total = summary.total + 1
+            summary.counts_by_hazard[hazard] = (summary.counts_by_hazard[hazard] or 0) + 1
+            if not summary.first_step then
+                summary.first_step = i
+                summary.first_hazard = hazard
+            end
+            if current and current.hazard == hazard and current.stop_step == i - 1 then
+                current.stop_step = i
+                current.tiles = current.tiles + 1
+            else
+                current = {
+                    hazard = hazard,
+                    start_step = i,
+                    stop_step = i,
+                    tiles = 1,
+                }
+                summary.clusters[#summary.clusters + 1] = current
+            end
+        else
+            current = nil
+        end
+    end
+    if summary.total == 0 then
+        return nil
+    end
+    return summary
+end
+
+local function format_hazard_summary(summary)
+    if not summary then
+        return nil
+    end
+    local hazard = summary.first_hazard
+    local hazard_count = summary.counts_by_hazard[hazard] or summary.total
+    return string.format(
+        "%s: %d %s, first in %d %s",
+        hazard_label(hazard),
+        hazard_count,
+        plural_word(hazard_count, "tile"),
+        summary.first_step or 1,
+        plural_word(summary.first_step or 1, "step"))
+end
+
+local function append_path_hazard_summary(plan)
+    local summary = analyze_path_hazards(plan.map_id, plan.path)
+    if not summary then
+        return
+    end
+    plan.hazard_summary = summary
+    plan.message = plan.message .. ". " .. format_hazard_summary(summary)
+end
+
+local plan_path_to_object
+
+local function build_hazard_warning(summary, prefix)
+    if not summary then
+        return prefix or "Warning."
+    end
+    return (prefix or "Warning.") .. " Unsafe route crosses " ..
+        format_hazard_summary(summary) .. ". Continue manually to enter hazards."
+end
+
+local function maybe_use_unsafe_hazard_plan(obj, map_id, opts, plan)
+    if not plan
+       or plan.result ~= "No path found"
+       or opts.allow_hazards == true
+       or not plan.unsafe_hazard_summary then
+        return plan, opts
+    end
+
+    local unsafe_opts = copy_opts(opts)
+    unsafe_opts.allow_hazards = true
+    unsafe_opts.hazard_preview = false
+    unsafe_opts.store_debug_path = false
+
+    local unsafe_plan = plan_path_to_object(obj, unsafe_opts)
+    if unsafe_plan
+       and unsafe_plan.result ~= "No path found"
+       and unsafe_plan.path
+       and #unsafe_plan.path > 0 then
+        unsafe_plan.message = "Unsafe route. " .. tostring(unsafe_plan.message or "")
+        debug_tools.info(string.format(
+            "AUTO_WALK_HAZARD_FALLBACK map=0x%02X target_id=%s target_name=%s goal=(%d,%d)",
+            map_id or -1,
+            tostring(obj.id or "-"),
+            tostring(obj.name or "-"),
+            obj.x or -1,
+            obj.y or -1))
+        return unsafe_plan, unsafe_opts
+    end
+
+    return plan, opts
+end
+
+local function maybe_stop_before_hazard(plan)
+    if not plan
+       or not plan.path
+       or not plan.hazard_summary
+       or not plan.hazard_summary.first_step then
+        return plan
+    end
+
+    local safe_steps = math.max(0, tonumber(plan.hazard_summary.first_step) - 1)
+    local trimmed = {}
+    for i = 1, safe_steps do
+        trimmed[i] = plan.path[i]
+    end
+    plan.path = trimmed
+    plan.hazard_stop = {
+        summary = plan.hazard_summary,
+        safe_steps = safe_steps,
+    }
+    return plan
+end
+
+local AUTOWALK_EXECUTION_PLAN_CONTEXTS = {
+    autowalk_initial = true,
+    blocked_step_reroute = true,
+    blocked_step_reroute_relaxed = true,
+    route_drift_reroute = true,
+    seam_retry_followup = true,
+    seam_retry_followup_relaxed = true,
+}
+
+local function find_tantegel_shrine_risky_x29_descent(plan)
+    if not plan
+       or plan.map_id ~= TANTEGEL_CASTLE_MAP_ID
+       or plan.goal_x ~= TANTEGEL_SHRINE_EXIT_X
+       or plan.goal_y ~= TANTEGEL_SHRINE_EXIT_Y
+       or plan.path_mode ~= "direct"
+       or not plan.path
+       or #plan.path == 0 then
+        return nil
+    end
+
+    local path = plan.path
+    local last = path[#path]
+    if not last
+       or last.x ~= TANTEGEL_SHRINE_EXIT_X
+       or last.y ~= TANTEGEL_SHRINE_EXIT_Y then
+        return nil
+    end
+
+    local suffix_start = nil
+    for i = #path, 1, -1 do
+        local step = path[i]
+        if step
+           and step.direction == "south"
+           and step.x == TANTEGEL_SHRINE_EXIT_X then
+            suffix_start = i
+        else
+            break
+        end
+    end
+
+    if not suffix_start then
+        return nil
+    end
+
+    local first = path[suffix_start]
+    local suffix_len = #path - suffix_start + 1
+    if suffix_len < TANTEGEL_SHRINE_RISKY_X29_SUFFIX_MIN
+       or not first
+       or first.y > TANTEGEL_SHRINE_RISKY_X29_ENTRY_MAX_Y then
+        return nil
+    end
+
+    return {
+        suffix_start = suffix_start,
+        suffix_len = suffix_len,
+        first_dest_x = first.x,
+        first_dest_y = first.y,
+        block_from_x = first.x,
+        block_from_y = first.y - 1,
+    }
+end
+
+local function maybe_avoid_tantegel_shrine_exit_latch(plan, opts)
+    if not plan
+       or not opts
+       or opts.disable_tantegel_shrine_exit_latch_avoid == true
+       or not AUTOWALK_EXECUTION_PLAN_CONTEXTS[plan.plan_context]
+       or plan.result == "No path found" then
+        return plan
+    end
+
+    local risk = find_tantegel_shrine_risky_x29_descent(plan)
+    if not risk then
+        return plan
+    end
+
+    local blocking = copy_blocking_table(plan.blocking)
+    local dest_x, dest_y, approach = add_temporary_directional_block(
+        blocking,
+        risk.block_from_x,
+        risk.block_from_y,
+        "down")
+    if not dest_x or not dest_y or not approach then
+        return plan
+    end
+
+    local result, face_dir, path = pathfinder.pathfind_to(
+        plan.map_id,
+        plan.start_x,
+        plan.start_y,
+        plan.goal_x,
+        plan.goal_y,
+        blocking,
+        pathfinder_opts_for_plan(opts, plan.map_id))
+
+    local replacement = {
+        map_id = plan.map_id,
+        goal_x = plan.goal_x,
+        goal_y = plan.goal_y,
+        path_mode = plan.path_mode,
+        path = path,
+    }
+    local replacement_risk = find_tantegel_shrine_risky_x29_descent(replacement)
+    if result ~= "No path found" and path and #path > 0 and not replacement_risk then
+        debug_tools.info(string.format(
+            "AUTO_WALK_FINAL_APPROACH_AVOID map=0x%02X context=%s target_id=%s target_name=%s start=(%d,%d) goal=(%d,%d) blocked_dest=(%d,%d) approach=%s risky_suffix_y=%d risky_suffix_len=%d old_path_len=%d new_path_len=%d",
+            plan.map_id or -1,
+            tostring(plan.plan_context or "-"),
+            tostring(plan.target and plan.target.id or "-"),
+            tostring(plan.target and plan.target.name or "-"),
+            plan.start_x or -1,
+            plan.start_y or -1,
+            plan.goal_x or -1,
+            plan.goal_y or -1,
+            dest_x,
+            dest_y,
+            tostring(approach),
+            risk.first_dest_y or -1,
+            risk.suffix_len or -1,
+            plan.path and #plan.path or 0,
+            #path))
+        plan.blocking = blocking
+        plan.result = result
+        plan.face_dir = face_dir
+        plan.path = path
+        plan.final_approach_avoid = {
+            dest_x = dest_x,
+            dest_y = dest_y,
+            approach = approach,
+            original_suffix_y = risk.first_dest_y,
+            original_suffix_len = risk.suffix_len,
+        }
+    else
+        debug_tools.info(string.format(
+            "AUTO_WALK_FINAL_APPROACH_AVOID_FAILED map=0x%02X context=%s target_id=%s start=(%d,%d) blocked_dest=(%d,%d) approach=%s result=%s replacement_risky=%s old_path_len=%d new_path_len=%d",
+            plan.map_id or -1,
+            tostring(plan.plan_context or "-"),
+            tostring(plan.target and plan.target.id or "-"),
+            plan.start_x or -1,
+            plan.start_y or -1,
+            dest_x,
+            dest_y,
+            tostring(approach),
+            tostring(result or "-"),
+            tostring(replacement_risk ~= nil),
+            plan.path and #plan.path or 0,
+            path and #path or 0))
+    end
+
+    return plan
 end
 
 local function face_direction_between(from_x, from_y, to_x, to_y)
@@ -2210,8 +3096,8 @@ end
 
 -- plan_path_to_object(obj): Compute a path from the player to the given
 -- object. Returns (result, face_dir, path, message, map_id).
-local function plan_path_to_object(obj, opts)
-    opts = opts or {}
+plan_path_to_object = function(obj, opts)
+    opts = route_planning_opts(opts or nil)
     refresh_navigation_modules()
     local plan_start_clock = os.clock()
     local map_id, px, py = resolve_plan_origin(opts)
@@ -2221,14 +3107,13 @@ local function plan_path_to_object(obj, opts)
     -- skip_npcs=true explicitly.
     local skip_npcs = opts.skip_npcs
     local blocking = opts.blocking
+    local npc_mode = route_npc_mode_from_opts(opts)
+    local parked_slots = opts.planning_parked_slots
     if not blocking then
         -- Only refresh NPCs when we're about to rebuild blocking from live state.
         -- Preview callers that pass a precomputed blocking table already encode
         -- the NPC snapshot they want.
-        if should_refresh_npcs_for_plan(opts) then
-            objects.update_npcs()
-        end
-        blocking = M.build_path_blocking(map_id, skip_npcs and {skip_npcs = true} or nil)
+        blocking, npc_mode, parked_slots = prepare_route_planning_blocking(map_id, opts)
     end
     local goal_x, goal_y, uses_interaction = get_plan_goal(obj)
     local path_mode, target_walkable = resolve_path_mode(obj, map_id, opts)
@@ -2237,7 +3122,7 @@ local function plan_path_to_object(obj, opts)
     local goal_block_reason = get_goal_block_reason(blocking, goal_x, goal_y)
     if path_mode == "adjacent" then
         result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
-            map_id, px, py, goal_x, goal_y, blocking, adjacent_path_opts(opts))
+            map_id, px, py, goal_x, goal_y, blocking, adjacent_path_opts(opts, map_id))
     else
         if goal_block_reason == "npc" then
             result, face_dir, path = "No path found", nil, nil
@@ -2253,7 +3138,7 @@ local function plan_path_to_object(obj, opts)
                 goal_x,
                 goal_y,
                 blocking,
-                pathfinder_opts_for_plan(opts))
+                pathfinder_opts_for_plan(opts, map_id))
             if uses_interaction and path then
                 face_dir = get_plan_face_dir(obj, uses_interaction) or face_dir
             end
@@ -2275,6 +3160,9 @@ local function plan_path_to_object(obj, opts)
         goal_block_reason = goal_block_reason,
         no_path_reason = no_path_reason,
         blocking = blocking,
+        npc_mode = npc_mode,
+        parked_slots = parked_slots,
+        plan_context = opts.plan_context,
         result = result,
         face_dir = face_dir,
         path = path,
@@ -2282,11 +3170,41 @@ local function plan_path_to_object(obj, opts)
         message = build_pathfind_message(obj, result, face_dir, no_path_reason),
     }
     plan = try_adjacent_fallback(obj, map_id, px, py, blocking, opts, plan)
+    plan = maybe_avoid_tantegel_shrine_exit_latch(plan, opts)
     plan.message = build_pathfind_message(obj, plan.result, plan.face_dir, plan.no_path_reason)
+    append_path_hazard_summary(plan)
+    if opts.hazard_preview == true
+       and opts.allow_hazards ~= true
+       and plan.result == "No path found" then
+        local unsafe_opts = copy_opts(opts)
+        unsafe_opts.map_id = map_id
+        unsafe_opts.start_x = px
+        unsafe_opts.start_y = py
+        unsafe_opts.blocking = blocking
+        unsafe_opts.allow_hazards = true
+        unsafe_opts.hazard_preview = false
+        unsafe_opts.store_debug_path = false
+        local unsafe_plan = plan_path_to_object(obj, unsafe_opts)
+        local unsafe_summary = unsafe_plan and analyze_path_hazards(map_id, unsafe_plan.path)
+        if unsafe_summary then
+            plan.unsafe_hazard_summary = unsafe_summary
+            plan.unsafe_path = unsafe_plan.path
+            plan.unsafe_result = unsafe_plan.result
+            plan.unsafe_face_dir = unsafe_plan.face_dir
+            plan.unsafe_no_path_reason = unsafe_plan.no_path_reason
+            plan.message = build_pathfind_message(
+                obj,
+                unsafe_plan.result,
+                unsafe_plan.face_dir,
+                unsafe_plan.no_path_reason) .. ". " ..
+                build_hazard_warning(unsafe_summary, "Warning. No safe route.")
+        end
+    end
     -- Store path for debug recall (trace_path, validate_path, etc.)
     if debug_tools.DEBUG_MODE and opts.store_debug_path ~= false then
         path_debug.store_path(map_id, px, py, plan.goal_x, plan.goal_y, plan.path, nil)
     end
+    log_route_planning_snapshot(plan)
     log_route_plan_timing(plan, (os.clock() - plan_start_clock) * 1000)
     return plan
 end
@@ -2312,18 +3230,17 @@ function M.plan_path_to_coordinates(goal_x, goal_y, opts)
     end
 
     local parked = false
+    local parked_slots = nil
     if opts.park_mobile_npcs == true then
-        start_autowalk_npc_parking(target)
-        objects.update_npcs()
+        parked_slots = start_autowalk_npc_parking(target, opts)
         parked = true
     end
 
+    opts = route_planning_opts(opts, nil, "coordinate_plan")
+    opts.planning_parked_slots = parked_slots
     local plan = plan_path_to_object(target, opts)
     if plan then
         plan.coordinate_target = true
-        plan.npc_mode = opts.skip_npcs and "skip_npcs"
-            or (opts.park_mobile_npcs and "park_mobile_npcs")
-            or "live_npcs"
     end
 
     if parked then
@@ -2454,12 +3371,21 @@ local function queue_path_steps(path, opts)
     end
     opts = opts or {}
     local steps = {}
+    local start_x = tonumber(opts.start_x)
+    local start_y = tonumber(opts.start_y)
     for i, step in ipairs(path) do
         local dir = DIR_NAME_TO_KEY[step.direction]
         if not dir then
             return false
         end
         steps[i] = dir
+        if i == 1 and (start_x == nil or start_y == nil) then
+            local delta = DIR_TO_DELTA[dir]
+            if delta and step.x ~= nil and step.y ~= nil then
+                start_x = tonumber(step.x) and (tonumber(step.x) - delta.dx) or start_x
+                start_y = tonumber(step.y) and (tonumber(step.y) - delta.dy) or start_y
+            end
+        end
     end
     local settle_frames = opts.settle_frames
     if settle_frames == nil then
@@ -2474,6 +3400,9 @@ local function queue_path_steps(path, opts)
     if auto_step.start_route(steps, {
         settle_frames = settle_frames,
         settle_same_direction = settle_same_direction,
+        initial_settle_frames = opts.initial_settle_frames,
+        start_x = start_x,
+        start_y = start_y,
     }) then
         active_route_settle_frames = settle_frames
         active_route_settle_same_direction = settle_same_direction
@@ -2528,7 +3457,7 @@ function M.pathfind_to_current()
         return
     end
     last_pathfind_obj = obj
-    local plan = plan_path_to_object(obj)
+    local plan = plan_path_to_object(obj, {hazard_preview = true})
     tolk.output_interrupt(plan.message)
 end
 
@@ -2566,6 +3495,7 @@ function M.autowalk_to_object(obj, opts)
     end
     local map_id, px, py = nav.get_position()
     local terrain_offset = snapshot.terrain_offset
+    active_route_temp_blocks = nil
     if maps.is_overworld(map_id, terrain_offset) then
         -- On the overworld, autowalk follows the active guided route rather
         -- than running interior pathfinding. If the selected object maps to a
@@ -2598,16 +3528,31 @@ function M.autowalk_to_object(obj, opts)
             skip_guard = true,
         })
     end
+    local npc_mode = route_npc_mode_from_opts(opts)
+    local parked_slots = nil
     if should_park_mobile_npcs_for_autowalk(opts) then
-        start_autowalk_npc_parking(obj)
-        objects.update_npcs()
+        parked_slots = start_autowalk_npc_parking(obj, opts)
+        npc_mode = "park_mobile_npcs"
     elseif should_freeze_npcs_for_autowalk(opts) then
         freeze_npcs_for_pathing()
     else
         debug_tools.debug("AUTO_WALK: NPC freeze skipped for this route")
     end
+    opts = route_planning_opts(opts, npc_mode, "autowalk_initial")
+    opts.planning_parked_slots = parked_slots
     last_pathfind_obj = obj
+    if opts.hazard_preview == nil then
+        opts.hazard_preview = true
+    end
     local plan = plan_path_to_object(obj, opts)
+    plan, opts = maybe_use_unsafe_hazard_plan(obj, map_id, opts, plan)
+    if opts.allow_hazards == true then
+        plan = maybe_stop_before_hazard(plan)
+        if plan.hazard_stop then
+            plan.message = "Unsafe route available. " ..
+                build_hazard_warning(plan.hazard_stop.summary, "Auto-walk will stop before the hazard.")
+        end
+    end
     plan.status = "planned"
     plan.ok = false
     if plan.result == "No path found" then
@@ -2622,6 +3567,15 @@ function M.autowalk_to_object(obj, opts)
         return plan
     end
     if not plan.path or #plan.path == 0 then
+        if plan.hazard_stop then
+            release_route_npc_controls("autowalk hazard boundary")
+            plan.status = "hazard_boundary"
+            plan.message = build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead.")
+            if opts.speak ~= false then
+                tolk.output_interrupt(plan.message)
+            end
+            return plan
+        end
         release_route_npc_controls("autowalk already at destination")
         debug_tools.info("AUTO_WALK: already adjacent to " .. obj.name)
         plan.status = "already_there"
@@ -2681,6 +3635,7 @@ function M.autowalk_to_object(obj, opts)
         return plan
     end
     debug_tools.info("AUTO_WALK: queued " .. #plan.path .. " step(s) for " .. obj.name)
+    opts.hazard_stop = plan.hazard_stop
     set_active_route_context(obj, #plan.path, should_face_after_plan(plan) and plan.face_dir or nil, opts)
     plan.status = "queued"
     plan.ok = true
@@ -2718,13 +3673,40 @@ local function reroute_after_route_drift(cancel_data, target)
         return false
     end
 
-    local plan = plan_path_to_object(target, {
+    route_drift_reroutes = route_drift_reroutes + 1
+    if route_drift_reroutes > ROUTE_DRIFT_REROUTE_LIMIT then
+        debug_tools.info(string.format(
+            "AUTO_WALK_DRIFT_REROUTE_LIMIT map=0x%02X target=%s current=(%d,%d) count=%d reason=%s",
+            map_id or -1,
+            tostring(target.name),
+            start_x or -1,
+            start_y or -1,
+            route_drift_reroutes,
+            tostring(cancel_data and cancel_data.source or "route_drift")))
+        event_bus.publish("route_cancelled", {
+            reason = "route_drift_reroute_limit",
+            target = target,
+            map_id = map_id,
+            current_x = start_x,
+            current_y = start_y,
+            source = cancel_data and cancel_data.source or "route_drift",
+        })
+        clear_active_route_context("route drift reroute limit reached", should_refresh_objects_after_route())
+        tolk.output_interrupt("Auto-walk cancelled. Movement drift did not settle.")
+        return true
+    end
+
+    local plan = plan_path_to_object(target, active_route_planning_opts({
         map_id = map_id,
         start_x = start_x,
         start_y = start_y,
         allow_adjacent_fallback = true,
+        allow_hazards = active_route_allow_hazards,
         store_debug_path = false,
-    })
+    }, "route_drift_reroute"))
+    if active_route_allow_hazards then
+        plan = maybe_stop_before_hazard(plan)
+    end
 
     if plan.result == "No path found" then
         debug_tools.info(string.format(
@@ -2737,6 +3719,11 @@ local function reroute_after_route_drift(cancel_data, target)
     end
 
     if not plan.path or #plan.path == 0 then
+        if plan.hazard_stop then
+            clear_active_route_context("route drift hazard boundary", should_refresh_objects_after_route())
+            tolk.output_interrupt(build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
+            return true
+        end
         event_bus.publish("route_completed")
         clear_active_route_context("route drift reached destination", should_refresh_objects_after_route())
         tolk.output_interrupt("Auto-walk complete. Arrived at " .. tostring(target.name or "destination"))
@@ -2746,6 +3733,7 @@ local function reroute_after_route_drift(cancel_data, target)
     if not queue_path_steps(plan.path, {
         settle_frames = active_route_settle_frames,
         settle_same_direction = active_route_settle_same_direction,
+        initial_settle_frames = route_turn_settle_frames(),
     }) then
         debug_tools.info(string.format(
             "AUTO_WALK_DRIFT_REROUTE_FAILED map=0x%02X target=%s current=(%d,%d) reason=queue_failed",
@@ -2756,7 +3744,7 @@ local function reroute_after_route_drift(cancel_data, target)
         return false
     end
 
-    update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
+    update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil, plan.hazard_stop)
     debug_tools.info(string.format(
         "AUTO_WALK_DRIFT_REROUTE map=0x%02X target=%s current=(%d,%d) path_len=%d",
         map_id or -1,
@@ -2791,21 +3779,29 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     local map_id = nav.get_position()
     local is_manual_block = (block_data and block_data.queued_route == false)
     local is_seam_retry_block = same_seam_retry(map_id, from_x, from_y, blocked_dir)
-    local is_npc_block, npc_x, npc_y = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
+    local is_npc_block, npc_x, npc_y, npc_blocker = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
     local source = is_npc_block
         and "npc_block"
         or (is_seam_retry_block and "seam_retry_block")
         or (is_manual_block and "manual_block" or "queued_route_block")
     local _, seam_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
     if is_npc_block then
+        local slot = npc_blocker and npc_blocker.slot
         debug_tools.info(string.format(
-            "AUTO_WALK_NPC_BLOCK map=0x%02X from=(%d,%d) dir=%s npc=(%d,%d)",
+            "AUTO_WALK_NPC_BLOCK map=0x%02X from=(%d,%d) dir=%s npc=(%d,%d) id=%s slot=%s name=%s kind=%s movement=%s parked=%s npc_mode=%s",
             map_id,
             from_x or -1,
             from_y or -1,
             tostring(blocked_dir),
             npc_x or -1,
-            npc_y or -1))
+            npc_y or -1,
+            tostring(npc_blocker and npc_blocker.id or "-"),
+            slot ~= nil and tostring(slot) or "-",
+            tostring(npc_blocker and npc_blocker.name or "-"),
+            tostring(npc_blocker and npc_blocker.kind or "unknown"),
+            format_npc_movement(npc_blocker and npc_blocker.movement),
+            tostring(npc_blocker and npc_blocker.parked == true),
+            tostring(active_route_npc_mode or "-")))
     end
     if is_manual_block and not is_seam_retry_block then
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
@@ -2841,6 +3837,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
        and not is_npc_block
        and seam_class ~= "confirmed_blocked"
        and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+        record_active_route_temp_block(map_id, from_x, from_y, blocked_dir, "timing_retry")
         debug_tools.info(string.format(
             "AUTO_WALK_TIMING_RETRY map=0x%02X from=(%d,%d) dir=%s movement_start_frame=%s timeout_retries=%s turn_represses=%s",
             map_id,
@@ -2853,20 +3850,57 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
 
-    local _, px, py = nav.get_position()
-
-    local blocking = M.build_path_blocking(map_id, {include_unconfirmed_seams = true})
-    if seam_class ~= "confirmed_blocked" then
-        add_temporary_directional_block(blocking, from_x, from_y, blocked_dir)
+    local reactive_npc_parked = false
+    if is_npc_block
+       and active_route_npc_mode == "park_mobile_npcs"
+       and is_mobile_npc_blocker(npc_blocker) then
+        reactive_npc_parked = add_live_npc_to_autowalk_parking(map_id, npc_blocker, "blocked_step")
     end
-    local plan = plan_path_to_object(last_pathfind_obj, {
+
+    local _, px, py = nav.get_position()
+    if seam_class ~= "confirmed_blocked" and not is_npc_block then
+        record_active_route_temp_block(map_id, from_x, from_y, blocked_dir, source)
+    end
+
+    local reroute_opts = active_route_planning_opts({
         map_id = map_id,
         start_x = px,
         start_y = py,
-        blocking = blocking,
         allow_adjacent_fallback = true,
+        allow_hazards = active_route_allow_hazards,
         store_debug_path = false,
-    })
+    }, "blocked_step_reroute")
+    local blocking = prepare_route_planning_blocking(map_id, reroute_opts)
+    reroute_opts.blocking = blocking
+    local plan = plan_path_to_object(last_pathfind_obj, reroute_opts)
+    if active_route_allow_hazards then
+        plan = maybe_stop_before_hazard(plan)
+    end
+
+    if plan.result == "No path found"
+    and not is_npc_block
+    and count_active_route_temp_blocks(map_id) > 1
+    and clear_active_route_temp_blocks_except(
+        map_id,
+        from_x,
+        from_y,
+        blocked_dir,
+        "blocked_step_reroute_no_path") > 0 then
+        reroute_opts = active_route_planning_opts({
+            map_id = map_id,
+            start_x = px,
+            start_y = py,
+            allow_adjacent_fallback = true,
+            allow_hazards = active_route_allow_hazards,
+            store_debug_path = false,
+        }, "blocked_step_reroute_relaxed")
+        blocking = prepare_route_planning_blocking(map_id, reroute_opts)
+        reroute_opts.blocking = blocking
+        plan = plan_path_to_object(last_pathfind_obj, reroute_opts)
+        if active_route_allow_hazards then
+            plan = maybe_stop_before_hazard(plan)
+        end
+    end
 
     if plan.result == "No path found"
     and seam_class ~= "confirmed_blocked"
@@ -2893,7 +3927,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
 
     if plan.result == "No path found" then
         event_bus.publish("route_cancelled", {
-            reason = is_npc_block and "reroute_npc_block" or "reroute_no_path",
+            reason = is_npc_block and not reactive_npc_parked and "reroute_npc_block" or "reroute_no_path",
             target = last_pathfind_obj,
             map_id = map_id,
             from_x = from_x,
@@ -2901,8 +3935,8 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
             blocked_dir = blocked_dir,
         })
         clear_active_route_context("no path found on reroute", should_refresh_objects_after_route())
-        if is_npc_block then
-            tolk.output_interrupt("Route blocked by NPC movement. Wait for them to move and try again.")
+        if is_npc_block and not reactive_npc_parked then
+            tolk.output_interrupt(npc_blocked_route_message(npc_blocker))
         else
             tolk.output_interrupt("No path found. Pathfinding cancelled.")
         end
@@ -2918,8 +3952,11 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     tolk.output_interrupt(msg)
 
     if plan.path and #plan.path > 0 then
-        if queue_path_steps(plan.path, {settle_frames = active_route_settle_frames}) then
-            update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
+        if queue_path_steps(plan.path, {
+            settle_frames = active_route_settle_frames,
+            initial_settle_frames = route_turn_settle_frames(),
+        }) then
+            update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil, plan.hazard_stop)
         end
     else
         clear_active_route_context("reroute reached destination", should_refresh_objects_after_route())
@@ -2937,14 +3974,25 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     end
 
     local map_id = nav.get_position()
+    local step_source = step_data and step_data.source or "step_complete"
+    local input_source = step_data and step_data.input_source or step_source
     observe_seam_result(
         map_id,
         from_x,
         from_y,
         dir,
         "moved",
-        step_data and step_data.source or "step_complete")
+        step_source)
+    clear_active_route_temp_block_for_step(
+        map_id,
+        from_x,
+        from_y,
+        dir,
+        step_source)
     reroute_failures = 0
+    if step_data and step_data.queued_route then
+        route_drift_reroutes = 0
+    end
     if step_data and step_data.queued_route and active_route_total_steps > 0 then
         active_route_completed_steps = active_route_completed_steps + 1
         local progress_interval = config_int("auto_walk_progress_interval", 6, 0, 60)
@@ -2972,13 +4020,32 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
         return
     end
 
-    local plan = plan_path_to_object(target, {
+    local plan = plan_path_to_object(target, active_route_planning_opts({
         map_id = map_id,
         start_x = to_x,
         start_y = to_y,
         allow_adjacent_fallback = true,
+        allow_hazards = active_route_allow_hazards,
         store_debug_path = false,
-    })
+    }, "seam_retry_followup"))
+    if active_route_allow_hazards then
+        plan = maybe_stop_before_hazard(plan)
+    end
+
+    if plan.result == "No path found" and count_active_route_temp_blocks(map_id) > 0 then
+        clear_active_route_temp_blocks(map_id, "seam_retry_followup_no_path")
+        plan = plan_path_to_object(target, active_route_planning_opts({
+            map_id = map_id,
+            start_x = to_x,
+            start_y = to_y,
+            allow_adjacent_fallback = true,
+            allow_hazards = active_route_allow_hazards,
+            store_debug_path = false,
+        }, "seam_retry_followup_relaxed"))
+        if active_route_allow_hazards then
+            plan = maybe_stop_before_hazard(plan)
+        end
+    end
 
     if plan.result == "No path found" then
         event_bus.publish("route_cancelled", {
@@ -2995,6 +4062,11 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     end
 
     if not plan.path or #plan.path == 0 then
+        if plan.hazard_stop then
+            clear_active_route_context("seam brute force hazard boundary", should_refresh_objects_after_route())
+            tolk.output_interrupt("Seam crossed. " .. build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
+            return
+        end
         event_bus.publish("route_completed")
         clear_active_route_context("seam brute force reached destination", should_refresh_objects_after_route())
         tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
@@ -3005,12 +4077,15 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
         return
     end
 
-    if not queue_path_steps(plan.path, {settle_frames = active_route_settle_frames}) then
+    if not queue_path_steps(plan.path, {
+        settle_frames = active_route_settle_frames,
+        initial_settle_frames = route_turn_settle_frames(),
+    }) then
         clear_active_route_context("queue failure after seam brute force", should_refresh_objects_after_route())
         tolk.output_interrupt("Seam crossed, but auto-walk could not queue the follow-up route.")
         return
     end
-    update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil)
+    update_active_route_remaining(#plan.path, should_face_after_plan(plan) and plan.face_dir or nil, plan.hazard_stop)
 
     tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
         target,
@@ -3026,6 +4101,7 @@ auto_step.on_route_complete = function()
     local total_steps = active_route_total_steps
     local completion_actions = active_route_completion_actions
     local speak_completion = active_route_speak_completion
+    local hazard_stop = active_route_hazard_stop
     clear_active_route_context("autowalk route complete", should_refresh_objects_after_route())
     if overworld_segment then
         debug_tools.info(string.format(
@@ -3036,6 +4112,17 @@ auto_step.on_route_complete = function()
             tostring(overworld_segment.steps)))
     end
     if target then
+        if hazard_stop then
+            local msg = "Auto-walk stopped before hazard"
+            if total_steps and total_steps > 0 then
+                msg = msg .. string.format(" after %d steps", total_steps)
+            end
+            msg = msg .. ". " .. build_hazard_warning(hazard_stop.summary)
+            if speak_completion then
+                tolk.output_interrupt(msg)
+            end
+            return
+        end
         local msg = string.format("Auto-walk complete. Arrived at %s", target.name or "destination")
         if total_steps and total_steps > 0 then
             msg = msg .. string.format(" after %d steps", total_steps)
@@ -3112,6 +4199,10 @@ end
 -- get_last_pathfind_obj(): Return the current pathfind target (or nil).
 function M.get_last_pathfind_obj()
     return last_pathfind_obj
+end
+
+function M.get_active_route_npc_mode()
+    return active_route_npc_mode
 end
 
 function M.clear_active_route_context(reason)
@@ -3371,6 +4462,38 @@ function M.register_debug_commands(get_map_id_fn)
             end
             debug_tools.info("=== end runtime blocked tiles ===")
             tolk.output_interrupt(string.format("Dumped %d runtime blocked tiles for map %02X", count, mid))
+        end
+    end)
+
+    debug_tools.register_command("park_npcs", function(arg)
+        local result, err = M.manual_park_npcs(arg)
+        if not result then
+            debug_tools.error(err)
+            return
+        end
+        debug_tools.info(string.format(
+            "MANUAL_NPC_PARK mode=%s parked_slots=%d active=%s",
+            result.mode,
+            result.parked_slots or 0,
+            tostring(result.active)))
+        tolk.output_interrupt(string.format(
+            "Parked %d %s NPC slot(s).",
+            result.parked_slots or 0,
+            result.mode))
+    end)
+
+    debug_tools.register_command("restore_parked_npcs", function()
+        local result = M.restore_manual_parked_npcs("manual restore parked npcs")
+        debug_tools.info(string.format(
+            "MANUAL_NPC_PARK_RESTORE had_active=%s active=%s",
+            tostring(result.had_active),
+            tostring(result.active)))
+        if result.active then
+            tolk.output_interrupt("Parked NPC restore deferred.")
+        elseif result.had_active then
+            tolk.output_interrupt("Parked NPCs restored.")
+        else
+            tolk.output_interrupt("No parked NPCs to restore.")
         end
     end)
 end

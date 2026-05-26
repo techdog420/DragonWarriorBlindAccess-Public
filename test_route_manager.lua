@@ -27,6 +27,7 @@ local function make_env(options)
     local last_start_route_opts = nil
     local overworld_plan_calls = 0
     local inject_step_calls = 0
+    local last_inject_opts = nil
     local suppress_direction_tracking_calls = 0
     local last_suppress_direction_tracking_frames = nil
     local last_injected_dir = nil
@@ -39,6 +40,8 @@ local function make_env(options)
     local reroute_calls = 0
     local update_npcs_calls = 0
     local request_refresh_calls = 0
+    local debug_infos = {}
+    local registered_commands = {}
     local joypad_sets = {}
     local memory_values = options.memory_values or {}
     local memory_writes = {}
@@ -120,6 +123,26 @@ local function make_env(options)
             [2] = "Reachable",
             [3] = "Unreachable",
         }
+        local function memory_blocking_positions()
+            local positions = {}
+            for slot = 0, 19 do
+                local base = slot * 3
+                local byte0 = memory_values[base] or 0
+                local byte1 = memory_values[base + 1] or 0
+                local byte2 = memory_values[base + 2] or 0
+                local x = byte0 % 32
+                local y = byte1 % 32
+                if not ((x == 0 and y == 0) or (x == 31 and y == 31)) then
+                    positions[#positions + 1] = {
+                        id = "npc_" .. slot,
+                        x = x,
+                        y = y,
+                        movement = byte2,
+                    }
+                end
+            end
+            return positions
+        end
         return {
             TYPE_CHEST = "chest",
             TYPE_NPC = "npc",
@@ -142,6 +165,12 @@ local function make_env(options)
                 update_npcs_calls = update_npcs_calls + 1
             end,
             get_blocking_positions = function()
+                if options.blocking_positions_fn then
+                    return options.blocking_positions_fn(memory_values)
+                end
+                if options.blocking_positions_from_memory then
+                    return memory_blocking_positions()
+                end
                 return options.blocking_positions or {}
             end,
             get_objects = function()
@@ -194,6 +223,9 @@ local function make_env(options)
             if pathfind_mode == "reroute_no_path" and reroute_calls >= 2 then
                 return true
             end
+            if options.pathfind_no_path and options.pathfind_no_path(blocking or {}) then
+                return true
+            end
             if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
                 return true
             end
@@ -218,13 +250,25 @@ local function make_env(options)
                     blocking = blocking,
                     opts = opts,
                 }
+                if options.pathfind_to_fn then
+                    local result, face_dir, path = options.pathfind_to_fn(start_x, start_y, goal_x, goal_y, blocking, opts)
+                    if result ~= nil then
+                        return result, face_dir, path
+                    end
+                end
                 if pathfind_mode == "always_no_path" then
+                    return "No path found", nil, nil
+                end
+                if pathfind_mode == "hazard_only" and not (opts and opts.walkability_snapshot) then
                     return "No path found", nil, nil
                 end
                 if pathfind_mode == "direct_no_path_adjacent_ok" then
                     return "No path found", nil, nil
                 end
                 if pathfind_mode == "reroute_no_path" and reroute_calls >= 2 then
+                    return "No path found", nil, nil
+                end
+                if options.pathfind_no_path and options.pathfind_no_path(blocking or {}) then
                     return "No path found", nil, nil
                 end
                 if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
@@ -248,6 +292,9 @@ local function make_env(options)
                 if pathfind_mode == "direct_no_path_adjacent_ok"
                 and goal_x == current_object.x
                 and goal_y == current_object.y then
+                    return nil
+                end
+                if pathfind_mode == "hazard_only" and not (opts and opts.walkability_snapshot) then
                     return nil
                 end
                 if should_return_no_path(blocking) then
@@ -278,7 +325,13 @@ local function make_env(options)
                 if pathfind_mode == "always_no_path" then
                     return "No path found", nil, nil
                 end
+                if pathfind_mode == "hazard_only" and not (opts and opts.walkability_snapshot) then
+                    return "No path found", nil, nil
+                end
                 if pathfind_mode == "reroute_no_path" and reroute_calls >= 2 then
+                    return "No path found", nil, nil
+                end
+                if options.pathfind_no_path and options.pathfind_no_path(blocking or {}) then
                     return "No path found", nil, nil
                 end
                 if pathfind_mode == "block_sensitive" and blocking and blocking[pathfind_block_key] then
@@ -297,6 +350,9 @@ local function make_env(options)
                     blocking = blocking,
                     opts = opts,
                 }
+                if pathfind_mode == "hazard_only" and not (opts and opts.walkability_snapshot) then
+                    return nil, nil, nil, {}
+                end
                 if should_return_no_path(blocking) then
                     return nil, nil, nil, {}
                 end
@@ -308,12 +364,29 @@ local function make_env(options)
     package.preload["map_reader"] = function()
         local closed_door_cells = options.closed_door_cells or {}
         local non_walkable_cells = options.non_walkable_cells or closed_door_cells
+        local hazard_cells = options.hazard_cells or {}
         return {
             get_map_dimensions = function()
                 return options.map_width or 10, options.map_height or 10
             end,
             get_directional_blocks = function()
                 return {}
+            end,
+            is_hazard_cell = function(_, x, y)
+                return hazard_cells[x .. "," .. y] or false
+            end,
+            get_walkability_snapshot = function(_, opts)
+                local allow_hazards = opts and opts.allow_hazards == true
+                local snapshot = {}
+                for y = 0, (options.map_height or 10) - 1 do
+                    snapshot[y] = {}
+                    for x = 0, (options.map_width or 10) - 1 do
+                        local key = x .. "," .. y
+                        snapshot[y][x] = not non_walkable_cells[key]
+                            and (allow_hazards or not hazard_cells[key])
+                    end
+                end
+                return snapshot
             end,
             get_walkability_details = function(_, x, y)
                 local k = x .. "," .. y
@@ -351,9 +424,10 @@ local function make_env(options)
                 last_start_route_opts = opts
                 return options.start_route_result ~= false
             end,
-            inject_step = function(dir)
+            inject_step = function(dir, opts)
                 inject_step_calls = inject_step_calls + 1
                 last_injected_dir = dir
+                last_inject_opts = opts
             end,
             suppress_direction_tracking = function(frames)
                 suppress_direction_tracking_calls = suppress_direction_tracking_calls + 1
@@ -407,9 +481,16 @@ local function make_env(options)
     package.preload["debug_tools"] = function()
         return {
             DEBUG_MODE = true,
-            info = function() end,
+            info = function(msg)
+                debug_infos[#debug_infos + 1] = msg
+            end,
             debug = function() end,
-            error = function() end,
+            error = function(msg)
+                debug_infos[#debug_infos + 1] = msg
+            end,
+            register_command = function(name, fn)
+                registered_commands[name] = fn
+            end,
         }
     end
 
@@ -454,6 +535,14 @@ local function make_env(options)
         pathfind_calls = function() return pathfind_calls end,
         update_npcs_calls = function() return update_npcs_calls end,
         request_refresh_calls = function() return request_refresh_calls end,
+        debug_infos = function() return debug_infos end,
+        invoke_command = function(name, arg)
+            local fn = registered_commands[name]
+            if not fn then
+                error("command not registered: " .. tostring(name))
+            end
+            return fn(arg)
+        end,
         pathability_statuses = function() return pathability_statuses end,
         pathability_status_updates = function() return pathability_status_updates end,
         pathability_filter = function() return pathability_filter end,
@@ -465,6 +554,7 @@ local function make_env(options)
         overworld_start_calls = function() return overworld_start_calls end,
         inject_step_calls = function() return inject_step_calls end,
         last_injected_dir = function() return last_injected_dir end,
+        last_inject_opts = function() return last_inject_opts end,
         suppress_direction_tracking_calls = function() return suppress_direction_tracking_calls end,
         last_suppress_direction_tracking_frames = function() return last_suppress_direction_tracking_frames end,
         last_direct_call = function() return last_direct_call end,
@@ -502,6 +592,70 @@ end
 local function assert_not_contains(haystack, needle, message)
     if string.find(haystack, needle, 1, true) then
         error(string.format("%s: unexpected %s in %s", message, needle, haystack), 2)
+    end
+end
+
+local function make_path_from_dirs(start_x, start_y, dirs)
+    local x = start_x
+    local y = start_y
+    local path = {}
+    for i, dir in ipairs(dirs) do
+        if dir == "north" then
+            y = y - 1
+        elseif dir == "south" then
+            y = y + 1
+        elseif dir == "west" then
+            x = x - 1
+        elseif dir == "east" then
+            x = x + 1
+        else
+            error("unsupported test dir: " .. tostring(dir), 2)
+        end
+        path[i] = {x = x, y = y, direction = dir}
+    end
+    return path
+end
+
+local function repeated_dirs(dir, count)
+    local dirs = {}
+    for i = 1, count do
+        dirs[i] = dir
+    end
+    return dirs
+end
+
+local function assert_write_value(memory_writes, index, address, expected, message)
+    local write = memory_writes[index]
+    if not write then
+        error(string.format("%s: missing write #%d", message, index), 2)
+    end
+    if write.address ~= address or write.value ~= expected then
+        error(string.format(
+            "%s: expected write #%d to be address %d value %s, got address %s value %s",
+            message,
+            index,
+            address,
+            tostring(expected),
+            tostring(write.address),
+            tostring(write.value)), 2)
+    end
+end
+
+local function assert_write_set(memory_writes, start_index, expected_by_address, message)
+    local actual = {}
+    for i = start_index, #memory_writes do
+        local write = memory_writes[i]
+        actual[write.address] = write.value
+    end
+    for address, expected in pairs(expected_by_address) do
+        if actual[address] ~= expected then
+            error(string.format(
+                "%s: expected address %d value %s, got %s",
+                message,
+                address,
+                tostring(expected),
+                tostring(actual[address])), 2)
+        end
     end
 end
 
@@ -1191,6 +1345,83 @@ function tests.bizhawk_pathfind_uses_cached_object_blockers_by_default()
     env.restore()
 end
 
+function tests.pathfind_reports_unsafe_hazard_route_when_safe_route_is_blocked()
+    local env = make_env({
+        pathfind_mode = "hazard_only",
+        path_length = 2,
+        current_object = {name = "Shrine Stairs", type = "exit", x = 5, y = 1},
+        hazard_cells = {
+            ["5,3"] = "damage",
+            ["5,2"] = "damage",
+        },
+    })
+
+    env.route_manager.pathfind_to_current()
+
+    local output = table.concat(env.outputs, "\n")
+    assert_contains(output, "Shrine Stairs. Path: 1 north", "path preview should still present the unsafe route")
+    assert_contains(output, "No safe route", "path preview should explain that only an unsafe route exists")
+    assert_contains(output, "Unsafe route crosses damage floor: 2 tiles, first in 1 step", "hazards should be summarized as one compact cluster")
+    assert_not_contains(output, "Shrine Stairs. No path found", "path preview should no longer collapse to an error-only message")
+
+    env.restore()
+end
+
+function tests.autowalk_stops_before_immediate_hazard()
+    local env = make_env({
+        pathfind_mode = "hazard_only",
+        path_length = 2,
+        current_object = {name = "Shrine Stairs", type = "exit", x = 5, y = 1},
+        hazard_cells = {
+            ["5,3"] = "damage",
+            ["5,2"] = "damage",
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+
+    assert_equal(plan.status, "hazard_boundary", "autowalk should stop immediately when the first step is hazardous")
+    assert_equal(env.start_route_calls(), 0, "autowalk should not queue any steps when already at the hazard boundary")
+    assert_contains(table.concat(env.outputs, "\n"), "Hazard ahead.", "autowalk should warn when the hazard is immediate")
+
+    env.restore()
+end
+
+function tests.autowalk_queues_safe_prefix_before_hazard()
+    local env = make_env({
+        pathfind_mode = "hazard_only",
+        path_length = 2,
+        current_object = {
+            id = "exit_5_1",
+            name = "Shrine Stairs",
+            type = "exit",
+            x = 5,
+            y = 1,
+        },
+        hazard_cells = {
+            ["5,2"] = "damage",
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+
+    assert_equal(plan.status, "queued", "autowalk should queue the safe prefix of an unsafe route")
+    assert_equal(plan.ok, true, "safe-prefix hazard fallback should succeed")
+    assert_equal(env.start_route_calls(), 1, "autowalk should queue the safe prefix once")
+    assert_equal(#env.last_start_route_steps(), 1, "autowalk should stop before the first hazard tile")
+    assert_equal(env.last_start_route_steps()[1], "up", "safe prefix should preserve the non-hazard opening step")
+    local direct = env.last_direct_call()
+    assert_equal(type(direct and direct.opts and direct.opts.walkability_snapshot), "table", "hazard fallback should replan with hazards allowed")
+    assert_contains(table.concat(env.outputs, "\n"), "Auto-walk will stop before the hazard.", "autowalk should announce the hazard stop")
+
+    env.auto_step.on_route_complete()
+
+    assert_contains(table.concat(env.outputs, "\n"), "Auto-walk stopped before hazard after 1 steps", "completion should report the early stop before hazard")
+    assert_contains(table.concat(env.outputs, "\n"), "Unsafe route crosses damage floor: 1 tile, first in 2 steps", "completion should restate the hazard warning")
+
+    env.restore()
+end
+
 function tests.bizhawk_route_refresh_npcs_can_be_opted_in()
     local env = make_env({
         is_bizhawk = true,
@@ -1394,6 +1625,17 @@ function tests.reroute_no_path_bruteforces_unconfirmed_seam()
         1,
         "an unconfirmed seam with no alternate route should trigger a brute-force retry"
     )
+    assert_equal(env.last_injected_dir(), "up", "seam brute-force should retry the blocked direction")
+    assert_equal(
+        env.last_inject_opts() and env.last_inject_opts().source,
+        "seam_retry",
+        "seam brute-force should use the seam-retry step source"
+    )
+    assert_equal(
+        env.last_inject_opts() and env.last_inject_opts().hold_after_movement_start,
+        true,
+        "seam brute-force should keep holding after a movement twitch"
+    )
     assert_equal(
         env.route_manager.count_runtime_blocks(0x05),
         0,
@@ -1426,6 +1668,16 @@ function tests.suspect_route_timeout_bruteforces_before_silent_reroute()
         "a movement-start route timeout should directly retry the same seam before accepting an alternate reroute"
     )
     assert_equal(
+        env.last_inject_opts() and env.last_inject_opts().source,
+        "seam_retry",
+        "timing-suspect retries should use the seam-retry injection mode"
+    )
+    assert_equal(
+        env.last_inject_opts() and env.last_inject_opts().hold_after_movement_start,
+        true,
+        "timing-suspect retries should keep holding after movement starts"
+    )
+    assert_equal(
         env.start_route_calls(),
         1,
         "the suspicious timeout should not silently queue an alternate route first"
@@ -1434,6 +1686,349 @@ function tests.suspect_route_timeout_bruteforces_before_silent_reroute()
         table.concat(env.outputs, "\n"),
         "Re-routing.",
         "the suspicious timeout should not be announced as a normal reroute before direct retry"
+    )
+
+    env.restore()
+end
+
+function tests.timing_retry_temp_block_clears_after_successful_seam_retry()
+    local env = make_env({pathfind_mode = "always_path"})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 5,
+        timeout_retries = 1,
+        turn_represses = 1,
+    })
+    env.auto_step.on_step_complete(5, 4, "up", 5, 3, {
+        queued_route = false,
+        source = "auto_hold",
+        input_source = "seam_retry",
+    })
+
+    local followup = env.last_direct_call()
+    assert_equal(
+        followup.blocking["5,3"],
+        nil,
+        "a successful timing-suspect seam retry should clear its route-local avoid before the follow-up plan"
+    )
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_TEMP_BLOCK_CLEAR",
+        "clearing a successful timing-suspect seam should be logged"
+    )
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "timing-suspect retry avoidance should not become a persistent runtime block"
+    )
+
+    env.restore()
+end
+
+function tests.seam_retry_followup_relaxes_route_temp_blocks_when_they_eliminate_all_paths()
+    local function has_block(blocking, key, approach)
+        return type(blocking[key]) == "table" and blocking[key][approach] == true
+    end
+    local older_block_plans = 0
+    local env = make_env({
+        pathfind_no_path = function(blocking)
+            if has_block(blocking, "4,4", "east") then
+                older_block_plans = older_block_plans + 1
+                return older_block_plans >= 2
+            end
+            return false
+        end,
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "left", {
+        queued_route = true,
+        movement_started = false,
+    })
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 5,
+        timeout_retries = 1,
+        turn_represses = 1,
+    })
+    env.auto_step.on_step_complete(5, 4, "up", 5, 3, {
+        queued_route = false,
+        source = "auto_hold",
+        input_source = "seam_retry",
+    })
+
+    local followup = env.last_direct_call()
+    assert_equal(
+        env.start_route_calls(),
+        3,
+        "seam-retry follow-up should queue a relaxed path when older temp blocks make the graph impossible"
+    )
+    assert_equal(
+        followup.blocking["4,4"],
+        nil,
+        "the relaxed follow-up plan should remove older route-local timing avoids"
+    )
+    assert_equal(
+        followup.blocking["5,3"],
+        nil,
+        "the crossed seam should already be clear in the relaxed follow-up plan"
+    )
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_TEMP_BLOCK_RELAX",
+        "relaxing over-constraining route-local temp blocks should be logged"
+    )
+
+    env.restore()
+end
+
+function tests.blocked_step_reroute_relaxes_older_route_temp_blocks_but_keeps_current_edge()
+    local function has_block(blocking, key, approach)
+        return type(blocking[key]) == "table" and blocking[key][approach] == true
+    end
+    local env = make_env({
+        pathfind_no_path = function(blocking)
+            return has_block(blocking, "4,4", "east")
+                and has_block(blocking, "5,3", "south")
+        end,
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "left", {queued_route = true})
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = true})
+
+    local relaxed = env.last_direct_call()
+    assert_equal(
+        env.start_route_calls(),
+        3,
+        "blocked-step reroute should queue a relaxed detour after dropping older temp blocks"
+    )
+    assert_equal(
+        type(relaxed.blocking["4,4"]) == "table" and relaxed.blocking["4,4"].east or nil,
+        nil,
+        "blocked-step relax should clear older route-local temp blocks"
+    )
+    assert_equal(
+        relaxed.blocking["5,3"].south,
+        true,
+        "blocked-step relax should keep the current failed edge blocked"
+    )
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "source=blocked_step_reroute_no_path",
+        "blocked-step temp-block relaxation should be logged"
+    )
+
+    env.restore()
+end
+
+function tests.unconfirmed_reroute_blocks_accumulate_for_active_route_only()
+    local target = {
+        id = "exit_29_29",
+        name = "Southeast Exit",
+        type = "exit",
+        x = 29,
+        y = 29,
+    }
+    local env = make_env({
+        start_map_id = 0x04,
+        start_x = 26,
+        start_y = 7,
+        map_width = 30,
+        map_height = 30,
+        current_object = target,
+        object_list = {target},
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(26, 7, "up", {
+        queued_route = true,
+        movement_started = false,
+    })
+    local first_blocking = env.last_direct_call().blocking
+
+    assert_equal(
+        first_blocking["26,6"].south,
+        true,
+        "first soft reroute should block the failed northward edge for this route"
+    )
+
+    env.auto_step.on_blocked(26, 7, "right", {
+        queued_route = true,
+        movement_started = false,
+    })
+    local second_blocking = env.last_direct_call().blocking
+
+    assert_equal(
+        second_blocking["26,6"].south,
+        true,
+        "second soft reroute should retain the previous route-local failed edge"
+    )
+    assert_equal(
+        second_blocking["27,7"].west,
+        true,
+        "second soft reroute should also include the newly failed edge"
+    )
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x04),
+        0,
+        "route-local soft blocks should not promote noisy route evidence to runtime map data"
+    )
+
+    env.restore()
+end
+
+function tests.tantegel_shrine_autowalk_avoids_high_x29_final_descent()
+    local target = {
+        id = "stair_29_29",
+        name = "Sun Shrine Stairs and Southeast Exit",
+        type = "stair",
+        x = 29,
+        y = 29,
+    }
+    local env = make_env({
+        start_map_id = 0x04,
+        start_x = 29,
+        start_y = 3,
+        map_width = 30,
+        map_height = 30,
+        current_object = target,
+        object_list = {target},
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y, blocking)
+            if goal_x ~= 29 or goal_y ~= 29 then
+                return nil
+            end
+            if type(blocking["29,4"]) == "table" and blocking["29,4"].north == true then
+                local dirs = {"west"}
+                for _, dir in ipairs(repeated_dirs("south", 4)) do dirs[#dirs + 1] = dir end
+                dirs[#dirs + 1] = "east"
+                for _, dir in ipairs(repeated_dirs("south", 22)) do dirs[#dirs + 1] = dir end
+                return "Path: 1 west, 4 south, 1 east, 22 south", "south",
+                    make_path_from_dirs(start_x, start_y, dirs)
+            end
+            return "Path: 26 south", "south",
+                make_path_from_dirs(start_x, start_y, repeated_dirs("south", 26))
+        end,
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+    local steps = env.last_start_route_steps()
+    local replacement_call = env.last_direct_call()
+
+    assert_equal(plan.status, "queued", "shrine autowalk should still queue after reshaping the final approach")
+    assert_equal(steps[1], "left", "risky high x=29 descent should be replaced by the side approach")
+    assert_equal(
+        replacement_call.blocking["29,4"].north,
+        true,
+        "replacement planning should block only the first risky high x=29 south edge"
+    )
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_FINAL_APPROACH_AVOID",
+        "final-approach route shaping should be logged"
+    )
+
+    env.restore()
+end
+
+function tests.tantegel_shrine_lower_x29_descent_stays_available()
+    local target = {
+        id = "stair_29_29",
+        name = "Sun Shrine Stairs and Southeast Exit",
+        type = "stair",
+        x = 29,
+        y = 29,
+    }
+    local env = make_env({
+        start_map_id = 0x04,
+        start_x = 29,
+        start_y = 7,
+        map_width = 30,
+        map_height = 30,
+        current_object = target,
+        object_list = {target},
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            if goal_x ~= 29 or goal_y ~= 29 then
+                return nil
+            end
+            return "Path: 22 south", "south",
+                make_path_from_dirs(start_x, start_y, repeated_dirs("south", 22))
+        end,
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+    local steps = env.last_start_route_steps()
+
+    assert_equal(plan.status, "queued", "lower x=29 shrine approach should still queue normally")
+    assert_equal(#steps, 22, "lower x=29 approach should keep the direct descent")
+    assert_equal(steps[1], "down", "lower x=29 approach should not be detoured")
+    assert_equal(env.pathfind_calls(), 1, "non-risky lower descent should not trigger a second planning call")
+    assert_not_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_FINAL_APPROACH_AVOID",
+        "lower x=29 descent should not log final-approach avoidance"
+    )
+
+    env.restore()
+end
+
+function tests.tantegel_shrine_drift_reroute_avoids_high_x29_final_descent()
+    local target = {
+        id = "stair_29_29",
+        name = "Sun Shrine Stairs and Southeast Exit",
+        type = "stair",
+        x = 29,
+        y = 29,
+    }
+    local env = make_env({
+        start_map_id = 0x04,
+        start_x = 7,
+        start_y = 8,
+        map_width = 30,
+        map_height = 30,
+        current_object = target,
+        object_list = {target},
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y, blocking)
+            if goal_x ~= 29 or goal_y ~= 29 then
+                return nil
+            end
+            if start_x == 29 and start_y == 3 then
+                if type(blocking["29,4"]) == "table" and blocking["29,4"].north == true then
+                    local dirs = {"west"}
+                    for _, dir in ipairs(repeated_dirs("south", 4)) do dirs[#dirs + 1] = dir end
+                    dirs[#dirs + 1] = "east"
+                    for _, dir in ipairs(repeated_dirs("south", 22)) do dirs[#dirs + 1] = dir end
+                    return "Path: 1 west, 4 south, 1 east, 22 south", "south",
+                        make_path_from_dirs(start_x, start_y, dirs)
+                end
+                return "Path: 26 south", "south",
+                    make_path_from_dirs(start_x, start_y, repeated_dirs("south", 26))
+            end
+            return "Path: 1 east", "east",
+                make_path_from_dirs(start_x, start_y, {"east"})
+        end,
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.set_position(0x04, 29, 3)
+    env.auto_step.on_route_cancelled({
+        reason = "route_drift_off_path",
+        current_x = 29,
+        current_y = 3,
+        source = "test_drift",
+    })
+
+    local steps = env.last_start_route_steps()
+    assert_equal(env.start_route_calls(), 2, "drift reroute should queue a follow-up route")
+    assert_equal(steps[1], "left", "drift reroute should avoid the high x=29 final descent")
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "context=route_drift_reroute",
+        "drift-reroute final-approach avoidance should include the reroute context"
     )
 
     env.restore()
@@ -1650,6 +2245,72 @@ function tests.autowalk_reroutes_from_route_drift_tile()
         "Re-routing after drift",
         "route drift recovery should announce that it is re-routing"
     )
+    assert_equal(
+        env.last_start_route_opts().initial_settle_frames,
+        16,
+        "route drift reroute should wait for movement state to settle before the next step"
+    )
+    assert_equal(
+        env.last_start_route_opts().start_x,
+        5,
+        "route drift reroute should pass the planned path start x through to auto_step"
+    )
+    assert_equal(
+        env.last_start_route_opts().start_y,
+        4,
+        "route drift reroute should pass the planned path start y through to auto_step"
+    )
+
+    env.restore()
+end
+
+function tests.seam_retry_completion_does_not_reset_route_drift_limit()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_current()
+
+    for i = 1, 6 do
+        env.auto_step.on_route_cancelled({
+            reason = "route_drift_off_path",
+            current_x = 8,
+            current_y = 16 + i,
+            source = "route_settle_catchup",
+        })
+        env.auto_step.on_step_complete(8, 16 + i, "up", 8, 15 + i, {
+            queued_route = false,
+            source = "seam_retry",
+        })
+    end
+
+    env.auto_step.on_route_cancelled({
+        reason = "route_drift_off_path",
+        current_x = 8,
+        current_y = 23,
+        source = "route_settle_catchup",
+    })
+
+    local saw_limit = false
+    for _, event in ipairs(env.published_events()) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "route_drift_reroute_limit"
+           and payload.current_x == 8
+           and payload.current_y == 23 then
+            saw_limit = true
+            break
+        end
+    end
+
+    assert_equal(
+        saw_limit,
+        true,
+        "route drift reroute guard should still fire when only seam-retry steps complete between drifts"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Movement drift did not settle",
+        "route drift limit should announce cancellation"
+    )
 
     env.restore()
 end
@@ -1723,6 +2384,225 @@ function tests.autowalk_parks_mobile_non_target_npcs_when_enabled()
     env.restore()
 end
 
+function tests.parked_autowalk_plans_after_mobile_npc_parking()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,2",
+        blocking_positions_from_memory = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 2,
+            [2] = 0x12,
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+    local direct = env.last_direct_call()
+
+    assert_equal(plan.status, "queued", "parked autowalk should plan from the post-park NPC snapshot")
+    assert_equal(plan.npc_mode, "park_mobile_npcs", "initial autowalk plan should record the parked NPC mode")
+    assert_equal(direct.blocking["5,2"], nil, "mobile NPC's original tile should not block the parked plan")
+    assert_equal(env.route_manager.get_active_route_npc_mode(), "park_mobile_npcs", "queued route should remember the parked NPC mode")
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "npc_mode=park_mobile_npcs",
+        "route planning logs should expose the parked NPC mode"
+    )
+
+    env.restore()
+end
+
+function tests.parked_autowalk_reroute_keeps_mobile_npcs_parked()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,2",
+        blocking_positions_from_memory = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 2,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.memory_values[0] = 0x80 + 5
+    env.memory_values[1] = 0x60 + 2
+    env.auto_step.on_blocked(5, 4, "up")
+
+    local direct = env.last_direct_call()
+    assert_equal(env.start_route_calls(), 2, "blocked parked autowalk should reroute successfully")
+    assert_equal(direct.blocking["5,2"], nil, "reroute should rebuild blocking after reapplying mobile NPC parking")
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "context=blocked_step_reroute",
+        "reroute planning should be logged with its route context"
+    )
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "npc_mode=park_mobile_npcs",
+        "reroute planning should keep the active parked NPC mode"
+    )
+
+    env.restore()
+end
+
+function tests.parked_autowalk_reactively_parks_new_mobile_npc_blocker()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        blocking_positions_from_memory = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.memory_values[0] = 0x80 + 5
+    env.memory_values[1] = 0x60 + 3
+    env.memory_values[2] = 0x12
+    env.auto_step.on_blocked(5, 4, "up")
+
+    local direct = env.last_direct_call()
+    local logs = table.concat(env.debug_infos(), "\n")
+    assert_equal(env.start_route_calls(), 2, "blocked parked autowalk should reroute after reactively parking a new mobile NPC")
+    assert_equal(direct.blocking["5,3"], nil, "reactively parked mobile NPC should not remain in the reroute blocking table")
+    assert_equal(env.memory_writes[1].value, 0x80 + 31, "reactive parking should move the blocking NPC X")
+    assert_equal(env.memory_writes[2].value, 0x60 + 31, "reactive parking should move the blocking NPC Y")
+    assert_contains(logs, "AUTO_WALK_NPC_BLOCK", "reactive parking should still log the NPC blocker")
+    assert_contains(logs, "kind=mobile", "NPC blocker log should classify mobile blockers")
+    assert_contains(logs, "AUTO_WALK_NPC_REACTIVE_PARK", "reactive parking should be visible in route logs")
+
+    env.restore()
+end
+
+function tests.parked_autowalk_stationary_npc_reroute_uses_cautious_message()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        blocking_positions_from_memory = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.memory_values[0] = 0x80 + 5
+    env.memory_values[1] = 0x60 + 3
+    env.memory_values[2] = 0x00
+    env.auto_step.on_blocked(5, 4, "up")
+
+    local output = table.concat(env.outputs, "\n")
+    local logs = table.concat(env.debug_infos(), "\n")
+    assert_contains(logs, "kind=stationary", "NPC blocker log should classify stationary blockers")
+    assert_contains(
+        output,
+        "Route may be blocked by a stationary NPC",
+        "stationary reroute blockers should not be announced as roaming NPC movement"
+    )
+    assert_not_contains(
+        output,
+        "Route blocked by NPC movement",
+        "stationary reroute blockers should avoid the mobile-NPC wording"
+    )
+
+    env.restore()
+end
+
+function tests.parked_autowalk_npc_block_check_ignores_parked_mobile_npc()
+    local env = make_env({
+        is_bizhawk = true,
+        blocking_positions_from_memory = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 3,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.memory_values[0] = 0x80 + 5
+    env.memory_values[1] = 0x60 + 3
+    env.auto_step.on_blocked(5, 4, "up")
+
+    assert_not_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_NPC_BLOCK",
+        "parked mobile NPCs should not be reported as live NPC route blockers"
+    )
+    assert_not_contains(
+        table.concat(env.outputs, "\n"),
+        "Route blocked by NPC movement",
+        "parked mobile NPCs should not surface the temporary NPC-clutter message"
+    )
+
+    env.restore()
+end
+
+function tests.parked_autowalk_still_respects_stationary_npc_blocker()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,2",
+        blocking_positions_from_memory = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 2,
+            [2] = 0x00,
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+    local direct = env.last_direct_call()
+
+    assert_equal(plan.status, "no_path", "stationary NPC blockers should still be honored")
+    assert_equal(direct.blocking["5,2"], "npc", "stationary NPC should remain in the parked plan blocking table")
+
+    env.restore()
+end
+
+function tests.parked_autowalk_still_respects_selected_target_npc()
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "6,1",
+        blocking_positions_from_memory = true,
+        current_object = {id = "npc_0", name = "Merchant", type = "npc", x = 6, y = 1},
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+            auto_walk_npc_hold_frames = "0",
+        },
+        memory_values = {
+            [0] = 0x80 + 6,
+            [1] = 0x60 + 1,
+            [2] = 0x12,
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    local adjacent = env.last_adjacent_call()
+
+    assert_equal(#env.memory_writes, 0, "selected target NPC should be exempt from mobile parking")
+    assert_equal(adjacent.blocking["6,1"], "npc", "selected target NPC should still participate in the planning snapshot")
+
+    env.restore()
+end
+
 function tests.autowalk_parking_defers_restore_when_player_occupies_original_npc_tile()
     local env = make_env({
         is_bizhawk = true,
@@ -1753,9 +2633,12 @@ function tests.autowalk_parking_defers_restore_when_player_occupies_original_npc
     env.restore()
 end
 
-function tests.autowalk_parking_does_not_overwrite_pending_deferred_restore()
+function tests.autowalk_parking_merges_pending_deferred_restore_with_new_mobile_parking()
     local env = make_env({
         is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "7,4",
+        blocking_positions_from_memory = true,
         config_values = {
             auto_walk_park_mobile_npcs = "true",
         },
@@ -1772,17 +2655,78 @@ function tests.autowalk_parking_does_not_overwrite_pending_deferred_restore()
     env.memory_values[3] = 0x80 + 7
     env.memory_values[4] = 0x60 + 4
     env.memory_values[5] = 0x12
-    env.route_manager.autowalk_to_current()
+    local plan = env.route_manager.autowalk_to_current()
+    local direct = env.last_direct_call()
 
-    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "new autowalk should leave the deferred restore owned by the original parking state")
-    assert_equal(#env.memory_writes, 2, "new autowalk should not park a new slot while a deferred restore is pending")
+    assert_equal(plan.status, "queued", "new autowalk should still plan while a deferred restore is pending")
+    assert_equal(direct.blocking["7,4"], nil, "new mobile NPCs should be parked even when a deferred restore is pending")
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "new autowalk should keep the deferred restore in the active parking state")
+    assert_equal(#env.memory_writes, 4, "new autowalk should park newly scanned mobile NPCs while preserving the deferred one")
+    assert_equal(env.memory_writes[3].value, 0x80 + 31, "new mobile NPC X should be parked")
+    assert_equal(env.memory_writes[4].value, 0x60 + 31, "new mobile NPC Y should be parked")
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_NPC_PARK_START merged_pending_restore slots=1",
+        "parking logs should expose pending restore merging"
+    )
+
+    env.set_position(0x05, 5, 2)
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "pending restore should still complete after the player moves")
+    assert_write_set(env.memory_writes, 5, {
+        [0] = 0x80 + 5,
+        [1] = 0x60 + 3,
+        [3] = 0x80 + 7,
+        [4] = 0x60 + 4,
+    }, "pending restore should preserve original NPC coordinates and restore the new parked NPC")
+
+    env.restore()
+end
+
+function tests.autowalk_parking_throttles_deferred_restore_retry_logs()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        memory_values = {
+            [0] = 0x80 + 5,
+            [1] = 0x60 + 3,
+            [2] = 0x12,
+        },
+    })
+
+    local function retry_log_count()
+        local count = 0
+        for _, line in ipairs(env.debug_infos()) do
+            if line:find("deferred restore retry", 1, true) then
+                count = count + 1
+            end
+        end
+        return count
+    end
+
+    env.route_manager.autowalk_to_current()
+    env.set_position(0x05, 5, 3)
+    env.auto_step.on_route_complete()
+
+    local before = retry_log_count()
+    env.route_manager.apply_npc_freeze()
+    local after_first = retry_log_count()
+    env.route_manager.apply_npc_freeze()
+    local after_second = retry_log_count()
+
+    assert_equal(after_first, before + 1, "first deferred retry should be logged")
+    assert_equal(after_second, after_first, "immediate second deferred retry should be throttled")
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "restore should remain pending while player occupies the original NPC tile")
 
     env.set_position(0x05, 5, 2)
     env.route_manager.apply_npc_freeze()
 
-    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "pending restore should still complete after the player moves")
-    assert_equal(env.memory_writes[3].value, 0x80 + 5, "pending restore should preserve the original NPC X")
-    assert_equal(env.memory_writes[4].value, 0x60 + 3, "pending restore should preserve the original NPC Y")
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "pending restore should complete immediately once the player leaves the tile")
+    assert_equal(env.memory_writes[#env.memory_writes - 1].value, 0x80 + 5, "deferred restore should put the NPC X back")
+    assert_equal(env.memory_writes[#env.memory_writes].value, 0x60 + 3, "deferred restore should put the NPC Y back")
 
     env.restore()
 end
@@ -1808,6 +2752,60 @@ function tests.autowalk_parking_restores_on_immediate_no_path()
     assert_equal(env.memory_writes[2].value, 0x60 + 31, "no-path setup should park the mobile NPC")
     assert_equal(env.memory_writes[3].value, 0x80 + 4, "no-path cleanup should restore the mobile NPC X")
     assert_equal(env.memory_writes[4].value, 0x60 + 4, "no-path cleanup should restore the mobile NPC Y")
+
+    env.restore()
+end
+
+function tests.manual_park_npcs_command_parks_all_npcs_and_restores()
+    local env = make_env({
+        memory_values = {
+            [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x12, -- mobile
+            [3] = 0x80 + 5,  [4] = 0x60 + 5,  [5] = 0x00, -- stationary
+        },
+    })
+
+    env.route_manager.register_debug_commands(function() return 0x05 end)
+    env.invoke_command("park_npcs")
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "manual park should leave parking active")
+    assert_equal(#env.memory_writes, 4, "manual full park should move mobile and stationary NPCs")
+    assert_equal(env.memory_writes[1].value, 0x80 + 31, "manual park should sentinel the first NPC X")
+    assert_equal(env.memory_writes[2].value, 0x60 + 31, "manual park should sentinel the first NPC Y")
+    assert_equal(env.memory_writes[3].value, 0x80 + 31, "manual park should sentinel the second NPC X")
+    assert_equal(env.memory_writes[4].value, 0x60 + 31, "manual park should sentinel the second NPC Y")
+    assert_contains(table.concat(env.outputs, "\n"), "Parked 2 all NPC slot(s).", "manual park should announce parked slot count")
+
+    env.invoke_command("restore_parked_npcs")
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "manual restore should clear parking when the player is not occupying the original tile")
+    assert_equal(#env.memory_writes, 8, "manual restore should write both NPCs back")
+    assert_write_set(env.memory_writes, 5, {
+        [0] = 0x80 + 4,
+        [1] = 0x60 + 4,
+        [3] = 0x80 + 5,
+        [4] = 0x60 + 5,
+    }, "manual restore should put both NPCs back")
+    assert_contains(table.concat(env.outputs, "\n"), "Parked NPCs restored.", "manual restore should announce success")
+
+    env.restore()
+end
+
+function tests.manual_park_npcs_mobile_mode_skips_stationary_slots()
+    local env = make_env({
+        memory_values = {
+            [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x12, -- mobile
+            [3] = 0x80 + 5,  [4] = 0x60 + 5,  [5] = 0x00, -- stationary
+        },
+    })
+
+    env.route_manager.register_debug_commands(function() return 0x05 end)
+    env.invoke_command("park_npcs", "mobile")
+
+    assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "manual mobile park should leave parking active")
+    assert_equal(#env.memory_writes, 2, "manual mobile park should move only the mobile NPC")
+    assert_equal(env.memory_writes[1].address, 0, "manual mobile park should only write the moving NPC X")
+    assert_equal(env.memory_writes[2].address, 1, "manual mobile park should only write the moving NPC Y")
+    assert_contains(table.concat(env.outputs, "\n"), "Parked 1 mobile NPC slot(s).", "manual mobile park should announce its mode")
 
     env.restore()
 end
