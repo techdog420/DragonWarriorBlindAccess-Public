@@ -971,24 +971,47 @@ Emulator compatibility direction:
   doors overall, but one is in Garinham B1, so do not treat that dungeon door as
   town-service scope.
 - Garinham is public-service complete until Magic Keys. Treat exit/entrance,
-  `Merchant 2` / `Tool Merchant`, `Merchant 3` / `Inn`, `Merchant 4` /
-  `Weapons Merchant`, and the public east door at `(19,16)` as the current
-  service set. The town-side `Exit to World Map` object should target the live
-  west entry boundary `(0,14)` and route/teleport to interaction stand `(1,14)`
-  facing west; the old `(15,14)` target is only a corridor near the inn. Leave
-  the internal grey-building door, locked chests, hidden grave/back-building
-  route, and remaining hidden/dialogue-only NPCs for the key revisit unless
-  normal play exposes a progression blocker first.
-- Garinham's confirmed town-scope locked door is the public east-end door at
-  `(19,16)`. Live no-key movement from `(19,17)->UP` stayed on `(19,17)` and
-  logged a blocked seam into `(19,16)`, matching the guide's east-end town door
-  clue. `map_reader.lua` lists it in `MAP_DOOR_CELLS[0x09]`, so opened-door RAM
-  can make it passable after a Magic Key use, and `objects.lua` exposes it as
-  `East Door` / `door_19_16`. Post-reload `inspect_move:19,17,UP` reports
-  `reason=door_closed` and `effective_passable=false`. Leave the
-  guide-mentioned inside-grey-building town door unmodeled until
-  keys/opened-door access confirms the exact cell; the Garinham B1 locked door
-  belongs to dungeon scope.
+  `Merchant 2` / `Tool Merchant`, `Merchant 3` / `Inn`, and `Merchant 4` /
+  `Weapons Merchant` as the current public service set. The town-side
+  `Exit to World Map` object should target the live west entry boundary
+  `(0,14)` and route/teleport to interaction stand `(1,14)` facing west; the
+  old `(15,14)` target is only a corridor near the inn. The grey-building
+  grave-route door is now modeled as door cell `(17,10)`, opened from
+  interaction stand `(17,9)` facing south; leave the locked chests and
+  remaining hidden/dialogue-only NPCs unresolved unless normal play exposes a
+  progression blocker first.
+- Garinham's old public east-end locked-door guess at `(19,16)` was later
+  disproved after Magic Key access: selected-object teleport landed at
+  `(19,17)` facing north, and OPEN reported `There is no door here.` Do not
+  expose `door_19_16`, and do not list `(19,16)` in `MAP_DOOR_CELLS[0x09]`.
+  Door-RAM seed tests also failed to open the later route-shaped candidates
+  `(13,4)`, `(19,7)`, and `(19,9)`, so keep those as walls. Follow-up manual
+  OPEN work from the grave-route side plus fresh `DOOR_STATE` proof placed the
+  guide-mentioned grey-building town door at door cell `(17,10)`, exposed as
+  `Grave Route Door` / `door_17_10` and opened from `(17,9)` facing south.
+  The Garinham B1 locked door belongs to dungeon scope.
+- Garinham grave-route follow-up proved the top hidden edge is not the Grave of
+  Garinham trigger by itself: `(18,1)->UP` moves into standable `(18,0)`, but
+  `(18,0)->UP` changes to `0x01` / World Map. Keep `(18,0)` as a scoped
+  `MAP_PASSTHROUGH_CELLS[0x09]` entry. The actual grave trigger is Garinham
+  `(19,0)`: ROM stair-down table entry `09 13 00` at file offset `0xF411`
+  points there, live STAIRS from `(19,0)` changed to map `0x18` / Garin's
+  Grave B1, and user manual follow-up confirmed B1 arrival at `(6,1)` with the
+  return stairs coming back to town `(19,0)`. Expose `stair_19_0` as
+  `Stairs to Garin's Grave` and keep `(19,0)` as a scoped passthrough despite
+  the top-edge boundary rule. Door-to-grave trail-blazing then proved the
+  top lane has a one-way engine seam at `(14,1).west` from `(13,1)->RIGHT`;
+  the working bridge is lower, from `(19,11)->UP` into passthrough `(19,10)`,
+  which moved 6/6 including stability recheck. `(13,1)->DOWN` into `(13,2)`
+  blocked 5/5 and remains ordinary not-walkable wall. A pre-reload autowalk
+  reached `(19,11)` but timed out turning up into the confirmed bridge with
+  stale movement bytes still active; `auto_step.lua` now clears movement
+  state/subpixel bytes during queued route turn/final settle frames, controlled
+  by default-on `auto_step_reset_movement_on_route_turn_settle`. After reload,
+  the reverse route from Garinham `(19,0)` toward the door drifted out to the
+  world map after moving right into `(19,1)`. Clean verifiers promoted
+  `(14,1).east` and `(15..18,2).north`; `(19,1)->DOWN` into `(19,2)` was mixed
+  (`moved=2 blocked=3`) and should stay unpromoted until cleaner proof.
 - Garinham `Merchant 2` is the public item/tool merchant. Live shop menu proof
   opened Herb 24 G, Torch 8 G, and Dragon's Scale 20 G from that merchant, so
   `objects.lua` labels map `0x09` `Merchant 2` as `Tool Merchant` and keeps him

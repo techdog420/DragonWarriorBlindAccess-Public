@@ -6,6 +6,27 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Garinham / Grave of Garinham investigation (`2026-05-26`): public Garinham
+  service routing remains usable, and the hidden grave entrance is now
+  confirmed. The old `(19,16)` east-door object was disproved by OPEN reporting
+  `There is no door here`, so it is no longer exposed as a door. Live
+  grave-route probes confirmed `(3,3)`, `(18,0)`, and `(19,0)` as scoped
+  Garinham passthrough cells: `(3,4)->UP` enters the dark-wall route,
+  `(18,1)->UP` enters the standable top-edge cell `(18,0)`, `(18,0)->UP` exits
+  to `0x01` / World Map, and STAIRS from `(19,0)` enters map `0x18` /
+  Garin's Grave B1. User manual follow-up confirmed the Grave B1 arrival tile
+  is `(6,1)` and the return stairs come back to Garinham `(19,0)`. Follow-up
+  manual OPEN/log reconstruction plus fresh `DOOR_STATE` places the
+  grave-route door at door cell `(17,10)`, opened from `(17,9)` while facing
+  south. A door-to-grave trail-blazing rerun then confirmed `(14,1).west`
+  blocks 5/5, while `(19,11)->UP` into hidden bridge `(19,10)` moves 6/6. The
+  first post-map-patch autowalk reached `(19,11)` but exposed stale movement
+  state during the east-to-up turn; `auto_step.lua` now resets movement state
+  during queued route turn/final settle frames. After reload, the reverse route
+  from `(19,0)` toward the door drifted out to `0x01` / World Map from the
+  upper-right edge, not a new door. Clean verifiers now model `(14,1).east` and
+  `(15..18,2).north`; `(19,1)->DOWN` was mixed and remains unpromoted.
+
 - Sun Shrine first decode pass (`2026-05-25`): map `0x0C` is the Stones of
   Sunlight chamber. User confirmation showed the west-edge stairs return to
   Tantegel interior, so the object is now labeled `Stairs to Tantegel Castle`.
@@ -697,13 +718,13 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 - Garinham public-service pass is done for now. Public routing is good enough
   for normal play to continue: Tool Merchant, Inn, Weapons Merchant, town
-  exit/entrance, and the public east locked door are modeled. The town-side
+  exit/entrance, and the grey-building grave-route door are modeled. The town-side
   exit object no longer targets the `(15,14)` corridor; it now uses the west
   entry boundary `(0,14)` with interaction stand `(1,14)` facing west. The
   overworld Garinham landmark also moved west from `(2,2)` to `(1,2)`, leaving
   `(2,2)` as the approach corridor that points `1 west` to town. Circle back
-  after Magic Keys for the internal grey-building door, locked chests, hidden
-  grave/back-building path, and any remaining hidden/dialogue-only NPCs.
+  for locked chests, Garin's Grave B1, and any remaining hidden/dialogue-only
+  NPCs.
 
 - Garinham has been reached in live play. Current confirmed entry state:
   `map=0x09(Garinham) x=0 y=14`. The guide/image pass is staged at
@@ -794,14 +815,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `Welcome to the traveler's Inn. Room and board is 25 GOLD per night...` from
   public stand `(15,15)` facing east. `objects.lua` now labels him `Inn` and
   keeps him in Services.
-  The first Garinham locked door is now exposed too. Guide data points to an
-  east-end town door, and a live no-key probe from `(19,17)->UP` blocked into
-  `(19,16)`. `map_reader.lua` now models `(19,16)` as a door that can open from
-  opened-door RAM, and `objects.lua` exposes it as `East Door`. Post-reload
-  `inspect_move:19,17,UP` reports `reason=door_closed` with no runtime blocks.
-  Leave the guide-mentioned internal grey-building door for the Magic Key
-  revisit, since its exact coordinate still needs live confirmation from
-  inside.
+  The old Garinham east-door guess at `(19,16)` was later disproved with Magic
+  Key access: OPEN from `(19,17)` facing north reported `There is no door here`.
+  The grey-building grave-route door is now modeled at door cell `(17,10)` as
+  `Grave Route Door`, opened from `(17,9)` while facing south; fresh
+  `DOOR_STATE` recorded slot `0=(17,10)`.
   Manual movement may share the same timing root: the user reported some
   ordinary taps do not move while others overshoot. The manual wall-bump fixes
   were probably too eager to release physical tap-to-step input on open floor,
