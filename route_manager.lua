@@ -2229,6 +2229,7 @@ local AUTOWALK_EXECUTION_PLAN_CONTEXTS = {
     route_drift_reroute = true,
     seam_retry_followup = true,
     seam_retry_followup_relaxed = true,
+    seam_retry_followup_refreshed = true,
 }
 
 local function find_tantegel_shrine_risky_x29_descent(plan)
@@ -4042,6 +4043,28 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
             allow_hazards = active_route_allow_hazards,
             store_debug_path = false,
         }, "seam_retry_followup_relaxed"))
+        if active_route_allow_hazards then
+            plan = maybe_stop_before_hazard(plan)
+        end
+    end
+
+    if plan.result == "No path found" and count_active_route_temp_blocks(map_id) == 0 then
+        debug_tools.info(string.format(
+            "AUTO_WALK_SEAM_FOLLOWUP_RETRY map=0x%02X start=(%d,%d) target_id=%s target_name=%s reason=no_path_after_cleared_temp_blocks",
+            map_id or -1,
+            to_x or -1,
+            to_y or -1,
+            tostring(target and target.id or "-"),
+            tostring(target and target.name or "-")))
+        plan = plan_path_to_object(target, active_route_planning_opts({
+            map_id = map_id,
+            start_x = to_x,
+            start_y = to_y,
+            allow_adjacent_fallback = true,
+            allow_hazards = active_route_allow_hazards,
+            store_debug_path = false,
+            refresh_npcs = true,
+        }, "seam_retry_followup_refreshed"))
         if active_route_allow_hazards then
             plan = maybe_stop_before_hazard(plan)
         end

@@ -1197,6 +1197,32 @@ function tests.queued_route_early_subpixel_twitch_releases_before_turn()
     env.restore()
 end
 
+function tests.queued_route_uses_shorter_inject_on_continuing_step_before_turn()
+    local env = make_env({
+        config_values = {
+            auto_step_inject_limit = "12",
+            auto_step_route_pre_turn_inject_limit = "7",
+        },
+    })
+
+    env.auto_step.start_route({"right", "right", "down"})
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 5 do
+        env.update(true)
+    end
+
+    local state = env.auto_step.get_active_step_state()
+    assert_truthy(
+        state and state.dir == "right" and state.inject_limit == 7,
+        "last continuing queued step before a turn should use the shorter pre-turn inject limit"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_early_twitch_reports_short_timing_block_without_repress()
     local env = make_env({
         config_values = {
@@ -2206,6 +2232,54 @@ function tests.queued_route_turn_settle_actively_neutralizes_stale_direction()
             "queued route turn settle should actively send neutral D-pad frames until the next direction starts"
         )
     end
+
+    env.restore()
+end
+
+function tests.queued_route_turn_settle_resets_movement_state()
+    local env = make_env({
+        movement_state = 0x40,
+        movement_subpixel = 0x90,
+    })
+    env.auto_step.start_route({"right", "up"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local cleared_move = false
+    local cleared_subpixel = false
+    for _, write in ipairs(env.memory_writes) do
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_move = true
+        elseif write.address == 0x003D and write.value == 0x00 then
+            cleared_subpixel = true
+        end
+    end
+
+    assert_truthy(
+        cleared_move and cleared_subpixel,
+        "queued route turn settle should clear stale movement engine state before changing direction"
+    )
+
+    local writes_after_completion = #env.memory_writes
+    env.set_movement_state(0x41)
+    env.set_subpixel(0x91)
+    env.update(true)
+
+    local cleared_again = false
+    for i = writes_after_completion + 1, #env.memory_writes do
+        local write = env.memory_writes[i]
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_again = true
+            break
+        end
+    end
+
+    assert_truthy(
+        cleared_again,
+        "queued route turn settle should keep clearing movement state during the settle window"
+    )
 
     env.restore()
 end

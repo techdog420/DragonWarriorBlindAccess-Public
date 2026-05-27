@@ -1786,6 +1786,62 @@ function tests.seam_retry_followup_relaxes_route_temp_blocks_when_they_eliminate
     env.restore()
 end
 
+function tests.seam_retry_followup_retries_once_after_cleared_temp_block_false_negative()
+    local force_followup_no_path = false
+    local followup_direct_calls = 0
+    local env = make_env({
+        current_object = {id = "exit_1", name = "Exit", type = "exit", x = 6, y = 1},
+        pathfind_to_fn = function()
+            if not force_followup_no_path then
+                return nil
+            end
+            followup_direct_calls = followup_direct_calls + 1
+            if followup_direct_calls == 1 then
+                return "No path found", nil, nil
+            end
+            return nil
+        end,
+    })
+
+    env.route_manager.autowalk_to_current()
+    force_followup_no_path = true
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 5,
+        timeout_retries = 1,
+        turn_represses = 1,
+    })
+    env.auto_step.on_step_complete(5, 4, "up", 5, 3, {
+        queued_route = false,
+        source = "auto_hold",
+        input_source = "seam_retry",
+    })
+
+    assert_equal(
+        env.start_route_calls(),
+        2,
+        "a cleared-temp-block seam follow-up false negative should try one refreshed route before cancelling"
+    )
+    assert_equal(
+        followup_direct_calls,
+        2,
+        "the cleared-temp-block false negative should trigger one refreshed direct planning attempt"
+    )
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_SEAM_FOLLOWUP_RETRY",
+        "the refreshed seam follow-up retry should be logged"
+    )
+    assert_not_contains(
+        table.concat(env.outputs, "\n"),
+        "No path found after seam crossing",
+        "a successful refreshed follow-up should not announce seam cancellation"
+    )
+
+    env.restore()
+end
+
 function tests.blocked_step_reroute_relaxes_older_route_temp_blocks_but_keeps_current_edge()
     local function has_block(blocking, key, approach)
         return type(blocking[key]) == "table" and blocking[key][approach] == true

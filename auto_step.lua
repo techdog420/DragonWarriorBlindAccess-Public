@@ -118,6 +118,7 @@ local route_settle_frames = 0
 local route_settle_default = 0
 local route_settle_same_direction = true
 local route_final_settle_active = false
+local route_settle_reset_movement_active = false
 local route_last_x = nil
 local route_last_y = nil
 local post_step_release_frames = 0
@@ -174,6 +175,7 @@ local ROUTE_FINAL_SETTLE_FRAMES = 16
 -- settling/turning. For queued routes, keep holding through very early twitches
 -- instead of treating them as confirmed walking movement.
 local ROUTE_EARLY_RELEASE_GRACE_FRAMES = 10
+local ROUTE_PRE_TURN_INJECT_LIMIT = 10
 -- Physical tap-to-step needs a little more help on open floor after an early
 -- subpixel twitch, but not the long hold used by probes/routes. Keep this
 -- short so released wall/NPC bumps still stop quickly.
@@ -234,6 +236,10 @@ local function get_inject_limit()
     return config_int("auto_step_inject_limit", INJECT_LIMIT, 1, 120)
 end
 
+local function get_route_pre_turn_inject_limit()
+    return config_int("auto_step_route_pre_turn_inject_limit", ROUTE_PRE_TURN_INJECT_LIMIT, 1, 120)
+end
+
 local function get_turn_repress_delay()
     return config_int("auto_step_turn_repress_delay", TURN_REPRESS_DELAY, 1, 180)
 end
@@ -289,6 +295,10 @@ local function get_route_final_settle_frames()
     return config_int("auto_step_route_final_settle_frames", ROUTE_FINAL_SETTLE_FRAMES, 0, 60)
 end
 
+local function should_reset_movement_on_route_turn_settle()
+    return config_bool("auto_step_reset_movement_on_route_turn_settle", true)
+end
+
 local function get_seam_retry_hold_after_movement_start_frames()
     return config_int("auto_step_seam_retry_hold_after_start_frames", SEAM_RETRY_HOLD_AFTER_MOVEMENT_START_FRAMES, 0, 60)
 end
@@ -304,6 +314,17 @@ local function queued_route_turn_after_current_step()
     end
     local next_dir = route_steps[route_index]
     return next_dir ~= nil and next_dir ~= auto_dir
+end
+
+local function queued_route_continuing_step_before_turn(next_dir)
+    if route_steps == nil or route_index == nil or next_dir == nil then
+        return false
+    end
+    local previous_dir = route_steps[route_index - 1]
+    local following_dir = route_steps[route_index + 1]
+    return previous_dir == next_dir
+        and following_dir ~= nil
+        and following_dir ~= next_dir
 end
 
 local function should_hold_after_movement_start()
@@ -340,7 +361,15 @@ local function should_hold_after_movement_start()
         return false
     end
     local grace = get_route_early_release_grace_frames()
-    return grace > 0 and auto_movement_start_frame <= grace
+    if grace <= 0 or auto_movement_start_frame > grace then
+        return false
+    end
+    local inject_limit = auto_inject_limit or get_inject_limit()
+    local hold_until = auto_movement_start_frame + grace
+    if inject_limit and hold_until > inject_limit then
+        hold_until = inject_limit
+    end
+    return auto_frames <= hold_until
 end
 
 local function is_early_route_movement_twitch()
@@ -477,6 +506,7 @@ local function clear_route()
     route_settle_default = 0
     route_settle_same_direction = true
     route_final_settle_active = false
+    route_settle_reset_movement_active = false
     route_last_x = nil
     route_last_y = nil
 end
@@ -667,6 +697,7 @@ local function route_settle_after_step(completed_dir)
     if route_steps and not next_dir then
         local final_settle = get_route_final_settle_frames()
         route_final_settle_active = final_settle > 0
+        route_settle_reset_movement_active = route_final_settle_active
         if final_settle > 0 then
             debug_tools.debug(string.format(
                 "auto_step route final settle prev=%s frames=%d",
@@ -675,6 +706,7 @@ local function route_settle_after_step(completed_dir)
         return final_settle
     end
     route_final_settle_active = false
+    route_settle_reset_movement_active = false
     local direction_change = next_dir and completed_dir and next_dir ~= completed_dir
     local settle_frames = 0
     if route_settle_same_direction or direction_change then
@@ -689,7 +721,22 @@ local function route_settle_after_step(completed_dir)
             settle_frames = turn_settle
         end
     end
+    if direction_change
+       and settle_frames > 0
+       and should_reset_movement_on_route_turn_settle() then
+        route_settle_reset_movement_active = true
+    end
     return settle_frames
+end
+
+local function reset_movement_for_route_settle()
+    if not route_settle_reset_movement_active then
+        return false
+    end
+    local reason = route_final_settle_active
+        and "queued_route_final_settle"
+        or "queued_route_turn_settle"
+    return reset_movement_engine_state(reason, {log = false})
 end
 
 local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source, extra)
@@ -852,6 +899,8 @@ local function handle_pending_repress_state(joy, px, py)
             reset_movement_engine_state("seam_retry_complete")
         elseif route_steps ~= nil and route_steps[route_index] == nil then
             reset_movement_engine_state("queued_route_final_complete")
+        elseif route_steps ~= nil then
+            reset_movement_for_route_settle()
         end
         emit_step_complete(completed.start_x, completed.start_y, completed.dir, px, py, "pending_repress", {
             input_source = completed.source,
@@ -866,9 +915,7 @@ local function handle_pending_repress_state(joy, px, py)
     if post_step_release_frames ~= 0
        and (post_step_release_frames < 0 or route_steps ~= nil or not is_any_direction_pressed(joy)) then
         neutralize_direction(joy)
-        if route_final_settle_active then
-            reset_movement_engine_state("queued_route_final_settle", {log = false})
-        end
+        reset_movement_for_route_settle()
         if post_step_release_frames < 0 then
             post_step_release_frames = post_step_release_frames + 1
         else
@@ -984,29 +1031,29 @@ local function handle_active_auto_step(joy, px, py, timeout)
         reset_active_step()
         cooldown = COOLDOWN_FRAMES
         neutralize_direction(joy)
-            start_post_step_release(should_force_post_step_release(completed_source, completed_queued_route))
-            if route_steps then
-                route_last_x = px
-                route_last_y = py
-                route_settle_frames = route_settle_after_step(completed_dir)
-            end
-            if completed_source == "seam_retry" then
-                reset_movement_engine_state("seam_retry_complete")
-            elseif completed_queued_route and route_steps ~= nil and route_steps[route_index] == nil then
-                reset_movement_engine_state("queued_route_final_complete")
-            end
-            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
-                input_source = completed_source,
-                timeout_retries = completed_retries,
-                turn_represses = completed_turn_represses,
-                frames = completed_frames,
-                inject_limit = completed_inject_limit,
+        start_post_step_release(should_force_post_step_release(completed_source, completed_queued_route))
+        if route_steps then
+            route_last_x = px
+            route_last_y = py
+            route_settle_frames = route_settle_after_step(completed_dir)
+        end
+        if completed_source == "seam_retry" then
+            reset_movement_engine_state("seam_retry_complete")
+        elseif completed_queued_route and route_steps ~= nil and route_steps[route_index] == nil then
+            reset_movement_engine_state("queued_route_final_complete")
+        elseif completed_queued_route and route_steps ~= nil then
+            reset_movement_for_route_settle()
+        end
+        emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
+            input_source = completed_source,
+            timeout_retries = completed_retries,
+            turn_represses = completed_turn_represses,
+            frames = completed_frames,
+            inject_limit = completed_inject_limit,
         })
     elseif route_settle_frames > 0 then
         neutralize_direction(joy)
-        if route_final_settle_active then
-            reset_movement_engine_state("queued_route_final_settle", {log = false})
-        end
+        reset_movement_for_route_settle()
         route_settle_frames = route_settle_frames - 1
         debug_tools.debug(string.format(
             "auto_step post-release settle dir=%s from=(%d,%d) frames_left=%d queued_route=%s",
@@ -1020,6 +1067,7 @@ local function handle_active_auto_step(joy, px, py, timeout)
             return true
         end
         route_final_settle_active = false
+        route_settle_reset_movement_active = false
         route_settle_frames = -1
     elseif should_release_on_movement_start()
        and auto_start_subpixel ~= nil
@@ -1060,12 +1108,7 @@ local function handle_active_auto_step(joy, px, py, timeout)
                and auto_movement_start_frame ~= nil
                and auto_movement_start_frame <= get_route_early_release_grace_frames()
                and not should_hold_after_movement_start()
-               and not (
-                   route_steps ~= nil
-                   and auto_dir ~= nil
-                   and route_steps[route_index] ~= nil
-                   and route_steps[route_index] ~= auto_dir
-               )
+               and route_steps[route_index] == auto_dir
            )
        ) then
         debug_tools.debug(string.format(
@@ -1226,12 +1269,11 @@ local function handle_route_progress(joy, px, py)
             return true
         end
         neutralize_direction(joy)
-        if route_final_settle_active then
-            reset_movement_engine_state("queued_route_final_settle", {log = false})
-        end
+        reset_movement_for_route_settle()
         local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
         if consumed > 0 then
             route_final_settle_active = false
+            route_settle_reset_movement_active = false
             route_settle_frames = route_settle_default or 0
             sync_prev_held(joy)
             return true
@@ -1244,6 +1286,7 @@ local function handle_route_progress(joy, px, py)
         route_settle_frames = route_settle_frames - 1
         if route_settle_frames <= 0 then
             route_final_settle_active = false
+            route_settle_reset_movement_active = false
         end
         sync_prev_held(joy)
         return true
@@ -1274,12 +1317,19 @@ local function handle_route_progress(joy, px, py)
         end
         local next_dir = route_steps[route_index]
         if next_dir then
+            local step_opts = nil
+            if queued_route_continuing_step_before_turn(next_dir) then
+                step_opts = {
+                    inject_limit = get_route_pre_turn_inject_limit(),
+                    source = "queued_route",
+                }
+            end
             route_index = route_index + 1
             if refuse_hazard_step(next_dir, px, py, "queued_route") then
                 sync_prev_held(joy)
                 return true
             end
-            begin_step(next_dir, px, py)
+            begin_step(next_dir, px, py, step_opts)
             sync_prev_held(joy)
             return true
         end
