@@ -822,6 +822,37 @@ function tests.garinham_exit_uses_live_west_entry_not_inn_corridor()
     env.restore()
 end
 
+function tests.garinham_does_not_expose_unconfirmed_top_edge_grave_candidate()
+    local env = make_env()
+
+    env.set_position(0x09, 18, 1)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x09)
+
+    local obj = env.objects.select_object_by_id("exit_18_0")
+    assert_equal(obj, nil, "Garinham (18,0)->UP is a world-map exit edge, not the grave stairs object")
+
+    env.restore()
+end
+
+function tests.garinham_exposes_confirmed_grave_stairs()
+    local env = make_env()
+
+    env.set_position(0x09, 19, 0)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x09)
+
+    local obj = env.objects.select_object_by_id("stair_19_0")
+    assert_equal(obj ~= nil, true, "Garinham should expose the live-confirmed grave stairs")
+    assert_equal(obj.name, "Stairs to Garin's Grave", "Garinham grave stairs should have a distinct navigation label")
+    assert_equal(obj.x, 19, "Garinham grave stairs X should match ROM stair table and live STAIRS proof")
+    assert_equal(obj.y, 0, "Garinham grave stairs Y should match ROM stair table and live STAIRS proof")
+
+    env.restore()
+end
+
 function tests.rimuldar_exit_uses_live_east_entry_tile()
     local env = make_env()
 
@@ -1786,6 +1817,7 @@ function tests.garinham_confirmed_public_merchants_are_labeled()
     local tool_merchant = nil
     local inn = nil
     local weapons_merchant = nil
+    local dialogue_merchant = nil
     local generic_merchant2 = nil
     local generic_merchant3 = nil
     local generic_merchant4 = nil
@@ -1796,6 +1828,8 @@ function tests.garinham_confirmed_public_merchants_are_labeled()
             inn = obj
         elseif obj.name == "Weapons Merchant" then
             weapons_merchant = obj
+        elseif obj.name == "Merchant 1" then
+            dialogue_merchant = obj
         elseif obj.name == "Merchant 2" then
             generic_merchant2 = obj
         elseif obj.name == "Merchant 3" then
@@ -1805,6 +1839,8 @@ function tests.garinham_confirmed_public_merchants_are_labeled()
         end
     end
 
+    assert_equal(dialogue_merchant ~= nil, true, "Garinham dialogue-only Merchant 1 should stay browsable")
+    assert_equal(dialogue_merchant.service, false, "Garinham dialogue-only Merchant 1 should not appear in Services")
     assert_equal(tool_merchant ~= nil, true, "Garinham Merchant 2 should be labeled as Tool Merchant")
     assert_equal(tool_merchant.service, true, "Garinham Tool Merchant should remain in Services")
     assert_equal(generic_merchant2, nil, "Garinham Merchant 2 should not keep the generic label")
@@ -1828,6 +1864,7 @@ function tests.garinham_confirmed_public_merchants_are_labeled()
         service_names[#service_names + 1] = obj.name
     end
     local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Merchant 1", 1, true), nil, "Services should omit Garinham dialogue-only Merchant 1")
     assert_equal(service_text:find("Tool Merchant", 1, true) ~= nil, true, "Services should include Garinham Tool Merchant")
     assert_equal(service_text:find("Inn", 1, true) ~= nil, true, "Services should include Garinham Inn")
     assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include Garinham Weapons Merchant")
@@ -2028,6 +2065,27 @@ function tests.tantegel_route_false_npc_cell_does_not_block_movement()
     env.restore()
 end
 
+function tests.garinham_route_false_old_man_cell_does_not_block_movement()
+    local env = make_env({npc_count = 1})
+
+    env.set_position(0x09, 13, 1)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0xA0 + 14, 0x40 + 1, 0x00) -- Old Man at live-verified false blocker (14,1)
+    env.objects.refresh(0x09)
+
+    local old_man = env.objects.find_object_by_id("npc_0")
+    assert_equal(old_man ~= nil, true, "Garinham old man object should still be browsable")
+    assert_equal(old_man.blocks_movement, false, "Garinham (14,1) old man should not block the hidden grave route after live movement proof")
+
+    local blocking_cells = {}
+    for _, pos in ipairs(env.objects.get_blocking_positions()) do
+        blocking_cells[pos.x .. "," .. pos.y] = true
+    end
+    assert_equal(blocking_cells["14,1"], nil, "Garinham (14,1) should not be reported as an NPC blocker")
+
+    env.restore()
+end
+
 function tests.brecconary_exposes_hidden_locked_doors()
     local env = make_env()
 
@@ -2067,7 +2125,7 @@ function tests.brecconary_exposes_hidden_locked_doors()
     env.restore()
 end
 
-function tests.garinham_exposes_confirmed_east_locked_door()
+function tests.garinham_does_not_expose_disproved_east_locked_door()
     local env = make_env()
 
     env.set_position(0x09, 19, 17)
@@ -2081,12 +2139,26 @@ function tests.garinham_exposes_confirmed_east_locked_door()
     env.objects.next_filter() -- Stairs
     env.objects.next_filter() -- Doors
 
-    assert_equal(env.objects.get_count(), 1, "Garinham should expose the confirmed east locked door")
-    local door = env.objects.current_object()
-    assert_equal(door.id, "door_19_16", "Garinham east door id should match the confirmed coordinate")
-    assert_equal(door.name, "East Door", "Garinham east door should have a distinct navigation label")
-    assert_equal(door.x, 19, "Garinham east door x should match the live no-key movement probe")
-    assert_equal(door.y, 16, "Garinham east door y should match the live no-key movement probe")
+    local doors = env.objects.get_objects({filtered = true})
+    local grave_route = nil
+    for _, door in ipairs(doors) do
+        if door.id == "door_19_16" then
+            assert_equal(true, false, "Garinham should not expose the disproved east locked door")
+        elseif door.id == "door_18_9" then
+            assert_equal(true, false, "Garinham should not expose the old grave-route door guess")
+        elseif door.id == "door_17_10" then
+            grave_route = door
+        end
+    end
+
+    assert_equal(#doors, 1, "Garinham should expose only the confirmed grave-route door")
+    assert_equal(grave_route ~= nil, true, "Garinham should expose the grey-building grave-route door")
+    assert_equal(grave_route.name, "Grave Route Door", "Garinham grave-route door should have a distinct navigation label")
+    assert_equal(grave_route.x, 17, "Garinham grave-route door x should match the confirmed door-RAM coordinate")
+    assert_equal(grave_route.y, 10, "Garinham grave-route door y should match the confirmed door-RAM coordinate")
+    assert_equal(grave_route.interaction_x, 17, "Garinham grave-route door should route to the north-side stand")
+    assert_equal(grave_route.interaction_y, 9, "Garinham grave-route door stand should match the user's OPEN position")
+    assert_equal(grave_route.interaction_face_dir, "south", "Garinham grave-route door should face south to open")
 
     env.restore()
 end

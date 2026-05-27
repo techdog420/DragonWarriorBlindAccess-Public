@@ -527,6 +527,22 @@ local MAP_PASSTHROUGH_CELLS = {
     -- by directional blockers below.
     [0x09] = {
         ["2,13"] = true,
+        -- Garin's Grave "wall of darkness" entrance. Guide clue says to push
+        -- into the dark wall three tiles east of the west wall; live
+        -- probe_edge_verify from (3,4)->UP moved into this ROM-wall tile 6/6
+        -- after a stability recheck.
+        ["3,3"] = true,
+        -- Top-edge hidden lane. Live probe_edge from (18,1)->UP moved into
+        -- (18,0), then (18,0)->UP changed to 0x01 World Map, not Garin's
+        -- Grave B1. Keep the standable edge cell open.
+        ["18,0"] = true,
+        -- Grave-route lower hidden bridge. After (14,1).west proved blocked,
+        -- route frontier found (19,11)->UP into this type-2 wall as the next
+        -- bridge; probe_edge_verify moved 6/6 including stability recheck.
+        ["19,10"] = true,
+        -- ROM stair-down table entry 0xF411 is `09 13 00`; live STAIRS from
+        -- this top-right boundary tile changed to map 0x18 / Garin's Grave B1.
+        ["19,0"] = true,
     },
 
     -- Map 0x0B: Rimuldar
@@ -968,13 +984,14 @@ local MAP_DOOR_CELLS = {
         ["5,22"] = {x=5, y=22},
     },
     -- Map 0x09: Garinham
-    -- Guide data lists two town-scope locked doors. The public east-end door
-    -- is the first reachable one; live no-key movement from (19,17)->UP
-    -- blocked into (19,16), matching the east-end locked-building entrance.
-    -- Keep the second "inside locked building" door pending until its exact
-    -- coordinate can be verified after keys/opened-door access.
+    -- Guide data lists town-scope locked doors, but the old `(19,16)` east
+    -- guess was disproved live: OPEN from `(19,17)` facing north reported
+    -- "There is no door here." Follow-up manual OPEN probes while working back
+    -- from the grave route found the grey-building door by standing at (17,9)
+    -- facing south; fresh DOOR_STATE then recorded slot 0=(17,10). Nearby
+    -- false candidates such as (18,9), (19,7), and (19,9) stayed unmodeled.
     [0x09] = {
-        ["19,16"] = {x=19, y=16},
+        ["17,10"] = {x=17, y=10},
     },
     -- Map 0x0B: Rimuldar inn / Wings chest locked doors.
     -- External guide data lists two inn doors. Live FCEUX door RAM confirmed
@@ -2487,7 +2504,54 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["14,16"] = {east = true},
         ["6,10"] = {east = true},
         ["6,11"] = {east = true},
-        ["6,12"] = {east = true},
+        ["6,12"] = {east = true, south = true},
+        -- 2026-05-25 Garin's Grave entrance investigation. These route-shaped
+        -- false entries were confirmed with direct probe_edge_verify checks
+        -- after the selected `(19,16)` door proved fake. A later post-reload
+        -- route to `(18,1)` promoted the formerly mixed `(13,4).west`,
+        -- `(19,7).west`, and `(19,9).west` seams after clean verifiers.
+        -- Door-RAM seed tests did not open any of those three, so keep them as
+        -- walls. A post-reload route proved `(15,10)` is approach-sensitive:
+        -- `(14,10)->RIGHT` moved 6/6, but `(15,11)->UP` blocked 5/5, and
+        -- `(16,11)->UP` into `(16,10)` blocked 5/5.
+        -- Trail-blazing from the door to the grave later proved the top lane
+        -- stops at `(13,1)->RIGHT`: `(14,1).west` blocked 5/5 with no NPC at
+        -- `(14,1)`. A reverse grave-stairs-to-door run then confirmed the
+        -- east approach from `(15,1)->LEFT` also blocks 5/5. Keep the cell
+        -- itself nonblocked for object browsing and alternate approaches.
+        ["14,1"] = {east = true, west = true},
+        -- Reverse trail-blazing from Garin's Grave stairs showed the upper
+        -- row is one-way/exit-prone: clean verifiers blocked downward movement
+        -- from x=15..18 into row 2. `(19,1)->DOWN` was mixed (2 moved, 3
+        -- blocked), so leave `(19,2).north` unmodeled until cleaner proof.
+        ["15,2"] = {north = true},
+        ["16,2"] = {north = true},
+        ["17,2"] = {north = true},
+        ["18,2"] = {north = true},
+        ["5,12"] = {south = true},
+        ["7,9"] = {south = true},
+        ["8,9"] = {south = true},
+        ["9,9"] = {south = true},
+        ["10,9"] = {south = true},
+        ["11,9"] = {south = true},
+        ["12,9"] = {south = true},
+        ["13,9"] = {south = true},
+        ["14,9"] = {south = true},
+        ["15,10"] = {south = true},
+        ["16,10"] = {south = true},
+        ["13,3"] = {west = true},
+        ["13,4"] = {west = true},
+        ["13,5"] = {west = true},
+        ["13,6"] = {south = true, west = true},
+        ["14,6"] = {south = true},
+        ["15,6"] = {south = true},
+        ["16,6"] = {south = true},
+        ["17,6"] = {south = true},
+        ["18,6"] = {south = true},
+        ["19,7"] = {west = true},
+        ["19,8"] = {west = true},
+        ["19,9"] = {west = true},
+        ["18,14"] = {east = true},
         ["3,12"] = {north = true, west = true},
         ["4,10"] = {west = true},
         ["3,9"] = {south = true},

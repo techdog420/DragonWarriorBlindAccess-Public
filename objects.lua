@@ -200,6 +200,19 @@ local STAIRS = {
     -- Mountain Cave B2 (0x17)
     {map = 0x17, x = 6, y = 5, name = "Stairs Up", dest = "Mountain Cave"},
 
+    -- Garinham (0x09)
+    -- ROM stair-down table entry at 0xF411 is `09 13 00`. Live STAIRS from
+    -- (19,0) changed to map 0x18 / Garin's Grave B1; user manual check
+    -- confirmed the return stairs come back to this town tile.
+    {
+        map = 0x09,
+        x = 19,
+        y = 0,
+        name = "Stairs Down",
+        dest = "Garin's Grave B1",
+        object_name = "Stairs to Garin's Grave",
+    },
+
     -- Garin's Grave B1 (0x18)
     {map = 0x18, x = 19, y = 0, name = "Stairs Down", dest = "B2"},
 
@@ -627,6 +640,13 @@ local NONBLOCKING_NPC_CELLS = {
     [0x04] = {
         ["26,15"] = true,
     },
+    -- 2026-05-25 Garin's Grave entrance investigation: Old Man 3 appears at
+    -- (14,1) on the hidden dark-wall route, but live movement from (13,1)
+    -- crossed into his cell and TALK then reported "There is no one there."
+    -- Keep him browsable, but do not let pathfinding treat him as a wall.
+    [0x09] = {
+        ["14,1"] = true,
+    },
 }
 
 local function npc_blocks_movement(map_id, x, y)
@@ -1018,12 +1038,21 @@ local EXTRA_DOORS = {
         {x=21, y=6, name="Northeast Door", type=M.TYPE_DOOR, id="door_21_6"},
         {x=5, y=22, name="Inn West Room Door", type=M.TYPE_DOOR, id="door_5_22"},
     },
-    -- Map 0x09: Garinham. Guide data lists two town-scope locked doors, but
-    -- only the public east-end locked-building entrance has a live coordinate
-    -- so far. The internal grey-building door should be added after keys let us
-    -- confirm its exact cell from inside.
+    -- Map 0x09: Garinham. The old `(19,16)` east guess was disproved live by
+    -- OPEN reporting "There is no door here." The grave-route follow-up found
+    -- the grey-building door by opening from (17,9) facing south; door RAM
+    -- recorded the opened cell as (17,10).
     [0x09] = {
-        {x=19, y=16, name="East Door", type=M.TYPE_DOOR, id="door_19_16"},
+        {
+            x=17,
+            y=10,
+            name="Grave Route Door",
+            type=M.TYPE_DOOR,
+            id="door_17_10",
+            interaction_x=17,
+            interaction_y=9,
+            interaction_face_dir="south",
+        },
     },
     -- Map 0x0B: Rimuldar inn / Wings chest doors. Gamer Corner lists the inn
     -- treasure as behind an outer and inner door; live opened-door RAM confirmed
@@ -1196,6 +1225,12 @@ local SERVICE_EXCLUSIONS = {
     -- Brecconary Merchant 1 only gives ordinary dialogue, so keep him in NPCs
     -- but out of the Services filter.
     [0x08] = {
+        ["Merchant 1"] = true,
+    },
+
+    -- Garinham Merchant 1 gives the darkness/map hint, not a shop prompt.
+    -- Keep him browseable under NPCs without sending Services to him.
+    [0x09] = {
         ["Merchant 1"] = true,
     },
 

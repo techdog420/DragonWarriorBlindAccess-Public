@@ -78,18 +78,58 @@ Live service confirmation:
   route turn. User retest after the manual-tap timing change says both Tool
   Merchant routes are usable, with one drift reroute each. Defer remaining
   drift to polishing unless it starts causing real route failures.
-- Locked-door first pass: the public east-end town door is live-confirmed at
-  `(19,16)`. With no open-door RAM, movement from `(19,17)->UP` stayed on
-  `(19,17)` and later post-reload `inspect_move:19,17,UP` reported
-  `reason=door_closed`, `effective_passable=false`, and no runtime blockers.
-  `map_reader.lua` models `(19,16)` as a Garinham door cell and `objects.lua`
-  exposes it as `East Door`. Leave the guide-mentioned internal grey-building
-  town door pending until Magic Key access verifies the exact coordinate; the
-  Garinham B1 locked door is dungeon scope.
-- Current town status: public services and the east door are clean enough to
-  move on. Revisit after Magic Keys for the internal grey-building door, locked
-  chests, the hidden grave/back-building path, and remaining hidden/dialogue-only
-  NPCs.
+- Locked-door correction: the old public east-end town-door guess at `(19,16)`
+  was disproved after Magic Key access. Selected-object teleport landed at
+  `(19,17)` facing north, and OPEN reported `There is no door here.` The
+  `(19,16)` override has been removed from `map_reader.lua` and `objects.lua`.
+  Follow-up manual OPEN work from the confirmed grave stairs back toward town
+  placed the grey-building grave-route door at door cell `(17,10)`, opened
+  from stand `(17,9)` while facing south and exposed as `Grave Route Door`.
+  Fresh `report_door_state` then recorded `DOOR_STATE keys=5 slots=0=(17,10)`;
+  the earlier `(18,9)` estimate is not a door override. The Garinham B1 locked
+  door remains dungeon scope.
+- Garin's Grave route investigation: guide clues and the local map image point
+  to the grey-building "wall of darkness" path. Live verification proved the
+  dark-wall entry `(3,4)->UP` into `(3,3)` moves 6/6 even though the ROM tile
+  decodes as wall, so `(3,3)` is now a Garinham passthrough. The top hidden
+  route is reachable after modeling route-shaped false entries. Old Man 3 at
+  `(14,1)` appears in the NPC list but is not treated as an NPC blocker.
+  Door-to-grave trail-blazing later proved the west approach into that cell is
+  a real engine seam: `(13,1)->RIGHT` into `(14,1)` blocked 5/5 with no NPC at
+  the destination. A later route from `(4,11)` reached `(18,1)`.
+  Direct edge probing then proved `(18,1)->UP` moves into the standable
+  top-edge cell `(18,0)`, but `(18,0)->UP` changes to `0x01` / World Map and
+  lands near the town on the overworld. `(18,0)` is now a Garinham passthrough
+  cell, not the grave trigger. The actual town-side grave trigger is the
+  top-right boundary stair tile `(19,0)`: ROM stair-down table entry `09 13 00`
+  at file offset `0xF411` points there, and live STAIRS from `(19,0)` produced
+  `EVENT: map change -> 0x18 (Garin's Grave B1)`. User manual follow-up
+  confirmed the Grave B1 arrival tile is `(6,1)`, and using the return stairs
+  comes back to Garinham `(19,0)`. `objects.lua` exposes this as
+  `Stairs to Garin's Grave`, and `MAP_PASSTHROUGH_CELLS[0x09]` keeps `(19,0)`
+  walkable despite the generic top-edge boundary rule.
+- Door-to-grave trail bridge: once `(14,1).west` was blocked at runtime, route
+  frontier found a lower bridge from `(19,11)->UP` into `(19,10)`. Direct
+  verifier evidence moved 6/6 including stability recheck, so `(19,10)` is a
+  Garinham passthrough. The other hidden-bridge candidate `(13,1)->DOWN` into
+  `(13,2)` blocked 5/5 and remains closed by the normal tile model. A
+  pre-reload autowalk then reached `(19,11)` and failed the upward turn because
+  stale movement bytes were still armed; the executor-side fix is in
+  `auto_step.lua`, not the Garinham map data.
+- Reverse grave-stairs-to-door run: after reload, autowalk from Garinham
+  `(19,0)` toward `Grave Route Door` did not find a new door. It drifted out
+  to `0x01` / World Map from the upper-right edge after moving into `(19,1)`.
+  Clean direct verifiers confirmed `(15,1)->LEFT` into `(14,1)` and
+  `(15..18,1)->DOWN` into row 2 block 5/5. `(19,1)->DOWN` was mixed
+  (`moved=2 blocked=3`), so `(19,2).north` stays unmodeled for now.
+- Grave-route blocker evidence: post-reload direct verifiers confirmed
+  `(15,11)->UP` into `(15,10)` blocked 5/5 and `(16,11)->UP` into `(16,10)`
+  blocked 5/5, while `(14,10)->RIGHT` into `(15,10)` moved 6/6 and
+  `(4,13)->UP` moved 6/6. Model only the two south approaches as directional
+  blockers.
+- Current town status: public services and the Grave of Garinham entrance are
+  clean enough to move on. Revisit next for locked chests, Garin's Grave B1
+  itself, and remaining hidden/dialogue-only NPCs.
 
 Page legend / service transcription:
 

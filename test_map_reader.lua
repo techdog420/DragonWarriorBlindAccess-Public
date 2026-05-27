@@ -367,21 +367,94 @@ function tests.brecconary_locked_doors_open_from_door_ram_array()
     open_env.restore()
 end
 
-function tests.garinham_east_locked_door_opens_from_door_ram_array()
-    local base = 9 * 5
-    local data_start = 0x10
+function tests.garinham_old_east_door_guess_is_not_a_door_override()
+    local memory_bytes = {
+        [0x600C] = 19,
+        [0x600D] = 16,
+    }
+    local env = make_env({
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local context = env.map_reader.get_door_cell_context(0x09, 19, 16)
+    assert_equal(context, nil, "disproved Garinham east-door guess should not be a door override")
+    local old_grey_guess_context = env.map_reader.get_door_cell_context(0x09, 18, 9)
+    assert_equal(old_grey_guess_context, nil, "old Garinham grey-building door guess should not be a door override")
+    local grey_door_context = env.map_reader.get_door_cell_context(0x09, 17, 10)
+    assert_equal(grey_door_context ~= nil, true, "Garinham grey-building grave-route door should be modeled")
+    assert_equal(grey_door_context.open, false, "wrong opened-door RAM coordinate should not open Garinham grey-building door")
+    memory_bytes[0x600C] = 18
+    memory_bytes[0x600D] = 9
+    grey_door_context = env.map_reader.get_door_cell_context(0x09, 17, 10)
+    assert_equal(grey_door_context.open, false, "old 18,9 door-RAM guess should not open Garinham grey-building door")
+    local hidden_wall_context = env.map_reader.get_door_cell_context(0x09, 13, 4)
+    assert_equal(hidden_wall_context, nil, "Garinham hidden-wall seam should not be modeled as a door")
+
+    env.restore()
+end
+
+function tests.garinham_grey_building_door_opens_from_door_ram_array()
+    local base = 0x09 * 5
+    local data_start = 0x120
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
     local rom_bytes = {
-        [base] = 0x00,
-        [base + 1] = 0x80,
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
         [base + 2] = 19,
         [base + 3] = 19,
         [base + 4] = 0,
     }
-    for i = 0, 200 do
-        rom_bytes[data_start + i] = 0xFF
+    for i = 0, 24 do
+        rom_bytes[data_start + i] = 0x2F
     end
 
-    local closed_env = make_env({
+    local memory_bytes = {
+        [0] = 0x10,
+    }
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed = env.map_reader.get_walkability_details(0x09, 17, 10)
+    assert_equal(closed.effective_walkable, false, "closed Garinham grave-route door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Garinham grave-route door should report door_closed")
+
+    memory_bytes[0x600C] = 17
+    memory_bytes[0x600D] = 10
+    local open = env.map_reader.get_walkability_details(0x09, 17, 10)
+    assert_equal(open.effective_walkable, true, "opened Garinham grave-route door should become walkable")
+    assert_equal(open.reason, "door_open", "opened Garinham grave-route door should report door_open")
+    local snapshot = env.map_reader.get_walkability_snapshot(0x09)
+    assert_equal(snapshot[10][17], true, "walkability snapshot should honor opened Garinham grave-route door")
+
+    env.restore()
+end
+
+function tests.garinham_grave_dark_wall_entry_is_passthrough()
+    local base = 0x09 * 5
+    local data_start = 0x120
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    for i = 0, 24 do
+        rom_bytes[data_start + i] = 0x6F
+    end
+
+    local env = make_env({
         rom_bytes = rom_bytes,
         memory_bytes = {
             [0] = 0x10,
@@ -392,31 +465,29 @@ function tests.garinham_east_locked_door_opens_from_door_ram_array()
         door_array_stride = 2,
     })
 
-    local closed = closed_env.map_reader.get_walkability_details(0x09, 19, 16)
-    assert_equal(closed.effective_walkable, false, "closed Garinham east door should block movement")
-    assert_equal(closed.reason, "door_closed", "closed Garinham east door should report door_closed")
-    closed_env.restore()
+    local entry = env.map_reader.get_walkability_details(0x09, 3, 3)
+    assert_equal(entry.tile_type, 6, "mocked Garinham dark-wall entry tile should decode as floor")
+    assert_equal(entry.effective_walkable, true, "Garinham dark-wall entry should be walkable through passthrough data")
+    assert_equal(entry.reason, "passthrough", "Garinham dark-wall entry should report passthrough")
+    local top_edge = env.map_reader.get_walkability_details(0x09, 18, 0)
+    assert_equal(top_edge.tile_type, 6, "mocked Garinham top-edge tile should decode as wall")
+    assert_equal(top_edge.effective_walkable, true, "Garinham (18,0) should be walkable after live edge proof from (18,1)")
+    assert_equal(top_edge.reason, "passthrough", "Garinham (18,0) should report passthrough")
+    local grave_stairs = env.map_reader.get_walkability_details(0x09, 19, 0)
+    assert_equal(grave_stairs.tile_type, 6, "mocked Garinham grave stairs tile should decode as wall")
+    assert_equal(grave_stairs.effective_walkable, true, "Garinham (19,0) should be walkable for the live-confirmed grave stairs")
+    assert_equal(grave_stairs.reason, "passthrough", "Garinham (19,0) should report passthrough")
+    local lower_bridge = env.map_reader.get_walkability_details(0x09, 19, 10)
+    assert_equal(lower_bridge.tile_type, 6, "mocked Garinham lower hidden bridge tile should decode as wall")
+    assert_equal(lower_bridge.effective_walkable, true, "Garinham (19,10) should be walkable after live bridge proof from (19,11)")
+    assert_equal(lower_bridge.reason, "passthrough", "Garinham (19,10) should report passthrough")
+    local snapshot = env.map_reader.get_walkability_snapshot(0x09)
+    assert_equal(snapshot[3][3], true, "walkability snapshot should honor Garinham dark-wall passthrough")
+    assert_equal(snapshot[0][18], true, "walkability snapshot should honor Garinham top-edge passthrough")
+    assert_equal(snapshot[0][19], true, "walkability snapshot should honor Garinham grave-stairs passthrough")
+    assert_equal(snapshot[10][19], true, "walkability snapshot should honor Garinham lower hidden bridge passthrough")
 
-    local open_env = make_env({
-        rom_bytes = rom_bytes,
-        memory_bytes = {
-            [0] = 0x10,
-            [0x600C] = 19,
-            [0x600D] = 16,
-        },
-        door_array_max = 8,
-        door_x_pos_start = 0x600C,
-        door_y_pos_start = 0x600D,
-        door_array_stride = 2,
-    })
-
-    local open = open_env.map_reader.get_walkability_details(0x09, 19, 16)
-    assert_equal(open.effective_walkable, true, "opened Garinham east door should become walkable")
-    assert_equal(open.reason, "door_open", "opened Garinham east door should report door_open")
-    local snapshot = open_env.map_reader.get_walkability_snapshot(0x09)
-    assert_equal(snapshot[16][19], true, "walkability snapshot should honor opened Garinham east door")
-
-    open_env.restore()
+    env.restore()
 end
 
 function tests.rimuldar_inn_doors_override_walkable_floor_until_open()
@@ -1388,6 +1459,31 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     assert_equal(dirs["6,10"].east, true, "(6,10) should block east approach after entrance-to-Tool-Merchant verifier from (7,10)")
     assert_equal(dirs["6,11"].east, true, "(6,11) should block east approach after entrance-to-Tool-Merchant verifier from (7,11)")
     assert_equal(dirs["6,12"].east, true, "(6,12) should block east approach after entrance-to-Tool-Merchant verifier from (7,12)")
+    assert_equal(dirs["6,12"].south, true, "(6,12) should block south approach after Garin's Grave route verifier from (6,13)")
+    assert_equal(dirs["5,12"].south, true, "(5,12) should block south approach after Garin's Grave route verifier from (5,13)")
+    for x = 7, 14 do
+        assert_equal(dirs[x .. ",9"].south, true, string.format("(%d,9) should block south approach after Garin's Grave route verifier", x))
+    end
+    assert_equal(dirs["13,3"].west, true, "(13,3) should block west approach after Garin's Grave route verifier from (12,3)")
+    assert_equal(dirs["13,5"].west, true, "(13,5) should block west approach after Garin's Grave route verifier from (12,5)")
+    assert_equal(dirs["13,6"].west, true, "(13,6) should block west approach after Garin's Grave route verifier from (12,6)")
+    assert_equal(dirs["13,6"].south, true, "(13,6) should block south approach after Garin's Grave route verifier from (13,7)")
+    for x = 14, 18 do
+        assert_equal(dirs[x .. ",6"].south, true, string.format("(%d,6) should block south approach after Garin's Grave route verifier", x))
+    end
+    assert_equal(dirs["19,8"].west, true, "(19,8) should block west approach after Garin's Grave route verifier from (18,8)")
+    assert_equal(dirs["19,7"].west, true, "(19,7) should block west approach after post-reload Garin's Grave route verifier from (18,7)")
+    assert_equal(dirs["19,9"].west, true, "(19,9) should block west approach after post-reload Garin's Grave route verifier from (18,9)")
+    assert_equal(dirs["13,4"].west, true, "(13,4) should block west approach after post-reload Garin's Grave route verifier from (12,4)")
+    assert_equal(dirs["15,10"].south, true, "(15,10) should block south approach after post-reload Garin's Grave route verifier from (15,11)")
+    assert_equal(dirs["16,10"].south, true, "(16,10) should block south approach after post-reload Garin's Grave route verifier from (16,11)")
+    assert_equal(dirs["18,14"].east, true, "(18,14) should block east approach after Garin's Grave route verifier from (19,14)")
+    assert_equal(dirs["14,1"].west, true, "(14,1) should block west approach after door-to-grave trail verifier from (13,1)")
+    assert_equal(dirs["14,1"].east, true, "(14,1) should block east approach after reverse grave-route verifier from (15,1)")
+    for x = 15, 18 do
+        assert_equal(dirs[x .. ",2"].north, true, string.format("(%d,2) should block north approach after reverse grave-route verifier", x))
+    end
+    assert_open_approach("19,2", "north", "(19,2) should stay open from north because reverse grave-route verifier from (19,1) was mixed")
     assert_equal(dirs["11,16"].west, true, "(11,16) should block west approach after Weapons Merchant return verifier from (10,16)")
     assert_equal(dirs["14,14"].west, true, "(14,14) should block west approach after Weapons Merchant return verifier from (13,14)")
     assert_equal(dirs["11,15"].east, true, "(11,15) should block east approach after entrance-to-Weapons-Merchant verifier from (12,15)")
@@ -1400,6 +1496,8 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     assert_equal(dirs["14,15"].west, true, "(14,15) should block west approach after successful-route reroute verifier from (13,15)")
     assert_equal(dirs["14,16"].east, true, "(14,16) should block east approach after entrance-to-Weapons-Merchant verifier from (15,16)")
     assert_open_approach("14,17", "east", "(14,17) should stay open from east after probe_edge_verify from (15,17) moved 5/5")
+    assert_open_approach("15,10", "west", "(15,10) should stay open from west after probe_edge_verify from (14,10) moved 6/6")
+    assert_open_approach("4,12", "south", "(4,12) should stay open from south after probe_edge_verify from (4,13) moved 6/6")
     assert_open_approach("3,10", "south", "(3,10) should stay open from south; user crossed north from (3,11)")
     assert_open_approach("3,10", "west", "(3,10) should stay open from west; manual movement crossed from (2,10)")
     assert_open_approach("2,10", "east", "(2,10) should stay open from east; manual movement crossed from (3,10)")
