@@ -60,8 +60,8 @@ COMMANDS (write to dw_commands.txt, one per line)
   log_state                Write full game state snapshot to log
   report_position          Write current map/x/y to log
   report_door_state        Write magic-key count and opened-door RAM slots
-  debug_seed_open_doors:X,Y[;X,Y...]
-                           Seed opened-door RAM slots for route/debug tests
+  debug_seed_open_doors:X,Y[;X,Y...]  Seed opened-door RAM slots for route/debug tests
+  debug_seed_open_doors:clear         Clear opened-door RAM slots after a route test
   report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
   report_movement_state    Dump movement/camera-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons

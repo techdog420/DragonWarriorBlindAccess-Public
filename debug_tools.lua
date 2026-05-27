@@ -1010,18 +1010,21 @@ local function process_command(cmd)
     elseif cmd:sub(1, 21) == "debug_seed_open_doors" then
         local arg = cmd:match("^debug_seed_open_doors:%s*(.-)%s*$")
         if not arg or arg == "" then
-            M.error("debug_seed_open_doors usage: debug_seed_open_doors:X,Y[;X,Y...]")
+            M.error("debug_seed_open_doors usage: debug_seed_open_doors:X,Y[;X,Y...] or debug_seed_open_doors:clear")
         else
+            local normalized_arg = arg:match("^%s*(.-)%s*$"):lower()
             local doors = {}
             local bad_part = nil
-            for part in arg:gmatch("[^;]+") do
-                local x_s, y_s = part:match("^%s*(%d+)%s*,%s*(%d+)%s*$")
-                local x, y = tonumber(x_s), tonumber(y_s)
-                if not x or not y then
-                    bad_part = part
-                    break
+            if normalized_arg ~= "clear" and normalized_arg ~= "none" then
+                for part in arg:gmatch("[^;]+") do
+                    local x_s, y_s = part:match("^%s*(%d+)%s*,%s*(%d+)%s*$")
+                    local x, y = tonumber(x_s), tonumber(y_s)
+                    if not x or not y then
+                        bad_part = part
+                        break
+                    end
+                    doors[#doors + 1] = {x = x, y = y}
                 end
-                doors[#doors + 1] = {x = x, y = y}
             end
 
             if bad_part then

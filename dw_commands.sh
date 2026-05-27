@@ -21,6 +21,7 @@
 #   report_position        Map/coordinates to dw_debug.log
 #   report_door_state      Magic-key count and opened-door RAM slots
 #   debug_seed_open_doors:X,Y[;X,Y...]  Seed opened-door RAM slots for route tests
+#   debug_seed_open_doors:clear         Clear seeded/opened-door RAM slots
 #   toggle_debug           Toggle debug_mode on/off at runtime
 #   dump_grid              Dump walkability grid for current map
 #   reload_config          Re-read dw_access.ini (picks up setting changes)
