@@ -111,7 +111,7 @@ end
 local _src       = debug.getinfo(1, "S").source
 local script_dir = _src:match("@?(.*[\\/])") or ""
 
-local LOG_FILE    = script_dir .. "dw_debug.log"
+local LOG_FILE    = rawget(_G, "DW_DEBUG_LOG_FILE_OVERRIDE") or (script_dir .. "dw_debug.log")
 local CMD_FILE    = script_dir .. "dw_commands.txt"
 local CMD_PROCESSING_FILE = script_dir .. "dw_commands.processing.txt"
 local KEYBOARD_BRIDGE_FILE = script_dir .. "dw_keyboard_input.txt"
@@ -136,6 +136,12 @@ local input_trace = nil     -- Per-frame input trace state for keyboard/joypad d
 local stuck_alt_frames = 0  -- Consecutive frames where LeftAlt appears stuck and joy1 is idle.
 local stuck_alt_warned = false
 local STUCK_ALT_WARN_FRAMES = 120
+local last_player_stat_integrity_warning = nil
+local player_stat_integrity_state = nil
+local player_stat_frameadvance_before_sample = nil
+local last_player_stat_transition_dump_frame = nil
+local PLAYER_STAT_TRACE_MAX = 180
+local recent_player_stat_trace = {}
 local keyboard_bridge_active = false
 local external_keyboard_bridge_active = false
 local external_stale_alt_ignored_active = false
@@ -274,6 +280,354 @@ end
 -- State Snapshot
 -- ============================================================
 
+local function format_ram_range(first_addr, last_addr)
+    local bytes = {}
+    for a = first_addr, last_addr do
+        bytes[#bytes + 1] = string.format("%02X", memory.readbyte(a))
+    end
+    return table.concat(bytes, " ")
+end
+
+local function read_ram_range_bytes(first_addr, last_addr)
+    local bytes = {}
+    for a = first_addr, last_addr do
+        bytes[#bytes + 1] = memory.readbyte(a)
+    end
+    return bytes
+end
+
+local function format_byte_table(bytes)
+    local parts = {}
+    for i = 1, #bytes do
+        parts[#parts + 1] = string.format("%02X", bytes[i])
+    end
+    return table.concat(parts, " ")
+end
+
+local function capture_player_stat_trace_sample(frame_override, state_override)
+    local stat_bytes = read_ram_range_bytes(addr.EXPERIENCE_LO, addr.FLAGS_CF)
+    return {
+        frame = frame_override or current_frame,
+        state = state_override or current_state,
+        map_id = memory.readbyte(addr.MAP_ID),
+        x = memory.readbyte(addr.PLAYER_X),
+        y = memory.readbyte(addr.PLAYER_Y),
+        hp = memory.readbyte(addr.CURRENT_HP),
+        max_hp = memory.readbyte(addr.MAX_HP),
+        mp = memory.readbyte(addr.CURRENT_MP),
+        max_mp = memory.readbyte(addr.MAX_MP),
+        level = memory.readbyte(addr.LEVEL),
+        strength = memory.readbyte(addr.STRENGTH),
+        agility = memory.readbyte(addr.AGILITY),
+        attack = memory.readbyte(addr.ATTACK),
+        defense = memory.readbyte(addr.DEFENSE),
+        spells = memory.readbyte(addr.SPELLS),
+        flags_cf = memory.readbyte(addr.FLAGS_CF),
+        enemy_hp = memory.readbyte(addr.ENEMY_HP),
+        stat_bytes = stat_bytes,
+        stat_ram = format_byte_table(stat_bytes),
+    }
+end
+
+local function push_player_stat_trace_sample(sample)
+    recent_player_stat_trace[#recent_player_stat_trace + 1] = sample
+    if #recent_player_stat_trace > PLAYER_STAT_TRACE_MAX then
+        table.remove(recent_player_stat_trace, 1)
+    end
+end
+
+local function describe_trace_changes(prev_bytes, current_bytes)
+    if not prev_bytes or not current_bytes then
+        return "initial"
+    end
+    local changed = {}
+    for i = 1, math.min(#prev_bytes, #current_bytes) do
+        if prev_bytes[i] ~= current_bytes[i] then
+            changed[#changed + 1] = string.format("%02X", addr.EXPERIENCE_LO + i - 1)
+        end
+    end
+    if #changed == 0 then
+        return "none"
+    end
+    return table.concat(changed, ",")
+end
+
+local function has_known_spell_bits(spells, flags_cf)
+    return (tonumber(spells) or 0) ~= 0 or ((tonumber(flags_cf) or 0) % 4) ~= 0
+end
+
+local function build_player_stat_integrity_report(context, sample)
+    local map_id   = sample and sample.map_id or memory.readbyte(addr.MAP_ID)
+    local px       = sample and sample.x or memory.readbyte(addr.PLAYER_X)
+    local py       = sample and sample.y or memory.readbyte(addr.PLAYER_Y)
+    local hp       = sample and sample.hp or memory.readbyte(addr.CURRENT_HP)
+    local mp       = sample and sample.mp or memory.readbyte(addr.CURRENT_MP)
+    local level    = sample and sample.level or memory.readbyte(addr.LEVEL)
+    local strength = sample and sample.strength or memory.readbyte(addr.STRENGTH)
+    local agility  = sample and sample.agility or memory.readbyte(addr.AGILITY)
+    local max_hp   = sample and sample.max_hp or memory.readbyte(addr.MAX_HP)
+    local max_mp   = sample and sample.max_mp or memory.readbyte(addr.MAX_MP)
+    local attack   = sample and sample.attack or memory.readbyte(addr.ATTACK)
+    local defense  = sample and sample.defense or memory.readbyte(addr.DEFENSE)
+    local spells   = sample and sample.spells or memory.readbyte(addr.SPELLS)
+    local flags_cf = sample and sample.flags_cf or memory.readbyte(addr.FLAGS_CF)
+    local stat_ram = sample and sample.stat_ram or format_ram_range(addr.EXPERIENCE_LO, addr.FLAGS_CF)
+    local issues = {}
+
+    if level >= 3 and not has_known_spell_bits(spells, flags_cf) then
+        issues[#issues + 1] = "missing_spells_for_level"
+    end
+    if level >= 3 and max_mp == 0 then
+        issues[#issues + 1] = "zero_max_mp_for_spell_level"
+    end
+    if level >= 10 and max_hp <= 20 then
+        issues[#issues + 1] = "implausible_max_hp_for_level"
+    end
+    if level >= 10 and strength <= 8 and agility <= 8 then
+        issues[#issues + 1] = "implausible_primary_stats_for_level"
+    end
+    if hp > max_hp then
+        issues[#issues + 1] = "current_hp_exceeds_max"
+    end
+    if mp > max_mp then
+        issues[#issues + 1] = "current_mp_exceeds_max"
+    end
+
+    if #issues == 0 then
+        return nil
+    end
+
+    return {
+        context = tostring(context or "unspecified"),
+        map_id = map_id,
+        x = px,
+        y = py,
+        hp = hp,
+        max_hp = max_hp,
+        mp = mp,
+        max_mp = max_mp,
+        level = level,
+        strength = strength,
+        agility = agility,
+        attack = attack,
+        defense = defense,
+        spells = spells,
+        flags_cf = flags_cf,
+        stat_ram = stat_ram,
+        issues = issues,
+    }
+end
+
+function M.check_player_stat_integrity(context)
+    if not M.DEBUG_MODE then return true end
+
+    local report = build_player_stat_integrity_report(context)
+    if not report then
+        last_player_stat_integrity_warning = nil
+        return true
+    end
+
+    local issue_text = table.concat(report.issues, ",")
+    local warning_key = string.format(
+        "%s|0x%02X|%d,%d|%d|%s",
+        report.context,
+        report.map_id or 0,
+        report.x or -1,
+        report.y or -1,
+        report.level or -1,
+        report.stat_ram or "")
+    if warning_key ~= last_player_stat_integrity_warning then
+        M.info(string.format(
+            "PLAYER_STAT_INTEGRITY_WARNING context=%s map=0x%02X pos=(%d,%d) level=%d hp=%d/%d mp=%d/%d stats=STR=0x%02X AGI=0x%02X ATK=0x%02X DEF=0x%02X spells=CE=0x%02X CF=0x%02X issues=%s stat_ram=%s",
+            report.context,
+            report.map_id or 0,
+            report.x or -1,
+            report.y or -1,
+            report.level or -1,
+            report.hp or 0,
+            report.max_hp or 0,
+            report.mp or 0,
+            report.max_mp or 0,
+            report.strength or 0,
+            report.agility or 0,
+            report.attack or 0,
+            report.defense or 0,
+            report.spells or 0,
+            report.flags_cf or 0,
+            issue_text,
+            report.stat_ram or ""))
+        last_player_stat_integrity_warning = warning_key
+    end
+    return false, report
+end
+
+function M.dump_recent_player_stat_trace(context, current_sample)
+    if not M.DEBUG_MODE then return end
+
+    local entries = {}
+    for i = 1, #recent_player_stat_trace do
+        entries[#entries + 1] = {
+            origin = "history",
+            sample = recent_player_stat_trace[i],
+        }
+    end
+    if current_sample then
+        entries[#entries + 1] = {
+            origin = "current",
+            sample = current_sample,
+        }
+    end
+
+    M.info(string.format(
+        "PLAYER_STAT_TRACE_BEGIN context=%s count=%d",
+        tostring(context or "unspecified"),
+        #entries))
+
+    local previous = nil
+    for i = 1, #entries do
+        local entry = entries[i]
+        local sample = entry.sample
+        M.info(string.format(
+            "PLAYER_STAT_TRACE origin=%s frame=%d state=%s map=0x%02X pos=(%d,%d) hp=%d/%d mp=%d/%d level=%d enemy_hp=%d changed=%s stat_ram=%s",
+            tostring(entry.origin),
+            sample.frame or 0,
+            tostring(sample.state or "?"),
+            sample.map_id or 0,
+            sample.x or -1,
+            sample.y or -1,
+            sample.hp or 0,
+            sample.max_hp or 0,
+            sample.mp or 0,
+            sample.max_mp or 0,
+            sample.level or 0,
+            sample.enemy_hp or 0,
+            describe_trace_changes(previous and previous.stat_bytes or nil, sample.stat_bytes),
+            tostring(sample.stat_ram or "")))
+        previous = sample
+    end
+
+    M.info(string.format(
+        "PLAYER_STAT_TRACE_END context=%s",
+        tostring(context or "unspecified")))
+end
+
+local function log_player_stat_integrity_transition(from_state, to_state, report)
+    M.info(string.format(
+        "PLAYER_STAT_INTEGRITY_TRANSITION from=%s to=%s map=0x%02X pos=(%d,%d) level=%d hp=%d/%d mp=%d/%d stats=STR=0x%02X AGI=0x%02X ATK=0x%02X DEF=0x%02X spells=CE=0x%02X CF=0x%02X issues=%s stat_ram=%s",
+        tostring(from_state or "unknown"),
+        tostring(to_state or "unknown"),
+        report.map_id or 0,
+        report.x or -1,
+        report.y or -1,
+        report.level or -1,
+        report.hp or 0,
+        report.max_hp or 0,
+        report.mp or 0,
+        report.max_mp or 0,
+        report.strength or 0,
+        report.agility or 0,
+        report.attack or 0,
+        report.defense or 0,
+        report.spells or 0,
+        report.flags_cf or 0,
+        table.concat(report.issues or {}, ","),
+        report.stat_ram or ""))
+end
+
+local function monitor_player_stat_integrity(sample)
+    if not M.DEBUG_MODE then return end
+    local state = tostring(current_state or "")
+    if state ~= "field" and state ~= "battle" then
+        return
+    end
+
+    local report = build_player_stat_integrity_report("tick")
+    if report then
+        if player_stat_integrity_state ~= "bad" then
+            log_player_stat_integrity_transition(player_stat_integrity_state or "unknown", "bad", report)
+            M.dump_recent_player_stat_trace("stat_transition", sample)
+            last_player_stat_transition_dump_frame = current_frame
+        end
+        player_stat_integrity_state = "bad"
+        return
+    end
+
+    if player_stat_integrity_state == "bad" then
+        M.info(string.format(
+            "PLAYER_STAT_INTEGRITY_TRANSITION from=bad to=clean map=0x%02X pos=(%d,%d) stat_ram=%s",
+            sample.map_id or 0,
+            sample.x or -1,
+            sample.y or -1,
+            sample.stat_ram or ""))
+    end
+    player_stat_integrity_state = "clean"
+end
+
+local function gameplay_state_for_stat_boundary()
+    local state = tostring(current_state or "")
+    return state == "field" or state == "battle"
+end
+
+function M.before_frameadvance()
+    if not M.DEBUG_MODE then return end
+    if not gameplay_state_for_stat_boundary() then
+        player_stat_frameadvance_before_sample = nil
+        return
+    end
+    player_stat_frameadvance_before_sample = capture_player_stat_trace_sample(
+        current_frame,
+        tostring(current_state or "unknown"))
+end
+
+function M.after_frameadvance()
+    if not M.DEBUG_MODE then return end
+    local before = player_stat_frameadvance_before_sample
+    player_stat_frameadvance_before_sample = nil
+    if not before or not gameplay_state_for_stat_boundary() then
+        return
+    end
+
+    local after = capture_player_stat_trace_sample(
+        (current_frame or 0) + 1,
+        tostring(current_state or "unknown") .. ":after_frameadvance")
+    local before_report = build_player_stat_integrity_report("before_frameadvance", before)
+    local after_report = build_player_stat_integrity_report("after_frameadvance", after)
+    local before_state = before_report and "bad" or "clean"
+    local after_state = after_report and "bad" or "clean"
+    if before_state == after_state then
+        return
+    end
+
+    local report = after_report or before_report or {}
+    M.info(string.format(
+        "PLAYER_STAT_FRAMEADVANCE_TRANSITION from=%s to=%s pre_frame=%d post_frame=%d state=%s before_map=0x%02X before_pos=(%d,%d) after_map=0x%02X after_pos=(%d,%d) before_hp=%d/%d before_mp=%d/%d before_level=%d after_hp=%d/%d after_mp=%d/%d after_level=%d changed=%s issues=%s before_stat_ram=%s after_stat_ram=%s",
+        before_state,
+        after_state,
+        before.frame or current_frame or 0,
+        after.frame or ((current_frame or 0) + 1),
+        tostring(current_state or "unknown"),
+        before.map_id or 0,
+        before.x or -1,
+        before.y or -1,
+        after.map_id or 0,
+        after.x or -1,
+        after.y or -1,
+        before.hp or 0,
+        before.max_hp or 0,
+        before.mp or 0,
+        before.max_mp or 0,
+        before.level or 0,
+        after.hp or 0,
+        after.max_hp or 0,
+        after.mp or 0,
+        after.max_mp or 0,
+        after.level or 0,
+        describe_trace_changes(before.stat_bytes, after.stat_bytes),
+        table.concat(report.issues or {}, ","),
+        tostring(before.stat_ram or ""),
+        tostring(after.stat_ram or "")))
+end
+
 -- build_snapshot(): Capture all relevant game state into a string block.
 -- Reads RAM directly. Returns a multi-line human-readable string.
 -- Format is KEY: VALUE so it's easy to parse with simple text tools.
@@ -289,6 +643,10 @@ local function build_snapshot()
     local mp       = memory.readbyte(addr.CURRENT_MP)
     local max_mp   = memory.readbyte(addr.MAX_MP)
     local level    = memory.readbyte(addr.LEVEL)
+    local strength = memory.readbyte(addr.STRENGTH)
+    local agility  = memory.readbyte(addr.AGILITY)
+    local attack   = memory.readbyte(addr.ATTACK)
+    local defense  = memory.readbyte(addr.DEFENSE)
     local gold     = memory.readbyte(addr.GOLD_LO) + memory.readbyte(addr.GOLD_HI) * 256
     local exp      = memory.readbyte(addr.EXPERIENCE_LO) + memory.readbyte(addr.EXPERIENCE_HI) * 256
     local keys     = memory.readbyte(addr.KEYS)
@@ -296,6 +654,10 @@ local function build_snapshot()
     local enemy_hp = memory.readbyte(addr.ENEMY_HP)
     local d8       = memory.readbyte(addr.MENU_CURSOR_X)
     local d9       = memory.readbyte(addr.MENU_CURSOR_Y)
+    local spells   = memory.readbyte(addr.SPELLS)
+    local flags_cf = memory.readbyte(addr.FLAGS_CF)
+    local combat_flags = memory.readbyte(addr.COMBAT_FLAGS)
+    local quest_flags  = memory.readbyte(addr.QUEST_FLAGS)
     local map_name = maps_m.get_name(map_id)
 
     local lines = {
@@ -312,12 +674,17 @@ local function build_snapshot()
         string.format("hp:        %d / %d",     hp, max_hp),
         string.format("mp:        %d / %d",     mp, max_mp),
         string.format("level:     %d",          level),
+        string.format("stats:     STR=0x%02X AGI=0x%02X ATK=0x%02X DEF=0x%02X",
+            strength, agility, attack, defense),
         string.format("gold:      %d",          gold),
         string.format("exp:       %d",          exp),
         string.format("keys:      %d",          keys),
         string.format("herbs:     %d",          herbs),
         string.format("enemy_hp:  %d",          enemy_hp),
         string.format("cursor:    D8=%d D9=%d", d8, d9),
+        string.format("stat_ram:  BA-CF=%s", format_ram_range(addr.EXPERIENCE_LO, addr.FLAGS_CF)),
+        string.format("spells:    CE=0x%02X CF=0x%02X", spells, flags_cf),
+        string.format("flags:     combat=0x%02X quest=0x%02X", combat_flags, quest_flags),
         string.format("terrain:   0x%02X",      terrain),
         "----------------------",
     }
@@ -332,6 +699,7 @@ function M.snapshot()
     for line in snap:gmatch("[^\n]+") do
         M.info(line)
     end
+    M.check_player_stat_integrity("snapshot")
 end
 
 -- ============================================================
@@ -362,6 +730,16 @@ end
 -- Call on STATE_BATTLE entry transition in main.lua.
 function M.on_battle_start()
     if not M.DEBUG_MODE then return end
+    if build_player_stat_integrity_report("battle_start") then
+        if last_player_stat_transition_dump_frame
+           and (current_frame - last_player_stat_transition_dump_frame) <= PLAYER_STAT_TRACE_MAX then
+            M.info(string.format(
+                "PLAYER_STAT_TRACE_SKIPPED context=battle_start reason=recent_transition_dump transition_frame=%d",
+                last_player_stat_transition_dump_frame))
+        else
+            M.dump_recent_player_stat_trace("battle_start", capture_player_stat_trace_sample())
+        end
+    end
     M.info("EVENT: battle started")
     M.snapshot()  -- Auto-snapshot on battle start so enemy type etc. are captured
 end
@@ -372,6 +750,7 @@ function M.on_map_change(new_id)
     if not M.DEBUG_MODE then return end
     local new_name = new_id and maps_m.get_name(new_id) or "?"
     M.info(string.format("EVENT: map change -> 0x%02X (%s)", new_id or 0, new_name))
+    M.check_player_stat_integrity("map_change")
 end
 
 -- ============================================================
@@ -962,14 +1341,6 @@ local function update_input_trace(frame)
     end
 end
 
-local function format_ram_range(first_addr, last_addr)
-    local bytes = {}
-    for a = first_addr, last_addr do
-        bytes[#bytes + 1] = string.format("%02X", memory.readbyte(a))
-    end
-    return table.concat(bytes, " ")
-end
-
 -- process_command(cmd): Execute one trimmed command string.
 local function process_command(cmd)
     if cmd == "" then return end
@@ -1507,6 +1878,9 @@ function M.tick(frame, game_state_str)
         end
         pending_input = nil
     end
+    local stat_sample = capture_player_stat_trace_sample(frame, game_state_str or "unknown")
+    monitor_player_stat_integrity(stat_sample)
+    push_player_stat_trace_sample(stat_sample)
     return inp
         or build_external_keyboard_bridge_input(frame)
         or build_keyboard_bridge_input(frame)

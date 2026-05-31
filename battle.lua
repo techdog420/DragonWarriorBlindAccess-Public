@@ -12,6 +12,13 @@ local ITEMS = {
     [1] = {[0] = "RUN",   [1] = "ITEM"},
 }
 local OVERLAP_MIN_LEN = 8
+local HERO_STOPSPELL_MASK = 0x10
+local HERO_SLEEP_MASK = 0x80
+
+local function has_mask(flags, mask)
+    local value = math.floor(tonumber(flags) or 0)
+    return value % (mask * 2) >= mask
+end
 
 local function complete_prefix_without_coherence_check(text)
     local s = tostring(text or "")
@@ -67,6 +74,64 @@ function M.is_spell_screen_text(text, spell_entries)
         end
     end
     return false
+end
+
+function M.is_hero_asleep(combat_flags)
+    return has_mask(combat_flags, HERO_SLEEP_MASK)
+end
+
+function M.is_hero_stopspelled(combat_flags)
+    return has_mask(combat_flags, HERO_STOPSPELL_MASK)
+end
+
+function M.describe_hero_status_change(old_flags, new_flags)
+    local messages = {}
+    local old_asleep = M.is_hero_asleep(old_flags)
+    local new_asleep = M.is_hero_asleep(new_flags)
+    local old_stopspelled = M.is_hero_stopspelled(old_flags)
+    local new_stopspelled = M.is_hero_stopspelled(new_flags)
+
+    if old_asleep ~= new_asleep then
+        messages[#messages + 1] = new_asleep and "Asleep." or "Awake."
+    end
+    if old_stopspelled ~= new_stopspelled then
+        messages[#messages + 1] = new_stopspelled and "Spells blocked." or "Spells restored."
+    end
+
+    return table.concat(messages, " ")
+end
+
+function M.spell_menu_status_prefix(combat_flags)
+    if M.is_hero_stopspelled(combat_flags) then
+        return "Spells blocked. "
+    end
+    return ""
+end
+
+function M.describe_spell_selection(selection, combat_flags, include_intro)
+    local text = tostring(selection or "")
+    if not include_intro then
+        return text
+    end
+    if M.is_hero_stopspelled(combat_flags) then
+        return M.spell_menu_status_prefix(combat_flags) .. text
+    end
+    return "Spells. " .. text
+end
+
+function M.describe_spell_command_unavailable(combat_flags, spell_count, hero_state)
+    if M.is_hero_stopspelled(combat_flags) then
+        return "Spells blocked."
+    end
+    if tonumber(spell_count) == 0 then
+        local level = tonumber(hero_state and hero_state.level) or 0
+        local mp = tonumber(hero_state and hero_state.mp) or 0
+        if level >= 3 or mp > 0 then
+            return "Spells blocked."
+        end
+        return "Spells. Empty."
+    end
+    return nil
 end
 
 function M.normalize_dialogue(text)

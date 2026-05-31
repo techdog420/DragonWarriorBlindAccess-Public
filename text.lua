@@ -198,6 +198,36 @@ end
 
 M.dialogue_score = dialogue_score
 
+local LOW_ROW_UI_TOKENS = {
+    "COMMAND",
+    "TALK",
+    "SPELL",
+    "STATUS",
+    "ITEM",
+    "STAIRS",
+    "DOOR",
+    "SEARCH",
+    "TAKE",
+}
+
+-- clean_low_row_dialogue(dialogue): Remove command-menu/status-map noise from
+-- y<=3 lower-window scans without deleting meaningful uppercase game words.
+--
+-- The old caller stripped every 3+ letter uppercase run, which removed GOLD
+-- from chest rewards (`Of GOLD thou hast gained 12`) and collapsed the spacing.
+-- Strip known command labels first, then only the A-L-only map-tile noise that
+-- motivated the original y<=3 special path. This preserves tokens such as
+-- GOLD, KEY, and item names while still removing COMMAND/TALK/etc.
+function M.clean_low_row_dialogue(dialogue)
+    local clean = tostring(dialogue or "")
+    for _, token in ipairs(LOW_ROW_UI_TOKENS) do
+        clean = clean:gsub("%f[%u]" .. token .. "%f[^%u]", " ")
+    end
+    clean = clean:gsub("[%s]*[A-L][A-L][A-L]+[%s]*", " ")
+    clean = clean:gsub("%s+", " ")
+    return clean:match("^%s*(.-)%s*$") or ""
+end
+
 local function read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
     start_row = start_row or 19
     local lines = {}

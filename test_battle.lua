@@ -231,6 +231,114 @@ function tests.fast_action_prefix_keeps_damage_before_rewards()
     )
 end
 
+function tests.detects_sleep_and_stopspell_flags()
+    assert_equal(battle.is_hero_asleep(0x80), true, "sleep flag should be detected from combat flags")
+    assert_equal(battle.is_hero_asleep(0x10), false, "stopspell bit alone should not look asleep")
+    assert_equal(battle.is_hero_stopspelled(0x10), true, "stopspell flag should be detected from combat flags")
+    assert_equal(battle.is_hero_stopspelled(0x80), false, "sleep bit alone should not look stopspelled")
+end
+
+function tests.describe_hero_status_change_reports_sleep_transitions()
+    assert_equal(
+        battle.describe_hero_status_change(0x00, 0x80),
+        "Asleep.",
+        "new sleep status should announce asleep"
+    )
+    assert_equal(
+        battle.describe_hero_status_change(0x80, 0x00),
+        "Awake.",
+        "cleared sleep status should announce awake"
+    )
+end
+
+function tests.describe_hero_status_change_reports_stopspell_transitions()
+    assert_equal(
+        battle.describe_hero_status_change(0x00, 0x10),
+        "Spells blocked.",
+        "new stopspell status should announce spell blocking"
+    )
+    assert_equal(
+        battle.describe_hero_status_change(0x10, 0x00),
+        "Spells restored.",
+        "cleared stopspell should announce spell access restored"
+    )
+end
+
+function tests.describe_hero_status_change_joins_multiple_transitions()
+    assert_equal(
+        battle.describe_hero_status_change(0x00, 0x90),
+        "Asleep. Spells blocked.",
+        "simultaneous sleep and stopspell should announce both"
+    )
+    assert_equal(
+        battle.describe_hero_status_change(0x90, 0x90),
+        "",
+        "unchanged combat flags should not announce duplicate status"
+    )
+end
+
+function tests.spell_menu_status_prefix_only_warns_when_stopspelled()
+    assert_equal(
+        battle.spell_menu_status_prefix(0x10),
+        "Spells blocked. ",
+        "battle spell menu should warn when stopspelled"
+    )
+    assert_equal(
+        battle.spell_menu_status_prefix(0x00),
+        "",
+        "battle spell menu should stay quiet when spells are available"
+    )
+end
+
+function tests.describe_spell_selection_adds_balanced_stopspell_reminder()
+    assert_equal(
+        battle.describe_spell_selection("Heal. 4 MP", 0x10, true),
+        "Spells blocked. Heal. 4 MP",
+        "battle spell entry should warn when the hero is stopspelled"
+    )
+    assert_equal(
+        battle.describe_spell_selection("Heal. 4 MP", 0x00, true),
+        "Spells. Heal. 4 MP",
+        "battle spell entry should keep the normal intro when spells are available"
+    )
+    assert_equal(
+        battle.describe_spell_selection("Hurt. 2 MP", 0x10, false),
+        "Hurt. 2 MP",
+        "battle spell cursor moves should not keep repeating the stopspell warning"
+    )
+end
+
+function tests.spell_command_unavailable_prioritizes_stopspell_over_empty_list()
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x10, 0),
+        "Spells blocked.",
+        "stopspell should explain why SPELL is unavailable even if the game hides the list"
+    )
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x00, 0),
+        "Spells. Empty.",
+        "empty spell list should still be explicit when no stopspell flag is active"
+    )
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x00, 3),
+        nil,
+        "known spells with no stopspell should allow normal spell menu handling"
+    )
+end
+
+function tests.spell_command_unavailable_treats_missing_spell_bits_with_mp_as_blocked()
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x00, 0, {level = 12, mp = 48}),
+        "Spells blocked.",
+        "a level 12 hero with MP should not be described as having an empty spell list"
+    )
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x00, 0, {level = 1, mp = 0}),
+        "Spells. Empty.",
+        "a low-level hero with no MP should still get the genuine empty-list message"
+    )
+end
+
 local failures = 0
 local total = 0
 

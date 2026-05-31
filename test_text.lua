@@ -155,6 +155,30 @@ function tests.dialogue_filter_recovers_when_reported_base_nametable_is_stale()
     )
 end
 
+function tests.low_row_dialogue_cleaner_preserves_gold_reward_token()
+    assert_equal(
+        text.clean_low_row_dialogue("Of GOLD thou hast gained 12"),
+        "Of GOLD thou hast gained 12",
+        "low-row cleaner should not delete meaningful uppercase GOLD reward text"
+    )
+end
+
+function tests.low_row_dialogue_cleaner_strips_command_labels_not_reward_text()
+    assert_equal(
+        text.clean_low_row_dialogue("COMMAND TAKE Of GOLD thou hast gained 12"),
+        "Of GOLD thou hast gained 12",
+        "low-row cleaner should strip command labels while preserving reward text"
+    )
+end
+
+function tests.low_row_dialogue_cleaner_keeps_key_item_token()
+    assert_equal(
+        text.clean_low_row_dialogue("Thou hast found the KEY!"),
+        "Thou hast found the KEY!",
+        "low-row cleaner should preserve uppercase item words beyond command labels"
+    )
+end
+
 function tests.extract_new_dialogue_strips_yesno_tail_prefix()
     local old = "'Before reaching thy next level of experience thou must gain 7 Points."
     local new = "experience thou must gain 7 Points. 'Will thou tell me now of thy deeds so they won't be forgotten?'"

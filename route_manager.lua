@@ -1865,6 +1865,29 @@ local function get_goal_block_reason(blocking, x, y)
     return blocking[cell_key(x, y)]
 end
 
+local function goal_is_out_of_bounds(map_id, goal_x, goal_y)
+    if goal_x == nil or goal_y == nil then
+        return false
+    end
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        return false
+    end
+    return goal_x < 0 or goal_x >= width or goal_y < 0 or goal_y >= height
+end
+
+local function pathfinder_failure_reason(opts)
+    local path_opts = opts and (opts.pathfinder_opts or opts)
+    if not (path_opts and path_opts._get_stats) then
+        return nil
+    end
+    local stats = path_opts._get_stats()
+    if stats and stats.success == false then
+        return stats.reason
+    end
+    return nil
+end
+
 local function release_npc_freeze(reason)
     if not npc_freeze_active then
         return
@@ -2060,6 +2083,10 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
     end
     if result == "No path found" and no_path_reason == "stationary_npc_blocker" then
         msg = msg .. ". Route may be blocked by a stationary NPC or an out-of-date NPC position. Try again in a moment, or choose another interaction point"
+        return msg
+    end
+    if result == "No path found" and no_path_reason == "goal_out_of_bounds" then
+        msg = msg .. ". Target is outside this map"
         return msg
     end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then
@@ -2465,6 +2492,10 @@ local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, pat
 end
 
 function find_quiet_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, blocking, opts)
+    if goal_is_out_of_bounds(map_id, goal_x, goal_y) then
+        return nil, nil
+    end
+
     local adj_tiles = {
         {x = goal_x,     y = goal_y - 1},
         {x = goal_x,     y = goal_y + 1},
@@ -3144,6 +3175,9 @@ plan_path_to_object = function(obj, opts)
                 face_dir = get_plan_face_dir(obj, uses_interaction) or face_dir
             end
         end
+    end
+    if result == "No path found" and no_path_reason == nil then
+        no_path_reason = pathfinder_failure_reason(opts)
     end
     if result == "No path found" and no_path_reason == nil then
         no_path_reason = infer_no_path_reason(map_id, px, py, blocking, obj, path_mode, opts)

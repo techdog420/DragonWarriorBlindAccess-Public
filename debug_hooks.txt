@@ -203,12 +203,14 @@ PATHFINDING DEBUG COMMANDS
   debug_pathfind_to_skip_npcs_allow_hazards:X,Y
                            Same as debug_pathfind_to, but omits live NPCs
                            and permits modeled damage/hazard cells.
-  debug_route_frontier:X,Y Log nearest rejected edges around the currently
+  debug_route_frontier:X,Y[,LIMIT]
+                           Log nearest rejected edges around the currently
                            reachable component toward X,Y, including whether
                            each edge would bridge into the target-side
                            component. Wall-looking one-cell false-wall
                            candidates that would bridge into the target side
-                           are surfaced with hidden_bridge=true.
+                           are surfaced with hidden_bridge=true. Optional
+                           LIMIT controls how many ranked entries are logged.
   debug_route_frontier_skip_npcs:X,Y
                            Same, but omits live NPC blockers.
   debug_route_frontier_allow_hazards:X,Y
@@ -366,15 +368,53 @@ SNAPSHOT FORMAT (log_state / on_battle_start)
   state:     field
   map_id:    0x08 (Tantegel Castle)
   pos:       x=7, y=4
+  raw_pos:   player=(7,4) overworld=(40,32)
   hp:        25 / 30
   mp:        8 / 16
   level:     3
+  stats:     STR=0x0A AGI=0x08 ATK=0x0E DEF=0x0B
   gold:      120
   exp:       450
+  keys:      0
+  herbs:     1
   enemy_hp:  0
   cursor:    D8=0 D9=0
+  stat_ram:  BA-CF=C2 01 78 00 00 00 01 00 00 00 00 19 08 03 0A 08 1E 10 0E 0B 01 00
+  spells:    CE=0x01 CF=0x00
+  flags:     combat=0x08 quest=0x00
   terrain:   0x10
   ----------------------
+
+PLAYER STAT INTEGRITY WARNING
+-----------------------------
+  `log_state`, battle start snapshots, map changes, and battle-to-field
+  transitions can emit a log-only warning when the player stat block looks
+  impossible for the current level. This is intentionally conservative so
+  level-1 "no spells yet" combat states stay quiet.
+
+  Example:
+    PLAYER_STAT_INTEGRITY_WARNING context=battle_end map=0x19 pos=(11,2)
+    level=12 hp=15/15 mp=0/0 ... issues=missing_spells_for_level,...
+    stat_ram=...
+
+  When battle start is already corrupt, a heavier pre-battle trace now dumps
+  the recent ring buffer too:
+    PLAYER_STAT_TRACE_BEGIN context=battle_start count=...
+    PLAYER_STAT_TRACE origin=history ...
+    PLAYER_STAT_TRACE origin=current ... changed=...
+    PLAYER_STAT_TRACE_END context=battle_start
+  The per-frame tick monitor also logs the first clean-to-bad or bad-to-clean
+  transition it sees:
+    PLAYER_STAT_INTEGRITY_TRANSITION from=clean to=bad ...
+    PLAYER_STAT_TRACE_BEGIN context=stat_transition count=...
+  A tighter boundary sentinel also compares the player stat block immediately
+  before and after `FCEU.frameadvance()`:
+    PLAYER_STAT_FRAMEADVANCE_TRANSITION from=clean to=bad
+    pre_frame=... post_frame=... changed=C8,C9,...
+    before_stat_ram=... after_stat_ram=...
+  If a battle starts immediately after that transition dump, battle-start
+  logging emits a skip marker instead of duplicating the same trace:
+    PLAYER_STAT_TRACE_SKIPPED context=battle_start reason=recent_transition_dump ...
 
 CALLING HOOKS FROM LUA (manual use in debug sessions)
 ------------------------------------------------------

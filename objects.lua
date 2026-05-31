@@ -214,18 +214,49 @@ local STAIRS = {
     },
 
     -- Garin's Grave B1 (0x18)
-    {map = 0x18, x = 19, y = 0, name = "Stairs Down", dest = "B2"},
+    -- Live FCEUX proof after entering from Garinham: the hero appears on
+    -- `(6,11)`, and using STAIRS from that same tile returns to Garinham
+    -- `(19,0)`. Keep the older fake `exit_0_0` out of EXITS below.
+    {
+        map = 0x18,
+        x = 6,
+        y = 11,
+        name = "Stairs Up",
+        dest = "Garinham",
+        object_name = "Stairs to Garinham",
+    },
+    -- ROM stair-down table entry at 0xF456 is `18 01 12`. User manual check
+    -- disproved the older `(19,0)` placeholder; live inspect shows `(1,18)`
+    -- is a walkable B1 tile, pending final STAIRS transition proof to map 0x19.
+    {map = 0x18, x = 1, y = 18, name = "Stairs Down", dest = "B2"},
 
     -- Garin's Grave B2 (0x19)
-    {map = 0x19, x = 19, y = 0, name = "Stairs Up", dest = "B1"},
-    {map = 0x19, x = 12, y = 12, name = "Stairs Down", dest = "B3"},
+    -- Local ROM stair tables plus the Realm of Darkness composite map line up:
+    -- B2 is a 13x11 stair hub with one up stair and five separate down stairs.
+    -- The older placeholders `(19,0)` / `(12,12)` were impossible on this map.
+    {map = 0x19, x = 11, y = 2, name = "Stairs Up", dest = "B1"},
+    {map = 0x19, x = 1, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northwest Stairs Down to B3"},
+    {map = 0x19, x = 12, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northeast Stairs Down to B3"},
+    {map = 0x19, x = 5, y = 6, name = "Stairs Down", dest = "B3", object_name = "Center Stairs Down to B3"},
+    {map = 0x19, x = 1, y = 10, name = "Stairs Down", dest = "B3", object_name = "Southwest Stairs Down to B3"},
+    {map = 0x19, x = 12, y = 10, name = "Stairs Down", dest = "B3", object_name = "Southeast Stairs Down to B3"},
 
     -- Garin's Grave B3 (0x1A)
-    {map = 0x1A, x = 12, y = 12, name = "Stairs Up", dest = "B2"},
-    {map = 0x1A, x = 1, y = 1, name = "Stairs Down", dest = "B4"},
+    -- Local ROM stair tables show five returns up to B2 plus two down stairs
+    -- to B4. User live proof confirmed the fourth B2 stair in table order:
+    -- B2 southwest `(1,10)` deposits on B3 `(2,17)`.
+    {map = 0x1A, x = 14, y = 1, name = "Stairs Up", dest = "B2", object_name = "Northwest Return Stairs to B2"},
+    {map = 0x1A, x = 18, y = 1, name = "Stairs Up", dest = "B2", object_name = "Northeast Return Stairs to B2"},
+    {map = 0x1A, x = 6, y = 11, name = "Stairs Up", dest = "B2", object_name = "Center Return Stairs to B2"},
+    {map = 0x1A, x = 2, y = 17, name = "Stairs Up", dest = "B2", object_name = "Southwest Return Stairs to B2"},
+    {map = 0x1A, x = 18, y = 13, name = "Stairs Up", dest = "B2", object_name = "Southeast Return Stairs to B2"},
+    {map = 0x1A, x = 9, y = 5, name = "Stairs Down", dest = "B4", object_name = "Upper Stairs Down to B4"},
+    {map = 0x1A, x = 10, y = 9, name = "Stairs Down", dest = "B4", object_name = "Lower Stairs Down to B4"},
 
     -- Garin's Grave B4 (0x1B)
-    {map = 0x1B, x = 1, y = 1, name = "Stairs Up", dest = "B3"},
+    -- ROM stair tables show two returns from B4 back to B3.
+    {map = 0x1B, x = 0, y = 4, name = "Stairs Up", dest = "B3", object_name = "Upper Return Stairs to B3"},
+    {map = 0x1B, x = 5, y = 4, name = "Stairs Up", dest = "B3", object_name = "Lower Return Stairs to B3"},
 
     -- Charlock Castle (0x02)
     {map = 0x02, x = 10, y = 1, name = "Stairs Down", dest = "B1"},
@@ -349,7 +380,6 @@ local EXITS = {
         object_name = "North Exit to World Map",
     },                                                                      -- Swamp Cave
     {map = 0x16, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Mountain Cave
-    {map = 0x18, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Garin's Grave B1
     {map = 0x1C, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Erdrick's Cave B1
 }
 
@@ -792,11 +822,10 @@ local function parse_chests(map_id)
         -- Empirically confirmed on map 5 (throne room):
         --   Chest [6] at ROM_y=1 was physically found at game y=1. ✓
         --   Chests [4],[5] at ROM_y=4 → game y=4 (1 south of player at y=3). ✓
-        -- ROM_y=0 is an invalid sentinel (skips Mountain Cave placeholder entries).
         local rom_y = rom.readbyte(base + 2)
         local chest_y = rom_y  -- player coordinate = ROM value directly
 
-        if chest_map == map_id and rom_y > 0 then
+        if chest_map == map_id then
             chests[#chests + 1] = {
                 x = chest_x,
                 y = chest_y,
@@ -1052,6 +1081,21 @@ local EXTRA_DOORS = {
             interaction_x=17,
             interaction_y=9,
             interaction_face_dir="south",
+        },
+    },
+    -- Map 0x18: Garin's Grave B1 southeast locked door toward B2. Live OPEN
+    -- from `(17,18)` facing north wrote slot `1=(17,17)` into door RAM, and a
+    -- direct edge probe immediately moved into `(17,17)`.
+    [0x18] = {
+        {
+            x=17,
+            y=17,
+            name="B2 Door",
+            type=M.TYPE_DOOR,
+            id="door_17_17",
+            interaction_x=17,
+            interaction_y=18,
+            interaction_face_dir="north",
         },
     },
     -- Map 0x0B: Rimuldar inn / Wings chest doors. Gamer Corner lists the inn

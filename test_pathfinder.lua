@@ -185,6 +185,47 @@ function tests.goal_not_walkable_reports_reason_without_search()
     env.restore()
 end
 
+function tests.goal_out_of_bounds_reports_reason_without_search()
+    local env = make_stub_env()
+    env.set_grid(5, 5)
+
+    local opts = env.path_debug.build_find_path_opts()
+    local path = env.pathfinder.find_path(0x04, 1, 1, 5, 1, {}, opts)
+    local stats = opts._get_stats()
+
+    assert_equal(path, nil, "out-of-bounds goal should not return a path")
+    assert_equal(stats.reason, "goal_out_of_bounds", "out-of-bounds goal should set goal_out_of_bounds reason")
+    assert_equal(stats.nodes_visited, 0, "out-of-bounds goal should not visit nodes")
+
+    env.restore()
+end
+
+function tests.adjacent_goal_out_of_bounds_does_not_route_to_boundary_stand()
+    local env = make_stub_env()
+    env.set_grid(5, 5)
+
+    local opts = env.path_debug.build_find_path_opts()
+    local result, face_dir, path = env.pathfinder.pathfind_to_adjacent(0x04, 1, 1, 5, 1, {}, opts)
+    local stats = opts._get_stats()
+
+    assert_equal(result, "No path found", "out-of-bounds adjacent goal should not route to boundary stand")
+    assert_equal(face_dir, nil, "out-of-bounds adjacent goal should not return a face direction")
+    assert_equal(path, nil, "out-of-bounds adjacent goal should not return a path")
+    assert_equal(stats.reason, "goal_out_of_bounds", "out-of-bounds adjacent goal should report goal_out_of_bounds")
+    assert_equal(stats.nodes_visited, 0, "out-of-bounds adjacent goal should not search adjacent stands")
+
+    local direct_opts = env.path_debug.build_find_path_opts()
+    local raw_path, raw_face, raw_adj = env.pathfinder.find_route_to_adjacent(0x04, 1, 1, 5, 1, {}, direct_opts)
+    local direct_stats = direct_opts._get_stats()
+
+    assert_equal(raw_path, nil, "low-level adjacent helper should reject out-of-bounds goal")
+    assert_equal(raw_face, nil, "low-level adjacent helper should not face an out-of-bounds goal")
+    assert_equal(raw_adj, nil, "low-level adjacent helper should not select a boundary stand")
+    assert_equal(direct_stats.reason, "goal_out_of_bounds", "low-level adjacent helper should report goal_out_of_bounds")
+
+    env.restore()
+end
+
 function tests.adjacent_pathing_accepts_occupied_goal_tile()
     local env = make_stub_env()
     env.set_grid(5, 5)

@@ -36,6 +36,20 @@ local function manhattan_distance(x1, y1, x2, y2)
     return math.abs(x1 - x2) + math.abs(y1 - y2)
 end
 
+local function goal_is_out_of_bounds(map_id, goal_x, goal_y)
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height then
+        return false
+    end
+    return goal_x < 0 or goal_x >= width or goal_y < 0 or goal_y >= height
+end
+
+local function report_goal_out_of_bounds(opts)
+    if opts and opts.on_complete then
+        opts.on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_out_of_bounds"})
+    end
+end
+
 local function opts_with_walkability_snapshot(opts, snapshot)
     if not snapshot then
         return opts
@@ -278,17 +292,20 @@ function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions
     local width, height = map_reader.get_map_dimensions(map_id)
     if not width or not height then return nil end
 
-    -- Verify the goal is within bounds
-    if goal_x < 0 or goal_x >= width or goal_y < 0 or goal_y >= height then
-        return nil
-    end
-
-    blocked_positions = blocked_positions or {}
-
     -- Optional debug callbacks (zero overhead when nil)
     local on_visit   = opts and opts.on_visit
     local on_reject  = opts and opts.on_reject
     local on_complete = opts and opts.on_complete
+
+    -- Verify the goal is within bounds
+    if goal_x < 0 or goal_x >= width or goal_y < 0 or goal_y >= height then
+        if on_complete then
+            on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_out_of_bounds"})
+        end
+        return nil
+    end
+
+    blocked_positions = blocked_positions or {}
 
     -- Key function: convert (x, y) to a string key for table lookups.
     -- Lua tables can't use pairs of numbers as keys, so we serialize them.
@@ -665,6 +682,19 @@ function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_
     if maps.is_overworld(map_id) then
         return nil, nil, nil, nil
     end
+    if goal_is_out_of_bounds(map_id, goal_x, goal_y) then
+        report_goal_out_of_bounds(opts)
+        return nil, nil, nil, {
+            {
+                x = goal_x,
+                y = goal_y,
+                walkable = false,
+                path_found = false,
+                reason = "goal_out_of_bounds",
+                skipped_reason = "goal_out_of_bounds",
+            },
+        }
+    end
 
     local blocked = build_blocked_table(npc_positions, goal_x, goal_y, true)
     local adj_tiles = {
@@ -831,6 +861,21 @@ end
 -- toward the goal, so they can orient immediately; path is an empty table.
 function M.pathfind_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
     debug_tools.info(string.format("pathfind_to_adjacent: map=0x%02X start=(%d,%d) goal=(%d,%d)", map_id, start_x, start_y, goal_x, goal_y))
+
+    if not maps.is_overworld(map_id) and goal_is_out_of_bounds(map_id, goal_x, goal_y) then
+        report_goal_out_of_bounds(opts)
+        debug_tools.info("pathfind adjacent goal out of bounds: (" .. goal_x .. "," .. goal_y .. ")")
+        return "No path found", nil, nil, {
+            {
+                x = goal_x,
+                y = goal_y,
+                walkable = false,
+                path_found = false,
+                reason = "goal_out_of_bounds",
+                skipped_reason = "goal_out_of_bounds",
+            },
+        }
+    end
 
     -- Already adjacent (or standing on the goal tile)
     local dist = math.abs(start_x - goal_x) + math.abs(start_y - goal_y)

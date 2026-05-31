@@ -1431,7 +1431,7 @@ local PREV = {
     battle_spell_index = nil, battle_joy_a = false, battle_joy_b = false,
     battle_opening_dialogue_pending = false,
     battle_fast_dialogue = "", battle_fast_prefix = "",
-    battle_fast_stable_count = 0,
+    battle_fast_stable_count = 0, battle_status_flags = nil,
     -- y<=3 cleaned dialogue
     clean_y1 = "", clean_stable_count = 0,
     -- title cursor
@@ -1545,6 +1545,9 @@ get_autowalk_unavailable_reason = function()
     if PREV.dialogue ~= "" then
         return "Wait for dialogue to finish before auto-walking"
     end
+    if PREV.upper_active and DW_QOL_STATE.sync_stale_upper_dialogue_state then
+        DW_QOL_STATE.sync_stale_upper_dialogue_state("autowalk_guard")
+    end
     if PREV.upper_active then
         return "Wait for the upper dialogue window to clear before auto-walking"
     end
@@ -1573,6 +1576,9 @@ get_edge_probe_unavailable_reason = function()
     end
     if PREV.dialogue ~= "" then
         return "Wait for dialogue to finish before probing an edge"
+    end
+    if PREV.upper_active and DW_QOL_STATE.sync_stale_upper_dialogue_state then
+        DW_QOL_STATE.sync_stale_upper_dialogue_state("edge_probe_guard")
     end
     if PREV.upper_active then
         return "Wait for the upper dialogue window to clear before probing an edge"
@@ -2128,6 +2134,54 @@ local function strip_overlap(old, new)
     return text.extract_new_dialogue(old, new)
 end
 
+DW_QOL_STATE.is_plain_status_line = function(upper)
+    local compact = tostring(upper or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+    return compact:match("^%S+ LV%s+%d+ HP%s+%d+ MP%s+%d+ G%s+%d+ E%s+%d+$") ~= nil
+end
+
+DW_QOL_STATE.sync_stale_upper_dialogue_state = function(reason)
+    if not PREV.upper_active then return false end
+    if game_state.state ~= state.STATE_FIELD then return false end
+    if submenu_mode ~= nil or menu.is_yesno_active() then return false end
+    if MER and MER.active then return false end
+    if DW_QOL_STATE.command_menu_blocks_field_movement
+       and DW_QOL_STATE.command_menu_blocks_field_movement() then
+        return false
+    end
+
+    if emulator_compat.clear_ppu_cache then
+        emulator_compat.clear_ppu_cache()
+    end
+
+    local upper = text.read_upper_window(
+        get_scroll_tiles(),
+        DW_QOL_STATE.get_scroll_base_nametable())
+    local lower = text.read_dialogue_window_filtered(
+        get_scroll_tiles(),
+        get_dialogue_start_row(),
+        DW_QOL_STATE.get_scroll_base_nametable())
+
+    if lower ~= "" then return false end
+
+    local stale_baseline = upper == "" or upper == PREV.upper_baseline or upper == PREV.announced_upper
+    local status_only = DW_QOL_STATE.is_plain_status_line(upper)
+    local uppercase_noise = upper ~= "" and not upper:find("[a-z]")
+    if not (stale_baseline or status_only or uppercase_noise) then
+        return false
+    end
+
+    PREV.upper_baseline = upper
+    PREV.upper_dialogue = upper
+    PREV.announced_upper = upper
+    PREV.upper_stable_count = 0
+    PREV.upper_active = false
+    debug_tools.info(string.format(
+        "UPPER_DIALOGUE_STALE_CLEAR reason=%s upper=%q lower=%q status_only=%s uppercase_noise=%s",
+        tostring(reason), tostring(upper or ""), tostring(lower or ""),
+        tostring(status_only), tostring(uppercase_noise)))
+    return true
+end
+
 if ROW1_TRACE_ENABLED then
     local f = io.open(ROW1_TRACE_FILE, "w")
     if f then
@@ -2298,6 +2352,7 @@ local function reset_battle_menu_state()
     PREV.battle_fast_dialogue = ""
     PREV.battle_fast_prefix = ""
     PREV.battle_fast_stable_count = 0
+    PREV.battle_status_flags = nil
 end
 
 local function is_battle_spell_screen_visible()
@@ -2309,7 +2364,10 @@ end
 
 local function speak_battle_spell_selection(prefix, d9)
     local selection = items.describe_spell_at_d9(d9 or 0)
-    local msg = (prefix or "") .. selection
+    local msg = battle.describe_spell_selection(
+        selection,
+        snapshot.combat_flags,
+        (prefix or "") ~= "")
     debug_tools.info("BATTLE_SPELL: " .. msg)
     tolk.output_interrupt(msg)
 end
@@ -2506,9 +2564,13 @@ local function check_battle_menu()
     end
 
     if item == "SPELL" and a_just then
-        if items.get_spell_count() == 0 then
-            debug_tools.info("BATTLE_SPELL: Spells. Empty.")
-            tolk.output_interrupt("Spells. Empty.")
+        local unavailable = battle.describe_spell_command_unavailable(
+            snapshot.combat_flags,
+            items.get_spell_count(),
+            snapshot)
+        if unavailable then
+            debug_tools.info("BATTLE_SPELL: " .. unavailable)
+            tolk.output_interrupt(unavailable)
         else
             PREV.battle_spell_mode = true
             PREV.battle_spell_entry_pending = true
@@ -2863,9 +2925,13 @@ local function check_command_menu(frame_delta)
        and not CMD.rearm_required
        and live_x == 1 and live_y == 0 then
         local count = items.get_spell_count()
-        if count == 0 then
+        local unavailable = battle.describe_spell_command_unavailable(
+            snapshot.combat_flags,
+            count,
+            snapshot)
+        if unavailable then
             trace_row1("CMD_SPELL_EMPTY", changes, {})
-            tolk.output("Spells. Empty.")
+            tolk.output(unavailable)
         else
             submenu_mode = "SPELL"
             CMD.menu_live = false
@@ -3693,7 +3759,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
         PREV.stable_count = 0
         if at_y1 then
             local y1_dialogue = read_y1_dialogue(dialogue)
-            local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
+            local clean = text.clean_low_row_dialogue(y1_dialogue)
             PREV.clean_y1 = clean:match("^%s*(.-)%s*$") or ""
             PREV.clean_stable_count = 0
         end
@@ -3707,7 +3773,7 @@ local function check_dialogue(frame_delta, refresh_ppu)
         -- response text. Then strip any remaining uppercase runs (e.g., if a row
         -- mixes a command label with part of the response on the same line).
         local y1_dialogue = read_y1_dialogue(dialogue)
-        local clean = y1_dialogue:gsub("[%s]*[A-Z][A-Z][A-Z]+[%s]*", "")
+        local clean = text.clean_low_row_dialogue(y1_dialogue)
         clean = clean:match("^%s*(.-)%s*$") or ""
 
         -- Track stability of the cleaned text.
@@ -5699,9 +5765,22 @@ end
 local function run_debug_route_frontier(arg, params)
     params = params or {}
     local command_name = params.command_name or "debug_route_frontier"
-    local goal_x, goal_y = parse_xy_arg(arg)
+    local goal_x, goal_y, limit
+    if arg then
+        local x_s, y_s, limit_s = arg:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)%s*$")
+        if x_s and y_s and limit_s then
+            goal_x = parse_int_arg(x_s)
+            goal_y = parse_int_arg(y_s)
+            limit = parse_int_arg(limit_s)
+            if goal_x == nil or goal_y == nil or limit == nil then
+                goal_x = nil
+            end
+        else
+            goal_x, goal_y = parse_xy_arg(arg)
+        end
+    end
     if not goal_x then
-        debug_tools.error(command_name .. " usage: " .. command_name .. ":X,Y")
+        debug_tools.error(command_name .. " usage: " .. command_name .. ":X,Y[,LIMIT]")
         return
     end
     ensure_navigation_modules_fresh()
@@ -5939,8 +6018,8 @@ local function run_debug_route_frontier(arg, params)
         #frontiers,
         bridge_candidate_count,
         hidden_bridge_candidate_count))
-    local limit = 24
-    for i = 1, math.min(limit, #frontiers) do
+    limit = math.max(1, math.min(limit or 24, #frontiers))
+    for i = 1, limit do
         local f = frontiers[i]
         debug_tools.info(string.format(
             "ROUTE_FRONTIER_ENTRY rank=%d from=(%d,%d) dir=%s dest=(%d,%d) approach=%s reason=%s bridge_to_target=%s hidden_bridge=%s hidden_exit=%s tile=%s walk_reason=%s start_dist=%d target_side_dist=%d target_dist=%d",
@@ -6595,6 +6674,9 @@ while true do
                 PREV.name_d8 = nil
                 PREV.name_d9 = nil
                 reset_battle_menu_state()
+                if game_state.prev_state == state.STATE_BATTLE then
+                    debug_tools.check_player_stat_integrity("battle_end")
+                end
                 -- Transitioning from title to field: start or continue debounce.
                 if game_state.prev_state == state.STATE_TITLE then
                     field_from_title_ct = 1
@@ -6716,6 +6798,15 @@ while true do
                 end
             end
             if game_state.state == state.STATE_BATTLE then
+                if PREV.battle_status_flags == nil then
+                    PREV.battle_status_flags = snapshot.combat_flags or 0
+                else
+                    if battle.describe_hero_status_change(PREV.battle_status_flags, snapshot.combat_flags or 0) ~= "" then
+                        debug_tools.info("BATTLE_STATUS: " .. battle.describe_hero_status_change(PREV.battle_status_flags, snapshot.combat_flags or 0))
+                        tolk.output(battle.describe_hero_status_change(PREV.battle_status_flags, snapshot.combat_flags or 0))
+                    end
+                    PREV.battle_status_flags = snapshot.combat_flags or 0
+                end
                 local run_battle_menu = true
                 local battle_menu_delta = 1
                 if scan_profiler.is_enabled() then
@@ -6950,7 +7041,9 @@ while true do
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.
     trace_startup_loop("before_frameadvance")
+    checked_scan("debug_tools.before_frameadvance", debug_tools.before_frameadvance)
     FCEU.frameadvance()
+    checked_scan("debug_tools.after_frameadvance", debug_tools.after_frameadvance)
     trace_startup_loop("after_frameadvance")
 
     -- If NPC freeze is active, restore NPC position bytes to their snapshot.

@@ -996,10 +996,22 @@ Emulator compatibility direction:
   `MAP_PASSTHROUGH_CELLS[0x09]` entry. The actual grave trigger is Garinham
   `(19,0)`: ROM stair-down table entry `09 13 00` at file offset `0xF411`
   points there, live STAIRS from `(19,0)` changed to map `0x18` / Garin's
-  Grave B1, and user manual follow-up confirmed B1 arrival at `(6,1)` with the
+  Grave B1, and user manual follow-up confirmed B1 arrival at `(6,11)` with the
   return stairs coming back to town `(19,0)`. Expose `stair_19_0` as
   `Stairs to Garin's Grave` and keep `(19,0)` as a scoped passthrough despite
-  the top-edge boundary rule. Door-to-grave trail-blazing then proved the
+  the top-edge boundary rule. On Garin's Grave B1, expose the return stairs as
+  `stair_6_11`; do not use the old B1 `Stairs Down` placeholder at `(19,0)`.
+  ROM stair-down data points to `(1,18)`, and live `inspect_tile` says that
+  tile is walkable. The B1 chest table entries are raw ROM coordinates
+  `(11,0)`, `(12,0)`, and `(13,0)`. Do not normalize them to row `1`: live
+  TAKE at row `1`/`2` found nothing, while SEARCH at `(11,0)` and `(12,0)`
+  reported treasure boxes and forced teleport to `(13,0)` held stable. Model
+  those three cells as narrow B1 passthroughs despite the generic dungeon
+  y=0 boundary rule. The same B1 chest pass caught a low-row dialogue cleanup
+  bug: raw text `Of GOLD thou hast gained 12` was announced as
+  `Ofthou hast gained 12` because the y<=3 filter stripped every uppercase run.
+  Preserve meaningful uppercase game tokens such as `GOLD` and strip only known
+  command labels/noise. Door-to-grave trail-blazing then proved the
   top lane has a one-way engine seam at `(14,1).west` from `(13,1)->RIGHT`;
   the working bridge is lower, from `(19,11)->UP` into passthrough `(19,10)`,
   which moved 6/6 including stability recheck. `(13,1)->DOWN` into `(13,2)`
@@ -1790,7 +1802,7 @@ Erdrick's Cave/maps `0x1C` / `0x1D`:
   and live probes then proved the top-edge continuation: `(0,1)->UP` into
   `(0,0)` passed 15/15, route-shaped probes moved through `(1,0)`..`(6,0)`,
   north entries into `(1,1)`..`(5,1)` blocked, and `(6,0)->DOWN` moved into
-  `(6,1)`. Static tests pass, live `inspect_tile` reports `(0,0)` and `(6,0)`
+  `(6,11)`. Static tests pass, live `inspect_tile` reports `(0,0)` and `(6,0)`
   as `reason=passthrough`, and `debug_pathfind_adjacent:9,3` from B2 stairs
   `(8,9)` now chooses chest-adjacent `(8,3)` with a 42-step path and
   `Face east`. Actual auto-walk is now playably validated in both directions:

@@ -316,6 +316,12 @@ local function make_env(options)
                     blocking = blocking,
                     opts = opts,
                 }
+                if options.pathfind_to_adjacent_fn then
+                    local result, face_dir, path = options.pathfind_to_adjacent_fn(start_x, start_y, goal_x, goal_y, blocking, opts)
+                    if result ~= nil then
+                        return result, face_dir, path
+                    end
+                end
                 if pathfind_mode == "already_adjacent" then
                     return "Adjacent", "north", {}
                 end
@@ -1512,6 +1518,44 @@ function tests.coordinate_debug_planning_uses_route_manager_path_policy()
     assert_equal(plan.coordinate_target, true, "coordinate plans should be marked for debug callers")
     assert_equal(plan.path_mode, "direct", "coordinate direct debug plans should keep direct path mode")
     assert_equal(env.last_direct_call().opts.on_complete, marker_opts.on_complete, "coordinate debug plans should use the shared route-manager A* options")
+
+    env.restore()
+end
+
+function tests.adjacent_coordinate_out_of_bounds_reason_survives_no_path_inference()
+    local stats = {}
+    local marker_opts = {
+        on_complete = function(next_stats)
+            stats = next_stats or {}
+        end,
+        _get_stats = function()
+            return stats
+        end,
+    }
+    local env = make_env({
+        start_map_id = 0x18,
+        start_x = 9,
+        start_y = 1,
+        map_width = 20,
+        map_height = 20,
+        pathfind_to_adjacent_fn = function(_, _, _, _, _, opts)
+            if opts and opts.on_complete then
+                opts.on_complete({success = false, path_length = 0, nodes_visited = 0, reason = "goal_out_of_bounds"})
+            end
+            return "No path found", nil, nil
+        end,
+    })
+
+    local plan = env.route_manager.plan_path_to_coordinates(20, 1, {
+        path_mode = "adjacent",
+        pathfinder_opts = marker_opts,
+        store_debug_path = false,
+    })
+
+    assert_equal(plan.result, "No path found", "out-of-bounds adjacent coordinate should stay unreachable")
+    assert_equal(plan.no_path_reason, "goal_out_of_bounds", "route manager should preserve adjacent goal_out_of_bounds reason")
+    assert_equal(marker_opts._get_stats().reason, "goal_out_of_bounds", "diagnostic stats should not be overwritten by no-path inference")
+    assert_equal(plan.message, "Coordinate 20,1. No path found. Target is outside this map", "message should not blame NPC clutter for an out-of-bounds coordinate")
 
     env.restore()
 end

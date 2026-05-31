@@ -104,7 +104,7 @@ Live service confirmation:
   top-right boundary stair tile `(19,0)`: ROM stair-down table entry `09 13 00`
   at file offset `0xF411` points there, and live STAIRS from `(19,0)` produced
   `EVENT: map change -> 0x18 (Garin's Grave B1)`. User manual follow-up
-  confirmed the Grave B1 arrival tile is `(6,1)`, and using the return stairs
+  confirmed the Grave B1 arrival/return tile is `(6,11)`, and using the return stairs
   comes back to Garinham `(19,0)`. `objects.lua` exposes this as
   `Stairs to Garin's Grave`, and `MAP_PASSTHROUGH_CELLS[0x09]` keeps `(19,0)`
   walkable despite the generic top-edge boundary rule.

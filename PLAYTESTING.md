@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-05-25
+Updated: 2026-05-27
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
@@ -15,7 +15,19 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(18,1)->UP` enters the standable top-edge cell `(18,0)`, `(18,0)->UP` exits
   to `0x01` / World Map, and STAIRS from `(19,0)` enters map `0x18` /
   Garin's Grave B1. User manual follow-up confirmed the Grave B1 arrival tile
-  is `(6,1)` and the return stairs come back to Garinham `(19,0)`. Follow-up
+  is `(6,11)` and the return stairs come back to Garinham `(19,0)`. The old
+  B1 `Stairs Down` placeholder at `(19,0)` was manually disproved; ROM table
+  evidence places the B1 stair down at `(1,18)`, and live `inspect_tile`
+  confirmed that tile is walkable. The three B1 chest entries are ROM-backed at
+  `(11,0)`, `(12,0)`, and `(13,0)`. A follow-up disproved the row-1
+  normalization idea: TAKE at `(13,1)` and `(13,2)` found nothing, while SEARCH
+  at `(11,0)` and `(12,0)` reported a treasure box and forced teleport to
+  `(13,0)` held stable. These three top-row treasure cells now override the
+  generic dungeon edge boundary. User later validated all three chest locations
+  by teleporting/walking to each and opening them. The chest reward readout was
+  mangled as `Ofthou hast gained 12` because the y<=3 dialogue cleaner stripped
+  every uppercase run, including `GOLD`; it now strips known command labels
+  while preserving meaningful uppercase reward/item tokens. Follow-up
   manual OPEN/log reconstruction plus fresh `DOOR_STATE` places the
   grave-route door at door cell `(17,10)`, opened from `(17,9)` while facing
   south. A door-to-grave trail-blazing rerun then confirmed `(14,1).west`
@@ -1275,6 +1287,68 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   the expensive upper-window spell-list detector only for reload-directly-into-
   battle recovery. The script reloaded cleanly afterward; next fight should
   judge SPELL entry/cursor feel.
+- Battle debuff tracking follow-up: grave combat exposed that hostile spell
+  effects were still opaque. `battle.lua` now decodes the hero's `0x00DF`
+  combat-status bits for Sleep and Stopspell, and `main.lua` announces only
+  transitions (`Asleep` / `Awake`, `Spells blocked` / `Spells restored`) during
+  battle. The battle SPELL list also gives a one-time `Spells blocked` reminder
+  on entry while Stopspell is active, but does not repeat it on every cursor
+  move.
+- B2 Wolf follow-up (`2026-05-30`): a strong Wolf fight left Bill with MP but
+  unable to cast from the field; the game repeatedly printed
+  `Bill cannot yet use the spell`. Local logs showed no enemy spell narration,
+  and the pre-heal town capture clarified the RAM state: Garinham `(19,1)`,
+  `HP 5`, `MP 48`, `spells CE=0x00`, `CF=0x10`, `combat=0x08`, with lower text
+  still `Bill cannot yet use the spell.` Since `combat=0x08` does not include
+  the `0x10` Stopspell bit, the accessibility fix now handles both explicit
+  Stopspell and suppressed/corrupted spell-list evidence. If the hero has no
+  visible spells but level/MP says spells should exist, unavailable SPELL
+  attempts say `Spells blocked.` instead of misleadingly saying
+  `Spells. Empty.` `debug_tools.log_state` now also logs raw spell/status bytes
+  (`CE`, `CF`, combat flags, quest flags`) for future confirmation.
+- B2 Wolf stat-corruption follow-up (`2026-05-30`): resting at the Garinham inn
+  did not clear the condition; instead it normalized current HP/MP to already
+  corrupted max-stat bytes. After script reload, `log_state` at Brecconary
+  `(24,13)` showed level 12 with `HP 15/15`, `MP 0/0`,
+  `STR=0x04`, `AGI=0x03`, `ATK=0x18`, `DEF=0x1F`, `spells CE=0x00`, and
+  `stat_ram BA-CF=73 10 0B 0C B5 03 01 45 C3 00 00 0F 00 0C 04 03 0F 00 18 1F 00 10`.
+  EXP/gold/equipment/key/item bytes stayed coherent, while the contiguous
+  player-stat range `0x00C5..0x00CE` is bad. Do not save this state at the
+  king. FCEUX quick-state slot 0 and `-bak.fc0` decode as clean level-12 B2
+  states at map `0x19` `(11,2)` with `HP 63/63`, `MP 52/52`,
+  `STR=0x30`, `AGI=0x24`, `ATK=0x44`, `DEF=0x30`, and `spells CE=0x3F`.
+  A log-only integrity sentinel now watches for this pattern from `log_state`,
+  battle start snapshots, map changes, and battle-to-field transitions. It
+  deliberately allows level-1 no-spell combat states so normal early-game
+  temporary spell blocking does not become false corruption evidence.
+- Warlock timing follow-up (`2026-05-30`): a later Garin's Grave B2 warlock
+  fight reproduced the corruption while combat was still live. On the exact
+  frame `EVENT: battle started` fired, the battle-start snapshot already showed
+  `HP 56/15`, `MP 42/0`, `STR=0x04`, `AGI=0x03`, `ATK=0x18`, `DEF=0x1F`,
+  `spells CE=0x00`, and
+  `stat_ram BA-CF=C9 10 F1 0C B5 03 02 45 C3 00 00 38 2A 0C 04 03 0F 00 18 1F 00 10`.
+  The sentinel logged `PLAYER_STAT_INTEGRITY_WARNING` before the stable
+  `A Warlock draws near!` line and before the player entered the SPELL command.
+  That rules out the spell menu as the trigger and points to battle
+  initialization or an earlier pre-dialogue combat-state mutation.
+  A heavier `PLAYER_STAT_TRACE` battle-start dump is now wired in too: when
+  battle start is already suspicious, the log emits the recent `BA-CF` ring
+  buffer plus a current sample and `changed=` address list so we can pin down
+  which bytes flipped between the last good field frame and battle init.
+- Wolf timing follow-up (`2026-05-30`): another strong B2 Wolf reproduced the
+  same broader stat collapse, including combat stats. The battle-start trace
+  at frame `51905` already had every retained field sample from `51894..51905`
+  corrupt: `HP 52/15`, `MP 30/0`, `STR=0x04`, `AGI=0x03`, `ATK=0x18`,
+  `DEF=0x1F`, `spells CE=0x00`, and
+  `stat_ram BA-CF=2F 11 F9 0D B5 03 02 45 C3 00 00 34 1E 0C 04 03 0F 00 18 1F 00 10`.
+  `A Wolf draws near!` did not log until frame `51965`, and the ambush attack
+  text did not log until frame `52032`, so the first strike is probably not
+  the trigger. After save-state restore, `log_state` on B2 `(1,11)` returned
+  clean level-12 stats (`HP 52/63`, `MP 30/52`, `ATK=0x44`, `DEF=0x30`,
+  `spells CE=0x3F`). The disk patch now adds per-frame
+  `PLAYER_STAT_INTEGRITY_TRANSITION` detection plus
+  `context=stat_transition` trace dumps; FCEUX needs a manual Lua reload before
+  that newest detector is live.
 - Combat opening dialogue follow-up: live logs showed battle-state detection
   and menu speech were now prompt, but `A Red Slime draws near!` did not log
   until roughly 216-246 frames after battle start. Because menu/spell speech

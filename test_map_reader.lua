@@ -85,6 +85,8 @@ end
 local MAP_NAMES = {
     [0x04] = "Tantegel Castle",
     [0x08] = "Brecconary",
+    [0x18] = "Garin's Grave B1",
+    [0x19] = "Garin's Grave B2",
 }
 
 local function map_label(map_id)
@@ -112,6 +114,18 @@ end
 
 local function assert_tantegel_dir(env, cell, approach, message)
     assert_directional_block(env, 0x04, cell, approach, message)
+end
+
+local function assert_garins_grave_b1_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x18, cell, approach, message)
+end
+
+local function assert_garins_grave_b2_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x19, cell, approach, message)
+end
+
+local function assert_garins_grave_b3_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x1A, cell, approach, message)
 end
 
 local function assert_not_brecconary_dir(env, cell, message)
@@ -435,6 +449,54 @@ function tests.garinham_grey_building_door_opens_from_door_ram_array()
     assert_equal(open.reason, "door_open", "opened Garinham grave-route door should report door_open")
     local snapshot = env.map_reader.get_walkability_snapshot(0x09)
     assert_equal(snapshot[10][17], true, "walkability snapshot should honor opened Garinham grave-route door")
+
+    env.restore()
+end
+
+function tests.garins_grave_b1_southeast_door_opens_from_door_ram_array()
+    local base = 0x18 * 5
+    local data_start = 0x180
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    for i = 0, 24 do
+        rom_bytes[data_start + i] = 0x2F
+    end
+
+    local memory_bytes = {
+        [0] = 0x20,
+    }
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed = env.map_reader.get_walkability_details(0x18, 17, 17)
+    assert_equal(closed.effective_walkable, false, "closed Garin's Grave B1 southeast door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Garin's Grave B1 southeast door should report door_closed")
+    local ctx = env.map_reader.get_door_cell_context(0x18, 17, 17)
+    assert_equal(ctx ~= nil, true, "Garin's Grave B1 southeast door should be modeled as a door cell")
+    assert_equal(ctx.open, false, "closed Garin's Grave B1 southeast door should report closed door context")
+
+    memory_bytes[0x600C] = 17
+    memory_bytes[0x600D] = 17
+    local open = env.map_reader.get_walkability_details(0x18, 17, 17)
+    assert_equal(open.effective_walkable, true, "opened Garin's Grave B1 southeast door should become walkable")
+    assert_equal(open.reason, "door_open", "opened Garin's Grave B1 southeast door should report door_open")
+    local snapshot = env.map_reader.get_walkability_snapshot(0x18)
+    assert_equal(snapshot[17][17], true, "walkability snapshot should honor the opened Garin's Grave B1 southeast door")
+
+    local false_neighbor = env.map_reader.get_door_cell_context(0x18, 18, 17)
+    assert_equal(false_neighbor, nil, "adjacent southeast wall cells should not be promoted into B1 door overrides")
 
     env.restore()
 end
@@ -2457,6 +2519,394 @@ function tests.erdricks_cave_b1_entrance_passthrough_overrides_edge_boundary()
     assert_equal(snapshot[0][1], true, "walkability snapshot should include the Erdrick B1 entrance strip")
     assert_equal(snapshot[1][0], false, "walkability snapshot should keep the unconfirmed west edge blocked")
     assert_equal(snapshot[1][1], true, "walkability snapshot should include the Erdrick B1 entrance floor")
+
+    env.restore()
+end
+
+function tests.garins_grave_b1_treasure_row_overrides_top_edge_boundary()
+    local base = 0x18 * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,      -- CPU $8000 -> file offset $0010
+            [base + 1] = 0x80,
+            [base + 2] = 19,    -- width 20
+            [base + 3] = 19,    -- height 20
+            [base + 4] = 0,
+            [0x10] = 0x2F, [0x11] = 0x0B,
+            [0x12] = 0x2F, [0x13] = 0x0C,
+            [0x14] = 0x2F, [0x15] = 0x0D,
+            [0x16] = 0x2F, [0x17] = 0x0E,
+            [0x18] = 0x0F, [0x19] = 0x0F, [0x1A] = 0x0F,
+            [0x1B] = 0x0F, [0x1C] = 0x0F, [0x1D] = 0x0F,
+        },
+        memory_bytes = {
+            [0] = 0x20,
+        },
+    })
+
+    for _, x in ipairs({11, 12, 13}) do
+        local details = env.map_reader.get_walkability_details(0x18, x, 0)
+        assert_equal(details.base_walkable, true, "Garin's Grave B1 treasure row should be passable")
+        assert_equal(details.reason, "passthrough", "Garin's Grave B1 treasure row should override top-edge boundary")
+    end
+
+    local unconfirmed = env.map_reader.get_walkability_details(0x18, 14, 0)
+    assert_equal(unconfirmed.base_walkable, false, "nearby unconfirmed B1 top-edge cells should remain blocked")
+    assert_equal(unconfirmed.reason, "engine_boundary", "nearby unconfirmed B1 top-edge cells should keep boundary reason")
+
+    env.restore()
+end
+
+function tests.garins_grave_b2_southwest_stair_route_edges_are_directional()
+    local env = make_env({
+        memory_bytes = {
+            [0] = 0x20,
+        },
+    })
+
+    assert_garins_grave_b2_dir(env, "2,10", "east", "B2 (2,10) should block east approach after 5/5 verifier from (3,10)")
+    assert_garins_grave_b2_dir(env, "3,9", "south", "B2 (3,9) should block south approach after 5/5 verifier from (3,10)")
+    assert_garins_grave_b2_dir(env, "2,3", "west", "B2 (2,3) should block west approach after 5/5 verifier from (1,3)")
+    assert_garins_grave_b2_dir(env, "2,4", "west", "B2 (2,4) should block west approach after 5/5 verifier from (1,4)")
+    assert_garins_grave_b2_dir(env, "2,5", "west", "B2 (2,5) should block west approach after 5/5 verifier from (1,5)")
+    assert_garins_grave_b2_dir(env, "2,6", "west", "B2 (2,6) should block west approach after 5/5 verifier from (1,6)")
+    assert_garins_grave_b2_dir(env, "2,7", "west", "B2 (2,7) should block west approach after 5/5 verifier from (1,7)")
+    assert_garins_grave_b2_dir(env, "3,9", "north", "B2 (3,9) should block north approach after 5/5 verifier from (3,8)")
+    assert_garins_grave_b2_dir(env, "4,9", "north", "B2 (4,9) should block north approach after 5/5 verifier from (4,8)")
+    assert_garins_grave_b2_dir(env, "4,9", "south", "B2 (4,9) should block south approach after 5/5 verifier from (4,10)")
+    assert_garins_grave_b2_dir(env, "5,9", "north", "B2 (5,9) should block north approach after 5/5 verifier from (5,8)")
+    assert_garins_grave_b2_dir(env, "6,9", "north", "B2 (6,9) should block north approach after 5/5 verifier from (6,8)")
+    assert_garins_grave_b2_dir(env, "7,9", "north", "B2 (7,9) should block north approach after 5/5 verifier from (7,8)")
+    assert_garins_grave_b2_dir(env, "9,9", "south", "B2 (9,9) should block south approach after 5/5 verifier from (9,10)")
+    assert_garins_grave_b2_dir(env, "10,9", "south", "B2 (10,9) should block south approach after 5/5 verifier from (10,10)")
+    assert_garins_grave_b2_dir(env, "12,5", "east", "B2 (12,5) should block east approach after 5/5 verifier from (13,5)")
+    assert_garins_grave_b2_dir(env, "12,7", "east", "B2 (12,7) should block east approach after 5/5 verifier from (13,7)")
+    assert_garins_grave_b2_dir(env, "12,9", "south", "B2 (12,9) should block south approach after 5/5 verifier from (12,10)")
+
+    local dirs = env.map_reader.get_directional_blocks(0x19)
+    assert_equal(dirs["8,9"], nil, "B2 (8,9) should stay unmodeled after mixed verifier evidence")
+    assert_equal((dirs["7,9"] or {}).south, nil, "B2 (7,9).south should stay unmodeled after mixed verifier evidence")
+    assert_equal((dirs["8,9"] or {}).south, nil, "B2 (8,9).south should stay unmodeled after mixed verifier evidence")
+    assert_equal((dirs["1,2"] or {}).south, nil, "B2 (1,2).south should stay unmodeled after mixed verifier evidence")
+    assert_equal((dirs["1,9"] or {}).north, nil, "B2 (1,9).north should stay unmodeled after mixed verifier evidence")
+    assert_equal((dirs["10,1"] or {}).east, nil, "B2 (10,1).east should stay open after the direct verifier moved 6/6 from (11,1)")
+    assert_equal((dirs["10,2"] or {}).east, nil, "B2 (10,2).east should stay open after the direct verifier moved 6/6 from (11,2)")
+    assert_equal((dirs["11,3"] or {}).north, nil, "B2 (11,3).north should stay open after the direct verifier moved 6/6 from (11,2)")
+    assert_equal((dirs["12,4"] or {}).east, nil, "B2 (12,4).east should stay unmodeled after mixed verifier evidence from (13,4)")
+    assert_equal((dirs["12,9"] or {}).east, nil, "B2 (12,9).east should stay unmodeled after mixed verifier evidence from (13,9)")
+
+    env.restore()
+end
+
+function tests.garins_grave_b3_southwest_pocket_seams_are_directional()
+    local env = make_env({
+        memory_bytes = {
+            [0] = 0x20,
+        },
+    })
+
+    assert_garins_grave_b3_dir(env, "2,7", "south", "B3 (2,7) should block south approach after the upper-left verifier settled at a clean 5/5 from (2,8)")
+    assert_garins_grave_b3_dir(env, "3,5", "west", "B3 (3,5) should block west approach after the upper-pocket verifier settled at a clean 5/5 from (2,5)")
+    assert_garins_grave_b3_dir(env, "3,6", "west", "B3 (3,6) should block west approach after the upper-pocket verifier settled at a clean 5/5 from (2,6)")
+    assert_garins_grave_b3_dir(env, "3,7", "west", "B3 (3,7) should block west approach after the upper-pocket verifier settled at a clean 5/5 from (2,7)")
+    assert_garins_grave_b3_dir(env, "1,8", "east", "B3 (1,8) should block east approach after the upper-left verifier settled at a clean 5/5 from (2,8)")
+    assert_garins_grave_b3_dir(env, "1,9", "east", "B3 (1,9) should block east approach after the upper-left verifier settled at a clean 5/5 from (2,9)")
+    assert_garins_grave_b3_dir(env, "1,12", "east", "B3 (1,12) should block east approach after 5/5 verifier from (2,12)")
+    assert_garins_grave_b3_dir(env, "1,13", "east", "B3 (1,13) should block east approach after 5/5 verifier from (2,13)")
+    assert_garins_grave_b3_dir(env, "1,16", "east", "B3 (1,16) should block east approach after the later left-pocket reroute settled at a clean 5/5 verifier from (2,16)")
+    assert_garins_grave_b3_dir(env, "2,15", "south", "B3 (2,15) should block south approach after the later left-pocket reroute settled at a clean 5/5 verifier from (2,16)")
+    assert_garins_grave_b3_dir(env, "2,15", "east", "B3 (2,15) should block east approach after the later left-pocket reroute settled at a clean 5/5 verifier from (3,15)")
+    assert_garins_grave_b3_dir(env, "8,12", "south", "B3 (8,12) should block south approach after 5/5 verifier from (8,13)")
+    assert_garins_grave_b3_dir(env, "9,12", "south", "B3 (9,12) should block south approach after 5/5 verifier from (9,13)")
+    assert_garins_grave_b3_dir(env, "6,12", "south", "B3 (6,12) should block south approach after a clean 5/5 verifier from (6,13)")
+    assert_garins_grave_b3_dir(env, "7,12", "south", "B3 (7,12) should block south approach after a clean 5/5 verifier from (7,13)")
+    assert_garins_grave_b3_dir(env, "3,8", "west", "B3 (3,8) should block west approach after the upper-route verifier settled at a clean 5/5 from (2,8)")
+    assert_garins_grave_b3_dir(env, "3,9", "west", "B3 (3,9) should block west approach after the upper-route verifier settled at a clean 5/5 from (2,9)")
+    assert_garins_grave_b3_dir(env, "3,10", "west", "B3 (3,10) should block west approach after the lower-lip verifier settled at a clean 5/5 from (2,10)")
+    assert_garins_grave_b3_dir(env, "3,11", "west", "B3 (3,11) should block west approach after the lower-lip verifier settled at a clean 5/5 from (2,11)")
+    assert_garins_grave_b3_dir(env, "3,12", "west", "B3 (3,12) should block west approach after the cleaned reroute verifier settled at a clean 5/5 from (2,12)")
+    assert_garins_grave_b3_dir(env, "5,3", "west", "B3 (5,3) should block west approach after the upper-pocket verifier settled at a clean 5/5 from (4,3)")
+    assert_garins_grave_b3_dir(env, "5,4", "west", "B3 (5,4) should block west approach after the upper-pocket verifier settled at a clean 5/5 from (4,4)")
+    assert_garins_grave_b3_dir(env, "4,5", "north", "B3 (4,5) should block north approach after the upper-pocket verifier settled at a clean 5/5 from (4,4)")
+    assert_garins_grave_b3_dir(env, "4,16", "west", "B3 (4,16) should block west approach after the refreshed resume verifier settled at a clean 5/5 from (3,16)")
+    assert_garins_grave_b3_dir(env, "10,13", "west", "B3 (10,13) should block west approach after the repeated route lane finally settled at a clean 5/5 verifier from (9,13)")
+    assert_garins_grave_b3_dir(env, "5,13", "east", "B3 (5,13) should block east approach after a clean 5/5 verifier from (6,13)")
+    assert_garins_grave_b3_dir(env, "8,15", "east", "B3 (8,15) should block east approach after the south-loop verifier settled at a clean 5/5 from (9,15)")
+    assert_garins_grave_b3_dir(env, "8,16", "east", "B3 (8,16) should block east approach after the south-loop verifier settled at a clean 5/5 from (9,16)")
+    assert_garins_grave_b3_dir(env, "10,14", "west", "B3 (10,14) should block west approach after a clean 5/5 verifier from (9,14)")
+    assert_garins_grave_b3_dir(env, "10,15", "west", "B3 (10,15) should block west approach after a clean 5/5 verifier from (9,15)")
+    assert_garins_grave_b3_dir(env, "10,16", "west", "B3 (10,16) should block west approach after a clean 5/5 verifier from (9,16)")
+    assert_garins_grave_b3_dir(env, "10,17", "west", "B3 (10,17) should block west approach after a clean 5/5 verifier from (9,17)")
+    assert_garins_grave_b3_dir(env, "5,18", "north", "B3 (5,18) should block north approach after a clean 5/5 verifier from (5,17)")
+
+    local dirs = env.map_reader.get_directional_blocks(0x1A)
+    assert_equal((dirs["3,13"] or {}).south, nil, "B3 (3,13).south should stay unmodeled after mixed stability recheck from (3,14)")
+    assert_equal((dirs["9,18"] or {}).north, nil, "B3 (9,18).north should stay unmodeled after stability recheck moved cleanly from (9,17)")
+    assert_equal((dirs["5,15"] or {}).west, nil, "B3 (5,15).west should stay unmodeled after mixed verifier evidence from (4,15)")
+
+    env.restore()
+end
+
+function tests.garins_grave_b1_chest_route_seams_are_directional()
+    local env = make_env({
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    assert_garins_grave_b1_dir(env, "10,1", "east", "(10,1) should block east approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "10,1", "west", "(10,1) should block west approach after fresh manual-route 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,2", "east", "(10,2) should block east approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "10,2", "west", "(10,2) should block west approach after interrupted candidate recheck")
+    assert_garins_grave_b1_dir(env, "10,3", "east", "(10,3) should block east approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "10,3", "west", "(10,3) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "10,4", "west", "(10,4) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "10,4", "south", "(10,4) should block south approach after repeated mixed candidate recheck")
+    assert_garins_grave_b1_dir(env, "10,6", "south", "(10,6) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "10,9", "east", "(10,9) should block east approach after the B2-stairs north-hook verifier from (11,9)")
+    assert_garins_grave_b1_dir(env, "10,9", "west", "(10,9) should block west approach after route-polish 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "11,8", "south", "(11,8) should block south approach after the B2-stairs upper-hook verifier from (11,9)")
+    assert_garins_grave_b1_dir(env, "11,4", "north", "(11,4) should block north approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "11,4", "south", "(11,4) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,4", "east", "(12,4) should block east approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,5", "west", "(12,5) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,5", "east", "(12,5) should block east approach after repeat direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,6", "west", "(12,6) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,6", "east", "(12,6) should block east approach after repeat direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,6", "south", "(12,6) should block south approach after repeat direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "12,3", "north", "(12,3) should block north approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "12,3", "west", "(12,3) should block west approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "13,3", "north", "(13,3) should block north approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "13,3", "south", "(13,3) should block south approach after interrupted candidate recheck")
+    assert_garins_grave_b1_dir(env, "14,2", "west", "(14,2) should block west approach after chest-route seam retry")
+    assert_garins_grave_b1_dir(env, "14,2", "north", "(14,2) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "14,2", "east", "(14,2) should block east approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "15,3", "north", "(15,3) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "16,1", "west", "(16,1) should block west approach after return-route 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "16,3", "north", "(16,3) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "16,3", "east", "(16,3) should block east approach after repeated clean direct probes")
+    assert_garins_grave_b1_dir(env, "17,8", "north", "(17,8) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "5,10", "north", "(5,10) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "5,10", "east", "(5,10) should block east approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "5,10", "west", "(5,10) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "5,11", "east", "(5,11) should block east approach after B2-stairs route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "5,11", "west", "(5,11) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "6,8", "north", "(6,8) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "6,8", "south", "(6,8) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "7,10", "south", "(7,10) should block south approach after direct 8/8 probe")
+    assert_garins_grave_b1_dir(env, "7,8", "north", "(7,8) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "8,8", "north", "(8,8) should block north approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "8,10", "south", "(8,10) should block south approach after live manual/current-position 5/5 probe")
+    assert_garins_grave_b1_dir(env, "8,10", "east", "(8,10) should block east approach after route-polish 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "8,18", "south", "(8,18) should block south approach after reverse-side contour 15/15 verifier from (8,19)")
+    assert_garins_grave_b1_dir(env, "8,18", "west", "(8,18) should block west approach after reverse-lane 15/15 verifier from (7,18)")
+    assert_garins_grave_b1_dir(env, "9,18", "east", "(9,18) should block east approach after reverse-side contour 15/15 verifier from (10,18)")
+    assert_garins_grave_b1_dir(env, "9,18", "south", "(9,18) should block south approach after reverse-side contour 15/15 verifier from (9,19)")
+    assert_garins_grave_b1_dir(env, "15,3", "south", "(15,3) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "16,4", "west", "(16,4) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "14,4", "east", "(14,4) should block east approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "16,5", "west", "(16,5) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "16,5", "east", "(16,5) should block east approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "14,5", "east", "(14,5) should block east approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "16,6", "west", "(16,6) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "16,6", "south", "(16,6) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "16,6", "east", "(16,6) should block east approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "17,1", "south", "(17,1) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "3,5", "south", "(3,5) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "3,8", "north", "(3,8) should block north approach after validator abort and clean 15/15 verifier")
+    assert_garins_grave_b1_dir(env, "3,9", "east", "(3,9) should block east approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "3,10", "south", "(3,10) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "4,7", "west", "(4,7) should block west approach after B2-stairs route-temp evidence and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "4,6", "west", "(4,6) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,7", "east", "(1,7) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,7", "north", "(1,7) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,8", "east", "(1,8) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,9", "east", "(1,9) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,10", "east", "(1,10) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,11", "east", "(1,11) should block east approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "1,12", "east", "(1,12) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,13", "east", "(1,13) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "1,14", "east", "(1,14) should block east approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "1,15", "south", "(1,15) should block south approach after restarted west-pocket 15/15 verifier from (1,16)")
+    assert_garins_grave_b1_dir(env, "2,15", "north", "(2,15) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "2,15", "south", "(2,15) should block south approach after restarted west-pocket 15/15 verifier from (2,16)")
+    assert_garins_grave_b1_dir(env, "2,17", "east", "(2,17) should block east approach after entrance-side west-pocket 15/15 verifier from (3,17)")
+    assert_garins_grave_b1_dir(env, "2,17", "south", "(2,17) should block south approach after restarted west-pocket 15/15 verifier from (2,18)")
+    assert_garins_grave_b1_dir(env, "3,12", "north", "(3,12) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "3,12", "east", "(3,12) should block east approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "3,12", "west", "(3,12) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "3,13", "south", "(3,13) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "3,13", "west", "(3,13) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "3,15", "north", "(3,15) should block north approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "3,15", "east", "(3,15) should block east approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "3,16", "south", "(3,16) should block south approach after entrance-side west-pocket 15/15 verifier from (3,17)")
+    assert_garins_grave_b1_dir(env, "3,16", "west", "(3,16) should block west approach after restarted west-pocket 15/15 verifier from (2,16)")
+    assert_garins_grave_b1_dir(env, "4,13", "north", "(4,13) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "4,13", "south", "(4,13) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "4,13", "west", "(4,13) should block west approach after the natural `(3,14)->UP` bridge dead-ended on a clean 5/5 `(3,13)->RIGHT` verifier")
+    assert_garins_grave_b1_dir(env, "4,16", "north", "(4,16) should block north approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "5,15", "west",
+        "(5,15) should block west approach after the clean-state 2026-05-29 verifier from (4,15)")
+    assert_garins_grave_b1_dir(env, "14,6", "east", "(14,6) should block east approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "14,4", "west", "(14,4) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "14,5", "west", "(14,5) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "14,6", "west", "(14,6) should block west approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "14,6", "south", "(14,6) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "4,17", "east", "(4,17) should block east approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "4,17", "west", "(4,17) should block west approach after entrance-side west-pocket 15/15 verifier from (3,17)")
+    assert_garins_grave_b1_dir(env, "4,18", "south", "(4,18) should block south approach after entrance-side west-pocket 15/15 verifier from (4,19)")
+    assert_garins_grave_b1_dir(env, "4,18", "west", "(4,18) should block west approach after restarted west-pocket 15/15 verifier from (3,18)")
+    assert_garins_grave_b1_dir(env, "5,11", "north", "(5,11) should block north approach after the `5,10` pocket repeat dead-ended on a clean 10/10 `(5,10)->DOWN` verifier")
+    assert_garins_grave_b1_dir(env, "5,12", "east", "(5,12) should block east approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "5,12", "west", "(5,12) should block west approach after clean lower-west B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "5,14", "east", "(5,14) should block east approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "5,14", "west",
+        "(5,14) should block west approach after the clean-state 2026-05-29 validator abort and direct verifier from (4,14)")
+    assert_garins_grave_b1_dir(env, "5,16", "south", "(5,16) should block south approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "5,16", "east", "(5,16) should block east approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "5,18", "north", "(5,18) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "6,13", "north", "(6,13) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "6,13", "south", "(6,13) should block south approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "6,15", "north", "(6,15) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "6,15", "south", "(6,15) should block south approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "6,18", "north", "(6,18) should block north approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "7,13", "east", "(7,13) should block east approach after the `8,14` forward lip dead-ended on a clean 5/5 `(8,13)->LEFT` verifier")
+    assert_garins_grave_b1_dir(env, "7,13", "north", "(7,13) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "7,13", "south", "(7,13) should block south approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "7,15", "north", "(7,15) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "7,15", "south", "(7,15) should block south approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "7,17", "north", "(7,17) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "7,17", "east", "(7,17) should block east approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "7,17", "west", "(7,17) should block west approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "7,18", "south", "(7,18) should block south approach after entrance-side west-pocket 15/15 verifier from (7,19)")
+    assert_garins_grave_b1_dir(env, "8,13", "north", "(8,13) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "8,13", "south", "(8,13) should block south approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "8,13", "east", "(8,13) should block east approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "8,15", "north", "(8,15) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "8,15", "south", "(8,15) should block south approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "8,18", "north", "(8,18) should block north approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "9,15", "north", "(9,15) should block north approach after first B2-stairs route probe")
+    assert_garins_grave_b1_dir(env, "9,15", "south", "(9,15) should block south approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "9,17", "north", "(9,17) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "9,17", "west", "(9,17) should block west approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "10,15", "north", "(10,15) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "10,15", "south", "(10,15) should block south approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "10,15", "east", "(10,15) should block east approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,17", "north", "(10,17) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "10,17", "south", "(10,17) should block south approach after reverse-side contour 15/15 verifier from (10,18)")
+    assert_garins_grave_b1_dir(env, "10,8", "north", "(10,8) should block north approach after the B2-stairs entrance-side 8/8 verifier from (10,7)")
+    assert_garins_grave_b1_dir(env, "10,8", "west", "(10,8) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,10", "west", "(10,10) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,11", "east", "(10,11) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,11", "west", "(10,11) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,12", "east", "(10,12) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,12", "west", "(10,12) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,13", "south", "(10,13) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "10,13", "west", "(10,13) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "11,10", "north", "(11,10) should block north approach after the B2-stairs north-hook verifier from (11,9)")
+    assert_garins_grave_b1_dir(env, "11,10", "south", "(11,10) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "11,13", "north", "(11,13) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "11,13", "south", "(11,13) should block south approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "11,8", "north", "(11,8) should block north approach after the B2-stairs entrance-side 15/15 verifier from (11,7)")
+    assert_garins_grave_b1_dir(env, "11,17", "north", "(11,17) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "11,18", "east", "(11,18) should block east approach after reverse-side contour 15/15 verifier from (12,18)")
+    assert_garins_grave_b1_dir(env, "11,18", "south", "(11,18) should block south approach after reverse-side contour 15/15 verifier from (11,19)")
+    assert_garins_grave_b1_dir(env, "11,18", "west", "(11,18) should block west approach after reverse-side contour 15/15 verifier from (10,18)")
+    assert_garins_grave_b1_dir(env, "12,8", "north", "(12,8) should block north approach after the B2-stairs entrance-side 15/15 verifier from (12,7)")
+    assert_garins_grave_b1_dir(env, "12,8", "south", "(12,8) should block south approach after the B2-stairs upper-hook verifier from (12,9)")
+    assert_garins_grave_b1_dir(env, "12,10", "north", "(12,10) should block north approach after the B2-stairs upper-hook verifier from (12,9)")
+    assert_garins_grave_b1_dir(env, "12,10", "south", "(12,10) should block south approach after the mirrored upper-hook 15/15 verifier from (12,11)")
+    assert_garins_grave_b1_dir(env, "12,12", "east", "(12,12) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "12,12", "north", "(12,12) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "12,12", "west", "(12,12) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "12,13", "south", "(12,13) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "12,17", "north", "(12,17) should block north approach after follow-up B2-stairs verifier")
+    assert_garins_grave_b1_dir(env, "12,17", "south", "(12,17) should block south approach after reverse-lane 15/15 verifier from (12,18)")
+    assert_garins_grave_b1_dir(env, "13,8", "north", "(13,8) should block north approach after the B2-stairs entrance-side 15/15 verifier from (13,7)")
+    assert_garins_grave_b1_dir(env, "13,8", "south", "(13,8) should block south approach after the stronger mirrored 15/15 verifier from (13,9)")
+    assert_garins_grave_b1_dir(env, "13,10", "north", "(13,10) should block north approach after the B2-stairs upper-hook verifier from (13,9)")
+    assert_garins_grave_b1_dir(env, "13,10", "south", "(13,10) should block south approach after the mirrored upper-hook 15/15 verifier from (13,11)")
+    assert_garins_grave_b1_dir(env, "13,13", "north", "(13,13) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "13,13", "south", "(13,13) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "13,17", "north", "(13,17) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "13,17", "south", "(13,17) should block south approach after reverse-lane 15/15 verifier from (13,18)")
+    assert_garins_grave_b1_dir(env, "13,19", "east", "(13,19) should block east approach after reverse-side contour 15/15 verifier from (14,19)")
+    assert_garins_grave_b1_dir(env, "13,19", "west", "(13,19) should block west approach after reverse-lane 15/15 verifier from (12,19)")
+    assert_garins_grave_b1_dir(env, "14,10", "east", "(14,10) should block east approach after the B2-stairs north-hook verifier from (15,10)")
+    assert_garins_grave_b1_dir(env, "14,10", "north", "(14,10) should block north approach after the B2-stairs upper-hook verifier from (14,9)")
+    assert_garins_grave_b1_dir(env, "14,11", "east", "(14,11) should block east approach after reverse recheck 15/15 verifier from (15,11)")
+    assert_garins_grave_b1_dir(env, "14,11", "west", "(14,11) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,11", "south", "(14,11) should block south approach after the mirrored upper-hook 15/15 verifier from (14,12)")
+    assert_garins_grave_b1_dir(env, "14,13", "east", "(14,13) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,13", "north", "(14,13) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,14", "west", "(14,14) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,15", "east", "(14,15) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,15", "west", "(14,15) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,16", "east", "(14,16) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,16", "west", "(14,16) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,17", "north", "(14,17) should block north approach after reverse-side contour continuation cleanly confirmed the `14,16->DOWN` false entry")
+    assert_garins_grave_b1_dir(env, "14,17", "south", "(14,17) should block south approach after reverse-lane 15/15 verifier from (14,18)")
+    assert_garins_grave_b1_dir(env, "14,8", "east", "(14,8) should block east approach after the B2-stairs entrance-side 15/15 verifier from (15,8)")
+    assert_garins_grave_b1_dir(env, "14,8", "north", "(14,8) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "14,8", "south", "(14,8) should block south approach after the mirrored upper-hook 15/15 verifier from (14,9)")
+    assert_garins_grave_b1_dir(env, "15,14", "north", "(15,14) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "15,14", "south", "(15,14) should block south approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "15,17", "north", "(15,17) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "15,18", "east", "(15,18) should block east approach after reverse-lane 15/15 verifier from (16,18)")
+    assert_garins_grave_b1_dir(env, "15,18", "south", "(15,18) should block south approach after reverse-lane 15/15 verifier from (15,19)")
+    assert_garins_grave_b1_dir(env, "15,18", "west", "(15,18) should block west approach after reverse-lane 15/15 verifier from (14,18)")
+    assert_garins_grave_b1_dir(env, "16,11", "north", "(16,11) should block north approach after the B2-stairs north-hook verifier from (16,10)")
+    assert_garins_grave_b1_dir(env, "16,11", "west", "(16,11) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "16,12", "south", "(16,12) should block south approach after the B2-stairs north-hook verifier from (16,13)")
+    assert_garins_grave_b1_dir(env, "16,12", "west", "(16,12) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "16,14", "north", "(16,14) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "16,15", "east", "(16,15) should block east approach after the B2-stairs batch pocket verifier from (17,15)")
+    assert_garins_grave_b1_dir(env, "16,15", "south", "(16,15) should block south approach after the B2-stairs batch pocket verifier from (16,16)")
+    assert_garins_grave_b1_dir(env, "16,15", "west", "(16,15) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "16,17", "east", "(16,17) should block east approach after the door-open return-route verifier from (17,17)")
+    assert_garins_grave_b1_dir(env, "16,17", "north", "(16,17) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "16,17", "south", "(16,17) should block south approach after reverse-lane 15/15 verifier from (16,18)")
+    assert_garins_grave_b1_dir(env, "17,11", "east", "(17,11) should block east approach after the north-hook batch verifier from (18,11)")
+    assert_garins_grave_b1_dir(env, "17,11", "north", "(17,11) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "17,12", "east", "(17,12) should block east approach after the north-hook batch verifier from (18,12)")
+    assert_garins_grave_b1_dir(env, "17,13", "east", "(17,13) should block east approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "17,13", "west", "(17,13) should block west approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "17,14", "south", "(17,14) should block south approach after the B2-stairs batch pocket verifier from (17,15)")
+    assert_no_directional_entry(env, 0x18, "17,17", "(17,17) should be handled by the confirmed B1 door override, not a permanent directional seam")
+    assert_garins_grave_b1_dir(env, "18,14", "east", "(18,14) should block east approach after the north-pocket batch verifier from (19,14)")
+    assert_garins_grave_b1_dir(env, "18,14", "north", "(18,14) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "18,15", "east", "(18,15) should block east approach after the north-pocket batch verifier from (19,15)")
+    assert_garins_grave_b1_dir(env, "18,15", "south", "(18,15) should block south approach after the B2-stairs batch pocket verifier from (18,16)")
+    assert_garins_grave_b1_dir(env, "18,15", "west", "(18,15) should block west approach after the B2-stairs batch pocket verifier from (17,15)")
+    assert_garins_grave_b1_dir(env, "18,17", "north", "(18,17) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "18,17", "south", "(18,17) should block south approach after reverse-side contour 15/15 verifier from (18,18)")
+    assert_garins_grave_b1_dir(env, "19,12", "south", "(19,12) should block south approach after the north-pocket batch verifier from (19,13)")
+    assert_garins_grave_b1_dir(env, "19,17", "north", "(19,17) should block north approach after validator abort and clean 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "19,17", "south", "(19,17) should block south approach after reverse-side contour 15/15 verifier from (19,18)")
+
+    local dirs = env.map_reader.get_directional_blocks(0x18)
+    assert_equal(dirs["11,1"], nil, "(11,1) should not become directional after the noisy south-approach seam moved")
+    assert_equal((dirs["2,10"] or {}).north, nil, "(2,10).north should stay unmodeled after battle-interrupted verifier")
+    assert_equal((dirs["10,7"] or {}).south, nil, "(10,7).south should stay runtime-only until a direct verifier from below confirms it")
+    assert_equal((dirs["11,7"] or {}).south, nil, "(11,7).south should stay runtime-only until a direct verifier from below confirms it")
+    assert_equal((dirs["12,7"] or {}).south, nil, "(12,7).south should stay runtime-only until a direct verifier from below confirms it")
+    assert_equal((dirs["13,7"] or {}).south, nil, "(13,7).south should stay runtime-only until a direct verifier from below confirms it")
+    assert_equal(dirs["14,1"], nil, "(14,1) should stay unpromoted after direct confirmed-passable west-approach probe")
+    assert_equal(dirs["15,1"], nil, "(15,1) should not become directional after the noisy west-approach seam moved")
+    assert_equal(dirs["17,2"], nil, "(17,2) should not become directional after the noisy west-approach seam moved")
+    assert_equal((dirs["17,3"] or {}).south, nil, "(17,3).south should stay unmodeled after direct confirmed-passable probe")
+    assert_equal((dirs["3,19"] or {}).east, nil, "(3,19).east should stay unmodeled after blocked-then-moved entrance-side retry")
+    assert_equal((dirs["7,19"] or {}).east, nil, "(7,19).east should stay unmodeled after blocked-then-moved entrance-side retry")
+    assert_equal(dirs["14,7"], nil, "(14,7) should not become directional after the noisy east-approach seam moved")
+    assert_equal((dirs["14,18"] or {}).west, nil, "(14,18).west moved 6/6 on direct return-route recheck and should stay open")
+    assert_equal(dirs["6,7"], nil, "(6,7) should not become directional after the noisy east-approach seam moved")
+    assert_equal(dirs["5,7"], nil, "(5,7) should not become directional after the noisy east-approach seam moved")
+    assert_equal((dirs["16,9"] or {}).east, nil, "(16,9).east stayed mixed on direct return-route recheck and should stay unmodeled")
+    assert_equal((dirs["17,19"] or {}).north, nil, "(17,19).north stayed mixed on direct return-route recheck and should stay unmodeled")
+    assert_equal((dirs["17,19"] or {}).west, nil, "(17,19).west stayed mixed on direct return-route recheck and should stay unmodeled")
+    assert_equal((dirs["18,8"] or {}).south, nil, "(18,8).south stayed mixed on direct return-route recheck and should stay unmodeled")
+    assert_equal((dirs["19,13"] or {}).south, nil, "(19,13).south moved 6/6 on direct return-route recheck and should stay open")
+    assert_equal((dirs["19,16"] or {}).west, nil, "(19,16).west moved 6/6 on direct return-route recheck and should stay open")
 
     env.restore()
 end

@@ -5,7 +5,9 @@ local original_preload = {}
 local original_loaded = {}
 local original_input = _G.input
 local original_joypad = _G.joypad
+local original_memory = _G.memory
 local original_compat = _G.DW_EMULATOR_COMPAT
+local original_log_override = _G.DW_DEBUG_LOG_FILE_OVERRIDE
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -59,7 +61,7 @@ local function make_env(options)
                 if key == "debug_mode" then
                     return "true"
                 elseif key == "debug_log_level" then
-                    return "ERROR"
+                    return options.log_level or "ERROR"
                 elseif key == "enable_keyboard_input_bridge" then
                     return "true"
                 end
@@ -69,11 +71,47 @@ local function make_env(options)
     end
 
     package.preload["addresses"] = function()
-        return {}
+        return {
+            MAP_ID = 0x0045,
+            PLAYER_X = 0x003A,
+            PLAYER_Y = 0x003B,
+            OVERWORLD_X = 0x0042,
+            OVERWORLD_Y = 0x003E,
+            TERRAIN_OFFSET = 0x0016,
+            EXPERIENCE_LO = 0x00BA,
+            EXPERIENCE_HI = 0x00BB,
+            GOLD_LO = 0x00BC,
+            GOLD_HI = 0x00BD,
+            KEYS = 0x00BF,
+            HERBS = 0x00C0,
+            CURRENT_HP = 0x00C5,
+            CURRENT_MP = 0x00C6,
+            LEVEL = 0x00C7,
+            STRENGTH = 0x00C8,
+            AGILITY = 0x00C9,
+            MAX_HP = 0x00CA,
+            MAX_MP = 0x00CB,
+            ATTACK = 0x00CC,
+            DEFENSE = 0x00CD,
+            SPELLS = 0x00CE,
+            FLAGS_CF = 0x00CF,
+            MENU_CURSOR_X = 0x00D8,
+            MENU_CURSOR_Y = 0x00D9,
+            COMBAT_FLAGS = 0x00DF,
+            ENEMY_HP = 0x00E2,
+            QUEST_FLAGS = 0x00E4,
+        }
     end
 
     package.preload["maps"] = function()
-        return {}
+        return {
+            get_name = function(map_id)
+                if map_id == 0x09 then
+                    return "Garinham"
+                end
+                return "Test Map"
+            end,
+        }
     end
 
     package.preload["map_reader"] = function()
@@ -92,6 +130,7 @@ local function make_env(options)
     end
 
     _G.DW_EMULATOR_COMPAT = {is_fceux = true, is_bizhawk = false}
+    _G.DW_DEBUG_LOG_FILE_OVERRIDE = options.log_file or "/tmp/test_debug_tools_dw_debug.log"
     _G.input = {
         get = function()
             return input_state
@@ -100,6 +139,12 @@ local function make_env(options)
     _G.joypad = {
         read = function()
             return joy_state
+        end,
+    }
+    local memory_bytes = options.memory_bytes or {}
+    _G.memory = {
+        readbyte = function(address)
+            return memory_bytes[address] or 0
         end,
     }
 
@@ -111,6 +156,7 @@ local function make_env(options)
 
     return {
         debug_tools = debug_tools,
+        log_file = _G.DW_DEBUG_LOG_FILE_OVERRIDE,
         set_input = function(keys)
             input_state = keys or {}
         end,
@@ -120,12 +166,22 @@ local function make_env(options)
         set_bridge = function(text)
             write_file(bridge_path, text or "-\n")
         end,
+        set_memory = function(address, value)
+            memory_bytes[address] = value
+        end,
+        set_memory_bytes = function(overrides)
+            for address, value in pairs(overrides or {}) do
+                memory_bytes[address] = value
+            end
+        end,
         restore = function()
             write_file(bridge_path, original_bridge or "")
             restore_modules(module_names)
             _G.input = original_input
             _G.joypad = original_joypad
+            _G.memory = original_memory
             _G.DW_EMULATOR_COMPAT = original_compat
+            _G.DW_DEBUG_LOG_FILE_OVERRIDE = original_log_override
         end,
     }
 end
@@ -145,6 +201,48 @@ local function assert_no_buttons(input)
     assert_equal(input.B, false, "neutral bridge should not press B")
     assert_equal(input.start, false, "neutral bridge should not press start")
     assert_equal(input.select, false, "neutral bridge should not press select")
+end
+
+local function base_snapshot_ram(overrides)
+    local ram = {
+        [0x0016] = 0x20,
+        [0x003A] = 11,
+        [0x003B] = 2,
+        [0x003E] = 4,
+        [0x0042] = 19,
+        [0x0045] = 0x19,
+        [0x00BA] = 0x53,
+        [0x00BB] = 0x10,
+        [0x00BC] = 0xD0,
+        [0x00BD] = 0x0B,
+        [0x00BE] = 0xB5,
+        [0x00BF] = 3,
+        [0x00C0] = 2,
+        [0x00C1] = 0x45,
+        [0x00C2] = 0xC3,
+        [0x00C3] = 0x00,
+        [0x00C4] = 0x00,
+        [0x00C5] = 0x3F,
+        [0x00C6] = 0x34,
+        [0x00C7] = 12,
+        [0x00C8] = 0x30,
+        [0x00C9] = 0x24,
+        [0x00CA] = 0x3F,
+        [0x00CB] = 0x34,
+        [0x00CC] = 0x44,
+        [0x00CD] = 0x30,
+        [0x00CE] = 0x3F,
+        [0x00CF] = 0x10,
+        [0x00D8] = 0,
+        [0x00D9] = 0,
+        [0x00DF] = 0x08,
+        [0x00E2] = 0,
+        [0x00E4] = 0,
+    }
+    for address, value in pairs(overrides or {}) do
+        ram[address] = value
+    end
+    return ram
 end
 
 local tests = {}
@@ -278,6 +376,302 @@ function tests.raw_sequence_release_frame_stays_raw()
 
     write_file("dw_commands.txt", original_commands or "")
     env.restore()
+end
+
+function tests.snapshot_logs_raw_player_stat_block()
+    local ram = {
+        [0x0016] = 0x10,
+        [0x003A] = 15,
+        [0x003B] = 15,
+        [0x003E] = 48,
+        [0x0042] = 56,
+        [0x0045] = 0x09,
+        [0x00BA] = 0x73,
+        [0x00BB] = 0x10,
+        [0x00BC] = 0x0B,
+        [0x00BD] = 0x0C,
+        [0x00BF] = 3,
+        [0x00C0] = 1,
+        [0x00C5] = 15,
+        [0x00C6] = 0,
+        [0x00C7] = 12,
+        [0x00C8] = 0x12,
+        [0x00C9] = 0x25,
+        [0x00CA] = 15,
+        [0x00CB] = 0,
+        [0x00CC] = 0x60,
+        [0x00CD] = 0x61,
+        [0x00CE] = 0,
+        [0x00CF] = 0x10,
+        [0x00D8] = 0,
+        [0x00D9] = 1,
+        [0x00DF] = 0x08,
+        [0x00E2] = 14,
+        [0x00E4] = 0,
+    }
+    local env = make_env({log_level = "INFO", memory_bytes = ram})
+
+    env.debug_tools.tick(1, "field")
+    env.debug_tools.snapshot()
+    env.debug_tools.tick(30, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("stats:     STR=0x12 AGI=0x25 ATK=0x60 DEF=0x61", 1, true) ~= nil,
+        true,
+        "snapshot should log raw derived combat stat bytes"
+    )
+    assert_equal(
+        log:find("stat_ram:  BA-CF=73 10 0B 0C 00 03 01 00 00 00 00 0F 00 0C 12 25 0F 00 60 61 00 10", 1, true) ~= nil,
+        true,
+        "snapshot should log contiguous player stat RAM for corruption forensics"
+    )
+end
+
+function tests.stat_integrity_allows_level_one_without_spells()
+    local ram = base_snapshot_ram({
+        [0x00C5] = 15,
+        [0x00C6] = 0,
+        [0x00C7] = 1,
+        [0x00C8] = 4,
+        [0x00C9] = 3,
+        [0x00CA] = 15,
+        [0x00CB] = 0,
+        [0x00CC] = 4,
+        [0x00CD] = 3,
+        [0x00CE] = 0,
+        [0x00CF] = 0,
+    })
+    local env = make_env({log_level = "INFO", memory_bytes = ram})
+
+    env.debug_tools.tick(1, "battle")
+    env.debug_tools.check_player_stat_integrity("level_one_battle")
+    env.debug_tools.tick(30, "battle")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("PLAYER_STAT_INTEGRITY_WARNING", 1, true),
+        nil,
+        "level 1 with no spells/max MP should not be flagged"
+    )
+end
+
+function tests.stat_integrity_warns_on_level_twelve_spell_and_stat_collapse()
+    local ram = base_snapshot_ram({
+        [0x00C5] = 15,
+        [0x00C6] = 0,
+        [0x00C7] = 12,
+        [0x00C8] = 4,
+        [0x00C9] = 3,
+        [0x00CA] = 15,
+        [0x00CB] = 0,
+        [0x00CC] = 0x18,
+        [0x00CD] = 0x1F,
+        [0x00CE] = 0,
+        [0x00CF] = 0x10,
+    })
+    local env = make_env({log_level = "INFO", memory_bytes = ram})
+
+    env.debug_tools.tick(1, "field")
+    env.debug_tools.check_player_stat_integrity("post_battle")
+    env.debug_tools.tick(30, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("PLAYER_STAT_INTEGRITY_WARNING context=post_battle", 1, true) ~= nil,
+        true,
+        "corrupt high-level stat block should be flagged"
+    )
+    assert_equal(
+        log:find("missing_spells_for_level", 1, true) ~= nil,
+        true,
+        "warning should explain missing high-level spells"
+    )
+    assert_equal(
+        log:find("stat_ram=53 10 D0 0B B5 03 02 45 C3 00 00 0F 00 0C 04 03 0F 00 18 1F 00 10", 1, true) ~= nil,
+        true,
+        "warning should include the raw stat RAM block"
+    )
+end
+
+function tests.battle_start_trace_dumps_recent_stat_history_for_corruption()
+    local env = make_env({log_level = "INFO", memory_bytes = base_snapshot_ram()})
+
+    env.debug_tools.tick(1, "field")
+    env.debug_tools.tick(2, "field")
+    env.set_memory_bytes({
+        [0x003A] = 13,
+        [0x003B] = 10,
+        [0x00BA] = 0xC9,
+        [0x00BB] = 0x10,
+        [0x00BC] = 0xF1,
+        [0x00BD] = 0x0C,
+        [0x00C5] = 0x38,
+        [0x00C6] = 0x2A,
+        [0x00C8] = 0x04,
+        [0x00C9] = 0x03,
+        [0x00CA] = 0x0F,
+        [0x00CB] = 0x00,
+        [0x00CC] = 0x18,
+        [0x00CD] = 0x1F,
+        [0x00CE] = 0x00,
+        [0x00E2] = 241,
+    })
+
+    env.debug_tools.on_battle_start()
+    env.debug_tools.tick(30, "battle")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("PLAYER_STAT_TRACE_BEGIN context=battle_start", 1, true) ~= nil,
+        true,
+        "battle-start corruption should dump the recent trace"
+    )
+    assert_equal(
+        log:find("origin=history frame=1", 1, true) ~= nil,
+        true,
+        "trace should include recent healthy history"
+    )
+    assert_equal(
+        log:find("origin=current frame=2", 1, true) ~= nil,
+        true,
+        "trace should include the current suspicious sample"
+    )
+    assert_equal(
+        log:find("changed=BA,BC,BD,C5,C6,C8,C9,CA,CB,CC,CD,CE", 1, true) ~= nil,
+        true,
+        "trace should highlight the exact stat bytes that flipped"
+    )
+end
+
+function tests.stat_integrity_transition_dumps_clean_to_corrupt_history()
+    local env = make_env({log_level = "INFO", memory_bytes = base_snapshot_ram()})
+
+    env.debug_tools.tick(1, "field")
+    env.set_memory_bytes({
+        [0x003A] = 13,
+        [0x003B] = 10,
+        [0x00C5] = 0x34,
+        [0x00C6] = 0x1E,
+        [0x00C8] = 0x04,
+        [0x00C9] = 0x03,
+        [0x00CA] = 0x0F,
+        [0x00CB] = 0x00,
+        [0x00CC] = 0x18,
+        [0x00CD] = 0x1F,
+        [0x00CE] = 0x00,
+    })
+    env.debug_tools.tick(2, "field")
+    env.debug_tools.tick(30, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("PLAYER_STAT_INTEGRITY_TRANSITION from=clean to=bad", 1, true) ~= nil,
+        true,
+        "first clean-to-corrupt frame should be logged"
+    )
+    assert_equal(
+        log:find("PLAYER_STAT_TRACE_BEGIN context=stat_transition", 1, true) ~= nil,
+        true,
+        "transition should dump recent stat history"
+    )
+    assert_equal(
+        log:find("origin=history frame=1", 1, true) ~= nil,
+        true,
+        "transition trace should include the previous clean frame"
+    )
+    assert_equal(
+        log:find("origin=current frame=2", 1, true) ~= nil,
+        true,
+        "transition trace should include the first corrupt frame"
+    )
+    assert_equal(
+        log:find("changed=C5,C6,C8,C9,CA,CB,CC,CD,CE", 1, true) ~= nil,
+        true,
+        "transition trace should highlight the player-stat bytes that flipped"
+    )
+end
+
+function tests.frameadvance_boundary_logs_clean_to_corrupt_stat_transition()
+    local env = make_env({log_level = "INFO", memory_bytes = base_snapshot_ram()})
+
+    env.debug_tools.tick(51249, "field")
+    env.debug_tools.before_frameadvance()
+    env.set_memory_bytes({
+        [0x00C8] = 0x04,
+        [0x00C9] = 0x03,
+        [0x00CA] = 0x0F,
+        [0x00CB] = 0x00,
+        [0x00CC] = 0x18,
+        [0x00CD] = 0x1F,
+        [0x00CE] = 0x00,
+    })
+    env.debug_tools.after_frameadvance()
+    env.debug_tools.tick(51250, "field")
+    env.debug_tools.tick(51270, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("PLAYER_STAT_FRAMEADVANCE_TRANSITION from=clean to=bad pre_frame=51249 post_frame=51250 state=field", 1, true) ~= nil,
+        true,
+        "frameadvance boundary should log clean-to-corrupt stat transitions"
+    )
+    assert_equal(
+        log:find("changed=C8,C9,CA,CB,CC,CD,CE", 1, true) ~= nil,
+        true,
+        "frameadvance boundary should list changed stat bytes"
+    )
+    assert_equal(
+        log:find("before_stat_ram=53 10 D0 0B B5 03 02 45 C3 00 00 3F 34 0C 30 24 3F 34 44 30 3F 10", 1, true) ~= nil,
+        true,
+        "frameadvance boundary should include the clean pre-frame stat block"
+    )
+    assert_equal(
+        log:find("after_stat_ram=53 10 D0 0B B5 03 02 45 C3 00 00 3F 34 0C 04 03 0F 00 18 1F 00 10", 1, true) ~= nil,
+        true,
+        "frameadvance boundary should include the corrupt post-frame stat block"
+    )
+end
+
+function tests.battle_start_skips_duplicate_trace_after_recent_transition_dump()
+    local env = make_env({log_level = "INFO", memory_bytes = base_snapshot_ram()})
+
+    env.debug_tools.tick(1, "field")
+    env.set_memory_bytes({
+        [0x00C5] = 0x34,
+        [0x00C6] = 0x1E,
+        [0x00C8] = 0x04,
+        [0x00C9] = 0x03,
+        [0x00CA] = 0x0F,
+        [0x00CB] = 0x00,
+        [0x00CC] = 0x18,
+        [0x00CD] = 0x1F,
+        [0x00CE] = 0x00,
+    })
+    env.debug_tools.tick(2, "field")
+    env.debug_tools.on_battle_start()
+    env.debug_tools.tick(30, "battle")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("PLAYER_STAT_TRACE_SKIPPED context=battle_start reason=recent_transition_dump", 1, true) ~= nil,
+        true,
+        "battle start should avoid dumping a duplicate trace right after the transition trace"
+    )
 end
 
 local count = 0

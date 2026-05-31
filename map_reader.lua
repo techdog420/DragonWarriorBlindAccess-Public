@@ -914,6 +914,20 @@ local MAP_PASSTHROUGH_CELLS = {
         ["1,0"] = true,
     },
 
+    -- Map 0x18: Garin's Grave B1 northeast treasure row.
+    -- The generic dungeon edge rule marks y=0 as an engine boundary, but live
+    -- B1 testing showed the treasure row itself is standable: the hero started
+    -- on `(11,0)` and SEARCH reported a treasure box, forced teleport to
+    -- `(12,0)` held stable and SEARCH reported a treasure box, and forced
+    -- teleport to `(13,0)` held stable through the teleport guard. Moving north
+    -- past this row can still leave the map, so keep this scoped to the three
+    -- ROM chest cells.
+    [0x18] = {
+        ["11,0"] = true,
+        ["12,0"] = true,
+        ["13,0"] = true,
+    },
+
     -- Map 0x1D: Erdrick's Cave B2 left-edge loop.
     -- The generic dungeon edge rule marks x=0 cells as boundaries, but live
     -- route-shaped probes on 2026-05-10 confirmed the intended B2 loop crosses
@@ -1010,6 +1024,15 @@ local MAP_DOOR_CELLS = {
     -- hast not a key to use", and OPEN checks only the four adjacent cells.
     [0x15] = {
         ["5,20"] = {x=5, y=20},
+    },
+    -- Map 0x18: Garin's Grave B1 southeast locked door toward B2.
+    -- On 2026-05-30, live FCEUX validation showed OPEN from `(17,18)` facing
+    -- north consumed a key and wrote slot `1=(17,17)` into the opened-door
+    -- RAM array. A direct `probe_edge:UP` from `(17,18)` then moved into
+    -- `(17,17)` despite the old south-approach seam model, proving this cell
+    -- is a real magic-key door rather than a directional wall.
+    [0x18] = {
+        ["17,17"] = {x=17, y=17},
     },
 }
 
@@ -2559,6 +2582,385 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["1,10"] = {east = true},
         ["1,11"] = {east = true},
         ["1,12"] = {east = true},
+    },
+
+    -- Map 0x18: Garin's Grave B1
+    [0x18] = {
+        -- 2026-05-27 northeast chest-row trail cutting. A live route from the
+        -- opened chest area back toward the Garinham stairs repeatedly hit
+        -- these hidden one-way seams with seam brute-force retries before
+        -- adding runtime blocks. Keep them directional so the known passable
+        -- row-1/row-2 connector cells stay available. The `(11,1).south`
+        -- seam was noisy and eventually moved, and `(14,1).west` was only
+        -- seen once before a battle interrupted the route, so neither is
+        -- promoted here.
+        ["10,1"] = {east = true, west = true},
+        ["10,2"] = {east = true, west = true},
+        ["10,3"] = {east = true, west = true},
+        ["10,4"] = {south = true, west = true},
+        ["10,6"] = {south = true},
+        ["10,9"] = {east = true, south = true, west = true},
+        ["11,4"] = {north = true, south = true},
+        ["12,4"] = {east = true},
+        ["12,5"] = {east = true, west = true},
+        ["12,6"] = {east = true, south = true, west = true},
+        ["12,3"] = {north = true, west = true},
+        ["13,3"] = {north = true, south = true},
+        -- A follow-up return route from the chest area eventually reached the
+        -- Garinham stairs, but only after repeatedly bumping into these
+        -- additional approach-specific seams and rerouting around them.
+        -- Keep the noisy moved-after-retry seams unmodeled: `(14,1).west`,
+        -- `(15,1).west`, `(17,2).west`, `(14,7).east`, `(6,7).east`, and
+        -- `(5,7).east`.
+        ["14,2"] = {east = true, north = true, west = true},
+        -- The next route back toward the chests exposed the x=14..16 wall
+        -- band from the other side. Direct `probe_edge_verify` checks on
+        -- 2026-05-27 confirmed each promoted edge below blocked 5/5 with no
+        -- drift or interruptions. A later cleanup pass superseded the earlier
+        -- mixed `(17,1).south` result with a clean 5/5 blocked verifier.
+        -- Later combat-detour routes found a lower middle seam cluster. Direct
+        -- verification promoted `(10,3).west`, `(10,4).west`,
+        -- `(11,4).south`, `(12,5).west`, and `(12,6).west`. Later direct
+        -- probes superseded the originally mixed/interrupted entries,
+        -- including the manual-route offender `(10,1).west`, which blocked
+        -- 8/8 from `(9,1)->RIGHT` with no drift, map change, or interruption.
+        -- A later return-route audit similarly superseded older mixed/passable
+        -- `(16,1).west` evidence with a clean 8/8 blocked verifier from
+        -- `(15,1)->RIGHT`.
+        -- Fresh direct verification also confirmed the row-4/5/6 side entries
+        -- around x=12/x=14 blocked 5/5, plus `(14,6).south`.
+        ["14,4"] = {east = true, west = true},
+        ["14,5"] = {east = true, west = true},
+        ["14,6"] = {east = true, south = true, west = true},
+        ["15,3"] = {north = true, south = true},
+        ["16,1"] = {west = true},
+        ["16,3"] = {east = true, north = true},
+        ["16,4"] = {west = true},
+        ["16,5"] = {east = true, west = true},
+        ["16,6"] = {east = true, south = true, west = true},
+        ["17,1"] = {south = true},
+        ["17,8"] = {north = true},
+        -- A later B2-stairs autowalk tried the `(3,7)` south/east exits.
+        -- Direct verifiers confirmed `(4,7).west` blocked 8/8 and, after a
+        -- mixed first check plus validator abort, `(3,8).north` blocked 15/15.
+        -- Later B2-stairs validation passes also confirmed `(4,6).west` and
+        -- `(3,5).south`.
+        ["3,5"] = {south = true},
+        ["3,8"] = {north = true},
+        ["3,9"] = {east = true},
+        ["3,10"] = {south = true},
+        ["4,6"] = {west = true},
+        ["4,7"] = {west = true},
+        -- Continued lower-west B2-stairs probes confirmed the next maze wall
+        -- band with clean 8/8 direct verifiers. `(2,15).north` was initially
+        -- mixed, then acted out under live validation and rechecked blocked
+        -- 8/8. `(1,7).east`, `(1,8).east`, `(1,9).east`, `(1,10).east`,
+        -- `(1,12).east`, and `(1,13).east` followed the same
+        -- validate-then-direct pattern. `(3,10).south`, `(3,12).north`,
+        -- `(3,12).west`, `(3,13).south`, `(3,13).west`, `(4,13).north`,
+        -- `(4,13).south`, `(5,10).west`, and `(5,11).west` also promoted
+        -- after validator aborts plus clean 8/8 verifiers. The row-6 crossing
+        -- into `(1,6)` is passable, but the south descent into `(1,7)` is also
+        -- blocked.
+        ["1,7"] = {east = true, north = true},
+        ["1,8"] = {east = true},
+        ["1,9"] = {east = true},
+        ["1,10"] = {east = true},
+        ["1,11"] = {east = true},
+        ["1,12"] = {east = true},
+        ["1,13"] = {east = true},
+        ["1,14"] = {east = true},
+        -- 2026-05-28 entrance-side west-pocket continuation: after sealing the
+        -- reverse-side contour, live validation from `(8,19)` kept tracing the
+        -- outer west shelf and direct 15/15 verifiers confirmed
+        -- `(7,18).south`, `(4,18).south`, `(3,16).south`, `(4,17).west`, and
+        -- `(2,17).east`. The adjacent `(3,19).east` seam stayed noisy and
+        -- moved on retry, so it remains unmodeled. After the next reload,
+        -- replanning from `(3,18)` exposed a second five-seam batch in the
+        -- same pocket: `(4,18).west`, `(2,17).south`, `(1,15).south`,
+        -- `(3,16).west`, and `(2,15).south`.
+        ["1,15"] = {south = true},
+        ["2,15"] = {north = true, south = true},
+        ["2,17"] = {east = true, south = true},
+        ["3,12"] = {east = true, north = true, west = true},
+        ["3,13"] = {south = true, west = true},
+        ["3,15"] = {east = true, north = true},
+        ["3,16"] = {south = true, west = true},
+        ["4,13"] = {north = true, south = true, west = true},
+        ["4,16"] = {north = true},
+        ["5,10"] = {east = true, north = true, west = true},
+        ["5,11"] = {east = true, north = true, west = true},
+        -- First B2-stairs push from `(6,11)` hit the lower B1 maze wall band.
+        -- Direct probes confirmed these entries blocked 5/5. A follow-up
+        -- lower-maze push superseded the earlier mixed `(5,14).east`
+        -- result with a clean 5/5 direct verifier. A later validator abort
+        -- plus direct 8/8 verifier confirmed `(5,14).west`, and added the
+        -- row-15/17
+        -- dead-end seams below. `(5,16).east` also started mixed, then the
+        -- route validator and a stronger 8/8 direct verifier confirmed it as
+        -- blocked. `(6,18).north`, `(4,17).east`, `(7,17).west`,
+        -- `(6,15).south`, `(8,18).north`, and `(8,13).east` followed the
+        -- same pattern and were promoted after validator aborts plus clean
+        -- 8/8 verifiers. The later east-side loop route similarly confirmed
+        -- `(10,8).west`, `(10,10).west`, `(10,11).east/west`,
+        -- `(10,12).east/west`, `(10,13).south/west`,
+        -- `(11,10).south`, `(11,13).north`, `(12,12).east/north/west`,
+        -- `(12,13).south`, `(13,13).north/south`, `(13,17).north`,
+        -- `(14,8).north`, `(14,11).west`, `(14,13).east/north`,
+        -- `(14,14).west`, `(14,15).east/west`, `(14,16).east/west`,
+        -- `(15,14).north/south`,
+        -- `(15,17).north`,
+        -- `(16,11).west`,
+        -- `(16,12).west`, `(16,14).north`, `(16,15).east/south/west`,
+        -- `(16,17).north`,
+        -- `(17,11).north/east`, `(17,12).east`, `(17,13).east/west`,
+        -- `(17,14).south`, `(17,17).north`,
+        -- `(18,14).north/east`, `(18,15).east/south/west`,
+        -- `(18,17).north`, `(19,12).south`, and `(19,17).north`.
+        -- A later B2-stairs north-hook cleanup kept pushing the live route
+        -- north and west until direct 8/8 verifiers promoted `(10,9).east`,
+        -- `(11,10).north`, `(14,10).east`, `(16,11).north`, and
+        -- `(16,12).south`. The next follow-up batch climbed farther up the
+        -- same hook and confirmed `(11,8).south`, `(12,8).south`,
+        -- `(12,10).north`, `(13,10).north`, and `(14,10).north`.
+        -- Continued live validation of the B2-stairs route from the entrance
+        -- side then confirmed the southward false entries into the same upper
+        -- lane: `(10,7)->DOWN`, `(11,7)->DOWN`, `(12,7)->DOWN`,
+        -- `(13,7)->DOWN`, and `(15,8)->LEFT` all blocked cleanly under direct
+        -- 15-attempt verifiers. Keep the reverse row-7 south-approach mirrors
+        -- runtime-only until direct probes from below confirm them.
+        -- A later 2026-05-29 recheck in a clean no-runtime-block state
+        -- disproved the provisional west-entry reopening entirely:
+        -- `validate_path` from `(6,11)` aborted at `(4,14)->RIGHT`, and
+        -- direct 5/5 verifiers reconfirmed both `(5,14).west` and
+        -- `(5,15).west` blocked.
+        -- `(11,14).east` was noisy and moved on validator retry, so it
+        -- stays open.
+        -- 2026-05-30 return-route cleanup from the B2 stairs rechecked the
+        -- southeast shelf after the B1 door confirmation. Direct
+        -- `probe_edge_verify:17,17,LEFT,5` confirmed `(16,17).east` blocked
+        -- 5/5 with no drift or interruptions. The sibling lower-lane face at
+        -- `(17,18)->DOWN` into `(17,19)` only stayed blocked 4/5, so keep
+        -- `(17,19).north` unmodeled for now.
+        ["4,17"] = {east = true, west = true},
+        ["4,18"] = {south = true, west = true},
+        ["5,14"] = {east = true, west = true},
+        ["5,15"] = {west = true},
+        ["5,12"] = {east = true, west = true},
+        ["5,16"] = {east = true, south = true},
+        ["5,18"] = {north = true},
+        ["6,13"] = {north = true, south = true},
+        ["6,15"] = {north = true, south = true},
+        ["6,18"] = {north = true},
+        ["6,8"] = {north = true, south = true},
+        ["7,13"] = {east = true, north = true, south = true},
+        ["7,15"] = {north = true, south = true},
+        ["7,17"] = {east = true, north = true, west = true},
+        ["7,18"] = {south = true},
+        ["7,10"] = {south = true},
+        ["7,8"] = {north = true},
+        ["8,13"] = {east = true, north = true, south = true},
+        ["8,15"] = {north = true, south = true},
+        -- 2026-05-28 reverse-side contour continuation: after sealing the
+        -- earlier south-rim pocket, direct 15/15 verifiers from `(8,19)`,
+        -- `(9,19)`, and `(10,18)` confirmed `(8,18).south`, `(9,18).east`,
+        -- `(9,18).south`, `(10,17).south`, and `(11,18).west`.
+        ["8,18"] = {north = true, south = true, west = true},
+        ["8,8"] = {north = true},
+        ["9,15"] = {north = true, south = true},
+        ["9,17"] = {north = true, west = true},
+        ["9,18"] = {east = true, south = true},
+        ["10,8"] = {north = true, west = true},
+        ["10,10"] = {west = true},
+        ["10,11"] = {east = true, west = true},
+        ["10,12"] = {east = true, west = true},
+        ["10,13"] = {south = true, west = true},
+        ["10,15"] = {east = true, north = true, south = true},
+        ["10,17"] = {north = true, south = true},
+        ["11,8"] = {north = true, south = true},
+        ["11,10"] = {north = true, south = true},
+        ["11,13"] = {north = true, south = true},
+        ["11,17"] = {north = true},
+        -- 2026-05-28 reverse-side contour follow-up: after the lower-lane
+        -- detours around the B2-side south rim, direct 15/15 verifiers
+        -- confirmed `(11,19)->UP`, `(12,18)->LEFT`, `(14,19)->LEFT`,
+        -- `(18,18)->UP`, and `(19,18)->UP` all block despite open previews.
+        ["11,18"] = {east = true, south = true, west = true},
+        ["12,8"] = {north = true, south = true},
+        -- 2026-05-28 upper-hook south-approach cleanup: direct 15/15 verifiers
+        -- from below confirmed the mirrored northbound entries into the same
+        -- row-8/row-10 pocket cells blocked at (12,11)->UP, (13,11)->UP,
+        -- (14,12)->UP, (13,9)->UP, and (14,9)->UP.
+        -- The later reverse-side lower-lane pass from the B2 stairs also
+        -- confirmed one-way blockers at (7,18)->RIGHT, (12,19)->RIGHT,
+        -- (12,18)->UP, (13,18)->UP, and (14,18)->UP 15/15; preserve those as
+        -- `(8,18).west`, `(13,19).west`, `(12,17).south`, `(13,17).south`,
+        -- and `(14,17).south`.
+        ["12,10"] = {north = true, south = true},
+        ["12,12"] = {east = true, north = true, west = true},
+        ["12,13"] = {south = true},
+        ["12,17"] = {north = true, south = true},
+        ["13,8"] = {north = true, south = true},
+        ["13,10"] = {north = true, south = true},
+        ["13,13"] = {north = true, south = true},
+        ["13,17"] = {north = true, south = true},
+        ["13,19"] = {east = true, west = true},
+        ["14,8"] = {east = true, north = true, south = true},
+        ["14,10"] = {east = true, north = true},
+        ["14,11"] = {east = true, west = true, south = true},
+        ["14,13"] = {east = true, north = true},
+        ["14,14"] = {west = true},
+        ["14,15"] = {east = true, west = true},
+        ["14,16"] = {east = true, west = true},
+        ["14,17"] = {north = true, south = true},
+        -- 2026-05-28 reverse-side lower-lane cleanup: after runtime detours
+        -- around the B2-side bottom row, direct 15/15 verifiers confirmed
+        -- `(14,18)->RIGHT`, `(15,19)->UP`, `(16,18)->LEFT`, `(16,18)->UP`,
+        -- and `(17,18)->UP` all block despite open tile previews.
+        ["15,18"] = {east = true, south = true, west = true},
+        ["15,14"] = {north = true, south = true},
+        ["15,17"] = {north = true},
+        ["16,11"] = {north = true, west = true},
+        ["16,12"] = {south = true, west = true},
+        ["16,14"] = {north = true},
+        ["16,15"] = {east = true, south = true, west = true},
+        ["16,17"] = {east = true, north = true, south = true},
+        ["17,11"] = {east = true, north = true},
+        ["17,12"] = {east = true},
+        ["17,13"] = {east = true, west = true},
+        ["17,14"] = {south = true},
+        ["18,14"] = {east = true, north = true},
+        ["18,15"] = {east = true, south = true, west = true},
+        ["18,17"] = {north = true, south = true},
+        ["19,12"] = {south = true},
+        ["19,17"] = {north = true, south = true},
+        -- User/manual route polishing later confirmed the lower-middle seams
+        -- around `(8,10)` and `(10,9)` with clean 8/8 direct verifiers.
+        ["8,10"] = {east = true, south = true},
+    },
+
+    -- Map 0x19: Garin's Grave B2
+    [0x19] = {
+        -- 2026-05-30 southwest B2 stair route cleanup. The return run toward
+        -- `(1,10)` repeatedly snagged on the west pocket, then focused direct
+        -- verifiers confirmed both blockers 5/5 with no drift, map change, or
+        -- interruption:
+        --   `(3,10)->LEFT` into `(2,10)` blocks from the east.
+        --   `(3,10)->UP` into `(3,9)` blocks from the south.
+        ["2,10"] = {east = true},
+        ["3,9"] = {south = true},
+        -- Post-reload direct verifier pass on the southwest-stair return route
+        -- confirmed the left-edge false entries into `(2,3)` through `(2,7)`.
+        -- Adjacent vertical suspects `(1,2).south` and `(1,9).north` stayed
+        -- mixed, so only the clean west-approach strip is modeled here.
+        ["2,3"] = {west = true},
+        ["2,4"] = {west = true},
+        ["2,5"] = {west = true},
+        ["2,6"] = {west = true},
+        ["2,7"] = {west = true},
+        -- A later B2 return pass exposed another row-9 band. Direct follow-up
+        -- verifiers confirmed `(4,10)->UP`, `(9,10)->UP`, `(10,10)->UP`, and
+        -- `(12,10)->UP` blocked 5/5, while `(7,10)->UP` and `(8,10)->UP`
+        -- stayed mixed and should remain open.
+        -- A fresh 2026-05-30 verifier pass from the north side then proved the
+        -- row-9 trap strip extends across `(3..7,9)`: `(3,8)->DOWN` through
+        -- `(7,8)->DOWN` each blocked 5/5 under explicit verifier teleports.
+        ["3,9"] = {north = true, south = true},
+        ["4,9"] = {north = true, south = true},
+        ["5,9"] = {north = true},
+        ["6,9"] = {north = true},
+        ["7,9"] = {north = true},
+        ["9,9"] = {south = true},
+        ["10,9"] = {south = true},
+        ["12,9"] = {south = true},
+        -- 2026-05-30 out-and-back cleanup after the stat-corruption A/B rerun.
+        -- Fresh direct verifiers confirmed two right-side false entries cleanly
+        -- 5/5 from the east, while nearby `(12,4).east` and `(12,9).east`
+        -- stayed mixed and the top-right hook near `(10..11,1..3)` moved 6/6.
+        ["12,5"] = {east = true},
+        ["12,7"] = {east = true},
+    },
+
+    -- Map 0x1A: Garin's Grave B3
+    [0x1A] = {
+        -- 2026-05-30 southwest-pocket route to the B4 stairs. After the
+        -- autowalk to `(10,9)` wandered and then got post-battle menu/input
+        -- noise, direct verifiers cleanly confirmed the west strip entries
+        -- into `(1,12)` and `(1,13)` block 5/5 from the east. Later live
+        -- reroutes from the `(9,13)` pocket also confirmed the north lip
+        -- into `(8,12)` and `(9,12)` blocks 5/5 from the south.
+        --
+        -- Nearby candidates did not hold up strongly enough to promote here:
+        -- `(3,14)->UP` into `(3,13)` moved 5/5 on stability recheck, and both
+        -- `(3,15)->LEFT` into `(2,15)` plus `(4,15)->RIGHT` into `(5,15)`
+        -- stayed mixed at `moved=1 blocked=4`. The later east-wall reroute
+        -- band then finally settled cleanly too: direct 5/5 verifiers from
+        -- `(9,13..17)->RIGHT` confirmed the west-facing strip into
+        -- `(10,13..17)`. Once that strip was modeled, the route peeled farther
+        -- west and exposed another clean corner cluster: `(6,13)->UP`,
+        -- `(7,13)->UP`, and `(6,13)->LEFT` all blocked 5/5 into `(6,12)`,
+        -- `(7,12)`, and `(5,13)`. The later south-loop attempt also confirmed
+        -- `(5,17)->DOWN` blocks 5/5 into `(5,18)` from the north. After the
+        -- resumed route post-combat, the left pocket finally settled too:
+        -- `(2,16)->UP`, `(3,15)->LEFT`, and a later rerun of `(2,16)->LEFT`
+        -- all blocked 5/5 into `(2,15)` from the south/east and `(1,16)` from
+        -- the east. The next upper approach then confirmed `(2,9)->RIGHT` and
+        -- `(2,8)->RIGHT` both block 5/5 into `(3,9)` and `(3,8)` from the
+        -- west. A later retry from `(2,8)` toward the lower B4 stair then
+        -- exposed the remaining west pocket lip: `(2,8)->UP`,
+        -- `(2,8)->LEFT`, `(2,9)->LEFT`, `(2,10)->RIGHT`, and
+        -- `(2,11)->RIGHT` all blocked 5/5 into `(2,7)`, `(1,8)`, `(1,9)`,
+        -- `(3,10)`, and `(3,11)`. Follow-up rechecks after clearing a stale
+        -- runtime-only `(3,13).south` edge also separated real seams from
+        -- route drift: `(3,14)->UP` into `(3,13)` and `(9,17)->DOWN` into
+        -- `(9,18)` both moved cleanly on stability recheck, but
+        -- `(9,15)->LEFT` and `(9,16)->LEFT` settled as clean 5/5 blockers
+        -- into `(8,15)` and `(8,16)` from the east. The next cleaned reroute
+        -- repeatedly hit `(2,12)->RIGHT` too, and a direct verifier confirmed
+        -- `(3,12).west` blocks 5/5 from the west. After the user's refresh
+        -- and a new live resume at `(3,16)`, the planner again wanted to go
+        -- east toward the B4 stair route; direct `probe_edge_verify:3,16,RIGHT,5`
+        -- confirmed `(4,16).west` blocks 5/5 from the west as well. That
+        -- cleaned reroute then pushed farther into the upper pocket, where
+        -- `probe_edge_verify:4,4,RIGHT,5` confirmed `(5,4).west` blocks 5/5
+        -- from the west. Follow-up checks on `(2,7)->RIGHT`,
+        -- `(2,6)->RIGHT`, and `(2,5)->RIGHT` then confirmed a matching
+        -- west-entry strip into `(3,7)`, `(3,6)`, and `(3,5)`. The next
+        -- reroute one step deeper also settled cleanly: `probe_edge_verify`
+        -- from `(4,4)->DOWN` and `(4,3)->RIGHT` confirmed `(4,5).north` and
+        -- `(5,3).west` as 5/5 blockers.
+        ["2,7"] = {south = true},
+        ["3,5"] = {west = true},
+        ["3,6"] = {west = true},
+        ["3,7"] = {west = true},
+        ["1,8"] = {east = true},
+        ["1,9"] = {east = true},
+        ["1,12"] = {east = true},
+        ["3,8"] = {west = true},
+        ["3,9"] = {west = true},
+        ["3,10"] = {west = true},
+        ["3,11"] = {west = true},
+        ["3,12"] = {west = true},
+        ["5,3"] = {west = true},
+        ["5,4"] = {west = true},
+        ["4,5"] = {north = true},
+        ["4,16"] = {west = true},
+        ["6,12"] = {south = true},
+        ["7,12"] = {south = true},
+        ["8,12"] = {south = true},
+        ["9,12"] = {south = true},
+        ["1,13"] = {east = true},
+        ["2,15"] = {south = true, east = true},
+        ["1,16"] = {east = true},
+        ["5,13"] = {east = true},
+        ["8,15"] = {east = true},
+        ["8,16"] = {east = true},
+        ["10,13"] = {west = true},
+        ["10,14"] = {west = true},
+        ["10,15"] = {west = true},
+        ["10,16"] = {west = true},
+        ["10,17"] = {west = true},
+        ["5,18"] = {north = true},
     },
 
     -- Map 0x0B: Rimuldar

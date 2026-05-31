@@ -698,6 +698,7 @@ local function route_settle_after_step(completed_dir)
         local final_settle = get_route_final_settle_frames()
         route_final_settle_active = final_settle > 0
         route_settle_reset_movement_active = route_final_settle_active
+            and should_reset_movement_on_route_turn_settle()
         if final_settle > 0 then
             debug_tools.debug(string.format(
                 "auto_step route final settle prev=%s frames=%d",
@@ -898,7 +899,9 @@ local function handle_pending_repress_state(joy, px, py)
         if completed.source == "seam_retry" then
             reset_movement_engine_state("seam_retry_complete")
         elseif route_steps ~= nil and route_steps[route_index] == nil then
-            reset_movement_engine_state("queued_route_final_complete")
+            if route_settle_reset_movement_active then
+                reset_movement_engine_state("queued_route_final_complete")
+            end
         elseif route_steps ~= nil then
             reset_movement_for_route_settle()
         end
@@ -1040,7 +1043,9 @@ local function handle_active_auto_step(joy, px, py, timeout)
         if completed_source == "seam_retry" then
             reset_movement_engine_state("seam_retry_complete")
         elseif completed_queued_route and route_steps ~= nil and route_steps[route_index] == nil then
-            reset_movement_engine_state("queued_route_final_complete")
+            if route_settle_reset_movement_active then
+                reset_movement_engine_state("queued_route_final_complete")
+            end
         elseif completed_queued_route and route_steps ~= nil then
             reset_movement_for_route_settle()
         end

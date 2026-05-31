@@ -2174,6 +2174,58 @@ function tests.queued_route_final_settle_keeps_resetting_movement_state()
     env.restore()
 end
 
+function tests.queued_route_final_settle_skips_movement_reset_when_disabled()
+    local env = make_env({
+        movement_state = 0x05,
+        movement_subpixel = 0x20,
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+            auto_step_reset_movement_on_route_turn_settle = "false",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local cleared_on_completion = false
+    for _, write in ipairs(env.memory_writes) do
+        if (write.address == 0x003C or write.address == 0x003D)
+           and write.value == 0x00 then
+            cleared_on_completion = true
+            break
+        end
+    end
+
+    assert_truthy(
+        not cleared_on_completion,
+        "queued route final settle should not clear movement engine state when the reset toggle is disabled"
+    )
+
+    local writes_after_completion = #env.memory_writes
+    env.set_movement_state(0x06)
+    env.set_subpixel(0x40)
+    env.update(true)
+
+    local cleared_during_settle = false
+    for i = writes_after_completion + 1, #env.memory_writes do
+        local write = env.memory_writes[i]
+        if (write.address == 0x003C or write.address == 0x003D)
+           and write.value == 0x00 then
+            cleared_during_settle = true
+            break
+        end
+    end
+
+    assert_truthy(
+        not cleared_during_settle,
+        "queued route final settle should not keep clearing movement state when the reset toggle is disabled"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_direction_change_waits_for_default_turn_settle()
     local env = make_env()
     env.auto_step.start_route({"right", "down"})

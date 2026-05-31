@@ -76,9 +76,10 @@ local function make_env(options)
         end,
     }
 
+    local rom_bytes = options.rom_bytes or {}
     _G.rom = {
-        readbyte = function()
-            return 0
+        readbyte = function(address)
+            return rom_bytes[address] or 0
         end,
     }
 
@@ -91,8 +92,8 @@ local function make_env(options)
             NPC_COUNT = options.npc_count or 1,
             NPC_DATA_START = 0,
             NPC_ENTRY_SIZE = 3,
-            ROM_CHEST_START = 0,
-            ROM_CHEST_END = -1,
+            ROM_CHEST_START = options.rom_chest_start or 0,
+            ROM_CHEST_END = options.rom_chest_end or -1,
             ROM_CHEST_SIZE = 4,
             TERRAIN_OFFSET = 0x0016,
         }
@@ -202,7 +203,89 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local function find_by_id(objects, id)
+    for _, obj in ipairs(objects.get_objects()) do
+        if obj.id == id then
+            return obj
+        end
+    end
+    return nil
+end
+
 local tests = {}
+
+function tests.garins_grave_b1_rom_chests_and_b2_stairs_are_exposed()
+    local env = make_env({
+        rom_chest_start = 0,
+        rom_chest_end = 11,
+        rom_bytes = {
+            [0] = 0x18, [1] = 11, [2] = 0, [3] = 0x02,
+            [4] = 0x18, [5] = 12, [6] = 0, [7] = 0x12,
+            [8] = 0x18, [9] = 13, [10] = 0, [11] = 0x13,
+        },
+    })
+
+    env.objects.refresh(0x18)
+
+    assert_equal(find_by_id(env.objects, "stair_19_0"), nil, "stale B1 stairs placeholder should stay removed")
+
+    local stairs = find_by_id(env.objects, "stair_1_18")
+    assert_equal(stairs.name, "Stairs Down to B2", "B1 stairs down should use ROM table coordinate")
+
+    for index, x in ipairs({11, 12, 13}) do
+        local chest = find_by_id(env.objects, "chest_" .. (index - 1))
+        assert_equal(chest.x, x, "B1 chest x should match ROM table")
+        assert_equal(chest.y, 0, "B1 row-0 chest coordinates should be preserved")
+        assert_equal(chest.interaction_x, nil, "B1 chests should route to the chest tile, not an offset stand")
+    end
+
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x19)
+
+    assert_equal(find_by_id(env.objects, "stair_19_0"), nil, "stale B2 stairs placeholder should stay removed")
+    for _, stair_id in ipairs({
+        "stair_11_2",
+        "stair_1_1",
+        "stair_12_1",
+        "stair_5_6",
+        "stair_1_10",
+        "stair_12_10",
+    }) do
+        assert_equal(find_by_id(env.objects, stair_id) ~= nil, true, "B2 should expose " .. stair_id)
+    end
+
+    env.restore()
+end
+
+function tests.garins_grave_b3_and_b4_rom_stairs_are_exposed()
+    local env = make_env()
+
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x1A)
+
+    assert_equal(find_by_id(env.objects, "stair_12_12"), nil, "stale B3 stairs placeholder should stay removed")
+    assert_equal(find_by_id(env.objects, "stair_1_1"), nil, "stale B3 down-stairs placeholder should stay removed")
+    for _, stair_id in ipairs({
+        "stair_14_1",
+        "stair_18_1",
+        "stair_6_11",
+        "stair_2_17",
+        "stair_18_13",
+        "stair_9_5",
+        "stair_10_9",
+    }) do
+        assert_equal(find_by_id(env.objects, stair_id) ~= nil, true, "B3 should expose " .. stair_id)
+    end
+
+    env.objects.refresh(0x1B)
+
+    assert_equal(find_by_id(env.objects, "stair_1_1"), nil, "stale B4 stairs placeholder should stay removed")
+    for _, stair_id in ipairs({"stair_0_4", "stair_5_4"}) do
+        assert_equal(find_by_id(env.objects, stair_id) ~= nil, true, "B4 should expose " .. stair_id)
+    end
+
+    env.restore()
+end
 
 function tests.world_map_refresh_drops_stale_interior_npcs()
     local env = make_env()
@@ -849,6 +932,26 @@ function tests.garinham_exposes_confirmed_grave_stairs()
     assert_equal(obj.name, "Stairs to Garin's Grave", "Garinham grave stairs should have a distinct navigation label")
     assert_equal(obj.x, 19, "Garinham grave stairs X should match ROM stair table and live STAIRS proof")
     assert_equal(obj.y, 0, "Garinham grave stairs Y should match ROM stair table and live STAIRS proof")
+
+    env.restore()
+end
+
+function tests.garins_grave_b1_exposes_live_return_stairs()
+    local env = make_env()
+
+    env.set_position(0x18, 6, 11)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x18)
+
+    local stale_exit = env.objects.select_object_by_id("exit_0_0")
+    assert_equal(stale_exit, nil, "Garin's Grave B1 should not expose the stale fake world-map exit at (0,0)")
+
+    local obj = env.objects.select_object_by_id("stair_6_11")
+    assert_equal(obj ~= nil, true, "Garin's Grave B1 should expose the live return stairs")
+    assert_equal(obj.name, "Stairs to Garinham", "Garin's Grave B1 return stairs should have a distinct navigation label")
+    assert_equal(obj.x, 6, "Garin's Grave B1 return stairs X should match live entry/exit proof")
+    assert_equal(obj.y, 11, "Garin's Grave B1 return stairs Y should match live entry/exit proof")
 
     env.restore()
 end
@@ -2159,6 +2262,40 @@ function tests.garinham_does_not_expose_disproved_east_locked_door()
     assert_equal(grave_route.interaction_x, 17, "Garinham grave-route door should route to the north-side stand")
     assert_equal(grave_route.interaction_y, 9, "Garinham grave-route door stand should match the user's OPEN position")
     assert_equal(grave_route.interaction_face_dir, "south", "Garinham grave-route door should face south to open")
+
+    env.restore()
+end
+
+function tests.garins_grave_b1_exposes_confirmed_southeast_b2_door()
+    local env = make_env()
+
+    env.set_position(0x18, 17, 18)
+    env.set_terrain_offset(0x20)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x18)
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Exits
+    env.objects.next_filter() -- Chests
+    env.objects.next_filter() -- Stairs
+    env.objects.next_filter() -- Doors
+
+    local doors = env.objects.get_objects({filtered = true})
+    local b2_door = nil
+    for _, door in ipairs(doors) do
+        if door.id == "door_17_17" then
+            b2_door = door
+        end
+    end
+
+    assert_equal(#doors, 1, "Garin's Grave B1 should expose only the confirmed southeast B2 door")
+    assert_equal(b2_door ~= nil, true, "Garin's Grave B1 should expose the confirmed southeast B2 door")
+    assert_equal(b2_door.name, "B2 Door", "Garin's Grave B1 southeast door should have a distinct navigation label")
+    assert_equal(b2_door.x, 17, "Garin's Grave B1 southeast door x should match opened-door RAM proof")
+    assert_equal(b2_door.y, 17, "Garin's Grave B1 southeast door y should match opened-door RAM proof")
+    assert_equal(b2_door.interaction_x, 17, "Garin's Grave B1 southeast door should route to the south stand")
+    assert_equal(b2_door.interaction_y, 18, "Garin's Grave B1 southeast door stand should match the successful OPEN position")
+    assert_equal(b2_door.interaction_face_dir, "north", "Garin's Grave B1 southeast door should face north to open")
 
     env.restore()
 end
