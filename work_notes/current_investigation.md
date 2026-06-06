@@ -1,6 +1,388 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-05-30
+Updated: 2026-06-05
+
+## 2026-06-05 Garin's Grave B1 B2 Door north-side route
+
+- User context:
+  - User descended into Garin's Grave B1 and selected `B2 Door`.
+  - They noted the previous confirmed door approach came from the downward/lower
+    side of the maze.
+- Live baseline after menu/input noise settled:
+  - `POSITION: map=0x18(Garin's Grave B1) x=13 y=15`
+  - `PATH_STATE target=B2 Door type=door x=17 y=17 map=0x18 runtime_count=0`
+  - `RUNTIME_BLOCKS map=0x18 none`
+  - `current_object` in the live FCEUX script still used the old stand:
+    `interact 17,18` and `Not currently reachable`.
+- Root cause evidence:
+  - Direct route to the old lower/south stand `(17,18)` returned `No path found`
+    in both normal and skip-NPC modes.
+  - Adjacent route to the door cell found the north-side stand `(17,16)`:
+    `2 west, 1 north, 2 west, 7 north, 10 east, 9 south, 2 west`, then
+    `Face south`.
+  - This is an object interaction-side problem, not a new permanent blocker.
+- Code patch:
+  - `objects.lua` keeps primary `interaction_x/y=(17,18)` facing north and
+    adds `interaction_points` with `(17,18)` north plus `(17,16)` south.
+  - `route_manager.lua` tries alternate interaction points only after the
+    primary interaction route fails, records the selected interaction on the
+    plan/reachability result, and passes it into `objects.describe_current`.
+  - `objects.lua` readout supports a caller-provided interaction override so
+    object speech/debug suffixes describe the selected reachable stand.
+- Verification:
+  - Red tests failed as expected before code changes:
+    `test_objects.lua` had missing `interaction_points`; `test_route_manager.lua`
+    got `No path found` instead of the north-side route.
+  - Green checks:
+    `lua5.1 test_objects.lua`,
+    `lua5.1 test_route_manager.lua`,
+    `luac5.1 -p objects.lua route_manager.lua test_objects.lua test_route_manager.lua`,
+    `git diff --check -- objects.lua route_manager.lua test_objects.lua test_route_manager.lua`,
+    and `python3 run_tests.py --allow-missing-speech-dep`.
+- Live workaround before FCEUX reload:
+  - Live `current_object`/`pathfind` still showed old code after the patch, so
+    used coordinate route `auto_walk:17,16`.
+  - First route queued 33 steps, rerouted around timing-suspect movement noise,
+    then a Droll battle interrupted at `(9,14)`.
+  - Resumed `auto_walk:17,16`; it completed to
+    `POSITION map=0x18 x=17 y=16`, with `runtime_count=0` and
+    `RUNTIME_BLOCKS map=0x18 none`.
+  - Do not promote route-only/timing-suspect seams from this workaround pass:
+    examples include `(19,12).north`, `(18,13).north`, and `(19,16).north`.
+    They were part of timing retry/reroute behavior, and no direct verifier was
+    run.
+- Immediate next manual action:
+  - From `(17,16)`, face south and use `OPEN`.
+  - After Lua reload/relaunch, selected `B2 Door` should automatically choose
+    the reachable `(17,16)` stand when approached from this component.
+
+## 2026-06-05 Garinham top-edge and object browser follow-up
+
+- Town-edge blocker follow-up:
+  - `probe_edge_verify:19,0,LEFT,5` confirmed `(19,0)->LEFT` into `(18,0)`
+    blocked 5/5 with no drift, map change, or interruptions. Promoted as
+    Garinham `0x09` directional block `(18,0).east`.
+  - `probe_edge_verify:18,1,UP,5` did not confirm a blocker. It moved onto
+    `(18,0)` and then hit a world-map transition, so `(18,0).south` stays
+    open.
+- Object browser bug:
+  - Reproduced live before the patch:
+    `OBJECT: Center Return Stairs to B2 ... [player 19,0 obj 6,11]` while the
+    player was in Garinham.
+  - Root cause was command-layer browsing using the stale object cache without
+    first asking `objects.check_refresh(current_map)` whether the map/terrain
+    context changed.
+  - `object_commands.lua` now refreshes object cache context before describing
+    or browsing. It avoids forced NPC rebuilds while map-entry refresh remains
+    pending.
+  - Live sanity after patch/settle: `current_object` reported Garinham town
+    objects instead of stale grave-floor stairs.
+- Final live baseline:
+  - `POSITION map=0x09(Garinham) x=0 y=14`
+  - `PATH_STATE target=nil map=0x09 runtime_count=0`
+  - `RUNTIME_BLOCKS map=0x09 none`
+- Verification:
+  - `lua5.1 test_map_reader.lua`
+  - `lua5.1 test_object_commands.lua`
+  - `luac5.1 -p map_reader.lua test_map_reader.lua object_commands.lua test_object_commands.lua`
+  - `python3 -m py_compile run_tests.py`
+  - `python3 run_tests.py --allow-missing-speech-dep` passed with known
+    `accessible_output2` warning
+  - `git diff --check -- map_reader.lua test_map_reader.lua object_commands.lua test_object_commands.lua run_tests.py`
+
+## 2026-06-05 Silver Harp route completion
+
+- Live route outcome:
+  - Reached Garin's Grave B3 lower section via the B4 chain.
+  - Opened the B3 chest at `(13,6)` and confirmed dialogue:
+    `Fortune smiles upon thee, Bill. Thou hast found the Silver Harp.`
+  - Returned through the B4/B3/B2/B1 stair chain and reached Garinham
+    `map=0x09 x=19 y=0`.
+  - Final live baseline after stopping a separate Garinham top-edge route loop:
+    `POSITION map=0x09(Garinham) x=19 y=0`,
+    `PATH_STATE target=nil map=0x09 runtime_count=0`, and
+    `RUNTIME_BLOCKS map=0x09 none`.
+- Permanent map/data corrections from this pass:
+  - B3 `0x1A`: confirmed `(5,13).west`, `(5,4).east`, `(8,6).east`,
+    `(10,6).west`, `(9,7).north`, and `(10,6).east`; added hidden bridge
+    passthrough `(4,14)` after live entry from `(4,13)->DOWN` moved 6/6 and
+    onward movement to `(4,15)` succeeded.
+  - B4 `0x1B`: added west return stair passthrough `(0,4)` after
+    `(1,4)->LEFT` moved 6/6.
+  - B1 `0x18`: confirmed `(5,18).south` and `(6,18).south` from clean
+    `(5,19)->UP` / `(6,19)->UP` 5/5 blockers; removed stale
+    `(4,17).west` after `(3,17)->RIGHT` moved 6/6 and unlocked the path to the
+    B1 return stairs.
+- Follow-up caveats:
+  - Garinham `auto_walk:18,0` looped around `(19,0)/(19,1)/(18,1)` and
+    repeatedly failed entering `(18,0)` from the east/south. Follow-up direct
+    verification promoted only `(18,0).east`; `(18,0).south` moved into the
+    world-map transition and stays open.
+  - Object browsing labels became stale across some map transitions during the
+    live run, e.g. B4/B2/B1 object names still referring to B3 stairs. The
+    command layer now refreshes object cache context before reporting objects.
+  - FCEUX menu/input bridge funk around the B3 southwest stairs caused DOWN
+    menu inputs to be treated as field movement; user manually got back to B2.
+    Later stair menus on B2/B1 behaved normally.
+- Verification after map/test updates:
+  - `lua5.1 test_map_reader.lua` => 47/47 pass
+  - `luac5.1 -p map_reader.lua test_map_reader.lua`
+  - `git diff --check -- map_reader.lua test_map_reader.lua`
+
+## 2026-05-31 Garin's Grave B3 lower-stair dig
+
+- Active target: B3 lower stairs down to B4 at `(10,9)` from southwest-pocket
+  chain `B2 (1,10) -> B3 (2,17)`.
+- Confirmed runtime blockers restored/promoted during the live FCEUX dig:
+  - `(5,2).west`
+  - `(6,2).north`
+  - `(3,5).north`
+  - `(2,7).north`
+  - `(3,13).west` from clean direct verifier
+    `probe_edge_verify:2,13,RIGHT,5` => blocked 5/5
+  - `(4,18).north` from clean direct verifier
+    `probe_edge_verify:4,17,DOWN,5` => blocked 5/5
+  - `(3,18).north` from clean direct verifier
+    `probe_edge_verify:3,17,DOWN,5` => blocked 5/5
+- Clean negative verifier worth preserving:
+  - `(5,17)->RIGHT` into `(6,17)` moved 6/6, confirmed passable
+- Mixed/noisy verifiers, do not promote from these alone:
+  - `(8,1)->RIGHT` mixed
+  - `(1,6)->DOWN` mixed
+  - `(3,14)->UP` into `(3,13)` mixed on direct verifier (`moved=5 blocked=1`)
+- Fresh route evidence after restoring the five runtime blockers:
+  - Baseline before rerun: `POSITION map=0x1A x=2 y=14`,
+    `RUNTIME_BLOCKS count=5`, target still latched to lower B4 stair.
+  - `auto_walk:10,9` immediately treated `(3,13).west` as blocked and routed
+    through `(3,14)`.
+  - `(2,14)->RIGHT` into `(3,14)` looked noisy on first contact but collapsed
+    to moved on seam retry; keep open.
+  - `(3,14)->UP` into `(3,13)` reappeared as very strong route-only evidence:
+    `SEAM_OBSERVATION ... blocked=14 moved=0 classification=blocked_only`
+    across queued route plus seam retry.
+  - After that south-approach failure, reroute from `(3,14)` became:
+    `3 south, 6 east, 1 south, 1 east, 9 north`.
+- Latest interruption state:
+  - Route advanced to `(3,15)` and then a Wolflord battle interrupted the run.
+  - Fresh read-only probes during the fight:
+    - `POSITION: map=0x1A(Garin's Grave B3) x=3 y=15`
+    - target still `Lower Stairs Down to B4`
+- Best next clean-field check:
+  - finish/restore the battle, then directly verify south approach
+    `probe_edge_verify:3,14,UP,5` again; route-only evidence is now much
+    stronger than the earlier mixed direct pass.
+- Follow-up direct verification on that south approach still stayed mixed:
+  - `probe_edge_verify:3,14,UP,5` => `moved=1 blocked=4 classification=mixed`
+  - This remains suspicious, but still not clean enough to promote.
+- Lower-lip route cleanup after that:
+  - `(4,17)->DOWN` into `(4,18)` reached route-only `blocked=6 moved=0`,
+    then direct verifier confirmed blocked 5/5; promoted as `(4,18).north`.
+  - `(3,17)->DOWN` into `(3,18)` reached route-only `blocked=7 moved=0`,
+    then direct verifier confirmed blocked 5/5; promoted as `(3,18).north`.
+  - `(9,17)->DOWN` into `(9,18)` remained strong route-only evidence
+    (`blocked=6 moved=0`) but was not directly rechecked in this pass because
+    the west-lip/lower-lip cluster became even stronger.
+- Current live frontier after the 7-block runtime set:
+  - `auto_walk:10,9` now starts with `Path: 8 north, 7 east`.
+  - Even with `(3,18).north` and `(4,18).north` promoted, the route still
+    collapses back into `(3,14)->UP` as the dominant upper-pocket choke:
+    route evidence is now `blocked=20 moved=0 classification=blocked_only`.
+  - Newer route-only candidate from the last reroute:
+    `(4,17)->UP` into `(4,16)` reached `blocked=4 moved=0`, not yet directly
+    verified.
+  - Latest live probe state captured mid-route:
+    `POSITION map=0x1A x=3 y=16`, target still `Lower Stairs Down to B4`,
+    `RUNTIME_BLOCKS count=7`.
+- Post-refresh confirmation:
+  - Refresh cleared runtime blockers completely; re-seeded all seven confirmed
+    blockers before resuming the dig from `POSITION map=0x1A x=2 y=17`.
+  - The restored route matched the prior shape:
+    `1 north, 1 east, 7 north, 7 east`.
+  - `(2,17)->UP` into `(2,16)` stayed noisy and passable after seam retry.
+  - The run again climbed to `(3,14)` and re-hit the same south approach into
+    `(3,13)`:
+    `blocked=21 moved=0 classification=blocked_only`.
+  - A Specter battle interrupted the run at `POSITION map=0x1A x=3 y=14`.
+  - Battle-start stat snapshot was still clean:
+    `HP 70/70 MP 57/57 LV 13 STR=0x34 AGI=0x2B ATK=0x48 DEF=0x33 spells CE=0x7F CF=0x10`.
+- Frontier breakthrough:
+  - A stricter raw recheck from the same `(3,14)` frontier finally confirmed
+    the south approach into `(3,13)` cleanly:
+    `probe_edge_verify:3,14,UP,8` => `moved=0 blocked=8 classification=confirmed_blocked`.
+  - Promoted that as `(3,13).south`; runtime entry is now
+    `(3,13) dirs=south,west`.
+  - With that promotion in place, `auto_walk:10,9` stopped treating the upper
+    pocket as a live frontier and immediately rerouted:
+    `3 south, 6 east, 1 south, 1 east, 9 north`.
+  - The route again reached the lower-east lip and landed at `(9,17)`, then
+    began testing the south step toward `(9,18)`.
+  - Before the result on `(9,17)->DOWN` settled, a Drollmagi battle
+    interrupted the run; post-stop battle probe showed
+    `POSITION map=0x1A x=8 y=17`, `runtime_count=7`.
+- Lower-lip confirmations and current frontier:
+  - Direct verifier later confirmed `(9,17)->DOWN` into `(9,18)` cleanly:
+    `probe_edge_verify:9,17,DOWN,5` => `moved=0 blocked=5 classification=confirmed_blocked`.
+    Promoted as `(9,18).north`.
+  - Direct verifier also confirmed `(2,17)->LEFT` into `(1,17)` cleanly:
+    `probe_edge_verify:2,17,LEFT,5` => `moved=0 blocked=5 classification=confirmed_blocked`.
+    Promoted as `(1,17).east`.
+  - The upper-left family stayed mixed at first:
+    `probe_edge_verify:2,14,LEFT,5` => `moved=1 blocked=4 classification=mixed`.
+    Keep `(1,14).east` suspicious but unpromoted even though route evidence
+    continued to rediscover it as `blocked_only`.
+  - The sibling south seam finally promoted cleanly:
+    `probe_edge_verify:2,14,DOWN,5` => `moved=0 blocked=5 classification=confirmed_blocked`.
+    Promoted as `(2,15).north`; runtime set is now 10 confirmed seams.
+  - After adding `(2,15).north`, autowalk immediately treated that cell as
+    blocked and rerouted from `(2,14)` through `(3,14) -> (3,15)`.
+  - `(3,15)->DOWN` into `(3,16)` and `(3,16)->DOWN` into `(3,17)` both stayed
+    noisy but passable after seam retry; do not promote either.
+  - The route then reached `(2,17)` and made the lower-left lip the new best
+    lead: `(2,17)->DOWN` into `(2,18)` is now
+    `blocked=10 moved=0 classification=blocked_only` across queued route plus
+    seam retry.
+  - Latest interruption state:
+    - Drollmagi battle interrupted while the route was re-testing
+      `(2,14)->LEFT`; post-stop battle probe showed
+      `POSITION map=0x1A x=2 y=14`, `runtime_count=10`.
+    - Battle-start snapshot stayed clean:
+      `HP 70/70 MP 43/57 LV 13 STR=0x34 AGI=0x2B ATK=0x48 DEF=0x33 spells CE=0x7F CF=0x10`.
+  - Best next clean-field check:
+    - finish/restore the battle, then directly verify
+      `probe_edge_verify:2,17,DOWN,5`.
+    - If that confirms, promote `(2,18).north` and re-run `auto_walk:10,9`.
+- Planner-wall and hidden-bridge follow-up:
+  - Direct verifier confirmed `(2,17)->DOWN` into `(2,18)` cleanly:
+    `probe_edge_verify:2,17,DOWN,5` => `moved=0 blocked=5 classification=confirmed_blocked`.
+    Promoted as `(2,18).north`.
+  - A stricter recheck finally promoted the long-suspicious west seam:
+    `probe_edge_verify:2,14,LEFT,8` => `moved=0 blocked=8 classification=confirmed_blocked`.
+    Promoted as `(1,14).east`.
+  - Upper-left continuation then confirmed cleanly:
+    `probe_edge_verify:2,11,LEFT,5` => `moved=0 blocked=5 classification=confirmed_blocked`.
+    Promoted as `(1,11).east`.
+  - The next west seam also confirmed cleanly:
+    `probe_edge_verify:2,10,LEFT,5` => `moved=0 blocked=5 classification=confirmed_blocked`.
+    Promoted as `(1,10).east`.
+  - With those four additions, the runtime set reached 14 confirmed seams and
+    `auto_walk:10,9` from `POSITION map=0x1A x=2 y=10` now returns immediate
+    `No path found`.
+  - `debug_route_frontier:10,9,60` from `(2,10)` is the new key planner read:
+    `reachable=38 target_reachable=false candidates=44 bridge_candidates=41 hidden_bridge_candidates=6`.
+    Highest-ranked remaining candidates are hidden-bridge style entries into
+    modeled wall tiles, led by `(5,15)->UP` into `(5,14)` and the `(4,14)`
+    pocket from south/west.
+  - Hidden-bridge evidence gathered so far:
+    - `probe_edge_verify:5,15,UP,5` => `moved=2 blocked=3 classification=mixed`
+      on `(5,14)`; not promotable yet.
+    - `probe_edge_verify:4,15,UP,5` escalated to a stability recheck and
+      finished `moved=6 blocked=0 classification=suspect_passable_model_mismatch`.
+      `(4,14)` is now a strong hidden-passable candidate even though the model
+      still marks tile `1` not walkable.
+    - Direct exit test `probe_edge_verify:4,14,UP,5` was
+      `classification=inconclusive_control reason=teleport_failed:not walkable`,
+      so the hidden cell cannot yet be staged directly by the verifier.
+    - Alternate approach `probe_edge_verify:3,14,RIGHT,5` was interrupted by
+      combat after three moved-through-modeled-block attempts:
+      `classification=inconclusive_interrupted`.
+  - Latest interruption state:
+    - Battle interrupted the alternate `(3,14)->RIGHT` hidden-bridge check.
+    - Best next clean-field resume is to finish/restore the fight, then rerun
+      `probe_edge_verify:3,14,RIGHT,5` to strengthen the `(4,14)` evidence.
+- Post-reload hidden-bridge breakthrough and upper-pocket dig:
+  - After permanently patching the confirmed B3 blockers into `map_reader.lua`
+    and manually reloading FCEUX, the live baseline reset cleanly to
+    `POSITION map=0x1A x=3 y=14`, `RUNTIME_BLOCKS none`.
+  - Hidden bridge into `(4,14)` is now strongly confirmed from two sides:
+    - `probe_edge_verify:3,14,RIGHT,5` =>
+      `moved=6 blocked=0 classification=suspect_passable_model_mismatch`
+    - `probe_edge_verify:4,15,UP,5` previously gave the same modeled-wall pass
+      result from the south.
+    - Direct exit check `probe_edge:UP` from the bridged tile moved cleanly to
+      `(4,13)`, proving the hidden cell actually connects onward.
+  - From `(4,13)`, `auto_walk:10,9` became live and exposed a new upper-pocket
+    blocker family. Clean direct verifiers promoted these runtime seams:
+    - `(7,7).west` via `probe_edge_verify:6,7,RIGHT,5`
+    - `(7,8).west` via `probe_edge_verify:6,8,RIGHT,5`
+    - `(7,9).west` via `probe_edge_verify:6,9,RIGHT,5`
+  - Repeated direct verifiers that remain mixed and should stay unpromoted:
+    - `(6,10).north`:
+      `probe_edge_verify:6,9,DOWN,8` => `moved=4 blocked=4 classification=mixed`
+    - `(5,10).north`:
+      `probe_edge_verify:5,9,DOWN,5` => `moved=3 blocked=2 classification=mixed`
+    - `(5,10).west`:
+      `probe_edge_verify:4,10,RIGHT,5` => `moved=1 blocked=4 classification=mixed`
+    - `(5,11).west`:
+      `probe_edge_verify:4,11,RIGHT,5` => `moved=1 blocked=4 classification=mixed`
+  - Route-only evidence above the bridge is now very strong even where the raw
+    verifier still twitches:
+    - `(6,10).north` reached `blocked=12 moved=0 classification=blocked_only`
+    - `(5,10).north` reached `blocked=6 moved=0 classification=blocked_only`
+    - `(5,10).west` reached `blocked=8 moved=0 classification=blocked_only`
+    - `(5,11).west` reached `blocked=7 moved=0 classification=blocked_only`
+    - Newer `(5,12).west` is emerging but still shallow:
+      `blocked=2 moved=0 classification=blocked_only`
+  - Best route shape seen so far on the bridged side:
+    - With live runtime seams at `(7,7..9).west`, autowalk rerouted through
+      `(4,10) -> (4,11) -> (4,12)` instead of forcing the `x=7` strip.
+    - A later reroute from `(4,12)` became:
+      `3 north, 2 east, 1 south, 4 east, 1 north`.
+  - Latest interruption state:
+    - Drollmagi battle interrupted the longer bridged-side harvest at
+      `POSITION map=0x1A x=4 y=10`.
+    - Runtime set still active in the live session:
+      `(7,7).west`, `(7,8).west`, `(7,9).west`.
+    - Battle-start snapshot stayed clean for suspect-2 tracking:
+      `HP 70/70 MP 57/57 LV 13 STR=0x34 AGI=0x2B ATK=0x48 DEF=0x33 CE=0x7F CF=0x10`.
+  - Best next clean-field resume:
+    - let the battle finish or restore, then continue `auto_walk:10,9` from
+      the bridged side with the three `x=7` runtime seams already seeded.
+    - If the route immediately re-hits the west family, prioritize
+      `(5,11).west` or `(5,12).west` as the next direct rechecks because they
+      are now the freshest upper-pocket leads.
+  - Fresh reload / armor-up continuation:
+    - Fresh FCEUX reload reset runtime blockers and landed at
+      `POSITION map=0x1A x=2 y=17`, `RUNTIME_BLOCKS none`.
+    - Hidden bridge reconfirmed again from the southwest side:
+      `probe_edge_verify:3,14,RIGHT,5` =>
+      `moved=6 blocked=0 classification=suspect_passable_model_mismatch`
+      with stability recheck.
+    - Direct follow-up `probe_edge:UP` from `(4,14)` again moved cleanly to
+      `(4,13)`, so the hidden bridge is still the live route into the upper
+      pocket.
+    - Reconfirmed and re-seeded the three known strip blockers live:
+      - `(7,9).west` via `probe_edge_verify:6,9,RIGHT,5`
+      - `(7,8).west` via `probe_edge_verify:6,8,RIGHT,5`
+      - `(7,7).west` via `probe_edge_verify:6,7,RIGHT,5`
+      All three were `moved=0 blocked=5 classification=confirmed_blocked`.
+    - With those live again, autowalk returned to the upper west-wall family
+      and one more seam finally promoted cleanly:
+      - `(5,12).west` via `probe_edge_verify:4,12,RIGHT,5`
+        => `moved=0 blocked=5 classification=confirmed_blocked`
+      - `(5,11).west` via `probe_edge_verify:4,11,RIGHT,5`
+        => `moved=0 blocked=5 classification=confirmed_blocked`
+    - Current live runtime set is now 5:
+      `(7,7).west`, `(7,8).west`, `(7,9).west`, `(5,12).west`, `(5,11).west`
+    - Fresh route-only frontier after those promotions:
+      - `(6,10).north` has climbed back to
+        `blocked=8 moved=0 classification=blocked_only`
+      - `(5,10).west` is up to
+        `blocked=6 moved=0 classification=blocked_only`
+      - `(5,10).north` is up to
+        `blocked=5 moved=0 classification=blocked_only`
+      - `(6,9).west` and `(5,9).east` remain noisy, not promotable.
+    - Latest interruption state:
+      - Drollmagi battle interrupted during another `(5,9)->DOWN` seam-retry
+        branch; post-stop battle probe showed
+        `POSITION map=0x1A x=5 y=9`, `runtime_count=5`.
+      - Battle-start stat snapshot stayed clean after the equipment upgrade:
+        `STR=0x34 AGI=0x2B ATK=0x48 DEF=0x39 CE=0x7F CF=0x10`.
+    - Best next clean-field checks:
+      - finish/restore the battle, then directly recheck
+        `probe_edge_verify:6,9,DOWN,5` for `(6,10).north`
+      - if that still stays mixed, fall through to
+        `probe_edge_verify:4,10,RIGHT,5` for `(5,10).west`
+        or `probe_edge_verify:5,9,DOWN,5` for `(5,10).north`
 
 The long Tantegel Castle map `0x04` shrine/key-merchant investigation and the
 Sun Shrine `0x0C` decode pass are parked. Current active work is Garin's Grave
@@ -3166,3 +3548,3259 @@ the next-level stairs `(1,18)`.
   - deeper recheck after the band promotion:
     - `probe_edge_verify:4,4,DOWN,5` => `(4,5).north` confirmed blocked `5/5`
     - `probe_edge_verify:4,3,RIGHT,5` => `(5,3).west` confirmed blocked `5/5`
+
+## 2026-06-01 Hook-fix dig smoke test
+
+- Hook cleanup held during live work; no fresh `unsupported suppressOutput`
+  spam appeared while running the bridged-side dig.
+- Fresh live baseline after the restart:
+  - `POSITION map=0x1A x=3 y=14`
+  - `RUNTIME_BLOCKS map=0x1A none`
+  - `PATH_STATE target=nil map=0x1A runtime_count=0`
+- Hidden bridge remained live from the southwest side:
+  - `probe_edge_verify:3,14,RIGHT,5` =>
+    `moved=6 blocked=0 classification=suspect_passable_model_mismatch`
+  - follow-up `probe_edge:UP` from `(4,14)` moved to `(4,13)`
+- Current clean bridged-side runtime blockers reconfirmed this session:
+  - `(7,7).west`, `(7,8).west`, `(7,9).west`
+- Mixed direct verifier, still unpromoted:
+  - `(6,10).north` via `probe_edge_verify:6,9,DOWN,5` =>
+    `moved=3 blocked=2 classification=mixed`
+- Short harvest with the `x=7` trio active reached the next west-wall family:
+  - `(5,10).west` hit `blocked=2 moved=0 classification=blocked_only`
+  - `(5,11).west` hit `blocked=1 moved=0 classification=blocked_only`
+  - `(4,11).north` stayed noisy after seam retry; do not promote
+- Latest interruption state:
+  - Druinlord battle started at `POSITION map=0x1A x=4 y=11`
+  - runtime blockers still active in-session:
+    `(7,7).west`, `(7,8).west`, `(7,9).west`
+  - by log inspection only, the fight resolved normally:
+    Druinlord defeated for `+20 EXP` and `+64 GOLD`, then field logging resumed
+  - per user instruction, no further route commands were queued after combat
+- Follow-up live continuation after the user-cleared fight:
+  - user-ran direct verifier confirmed `(5,11).west` cleanly:
+    `probe_edge_verify:4,11,RIGHT,5` =>
+    `moved=0 blocked=5 classification=confirmed_blocked`
+  - after runtime injection, planner from `(4,11)` rerouted to
+    `1 north, 6 east, 1 north`
+  - the tempting sibling `(5,10).west` was disproved as a clean blocker:
+    `probe_edge_verify:4,10,RIGHT,5` was interrupted by battle, but its first
+    attempt moved cleanly into `(5,10)` before the encounter
+  - stronger direct confirmations from the same cluster:
+    - `(6,10).west` via `probe_edge_verify:5,10,RIGHT,5`
+      => `moved=0 blocked=5 classification=confirmed_blocked`
+    - `(5,11).north` via `probe_edge_verify:5,10,DOWN,5`
+      => `moved=0 blocked=5 classification=confirmed_blocked`
+    - `(6,10).north` via `probe_edge_verify:6,9,DOWN,5`
+      => `moved=0 blocked=5 classification=confirmed_blocked`
+  - current clean runtime set after those promotions:
+    - `(7,7).west`, `(7,8).west`, `(7,9).west`
+    - `(6,10).north,west`
+    - `(5,11).north,west`
+  - once the `5,10/5,11/6,10` cluster was sealed, planner from `(6,9)` shifted
+    to a new route family:
+    `Path: 3 north, 4 east, 3 south`
+  - short harvest on that new route reached much farther east/up than before:
+    - moved through `(6,8)`, `(6,7)`, `(6,6)`, `(6,5)`, `(6,4)`,
+      `(7,4)`, `(8,4)`, `(9,4)`
+    - new route-only blocked candidates emerged:
+      - `(7,5).west` reached `blocked=2 moved=0 classification=blocked_only`
+      - `(10,4).west` reached `blocked=1 moved=0 classification=blocked_only`
+  - latest interruption state:
+    - Wolflord battle started at `POSITION map=0x1A x=9 y=4`
+    - runtime blockers remained the five-cell set above
+    - best next clean resume after combat is to continue from `(9,4)` and
+      prioritize direct rechecks of `(10,4).west` and then `(7,5).west`
+- Lower-right bypass continuation after `(10,4).west`:
+  - direct verifier confirmed `(10,4).west` cleanly:
+    `probe_edge_verify:9,4,RIGHT,5` =>
+    `moved=0 blocked=5 classification=confirmed_blocked`
+  - after promoting that, the route successively exposed and confirmed:
+    - `(9,6).north` via `probe_edge_verify:9,5,DOWN,5`
+    - `(10,5).west` via `probe_edge_verify:9,5,RIGHT,5`
+    - `(8,6).north` via `probe_edge_verify:8,5,DOWN,5`
+    - `(7,5).east` via `probe_edge_verify:8,5,LEFT,5`
+    - `(9,10).west` via `probe_edge_verify:8,10,RIGHT,5`
+    - `(9,9).west` via `probe_edge_verify:8,9,RIGHT,5`
+    - `(13,9).south` via `probe_edge_verify:13,10,UP,5`
+    - `(12,10).east` via `probe_edge_verify:13,10,LEFT,5`
+  - already-confirmed siblings reused in this same family:
+    - `(10,10).south`
+    - `(12,10).south`
+  - current larger runtime set around the lower-right bypass is now:
+    - `(10,4).west`
+    - `(10,5).west`
+    - `(9,6).north`
+    - `(8,6).north`
+    - `(7,5).east`
+    - `(9,8).west`
+    - `(9,9).west`
+    - `(9,10).west`
+    - `(10,10).south`
+    - `(12,10).east,south`
+    - `(13,9).south`
+    - plus the earlier bridge-side set:
+      `(7,7).west`, `(7,8).west`, `(7,9).west`,
+      `(6,10).north,west`, `(5,11).north,west`
+  - important negative / mixed signals in this family:
+    - `(8,4).south` stayed noisy and should remain unmodeled
+    - `(10,11).west`, `(11,11).west`, `(12,11).west`, `(13,11).west` all
+      looked noisy/passable after seam retry; do not promote
+    - direct `probe_edge_verify:11,11,UP,5` was interrupted by battle, but
+      attempts 3 and 4 moved cleanly into `(11,10)` before combat:
+      treat `(11,10).south` as likely passable, not blocked, until rechecked
+  - strongest remaining unverified live blocker:
+    - `(9,10).south` from `probe_edge_verify`-equivalent route evidence is now
+      up to `blocked=10 moved=0 classification=blocked_only`
+  - latest interruption state:
+    - Specter battle started at `POSITION map=0x1A x=11 y=11`
+    - stats remained stable at battle start:
+      `HP 64/70 MP 49/57 LV 13 STR=0x34 AGI=0x2B ATK=0x48 DEF=0x39`
+    - best next clean resume after combat is:
+      `probe_edge_verify:9,11,UP,5`
+      and only then re-evaluate the `11,11 -> UP` branch if needed
+- Post-combat continuation from the Specter stop:
+  - user-ran direct verifier cleanly confirmed `(9,10).south`:
+    - `probe_edge_verify:9,11,UP,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - runtime promotion added the second blocked approach on the same cell:
+      `RUNTIME_BLOCK map=0x1A x=9 y=10 key=9,10 dirs=south,west`
+  - fresh planner from the live verifier origin still had a route:
+    - `debug_pathfind_to:10,9` from `(9,11)` =>
+      `Path: 2 east, 2 north, 1 west`
+  - short autowalk harvest on that reroute clarified the next branch:
+    - `(10,11)->RIGHT` into `(11,11)` again stayed noisy/passable after
+      seam retry; do not promote `(11,11).west`
+    - `(11,11)->UP` into `(11,10)` now built much stronger route evidence:
+      `blocked=10 moved=0 classification=blocked_only`
+    - with that temporary reroute pressure active, planner from `(11,11)`
+      swung to `Path: 3 east, 2 north, 4 west`
+    - right-side detour findings from that new path:
+      - `(13,11)->RIGHT` into `(14,11)` reached
+        `blocked=2 moved=0 classification=blocked_only`
+      - `(13,11)->UP` into `(13,10)` moved cleanly
+      - `(13,10)->RIGHT` into `(14,10)` reached
+        `blocked=1 moved=0 classification=blocked_only`
+  - latest interruption state:
+    - battle started at `POSITION map=0x1A x=13 y=10`
+    - strongest next clean direct recheck is now `probe_edge_verify:11,11,UP,5`
+    - if staying local to the stop point, the immediate sibling lead is
+      `probe_edge_verify:13,10,RIGHT,5`
+- Post-battle continuation from the `(13,10)` stop:
+  - user-ran direct verifier cleanly confirmed `(11,10).south`:
+    - `probe_edge_verify:11,11,UP,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - runtime promotion added:
+      `RUNTIME_BLOCK map=0x1A x=11 y=10 key=11,10 dirs=south`
+  - user-ran sibling verifier stayed genuinely mixed:
+    - `probe_edge_verify:13,10,RIGHT,5` =>
+      `moved=2 blocked=3 classification=mixed`
+    - keep `(14,10).west` unpromoted despite the blocked-majority split
+  - with `(11,10).south` active, fresh planner from `(13,10)` still found a
+    detour:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 2 south, 1 east, 3 north, 4 west`
+  - live autowalk from `(13,10)` adapted around the new blocker and yielded:
+    - initial stair-target plan snapshot:
+      `Path: 1 east, 1 north, 4 west`
+    - immediate first step `(13,10)->RIGHT` hit
+      `SEAM_OBSERVATION cell=(14,10) approach=west result=blocked`
+      and forced a reroute; treat this as stronger route pressure, but not as
+      enough to override the mixed direct verifier
+    - rerouted branch moved cleanly `(13,10)->DOWN` to `(13,11)`
+    - next step `(13,11)->RIGHT` into `(14,11)` reached
+      `blocked=3 moved=0 classification=blocked_only`
+      before a battle interrupted the seam-retry finish
+  - latest interruption state:
+    - Drollmagi battle started at `POSITION map=0x1A x=13 y=11`
+    - best next clean direct recheck is now `probe_edge_verify:13,11,RIGHT,5`
+    - `(14,10).west` remains secondary until it stops coming back mixed
+- Post-battle continuation from the `(13,11)` stop:
+  - user-ran direct verifier cleanly confirmed `(14,11).west`:
+    - `probe_edge_verify:13,11,RIGHT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+  - user then reran the older mixed sibling and it also cleaned up:
+    - `probe_edge_verify:13,10,RIGHT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - so `(14,10).west` is now promotable after all; the earlier mixed result
+      should be treated as stale/contaminated, not authoritative
+  - after injecting both right-side walls, planner from `(13,10)` still had a
+    live loop:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 2 south, 1 east, 3 north, 4 west`
+  - the follow-up autowalk eventually swung back through the upper-left and
+    produced one more clean direct confirmation:
+    - `probe_edge_verify:8,7,RIGHT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(9,7).west`
+  - current larger runtime set now includes these three additions:
+    - `(14,11).west`
+    - `(14,10).west`
+    - `(9,7).west`
+  - fresh autowalk from the verifier side `(8,7)` still did not die:
+    - planner before harvest:
+      `debug_pathfind_to:10,9` => `Path: 1 north, 2 east, 3 south`
+    - strongest new route-only blocker after that harvest:
+      - `(8,7)->UP` into `(8,6)` reached
+        `blocked=8 moved=0 classification=blocked_only`
+        suggesting `(8,6).south`
+    - next-best siblings from the same loop:
+      - `(8,7)->LEFT` into `(7,7)` reached
+        `blocked=4 moved=0 classification=blocked_only`
+      - `(8,8)->LEFT` into `(7,8)` reached
+        `blocked=4 moved=0 classification=blocked_only`
+    - weaker/newer south-side clutter from the same run:
+      - `(13,12).north` reached `blocked=2 moved=0`
+      - `(12,12).north` reached `blocked=2 moved=0`
+      - `(7,9).east` only reached `blocked=1 moved=0` before battle
+  - latest interruption state:
+    - battle started at `POSITION map=0x1A x=8 y=9`
+    - best next clean direct recheck is now `probe_edge_verify:8,7,UP,5`
+    - if that confirms, follow with `probe_edge_verify:8,7,LEFT,5` and then
+      `probe_edge_verify:8,8,LEFT,5`
+- Post-battle continuation from the `(8,9)` stop:
+  - fresh baseline survived exactly:
+    - `POSITION map=0x1A x=8 y=9`
+    - `RUNTIME_BLOCKS map=0x1A count=20`
+  - direct verifier on the old strongest lead did not clean up:
+    - `probe_edge_verify:8,7,UP,5` =>
+      `moved=2 blocked=3 classification=mixed`
+    - treat `(8,6).south` as a real unresolved anomaly, not promotable data
+  - the two stronger east-side siblings did clean up immediately:
+    - `probe_edge_verify:8,7,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(7,7).east`
+    - `probe_edge_verify:8,8,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(7,8).east`
+    - follow-up planner from `(8,8)` still stayed alive:
+      `debug_pathfind_to:10,9` =>
+      `Path: 2 south, 1 west, 4 north, 3 east, 3 south`
+  - short autowalk from that cleaner state then strengthened the remaining
+    upper-left seam and exposed the next sibling:
+    - `(8,6).south` climbed from route-only `blocked=10 moved=0`
+    - `(7,9).east` strengthened to `blocked=3 moved=0`
+  - the third east-side sibling also cleaned up on direct retry:
+    - `probe_edge_verify:8,9,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(7,9).east`
+    - after injecting it, planner from `(8,9)` still stayed alive:
+      `debug_pathfind_to:10,9` => `Path: 3 north, 2 east, 3 south`
+  - a second fresh autowalk from `(8,9)` still refused to die:
+    - `(8,6).south` climbed further to
+      `blocked=12 moved=0 classification=blocked_only`
+    - lower-left detour `(8,10)->LEFT` into `(7,10)` appeared as a new seam:
+      `blocked=2 moved=0 classification=blocked_only`
+    - deeper reroute moved cleanly `(8,11)->LEFT` to `(7,11)`:
+      `SEAM_OBSERVATION cell=(7,11) approach=east result=moved`
+  - direct verifier on the new lower-left seam stayed mixed:
+    - `probe_edge_verify:8,10,LEFT,5` =>
+      `moved=1 blocked=4 classification=mixed`
+    - important nuance: this seam has no static or runtime directional block,
+      so the block half is engine behavior, not map-model support
+  - the follow-up direct test from the newly opened lower tile looked
+    promising before combat:
+    - `probe_edge_verify:7,11,UP,5` moved on attempts 1 and 2 into `(7,10)`
+    - attempt 3 was cut off by battle start, so result is only
+      `classification=inconclusive_interrupted`
+  - latest interruption state:
+    - Druinlord battle started at `POSITION map=0x1A x=7 y=11`
+    - battle later appears to have resolved by log inspection
+      (`+20 EXP`, `+66 GOLD`), but no post-battle field probe or movement was
+      queued after that
+    - best next clean rerun is now `probe_edge_verify:7,11,UP,5`
+    - keep `(7,10).east` secondary and `(8,6).south` flagged as the bigger
+      unresolved anomaly
+- 2026-06-01 teleport/verifier code dig:
+  - reruns of `probe_edge_verify:7,11,UP,5` and `probe_edge_verify:8,10,LEFT,5`
+    both repeated the same pattern: attempt 1 moved from the live start tile,
+    then teleported retries blocked on `raw_hold_timeout` with
+    `mismatch=blocked_despite_open_preview`
+  - comparison against clean repeated-start passes showed the issue is not just
+    odd overworld shadow bytes; healthy open seams can also teleport back with
+    weird shadow state and still move 5/5 or 6/6
+  - working hypothesis: internal repeated-start teleport does not fully
+    reconstruct the natural arrival context for some stateful seams, so later
+    verifier attempts can self-contaminate even when the first live attempt
+    moved cleanly
+  - code patch landed:
+    - new `edge_verify_classifier.lua`
+    - `probe_edge_verify` now promotes this exact signature to
+      `classification=inconclusive_teleport_artifact` instead of ordinary
+      `mixed`
+    - `EDGE_VERIFY_RESULT` now logs
+      `teleport_artifact_suspected`, `first_attempt_status`,
+      `blocked_after_move`, `blocked_after_move_mismatch`, and
+      `moved_after_blocked`
+  - validation:
+    - new `test_edge_verify_classifier.lua` passes
+    - `python3 run_tests.py --allow-missing-speech-dep` kept all Lua unit tests
+      green; the only runner red remains the longstanding standalone `luac`
+      refusal on `main.lua` (`main function has more than 200 local variables`)
+- 2026-06-01 post-fix B3 continuation from the clean reset baseline:
+  - fresh field heartbeat survived after the Lua 5.1 local-limit fix:
+    - `POSITION map=0x1A x=8 y=10`
+    - `RUNTIME_BLOCKS map=0x1A none`
+    - `PATH_STATE target=nil map=0x1A runtime_count=0`
+  - direct recheck on the old lower-left mixed seam cleaned up immediately:
+    - `probe_edge_verify:8,10,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - this is now clean engine-block evidence for `(7,10).east`, not teleport
+      contamination
+  - direct rerun on the old likely-passable seam did exactly what the new
+    classifier was built to expose:
+    - `probe_edge_verify:7,11,UP,5` =>
+      `moved=3 blocked=2 classification=inconclusive_teleport_artifact`
+    - attempts 1-3 moved from the live start tile into `(7,10)`
+    - attempts 4-5 only blocked after teleport resets with
+      `mismatch=blocked_despite_open_preview`
+    - treat `(7,10).south` as likely passable/harness-noise, not as a blocker
+  - restored the current B3 runtime edge set after the reset and added the new
+    mirror for `(7,10).east`:
+    - `add_blocked_edge:8,10,LEFT`
+    - `report_runtime_blocks` then read back `count=20`
+  - with that live blocker set, the planner from real `(7,11)` stayed alive:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 3 north, 3 east, 1 south`
+  - live `auto_walk:10,9` from `(7,11)` immediately treated `(7,10).south` as
+    a temporary blocked step, then rerouted around it instead of dying:
+    - first blocked step:
+      `SEAM_OBSERVATION map=0x1A cell=(7,10) approach=south result=blocked`
+    - temp route block:
+      `AUTO_WALK_TEMP_BLOCK map=0x1A from=(7,11) dir=up dest=(7,10)`
+    - reroute snapshot:
+      `Path: 1 east, 3 north, 2 east, 1 south`
+  - the rerouted walk made real forward progress before combat:
+    - `(8,11)` west approach moved cleanly
+    - `(8,10)` south approach moved cleanly
+    - `(8,9)` south approach moved cleanly
+  - the next fresh suspect seam is now one tile north of the battle stop:
+    - from `(8,9)`, queued-route `(8,9)->UP` into `(8,8)` blocked once
+    - `SEAM_OBSERVATION map=0x1A cell=(8,8) approach=south result=blocked`
+    - a seam retry had started, but a battle interrupted before the retry
+      finished, so `(8,8).south` is not promotable yet
+  - latest interruption state:
+    - Specter battle started at `POSITION map=0x1A x=8 y=9`
+    - `PATH_STATE` target remained `Lower Stairs Down to B4`
+    - best next direct check after combat is `probe_edge_verify:8,9,UP,5`
+- 2026-06-01 post-Specter follow-up around `(8,9)/(8,11)`:
+  - user follow-up probe was not the planned `(8,9)->UP` seam check; instead it
+    directly tested the reverse nearby edge:
+    - `probe_edge_verify:8,10,DOWN,5` into `(8,11)` escalated to a stability
+      recheck and finished
+      `moved=6 blocked=0 classification=confirmed_passable`
+    - this cleanly confirms `(8,11).north` open and leaves the hero on field
+      at `(8,11)`
+  - fresh baseline after that probe:
+    - `POSITION map=0x1A x=8 y=11`
+    - `RUNTIME_BLOCKS map=0x1A count=20`
+    - `PATH_STATE target=Lower Stairs Down to B4 type=stair x=10 y=9 map=0x1A`
+  - planner from real `(8,11)` stayed alive, but only by honoring two
+    lingering temporary route blocks from the interrupted autowalk:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 2 west, 1 north, 1 east, 2 north, 3 east, 1 south`
+    - `ROUTE_PLAN_SNAPSHOT ... route_temp_blocks=2`
+    - one of those temp constraints is the old `(7,10).south` reroute memory;
+      another is the `(8,8).south` suspect from the interrupted climb
+  - direct rerun on the actual fresh seam then repeated the “looks open before
+    combat” pattern:
+    - `probe_edge_verify:8,9,UP,5` moved into `(8,8)` on attempts 1-3
+    - a Specter battle started at `POSITION map=0x1A x=8 y=9` before attempts
+      4-5 settled
+    - final result:
+      `moved=3 blocked=0 interrupted=1 classification=inconclusive_interrupted`
+    - this is not evidence to promote `(8,8).south` as blocked
+  - latest interruption state:
+    - Specter battle in progress at `POSITION map=0x1A x=8 y=9`
+    - best next clean recheck after combat remains `probe_edge_verify:8,9,UP,5`
+    - if it still moves or stays interrupted/mixed, continue route harvest
+      instead of injecting a blocker there
+- 2026-06-01 noisy-probe cleanup plus HP observation:
+  - the user noted two small HP increases while probing and suspected a hidden
+    healing-cell mechanic
+  - repo-side decode of the live equipment byte from `stat_ram` / `snapshot`
+    shows:
+    - weapon = `Broad Sword`
+    - armor = `Magic Armor`
+    - shield = `Large Shield`
+  - this fits vanilla DW1 behavior better than terrain healing:
+    - Magic Armor restores 1 HP every 4 steps on the field
+    - treat the observed `53 -> 55` during repeated probe movement as expected
+      armor regen, not map evidence
+  - the noisy `probe_edge_verify:8,9,UP,5` eventually cleaned up fully:
+    - first resumed attempt after a prior Specter interruption moved 3/5 before
+      another battle
+    - later full rerun at frames `793860-794738` escalated to stability recheck
+      and finished
+      `moved=6 blocked=0 classification=confirmed_passable`
+    - `(8,8).south` is now confirmed passable; the lingering `classification=noisy`
+      seam observation only reflects one older blocked sample before the clean
+      rerun
+  - fresh baseline after that cleanup:
+    - `POSITION map=0x1A x=8 y=8`
+    - `RUNTIME_BLOCKS map=0x1A count=20`
+    - `PATH_STATE target=Lower Stairs Down to B4 type=stair x=10 y=9 map=0x1A`
+  - shortest planner route from that confirmed-open tile:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 2 east, 1 south`
+  - important execution nuance:
+    - live `auto_walk:10,9` from `(8,8)` started with the same short route
+    - first step `(8,8)->RIGHT` into `(9,8)` hit a timing-retry temp block:
+      `AUTO_WALK_TEMP_BLOCK ... from=(8,8) dir=right dest=(9,8)`
+    - reroute then got sucked back into the old upper-left family:
+      `(8,7)->UP` temp-blocked, then `(8,10)->DOWN` noisy/moved, then
+      `(7,11)->UP` blocked again, finally drifting all the way to `(6,11)`
+  - latest interruption state:
+    - Druinlord battle started at `POSITION map=0x1A x=6 y=11`
+    - HP at battle start was `57 / 70`
+    - best next clean direct check is now `probe_edge_verify:8,8,RIGHT,5`
+      because that is the first unresolved failure on the shortest route to
+      the stair
+    - if staying local to the battle stop is preferred, immediate sibling
+      follow-up is `probe_edge_verify:6,11,UP,5`
+- 2026-06-01 short-route timing-retry cleanup:
+  - user follow-up probes settled the two outstanding direct checks exactly as
+    hoped:
+    - `probe_edge_verify:8,8,RIGHT,5` =>
+      `moved=6 blocked=0 classification=confirmed_passable`
+    - `probe_edge_verify:6,11,UP,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+  - fresh baseline after those probes:
+    - `POSITION map=0x1A x=6 y=11`
+    - `RUNTIME_BLOCKS map=0x1A count=20`
+    - `PATH_STATE target=nil map=0x1A runtime_count=20`
+  - planner from the real `(6,11)` stop still had a live route:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 2 east, 3 north, 2 east, 1 south`
+  - live autowalk then exposed the current harness issue more cleanly than the
+    earlier `(8,8)->RIGHT` run:
+    - `(7,11)->RIGHT` first published a blocked/noisy seam observation plus
+      `AUTO_WALK_TEMP_BLOCK ... source=timing_retry`, then the immediate
+      `seam_retry` moved into `(8,11)` and cleared the temp block
+    - seam-retry follow-up from `(8,11)` shortened to
+      `Path: 3 north, 2 east, 1 south`
+    - `(8,11)->UP` then produced the same timing-retry temp-block pattern
+      before a Wolflord battle interrupted at `POSITION map=0x1A x=8 y=11`
+  - root cause in code:
+    - `route_manager.on_blocked` was calling `observe_seam_result(...,"blocked")`
+      before it decided a queued-route timeout was just a timing-suspect seam
+      retry
+    - when the retry then succeeded, seam memory kept one fake blocked count
+      plus one moved count, downgrading good edges to `classification=noisy`
+  - code patch:
+    - delay the blocked seam observation for timing-suspect queued-route
+      timeouts until after `start_seam_bruteforce(...)` declines/fails
+    - successful timing retries now only contribute the later `moved`
+      observation and still keep their route-local temp block behavior
+  - regression added in `test_route_manager.lua`:
+    - after a successful timing retry, seam observation stays
+      `blocked_count=0 moved_count=1`
+      and seam summary stays `passable_only`, not `noisy`
+- verification:
+  - `lua5.1 test_route_manager.lua` passed after the patch
+  - `luac5.1 -p route_manager.lua test_route_manager.lua` passed
+  - `git diff --check` passed
+  - `python3 run_tests.py --allow-missing-speech-dep` passed aside from the
+    expected speech dependency warning for `accessible_output2`
+- next live step after the user clears the Wolflord and reloads `main.lua`
+  in FCEUX:
+  - re-baseline at `(8,11)`
+  - rerun `debug_pathfind_to:10,9` and `auto_walk:10,9`
+  - keep `probe_edge_verify:8,11,UP,5` as the local fallback if the route
+    still misbehaves before the stair
+
+- 2026-06-01 combat-interrupted seam-retry stale-temp-block bug:
+  - root-cause hypothesis confirmed live:
+    - after the Drollmagi resolved, fresh baseline came back at
+      `POSITION map=0x1A x=8 y=9`,
+      `RUNTIME_BLOCKS map=0x1A count=20`,
+      `PATH_STATE target=Lower Stairs Down to B4 ... runtime_count=20`
+    - from that exact live tile, both
+      `debug_pathfind_to:10,9` and `debug_pathfind_to_skip_npcs:10,9`
+      returned `No path found` with `route_temp_blocks=3`
+    - this was not an NPC issue and not fresh blocker evidence
+  - minimal live falsification test:
+    - sent manual `stop_auto_walk`
+    - `PATH_STATE` immediately cleared to nil
+    - reran `debug_pathfind_to:10,9`
+    - same live tile recovered to
+      `Path: 1 north, 2 east, 1 south`
+      with `route_temp_blocks=0`
+    - conclusion: stale route temp blocks from the interrupted autowalk were
+      poisoning later planner/debug calls
+  - code trace:
+    - `auto_step.update(false)` only treated `route_steps ~= nil` as a route
+      worth cancelling on `can_walk=false`
+    - during live autowalk, combat can hit while the active step source is
+      `seam_retry` after `clear_route()` already emptied `route_steps`
+    - that leaves `route_manager` holding temp-block/target context because it
+      never receives `route_cancelled`
+  - fix:
+    - added `queued_route_cancel_source()` in `auto_step.lua`
+    - `can_walk=false` now emits `route_cancelled` for queued-route-derived
+      contexts even when `route_steps` is already nil:
+      `queued_route`, `seam_retry`, queued-route pending repress, and
+      route-settle windows
+  - regression:
+    - added `can_walk_false_cancels_seam_retry_route_context` to
+      `test_auto_step.lua`
+    - verified red first:
+      `FAIL ... can_walk=false should cancel an active seam-retry step so route managers can clear stale temp blocks`
+    - green after patch:
+      `lua5.1 test_auto_step.lua` passed
+  - additional verification:
+    - `lua5.1 test_route_manager.lua` passed
+    - `luac5.1 -p auto_step.lua test_auto_step.lua route_manager.lua` passed
+    - `git diff --check` passed
+    - `python3 run_tests.py --allow-missing-speech-dep` passed aside from the
+      expected `accessible_output2` warning
+  - live status after code patch:
+    - FCEUX had not yet reloaded `main.lua`, so the fix was not active in the
+      running emulator during this session
+    - attempted follow-up `auto_walk:10,9` did not get fresh command
+      consumption before the log went idle, so no new map evidence was taken
+      from that point
+    - until reload, use `stop_auto_walk` as the manual workaround after any
+      combat-interrupted seam-retry/autowalk before trusting `debug_pathfind_*`
+      or `auto_walk`
+- 2026-06-01 post-patch live continuation after the user let autowalk run to combat:
+  - old resumed Specter battle resolved cleanly by log inspection:
+    - `+18 EXP`, `+61 GOLD`
+    - field heartbeat later confirmed the live script was still polling
+  - surprising state change after that battle:
+    - baseline came back at `POSITION map=0x1A x=10 y=11`
+    - `RUNTIME_BLOCKS map=0x1A none`
+    - `PATH_STATE target=Lower Stairs Down to B4 ... runtime_count=0`
+    - so the current FCEUX/script session had lost the in-memory B3 runtime
+      blocker set even though the route target survived
+  - reseeded the current B3 runtime set from handoff plus the user-confirmed
+    `add_blocked_edge:6,11,UP`:
+    - `report_runtime_blocks` returned `count=20`
+    - note: `count` stayed 20 because `(6,10).south` merged into the existing
+      `cell=(6,10)` entry rather than creating a new cell
+  - fresh planner after reseed:
+    - `debug_pathfind_to:10,9` from live `(10,11)` =>
+      `Path: 3 west, 5 north, 3 east, 3 south`
+    - live `auto_walk:10,9` from the same stop planned slightly cleaner under
+      parked-NPC mode:
+      `Path: 2 west, 3 north, 2 east, 1 south`
+  - live route progress under restored blockers:
+    - `(10,11)->LEFT` was timing-suspect on the queued step but the seam retry
+      moved cleanly into `(9,11)`; `(9,11).east` remains `passable_only`
+    - autowalk then moved cleanly `(9,11)->LEFT` to `(8,11)`,
+      `(8,11)->UP` to `(8,10)`, `(8,10)->UP` to `(8,9)`, and seam-retry from
+      `(8,9)->UP` again moved into `(8,8)`
+    - seam-retry follow-up from `(8,8)` again shortened to
+      `Path: 2 east, 1 south`
+  - key contradiction strengthened:
+    - the older direct verifier still says
+      `probe_edge_verify:8,8,RIGHT,5` => `moved=6 blocked=0`
+    - but the natural route-context seam now failed there again:
+      - current run added a third live blocked seam-retry at `(8,8)->RIGHT`
+        into `(9,8)`
+      - seam memory is now
+        `SEAM_OBSERVATION map=0x1A cell=(9,8) approach=west result=blocked blocked=3 moved=0 classification=blocked_only source=seam_retry_block`
+    - this is no longer ordinary timing noise; it looks like a genuine
+      route-context / arrival-context contradiction between teleported verify
+      and natural live movement
+    - do not promote `(9,8).west` either way yet
+  - additional live-only blocked siblings strengthened during the same run:
+    - `(5,11).east` reached `blocked=2 moved=0 classification=blocked_only`
+    - `(6,12).north` reached `blocked=2 moved=0 classification=blocked_only`
+    - both are still route-context evidence only, not direct-verifier cleanups
+  - later reroute wandered east across row 11 before the next stop:
+    - clean moved seams observed through `(7,11)`, `(8,11)`, `(9,11)`,
+      `(10,11)`, `(11,11)`, and `(12,11)` from the west
+    - next fresh timing-suspect seam at the far side was `(12,11)->RIGHT`
+      into `(13,11)`, but battle interrupted before the seam-retry result
+      settled
+  - current stop condition:
+    - new Specter battle started at `POSITION map=0x1A x=11 y=11`
+    - HP at battle start was `69 / 70`
+    - I manually sent `stop_auto_walk` during battle to avoid queueing further
+      route work
+    - `report_runtime_blocks` during battle still showed `count=20`
+    - `report_path_state` during battle now shows `target=nil` because
+      `stop_auto_walk` cleared the active route target
+  - best next live step after the user clears the battle:
+    - re-baseline with `report_position`, `report_runtime_blocks`,
+      `report_path_state`
+    - if runtime blocks are empty again, reseed the B3 set plus
+      `add_blocked_edge:6,11,UP`
+    - because target is now nil, rerun `debug_pathfind_to:10,9` from the live
+      `(11,11)` stop before deciding whether to launch another `auto_walk`
+    - if the route naturally reaches `(8,8)` again, prefer a live/manual
+      bracket on `RIGHT` over another teleport-based verifier rerun
+
+- 2026-06-02 morning reload continuation on B3:
+  - fresh live baseline after the script reload:
+    - `launcher_probe:codex_b3_resume` consumed cleanly
+    - `POSITION map=0x1A x=8 y=7`
+    - `RUNTIME_BLOCKS map=0x1A none`
+    - `PATH_STATE target=nil map=0x1A runtime_count=0`
+  - clean seam confirmations from the same reload:
+    - earlier fresh verifier already had
+      `probe_edge_verify:8,7,RIGHT,5` =>
+      `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+      for `(9,7).west`
+    - same reload also now cleanly confirmed
+      `probe_edge_verify:8,7,UP,5` =>
+      `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+      for `(8,6).south`
+  - reseed action:
+    - injected the standing B3 runtime set from handoff plus
+      `add_blocked_edge:6,11,UP` and the newly promoted
+      `add_blocked_edge:8,7,UP`
+    - `report_runtime_blocks` still came back `count=20`
+    - important nuance: count stayed 20 because `(6,11).UP` merged into
+      existing cell `(6,10)` and `(8,7).UP` merged into existing cell `(8,6)`
+      instead of adding brand-new cells
+  - fresh planner after reseed:
+    - `debug_pathfind_to:10,9` from live `(8,7)` =>
+      `Path: 1 south, 2 east, 1 south`
+  - live `auto_walk:10,9` harvest under the reseeded set:
+    - queued-route `(8,7)->DOWN` timing-blocked, but seam retry moved into
+      `(8,8)` and cleared the temp block
+    - follow-up from `(8,8)` again hit the known contradiction:
+      `(8,8)->RIGHT` into `(9,8)` failed on seam retry with
+      `SEAM_OBSERVATION ... cell=(9,8) approach=west result=blocked blocked=2 moved=0 classification=blocked_only`
+    - treat `(9,8).west` as still contradictory between natural arrival and
+      the older teleported verifier; do not promote either state yet
+  - new route-context-only blocker pressure from the same run:
+    - `(7,10).south` logged
+      `SEAM_OBSERVATION ... cell=(7,10) approach=south result=blocked blocked=1 moved=0 classification=blocked_only`
+    - `(5,11).east` logged
+      `SEAM_OBSERVATION ... cell=(5,11) approach=east result=blocked blocked=1 moved=0 classification=blocked_only`
+    - `(6,12).north` logged
+      `SEAM_OBSERVATION ... cell=(6,12) approach=north result=blocked blocked=1 moved=0 classification=blocked_only`
+    - all three remain route-context evidence only for now
+  - route progress after those detours:
+    - reroute crossed row 11 cleanly through
+      `(7,11) -> (8,11) -> (9,11) -> (10,11) -> (11,11)`
+    - next fresh frontier became `(11,11)->RIGHT` into `(12,11)`
+    - battle interrupted that seam before the retry result settled
+  - stop condition:
+    - Drollmagi battle started at `POSITION map=0x1A x=11 y=11`
+    - HP at battle start was `70 / 70`
+    - no further route commands were queued into combat
+  - best next live step:
+    - after the battle, re-baseline with
+      `report_position report_runtime_blocks report_path_state`
+    - if runtime blocks somehow fell out again, reseed from the updated
+      handoff list
+    - then run `probe_edge_verify:11,11,RIGHT,5`
+    - if it moves, go back to `debug_pathfind_to:10,9` and `auto_walk:10,9`
+
+- 2026-06-02 post-Drollmagi continuation:
+  - fresh direct confirmation:
+    - `probe_edge_verify:11,11,RIGHT,5` finished
+      `attempts=6 moved=6 blocked=0 classification=confirmed_passable
+      stability_recheck=true`
+    - treat `(12,11).west` as cleanly open
+  - route effect of that passable seam:
+    - from live `(12,11)`, `debug_pathfind_to:10,9` still preferred
+      `Path: 4 west, 3 north, 2 east, 1 south`
+    - live `auto_walk:10,9` followed that and again got pulled back into the
+      old center loop rather than opening a direct east-side finish
+    - no new code bug showed up in that bounce; it behaved like route evidence,
+      not harness corruption
+  - west/lower pocket cleanup after that bounce:
+    - `probe_edge_verify:7,11,UP,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(7,10).south`
+    - promoted with `add_blocked_edge:7,11,UP`
+      (merged into existing cell `(7,10)`, so runtime cell count did not rise)
+    - `probe_edge_verify:6,11,LEFT,5` =>
+      `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+      with `teleport_artifact_suspected=true`
+    - interpret `(5,11).east` as likely passable / not safe to promote blocked
+    - `probe_edge_verify:6,11,DOWN,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(6,12).north`
+    - promoted with `add_blocked_edge:6,11,DOWN`
+  - runtime-set consequence:
+    - after adding `(6,12).north`, `report_runtime_blocks` rose to
+      `RUNTIME_BLOCKS map=0x1A count=21`
+    - important live rows now include:
+      - `(7,10)` with `dirs=east,south`
+      - new cell `(6,12)` with `dirs=north`
+  - planner shift after the two clean promotions:
+    - from live `(6,11)`, `debug_pathfind_to:10,9` changed to
+      `Path: 2 east, 3 north, 2 east, 1 south`
+    - this is the first clean route family change from that lower-left stop in
+      a while, so the blocker promotions were actually useful
+  - live continuation under the 21-edge set:
+    - `auto_walk:10,9` moved cleanly `(6,11)->(7,11)->(8,11)->(8,10)`
+    - it was then attempting `(8,10)->UP` into `(8,9)` when combat fired
+    - because `(8,10)->UP` has already moved repeatedly across many runs, do
+      not treat the interruption itself as new seam evidence
+  - stop condition:
+    - Wraith Knight battle started at `POSITION map=0x1A x=8 y=10`
+    - HP at battle start was `63 / 70`
+    - no further route commands were queued into combat
+  - best next live step:
+    - after the battle, re-baseline with
+      `report_position report_runtime_blocks report_path_state`
+    - if the 21-edge runtime set is still present, rerun
+      `debug_pathfind_to:10,9` and then `auto_walk:10,9`
+    - if runtime blocks have dropped, reseed from the updated handoff list
+
+- 2026-06-02 late-morning natural-probe breakthrough on `(9,8).west`:
+  - battle after the row-12 sweep resolved cleanly:
+    - Druinlord defeated for `+20 EXP`, `+73 GOLD`
+    - fresh baseline came back at
+      `POSITION map=0x1A x=9 y=11`,
+      `RUNTIME_BLOCKS map=0x1A count=21`,
+      `PATH_STATE target=nil map=0x1A runtime_count=21`
+  - row-12 strip cleanup:
+    - `probe_edge_verify:9,11,DOWN,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+      for `(9,12).north`
+    - promoted with `add_blocked_edge:9,11,DOWN`
+    - runtime set rose to `count=22`
+    - planner from live `(9,11)` still wanted the center family:
+      `debug_pathfind_to:10,9` => `Path: 1 west, 3 north, 2 east, 1 south`
+  - contradiction-resolution test design:
+    - instead of another teleport-based verifier on `(8,8)->RIGHT`, used a
+      natural route:
+      - `auto_walk:8,8` from live `(9,11)` reached `(8,8)` cleanly via
+        `(8,11) -> (8,10) -> (8,9) -> (8,8)`
+      - then issued a single-step live `probe_edge:RIGHT`
+  - key result:
+    - live non-teleport `probe_edge:RIGHT` from `(8,8)` blocked on the seam
+      into `(9,8)`
+    - log:
+      `EDGE_PROBE_RESULT map=0x1A from=(8,8) dir=right dest=(9,8) status=blocked ... reason=raw_hold_timeout`
+    - this matched the repeated natural autowalk seam-retry failures and broke
+      the old tie with the teleported direct verifier result
+  - promotion:
+    - promoted `add_blocked_edge:8,8,RIGHT`
+    - runtime set rose to `RUNTIME_BLOCKS map=0x1A count=23`
+  - planner effect:
+    - from live `(8,8)`, `debug_pathfind_to:10,9` changed sharply from the old
+      short center route to:
+      `Path: 4 south, 6 east, 3 north, 4 west`
+    - this is the strongest evidence yet that the center knot was genuinely
+      depending on the `(9,8).west` contradiction
+  - live continuation under the 23-edge set:
+    - `auto_walk:10,9` followed the new long family and did not immediately
+      fall back into the old short contradiction
+    - it strengthened the row-12 south strip instead:
+      - `(13,12).north` => `blocked=3 moved=0 classification=blocked_only`
+      - `(12,12).north` => `blocked=3 moved=0 classification=blocked_only`
+      - `(11,12).north` => `blocked=2 moved=0 classification=blocked_only`
+      - `(10,12).north` was in progress when combat fired
+  - stop condition:
+    - battle started at `POSITION map=0x1A x=10 y=11`
+    - HP at battle start was `65 / 70`
+    - no further route commands were queued into combat
+  - best next live step:
+    - after the battle, re-baseline with
+      `report_position report_runtime_blocks report_path_state`
+    - if the 23-edge set is still present, run
+      `probe_edge_verify:10,11,DOWN,5`
+    - if that confirms, continue marching west/east across the row-12 strip as
+      needed: `11,11->DOWN`, then `12,11->DOWN`, then `13,11->DOWN`
+
+- 2026-06-02 noon row-12 strip closure and upper-left reroute:
+  - fresh baseline after the user-cleared fight:
+    - `POSITION map=0x1A(Garin's Grave B3) x=10 y=11`
+    - `RUNTIME_BLOCKS map=0x1A count=23`
+    - `PATH_STATE target=nil map=0x1A runtime_count=23`
+  - direct strip cleanup:
+    - `probe_edge_verify:10,11,DOWN,5` =>
+      `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:10,11,DOWN`
+    - runtime set rose to `count=24`
+    - planner from live `(10,11)` changed to
+      `Path: 3 east, 1 south, 1 east, 3 north, 4 west`
+    - `auto_walk:10,9` under the 24-edge set:
+      - moved cleanly `(10,11)->(11,11)->(12,11)->(13,11)`
+      - `(13,11)->DOWN` strengthened to
+        `blocked=4 moved=0 classification=blocked_only`
+      - `(12,11)->DOWN` strengthened to
+        `blocked=4 moved=0 classification=blocked_only`
+      - `(11,11)->DOWN` strengthened to
+        `blocked=3 moved=0 classification=blocked_only`
+      - `(8,11)->DOWN` later strengthened to
+        `blocked=4 moved=0 classification=blocked_only`
+      - route then cycled enough that it was better to stop autowalk and turn
+        those into direct verifier checks
+  - follow-up direct verifier chain:
+    - `probe_edge_verify:11,11,DOWN,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:11,11,DOWN`
+    - runtime set rose to `count=25`
+    - planner from live `(11,11)` changed to
+      `Path: 2 east, 1 south, 1 east, 3 north, 4 west`
+    - `probe_edge_verify:13,11,DOWN,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:13,11,DOWN`
+    - runtime set rose to `count=26`
+    - planner from live `(13,11)` changed to
+      `Path: 1 west, 1 south, 2 east, 3 north, 4 west`
+    - `probe_edge_verify:12,11,DOWN,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:12,11,DOWN`
+    - runtime set rose to `count=27`
+    - planner from live `(12,11)` changed to
+      `Path: 4 west, 1 south, 6 east, 3 north, 4 west`
+    - `probe_edge_verify:8,11,DOWN,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:8,11,DOWN`
+    - runtime set rose to `count=28`
+    - planner from live `(8,11)` changed to
+      `Path: 3 west, 5 north, 5 east, 3 south`
+  - interpretation:
+    - row 12 is now heavily closed from the north side:
+      - existing: `(6,12).north`, `(9,12).north`
+      - newly promoted: `(8,12).north`, `(10,12).north`,
+        `(11,12).north`, `(12,12).north`, `(13,12).north`
+    - the lower/right south strip no longer looks like the main bridge
+    - the new route family now points back toward the upper-left pocket
+  - unresolved contradiction to validate live later:
+    - `debug_pathfind_to:10,9` from live `(8,11)` now says
+      `Path: 3 west, 5 north, 5 east, 3 south`
+    - this appears to route through the upper-left branch even though the
+      runtime set already includes `(5,11).north`
+    - do not patch code or promote more blockers from that alone; validate the
+      live branch after combat with another planner run and/or autowalk
+  - live continuation under the 28-edge set:
+    - `auto_walk:10,9` from live `(8,11)` started the new branch
+    - moved cleanly `(8,11)->(7,11)`
+    - then hit a timing retry on `(7,11)->LEFT` into `(6,11)`, but that seam
+      has already moved repeatedly from natural arrival and should still be
+      treated as passable, not blocker evidence
+    - battle fired before the route reached the upper-left turn point
+  - stop condition:
+    - `EVENT: battle started`
+    - battle snapshot shows `pos: x=7, y=11`
+    - enemy was a Druinlord
+    - HP at battle start was `66 / 70`
+    - no further route commands were queued into combat
+  - best next live step:
+    - after combat, re-baseline with
+      `report_position report_runtime_blocks report_path_state`
+    - if the `count=28` runtime set survived, rerun
+      `debug_pathfind_to:10,9` and `auto_walk:10,9`
+    - if the same `3 west, 5 north, 5 east, 3 south` planner family still
+      shows up, validate whether the route actually tries `(5,11)->UP` or
+      reroutes earlier before promoting anything else
+
+- 2026-06-02 afternoon fresh-reset bridge recross and top-strip cleanup:
+  - fresh return after user refresh:
+    - `LAUNCHER_PROBE: codex_b3_resume_0602` matched cleanly
+    - baseline came back at
+      `POSITION map=0x1A(Garin's Grave B3) x=2 y=17`
+      with `RUNTIME_BLOCKS map=0x1A none`
+    - re-seeded the full proven B3 runtime set from handoff
+    - `report_runtime_blocks` returned `count=28`
+    - `debug_pathfind_to:10,9` from that southwest-side start still said
+      `No path found`
+  - bridge recross sequence:
+    - `debug_pathfind_to:3,14` => `Path: 1 north, 1 east, 2 north`
+    - `auto_walk:3,14` reached `(3,14)` cleanly
+    - `probe_edge_verify:3,14,RIGHT,5` =>
+      `moved=6 blocked=0 classification=suspect_passable_model_mismatch`
+    - immediate `probe_edge:UP` from `(4,14)` =>
+      `status=moved final=(4,13)`
+    - this reconfirms the southwest hidden bridge as the working bridged-side
+      entry after a fresh reset
+  - planner after recross:
+    - from live `(4,13)`, `debug_pathfind_to:10,9` changed to
+      `Path: 7 north, 6 east, 3 south`
+    - this supersedes the earlier southwest-side `No path found` result; the
+      route is alive again once the bridge is crossed
+  - live autowalk harvest on the bridged-side family:
+    - clean natural movement advanced through
+      `(4,13)->(4,12)->(4,11)->(4,10)->(4,9)->(4,8)->(4,7)->(4,6)`
+    - reroute then climbed across the top strip through
+      `(5,6)->(6,6)->(6,5)->(6,4)->(7,4)->(8,4)->(9,4)->(8,4)->(8,3)->(6,4)->(6,3)`
+    - route-context-only blocked seams that emerged during that run:
+      - `(7,6).west` from `(6,6)->RIGHT`
+      - `(7,5).north` from `(7,4)->DOWN`
+      - `(9,3).south` from `(9,4)->UP`
+      - `(9,3).west` from `(8,3)->RIGHT`
+      - `(6,2).south` from `(6,3)->UP`
+      - `(5,3).east` from `(6,3)->LEFT`
+    - note:
+      - `(7,4)->LEFT` into `(6,4)` self-disproved and moved on seam retry
+      - `(6,5)->DOWN` into `(6,6)` was interrupted by combat much later and
+        should not be treated as blocker evidence because earlier route motion
+        already crossed `(6,6)` cleanly
+  - direct verifier cleanup on the strongest top-left pair:
+    - `probe_edge_verify:6,3,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:6,3,LEFT`
+    - `probe_edge_verify:6,3,UP,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:6,3,UP`
+    - runtime set rose to `RUNTIME_BLOCKS map=0x1A count=30`
+  - route effect of those promotions:
+    - from live `(6,3)`, `debug_pathfind_to:10,9` shortened sharply to
+      `Path: 3 south, 4 east, 3 south`
+    - this is the strongest route simplification since the row-12 strip closed
+  - live continuation under the 30-edge set:
+    - `auto_walk:10,9` followed the shorter family cleanly
+    - moved `(6,3) -> (6,4) -> (6,5)`
+    - battle interrupted during the seam retry for `(6,5)->DOWN` into `(6,6)`
+  - stop condition:
+    - Specter battle started at `POSITION map=0x1A x=6 y=5`
+    - HP at battle start was `70 / 70`
+    - no further route commands were queued into combat
+  - best next live step:
+    - after combat, re-baseline with
+      `report_position report_runtime_blocks report_path_state`
+    - if the `count=30` runtime set survived, rerun
+      `debug_pathfind_to:10,9` and then `auto_walk:10,9`
+    - if the route still says `3 south, 4 east, 3 south`, let it run before
+      promoting anything else
+    - if it stalls again, the strongest unresolved top-strip candidates are
+      `(7,6).west`, `(7,5).north`, and the two-sided `(9,3)` seam
+
+- 2026-06-02 later-afternoon cleanup around `(4,6)` and `(6,5)`:
+  - resumed while autowalk was still running and collecting route-context
+    blocker evidence
+  - first diagnostic conclusion:
+    - no code/harness bug showed up in this batch
+    - `AUTO_WALK_TEMP_BLOCK` entries kept clearing when seams moved, so this
+      behaved like legitimate map evidence, not stale temp-block contamination
+  - direct checks on the strongest `(4,6)` pair:
+    - `probe_edge_verify:4,6,UP,5` =>
+      `moved=6 blocked=0 classification=confirmed_passable`
+    - this disproves `(4,5).south` as a blocker; earlier route-context
+      `blocked_only` there was a false lead
+    - `probe_edge_verify:4,6,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,6,LEFT`
+    - runtime set rose to `count=31`
+    - from live `(4,6)`, planner tightened to
+      `Path: 6 east, 3 south`
+  - live continuation under the 31-edge set:
+    - autowalk cleanly moved through `(5,6)` and `(6,6)`
+    - strongest route-context candidates then became:
+      - `(7,6).west` from `(6,6)->RIGHT`, climbing to
+        `blocked=6 moved=0 classification=blocked_only`
+      - `(7,5).north` from `(7,4)->DOWN`, climbing to
+        `blocked=8 moved=0 classification=blocked_only`
+      - the upper `(9,3)` seam remained suspicious from both south and west,
+        but was weaker than the `x=7` pair for immediate cleanup
+  - direct checks on the `(6,5)/(6,6)` pair:
+    - `probe_edge_verify:6,6,RIGHT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:6,6,RIGHT`
+    - `probe_edge_verify:6,5,RIGHT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:6,5,RIGHT`
+    - runtime set rose to `RUNTIME_BLOCKS map=0x1A count=32`
+  - route effect of the two new west-side blockers:
+    - from live `(6,5)`, `debug_pathfind_to:10,9` became
+      `Path: 1 north, 1 east, 2 south, 3 east, 3 south`
+    - follow-up autowalk held that route family
+    - it re-entered the upper corner around `(7,4) -> (8,4) -> (9,4)` rather
+      than collapsing outright, which means the route is still alive
+  - what remains unresolved after this pass:
+    - `(7,5).north` is still only route-context evidence; it now has the
+      strongest repeated blocked-only count in the batch
+    - `(9,3)` still has route-context blocked evidence from both south and west
+      but has not yet had a direct verifier rerun in this pass
+  - stop condition:
+    - combat interrupted while the route was alive
+    - `EVENT: battle started` at `POSITION map=0x1A x=8 y=3`
+    - enemy was a Drollmagi
+    - no further route commands were queued into combat
+  - best next live step:
+    - after combat, re-baseline with
+      `report_position report_runtime_blocks report_path_state`
+    - if the `count=32` runtime set survived, rerun
+      `debug_pathfind_to:10,9` and `auto_walk:10,9`
+    - strongest direct cleanup after that is
+      `probe_edge_verify:7,4,DOWN,5`
+    - secondary follow-up is `probe_edge_verify:9,4,UP,5`
+
+- 2026-06-02 late-afternoon normalized retest overturns old `(4,6)->UP` passable result:
+  - current question:
+    - was the older `probe_edge_verify:4,6,UP,5 => confirmed_passable` result
+      real map truth, or stale movement/camera state contamination?
+  - fresh live/raw A/B from normalized `(4,6)`:
+    - baseline:
+      - `teleport_to:4,6 report_position` =>
+        `POSITION map=0x1A(Garin's Grave B3) x=4 y=6`
+    - direct single probe:
+      - `probe_edge:UP` =>
+        `EDGE_PROBE_RESULT ... status=blocked final=(4,6) ... reason=raw_hold_timeout`
+      - mismatch was again
+        `EDGE_PROBE_MODEL_MISMATCH ... kind=blocked_despite_open_preview`
+    - direct verifier rerun:
+      - `probe_edge_verify:4,6,UP,5` =>
+        `moved=0 blocked=5 classification=confirmed_blocked`
+      - all five attempts were `reason=raw_hold_timeout`
+      - all five attempts logged the same mismatch
+        `blocked_despite_open_preview`
+    - raw-controls arbiter:
+      - `teleport_to:4,6 report_position`
+      - `simulate_raw_input:UP,90`
+      - `report_position report_coords`
+      - result stayed at `(4,6)` with
+        `COORDS ... effective=(4,6) player=(4,6) overworld=(4,4) raw003C_0043=7F 90 04 CB 96 91 04 05`
+  - interpretation:
+    - this matches the older archived hidden-state family where a seam once
+      appeared passable under stale state, but normalized raw controls showed
+      the true blocked behavior
+    - treat the old `confirmed_passable` read on `(4,6)->UP` / `(4,5).south`
+      as contaminated, not durable
+    - under the current fully normalized raw-control evidence,
+      `(4,5).south` is a real blocker
+  - promotion and route effect:
+    - `add_blocked_edge:4,6,UP report_runtime_blocks` =>
+      `RUNTIME_BLOCKS map=0x1A count=33`
+    - `debug_pathfind_to:10,9` from live `(4,6)` changed to
+      `Path: 2 east, 2 north, 1 east, 2 south, 3 east, 3 south`
+    - `auto_walk:10,9` then moved cleanly:
+      - `(4,6) -> (5,6) -> (6,6)`
+      - `(5,6)->RIGHT` hit a timing retry but seam-retry moved through `(6,6)`,
+        so `(6,6).west` is still open
+      - next step `(6,6)->UP` into `(6,5)` hit a timing retry and battle
+        interrupted before the seam retry could resolve
+  - current stop condition:
+    - `EVENT: battle started`
+    - battle snapshot:
+      - `map_id: 0x1A (Garin's Grave B3)`
+      - `pos: x=6, y=6`
+      - enemy was a Wolflord
+      - HP at battle start was `66 / 70`
+    - no follow-up commands were queued into combat
+  - best next live step after combat:
+    - `report_position report_runtime_blocks report_path_state`
+    - if the `count=33` runtime set survived, rerun
+      `debug_pathfind_to:10,9` and `auto_walk:10,9`
+    - if it stalls immediately, first local direct cleanup is
+      `probe_edge_verify:6,6,UP,5`
+
+- 2026-06-02 late-afternoon lower-left continuation from live `(4,11)`:
+  - fresh post-combat baseline:
+    - `report_position` =>
+      `POSITION map=0x1A(Garin's Grave B3) x=4 y=11`
+    - `report_runtime_blocks report_path_state` =>
+      `RUNTIME_BLOCKS map=0x1A count=33`
+      `PATH_STATE target=nil map=0x1A runtime_count=33`
+  - fresh planner from the battle-stop side:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 1 south, 10 east, 3 north, 4 west`
+    - this was the first clean sign that the lower-left pocket might still be
+      usable even with the 33-edge set in place
+  - live autowalk harvest:
+    - `auto_walk:10,9`
+    - first seam:
+      - `(4,11)->DOWN` into `(4,12)` timed out once as a queued step
+      - seam retry completed cleanly
+      - `SEAM_OBSERVATION map=0x1A cell=(4,12) approach=north result=moved blocked=0 moved=6 classification=passable_only`
+    - second seam:
+      - `(4,12)->RIGHT` into `(5,12)` failed on seam retry
+      - `SEAM_OBSERVATION map=0x1A cell=(5,12) approach=west result=blocked blocked=3 moved=0 classification=blocked_only`
+      - this is new strong route-context evidence, but not yet direct-verifier proof
+    - third seam:
+      - reroute tried `(4,12)->DOWN` into `(4,13)`
+      - seam retry completed cleanly
+      - `SEAM_OBSERVATION map=0x1A cell=(4,13) approach=north result=moved blocked=0 moved=4 classification=passable_only`
+    - fourth seam:
+      - `(4,13)->RIGHT` into `(5,13)` failed on seam retry
+      - `SEAM_OBSERVATION map=0x1A cell=(5,13) approach=west result=blocked blocked=3 moved=0 classification=blocked_only`
+  - route evolution:
+    - after `(5,12).west`, planner rerouted through
+      `Path: 1 south, 1 east, 1 north, 9 east, 3 north, 4 west`
+    - after `(5,13).west`, planner pivoted harder to
+      `Path: 7 north, 2 east, 2 north, 1 east, 2 south, 3 east, 3 south`
+    - that new family then walked cleanly back up the left side:
+      - `(4,13)->(4,12)->(4,11)->(4,10)->(4,9)->(4,8)->(4,7)->(4,6)`
+    - from live `(4,6)`, seam-retry followup recovered the old short family:
+      - `Path: 2 east, 2 north, 1 east, 2 south, 3 east, 3 south`
+      - so the lower-left detour did not replace the shorter `(4,6)` route; it
+        just exposed two new left-strip suspects on the way
+  - interpretation:
+    - treat `(4,12)` and `(4,13)` as newly re-confirmed passable cells
+    - strongest new unresolved candidates are:
+      - `(5,12).west` from `(4,12)->RIGHT`
+      - `(5,13).west` from `(4,13)->RIGHT`
+    - both are now worth direct verification before returning to wider
+      planner-driven harvesting
+  - stop condition:
+    - battle interrupted during the resumed short-family attempt from `(4,6)`
+    - `EVENT: battle started`
+    - snapshot:
+      - `map_id: 0x1A (Garin's Grave B3)`
+      - `pos: x=4, y=6`
+      - enemy was a Specter
+      - HP at battle start was `70 / 70`
+    - no further commands were queued into combat
+  - best next live step after the Specter:
+    - `report_position report_runtime_blocks report_path_state`
+    - if `count=33` survived, first direct cleanup is
+      `probe_edge_verify:4,12,RIGHT,5`
+    - second direct cleanup is `probe_edge_verify:4,13,RIGHT,5`
+    - if either confirms, inject it and rerun `debug_pathfind_to:10,9`
+    - if both fail to confirm, fall back to `debug_pathfind_to:10,9` and
+      `auto_walk:10,9` from live `(4,6)`
+
+- 2026-06-02 late-afternoon direct verifier cleanup of the top-strip false leads:
+  - lower-left seam cleanup results:
+    - `probe_edge_verify:4,12,RIGHT,5` =>
+      `moved=2 blocked=3 classification=inconclusive_teleport_artifact`
+    - attempts 1 and 2 moved cleanly into `(5,12)`, then later teleported
+      retries blocked with `blocked_despite_open_preview`
+    - keep `(5,12).west` out of the runtime set for now
+    - `probe_edge_verify:4,13,RIGHT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,13,RIGHT`
+    - runtime set rose to `count=34`
+  - strongest old route-context blockers were then checked directly:
+    - `probe_edge_verify:7,4,DOWN,5` =>
+      `moved=6 blocked=0 classification=confirmed_passable`
+    - this fully disproves `(7,5).north` as a blocker
+    - route-context `blocked_only` counts there were harness/noise, not map truth
+    - `probe_edge_verify:9,4,UP,5` =>
+      `moved=6 blocked=0 classification=confirmed_passable`
+    - this fully disproves `(9,3).south` as a blocker too
+    - the natural blocked counts on `(9,3)` from south and west were again
+      route-context false leads
+  - sibling west/east seams were more trustworthy:
+    - `probe_edge_verify:6,4,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:6,4,LEFT`
+    - runtime set rose to `count=35`
+    - `probe_edge_verify:6,5,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:6,5,LEFT`
+    - runtime set rose to `count=36`
+  - route effects after the real promotions:
+    - after `(5,4).east` was added:
+      - `debug_pathfind_to:10,9` from live `(6,4)` =>
+        `Path: 1 east, 2 south, 3 east, 3 south`
+      - this is the cleanest short family seen so far on the bridged side
+    - after `(5,5).east` was added:
+      - `debug_pathfind_to:10,9` from live `(6,5)` =>
+        `Path: 1 north, 1 east, 2 south, 3 east, 3 south`
+      - live autowalk seam-retried through `(6,4)` and recovered the shorter
+        9-step family again
+  - live continuation under the 36-edge set:
+    - `auto_walk:10,9` from `(6,5)`:
+      - `(6,5)->UP` seam-retry moved cleanly into `(6,4)`
+      - route at `(6,4)` re-tightened to
+        `Path: 1 east, 2 south, 3 east, 3 south`
+      - battle interrupted during the next queued right step retry into `(7,4)`
+  - interpretation:
+    - current durable result is not "top strip fully blocked"
+    - instead:
+      - `(7,5).north` is passable under direct verify
+      - `(9,3).south` is passable under direct verify
+      - `(5,4).east` is blocked
+      - `(5,5).east` is blocked
+    - the route-context seam harvester was useful for finding the neighborhood,
+      but not for deciding which top-strip seams were actually real blockers
+  - stop condition:
+    - `EVENT: battle started`
+    - battle snapshot:
+      - `map_id: 0x1A (Garin's Grave B3)`
+      - `pos: x=6, y=4`
+      - enemy was a Drollmagi
+      - HP at battle start was `70 / 70`
+    - no follow-up commands were queued into combat
+  - best next live step after the Drollmagi:
+    - `report_position report_runtime_blocks report_path_state`
+    - if `count=36` survived, rerun `debug_pathfind_to:10,9`
+    - then `auto_walk:10,9` from live `(6,4)`
+    - keep `(5,12).west` unpromoted unless a non-teleport/live check settles it
+
+- 2026-06-02 evening live seam reversals and new B3 promotions:
+  - stale-log safety check first:
+    - `--require-live 10` refused because `dw_debug.log` had gone idle for
+      about 70 seconds
+    - plain `report_position` then matched cleanly, so the script was alive and
+      simply idle on field rather than crashed
+    - baseline after that check:
+      - `POSITION: map=0x1A(Garin's Grave B3) x=8 y=4`
+      - `RUNTIME_BLOCKS map=0x1A count=37`
+      - `PATH_STATE target=nil map=0x1A runtime_count=37`
+  - first resumed route under the 37-edge set:
+    - `debug_pathfind_to:10,9` from `(8,4)` =>
+      `Path: 1 west, 2 south, 3 east, 3 south`
+    - natural autowalk re-entered `(7,4)` cleanly from the east, then a
+      Wolflord interrupted the first fresh south attempt
+  - local cleanup around `(7,4)->DOWN`:
+    - after battle, live `probe_edge:DOWN` from `(7,4)` blocked:
+      - `status=blocked`
+      - `directional_blocked=true`
+      - `blocked_approach=north`
+      - `effective_passable=true`
+      - `reason=raw_hold_timeout`
+    - the important nuance there was:
+      - `runtime_approach_blocked=false`
+      - the cell had unrelated runtime directions, not a stale south temp block
+    - `simulate_raw_input:DOWN,90` from live `(7,4)` also stayed at `(7,4)`
+    - fresh verifier rerun then settled the seam cleanly:
+      - `probe_edge_verify:7,4,DOWN,5`
+      - `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:7,4,DOWN`
+    - runtime count stayed `37` because `(7,5)` already existed with
+      `east,west`
+    - this overturns the earlier stale passable read on `(7,5).north`
+  - route effect after `(7,5).north` promotion:
+    - from live `(7,4)`, planner changed to
+      `Path: 2 east, 1 north, 1 east, 6 south`
+    - autowalk then bounced through `(9,4)` and exposed two stronger frontiers:
+      - `(5,12).west` from the lower-left loop
+      - `(9,3).west` from the top strip
+  - confirming `(4,10)->DOWN` was not a blocker:
+    - after a Druinlord interruption at `(4,10)`, live `probe_edge:DOWN`
+      moved cleanly into `(4,11)`
+    - treat that seam as passable even if route retries there look ugly later
+  - lower-left seam finally settled:
+    - natural autowalk hit `(4,12)->RIGHT` into `(5,12)` twice as clean
+      `blocked_only` seam-retry evidence
+    - fresh direct verifier:
+      - `probe_edge_verify:4,12,RIGHT,5`
+      - `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,12,RIGHT`
+    - runtime set rose to `count=38`
+    - planner from `(4,12)` changed to
+      `Path: 6 north, 2 east, 3 north, 4 east, 6 south`
+  - top-strip west-side seam also settled:
+    - natural autowalk under the count-38 set hit `(8,3)->RIGHT` into `(9,3)`
+      as clean `blocked_only`
+    - direct verifier:
+      - `probe_edge_verify:8,3,RIGHT,5`
+      - `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:8,3,RIGHT`
+    - runtime set rose to `RUNTIME_BLOCKS map=0x1A count=39`
+  - strongest route change after count 39:
+    - current live stop before the last battle was actually `(8,3)`
+      after `stop_auto_walk`
+    - `debug_pathfind_to:10,9` from live `(8,3)` =>
+      `Path: 1 south, 1 east, 1 north, 1 east, 6 south`
+    - this is the shortest family seen after the upper-strip promotions
+  - what still refuses to settle:
+    - despite confirmed `(9,3).west`, the route from `(8,3)` still reaches
+      `(9,4)->UP` and keeps returning
+      `SEAM_OBSERVATION cell=(9,3) approach=south result=blocked blocked=15 moved=1 classification=noisy`
+    - so `(9,3)` is now asymmetric in the evidence:
+      - west approach is confirmed blocked
+      - south approach is still noisy and unresolved
+  - latest clean-field baseline:
+    - after the Drollmagi, a fresh read-only batch landed:
+      - `POSITION: map=0x1A(Garin's Grave B3) x=8 y=4`
+      - `RUNTIME_BLOCKS map=0x1A count=39`
+      - `PATH_STATE target=nil map=0x1A runtime_count=39`
+    - no follow-up movement was queued after that baseline
+  - best next clean-field resume:
+    - `report_position report_runtime_blocks report_path_state`
+    - if `count=39` survived:
+      - `debug_pathfind_to:10,9`
+      - `auto_walk:10,9`
+      - then, if the route again stalls at `(9,4)->UP`, run
+        `probe_edge_verify:9,4,UP,5`
+
+- 2026-06-02 late-evening natural re-approach after mixed `(9,4)->UP` verifier:
+  - exact mixed verifier result:
+    - `probe_edge_verify:9,4,UP,5`
+    - `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+    - this is not safe blocker evidence for `(9,3).south`
+  - stopping the bouncing route showed the detour was temporary:
+    - `stop_auto_walk report_position report_runtime_blocks report_path_state`
+      landed at:
+      - `POSITION: map=0x1A(Garin's Grave B3) x=4 y=12`
+      - `RUNTIME_BLOCKS map=0x1A count=39`
+      - `PATH_STATE target=nil map=0x1A runtime_count=39`
+    - the temporary left-column seam spam did not survive into the runtime set
+  - stable planner after the stop:
+    - `debug_pathfind_to:10,9` from live `(4,12)` =>
+      `Path: 6 north, 2 east, 2 north, 3 east, 1 north, 1 east, 6 south`
+    - this confirmed the earlier swirl was route-temp contamination, not a new
+      permanent collapse
+  - most useful new live validation:
+    - natural path to `(9,4)` is now fully proven from the lower-left stop
+    - `debug_pathfind_to:9,4` from `(4,12)` =>
+      `Path: 6 north, 2 east, 2 north, 3 east`
+    - `auto_walk:9,4` then advanced cleanly through:
+      - `(4,12) -> (4,11) -> (4,10) -> (4,9) -> (4,8) -> (4,7) -> (4,6)`
+      - `(5,6) -> (6,6) -> (6,5) -> (6,4) -> (7,4) -> (8,4)`
+      - seam-retry reached live `(9,4)` from `(8,4)`
+    - every one of those seam retries cleared behind itself; no new durable
+      blocker emerged on the re-approach
+  - latest stop condition:
+    - immediately after arrival at `(9,4)`, a Specter battle started:
+      - `POSITION map=0x1A(Garin's Grave B3) x=9 y=4`
+      - HP `66 / 70`
+      - MP `27 / 57`
+    - autowalk target was only `Tile 9,4`
+    - no raw `UP` probe was sent before combat
+  - best next clean-field resume:
+    - clear the Specter
+    - `report_position report_runtime_blocks report_path_state`
+    - if still at live `(9,4)`:
+      - `probe_edge:UP report_position`
+      - then `simulate_raw_input:UP,90 report_position`
+    - only if those natural checks are still ambiguous:
+      - rerun `probe_edge_verify:9,4,UP,5`
+
+- 2026-06-02 late-evening natural south-approach resolution plus left-column
+  runtime promotions:
+  - after the Specter, the old mixed `(9,4)->UP` story was resolved with
+    natural movement instead of another teleport-heavy verifier:
+    - live `probe_edge:UP report_position` from `(9,4)` blocked in place
+    - follow-up `simulate_raw_input:UP,90 report_position` also stayed at
+      `(9,4)`
+    - this is stronger than the older stale direct-passable read and lines up
+      with the newer asymmetry around `(9,3)`
+    - promoted with `add_blocked_edge:9,4,UP`
+    - runtime set stayed at `count=39` because `(9,3)` already existed with
+      `west`; the new durable truth is `(9,3).south,west`
+  - route effect after adding `(9,3).south`:
+    - `debug_pathfind_to:10,9` from live `(9,4)` rerouted through a left-side
+      family instead of the old short center/top loop
+    - strongest new knot was around `(5,6)`
+  - natural cleanup of the `(5,6)` vertical pair:
+    - route evidence had already strengthened:
+      - `(5,6)->UP` into `(5,5)` to `blocked=13 moved=0`
+      - `(5,6)->DOWN` into `(5,7)` to `blocked=9 moved=0`
+    - live controls from actual `(5,6)` then settled both:
+      - `probe_edge:UP` blocked
+      - `simulate_raw_input:UP,90` stayed at `(5,6)`
+      - promoted with `add_blocked_edge:5,6,UP`
+      - `probe_edge:DOWN` blocked
+      - `simulate_raw_input:DOWN,90` stayed at `(5,6)`
+      - promoted with `add_blocked_edge:5,6,DOWN`
+    - runtime set still stayed at `count=39` because both additions merged into
+      already-known blocker cells:
+      - `(5,5)` gained `south`
+      - `(5,7)` gained `north`
+  - new left-column family exposed under the stronger `(5,6)` model:
+    - natural autowalk then strengthened:
+      - `(4,8)->LEFT` into `(3,8)` to clean `blocked_only`
+      - `(4,7)->LEFT` into `(3,7)` to clean `blocked_only`
+    - exact direct cleanup:
+      - `probe_edge_verify:4,8,LEFT,5` =>
+        `moved=0 blocked=5 classification=confirmed_blocked`
+      - promoted with `add_blocked_edge:4,8,LEFT`
+      - runtime set rose to `count=40`
+      - `probe_edge_verify:4,7,LEFT,5` =>
+        `moved=0 blocked=5 classification=confirmed_blocked`
+      - promoted with `add_blocked_edge:4,7,LEFT`
+      - runtime set rose to `count=41`
+  - latest clean baseline after the left-column promotions:
+    - `POSITION: map=0x1A(Garin's Grave B3) x=4 y=7`
+    - `RUNTIME_BLOCKS map=0x1A count=41`
+    - `PATH_STATE target=nil map=0x1A runtime_count=41`
+  - latest planner snapshot:
+    - `debug_pathfind_to:10,9` from live `(4,7)` =>
+      `Path: 2 south, 1 west, 4 north, 2 east, 4 north, 5 east, 8 south`
+    - `visited=135 path=26`
+  - working interpretation:
+    - the earlier mixed teleported verifier on `(9,4)->UP` was real noise, but
+      the natural raw south-approach check was enough to settle the seam
+    - the current active frontier has shifted to the left column around
+      `(3,7..10)`, not the old upper-right ambiguity
+    - strongest next sibling is `(4,9)->LEFT` into `(3,9)`
+
+- 2026-06-02 late-evening left-column strip closure and hidden-bridge pivot:
+  - direct left-column sibling cleanup kept confirming one row at a time:
+    - `probe_edge_verify:4,9,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,9,LEFT`
+    - runtime set rose to `count=42`
+    - planner from live `(4,9)` became
+      `Path: 1 south, 1 west, 5 north, 2 east, 4 north, 5 east, 8 south`
+    - `probe_edge_verify:4,10,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,10,LEFT`
+    - runtime set rose to `count=43`
+    - planner from live `(4,10)` became
+      `Path: 1 south, 1 west, 6 north, 2 east, 4 north, 5 east, 8 south`
+    - `probe_edge_verify:4,11,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,11,LEFT`
+    - runtime set rose to `count=44`
+    - planner from live `(4,11)` became
+      `Path: 1 south, 1 west, 7 north, 2 east, 4 north, 5 east, 8 south`
+    - `probe_edge_verify:4,12,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,12,LEFT`
+    - runtime set rose to `count=45`
+    - planner from live `(4,12)` became
+      `Path: 1 south, 1 west, 8 north, 2 east, 4 north, 5 east, 8 south`
+    - `probe_edge_verify:4,13,LEFT,5` =>
+      `moved=0 blocked=5 classification=confirmed_blocked`
+    - promoted with `add_blocked_edge:4,13,LEFT`
+    - runtime set rose to `count=46`
+  - the important collapse happened exactly there:
+    - from live `(4,13)`, `debug_pathfind_to:10,9` =>
+      `No path found [no_path] (visited=33 path=0)`
+    - `debug_pathfind_to_skip_npcs:10,9` matched exactly:
+      `No path found [no_path] (visited=33 path=0)`
+    - `npc_count=0`, so this is not a live-NPC or planner-mode mismatch
+  - frontier analysis after the collapse:
+    - `debug_route_frontier_skip_npcs:10,9` still found a rich boundary:
+      - `reachable=27`
+      - `target_reachable=false`
+      - `bridge_candidates=35`
+      - `hidden_bridge_candidates=2`
+    - best candidates:
+      - rank 1:
+        `(8,3)->UP` with `hidden_bridge=true hidden_exit=up:(8,1)`
+      - rank 2:
+        `(7,3)->UP` with `hidden_bridge=true hidden_exit=up:(7,1)`
+    - top non-hidden blocked-runtime frontier still includes:
+      - `(9,5)->DOWN`
+      - `(9,5)->RIGHT`
+      - `(8,5)->DOWN`
+      - `(9,4)->RIGHT`
+      - `(6,6..9)->RIGHT`
+      - but the hidden-bridge pair is the cleaner next pivot
+  - live attempt to pivot toward rank 1 candidate:
+    - `debug_pathfind_to:8,3` from live `(4,13)` =>
+      `Path: 7 north, 2 east, 3 north, 2 east`
+    - `auto_walk:8,3` started following that route cleanly:
+      - `(4,13) -> (4,12) -> (4,11) -> (4,10) -> (4,9) -> (4,8) -> (4,7)`
+    - the next step `(4,7)->UP` into `(4,6)` hit a timing retry and was then
+      interrupted by battle before seam retry resolved
+  - current stop condition:
+    - Wolflord battle started at
+      `POSITION: map=0x1A(Garin's Grave B3) x=4 y=7`
+    - HP `70 / 70`
+    - MP `23 / 57`
+    - queued autowalk target was `Tile 8,3`
+  - updated interpretation:
+    - the x=3 east-facing strip is effectively sealed from `(3,7)` through
+      `(3,13)` under direct verifier evidence
+    - the current 46-edge model makes the lower B4 stair unreachable from the
+      present component by ordinary planning
+    - the strongest next live test is now a natural hidden-bridge probe at
+      `(8,3)->UP`, with `(7,3)->UP` as immediate fallback
+
+- 2026-06-02 night pass after the hidden-bridge pivot:
+  - first hidden-bridge candidate settled hard-blocked:
+    - from live `(8,3)`, natural `probe_edge:UP` into `(8,2)` blocked
+      immediately
+    - the model already said `tile=1 base_walkable=false`, and the raw probe
+      agreed
+    - `simulate_raw_input:UP,90 report_position` also left the hero at `(8,3)`
+  - second hidden-bridge family also failed under natural live checks:
+    - `probe_edge:LEFT` from `(8,3)` into `(7,3)` blocked despite an
+      open-preview model (`blocked_despite_open_preview`)
+    - `simulate_raw_input:LEFT,90` also stayed at `(8,3)`
+    - route to `(7,4)` was clean:
+      - `debug_pathfind_to:7,4` => `Path: 1 south, 1 west`
+      - `auto_walk:7,4` reached live `(7,4)`
+    - from `(7,4)`, natural `probe_edge:UP` into `(7,3)` blocked with the same
+      open-preview mismatch
+    - `simulate_raw_input:UP,90` from `(7,4)` also stayed at `(7,4)`
+    - promoted runtime edges:
+      - `add_blocked_edge:8,3,UP`
+      - `add_blocked_edge:8,3,LEFT`
+      - `add_blocked_edge:7,4,UP`
+    - runtime set rose to `count=48`
+  - important frontier nuance:
+    - even after those promotions, `debug_route_frontier_skip_npcs:10,9`
+      continues to rank:
+      - `(8,3)->UP`
+      - `(7,3)->UP`
+    - cause is frontier scoring on hidden/not-walkable bridge candidates, not
+      ordinary runtime-block suppression
+    - practical conclusion: ignore those two as dead for current live reasoning
+  - upper-right pocket sanity checks all agreed with the runtime set:
+    - route to `(9,5)` remained clean
+    - `probe_edge:DOWN` from `(9,5)` into `(9,6)` blocked with
+      `directional_blocked=true approach_blocked=true effective_passable=false`
+    - `probe_edge:RIGHT` from `(9,5)` into `(10,5)` blocked with the same
+      clean runtime-backed shape
+    - route to `(8,5)` remained clean
+    - `probe_edge:DOWN` from `(8,5)` into `(8,6)` also blocked exactly as
+      modeled
+  - near-target left-family sanity checks also agreed with runtime:
+    - route to `(6,6)` remained clean
+    - `probe_edge:RIGHT` from `(6,6)` into `(7,6)` blocked exactly as modeled
+    - route to `(6,9)` remained clean
+    - `probe_edge:RIGHT` from `(6,9)` into `(7,9)` blocked exactly as modeled
+    - `probe_edge:DOWN` from `(6,9)` into `(6,10)` blocked exactly as modeled
+  - newest unresolved local lead surfaced while complement-checking `6,10`:
+    - `debug_pathfind_to:5,10` from `(6,9)` =>
+      `Path: 1 west, 1 south`
+    - `auto_walk:5,10` reached `(5,9)` cleanly
+    - the seam retry into `(5,10)` from the north did not resolve:
+      - `SEAM_OBSERVATION map=0x1A cell=(5,10) approach=north result=blocked blocked=1 moved=0 classification=blocked_only`
+    - reroute started to swing through `(4,9)->DOWN`, but battle interrupted
+      before that seam resolved
+  - current stop:
+    - battle started at `POSITION: map=0x1A(Garin's Grave B3) x=4 y=9`
+    - HP `70 / 70`
+    - MP `23 / 57`
+    - queued autowalk target was `Tile 5,10`
+  - working interpretation:
+    - the x=3 strip is sealed, the hidden-bridge pair appears dead under
+      natural controls, and the upper-right pocket is consistent with runtime
+    - the best remaining cheap challenge to the current model is
+      `(5,10).north` via natural checks from live `(5,9)`
+
+- 2026-06-02 late-night continuation after the `5,10` chase:
+  - natural cleanup confirmed the north side of `(5,10)` is a real blocker:
+    - `probe_edge:DOWN` from `(5,9)` into `(5,10)` blocked with
+      `tile=2 base_walkable=true walkable=true directional_blocked=false`
+      and `EDGE_PROBE_MODEL_MISMATCH kind=blocked_despite_open_preview`
+    - `simulate_raw_input:DOWN,90 report_position` stayed at `(5,9)`
+    - promoted with `add_blocked_edge:5,9,DOWN`
+    - `report_runtime_blocks` then showed
+      `RUNTIME_BLOCKS map=0x1A count=49`
+      because `(5,10).north` merged into an existing blocker cell
+    - local planner check after promotion:
+      - `debug_pathfind_to:5,10` from `(5,9)` =>
+        `Path: 1 west, 1 south, 1 east`
+  - west-side reroute then resolved the sibling seam cleanly:
+    - `auto_walk:5,10` moved `(5,9)->LEFT` and `(4,9)->DOWN` cleanly:
+      - `SEAM_OBSERVATION cell=(4,9) approach=east result=moved`
+      - `SEAM_OBSERVATION cell=(4,10) approach=north result=moved`
+    - the final step `(4,10)->RIGHT` into `(5,10)` failed twice on seam retry:
+      - `SEAM_OBSERVATION cell=(5,10) approach=west result=blocked blocked=2 moved=0 classification=blocked_only`
+    - direct natural cleanup from `(4,10)`:
+      - `probe_edge:RIGHT` blocked with
+        `directional_blocked=true`
+        `runtime_directional_blocked=true`
+        `kind=blocked_despite_open_preview`
+      - `simulate_raw_input:RIGHT,90 report_position` stayed at `(4,10)`
+    - promoted with `add_blocked_edge:4,10,RIGHT`
+    - runtime set still stayed at `count=49` because `(5,10).west` merged into
+      the same blocker cell
+    - planner after the west-side promotion:
+      - `debug_pathfind_to:10,9` from `(4,10)` =>
+        `No path found [no_path] (visited=31 path=0)`
+      - frontier still over-reported hidden bridges, which made the tooling bug
+        reproducible enough to patch
+  - resumed the frontier challenge from the Wraith Knight stop:
+    - post-battle baseline:
+      - `POSITION: map=0x1A(Garin's Grave B3) x=5 y=6`
+      - `PATH_STATE target=nil map=0x1A runtime_count=49`
+    - `debug_pathfind_to:7,3` from `(5,6)` =>
+      `Path: 1 east, 3 north, 1 east`
+    - autowalk reached `(6,3)` cleanly through
+      `(6,6) -> (6,5) -> (6,4) -> (6,3)`
+    - the final step `(6,3)->RIGHT` into `(7,3)` failed repeatedly:
+      - first seam-reroute pass raised it to
+        `blocked=4 moved=0 classification=blocked_only`
+      - second seam-reroute pass raised it to
+        `blocked=5 moved=0 classification=blocked_only`
+    - direct natural cleanup from `(6,3)`:
+      - `probe_edge:RIGHT` blocked with
+        `tile=0 base_walkable=true walkable=true directional_blocked=true`
+        and `EDGE_PROBE_MODEL_MISMATCH kind=blocked_despite_open_preview`
+      - `simulate_raw_input:RIGHT,90 report_position` stayed at `(6,3)`
+    - promoted with `add_blocked_edge:6,3,RIGHT`
+    - runtime set still stayed at `count=49` because `(7,3).west` merged into
+      existing blocker cell `(7,3)` which already had `east,south`
+  - planner/frontier state after the top-strip promotion:
+    - `debug_pathfind_to:10,9` from live `(6,3)` =>
+      `No path found [no_path] (visited=25 path=0)`
+    - `debug_route_frontier_skip_npcs:10,9` =>
+      `reachable=25 target_reachable=false bridge_candidates=32 hidden_bridge_candidates=1`
+    - the only remaining hidden-bridge candidate is
+      `(8,3)->UP` even though that exact edge is already runtime-blocked and
+      experimentally dead
+  - tooling bug and patch:
+    - root cause:
+      - `run_debug_route_frontier` classified non-walkable frontier cells as
+        plain `not_walkable` before consulting exact runtime/directional edge
+        blockers, so already-dead hidden-wall edges could still bubble up as
+        `hidden_bridge=true`
+    - fix:
+      - added `route_frontier_classifier.lua`
+      - added `test_route_frontier_classifier.lua`
+      - changed `main.lua` so frontier candidates now preserve an exact
+        `blocked_runtime` or `blocked_directional` reason even when the
+        destination cell itself is not walkable
+      - hidden-bridge probing now only runs when the candidate is truly
+        `not_walkable` without an exact edge blocker
+    - focused validation:
+      - `lua5.1 test_route_frontier_classifier.lua` => pass
+      - `luac5.1 -p route_frontier_classifier.lua test_route_frontier_classifier.lua main.lua` => pass
+    - live follow-up still pending:
+      - FCEUX needs a manual `main.lua` reload before the patched
+        `debug_route_frontier_skip_npcs` output can be trusted
+
+- 2026-06-02 post-reload live verification of the frontier fix:
+  - manual FCEUX reload succeeded and the field resumed on `map=0x1A`
+  - first post-reload baseline from live `(6,3)` came back with
+    `RUNTIME_BLOCKS map=0x1A none`, so the runtime seam set had to be reseeded
+  - first reseed attempt exposed a handoff-list omission:
+    - the documented reseed batch rebuilt only `runtime_count=47`
+    - under that incomplete set, `debug_pathfind_to:10,9` reopened to
+      `Path: 2 south, 1 west, 4 north, 5 east, 8 south`
+    - `debug_route_frontier_skip_npcs:10,9` also reopened to
+      `reachable=345 target_reachable=true hidden_bridge_candidates=2`
+      with fake hidden-bridge entries around `(7,2)`
+    - exact missing directions on existing cells were:
+      - `(5,5).east` via `add_blocked_edge:6,5,LEFT`
+      - `(5,7).west` via `add_blocked_edge:4,7,RIGHT`
+  - after adding those two missing reseed commands:
+    - `RUNTIME_BLOCKS map=0x1A count=49`
+    - `PATH_STATE target=nil map=0x1A runtime_count=49`
+    - `debug_pathfind_to:10,9` from `(6,3)` returned to
+      `No path found [no_path] (visited=25 path=0)`
+    - `debug_route_frontier_skip_npcs:10,9` settled to
+      `reachable=25 target_reachable=false bridge_candidates=31 hidden_bridge_candidates=0`
+  - key live verification of the code patch:
+    - the old ghost hidden bridge `(8,3)->UP` no longer appears as a
+      `hidden_bridge=true` candidate after reload
+    - the top-ranked frontier entries are now plain runtime blockers:
+      - rank 1 `(9,5)->DOWN`
+      - rank 2 `(9,5)->RIGHT`
+      - rank 3 `(8,5)->DOWN`
+  - fresh live challenge on that top-ranked family after reload:
+    - baseline survived manual walk to `(9,5)` with `runtime_count=49`
+    - natural `probe_edge:DOWN` from `(9,5)` into `(9,6)` blocked cleanly:
+      - `directional_blocked=true`
+      - `approach_blocked=true`
+      - `effective_passable=false`
+      - no open-preview mismatch
+    - natural `probe_edge:RIGHT` from `(9,5)` into `(10,5)` also blocked
+      cleanly with the same runtime-backed shape
+    - `debug_pathfind_to:8,5` from `(9,5)` found `Path: 1 west`
+    - `auto_walk:8,5` reached `(8,5)` cleanly
+    - natural `probe_edge:DOWN` from `(8,5)` into `(8,6)` then blocked
+      cleanly with `directional_blocked=true`
+  - present interpretation:
+    - the frontier-report hidden-bridge bug is fixed live, not just in unit
+      tests
+    - the full 49-edge runtime set now reconstructs the intended sealed B3
+      state
+    - the current top frontier family is already cleanly confirmed blocked, so
+      there is no obvious next local seam to promote from this component
+
+- 2026-06-02 code/data sync pass after the frontier fix:
+  - clarified the B4 stair names in `objects.lua` without changing the actual
+    pairing:
+    - `(0,4)` -> `West Return Stairs to B3`
+    - `(5,4)` -> `East Return Stairs to B3`
+    - B3 `(9,5)` and `(10,9)` keep the established `Upper` / `Lower Stairs
+      Down to B4` names
+  - promoted the stable 49-edge B3 runtime reseed into the permanent
+    `map_reader.lua` directional block table
+    - this adds the later proven bridge-strip, top-pocket, and lower-stair
+      approach blockers that had still been living only in the reseed batch
+    - mixed/unresolved seams like `(5,15).west` remain deliberately unmodeled
+  - focused verification:
+    - `lua5.1 test_objects.lua`
+    - `lua5.1 test_map_reader.lua`
+    - `luac5.1 -p objects.lua map_reader.lua test_objects.lua test_map_reader.lua`
+    - `python3 run_tests.py --allow-missing-speech-dep`
+    - `git diff --check -- objects.lua map_reader.lua test_objects.lua test_map_reader.lua`
+
+- 2026-06-02 late-night live pass after the permanent B3 sync:
+  - fresh reload baseline:
+    - `POSITION: map=0x1A(Garin's Grave B3) x=4 y=13`
+    - `RUNTIME_BLOCKS map=0x1A none`
+    - `PATH_STATE target=nil map=0x1A runtime_count=0`
+  - the user's `(4,13).south` observation is fully consistent with live logs:
+    - earlier natural move `(4,14)->UP` had already entered `(4,13)` from the
+      south
+    - this pass later natural-rerouted back into `(4,13)` from the north
+      during autowalk, so `(4,13)` is now evidenced as a two-way passable hinge
+  - planner effect from live `(4,13)` with only permanent blockers active:
+    - `debug_pathfind_to:10,9` =>
+      `Path: 1 east, 1 north, 9 east, 3 north, 4 west`
+    - `debug_pathfind_to:2,17` =>
+      `Path: 3 east, 4 south, 5 west`
+    - this means the new hinge does both:
+      - reopen a live route toward the lower B4 stair
+      - reopen a return route toward the B2 southwest stair
+  - first autowalk harvest toward `(10,9)` from `(4,13)`:
+    - the direct east exit failed first:
+      - `SEAM_OBSERVATION map=0x1A cell=(5,13) approach=west result=blocked`
+      - later strengthened to `blocked=2 moved=0 classification=blocked_only`
+    - reroute then moved cleanly up the entire column:
+      - `(4,13)->(4,12)->(4,11)->(4,10)->(4,9)->(4,8)->(4,7)->(4,6)`
+      - continued through `(5,6)->(6,6)->(6,5)->(6,4)`
+    - second local candidate appeared at the top strip:
+      - `SEAM_OBSERVATION map=0x1A cell=(5,4) approach=east result=blocked`
+      - currently only `blocked=1 moved=0 classification=blocked_only`
+    - relaxing that top-strip temp block sent the route back through the lower
+      loop, confirming more open travel through `(6,9)`, `(5,9)`, `(4,9)`, and
+      back down to `(4,13)`
+    - the route then re-hit `(5,13).west` and again settled blocked-only,
+      pushing it to `blocked=2 moved=0`
+  - latest interruption:
+    - while re-walking back to `(4,13)` for the next direct seam check,
+      `auto_walk:4,13` was interrupted by a Wraith Knight at:
+      - `POSITION: map=0x1A(Garin's Grave B3) x=4 y=10`
+      - HP `67 / 70`
+      - MP `47 / 57`
+    - no further movement was queued after battle start
+  - current best next step after combat:
+    - `report_position report_runtime_blocks report_path_state`
+    - `auto_walk:4,13`
+    - once live at `(4,13)`, run `probe_edge_verify:4,13,RIGHT,5`
+  - secondary follow-up if `(5,13).west` confirms:
+    - rerun `debug_pathfind_to:10,9` / `auto_walk:10,9`
+  - alternate direct cleanup if the route stalls near the top strip instead:
+    - `probe_edge_verify:6,4,LEFT,5` for `(5,4).east`
+
+## 2026-06-05 B3 lower-B4 continuation from SW B2 stairs
+
+- Fresh continuation target stayed B3 lower stairs down to B4 at `(10,9)`.
+- Initial live baseline had no B3 runtime blockers, and the planner still
+  found a route from `(4,10)`:
+  `3 south, 1 east, 1 north, 9 east, 3 north, 4 west`.
+- Live autowalk exposed two clean missing opposite approaches:
+  - `(4,13)->RIGHT` into `(5,13)` blocked naturally, then
+    `probe_edge_verify:4,13,RIGHT,5` confirmed blocked 5/5.
+    Promoted permanently as `(5,13).west`.
+  - `(6,4)->LEFT` into `(5,4)` blocked naturally, then
+    `probe_edge_verify:6,4,LEFT,5` confirmed blocked 5/5.
+    Promoted permanently as `(5,4).east`.
+- After adding both as runtime blocks, from `(6,4)`:
+  - `debug_pathfind_to:10,9` and skip-NPC variant both returned `No path found`
+  - frontier report was `reachable=25 target_reachable=false
+    hidden_bridge_candidates=0`
+  - top bridge candidates were the two new runtime blocks plus existing static
+    blockers around `(9,5)`.
+- Sanity rechecks of the highest static frontier exits:
+  - first `probe_edge_verify:9,5,DOWN,5` was mixed
+    (`moved=5 blocked=1`) after stale input/Alt noise; treated as
+    contaminated, not as opening evidence.
+  - after `./recover_fceux_input.sh`, `probe_edge_verify:9,5,DOWN,8`
+    confirmed blocked 8/8.
+  - `probe_edge_verify:9,5,RIGHT,5` confirmed blocked 5/5.
+- Current live state after final baseline:
+  - `POSITION map=0x1A x=9 y=5`
+  - `RUNTIME_BLOCKS map=0x1A count=2`: `(5,4).east`, `(5,13).west`
+  - `PATH_STATE target=nil map=0x1A runtime_count=2`
+- Important reload note:
+  - `map_reader.lua` is patched, but the running FCEUX Lua instance has not
+    reloaded it; keep the two runtime blocks seeded until reload/relaunch.
+- Current conclusion:
+  - local seam hunting from this component is at a stop condition. The newly
+    exposed route is sealed by two direct-confirmed missing blockers, and the
+    nearest existing top exits from `(9,5)` reconfirm blocked under clean input.
+
+## 2026-06-05 B2 southwest stair route follow-up
+
+- User-completed route reached the correct object:
+  - `POSITION map=0x19 x=1 y=10`
+  - `OBJECT: Southwest Stairs Down to B3: here`
+- Route noise focused on `(13,9)->LEFT` into `(12,9)`:
+  - explicit-origin verifier from the stair was mixed:
+    `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - same-origin raw `probe_edge:LEFT` from live `(13,9)` blocked
+  - same-origin `probe_edge_verify:LEFT,5` from live `(13,9)` confirmed blocked
+    5/5 with no drift, map change, interruption, or teleport-artifact flag
+- Promoted permanent B2 data:
+  - `(12,9).east=true` in `MAP_DIRECTIONAL_BLOCKS[0x19]`
+  - regression added to `garins_grave_b2_southwest_stair_route_edges_are_directional`
+- Runtime also seeded for current FCEUX session:
+  - `add_blocked_edge:25,13,9,LEFT`
+  - `RUNTIME_BLOCK map=0x19 x=12 y=9 dirs=east`
+- Hero restored to the target stair after investigation:
+  - `POSITION map=0x19 x=1 y=10`
+  - `OBJECT: Southwest Stairs Down to B3: here`
+
+## 2026-06-05 route-turn movement reset stat-corruption repro
+
+- User intentionally set `auto_step_reset_movement_on_route_turn_settle=true`
+  after the Silver Harp route to test the old suspect.
+- The next B2 autowalk pass reproduced the stat corruption quickly:
+  - `PLAYER_STAT_FRAMEADVANCE_TRANSITION from=clean to=bad`
+  - `pre_frame=72173 post_frame=72174`
+  - map `0x19`, position `(7,4)`
+  - changed bytes: `C8,C9,CA,CB,CC,CD,CE`
+  - clean stats `70/70 HP`, `55/57 MP`, STR/AGI/ATK/DEF `34/2B/48/39`
+  - corrupt stats `70/15 HP`, `55/0 MP`, STR/AGI/ATK/DEF `04/03/18/25`
+- The transition landed immediately after queued route turn settle:
+  - `auto_step route turn settle prev=up next=right frames=16`
+- User won the battle, set the option back to false, and reloaded the script.
+- Post-reload baseline with false was clean:
+  - `POSITION map=0x19 x=7 y=4`
+  - `RUNTIME_BLOCKS map=0x19 none`
+  - `hp=70/70`, `mp=39/57`, stats `34/2B/48/39`, spells `CE=0x7F CF=0x10`
+- Code safety patch made the risky behavior opt-in only:
+  - `config.lua` generated default is now false
+  - `auto_step.lua` missing-setting fallback is now false
+  - `dw_access.ini` warning says true reproduced stat corruption in FCEUX
+  - `test_config.lua` covers the config default
+  - `test_auto_step.lua` covers the safe absent-setting fallback and explicit
+    true opt-in behavior
+- Cautious route pass after the false reload:
+  - `auto_walk:1,10` queued from `(7,4)` toward the southwest B3 stair
+  - no new stat-integrity warning appeared before battle
+  - Wolf battle interrupted at `(3,6)` with clean stats
+- Follow-up direct verifiers after combat:
+  - `probe_edge_verify:3,4,LEFT,5` => `(2,4).east` confirmed blocked `5/5`
+  - `probe_edge_verify:3,8,LEFT,5` => `(2,8).east` confirmed blocked `5/5`
+  - `probe_edge_verify:3,7,LEFT,5` => `(2,7).east` confirmed blocked `5/5`
+- Permanent B2 patch:
+  - `MAP_DIRECTIONAL_BLOCKS[0x19]` now also closes `(2,4).east`,
+    `(2,7).east`, and `(2,8).east`
+  - `test_map_reader.lua` regression extended before patch, then passed after
+    the map-data update
+- Runtime reinjection for the current FCEUX session:
+  - `add_blocked_edge:25,3,4,LEFT`
+  - `add_blocked_edge:25,3,8,LEFT`
+  - `add_blocked_edge:25,3,7,LEFT`
+  - `RUNTIME_BLOCKS map=0x19 count=3`
+  - `RUNTIME_BLOCK map=0x19 x=2 y=4 key=2,4 dirs=east`
+  - `RUNTIME_BLOCK map=0x19 x=2 y=7 key=2,7 dirs=east`
+  - `RUNTIME_BLOCK map=0x19 x=2 y=8 key=2,8 dirs=east`
+- Hero restored after verifier pass:
+  - `POSITION map=0x19(Garin's Grave B2) x=3 y=6`
+
+## 2026-06-05 B2 mid-pocket loop cleanup near `(9,4)` / `(9,5)` / `(9,6)`
+
+- User reported autowalk had collected another batch of blockers and was
+  bouncing/looping on Garin's Grave B2.
+- Fresh loop tail from `dw_debug.log` centered on:
+  - `(9,6)->DOWN` into `(9,7)`
+  - `(9,6)->LEFT` into `(8,6)`
+  - `(9,6)->RIGHT` into `(10,6)`
+  - `(9,5)->LEFT` into `(8,5)`
+  - `(9,5)->RIGHT` into `(10,5)`
+  - interrupted attempt `(9,4)->UP` into `(9,3)`
+- Static/source check showed the current repo already blocked several of those
+  approaches on B2, but live `inspect_move` on the running FCEUX Lua still
+  previewed them all as open. That meant we needed live verifier proof instead
+  of assuming the route loop was all geometry.
+- Direct verifier results:
+  - explicit-origin `probe_edge_verify:9,6,LEFT,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+  - explicit-origin `probe_edge_verify:9,6,RIGHT,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+  - explicit-origin `probe_edge_verify:9,6,DOWN,5`
+    => mixed / `classification=inconclusive_teleport_artifact`
+  - split `teleport_to:9,6` then same-origin `probe_edge_verify:DOWN,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - split `teleport_to:9,5` then same-origin `probe_edge_verify:LEFT,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - split `teleport_to:9,5` then same-origin `probe_edge_verify:RIGHT,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - split `teleport_to:9,4` then same-origin `probe_edge_verify:UP,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+- Interpretation:
+  - real B2 blockers:
+    - `(8,5).east`
+    - `(9,7).north`
+    - `(10,5).west`
+  - false-positive loop edges that must stay open:
+    - `(8,6).east`
+    - `(10,6).west`
+    - `(9,3).south`
+- TDD:
+  - extended `garins_grave_b2_southwest_stair_route_edges_are_directional`
+    with the three real blockers plus explicit nil assertions for the three
+    reopened approaches
+  - red run failed first on missing `(8,5).east`
+  - corrected the B2 `0x19` map table only after that red failure
+  - first green attempt accidentally touched the B3 table with overlapping
+    coordinates; restored B3 and moved the fix to B2
+  - final green run passed cleanly
+- Permanent B2 patch:
+  - added `(8,5).east`, `(9,7).north`, `(10,5).west`
+  - kept `(8,6).east`, `(10,6).west`, `(9,3).south` open
+- Runtime reinjection for current live FCEUX session:
+  - `add_blocked_edge:25,9,6,DOWN`
+  - `add_blocked_edge:25,9,5,LEFT`
+  - `add_blocked_edge:25,9,5,RIGHT`
+  - `RUNTIME_BLOCKS map=0x19 count=6`
+  - runtime entries now include:
+    - `(2,4).east`
+    - `(2,7).east`
+    - `(2,8).east`
+    - `(8,5).east`
+    - `(10,5).west`
+    - `(9,7).north`
+- Post-sync live planner sanity:
+  - restored hero to `POSITION map=0x19(Garin's Grave B2) x=9 y=4`
+  - `debug_pathfind_to:1,10`
+    => `Path: 6 west, 2 south, 2 west, 4 south`
+
+## 2026-06-05 B2 west-pocket and top-lip strip follow-up
+
+- Starting point for this pass:
+  - prior runtime set already included `(2,4).east`, `(2,7).east`,
+    `(2,8).east`, `(8,5).east`, `(10,5).west`, and `(9,7).north`
+  - live planner from `(8,4)` had tightened to:
+    `Path: 5 west, 2 south, 2 west, 4 south`
+- New west/top pocket verifier results:
+  - `teleport_to:7,5` then same-origin `probe_edge_verify:RIGHT,5`
+    => `(8,5).west` confirmed blocked `5/5`
+  - `teleport_to:8,4` then same-origin `probe_edge_verify:DOWN,5`
+    first stayed mixed with `teleport_artifact_suspected=true`
+  - extra settle at live `(8,4)` then `probe_edge_verify:DOWN,8`
+    => `(8,5).north` confirmed blocked `8/8`
+  - `teleport_to:8,4` then same-origin `probe_edge_verify:UP,5`
+    => `(8,3).south` confirmed blocked `5/5`
+- Autowalk continuation after runtime injection:
+  - route from `(8,4)` reached `(3,5)` before a Wolf battle
+  - clean new route-shaped blocker at `(3,6)->LEFT` into `(2,6)` reached
+    `blocked=4 moved=0`
+  - direct follow-up `teleport_to:3,6` then `probe_edge_verify:LEFT,5`
+    => `(2,6).east` confirmed blocked `5/5`
+- Next autowalk pass with `(2,6).east` seeded exposed the upper-left band:
+  - route-shaped failures:
+    - `(3,5)->LEFT` into `(2,5)` => `blocked=4 moved=0`
+    - `(3,4)->UP` into `(3,3)` => `blocked=4 moved=0`
+    - `(4,4)->UP` into `(4,3)` => `blocked=4 moved=0`
+    - `(5,4)->UP` into `(5,3)` => `blocked=4 moved=0`
+    - `(6,4)->UP` into `(6,3)` => `blocked=3 moved=0`
+    - `(7,4)->UP` into `(7,3)` had the same reroute pattern before stop
+  - direct follow-up verifiers:
+    - `teleport_to:3,5` then `probe_edge_verify:LEFT,5`
+      => `(2,5).east` confirmed blocked `5/5`
+    - `teleport_to:3,4` then `probe_edge_verify:UP,5`
+      => `(3,3).south` confirmed blocked `5/5`
+    - `teleport_to:4,4` then `probe_edge_verify:UP,5`
+      => `(4,3).south` confirmed blocked `5/5`
+    - `teleport_to:5,4` then `probe_edge_verify:UP,5`
+      => `(5,3).south` confirmed blocked `5/5`
+    - `teleport_to:6,4` then `probe_edge_verify:UP,5`
+      => `(6,3).south` confirmed blocked `5/5`
+    - live `(7,4)` then `probe_edge_verify:UP,5`
+      => `(7,3).south` confirmed blocked `5/5`
+- TDD / permanent model updates:
+  - red assertions added first for:
+    - `(8,5).west`, `(8,5).north`, `(8,3).south`
+    - `(2,6).east`
+    - `(2,5).east`
+    - `(3,3).south` through `(7,3).south`
+  - green update added those B2 `0x19` directional blocks to `map_reader.lua`
+  - `test_map_reader.lua`, `luac5.1 -p`, and `git diff --check` all passed
+- Runtime reinjection for current FCEUX session:
+  - added:
+    - `add_blocked_edge:25,7,5,RIGHT`
+    - `add_blocked_edge:25,8,4,DOWN`
+    - `add_blocked_edge:25,8,4,UP`
+    - `add_blocked_edge:25,3,6,LEFT`
+    - `add_blocked_edge:25,3,5,LEFT`
+    - `add_blocked_edge:25,3,4,UP`
+    - `add_blocked_edge:25,4,4,UP`
+    - `add_blocked_edge:25,5,4,UP`
+    - `add_blocked_edge:25,6,4,UP`
+    - `add_blocked_edge:25,7,4,UP`
+  - current runtime set:
+    - `RUNTIME_BLOCKS map=0x19 count=14`
+- Current live baseline after this pass:
+  - `POSITION map=0x19(Garin's Grave B2) x=3 y=5`
+  - `debug_pathfind_to:1,10`
+    => `Path: 3 south, 5 east, 1 south, 7 west, 1 south`
+
+## 2026-06-05 B2 east-pocket cleanup around `(10,4)` to `(12,6)`
+
+- Starting point for this pass:
+  - current live runtime set was still `RUNTIME_BLOCKS map=0x19 count=14`
+  - field baseline recovered cleanly at `POSITION map=0x19 x=9 y=6`
+  - fresh route-shaped seam hits from the latest autowalk cluster included:
+    - `(11,6)->RIGHT` into `(12,6)` => blocked-only
+    - `(11,6)->LEFT` into `(10,6)` => blocked-only
+    - `(11,6)->DOWN` into `(11,7)` => blocked-only
+    - `(11,5)->LEFT` into `(10,5)` => blocked-only
+    - `(11,5)->RIGHT` into `(12,5)` => blocked-only
+    - `(10,4)->DOWN` into `(10,5)` => blocked-only in route context
+- Split direct verifier results:
+  - `teleport_to:11,6` then same-origin `probe_edge_verify:RIGHT,5`
+    => `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(12,6).west`
+  - `teleport_to:11,6` then same-origin `probe_edge_verify:LEFT,5`
+    => `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(10,6).east`
+  - `teleport_to:11,6` then same-origin `probe_edge_verify:DOWN,5`
+    => `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(11,7).north`
+  - `teleport_to:11,5` then same-origin `probe_edge_verify:LEFT,5`
+    => `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(10,5).east`
+  - `teleport_to:11,5` then same-origin `probe_edge_verify:RIGHT,5`
+    => `EDGE_VERIFY_RESULT ... moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(12,5).west`
+  - `teleport_to:10,4` then same-origin `probe_edge_verify:DOWN,5`
+    => `EDGE_VERIFY_RESULT ... moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+    with `first_attempt_status=moved` and `blocked_after_move=4`
+- Fresh-start one-shot follow-up for the contaminated north face:
+  - repeated three times:
+    - `teleport_to:10,4` then `probe_edge:DOWN`
+    - `teleport_to:10,4` then `probe_edge:DOWN`
+    - `teleport_to:10,4` then `probe_edge:DOWN`
+  - all three ended:
+    - `EDGE_PROBE_RESULT map=0x19 from=(10,4) dir=down dest=(10,5) status=blocked final=(10,4) reached_dest=false ... reason=raw_hold_timeout`
+  - treat `(10,5).north` as real engine blocking despite the repeated-verifier
+    teleport artifact
+- TDD / permanent model updates:
+  - red assertions added first for:
+    - `(10,5).east`
+    - `(10,5).north`
+    - `(10,6).east`
+    - `(11,7).north`
+    - `(12,5).west`
+    - `(12,6).west`
+  - green update added those six B2 `0x19` directional blocks to
+    `map_reader.lua`
+  - `lua5.1 test_map_reader.lua` and `luac5.1 -p map_reader.lua test_map_reader.lua`
+    passed afterward
+- Runtime reinjection for the current FCEUX session:
+  - added:
+    - `add_blocked_edge:25,11,6,RIGHT`
+    - `add_blocked_edge:25,11,6,LEFT`
+    - `add_blocked_edge:25,11,6,DOWN`
+    - `add_blocked_edge:25,11,5,LEFT`
+    - `add_blocked_edge:25,11,5,RIGHT`
+    - `add_blocked_edge:25,10,4,DOWN`
+  - resulting live runtime snapshot:
+    - `RUNTIME_BLOCKS map=0x19 count=18`
+    - `(10,5) dirs=east,north,west`
+    - `(12,5) dirs=west`
+    - `(10,6) dirs=east`
+    - `(12,6) dirs=west`
+    - `(11,7) dirs=north`
+  - current hero location after sync:
+    - `POSITION map=0x19(Garin's Grave B2) x=10 y=4`
+
+## 2026-06-05 B2 west-strip cleanup from `(9,6)` through `(6,8)`
+
+- Recheck of the user-reported manual blocker:
+  - old note had treated `(9,6)->LEFT` into `(8,6)` as open from an earlier
+    same-origin verifier, but the fresh live state contradicted it hard
+  - fresh `probe_edge:LEFT` from `(9,6)` => blocked
+  - same-origin `probe_edge_verify:LEFT,5` from live `(9,6)`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - split `teleport_to:9,6` then same-origin `probe_edge_verify:LEFT,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - reverse `teleport_to:8,6` then `probe_edge_verify:RIGHT,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+  - promote `(8,6).east`; old open result is no longer trustworthy
+- Runtime reinjection after that first promotion:
+  - added `add_blocked_edge:25,9,6,LEFT`
+  - live runtime count became `19`
+  - planner from `(9,6)` rerouted to:
+    `Path: 1 east, 3 south, 9 west, 1 south`
+- Autowalk follow-up from `(7,8)` produced a west strip on the `x=8` column:
+  - route-shaped candidates:
+    - `(7,8)->RIGHT` into `(8,8)` => `blocked_only` in route context
+    - `(7,7)->RIGHT` into `(8,7)` => `blocked_only`
+    - `(7,6)->RIGHT` into `(8,6)` => `blocked_only`
+  - direct checks:
+    - `teleport_to:7,7` then `probe_edge_verify:RIGHT,5`
+      => `(8,7).west` confirmed blocked `5/5`
+    - `teleport_to:7,6` then `probe_edge_verify:RIGHT,5`
+      => `(8,6).west` confirmed blocked `5/5`
+    - `teleport_to:7,8` then `probe_edge_verify:RIGHT,5`
+      => `moved=4 blocked=1 classification=inconclusive_teleport_artifact`
+    - three fresh-start `teleport_to:7,8` then `probe_edge:RIGHT`
+      => blocked all three times
+    - reverse `teleport_to:8,8` then `probe_edge_verify:LEFT,5`
+      => `moved=6 blocked=0 classification=confirmed_passable`
+  - treat `(8,8).west` as real despite the mixed repeated verifier
+- Another reroute higher up then exposed `(6,8)->UP` into `(6,7)`:
+  - route-shaped read:
+    - `SEAM_OBSERVATION map=0x19 cell=(6,7) approach=south result=blocked blocked=1 moved=0 classification=blocked_only`
+  - repeated verifier:
+    - `teleport_to:6,8` then `probe_edge_verify:UP,5`
+      => `moved=4 blocked=1 classification=inconclusive_teleport_artifact`
+  - fresh-start one-shot follow-up:
+    - three separate `teleport_to:6,8` then `probe_edge:UP`
+      => blocked all three times
+    - reverse `teleport_to:6,7` then `probe_edge_verify:DOWN,5`
+      => `moved=6 blocked=0 classification=confirmed_passable`
+  - treat `(6,7).south` as real engine blocking
+- Non-promoted / disproven neighbors from the same live passes:
+  - `(10,6).west` stayed timing noise; do not promote
+  - `(7,8).north` verified passable `6/6`; do not promote
+  - `(7,7).south` was noisy (`blocked=1 moved=5`); do not promote
+- TDD / permanent model updates:
+  - red assertions added first for:
+    - `(8,6).east`
+    - `(8,6).west`
+    - `(8,7).west`
+    - `(8,8).west`
+    - `(6,7).south`
+  - green update added those five B2 `0x19` directional blocks to
+    `map_reader.lua`
+  - `lua5.1 test_map_reader.lua`, `luac5.1 -p map_reader.lua test_map_reader.lua`,
+    and `git diff --check -- map_reader.lua test_map_reader.lua` all passed
+- Runtime reinjection for the current FCEUX session:
+  - added:
+    - `add_blocked_edge:25,9,6,LEFT`
+    - `add_blocked_edge:25,7,6,RIGHT`
+    - `add_blocked_edge:25,7,7,RIGHT`
+    - `add_blocked_edge:25,7,8,RIGHT`
+    - `add_blocked_edge:25,6,8,UP`
+  - resulting live runtime snapshot:
+    - `RUNTIME_BLOCKS map=0x19 count=22`
+    - `(6,7) dirs=south`
+    - `(8,6) dirs=east,west`
+    - `(8,7) dirs=west`
+    - `(8,8) dirs=west`
+  - current hero location after sync:
+    - `POSITION map=0x19(Garin's Grave B2) x=6 y=8`
+  - current planner state:
+    - `debug_pathfind_to:1,10`
+      => `Path: 1 east, 4 north, 2 east, 1 north, 8 west, 7 south`
+
+## 2026-06-05 B2 final southwest-stair completion pass
+
+- Important baseline change before the final pass:
+  - after the most recent battle/reload cycle, live `report_runtime_blocks`
+    came back `RUNTIME_BLOCKS map=0x19 none`
+  - that means the next route checks were exercising the permanent B2 model
+    without relying on the temporary runtime edge set
+- Battle-interrupted false alarm cleanup:
+  - route-shaped suspicion at `(6,11)->LEFT` into `(5,11)` did not hold up
+  - same-origin `probe_edge_verify:LEFT,5` from live `(6,11)`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+  - keep `(5,11).east` open
+- Planner tightened dramatically after that check:
+  - from live `(5,11)`, `debug_pathfind_to:1,10`
+    => `Path: 4 west, 1 north`
+- Final autowalk outcome:
+  - `auto_walk:1,10` from `(5,11)` completed without finding a new blocker
+  - logged moved seams on:
+    - `(4,11)` approach east
+    - `(3,11)` approach east
+    - `(2,11)` approach east
+    - `(1,11)` approach east
+    - `(1,10)` approach south
+  - completion marker:
+    - `AUTO_WALK_NPC_PARK_RESTORE ... reason=autowalk route complete`
+  - final live state:
+    - `POSITION map=0x19(Garin's Grave B2) x=1 y=10`
+    - `RUNTIME_BLOCKS map=0x19 none`
+- Residual stale candidate from an earlier interrupted reroute:
+  - `UNRESOLVED / DO NOT PROMOTE without fresh direct proof`
+  - `(12,10)->LEFT` into `(11,10)` logged one `blocked_only` route hit during
+    the stale `(13,10)` detour, but the route later completed without needing
+    it and there is no direct verifier evidence yet
+
+## 2026-06-05 B2 center-right strip cleanup from live `(10,8)` and `(8,8)`
+
+- Fresh baseline after the user-reported blocker batch:
+  - `report_position` => `POSITION map=0x19(Garin's Grave B2) x=10 y=8`
+  - `report_path_state` / `report_runtime_blocks` => `runtime_count=0`
+- Direct verifier batch from the row-8 center-right strip:
+  - `probe_edge_verify:UP,5` from live `(10,8)`
+    => `EDGE_VERIFY_RESULT ... dest=(10,7) moved=0 blocked=5 classification=confirmed_blocked`
+  - `teleport_to:10,7` then `probe_edge_verify:DOWN,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+    so model `(10,7).south`
+  - `teleport_to:10,8` then `probe_edge_verify:DOWN,5`
+    => `dest=(10,9) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(10,9).north`
+  - `teleport_to:9,8` then `probe_edge_verify:DOWN,5`
+    => `dest=(9,9) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(9,9).north`
+  - `teleport_to:11,8` then `probe_edge_verify:DOWN,5`
+    => `dest=(11,9) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(11,9).north`
+  - `teleport_to:12,8` then `probe_edge_verify:DOWN,5`
+    => `dest=(12,9) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(12,9).north`
+  - `teleport_to:9,8` then `probe_edge_verify:UP,5`
+    => `dest=(9,7) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(9,7).south`
+  - `teleport_to:11,8` then `probe_edge_verify:UP,5`
+    => `dest=(11,7) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(11,7).south`
+  - `teleport_to:12,8` then `probe_edge_verify:UP,5`
+    => `dest=(12,7) moved=0 blocked=5 classification=confirmed_blocked`
+    so model `(12,7).south`
+- Promoted into permanent B2 `0x19` data:
+  - `(9,7).south`
+  - `(10,7).south`
+  - `(11,7).south`
+  - `(12,7).south`
+  - `(9,9).north`
+  - `(10,9).north`
+  - `(11,9).north`
+  - `(12,9).north`
+- Runtime reinjection for the current FCEUX session:
+  - added:
+    - `add_blocked_edge:25,9,8,UP`
+    - `add_blocked_edge:25,10,8,UP`
+    - `add_blocked_edge:25,11,8,UP`
+    - `add_blocked_edge:25,12,8,UP`
+    - `add_blocked_edge:25,9,8,DOWN`
+    - `add_blocked_edge:25,10,8,DOWN`
+    - `add_blocked_edge:25,11,8,DOWN`
+    - `add_blocked_edge:25,12,8,DOWN`
+  - `report_runtime_blocks` => `RUNTIME_BLOCKS map=0x19 count=8`
+- Live planner sanity after reinjection:
+  - from `(12,8)`, `debug_pathfind_to:1,10`
+    => `Path: 4 west, 1 south, 7 west, 1 south`
+- Follow-up autowalk / cleanup:
+  - initial reroute noise made `(9,8)->LEFT` into `(8,8)` look suspicious, but
+    direct same-origin `probe_edge_verify:LEFT,5` from `(9,8)` then moved `6/6`
+    with stability recheck:
+    - `EDGE_VERIFY_RESULT ... dest=(8,8) moved=6 blocked=0 classification=confirmed_passable`
+    - keep `(8,8).east` open
+    - log downgraded it to `SEAM_OBSERVATION ... cell=(8,8) approach=east ... classification=noisy`
+  - from live `(8,8)`, `debug_pathfind_to:1,10`
+    => `Path: 1 south, 7 west, 1 south`
+  - next live `auto_walk:1,10` from `(8,8)` exposed one fresh candidate before
+    rerouting away:
+    - `(8,8)->DOWN` into `(8,9)` logged
+      `SEAM_OBSERVATION ... cell=(8,9) approach=north result=blocked blocked=1 moved=0 classification=blocked_only`
+    - later in that same reroute, a battle started at `(13,9)` and cancelled
+      the autowalk
+    - `UNRESOLVED / DO NOT PROMOTE without fresh direct proof`
+    - next best verifier once back in field: `teleport_to:8,8` then
+      `probe_edge_verify:DOWN,5`
+
+## 2026-06-05 B2 `(8,8)<->(8,9)` seam settled; next candidate `(7,9).east`
+
+- Requested direct follow-up from the earlier scratchpad candidate:
+  - `teleport_to:8,8` then `probe_edge_verify:DOWN,5`
+    => `EDGE_VERIFY_RESULT ... dest=(8,9) moved=2 blocked=3 classification=inconclusive_teleport_artifact`
+  - attempt pattern from the log:
+    - attempts 1 and 2 moved into `(8,9)`
+    - attempts 3, 4, and 5 blocked at `raw_hold_timeout`
+    - so the repeated verifier alone was still not enough to promote
+- Fresh one-shot tiebreaker from the upper side:
+  - three separate cycles of:
+    - `teleport_to:8,8 report_position`
+    - `probe_edge:DOWN`
+  - all three ended:
+    - `EDGE_PROBE_RESULT map=0x19 from=(8,8) dir=down dest=(8,9) status=blocked final=(8,8) reason=raw_hold_timeout`
+- Reverse face check from the lower side:
+  - `teleport_to:8,9` then `probe_edge_verify:UP,5`
+    => `EDGE_VERIFY_RESULT ... dest=(8,8) moved=0 blocked=5 classification=confirmed_blocked`
+- Promoted into permanent B2 `0x19` data:
+  - `(8,8).south`
+  - `(8,9).north`
+- Runtime reinjection for the current FCEUX session:
+  - added:
+    - `add_blocked_edge:25,8,8,DOWN`
+    - `add_blocked_edge:25,8,9,UP`
+  - `report_runtime_blocks` => `RUNTIME_BLOCKS map=0x19 count=10`
+  - live runtime now includes:
+    - `(8,8) dirs=south`
+    - `(8,9) dirs=north`
+    - `(9,7) dirs=south`
+    - `(10,7) dirs=south`
+    - `(11,7) dirs=south`
+    - `(12,7) dirs=south`
+    - `(9,9) dirs=north`
+    - `(10,9) dirs=north`
+    - `(11,9) dirs=north`
+    - `(12,9) dirs=north`
+- Planner/autowalk follow-up after the patch:
+  - from live `(8,9)`, `debug_pathfind_to:1,10`
+    => `Path: 7 west, 1 south`
+  - `auto_walk:1,10` then progressed cleanly:
+    - `(8,10)` approach north moved
+    - `(8,11)` approach north moved
+    - `(7,11)` approach east moved
+    - `(6,11)` approach east moved
+    - `(5,11)` approach east moved
+    - `(4,11)` approach east moved
+    - `(3,11)` approach east moved
+  - new route-shaped candidate before the battle interruption:
+    - `(8,9)->LEFT` into `(7,9)` logged
+      `SEAM_OBSERVATION ... cell=(7,9) approach=east result=blocked blocked=1 moved=0 classification=blocked_only`
+    - later autowalk rerouted down through `(8,10)` / `(8,11)` and a battle
+      started at `(3,11)`
+    - `UNRESOLVED / DO NOT PROMOTE without fresh direct proof`
+    - next best direct verifier after battle: `teleport_to:8,9` then
+      `probe_edge_verify:LEFT,5`
+
+## 2026-06-05 B2 west-strip continuation through `(5,9)<->(8,9)`
+
+- Returned to the earlier unresolved `(8,9)->LEFT` seam after the battle:
+  - `teleport_to:8,9` then `probe_edge_verify:LEFT,5`
+    => `moved=3 blocked=2 classification=inconclusive_teleport_artifact`
+  - attempt pattern from the log:
+    - attempts 1-3 moved into `(7,9)`
+    - attempts 4-5 blocked at `raw_hold_timeout`
+  - fresh one-shot tiebreaker from the east side:
+    - three separate cycles of `teleport_to:8,9` then `probe_edge:LEFT`
+      all ended `EDGE_PROBE_RESULT ... status=blocked ... reason=raw_hold_timeout`
+  - reverse face:
+    - `teleport_to:7,9` then `probe_edge_verify:RIGHT,5`
+      => `moved=0 blocked=5 classification=confirmed_blocked`
+- Promoted into permanent B2 `0x19` data:
+  - `(7,9).east`
+  - `(8,9).west`
+- TDD/implementation note:
+  - initial regression-first patch surfaced a duplicate-key overwrite bug:
+    a later `(7,9)` table entry shadowed the earlier `(7,9).north`
+  - fixed by merging faces into one final `(7,9)` directional record instead
+    of adding a separate later one
+- Runtime reinjection after that pair:
+  - added:
+    - `add_blocked_edge:25,8,9,LEFT`
+    - `add_blocked_edge:25,7,9,RIGHT`
+  - `report_runtime_blocks` => `RUNTIME_BLOCKS map=0x19 count=11`
+- Planner/autowalk follow-up:
+  - from live `(7,9)`, `debug_pathfind_to:1,10`
+    => `Path: 6 west, 1 south`
+  - `auto_walk:1,10` then still completed to `(1,10)`, but it exposed the
+    next west-strip seam:
+    - `(7,9)->LEFT` into `(6,9)` logged
+      `SEAM_OBSERVATION ... cell=(6,9) approach=east result=blocked blocked=1 moved=0 classification=blocked_only`
+- Direct follow-up on `(7,9)->LEFT` into `(6,9)`:
+  - repeated verifier:
+    - `teleport_to:7,9` then `probe_edge_verify:LEFT,5`
+      => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - fresh one-shot tiebreaker:
+    - three separate `teleport_to:7,9` then `probe_edge:LEFT`
+      all ended `EDGE_PROBE_RESULT ... status=blocked ... reason=raw_hold_timeout`
+  - reverse face:
+    - `teleport_to:6,9` then `probe_edge_verify:RIGHT,5`
+      => `moved=0 blocked=5 classification=confirmed_blocked`
+- Promoted into permanent B2 `0x19` data:
+  - `(6,9).east`
+  - `(7,9).west`
+- Runtime reinjection after that pair:
+  - added:
+    - `add_blocked_edge:25,7,9,LEFT`
+    - `add_blocked_edge:25,6,9,RIGHT`
+  - `report_runtime_blocks` => `RUNTIME_BLOCKS map=0x19 count=12`
+- Planner/autowalk follow-up:
+  - from live `(6,9)`, `debug_pathfind_to:1,10`
+    => `Path: 5 west, 1 south`
+  - next `auto_walk:1,10` again completed to `(1,10)` and exposed the next
+    west-strip seam:
+    - `(6,9)->LEFT` into `(5,9)` logged
+      `SEAM_OBSERVATION ... cell=(5,9) approach=east result=blocked blocked=1 moved=0 classification=blocked_only`
+- Direct follow-up on `(6,9)->LEFT` into `(5,9)`:
+  - repeated verifier:
+    - `teleport_to:6,9` then `probe_edge_verify:LEFT,5`
+      => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - fresh one-shot tiebreaker:
+    - three separate `teleport_to:6,9` then `probe_edge:LEFT`
+      all ended `EDGE_PROBE_RESULT ... status=blocked ... reason=raw_hold_timeout`
+  - reverse face:
+    - `teleport_to:5,9` then `probe_edge_verify:RIGHT,5`
+      => `moved=0 blocked=5 classification=confirmed_blocked`
+- Promoted into permanent B2 `0x19` data:
+  - `(5,9).east`
+  - `(6,9).west`
+- Runtime reinjection after that pair:
+  - added:
+    - `add_blocked_edge:25,6,9,LEFT`
+    - `add_blocked_edge:25,5,9,RIGHT`
+  - `report_runtime_blocks` => `RUNTIME_BLOCKS map=0x19 count=13`
+  - live runtime west strip now includes:
+    - `(5,9) dirs=east`
+    - `(6,9) dirs=east,west`
+    - `(7,9) dirs=east,west`
+    - `(8,9) dirs=north,west`
+- Current stop after the last reseed:
+  - `POSITION map=0x19(Garin's Grave B2) x=5 y=9`
+  - `debug_pathfind_to:1,10`
+    => `Path: 4 west, 1 south`
+- Final repeat-autowalk sanity after the west-strip promotions:
+  - another live `auto_walk:1,10` completed cleanly back to
+    `POSITION map=0x19(Garin's Grave B2) x=1 y=10`
+  - two intermediate left-step stalls looked suspicious but did not hold up as
+    blocker evidence:
+    - `(4,10)->LEFT` into `(3,10)` timed out on the first pass, then seam
+      retry moved into `(3,10)`
+    - `(2,11)->LEFT` into `(1,11)` timed out on the first pass, then seam
+      retry moved into `(1,11)`
+  - treat `(3,10).east` and `(1,11).east` as timing noise, not blockers
+
+## 2026-06-05 B2 top-hook cleanup and northwest-pocket continuation
+
+- User asked to review another stopped B2 autowalk that had bounced near the
+  upper rows before battle noise was allowed to accumulate.
+- First pass was the top-hook pocket around `(10..11,1..3)`:
+  - route-shaped candidates from the stopped log:
+    - `(10,2)->LEFT` into `(9,2)` => candidate `(9,2).east`
+    - `(10,2)->DOWN` into `(10,3)` => candidate `(10,3).north`
+    - `(11,2)->DOWN` into `(11,3)` => candidate `(11,3).north`
+    - `(10,2)->UP` into `(10,1)` => candidate `(10,1).south`
+    - `(11,1)->LEFT` into `(10,1)` => candidate `(10,1).east`
+  - direct/live follow-up:
+    - `teleport_to:10,2` then `probe_edge_verify:LEFT,5`
+      => `(9,2).east` cleared cleanly; moved `6/6`
+    - `teleport_to:10,2` then `probe_edge_verify:DOWN,5`
+      was interrupted by battle after moving `3/3`
+    - split one-shots on the same seam stayed contradictory:
+      - from `(10,2)->DOWN`: one moved, then two blocked
+      - reverse from `(10,3)->UP`: three blocked
+      - leave `(10,3).north` / `(10,2).south` unmodeled for now
+    - `teleport_to:11,2` then `probe_edge:DOWN`
+      => moved into `(11,3)`; keep `(11,3).north` open
+    - `teleport_to:11,1` then `probe_edge:LEFT`
+      => moved into `(10,1)`; keep `(10,1).east` open
+    - `teleport_to:10,2` then `probe_edge:UP`
+      moved twice into `(10,1)`; keep `(10,1).south` open
+- Because the planner from live `(10,1)` no longer depended on the
+  contradictory `(10,2)<->(10,3)` seam, resumed route work from there:
+  - `debug_pathfind_to:1,10`
+    => `Path: 9 west, 9 south`
+- The resumed northwest autowalk exposed a much cleaner B2 band:
+  - route-shaped candidates:
+    - `(3,1)->LEFT` into `(2,1)` => candidate `(2,1).east`
+    - `(3,2)->LEFT` into `(2,2)` => candidate `(2,2).east`
+    - `(3,2)->DOWN` into `(3,3)` => candidate `(3,3).north`
+    - `(4,2)->DOWN` into `(4,3)` => candidate `(4,3).north`
+    - `(5,2)->DOWN` into `(5,3)` => candidate `(5,3).north`
+    - `(5,2)->UP` into `(5,1)` => candidate `(5,1).south`
+    - `(4,2)->UP` into `(4,1)` was still in-flight when the route was halted,
+      but the next resumed route immediately reproduced it
+  - direct follow-up verifiers:
+    - `teleport_to:3,2` then `probe_edge_verify:DOWN,5`
+      => `(3,3).north` confirmed blocked `5/5`
+    - `teleport_to:4,2` then `probe_edge_verify:DOWN,5`
+      => `(4,3).north` confirmed blocked `5/5`
+    - `teleport_to:5,2` then `probe_edge_verify:DOWN,5`
+      => `(5,3).north` confirmed blocked `5/5`
+    - `teleport_to:4,2` then `probe_edge_verify:UP,5`
+      => `(4,1).south` confirmed blocked `5/5`
+    - `teleport_to:5,2` then `probe_edge_verify:UP,5`
+      => mixed (`moved=1 blocked=4 classification=inconclusive_teleport_artifact`)
+    - stronger tiebreaker for `(5,1).south`:
+      - three separate `teleport_to:5,2` then `probe_edge:UP`
+        all blocked at `raw_hold_timeout`
+      - reverse `teleport_to:5,1` then `probe_edge_verify:DOWN,5`
+        moved `6/6`
+      - promote only `(5,1).south`
+    - `teleport_to:3,1` then `probe_edge_verify:LEFT,5`
+      => mixed (`moved=1 blocked=4 classification=inconclusive_teleport_artifact`)
+    - stronger tiebreaker for `(2,1).east`:
+      - three separate `teleport_to:3,1` then `probe_edge:LEFT`
+        all blocked at `raw_hold_timeout`
+      - reverse `teleport_to:2,1` then `probe_edge_verify:RIGHT,5`
+        moved `6/6`
+      - promote only `(2,1).east`
+    - `teleport_to:3,2` then `probe_edge_verify:LEFT,5`
+      => `(2,2).east` confirmed blocked `5/5`
+- TDD / permanent model updates:
+  - red phase 1:
+    - added failing B2 assertions for `(3,3).north`, `(4,3).north`,
+      `(5,3).north`
+    - `lua5.1 test_map_reader.lua` failed on `(3,3).north`
+  - green phase 1:
+    - added those three north faces to `MAP_DIRECTIONAL_BLOCKS[0x19]`
+    - `lua5.1 test_map_reader.lua`, `luac5.1 -p`, and `git diff --check`
+      passed
+  - red phase 2:
+    - added failing B2 assertions for `(2,1).east`, `(2,2).east`,
+      `(4,1).south`, and `(5,1).south`
+    - `lua5.1 test_map_reader.lua` failed on `(2,1).east`
+  - green phase 2:
+    - added those four faces to `MAP_DIRECTIONAL_BLOCKS[0x19]`
+    - `lua5.1 test_map_reader.lua`, `luac5.1 -p`, and `git diff --check`
+      passed again
+- Runtime sync:
+  - first reseed for the new north lip:
+    - `add_blocked_edge:25,3,2,DOWN`
+    - `add_blocked_edge:25,4,2,DOWN`
+    - `add_blocked_edge:25,5,2,DOWN`
+  - later reseed for the upper-row / west-pocket additions:
+    - `add_blocked_edge:25,3,1,LEFT`
+    - `add_blocked_edge:25,3,2,LEFT`
+    - `add_blocked_edge:25,4,2,UP`
+    - `add_blocked_edge:25,5,2,UP`
+  - live readback after the second reseed:
+    - `RUNTIME_BLOCKS map=0x19 count=7`
+    - `(3,3).north`, `(4,3).north`, `(5,3).north`
+    - `(2,1).east`, `(2,2).east`
+    - `(4,1).south`, `(5,1).south`
+- Live route follow-up after the second reseed:
+  - `report_position`
+    => `POSITION map=0x19(Garin's Grave B2) x=2 y=2`
+  - `debug_pathfind_to:1,10`
+    => `Path: 8 south, 1 west`
+  - short follow-up `auto_walk:1,10` with the new runtime edges exposed the
+    next unresolved route-shaped trio:
+    - `(2,2)->DOWN` into `(2,3)` => candidate `(2,3).north`
+    - `(2,2)->LEFT` into `(1,2)` => candidate `(1,2).east`
+    - `(2,2)->UP` into `(2,1)` => candidate `(2,1).south`
+  - current live stop after manual halt:
+    - `POSITION map=0x19(Garin's Grave B2) x=3 y=1`
+- One more resumed reroute check after that halt:
+  - with the seven-edge runtime reseed active, the next reroute from `(3,1)`
+    repeatedly stalled on `(3,1)->RIGHT` into `(4,1)`
+  - direct follow-up:
+    - same-origin `probe_edge_verify:RIGHT,5` from `(3,1)`
+      => `(4,1).west` confirmed blocked `5/5`
+  - TDD / permanent model update:
+    - added failing B2 assertion for `(4,1).west`
+    - `lua5.1 test_map_reader.lua` failed on `(4,1).west`
+    - added `(4,1).west` to `MAP_DIRECTIONAL_BLOCKS[0x19]`
+    - `lua5.1 test_map_reader.lua`, `luac5.1 -p`, and `git diff --check`
+      all passed again
+  - runtime sync:
+    - `add_blocked_edge:25,3,1,RIGHT`
+    - `report_runtime_blocks` still showed `count=7` because `(4,1)` now
+      carries both `south` and `west` on the same runtime cell key
+  - final planner status from the live stop:
+    - `report_position`
+      => `POSITION map=0x19(Garin's Grave B2) x=3 y=1`
+    - `debug_pathfind_to:1,10`
+      => `No path found [no_path] (visited=4 path=0)`
+    - next best direct verifiers when resuming:
+      - `teleport_to:2,2` then `probe_edge_verify:DOWN,5`
+        for candidate `(2,3).north`
+      - `teleport_to:2,2` then `probe_edge_verify:LEFT,5`
+        for candidate `(1,2).east`
+      - `teleport_to:2,2` then `probe_edge_verify:UP,5`
+        for candidate `(2,1).south`
+
+## 2026-06-05 B2 northwest bridge trio from `(2,2)` settled
+
+- Resumed directly on the three unresolved bridge candidates from the latest
+  northwest-pocket handoff.
+- Candidate 1: `(2,2)->DOWN` into `(2,3)` => `(2,3).north`
+  - `teleport_to:2,2` then `probe_edge_verify:DOWN,5`
+    => mixed (`moved=1 blocked=4 classification=inconclusive_teleport_artifact`)
+  - stronger tiebreaker:
+    - three separate `teleport_to:2,2` then `probe_edge:DOWN`
+      all blocked at `raw_hold_timeout`
+  - reverse face:
+    - `teleport_to:2,3` then `probe_edge_verify:UP,5`
+      => `(2,3).north` confirmed blocked `5/5`
+- Candidate 2: `(2,2)->LEFT` into `(1,2)` => `(1,2).east`
+  - `teleport_to:2,2` then `probe_edge_verify:LEFT,5`
+    => mixed (`moved=2 blocked=3 classification=inconclusive_teleport_artifact`)
+  - stronger tiebreaker:
+    - three separate `teleport_to:2,2` then `probe_edge:LEFT`
+      all blocked at `raw_hold_timeout`
+  - reverse face:
+    - `teleport_to:1,2` then `probe_edge_verify:RIGHT,5`
+      => moved `6/6`
+  - promote only `(1,2).east`
+- Candidate 3: `(2,2)->UP` into `(2,1)` => `(2,1).south`
+  - `teleport_to:2,2` then `probe_edge_verify:UP,5`
+    => `(2,1).south` confirmed blocked `5/5`
+- TDD / permanent model updates:
+  - red phase:
+    - added failing B2 assertions for `(2,3).north`, `(1,2).east`, and
+      `(2,1).south`
+    - `lua5.1 test_map_reader.lua` failed on `(2,3).north`
+  - green phase:
+    - added:
+      - `["1,2"] = {east = true}`
+      - `["2,1"] = {east = true, south = true}`
+      - `["2,3"] = {north = true, west = true}`
+    - `lua5.1 test_map_reader.lua`, `luac5.1 -p`, and `git diff --check`
+      all passed
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:25,2,2,DOWN`
+    - `add_blocked_edge:25,2,2,LEFT`
+    - `add_blocked_edge:25,2,2,UP`
+  - readback:
+    - `POSITION map=0x19(Garin's Grave B2) x=2 y=2`
+    - `RUNTIME_BLOCKS map=0x19 count=9`
+    - `(2,1) dirs=east,south`
+    - `(4,1) dirs=south,west`
+    - `(5,1) dirs=south`
+    - `(1,2) dirs=east`
+    - `(2,2) dirs=east`
+    - `(2,3) dirs=north`
+    - `(3,3) dirs=north`
+    - `(4,3) dirs=north`
+    - `(5,3) dirs=north`
+- Planner follow-up:
+  - `debug_pathfind_to:1,10` from `(2,2)`
+    => `No path found [no_path] (visited=5 path=0)`
+  - structural bracket:
+    - `debug_pathfind_to:6,2`
+      => `No path found [goal_not_walkable]`
+    - `debug_pathfind_to:5,2`
+      => `Path: 3 east`
+  - `teleport_to:5,2` then `debug_pathfind_to:1,10`
+    => `No path found [no_path] (visited=4 path=0)`
+  - interpretation:
+    - this northwest/top-row pocket now behaves as a dead-end component
+    - the next resume point should move outward from the reachable east lip
+      rather than retesting the `(2,2)` bridge trio
+- Current live stop:
+  - `POSITION map=0x19(Garin's Grave B2) x=5 y=2`
+
+## 2026-06-05 selected-object teleport focused-object drift on B2
+
+- User reported selected teleport occasionally failing to teleport to the
+  focused object and left the emulator in the broken state while trying to
+  target `Stairs Up to B1`.
+- Broken-state log evidence from `dw_debug.log`:
+  - `ROUTE_PLAN_SNAPSHOT map=0x19 ... start=(5,6) target_id=stair_11_2 target_name=Stairs Up to B1 goal=(11,2)`
+  - later in the same stop:
+    - `TELEPORT_SELECTED mode=exact target_id=stair_5_6 target_name=Center Stairs Down to B3 target=(5,6) landing=(5,6)`
+  - this proved the selected-teleport hotkey was reading the wrong selected
+    object, not merely choosing a bad landing cell for the right target
+- Fresh command-side confirmation after probing the idle loop:
+  - `launcher_probe:codex_tp_path` then `pathfind`
+    => `ROUTE_PLAN_SNAPSHOT ... target_id=stair_11_2 ... goal=(11,2)`
+  - `launcher_probe:codex_tp_obj` then `current_object`
+    => `OBJECT: Stairs Up to B1: 4 north, 6 east (4 of 6) [player 5,6 obj 11,2]`
+  - `launcher_probe:codex_tp_pos` then `report_position`
+    => `POSITION: map=0x19(Garin's Grave B2) x=5 y=6`
+- Code read:
+  - `main.lua` selected teleport reads `objects.current_object()` directly
+  - `object_commands.lua` current-object command already refreshes current-map
+    object cache before describing
+  - `hotkeys.lua` object browse/pathfind/autowalk used a lighter browse refresh
+    that skipped `objects.check_refresh(map_id)`, and teleport hotkeys skipped
+    browse refresh entirely before invoking the teleport handler
+- Root-cause conclusion:
+  - this is stale hotkey-side object-cache state / selection drift, not a bad
+    teleport landing resolver
+  - likely related to the earlier object navigator map-change stale-cache issue
+- TDD / fix:
+  - red:
+    - extended `test_hotkeys.lua` to require hotkey-side current-map cache
+      refresh for K/J/L browse, O/U route actions, and selected teleport
+    - failing assertions showed cache refresh count stayed `0`
+  - green:
+    - `hotkeys.lua` now calls `objects.check_refresh(map_id)` before hotkey-side
+      object browse context reads
+    - selected teleport hotkeys now also refresh live object positions before
+      invoking the handler
+  - verification:
+    - `lua5.1 test_hotkeys.lua`
+    - `lua5.1 test_object_commands.lua`
+    - `luac5.1 -p hotkeys.lua test_hotkeys.lua`
+    - `git diff --check -- hotkeys.lua test_hotkeys.lua`
+- Live caveat:
+  - FCEUX has not reloaded this Lua patch yet; live confirmation still needs a
+    manual script reload before retrying `Shift+Enter` on `Stairs Up to B1`
+
+## 2026-06-05 noisy front-half reroute to southwest B3 stairs
+
+- User reported the latest B2 route to the southwest B3 stairs was noisy in
+  the first part but still completed.
+- Route-log review identified three top-right/front-half candidates:
+  - `(11,1)->LEFT` into `(10,1)` => candidate `(10,1).east`
+  - `(12,2)->DOWN` into `(12,3)` => candidate `(12,3).north`
+  - `(13,3)->LEFT` into `(12,3)` => candidate `(12,3).east`
+- First direct repeated verifiers for all three matched the same bad shape:
+  - `probe_edge_verify:11,1,LEFT,5`
+    => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - `probe_edge_verify:12,2,DOWN,5`
+    => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - `probe_edge_verify:13,3,LEFT,5`
+    => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - practical read:
+    - do not promote any of them from repeated verifier alone
+- Stronger fresh-start one-shot tiebreakers:
+  - `(11,1)->LEFT`
+    - cycle 1:
+      - `teleport_to:11,1`
+      - `report_position` => `(11,1)`
+      - `probe_edge:LEFT` => blocked `raw_hold_timeout`
+    - cycle 2:
+      - `teleport_to:11,1`
+      - `report_position` => `(11,1)`
+      - `probe_edge:LEFT` => blocked `raw_hold_timeout`
+    - cycle 3:
+      - `teleport_to:11,1`
+      - `report_position` => `(11,1)`
+      - `probe_edge:LEFT` => blocked `raw_hold_timeout`
+    - reverse:
+      - `probe_edge_verify:10,1,RIGHT,5`
+        => `moved=6 blocked=0 classification=confirmed_passable`
+    - promote `(10,1).east`
+  - `(12,2)->DOWN`
+    - cycle 1 moved into `(12,3)`
+    - cycles 2 and 3 blocked at `raw_hold_timeout`
+    - reverse `probe_edge_verify:12,3,UP,5` was interrupted by battle after
+      two moved attempts
+    - keep `(12,3).north` unmodeled
+  - `(13,3)->LEFT`
+    - cycle 1 moved into `(12,3)`
+    - cycles 2 and 3 blocked at `raw_hold_timeout`
+    - reverse:
+      - `probe_edge_verify:12,3,RIGHT,5`
+        => `moved=6 blocked=0 classification=confirmed_passable`
+    - keep `(12,3).east` unmodeled
+- TDD / permanent model updates:
+  - flipped the old B2 regression that kept `(10,1).east` open
+  - added explicit absence assertions for `(12,3).north` and `(12,3).east`
+    so this mixed pocket does not get silently promoted
+  - added `(10,1).east` to B2 `MAP_DIRECTIONAL_BLOCKS[0x19]`
+  - verification:
+    - `lua5.1 test_map_reader.lua`
+    - `luac5.1 -p map_reader.lua test_map_reader.lua`
+    - `git diff --check -- map_reader.lua test_map_reader.lua`
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:11,1,LEFT`
+  - `report_runtime_blocks` =>
+    - `RUNTIME_BLOCKS map=0x19 count=1`
+    - `RUNTIME_BLOCK map=0x19 x=10 y=1 key=10,1 dirs=east`
+- Current live stop:
+  - `POSITION map=0x19(Garin's Grave B2) x=13 y=3`
+
+## 2026-06-05 lower southwest-stair reroute polish: `(12,10)->LEFT` is real; remaining noise is timing-only
+
+- Baseline after the user's better combat-interrupted pass:
+  - `launcher_probe:codex_route_pass_20260605a` confirmed the Lua loop was
+    still polling even though `dw_debug.log` had gone stale
+  - `report_position` => `POSITION map=0x19(Garin's Grave B2) x=1 y=10`
+  - `report_runtime_blocks` => `RUNTIME_BLOCKS map=0x19 none`
+- Route-log review on the latest successful run isolated the lower detour
+  candidate:
+  - `(12,10)->LEFT` into `(11,10)` with the reroute dropping to `(12,11)`
+    afterward
+- Direct repeated verifier first:
+  - `probe_edge_verify:12,10,LEFT,5`
+    => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - not good enough to promote by itself
+- Stronger fresh-start tiebreaker from the same origin:
+  - cycle 1:
+    - `teleport_to:12,10`, `report_position`, `probe_edge:LEFT`
+      => blocked at `raw_hold_timeout`
+  - cycle 2:
+    - `teleport_to:12,10`, `report_position`, `probe_edge:LEFT`
+      => blocked at `raw_hold_timeout`
+  - cycle 3:
+    - `teleport_to:12,10`, `report_position`, `probe_edge:LEFT`
+      => blocked at `raw_hold_timeout`
+  - reverse:
+    - `probe_edge_verify:11,10,RIGHT,5`
+      => `moved=6 blocked=0 classification=confirmed_passable`
+  - decision:
+    - promote only `(11,10).east`
+- Runtime sync before the follow-up route:
+  - injected:
+    - `add_blocked_edge:12,10,LEFT`
+  - readback:
+    - `RUNTIME_BLOCKS map=0x19 count=1`
+    - `RUNTIME_BLOCK map=0x19 x=11 y=10 key=11,10 dirs=east`
+- Follow-up live route with the injected seam:
+  - `auto_walk:1,10` from live `(12,10)` completed all the way back to the
+    southwest B3 stairs
+  - remaining noisy spots were timing-only:
+    - `(12,10)->DOWN` first blocked at the queued-route timeout, then the
+      seam retry moved immediately into `(12,11)` and cleared the temp block
+    - `(2,11)->LEFT` again needed the known seam-retry/repress cycle, then
+      completed into `(1,11)` and cleared the temp block
+  - no new durable geometry candidates came out of the follow-up pass
+- TDD / permanent model updates:
+  - added a new B2 regression for `(11,10).east` first
+  - confirmed it failed red against the existing model
+  - added `(11,10).east` to B2 `MAP_DIRECTIONAL_BLOCKS[0x19]`
+  - verification:
+    - `lua5.1 test_map_reader.lua`
+    - `luac5.1 -p map_reader.lua test_map_reader.lua`
+    - `git diff --check -- map_reader.lua test_map_reader.lua session_handoff.md work_notes/current_investigation.md`
+- Current live stop:
+  - `POSITION map=0x19(Garin's Grave B2) x=1 y=10`
+
+## 2026-06-05 B2 entry-side route polish from `Stairs Up to B1`: `(11,2)->LEFT` is real
+
+- User report:
+  - southwest-stair routes now basically work both ways
+  - remaining complaint is the entry-side planner from `(11,2)` wanting
+    `1 west`, with that first west step feeling engine-blocked
+- Baseline:
+  - `launcher_probe:codex_b2_entry_20260605a` confirmed the loop was live
+  - `report_position` => `POSITION map=0x19(Garin's Grave B2) x=11 y=2`
+  - `report_runtime_blocks` before the new check =>
+    - `RUNTIME_BLOCKS map=0x19 count=1`
+    - `RUNTIME_BLOCK map=0x19 x=11 y=10 key=11,10 dirs=east`
+  - planner from the live stair still said:
+    - `ROUTE_PLAN_SNAPSHOT ... start=(11,2) ... result=Path: 2 west, 1 south, 8 west, 7 south`
+  - the only directly relevant pre-investigation movement log at `(11,2)` was
+    a canceled `manual_tap` early-twitch wait, not proof either way
+- Direct verification of the complained-about first step:
+  - `probe_edge_verify:11,2,LEFT,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - reverse:
+    - `probe_edge_verify:10,2,RIGHT,5`
+      => `moved=6 blocked=0 classification=confirmed_passable`
+  - decision:
+    - promote only `(10,2).east`
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:11,2,LEFT`
+  - readback:
+    - `RUNTIME_BLOCKS map=0x19 count=2`
+    - `(10,2) dirs=east`
+    - `(11,10) dirs=east`
+- Follow-up live reroute from the entry stair:
+  - `auto_walk:1,10` from `(11,2)` replanned as:
+    - `1 south, 10 west, 7 south`
+  - first new route-only candidate after the injected seam:
+    - `(11,2)->DOWN` into `(11,3)`
+    - blocked again on seam retry:
+      - `SEAM_OBSERVATION map=0x19 cell=(11,3) approach=north result=blocked`
+      - counts now blocked `3`, moved `0`
+    - do not promote yet; needs direct verifier after combat
+  - next repeated route-only candidates after that were the familiar top-right
+    pocket faces:
+    - `(12,2)->DOWN` into `(12,3)`
+    - `(13,3)->LEFT` into `(12,3)`
+    - still not directly re-verified on this pass
+  - the live route was then interrupted by a `Warlock` battle at `(7,11)`
+- TDD / permanent model updates:
+  - added a new B2 regression for `(10,2).east` first
+  - confirmed it failed red against the old permanent model
+  - added `(10,2).east` to B2 `MAP_DIRECTIONAL_BLOCKS[0x19]`
+  - updated the old `(11,3).north` absence assertion wording so it stays
+    explicitly unmodeled until it gets a direct verifier
+  - verification:
+    - `lua5.1 test_map_reader.lua`
+    - `luac5.1 -p map_reader.lua test_map_reader.lua`
+    - `git diff --check -- map_reader.lua test_map_reader.lua`
+- Current live stop:
+  - battle started at `map=0x19(Garin's Grave B2) x=7 y=11`
+  - next best direct check after the fight:
+    - `probe_edge_verify:11,2,DOWN,5`
+
+## 2026-06-05 B2 entry-side north lip: `(11,3).north` confirmed
+
+- User returned after another route to the stairs and asked to start the pass
+  with the previously suspected entry seam from `(11,2)` into `(11,3)`.
+- Fresh route evidence before the direct probe:
+  - from a new route started at `Stairs Up to B1`, the planner again said:
+    - `Path: 1 south, 10 west, 7 south`
+  - the route-only seam observation on the first step rose further:
+    - `SEAM_OBSERVATION map=0x19 cell=(11,3) approach=north result=blocked`
+      now blocked `5` / moved `0`
+- One detour during setup:
+  - first `probe_edge_verify:11,2,DOWN,5` was refused because the in-game
+    command menu was still open
+  - `simulate_input:START` did not close it
+  - `simulate_input:B` did close it:
+    - `EVENT: command menu closed`
+- Direct verifier after the menu cleanup:
+  - `probe_edge_verify:11,2,DOWN,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - decision:
+    - promote `(11,3).north`
+- Reverse-face follow-up:
+  - first `probe_edge_verify:11,3,UP,5`
+    - attempt 1 moved into `(11,2)`
+    - attempt 2 was interrupted by a `Metal Scorpion` battle
+    - result:
+      - `classification=inconclusive_interrupted`
+  - after the fight, second `probe_edge_verify:11,3,UP,5`
+    - attempt 1 again moved into `(11,2)`
+    - attempt 2 again got interrupted by another `Metal Scorpion` battle
+    - result:
+      - still `classification=inconclusive_interrupted`
+  - interpretation:
+    - the reverse face probably stays open, but the evidence is still too
+      battle-contaminated to promote that direction
+    - only `(11,3).north` should be modeled for now
+- TDD / permanent model updates:
+  - added a new B2 regression for `(11,3).north` first
+  - confirmed it failed red against the current permanent model
+  - added `(11,3).north` to B2 `MAP_DIRECTIONAL_BLOCKS[0x19]`
+  - verification:
+    - `lua5.1 test_map_reader.lua`
+    - `luac5.1 -p map_reader.lua test_map_reader.lua`
+    - `git diff --check -- map_reader.lua test_map_reader.lua`
+- Runtime sync:
+  - before the new injection:
+    - `RUNTIME_BLOCKS map=0x19 count=2`
+    - `(10,2) dirs=east`
+    - `(11,10) dirs=east`
+  - injected during battle:
+    - `add_blocked_edge:11,2,DOWN`
+  - after injection:
+    - `RUNTIME_BLOCKS map=0x19 count=3`
+    - `(10,2) dirs=east`
+    - `(11,3) dirs=north`
+    - `(11,10) dirs=east`
+- Current live stop:
+  - battle state at `POSITION map=0x19(Garin's Grave B2) x=11 y=3`
+  - next best live check after the user clears the fight:
+    - rerun `probe_edge_verify:11,3,UP,5`
+    - then revisit `(12,3).north` / `(12,3).east` only if the route still
+      wants to peel through that same top-right pocket
+
+## 2026-06-05 B2 top-right pocket follow-up: `(12,3).east` real, `(12,3).north` open
+
+- User asked to verify and patch the remaining suspect `(12,3)` faces.
+- Baseline:
+  - `launcher_probe:codex_b2_topright_20260605a` matched
+  - `report_position` => `POSITION map=0x19(Garin's Grave B2) x=11 y=2`
+  - `report_runtime_blocks` =>
+    - `(10,2) dirs=east`
+    - `(11,3) dirs=north`
+    - `(11,10) dirs=east`
+- One bad setup detour:
+  - I mistakenly launched `teleport_to:12,2` and `teleport_to:13,3` in
+    parallel; they collided and only the later `(13,3)` landing was usable
+  - ignored those results and restarted the live checks in serialized order
+- East face direct verifier:
+  - `teleport_to:13,3`, `report_position`
+  - `probe_edge_verify:LEFT,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - decision:
+    - promote `(12,3).east`
+- North face direct verifier, pass 1:
+  - `teleport_to:12,2`, `report_position`
+  - `probe_edge_verify:DOWN,5`
+    => `moved=3 blocked=0 interrupted=1 classification=inconclusive_interrupted`
+  - battle:
+    - `Metal Scorpion`
+- North face direct verifier, pass 2 after battle:
+  - `report_position` => back in field at `(12,2)`
+  - `probe_edge_verify:DOWN,5`
+    => `moved=5 blocked=1 classification=inconclusive_teleport_artifact`
+  - important detail:
+    - attempts 1-5 all moved into `(12,3)`
+    - only stability recheck attempt 6 blocked at `raw_hold_timeout`
+    - do not promote `(12,3).north`
+- Reverse-face tiebreaker:
+  - `teleport_to:12,3`, `report_position`
+  - `probe_edge_verify:UP,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+  - decision:
+    - `(12,3).north` stays open
+- TDD / permanent model updates:
+  - flipped the old absence assertion for `(12,3).east` into a positive
+    regression
+  - kept `(12,3).north` explicitly nil/open with updated wording
+  - red:
+    - `lua5.1 test_map_reader.lua` failed on `(12,3).east`
+  - green:
+    - added `(12,3).east` to B2 `MAP_DIRECTIONAL_BLOCKS[0x19]`
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:13,3,LEFT`
+  - readback:
+    - `RUNTIME_BLOCKS map=0x19 count=4`
+    - `(10,2) dirs=east`
+    - `(11,3) dirs=north`
+    - `(12,3) dirs=east`
+    - `(11,10) dirs=east`
+  - current live stop:
+    - `POSITION map=0x19(Garin's Grave B2) x=12 y=2`
+
+## 2026-06-05 B2 `(12,3)<->(11,3)` west seam: both faces block
+
+- User report:
+  - from live `(12,3)`, the planner still wanted to go west but the engine
+    said no
+- Fresh log context before re-probing:
+  - `ROUTE_PLAN_SNAPSHOT ... start=(12,3) ... result=Path: 11 west, 7 south`
+  - a live west attempt at `(12,3)` only had:
+    - `auto_step cancel manual_tap early-twitch wait dir=left from=(12,3)`
+  - that movement twitch alone was not enough to patch
+- Baseline:
+  - `report_position` => `POSITION map=0x19(Garin's Grave B2) x=12 y=3`
+  - `report_runtime_blocks` =>
+    - `(10,2) dirs=east`
+    - `(11,3) dirs=north`
+    - `(12,3) dirs=east`
+    - `(11,10) dirs=east`
+- Forward direct verifier from the complained-about side:
+  - `probe_edge_verify:LEFT,5` from `(12,3)`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - decision:
+    - promote `(11,3).east`
+- Reverse verifier from the destination side:
+  - `teleport_to:11,3`, `report_position`
+  - `probe_edge_verify:RIGHT,5`
+    => `moved=1 blocked=4 classification=inconclusive_teleport_artifact`
+  - not good enough by itself
+- Stronger reverse-face tiebreaker:
+  - cycle 1:
+    - `teleport_to:11,3`, `report_position`, `probe_edge:RIGHT`
+      => `EDGE_PROBE_RESULT ... status=blocked ... reason=raw_hold_timeout`
+  - cycle 2:
+    - `teleport_to:11,3`, `report_position`, `probe_edge:RIGHT`
+      => blocked `raw_hold_timeout`
+  - cycle 3:
+    - `teleport_to:11,3`, `report_position`, `probe_edge:RIGHT`
+      => blocked `raw_hold_timeout`
+  - decision:
+    - promote `(12,3).west`
+- TDD / permanent model updates:
+  - added new B2 regressions for:
+    - `(11,3).east`
+    - `(12,3).west`
+  - red:
+    - `lua5.1 test_map_reader.lua` failed first on `(11,3).east`
+  - green:
+    - added both faces to B2 `MAP_DIRECTIONAL_BLOCKS[0x19]`
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:12,3,LEFT`
+    - `add_blocked_edge:11,3,RIGHT`
+  - readback:
+    - `RUNTIME_BLOCKS map=0x19 count=4`
+    - `(10,2) dirs=east`
+    - `(11,3) dirs=east,north`
+    - `(12,3) dirs=east,west`
+    - `(11,10) dirs=east`
+- Planner sanity after runtime injection:
+  - `teleport_to:12,3`, `report_position`
+  - `debug_pathfind_to:1,10`
+    => `Path: 1 south, 3 west, 1 north, 8 west, 7 south`
+  - interpretation:
+    - planner no longer tries to go straight west through the sealed seam
+
+## 2026-06-05 B2 top-row / east-side follow-up: `(8,3).east` real; next candidate `(12,7).north`
+
+- User asked to start with `(9,3)->LEFT`, then continue.
+- Direct verification of the requested seam:
+  - `teleport_to:9,3`, `report_position`
+  - `probe_edge_verify:LEFT,5`
+    => `moved=0 blocked=5 classification=confirmed_blocked`
+  - decision:
+    - promote `(8,3).east`
+- Reverse face:
+  - `teleport_to:8,3`, `report_position`
+  - `probe_edge_verify:RIGHT,5`
+    => `moved=6 blocked=0 classification=confirmed_passable`
+  - decision:
+    - keep reverse face open; this is another one-way seam
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:9,3,LEFT`
+  - readback:
+    - `RUNTIME_BLOCKS map=0x19 count=5`
+    - `(8,3) dirs=east`
+    - `(10,2) dirs=east`
+    - `(11,3) dirs=east,north`
+    - `(12,3) dirs=east,west`
+    - `(11,10) dirs=east`
+- Planner follow-up from top-right start:
+  - `teleport_to:12,3`, `report_position`
+  - `debug_pathfind_to:1,10`
+    => `Path: 5 south, 1 east, 3 south, 12 west, 1 north`
+- Route continuation with runtime seam injected:
+  - `auto_walk:1,10`
+  - clean moved sequence before the first new blocker:
+    - `(12,4)`, `(12,5)`, `(12,6)`
+  - first new route-shaped blocker:
+    - `(12,6)->DOWN` into `(12,7)`
+    - queued route blocked, then seam retry blocked:
+      - `SEAM_OBSERVATION map=0x19 cell=(12,7) approach=north result=blocked`
+      - counts now blocked `1` / moved `0`
+    - still only route evidence; do not promote yet
+  - reroute after the temp block:
+    - `Path: 1 east, 5 south, 12 west, 1 north`
+  - east-column continuation then moved through:
+    - `(13,6)`, `(13,7)`, `(13,8)`, `(13,9)`, `(13,10)`, `(13,11)`
+  - later lower-lane noise:
+    - `(12,11)->LEFT` hit queued-route block and entered seam retry, but a
+      battle started before it could settle
+    - lower confidence than `(12,7).north`
+- Battle interruption:
+  - `Wolf`
+  - live stop:
+    - `POSITION map=0x19(Garin's Grave B2) x=12 y=11`
+- TDD / permanent model updates:
+  - added a new B2 regression for `(8,3).east`
+  - red:
+    - `lua5.1 test_map_reader.lua` failed on `(8,3).east`
+  - green:
+    - extended existing B2 `(8,3)` entry from `{south = true}` to
+      `{south = true, east = true}`
+
+## 2026-06-05 follow-up: southwest return cleanup from `(12,6)->DOWN` through route back to `(11,2)`
+
+- Clean direct verifier:
+  - `probe_edge_verify:12,6,DOWN,5`
+    - `EDGE_VERIFY_RESULT ... from=(12,6) dir=down dest=(12,7) attempts=5 moved=0 blocked=5 classification=confirmed_blocked`
+    - promote `(12,7).north`
+- Wolf interruption near the southwest B3 stairs was not a real seam:
+  - `probe_edge_verify:1,11,UP,5`
+    - `moved=6 blocked=0 classification=confirmed_passable`
+    - keep `(1,10)` open from the south
+- New real seam just above the southwest B3 stair:
+  - `probe_edge_verify:1,10,UP,5`
+    - `EDGE_VERIFY_RESULT ... from=(1,10) dir=up dest=(1,9) attempts=5 moved=0 blocked=5 classification=confirmed_blocked`
+    - promote `(1,9).south`
+  - runtime seed:
+    - `add_blocked_edge:1,10,UP`
+  - planner change from `(1,10)` to `(11,2)`:
+    - `Path: 1 east, 7 north, 9 east, 1 north`
+- `auto_walk:11,2` with `(1,9).south` injected completed all the way back to
+  `POSITION map=0x19(Garin's Grave B2) x=11 y=2`, but it exposed several
+  cleanup candidates on the way:
+  - cleanest:
+    - `(2,11)->UP` into `(2,10)` blocked repeatedly in-route
+  - mixed row-9 south-edge band:
+    - `(5,10)->UP`, `(6,10)->UP`, `(7,10)->UP`, `(8,10)->UP`
+- Direct verification of the strongest candidates:
+  - `probe_edge_verify:5,10,UP,5`
+    - `moved=2 blocked=3 classification=inconclusive_teleport_artifact`
+    - do not promote
+  - `probe_edge_verify:2,11,UP,5`
+    - `EDGE_VERIFY_RESULT ... from=(2,11) dir=up dest=(2,10) attempts=5 moved=0 blocked=5 classification=confirmed_blocked`
+    - promote `(2,10).south`
+  - runtime seed:
+    - `add_blocked_edge:2,11,UP`
+    - readback:
+      - `POSITION: map=0x19(Garin's Grave B2) x=2 y=11`
+      - `RUNTIME_BLOCKS map=0x19 count=8`
+      - includes `(1,9) dirs=south` and `(2,10) dirs=south`
+- Permanent patch set from this follow-up:
+  - `map_reader.lua`
+    - `(12,7).north`
+    - `(1,9).south`
+    - `(2,10).south`
+  - `test_map_reader.lua`
+    - matching regressions for all three seams
+- Recommended next live checks:
+  - `probe_edge_verify:6,10,UP,5`
+  - `probe_edge_verify:7,10,UP,5`
+  - `probe_edge_verify:8,10,UP,5`
+
+## 2026-06-05 row-9 south-edge cleanup: `(6,9).south`, `(7,9).south`, `(8,9).south` confirmed; `(5,10)->UP` stays mixed
+
+- User asked to check and patch the remaining south-edge row-9 candidates.
+- Direct verification of the remaining strip:
+  - `probe_edge_verify:6,10,UP,5`
+    - `EDGE_VERIFY_RESULT ... from=(6,10) dir=up dest=(6,9) attempts=5 moved=0 blocked=5 classification=confirmed_blocked`
+    - promote `(6,9).south`
+  - `probe_edge_verify:7,10,UP,5`
+    - `EDGE_VERIFY_RESULT ... from=(7,10) dir=up dest=(7,9) attempts=5 moved=0 blocked=5 classification=confirmed_blocked`
+    - promote `(7,9).south`
+  - `probe_edge_verify:8,10,UP,5`
+    - `EDGE_VERIFY_RESULT ... from=(8,10) dir=up dest=(8,9) attempts=5 moved=0 blocked=5 classification=confirmed_blocked`
+    - promote `(8,9).south`
+  - control from the earlier same pass remains:
+    - `probe_edge_verify:5,10,UP,5`
+      - `moved=2 blocked=3 classification=inconclusive_teleport_artifact`
+      - keep `(5,9).south` unmodeled
+- Permanent patch set:
+  - `map_reader.lua`
+    - add `(6,9).south`
+    - add `(7,9).south`
+    - add `(8,9).south`
+  - `test_map_reader.lua`
+    - flip the old open/mixed assumptions for `(7,9).south` and `(8,9).south`
+    - add positive regressions for `(6,9).south`, `(7,9).south`, `(8,9).south`
+- Runtime sync:
+  - injected:
+    - `add_blocked_edge:6,10,UP`
+    - `add_blocked_edge:7,10,UP`
+    - `add_blocked_edge:8,10,UP`
+  - readback:
+    - `POSITION map=0x19(Garin's Grave B2) x=8 y=10`
+    - `RUNTIME_BLOCKS map=0x19 count=11`
+    - includes `(1,9).south`, `(2,10).south`, `(6,9).south`, `(7,9).south`,
+      `(8,9).south`, plus the earlier top-right seams
+- Planner / live sanity:
+  - from `(8,10)`, `debug_pathfind_to:11,2`
+    - `Path: 5 east, 8 north, 2 west`
+  - `auto_walk:11,2` followed that reroute cleanly up the east side to
+    `(13,2)`
+  - a `Wolf` battle then interrupted the final seam retry at
+    `(12,2)->LEFT` into `(11,2)`
+  - treat that last step as battle-contaminated noise for now because an
+    earlier route already completed back to `Stairs Up to B1`
+
+## 2026-06-05 polish pass from `Stairs Up to B1`: no new durable B2 blockers yet
+
+- Fresh live baseline after log rollover:
+  - `launcher_probe:codex_polish_20260605a`
+  - `report_position`
+    - `POSITION: map=0x19(Garin's Grave B2) x=11 y=2`
+  - `report_runtime_blocks`
+    - `RUNTIME_BLOCKS map=0x19 count=11`
+    - includes the current entry-side, top-right, row-9 south-edge, and
+      southwest return seams
+- Planner from the live stair:
+  - `debug_pathfind_to:1,10`
+    - `Path: 2 east, 9 south, 12 west, 1 north`
+- Live route pass:
+  - `auto_walk:1,10`
+  - route followed the expected east-column detour and lower westward lane
+    without finding a new confirmed geometry break
+- Remaining noisy spots from this pass:
+  - `(12,2)->RIGHT` into `(13,2)`
+    - queued-route step timed out once after movement started
+    - seam retry then moved cleanly
+    - temp block cleared immediately
+    - treat as timing noise, not geometry
+  - `(13,10)->DOWN` into `(13,11)`
+    - same pattern: one queued-route timeout, then seam retry moved cleanly
+    - temp block cleared immediately
+    - treat as timing noise, not geometry
+  - `(2,11)->LEFT` into `(1,11)`
+    - queued-route step timed out once and entered seam retry
+    - a `Warlock` battle started before the retry could settle
+    - leave unmodeled; current evidence is battle-contaminated
+- Current live stop:
+  - battle state at `POSITION map=0x19(Garin's Grave B2) x=2 y=11`
+  - enemy:
+    - `Warlock`
+- Practical read:
+  - this pass did not produce a new permanent blocker to patch
+  - if we do one more cleanup check after the fight, the only worthwhile
+    follow-up from this pass is a direct verifier on `(2,11)->LEFT`, and even
+    that currently looks more like the old seam-retry timing noise than map
+    geometry
+
+## 2026-06-05 user-completed return route: late reroute at `(13,3)->UP` is confirmed passable
+
+- User ran the remaining route and reported one little reroute near the end.
+- Recovered live evidence from the completed autowalk after the earlier
+  `Warlock` battle:
+  - route from `(2,11)` to `Stairs Up to B1` completed successfully at
+    `(11,2)`
+  - known/runtime-backed reroute points behaved as expected:
+    - `(5,10)->UP` into `(5,9)` blocked again and rerouted around the still
+      mixed row-9 holdout
+    - `(10,10)->RIGHT` into `(11,10)` blocked again and rerouted around the
+      confirmed `(11,10).east` seam
+  - pure timing/noise retries that self-cleared:
+    - `(4,11)->RIGHT` into `(5,11)`
+    - `(12,11)->RIGHT` into `(13,11)`
+  - late-route retry worth checking directly:
+    - `(13,3)->UP` into `(13,2)`
+    - queued-route attempt timed out once, seam retry then moved and the route
+      completed through `(12,2)` to `(11,2)`
+- Direct follow-up on the late reroute:
+  - `teleport_to:13,3`, `report_position`
+  - `probe_edge_verify:UP,5`
+    - `EDGE_VERIFY_RESULT ... from=(13,3) dir=up dest=(13,2) attempts=6 moved=6 blocked=0 classification=confirmed_passable`
+    - keep this edge open; no patch
+- Practical read:
+  - no new durable blocker from the user's completed return route
+  - the late reroute was movement/timing noise, not hidden geometry
+  - the only remaining map-shaped holdout touched during this run is still
+    `(5,10)->UP`, which remains mixed and unmodeled
+
+## 2026-06-05 B2 stair-hub audit from `Stairs Up to B1`: all six stair objects belong to the reachable hub
+
+- User asked whether the extra B2 stair objects currently marked reachable
+  should really be accessible from the current side of the floor, or whether
+  some should be sealed off by finding more true blockers.
+- Live stair roster from `(11,2)`:
+  - `Stairs Up to B1` at `(11,2)`
+  - `Northeast Stairs Down to B3` at `(12,1)`
+  - `Southeast Stairs Down to B3` at `(12,10)`
+  - `Center Stairs Down to B3` at `(5,6)`
+  - `Northwest Stairs Down to B3` at `(1,1)`
+  - `Southwest Stairs Down to B3` at `(1,10)`
+- Object-browser / planner checks:
+  - `pathability_filter:reachable`
+    - still shows all six stair objects under `Travel, reachable`
+  - `pathability_filter:unreachable`
+    - `PATHABILITY_FILTER: Travel, unreachable. No objects`
+    - `current_object` / `next_object` then report `No objects found`
+  - restored browser state afterward with:
+    - `pathability_filter:all`
+    - `current_object`
+      - `OBJECT: Stairs Up to B1: here (1 of 6)`
+- Direct planner routes from live `(11,2)`:
+  - `debug_pathfind_to:12,1`
+    - `Path: 1 north, 1 east`
+  - `debug_pathfind_to:12,10`
+    - `Path: 2 east, 8 south, 1 west`
+  - `debug_pathfind_to:5,6`
+    - `Path: 1 east, 2 south, 7 west, 2 south`
+  - `debug_pathfind_to:1,1`
+    - `Path: 2 east, 9 south, 8 west, 2 north, 4 west, 8 north`
+  - `debug_pathfind_to:1,10`
+    - `Path: 2 east, 9 south, 12 west, 1 north`
+- Map-reference cross-check:
+  - `project_resources/maps/garins_grave/README.md`
+    - B2 is a stair hub with the same six stair cells
+    - guide bias recorded there:
+      - nearby return-side stair and center stair are dead-end/trap leads
+      - northwest and southeast stairs lead toward the Cursed Belt branch
+      - southwest stair is the main progression route
+  - the bundled `realm_grave_garinham.png` composite matches that
+    interpretation visually
+- Conclusion:
+  - do not try to "fix" B2 by sealing off the extra stair objects
+  - the extra B2 stair routes appear to be intended connectivity, not planner
+    leakage
+  - any future issue on one of those stair routes should be treated as a
+    specific route/seam verification task, not as evidence that the stair
+    should be globally unreachable

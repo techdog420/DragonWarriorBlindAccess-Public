@@ -1017,9 +1017,10 @@ Emulator compatibility direction:
   which moved 6/6 including stability recheck. `(13,1)->DOWN` into `(13,2)`
   blocked 5/5 and remains ordinary not-walkable wall. A pre-reload autowalk
   reached `(19,11)` but timed out turning up into the confirmed bridge with
-  stale movement bytes still active; `auto_step.lua` now clears movement
-  state/subpixel bytes during queued route turn/final settle frames, controlled
-  by default-on `auto_step_reset_movement_on_route_turn_settle`. After reload,
+  stale movement bytes still active. A later A/B pass in Garin's Grave B2
+  reproduced player-stat corruption immediately after queued-route turn-settle
+  movement resets when `auto_step_reset_movement_on_route_turn_settle=true`;
+  keep that setting default-off and opt-in only. After reload,
   the reverse route from Garinham `(19,0)` toward the door drifted out to the
   world map after moving right into `(19,1)`. Clean verifiers promoted
   `(14,1).east` and `(15..18,2).north`; `(19,1)->DOWN` into `(19,2)` was mixed

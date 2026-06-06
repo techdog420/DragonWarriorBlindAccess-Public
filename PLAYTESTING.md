@@ -1,10 +1,27 @@
 # Playtesting Notes
 
-Updated: 2026-05-27
+Updated: 2026-06-05
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Garin's Grave B2 stair-hub audit (`2026-06-05`): the extra stair objects on
+  B2 are not a false-connectivity bug. From `Stairs Up to B1` at `(11,2)`, the
+  object browser and planner can legitimately reach all six B2 stair cells, and
+  the local map references agree B2 is meant to be a stair hub. Do not seal
+  those stair routes just to make the object list shorter. If one specific stair
+  route fails live later, treat it as a targeted seam/timing investigation.
+
+- Garin's Grave B1 B2 Door north-side approach (`2026-06-05`): the selected
+  `B2 Door` object did not disappear, but it only knew the previously proven
+  lower/south interaction stand `(17,18)` facing north. From the current
+  north-side maze component, that stand was unreachable while the adjacent
+  planner found a valid route to `(17,16)` facing south. `objects.lua` now keeps
+  both proven stands and `route_manager.lua` chooses a reachable interaction
+  point when the primary stand has no path. Before FCEUX reloaded the patch,
+  the live workaround `auto_walk:17,16` reached `(17,16)` with no runtime
+  blockers; manual next action was to face south and use `OPEN`.
 
 - Garinham / Grave of Garinham investigation (`2026-05-26`): public Garinham
   service routing remains usable, and the hidden grave entrance is now
@@ -38,6 +55,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   from `(19,0)` toward the door drifted out to `0x01` / World Map from the
   upper-right edge, not a new door. Clean verifiers now model `(14,1).east` and
   `(15..18,2).north`; `(19,1)->DOWN` was mixed and remains unpromoted.
+  Silver Harp return-route follow-up later confirmed `(19,0)->LEFT` into
+  `(18,0)` blocks 5/5, so `(18,0).east` is now modeled; `(18,1)->UP` still
+  moves into the top-edge/world-map transition and remains open.
 
 - Sun Shrine first decode pass (`2026-05-25`): map `0x0C` is the Stones of
   Sunlight chamber. User confirmation showed the west-edge stairs return to
