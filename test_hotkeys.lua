@@ -37,6 +37,7 @@ local function make_env(options)
     local focused_route_ids = {}
     local object_refresh_calls = 0
     local object_refresh_request_calls = 0
+    local object_cache_refresh_calls = 0
     local live_npc_refresh_calls = 0
     local filter_name = options.filter_name or "NPCs"
     local all_filter_calls = 0
@@ -263,6 +264,12 @@ local function make_env(options)
             request_refresh = function()
                 object_refresh_request_calls = object_refresh_request_calls + 1
             end,
+            check_refresh = function()
+                object_cache_refresh_calls = object_cache_refresh_calls + 1
+            end,
+            needs_refresh = function()
+                return options.objects_need_refresh == true
+            end,
             update_npcs = function()
                 live_npc_refresh_calls = live_npc_refresh_calls + 1
             end,
@@ -429,6 +436,9 @@ local function make_env(options)
         object_refresh_request_calls = function()
             return object_refresh_request_calls
         end,
+        object_cache_refresh_calls = function()
+            return object_cache_refresh_calls
+        end,
         live_npc_refresh_calls = function()
             return live_npc_refresh_calls
         end,
@@ -519,14 +529,17 @@ function tests.object_browse_hotkeys_do_not_rebuild_full_npc_list()
     local env = make_env({delay = 0})
 
     env.update({K = true})
+    assert_equal(env.object_cache_refresh_calls(), 1, "current-object readout should refresh the current map object cache")
     assert_equal(env.live_npc_refresh_calls(), 0, "current-object readout should not rebuild all moving NPC positions")
 
     env.update({})
     env.update({L = true})
+    assert_equal(env.object_cache_refresh_calls(), 2, "next-object browse should refresh the current map object cache")
     assert_equal(env.live_npc_refresh_calls(), 0, "next-object browse should not rebuild all moving NPC positions")
 
     env.update({})
     env.update({J = true})
+    assert_equal(env.object_cache_refresh_calls(), 3, "previous-object browse should refresh the current map object cache")
     assert_equal(env.live_npc_refresh_calls(), 0, "previous-object browse should not rebuild all moving NPC positions")
 
     env.restore()
@@ -536,11 +549,13 @@ function tests.path_actions_refresh_live_npcs_before_planning()
     local env = make_env({delay = 0})
 
     env.update({O = true})
+    assert_equal(env.object_cache_refresh_calls(), 1, "pathfind should refresh the current map object cache before planning")
     assert_equal(env.live_npc_refresh_calls(), 1, "pathfind should refresh moving NPC positions before planning")
     assert_equal(env.pathfind_calls(), 1, "pathfind hotkey should still invoke route planning")
 
     env.update({})
     env.update({U = true})
+    assert_equal(env.object_cache_refresh_calls(), 2, "auto-walk should refresh the current map object cache before planning")
     assert_equal(env.live_npc_refresh_calls(), 2, "auto-walk should refresh moving NPC positions before planning")
     assert_equal(env.autowalk_calls(), 1, "auto-walk hotkey should still invoke route execution")
 
@@ -908,10 +923,16 @@ function tests.teleport_hotkeys_call_registered_handler()
     local env = make_env({delay = 0})
 
     env.update({Shift = true, Enter = true})
+    assert_equal(env.object_cache_refresh_calls(), 1, "exact teleport should refresh the current map object cache before reading the selected object")
+    assert_equal(env.live_npc_refresh_calls(), 1, "exact teleport should refresh live object positions before reading the selected object")
     env.update({})
     env.update({Shift = true, Up = true})
+    assert_equal(env.object_cache_refresh_calls(), 2, "adjacent teleport should refresh the current map object cache before reading the selected object")
+    assert_equal(env.live_npc_refresh_calls(), 2, "adjacent teleport should refresh live object positions before reading the selected object")
     env.update({})
     env.update({Shift = true, Right = true})
+    assert_equal(env.object_cache_refresh_calls(), 3, "every teleport hotkey should refresh the current map object cache")
+    assert_equal(env.live_npc_refresh_calls(), 3, "every teleport hotkey should refresh live object positions")
 
     assert_equal(#env.teleport_modes, 3, "teleport hotkeys should call the handler")
     assert_equal(env.teleport_modes[1], "exact", "Shift+Enter should request exact teleport")

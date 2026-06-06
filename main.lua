@@ -82,6 +82,7 @@ _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
 for _, mod_name in ipairs({
     "addresses", "auto_step", "battle", "chars", "config",
     "debug_tools", "emulator_compat", "event_bus", "game_snapshot",
+    "edge_verify_classifier",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
@@ -118,6 +119,7 @@ local event_bus = require "event_bus"      -- Pub/sub event system for module de
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
+require "edge_verify_classifier" -- Shared edge verify result classification
 local key_combo = require "key_combo"      -- Configurable key-combo helpers
 local overworld_routes = require "overworld_routes" -- Manual route guidance for the world map
 
@@ -750,35 +752,7 @@ local function finish_edge_probe(status, reason)
 end
 
 local function classify_edge_verify_result(verify, final_status)
-    local r = verify.results
-    if final_status == "cancelled" then
-        return "cancelled"
-    end
-    if (r.map_changed or 0) > 0 then
-        return "inconclusive_map_changed"
-    end
-    if (r.interrupted or 0) > 0 then
-        return "inconclusive_interrupted"
-    end
-    if (r.refused or 0) > 0 or (r.drifted or 0) > 0 then
-        return "inconclusive_control"
-    end
-    if (r.timed_out or 0) > 0 then
-        return "inconclusive_timeout"
-    end
-    if r.blocked == verify.attempts and r.moved == 0 then
-        return "confirmed_blocked"
-    end
-    if r.moved == verify.attempts and r.blocked == 0 then
-        if (r.moved_model_mismatch or 0) > 0 then
-            return "suspect_passable_model_mismatch"
-        end
-        return "confirmed_passable"
-    end
-    if r.moved > 0 and r.blocked > 0 then
-        return "mixed"
-    end
-    return "inconclusive"
+    return package.loaded["edge_verify_classifier"].classify(final_status, verify.results, verify)
 end
 
 local function finish_edge_verify(final_status, reason)
@@ -789,10 +763,13 @@ local function finish_edge_verify(final_status, reason)
     clear_edge_probe_input()
     auto_step.cancel_active_step(true)
     local classification = classify_edge_verify_result(verify, final_status)
+    local teleport_artifact_suspected = package.loaded["edge_verify_classifier"].teleport_artifact_suspected(
+        verify.results,
+        verify)
     local runtime_added = false
     local runtime_cleared = false
     debug_tools.info(string.format(
-        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d moved_model_mismatch=%d blocked_model_mismatch=%d stability_recheck=%s classification=%s reason=%s runtime_added=%s runtime_cleared=%s manual_promotion_required=%s",
+        "EDGE_VERIFY_RESULT map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempts=%d moved=%d blocked=%d timed_out=%d refused=%d drifted=%d map_changed=%d interrupted=%d moved_model_mismatch=%d blocked_model_mismatch=%d stability_recheck=%s teleport_artifact_suspected=%s first_attempt_status=%s blocked_after_move=%d blocked_after_move_mismatch=%d moved_after_blocked=%d classification=%s reason=%s runtime_added=%s runtime_cleared=%s manual_promotion_required=%s",
         verify.map_id,
         verify.from_x,
         verify.from_y,
@@ -810,6 +787,11 @@ local function finish_edge_verify(final_status, reason)
         verify.results.moved_model_mismatch or 0,
         verify.results.blocked_model_mismatch or 0,
         tostring(verify.stability_recheck_done == true),
+        tostring(teleport_artifact_suspected),
+        tostring(verify.first_attempt_status or ""),
+        verify.blocked_after_move_count or 0,
+        verify.blocked_after_move_mismatch_count or 0,
+        verify.moved_after_blocked_count or 0,
         classification,
         tostring(reason or final_status or ""),
         tostring(runtime_added),
@@ -839,10 +821,21 @@ local function record_edge_verify_attempt(status, reason)
     local final_report = build_tile_report(verify.map_id, verify.dest_x, verify.dest_y, blocking, approach)
     local final_state = capture_edge_movement_state()
     local mismatch = edge_probe_mismatch_kind(verify, status)
+    if verify.first_attempt_status == nil then
+        verify.first_attempt_status = status
+    end
+    if status == "blocked" and (verify.results.moved or 0) > 0 then
+        verify.blocked_after_move_count = (verify.blocked_after_move_count or 0) + 1
+    elseif status == "moved" and (verify.results.blocked or 0) > 0 then
+        verify.moved_after_blocked_count = (verify.moved_after_blocked_count or 0) + 1
+    end
     if mismatch == "moved_through_modeled_block" then
         verify.results.moved_model_mismatch = (verify.results.moved_model_mismatch or 0) + 1
     elseif mismatch == "blocked_despite_open_preview" then
         verify.results.blocked_model_mismatch = (verify.results.blocked_model_mismatch or 0) + 1
+        if status == "blocked" and (verify.results.moved or 0) > 0 then
+            verify.blocked_after_move_mismatch_count = (verify.blocked_after_move_mismatch_count or 0) + 1
+        end
     end
     verify.results[status] = (verify.results[status] or 0) + 1
     debug_tools.info(string.format(
@@ -2928,7 +2921,8 @@ local function check_command_menu(frame_delta)
         local unavailable = battle.describe_spell_command_unavailable(
             snapshot.combat_flags,
             count,
-            snapshot)
+            snapshot,
+            {ignore_stopspell = true})
         if unavailable then
             trace_row1("CMD_SPELL_EMPTY", changes, {})
             tolk.output(unavailable)
@@ -4762,6 +4756,10 @@ debug_tools.register_command("probe_edge_verify", function(arg)
         phase = "arming",
         frames = 0,
         settle_frames = 1,
+        first_attempt_status = nil,
+        blocked_after_move_count = 0,
+        blocked_after_move_mismatch_count = 0,
+        moved_after_blocked_count = 0,
         results = {
             moved = 0,
             blocked = 0,
@@ -5110,8 +5108,11 @@ end
 DW_QOL_STATE.reset_movement_engine_state = function(reason)
     local before_move = memory.readbyte(addr.MOVEMENT_STATE)
     local before_sub = memory.readbyte(addr.MOVEMENT_SUBPIXEL)
-    memory.writebyte(addr.MOVEMENT_STATE, 0x00)
-    memory.writebyte(addr.MOVEMENT_SUBPIXEL, 0x00)
+    if not auto_step.reset_movement_engine_state
+       or not auto_step.reset_movement_engine_state(reason, {log = false}) then
+        debug_tools.error("MOVEMENT_STATE_RESET_FAILED reason=" .. tostring(reason or "manual"))
+        return false
+    end
     debug_tools.info(string.format(
         "MOVEMENT_STATE_RESET reason=%s map=0x%02X player=(%d,%d) before_move=0x%02X before_sub=0x%02X",
         tostring(reason or "manual"),
@@ -5120,6 +5121,7 @@ DW_QOL_STATE.reset_movement_engine_state = function(reason)
         memory.readbyte(addr.PLAYER_Y),
         before_move or 0,
         before_sub or 0))
+    return true
 end
 
 DW_QOL_STATE.arm_teleport_state_guard = function(map_id, x, y, reason)
@@ -5203,8 +5205,10 @@ DW_QOL_STATE.apply_teleport_state_guard = function()
                 sub or 0,
                 guard.resets or 0))
         end
-        memory.writebyte(addr.MOVEMENT_STATE, 0x00)
-        memory.writebyte(addr.MOVEMENT_SUBPIXEL, 0x00)
+        if not auto_step.reset_movement_engine_state
+           or not auto_step.reset_movement_engine_state("teleport_state_guard", {log = false}) then
+            debug_tools.error("TELEPORT_STATE_GUARD_RESET_FAILED reason=" .. tostring(guard.reason or "teleport"))
+        end
     end
 
     guard.frames = (guard.frames or 0) - 1
@@ -5804,6 +5808,7 @@ local function run_debug_route_frontier(arg, params)
 
     local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
     local directional_blocks = map_reader.get_directional_blocks(map_id)
+    local frontier_classifier = package.loaded.route_frontier_classifier or require "route_frontier_classifier"
 
     local function key(x, y)
         return x .. "," .. y
@@ -5933,18 +5938,18 @@ local function run_debug_route_frontier(arg, params)
             local ny = cell.y + step.dy
             if nx >= 0 and nx < width and ny >= 0 and ny < height
                and not reachable[key(nx, ny)] then
-                local reason
+                local dest_walkable = is_walkable_snapshot(nx, ny)
+                local blocked_reason = route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach)
                 local details = walkability_detail_for_cell(nx, ny)
-                if not is_walkable_snapshot(nx, ny) then
-                    reason = "not_walkable"
-                else
-                    reason = route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach)
-                        or "unknown_unreached"
-                end
-                local target_side_entry = is_walkable_snapshot(nx, ny) and target_side[key(nx, ny)] or nil
+                local classified = frontier_classifier.classify_candidate({
+                    is_walkable = dest_walkable,
+                    blocked_reason = blocked_reason,
+                })
+                local reason = classified.reason
+                local target_side_entry = dest_walkable and target_side[key(nx, ny)] or nil
                 local hidden_bridge = nil
                 local bridge_to_target = target_side_entry ~= nil
-                if not bridge_to_target and not is_walkable_snapshot(nx, ny) then
+                if not bridge_to_target and classified.allow_hidden_bridge then
                     hidden_bridge = find_one_cell_hidden_bridge(nx, ny, details)
                     if hidden_bridge then
                         bridge_to_target = true

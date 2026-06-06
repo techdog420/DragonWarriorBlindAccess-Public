@@ -172,7 +172,13 @@ local function refresh_pathability_if_needed()
     end
 end
 
-local function refresh_live_objects_for_browse()
+local function refresh_live_objects_for_browse(map_id)
+    if map_id == nil then
+        map_id = select(1, nav.get_position())
+    end
+    if objects.needs_refresh and objects.needs_refresh(map_id) then
+        return
+    end
     if objects.update_npcs then
         objects.update_npcs()
     end
@@ -180,8 +186,14 @@ end
 
 local function refresh_object_browser_context(opts)
     opts = opts or {}
+    local map_id = select(1, nav.get_position())
+    if objects.check_refresh then
+        objects.check_refresh(map_id)
+    end
     if opts.refresh_live_npcs == true then
-        refresh_live_objects_for_browse()
+        if not (objects.needs_refresh and objects.needs_refresh(map_id)) then
+            refresh_live_objects_for_browse(map_id)
+        end
     end
     refresh_pathability_if_needed()
 end
@@ -1019,18 +1031,23 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         if teleport_handler then
             if is_key_pressed(keys, config.get("key_teleport_exact")) then
                 clear_object_nav_speech()
+                refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("exact")
             elseif is_key_pressed(keys, config.get("key_teleport_north")) then
                 clear_object_nav_speech()
+                refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("north")
             elseif is_key_pressed(keys, config.get("key_teleport_south")) then
                 clear_object_nav_speech()
+                refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("south")
             elseif is_key_pressed(keys, config.get("key_teleport_west")) then
                 clear_object_nav_speech()
+                refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("west")
             elseif is_key_pressed(keys, config.get("key_teleport_east")) then
                 clear_object_nav_speech()
+                refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("east")
             end
         end

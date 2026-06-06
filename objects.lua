@@ -255,8 +255,8 @@ local STAIRS = {
 
     -- Garin's Grave B4 (0x1B)
     -- ROM stair tables show two returns from B4 back to B3.
-    {map = 0x1B, x = 0, y = 4, name = "Stairs Up", dest = "B3", object_name = "Upper Return Stairs to B3"},
-    {map = 0x1B, x = 5, y = 4, name = "Stairs Up", dest = "B3", object_name = "Lower Return Stairs to B3"},
+    {map = 0x1B, x = 0, y = 4, name = "Stairs Up", dest = "B3", object_name = "West Return Stairs to B3"},
+    {map = 0x1B, x = 5, y = 4, name = "Stairs Up", dest = "B3", object_name = "East Return Stairs to B3"},
 
     -- Charlock Castle (0x02)
     {map = 0x02, x = 10, y = 1, name = "Stairs Down", dest = "B1"},
@@ -1085,7 +1085,9 @@ local EXTRA_DOORS = {
     },
     -- Map 0x18: Garin's Grave B1 southeast locked door toward B2. Live OPEN
     -- from `(17,18)` facing north wrote slot `1=(17,17)` into door RAM, and a
-    -- direct edge probe immediately moved into `(17,17)`.
+    -- direct edge probe immediately moved into `(17,17)`. Later live routing
+    -- reached the same door from the north-side maze component, so expose both
+    -- proven stands and let route planning choose the reachable side.
     [0x18] = {
         {
             x=17,
@@ -1096,6 +1098,10 @@ local EXTRA_DOORS = {
             interaction_x=17,
             interaction_y=18,
             interaction_face_dir="north",
+            interaction_points={
+                {x=17, y=18, face_dir="north"},
+                {x=17, y=16, face_dir="south"},
+            },
         },
     },
     -- Map 0x0B: Rimuldar inn / Wings chest doors. Gamer Corner lists the inn
@@ -2254,8 +2260,32 @@ end
 -- describe_object(obj): Return a human-readable description of an
 -- object, including its name and direction/distance from the player.
 -- Format: "Guard 1: 3 north, 2 east" or "Chest: here"
-function M.describe_object(obj)
+local function apply_description_interaction_override(obj, opts)
+    if not obj or not opts then
+        return obj
+    end
+    if opts.interaction_x == nil or opts.interaction_y == nil then
+        return obj
+    end
+
+    local next_obj = {}
+    for k, v in pairs(obj) do
+        next_obj[k] = v
+    end
+    next_obj.interaction_x = opts.interaction_x
+    next_obj.interaction_y = opts.interaction_y
+    if opts.interaction_face_dir ~= nil then
+        next_obj.interaction_face_dir = opts.interaction_face_dir
+    end
+    if opts.interaction_label ~= nil then
+        next_obj.interaction_label = opts.interaction_label
+    end
+    return next_obj
+end
+
+function M.describe_object(obj, opts)
     if not obj then return "No objects" end
+    obj = apply_description_interaction_override(obj, opts)
 
     local _, px, py = nav.get_position()
     local direction = M.get_direction_string(px, py, obj.x, obj.y)
@@ -2293,6 +2323,7 @@ function M.describe_current(opts)
     if opts.use_live_npc ~= false then
         obj = live_npc_object(obj, opts.map_id)
     end
+    obj = apply_description_interaction_override(obj, opts)
     local desc = M.describe_object(obj)
     local with_count = desc .. " (" .. current_index .. " of " .. #filtered_list .. ")"
     if opts.include_debug_coords == false then

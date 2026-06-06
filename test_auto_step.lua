@@ -225,6 +225,12 @@ local function assert_truthy(value, message)
     end
 end
 
+local function assert_equal(actual, expected, message)
+    if actual ~= expected then
+        error(string.format("%s: expected %s, got %s", message, tostring(expected), tostring(actual)), 2)
+    end
+end
+
 local function has_any_direction(buttons)
     return buttons and (buttons.up or buttons.down or buttons.left or buttons.right)
 end
@@ -1467,6 +1473,31 @@ function tests.can_walk_false_clears_release_state_without_neutralizing()
     env.restore()
 end
 
+function tests.can_walk_false_cancels_seam_retry_route_context()
+    local env = make_env()
+    env.auto_step.inject_step("right", {source = "seam_retry"})
+
+    env.update(true)
+    env.update(false)
+
+    local cancel_payload = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then
+            cancel_payload = event.payload
+            break
+        end
+    end
+
+    assert_truthy(
+        cancel_payload ~= nil,
+        "can_walk=false should cancel an active seam-retry step so route managers can clear stale temp blocks"
+    )
+    assert_equal("can_walk_false", cancel_payload.reason, "seam-retry cancel should use the normal can_walk_false reason")
+    assert_equal("seam_retry", cancel_payload.source, "seam-retry cancel should preserve its source for downstream diagnostics")
+
+    env.restore()
+end
+
 function tests.turn_repress_uses_full_inject_window_after_turn_only_attempt()
     local env = make_env()
     env.auto_step.inject_step("right")
@@ -2112,6 +2143,7 @@ function tests.queued_route_final_step_resets_movement_state()
         movement_subpixel = 0x20,
         config_values = {
             auto_step_route_final_settle_frames = "5",
+            auto_step_reset_movement_on_route_turn_settle = "true",
         },
     })
     env.auto_step.start_route({"right"})
@@ -2144,6 +2176,7 @@ function tests.queued_route_final_settle_keeps_resetting_movement_state()
         movement_subpixel = 0x20,
         config_values = {
             auto_step_route_final_settle_frames = "5",
+            auto_step_reset_movement_on_route_turn_settle = "true",
         },
     })
     env.auto_step.start_route({"right"})
@@ -2226,6 +2259,52 @@ function tests.queued_route_final_settle_skips_movement_reset_when_disabled()
     env.restore()
 end
 
+function tests.queued_route_turn_settle_skips_movement_reset_by_default()
+    local env = make_env({
+        movement_state = 0x40,
+        movement_subpixel = 0x90,
+    })
+    env.auto_step.start_route({"right", "up"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local cleared_move = false
+    local cleared_subpixel = false
+    for _, write in ipairs(env.memory_writes) do
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_move = true
+        elseif write.address == 0x003D and write.value == 0x00 then
+            cleared_subpixel = true
+        end
+    end
+
+    assert_truthy(
+        not cleared_move and not cleared_subpixel,
+        "queued route turn settle should not clear movement engine state by default"
+    )
+
+    env.restore()
+end
+
+function tests.exported_reset_movement_engine_state_clears_movement_bytes()
+    local env = make_env({
+        movement_state = 0x06,
+        movement_subpixel = 0x40,
+    })
+
+    local ok = env.auto_step.reset_movement_engine_state("unit_test", {log = false})
+
+    assert_truthy(ok, "exported movement reset should report success")
+    assert_equal(env.memory_writes[1].address, 0x003C, "movement reset should write movement state")
+    assert_equal(env.memory_writes[1].value, 0x00, "movement reset should clear movement state")
+    assert_equal(env.memory_writes[2].address, 0x003D, "movement reset should write movement subpixel")
+    assert_equal(env.memory_writes[2].value, 0x00, "movement reset should clear movement subpixel")
+
+    env.restore()
+end
+
 function tests.queued_route_direction_change_waits_for_default_turn_settle()
     local env = make_env()
     env.auto_step.start_route({"right", "down"})
@@ -2292,6 +2371,9 @@ function tests.queued_route_turn_settle_resets_movement_state()
     local env = make_env({
         movement_state = 0x40,
         movement_subpixel = 0x90,
+        config_values = {
+            auto_step_reset_movement_on_route_turn_settle = "true",
+        },
     })
     env.auto_step.start_route({"right", "up"})
 

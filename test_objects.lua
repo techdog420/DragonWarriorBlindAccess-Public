@@ -277,12 +277,22 @@ function tests.garins_grave_b3_and_b4_rom_stairs_are_exposed()
         assert_equal(find_by_id(env.objects, stair_id) ~= nil, true, "B3 should expose " .. stair_id)
     end
 
+    local b3_upper = find_by_id(env.objects, "stair_9_5")
+    local b3_lower = find_by_id(env.objects, "stair_10_9")
+    assert_equal(b3_upper.name, "Upper Stairs Down to B4", "B3 stair_9_5 should keep the upper B4-down label")
+    assert_equal(b3_lower.name, "Lower Stairs Down to B4", "B3 stair_10_9 should keep the lower B4-down label")
+
     env.objects.refresh(0x1B)
 
     assert_equal(find_by_id(env.objects, "stair_1_1"), nil, "stale B4 stairs placeholder should stay removed")
     for _, stair_id in ipairs({"stair_0_4", "stair_5_4"}) do
         assert_equal(find_by_id(env.objects, stair_id) ~= nil, true, "B4 should expose " .. stair_id)
     end
+
+    local b4_west = find_by_id(env.objects, "stair_0_4")
+    local b4_east = find_by_id(env.objects, "stair_5_4")
+    assert_equal(b4_west.name, "West Return Stairs to B3", "B4 stair_0_4 should use the clearer west-return label")
+    assert_equal(b4_east.name, "East Return Stairs to B3", "B4 stair_5_4 should use the clearer east-return label")
 
     env.restore()
 end
@@ -2296,6 +2306,13 @@ function tests.garins_grave_b1_exposes_confirmed_southeast_b2_door()
     assert_equal(b2_door.interaction_x, 17, "Garin's Grave B1 southeast door should route to the south stand")
     assert_equal(b2_door.interaction_y, 18, "Garin's Grave B1 southeast door stand should match the successful OPEN position")
     assert_equal(b2_door.interaction_face_dir, "north", "Garin's Grave B1 southeast door should face north to open")
+    assert_equal(#b2_door.interaction_points, 2, "Garin's Grave B1 B2 door should keep both proven interaction stands")
+    assert_equal(b2_door.interaction_points[1].x, 17, "B2 door primary interaction point should preserve south stand X")
+    assert_equal(b2_door.interaction_points[1].y, 18, "B2 door primary interaction point should preserve south stand Y")
+    assert_equal(b2_door.interaction_points[1].face_dir, "north", "B2 door primary interaction point should face north")
+    assert_equal(b2_door.interaction_points[2].x, 17, "B2 door alternate interaction point should expose north stand X")
+    assert_equal(b2_door.interaction_points[2].y, 16, "B2 door alternate interaction point should expose north stand Y")
+    assert_equal(b2_door.interaction_points[2].face_dir, "south", "B2 door alternate interaction point should face south")
 
     env.restore()
 end

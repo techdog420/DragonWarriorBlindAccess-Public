@@ -339,6 +339,19 @@ function tests.spell_command_unavailable_treats_missing_spell_bits_with_mp_as_bl
     )
 end
 
+function tests.spell_command_unavailable_can_ignore_stopspell_for_field_menus()
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x10, 7, {level = 13, mp = 57}, {ignore_stopspell = true}),
+        nil,
+        "field spell menus should ignore stale battle stopspell flags when spells are known"
+    )
+    assert_equal(
+        battle.describe_spell_command_unavailable(0x10, 0, {level = 1, mp = 0}, {ignore_stopspell = true}),
+        "Spells. Empty.",
+        "ignoring stopspell should still preserve genuine empty field spell menus"
+    )
+end
+
 local failures = 0
 local total = 0
 

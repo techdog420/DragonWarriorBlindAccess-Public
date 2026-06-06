@@ -571,15 +571,25 @@ local function get_destination_for_dir(from_x, from_y, dir)
     return from_x + delta.dx, from_y + delta.dy, approach
 end
 
+local function valid_npc_slot(slot)
+    -- NPC RAM is adjacent to player stats; never let derived slots address past it.
+    local slot_num = tonumber(slot)
+    if slot_num == nil then
+        return nil
+    end
+    slot_num = math.floor(slot_num)
+    if slot_num < 0 or slot_num >= addr.NPC_COUNT then
+        return nil
+    end
+    return slot_num
+end
+
 local function npc_slot_from_id(id)
     if not id then
         return nil
     end
     local slot = tonumber(tostring(id):match("^npc_(%d+)$"))
-    if slot == nil or slot < 0 or slot >= addr.NPC_COUNT then
-        return nil
-    end
-    return slot
+    return valid_npc_slot(slot)
 end
 
 local function normalize_npc_movement(value)
@@ -679,7 +689,7 @@ local function is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_di
     local npc_positions = objects.get_blocking_positions()
     for _, npc in ipairs(npc_positions) do
         if npc.x == dest_x and npc.y == dest_y then
-            local slot = npc.slot or npc_slot_from_id(npc.id)
+            local slot = valid_npc_slot(npc.slot) or npc_slot_from_id(npc.id)
             local blocker = {
                 x = npc.x,
                 y = npc.y,
@@ -1135,11 +1145,7 @@ end
 local function parse_npc_slot(obj)
     if not obj or not obj.id then return nil end
     local slot = tostring(obj.id):match("^npc_(%d+)$")
-    slot = tonumber(slot)
-    if not slot or slot < 0 or slot >= addr.NPC_COUNT then
-        return nil
-    end
-    return slot
+    return valid_npc_slot(slot)
 end
 
 local function decode_npc_coords(byte0, byte1)
@@ -1152,7 +1158,16 @@ local function is_active_npc_slot(byte0, byte1)
 end
 
 local function write_npc_bytes_if_changed(slot, byte0, byte1, byte2)
-    local base = addr.NPC_DATA_START + slot * addr.NPC_ENTRY_SIZE
+    local safe_slot = valid_npc_slot(slot)
+    if safe_slot == nil then
+        debug_tools.error(string.format(
+            "NPC write refused: slot=%s out of range 0..%d (would corrupt RAM near player stats)",
+            tostring(slot),
+            (addr.NPC_COUNT or 1) - 1))
+        return false
+    end
+
+    local base = addr.NPC_DATA_START + safe_slot * addr.NPC_ENTRY_SIZE
     if memory.readbyte(base) ~= byte0 then
         memory.writebyte(base, byte0)
     end
@@ -1162,6 +1177,7 @@ local function write_npc_bytes_if_changed(slot, byte0, byte1, byte2)
     if memory.readbyte(base + 2) ~= byte2 then
         memory.writebyte(base + 2, byte2)
     end
+    return true
 end
 
 apply_autowalk_npc_parking_state = function(state)
@@ -1170,8 +1186,9 @@ apply_autowalk_npc_parking_state = function(state)
     end
     local parked = 0
     for slot, snapshot in pairs(state.slots or {}) do
-        write_npc_bytes_if_changed(slot, snapshot.parked_byte0, snapshot.parked_byte1, snapshot.byte2)
-        parked = parked + 1
+        if write_npc_bytes_if_changed(slot, snapshot.parked_byte0, snapshot.parked_byte1, snapshot.byte2) then
+            parked = parked + 1
+        end
     end
     return parked
 end
@@ -1204,8 +1221,9 @@ local function release_autowalk_npc_parking(reason)
             deferred[slot] = snapshot
             deferred_count = deferred_count + 1
         else
-            write_npc_bytes_if_changed(slot, snapshot.byte0, snapshot.byte1, snapshot.byte2)
-            restored = restored + 1
+            if write_npc_bytes_if_changed(slot, snapshot.byte0, snapshot.byte1, snapshot.byte2) then
+                restored = restored + 1
+            end
         end
     end
 
@@ -1322,7 +1340,7 @@ local function add_live_npc_to_autowalk_parking(map_id, npc, reason)
     if active_route_npc_mode ~= "park_mobile_npcs" then
         return false, "not_parked_mode"
     end
-    local slot = npc and (npc.slot or npc_slot_from_id(npc.id))
+    local slot = npc and (valid_npc_slot(npc.slot) or npc_slot_from_id(npc.id))
     if slot == nil then
         return false, "missing_slot"
     end
@@ -1532,11 +1550,10 @@ end
 function M.apply_npc_freeze()
     if npc_freeze_active then
         for i = 0, addr.NPC_COUNT - 1 do
-            local base = addr.NPC_DATA_START + i * addr.NPC_ENTRY_SIZE
             local snap = frozen_npc_snapshot[i]
-            if memory.readbyte(base)     ~= snap[1] then memory.writebyte(base,     snap[1]) end
-            if memory.readbyte(base + 1) ~= snap[2] then memory.writebyte(base + 1, snap[2]) end
-            if memory.readbyte(base + 2) ~= snap[3] then memory.writebyte(base + 2, snap[3]) end
+            if snap then
+                write_npc_bytes_if_changed(i, snap[1], snap[2], snap[3])
+            end
         end
     end
     if autowalk_npc_parking then
@@ -1960,6 +1977,93 @@ local function update_active_route_remaining(path_len, face_dir, hazard_stop)
     active_route_hazard_stop = hazard_stop
 end
 
+local function add_interaction_point(points, seen, x, y, face_dir, label)
+    if x == nil or y == nil then
+        return
+    end
+    local key = tostring(x) .. "," .. tostring(y)
+    if seen[key] then
+        return
+    end
+    seen[key] = true
+    points[#points + 1] = {
+        x = x,
+        y = y,
+        face_dir = face_dir,
+        label = label,
+    }
+end
+
+local function object_interaction_points(obj)
+    local points = {}
+    local seen = {}
+    if not obj then
+        return points
+    end
+
+    add_interaction_point(
+        points,
+        seen,
+        obj.interaction_x,
+        obj.interaction_y,
+        obj.interaction_face_dir,
+        obj.interaction_label)
+
+    if type(obj.interaction_points) == "table" then
+        for _, point in ipairs(obj.interaction_points) do
+            add_interaction_point(
+                points,
+                seen,
+                point.x or point.interaction_x,
+                point.y or point.interaction_y,
+                point.face_dir or point.interaction_face_dir,
+                point.label or point.interaction_label)
+        end
+    end
+
+    return points
+end
+
+local function interaction_point_for_goal(obj, goal_x, goal_y)
+    if goal_x == nil or goal_y == nil then
+        return nil
+    end
+    for _, point in ipairs(object_interaction_points(obj)) do
+        if point.x == goal_x and point.y == goal_y then
+            return point
+        end
+    end
+    return nil
+end
+
+local function object_with_interaction(obj, point)
+    if not obj or not point then
+        return obj
+    end
+    local next_obj = {}
+    for k, v in pairs(obj) do
+        next_obj[k] = v
+    end
+    next_obj.interaction_x = point.x
+    next_obj.interaction_y = point.y
+    next_obj.interaction_face_dir = point.face_dir
+    next_obj.interaction_label = point.label
+    next_obj.interaction_points = nil
+    return next_obj
+end
+
+local function add_selected_interaction_to_opts(opts, point)
+    if not point then
+        return opts
+    end
+    local next_opts = copy_opts(opts or {})
+    next_opts.interaction_x = point.x
+    next_opts.interaction_y = point.y
+    next_opts.interaction_face_dir = point.face_dir
+    next_opts.interaction_label = point.label
+    return next_opts
+end
+
 local function get_plan_goal(obj)
     if obj
        and obj.interaction_x ~= nil
@@ -2187,6 +2291,45 @@ local function append_path_hazard_summary(plan)
 end
 
 local plan_path_to_object
+
+local function try_interaction_alternate_plan(obj, map_id, px, py, blocking, opts, current_plan)
+    if not current_plan
+       or current_plan.result ~= "No path found"
+       or opts._skip_interaction_alternates then
+        return current_plan
+    end
+
+    local points = object_interaction_points(obj)
+    if #points <= 1 then
+        return current_plan
+    end
+
+    for _, point in ipairs(points) do
+        if point.x ~= current_plan.goal_x or point.y ~= current_plan.goal_y then
+            local alt_opts = copy_opts(opts)
+            alt_opts._skip_interaction_alternates = true
+            alt_opts.map_id = map_id
+            alt_opts.start_x = px
+            alt_opts.start_y = py
+            alt_opts.blocking = blocking
+            alt_opts.store_debug_path = false
+
+            local alt_plan = plan_path_to_object(object_with_interaction(obj, point), alt_opts)
+            if alt_plan and alt_plan.result ~= "No path found" then
+                alt_plan.target = obj
+                alt_plan.selected_interaction = point
+                alt_plan.message = build_pathfind_message(
+                    obj,
+                    alt_plan.result,
+                    alt_plan.face_dir,
+                    alt_plan.no_path_reason)
+                return alt_plan
+            end
+        end
+    end
+
+    return current_plan
+end
 
 local function build_hazard_warning(summary, prefix)
     if not summary then
@@ -2551,6 +2694,7 @@ local function plan_object_reachability(obj, opts)
     local dist = math.abs(px - goal_x) + math.abs(py - goal_y)
     local path = nil
     local face_dir = get_plan_face_dir(obj, uses_interaction)
+    local selected_interaction = interaction_point_for_goal(obj, goal_x, goal_y)
     local adjacent_diagnostics = nil
     local no_path_reason = nil
 
@@ -2569,6 +2713,7 @@ local function plan_object_reachability(obj, opts)
                 goal_block_reason = goal_block_reason,
                 reachable = true,
                 status = "adjacent",
+                selected_interaction = selected_interaction,
             }
         end
         path, face_dir = find_quiet_route_to_adjacent(
@@ -2589,6 +2734,7 @@ local function plan_object_reachability(obj, opts)
                 reachable = true,
                 status = "already_there",
                 face_dir = face_dir,
+                selected_interaction = selected_interaction,
             }
         elseif goal_block_reason == "npc" then
             no_path_reason = "goal_blocked_npc"
@@ -2611,7 +2757,7 @@ local function plan_object_reachability(obj, opts)
         end
     end
 
-    return {
+    local reachability = {
         target = obj,
         map_id = map_id,
         start_x = px,
@@ -2628,7 +2774,32 @@ local function plan_object_reachability(obj, opts)
         path = path,
         face_dir = face_dir,
         adjacent_diagnostics = adjacent_diagnostics,
+        selected_interaction = selected_interaction,
     }
+
+    if reachability.reachable == false and not opts._skip_interaction_alternates then
+        local points = object_interaction_points(obj)
+        if #points > 1 then
+            for _, point in ipairs(points) do
+                if point.x ~= goal_x or point.y ~= goal_y then
+                    local alt_opts = copy_opts(opts)
+                    alt_opts._skip_interaction_alternates = true
+                    alt_opts.map_id = map_id
+                    alt_opts.start_x = px
+                    alt_opts.start_y = py
+                    alt_opts.blocking = blocking
+                    local alt = plan_object_reachability(object_with_interaction(obj, point), alt_opts)
+                    if alt and alt.reachable ~= false then
+                        alt.target = obj
+                        alt.selected_interaction = point
+                        return alt
+                    end
+                end
+            end
+        end
+    end
+
+    return reachability
 end
 
 local function normalize_pathability_filter(filter)
@@ -2784,6 +2955,20 @@ local function is_reachable_cell(reachable, x, y)
 end
 
 local function object_reachable_from_set(obj, map_id, start_x, start_y, blocking, reachable)
+    local interaction_points = object_interaction_points(obj)
+    if #interaction_points > 0 then
+        for _, point in ipairs(interaction_points) do
+            if start_x == point.x and start_y == point.y then
+                return true
+            end
+            if M.is_pathfinding_walkable(map_id, point.x, point.y)
+               and is_reachable_cell(reachable, point.x, point.y) then
+                return true
+            end
+        end
+        return false
+    end
+
     local goal_x, goal_y, uses_interaction = get_plan_goal(obj)
     if goal_x == nil or goal_y == nil then
         return nil
@@ -3112,6 +3297,10 @@ function M.describe_object_with_reachability(obj, base_description, opts)
         return desc
     end
     local reachability = plan_object_reachability(obj, opts)
+    if not base_description and reachability and reachability.selected_interaction then
+        desc = objects.describe_object(
+            object_with_interaction(obj, reachability.selected_interaction))
+    end
     if reachability and reachability.reachable == false then
         return desc .. ". Not currently reachable"
     end
@@ -3119,11 +3308,25 @@ function M.describe_object_with_reachability(obj, base_description, opts)
 end
 
 function M.describe_current_object(opts)
+    opts = opts or {}
     local obj = objects.current_object()
     if not obj then
         return "No objects found"
     end
-    return M.describe_object_with_reachability(obj, objects.describe_current(opts), opts)
+    if opts.include_reachability == false
+       or (opts.include_reachability == nil
+           and emulator_compat.is_bizhawk == true
+           and config.get("bizhawk_object_reachability_descriptions") ~= "true") then
+        return objects.describe_current(opts)
+    end
+
+    local reachability = plan_object_reachability(obj, opts)
+    local desc_opts = add_selected_interaction_to_opts(opts, reachability and reachability.selected_interaction)
+    local desc = objects.describe_current(desc_opts)
+    if reachability and reachability.reachable == false then
+        return desc .. ". Not currently reachable"
+    end
+    return desc
 end
 
 -- plan_path_to_object(obj): Compute a path from the player to the given
@@ -3152,6 +3355,7 @@ plan_path_to_object = function(obj, opts)
     local result, face_dir, path, adjacent_diagnostics
     local no_path_reason = nil
     local goal_block_reason = get_goal_block_reason(blocking, goal_x, goal_y)
+    local selected_interaction = interaction_point_for_goal(obj, goal_x, goal_y)
     if path_mode == "adjacent" then
         result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
             map_id, px, py, goal_x, goal_y, blocking, adjacent_path_opts(opts, map_id))
@@ -3202,8 +3406,10 @@ plan_path_to_object = function(obj, opts)
         face_dir = face_dir,
         path = path,
         adjacent_diagnostics = adjacent_diagnostics,
+        selected_interaction = selected_interaction,
         message = build_pathfind_message(obj, result, face_dir, no_path_reason),
     }
+    plan = try_interaction_alternate_plan(obj, map_id, px, py, blocking, opts, plan)
     plan = try_adjacent_fallback(obj, map_id, px, py, blocking, opts, plan)
     plan = maybe_avoid_tantegel_shrine_exit_latch(plan, opts)
     plan.message = build_pathfind_message(obj, plan.result, plan.face_dir, plan.no_path_reason)
@@ -3815,11 +4021,26 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     local is_manual_block = (block_data and block_data.queued_route == false)
     local is_seam_retry_block = same_seam_retry(map_id, from_x, from_y, blocked_dir)
     local is_npc_block, npc_x, npc_y, npc_blocker = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)
+    local active_overworld_block = active_overworld_segment ~= nil
     local source = is_npc_block
         and "npc_block"
         or (is_seam_retry_block and "seam_retry_block")
         or (is_manual_block and "manual_block" or "queued_route_block")
-    local _, seam_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
+    local delay_timing_retry_observation = is_suspect_route_timeout(block_data)
+        and not is_seam_retry_block
+        and not is_npc_block
+        and not active_overworld_block
+    local seam_class = nil
+    local function record_blocked_observation()
+        if seam_class ~= nil then
+            return
+        end
+        local _, observed_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
+        seam_class = observed_class
+    end
+    if not delay_timing_retry_observation then
+        record_blocked_observation()
+    end
     if is_npc_block then
         local slot = npc_blocker and npc_blocker.slot
         debug_tools.info(string.format(
@@ -3842,7 +4063,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
         return
     end
-    if active_overworld_segment then
+    if active_overworld_block then
         event_bus.publish("route_cancelled", {
             reason = "overworld_blocked",
             target = active_route_target,
@@ -3866,6 +4087,25 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
     if not last_pathfind_obj then return end
+
+    if delay_timing_retry_observation
+       and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+        record_active_route_temp_block(map_id, from_x, from_y, blocked_dir, "timing_retry")
+        debug_tools.info(string.format(
+            "AUTO_WALK_TIMING_RETRY map=0x%02X from=(%d,%d) dir=%s movement_start_frame=%s timeout_retries=%s turn_represses=%s",
+            map_id,
+            from_x or -1,
+            from_y or -1,
+            tostring(blocked_dir),
+            tostring(block_data and block_data.movement_start_frame),
+            tostring(block_data and block_data.timeout_retries),
+            tostring(block_data and block_data.turn_represses)))
+        return
+    end
+
+    if seam_class == nil then
+        record_blocked_observation()
+    end
 
     if is_suspect_route_timeout(block_data)
        and not is_seam_retry_block

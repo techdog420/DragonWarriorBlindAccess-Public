@@ -296,7 +296,7 @@ local function get_route_final_settle_frames()
 end
 
 local function should_reset_movement_on_route_turn_settle()
-    return config_bool("auto_step_reset_movement_on_route_turn_settle", true)
+    return config_bool("auto_step_reset_movement_on_route_turn_settle", false)
 end
 
 local function get_seam_retry_hold_after_movement_start_frames()
@@ -498,6 +498,8 @@ local function reset_movement_engine_state(reason, opts)
 
     return false
 end
+
+M.reset_movement_engine_state = reset_movement_engine_state
 
 local function clear_route()
     route_steps = nil
@@ -774,6 +776,23 @@ local function emit_route_cancelled(cancel_data)
             debug_tools.error("on_route_cancelled error: " .. tostring(err))
         end
     end
+end
+
+local function queued_route_cancel_source()
+    if route_steps ~= nil then
+        return "queued_route"
+    end
+    if route_settle_frames > 0 then
+        return "route_settle"
+    end
+    if auto_step_source == "queued_route" or auto_step_source == "seam_retry" then
+        return auto_step_source
+    end
+    if pending_repress
+       and (pending_repress.source == "queued_route" or pending_repress.source == "seam_retry") then
+        return pending_repress.source
+    end
+    return nil
 end
 
 local function cancel_route_for_drift(px, py, source)
@@ -1501,7 +1520,8 @@ function M.update(can_walk)
     local timeout = tonumber(config.get("auto_step_timeout")) or 45
 
     if not can_walk then
-        local had_route = (route_steps ~= nil)
+        local cancel_source = queued_route_cancel_source()
+        local had_route = cancel_source ~= nil
         if auto_dir or pending_repress then
             debug_tools.debug(string.format(
                 "auto_step cancel: can_walk=false auto_dir=%s pending_repress=%s",
@@ -1517,6 +1537,7 @@ function M.update(can_walk)
                 reason = "can_walk_false",
                 current_x = px,
                 current_y = py,
+                source = cancel_source,
             })
         end
         sync_prev_held(joy)

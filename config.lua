@@ -89,7 +89,7 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_block_retry_limit", value = "1", comment = "; Internal retries before reporting a blocked step (lower reduces blocked-route audio hitches)"},
     {key = "auto_step_manual_block_retry_limit", value = "0", comment = "; Internal retries for player tap-to-step collisions (0 keeps wall bumps responsive)"},
     {key = "auto_step_route_turn_settle_frames", value = "16", comment = "; Extra neutral frames before queued auto-walk changes direction"},
-    {key = "auto_step_reset_movement_on_route_turn_settle", value = "true", comment = "; Clear stale movement RAM during queued route turn/final settle frames"},
+    {key = "auto_step_reset_movement_on_route_turn_settle", value = "false", comment = "; Experimental: clear stale movement RAM during queued route turns. Keep false; true reproduced stat corruption in FCEUX."},
     {key = "auto_step_route_early_release_grace_frames", value = "10", comment = "; Queued-route subpixel twitches at/before this frame keep holding input until the inject limit"},
     {key = "auto_step_manual_early_hold_frames", value = "8", comment = "; Extra frames to hold released manual taps after an early movement twitch"},
     {key = "auto_step_route_turn_repress_timeout_frames", value = "24", comment = "; Frames after movement twitch before retrying a queued-route turn re-press"},

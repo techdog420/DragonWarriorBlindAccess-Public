@@ -18,15 +18,33 @@ local function refresh_pathability_if_needed()
 end
 
 local function refresh_live_objects_for_browse()
+    local map_id = select(1, nav.get_position())
+    if objects.check_refresh then
+        objects.check_refresh(map_id)
+    end
+    if objects.needs_refresh and objects.needs_refresh(map_id) then
+        return
+    end
     if objects.update_npcs then
         objects.update_npcs()
     end
 end
 
+local function refresh_object_cache_for_current_map()
+    local map_id = select(1, nav.get_position())
+    if objects.check_refresh then
+        objects.check_refresh(map_id)
+    end
+    return map_id
+end
+
 local function refresh_object_browser_context(opts)
     opts = opts or {}
+    local map_id = refresh_object_cache_for_current_map()
     if opts.refresh_live_npcs == true then
-        refresh_live_objects_for_browse()
+        if not (objects.needs_refresh and objects.needs_refresh(map_id)) then
+            refresh_live_objects_for_browse()
+        end
     end
     refresh_pathability_if_needed()
 end

@@ -158,7 +158,10 @@ local function make_env(options)
             describe_object = function(obj)
                 return (obj and obj.name or "Object") .. ": 3 north"
             end,
-            describe_current = function()
+            describe_current = function(desc_opts)
+                if options.describe_current_fn then
+                    return options.describe_current_fn(current_object, desc_opts)
+                end
                 return options.current_description or (current_object.name .. ": 3 north (1 of 1)")
             end,
             update_npcs = function()
@@ -598,6 +601,12 @@ end
 local function assert_not_contains(haystack, needle, message)
     if string.find(haystack, needle, 1, true) then
         error(string.format("%s: unexpected %s in %s", message, needle, haystack), 2)
+    end
+end
+
+local function assert_truthy(value, message)
+    if not value then
+        error(message, 2)
     end
 end
 
@@ -1281,6 +1290,66 @@ function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service
     env.restore()
 end
 
+function tests.multi_interaction_door_routes_to_reachable_stand_and_describes_that_stand()
+    local door = {
+        name = "B2 Door",
+        type = "door",
+        id = "door_17_17",
+        x = 17,
+        y = 17,
+        interaction_x = 17,
+        interaction_y = 18,
+        interaction_face_dir = "north",
+        interaction_points = {
+            {x = 17, y = 18, face_dir = "north"},
+            {x = 17, y = 16, face_dir = "south"},
+        },
+    }
+    local env = make_env({
+        start_map_id = 0x18,
+        start_x = 13,
+        start_y = 15,
+        current_object = door,
+        pathfind_to_fn = function(_, _, goal_x, goal_y)
+            if goal_x == 17 and goal_y == 18 then
+                return "No path found", nil, nil
+            end
+            if goal_x == 17 and goal_y == 16 then
+                return "Path: 1 south, 4 east", "south", {
+                    {x = 13, y = 16, direction = "south"},
+                    {x = 14, y = 16, direction = "east"},
+                    {x = 15, y = 16, direction = "east"},
+                    {x = 16, y = 16, direction = "east"},
+                    {x = 17, y = 16, direction = "east"},
+                }
+            end
+            return nil
+        end,
+        unreachable_goal_key = "17,18",
+        describe_current_fn = function(_, desc_opts)
+            local ix = desc_opts and desc_opts.interaction_x or 17
+            local iy = desc_opts and desc_opts.interaction_y or 18
+            if ix == 17 and iy == 16 then
+                return "B2 Door: 2 south, 4 east, interaction 1 south, 4 east (1 of 1)"
+            end
+            return "B2 Door: 2 south, 4 east, interaction 3 south, 4 east (1 of 1)"
+        end,
+    })
+
+    local plan = env.route_manager.plan_path_to_object(door)
+    assert_equal(plan.result, "Path: 1 south, 4 east", "multi-interaction door should route to the reachable stand")
+    assert_equal(plan.goal_x, 17, "multi-interaction door should keep the door column")
+    assert_equal(plan.goal_y, 16, "multi-interaction door should choose the north-side stand when reachable")
+    assert_equal(plan.face_dir, "south", "multi-interaction door should face the door from the chosen stand")
+    assert_equal(plan.selected_interaction.y, 16, "route plan should expose the selected interaction stand")
+
+    local desc = env.route_manager.describe_current_object()
+    assert_contains(desc, "interaction 1 south, 4 east", "current-object readout should describe the selected reachable stand")
+    assert_not_contains(desc, "Not currently reachable", "current-object readout should not mark the alternate reachable stand unreachable")
+
+    env.restore()
+end
+
 function tests.current_object_description_marks_unreachable_without_freezing_npcs()
     local env = make_env({pathfind_mode = "always_no_path"})
 
@@ -1767,6 +1836,27 @@ function tests.timing_retry_temp_block_clears_after_successful_seam_retry()
         env.route_manager.count_runtime_blocks(0x05),
         0,
         "timing-suspect retry avoidance should not become a persistent runtime block"
+    )
+    local seam = env.route_manager.get_seam_observation(0x05, 5, 3, "south")
+    assert_equal(
+        seam and seam.blocked_count or 0,
+        0,
+        "a successful timing retry should not leave a fake blocked seam count behind"
+    )
+    assert_equal(
+        seam and seam.moved_count or 0,
+        1,
+        "a successful timing retry should preserve the later moved observation"
+    )
+    assert_equal(
+        env.seam_summary(0x05).noisy,
+        0,
+        "a successful timing retry should not downgrade the seam to noisy"
+    )
+    assert_equal(
+        env.seam_summary(0x05).passable_only,
+        1,
+        "a successful timing retry should leave the seam classified as passable"
     )
 
     env.restore()
@@ -2580,6 +2670,96 @@ function tests.parked_autowalk_reactively_parks_new_mobile_npc_blocker()
     assert_contains(logs, "AUTO_WALK_NPC_BLOCK", "reactive parking should still log the NPC blocker")
     assert_contains(logs, "kind=mobile", "NPC blocker log should classify mobile blockers")
     assert_contains(logs, "AUTO_WALK_NPC_REACTIVE_PARK", "reactive parking should be visible in route logs")
+
+    env.restore()
+end
+
+function tests.parked_autowalk_reactive_parking_validates_raw_npc_slot()
+    local expose_bad_slot = false
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        blocking_positions_fn = function()
+            if not expose_bad_slot then
+                return {}
+            end
+            return {
+                {
+                    id = "npc_0",
+                    name = "Guard",
+                    x = 5,
+                    y = 3,
+                    slot = 39,
+                    movement = 0x12,
+                },
+            }
+        end,
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.memory_values[0] = 0x80 + 5
+    env.memory_values[1] = 0x60 + 3
+    env.memory_values[2] = 0x12
+    env.memory_values[117] = 0x80 + 5
+    env.memory_values[118] = 0x60 + 3
+    env.memory_values[119] = 0x12
+    expose_bad_slot = true
+    env.auto_step.on_blocked(5, 4, "up")
+
+    assert_equal(env.memory_writes[1].address, 0, "reactive parking should use the validated NPC id slot")
+    assert_equal(env.memory_writes[2].address, 1, "reactive parking should use the validated NPC id slot y byte")
+    for _, write in ipairs(env.memory_writes) do
+        assert_truthy(
+            write.address < 117 or write.address > 119,
+            "reactive parking should not trust an out-of-range raw NPC slot"
+        )
+    end
+
+    env.restore()
+end
+
+function tests.parked_autowalk_reactive_parking_refuses_unidentified_bad_slot()
+    local expose_bad_slot = false
+    local env = make_env({
+        is_bizhawk = true,
+        pathfind_mode = "block_sensitive",
+        pathfind_block_key = "5,3",
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+        },
+        blocking_positions_fn = function()
+            if not expose_bad_slot then
+                return {}
+            end
+            return {
+                {
+                    name = "Unknown NPC",
+                    x = 5,
+                    y = 3,
+                    slot = 39,
+                    movement = 0x12,
+                },
+            }
+        end,
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.memory_values[117] = 0x80 + 5
+    env.memory_values[118] = 0x60 + 3
+    env.memory_values[119] = 0x12
+    expose_bad_slot = true
+    env.auto_step.on_blocked(5, 4, "up")
+
+    assert_equal(#env.memory_writes, 0, "unidentified out-of-range NPC slots should not write RAM")
+    assert_not_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_NPC_REACTIVE_PARK",
+        "unidentified out-of-range NPC slots should not be parked"
+    )
 
     env.restore()
 end

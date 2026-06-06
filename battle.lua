@@ -119,8 +119,9 @@ function M.describe_spell_selection(selection, combat_flags, include_intro)
     return "Spells. " .. text
 end
 
-function M.describe_spell_command_unavailable(combat_flags, spell_count, hero_state)
-    if M.is_hero_stopspelled(combat_flags) then
+function M.describe_spell_command_unavailable(combat_flags, spell_count, hero_state, opts)
+    local ignore_stopspell = opts and opts.ignore_stopspell
+    if not ignore_stopspell and M.is_hero_stopspelled(combat_flags) then
         return "Spells blocked."
     end
     if tonumber(spell_count) == 0 then
