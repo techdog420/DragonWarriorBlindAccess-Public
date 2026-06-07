@@ -1,6 +1,262 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-05
+Updated: 2026-06-06
+
+## Latest: B3 lower-stair object pruning leaves only local stair and harp chest reachable (2026-06-06, uncommitted)
+
+- Live FCEUX work continued from the Garin's Grave B3 lower-stair / Silver
+  Harp side. Teleport and verifier output were not used as direct passability
+  proof; the pass used normally reached same-origin `probe_edge` checks.
+- Starting from the harp chest/lower-stair component, the reachable filter
+  initially showed 9 objects, including remote top stairs and the far chest.
+- Confirmed lower-side object-pruning seams now promoted in `map_reader.lua`:
+  `(12,3).south`, `(13,3).south`, `(14,3).south`,
+  `(11,4).east/south`, `(15,4).west/south`, `(10,5).east`,
+  `(16,5).west`, `(16,6).west`, `(16,7).west`, `(10,7).east`,
+  `(9,8).east`, `(15,8).north/west`, `(9,9).east`,
+  `(12,9).north/west`, `(14,9).north`, `(10,10).north`,
+  and `(11,10).north`.
+- Final live status before source reload:
+  - `POSITION map=0x1A(Garin's Grave B3) x=10 y=9`
+  - reachable object filter dropped to 2:
+    `Lower Stairs Down: here` and local `Chest: 3 north, 3 east` at `(13,6)`
+  - `debug_pathfind_to:14,1`, `debug_pathfind_to:18,1`,
+    `debug_pathfind_to:1,1`, and `debug_pathfind_to:9,5` all returned
+    `No path found`
+- Post-reload observation:
+  - user exercised the local route after reload: autowalk reached the B3 chest
+    at `(13,6)`, autowalk returned to `Lower Stairs Down` `(10,9)`, then using
+    the stairs changed to B4 (`map=0x1B`)
+  - only timing retries were logged on open seams; no new blocker was promoted
+    from that post-reload autowalk
+- User follow-up verification:
+  - after script reload, user confirmed the B3 lower-stair side reachable list
+    contains only the local chest and stairs
+  - user walked the player through the route a couple of times successfully
+- Fresh Codex verification from the branch entrance:
+  - `POSITION map=0x19(Garin's Grave B2) x=1 y=10`
+  - `PATHABILITY_FILTER: All, reachable. Southwest Stairs Down: here (1 of 6)`
+  - `OBJECT: Southwest Stairs Down: here (1 of 6)`
+  - `RUNTIME_BLOCKS map=0x19 none`
+- Branch conclusion:
+  - Treat the B2 southwest-stairs branch as complete for mapping/playability:
+    B2 southwest stairs -> B3/B4 crossing -> B3 lower-stair harp/chest side has
+    been stabilized and post-reload-validated.
+  - No further blocker hunting is currently needed on this branch unless later
+    playtesting exposes new noise worth polishing.
+- Permanent model/test sync:
+  - `map_reader.lua` models the confirmed B3 lower-side object-pruning seams.
+  - `test_map_reader.lua` adds focused B3 assertions for the promoted edges.
+- Verification:
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B3 (10,5).east` for batch 1
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B3 (10,7).east` for batch 2
+  - green `lua5.1 test_map_reader.lua` passed 48 tests
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed
+- Next live step:
+  - Move on from the B2 southwest branch to the next dungeon branch or main
+    progression target.
+
+## Latest: B3 lower-stair Silver Harp route stabilized both directions (2026-06-06, uncommitted)
+
+- Live FCEUX work resumed after the B4 connector by taking `East Stairs Up`
+  back to Garin's Grave B3 lower-stair side.
+- Fresh baseline:
+  - `POSITION map=0x1A(Garin's Grave B3) x=10 y=9`
+  - `OBJECT: Lower Stairs Down: here (1 of 9) [player 10,9 obj 10,9]`
+  - `RUNTIME_BLOCKS map=0x1A none`
+- The likely harp chest at `(13,6)` routed first as `3 north, 3 east`, but
+  live same-origin probing confirmed `(10,8)->UP` into `(10,7)` blocked twice
+  with `raw_hold_timeout`. Runtime-injected `add_blocked_edge:10,8,UP`,
+  represented as `(10,7).south`.
+- Replanned route from `(10,8)` to the chest was `3 east, 2 north`. Manual
+  probes proved the route clean:
+  `(10,8)->(11,8)->(12,8)->(13,8)->(13,7)->(13,6)`.
+- At `(13,6)`, object navigation confirmed `Chest: here`. The `TAKE` command
+  produced `Unfortunately, it is empty.`, and `log_state` showed inventory
+  bytes `C1..C4 = 45 C3 0A 00`; nybble `0xA` maps to `Silver Harp`, so the
+  hero already has the harp in this save.
+- Return route initially planned `3 south, 3 west`, but live probes confirmed
+  `(13,8)->DOWN` into `(13,9)` blocked twice. Runtime-injected
+  `add_blocked_edge:13,8,DOWN`, represented as `(13,9).north`.
+- Replanned return route from `(13,8)` was `3 west, 1 south`. Manual probes
+  proved the return clean:
+  `(13,8)->(12,8)->(11,8)->(10,8)->(10,9)`.
+- Permanent model/test sync:
+  - `map_reader.lua` now models B3 `(10,7).south` and `(13,9).north`.
+  - `test_map_reader.lua` adds focused assertions for both harp-route seams.
+- Verification:
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B3 (10,7).south`
+  - red `lua5.1 test_map_reader.lua` then failed on missing
+    `B3 (13,9).north`
+  - green `lua5.1 test_map_reader.lua` passed 48 tests
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed
+- Latest live baseline:
+  - `POSITION map=0x1A x=10 y=9`
+  - `RUNTIME_BLOCKS map=0x1A count=2`: `(10,7).south`, `(13,9).north`
+  - command/menu/dialogue state was clear after dismissing the empty-chest
+    message.
+- Next live step:
+  - User should manually reload Lua in FCEUX when ready so the permanent B3
+    seam updates replace the runtime overlay.
+  - Then continue B3 object/stair exploration from the lower-stair side, or
+    route outward now that the Silver Harp is confirmed in inventory.
+
+## Latest: B4 west/east stair connector stabilized both directions (2026-06-06, uncommitted)
+
+- Live FCEUX work continued on Garin's Grave B4 to stabilize routes between
+  `West Stairs Up` `(0,4)` and `East Stairs Up` `(5,4)`.
+- Teleport was not used as direct passability proof. The pass used normally
+  reached same-origin `probe_edge` checks, runtime `add_blocked_edge`
+  injections, replans, and final `auto_walk` checks.
+- Final live status:
+  - `POSITION map=0x1B(Garin's Grave B4) x=0 y=4`
+  - `OBJECT: East Stairs Up: 5 east (2 of 2) [player 0,4 obj 5,4]`
+  - `RUNTIME_BLOCKS map=0x1B count=13`
+- Both directions now have live-completed routes under the confirmed seam set:
+  - west-to-east completed to `East Stairs Up` with `auto_walk:5,4`
+  - east-to-west completed to `West Stairs Up` with `auto_walk:0,4`
+- Permanent B4 seam set now includes the earlier connector seams plus:
+  `(3,1).east/south`, `(2,2).east`, `(5,2).east`, `(1,3).south`,
+  `(5,3).south`, `(6,3).south`, `(4,4).east`, `(1,5).east/north`,
+  `(5,5).north`, `(6,5).east/north`, `(2,6).east/north`,
+  `(3,7).east`, and `(7,7).north/west`.
+- Deliberately unpromoted autowalk-only candidates:
+  - `(5,2).west`
+  - `(7,1).west`
+  - `(6,3).north`
+  These appeared during route retries but did not receive direct same-origin
+  probe confirmation.
+- Permanent model/test sync:
+  - `map_reader.lua` extends `MAP_DIRECTIONAL_BLOCKS[0x1B]` for the confirmed
+    B4 west/east connector seams.
+  - `test_map_reader.lua` expands B4 seam assertions and adds absence
+    assertions for `(5,2).west`, `(7,1).west`, `(6,3).north`, and the prior
+    `(4,7).north` no-promote candidate.
+- Verification:
+  - red `lua5.1 test_map_reader.lua` failed first on missing `B4 (1,3).south`
+  - green `lua5.1 test_map_reader.lua` passed 48 tests
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed
+- Next live step:
+  - User should manually reload Lua in FCEUX when ready.
+  - After reload, from current B4 `West Stairs Up`, verify route to
+    `East Stairs Up`; then use the east stairs manually and verify arrival on
+    the B3 lower-stair / Silver Harp side.
+
+## Latest: B3 central-stair pocket sealed; Silver Harp route uses Upper Down stairs first (2026-06-06, uncommitted)
+
+- User clarified the live investigation was not from the southwest B3 stair
+  landing; they had been working backward while looking for a mismarked opening
+  toward the lower B3 stair.
+- Fresh live context was Garin's Grave B3 around the `Central Stairs Up` pocket:
+  - `POSITION map=0x1A(Garin's Grave B3) x=7 y=11`
+  - after a clean control move, direct probing also stood at `(6,11)`, the
+    central stair-up tile/pocket.
+- Two false openings were confirmed without teleport-backed proof:
+  - `(7,11)->DOWN` into `(7,12)` repeatedly blocked during route retry, then
+    same-origin `probe_edge:DOWN` from `(7,11)` blocked twice with
+    `raw_hold_timeout`; model representation: `(7,12).north`.
+  - `(6,11)->LEFT` into `(5,11)` repeatedly blocked during route retry, then
+    same-origin `probe_edge:LEFT` from normally reached `(6,11)` blocked twice
+    with `raw_hold_timeout`; model representation: `(5,11).east`.
+- Runtime and permanent sync:
+  - current FCEUX runtime overlay has both edges injected with
+    `add_blocked_edge:7,11,DOWN` and `add_blocked_edge:6,11,LEFT`.
+  - `map_reader.lua` now models B3 `(7,12).north` and `(5,11).east`.
+  - `test_map_reader.lua` adds focused assertions for both.
+- Planner status after runtime injection from `(6,11)`:
+  - `debug_pathfind_to:2,17`: `No path found`
+  - `debug_pathfind_to:10,9`: `No path found`
+  - `debug_pathfind_to:9,5`: `No path found`
+  - `debug_pathfind_to:13,6`: `No path found`
+- Route conclusion:
+  - Do not try to open the B3 central-stair pocket toward `Lower Stairs Down`;
+    it is a sealed return/trap-style pocket under current live evidence.
+  - The correct Silver Harp progression from the B2 southwest branch is still:
+    B3 `(2,17)` -> `Upper Stairs Down` `(9,5)` -> cross B4 from `(0,4)` to
+    `(5,4)` -> return to B3 lower-stair side and continue to the harp area.
+- Verification:
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B3 (5,11).east`
+  - green `lua5.1 test_map_reader.lua` passed 47 tests
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed
+
+## Latest: B2 stair cleanup promotes `(12,3).north`; Central/Northwest sealed under live seams (2026-06-06, uncommitted)
+
+- Starting from live B2 state, reached `Stairs Up` / entrance `(11,2)` by
+  normal walking from `Southwest Stairs Down` `(1,10)`; no teleport evidence was
+  used for passability decisions.
+- Southwest return route from `(1,10)` to `(11,2)` completed:
+  - planner: `1 south, 12 east, 9 north, 2 west`
+  - timing retries at `(1,10)->DOWN`, `(12,11)->RIGHT`, and `(13,3)->UP`
+    moved on retry and were not promoted.
+- Northeast route and return completed:
+  - from `(11,2)` to `(12,1)`: `1 north, 1 east`
+  - from `(12,1)` back to `(11,2)`: `1 south, 1 west`
+  - timing retries at `(11,2)->UP` and `(12,1)->DOWN` moved on retry and were
+    not promoted.
+- Central route from entrance failed cleanly:
+  - `auto_walk:5,6` reached normally walked `(12,2)`, then
+    `(12,2)->DOWN` into `(12,3)` blocked through route retry with
+    `blocked=7 moved=0`.
+  - same-origin `probe_edge:DOWN` from `(12,2)` blocked twice with
+    `raw_hold_timeout`.
+  - runtime-injected `add_blocked_edge:12,2,DOWN`, represented as
+    `(12,3).north`.
+  - `map_reader.lua` now models B2 `(12,3).north`; `test_map_reader.lua` flips
+    the old "stay open" assertion to a positive regression.
+- Southeast route and return completed:
+  - from `(12,2)` to `(12,10)`: `1 east, 8 south, 1 west`
+  - from `(12,10)` back to `(11,2)`: `1 east, 8 north, 2 west`
+  - only self-clearing timing retries occurred.
+- Final entrance-side B2 planner snapshot under current live/runtime seams:
+  - `(12,1)` Northeast: `1 north, 1 east`
+  - `(12,10)` Southeast: `2 east, 8 south, 1 west`
+  - `(5,6)` Central: `No path found`
+  - `(1,1)` Northwest: `No path found`
+  - `(1,10)` Southwest: `2 east, 9 south, 12 west, 1 north`
+- Latest live baseline:
+  - `POSITION map=0x19(Garin's Grave B2) x=11 y=2`
+  - `RUNTIME_BLOCKS map=0x19 count=12`
+  - runtime-only seams still include state-sensitive/unpromoted entries such as
+    `(2,10).west`; do not promote those solely from teleport-backed artifacts.
+
+## Latest: Dungeon stair labels preserve exploration while keeping Up/Down direction (2026-06-06, uncommitted)
+
+- User wanted dungeon stair names to reduce confusion without telling players
+  exactly where each stair leads.
+- Player-facing internal cave/dungeon stair labels now keep spatial orientation
+  and visible direction, but omit destination floors:
+  - single internal stairs: `Stairs Up` or `Stairs Down`
+  - disambiguated cave/dungeon stairs: `North Stairs Up`, `South Stairs Down`,
+    `Northwest Stairs Down`, `Southeast Stairs Up`, `Upper Stairs Down`,
+    `Lower Stairs Down`, etc.
+  - B2 hub: `Stairs Up`, `Northwest Stairs Down`, `Northeast Stairs Down`,
+    `Central Stairs Down`, `Southwest Stairs Down`, `Southeast Stairs Down`
+  - B3: `Northwest Stairs Up`, `Northeast Stairs Up`, `Central Stairs Up`,
+    `Southwest Stairs Up`, `Southeast Stairs Up`, `Upper Stairs Down`,
+    `Lower Stairs Down`
+  - B4: `West Stairs Up`, `East Stairs Up`
+- Scope currently covered:
+  - Erdrick's Cave, Mountain Cave, Garin's Grave internal floors,
+    Charlock/Dragonlord internal floors, and Swamp Cave south stair
+  - public landmark exits such as `Stairs to Garinham` and
+    `Stairs to Garin's Grave` stay explicit for now
+- Design rule:
+  - keep `Up` / `Down` because that is apparent from the stair graphic
+  - keep compass or positional descriptors when several stairs share a floor
+  - do not label internal dungeon stairs with exact destination floors, branch
+    purpose, return/progression/trap status, or treasure-route spoilers
+- Verification:
+  - red runs of `lua5.1 test_objects.lua` failed on the old destination labels
+  - after the object-label updates, `lua5.1 test_objects.lua` passed 76 tests
+  - `luac5.1 -p objects.lua test_objects.lua` passed
 
 ## Latest: B2 stair-hub audit says all six stair objects are intentionally reachable; do not seal extra stair routes (2026-06-05, uncommitted)
 
@@ -8,12 +264,12 @@ Updated: 2026-06-05
   the return stair `(11,2)` and the southwest progression stair `(1,10)`, and
   asked whether some of them should really be sealed off.
 - Live object roster from `POSITION map=0x19(Garin's Grave B2) x=11 y=2`:
-  - `Stairs Up to B1` at `(11,2)`
-  - `Northeast Stairs Down to B3` at `(12,1)`
-  - `Southeast Stairs Down to B3` at `(12,10)`
-  - `Center Stairs Down to B3` at `(5,6)`
-  - `Northwest Stairs Down to B3` at `(1,1)`
-  - `Southwest Stairs Down to B3` at `(1,10)`
+  - `Stairs Up` at `(11,2)`
+  - `Northeast Stairs Down` at `(12,1)`
+  - `Southeast Stairs Down` at `(12,10)`
+  - `Central Stairs Down` at `(5,6)`
+  - `Northwest Stairs Down` at `(1,1)`
+  - `Southwest Stairs Down` at `(1,10)`
 - Planner/object-filter evidence from the current east-side component:
   - `pathability_filter:unreachable`
     - `PATHABILITY_FILTER: Travel, unreachable. No objects`

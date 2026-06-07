@@ -2949,25 +2949,26 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- moved on its first attempt before a Metal Scorpion battle
         -- interrupted the verifier, so only the north approach was promoted at
         -- first. A later direct verifier on `(13,3)->LEFT` blocked 5/5
-        -- cleanly, so `(12,3).east` is now modeled. The sibling north face stayed open:
-        -- reverse `probe_edge_verify:UP,5` from `(12,3)` moved 6/6, while the
-        -- forward `(12,2)->DOWN` verifier only produced the old
-        -- teleport-artifact stability recheck block after five moved attempts,
-        -- so `(12,3).north` remains intentionally unmodeled. The next follow-up
-        -- started from live `(12,3)` when the planner still wanted to go west:
-        -- same-origin `probe_edge_verify:LEFT,5` from `(12,3)` blocked 5/5
-        -- into `(11,3)`, and the reverse `probe_edge_verify:RIGHT,5` from
-        -- `(11,3)` stayed teleport-artifact mixed. Three fresh-start
-        -- `teleport_to:11,3` plus `probe_edge:RIGHT` checks then all blocked at
-        -- `raw_hold_timeout`, so the seam is now modeled on both faces as
-        -- `(11,3).east` and `(12,3).west`.
+        -- cleanly, so `(12,3).east` is now modeled. The sibling north face was
+        -- initially left open because teleport-backed verifier evidence was
+        -- mixed, but a 2026-06-06 normal-route Central Stairs Down attempt
+        -- reached `(12,2)` by walking, then `(12,2)->DOWN` blocked through
+        -- route retry plus two same-origin `probe_edge:DOWN` checks. That
+        -- supersedes the old teleport-artifact note, so `(12,3).north` is now
+        -- modeled too. The next follow-up started from live `(12,3)` when the
+        -- planner still wanted to go west: same-origin `probe_edge_verify:LEFT,5`
+        -- from `(12,3)` blocked 5/5 into `(11,3)`, and the reverse
+        -- `probe_edge_verify:RIGHT,5` from `(11,3)` stayed teleport-artifact
+        -- mixed. Three fresh-start `teleport_to:11,3` plus `probe_edge:RIGHT`
+        -- checks then all blocked at `raw_hold_timeout`, so the seam is now
+        -- modeled on both faces as `(11,3).east` and `(12,3).west`.
         -- On 2026-06-05, live same-origin `probe_edge_verify:LEFT,5` from
         -- `(13,9)` confirmed `(12,9).east` blocked 5/5 after an earlier
         -- teleport verifier stayed mixed.
         ["10,1"] = {east = true},
         ["10,2"] = {east = true},
         ["11,3"] = {north = true, east = true},
-        ["12,3"] = {east = true, west = true},
+        ["12,3"] = {north = true, east = true, west = true},
         -- A later noisy mid-pocket loop around `(9,5)` and `(9,6)` was split by
         -- same-origin direct verifiers: `(9,6)->DOWN` into `(9,7)` and
         -- `(9,5)->RIGHT` into `(10,5)` blocked 5/5, and the previously
@@ -3098,6 +3099,16 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- target-side pocket is sealed from `(9,6)` by `(8,6).east`,
         -- `(10,6).west`, and `(9,7).north`; the Silver Harp return route
         -- then confirmed `(11,6)->LEFT` into `(10,6)` blocked 5/5 too.
+        -- The 2026-06-06 central-stair pocket check then confirmed
+        -- `(6,11)->LEFT` into `(5,11)` and `(7,11)->DOWN` into `(7,12)`
+        -- with repeated live route retries plus same-origin probes.
+        -- The lower-stair harp route later confirmed `(10,8)->UP` into
+        -- `(10,7)` blocked twice under same-origin `probe_edge`; the return
+        -- route from the harp chest similarly confirmed `(13,8)->DOWN` into
+        -- `(13,9)` blocked twice.
+        -- The same lower-stair side object-pruning pass then chased false
+        -- reachable top-object routes and promoted only same-origin double
+        -- probe confirmations around rows 3-9.
         -- Keep mixed seams like
         -- `(5,15).west` unmodeled until they settle under direct verification.
         ["5,2"] = {west = true},
@@ -3106,13 +3117,20 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["5,3"] = {east = true, west = true},
         ["7,3"] = {south = true, east = true, west = true},
         ["9,3"] = {south = true, west = true},
+        ["12,3"] = {south = true},
+        ["13,3"] = {south = true},
+        ["14,3"] = {south = true},
         ["5,4"] = {east = true, west = true},
         ["10,4"] = {west = true},
+        ["11,4"] = {east = true, south = true},
+        ["15,4"] = {south = true, west = true},
         ["3,5"] = {north = true, west = true},
         ["4,5"] = {north = true, south = true},
         ["5,5"] = {south = true, east = true},
         ["7,5"] = {north = true, east = true, west = true},
-        ["10,5"] = {west = true},
+        ["10,5"] = {east = true, west = true},
+        ["16,5"] = {west = true},
+        ["16,6"] = {west = true},
         ["3,6"] = {east = true, west = true},
         ["7,6"] = {west = true},
         ["8,6"] = {north = true, south = true, east = true},
@@ -3123,34 +3141,39 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["5,7"] = {north = true, west = true},
         ["7,7"] = {east = true, west = true},
         ["9,7"] = {north = true, west = true},
+        ["10,7"] = {east = true, south = true},
+        ["16,7"] = {west = true},
         ["1,8"] = {east = true},
         ["3,8"] = {east = true, west = true},
         ["7,8"] = {east = true, west = true},
-        ["9,8"] = {west = true},
+        ["9,8"] = {east = true, west = true},
+        ["15,8"] = {north = true, west = true},
         ["1,9"] = {east = true},
         ["3,9"] = {east = true, west = true},
         ["7,9"] = {east = true, west = true},
-        ["9,9"] = {west = true},
-        ["13,9"] = {south = true},
+        ["9,9"] = {east = true, west = true},
+        ["12,9"] = {north = true, west = true},
+        ["13,9"] = {north = true, south = true},
+        ["14,9"] = {north = true},
         ["1,10"] = {east = true},
         ["3,10"] = {east = true, west = true},
         ["5,10"] = {north = true, west = true},
         ["6,10"] = {north = true, south = true, west = true},
         ["7,10"] = {south = true, east = true},
         ["9,10"] = {south = true, west = true},
-        ["10,10"] = {south = true},
-        ["11,10"] = {south = true},
+        ["10,10"] = {north = true, south = true},
+        ["11,10"] = {north = true, south = true},
         ["12,10"] = {south = true, east = true},
         ["14,10"] = {west = true},
         ["1,11"] = {east = true},
         ["3,11"] = {east = true, west = true},
-        ["5,11"] = {north = true, west = true},
+        ["5,11"] = {east = true, north = true, west = true},
         ["14,11"] = {west = true},
         ["1,12"] = {east = true},
         ["3,12"] = {east = true, west = true},
         ["5,12"] = {west = true},
         ["6,12"] = {north = true, south = true},
-        ["7,12"] = {south = true},
+        ["7,12"] = {north = true, south = true},
         ["8,12"] = {north = true, south = true},
         ["9,12"] = {north = true, south = true},
         ["10,12"] = {north = true},
@@ -3177,6 +3200,36 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["4,18"] = {north = true},
         ["5,18"] = {north = true},
         ["9,18"] = {north = true},
+    },
+
+    -- Map 0x1B: Garin's Grave B4
+    [0x1B] = {
+        -- 2026-06-06 Silver Harp connector dig from B4 West Stairs Up to
+        -- East Stairs Up, then stabilization for the return route. These are
+        -- live same-origin probe confirmations after the user returned from
+        -- the inn; teleport was only used for coarse repositioning, then the
+        -- route was normalized by walking before direct probes.
+        -- Autowalk-only candidates such as `(5,2).west`, `(7,1).west`, and
+        -- `(6,3).north` are intentionally left out until they have direct
+        -- same-origin probe confirmation.
+        -- Do not model `(4,7).north`: later live movement from `(4,6)->DOWN`
+        -- reached `(4,7)`, disproving that earlier battle-interrupted guess.
+        ["3,1"] = {east = true, south = true},
+        ["2,2"] = {east = true},
+        ["5,2"] = {east = true},
+        ["1,3"] = {south = true},
+        ["5,3"] = {south = true},
+        ["6,3"] = {south = true},
+        ["3,4"] = {south = true, west = true},
+        ["4,4"] = {east = true},
+        ["4,5"] = {south = true, west = true},
+        ["1,5"] = {east = true, north = true},
+        ["5,5"] = {north = true},
+        ["6,5"] = {east = true, north = true, south = true},
+        ["2,6"] = {east = true, north = true},
+        ["5,6"] = {east = true, south = true, west = true},
+        ["3,7"] = {east = true, north = true},
+        ["7,7"] = {north = true, west = true},
     },
 
     -- Map 0x0B: Rimuldar

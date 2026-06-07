@@ -1,13 +1,68 @@
 # Playtesting Notes
 
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Garin's Grave B3 lower-stair Silver Harp route (`2026-06-06`): from
+  `Lower Stairs Down` `(10,9)`, the route to the harp chest side is now clean
+  both directions under live manual probing. Forward route uses the reroute
+  around `(10,8)->UP`: `(10,8)->(11,8)->(12,8)->(13,8)->(13,7)->(13,6)`.
+  Return route from the chest uses `(13,8)->(12,8)->(11,8)->(10,8)->(10,9)`.
+  Promoted B3 seams are `(10,7).south` and `(13,9).north`. The live save
+  already had the Silver Harp in inventory (`C1..C4 = 45 C3 0A 00`, nybble
+  `0xA`), so taking the `(13,6)` chest reported it was empty.
+
+- Garin's Grave B4 west/east stair connector (`2026-06-06`): the B4 connector
+  between `West Stairs Up` `(0,4)` and `East Stairs Up` `(5,4)` is now stable
+  in both directions under live FCEUX testing. West-to-east completed via the
+  lower/middle route, and east-to-west completed by descending the east side to
+  `(7,6)` and returning through the proven lower route to `(0,4)`. Teleport was
+  not used as direct passability proof. The promoted B4 seam set now includes
+  the earlier connector seams plus `(1,3).south`, `(1,5).east/north`,
+  `(2,2).east`, `(2,6).east/north`, `(3,1).east/south`, `(3,7).east`,
+  `(4,4).east`, `(5,2).east`, `(5,3).south`, `(5,5).north`,
+  `(6,3).south`, `(6,5).east/north`, and `(7,7).north/west`. Keep
+  autowalk-only candidates such as `(5,2).west`, `(7,1).west`, and
+  `(6,3).north` unmodeled until directly confirmed.
+
+- Garin's Grave B3 Silver Harp route clarification (`2026-06-06`): if the
+  player is in the B3 `Central Stairs Up` pocket around `(6,11)`, do not try to
+  open a path from there to `Lower Stairs Down`. Live route retries plus
+  same-origin probes confirmed `(6,11)->LEFT` into `(5,11)` and
+  `(7,11)->DOWN` into `(7,12)` are blocked; the model now represents these as
+  `(5,11).east` and `(7,12).north`. From the B2 southwest branch, the Silver
+  Harp route is intentionally counterintuitive: enter B3 at `(2,17)`, take
+  `Upper Stairs Down` at `(9,5)`, cross B4 from `(0,4)` to `(5,4)`, then return
+  to the B3 lower-stair side and continue toward the harp area.
+
+- Garin's Grave B2 live stair cleanup (`2026-06-06`): the earlier
+  planner-only result that all six B2 stair cells had routes is now superseded
+  for live pathability. With normal-route evidence and current runtime seams,
+  the entrance-side component at `(11,2)` routes to `Northeast Stairs Down`,
+  `Southeast Stairs Down`, and `Southwest Stairs Down`; `Central Stairs Down`
+  and `Northwest Stairs Down` currently return `No path found`. The Central
+  route failed at `(12,2)->DOWN` into `(12,3)` with route evidence
+  `blocked=7 moved=0`, then two same-origin `probe_edge:DOWN` checks blocked
+  from normally reached `(12,2)`, so B2 `(12,3).north` is now modeled. Keep the
+  teleport-artifact rule: do not use teleport-backed verifier movement as
+  direct proof on these B2 seams. Live checks in the same pass completed
+  Northeast, Southeast, Southwest, and the Southeast/Southwest/Northeast return
+  routes with only self-clearing timing retries.
+
+- Dungeon stair-label policy (`2026-06-06`): internal cave/dungeon stairs now
+  avoid destination-floor spoilers while keeping useful visible information.
+  Labels use spatial orientation plus `Up` or `Down`, such as
+  `Northwest Stairs Down`, `Central Stairs Up`, `South Stairs Down`, or
+  `Lower Stairs Down`. Do not label unexplored internal dungeon stairs with
+  exact destination floors, branch purpose, return/progression/trap status, or
+  treasure-route hints. Public landmark exits such as `Stairs to Garinham`
+  remain explicit unless they prove confusing in play.
+
 - Garin's Grave B2 stair-hub audit (`2026-06-05`): the extra stair objects on
-  B2 are not a false-connectivity bug. From `Stairs Up to B1` at `(11,2)`, the
+  B2 are not a false-connectivity bug. From `Stairs Up` at `(11,2)`, the
   object browser and planner can legitimately reach all six B2 stair cells, and
   the local map references agree B2 is meant to be a stair hub. Do not seal
   those stair routes just to make the object list shorter. If one specific stair

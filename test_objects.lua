@@ -230,7 +230,7 @@ function tests.garins_grave_b1_rom_chests_and_b2_stairs_are_exposed()
     assert_equal(find_by_id(env.objects, "stair_19_0"), nil, "stale B1 stairs placeholder should stay removed")
 
     local stairs = find_by_id(env.objects, "stair_1_18")
-    assert_equal(stairs.name, "Stairs Down to B2", "B1 stairs down should use ROM table coordinate")
+    assert_equal(stairs.name, "Stairs Down", "B1 stairs down should avoid revealing the destination floor")
 
     for index, x in ipairs({11, 12, 13}) do
         local chest = find_by_id(env.objects, "chest_" .. (index - 1))
@@ -253,6 +253,13 @@ function tests.garins_grave_b1_rom_chests_and_b2_stairs_are_exposed()
     }) do
         assert_equal(find_by_id(env.objects, stair_id) ~= nil, true, "B2 should expose " .. stair_id)
     end
+
+    assert_equal(find_by_id(env.objects, "stair_11_2").name, "Stairs Up", "B2 up stairs should keep direction without naming B1")
+    assert_equal(find_by_id(env.objects, "stair_1_1").name, "Northwest Stairs Down", "B2 northwest stairs should keep compass and down direction without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_12_1").name, "Northeast Stairs Down", "B2 northeast stairs should keep compass and down direction without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_5_6").name, "Central Stairs Down", "B2 center stairs should keep central and down direction without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_1_10").name, "Southwest Stairs Down", "B2 southwest stairs should keep compass and down direction without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_12_10").name, "Southeast Stairs Down", "B2 southeast stairs should keep compass and down direction without naming B3")
 
     env.restore()
 end
@@ -279,8 +286,13 @@ function tests.garins_grave_b3_and_b4_rom_stairs_are_exposed()
 
     local b3_upper = find_by_id(env.objects, "stair_9_5")
     local b3_lower = find_by_id(env.objects, "stair_10_9")
-    assert_equal(b3_upper.name, "Upper Stairs Down to B4", "B3 stair_9_5 should keep the upper B4-down label")
-    assert_equal(b3_lower.name, "Lower Stairs Down to B4", "B3 stair_10_9 should keep the lower B4-down label")
+    assert_equal(find_by_id(env.objects, "stair_14_1").name, "Northwest Stairs Up", "B3 northwest return stairs should keep compass and up direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_18_1").name, "Northeast Stairs Up", "B3 northeast return stairs should keep compass and up direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_6_11").name, "Central Stairs Up", "B3 center return stairs should keep central and up direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_2_17").name, "Southwest Stairs Up", "B3 southwest return stairs should keep compass and up direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_18_13").name, "Southeast Stairs Up", "B3 southeast return stairs should keep compass and up direction without naming B2")
+    assert_equal(b3_upper.name, "Upper Stairs Down", "B3 stair_9_5 should keep upper and down direction without naming B4")
+    assert_equal(b3_lower.name, "Lower Stairs Down", "B3 stair_10_9 should keep lower and down direction without naming B4")
 
     env.objects.refresh(0x1B)
 
@@ -291,8 +303,8 @@ function tests.garins_grave_b3_and_b4_rom_stairs_are_exposed()
 
     local b4_west = find_by_id(env.objects, "stair_0_4")
     local b4_east = find_by_id(env.objects, "stair_5_4")
-    assert_equal(b4_west.name, "West Return Stairs to B3", "B4 stair_0_4 should use the clearer west-return label")
-    assert_equal(b4_east.name, "East Return Stairs to B3", "B4 stair_5_4 should use the clearer east-return label")
+    assert_equal(b4_west.name, "West Stairs Up", "B4 stair_0_4 should keep west and up direction without naming B3")
+    assert_equal(b4_east.name, "East Stairs Up", "B4 stair_5_4 should keep east and up direction without naming B3")
 
     env.restore()
 end
@@ -362,6 +374,7 @@ function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     assert_equal(b1_stair.id, "stair_9_9", "Erdrick B1 stair id should match the live trigger")
     assert_equal(b1_stair.x, 9, "Erdrick B1 stairs should be at the live-confirmed x coordinate")
     assert_equal(b1_stair.y, 9, "Erdrick B1 stairs should be at the live-confirmed y coordinate")
+    assert_equal(b1_stair.name, "Stairs Down", "Erdrick B1 stairs should keep down direction without naming B2")
 
     env.objects.refresh(0x1D)
     local b2_stair
@@ -375,6 +388,35 @@ function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     assert_equal(b2_stair.id, "stair_8_9", "Erdrick B2 stair id should match the live trigger")
     assert_equal(b2_stair.x, 8, "Erdrick B2 stairs should be at the live-confirmed x coordinate")
     assert_equal(b2_stair.y, 9, "Erdrick B2 stairs should be at the live-confirmed y coordinate")
+    assert_equal(b2_stair.name, "Stairs Up", "Erdrick B2 stairs should keep up direction without naming B1")
+
+    env.restore()
+end
+
+function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
+    local env = make_env()
+
+    env.set_terrain_offset(0x20)
+
+    env.objects.refresh(0x16)
+    assert_equal(find_by_id(env.objects, "stair_6_5").name, "Stairs Down", "Mountain Cave B1 stairs should keep direction without naming B2")
+
+    env.objects.refresh(0x17)
+    assert_equal(find_by_id(env.objects, "stair_6_5").name, "Stairs Up", "Mountain Cave B2 stairs should keep direction without naming Mountain Cave")
+
+    env.objects.refresh(0x02)
+    assert_equal(find_by_id(env.objects, "stair_10_1").name, "Stairs Down", "Charlock Castle stairs should keep down direction without naming B1")
+
+    env.objects.refresh(0x0F)
+    assert_equal(find_by_id(env.objects, "stair_10_1").name, "North Stairs Up", "Dragonlord B1 north stairs should keep position and up direction without naming Charlock Castle")
+    assert_equal(find_by_id(env.objects, "stair_7_7").name, "South Stairs Down", "Dragonlord B1 south stairs should keep position and down direction without naming B2")
+
+    env.objects.refresh(0x10)
+    assert_equal(find_by_id(env.objects, "stair_7_7").name, "Southeast Stairs Up", "Dragonlord B2 southeast stairs should keep position and up direction without naming B1")
+    assert_equal(find_by_id(env.objects, "stair_3_3").name, "Northwest Stairs Down", "Dragonlord B2 northwest stairs should keep position and down direction without naming B3")
+
+    env.objects.refresh(0x11)
+    assert_equal(find_by_id(env.objects, "stair_3_3").name, "Stairs Up", "Dragonlord B3 stairs should keep up direction without naming B2")
 
     env.restore()
 end
@@ -447,7 +489,7 @@ function tests.swamp_cave_exposes_distinct_north_and_south_travel_objects()
     assert_equal(north_exit.id, "exit_0_0", "Swamp Cave north exit id should match the entrance tile")
     assert_equal(north_exit.name, "North Exit to World Map", "Swamp Cave north exit should have a distinct label")
     assert_equal(south_stair.id, "stair_0_29", "Swamp Cave south stairs id should match the ROM exit tile")
-    assert_equal(south_stair.name, "Stairs Up to South Island", "Swamp Cave south stairs should have a distinct label")
+    assert_equal(south_stair.name, "South Stairs Up", "Swamp Cave south stairs should keep position and up direction without naming the overworld landing")
 
     env.objects.travel_filter()
     local filtered = env.objects.get_objects({filtered = true})

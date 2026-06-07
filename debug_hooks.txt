@@ -258,9 +258,16 @@ EDGE PROBE COMMANDS
                            or confirmed_passable when every attempt agrees.
                            Does not inject runtime blockers; use add_blocked_edge
                            after manual review when a blocker should affect paths.
+                           Caution: repeated resets can still differ from normal
+                           route arrival on stateful seams. For passability
+                           decisions, prefer live route evidence plus same-origin
+                           probe_edge from a normally reached origin.
   probe_edge_verify:X,Y,DIR[,N]
                            Same, but specifies origin explicitly. The verifier
                            relocates to that origin and resets between attempts.
+                           Treat this as forensic/review-only for passability:
+                           teleport-backed origin setup can alter movement or
+                           collision state and should not be promoted directly.
   stop_probe_edge_verify   Cancel active repeated edge verification
 
 TELEPORT (DEBUG)
@@ -330,7 +337,9 @@ BLOCK DETECTION WORKFLOW
 
   Manual promotion:
     1. Verify the suspect cell/edge on the correct map
-    2. Prefer directional evidence such as probe_edge_verify:X,Y,DIR,N
+    2. Prefer directional evidence from normal route arrival plus same-origin
+       probe_edge:DIR; avoid teleport-backed verifier evidence for direct
+       passability decisions on stateful seams
     3. Use add_blocked_edge:X,Y,DIR for a deliberate runtime edge blocker
     4. Use add_blocked_tile:X,Y only for a deliberate full-cell runtime block
     5. Patch map_reader.lua only after map-scoped evidence is strong

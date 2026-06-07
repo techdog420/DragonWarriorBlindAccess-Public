@@ -65,11 +65,24 @@ Loop:
 4. Read recent `dw_debug.log` and extract candidates from repeated
    `SEAM_OBSERVATION ... classification=blocked_only`,
    `SEAM_BRUTE_FORCE`, and `PATH_RUNTIME_BLOCK`.
-5. Directly verify candidates with `probe_edge_verify:X,Y,DIR,5`.
-6. Promote only clean verifier results:
-   - `classification=confirmed_blocked`
-   - `moved=0 blocked=5`
-   - no drift, map change, interrupt, or NPC/state contamination.
+5. Verify candidates from normal play state whenever possible:
+   - Prefer live route evidence plus same-origin `probe_edge:DIR` while already
+     standing on the suspect edge origin through normal walking.
+   - Do not use `teleport_to`, explicit-origin `probe_edge:X,Y,DIR`, or
+     explicit-origin `probe_edge_verify:X,Y,DIR,N` as direct passability proof
+     for stateful dungeon seams. Teleport can change movement/passability state
+     and may create false passable or false blocked results.
+   - Use teleport only for coarse repositioning, then reacquire evidence by
+     walking to the edge origin through the route being tested.
+6. Promote only clean live-state results:
+   - repeated route evidence plus same-origin probe agreement,
+   - no drift, map change, interrupt, teleport seed, or NPC/state contamination.
+   - Treat `probe_edge_verify` results as forensic/review-only if the verifier
+     teleported or reset between attempts. Do not promote
+     `inconclusive_teleport_artifact` results. In Garin's Grave B2 especially,
+     repeated explicit-origin verifier attempts can show `first_attempt_status`
+     mismatches followed by `blocked_despite_open_preview` raw-hold timeouts.
+     Treat those as verifier-method artifacts, not map truth.
 7. Immediately inject confirmed blockers with `add_blocked_edge:X,Y,DIR`, then
    re-run planner/autowalk from the same side.
 8. Record confirmed, mixed, and contaminated findings in

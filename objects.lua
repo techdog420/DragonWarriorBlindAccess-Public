@@ -188,17 +188,17 @@ local STAIRS = {
 
     -- Erdrick's Cave B1 (0x1C)
     -- Confirmed live: STAIRS at (9,9) moves to B2 (map 0x1D) at (8,9).
-    {map = 0x1C, x = 9, y = 9, name = "Stairs Down", dest = "B2"},
+    {map = 0x1C, x = 9, y = 9, name = "Stairs Down", dest = "B2", object_name = "Stairs Down"},
 
     -- Erdrick's Cave B2 (0x1D)
     -- Confirmed live: STAIRS at (8,9) moves to B1 (map 0x1C) at (9,9).
-    {map = 0x1D, x = 8, y = 9, name = "Stairs Up", dest = "B1"},
+    {map = 0x1D, x = 8, y = 9, name = "Stairs Up", dest = "B1", object_name = "Stairs Up"},
 
     -- Mountain Cave (0x16)
-    {map = 0x16, x = 6, y = 5, name = "Stairs Down", dest = "B2"},
+    {map = 0x16, x = 6, y = 5, name = "Stairs Down", dest = "B2", object_name = "Stairs Down"},
 
     -- Mountain Cave B2 (0x17)
-    {map = 0x17, x = 6, y = 5, name = "Stairs Up", dest = "Mountain Cave"},
+    {map = 0x17, x = 6, y = 5, name = "Stairs Up", dest = "Mountain Cave", object_name = "Stairs Up"},
 
     -- Garinham (0x09)
     -- ROM stair-down table entry at 0xF411 is `09 13 00`. Live STAIRS from
@@ -228,54 +228,54 @@ local STAIRS = {
     -- ROM stair-down table entry at 0xF456 is `18 01 12`. User manual check
     -- disproved the older `(19,0)` placeholder; live inspect shows `(1,18)`
     -- is a walkable B1 tile, pending final STAIRS transition proof to map 0x19.
-    {map = 0x18, x = 1, y = 18, name = "Stairs Down", dest = "B2"},
+    {map = 0x18, x = 1, y = 18, name = "Stairs Down", dest = "B2", object_name = "Stairs Down"},
 
     -- Garin's Grave B2 (0x19)
     -- Local ROM stair tables plus the Realm of Darkness composite map line up:
     -- B2 is a 13x11 stair hub with one up stair and five separate down stairs.
     -- The older placeholders `(19,0)` / `(12,12)` were impossible on this map.
-    {map = 0x19, x = 11, y = 2, name = "Stairs Up", dest = "B1"},
-    {map = 0x19, x = 1, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northwest Stairs Down to B3"},
-    {map = 0x19, x = 12, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northeast Stairs Down to B3"},
-    {map = 0x19, x = 5, y = 6, name = "Stairs Down", dest = "B3", object_name = "Center Stairs Down to B3"},
-    {map = 0x19, x = 1, y = 10, name = "Stairs Down", dest = "B3", object_name = "Southwest Stairs Down to B3"},
-    {map = 0x19, x = 12, y = 10, name = "Stairs Down", dest = "B3", object_name = "Southeast Stairs Down to B3"},
+    {map = 0x19, x = 11, y = 2, name = "Stairs Up", dest = "B1", object_name = "Stairs Up"},
+    {map = 0x19, x = 1, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northwest Stairs Down"},
+    {map = 0x19, x = 12, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northeast Stairs Down"},
+    {map = 0x19, x = 5, y = 6, name = "Stairs Down", dest = "B3", object_name = "Central Stairs Down"},
+    {map = 0x19, x = 1, y = 10, name = "Stairs Down", dest = "B3", object_name = "Southwest Stairs Down"},
+    {map = 0x19, x = 12, y = 10, name = "Stairs Down", dest = "B3", object_name = "Southeast Stairs Down"},
 
     -- Garin's Grave B3 (0x1A)
     -- Local ROM stair tables show five returns up to B2 plus two down stairs
     -- to B4. User live proof confirmed the fourth B2 stair in table order:
     -- B2 southwest `(1,10)` deposits on B3 `(2,17)`.
-    {map = 0x1A, x = 14, y = 1, name = "Stairs Up", dest = "B2", object_name = "Northwest Return Stairs to B2"},
-    {map = 0x1A, x = 18, y = 1, name = "Stairs Up", dest = "B2", object_name = "Northeast Return Stairs to B2"},
-    {map = 0x1A, x = 6, y = 11, name = "Stairs Up", dest = "B2", object_name = "Center Return Stairs to B2"},
-    {map = 0x1A, x = 2, y = 17, name = "Stairs Up", dest = "B2", object_name = "Southwest Return Stairs to B2"},
-    {map = 0x1A, x = 18, y = 13, name = "Stairs Up", dest = "B2", object_name = "Southeast Return Stairs to B2"},
-    {map = 0x1A, x = 9, y = 5, name = "Stairs Down", dest = "B4", object_name = "Upper Stairs Down to B4"},
-    {map = 0x1A, x = 10, y = 9, name = "Stairs Down", dest = "B4", object_name = "Lower Stairs Down to B4"},
+    {map = 0x1A, x = 14, y = 1, name = "Stairs Up", dest = "B2", object_name = "Northwest Stairs Up"},
+    {map = 0x1A, x = 18, y = 1, name = "Stairs Up", dest = "B2", object_name = "Northeast Stairs Up"},
+    {map = 0x1A, x = 6, y = 11, name = "Stairs Up", dest = "B2", object_name = "Central Stairs Up"},
+    {map = 0x1A, x = 2, y = 17, name = "Stairs Up", dest = "B2", object_name = "Southwest Stairs Up"},
+    {map = 0x1A, x = 18, y = 13, name = "Stairs Up", dest = "B2", object_name = "Southeast Stairs Up"},
+    {map = 0x1A, x = 9, y = 5, name = "Stairs Down", dest = "B4", object_name = "Upper Stairs Down"},
+    {map = 0x1A, x = 10, y = 9, name = "Stairs Down", dest = "B4", object_name = "Lower Stairs Down"},
 
     -- Garin's Grave B4 (0x1B)
     -- ROM stair tables show two returns from B4 back to B3.
-    {map = 0x1B, x = 0, y = 4, name = "Stairs Up", dest = "B3", object_name = "West Return Stairs to B3"},
-    {map = 0x1B, x = 5, y = 4, name = "Stairs Up", dest = "B3", object_name = "East Return Stairs to B3"},
+    {map = 0x1B, x = 0, y = 4, name = "Stairs Up", dest = "B3", object_name = "West Stairs Up"},
+    {map = 0x1B, x = 5, y = 4, name = "Stairs Up", dest = "B3", object_name = "East Stairs Up"},
 
     -- Charlock Castle (0x02)
-    {map = 0x02, x = 10, y = 1, name = "Stairs Down", dest = "B1"},
+    {map = 0x02, x = 10, y = 1, name = "Stairs Down", dest = "B1", object_name = "Stairs Down"},
 
     -- Dragonlord dungeon (raw map IDs from Data Crystal RAM map).
     -- The early floors below are still the best-known mappings from earlier
     -- reverse-engineering. Deeper floor IDs were mis-labeled in older builds,
     -- so we only keep the entries we can map confidently today.
-    {map = 0x0F, x = 10, y = 1, name = "Stairs Up", dest = "Charlock Castle"},
-    {map = 0x0F, x = 7, y = 7, name = "Stairs Down", dest = "B2"},
-    {map = 0x10, x = 7, y = 7, name = "Stairs Up", dest = "B1"},
-    {map = 0x10, x = 3, y = 3, name = "Stairs Down", dest = "B3"},
-    {map = 0x11, x = 3, y = 3, name = "Stairs Up", dest = "B2"},
+    {map = 0x0F, x = 10, y = 1, name = "Stairs Up", dest = "Charlock Castle", object_name = "North Stairs Up"},
+    {map = 0x0F, x = 7, y = 7, name = "Stairs Down", dest = "B2", object_name = "South Stairs Down"},
+    {map = 0x10, x = 7, y = 7, name = "Stairs Up", dest = "B1", object_name = "Southeast Stairs Up"},
+    {map = 0x10, x = 3, y = 3, name = "Stairs Down", dest = "B3", object_name = "Northwest Stairs Down"},
+    {map = 0x11, x = 3, y = 3, name = "Stairs Up", dest = "B2", object_name = "Stairs Up"},
 
     -- Swamp Cave (0x15)
     -- ROM up-stair table entry 15 00 1D at file offset 0xF486. Live checks
     -- showed (5,29) is only a bottom-right alcove; the exit is the west-edge
     -- tile reached from row 29.
-    {map = 0x15, x = 0, y = 29, name = "Stairs Up", dest = "South Island"},
+    {map = 0x15, x = 0, y = 29, name = "Stairs Up", dest = "South Island", object_name = "South Stairs Up"},
 }
 
 -- ============================================================
