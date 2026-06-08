@@ -1,6 +1,146 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-06-06
+Updated: 2026-06-07
+
+## 2026-06-07 Garin's Grave B3 top-edge false boundary to west chest
+
+- User finding:
+  - a real false blocker was found on B3 at `10,0 west`; clearing it reopens
+    the route to the west chest / likely Cursed Belt.
+- Supporting log evidence:
+  - from `(10,0)`, `debug_pathfind_to:1,1` returned `No path found`.
+  - from `(9,0)`, `debug_pathfind_to:1,1` returned `Path: 1 south, 8 west`.
+  - live movement moved `(9,0)->RIGHT` into `(10,0)` twice.
+  - live movement moved `(10,0)->LEFT` back into `(9,0)` once.
+- Root cause:
+  - this was a false top-edge boundary from the generic dungeon walkability
+    rule, not a `MAP_DIRECTIONAL_BLOCKS` directional seam.
+  - B3 needed scoped passthrough overrides for `(9,0)` and `(10,0)`.
+- Permanent sync:
+  - `map_reader.lua` adds B3 passthrough cells `(9,0)` and `(10,0)`.
+  - `test_map_reader.lua` verifies both cells report `reason="passthrough"`
+    and that pathfinding from `(10,0)` to the west chest `(1,1)` succeeds.
+  - `lua5.1 test_map_reader.lua` passed 49 tests after the patch.
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed.
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed.
+- Follow-up:
+  - after manual FCEUX Lua reload, recheck `debug_pathfind_to:1,1` from the
+    NW/top-row side and refresh the reachable-object filter.
+
+## 2026-06-07 Garin's Grave B3 west chest / likely Cursed Belt check from SE side
+
+- Goal:
+  - from the B3 southeast/lower component, test whether the west chest at
+    `(1,1)` is reachable through a hidden bridge or missing seam.
+- Clean blockers promoted:
+  - `(6,19)->UP` blocked into `(6,18)` with same-origin `probe_edge:UP`;
+    promoted as `(6,18).south`.
+  - `(8,19)->UP` blocked into `(8,18)` with same-origin `probe_edge:UP`;
+    promoted as `(8,18).south`.
+- Broad live confirmation:
+  - `debug_route_frontier:1,1,60` from the southeast side reported
+    `target_reachable=false` and `hidden_bridge_candidates=0`.
+  - final `debug_pathfind_to:1,1` from `(14,15)` returned
+    `No path found [no_path] (visited=98 path=0)`.
+  - runtime overlay at that final check contained only `(6,18).south` and
+    `(8,18).south`.
+- Reverified model-consistent directional cuts:
+  - bottom/low rows: `(12,19)->UP`, `(13,19)->UP`, `(14,19)->UP`,
+    `(15,18)->LEFT`, `(15,16)->LEFT`, `(11..14,17)->UP/DOWN` as applicable.
+  - mid band: `(12..14,13)->UP`, `(15,13)->UP`, `(16,12)->LEFT`,
+    `(15,11)->LEFT/DOWN`, `(11,13)->UP/LEFT`, `(11,14)->LEFT`,
+    `(11,15)->LEFT/DOWN`, and `(12..14,15)->DOWN`.
+- Route-only/no-promote notes:
+  - the long walk toward `(15,11)` exposed temporary route-only suspected
+    blocks around `(17,12)`, `(17,13)`, `(16,14..18)`, `(18,9)`,
+    `(18,10)`, and `(18,14)`.
+  - treat those as reroute noise unless a future same-origin probe confirms
+    them from normal walking state.
+- Permanent sync:
+  - `map_reader.lua` and `test_map_reader.lua` now include B3
+    `(6,18).south` and `(8,18).south`.
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B3 (6,18).south`.
+  - green `lua5.1 test_map_reader.lua` passed 49 tests.
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed.
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed.
+
+## 2026-06-07 Garin's Grave B3 Southeast Stairs Up pocket cleanup
+
+- Goal:
+  - from the B3 `Southeast Stairs Up` landing, close false object routes,
+    especially the false route back to the Silver Harp chest at `(13,6)`.
+- Method:
+  - followed live `auto_walk:13,6` reroutes, paused for battles, and promoted
+    only normally reached same-origin `probe_edge` blockers.
+  - did not use teleport or explicit-origin verifier output as proof.
+- Important passable evidence:
+  - `(14,19)->RIGHT` moved to `(15,19)` after a battle-interrupted route
+    retry, so that east/west bottom-row seam stayed open.
+  - `(15,19)->UP` moved to `(15,18)`, so the y=18 barrier is section-limited.
+  - bottom-row lateral movement through `(1..15,19)` repeatedly moved; the
+    promoted blockers are the north/up approaches from that row, not the row
+    itself.
+- Confirmed blockers added during the final pass:
+  - `(15,18)->LEFT` -> `(14,18).east`
+  - `(13,15)->DOWN` -> `(13,16).north`
+  - bottom-row direct probes: `(1,19)->UP`, `(2,19)->UP`, `(3,19)->UP`,
+    `(4,19)->UP`, `(5,19)->UP`, `(9,19)->UP`, and `(12,19)->UP`, modeled as
+    `(1,18).south`, `(2,18).south`, `(3,18).south`, `(4,18).south`,
+    `(5,18).south`, `(9,18).south`, and `(12,18).south`.
+- Permanent sync:
+  - `map_reader.lua` now models the full confirmed SE-stair runtime overlay
+    accumulated during this pass, including the southeast rows 12-18 and the
+    bottom-row north/up blockers.
+  - `test_map_reader.lua` adds
+    `garins_grave_b3_southeast_stair_pocket_seams_are_directional`.
+- Verification:
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B3 (17,3).south`.
+  - green `lua5.1 test_map_reader.lua` passed 49 tests.
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed.
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed.
+- Final live status before source reload:
+  - after runtime injections, `auto_walk:13,6` from `(12,19)` returned
+    `No path found`.
+  - later combat/repositioning left the hero at approximately `(10,19)` on B3
+    with runtime count 51; FCEUX still needs a manual Lua reload before the
+    permanent model replaces the runtime overlay.
+
+## 2026-06-07 Garin's Grave B3 Northeast Stairs Up pocket cleanup
+
+- Goal:
+  - from B2 `Northeast Stairs Down` arrival on B3 `(18,1)`, prune false
+    reachable objects in the same style as the lower-stair crowded zone.
+- Starting live baseline:
+  - `POSITION map=0x1A(Garin's Grave B3) x=18 y=1`
+  - `RUNTIME_BLOCKS map=0x1A none`
+  - reachable filter showed 9 objects:
+    `Northeast Stairs Up`, `Northwest Stairs Up`, Silver Harp chest `(13,6)`,
+    `Southeast Stairs Up`, `Upper Stairs Down`, `Lower Stairs Down`,
+    west chest `(1,1)`, `Central Stairs Up`, and `Southwest Stairs Up`.
+  - idle controller check showed `joy1=-`; only the known benign FCEUX
+    `LeftAlt` latch was present.
+- Confirmed live blockers:
+  - `(17,1)->LEFT` blocked under route retry, then same-origin
+    `probe_edge:LEFT` blocked with `raw_hold_timeout`; model `(16,1).east`.
+  - `(17,2)->LEFT` was first interrupted by a Drollmagi battle, then retried
+    after combat from the same tile and blocked with `raw_hold_timeout`;
+    model `(16,2).east`.
+  - `(17,2)->DOWN` blocked with `raw_hold_timeout`; model `(17,3).north`.
+  - `(18,2)->DOWN` blocked with `raw_hold_timeout`; model `(18,3).north`.
+  - `(19,2)->DOWN` blocked with `raw_hold_timeout`; model `(19,3).north`.
+- Final live status:
+  - runtime overlay had five B3 edges:
+    `(16,1).east`, `(16,2).east`, `(17,3).north`, `(18,3).north`,
+    `(19,3).north`.
+  - `debug_pathfind_to:14,1` returned `No path found`.
+  - reachable filter dropped to 1 object:
+    `Northeast Stairs Up: 1 north, 1 west`.
+- Permanent sync:
+  - `map_reader.lua` models the confirmed NE-pocket seams.
+  - `test_map_reader.lua` adds focused B3 assertions for the five promoted
+    edges.
 
 ## 2026-06-06 Garin's Grave B3 lower-stair object-pruning pass
 
@@ -7245,3 +7385,488 @@ the next-level stairs `(1,18)`.
     one-way/hidden seams.
   - Keep these as runtime-only until a later focused promotion pass adds
     regression tests and checks for older B2 map-data assumptions.
+
+## 2026-06-07 B3 southeast-stair pocket live pruning, paused in combat
+
+- Starting live state:
+  - User relocated the hero to Garin's Grave B3 `0x1A` at the bottom of the
+    southeast stairs.
+  - Baseline position: `(18,13)`.
+  - Runtime blocked tiles were empty at the start of this southeast pass.
+  - Reachable object filter initially listed nine objects, including the local
+    `Southeast Stairs Up`, the Silver Harp chest `(13,6)`, lower/upper stair
+    objects, the northwest/west branch, and the west chest `(1,1)`.
+- Investigation target:
+  - First pruning target is the apparent Silver Harp chest route `(13,6)`,
+    because the southeast landing should not be assumed to connect to that
+    branch unless live movement proves it.
+- Clean same-origin blockers injected during this pass:
+  - `(18,13)->LEFT` blocked, modeled as `(17,13).east`.
+  - `(18,12)->LEFT` blocked, modeled as `(17,12).east`.
+  - `(19,6)->LEFT` blocked, modeled as `(18,6).east`.
+  - `(19,5)->LEFT` blocked, modeled as `(18,5).east`.
+  - `(19,7)->LEFT` blocked, modeled as `(18,7).east`.
+  - `(17,8)->LEFT` blocked, modeled as `(16,8).east`.
+  - `(17,6)->LEFT` blocked, modeled as `(16,6).east`.
+  - `(17,6)->UP` blocked, modeled as `(17,5).south`.
+  - `(17,7)->LEFT` blocked, modeled as `(16,7).east`.
+  - `(17,9)->LEFT` blocked, modeled as `(16,9).east`.
+  - `(16,10)->UP` blocked, modeled as `(16,9).south`.
+  - `(15,10)->LEFT` blocked, modeled as `(14,10).east`.
+  - `(15,10)->UP` blocked, modeled as `(15,9).south`.
+  - `(15,11)->LEFT` blocked, modeled as `(14,11).east`.
+  - `(15,11)->DOWN` blocked, modeled as `(15,12).north`.
+  - `(17,10)->RIGHT` blocked, modeled as `(18,10).west`.
+  - `(17,6)->RIGHT` blocked, modeled as `(18,6).west`.
+  - `(17,7)->RIGHT` blocked, modeled as `(18,7).west`.
+  - `(18,8)->UP` blocked, modeled as `(18,7).south`.
+  - `(17,4)->LEFT` blocked, modeled as `(16,4).east`.
+  - `(17,4)->DOWN` blocked, modeled as `(17,5).north`.
+  - `(17,4)->UP` blocked, modeled as `(17,3).south`.
+  - `(18,4)->DOWN` blocked, modeled as `(18,5).north`.
+  - `(18,4)->UP` blocked, modeled as `(18,3).south`.
+  - `(19,4)->UP` blocked, modeled as `(19,3).south`.
+- Clean passable evidence gathered while chasing the Silver Harp false route:
+  - `(19,7)->DOWN` moved to `(19,8)` on a post-combat same-origin
+    `probe_edge:DOWN`.
+  - Autowalk then moved cleanly down the east column through `(19,9)`,
+    `(19,10)`, `(19,11)`, and `(19,12)`.
+- Contaminated / still-open evidence:
+  - Autowalk first tested `(19,7)->DOWN`, but a Wolflord battle interrupted the
+    seam retry; post-combat same-origin probing proved that edge passable.
+  - Autowalk later tested `(19,12)->DOWN`; a Wolflord battle interrupted the
+    seam retry at `(19,12)`.
+  - Do not promote `(19,12)->DOWN` yet. Next live step after combat is a
+    same-origin `probe_edge:DOWN` while still standing at `(19,12)`.
+- Paused state:
+  - Commands reported `POSITION map=0x1A x=19 y=12` while in battle.
+  - `report_runtime_blocks` count was 19 after the clean blocker injections.
+
+### 2026-06-07 continuation after the `(19,12)` battle
+
+- Post-combat direct probe:
+  - `(19,12)->DOWN` moved to `(19,13)`.
+  - The earlier autowalk hiccup at that edge was battle/timing contamination,
+    not a wall.
+- Additional clean same-origin blockers injected while pruning the Silver Harp
+  false route:
+  - `(17,15)->LEFT` blocked, modeled as `(16,15).east`.
+  - `(17,15)->UP` blocked, modeled as `(17,14).south`.
+  - `(18,15)->UP` blocked, modeled as `(18,14).south`.
+  - `(17,17)->LEFT` blocked, modeled as `(16,17).east`.
+  - `(17,17)->DOWN` blocked, modeled as `(17,18).north`.
+  - `(19,18)->LEFT` blocked, modeled as `(18,18).east`.
+- Clean passable movement used to keep probes same-origin:
+  - `(18,15)->RIGHT` moved to `(19,15)`.
+  - `(19,15)->DOWN` moved to `(19,16)`.
+  - `(17,15)->DOWN` moved to `(17,16)`.
+  - `(17,16)->DOWN` moved to `(17,17)`.
+- Contaminated / still-open evidence:
+  - Autowalk suggested `(19,16)->LEFT` may be blocked, but a Drollmagi battle
+    started immediately after reaching `(19,16)`.
+  - The queued direct `probe_edge:LEFT` was refused in battle; do not promote
+    `(19,16)->LEFT` yet.
+  - Autowalk also suggested possible blockers at `(19,14)->LEFT` and
+    `(18,13)->DOWN` around cell `(18,14)`, but these still need direct
+    same-origin probes if the route remains relevant.
+- Current paused state:
+  - Still in battle at `POSITION map=0x1A x=19 y=16`.
+  - Runtime block count was 25 before the battle pause.
+  - Next live step after combat clears: same-origin `probe_edge:LEFT` from
+    `(19,16)`.
+
+### 2026-06-07 continuation after the `(19,16)` battle
+
+- Additional clean same-origin blockers injected while continuing to prune the
+  false Silver Harp route from the B3 southeast-stair component:
+  - `(19,16)->LEFT` blocked, modeled as `(18,16).east`.
+  - `(19,14)->LEFT` blocked, modeled as `(18,14).east`.
+  - `(17,16)->LEFT` blocked, modeled as `(16,16).east`.
+  - `(17,17)->RIGHT` blocked, modeled as `(18,17).west`.
+  - `(17,16)->RIGHT` blocked, modeled as `(18,16).west`.
+  - `(13,19)->UP` blocked, modeled as `(13,18).south`.
+  - `(14,19)->UP` blocked, modeled as `(14,18).south`.
+  - `(15,13)->UP` blocked, modeled as `(15,12).south`.
+  - `(14,13)->UP` blocked, modeled as `(14,12).south`.
+  - `(13,13)->UP` blocked, modeled as `(13,12).south`.
+  - `(12,13)->UP` blocked, modeled as `(12,12).south`.
+  - `(11,13)->UP` blocked, modeled as `(11,12).south`.
+  - `(11,13)->LEFT` blocked, modeled as `(10,13).east`.
+  - `(16,12)->LEFT` blocked, modeled as `(15,12).east`.
+  - `(12,15)->DOWN` blocked, modeled as `(12,16).north`.
+  - `(11,15)->LEFT` blocked, modeled as `(10,15).east`.
+  - `(11,15)->DOWN` blocked, modeled as `(11,16).north`.
+  - `(11,14)->LEFT` blocked, modeled as `(10,14).east`.
+  - `(15,16)->LEFT` blocked, modeled as `(14,16).east`.
+  - `(14,15)->DOWN` blocked, modeled as `(14,16).north`.
+- Clean passable evidence / no-promote results:
+  - `(19,15)->UP` moved to `(19,14)`.
+  - `(19,14)->UP` moved to `(19,13)`.
+  - `(19,13)->LEFT` moved to `(18,13)`.
+  - `(16,13)->UP` moved to `(16,12)`.
+  - `(12,17)->LEFT` moved to `(11,17)` before a new battle started; this
+    disproves the route-only `(11,17).east` wall candidate.
+- Contaminated / still-open evidence:
+  - `(13,15)->DOWN` into `(13,16)` has repeated route-only blocked evidence
+    and needs same-origin `probe_edge:DOWN` from `(13,15)`.
+  - `(18,13)->DOWN` into `(18,14)` still has older autowalk-only blocked
+    evidence and should not be promoted unless the route returns there and a
+    same-origin direct probe agrees.
+- Current paused state:
+  - A Druinlord battle started immediately after the clean passable
+    `(12,17)->LEFT` movement.
+  - Current live position is `map=0x1A x=11 y=17`, in battle.
+  - Runtime block count was 40 before the battle-starting probe.
+  - Next live step after combat clears: re-establish field state with
+    `report_position`, then continue `auto_walk:13,6` or route normally to
+    `(13,15)` for the direct `(13,15)->DOWN` check.
+
+### 2026-06-07 continuation after the `(11,17)` battle
+
+- Post-combat baseline:
+  - `POSITION map=0x1A x=11 y=17`
+  - runtime overlay still active.
+- Attempted to route to the nearby direct-probe origin `(13,15)`.
+  The route exposed more one-way-looking north edges in the open lower pocket.
+- Additional clean same-origin blockers injected:
+  - `(12,17)->UP` blocked, modeled as `(12,16).south`.
+  - `(13,17)->UP` blocked, modeled as `(13,16).south`.
+  - `(14,17)->UP` blocked, modeled as `(14,16).south`.
+- Clean passable / no-promote evidence:
+  - `(12,17)->RIGHT` moved to `(13,17)`.
+  - `(13,17)->RIGHT` moved to `(14,17)`.
+  - `(14,17)->LEFT` moved to `(13,17)`.
+  - `(13,17)->LEFT` moved to `(12,17)`, then a new battle started.
+- Contaminated / still-open evidence:
+  - `(11,17)->UP` into `(11,16)` has route-only blocked evidence and still
+    needs a direct same-origin probe from `(11,17)` after combat.
+  - `(13,15)->DOWN` into `(13,16)` still needs same-origin direct probing from
+    `(13,15)` if a clean route to that origin remains available.
+- Current paused state:
+  - A Druinlord battle started immediately after `(13,17)->LEFT` moved to
+    `(12,17)`.
+  - Current live position is `map=0x1A x=12 y=17`, in battle.
+  - Runtime block count is 41.
+  - Next live step after combat clears: re-establish field state with
+    `report_position`, move to `(11,17)` if possible, and directly probe
+    `(11,17)->UP`.
+
+### 2026-06-07 post-patch/reload confirmation
+
+- Later SE-pocket pruning collapsed the false Silver Harp route from the B3
+  southeast-stair component; with the runtime overlay injected,
+  `auto_walk:13,6` from `(12,19)` returned `No path found`.
+- The confirmed overlay was promoted to `map_reader.lua` and covered by
+  `test_map_reader.lua`.
+- User manually reloaded Lua in FCEUX and confirmed only the local
+  `Northeast Stairs Up` return stair is reachable from this component.
+- Conclusion: this B3 component is a dead-end/trap pocket for object
+  navigation; the false Silver Harp and remote-stair routes are closed off in
+  the permanent model.
+
+## 2026-06-07 Garin's Grave B2 Northwest Stairs false route cleanup
+
+- Live target: B2 `Northwest Stairs Down` at `(1,1)`.
+- Starting state:
+  - user had worked back to Garin's Grave B2 and the planner was trying to use
+    the old southwest-side route through the `(5,10)` knot
+  - fresh baseline confirmed `POSITION map=0x19 x=5 y=10`
+  - `RUNTIME_BLOCKS map=0x19 none`
+- Evidence for `(5,9).south`:
+  - normal-route movement from `(5,11)->UP` reached `(5,10)`
+  - repeated route attempts from `(5,10)->UP` only twitched/cancelled
+  - same-origin `probe_edge:UP` from `(5,10)` blocked into `(5,9)`:
+    `EDGE_PROBE_RESULT ... status=blocked ... reason=raw_hold_timeout`
+  - injected runtime edge with `add_blocked_edge:25,5,10,UP`
+  - readback: `RUNTIME_BLOCK map=0x19 x=5 y=9 key=5,9 dirs=south`
+- Evidence for `(2,10).west`:
+  - after `(5,9).south` was injected, `debug_pathfind_to:1,1` rerouted:
+    `2 west, 1 south, 2 west, 1 north, 1 east, 7 north, 1 west, 2 north`
+  - autowalk reached `(1,10)` and then `(1,10)->RIGHT` into `(2,10)` blocked
+    twice under seam retry with `blocked=9 moved=0`
+  - same-origin `probe_edge:RIGHT` from `(1,10)` also blocked
+  - injected runtime edge with `add_blocked_edge:25,1,10,RIGHT`
+  - readback: `RUNTIME_BLOCK map=0x19 x=2 y=10 key=2,10 dirs=west`
+- Route bracketing:
+  - from `(1,10)`, `debug_pathfind_to:1,1` returned `No path found`
+  - from `(1,10)`, planner could still route to `(11,2)`, `(12,1)`, and
+    `(12,10)`, so the new blockers did not isolate the whole southwest side
+  - autowalk returned to `(11,2)` after one Wolf battle at `(4,11)` and one
+    Skeleton/REPEL interruption around `(13,10)`; battle-contaminated seam
+    attempts were not promoted
+  - clean `probe_edge:RIGHT` from `(4,11)` moved into `(5,11)`
+  - clean `probe_edge:UP` from `(13,10)` moved into `(13,9)`
+  - autowalk then completed to `Stairs Up` `(11,2)`
+  - from `(11,2)`, `debug_pathfind_to:1,1` returned `No path found`
+- Permanent sync:
+  - added B2 `(5,9).south` and `(2,10).west` to `map_reader.lua`
+  - added focused assertions to
+    `garins_grave_b2_southwest_stair_route_edges_are_directional`
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B2 (2,10).west`
+  - green `lua5.1 test_map_reader.lua` passed 49 tests
+- Current live anchor:
+  - B2 `(11,2)` / `Stairs Up`
+  - runtime overlay contains `(5,9).south` and `(2,10).west`
+  - reload FCEUX Lua before judging the permanent source patch without runtime
+    injections
+
+## 2026-06-07 Garin's Grave B2 Central Stairs cleanup
+
+- Live target: B2 `Central Stairs Down` at `(5,6)`.
+- Starting request: examine B2 `(13,4)->WEST`.
+- Baseline:
+  - fresh `report_position` confirmed `POSITION map=0x19 x=13 y=4`
+  - current runtime overlay was empty before the new central-stair pass
+- Confirmed same-origin blocker:
+  - repeated manual west attempts from `(13,4)` twitched/cancelled
+  - same-origin `probe_edge:LEFT` from `(13,4)` blocked into `(12,4)`
+  - injected with `add_blocked_edge:25,13,4,LEFT`
+  - readback: `RUNTIME_BLOCKS map=0x19 count=1`
+  - model target for promotion: `(12,4).east`
+- Reroute after `(12,4).east`:
+  - `debug_pathfind_to:5,6` from `(13,4)` rerouted to
+    `4 south, 8 west, 2 north`
+  - autowalk followed the southern route and exposed route-only blocked seams:
+    - `(9,8)->LEFT` into `(8,8)` blocked under route retry, then rerouted
+      around it; needs same-origin probe before promotion if still relevant
+    - `(13,6)->LEFT` into `(12,6)` blocked under route retry after the reroute;
+      needs same-origin probe before promotion if still relevant
+  - passable cleanup/no-promote evidence during reroutes:
+    - `(12,8)->RIGHT` into `(13,8)` moved after seam retry
+    - `(13,7)->UP` into `(13,6)` moved after seam retry
+    - `(13,7)->DOWN` into `(13,8)` moved after seam retry
+- Current paused state:
+  - battle started immediately after a route retry at `(11,8)->LEFT`
+  - current live position in the battle snapshot: `map=0x19 x=11 y=8`
+  - do not promote `(11,8)->LEFT`; it is battle-contaminated
+  - next step after combat clears: `report_position`, then either direct-probe
+    `(11,8)->LEFT` if still at `(11,8)`, or resume `auto_walk:5,6` and probe
+    the next clean same-origin blocker it exposes
+- Continuation after that battle:
+  - fresh post-combat `report_position` confirmed `map=0x19 x=11 y=8`
+  - same-origin `probe_edge:LEFT` moved into `(10,8)`, so
+    `(11,8)->LEFT` is passable/no-promote
+  - a new Wolf battle started immediately after the probe landed at
+    `map=0x19 x=10 y=8`
+  - next step after this battle clears: `report_position`, then resume
+    `auto_walk:5,6`; if route returns to the older route-only candidates,
+    prioritize same-origin probes for `(13,6)->LEFT` into `(12,6)` or
+    `(9,8)->LEFT` into `(8,8)` only when standing on those exact origins
+- Continuation after the second Wolf battle:
+  - fresh baseline: `POSITION map=0x19 x=10 y=8`
+  - runtime overlay still contained only `(12,4).east`
+  - resumed `auto_walk:5,6`; route reached `(9,8)` and again blocked
+    `(9,8)->LEFT` into `(8,8)` under route retry:
+    `SEAM_OBSERVATION ... cell=(8,8) approach=east result=blocked`
+  - a later same-origin `probe_edge:LEFT` from normally reached `(9,8)`
+    also blocked with `raw_hold_timeout`
+  - injected `add_blocked_edge:25,9,8,LEFT`; readback:
+    `RUNTIME_BLOCK map=0x19 x=8 y=8 key=8,8 dirs=east`
+- Continuation after the `(11,8)` retry/battle:
+  - route retry at `(11,8)->RIGHT` was interrupted by a Metal Scorpion battle
+  - post-combat same-origin `probe_edge:RIGHT` from `(11,8)` moved into
+    `(12,8)`, so `(11,8)->RIGHT` is passable/no-promote
+  - resumed `auto_walk:5,6` from `(12,8)`; route moved to `(13,8)`,
+    then `(13,7)`, then `(13,6)` after a timing retry on `(13,7)->UP`
+  - route then repeatedly blocked `(13,6)->LEFT` into `(12,6)`, and reroute
+    collapsed to `No path found`
+  - same-origin `probe_edge:LEFT` from normally reached `(13,6)` also blocked
+    with `raw_hold_timeout`
+  - injected `add_blocked_edge:25,13,6,LEFT`; readback:
+    `RUNTIME_BLOCK map=0x19 x=12 y=6 key=12,6 dirs=east`
+  - with `(12,4).east`, `(8,8).east`, and `(12,6).east` active,
+    `debug_pathfind_to:5,6` from `(13,6)` returned
+    `No path found [no_path] (visited=52 path=0)`
+- Permanent sync:
+  - promoted B2 `(12,4).east`, `(8,8).east`, and `(12,6).east` to
+    `map_reader.lua`
+  - extended `test_map_reader.lua` assertions in
+    `garins_grave_b2_southwest_stair_route_edges_are_directional`
+  - red `lua5.1 test_map_reader.lua` failed first on missing
+    `B2 (8,8).east`
+  - green `lua5.1 test_map_reader.lua` passed 49 tests
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed
+  - `git diff --check -- map_reader.lua test_map_reader.lua session_handoff.md PLAYTESTING.md work_notes/current_investigation.md`
+    passed
+- Post-reload verification:
+  - FCEUX log restarted at `2026-06-07 13:16:29`
+  - current anchor: `POSITION map=0x19 x=11 y=2`
+  - `RUNTIME_BLOCKS map=0x19 none`
+  - from that clean source-loaded state,
+    `debug_pathfind_to:5,6` returned
+    `No path found [no_path] (visited=50 path=0)`
+  - the same batch also checked the prior Northwest target:
+    `debug_pathfind_to:1,1` returned
+    `No path found [no_path] (visited=48 path=0)`
+
+## 2026-06-07 Garin's Grave B3 Northwest Stairs Up pocket cleanup
+
+- Starting anchor:
+  - user used the B2 Northwest stairs and arrived on B3 at
+    `Northwest Stairs Up` `(14,1)`
+  - target was the west chest / likely Cursed Belt at `(1,1)`
+- Clean same-origin blockers:
+  - `(10,1)->LEFT` blocked into `(9,1)`; runtime/model target `(9,1).east`
+  - `(12,2)->DOWN`, `(11,2)->DOWN`, `(10,2)->DOWN`, `(15,2)->DOWN`,
+    `(13,2)->DOWN`, and `(14,2)->DOWN` all blocked into row 3; runtime/model
+    target `(10..15,3).north`
+  - `(15,1)->RIGHT` blocked into `(16,1)`; runtime/model target `(16,1).west`
+  - `(15,2)->RIGHT` blocked into `(16,2)`; runtime/model target `(16,2).west`
+- Hidden-wall candidates:
+  - `(10,2)->LEFT` into `(9,2)` blocked under same-origin `probe_edge:LEFT`
+    and stayed a non-walkable wall, so no passthrough was added
+  - `(9,3)->UP` became unreachable after the row-3 north wall and `(16,1/2)`
+    closures; leave it as an untested hidden sibling rather than modeling a
+    passthrough
+- Final live state before source reload:
+  - hero at B3 `(15,2)`
+  - `RUNTIME_BLOCKS map=0x1A count=9`:
+    `(9,1).east`, `(16,1).west`, `(16,2).west`, and `(10..15,3).north`
+  - `debug_pathfind_to:1,1` returned `No path found`
+  - `debug_pathfind_to:9,3` returned `No path found`
+  - `debug_route_frontier:1,1,60` reported `reachable=12`,
+    `target_reachable=false`, and only one hidden bridge candidate left:
+    the already-tested `(10,2)->LEFT` non-walkable wall candidate
+  - `pathability_filter:reachable` reported exactly one object:
+    `Northwest Stairs Up`
+- Permanent sync:
+  - patched `map_reader.lua` with the nine B3 NW-pocket blockers
+  - extended B3 assertions in `test_map_reader.lua`
+  - `lua5.1 test_map_reader.lua` passed 49 tests
+  - `luac5.1 -p map_reader.lua test_map_reader.lua` passed
+  - `git diff --check -- map_reader.lua test_map_reader.lua` passed
+- Next check after manual FCEUX Lua reload:
+  - done after user reload:
+    - user verified `debug_pathfind_to:1,1` still returned `No path found`
+    - fresh log showed `RUNTIME_BLOCKS map=0x1A none`
+    - from B3 `(15,2)`, `pathability_filter:reachable` and `current_object`
+      both reported only `Northwest Stairs Up`
+
+## 2026-06-07 B2 Northwest Stairs regression recheck from live `(11,2)`
+
+- User returned to B2 and reported the path to `Northwest Stairs Down` `(1,1)`
+  was closed again, although we had earlier believed the stair hub route was
+  open.
+- Fresh baseline:
+  - `POSITION map=0x19(Garin's Grave B2) x=11 y=2`
+  - `RUNTIME_BLOCKS map=0x19 none`
+  - `debug_pathfind_to:1,1` and `debug_pathfind_to_skip_npcs:1,1` both
+    returned `No path found`
+  - `pathability_filter:reachable` listed exactly four objects:
+    `Stairs Up`, `Northeast Stairs Down`, `Southeast Stairs Down`, and
+    `Southwest Stairs Down`
+- `debug_route_frontier:1,1,80` and
+  `debug_route_frontier_skip_npcs:1,1,80` agreed:
+  - `reachable=47`, `target_reachable=false`, `target_side=27`
+  - `bridge_candidates=7`, `hidden_bridge_candidates=0`
+  - all seven bridge candidates were modeled directional blockers
+- Fresh same-origin probes from normally walked origins confirmed all seven
+  bridge candidates still block with `reason=raw_hold_timeout`:
+  - `(1,10)->UP` into `(1,9)`
+  - `(1,10)->RIGHT` into `(2,10)`
+  - `(2,11)->UP` into `(2,10)`
+  - `(3,10)->LEFT` into `(2,10)`
+  - `(3,10)->UP` into `(3,9)`
+  - `(4,10)->UP` into `(4,9)`
+  - `(5,10)->UP` into `(5,9)`
+- Battle contamination:
+  - first `(1,10)->UP` probe was refused because a Skeleton battle had just
+    started; after the fight cleared, the clean retry from the same coordinate
+    blocked normally
+- Final check from B2 `(4,10)`:
+  - `RUNTIME_BLOCKS map=0x19 none`
+  - normal and skip-NPC pathfinds to `(1,1)` still returned `No path found`
+  - frontier remained at the same seven bridge candidates with no hidden
+    bridges
+- Conclusion:
+  - the current B2 no-route to `Northwest Stairs Down` is caused by permanent
+    directional geometry, not runtime overlays, NPCs, or stale combat state
+  - the older 2026-06-05 "all six B2 stairs reachable" route was false planner
+    geometry through row 9 / `(2,10)`, and is superseded by the later live
+    probes
+  - keep the current B2 Northwest route closed unless new normal-walked live
+    evidence from another branch contradicts it
+
+## 2026-06-07 B3 Southeast Stairs Up belt-route recheck
+
+- User repositioned to the bottom of the B2 southeast staircase, landing on B3
+  at `Southeast Stairs Up` `(18,13)`.
+- Baseline:
+  - `POSITION map=0x1A(Garin's Grave B3) x=18 y=13`
+  - `RUNTIME_BLOCKS map=0x1A none`
+  - `debug_pathfind_to:1,1` and `debug_pathfind_to_skip_npcs:1,1` both
+    returned `No path found`
+  - `pathability_filter:reachable` reported exactly one object:
+    `Southeast Stairs Up`
+- Frontier:
+  - `debug_route_frontier:1,1,100` and skip-NPC variant agreed:
+    `reachable=90`, `target_reachable=false`, `target_side=55`,
+    `bridge_candidates=5`, `hidden_bridge_candidates=0`
+  - the only bridges into the west chest / likely Cursed Belt component were
+    bottom-row north edges:
+    `(1,19)->UP`, `(2,19)->UP`, `(3,19)->UP`, `(4,19)->UP`, and `(5,19)->UP`
+- Fresh walked-origin probes:
+  - a Druinlord interrupted the first walk toward `(1,19)` at `(6,19)`; after
+    combat cleared, movement resumed from the live field position
+  - `(5,19)->UP` into `(5,18)` blocked with `raw_hold_timeout`
+  - `(4,19)->UP` into `(4,18)` blocked with `raw_hold_timeout`
+  - `(3,19)->UP` into `(3,18)` blocked with `raw_hold_timeout`
+  - `(2,19)->UP` into `(2,18)` blocked with `raw_hold_timeout`
+  - `(1,19)->UP` into `(1,18)` blocked with `raw_hold_timeout`
+- Final check from `(1,19)`:
+  - `RUNTIME_BLOCKS map=0x1A none`
+  - normal and skip-NPC pathfinds to `(1,1)` still returned `No path found`
+  - frontier remained the same five bridge candidates with
+    `hidden_bridge_candidates=0`
+  - reachable-object filter still reported only `Southeast Stairs Up`
+- Hazard policy check:
+  - `debug_pathfind_to_allow_hazards:1,1` and
+    `debug_pathfind_to_skip_npcs_allow_hazards:1,1` also returned
+    `No path found` with `hazards=0`
+  - allow-hazard frontiers matched the normal five bridge candidates with
+    `hidden_bridge_candidates=0`
+- Conclusion:
+  - the B3 southeast-stair component is not a live route to the west chest /
+    likely Cursed Belt
+  - this confirms the earlier SE-side closure after a fresh normal-entry pass
+    from B2's reachable southeast stair
+  - current live position after this pass: B3 `(1,19)`
+
+## 2026-06-07 B3 possible west-chest-to-NW-stair return route recheck
+
+- User manually explored back from the west chest / likely Cursed Belt side and
+  reported being able to walk back to the B3 `Northwest Stairs Up`, suggesting
+  the NW stair may be a return-only exit with a one-way seam preventing reentry.
+- Fresh baseline after that report:
+  - `POSITION map=0x1A(Garin's Grave B3) x=16 y=11`
+  - `RUNTIME_BLOCKS map=0x1A none`
+  - `pathability_filter:reachable` reported `No objects`
+  - normal and skip-NPC `debug_pathfind_to` checks to `(1,1)`, `(14,1)`, and
+    `(9,5)` all returned `No path found`
+- Frontier from the `(16,11)` / east-side component toward NW stair `(14,1)`
+  listed many modeled directional blockers but no hidden bridge candidates.
+  Same-origin probes confirmed the nearest modeled bridges from this side:
+  - `(16,10)->UP` into `(16,9)` blocked
+  - `(17,9)->LEFT` into `(16,9)` blocked
+  - `(15,10)->UP` into `(15,9)` blocked
+  - `(15,10)->LEFT` into `(14,10)` blocked
+  - `(15,11)->LEFT` into `(14,11)` blocked
+  - `(15,11)->DOWN` into `(15,12)` blocked
+- Autowalk toward candidate origin `(17,4)` showed normal movement through the
+  east-side loop and was interrupted once by a Specter battle at `(19,5)`.
+  After combat cleared, same-origin probes continued:
+  - `(19,5)->UP` into `(19,4)` moved
+  - `(19,4)->UP` into `(19,3)` blocked
+  - `(18,4)->UP` into `(18,3)` blocked
+  - `(17,4)->LEFT` into `(16,4)` blocked
+  - `(17,4)->UP` into `(17,3)` blocked
+  - `(17,4)->DOWN` into `(17,5)` blocked
+- Current interpretation:
+  - live evidence supports the user's one-way/return-only read in principle,
+    but the currently occupied east-side component is not the return seam
+  - do not remove the B3 top/east directional blockers from this evidence;
+    they matched live probes from the tested side
+  - next useful step is to reposition to the actual manual return seam or to
+    the NW stair after arriving from the chest-side route, then capture the
+    reverse/forward pair from that exact location

@@ -1,6 +1,6 @@
 # Garin's Grave Map Reference
 
-Updated: 2026-05-30
+Updated: 2026-06-07
 
 This folder stores orientation notes for Grave of Garinham / Garin's Grave.
 Guide data is for route-shape orientation only; live FCEUX movement remains the
@@ -72,13 +72,19 @@ source of truth for map data.
   directional blockers in map data: `(2,10).east` and `(3,9).south`. Mixed
   candidates `(8,9).east`, `(3,11).north`, and `(1,11).east` remain
   unmodeled.
-- Latest live staging has the hero on B2 `(1,10)` with those two B2 blockers
-  re-injected into the FCEUX runtime overlay. The return path to B2 `(11,2)`
-  currently plans as `7 north, 10 east, 1 north`.
-- Guide route bias:
-  - the nearby return-side stair and the center stair are dead-end/trap leads
-  - northwest and southeast stairs lead toward the Cursed Belt branch
-  - the southwest staircase is the main progression lead toward the Silver Harp
+- Latest live B2 route status supersedes the older all-stairs-reachable audit:
+  from the B2 return stair `(11,2)`, with no runtime blockers active, the
+  permanent model reaches `Stairs Up`, `Northeast Stairs Down`,
+  `Southeast Stairs Down`, and `Southwest Stairs Down`. It returns
+  `No path found` for `Northwest Stairs Down` `(1,1)` and `Central Stairs Down`
+  `(5,6)`.
+- Earlier guide route bias said northwest and southeast stairs lead toward the
+  Cursed Belt branch. Treat that as orientation only: live FCEUX probing on
+  2026-06-07 rechecked the B2 northwest frontier from normally walked origins
+  and all seven bridge candidates into the `(1,1)` component blocked. The
+  Cursed Belt route remains unresolved; do not reopen the B2 northwest route
+  without new normal-walked live movement evidence.
+- The southwest staircase remains the confirmed Silver Harp progression lead.
 
 ## Guide Orientation For B3 And B4
 
@@ -91,6 +97,11 @@ source of truth for map data.
   matching the fourth stair entry in the ROM table order.
 - Read-only live path check from B3 `(2,17)` to the likely progression stair
   `(9,5)` succeeds with `12 north, 7 east`.
+- B3 west chest / likely Cursed Belt route note: the earlier NW-side dead-end
+  conclusion was superseded by a live false-boundary find at `10,0 west`.
+  Top-row cells `(9,0)` and `(10,0)` are now scoped B3 passthrough cells, and
+  static regression coverage confirms the planner can route from `(10,0)` to
+  the west chest at `(1,1)`.
 
 ## Pending Live Verification
 
@@ -100,3 +111,5 @@ source of truth for map data.
   verifier evidence if hidden blockers appear.
 - Confirm whether B3 `(9,5)` lands on B4 `(0,4)`, then inspect the B4 connector
   toward `(5,4)`.
+- After manual FCEUX Lua reload, recheck B3 `debug_pathfind_to:1,1` from the
+  NW/top-row side and refresh the reachable-object filter.

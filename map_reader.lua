@@ -928,12 +928,18 @@ local MAP_PASSTHROUGH_CELLS = {
         ["13,0"] = true,
     },
 
-    -- Map 0x1A: Garin's Grave B3 hidden bridge toward southwest B2 return.
+    -- Map 0x1A: Garin's Grave B3 hidden bridge/top-edge cells.
     -- The Silver Harp escape frontier found `(4,13)->DOWN` as the only
     -- hidden bridge candidate; direct verifier moved into `(4,14)` 6/6, and
     -- a raw follow-up tap continued south to `(4,15)`.
+    -- The west chest / likely Cursed Belt return route later proved the
+    -- top-row `(9,0)<->(10,0)` seam is standable and bidirectionally passable:
+    -- `(9,0)->RIGHT` reached `(10,0)` twice, and `(10,0)->LEFT` reached
+    -- `(9,0)`. Keep the override scoped to the live-proven cells.
     [0x1A] = {
         ["4,14"] = true,
+        ["9,0"] = true,
+        ["10,0"] = true,
     },
 
     -- Map 0x1B: Garin's Grave B4 west return stairs.
@@ -2873,8 +2879,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         --   `(3,10)->UP` into `(3,9)` blocks from the south.
         -- A later clean same-origin verifier from `(2,11)` confirmed the
         -- lower return face too: `(2,11)->UP` into `(2,10)` blocked 5/5, so
-        -- `(2,10).south` is now modeled.
-        ["2,10"] = {east = true, south = true},
+        -- `(2,10).south` is now modeled. A later Northwest Stairs Down route
+        -- from the southwest-stair side blocked `(1,10)->RIGHT` under normal
+        -- route execution plus same-origin `probe_edge:RIGHT`, so
+        -- `(2,10).west` is modeled too.
+        ["2,10"] = {east = true, south = true, west = true},
         ["3,9"] = {south = true},
         -- Post-reload direct verifier pass on the southwest-stair return route
         -- confirmed the left-edge false entries into `(2,3)` through `(2,7)`.
@@ -2906,10 +2915,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,3"] = {south = true},
         -- A later B2 return pass exposed another row-9 band. Direct follow-up
         -- verifiers confirmed `(4,10)->UP`, `(9,10)->UP`, `(10,10)->UP`, and
-        -- `(12,10)->UP` blocked 5/5. `(5,10)->UP` later settled into a mixed
-        -- teleport-artifact pattern and stays unmodeled, but a 2026-06-05
-        -- cleanup pass direct-verified `(6,10)->UP`, `(7,10)->UP`, and
-        -- `(8,10)->UP` as 5/5 blocked from the south.
+        -- `(12,10)->UP` blocked 5/5. `(5,10)->UP` first settled into a mixed
+        -- teleport-artifact pattern, but a later normal-route Northwest Stairs
+        -- Down attempt plus same-origin `probe_edge:UP` from `(5,10)` blocked
+        -- cleanly, so `(5,9).south` is modeled. A 2026-06-05 cleanup pass
+        -- direct-verified `(6,10)->UP`, `(7,10)->UP`, and `(8,10)->UP` as 5/5
+        -- blocked from the south.
         -- A fresh 2026-05-30 verifier pass from the north side then proved the
         -- row-9 trap strip extends across `(3..7,9)`: `(3,8)->DOWN` through
         -- `(7,8)->DOWN` each blocked 5/5 under explicit verifier teleports.
@@ -2924,7 +2935,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["1,9"] = {south = true},
         ["3,9"] = {north = true, south = true},
         ["4,9"] = {north = true, south = true},
-        ["5,9"] = {north = true, east = true},
+        ["5,9"] = {north = true, east = true, south = true},
         ["6,7"] = {south = true},
         ["6,9"] = {north = true, east = true, south = true, west = true},
         ["7,9"] = {north = true},
@@ -2933,8 +2944,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["12,9"] = {east = true, south = true},
         -- 2026-05-30 out-and-back cleanup after the stat-corruption A/B rerun.
         -- Fresh direct verifiers confirmed two right-side false entries cleanly
-        -- 5/5 from the east, while nearby `(12,4).east` stayed mixed and the
-        -- top-right hook near `(10..11,1..3)` moved 6/6. A later 2026-06-05
+        -- 5/5 from the east, while nearby `(12,4).east` stayed mixed at the
+        -- time and the top-right hook near `(10..11,1..3)` moved 6/6. A later
+        -- 2026-06-07 normal-route Central Stairs Down pass walked to `(13,4)`,
+        -- then same-origin `probe_edge:LEFT` blocked into `(12,4)`, so
+        -- `(12,4).east` is now modeled too. A later 2026-06-05
         -- noisy southwest-stair return pass re-opened that top-right hook: the
         -- repeated verifier on `(11,1)->LEFT` stayed teleport-artifact mixed,
         -- but three separate fresh-start `probe_edge:LEFT` checks from real
@@ -3016,12 +3030,16 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- mixed (`moved=1 blocked=4`), but three fresh-start `probe_edge:LEFT`
         -- checks from `(7,9)` all blocked and reverse `probe_edge_verify:RIGHT,5`
         -- from `(6,9)` also blocked 5/5, so `(6,9)<->(7,9)` is modeled too.
+        -- A 2026-06-07 Central Stairs Down route then walked normally to
+        -- `(9,8)` and `(13,6)`: route retries plus same-origin `probe_edge:LEFT`
+        -- blocked into `(8,8)` and `(12,6)`, so `(8,8).east` and
+        -- `(12,6).east` are modeled.
         ["7,9"] = {north = true, east = true, south = true, west = true},
         ["8,3"] = {south = true, east = true},
         ["8,5"] = {east = true, north = true, west = true},
         ["8,6"] = {east = true, west = true},
         ["8,7"] = {west = true},
-        ["8,8"] = {south = true, west = true},
+        ["8,8"] = {east = true, south = true, west = true},
         ["8,9"] = {north = true, south = true, west = true},
         ["9,7"] = {north = true, south = true},
         ["9,9"] = {north = true, south = true},
@@ -3040,8 +3058,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- completed with only timing retries at `(12,10)->DOWN` and
         -- `(2,11)->LEFT`, both of which self-cleared and stay unmodeled.
         ["11,10"] = {east = true},
+        ["12,4"] = {east = true},
         ["12,5"] = {east = true, west = true},
-        ["12,6"] = {west = true},
+        ["12,6"] = {east = true, west = true},
         -- A later east-side reroute from the top-right pocket direct-verified
         -- `(12,6)->DOWN` into `(12,7)` as blocked 5/5 from the same start,
         -- so `(12,7).north` is now modeled too.
@@ -3108,46 +3127,75 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- `(13,9)` blocked twice.
         -- The same lower-stair side object-pruning pass then chased false
         -- reachable top-object routes and promoted only same-origin double
-        -- probe confirmations around rows 3-9.
+        -- probe confirmations around rows 3-9. The follow-up Northwest Stairs
+        -- Up pocket cleanup closed the false route to the west chest: the
+        -- `(10,1)->LEFT`, row-2 down probes into `(10..15,3)`, and
+        -- `(15,1/2)->RIGHT` all blocked from normally walked same-origin
+        -- positions; with those runtime blocks, only the Northwest Stairs Up
+        -- remained reachable in that pocket.
+        -- The 2026-06-07 Northeast Stairs Up pocket cleanup confirmed the
+        -- northwest-stair/chest bypasses are sealed at the east side:
+        -- `(17,1)->LEFT`, `(17,2)->LEFT`, `(17,2)->DOWN`, `(18,2)->DOWN`,
+        -- and `(19,2)->DOWN` all blocked under same-origin live probes.
+        -- The same-day Southeast Stairs Up pocket pass chased the false
+        -- Silver Harp chest route through the lower and southeast floor
+        -- space. Every entry below from the y=18/19 bottom-row strip and the
+        -- southeast rows 12-18 comes from live same-origin `probe_edge`
+        -- confirmation after battle/menu interruptions were cleared.
         -- Keep mixed seams like
         -- `(5,15).west` unmodeled until they settle under direct verification.
+        ["9,1"] = {east = true},
+        ["16,1"] = {east = true, west = true},
         ["5,2"] = {west = true},
         ["6,2"] = {north = true, south = true},
         ["8,2"] = {south = true},
+        ["16,2"] = {east = true, west = true},
         ["5,3"] = {east = true, west = true},
         ["7,3"] = {south = true, east = true, west = true},
         ["9,3"] = {south = true, west = true},
-        ["12,3"] = {south = true},
-        ["13,3"] = {south = true},
-        ["14,3"] = {south = true},
+        ["10,3"] = {north = true},
+        ["11,3"] = {north = true},
+        ["12,3"] = {north = true, south = true},
+        ["13,3"] = {north = true, south = true},
+        ["14,3"] = {north = true, south = true},
+        ["15,3"] = {north = true},
+        ["17,3"] = {north = true, south = true},
+        ["18,3"] = {north = true, south = true},
+        ["19,3"] = {north = true, south = true},
         ["5,4"] = {east = true, west = true},
         ["10,4"] = {west = true},
         ["11,4"] = {east = true, south = true},
         ["15,4"] = {south = true, west = true},
+        ["16,4"] = {east = true},
         ["3,5"] = {north = true, west = true},
         ["4,5"] = {north = true, south = true},
         ["5,5"] = {south = true, east = true},
         ["7,5"] = {north = true, east = true, west = true},
         ["10,5"] = {east = true, west = true},
         ["16,5"] = {west = true},
-        ["16,6"] = {west = true},
+        ["17,5"] = {north = true, south = true},
+        ["18,5"] = {east = true, north = true},
+        ["16,6"] = {east = true, west = true},
         ["3,6"] = {east = true, west = true},
         ["7,6"] = {west = true},
         ["8,6"] = {north = true, south = true, east = true},
         ["9,6"] = {north = true},
         ["10,6"] = {east = true, west = true},
+        ["18,6"] = {east = true, west = true},
         ["2,7"] = {north = true, south = true},
         ["3,7"] = {east = true, west = true},
         ["5,7"] = {north = true, west = true},
         ["7,7"] = {east = true, west = true},
         ["9,7"] = {north = true, west = true},
         ["10,7"] = {east = true, south = true},
-        ["16,7"] = {west = true},
+        ["16,7"] = {east = true, west = true},
+        ["18,7"] = {east = true, south = true, west = true},
         ["1,8"] = {east = true},
         ["3,8"] = {east = true, west = true},
         ["7,8"] = {east = true, west = true},
         ["9,8"] = {east = true, west = true},
         ["15,8"] = {north = true, west = true},
+        ["16,8"] = {east = true},
         ["1,9"] = {east = true},
         ["3,9"] = {east = true, west = true},
         ["7,9"] = {east = true, west = true},
@@ -3155,6 +3203,8 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["12,9"] = {north = true, west = true},
         ["13,9"] = {north = true, south = true},
         ["14,9"] = {north = true},
+        ["15,9"] = {south = true},
+        ["16,9"] = {east = true, south = true},
         ["1,10"] = {east = true},
         ["3,10"] = {east = true, west = true},
         ["5,10"] = {north = true, west = true},
@@ -3164,11 +3214,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["10,10"] = {north = true, south = true},
         ["11,10"] = {north = true, south = true},
         ["12,10"] = {south = true, east = true},
-        ["14,10"] = {west = true},
+        ["14,10"] = {east = true, west = true},
+        ["18,10"] = {west = true},
         ["1,11"] = {east = true},
         ["3,11"] = {east = true, west = true},
         ["5,11"] = {east = true, north = true, west = true},
-        ["14,11"] = {west = true},
+        ["14,11"] = {east = true, west = true},
         ["1,12"] = {east = true},
         ["3,12"] = {east = true, west = true},
         ["5,12"] = {west = true},
@@ -3177,29 +3228,54 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["8,12"] = {north = true, south = true},
         ["9,12"] = {north = true, south = true},
         ["10,12"] = {north = true},
-        ["11,12"] = {north = true},
-        ["12,12"] = {north = true},
-        ["13,12"] = {north = true},
+        ["11,12"] = {north = true, south = true},
+        ["12,12"] = {north = true, south = true},
+        ["13,12"] = {north = true, south = true},
+        ["14,12"] = {south = true},
+        ["15,12"] = {east = true, north = true, south = true},
+        ["17,12"] = {east = true},
         ["1,13"] = {east = true},
         ["3,13"] = {south = true, east = true, west = true},
         ["5,13"] = {east = true, west = true},
-        ["10,13"] = {west = true},
+        ["10,13"] = {east = true, west = true},
+        ["17,13"] = {east = true},
         ["1,14"] = {east = true},
-        ["10,14"] = {west = true},
+        ["10,14"] = {east = true, west = true},
+        ["17,14"] = {south = true},
+        ["18,14"] = {east = true, south = true},
         ["2,15"] = {north = true, south = true, east = true},
         ["8,15"] = {east = true},
-        ["10,15"] = {west = true},
+        ["10,15"] = {east = true, west = true},
+        ["16,15"] = {east = true},
         ["1,16"] = {east = true},
         ["4,16"] = {west = true},
         ["8,16"] = {east = true},
         ["10,16"] = {west = true},
+        ["11,16"] = {north = true, south = true},
+        ["12,16"] = {north = true, south = true},
+        ["13,16"] = {north = true, south = true},
+        ["14,16"] = {east = true, north = true, south = true},
+        ["16,16"] = {east = true},
+        ["18,16"] = {east = true, west = true},
         ["1,17"] = {east = true},
-        ["10,17"] = {west = true},
-        ["2,18"] = {north = true},
-        ["3,18"] = {north = true},
-        ["4,18"] = {north = true},
-        ["5,18"] = {north = true},
-        ["9,18"] = {north = true},
+        ["10,17"] = {east = true, west = true},
+        ["16,17"] = {east = true},
+        ["18,17"] = {west = true},
+        ["1,18"] = {south = true},
+        ["2,18"] = {north = true, south = true},
+        ["3,18"] = {north = true, south = true},
+        ["4,18"] = {north = true, south = true},
+        ["5,18"] = {north = true, south = true},
+        ["6,18"] = {south = true},
+        ["8,18"] = {south = true},
+        ["9,18"] = {north = true, south = true},
+        ["10,18"] = {south = true},
+        ["11,18"] = {north = true, south = true},
+        ["12,18"] = {north = true, south = true},
+        ["13,18"] = {north = true, south = true},
+        ["14,18"] = {east = true, north = true, south = true},
+        ["17,18"] = {north = true},
+        ["18,18"] = {east = true},
     },
 
     -- Map 0x1B: Garin's Grave B4

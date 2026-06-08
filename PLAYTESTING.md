@@ -1,10 +1,94 @@
 # Playtesting Notes
 
-Updated: 2026-06-06
+Updated: 2026-06-07
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Garin's Grave B3 west chest / likely Cursed Belt top-edge route
+  (`2026-06-07`): the previous NW-side "local stair only" conclusion was
+  superseded by a live false-boundary find at `10,0 west`. Manual movement and
+  log evidence showed `(9,0)<->(10,0)` is standable and bidirectionally
+  passable, while the planner had treated the top row as blocked by the generic
+  dungeon-edge rule. The permanent model now marks B3 `(9,0)` and `(10,0)` as
+  scoped passthrough cells, and the regression test confirms pathfinding from
+  `(10,0)` to the west chest `(1,1)` succeeds. After manual FCEUX Lua reload,
+  recheck `debug_pathfind_to:1,1` from the NW/top-row side and then refresh the
+  reachable-object filter.
+
+- Garin's Grave B3 west chest / likely Cursed Belt from NW side (`2026-06-07`):
+  historical note now superseded by the top-edge passthrough finding above.
+  entering B3 from B2 `Northwest Stairs Down` lands at `Northwest Stairs Up`
+  `(14,1)`. Live same-origin probes closed the false route toward the west
+  chest at `(1,1)`: `(10,1)->LEFT` blocks into `(9,1)`, row-2 down probes into
+  `(10..15,3)` all block, and `(15,1/2)->RIGHT` blocks into `(16,1/2)`.
+  With those nine runtime blocks active, `debug_pathfind_to:1,1` and
+  `debug_pathfind_to:9,3` both returned `No path found`, and
+  `pathability_filter:reachable` reported exactly one reachable object:
+  `Northwest Stairs Up`. The permanent model now includes `(9,1).east`,
+  `(10..15,3).north`, `(16,1).west`, and `(16,2).west`. After manual FCEUX
+  reload, runtime blocks were empty, `debug_pathfind_to:1,1` still returned
+  `No path found`, and the reachable-object filter still reported only
+  `Northwest Stairs Up`.
+
+- Garin's Grave B3 west chest / likely Cursed Belt from SE side (`2026-06-07`):
+  the southeast/lower B3 component is not a route to the west chest at `(1,1)`.
+  Same-origin probes confirmed the two remaining hidden-bridge false positives,
+  `(6,19)->UP` and `(8,19)->UP`, block into `(6,18)` and `(8,18)`, now modeled
+  as `(6,18).south` and `(8,18).south`. After those runtime closures, repeated
+  `debug_route_frontier:1,1,60` checks reported `target_reachable=false` and
+  `hidden_bridge_candidates=0`; final `debug_pathfind_to:1,1` from B3
+  `(14,15)` returned `No path found [no_path] (visited=98 path=0)`.
+
+- Garin's Grave B2 Central Stairs false route (`2026-06-07`): the last
+  unresolved B2 branch to `Central Stairs Down` `(5,6)` was chased from the
+  east-side component starting at `(13,4)`. Normal-route movement plus
+  same-origin probes confirmed `(13,4)->LEFT`, `(9,8)->LEFT`, and
+  `(13,6)->LEFT` are blocked, modeled as `(12,4).east`, `(8,8).east`, and
+  `(12,6).east`. With those runtime edges active, `debug_pathfind_to:5,6`
+  from `(13,6)` returned `No path found`. Battle-contaminated retries at
+  `(11,8)` were disproved by clean post-combat probes: both left into
+  `(10,8)` and right into `(12,8)` moved, so those edges stay open. After
+  FCEUX reload/restart, runtime blocks were empty and the permanent pathfinder
+  from B2 `Stairs Up` `(11,2)` returned `No path found` for both
+  `debug_pathfind_to:5,6` and `debug_pathfind_to:1,1`. A manual reachable-object
+  filter pass from the same anchor is still useful, but permanent route geometry
+  now rejects both Central and Northwest false targets without runtime overlays.
+
+- Garin's Grave B2 Northwest Stairs false route (`2026-06-07`): from the
+  southwest-stair side, the planner's route to `Northwest Stairs Down` depended
+  on the old `(5,10)` knot. Normal-route movement plus same-origin probes
+  confirmed `(5,10)->UP` into `(5,9)` blocked, modeled as `(5,9).south`, and
+  the reroute then exposed `(1,10)->RIGHT` into `(2,10)`, modeled as
+  `(2,10).west`. With both runtime edges active, `debug_pathfind_to:1,1`
+  returned `No path found` both from `(1,10)` and from the B2 entrance-side
+  `Stairs Up` anchor `(11,2)`. Treat the previous Northwest Stairs route as
+  false geometry, not a route that should stay open.
+
+- Garin's Grave B3 Southeast Stairs Up pocket (`2026-06-07`): live FCEUX
+  route pruning from the SE-stair landing collapsed the false route to the
+  Silver Harp chest `(13,6)`. The pass followed `auto_walk:13,6` reroutes and
+  promoted only normally reached same-origin `probe_edge` blockers after
+  battle/menu interruptions were cleared. Important passable evidence:
+  `(14,19)->RIGHT` reaches `(15,19)`, `(15,19)->UP` reaches `(15,18)`, and the
+  bottom row itself is laterally passable; the hidden walls are the north/up
+  approaches from that row and the southeast row-12-through-18 pocket seams.
+  With the runtime overlay injected, `auto_walk:13,6` from `(12,19)` returned
+  `No path found`. The permanent model and tests now include the confirmed
+  SE-stair overlay. After a manual FCEUX Lua reload, the reachable-object list
+  showed only the local `Northeast Stairs Up` return stair, so this component is
+  closed for object-navigation purposes.
+
+- Garin's Grave B3 Northeast Stairs Up pocket (`2026-06-07`): entering B3
+  from B2 `Northeast Stairs Down` lands at `(18,1)`. The reachable object list
+  initially over-reported 9 objects. Live same-origin probes confirmed the
+  northwest/lower bypasses are sealed by `(16,1).east`, `(16,2).east`,
+  `(17,3).north`, `(18,3).north`, and `(19,3).north`. With those runtime
+  edges injected, `debug_pathfind_to:14,1` returns `No path found` and the
+  reachable filter shows only local `Northeast Stairs Up`. One attempted
+  `(17,2)->LEFT` probe was discarded because a Drollmagi battle interrupted
+  it; the post-combat retry from the same tile provided the clean evidence.
 
 - Garin's Grave B3 lower-stair Silver Harp route (`2026-06-06`): from
   `Lower Stairs Down` `(10,9)`, the route to the harp chest side is now clean
