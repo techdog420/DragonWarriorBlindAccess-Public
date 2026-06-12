@@ -309,15 +309,17 @@ local function log_move_report(from_x, from_y, dir)
     return msg, report
 end
 
-local edge_probe_state = nil
-local edge_verify_state = nil
-local seeded_edge_probe_state = nil
-local EDGE_VERIFY_DEFAULT_ATTEMPTS = 5
-local EDGE_VERIFY_MAX_ATTEMPTS = 15
-local EDGE_VERIFY_SETTLE_FRAMES = 18
-local EDGE_VERIFY_BETWEEN_SETTLE_FRAMES = 30
-local EDGE_VERIFY_STABILITY_RECHECK_FRAMES = 240
-local EDGE_PROBE_MOVED_SETTLE_FRAMES = 60
+local EDGE = {
+    probe_state = nil,
+    verify_state = nil,
+    seeded_probe_state = nil,
+    VERIFY_DEFAULT_ATTEMPTS = 5,
+    VERIFY_MAX_ATTEMPTS = 15,
+    VERIFY_SETTLE_FRAMES = 18,
+    VERIFY_BETWEEN_SETTLE_FRAMES = 30,
+    VERIFY_STABILITY_RECHECK_FRAMES = 240,
+    PROBE_MOVED_SETTLE_FRAMES = 60,
+}
 local get_autowalk_unavailable_reason
 local get_edge_probe_unavailable_reason
 
@@ -348,15 +350,15 @@ end
 local function edge_verify_stability_recheck_frames()
     return config_frame_count(
         "edge_verify_stability_recheck_frames",
-        EDGE_VERIFY_STABILITY_RECHECK_FRAMES,
-        EDGE_VERIFY_BETWEEN_SETTLE_FRAMES,
+        EDGE.VERIFY_STABILITY_RECHECK_FRAMES,
+        EDGE.VERIFY_BETWEEN_SETTLE_FRAMES,
         900)
 end
 
 local function edge_probe_moved_settle_frames()
     return config_frame_count(
         "edge_probe_moved_settle_frames",
-        EDGE_PROBE_MOVED_SETTLE_FRAMES,
+        EDGE.PROBE_MOVED_SETTLE_FRAMES,
         0,
         300)
 end
@@ -385,8 +387,8 @@ local function parse_edge_verify_arg(arg, default_x, default_y)
         if not DIR_TO_DELTA[dir] then
             return nil
         end
-        local attempts = parse_int_arg(parts[2]) or EDGE_VERIFY_DEFAULT_ATTEMPTS
-        attempts = math.max(1, math.min(EDGE_VERIFY_MAX_ATTEMPTS, attempts))
+        local attempts = parse_int_arg(parts[2]) or EDGE.VERIFY_DEFAULT_ATTEMPTS
+        attempts = math.max(1, math.min(EDGE.VERIFY_MAX_ATTEMPTS, attempts))
         return default_x, default_y, dir, attempts, false
     end
     if #parts == 3 or #parts == 4 then
@@ -397,8 +399,8 @@ local function parse_edge_verify_arg(arg, default_x, default_y)
         if x == nil or y == nil or not DIR_TO_DELTA[dir] then
             return nil
         end
-        local attempts = parse_int_arg(parts[4]) or EDGE_VERIFY_DEFAULT_ATTEMPTS
-        attempts = math.max(1, math.min(EDGE_VERIFY_MAX_ATTEMPTS, attempts))
+        local attempts = parse_int_arg(parts[4]) or EDGE.VERIFY_DEFAULT_ATTEMPTS
+        attempts = math.max(1, math.min(EDGE.VERIFY_MAX_ATTEMPTS, attempts))
         return x, y, dir, attempts, true
     end
     return nil
@@ -668,7 +670,7 @@ local function edge_probe_timeout_frames()
 end
 
 local function finish_edge_probe(status, reason)
-    local probe = edge_probe_state
+    local probe = EDGE.probe_state
     if not probe then
         return
     end
@@ -748,7 +750,7 @@ local function finish_edge_probe(status, reason)
     tolk.output_interrupt(string.format(
         "Edge probe %s from %d,%d to %d,%d.",
         tostring(status), probe.from_x, probe.from_y, probe.dest_x, probe.dest_y))
-    edge_probe_state = nil
+    EDGE.probe_state = nil
 end
 
 local function classify_edge_verify_result(verify, final_status)
@@ -756,7 +758,7 @@ local function classify_edge_verify_result(verify, final_status)
 end
 
 local function finish_edge_verify(final_status, reason)
-    local verify = edge_verify_state
+    local verify = EDGE.verify_state
     if not verify then
         return
     end
@@ -806,11 +808,11 @@ local function finish_edge_verify(final_status, reason)
             "moved",
             "verified_probe_confirmed_passable")
     end
-    edge_verify_state = nil
+    EDGE.verify_state = nil
 end
 
 local function record_edge_verify_attempt(status, reason)
-    local verify = edge_verify_state
+    local verify = EDGE.verify_state
     if not verify then
         return
     end
@@ -913,11 +915,11 @@ local function record_edge_verify_attempt(status, reason)
     end
     verify.phase = "between"
     verify.frames = 0
-    verify.settle_frames = EDGE_VERIFY_BETWEEN_SETTLE_FRAMES
+    verify.settle_frames = EDGE.VERIFY_BETWEEN_SETTLE_FRAMES
 end
 
 local function start_edge_verify_attempt()
-    local verify = edge_verify_state
+    local verify = EDGE.verify_state
     if not verify then
         return
     end
@@ -942,7 +944,7 @@ local function start_edge_verify_attempt()
     -- during the post-teleport scan grace can produce false raw-hold timeouts
     -- on narrow bridge/one-way seams, so wait until that grace has cleared.
     verify.settle_frames = math.max(
-        EDGE_VERIFY_SETTLE_FRAMES,
+        EDGE.VERIFY_SETTLE_FRAMES,
         (DW_QOL_STATE.teleport_post_scan_grace_frames or 0) + 4)
     verify.raw_hold_frames = edge_probe_raw_hold_frames()
     verify.start_report = start_report
@@ -972,7 +974,7 @@ local function start_edge_verify_attempt()
 end
 
 local function tick_edge_verify()
-    local verify = edge_verify_state
+    local verify = EDGE.verify_state
     if not verify then
         return false
     end
@@ -1041,7 +1043,7 @@ local function tick_edge_verify()
 end
 
 local function tick_edge_probe()
-    local probe = edge_probe_state
+    local probe = EDGE.probe_state
     if not probe then
         return false
     end
@@ -1104,7 +1106,7 @@ local function start_edge_probe_from_current(dir, source, speak)
     if not delta then
         return false, "invalid direction"
     end
-    if edge_probe_state then
+    if EDGE.probe_state then
         return false, "probe active"
     end
 
@@ -1112,7 +1114,7 @@ local function start_edge_probe_from_current(dir, source, speak)
     objects.update_npcs()
     local msg, start_report = log_move_report(px, py, dir)
     local start_state = capture_edge_movement_state()
-    edge_probe_state = {
+    EDGE.probe_state = {
         map_id = map_id,
         from_x = px,
         from_y = py,
@@ -1132,9 +1134,9 @@ local function start_edge_probe_from_current(dir, source, speak)
         px,
         py,
         dir,
-        edge_probe_state.dest_x,
-        edge_probe_state.dest_y,
-        edge_probe_state.raw_hold_frames,
+        EDGE.probe_state.dest_x,
+        EDGE.probe_state.dest_y,
+        EDGE.probe_state.raw_hold_frames,
         edge_probe_moved_settle_frames(),
         tostring(source or "command")))
     log_edge_movement_state("probe_start", start_state, string.format(
@@ -1142,8 +1144,8 @@ local function start_edge_probe_from_current(dir, source, speak)
         px,
         py,
         tostring(dir),
-        edge_probe_state.dest_x,
-        edge_probe_state.dest_y,
+        EDGE.probe_state.dest_x,
+        EDGE.probe_state.dest_y,
         tostring(source or "command")))
     if speak ~= false then
         if msg then
@@ -1166,7 +1168,7 @@ local function seeded_edge_probe_frames_used(seed)
 end
 
 local function finish_seeded_edge_probe(status, reason)
-    local seed = seeded_edge_probe_state
+    local seed = EDGE.seeded_probe_state
     if not seed then
         return
     end
@@ -1186,11 +1188,11 @@ local function finish_seeded_edge_probe(status, reason)
         py or -1,
         tostring(status),
         tostring(reason or "")))
-    seeded_edge_probe_state = nil
+    EDGE.seeded_probe_state = nil
 end
 
 local function tick_seeded_edge_probe()
-    local seed = seeded_edge_probe_state
+    local seed = EDGE.seeded_probe_state
     if not seed then
         return false
     end
@@ -1305,7 +1307,7 @@ local function tick_seeded_edge_probe()
             seed.wait_frames,
             tostring(seed.probe_dir)))
 
-        seeded_edge_probe_state = nil
+        EDGE.seeded_probe_state = nil
         local ok, start_reason = start_edge_probe_from_current(seed.probe_dir, "seed_probe", false)
         if not ok then
             debug_tools.error("EDGE_SEED_PROBE_START_PROBE_FAILED reason=" .. tostring(start_reason))
@@ -1318,7 +1320,7 @@ local function tick_seeded_edge_probe()
 end
 
 event_bus.subscribe("route_blocked", function(data)
-    local verify = edge_verify_state
+    local verify = EDGE.verify_state
     if verify and data
        and verify.phase == "running"
        and data.from_x == verify.from_x
@@ -1326,7 +1328,7 @@ event_bus.subscribe("route_blocked", function(data)
        and data.dir == verify.dir then
         record_edge_verify_attempt("blocked", "route_blocked")
     end
-    local probe = edge_probe_state
+    local probe = EDGE.probe_state
     if not probe or not data then
         return
     end
@@ -1877,25 +1879,26 @@ end)
 -- bugs can be inspected without adding spoken noise during play. Gated on
 -- DEBUG_MODE: leaving this on unconditionally meant filesystem I/O on the
 -- gameplay hot path every time the player crossed an interior y<=1 row.
-local ROW1_TRACE_ENABLED = debug_tools.DEBUG_MODE
-local ROW1_TRACE_FILE = "row1_menu_diag.txt"
-local row1_trace_frame = 0
+local TRACE = {
+    row1_enabled = debug_tools.DEBUG_MODE,
+    row1_file = "row1_menu_diag.txt",
+    row1_frame = 0,
+    -- Startup loop diagnostics.
+    -- When debug_mode=true, capture a few immediate loop markers in a separate
+    -- file so launcher/debug issues can distinguish "script loaded" from
+    -- "FCEU.frameadvance() returned and the loop continued".
+    startup_loop_enabled = debug_tools.DEBUG_MODE,
+    startup_loop_file = "startup_loop_diag.txt",
+}
 -- prev row1 lower-dialogue baseline lives on PREV.row1_lower_dialogue_active.
-
--- Startup loop diagnostics.
--- When debug_mode=true, capture a few immediate loop markers in a separate
--- file so launcher/debug issues can distinguish "script loaded" from
--- "FCEU.frameadvance() returned and the loop continued".
-local STARTUP_LOOP_TRACE_ENABLED = debug_tools.DEBUG_MODE
-local STARTUP_LOOP_TRACE_FILE = "startup_loop_diag.txt"
 
 local function should_trace_startup_loop()
     return frame_count <= 3 or frame_count == 60 or frame_count == 120 or frame_count == 180
 end
 
 local function trace_startup_loop(event)
-    if not STARTUP_LOOP_TRACE_ENABLED or not should_trace_startup_loop() then return end
-    local f = io.open(STARTUP_LOOP_TRACE_FILE, "a")
+    if not TRACE.startup_loop_enabled or not should_trace_startup_loop() then return end
+    local f = io.open(TRACE.startup_loop_file, "a")
     if f then
         f:write(string.format(
             "frame=%d startup=%d event=%s\n",
@@ -2175,16 +2178,16 @@ DW_QOL_STATE.sync_stale_upper_dialogue_state = function(reason)
     return true
 end
 
-if ROW1_TRACE_ENABLED then
-    local f = io.open(ROW1_TRACE_FILE, "w")
+if TRACE.row1_enabled then
+    local f = io.open(TRACE.row1_file, "w")
     if f then
         f:write("=== Row 1 command trace ===\n")
         f:close()
     end
 end
 
-if STARTUP_LOOP_TRACE_ENABLED then
-    local f = io.open(STARTUP_LOOP_TRACE_FILE, "w")
+if TRACE.startup_loop_enabled then
+    local f = io.open(TRACE.startup_loop_file, "w")
     if f then
         f:write("=== Startup loop trace ===\n")
         f:close()
@@ -2198,10 +2201,10 @@ local function is_row1_interior_context()
 end
 
 local function trace_row1(event, changes, extra)
-    if not ROW1_TRACE_ENABLED or not is_row1_interior_context() then return end
+    if not TRACE.row1_enabled or not is_row1_interior_context() then return end
 
     local fields = {
-        string.format("f=%d", row1_trace_frame),
+        string.format("f=%d", TRACE.row1_frame),
         event,
         "open=" .. tostring(menu.is_open()),
         "opened=" .. tostring(changes and changes.menu_opened or false),
@@ -2224,7 +2227,7 @@ local function trace_row1(event, changes, extra)
         end
     end
 
-    local f = io.open(ROW1_TRACE_FILE, "a")
+    local f = io.open(TRACE.row1_file, "a")
     if f then
         f:write(table.concat(fields, " | ") .. "\n")
         f:close()
@@ -4487,7 +4490,7 @@ debug_tools.register_command("probe_edge", function(arg)
         debug_tools.error("probe_edge usage: probe_edge:DIR or probe_edge:X,Y,DIR")
         return
     end
-    if edge_probe_state then
+    if EDGE.probe_state then
         debug_tools.error("probe_edge: a probe is already active")
         return
     end
@@ -4518,7 +4521,7 @@ debug_tools.register_command("probe_edge", function(arg)
     local msg, start_report = log_move_report(from_x, from_y, dir)
     local delta = DIR_TO_DELTA[dir]
     local start_state = capture_edge_movement_state()
-    edge_probe_state = {
+    EDGE.probe_state = {
         map_id = snapshot.map_id,
         from_x = from_x,
         from_y = from_y,
@@ -4537,17 +4540,17 @@ debug_tools.register_command("probe_edge", function(arg)
         from_x,
         from_y,
         dir,
-        edge_probe_state.dest_x,
-        edge_probe_state.dest_y,
-        edge_probe_state.raw_hold_frames,
+        EDGE.probe_state.dest_x,
+        EDGE.probe_state.dest_y,
+        EDGE.probe_state.raw_hold_frames,
         edge_probe_moved_settle_frames()))
     log_edge_movement_state("probe_start", start_state, string.format(
         "from=(%d,%d) dir=%s dest=(%d,%d)",
         from_x,
         from_y,
         tostring(dir),
-        edge_probe_state.dest_x,
-        edge_probe_state.dest_y))
+        EDGE.probe_state.dest_x,
+        EDGE.probe_state.dest_y))
     if msg then
         tolk.output_interrupt("Edge probe started. " .. msg)
     else
@@ -4561,15 +4564,15 @@ debug_tools.register_command("probe_edge_after_raw", function(arg)
         debug_tools.error("probe_edge_after_raw usage: probe_edge_after_raw:SEED_DIR,SEED_FRAMES,WAIT_FRAMES,PROBE_DIR")
         return
     end
-    if seeded_edge_probe_state then
+    if EDGE.seeded_probe_state then
         debug_tools.error("probe_edge_after_raw: a seeded probe is already active")
         return
     end
-    if edge_probe_state then
+    if EDGE.probe_state then
         debug_tools.error("probe_edge_after_raw: wait for the active edge probe to finish")
         return
     end
-    if edge_verify_state then
+    if EDGE.verify_state then
         debug_tools.error("probe_edge_after_raw: wait for the active edge verification to finish")
         return
     end
@@ -4592,7 +4595,7 @@ debug_tools.register_command("probe_edge_after_raw", function(arg)
     end
 
     local map_id, px, py = nav.get_position()
-    seeded_edge_probe_state = {
+    EDGE.seeded_probe_state = {
         map_id = map_id,
         start_x = px,
         start_y = py,
@@ -4633,15 +4636,15 @@ debug_tools.register_command("probe_edge_after_raw_to", function(arg)
         debug_tools.error("probe_edge_after_raw_to usage: probe_edge_after_raw_to:SEED_DIR,MAX_FRAMES,TARGET_X,TARGET_Y,WAIT_FRAMES,PROBE_DIR")
         return
     end
-    if seeded_edge_probe_state then
+    if EDGE.seeded_probe_state then
         debug_tools.error("probe_edge_after_raw_to: a seeded probe is already active")
         return
     end
-    if edge_probe_state then
+    if EDGE.probe_state then
         debug_tools.error("probe_edge_after_raw_to: wait for the active edge probe to finish")
         return
     end
-    if edge_verify_state then
+    if EDGE.verify_state then
         debug_tools.error("probe_edge_after_raw_to: wait for the active edge verification to finish")
         return
     end
@@ -4664,7 +4667,7 @@ debug_tools.register_command("probe_edge_after_raw_to", function(arg)
     end
 
     local map_id, px, py = nav.get_position()
-    seeded_edge_probe_state = {
+    EDGE.seeded_probe_state = {
         map_id = map_id,
         start_x = px,
         start_y = py,
@@ -4712,11 +4715,11 @@ debug_tools.register_command("probe_edge_verify", function(arg)
         debug_tools.error("probe_edge_verify usage: probe_edge_verify:DIR[,ATTEMPTS] or probe_edge_verify:X,Y,DIR[,ATTEMPTS]")
         return
     end
-    if edge_verify_state then
+    if EDGE.verify_state then
         debug_tools.error("probe_edge_verify: verification is already active")
         return
     end
-    if edge_probe_state then
+    if EDGE.probe_state then
         debug_tools.error("probe_edge_verify: wait for the active edge probe to finish")
         return
     end
@@ -4744,7 +4747,7 @@ debug_tools.register_command("probe_edge_verify", function(arg)
         return
     end
     local delta = DIR_TO_DELTA[dir]
-    edge_verify_state = {
+    EDGE.verify_state = {
         map_id = snapshot.map_id,
         from_x = from_x,
         from_y = from_y,
@@ -4776,11 +4779,11 @@ debug_tools.register_command("probe_edge_verify", function(arg)
         from_x,
         from_y,
         dir,
-        edge_verify_state.dest_x,
-        edge_verify_state.dest_y,
+        EDGE.verify_state.dest_x,
+        EDGE.verify_state.dest_y,
         attempts,
-        EDGE_VERIFY_SETTLE_FRAMES,
-        EDGE_VERIFY_BETWEEN_SETTLE_FRAMES))
+        EDGE.VERIFY_SETTLE_FRAMES,
+        EDGE.VERIFY_BETWEEN_SETTLE_FRAMES))
     if explicit_origin and (from_x ~= px or from_y ~= py) then
         debug_tools.info(string.format(
             "EDGE_VERIFY_RELOCATE map=0x%02X current=(%d,%d) origin=(%d,%d)",
@@ -4793,7 +4796,7 @@ debug_tools.register_command("probe_edge_verify", function(arg)
 end)
 
 debug_tools.register_command("stop_probe_edge", function()
-    if not edge_probe_state then
+    if not EDGE.probe_state then
         debug_tools.error("stop_probe_edge: no active probe")
         return
     end
@@ -4802,7 +4805,7 @@ debug_tools.register_command("stop_probe_edge", function()
 end)
 
 debug_tools.register_command("stop_probe_edge_verify", function()
-    if not edge_verify_state then
+    if not EDGE.verify_state then
         debug_tools.error("stop_probe_edge_verify: no active verification")
         return
     end
@@ -5268,14 +5271,14 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
         end
         return false, "route active"
     end
-    if edge_probe_state ~= nil then
+    if EDGE.probe_state ~= nil then
         debug_tools.error("teleport_to refused: edge probe active")
         if opts.speak ~= false then
             tolk.output_interrupt("Teleport refused. Edge probe active")
         end
         return false, "edge probe active"
     end
-    if edge_verify_state ~= nil and opts.allow_edge_verify ~= true then
+    if EDGE.verify_state ~= nil and opts.allow_edge_verify ~= true then
         debug_tools.error("teleport_to refused: edge verification active")
         if opts.speak ~= false then
             tolk.output_interrupt("Teleport refused. Edge verification active")
@@ -6485,7 +6488,7 @@ end
 
 while true do
     trace_startup_loop("loop_top")
-    row1_trace_frame = frame_count
+    TRACE.row1_frame = frame_count
 
     -- Read all tracked RAM values into the snapshot table.
     -- This MUST happen before any module reads from the snapshot this frame.
