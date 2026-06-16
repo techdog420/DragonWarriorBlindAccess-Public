@@ -81,7 +81,7 @@ _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
 -- requiring them so a console reload actually picks up code changes.
 for _, mod_name in ipairs({
     "addresses", "auto_step", "battle", "chars", "config",
-    "debug_tools", "emulator_compat", "event_bus", "game_snapshot",
+    "debug_tools", "edge_flow_guard", "emulator_compat", "event_bus", "field_action_guard", "game_snapshot",
     "edge_verify_classifier",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
@@ -119,6 +119,8 @@ local event_bus = require "event_bus"      -- Pub/sub event system for module de
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
+require "edge_flow_guard" -- Shared mutually-exclusive edge probe command guard
+require "field_action_guard" -- Shared field movement/action guards
 require "edge_verify_classifier" -- Shared edge verify result classification
 local key_combo = require "key_combo"      -- Configurable key-combo helpers
 local overworld_routes = require "overworld_routes" -- Manual route guidance for the world map
@@ -1515,72 +1517,75 @@ local MER
 -- TITLE.stable below; K.TITLE_STABLE = 8 frames of stability after
 -- cursor_just_moved before announcing.
 
-get_autowalk_unavailable_reason = function()
-    if game_state.state ~= state.STATE_FIELD then
-        return "Auto-walk is only available while walking on the field"
-    end
-    if debug_tools.is_sweep_active() then
-        return "Auto-walk is unavailable during map sweep"
-    end
-    if path_debug.is_step_mode() then
-        return "Finish step mode before auto-walking"
-    end
-    if DW_QOL_STATE.command_menu_blocks_field_movement
-       and DW_QOL_STATE.command_menu_blocks_field_movement() then
-        return "Close the command menu before auto-walking"
-    end
-    if submenu_mode ~= nil then
-        return "Close the submenu before auto-walking"
-    end
-    if MER.active then
-        return "Close the merchant interface before auto-walking"
-    end
-    if PREV.dialogue ~= "" then
-        return "Wait for dialogue to finish before auto-walking"
-    end
+_G.DW_FIELD_ACTION_GUARD_STATE = function(sync_reason, opts)
+    opts = opts or {}
     if PREV.upper_active and DW_QOL_STATE.sync_stale_upper_dialogue_state then
-        DW_QOL_STATE.sync_stale_upper_dialogue_state("autowalk_guard")
+        DW_QOL_STATE.sync_stale_upper_dialogue_state(sync_reason or "field_action_guard")
     end
-    if PREV.upper_active then
-        return "Wait for the upper dialogue window to clear before auto-walking"
-    end
-    return nil
+    return {
+        is_field = game_state.state == state.STATE_FIELD,
+        sweep_active = debug_tools.is_sweep_active(),
+        step_mode = path_debug.is_step_mode(),
+        command_menu_active = DW_QOL_STATE.command_menu_blocks_field_movement
+            and DW_QOL_STATE.command_menu_blocks_field_movement() == true,
+        submenu_active = submenu_mode ~= nil,
+        yesno_active = menu.is_yesno_active and menu.is_yesno_active() == true,
+        merchant_active = MER and MER.active == true,
+        dialogue_active = PREV.dialogue ~= "",
+        upper_dialogue_active = PREV.upper_active == true,
+        survey_active = not opts.survey_safe and map_survey.is_active and map_survey.is_active() == true,
+        map_crawl_active = map_crawler.is_active and map_crawler.is_active() == true,
+        edge_probe_active = edge_probe_state ~= nil,
+        edge_verify_active = edge_verify_state ~= nil and opts.allow_edge_verify ~= true,
+        seeded_edge_probe_active = seeded_edge_probe_state ~= nil,
+        route_active = auto_step.is_route_active and auto_step.is_route_active() == true,
+    }
+end
+
+_G.DW_FIELD_ACTION_UNAVAILABLE_REASON = function(action, opts)
+    return package.loaded["field_action_guard"].reason(
+        action,
+        _G.DW_FIELD_ACTION_GUARD_STATE(action .. "_guard", opts))
+end
+
+get_autowalk_unavailable_reason = function(opts)
+    return _G.DW_FIELD_ACTION_UNAVAILABLE_REASON("auto_walk", opts)
 end
 
 get_edge_probe_unavailable_reason = function()
-    if game_state.state ~= state.STATE_FIELD then
+    local states = _G.DW_FIELD_ACTION_GUARD_STATE("edge_probe_guard")
+    if states.is_field == false then
         return "Edge probes are only available while walking on the field"
     end
-    if debug_tools.is_sweep_active() then
+    if states.sweep_active then
         return "Edge probes are unavailable during map sweep"
     end
-    if path_debug.is_step_mode() then
+    if states.step_mode then
         return "Finish step mode before probing an edge"
     end
-    if DW_QOL_STATE.command_menu_blocks_field_movement
-       and DW_QOL_STATE.command_menu_blocks_field_movement() then
+    if states.command_menu_active then
         return "Close the command menu before probing an edge"
     end
-    if submenu_mode ~= nil then
+    if states.submenu_active then
         return "Close the submenu before probing an edge"
     end
-    if MER.active then
+    if states.yesno_active then
+        return "Answer or close the prompt before probing an edge"
+    end
+    if states.merchant_active then
         return "Close the merchant interface before probing an edge"
     end
-    if PREV.dialogue ~= "" then
+    if states.dialogue_active then
         return "Wait for dialogue to finish before probing an edge"
     end
-    if PREV.upper_active and DW_QOL_STATE.sync_stale_upper_dialogue_state then
-        DW_QOL_STATE.sync_stale_upper_dialogue_state("edge_probe_guard")
-    end
-    if PREV.upper_active then
+    if states.upper_dialogue_active then
         return "Wait for the upper dialogue window to clear before probing an edge"
     end
     return nil
 end
 
-route_mgr.set_autowalk_guard(function()
-    local reason = get_autowalk_unavailable_reason()
+route_mgr.set_autowalk_guard(function(opts)
+    local reason = get_autowalk_unavailable_reason(opts)
     return reason == nil, reason
 end)
 
@@ -4487,8 +4492,13 @@ debug_tools.register_command("probe_edge", function(arg)
         debug_tools.error("probe_edge usage: probe_edge:DIR or probe_edge:X,Y,DIR")
         return
     end
-    if edge_probe_state then
-        debug_tools.error("probe_edge: a probe is already active")
+    local active_edge_flow = package.loaded["edge_flow_guard"].refusal_message("probe_edge", {
+        probe_state = edge_probe_state,
+        verify_state = edge_verify_state,
+        seeded_probe_state = seeded_edge_probe_state,
+    })
+    if active_edge_flow then
+        debug_tools.error(active_edge_flow)
         return
     end
     if from_x ~= px or from_y ~= py then
@@ -4561,16 +4571,13 @@ debug_tools.register_command("probe_edge_after_raw", function(arg)
         debug_tools.error("probe_edge_after_raw usage: probe_edge_after_raw:SEED_DIR,SEED_FRAMES,WAIT_FRAMES,PROBE_DIR")
         return
     end
-    if seeded_edge_probe_state then
-        debug_tools.error("probe_edge_after_raw: a seeded probe is already active")
-        return
-    end
-    if edge_probe_state then
-        debug_tools.error("probe_edge_after_raw: wait for the active edge probe to finish")
-        return
-    end
-    if edge_verify_state then
-        debug_tools.error("probe_edge_after_raw: wait for the active edge verification to finish")
+    local active_edge_flow = package.loaded["edge_flow_guard"].refusal_message("probe_edge_after_raw", {
+        probe_state = edge_probe_state,
+        verify_state = edge_verify_state,
+        seeded_probe_state = seeded_edge_probe_state,
+    })
+    if active_edge_flow then
+        debug_tools.error(active_edge_flow)
         return
     end
     if map_survey.is_active() then
@@ -4633,16 +4640,13 @@ debug_tools.register_command("probe_edge_after_raw_to", function(arg)
         debug_tools.error("probe_edge_after_raw_to usage: probe_edge_after_raw_to:SEED_DIR,MAX_FRAMES,TARGET_X,TARGET_Y,WAIT_FRAMES,PROBE_DIR")
         return
     end
-    if seeded_edge_probe_state then
-        debug_tools.error("probe_edge_after_raw_to: a seeded probe is already active")
-        return
-    end
-    if edge_probe_state then
-        debug_tools.error("probe_edge_after_raw_to: wait for the active edge probe to finish")
-        return
-    end
-    if edge_verify_state then
-        debug_tools.error("probe_edge_after_raw_to: wait for the active edge verification to finish")
+    local active_edge_flow = package.loaded["edge_flow_guard"].refusal_message("probe_edge_after_raw_to", {
+        probe_state = edge_probe_state,
+        verify_state = edge_verify_state,
+        seeded_probe_state = seeded_edge_probe_state,
+    })
+    if active_edge_flow then
+        debug_tools.error(active_edge_flow)
         return
     end
     if map_survey.is_active() then
@@ -4712,12 +4716,13 @@ debug_tools.register_command("probe_edge_verify", function(arg)
         debug_tools.error("probe_edge_verify usage: probe_edge_verify:DIR[,ATTEMPTS] or probe_edge_verify:X,Y,DIR[,ATTEMPTS]")
         return
     end
-    if edge_verify_state then
-        debug_tools.error("probe_edge_verify: verification is already active")
-        return
-    end
-    if edge_probe_state then
-        debug_tools.error("probe_edge_verify: wait for the active edge probe to finish")
+    local active_edge_flow = package.loaded["edge_flow_guard"].refusal_message("probe_edge_verify", {
+        probe_state = edge_probe_state,
+        verify_state = edge_verify_state,
+        seeded_probe_state = seeded_edge_probe_state,
+    })
+    if active_edge_flow then
+        debug_tools.error(active_edge_flow)
         return
     end
     if (from_x ~= px or from_y ~= py) and not explicit_origin then
@@ -5253,41 +5258,13 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
         return false, "unknown flag"
     end
 
-    local reason = get_autowalk_unavailable_reason()
+    local reason = _G.DW_FIELD_ACTION_UNAVAILABLE_REASON("teleport", opts)
     if reason then
         debug_tools.error("teleport_to refused: " .. reason)
         if opts.speak ~= false then
             tolk.output_interrupt("Teleport refused. " .. reason)
         end
         return false, reason
-    end
-    if auto_step.is_route_active() then
-        debug_tools.error("teleport_to refused: auto-walk route active")
-        if opts.speak ~= false then
-            tolk.output_interrupt("Teleport refused. Wait for auto-walk to finish")
-        end
-        return false, "route active"
-    end
-    if edge_probe_state ~= nil then
-        debug_tools.error("teleport_to refused: edge probe active")
-        if opts.speak ~= false then
-            tolk.output_interrupt("Teleport refused. Edge probe active")
-        end
-        return false, "edge probe active"
-    end
-    if edge_verify_state ~= nil and opts.allow_edge_verify ~= true then
-        debug_tools.error("teleport_to refused: edge verification active")
-        if opts.speak ~= false then
-            tolk.output_interrupt("Teleport refused. Edge verification active")
-        end
-        return false, "edge verification active"
-    end
-    if map_survey.is_active() then
-        debug_tools.error("teleport_to refused: map survey active")
-        if opts.speak ~= false then
-            tolk.output_interrupt("Teleport refused. Survey active")
-        end
-        return false, "survey active"
     end
 
     local map_id = snapshot.map_id
@@ -6513,35 +6490,7 @@ while true do
     -- teleport hotkeys refuse themselves before hotkeys.lua can neutralize the
     -- leaked game input.
     local object_hotkey_block_reason = checked_call("object_hotkey_allowance", function()
-        if game_state.state ~= state.STATE_FIELD then
-            return "Object controls unavailable right now"
-        end
-        if debug_tools.is_sweep_active() then
-            return "Object controls unavailable during map sweep"
-        end
-        if path_debug.is_step_mode() then
-            return "Finish step mode before using object controls"
-        end
-        if DW_QOL_STATE.command_menu_blocks_field_movement
-           and DW_QOL_STATE.command_menu_blocks_field_movement() then
-            return "Close the command menu first"
-        end
-        if submenu_mode ~= nil then
-            return "Close the submenu first"
-        end
-        if MER.active then
-            return "Close the merchant interface first"
-        end
-        if PREV.dialogue ~= "" then
-            return "Wait for dialogue to finish"
-        end
-        if PREV.upper_active then
-            return "Wait for the upper window to clear"
-        end
-        if auto_step.is_route_active and auto_step.is_route_active() then
-            return "Wait for movement to finish"
-        end
-        return nil
+        return _G.DW_FIELD_ACTION_UNAVAILABLE_REASON("object_controls")
     end)
     checked_scan(
         "hotkeys.update",

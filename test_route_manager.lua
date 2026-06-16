@@ -695,6 +695,26 @@ function tests.autowalk_guard_blocks_planning()
     env.restore()
 end
 
+function tests.autowalk_guard_receives_route_options()
+    local env = make_env()
+    local received_opts = nil
+    env.route_manager.set_autowalk_guard(function(opts)
+        received_opts = opts
+        return true
+    end)
+
+    local result = env.route_manager.autowalk_to_object(
+        {id = "survey_target", name = "Survey Target", type = "chest", x = 6, y = 1},
+        {speak = false, survey_safe = true})
+
+    assert_equal(result.status, "queued", "allowed guarded autowalk should still queue")
+    assert_truthy(received_opts ~= nil, "guard should receive the autowalk option table")
+    assert_equal(received_opts.survey_safe, true, "guard should see survey-safe internal route starts")
+    assert_equal(env.start_route_calls(), 1, "allowed guarded autowalk should queue route steps")
+
+    env.restore()
+end
+
 function tests.overworld_autowalk_queues_active_waypoint_segment()
     local env = make_env({
         is_overworld = true,

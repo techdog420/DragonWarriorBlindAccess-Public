@@ -185,8 +185,13 @@ Durable tooling facts:
 
 ## Emulator Strategy
 
-FCEUX is the current default gameplay runtime. BizHawk remains the explicit
-automation/debug runtime.
+FCEUX is the current default gameplay and agent-driven runtime. BizHawk remains
+the explicit automation/debug/reload/profiling runtime.
+
+Do not treat BizHawk as the default just because an agent session would benefit
+from automatic reloads. The lag still slows route/seam testing enough that
+normal live work should stay on FCEUX unless the user or task explicitly asks
+for BizHawk-only tooling.
 
 Durable BizHawk facts:
 - Explicit BizHawk launcher: `./launch_dw.sh --emulator bizhawk` or
@@ -210,10 +215,10 @@ Durable FCEUX facts:
   `D:\emulation\fceux\bin\sav\Dragon Warrior (USA) (Rev 1).sav`; the launcher
   can seed it from a raw `.sav` / `.SaveRAM` source with `--battery-save`.
 - The launcher disables FCEUX native keyboard GamePad.0 and uses the project keyboard bridge when needed
-- FCEUX command-line ROM/Lua startup is unreliable on this machine. A failed
+- FCEUX command-line ROM/Lua startup is best-effort on this machine. A failed
   readiness wait may still leave qfceux open; manually loading the ROM and
-  `main.lua` can produce a usable fallback session, but BizHawk remains the
-  dependable automated startup path.
+  `main.lua` remains the preferred recovery for normal live work. Use BizHawk
+  only when its automated startup/reload tooling is worth the lag.
 - FCEUX `SDL.AutoResume` is old-session restore. Do not force it as a polling
   fix; this repo uses explicit `--state-slot` / `--loadstate` when a launch
   should resume from a slot.
@@ -255,7 +260,8 @@ Emulator compatibility direction:
 - Preserve FCEUX globals where practical: `FCEU`, `memory`, `joypad`, `input`, `ppu`, `rom`, `AND`, and `BIT`
 - Use `launch_dw.sh` as the default WSL-to-Windows launcher; it routes to
   FCEUX unless `--emulator bizhawk` is requested
-- Keep BizHawk runnable for automated debugging and reload-heavy work
+- Keep BizHawk runnable for automated debugging and reload-heavy work, but keep
+  normal agent-driven live route work on FCEUX
 - Patch `D:\emulation\bizhawk\config.ini` only while EmuHawk is closed or
   immediately before launch. Live edits can be overwritten when BizHawk exits,
   because shutdown may write its in-memory settings back to `config.ini`.

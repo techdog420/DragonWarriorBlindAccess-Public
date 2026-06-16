@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Accessibility mod for Dragon Warrior (NES) that makes the game playable for blind and visually impaired players. Current player-facing gameplay work leans FCEUX-first; BizHawk remains the preferred automation/debug/reload-heavy runtime through the repository's emulator compatibility layer. The scripts read game state from RAM and output speech via the Tolk library or Python speech bridge to screen readers (NVDA, JAWS, Narrator).
+Accessibility mod for Dragon Warrior (NES) that makes the game playable for blind and visually impaired players. Current gameplay and agent-driven work is FCEUX-first; BizHawk remains available for explicit automation/debug/reload-heavy tasks through the repository's emulator compatibility layer, but should not be treated as the default runtime. The scripts read game state from RAM and output speech via the Tolk library or Python speech bridge to screen readers (NVDA, JAWS, Narrator).
 
 This project is modeled after the **pokemon-access** scripts (`D:\games\pokemon-access\`) which accomplish the same goal for Game Boy/GBA Pokemon titles. That codebase serves as the primary architectural reference.
 
@@ -44,7 +44,7 @@ When Claude does make implementation changes instead of review-only notes:
 ## Technology Stack
 
 - **Language**: Lua in the active emulator runtime, kept close to Lua 5.1-compatible patterns
-- **Emulator**: FCEUX Qt build (`qfceux.exe`) 2.6.6 for player-facing gameplay, BizHawk (`EmuHawk.exe`) for automation/debug/reload-heavy work
+- **Emulator**: FCEUX Qt build (`qfceux.exe`) 2.6.6 for gameplay and normal agent-driven work, BizHawk (`EmuHawk.exe`) for explicit automation/debug/reload-heavy work
 - **Speech**: Tolk wrapper with Python bridge fallback for NVDA, JAWS, or Narrator
 - **Game**: Dragon Warrior (USA) (Rev 1) — NES NROM mapper, 32KB PRG, 2KB RAM
 
@@ -85,7 +85,7 @@ To reload after editing: in BizHawk, use the Lua Console reload/open-script work
 
 - `./launch_dw.sh` is the preferred WSL entrypoint and defaults to FCEUX unless `DW_EMULATOR` overrides it.
 - FCEUX launch should show `Emulator: FCEUX` in `./launch_dw.sh --dry-run`.
-- BizHawk remains available through `./launch_dw.sh --emulator bizhawk`, `./launch_bizhawk.sh`, or `launch_bizhawk.ps1`.
+- BizHawk remains available through `./launch_dw.sh --emulator bizhawk`, `./launch_bizhawk.sh`, or `launch_bizhawk.ps1`, but use it only when the task benefits from its reload/debug tooling.
 - The current tested FCEUX player-facing baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
 - The FCEUX build accepts startup Lua loading via `--loadlua=<path>`. The spaced form `--loadlua <path>` did not reliably load scripts in local testing.
 - `SDL.AutoResume` is old-session restore, not the command-polling fix. Leave it alone and use explicit `--state-slot` / `--loadstate` when a launch slot is needed.

@@ -1647,7 +1647,7 @@ end
 
 -- set_autowalk_guard(fn): Install a main-loop-owned predicate used to veto
 -- auto-walk starts when field-state gates say movement is unsafe.
--- fn() should return (ok, reason). ok=false prevents route planning and
+-- fn(opts) should return (ok, reason). ok=false prevents route planning and
 -- speaks reason to the user.
 function M.set_autowalk_guard(fn)
     autowalk_guard = fn
@@ -3496,7 +3496,7 @@ local overworld_segment_target
 function M.autowalk_overworld_segment(opts)
     opts = opts or {}
     if autowalk_guard and not opts.skip_guard then
-        local ok, reason = autowalk_guard()
+        local ok, reason = autowalk_guard(opts)
         if ok == false then
             debug_tools.info(string.format(
                 "OVERWORLD_AUTO_WALK: event=guard_blocked reason=%s",
@@ -3717,7 +3717,7 @@ function M.autowalk_to_object(obj, opts)
         }
     end
     if autowalk_guard then
-        local ok, reason = autowalk_guard()
+        local ok, reason = autowalk_guard(opts)
         if ok == false then
             debug_tools.info(string.format(
                 "AUTO_WALK: blocked before planning for %s reason=%s",

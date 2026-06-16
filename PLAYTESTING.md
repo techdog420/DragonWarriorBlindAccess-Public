@@ -2125,7 +2125,7 @@ current BizHawk-only throttles have substantially reduced scan load during the
 king's boot dialogue.
 
 Reproduction steps:
-- Launch with `./launch_dw.sh`
+- Launch the explicit BizHawk path with `./launch_dw.sh --emulator bizhawk`
 - Continue an existing quest
 - Wait until the game proper starts
 
@@ -2468,7 +2468,7 @@ Recommended next step:
 - The narrow Brecconary exit target is now clean after the autostep timing
   patch. A full parked-NPC object survey from `(15,15)` is the next useful
   confidence check before moving on to broader playtesting.
-- Continue real early-game playtesting from the BizHawk path. Good next targets
+- Continue real early-game playtesting from the FCEUX path. Good next targets
   are combat narration, shops/inns, item/spell flows, and any remaining menu or
   dialogue polish that shows up naturally. If the post-dialogue status row
   appears again, check for `UPPER_DIALOGUE_SUPPRESS_STATUS` and
@@ -2482,13 +2482,12 @@ Recommended next step:
   hitching. Use K to speak the current selection immediately. If the short delay
   feels worse than the old behavior, set `object_nav_speech_coalesce_frames=0`
   in `dw_access.ini` and reload the script.
-- Keep the current BizHawk audio trial settings for now. Apply future config
-  patches while EmuHawk is closed; live edits can be overwritten when the
-  emulator exits.
-- Good next experiments: tune BizHawk audio buffer/throttle settings, then
-  compare one clean repro at a time with `reset_scan_stats` /
-  `report_scan_stats`, fresh `CMD_TIMING` lines, and fresh
-  `ROUTE_PLAN_TIMING` lines.
+- Keep BizHawk audio/throttle tuning as historical debug context only. Do not
+  spend normal playtesting cycles there unless a BizHawk-specific task is
+  requested.
+- If a BizHawk-specific lag experiment is requested later, compare one clean
+  repro at a time with `reset_scan_stats` / `report_scan_stats`, fresh
+  `CMD_TIMING` lines, and fresh `ROUTE_PLAN_TIMING` lines.
 - Retest manual movement overshoot in normal play. The route executor now
   clears injected D-pad after movement starts, but manual cell-jumping still
   needs the user's hands-on confirmation.

@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the current player-facing gameplay path; BizHawk remains the explicit automation/debug path because its Lua reload workflow is useful even though player-facing lag is worse.
+This repository contains a Lua-based accessibility mod for the NES game Dragon Warrior. FCEUX is the current gameplay and agent-driven runtime; BizHawk remains an explicit automation/debug path because its Lua reload workflow is useful, but its lag makes it a poor default even for agent sessions.
 
 Primary project goals:
 - Add reliable screen reader narration for gameplay systems
@@ -48,10 +48,10 @@ The project uses a command queue file and emulator polling loop.
 Important behavior:
 - Current default gameplay emulator path is
   `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
-- Explicit BizHawk automation/debug path is
+- Explicit BizHawk automation/debug/reload path is
   `D:\emulation\bizhawk\EmuHawk.exe`
 - If older handoff text, assistant-local memory, or Claude memory says BizHawk
-  is the default player-facing runtime, treat that as superseded by the
+  is the default runtime, treat that as superseded by the
   current repo docs.
 - FCEUX command-line ROM/Lua loading is best-effort on this build; if launch
   readiness fails, manually load the ROM and `main.lua` in FCEUX or use BizHawk
@@ -66,8 +66,9 @@ Important behavior:
   `SDL.ToggleMenu = 1`, blanks FCEUX Alt-based menu/fullscreen hotkeys, and has
   a recovery helper for stale Alt/menu focus
 - Preferred WSL startup path is `./launch_dw.sh`; it defaults to FCEUX for
-  normal gameplay, loads the ROM plus `main.lua`, and supports
-  `--emulator bizhawk` for the automation/debug workflow
+  normal gameplay and agent-driven debugging, loads the ROM plus `main.lua`,
+  and supports `--emulator bizhawk` only for the explicit automation/debug
+  workflow
 - `./launch_bizhawk.sh` and `launch_bizhawk.ps1` are convenience aliases for
   the explicit BizHawk path
 - `./launch_fceux.sh` and `launch_fceux.ps1` remain convenience aliases for
@@ -98,9 +99,10 @@ This means:
 
 Reload/restart rules:
 - Use `reload_config` only for `dw_access.ini` changes
-- For Lua source changes, BizHawk file-change reload can be triggered by
-  touching `main.lua` while the Lua loop is alive; follow it with
-  `launcher_probe:TAG`, `--wait-ready TAG`, or another fresh probe
+- For Lua source changes, FCEUX requires a manual script reload. BizHawk
+  file-change reload can be triggered by touching `main.lua` while the Lua loop
+  is alive; use this only when the reload workflow is worth the lag, and follow
+  it with `launcher_probe:TAG`, `--wait-ready TAG`, or another fresh probe
 - If the log is stale, the script crashed, or commands are not consumed,
   relaunch with `./launch_dw.sh` instead of queueing more commands
 - Do not patch BizHawk `config.ini` while EmuHawk is running

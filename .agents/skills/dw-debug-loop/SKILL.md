@@ -22,9 +22,10 @@ Avoid archived handoffs unless investigating old map-data decisions.
 
 ## Runtime Baseline
 
-- FCEUX is the primary gameplay emulator path.
+- FCEUX is the primary gameplay and agent-driven emulator path.
 - BizHawk is the explicit automation/debug path, especially for script reloads
-  and profiling.
+  and profiling. Do not switch normal route/seam work to BizHawk just for
+  agent convenience; the lag slows evidence gathering.
 - Use `./launch_dw.sh` for normal launch.
 - Use `./launch_dw.sh --emulator bizhawk` or `./launch_bizhawk.sh` when
   testing automation/debug behavior.
