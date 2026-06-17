@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-05-25
+Updated: 2026-06-17
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -21,6 +21,10 @@ Core goals:
 
 Current strategic direction:
 - The first decoded maps are good enough to move from map decoding toward real playtesting.
+- Garin's Grave / Grave of Garinham is complete for current playtesting needs
+  as of 2026-06-17. The Silver Harp route, Cursed Belt route, B1 entrance
+  route, B2 northwest-side escape, and B3/B4 stair pockets are stable enough
+  to stop broad blocker hunting unless fresh gameplay exposes a route failure.
 - Prefer service-grade routing over perfect map completion. Prioritize viable
   paths to merchants, inns, exits, stairs, locked doors, chests, and other
   essential services. Leave unreachable dialogue-only NPCs for polish unless
@@ -111,6 +115,11 @@ edge. Current policy:
   directionally.
 - Runtime blockers are added only by explicit commands such as
   `add_blocked_tile` or `add_blocked_edge`.
+- For local-map cleanup where teleport makes the engine cranky,
+  `auto_walk_blocker` is the preferred manual blocker-hunt command. It runs the
+  normal auto-walk route, retries timing-suspect seams, then stops at the first
+  confirmed blocked queued step and reports the matching `add_blocked_edge`
+  command without applying it automatically.
 - `dw_blocks.log` is legacy/forensic and is ignored unless
   `auto_step_record_debug_blocks=true`.
 - Blocked-only seam memory is diagnostic-only; reroute may temporarily avoid

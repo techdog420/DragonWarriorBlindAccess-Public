@@ -1,93 +1,67 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-15
+Updated: 2026-06-17
 
-## Current Emulator Note
+## Current State
 
-- FCEUX is the normal gameplay and agent-driven runtime again. BizHawk is
-  opt-in for explicit automation/debug/reload/profiling tasks only.
-- Use `./launch_dw.sh` for normal work. Use `./launch_dw.sh --emulator bizhawk`
-  only when the task specifically benefits from BizHawk's reload/debug tooling.
-- FCEUX source changes still require a manual Lua reload before live
-  verification.
+- Garin's Grave / Grave of Garinham route decoding is complete for current
+  playtesting needs.
+- The detailed final Garin's Grave wrap-up was archived to
+  `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_wrapup_full.md`.
+- The detailed scratchpad evidence was archived to
+  `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_scratchpad.md`.
+- FCEUX remains the normal gameplay and agent-driven runtime for this repo.
+  BizHawk is still useful for explicit automation/debug/reload/profiling work,
+  but it is not the default route-testing runtime.
 
-## Active Work
+## Garin's Grave Result
 
-- Active map task is Garin's Grave / Grave of Garinham route decoding.
-- The Silver Harp route is stable enough for current playtesting.
-- Current unresolved gameplay target is the west chest / likely Cursed Belt on
-  B3 at `(1,1)`.
+- The Silver Harp route is stable both directions from the lower-stair side.
+- The Cursed Belt route is solved: from B3 `Northwest Stairs Up`, the route to
+  the west chest uses the top-edge false-boundary cells, left-edge strip, and
+  chest-side false-wall cells; the return/escape route is also modeled.
+- The player has opened the west chest and confirmed the Cursed Belt.
+- The B1 entrance-to-down-stairs route and return route have been manually
+  validated after the final blocker patches.
+- The B2 northwest-side escape back to `Stairs Up` has been live-validated via
+  the left-edge false-boundary strip and bottom/right corridor.
+- The false reachable-object routes from the B3 northwest component are pruned;
+  the expected reachable objects there are the opened chest and local
+  `Northwest Stairs Up`.
+- B3 lower-stair / Silver Harp side, B3 northeast and southeast pockets, and
+  the B4 connector are closed enough for normal play.
 
-## Current Durable Finding
+## Final Tooling / Cleanup Notes
 
-- User manually found a real B3 false blocker at `10,0 west`.
-- Root cause was generic dungeon-edge walkability, not a directional blocker:
-  B3 top-row cells `(9,0)` and `(10,0)` are standable and bidirectionally
-  passable.
-- `map_reader.lua` now scopes B3 passthroughs for `(9,0)` and `(10,0)`.
-- Static coverage confirms both cells report passthrough walkability and that
-  pathfinding from `(10,0)` to west chest `(1,1)` succeeds.
-- This supersedes the earlier "B3 Northwest Stairs Up pocket is local stair
-  only" conclusion for the Cursed Belt question.
+- `auto_walk_blocker` / `auto_walk_blocker:X,Y` now run normal local-map
+  autowalk in first-blocker mode. They stop at the first confirmed blocked
+  queued step, log `AUTO_WALK_BLOCKER_FOUND`, speak/report the failed edge, and
+  print the matching `add_blocked_edge:X,Y,DIR` runtime-patch suggestion.
+- Timing-suspect movement-start timeouts run the normal seam retry before
+  being reported as patchable blockers, which keeps timing noise out of
+  permanent map data.
+- Movement-changing field actions now refuse while command menus, prompts,
+  dialogue, active routes, or probe/survey/crawl flows can consume input.
+- A CodeRabbit review found one test-harness cleanup issue in
+  `test_map_reader.lua`; the B2 pathfinder test now restores module/env state
+  through a finally-style helper even if an assertion fails.
 
-## Route Status
+## Durable References
 
-- B2 from `Stairs Up` `(11,2)`:
-  - reachable: `Stairs Up`, `Northeast Stairs Down`, `Southeast Stairs Down`,
-    `Southwest Stairs Down`
-  - closed by current permanent model: `Northwest Stairs Down` `(1,1)` and
-    `Central Stairs Down` `(5,6)`
-- B3 southeast-stair component:
-  - west chest `(1,1)` remains closed from this component
-  - reachable-object filter reports only local `Southeast Stairs Up`
-- B3 northeast-stair and southeast/up pockets:
-  - false remote-object routes are pruned; each reports only the local return
-    stair after reload checks
-- B3 lower-stair / Silver Harp side:
-  - route to Silver Harp chest `(13,6)` and return to `Lower Stairs Down`
-    `(10,9)` are stable under live FCEUX movement
-- B4 connector:
-  - west/east stair connector remains stable both directions
+- Current gameplay notes: `PLAYTESTING.md`
+- Durable project lessons: `PROJECT_MEMORY.md`
+- Garin's Grave map reference: `project_resources/maps/garins_grave/README.md`
+- Archived full handoff:
+  `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_wrapup_full.md`
+- Archived scratchpad:
+  `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_scratchpad.md`
 
-## Recent Cleanup
+## Next Work
 
-- `edge_flow_guard.lua` now centralizes mutually-exclusive edge-flow command
-  guards.
-- `probe_edge`, `probe_edge_verify`, `probe_edge_after_raw`, and
-  `probe_edge_after_raw_to` refuse while any edge probe/verifier/seeded probe
-  state is active.
-- Regression coverage: `test_edge_flow_guard.lua`; registered in
-  `run_tests.py`.
-- `field_action_guard.lua` now centralizes field-action refusal reasons for
-  auto-walk, teleport, and object hotkey gating.
-- Movement-changing actions refuse instead of auto-closing UI while command
-  menu, submenu, Yes/No prompt, merchant UI, dialogue, upper dialogue,
-  survey/crawl/edge flows, or an active route can consume input. Survey-safe
-  internal auto-walks keep their explicit escape hatch.
-- Manual FCEUX verification was confirmed in `dw_debug.log`: command-menu and
-  dialogue states blocked auto-walk and teleport hotkeys, and normal actions
-  resumed after the UI cleared.
-- Regression coverage: `test_field_action_guard.lua` plus
-  `test_route_manager.lua` guard-option coverage; registered in
-  `run_tests.py`.
-- Verification from the cleanup pass:
-  - `lua5.1 test_edge_flow_guard.lua`: passed 4 tests
-  - `lua5.1 test_field_action_guard.lua`: passed 5 tests
-  - `lua5.1 test_route_manager.lua`: passed 96 tests
-  - `lua5.1 test_hotkeys.lua`: passed 27 tests
-  - `luac5.1 -p main.lua route_manager.lua field_action_guard.lua
-    test_field_action_guard.lua`: passed
-  - `python3 run_tests.py --allow-missing-speech-dep`: passed with the known
-    WSL speech-dependency warning
-
-## Next Live Steps
-
-1. Manually reload Lua in FCEUX.
-2. From the B3 NW/top-row side, verify the final passthrough patch live:
-   - `debug_pathfind_to:1,1`
-   - `pathability_filter:reachable`
-   - `current_object`
-3. If the path to `(1,1)` opens, follow it and confirm whether the chest is the
-   Cursed Belt.
-4. If live movement exposes another blocker, continue the normal-walked
-   same-origin evidence loop before promoting permanent map data.
+1. Resume normal gameplay/playtesting from the post-Garin's Grave state.
+2. Pick the next practical playability/QoL issue or the next gameplay-exposed
+   route failure instead of continuing broad Garin's Grave blocker hunting.
+3. If future work touches live FCEUX after source edits, manually reload
+   `main.lua` before judging live behavior.
+4. If a new dungeon/floor becomes the active target, start with external map
+   orientation, then use live movement evidence before permanent map edits.
