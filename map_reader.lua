@@ -928,16 +928,52 @@ local MAP_PASSTHROUGH_CELLS = {
         ["13,0"] = true,
     },
 
+    -- Map 0x19: Garin's Grave B2 northwest escape strip.
+    -- The B3 west chest return route comes back to the B2 northwest landing.
+    -- Live FCEUX movement on 2026-06-16 first proved `(1,2)->LEFT` enters
+    -- decoded boundary cell `(0,2)` and the strip continues down through
+    -- `(0,11)`. A follow-up from the stair cell proved `(1,1)<->(0,1)` and
+    -- `(0,1)->DOWN` into `(0,2)` too. `(0,11)->RIGHT` exits to `(1,11)`, while
+    -- `(0,11)->DOWN` is blocked/out of bounds. Keep this to the direct escape
+    -- cells; unrelated B2 stair-hub reachability should still be proven route
+    -- by route.
+    [0x19] = {
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["0,7"] = true,
+        ["0,8"] = true,
+        ["0,9"] = true,
+        ["0,10"] = true,
+        ["0,11"] = true,
+    },
+
     -- Map 0x1A: Garin's Grave B3 hidden bridge/top-edge cells.
     -- The Silver Harp escape frontier found `(4,13)->DOWN` as the only
     -- hidden bridge candidate; direct verifier moved into `(4,14)` 6/6, and
     -- a raw follow-up tap continued south to `(4,15)`.
-    -- The west chest / likely Cursed Belt return route later proved the
-    -- top-row `(9,0)<->(10,0)` seam is standable and bidirectionally passable:
-    -- `(9,0)->RIGHT` reached `(10,0)` twice, and `(10,0)->LEFT` reached
-    -- `(9,0)`. Keep the override scoped to the live-proven cells.
+    -- The west chest / likely Cursed Belt return route later proved two
+    -- false-wall seams: the top-row `(8,0)->(9,0)->(10,0)` seam is standable,
+    -- the west chest side can enter decoded-wall cells `(1,2)` and `(2,2)`,
+    -- and the later return-route dig proved the left-edge strip `(0,2)`
+    -- through `(0,6)` can be occupied even though the generic dungeon-edge
+    -- rule marks x=0 as an engine boundary. The `(1,2)`/`(2,2)` pocket's south
+    -- exits and the left-edge strip's east exits are modeled directionally
+    -- below.
+    -- Keep the override scoped to the live-proven cells.
     [0x1A] = {
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["1,2"] = true,
+        ["2,2"] = true,
         ["4,14"] = true,
+        ["8,0"] = true,
         ["9,0"] = true,
         ["10,0"] = true,
     },
@@ -2665,7 +2701,15 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["16,5"] = {east = true, west = true},
         ["16,6"] = {east = true, south = true, west = true},
         ["17,1"] = {south = true},
-        ["17,8"] = {north = true},
+        -- 2026-06-16 entrance/stair cleanup also superseded older mixed
+        -- `(16,9).east` evidence: two clean same-origin `probe_edge:LEFT`
+        -- checks from normally reached `(17,9)` blocked into `(16,9)`.
+        -- Pulling the current runtime overlay before the next reload also
+        -- promoted the first down-stair route polish blocks at
+        -- `(17,9)->UP` into `(17,8)` and `(18,7)->DOWN` into `(18,8)`.
+        ["16,9"] = {east = true},
+        ["17,8"] = {north = true, south = true},
+        ["18,8"] = {north = true},
         -- A later B2-stairs autowalk tried the `(3,7)` south/east exits.
         -- Direct verifiers confirmed `(4,7).west` blocked 8/8 and, after a
         -- mixed first check plus validator abort, `(3,8).north` blocked 15/15.
@@ -2753,8 +2797,14 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- side then confirmed the southward false entries into the same upper
         -- lane: `(10,7)->DOWN`, `(11,7)->DOWN`, `(12,7)->DOWN`,
         -- `(13,7)->DOWN`, and `(15,8)->LEFT` all blocked cleanly under direct
-        -- 15-attempt verifiers. Keep the reverse row-7 south-approach mirrors
-        -- runtime-only until direct probes from below confirm them.
+        -- 15-attempt verifiers. The later `auto_walk_blocker` cleanup
+        -- confirmed `(16,7)->DOWN` into `(16,8)` with route evidence plus two
+        -- current-position same-origin probes, while still leaving unrelated
+        -- row-7 mirrors runtime-only until direct probes from below confirm
+        -- them.
+        -- Pulling the current 2026-06-16 runtime overlay before the next
+        -- reload also promoted the route-polish blocks at `(7,9)->DOWN` into
+        -- `(7,10)` and `(19,11)->DOWN` into `(19,12)`.
         -- A later 2026-05-29 recheck in a clean no-runtime-block state
         -- disproved the provisional west-entry reopening entirely:
         -- `validate_path` from `(6,11)` aborted at `(4,14)->RIGHT`, and
@@ -2766,13 +2816,22 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- southeast shelf after the B1 door confirmation. Direct
         -- `probe_edge_verify:17,17,LEFT,5` confirmed `(16,17).east` blocked
         -- 5/5 with no drift or interruptions. The sibling lower-lane face at
-        -- `(17,18)->DOWN` into `(17,19)` only stayed blocked 4/5, so keep
-        -- `(17,19).north` unmodeled for now.
+        -- `(17,18)->DOWN` into `(17,19)` was mixed in that pass, but the
+        -- 2026-06-16 `auto_walk_blocker` cleanup normally walked back to
+        -- `(17,18)` and blocked two fresh same-origin `probe_edge:DOWN`
+        -- checks, promoting `(17,19).north`. A compact
+        -- `auto_walk_blocker:17,19` follow-up then found the east approach
+        -- from `(18,19)->LEFT`, and two same-origin probes confirmed that
+        -- face too. One final replanned `auto_walk_blocker:17,19` exposed
+        -- the west approach from `(16,19)->RIGHT`, which also blocked under
+        -- repeated same-origin probes.
         -- 2026-06-05 Silver Harp escape route from the B1 lower pocket:
         -- direct verifiers confirmed `(5,19)->UP` and `(6,19)->UP` blocked
-        -- 5/5, while `(3,17)->RIGHT` into `(4,17)` moved 6/6 and reopened
-        -- the prior stale west approach.
-        ["4,17"] = {east = true},
+        -- 5/5. A later 2026-06-16 entrance/stair route cleanup superseded
+        -- the old `(3,17)->RIGHT` passable note: normal-walked route evidence
+        -- and repeated same-origin probes both blocked entry into `(4,17)`
+        -- from the west, closing the false short return route.
+        ["4,17"] = {east = true, west = true},
         ["4,18"] = {south = true, west = true},
         ["5,14"] = {east = true, west = true},
         ["5,15"] = {west = true},
@@ -2787,7 +2846,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,15"] = {north = true, south = true},
         ["7,17"] = {east = true, north = true, west = true},
         ["7,18"] = {south = true},
-        ["7,10"] = {south = true},
+        ["7,10"] = {north = true, south = true},
         ["7,8"] = {north = true},
         ["8,13"] = {east = true, north = true, south = true},
         ["8,15"] = {north = true, south = true},
@@ -2850,6 +2909,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["15,18"] = {east = true, south = true, west = true},
         ["15,14"] = {north = true, south = true},
         ["15,17"] = {north = true},
+        ["16,8"] = {north = true},
         ["16,11"] = {north = true, west = true},
         ["16,12"] = {south = true, west = true},
         ["16,14"] = {north = true},
@@ -2859,10 +2919,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["17,12"] = {east = true},
         ["17,13"] = {east = true, west = true},
         ["17,14"] = {south = true},
+        ["17,19"] = {east = true, north = true, west = true},
         ["18,14"] = {east = true, north = true},
         ["18,15"] = {east = true, south = true, west = true},
         ["18,17"] = {north = true, south = true},
-        ["19,12"] = {south = true},
+        ["19,12"] = {north = true, south = true},
         ["19,17"] = {north = true, south = true},
         -- User/manual route polishing later confirmed the lower-middle seams
         -- around `(8,10)` and `(10,9)` with clean 8/8 direct verifiers.
@@ -2888,23 +2949,28 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- Post-reload direct verifier pass on the southwest-stair return route
         -- confirmed the left-edge false entries into `(2,3)` through `(2,7)`.
         -- Adjacent vertical suspects `(1,2).south` and `(1,9).north` stayed
-        -- mixed, so only the clean west-approach strip was modeled here at
-        -- first. A later safe false-setting route pass then direct-verified
-        -- the reverse faces too: `(3,4)->LEFT`, `(3,7)->LEFT`, and
-        -- `(3,8)->LEFT` each blocked 5/5 under same-origin `probe_edge_verify`.
+        -- mixed at first, so only the clean west-approach strip was modeled
+        -- here initially. A later safe false-setting route pass then
+        -- direct-verified the reverse faces too: `(3,4)->LEFT`,
+        -- `(3,7)->LEFT`, and `(3,8)->LEFT` each blocked 5/5 under
+        -- same-origin `probe_edge_verify`.
         -- The next live return pass filled the remaining west-pocket seam and
         -- upper lip band: `(3,5)->LEFT` and `(3,4..8,4)->UP` confirmed
         -- `(2,5).east`, `(3,3).south`, `(4,3).south`, `(5,3).south`,
         -- `(6,3).south`, and `(7,3).south` blocked 5/5.
-        ["2,3"] = {west = true},
         ["2,4"] = {east = true, west = true},
         ["2,5"] = {east = true, west = true},
         ["2,6"] = {east = true, west = true},
         ["2,7"] = {east = true, west = true},
-        ["2,8"] = {east = true},
-        ["1,2"] = {east = true},
-        ["2,1"] = {east = true, south = true},
-        ["2,2"] = {east = true},
+        -- The 2026-06-16 west-chest escape-route cleanup proved the earlier
+        -- mixed faces from normal play: `(1,3)->UP`, `(1,1)->DOWN`,
+        -- `(1,1)->RIGHT`, `(1,2)->RIGHT`, `(1,8)->RIGHT`, and `(1,8)->DOWN`
+        -- all blocked under same-origin probes while the left-edge strip
+        -- provided the real return path.
+        ["2,8"] = {east = true, west = true},
+        ["1,2"] = {east = true, north = true, south = true},
+        ["2,1"] = {east = true, south = true, west = true},
+        ["2,2"] = {east = true, west = true},
         ["2,3"] = {north = true, west = true},
         ["3,3"] = {north = true, south = true},
         ["4,1"] = {south = true, west = true},
@@ -2930,9 +2996,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- is modeled as another directional seam even though the repeated
         -- verifier from `(6,8)` stayed teleport-artifact mixed. A later
         -- southwest-stair follow-up then direct-verified `(1,10)->UP` into
-        -- `(1,9)` blocked 5/5 from the same start, so `(1,9).south` is now
-        -- modeled too.
-        ["1,9"] = {south = true},
+        -- `(1,9)` blocked 5/5 from the same start, so `(1,9).south` was
+        -- modeled too. The later B2 west-chest escape cleanup also proved
+        -- `(1,8)->DOWN` into `(1,9)` blocked from the north, and the follow-up
+        -- same-origin route probe from `(0,9)->RIGHT` proved `(1,9).west`.
+        ["1,9"] = {north = true, south = true, west = true},
         ["3,9"] = {north = true, south = true},
         ["4,9"] = {north = true, south = true},
         ["5,9"] = {north = true, east = true, south = true},
@@ -3142,14 +3210,43 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- space. Every entry below from the y=18/19 bottom-row strip and the
         -- southeast rows 12-18 comes from live same-origin `probe_edge`
         -- confirmation after battle/menu interruptions were cleared.
-        -- Keep mixed seams like
-        -- `(5,15).west` unmodeled until they settle under direct verification.
-        ["9,1"] = {east = true},
+        -- The 2026-06-15 Cursed Belt search then superseded the old mixed
+        -- `(5,15).west` note with clean same-origin probes from the accessible
+        -- southwest side. It promoted the west-chest approach at `(3,1).west`,
+        -- the sealed `(5,15)` pocket, and the remaining row-14/16/18 runtime
+        -- closures that made `debug_route_frontier:1,1,100` report no hidden
+        -- bridge candidates from the current component.
+        -- The 2026-06-16 NW/top-row rerun kept the `(9,0)<->(10,0)`
+        -- passthrough, but closed the false Cursed Belt route exposed by that
+        -- passthrough: same-origin probes blocked `(14,1)->LEFT`,
+        -- `(9,0)->DOWN`, and the remaining hidden candidate `(10,2)->LEFT`.
+        -- The follow-up chest-side dig proved `(1,2)` and `(2,2)` are
+        -- standable false-wall cells, but their south exits into `(1,3)` and
+        -- `(2,3)` block under repeated same-origin probes. The return-route
+        -- cleanup then closed the east exits from the left-edge strip, the
+        -- false row-1 shortcuts through `(3,1)`/`(9,1)`/`(11,1)`, and the
+        -- lower-left detours the live route used before it found the real
+        -- west-edge entry.
+        -- The follow-up object-pruning dig from `Northwest Stairs Up` found
+        -- the false reachable routes to `Upper Stairs Down`, `Southeast
+        -- Stairs Up`, and `Southwest Stairs Up` all collapse behind two
+        -- normally walked same-origin probes: `(5,1)->DOWN` into `(5,2)` and
+        -- `(1,6)->DOWN` into `(1,7)`.
+        ["3,1"] = {east = true, west = true},
+        ["9,1"] = {east = true, north = true, west = true},
+        ["11,1"] = {west = true},
+        ["13,1"] = {east = true},
         ["16,1"] = {east = true, west = true},
-        ["5,2"] = {west = true},
+        ["5,2"] = {north = true, west = true},
         ["6,2"] = {north = true, south = true},
         ["8,2"] = {south = true},
+        ["9,2"] = {east = true},
         ["16,2"] = {east = true, west = true},
+        ["1,3"] = {north = true, west = true},
+        ["2,3"] = {north = true, south = true},
+        ["3,3"] = {east = true},
+        ["1,4"] = {east = true, west = true},
+        ["1,5"] = {east = true, south = true, west = true},
         ["5,3"] = {east = true, west = true},
         ["7,3"] = {south = true, east = true, west = true},
         ["9,3"] = {south = true, west = true},
@@ -3182,6 +3279,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["9,6"] = {north = true},
         ["10,6"] = {east = true, west = true},
         ["18,6"] = {east = true, west = true},
+        ["1,7"] = {north = true},
         ["2,7"] = {north = true, south = true},
         ["3,7"] = {east = true, west = true},
         ["5,7"] = {north = true, west = true},
@@ -3240,16 +3338,22 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["10,13"] = {east = true, west = true},
         ["17,13"] = {east = true},
         ["1,14"] = {east = true},
+        ["5,14"] = {west = true},
+        ["8,14"] = {east = true, north = true, west = true},
         ["10,14"] = {east = true, west = true},
         ["17,14"] = {south = true},
         ["18,14"] = {east = true, south = true},
         ["2,15"] = {north = true, south = true, east = true},
-        ["8,15"] = {east = true},
+        ["5,15"] = {east = true, west = true},
+        ["8,15"] = {east = true, west = true},
         ["10,15"] = {east = true, west = true},
         ["16,15"] = {east = true},
         ["1,16"] = {east = true},
-        ["4,16"] = {west = true},
-        ["8,16"] = {east = true},
+        ["4,16"] = {north = true, south = true, west = true},
+        ["5,16"] = {south = true},
+        ["6,16"] = {north = true, south = true},
+        ["7,16"] = {north = true, south = true},
+        ["8,16"] = {east = true, south = true},
         ["10,16"] = {west = true},
         ["11,16"] = {north = true, south = true},
         ["12,16"] = {north = true, south = true},
@@ -3266,8 +3370,8 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["3,18"] = {north = true, south = true},
         ["4,18"] = {north = true, south = true},
         ["5,18"] = {north = true, south = true},
-        ["6,18"] = {south = true},
-        ["8,18"] = {south = true},
+        ["6,18"] = {north = true, south = true},
+        ["8,18"] = {north = true, south = true},
         ["9,18"] = {north = true, south = true},
         ["10,18"] = {south = true},
         ["11,18"] = {north = true, south = true},

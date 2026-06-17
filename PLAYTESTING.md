@@ -1,21 +1,110 @@
 # Playtesting Notes
 
-Updated: 2026-06-07
+Updated: 2026-06-17
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Garin's Grave wrap-up (`2026-06-17`): major route-decoding work for this
+  dungeon is complete for current playtesting needs. The player manually
+  validated the final B1 entrance/down-stairs route and the B2/B3 escape routes
+  after the latest blocker patches. The Silver Harp path, Cursed Belt path,
+  Cursed Belt return/escape, B1 entrance route, B2 northwest-side escape to
+  `Stairs Up`, and B3/B4 stair pockets are stable enough to stop broad blocker
+  hunting in this dungeon. Remaining Garin's Grave work should be driven by a
+  fresh gameplay failure or by optional item/content polish, not by speculative
+  route cleanup.
+
+- Garin's Grave B1 entrance/stair route cleanup (`2026-06-16`): live FCEUX
+  round-tripped between the dungeon entrance / `Stairs to Garinham` `(6,11)`
+  and `Stairs Down` `(1,18)`. The forward route reached `(1,18)` with
+  `RUNTIME_BLOCKS none`; the return route reached `(6,11)` after battle
+  interruptions and timing retries were cleared. The route-derived false
+  shortcut `(3,17)->RIGHT` was then rechecked from a normally walked origin and
+  blocked twice under same-origin `probe_edge`, so `(4,17).west` is now
+  patched in `map_reader.lua`. A follow-up from normally reached `(17,9)`
+  blocked `(17,9)->LEFT` into `(16,9)` twice, superseding older mixed evidence
+  and promoting `(16,9).east` as well. Pulling the remaining live runtime
+  overlay before reload promoted `(17,8).south`, `(18,8).north`,
+  `(7,10).north`, and `(19,12).north`. Follow-up `auto_walk_blocker` cleanup
+  confirmed `(16,7)->DOWN` into `(16,8)` and normally reached
+  `(17,18)->DOWN` into `(17,19)` as blocked under repeated same-origin probes,
+  then found and confirmed the east/west entries `(18,19)->LEFT` and
+  `(16,19)->RIGHT` into `(17,19)` the same way. `(16,8).north` and
+  `(17,19).north/east/west` are now patched. Noisy `(18,8).south` remains
+  unpromoted.
+
+- Garin's Grave B3 NW object cleanup after Cursed Belt (`2026-06-16`): after
+  the player claimed the Cursed Belt, the reachable-object filter from the
+  `Northwest Stairs Up` component still showed false routes to `Upper Stairs
+  Down` `(9,5)`, `Southeast Stairs Up` `(18,13)`, and `Southwest Stairs Up`
+  `(2,17)`. Live FCEUX auto-walk plus same-origin probes confirmed
+  `(5,1)->DOWN` blocks into `(5,2)` and `(1,6)->DOWN` blocks into `(1,7)`.
+  With those runtime blockers active, all three stair targets returned
+  `No path found`, and the reachable filter reported only the opened chest and
+  local `Northwest Stairs Up`. These blockers are patched as `(5,2).north` and
+  `(1,7).north`; reload Lua before judging the live planner without runtime
+  overlays.
+
+- Garin's Grave B2 west-chest escape route (`2026-06-16`): after returning
+  from the B3 west chest path to the B2 northwest side, live FCEUX movement
+  found the escape back to `Stairs Up` `(11,2)`. The route from
+  `Northwest Stairs Down` `(1,1)` can step left into false-boundary cell
+  `(0,1)`, continue down the left-edge strip through `(0,11)`, exit right to
+  `(1,11)`, then use the bottom/right corridor to reach `(11,2)`. Same-origin
+  probes also closed false shortcuts at `(1,2).north/south`, `(2,1).west`,
+  `(2,2).west`, `(2,8).west`, `(1,9).north`, and `(1,9).west`; the last one
+  prevents the planner from trying the blocked `(0,9)->RIGHT` shortcut. These
+  B2 cells are now patched in `map_reader.lua`; reload Lua before judging the
+  live planner against the cleaned model. The reverse route from B2 `Stairs Up`
+  back toward `Northwest Stairs Down` is not yet live-proven and should be
+  checked separately if object navigation exposes it.
+
+- Garin's Grave B3 west chest / likely Cursed Belt route (`2026-06-16`): after
+  manual Lua reload cleared runtime blocks, live FCEUX validation reached west
+  chest `(1,1)` from `Northwest Stairs Up` `(14,1)` and returned back to the
+  NW stair. The route uses the top-edge false-boundary cells `(8,0)`,
+  `(9,0)`, and `(10,0)`, the left-edge strip `(0,2)` through `(0,6)`, and the
+  chest-side false-wall cells `(1,2)` and `(2,2)`. Clean same-origin probes
+  closed the false shortcuts exposed during validation: `(3,1).east`,
+  `(1,3).west`, `(2,3).south`, `(3,3).east`, `(1,4).east/west`,
+  `(1,5).east/south/west`, `(9,1).west`, and `(11,1).west`. These latest
+  shortcut closures are now in `map_reader.lua`; reload once more before
+  judging the live planner against the cleaned permanent model. The player has
+  since opened the chest and confirmed the Cursed Belt.
+
+- Garin's Grave B3 west chest / likely Cursed Belt NW/top-row closure
+  (`2026-06-16`): historical intermediate note, now superseded by the validated
+  NW-to-chest route above. Follow-up live FCEUX probes preserved the useful
+  top-row finding but closed one false direct route. `(9,0)<->(10,0)` remains
+  standable and bidirectionally passable, while clean same-origin probes
+  blocked `(14,1)->LEFT`, `(9,0)->DOWN`, and `(10,2)->LEFT`, modeled as
+  `(13,1).east`, `(9,1).north`, and `(9,2).east`. The later `(8,0)` plus
+  left-edge strip route is the working approach.
+
+- Garin's Grave B3 west chest / likely Cursed Belt southwest-side closure
+  (`2026-06-15`): the latest live pass from the current B3 component promoted
+  all same-origin probe-verified runtime blockers into the permanent model:
+  `(3,1).west`, `(5,14).west`, `(5,15).east/west`,
+  `(8,14).east/north/west`, `(8,15).west`, `(4,16).north/south`,
+  `(5,16).south`, `(6,16).north/south`, `(7,16).north/south`,
+  `(8,16).south`, `(6,18).north`, and `(8,18).north`. With the equivalent
+  runtime overlay active, `debug_route_frontier:1,1,100` reported
+  `target_reachable=false` and `hidden_bridge_candidates=0`; follow-up probes
+  verified the top-ranked remaining candidates were already-modeled blockers.
+  After manual FCEUX Lua reload, rerun the frontier/pathfind checks without
+  runtime overlay data before continuing with the remaining same-origin probe
+  candidates.
+
 - Garin's Grave B3 west chest / likely Cursed Belt top-edge route
   (`2026-06-07`): the previous NW-side "local stair only" conclusion was
-  superseded by a live false-boundary find at `10,0 west`. Manual movement and
-  log evidence showed `(9,0)<->(10,0)` is standable and bidirectionally
-  passable, while the planner had treated the top row as blocked by the generic
-  dungeon-edge rule. The permanent model now marks B3 `(9,0)` and `(10,0)` as
-  scoped passthrough cells, and the regression test confirms pathfinding from
-  `(10,0)` to the west chest `(1,1)` succeeds. After manual FCEUX Lua reload,
-  recheck `debug_pathfind_to:1,1` from the NW/top-row side and then refresh the
-  reachable-object filter.
+  partially superseded by a live false-boundary find at `10,0 west`. Manual
+  movement and log evidence showed `(9,0)<->(10,0)` is standable and
+  bidirectionally passable, while the planner had treated the top row as
+  blocked by the generic dungeon-edge rule. A 2026-06-16 intermediate rerun
+  proved that seam alone was not enough; the later validated route adds
+  `(8,0)` and the left-edge strip to reach west chest `(1,1)`.
 
 - Garin's Grave B3 west chest / likely Cursed Belt from NW side (`2026-06-07`):
   historical note now superseded by the top-edge passthrough finding above.

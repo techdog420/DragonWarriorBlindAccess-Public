@@ -1,6 +1,6 @@
 # Garin's Grave Map Reference
 
-Updated: 2026-06-07
+Updated: 2026-06-17
 
 This folder stores orientation notes for Grave of Garinham / Garin's Grave.
 Guide data is for route-shape orientation only; live FCEUX movement remains the
@@ -29,7 +29,9 @@ source of truth for map data.
 
 ## Live Anchors
 
-- Current live map is `0x18` / Garin's Grave B1.
+- Garin's Grave route decoding wrapped on 2026-06-17. Treat this dungeon as
+  complete for current playtesting unless a fresh gameplay failure appears.
+- Entry live map is `0x18` / Garin's Grave B1.
 - Live FCEUX position after entering from Garinham is `(6,11)`.
 - Using STAIRS from `(6,11)` returns to Garinham `(19,0)`.
 - The old `Exit to World Map` object at `(0,0)` was stale and has been removed.
@@ -40,6 +42,20 @@ source of truth for map data.
   north past it can leave the map: `(11,0)` produced SEARCH text saying there
   is a treasure box, `(12,0)` also produced the treasure-box SEARCH text, and
   `(13,0)` held stable through a forced-teleport guard.
+- 2026-06-16 B1 entrance route cleanup: live FCEUX movement round-tripped
+  between `Stairs to Garinham` `(6,11)` and `Stairs Down` `(1,18)`. The false
+  short return route through `(3,17)->RIGHT` blocked twice under same-origin
+  probes from a normally walked origin, so `(4,17).west` is permanent map data.
+  A follow-up at normally reached `(17,9)` blocked `(17,9)->LEFT` into
+  `(16,9)` twice, so `(16,9).east` is also permanent map data. Pulling the
+  remaining live runtime overlay before reload promoted `(17,8).south`,
+  `(18,8).north`, `(7,10).north`, and `(19,12).north`. Follow-up
+  `auto_walk_blocker` cleanup confirmed `(16,7)->DOWN` into `(16,8)` and
+  normally reached `(17,18)->DOWN` into `(17,19)` as blocked under repeated
+  same-origin probes, then found and confirmed the east/west entries
+  `(18,19)->LEFT` and `(16,19)->RIGHT` into `(17,19)` the same way.
+  `(16,8).north` and `(17,19).north/east/west` are now permanent map data.
+  Noisy `(18,8).south` is still unpromoted.
 
 ## Guide Orientation For B1
 
@@ -61,7 +77,7 @@ source of truth for map data.
 
 - B2 is a stair hub rather than a full maze floor.
 - Local ROM stair tables plus the Realm of Darkness composite map agree that
-  B2 is a `13x11` floor with six stair cells:
+  B2 is a `14x12` floor, max coordinate `(13,11)`, with six stair cells:
   - up to B1 at `(11,2)`
   - down stairs at `(1,1)`, `(12,1)`, `(5,6)`, `(1,10)`, `(12,10)`
 - The older object placeholders `(19,0)` and `(12,12)` were impossible on this
@@ -73,17 +89,21 @@ source of truth for map data.
   candidates `(8,9).east`, `(3,11).north`, and `(1,11).east` remain
   unmodeled.
 - Latest live B2 route status supersedes the older all-stairs-reachable audit:
-  from the B2 return stair `(11,2)`, with no runtime blockers active, the
-  permanent model reaches `Stairs Up`, `Northeast Stairs Down`,
-  `Southeast Stairs Down`, and `Southwest Stairs Down`. It returns
-  `No path found` for `Northwest Stairs Down` `(1,1)` and `Central Stairs Down`
-  `(5,6)`.
-- Earlier guide route bias said northwest and southeast stairs lead toward the
-  Cursed Belt branch. Treat that as orientation only: live FCEUX probing on
-  2026-06-07 rechecked the B2 northwest frontier from normally walked origins
-  and all seven bridge candidates into the `(1,1)` component blocked. The
-  Cursed Belt route remains unresolved; do not reopen the B2 northwest route
-  without new normal-walked live movement evidence.
+  from the B2 return stair `(11,2)`, the prior permanent model reached
+  `Stairs Up`, `Northeast Stairs Down`, `Southeast Stairs Down`, and
+  `Southwest Stairs Down`, while `Central Stairs Down` `(5,6)` returned
+  `No path found`.
+- A 2026-06-16 west-chest escape pass found new normal-walked evidence on the
+  northwest side: from `Northwest Stairs Down` `(1,1)` or the B2 northwest
+  landing `(1,2)`, the player can enter the left-edge false-boundary strip at
+  `(0,1)`/`(0,2)`, follow it down through `(0,11)`, exit right to `(1,11)`,
+  and reach `Stairs Up` `(11,2)`. The permanent model now scopes B2
+  passthroughs for `(0,1)` through `(0,11)`.
+- The same pass closed false shortcuts at `(1,2).north/south`, `(2,1).west`,
+  `(2,2).west`, `(2,8).west`, `(1,9).north`, and `(1,9).west`. The reverse
+  route from B2 `Stairs Up` back toward `Northwest Stairs Down` is not
+  live-proven yet; if object navigation exposes it after reload, verify that
+  direction explicitly.
 - The southwest staircase remains the confirmed Silver Harp progression lead.
 
 ## Guide Orientation For B3 And B4
@@ -98,18 +118,23 @@ source of truth for map data.
 - Read-only live path check from B3 `(2,17)` to the likely progression stair
   `(9,5)` succeeds with `12 north, 7 east`.
 - B3 west chest / likely Cursed Belt route note: the earlier NW-side dead-end
-  conclusion was superseded by a live false-boundary find at `10,0 west`.
-  Top-row cells `(9,0)` and `(10,0)` are now scoped B3 passthrough cells, and
-  static regression coverage confirms the planner can route from `(10,0)` to
-  the west chest at `(1,1)`.
+  conclusion was superseded by the live false-boundary route through top-row
+  cells `(8,0)`, `(9,0)`, `(10,0)`, left-edge cells `(0,2)` through `(0,6)`,
+  and chest-side cells `(1,2)` and `(2,2)`. The B2 escape pass above completes
+  the current route back to the upward stairs after leaving the B3 chest side.
+  The player has since opened this chest and confirmed the Cursed Belt.
+- After the Cursed Belt pickup, a B3 NW-side object cleanup proved the false
+  reachable routes to `Upper Stairs Down` `(9,5)`, `Southeast Stairs Up`
+  `(18,13)`, and `Southwest Stairs Up` `(2,17)` all collapse behind
+  `(5,2).north` and `(1,7).north`. With those blockers active, the NW-side
+  reachable-object list is just the opened chest and local `Northwest Stairs
+  Up`; reload Lua before rechecking this without runtime overlays.
 
 ## Pending Live Verification
 
-- Manually open/confirm the B1 northeast chest contents and exact content-code
-  mapping. Current object coordinates are `(11,0)`, `(12,0)`, and `(13,0)`.
-- Execute the B3 `(2,17)` to `(9,5)` route live and collect only clean direct
-  verifier evidence if hidden blockers appear.
-- Confirm whether B3 `(9,5)` lands on B4 `(0,4)`, then inspect the B4 connector
-  toward `(5,4)`.
-- After manual FCEUX Lua reload, recheck B3 `debug_pathfind_to:1,1` from the
-  NW/top-row side and refresh the reachable-object filter.
+- Optional polish: manually open/confirm the B1 northeast chest contents and
+  exact content-code mapping. Current object coordinates are `(11,0)`,
+  `(12,0)`, and `(13,0)`.
+- If future gameplay exposes a reverse B2 route from `Stairs Up` to
+  `Northwest Stairs Down`, verify that direction live before documenting it as
+  player-facing two-way travel.

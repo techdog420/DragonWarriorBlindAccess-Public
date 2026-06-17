@@ -145,7 +145,49 @@ local function path_has_step(path, x, y, direction)
     return false
 end
 
+local function path_to_string(path)
+    local parts = {}
+    for _, step in ipairs(path or {}) do
+        parts[#parts + 1] = string.format("%s->%d,%d", step.direction or "?", step.x or -1, step.y or -1)
+    end
+    return table.concat(parts, " ")
+end
+
+local function with_cleanup(body, cleanup)
+    local ok, err = pcall(body)
+    local cleanup_ok, cleanup_err = pcall(cleanup)
+
+    if not ok then
+        if not cleanup_ok then
+            error(string.format("%s (cleanup failed: %s)", tostring(err), tostring(cleanup_err)), 0)
+        end
+        error(err, 0)
+    end
+
+    if not cleanup_ok then
+        error(cleanup_err, 0)
+    end
+end
+
 local tests = {}
+
+function tests.with_cleanup_runs_cleanup_after_body_failure()
+    local cleaned = false
+    local ok, err = pcall(function()
+        with_cleanup(
+            function()
+                error("forced body failure", 0)
+            end,
+            function()
+                cleaned = true
+            end
+        )
+    end)
+
+    assert_equal(ok, false, "with_cleanup should rethrow the body failure")
+    assert_equal(cleaned, true, "with_cleanup should run cleanup even when the body fails")
+    assert_equal(string.find(tostring(err), "forced body failure", 1, true) ~= nil, true, "with_cleanup should preserve the body failure")
+end
 
 function tests.directional_block_comments_match_their_map_block()
     local path = "map_reader.lua"
@@ -2563,6 +2605,90 @@ function tests.garins_grave_b1_treasure_row_overrides_top_edge_boundary()
     env.restore()
 end
 
+function tests.garins_grave_b2_northwest_escape_strip_overrides_left_edge_boundary()
+    local base = 0x19 * 5
+    local data_offset = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,      -- CPU $9000 -> file offset $1010
+        [base + 1] = 0x90,
+        [base + 2] = 13,    -- width 14
+        [base + 3] = 11,    -- height 12
+        [base + 4] = 0,
+    }
+    for i = 0, 167 do
+        rom_bytes[data_offset + i] = 0x00
+    end
+    for y = 3, 10 do
+        rom_bytes[data_offset + y * 14 + 1] = 0x10
+    end
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x20,
+        },
+    })
+
+    local pathfinder_saved = false
+    with_cleanup(
+        function()
+            for y = 1, 11 do
+                local details = env.map_reader.get_walkability_details(0x19, 0, y)
+                assert_equal(details.effective_walkable, true, "B2 left-edge escape strip should be walkable at x=0")
+                assert_equal(details.reason, "passthrough", "B2 left-edge escape strip should override engine_boundary")
+            end
+
+            local unconfirmed_north = env.map_reader.get_walkability_details(0x19, 0, 0)
+            assert_equal(unconfirmed_north.effective_walkable, false, "B2 unconfirmed left-edge cell above the escape strip should stay blocked")
+            assert_equal(unconfirmed_north.reason, "engine_boundary", "B2 unconfirmed left-edge cell should keep boundary reason")
+
+            local south_oob = env.map_reader.get_walkability_details(0x19, 0, 12)
+            assert_equal(south_oob.effective_walkable, false, "B2 escape strip should not continue below live-confirmed (0,11)")
+            assert_equal(south_oob.reason, "out_of_bounds", "B2 (0,12) should stay out of bounds in the 14x12 model")
+
+            local normal_exit = env.map_reader.get_walkability_details(0x19, 1, 11)
+            assert_equal(normal_exit.effective_walkable, true, "B2 (1,11) should stay ordinary walkable floor for the strip exit")
+            assert_equal(normal_exit.reason, "tile_type", "B2 (1,11) should not need a passthrough override")
+
+            local snapshot = env.map_reader.get_walkability_snapshot(0x19)
+            assert_equal(snapshot[1][0], true, "B2 snapshot should include live-confirmed (0,1)")
+            assert_equal(snapshot[2][0], true, "B2 snapshot should include live-confirmed (0,2)")
+            assert_equal(snapshot[11][0], true, "B2 snapshot should include live-confirmed (0,11)")
+            assert_equal(snapshot[0][0], false, "B2 snapshot should keep unconfirmed (0,0) blocked")
+
+            save_module("pathfinder")
+            pathfinder_saved = true
+            package.loaded["pathfinder"] = nil
+            local pathfinder = require "pathfinder"
+
+            local strip_path = pathfinder.find_path(0x19, 1, 2, 0, 11, {})
+            assert_equal(strip_path ~= nil, true, "B2 northwest landing should route down the live-confirmed left-edge strip")
+            assert_equal(path_has_step(strip_path, 0, 2, "west"), true, "B2 strip route should enter (0,2) from the NW landing; path=" .. path_to_string(strip_path))
+            assert_equal(path_has_step(strip_path, 0, 11, "south"), true, "B2 strip route should continue down to live-confirmed (0,11); path=" .. path_to_string(strip_path))
+
+            local stairs_up_path = pathfinder.find_path(0x19, 1, 2, 11, 2, {})
+            assert_equal(stairs_up_path ~= nil, true, "B2 NW landing should have a modeled escape route back to Stairs Up")
+            assert_equal(path_has_step(stairs_up_path, 0, 2, "west"), true, "B2 Stairs Up route should enter the live-confirmed left-edge strip; path=" .. path_to_string(stairs_up_path))
+            assert_equal(path_has_step(stairs_up_path, 0, 11, "south"), true, "B2 Stairs Up route should follow the strip to its live-confirmed bottom; path=" .. path_to_string(stairs_up_path))
+            assert_equal(path_has_step(stairs_up_path, 1, 11, "east"), true, "B2 Stairs Up route should exit the strip through live-confirmed (0,11)->RIGHT; path=" .. path_to_string(stairs_up_path))
+
+            local nw_stair_to_up_path = pathfinder.find_path(0x19, 1, 1, 11, 2, {})
+            assert_equal(nw_stair_to_up_path ~= nil, true, "B2 Northwest Stairs Down should now have the live-confirmed escape route back to Stairs Up")
+            assert_equal(path_has_step(nw_stair_to_up_path, 0, 1, "west"), true, "B2 Northwest Stairs route should enter live-confirmed (0,1); path=" .. path_to_string(nw_stair_to_up_path))
+            assert_equal(path_has_step(nw_stair_to_up_path, 0, 2, "south"), true, "B2 Northwest Stairs route should descend from (0,1) to (0,2); path=" .. path_to_string(nw_stair_to_up_path))
+            assert_equal(path_has_step(nw_stair_to_up_path, 0, 11, "south"), true, "B2 Northwest Stairs route should continue down to live-confirmed (0,11); path=" .. path_to_string(nw_stair_to_up_path))
+            assert_equal(path_has_step(nw_stair_to_up_path, 1, 11, "east"), true, "B2 Northwest Stairs route should exit the strip through live-confirmed (0,11)->RIGHT; path=" .. path_to_string(nw_stair_to_up_path))
+
+        end,
+        function()
+            if pathfinder_saved then
+                restore_modules({"pathfinder"})
+            end
+            env.restore()
+        end
+    )
+end
+
 function tests.garins_grave_b4_west_return_stairs_override_boundary()
     local base = 0x1B * 5
     local data_offset = 0x1010
@@ -2652,10 +2778,14 @@ function tests.garins_grave_b3_hidden_bridge_to_southwest_exit_is_passthrough()
         [base + 3] = 19,    -- height 20
         [base + 4] = 0,
     }
-    for i = 0, 199 do
+    for i = 0, 399 do
         rom_bytes[data_offset + i] = 0x00
     end
-    rom_bytes[data_offset + 142] = 0xF0 -- (4,14) raw tile F, (5,14) raw tile 0
+    rom_bytes[data_offset + 41] = 0x10 -- (1,2) grid tile 1, live false wall
+    rom_bytes[data_offset + 42] = 0x10 -- (2,2) grid tile 1, live false wall
+    rom_bytes[data_offset + 43] = 0x10 -- (3,2) grid tile 1, blocked east of the false-wall pocket
+    rom_bytes[data_offset + 142] = 0xF0 -- raw-block fixture for (4,14)
+    rom_bytes[data_offset + 284] = 0xF0 -- (4,14) grid tile F, live hidden bridge
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -2674,6 +2804,41 @@ function tests.garins_grave_b3_hidden_bridge_to_southwest_exit_is_passthrough()
     assert_equal(continuation.base_walkable, true, "B3 (4,15) should remain ordinary walkable floor")
     assert_equal(continuation.reason, "tile_type", "B3 (4,15) should not need a passthrough override")
 
+    local left_edge_entry = env.map_reader.get_walkability_details(0x1A, 0, 2)
+    assert_equal(left_edge_entry.effective_walkable, true, "B3 (0,2) should be walkable after the chest-side return-route dig")
+    assert_equal(left_edge_entry.reason, "passthrough", "B3 (0,2) should record passthrough instead of generic engine_boundary")
+
+    local left_edge_escape = env.map_reader.get_walkability_details(0x1A, 0, 3)
+    assert_equal(left_edge_escape.effective_walkable, true, "B3 (0,3) should be walkable after repeated live movement from (0,2)->DOWN")
+    assert_equal(left_edge_escape.reason, "passthrough", "B3 (0,3) should record passthrough instead of generic engine_boundary")
+
+    local left_edge_lower = env.map_reader.get_walkability_details(0x1A, 0, 4)
+    assert_equal(left_edge_lower.effective_walkable, true, "B3 (0,4) should be walkable after live return-route position snapshots")
+    assert_equal(left_edge_lower.reason, "passthrough", "B3 (0,4) should record passthrough instead of generic engine_boundary")
+
+    local left_edge_bottom = env.map_reader.get_walkability_details(0x1A, 0, 5)
+    assert_equal(left_edge_bottom.effective_walkable, true, "B3 (0,5) should be walkable after live return-route position snapshots")
+    assert_equal(left_edge_bottom.reason, "passthrough", "B3 (0,5) should record passthrough instead of generic engine_boundary")
+
+    local left_edge_turn = env.map_reader.get_walkability_details(0x1A, 0, 6)
+    assert_equal(left_edge_turn.effective_walkable, true, "B3 (0,6) should be walkable after same-origin return-route probe from (0,5)->DOWN")
+    assert_equal(left_edge_turn.reason, "passthrough", "B3 (0,6) should record passthrough instead of generic engine_boundary")
+
+    local chest_south = env.map_reader.get_walkability_details(0x1A, 1, 2)
+    assert_equal(chest_south.effective_walkable, true, "B3 (1,2) should be walkable after live movement from the west chest")
+    assert_equal(chest_south.reason, "passthrough", "B3 (1,2) should record passthrough as its walkability source")
+
+    local chest_southeast = env.map_reader.get_walkability_details(0x1A, 2, 2)
+    assert_equal(chest_southeast.effective_walkable, true, "B3 (2,2) should be walkable after live movement from (1,2)->RIGHT")
+    assert_equal(chest_southeast.reason, "passthrough", "B3 (2,2) should record passthrough as its walkability source")
+
+    local blocked_east_wall = env.map_reader.get_walkability_details(0x1A, 3, 2)
+    assert_equal(blocked_east_wall.effective_walkable, false, "B3 (3,2) should stay blocked; live (2,2)->RIGHT did not move")
+
+    local top_entry = env.map_reader.get_walkability_details(0x1A, 8, 0)
+    assert_equal(top_entry.effective_walkable, true, "B3 (8,0) should be walkable after same-origin return-route probe from (8,1)->UP")
+    assert_equal(top_entry.reason, "passthrough", "B3 (8,0) should record passthrough instead of generic engine_boundary")
+
     local top_west = env.map_reader.get_walkability_details(0x1A, 9, 0)
     assert_equal(top_west.effective_walkable, true, "B3 (9,0) should be walkable after live west-chest return movement from (10,0)->LEFT")
     assert_equal(top_west.reason, "passthrough", "B3 (9,0) should record passthrough as its walkability source")
@@ -2685,8 +2850,24 @@ function tests.garins_grave_b3_hidden_bridge_to_southwest_exit_is_passthrough()
     save_module("pathfinder")
     package.loaded["pathfinder"] = nil
     local pathfinder = require "pathfinder"
-    local chest_return_path = pathfinder.find_path(0x1A, 10, 0, 1, 1, {})
-    assert_equal(chest_return_path ~= nil, true, "B3 should route from (10,0) back to the west chest after the top-row false blocker is cleared")
+    local top_seam_path = pathfinder.find_path(0x1A, 10, 0, 9, 0, {})
+    assert_equal(top_seam_path ~= nil, true, "B3 should still route across the live-confirmed top-row seam from (10,0) to (9,0)")
+    local top_entry_path = pathfinder.find_path(0x1A, 8, 1, 8, 0, {})
+    assert_equal(top_entry_path ~= nil, true, "B3 should route from (8,1) into the live-confirmed (8,0) top-edge entry")
+    assert_equal(path_has_step(top_entry_path, 8, 0, "north"), true, "B3 top return path should step north into live-confirmed (8,0); path=" .. path_to_string(top_entry_path))
+    local chest_to_south_cell_path = pathfinder.find_path(0x1A, 1, 1, 1, 2, {})
+    assert_equal(chest_to_south_cell_path ~= nil, true, "B3 west chest should route into live-confirmed false-wall cell (1,2)")
+    assert_equal(path_has_step(chest_to_south_cell_path, 1, 2, "south"), true, "B3 west chest direct route should step down into live-confirmed (1,2)")
+    local false_wall_pocket_path = pathfinder.find_path(0x1A, 1, 2, 2, 2, {})
+    assert_equal(false_wall_pocket_path ~= nil, true, "B3 false-wall pocket should route from (1,2) to live-confirmed (2,2)")
+    assert_equal(path_has_step(false_wall_pocket_path, 2, 2, "east"), true, "B3 false-wall pocket should step east into live-confirmed (2,2)")
+    local left_edge_seam_path = pathfinder.find_path(0x1A, 0, 2, 0, 3, {})
+    assert_equal(left_edge_seam_path ~= nil, true, "B3 left edge should route across the live-confirmed (0,2)->DOWN seam")
+    assert_equal(path_has_step(left_edge_seam_path, 0, 3, "south"), true, "B3 left edge direct route should step down into live-confirmed (0,3)")
+    local chest_escape_path = pathfinder.find_path(0x1A, 1, 1, 14, 1, {})
+    assert_equal(chest_escape_path ~= nil, true, "B3 west chest should now have the live-confirmed one-way escape route back to Northwest Stairs Up")
+    assert_equal(path_has_step(chest_escape_path, 0, 2, "west"), true, "B3 chest escape should enter the live-confirmed left-edge strip; path=" .. path_to_string(chest_escape_path))
+    assert_equal(path_has_step(chest_escape_path, 0, 6, "south"), true, "B3 chest escape should continue through live-confirmed (0,6); path=" .. path_to_string(chest_escape_path))
     restore_modules({"pathfinder"})
 
     env.restore()
@@ -2706,8 +2887,12 @@ function tests.garins_grave_b2_southwest_stair_route_edges_are_directional()
     assert_garins_grave_b2_dir(env, "2,3", "north", "B2 (2,3) should block north approach after three fresh-start probe_edge:DOWN checks from (2,2) all blocked while reverse probe_edge_verify:UP,5 from (2,3) blocked 5/5")
     assert_garins_grave_b2_dir(env, "2,1", "east", "B2 (2,1) should block east approach after three fresh-start probe_edge:LEFT checks from (3,1) all blocked while reverse probe_edge_verify:RIGHT,5 from (2,1) moved 6/6")
     assert_garins_grave_b2_dir(env, "2,1", "south", "B2 (2,1) should block south approach after same-origin probe_edge_verify:UP,5 from (2,2)")
+    assert_garins_grave_b2_dir(env, "2,1", "west", "B2 (2,1).west should block after same-origin probe_edge:RIGHT from (1,1) during the B2 west-chest escape cleanup")
     assert_garins_grave_b2_dir(env, "2,2", "east", "B2 (2,2) should block east approach after same-origin probe_edge_verify:LEFT,5 from (3,2)")
+    assert_garins_grave_b2_dir(env, "2,2", "west", "B2 (2,2).west should block after same-origin probe_edge:RIGHT from the NW landing (1,2)")
     assert_garins_grave_b2_dir(env, "1,2", "east", "B2 (1,2) should block east approach after three fresh-start probe_edge:LEFT checks from (2,2) all blocked while reverse probe_edge_verify:RIGHT,5 from (1,2) moved 6/6")
+    assert_garins_grave_b2_dir(env, "1,2", "north", "B2 (1,2).north should block after same-origin probe_edge:DOWN from (1,1) during the B2 west-chest escape cleanup")
+    assert_garins_grave_b2_dir(env, "1,2", "south", "B2 (1,2).south should block after same-origin probe_edge:UP from (1,3) during the B2 west-chest escape cleanup")
     assert_garins_grave_b2_dir(env, "2,4", "west", "B2 (2,4) should block west approach after 5/5 verifier from (1,4)")
     assert_garins_grave_b2_dir(env, "2,4", "east", "B2 (2,4) should block east approach after clean same-origin probe_edge_verify:LEFT,5 from (3,4)")
     assert_garins_grave_b2_dir(env, "2,5", "west", "B2 (2,5) should block west approach after 5/5 verifier from (1,5)")
@@ -2779,9 +2964,10 @@ function tests.garins_grave_b2_southwest_stair_route_edges_are_directional()
     assert_garins_grave_b2_dir(env, "5,9", "east", "B2 (5,9) should block east approach after three fresh-start probe_edge:LEFT checks from (6,9) all blocked while repeated verifier stayed mixed")
 
     local dirs = env.map_reader.get_directional_blocks(0x19)
-    assert_equal((dirs["1,2"] or {}).south, nil, "B2 (1,2).south should stay unmodeled after mixed verifier evidence")
-    assert_equal((dirs["1,9"] or {}).north, nil, "B2 (1,9).north should stay unmodeled after mixed verifier evidence")
+    assert_garins_grave_b2_dir(env, "2,8", "west", "B2 (2,8).west should block after same-origin probe_edge:RIGHT from (1,8) during the B2 west-chest escape cleanup")
+    assert_garins_grave_b2_dir(env, "1,9", "north", "B2 (1,9).north should block after same-origin probe_edge:DOWN from (1,8) during the B2 west-chest escape cleanup")
     assert_garins_grave_b2_dir(env, "1,9", "south", "B2 (1,9) should block south approach after same-origin probe_edge_verify:UP,5 from (1,10) blocked 5/5")
+    assert_garins_grave_b2_dir(env, "1,9", "west", "B2 (1,9).west should block after same-origin probe_edge:RIGHT from (0,9) during the B2 northwest-stair escape cleanup")
     assert_garins_grave_b2_dir(env, "2,10", "south", "B2 (2,10) should block south approach after same-origin probe_edge_verify:UP,5 from (2,11) blocked 5/5")
     assert_garins_grave_b2_dir(env, "6,9", "south", "B2 (6,9) should block south approach after same-origin probe_edge_verify:UP,5 from (6,10) blocked 5/5")
     assert_garins_grave_b2_dir(env, "7,9", "south", "B2 (7,9) should block south approach after same-origin probe_edge_verify:UP,5 from (7,10) blocked 5/5")
@@ -2870,7 +3056,25 @@ function tests.garins_grave_b3_southwest_pocket_seams_are_directional()
     assert_garins_grave_b3_dir(env, "12,3", "south", "B3 (12,3).south should block after lower-stair object-pruning probes from (12,4)->UP")
     assert_garins_grave_b3_dir(env, "13,3", "south", "B3 (13,3).south should block after lower-stair object-pruning probes from (13,4)->UP")
     assert_garins_grave_b3_dir(env, "14,3", "south", "B3 (14,3).south should block after lower-stair object-pruning probes from (14,4)->UP")
+    assert_garins_grave_b3_dir(env, "3,1", "east", "B3 (3,1).east should block after post-reload Cursed Belt route probe from (4,1)->LEFT")
     assert_garins_grave_b3_dir(env, "9,1", "east", "B3 (9,1).east should block after Northwest Stairs Up pocket same-origin probe from (10,1)->LEFT")
+    assert_garins_grave_b3_dir(env, "9,1", "north", "B3 (9,1).north should block after 2026-06-16 top-row same-origin probes from (9,0)->DOWN")
+    assert_garins_grave_b3_dir(env, "9,1", "west", "B3 (9,1).west should block after return-route same-origin probe from (8,1)->RIGHT")
+    assert_garins_grave_b3_dir(env, "11,1", "west", "B3 (11,1).west should block after post-reload return-route probe from (10,1)->RIGHT")
+    assert_garins_grave_b3_dir(env, "13,1", "east", "B3 (13,1).east should block after 2026-06-16 Northwest Stairs Up probes from (14,1)->LEFT")
+    assert_garins_grave_b3_dir(env, "5,2", "north", "B3 (5,2).north should block after same-origin object-pruning probe from (5,1)->DOWN")
+    assert_garins_grave_b3_dir(env, "9,2", "east", "B3 (9,2).east should block after 2026-06-16 hidden-candidate probe from (10,2)->LEFT")
+    assert_garins_grave_b3_dir(env, "1,3", "north", "B3 (1,3).north should block after 2026-06-16 chest-side probe from (1,2)->DOWN")
+    assert_garins_grave_b3_dir(env, "1,3", "west", "B3 (1,3).west should block after return-route same-origin probe from (0,3)->RIGHT")
+    assert_garins_grave_b3_dir(env, "2,3", "south", "B3 (2,3).south should block after post-reload Cursed Belt route probe from (2,4)->UP")
+    assert_garins_grave_b3_dir(env, "3,3", "east", "B3 (3,3).east should block after post-reload Cursed Belt route probe from (4,3)->LEFT")
+    assert_garins_grave_b3_dir(env, "1,4", "east", "B3 (1,4).east should block after post-reload Cursed Belt route probe from (2,4)->LEFT")
+    assert_garins_grave_b3_dir(env, "1,4", "west", "B3 (1,4).west should block after return-route same-origin probe from (0,4)->RIGHT")
+    assert_garins_grave_b3_dir(env, "1,5", "east", "B3 (1,5).east should block after post-reload Cursed Belt route probe from (2,5)->LEFT")
+    assert_garins_grave_b3_dir(env, "1,5", "south", "B3 (1,5).south should block after post-reload Cursed Belt route probe from (1,6)->UP")
+    assert_garins_grave_b3_dir(env, "1,5", "west", "B3 (1,5).west should block after return-route same-origin probe from (0,5)->RIGHT")
+    assert_garins_grave_b3_dir(env, "1,7", "north", "B3 (1,7).north should block after same-origin object-pruning probe from (1,6)->DOWN")
+    assert_garins_grave_b3_dir(env, "2,3", "north", "B3 (2,3).north should block after 2026-06-16 chest-side probe from (2,2)->DOWN")
     assert_garins_grave_b3_dir(env, "16,1", "east", "B3 (16,1).east should block after Northeast Stairs Up pocket probe from (17,1)->LEFT")
     assert_garins_grave_b3_dir(env, "16,1", "west", "B3 (16,1).west should block after Northwest Stairs Up pocket same-origin probe from (15,1)->RIGHT")
     assert_garins_grave_b3_dir(env, "16,2", "east", "B3 (16,2).east should block after Northeast Stairs Up pocket probe from (17,2)->LEFT")
@@ -2967,9 +3171,24 @@ function tests.garins_grave_b3_southwest_pocket_seams_are_directional()
     assert_garins_grave_b3_dir(env, "12,12", "north", "B3 (12,12) should block north approach after the stable 49-edge live reseed/model-consistency pass")
     assert_garins_grave_b3_dir(env, "13,12", "north", "B3 (13,12) should block north approach after the stable 49-edge live reseed/model-consistency pass")
     assert_garins_grave_b3_dir(env, "3,13", "east", "B3 (3,13) should block east approach after the stable 49-edge live reseed/model-consistency pass")
-
-    local dirs = env.map_reader.get_directional_blocks(0x1A)
-    assert_equal((dirs["5,15"] or {}).west, nil, "B3 (5,15).west should stay unmodeled after mixed verifier evidence from (4,15)")
+    assert_garins_grave_b3_dir(env, "3,1", "west", "B3 (3,1).west should block after same-origin Cursed Belt search probe from (2,1)->RIGHT")
+    assert_garins_grave_b3_dir(env, "5,14", "west", "B3 (5,14).west should block after same-origin hidden-bridge probe from (4,14)->RIGHT")
+    assert_garins_grave_b3_dir(env, "5,15", "east", "B3 (5,15).east should block after same-origin probe from (6,15)->LEFT")
+    assert_garins_grave_b3_dir(env, "5,15", "west", "B3 (5,15).west should block after same-origin Cursed Belt search probe from (4,15)->RIGHT")
+    assert_garins_grave_b3_dir(env, "8,14", "east", "B3 (8,14).east should block after same-origin probe from (9,14)->LEFT")
+    assert_garins_grave_b3_dir(env, "8,14", "north", "B3 (8,14).north should block after same-origin probe from (8,13)->DOWN")
+    assert_garins_grave_b3_dir(env, "8,14", "west", "B3 (8,14).west should block after same-origin probe from (7,14)->RIGHT")
+    assert_garins_grave_b3_dir(env, "8,15", "west", "B3 (8,15).west should block after same-origin probe from (7,15)->RIGHT")
+    assert_garins_grave_b3_dir(env, "4,16", "north", "B3 (4,16).north should block after same-origin probe from (4,15)->DOWN")
+    assert_garins_grave_b3_dir(env, "4,16", "south", "B3 (4,16).south should block after same-origin probe from (4,17)->UP")
+    assert_garins_grave_b3_dir(env, "5,16", "south", "B3 (5,16).south should block after same-origin probe from (5,17)->UP")
+    assert_garins_grave_b3_dir(env, "6,16", "north", "B3 (6,16).north should block after same-origin probe from (6,15)->DOWN")
+    assert_garins_grave_b3_dir(env, "6,16", "south", "B3 (6,16).south should block after same-origin probe from (6,17)->UP")
+    assert_garins_grave_b3_dir(env, "7,16", "north", "B3 (7,16).north should block after same-origin probe from (7,15)->DOWN")
+    assert_garins_grave_b3_dir(env, "7,16", "south", "B3 (7,16).south should block after same-origin probe from (7,17)->UP")
+    assert_garins_grave_b3_dir(env, "8,16", "south", "B3 (8,16).south should block after same-origin probe from (8,17)->UP")
+    assert_garins_grave_b3_dir(env, "6,18", "north", "B3 (6,18).north should block after same-origin probe from (6,17)->DOWN")
+    assert_garins_grave_b3_dir(env, "8,18", "north", "B3 (8,18).north should block after same-origin probe from (8,17)->DOWN")
 
     env.restore()
 end
@@ -3092,7 +3311,11 @@ function tests.garins_grave_b1_chest_route_seams_are_directional()
     assert_garins_grave_b1_dir(env, "16,1", "west", "(16,1) should block west approach after return-route 8/8 verifier")
     assert_garins_grave_b1_dir(env, "16,3", "north", "(16,3) should block north approach after return-route seam retry")
     assert_garins_grave_b1_dir(env, "16,3", "east", "(16,3) should block east approach after repeated clean direct probes")
+    assert_garins_grave_b1_dir(env, "16,8", "north", "(16,8).north should block after route-local evidence plus two same-origin probes from (16,7)->DOWN")
+    assert_garins_grave_b1_dir(env, "16,9", "east", "(16,9).east should block after two clean same-origin probes from (17,9)->LEFT")
     assert_garins_grave_b1_dir(env, "17,8", "north", "(17,8) should block north approach after return-route seam retry")
+    assert_garins_grave_b1_dir(env, "17,8", "south", "(17,8).south should block after the 2026-06-16 route-polish runtime overlay from (17,9)->UP")
+    assert_garins_grave_b1_dir(env, "18,8", "north", "(18,8).north should block after two same-origin probes from (18,7)->DOWN and the pulled runtime overlay")
     assert_garins_grave_b1_dir(env, "5,10", "north", "(5,10) should block north approach after return-route seam retry")
     assert_garins_grave_b1_dir(env, "5,10", "east", "(5,10) should block east approach after clean lower-west B2-stairs verifier")
     assert_garins_grave_b1_dir(env, "5,10", "west", "(5,10) should block west approach after validator abort and clean 8/8 verifier")
@@ -3100,6 +3323,7 @@ function tests.garins_grave_b1_chest_route_seams_are_directional()
     assert_garins_grave_b1_dir(env, "5,11", "west", "(5,11) should block west approach after validator abort and clean 8/8 verifier")
     assert_garins_grave_b1_dir(env, "6,8", "north", "(6,8) should block north approach after return-route seam retry")
     assert_garins_grave_b1_dir(env, "6,8", "south", "(6,8) should block south approach after direct 5/5 probe")
+    assert_garins_grave_b1_dir(env, "7,10", "north", "(7,10).north should block after the 2026-06-16 route-polish runtime overlay from (7,9)->DOWN")
     assert_garins_grave_b1_dir(env, "7,10", "south", "(7,10) should block south approach after direct 8/8 probe")
     assert_garins_grave_b1_dir(env, "7,8", "north", "(7,8) should block north approach after return-route seam retry")
     assert_garins_grave_b1_dir(env, "8,8", "north", "(8,8) should block north approach after direct 5/5 probe")
@@ -3160,8 +3384,8 @@ function tests.garins_grave_b1_chest_route_seams_are_directional()
     assert_garins_grave_b1_dir(env, "14,6", "west", "(14,6) should block west approach after direct 5/5 probe")
     assert_garins_grave_b1_dir(env, "14,6", "south", "(14,6) should block south approach after direct 5/5 probe")
     assert_garins_grave_b1_dir(env, "4,17", "east", "(4,17) should block east approach after follow-up route-validator abort and 8/8 verifier")
+    assert_garins_grave_b1_dir(env, "4,17", "west", "(4,17) should block west approach after 2026-06-16 entrance/stair route cleanup from (3,17)->RIGHT")
     local b1_dirs = env.map_reader.get_directional_blocks(0x18)
-    assert_equal((b1_dirs["4,17"] or {}).west, nil, "(4,17).west should stay open after 2026-06-05 Silver Harp escape verifier from (3,17) moved 6/6")
     assert_garins_grave_b1_dir(env, "4,18", "south", "(4,18) should block south approach after entrance-side west-pocket 15/15 verifier from (4,19)")
     assert_garins_grave_b1_dir(env, "4,18", "west", "(4,18) should block west approach after restarted west-pocket 15/15 verifier from (3,18)")
     assert_garins_grave_b1_dir(env, "5,11", "north", "(5,11) should block north approach after the `5,10` pocket repeat dead-ended on a clean 10/10 `(5,10)->DOWN` verifier")
@@ -3282,6 +3506,9 @@ function tests.garins_grave_b1_chest_route_seams_are_directional()
     assert_garins_grave_b1_dir(env, "17,13", "east", "(17,13) should block east approach after validator abort and clean 8/8 verifier")
     assert_garins_grave_b1_dir(env, "17,13", "west", "(17,13) should block west approach after validator abort and clean 8/8 verifier")
     assert_garins_grave_b1_dir(env, "17,14", "south", "(17,14) should block south approach after the B2-stairs batch pocket verifier from (17,15)")
+    assert_garins_grave_b1_dir(env, "17,19", "east", "(17,19).east should block after auto_walk_blocker found (18,19)->LEFT and same-origin probes confirmed it")
+    assert_garins_grave_b1_dir(env, "17,19", "north", "(17,19).north should block after fresh same-origin probes from normally reached (17,18)->DOWN")
+    assert_garins_grave_b1_dir(env, "17,19", "west", "(17,19).west should block after auto_walk_blocker found (16,19)->RIGHT and same-origin probes confirmed it")
     assert_no_directional_entry(env, 0x18, "17,17", "(17,17) should be handled by the confirmed B1 door override, not a permanent directional seam")
     assert_garins_grave_b1_dir(env, "18,14", "east", "(18,14) should block east approach after the north-pocket batch verifier from (19,14)")
     assert_garins_grave_b1_dir(env, "18,14", "north", "(18,14) should block north approach after validator abort and clean 8/8 verifier")
@@ -3290,6 +3517,7 @@ function tests.garins_grave_b1_chest_route_seams_are_directional()
     assert_garins_grave_b1_dir(env, "18,15", "west", "(18,15) should block west approach after the B2-stairs batch pocket verifier from (17,15)")
     assert_garins_grave_b1_dir(env, "18,17", "north", "(18,17) should block north approach after validator abort and clean 8/8 verifier")
     assert_garins_grave_b1_dir(env, "18,17", "south", "(18,17) should block south approach after reverse-side contour 15/15 verifier from (18,18)")
+    assert_garins_grave_b1_dir(env, "19,12", "north", "(19,12).north should block after the 2026-06-16 route-polish runtime overlay from (19,11)->DOWN")
     assert_garins_grave_b1_dir(env, "19,12", "south", "(19,12) should block south approach after the north-pocket batch verifier from (19,13)")
     assert_garins_grave_b1_dir(env, "19,17", "north", "(19,17) should block north approach after validator abort and clean 8/8 verifier")
     assert_garins_grave_b1_dir(env, "19,17", "south", "(19,17) should block south approach after reverse-side contour 15/15 verifier from (19,18)")
@@ -3311,9 +3539,6 @@ function tests.garins_grave_b1_chest_route_seams_are_directional()
     assert_equal((dirs["14,18"] or {}).west, nil, "(14,18).west moved 6/6 on direct return-route recheck and should stay open")
     assert_equal(dirs["6,7"], nil, "(6,7) should not become directional after the noisy east-approach seam moved")
     assert_equal(dirs["5,7"], nil, "(5,7) should not become directional after the noisy east-approach seam moved")
-    assert_equal((dirs["16,9"] or {}).east, nil, "(16,9).east stayed mixed on direct return-route recheck and should stay unmodeled")
-    assert_equal((dirs["17,19"] or {}).north, nil, "(17,19).north stayed mixed on direct return-route recheck and should stay unmodeled")
-    assert_equal((dirs["17,19"] or {}).west, nil, "(17,19).west stayed mixed on direct return-route recheck and should stay unmodeled")
     assert_equal((dirs["18,8"] or {}).south, nil, "(18,8).south stayed mixed on direct return-route recheck and should stay unmodeled")
     assert_equal((dirs["19,13"] or {}).south, nil, "(19,13).south moved 6/6 on direct return-route recheck and should stay open")
     assert_equal((dirs["19,16"] or {}).west, nil, "(19,16).west moved 6/6 on direct return-route recheck and should stay open")
