@@ -191,6 +191,58 @@ local function speak_route_event(prefix, info)
     tolk.output_interrupt(info.message)
 end
 
+local function run_auto_walk_command(arg, opts)
+    opts = opts or {}
+    refresh_object_browser_context({refresh_live_npcs = true})
+    local target = nil
+    if arg then
+        local goal_x, goal_y = parse_xy_arg(arg)
+        if goal_x == nil then
+            debug_tools.error(opts.usage or "auto_walk usage: auto_walk:X,Y")
+            tolk.output_interrupt(opts.usage or "auto_walk usage: auto_walk:X,Y")
+            return
+        end
+        local _, px, py = current_position()
+        target = find_object_by_target_coords(goal_x, goal_y, px, py, {
+            require_exact = true,
+        })
+        if target == nil then
+            target = {
+                id = "coord_" .. goal_x .. "_" .. goal_y,
+                type = objects.TYPE_EXIT,
+                name = "Tile " .. goal_x .. "," .. goal_y,
+                x = goal_x,
+                y = goal_y,
+            }
+        end
+        if target.x ~= goal_x or target.y ~= goal_y then
+            target = {
+                id = "coord_" .. goal_x .. "_" .. goal_y,
+                type = objects.TYPE_EXIT,
+                name = "Tile " .. goal_x .. "," .. goal_y,
+                x = goal_x,
+                y = goal_y,
+            }
+        end
+        local result = route_mgr.autowalk_to_object(target, {
+            speak = true,
+            stop_on_blocker = opts.stop_on_blocker == true,
+        })
+        if result and result.message then
+            -- Explicit autowalk path commands already handle speech from autowalk.
+            return
+        end
+        return
+    end
+    if opts.stop_on_blocker == true then
+        return route_mgr.autowalk_to_current({
+            speak = true,
+            stop_on_blocker = true,
+        })
+    end
+    route_mgr.autowalk_to_current()
+end
+
 function M.register()
     debug_tools.register_command("next_object", function()
         refresh_object_browser_context()
@@ -286,45 +338,16 @@ function M.register()
     end)
 
     debug_tools.register_command("auto_walk", function(arg)
-        refresh_object_browser_context({refresh_live_npcs = true})
-        local target = nil
-        if arg then
-            local goal_x, goal_y = parse_xy_arg(arg)
-            if goal_x == nil then
-                debug_tools.error("auto_walk usage: auto_walk:X,Y")
-                tolk.output_interrupt("auto_walk usage: auto_walk:X,Y")
-                return
-            end
-            local _, px, py = current_position()
-            target = find_object_by_target_coords(goal_x, goal_y, px, py, {
-                require_exact = true,
-            })
-            if target == nil then
-                target = {
-                    id = "coord_" .. goal_x .. "_" .. goal_y,
-                    type = objects.TYPE_EXIT,
-                    name = "Tile " .. goal_x .. "," .. goal_y,
-                    x = goal_x,
-                    y = goal_y,
-                }
-            end
-            if target.x ~= goal_x or target.y ~= goal_y then
-                target = {
-                    id = "coord_" .. goal_x .. "_" .. goal_y,
-                    type = objects.TYPE_EXIT,
-                    name = "Tile " .. goal_x .. "," .. goal_y,
-                    x = goal_x,
-                    y = goal_y,
-                }
-            end
-            local result = route_mgr.autowalk_to_object(target, {speak = true})
-            if result and result.message then
-                -- Explicit autowalk path commands already handle speech from autowalk.
-                return
-            end
-            return
-        end
-        route_mgr.autowalk_to_current()
+        run_auto_walk_command(arg, {
+            usage = "auto_walk usage: auto_walk:X,Y",
+        })
+    end)
+
+    debug_tools.register_command("auto_walk_blocker", function(arg)
+        run_auto_walk_command(arg, {
+            stop_on_blocker = true,
+            usage = "auto_walk_blocker usage: auto_walk_blocker:X,Y",
+        })
     end)
 
     debug_tools.register_command("start_overworld_route", function(arg)

@@ -69,6 +69,8 @@
 #   pathfind               Pathfind to current object (like O key)
 #   route_guidance         Start/check selected-destination route guidance (like R key)
 #   auto_walk              Auto-walk to current object (like U key)
+#   auto_walk_blocker      Auto-walk until first confirmed blocked step; logs suggested add_blocked_edge
+#   auto_walk_blocker:X,Y  Same blocker-hunt mode, targeting explicit coordinates
 #   stop_auto_walk         Stop current object auto-walk without adding movement input
 #   freeze_npcs            Lock NPC positions in RAM
 #   unfreeze_npcs          Unlock NPC positions

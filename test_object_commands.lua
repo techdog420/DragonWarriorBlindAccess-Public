@@ -42,6 +42,7 @@ local function make_env()
     local sequence = {}
     local spoken = {}
     local logs = {}
+    local last_autowalk_opts = nil
 
     package.preload["debug_tools"] = function()
         return {
@@ -67,8 +68,18 @@ local function make_env()
 
     package.preload["objects"] = function()
         return {
+            TYPE_EXIT = "exit",
             check_refresh = function(map_id)
                 sequence[#sequence + 1] = string.format("check_refresh:0x%02X", map_id)
+            end,
+            needs_refresh = function()
+                return false
+            end,
+            update_npcs = function()
+                sequence[#sequence + 1] = "update_npcs"
+            end,
+            get_objects = function()
+                return {}
             end,
         }
     end
@@ -82,6 +93,11 @@ local function make_env()
             describe_current_object = function()
                 sequence[#sequence + 1] = "describe_current_object"
                 return "fresh object"
+            end,
+            autowalk_to_current = function(opts)
+                sequence[#sequence + 1] = "autowalk_to_current"
+                last_autowalk_opts = opts
+                return {status = "queued"}
             end,
         }
     end
@@ -108,6 +124,9 @@ local function make_env()
         sequence = sequence,
         spoken = spoken,
         logs = logs,
+        last_autowalk_opts = function()
+            return last_autowalk_opts
+        end,
         restore = function()
             restore_modules(module_names)
         end,
@@ -125,6 +144,22 @@ function tests.current_object_refreshes_object_cache_for_current_map_before_desc
     assert_equal(env.sequence[1], "check_refresh:0x09", "current_object should refresh object cache for the live map before describing")
     assert_equal(env.sequence[2], "describe_current_object", "current_object should describe only after refresh")
     assert_equal(env.spoken[1], "fresh object", "current_object should speak the refreshed object description")
+
+    env.restore()
+end
+
+function tests.auto_walk_blocker_command_enables_stop_on_blocker_mode()
+    local env = make_env()
+
+    assert_equal(type(env.commands.auto_walk_blocker), "function", "auto_walk_blocker command should be registered")
+    env.commands.auto_walk_blocker()
+
+    assert_equal(env.sequence[1], "check_refresh:0x09", "auto_walk_blocker should refresh the current map first")
+    assert_equal(env.sequence[2], "check_refresh:0x09", "auto_walk_blocker should refresh before live NPC update")
+    assert_equal(env.sequence[3], "update_npcs", "auto_walk_blocker should refresh live NPC blockers")
+    assert_equal(env.sequence[4], "autowalk_to_current", "auto_walk_blocker should delegate to route_manager")
+    assert_equal(env.last_autowalk_opts().stop_on_blocker, true, "auto_walk_blocker should enable blocker-hunt mode")
+    assert_equal(env.last_autowalk_opts().speak, true, "auto_walk_blocker should speak like normal auto_walk")
 
     env.restore()
 end

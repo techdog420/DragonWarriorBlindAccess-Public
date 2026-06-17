@@ -182,6 +182,14 @@ COMMANDS (write to dw_commands.txt, one per line)
                            the waypoint is reached, movement is blocked, or
                            field movement is interrupted by battle/menu/dialogue.
                            On local maps, auto-walk to the current selected object.
+  auto_walk_blocker        Local-map blocker hunt mode. Auto-walks like auto_walk,
+                           but stops at the first blocked queued step and logs
+                           AUTO_WALK_BLOCKER_FOUND plus the matching
+                           add_blocked_edge:X,Y,DIR suggestion. It does not
+                           apply runtime blockers automatically. Timing-suspect
+                           movement-start timeouts run the normal seam retry
+                           first so passable edges are not suggested as blockers.
+  auto_walk_blocker:X,Y    Same blocker-hunt mode, targeting an explicit tile.
   stop_auto_walk           Cancel the current object auto-walk and release route
                            state without adding movement input.
   ; comment line           Lines starting with ; are ignored

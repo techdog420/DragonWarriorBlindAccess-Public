@@ -195,6 +195,8 @@ it produces review-only candidates instead of persistent block data.
 - `pathfind_to:X,Y`
 - `pathfind_adjacent:X,Y`
 - `auto_walk`
+- `auto_walk_blocker`
+- `auto_walk_blocker:X,Y`
 - `report_path_state`
 
 ### Path debug

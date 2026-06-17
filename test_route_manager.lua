@@ -2092,6 +2092,78 @@ function tests.unconfirmed_reroute_blocks_accumulate_for_active_route_only()
     env.restore()
 end
 
+function tests.autowalk_stop_on_blocker_reports_edge_without_reroute()
+    local env = make_env({pathfind_mode = "always_path"})
+
+    env.route_manager.autowalk_to_object(
+        {id = "exit_1", name = "Exit", type = "exit", x = 6, y = 1},
+        {speak = true, stop_on_blocker = true})
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = false,
+    })
+
+    assert_equal(env.start_route_calls(), 1, "blocker-hunt autowalk should not reroute after first blocker")
+    assert_equal(env.inject_step_calls(), 0, "blocker-hunt autowalk should not start seam brute-force retries")
+    assert_equal(
+        env.route_manager.count_runtime_blocks(0x05),
+        0,
+        "blocker-hunt autowalk should report, not inject, runtime blockers"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "Auto-walk stopped at blocker from 5,4 up to 5,3",
+        "blocker-hunt autowalk should announce the failed edge"
+    )
+    assert_contains(
+        table.concat(env.outputs, "\n"),
+        "add_blocked_edge:5,4,UP",
+        "blocker-hunt autowalk should provide the matching runtime patch command"
+    )
+    local events = env.published_events()
+    assert_equal(events[#events].name, "route_cancelled", "blocker-hunt stop should publish route_cancelled")
+    assert_equal(events[#events].payload.reason, "stop_on_blocker", "blocker-hunt cancellation should be distinguishable")
+
+    env.restore()
+end
+
+function tests.autowalk_stop_on_blocker_retries_timing_suspect_before_reporting()
+    local env = make_env({pathfind_mode = "always_path"})
+
+    env.route_manager.autowalk_to_object(
+        {id = "exit_1", name = "Exit", type = "exit", x = 6, y = 1},
+        {speak = true, stop_on_blocker = true})
+    env.auto_step.on_blocked(5, 4, "up", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 1,
+        timeout_retries = 0,
+        turn_represses = 0,
+        timing_suspect = true,
+    })
+
+    assert_equal(
+        env.inject_step_calls(),
+        1,
+        "blocker-hunt mode should retry movement-start timeouts before reporting a patchable edge"
+    )
+    assert_equal(
+        env.last_inject_opts() and env.last_inject_opts().source,
+        "seam_retry",
+        "blocker-hunt timing retries should use the same seam-retry path as normal autowalk"
+    )
+    assert_equal(env.start_route_calls(), 1, "timing retry should not queue a reroute before the direct retry")
+    assert_not_contains(
+        table.concat(env.outputs, "\n"),
+        "Auto-walk stopped at blocker",
+        "timing-suspect blocker-hunt steps should not announce a manual patch before retrying"
+    )
+    local events = env.published_events()
+    assert_equal(#events, 0, "timing retry should not publish stop_on_blocker before the direct retry")
+
+    env.restore()
+end
+
 function tests.tantegel_shrine_autowalk_avoids_high_x29_final_descent()
     local target = {
         id = "stair_29_29",

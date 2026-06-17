@@ -105,6 +105,7 @@ local active_route_total_steps = 0
 local active_route_completed_steps = 0
 local active_route_allow_hazards = false
 local active_route_hazard_stop = nil
+local active_route_stop_on_blocker = false
 local active_route_npc_mode = "live_npcs"
 local active_route_parked_slots = nil
 local active_overworld_segment = nil
@@ -1935,6 +1936,7 @@ local function clear_active_route_context(reason, refresh_objects)
     active_route_completed_steps = 0
     active_route_allow_hazards = false
     active_route_hazard_stop = nil
+    active_route_stop_on_blocker = false
     active_route_npc_mode = "live_npcs"
     active_route_parked_slots = nil
     active_overworld_segment = nil
@@ -1965,6 +1967,7 @@ local function set_active_route_context(target, path_len, face_dir, opts)
     active_route_completed_steps = 0
     active_route_allow_hazards = opts.allow_hazards == true
     active_route_hazard_stop = opts.hazard_stop
+    active_route_stop_on_blocker = opts.stop_on_blocker == true
     active_route_npc_mode = route_npc_mode_from_opts(opts)
     active_route_parked_slots = opts.planning_parked_slots
     active_route_temp_blocks = {}
@@ -3890,17 +3893,24 @@ end
 -- autowalk_to_current(): Plan and auto-walk to the currently selected object.
 -- Interior maps use A* object pathing. On the overworld, an active guided
 -- route can queue one waypoint segment without invoking interior pathfinding.
-function M.autowalk_to_current()
+function M.autowalk_to_current(opts)
+    opts = opts or {}
     local obj = objects.current_object()
     if not obj then
         local map_id = nav.get_position()
         if maps.is_overworld(map_id, snapshot.terrain_offset) then
-            return M.autowalk_overworld_segment({speak = true})
+            return M.autowalk_overworld_segment({speak = opts.speak ~= false})
         end
-        tolk.output_interrupt("No object selected")
+        if opts.speak ~= false then
+            tolk.output_interrupt("No object selected")
+        end
         return
     end
-    return M.autowalk_to_object(obj, {speak = true})
+    local next_opts = copy_opts(opts)
+    if next_opts.speak == nil then
+        next_opts.speak = true
+    end
+    return M.autowalk_to_object(obj, next_opts)
 end
 
 local function reroute_after_route_drift(cancel_data, target)
@@ -4100,6 +4110,62 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
             tostring(block_data and block_data.movement_start_frame),
             tostring(block_data and block_data.timeout_retries),
             tostring(block_data and block_data.turn_represses)))
+        return
+    end
+
+    if active_route_stop_on_blocker then
+        local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, blocked_dir)
+        local upper_dir = tostring(blocked_dir or ""):upper()
+        local command = string.format("add_blocked_edge:%d,%d,%s", from_x or -1, from_y or -1, upper_dir)
+        local target = last_pathfind_obj
+        event_bus.publish("route_cancelled", {
+            reason = "stop_on_blocker",
+            target = target,
+            map_id = map_id,
+            from_x = from_x,
+            from_y = from_y,
+            blocked_dir = blocked_dir,
+            dest_x = dest_x,
+            dest_y = dest_y,
+            approach = approach,
+            npc_blocked = is_npc_block == true,
+            timing_suspect = block_data and block_data.timing_suspect == true,
+            patch_command = (is_npc_block and nil or command),
+        })
+        debug_tools.info(string.format(
+            "AUTO_WALK_BLOCKER_FOUND map=0x%02X target_id=%s target_name=%s from=(%d,%d) dir=%s dest=(%d,%d) approach=%s source=%s npc_blocked=%s timing_suspect=%s patch_command=%s",
+            map_id or -1,
+            tostring(target and target.id or "-"),
+            tostring(target and target.name or "-"),
+            from_x or -1,
+            from_y or -1,
+            tostring(blocked_dir),
+            dest_x or -1,
+            dest_y or -1,
+            tostring(approach or "-"),
+            tostring(source or "-"),
+            tostring(is_npc_block == true),
+            tostring(block_data and block_data.timing_suspect == true),
+            is_npc_block and "-" or command))
+        clear_active_route_context("stop on blocker", should_refresh_objects_after_route())
+        if is_npc_block then
+            tolk.output_interrupt(string.format(
+                "Auto-walk stopped at NPC blocker from %d,%d %s to %d,%d. Do not patch unless it repeats without NPC clutter.",
+                from_x or -1,
+                from_y or -1,
+                tostring(blocked_dir),
+                dest_x or -1,
+                dest_y or -1))
+        else
+            tolk.output_interrupt(string.format(
+                "Auto-walk stopped at blocker from %d,%d %s to %d,%d. Runtime patch: %s",
+                from_x or -1,
+                from_y or -1,
+                tostring(blocked_dir),
+                dest_x or -1,
+                dest_y or -1,
+                command))
+        end
         return
     end
 
