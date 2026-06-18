@@ -277,6 +277,28 @@ EDGE PROBE COMMANDS
                            teleport-backed origin setup can alter movement or
                            collision state and should not be promoted directly.
   stop_probe_edge_verify   Cancel active repeated edge verification
+  verify_walked_edge:DIR
+  verify_walked_edge:X,Y,DIR
+                           Non-teleport verifier helper. If an origin is
+                           provided, auto-walks to exactly X,Y with adjacent
+                           fallback disabled, waits for route_completed at that
+                           origin, then starts the normal raw probe_edge flow.
+                           Logs WALKED_EDGE_VERIFY_* plus the usual
+                           EDGE_PROBE_* result. This is the preferred helper
+                           when teleport-backed verifier evidence is suspect.
+  stop_verify_walked_edge  Cancel a pending walked edge verifier route before
+                           it starts the raw probe.
+  verify_door_stand:X,Y,DIR
+                           Non-teleport door evidence helper. Auto-walks to
+                           the stand tile X,Y, records magic-key count and
+                           opened-door RAM, and logs DOOR_VERIFY_READY with
+                           expected_door=(X+dx,Y+dy). It does not press OPEN
+                           or spend a key.
+  verify_door_after        After manually using OPEN from the ready stand,
+                           compare current key count/opened-door RAM against
+                           the baseline and log DOOR_VERIFY_RESULT with
+                           expected_present and key_delta.
+  stop_verify_door         Cancel a pending/ready door verification.
 
 TELEPORT (DEBUG)
 ----------------

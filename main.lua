@@ -86,7 +86,7 @@ for _, mod_name in ipairs({
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
-    "route_manager", "scan_profiler", "state", "text",
+    "route_manager", "scan_profiler", "state", "text", "walked_edge_verifier",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -124,6 +124,7 @@ require "field_action_guard" -- Shared field movement/action guards
 require "edge_verify_classifier" -- Shared edge verify result classification
 local key_combo = require "key_combo"      -- Configurable key-combo helpers
 local overworld_routes = require "overworld_routes" -- Manual route guidance for the world map
+require "walked_edge_verifier" -- Non-teleport walked probe/door verifier
 
 -- Direction constants (kept here for debug diagnostic functions).
 local DIR_TO_DELTA = route_mgr.get_dir_to_delta()
@@ -1738,6 +1739,46 @@ DW_QOL_STATE.teleport_input_suppress_until_release = nil
 DW_QOL_STATE.pending_teleport_face = nil
 DW_QOL_STATE.teleport_post_scan_grace_frames = 0
 DW_QOL_STATE.teleport_state_guard = nil
+DW_QOL_STATE.walked_verify = package.loaded["walked_edge_verifier"].new({
+    dir_to_delta = DIR_TO_DELTA,
+    get_position = function()
+        return nav.get_position()
+    end,
+    route_to = function(target, opts)
+        return route_mgr.autowalk_to_object(target, opts)
+    end,
+    start_probe = function(dir, source)
+        return start_edge_probe_from_current(dir, source or "walked_edge_verify", true)
+    end,
+    door_snapshot = function()
+        local slots = {}
+        if memory and memory.readbyte then
+            for i = 0, addr.DOOR_ARRAY_MAX - 1 do
+                local dx = memory.readbyte(addr.DOOR_X_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+                local dy = memory.readbyte(addr.DOOR_Y_POS_START + i * addr.DOOR_ARRAY_STRIDE)
+                if dx ~= 0 or dy ~= 0 then
+                    slots[#slots + 1] = {index = i, x = dx, y = dy}
+                end
+            end
+        end
+        local keys = snapshot.keys
+        if memory and memory.readbyte then
+            keys = memory.readbyte(addr.KEYS)
+        end
+        return {keys = keys, slots = slots}
+    end,
+    log_info = function(msg) debug_tools.info(msg) end,
+    log_error = function(msg) debug_tools.error(msg) end,
+    speak = function(msg) tolk.output_interrupt(msg) end,
+})
+
+event_bus.subscribe("route_completed", function()
+    DW_QOL_STATE.walked_verify:on_route_completed()
+end)
+
+event_bus.subscribe("route_cancelled", function(data)
+    DW_QOL_STATE.walked_verify:on_route_cancelled(data)
+end)
 
 -- Sub-menu tracking: STATUS, SPELL, and ITEM screens opened from the command menu.
 -- When the player selects STATUS, SPELL, or ITEM, the game opens a sub-menu that
@@ -4485,6 +4526,31 @@ debug_tools.register_command("inspect_move", function(arg)
     end
 end)
 
+DW_QOL_STATE.walked_verify_start_refusal = function(command_name)
+    local active_edge_flow = package.loaded["edge_flow_guard"].refusal_message(command_name, {
+        probe_state = edge_probe_state,
+        verify_state = edge_verify_state,
+        seeded_probe_state = seeded_edge_probe_state,
+    })
+    if active_edge_flow then
+        return active_edge_flow
+    end
+    if map_survey.is_active() then
+        return command_name .. ": stop the active survey first"
+    end
+    if map_crawler.is_active() then
+        return command_name .. ": stop the active map crawl first"
+    end
+    if auto_step.is_route_active() then
+        return command_name .. ": wait for the current auto-walk step/route to finish"
+    end
+    local reason = get_edge_probe_unavailable_reason()
+    if reason then
+        return command_name .. " refused: " .. reason
+    end
+    return nil
+end
+
 debug_tools.register_command("probe_edge", function(arg)
     local _, px, py = nav.get_position()
     local from_x, from_y, dir = parse_move_arg(arg, px, py)
@@ -4812,6 +4878,48 @@ debug_tools.register_command("stop_probe_edge_verify", function()
         return
     end
     finish_edge_verify("cancelled", "manual_stop")
+end)
+
+debug_tools.register_command("verify_walked_edge", function(arg)
+    local refusal = DW_QOL_STATE.walked_verify_start_refusal("verify_walked_edge")
+    if refusal then
+        debug_tools.error(refusal)
+        return
+    end
+    DW_QOL_STATE.walked_verify:start_edge(arg)
+end)
+
+debug_tools.register_command("stop_verify_walked_edge", function()
+    local had_route = DW_QOL_STATE.walked_verify:has_pending_edge()
+    if not DW_QOL_STATE.walked_verify:cancel_edge("manual_stop") then
+        return
+    end
+    if had_route and auto_step.is_route_active() then
+        auto_step.cancel_active_step(true)
+    end
+end)
+
+debug_tools.register_command("verify_door_stand", function(arg)
+    local refusal = DW_QOL_STATE.walked_verify_start_refusal("verify_door_stand")
+    if refusal then
+        debug_tools.error(refusal)
+        return
+    end
+    DW_QOL_STATE.walked_verify:start_door_stand(arg)
+end)
+
+debug_tools.register_command("verify_door_after", function()
+    DW_QOL_STATE.walked_verify:finish_door_after()
+end)
+
+debug_tools.register_command("stop_verify_door", function()
+    local had_route = DW_QOL_STATE.walked_verify:has_pending_door()
+    if not DW_QOL_STATE.walked_verify:cancel_door("manual_stop") then
+        return
+    end
+    if had_route and auto_step.is_route_active() then
+        auto_step.cancel_active_step(true)
+    end
 end)
 
 debug_tools.register_command("pathfind_to", function(arg)
@@ -6978,6 +7086,9 @@ while true do
     local seeded_edge_probe_active_this_frame = checked_call("tick_seeded_edge_probe", tick_seeded_edge_probe) == true
     local edge_probe_active_this_frame = checked_call("tick_edge_probe", tick_edge_probe) == true
     local edge_verify_active_this_frame = checked_call("tick_edge_verify", tick_edge_verify) == true
+    DW_QOL_STATE.walked_verify_active_this_frame = checked_call("walked_verify.tick", function()
+        return DW_QOL_STATE.walked_verify:tick()
+    end) == true
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
     checked_scan("map_crawler.tick", map_crawler.tick, can_walk)
     -- Raw debug input is meant to exercise the game engine directly. Do not let
@@ -6987,6 +7098,7 @@ while true do
        and not seeded_edge_probe_active_this_frame
        and not edge_probe_active_this_frame
        and not edge_verify_active_this_frame
+       and not DW_QOL_STATE.walked_verify_active_this_frame
        and not teleport_input_suppressed_this_frame
        and not teleport_face_input_this_frame then
         checked_scan("auto_step.update", auto_step.update, can_walk)

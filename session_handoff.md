@@ -41,6 +41,14 @@ Updated: 2026-06-18
 
 ## Final Tooling / Cleanup Notes
 
+- New non-teleport verifier helpers were added after the Garinham door/route
+  fallout: use `verify_walked_edge:DIR` or `verify_walked_edge:X,Y,DIR` to
+  route to an origin without teleport, then run the normal raw `probe_edge`
+  logic from the reached tile. Keep legacy `probe_edge_verify` as
+  forensic/review-only when teleport artifacts are plausible. For doors, use
+  `verify_door_stand:X,Y,DIR`, manually OPEN after `DOOR_VERIFY_READY`, then
+  run `verify_door_after` to compare keys/opened-door RAM. Reload `main.lua`
+  in FCEUX before live-testing these new source changes.
 - `auto_walk_blocker` / `auto_walk_blocker:X,Y` now run normal local-map
   autowalk in first-blocker mode. They stop at the first confirmed blocked
   queued step, log `AUTO_WALK_BLOCKER_FOUND`, speak/report the failed edge, and
