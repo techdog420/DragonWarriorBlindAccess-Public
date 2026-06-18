@@ -1070,7 +1070,9 @@ local EXTRA_DOORS = {
     -- Map 0x09: Garinham. The old `(19,16)` east guess was disproved live by
     -- OPEN reporting "There is no door here." The grave-route follow-up found
     -- the grey-building door by opening from (17,9) facing south; door RAM
-    -- recorded the opened cell as (17,10).
+    -- recorded the opened cell as (17,10). The inner locked-building door opens
+    -- from the south stand `(4,7)` facing north, records door cell `(4,6)`, and
+    -- leads into the one-cell guard pocket at `(4,5)`.
     [0x09] = {
         {
             x=17,
@@ -1081,6 +1083,16 @@ local EXTRA_DOORS = {
             interaction_x=17,
             interaction_y=9,
             interaction_face_dir="south",
+        },
+        {
+            x=4,
+            y=6,
+            name="Locked Building Door",
+            type=M.TYPE_DOOR,
+            id="door_4_6",
+            interaction_x=4,
+            interaction_y=7,
+            interaction_face_dir="north",
         },
     },
     -- Map 0x18: Garin's Grave B1 southeast locked door toward B2. Live OPEN

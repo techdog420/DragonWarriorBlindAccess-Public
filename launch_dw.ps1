@@ -754,7 +754,15 @@ $bridgeProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @(
 ) -WindowStyle Hidden -PassThru
 Write-Host ("Started keyboard bridge PID {0}" -f $bridgeProcess.Id)
 & $launchShim @shimArgs
-$shimExitCode = $LASTEXITCODE
+$shimSucceeded = $?
+$lastExitCodeVariable = Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue
+if ($lastExitCodeVariable -and $null -ne $lastExitCodeVariable.Value) {
+    $shimExitCode = [int] $lastExitCodeVariable.Value
+} elseif ($shimSucceeded) {
+    $shimExitCode = 0
+} else {
+    $shimExitCode = 1
+}
 if ($shimExitCode -ne 0) {
     throw ("Launcher shim failed with exit code {0}" -f $shimExitCode)
 }

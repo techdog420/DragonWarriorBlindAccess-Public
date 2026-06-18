@@ -2296,6 +2296,7 @@ function tests.garinham_does_not_expose_disproved_east_locked_door()
 
     local doors = env.objects.get_objects({filtered = true})
     local grave_route = nil
+    local inner_door = nil
     for _, door in ipairs(doors) do
         if door.id == "door_19_16" then
             assert_equal(true, false, "Garinham should not expose the disproved east locked door")
@@ -2303,10 +2304,12 @@ function tests.garinham_does_not_expose_disproved_east_locked_door()
             assert_equal(true, false, "Garinham should not expose the old grave-route door guess")
         elseif door.id == "door_17_10" then
             grave_route = door
+        elseif door.id == "door_4_6" then
+            inner_door = door
         end
     end
 
-    assert_equal(#doors, 1, "Garinham should expose only the confirmed grave-route door")
+    assert_equal(#doors, 2, "Garinham should expose the confirmed grave-route and inner locked-building doors")
     assert_equal(grave_route ~= nil, true, "Garinham should expose the grey-building grave-route door")
     assert_equal(grave_route.name, "Grave Route Door", "Garinham grave-route door should have a distinct navigation label")
     assert_equal(grave_route.x, 17, "Garinham grave-route door x should match the confirmed door-RAM coordinate")
@@ -2314,6 +2317,13 @@ function tests.garinham_does_not_expose_disproved_east_locked_door()
     assert_equal(grave_route.interaction_x, 17, "Garinham grave-route door should route to the north-side stand")
     assert_equal(grave_route.interaction_y, 9, "Garinham grave-route door stand should match the user's OPEN position")
     assert_equal(grave_route.interaction_face_dir, "south", "Garinham grave-route door should face south to open")
+    assert_equal(inner_door ~= nil, true, "Garinham should expose the confirmed inner locked-building door")
+    assert_equal(inner_door.name, "Locked Building Door", "Garinham inner door should have a distinct navigation label")
+    assert_equal(inner_door.x, 4, "Garinham inner door x should match opened-door RAM proof")
+    assert_equal(inner_door.y, 6, "Garinham inner door y should match opened-door RAM proof")
+    assert_equal(inner_door.interaction_x, 4, "Garinham inner door should route to the south-side stand")
+    assert_equal(inner_door.interaction_y, 7, "Garinham inner door stand should match the successful OPEN/passage side")
+    assert_equal(inner_door.interaction_face_dir, "north", "Garinham inner door should face north to open")
 
     env.restore()
 end

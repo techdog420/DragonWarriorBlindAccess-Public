@@ -1,10 +1,38 @@
 # Playtesting Notes
 
-Updated: 2026-06-17
+Updated: 2026-06-18
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Garinham inner locked-building door (`2026-06-18`): live OPEN/door RAM
+  confirmed the inner door cell at `(4,6)`, opened from the south stand
+  `(4,7)` facing north. Passing through reaches the one-cell guard pocket at
+  `(4,5)`: north into `(4,4)` blocked under same-origin raw probe with no
+  NPC/runtime blocker, west/east are stationary guards at `(3,5)` and `(5,5)`,
+  and south exits back through the opened door. `map_reader.lua` now models
+  `(4,6)` as a floor-backed door and `(4,4).south` as blocked; `objects.lua`
+  exposes the routeable `Locked Building Door`. Treat this as a key trap /
+  event-gated pocket, not a route to the grave stairs.
+
+- Garinham grave-return route cleanup (`2026-06-17`): live FCEUX found a
+  viable escape from grave-return stairs `(19,0)` to the inn by leaving town:
+  route to `(18,1)`, step right to the World Map at `(2,2)`, follow the
+  Garinham overworld route to `(1,2)`, step right back into town at `(0,14)`,
+  then route normally to the inn stand `(15,15)`. The inn route completed;
+  transient bumps at `(14,16).west` and `(14,17).west` remain unpromoted
+  because they were not same-origin re-probed. The return leg from the inn
+  back to the grave stairs is not currently viable: the old `(19,10)`
+  passthrough was verifier/teleport fallout, and same-origin route/probe
+  evidence blocked `(19,11)->UP` into `(19,10)` repeatedly. With that bridge
+  blocked at runtime, every ranked bridge candidate back to the grave-side
+  component was also probed from a walked origin and blocked, including the
+  row-10 candidates, `(13,1)->RIGHT`, `(12,3..6)->RIGHT`, row-7 north gates,
+  and `(18,7..9)->RIGHT`. `map_reader.lua` no longer treats `(19,10)` as a
+  passthrough. Treat the forward grave-to-inn escape as playable through the
+  world map, but do not claim a clean inn-to-grave-stairs return route until a
+  fresh non-teleport path is found.
 
 - Garin's Grave wrap-up (`2026-06-17`): major route-decoding work for this
   dungeon is complete for current playtesting needs. The player manually

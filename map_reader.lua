@@ -536,10 +536,10 @@ local MAP_PASSTHROUGH_CELLS = {
         -- (18,0), then (18,0)->UP changed to 0x01 World Map, not Garin's
         -- Grave B1. Keep the standable edge cell open.
         ["18,0"] = true,
-        -- Grave-route lower hidden bridge. After (14,1).west proved blocked,
-        -- route frontier found (19,11)->UP into this type-2 wall as the next
-        -- bridge; probe_edge_verify moved 6/6 including stability recheck.
-        ["19,10"] = true,
+        -- The old lower hidden-bridge candidate at (19,10) came from
+        -- teleport-backed verifier proof. A 2026-06-17 same-origin inn-return
+        -- route plus direct probe from (19,11)->UP blocked repeatedly, so keep
+        -- that wall closed unless a fresh walked route proves another approach.
         -- ROM stair-down table entry 0xF411 is `09 13 00`; live STAIRS from
         -- this top-right boundary tile changed to map 0x18 / Garin's Grave B1.
         ["19,0"] = true,
@@ -1062,8 +1062,12 @@ local MAP_DOOR_CELLS = {
     -- from the grave route found the grey-building door by standing at (17,9)
     -- facing south; fresh DOOR_STATE then recorded slot 0=(17,10). Nearby
     -- false candidates such as (18,9), (19,7), and (19,9) stayed unmodeled.
+    -- The inner locked-building door is floor-backed: OPEN/pass-through from
+    -- the south stand `(4,7)` recorded door RAM `(4,6)`, then led into the
+    -- one-cell guard pocket at `(4,5)`.
     [0x09] = {
         ["17,10"] = {x=17, y=10},
+        ["4,6"] = {x=4, y=6},
     },
     -- Map 0x0B: Rimuldar inn / Wings chest locked doors.
     -- External guide data lists two inn doors. Live FCEUX door RAM confirmed
@@ -2597,33 +2601,59 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- `(16,11)->UP` into `(16,10)` blocked 5/5.
         -- Trail-blazing from the door to the grave later proved the top lane
         -- stops at `(13,1)->RIGHT`: `(14,1).west` blocked 5/5 with no NPC at
-        -- `(14,1)`. A reverse grave-stairs-to-door run then confirmed the
-        -- east approach from `(15,1)->LEFT` also blocks 5/5. Keep the cell
-        -- itself nonblocked for object browsing and alternate approaches.
+        -- `(14,1)`. Later keyless return cleanup produced one noisy moved
+        -- observation, but same-origin probes from `(15,1)->LEFT` then
+        -- blocked on `(14,1).east`; keep both approaches closed.
         ["14,1"] = {east = true, west = true},
         -- Reverse trail-blazing from Garin's Grave stairs showed the upper
         -- row is one-way/exit-prone: clean verifiers blocked downward movement
-        -- from x=15..18 into row 2. `(19,1)->DOWN` was mixed (2 moved, 3
-        -- blocked), so leave `(19,2).north` unmodeled until cleaner proof.
+        -- from x=15..18 into row 2. The 2026-06-17 grave-to-inn cleanup then
+        -- gave cleaner same-origin proof for `(19,1)->DOWN`, the x=4..11
+        -- row-1 down band, two row-3 down seams, the row-8 down band, and
+        -- the `(16,9)->LEFT` seam. Keep these directional so the cells
+        -- themselves remain available for object browsing and alternate
+        -- approaches.
         -- The Silver Harp return pass also proved `(19,0)->LEFT` into the
         -- top-edge exit cell `(18,0)` blocks 5/5, while `(18,1)->UP` moved
         -- before the world-map transition; close only the east approach.
         ["18,0"] = {east = true},
+        ["4,2"] = {north = true, west = true},
+        ["5,2"] = {north = true},
+        ["6,2"] = {north = true},
+        ["7,2"] = {north = true},
+        ["8,2"] = {north = true},
+        ["9,2"] = {north = true},
+        ["10,2"] = {north = true},
+        ["11,2"] = {north = true, south = true},
         ["15,2"] = {north = true},
         ["16,2"] = {north = true},
         ["17,2"] = {north = true},
         ["18,2"] = {north = true},
+        ["19,2"] = {north = true},
+        ["2,4"] = {north = true},
+        ["3,4"] = {north = true},
         ["5,12"] = {south = true},
-        ["7,9"] = {south = true},
-        ["8,9"] = {south = true},
-        ["9,9"] = {south = true},
-        ["10,9"] = {south = true},
-        ["11,9"] = {south = true},
-        ["12,9"] = {south = true},
-        ["13,9"] = {south = true},
-        ["14,9"] = {south = true},
+        ["1,9"] = {north = true},
+        ["2,9"] = {north = true, south = true},
+        ["3,9"] = {north = true, south = true},
+        ["4,9"] = {north = true},
+        ["5,9"] = {north = true},
+        ["6,9"] = {north = true},
+        ["7,9"] = {north = true, south = true},
+        ["8,9"] = {north = true, south = true},
+        ["9,9"] = {north = true, south = true},
+        ["10,9"] = {north = true, south = true},
+        ["11,9"] = {north = true, south = true},
+        ["12,9"] = {north = true, south = true},
+        ["13,9"] = {north = true, south = true},
+        ["14,9"] = {north = true, south = true},
+        ["15,9"] = {east = true, north = true},
         ["15,10"] = {south = true},
-        ["16,10"] = {south = true},
+        ["16,10"] = {north = true, south = true},
+        -- Inner locked-building guard pocket. After opening the floor-backed
+        -- door at `(4,6)`, repeated manual taps plus a raw same-origin probe
+        -- from `(4,5)->UP` blocked into `(4,4)` with no NPC/runtime blocker.
+        ["4,4"] = {south = true},
         ["13,3"] = {west = true},
         ["13,4"] = {west = true},
         ["13,5"] = {west = true},
@@ -2636,11 +2666,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,7"] = {west = true},
         ["19,8"] = {west = true},
         ["19,9"] = {west = true},
+        ["17,14"] = {north = true},
         ["18,14"] = {east = true},
         ["3,12"] = {north = true, west = true},
         ["4,10"] = {west = true},
-        ["3,9"] = {south = true},
-        ["2,9"] = {south = true},
         ["1,10"] = {east = true},
         ["1,11"] = {east = true},
         ["1,12"] = {east = true},
