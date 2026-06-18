@@ -92,6 +92,7 @@ function tests.routes_to_origin_before_starting_probe()
     assert_equal(calls.routes[1].target.x, 4, "route target x")
     assert_equal(calls.routes[1].target.y, 5, "route target y")
     assert_equal(calls.routes[1].opts.allow_adjacent_fallback, false, "route must land exactly on origin")
+    assert_equal(calls.routes[1].opts.path_mode, "direct", "route planner must not choose adjacent-origin mode")
     assert_equal(#calls.probes, 0, "probe should wait until route completes")
 
     state.x = 4
@@ -141,6 +142,19 @@ function tests.route_cancellation_aborts_pending_verifier()
 
     assert_equal(#calls.probes, 0, "cancelled route must not probe")
     assert_log_contains(calls.logs, "reason=route_cancelled:stop_on_blocker", "route cancellation should be logged")
+end
+
+function tests.route_drift_cancellation_waits_for_reroute()
+    local ctrl, state, calls = make_controller()
+    assert_equal(ctrl:start_door_stand("4,7,UP"), true, "door verifier should start")
+
+    ctrl:on_route_cancelled({reason = "route_drift_off_path"})
+    state.x = 4
+    state.y = 7
+    ctrl:on_route_completed()
+
+    assert_log_contains(calls.logs, "DOOR_VERIFY_READY", "recoverable route drift should not clear pending door verifier")
+    assert_equal(ctrl:finish_door_after(), true, "door verifier should still be active after drift reroute completion")
 end
 
 function tests.door_stand_records_baseline_and_compares_after_open()

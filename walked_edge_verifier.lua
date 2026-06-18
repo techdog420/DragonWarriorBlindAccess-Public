@@ -3,6 +3,8 @@
 
 local M = {}
 
+local BUILD_TAG = "direct_route route_drift_wait"
+
 local CARDINAL_TO_KEY = {north = "up", south = "down", east = "right", west = "left"}
 
 local function trim(value)
@@ -111,11 +113,14 @@ local function noop() end
 
 function M.new(deps)
     deps = deps or {}
-    return setmetatable({
+    local controller = setmetatable({
         deps = deps,
         pending = nil,
         door_state = nil,
     }, Controller)
+    local log_info = deps.log_info or deps.log or noop
+    log_info("WALKED_EDGE_VERIFIER_BUILD " .. BUILD_TAG)
+    return controller
 end
 
 function Controller:_info(msg)
@@ -170,6 +175,7 @@ function Controller:_route_to_origin(state)
         y = state.origin_y,
     }
     local plan = route_to(target, {
+        path_mode = "direct",
         allow_adjacent_fallback = false,
         post_arrival_actions = false,
         speak = true,
@@ -393,6 +399,18 @@ function Controller:on_route_cancelled(data)
         return false
     end
     local reason = data and data.reason or "unknown"
+    if reason == "route_drift_off_path" then
+        self:_info(string.format(
+            "%s map=%s origin=(%d,%d) dir=%s dest=(%d,%d) reason=route_drift_off_path action=wait_for_reroute",
+            state.kind == "door" and "DOOR_VERIFY_ROUTE_WAIT" or "WALKED_EDGE_VERIFY_ROUTE_WAIT",
+            format_map_id(state.map_id),
+            state.origin_x,
+            state.origin_y,
+            tostring(state.dir),
+            state.dest_x,
+            state.dest_y))
+        return true
+    end
     self:_abort_pending_state(state, "route_cancelled:" .. tostring(reason))
     return true
 end
