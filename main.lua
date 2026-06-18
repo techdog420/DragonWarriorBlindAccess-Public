@@ -1747,6 +1747,10 @@ DW_QOL_STATE.walked_verify = package.loaded["walked_edge_verifier"].new({
     route_to = function(target, opts)
         return route_mgr.autowalk_to_object(target, opts)
     end,
+    stop_route = function(reason)
+        auto_step.cancel_active_step(true, true)
+        route_mgr.clear_active_route_context("manual walked verifier stop: " .. tostring(reason or "manual_stop"))
+    end,
     start_probe = function(dir, source)
         return start_edge_probe_from_current(dir, source or "walked_edge_verify", true)
     end,
@@ -4890,12 +4894,8 @@ debug_tools.register_command("verify_walked_edge", function(arg)
 end)
 
 debug_tools.register_command("stop_verify_walked_edge", function()
-    local had_route = DW_QOL_STATE.walked_verify:has_pending_edge()
     if not DW_QOL_STATE.walked_verify:cancel_edge("manual_stop") then
         return
-    end
-    if had_route and auto_step.is_route_active() then
-        auto_step.cancel_active_step(true)
     end
 end)
 
@@ -4913,12 +4913,8 @@ debug_tools.register_command("verify_door_after", function()
 end)
 
 debug_tools.register_command("stop_verify_door", function()
-    local had_route = DW_QOL_STATE.walked_verify:has_pending_door()
     if not DW_QOL_STATE.walked_verify:cancel_door("manual_stop") then
         return
-    end
-    if had_route and auto_step.is_route_active() then
-        auto_step.cancel_active_step(true)
     end
 end)
 

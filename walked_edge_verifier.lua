@@ -3,7 +3,7 @@
 
 local M = {}
 
-local BUILD_TAG = "direct_route route_drift_wait"
+local BUILD_TAG = "direct_route route_drift_wait route_stop_cleanup"
 
 local CARDINAL_TO_KEY = {north = "up", south = "down", east = "right", west = "left"}
 
@@ -133,6 +133,10 @@ end
 
 function Controller:_speak(msg)
     (self.deps.speak or noop)(msg)
+end
+
+function Controller:_stop_route(reason)
+    (self.deps.stop_route or noop)(reason)
 end
 
 function Controller:_position()
@@ -466,13 +470,17 @@ function Controller:cancel_edge(reason)
         self:_error("stop_verify_walked_edge: no active walked edge verification")
         return false
     end
-    self:_abort_pending_state(state, reason or "manual_stop")
+    local stop_reason = reason or "manual_stop"
+    self:_stop_route(stop_reason)
+    self:_abort_pending_state(state, stop_reason)
     return true
 end
 
 function Controller:cancel_door(reason)
     if self.pending and self.pending.kind == "door" then
-        self:_abort_pending_state(self.pending, reason or "manual_stop")
+        local stop_reason = reason or "manual_stop"
+        self:_stop_route(stop_reason)
+        self:_abort_pending_state(self.pending, stop_reason)
         return true
     end
     if self.door_state then

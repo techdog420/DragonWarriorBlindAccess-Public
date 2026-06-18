@@ -37,6 +37,7 @@ local function make_controller()
         routes = {},
         probes = {},
         speaks = {},
+        route_stops = {},
         teleports = 0,
     }
     local ctrl = verifier.new({
@@ -72,6 +73,9 @@ local function make_controller()
         end,
         speak = function(msg)
             calls.speaks[#calls.speaks + 1] = msg
+        end,
+        stop_route = function(reason)
+            calls.route_stops[#calls.route_stops + 1] = reason
         end,
         teleport = function()
             calls.teleports = calls.teleports + 1
@@ -142,6 +146,26 @@ function tests.route_cancellation_aborts_pending_verifier()
 
     assert_equal(#calls.probes, 0, "cancelled route must not probe")
     assert_log_contains(calls.logs, "reason=route_cancelled:stop_on_blocker", "route cancellation should be logged")
+end
+
+function tests.manual_edge_cancel_stops_route_context()
+    local ctrl, _, calls = make_controller()
+    assert_equal(ctrl:start_edge("4,5,DOWN"), true, "walked edge verifier should start")
+
+    assert_equal(ctrl:cancel_edge("manual_stop"), true, "manual edge cancel should succeed")
+
+    assert_equal(#calls.route_stops, 1, "manual edge cancel should stop verifier route context")
+    assert_equal(calls.route_stops[1], "manual_stop", "route stop should receive cancel reason")
+end
+
+function tests.manual_door_cancel_stops_route_context()
+    local ctrl, _, calls = make_controller()
+    assert_equal(ctrl:start_door_stand("4,7,UP"), true, "door verifier should start")
+
+    assert_equal(ctrl:cancel_door("manual_stop"), true, "manual door cancel should succeed")
+
+    assert_equal(#calls.route_stops, 1, "manual door cancel should stop verifier route context")
+    assert_equal(calls.route_stops[1], "manual_stop", "route stop should receive cancel reason")
 end
 
 function tests.route_drift_cancellation_waits_for_reroute()
