@@ -57,6 +57,12 @@ M.SCROLL_X          = 0x0005
 --   (19 + floor(0x0007/8)) % 30
 -- Used by get_dialogue_start_row() in main.lua.
 M.SCROLL_Y          = 0x0007  -- Vertical scroll shadow (pixels; 0 when player_y <= 7)
+-- Player sprite/screen-position low bytes. Live FCEUX evidence showed RAM
+-- teleports can update PLAYER_X/Y while leaving these bytes at the old tile,
+-- which poisons the next movement probe. Keep these synchronized by applying
+-- the same 16-pixel tile delta used for the logical teleport.
+M.PLAYER_SPRITE_X   = 0x0090
+M.PLAYER_SPRITE_Y   = 0x0092
 M.LIGHT_RADIUS      = 0x00D0  -- Dungeon light radius (01, 03, 05, 07)
 M.RADIANT_TIMER     = 0x00DA  -- Radiant spell countdown timer
 M.REPEL_TIMER       = 0x00DB  -- Repel timer (counts down by 2 from 0xFF)

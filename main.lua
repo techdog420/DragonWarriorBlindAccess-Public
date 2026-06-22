@@ -86,7 +86,7 @@ for _, mod_name in ipairs({
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
-    "route_manager", "scan_profiler", "state", "text", "walked_edge_verifier",
+    "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -117,6 +117,7 @@ local map_crawler = require "map_crawler"  -- Review-only frontier crawler for m
 local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
 local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
+local teleport_state = require "teleport_state" -- RAM synchronization for debug teleports
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
 require "edge_flow_guard" -- Shared mutually-exclusive edge probe command guard
@@ -1736,6 +1737,7 @@ DW_QOL_STATE.teleport_input_suppress_frames = 0
 DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
 DW_QOL_STATE.TELEPORT_INPUT_RELEASE_MAX_FRAMES = 90
 DW_QOL_STATE.teleport_input_suppress_until_release = nil
+DW_QOL_STATE.teleport_input_neutralized_frame = nil
 DW_QOL_STATE.pending_teleport_face = nil
 DW_QOL_STATE.teleport_post_scan_grace_frames = 0
 DW_QOL_STATE.teleport_state_guard = nil
@@ -1751,6 +1753,15 @@ DW_QOL_STATE.walked_verify = package.loaded["walked_edge_verifier"].new({
         auto_step.cancel_active_step(true, true)
         route_mgr.clear_active_route_context("manual walked verifier stop: " .. tostring(reason or "manual_stop"))
     end,
+    reset_movement_state = function(reason)
+        if auto_step.cancel_active_step then
+            auto_step.cancel_active_step(true, true)
+        end
+        if auto_step.reset_movement_engine_state then
+            auto_step.reset_movement_engine_state(reason, {log = false})
+        end
+    end,
+    post_route_settle_frames = 16,
     start_probe = function(dir, source)
         return start_edge_probe_from_current(dir, source or "walked_edge_verify", true)
     end,
@@ -2306,6 +2317,24 @@ local function field_dialogue_guard_active()
     if DW_QOL_STATE.command_menu_blocks_field_movement() or submenu_mode ~= nil or menu.is_yesno_active() then return false end
     if MER.active then return false end
     return CMD.recent_field_action == 0
+end
+
+local function lower_status_noise_suppression_active()
+    if field_dialogue_guard_active() then
+        return true
+    end
+    if game_state.state ~= state.STATE_FIELD then return false end
+    if not in_gameplay then return false end
+    if DW_QOL_STATE.command_menu_blocks_field_movement()
+       or submenu_mode ~= nil
+       or menu.is_yesno_active()
+       or MER.active then
+        return false
+    end
+    if auto_step.is_route_active and auto_step.is_route_active() then
+        return true
+    end
+    return map_crawler.is_active and map_crawler.is_active()
 end
 
 local function bizhawk_dialogue_hint()
@@ -3768,6 +3797,14 @@ local function check_dialogue(frame_delta, refresh_ppu)
     if battle_dialogue_mode then
         dialogue = battle.normalize_dialogue(dialogue)
     end
+    -- During passive field movement, map/status redraws can briefly expose the
+    -- hero name or Gold label in the lower scan. Treat those as no dialogue so
+    -- they cannot cancel an in-flight sweep step or stabilize into speech.
+    if not battle_dialogue_mode
+       and lower_status_noise_suppression_active()
+       and text.is_passive_field_status_noise(dialogue) then
+        dialogue = ""
+    end
     local lower_dialogue_visible = (dialogue ~= "")
     local stable_threshold = lower_dialogue_stable_threshold(dialogue)
 
@@ -4400,6 +4437,17 @@ debug_tools.register_command("report_upper_dialogue_state", function()
         tostring(PREV.announced_dialogue or "")
     )
     debug_tools.info(msg)
+    for base = 0, 1 do
+        for i = 0, 10 do
+            local row = (get_dialogue_start_row() + i) % 30
+            local decoded = text.decode_row(row, scroll_tiles, base)
+            if decoded ~= "" then
+                debug_tools.info(string.format(
+                    "LOWER_DIALOGUE_ROW base=%d scan_index=%d row=%02d status=%s text=%q",
+                    base, i + 1, row, tostring(text.is_status_text(decoded)), decoded))
+            end
+        end
+    end
     tolk.output_interrupt("Upper dialogue state reported")
 end)
 
@@ -5009,6 +5057,7 @@ debug_tools.register_command("unfreeze_npcs", function()
     tolk.output_interrupt("NPCs unfrozen")
 end)
 
+do
 -- Neighbor search order for teleport_to :near mode. Cardinals first, then
 -- diagonals. First walkable cell wins.
 local TELEPORT_NEAR_OFFSETS = {
@@ -5092,21 +5141,19 @@ local function primary_combo_part(spec)
     return fallback
 end
 
-local function neutralize_teleport_input(extra)
-    local cleaned = {
-        up = false,
-        down = false,
-        left = false,
-        right = false,
-        start = false,
-        select = false,
-    }
-    if extra then
-        for k, v in pairs(extra) do
+local function make_teleport_neutral_input(extra)
+    if not extra then return {} end
+    local cleaned = {}
+    for k, v in pairs(extra) do
+        if v then
             cleaned[k] = v
         end
     end
-    joypad.set(1, cleaned)
+    return cleaned
+end
+
+local function neutralize_teleport_input(extra)
+    joypad.set(1, make_teleport_neutral_input(extra))
 end
 
 DW_QOL_STATE.suppress_teleport_input = function(mode)
@@ -5127,6 +5174,7 @@ DW_QOL_STATE.suppress_teleport_input = function(mode)
             tostring(DW_QOL_STATE.teleport_input_suppress_until_release.trigger_spec)))
     end
     neutralize_teleport_input()
+    DW_QOL_STATE.teleport_input_neutralized_frame = frame_count
 end
 
 DW_QOL_STATE.teleport_hotkey_still_held = function(keys)
@@ -5460,11 +5508,20 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
             landing_x, landing_y, map_id, table.concat(bytes, " ")))
     end
 
-    memory.writebyte(addr.PLAYER_X, landing_x)
-    memory.writebyte(addr.PLAYER_Y, landing_y)
-    if snapshot.is_overworld then
-        memory.writebyte(addr.OVERWORLD_X, landing_x)
-        memory.writebyte(addr.OVERWORLD_Y, landing_y)
+    local teleport_write = teleport_state.apply_landing(landing_x, landing_y, {
+        is_overworld = snapshot.is_overworld,
+    })
+    if debug_tools.DEBUG_MODE then
+        debug_tools.info(string.format(
+            "TELEPORT_SCREEN_SYNC map=0x%02X from=(%s,%s) to=(%d,%d) dx=%d dy=%d screen_synced=%s",
+            map_id,
+            teleport_write.old_x ~= nil and tostring(teleport_write.old_x) or "?",
+            teleport_write.old_y ~= nil and tostring(teleport_write.old_y) or "?",
+            landing_x,
+            landing_y,
+            teleport_write.dx or 0,
+            teleport_write.dy or 0,
+            tostring(teleport_write.screen_synced == true)))
     end
     -- Normalize movement-engine state so probes from this position get
     -- reproducible results. Without this, stale 0x003C (e.g. 0x08 "leftward
@@ -5682,10 +5739,12 @@ end
 
 debug_tools.register_command("teleport_landmark", teleport_overworld_landmark)
 debug_tools.register_command("teleport_overworld", teleport_overworld_landmark)
+end
 
 -- ============================================================
 -- Path Debug Commands
 -- ============================================================
+do
 -- These commands provide detailed pathfinding diagnostics.
 -- All output goes to dw_debug.log. Requires debug_mode=true.
 
@@ -6436,40 +6495,53 @@ debug_tools.register_command("reset_survey_candidates", function(arg)
     tolk.output_interrupt(string.format("Cleared survey candidates for map %02X", map_id))
 end)
 
-debug_tools.register_command("crawl_map_frontier", function(arg)
+local function start_map_crawl_command(command_name, arg)
     if map_survey.is_active() then
-        debug_tools.error("crawl_map_frontier: stop the active survey first")
+        debug_tools.error(command_name .. ": stop the active survey first")
         tolk.output_interrupt("Stop the active survey first")
         return
     end
     if auto_step.is_route_active() then
-        debug_tools.error("crawl_map_frontier: wait for the current auto-walk step/route to finish")
+        debug_tools.error(command_name .. ": wait for the current auto-walk step/route to finish")
         tolk.output_interrupt("Wait for auto-walk to finish")
         return
     end
     if game_state.state ~= state.STATE_FIELD then
-        debug_tools.error("crawl_map_frontier: must be on the field (current state " .. tostring(game_state.state) .. ")")
+        debug_tools.error(command_name .. ": must be on the field (current state " .. tostring(game_state.state) .. ")")
         tolk.output_interrupt("Field state required to start a map crawl")
         return
     end
     if menu.is_open() or PREV.dialogue ~= "" or PREV.upper_active then
-        debug_tools.error("crawl_map_frontier: close menus and dialogue before starting")
+        debug_tools.error(command_name .. ": close menus and dialogue before starting")
         tolk.output_interrupt("Close menus and dialogue first")
         return
     end
-    local ok, err = map_crawler.start(arg)
+    local ok, err
+    if command_name == "sweep_walk" then
+        ok, err = map_crawler.start_walk_sweep(arg)
+    else
+        ok, err = map_crawler.start(arg)
+    end
     if not ok then
-        debug_tools.error("crawl_map_frontier: " .. tostring(err))
+        debug_tools.error(command_name .. ": " .. tostring(err))
         tolk.output_interrupt(tostring(err))
     end
+end
+
+debug_tools.register_command("crawl_map_frontier", function(arg)
+    start_map_crawl_command("crawl_map_frontier", arg)
 end)
 
-debug_tools.register_command("stop_map_crawl", function()
+debug_tools.register_command("sweep_walk", function(arg)
+    start_map_crawl_command("sweep_walk", arg)
+end)
+
+local function stop_map_crawl_command(command_name)
     local ok, msg = map_crawler.stop()
     if not ok then
-        debug_tools.error("stop_map_crawl: " .. tostring(msg))
+        debug_tools.error(command_name .. ": " .. tostring(msg))
         tolk.output_interrupt(tostring(msg))
-        return
+        return true
     end
     -- The immediate-stop path returns a nil msg because finish_run already
     -- spoke the summary. Only the deferred settle path returns a real
@@ -6477,6 +6549,18 @@ debug_tools.register_command("stop_map_crawl", function()
     if msg then
         tolk.output_interrupt(msg)
     end
+    return true
+end
+
+debug_tools.register_command("__stop_sweep", function()
+    if not (map_crawler.is_active and map_crawler.is_active()) then
+        return false
+    end
+    return stop_map_crawl_command("stop_sweep")
+end)
+
+debug_tools.register_command("stop_map_crawl", function()
+    stop_map_crawl_command("stop_map_crawl")
 end)
 
 debug_tools.register_command("report_map_crawl", function(arg)
@@ -6514,6 +6598,7 @@ debug_tools.register_command("reset_map_crawl", function(arg)
     map_crawler.reset(map_id)
     tolk.output_interrupt(string.format("Cleared map crawl report for map %02X", map_id))
 end)
+end
 
 -- ============================================================
 -- Main Loop
@@ -6562,6 +6647,46 @@ end
 
 local function checked_scan(label, fn, ...)
     return scan_profiler.call(label, checked_call, label, fn, ...)
+end
+
+local function trace_teleport_frameadvance(label)
+    local guard = DW_QOL_STATE.teleport_state_guard
+    if not debug_tools.DEBUG_MODE
+       or not guard
+       or (guard.frames or 0) <= 0 then
+        return
+    end
+    debug_tools.info(string.format(
+        "TELEPORT_FRAMEADVANCE_%s map=0x%02X landing=(%d,%d) frames_left=%d reason=%s",
+        tostring(label),
+        guard.map_id or -1,
+        guard.x or -1,
+        guard.y or -1,
+        guard.frames or 0,
+        tostring(guard.reason or "teleport")))
+    if debug_tools.flush then
+        debug_tools.flush()
+    end
+end
+
+local function trace_teleport_loop(label)
+    local guard = DW_QOL_STATE.teleport_state_guard
+    if not debug_tools.DEBUG_MODE
+       or not guard
+       or (guard.frames or 0) <= 0 then
+        return
+    end
+    debug_tools.info(string.format(
+        "TELEPORT_LOOP_%s map=0x%02X landing=(%d,%d) frames_left=%d reason=%s",
+        tostring(label),
+        guard.map_id or -1,
+        guard.x or -1,
+        guard.y or -1,
+        guard.frames or 0,
+        tostring(guard.reason or "teleport")))
+    if debug_tools.flush then
+        debug_tools.flush()
+    end
 end
 
 while true do
@@ -6973,7 +7098,9 @@ while true do
     -- Debug tools: process command file, flush logs, apply simulated input.
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = checked_scan("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
+    trace_teleport_loop("POST_DEBUG_TICK")
     checked_scan("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
+    trace_teleport_loop("POST_PATH_DEBUG_TICK")
     local raw_debug_input_this_frame = sim_input and sim_input._raw
     if sim_input then
         if emulator_compat.clear_ppu_cache then
@@ -7003,19 +7130,35 @@ while true do
             end
         end
     end
+    trace_teleport_loop("POST_SIM_INPUT")
 
     NAME_ENTRY_SYMBOLS.apply_guard()
+    trace_teleport_loop("POST_NAME_GUARD")
 
     local teleport_input_suppressed_this_frame = false
     local teleport_face_input_this_frame = false
+    trace_teleport_loop("PRE_HOTKEY_RELEASE")
     local teleport_hotkey_held = checked_call(
         "teleport_hotkey_release",
         DW_QOL_STATE.teleport_hotkey_still_held,
         keys) == true
+    trace_teleport_loop("POST_HOTKEY_RELEASE")
+    local teleport_guard_active = DW_QOL_STATE.teleport_state_guard
+        and (DW_QOL_STATE.teleport_state_guard.frames or 0) > 0
     if DW_QOL_STATE.teleport_input_suppress_frames > 0
        or teleport_hotkey_held
-       or (DW_QOL_STATE.teleport_state_guard and (DW_QOL_STATE.teleport_state_guard.frames or 0) > 0) then
-        neutralize_teleport_input()
+       or teleport_guard_active then
+        if DW_QOL_STATE.teleport_input_neutralized_frame ~= frame_count then
+            if emulator_compat.is_fceux and teleport_guard_active then
+                trace_teleport_loop("SKIP_NEUTRALIZE_FCEUX_GUARD_ACTIVE")
+            else
+                trace_teleport_loop("PRE_NEUTRALIZE")
+                neutralize_teleport_input()
+                trace_teleport_loop("POST_NEUTRALIZE")
+            end
+        else
+            trace_teleport_loop("SKIP_NEUTRALIZE_ALREADY_DONE")
+        end
         if DW_QOL_STATE.teleport_input_suppress_frames > 0 then
             DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.teleport_input_suppress_frames - 1
         end
@@ -7025,6 +7168,7 @@ while true do
             "teleport_face",
             DW_QOL_STATE.apply_pending_teleport_face) == true
     end
+    trace_teleport_loop("POST_TELEPORT_INPUT_GATE")
 
     -- Auto-step: extend brief D-pad taps into full tile steps.
     -- Only active when the player is walking on the field (not in
@@ -7046,11 +7190,15 @@ while true do
                      )
     if debug_tools.DEBUG_MODE and not can_walk then
         local active_target = route_mgr.get_last_pathfind_obj and route_mgr.get_last_pathfind_obj()
-        if active_target or (path_debug.is_validating and path_debug.is_validating()) then
+        local map_crawl_active = map_crawler.is_active and map_crawler.is_active()
+        if active_target
+           or (path_debug.is_validating and path_debug.is_validating())
+           or map_crawl_active then
             local can_walk_log = rawget(_G, "DW_CAN_WALK_LOG") or {}
             local block_key = table.concat({
                 tostring(game_state.state),
                 tostring(debug_tools.is_sweep_active()),
+                tostring(map_crawl_active),
                 tostring(path_debug.is_step_mode()),
                 tostring(path_debug.is_validating()),
                 tostring(menu.is_open()),
@@ -7062,9 +7210,10 @@ while true do
             }, "|")
             if can_walk_log.key ~= block_key or (frame_count - (can_walk_log.frame or -9999)) >= 60 then
                 debug_tools.debug(string.format(
-                    "CAN_WALK false: state=%s sweep=%s step_mode=%s validating=%s menu_raw=%s menu_active=%s submenu=%s PREV.dialogue_len=%d PREV.upper_active=%s target=%s",
+                    "CAN_WALK false: state=%s sweep=%s map_crawl_active=%s step_mode=%s validating=%s menu_raw=%s menu_active=%s submenu=%s PREV.dialogue_len=%d PREV.upper_active=%s target=%s",
                     tostring(game_state.state),
                     tostring(debug_tools.is_sweep_active()),
+                    tostring(map_crawl_active),
                     tostring(path_debug.is_step_mode()),
                     tostring(path_debug.is_validating()),
                     tostring(menu.is_open()),
@@ -7079,14 +7228,18 @@ while true do
             end
         end
     end
+    trace_teleport_loop("PRE_EDGE_TICKS")
     local seeded_edge_probe_active_this_frame = checked_call("tick_seeded_edge_probe", tick_seeded_edge_probe) == true
     local edge_probe_active_this_frame = checked_call("tick_edge_probe", tick_edge_probe) == true
     local edge_verify_active_this_frame = checked_call("tick_edge_verify", tick_edge_verify) == true
     DW_QOL_STATE.walked_verify_active_this_frame = checked_call("walked_verify.tick", function()
         return DW_QOL_STATE.walked_verify:tick()
     end) == true
+    trace_teleport_loop("POST_EDGE_TICKS")
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
-    checked_scan("map_crawler.tick", map_crawler.tick, can_walk)
+    trace_teleport_loop("POST_MAP_SURVEY_TICK")
+    checked_scan("map_crawler.tick", map_crawler.tick, can_walk, game_state.state)
+    trace_teleport_loop("POST_MAP_CRAWLER_TICK")
     -- Raw debug input is meant to exercise the game engine directly. Do not let
     -- auto_step observe the simulated press/release edge, or it can synthesize
     -- a blocked auto-step after the raw hold and pollute probe/survey evidence.
@@ -7097,14 +7250,19 @@ while true do
        and not DW_QOL_STATE.walked_verify_active_this_frame
        and not teleport_input_suppressed_this_frame
        and not teleport_face_input_this_frame then
+        trace_teleport_loop("PRE_AUTO_STEP_UPDATE")
         checked_scan("auto_step.update", auto_step.update, can_walk)
+        trace_teleport_loop("POST_AUTO_STEP_UPDATE")
     end
 
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.
     trace_startup_loop("before_frameadvance")
+    trace_teleport_loop("PRE_FRAMEADVANCE")
     checked_scan("debug_tools.before_frameadvance", debug_tools.before_frameadvance)
+    trace_teleport_frameadvance("ENTER")
     FCEU.frameadvance()
+    trace_teleport_frameadvance("RETURN")
     checked_scan("debug_tools.after_frameadvance", debug_tools.after_frameadvance)
     trace_startup_loop("after_frameadvance")
 

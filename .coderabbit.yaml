@@ -1,0 +1,66 @@
+# .coderabbit.yaml
+reviews:
+  path_filters:
+    # Do not waste review on volatile runtime artifacts.
+    - "!dw_debug.log"
+    - "!dw_commands.txt"
+    - "!dw_script_error.log"
+    - "!speech_bridge.log"
+    - "!ppu_dump*.txt"
+    - "!logs/**"
+    - "!artifacts/**"
+    - "!handoff_archive/**"
+
+    # Never review emulator/ROM/save artifacts if they appear locally.
+    - "!*.nes"
+    - "!*.sav"
+    - "!*.state"
+    - "!*.State"
+    - "!*.bk2"
+
+  path_instructions:
+    - path: "**/*.lua"
+      instructions: |
+        This project targets Lua 5.1-style emulator scripting.
+        Do not suggest Lua 5.2+ or LuaJIT-only features.
+        Preserve FCEUX primary support and BizHawk fallback support.
+        Watch for accidental globals, stale module reload behavior,
+        nil reads from emulator memory APIs, and changes that could break
+        screen-reader narration timing.
+        Prefer small, testable fixes.
+
+    - path: "emulator_compat.lua"
+      instructions: |
+        Review with extra caution. This file bridges BizHawk and FCEUX APIs.
+        Do not assume one emulator's memory, PPU, joypad, or input API behavior
+        applies to the other.
+        Flag changes that could leave stale wrapped globals across Lua reloads.
+
+    - path: "route_manager.lua"
+      instructions: |
+        Review route changes for NPC-block handling, runtime blocker promotion,
+        post-arrival facing, queued movement timing, and false map-data promotion.
+        Do not treat one failed route as proof of permanent map blockage.
+
+    - path: "auto_step.lua"
+      instructions: |
+        Review for sticky input, direction tracking, route drift, timeout retry,
+        and neutral-frame handling. Avoid changes that could convert a facing tap
+        into movement.
+
+    - path: "dw_commands.sh"
+      instructions: |
+        This is the command harness for live emulator testing.
+        Preserve --replace, --wait, --timeout, fresh-log waiting, and one-command-
+        per-line behavior. Flag unsafe direct log/command-file deletion.
+
+    - path: "launch*.sh"
+      instructions: |
+        FCEUX is the default emulator path. BizHawk is fallback only.
+        Preserve WSL-to-Windows path conversion and dry-run behavior.
+
+    - path: "**/*.md"
+      instructions: |
+        Check docs for stale FCEUX-only wording, outdated command names,
+        and conflicts with AGENTS.md/session_handoff.md.
+        Do not request exhaustive prose cleanup unless it affects current workflow.

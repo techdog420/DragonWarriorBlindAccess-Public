@@ -3,7 +3,7 @@
 
 local M = {}
 
-local BUILD_TAG = "direct_route route_drift_wait route_stop_cleanup"
+local BUILD_TAG = "direct_route route_drift_wait route_stop_cleanup route_probe_settle full_npc_parking"
 
 local CARDINAL_TO_KEY = {north = "up", south = "down", east = "right", west = "left"}
 
@@ -139,6 +139,10 @@ function Controller:_stop_route(reason)
     (self.deps.stop_route or noop)(reason)
 end
 
+function Controller:_reset_movement_state(reason)
+    (self.deps.reset_movement_state or noop)(reason)
+end
+
 function Controller:_position()
     local get_position = self.deps.get_position
     if not get_position then
@@ -181,6 +185,8 @@ function Controller:_route_to_origin(state)
     local plan = route_to(target, {
         path_mode = "direct",
         allow_adjacent_fallback = false,
+        park_mobile_npcs = true,
+        park_stationary_npcs = true,
         post_arrival_actions = false,
         speak = true,
     }) or {}
@@ -386,14 +392,16 @@ function Controller:on_route_completed()
         return self:_mark_door_ready(state)
     end
     state.phase = "ready_to_probe"
+    state.settle_frames = math.max(0, tonumber(self.deps.post_route_settle_frames) or 0)
     self:_info(string.format(
-        "WALKED_EDGE_VERIFY_ROUTE_READY map=%s origin=(%d,%d) dir=%s dest=(%d,%d) status=route_completed",
+        "WALKED_EDGE_VERIFY_ROUTE_READY map=%s origin=(%d,%d) dir=%s dest=(%d,%d) status=route_completed settle_frames=%d",
         format_map_id(state.map_id),
         state.origin_x,
         state.origin_y,
         state.dir,
         state.dest_x,
-        state.dest_y))
+        state.dest_y,
+        state.settle_frames))
     return true
 end
 
@@ -423,6 +431,11 @@ function Controller:tick()
     local state = self.pending
     if not state or state.phase ~= "ready_to_probe" then
         return false
+    end
+    if (state.settle_frames or 0) > 0 then
+        self:_reset_movement_state("walked_edge_verify_route_settle")
+        state.settle_frames = state.settle_frames - 1
+        return true
     end
     return self:_start_probe_from_state(state)
 end

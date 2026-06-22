@@ -228,21 +228,398 @@ function M.clean_low_row_dialogue(dialogue)
     return clean:match("^%s*(.-)%s*$") or ""
 end
 
-local function read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
+local function is_status_marker_fragment(decoded)
+    local compact = tostring(decoded or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+    if compact == "" or #compact > 32 then
+        return false
+    end
+    if compact == "LV" or compact == "HP" or compact == "MP" then
+        return true
+    end
+    if compact:match("^[VP]%s+%d+") then
+        return true
+    end
+    if compact:match("^LV%s+%d+") or compact:match("^HP%s+%d+") or compact:match("^MP%s+%d+") then
+        return true
+    end
+    if compact:match("^G%d+") or compact:match("^E%d+") then
+        return true
+    end
+    return false
+end
+
+local function compact_text(decoded)
+    return tostring(decoded or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+end
+
+local function lua_pattern_escape(s)
+    return tostring(s or ""):gsub("([^%w])", "%%%1")
+end
+
+local function is_short_name_fragment(decoded)
+    decoded = tostring(decoded or "")
+    return decoded:match("^[A-Z][A-Za-z0-9]*$") ~= nil and #decoded <= 8
+end
+
+local function is_status_name_token(decoded)
+    local compact = compact_text(decoded)
+    return compact ~= ""
+        and #compact <= 8
+        and compact:find("%s") == nil
+        and compact:find("[a-z]") ~= nil
+        and compact:match("^[A-Za-z0-9]+$") ~= nil
+end
+
+local STATUS_VALUE_LABELS = {"LV", "HP", "MP", "V", "P"}
+
+local function is_fused_status_value_fragment(decoded)
+    local compact = compact_text(decoded)
+    if compact == "" or #compact > 32 then
+        return false
+    end
+    if compact:find("[%.%!%?,'\"]") then
+        return false
+    end
+
+    for _, label in ipairs(STATUS_VALUE_LABELS) do
+        local start_pos, end_pos = compact:find(label, 1, true)
+        if start_pos and start_pos > 1 then
+            local prefix = compact:sub(1, start_pos - 1)
+            local suffix = compact:sub(end_pos + 1):match("^%s*(.-)%s*$") or ""
+            if prefix:find("[a-z]")
+               and prefix:match("^[A-Za-z0-9]+$")
+               and suffix:match("^%d+$") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function is_fused_status_label_fragment_token(token)
+    local bare = tostring(token or ""):match("^([A-Za-z0-9]+)[%.%!%?,:;]*$")
+    if not bare or #bare < 2 or #bare > 6 then
+        return false
+    end
+    if not bare:find("[a-z]") and not bare:find("%d") then
+        return false
+    end
+    return bare:match("^[A-Za-z0-9]*[HMPVGEL]$") ~= nil
+end
+
+local function strip_fused_status_label_prefix(token)
+    local raw = tostring(token or "")
+    local bare, suffix = raw:match("^([A-Za-z0-9]+)([^A-Za-z0-9]*)$")
+    if not bare then
+        return raw
+    end
+
+    for prefix_len = math.min(6, #bare - 1), 2, -1 do
+        local prefix = bare:sub(1, prefix_len)
+        local remainder = bare:sub(prefix_len + 1)
+        if is_fused_status_label_fragment_token(prefix)
+           and remainder:find("[a-z]") then
+            return remainder .. (suffix or "")
+        end
+    end
+    return raw
+end
+
+function M.is_passive_field_status_noise(dialogue)
+    local compact = compact_text(dialogue)
+    if compact == "" then
+        return false
+    end
+    if is_fused_status_value_fragment(compact) then
+        return true
+    end
+    if compact:find("%s") then
+        return false
+    end
+    if compact:upper() == "GOLD" then
+        return true
+    end
+    if #compact <= 3 and compact:match("^[a-z][a-z0-9]*$") then
+        return true
+    end
+    return #compact <= 8
+        and compact:find("[a-z]") ~= nil
+        and compact:match("^[A-Z][A-Za-z0-9]*$") ~= nil
+end
+
+local function add_set_value(set, ordered, value)
+    value = compact_text(value)
+    if value == "" or set[value] then return end
+    set[value] = true
+    ordered[#ordered + 1] = value
+end
+
+local function sorted_fragments_desc(values)
+    local copy = {}
+    for i = 1, #(values or {}) do
+        copy[i] = values[i]
+    end
+    table.sort(copy, function(a, b)
+        if #a == #b then return a < b end
+        return #a > #b
+    end)
+    return copy
+end
+
+local function has_fragmented_status_context(rows, index, paired_rows)
+    local labels = 0
+    local values = 0
+    local split_name_pair = false
+
+    if paired_rows then
+        local selected = tostring(rows[index] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+        local paired = tostring(paired_rows[index] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+        split_name_pair = selected ~= "" and paired ~= ""
+            and (is_short_name_fragment(selected .. paired) or is_short_name_fragment(paired .. selected))
+    end
+
+    local function count_fragment(compact)
+        if compact == "V" or compact == "P" or compact == "LV" or compact == "HP" or compact == "MP" then
+            labels = labels + 1
+        elseif is_status_marker_fragment(compact) then
+            labels = labels + 1
+        elseif compact:match("^%d+$") or compact:match("^[GE]%d+$") then
+            values = values + 1
+        end
+    end
+
+    for offset = -8, 8 do
+        if offset ~= 0 then
+            local compact = tostring(rows[index + offset] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+            count_fragment(compact)
+            if paired_rows then
+                local paired = tostring(paired_rows[index + offset] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+                count_fragment(paired)
+            end
+        end
+    end
+    return (labels >= 2 and values >= 1) or labels >= 3 or (split_name_pair and labels >= 1 and values >= 1)
+end
+
+local function has_fragmented_status_context_anywhere(rows, paired_rows)
+    local labels = 0
+    local values = 0
+    local function count_fragment(compact)
+        if compact == "V" or compact == "P" or compact == "LV" or compact == "HP" or compact == "MP" then
+            labels = labels + 1
+        elseif is_status_marker_fragment(compact) then
+            labels = labels + 1
+        elseif compact:match("^%d+$") or compact:match("^[GE]%d+$") then
+            values = values + 1
+        end
+    end
+
+    for i = 1, #(rows or {}) do
+        local compact = tostring(rows[i] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+        count_fragment(compact)
+        if paired_rows then
+            local paired = tostring(paired_rows[i] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+            count_fragment(paired)
+        end
+    end
+    return (labels >= 2 and values >= 1) or labels >= 3
+end
+
+local function build_status_context(rows, paired_rows)
+    local context = {
+        has_status = has_fragmented_status_context_anywhere(rows, paired_rows),
+        name_fragments = {},
+        split_fragments = {},
+        ordered_split_fragments = {},
+    }
+    local ordered_name_fragments = {}
+
+    for i = 1, #(rows or {}) do
+        local selected = compact_text(rows[i])
+        local paired = compact_text(paired_rows and paired_rows[i] or "")
+
+        if selected ~= "" and paired ~= "" then
+            local joined = selected .. paired
+            local reverse_joined = paired .. selected
+            if is_status_name_token(joined) or is_status_name_token(reverse_joined) then
+                context.has_status = true
+                add_set_value(context.split_fragments, context.ordered_split_fragments, selected)
+                add_set_value(context.split_fragments, context.ordered_split_fragments, paired)
+                add_set_value(context.name_fragments, ordered_name_fragments, joined)
+                add_set_value(context.name_fragments, ordered_name_fragments, reverse_joined)
+            end
+        end
+
+        if context.has_status and is_status_name_token(selected) then
+            add_set_value(context.name_fragments, ordered_name_fragments, selected)
+        end
+        if context.has_status and is_status_name_token(paired) then
+            add_set_value(context.name_fragments, ordered_name_fragments, paired)
+        end
+    end
+
+    context.ordered_split_fragments = sorted_fragments_desc(context.ordered_split_fragments)
+    return context
+end
+
+local function strip_padded_status_suffix(decoded)
+    local cleaned = tostring(decoded or "")
+    local patterns = {
+        "%s%s+LV%s*%d*$",
+        "%s%s+HP%s*%d*$",
+        "%s%s+MP%s*%d*$",
+        "%s%s+G%d+$",
+        "%s%s+E%d+$",
+        "%s%s+[A-Z][A-Za-z0-9]?[A-Za-z0-9]?[A-Za-z0-9]?$",
+    }
+    cleaned = cleaned:gsub("%s%s+[A-Z][A-Za-z0-9]?[A-Za-z0-9]?[A-Za-z0-9]?%s+", " ")
+    for _, pattern in ipairs(patterns) do
+        cleaned = cleaned:gsub(pattern, "")
+    end
+    return cleaned:gsub("%s+$", "")
+end
+
+local function strip_derived_name_fragment_noise(decoded, context)
+    local cleaned = tostring(decoded or "")
+    if not context or not context.has_status then
+        return cleaned
+    end
+
+    local compact = compact_text(cleaned)
+    if compact:upper() == "GOLD" then
+        return ""
+    end
+    if context.name_fragments[compact] or context.split_fragments[compact] then
+        return ""
+    end
+
+    for _, fragment in ipairs(context.ordered_split_fragments or {}) do
+        -- Avoid stripping a real "I am..." style line just because a one-letter
+        -- hero-name fragment is visible in the status display.
+        if #fragment >= 2 then
+            local escaped = lua_pattern_escape(fragment)
+            local prefix_pattern = "^%s*" .. escaped .. "%s+(.+)$"
+            local remainder = cleaned:match(prefix_pattern)
+            if remainder and remainder:find("[a-z]") then
+                cleaned = remainder
+            end
+
+            local suffix_pattern = "^(.-)%s+" .. escaped .. "%s*$"
+            local before = cleaned:match(suffix_pattern)
+            if before and before:find("[a-z]") then
+                cleaned = before
+            end
+        end
+    end
+
+    return cleaned:match("^%s*(.-)%s*$") or ""
+end
+
+local function strip_inline_status_fragment_noise(decoded, context)
+    local cleaned = tostring(decoded or "")
+    if not context or not context.has_status then
+        return cleaned
+    end
+
+    local parts = {}
+    for token in cleaned:gmatch("%S+") do
+        if not is_fused_status_label_fragment_token(token) then
+            parts[#parts + 1] = strip_fused_status_label_prefix(token)
+        end
+    end
+    return table.concat(parts, " "):match("^%s*(.-)%s*$") or ""
+end
+
+local function has_nearby_status_marker(rows, index)
+    for offset = -4, 4 do
+        if offset ~= 0 then
+            local neighbor = rows[index + offset]
+            if neighbor and (M.is_status_text(neighbor) or is_status_marker_fragment(neighbor)) then
+                return true
+            end
+        end
+    end
+    return has_fragmented_status_context(rows, index)
+end
+
+local function is_cross_nametable_status_fragment(candidate, candidate_rows, other_rows)
+    local compact = tostring(candidate or ""):match("^%s*(.-)%s*$") or ""
+    if compact == "" or compact:find("%s") or #compact > 8 or not compact:find("[a-z]") then
+        return false
+    end
+
+    for i, selected in ipairs(candidate_rows) do
+        if selected == compact then
+            local other = other_rows[i] or ""
+            if is_short_name_fragment(other .. selected) or is_short_name_fragment(selected .. other) then
+                return has_nearby_status_marker(candidate_rows, i)
+                    or has_nearby_status_marker(other_rows, i)
+                    or has_fragmented_status_context(candidate_rows, i, other_rows)
+            end
+        end
+    end
+    return false
+end
+
+local function read_dialogue_rows_for_base(scroll_tiles, start_row, base_nametable)
     start_row = start_row or 19
-    local lines = {}
+    local decoded_rows = {}
     for i = 0, 10 do
         local row = (start_row + i) % 30
-        local decoded = M.decode_row(row, scroll_tiles, base_nametable)
-        if decoded ~= "" and decoded:find("[a-z]") and not M.is_status_text(decoded) then
-            lines[#lines + 1] = decoded
+        decoded_rows[#decoded_rows + 1] = M.decode_row(row, scroll_tiles, base_nametable)
+    end
+    return decoded_rows
+end
+
+local function read_status_context_rows_for_base(scroll_tiles, base_nametable)
+    local decoded_rows = {}
+    for row = 0, 18 do
+        decoded_rows[#decoded_rows + 1] = M.decode_row(row, scroll_tiles, base_nametable)
+    end
+    return decoded_rows
+end
+
+local function filtered_dialogue_from_rows(decoded_rows, paired_rows, context_rows, paired_context_rows)
+    local status_context = build_status_context(context_rows or decoded_rows, paired_context_rows or paired_rows)
+
+    local function is_status_name_fragment(index, decoded)
+        local paired = paired_rows and tostring(paired_rows[index] or ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+        local split_name_pair = paired ~= ""
+            and (is_short_name_fragment(decoded .. paired) or is_short_name_fragment(paired .. decoded))
+        if not is_short_name_fragment(decoded) and not split_name_pair then
+            return false
+        end
+
+        return has_nearby_status_marker(decoded_rows, index)
+            or (paired_rows and has_fragmented_status_context(decoded_rows, index, paired_rows))
+            or (split_name_pair and has_fragmented_status_context_anywhere(context_rows, paired_context_rows))
+    end
+
+    local lines = {}
+    for i, decoded in ipairs(decoded_rows) do
+        local cleaned = strip_padded_status_suffix(decoded)
+        cleaned = strip_derived_name_fragment_noise(cleaned, status_context)
+        cleaned = strip_inline_status_fragment_noise(cleaned, status_context)
+        local fused_status_value = status_context.has_status
+            and is_fused_status_value_fragment(cleaned)
+        if cleaned ~= "" and cleaned:find("[a-z]")
+           and not M.is_status_text(decoded)
+           and not fused_status_value
+           and not is_status_name_fragment(i, cleaned) then
+            lines[#lines + 1] = cleaned
         end
     end
     return table.concat(lines, " ")
 end
 
+local function read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable, paired_rows)
+    local decoded_rows = read_dialogue_rows_for_base(scroll_tiles, start_row, base_nametable)
+    return filtered_dialogue_from_rows(decoded_rows, paired_rows), decoded_rows
+end
+
 function M.read_dialogue_window_filtered(scroll_tiles, start_row, base_nametable)
-    local primary = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
+    local primary
+    local primary_rows
     local result = primary
 
     -- BizHawk can report a transient PPUCTRL base bit that does not match the
@@ -251,10 +628,24 @@ function M.read_dialogue_window_filtered(scroll_tiles, start_row, base_nametable
     -- one with more lowercase dialogue.
     if base_nametable ~= nil then
         local alternate_base = (math.floor(tonumber(base_nametable) or 0) + 1) % 2
-        local alternate = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, alternate_base)
-        if dialogue_score(alternate) > dialogue_score(primary) then
+        primary_rows = read_dialogue_rows_for_base(scroll_tiles, start_row, base_nametable)
+        local alternate_rows = read_dialogue_rows_for_base(scroll_tiles, start_row, alternate_base)
+        local primary_context_rows = read_status_context_rows_for_base(scroll_tiles, base_nametable)
+        local alternate_context_rows = read_status_context_rows_for_base(scroll_tiles, alternate_base)
+        primary = filtered_dialogue_from_rows(primary_rows, alternate_rows, primary_context_rows, alternate_context_rows)
+        result = primary
+        local alternate = filtered_dialogue_from_rows(alternate_rows, primary_rows, alternate_context_rows, primary_context_rows)
+        if is_cross_nametable_status_fragment(primary, primary_rows, alternate_rows) then
+            primary = ""
+            result = ""
+        end
+        if dialogue_score(alternate) > dialogue_score(primary)
+           and not is_cross_nametable_status_fragment(alternate, alternate_rows, primary_rows) then
             result = alternate
         end
+    else
+        primary, primary_rows = read_dialogue_window_filtered_for_base(scroll_tiles, start_row, base_nametable)
+        result = primary
     end
 
     if M.is_status_equipment_text(result) then
@@ -338,6 +729,7 @@ end
 -- window replaces or extends beyond the status area, these markers
 -- disappear or the text becomes significantly longer.
 function M.is_status_text(text)
+    text = tostring(text or "")
     if text:find("LV") ~= nil and text:find("HP") ~= nil then
         return true
     end
@@ -347,6 +739,25 @@ function M.is_status_text(text)
     -- text to letters only and look for the status-bar marker order there.
     local letters_only = text:gsub("[^A-Za-z]", "")
     if letters_only:find("LV") ~= nil and letters_only:find("HP") ~= nil then
+        return true
+    end
+
+    local compact = text:gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+    if not compact:find("[%.%!%?,'\"]") then
+        if compact:match("^[VP]%s+%d+%s+[A-Za-z0-9]*HP%s+%d+%s+[A-Za-z0-9]*MP%s+%d+%s+[A-Za-z0-9]*G%d+%s+[A-Za-z0-9]*E%d+") then
+            return true
+        end
+        if compact:match("^[A-Z]%s+[A-Za-z0-9]*H%s+[A-Za-z0-9]*M%s+[A-Za-z0-9]*G%s+[A-Za-z0-9]*E%s+%d+%s+%d+%s+[A-Z][A-Za-z0-9]*$") then
+            return true
+        end
+        if compact:match("^[A-Za-z0-9]*H%s+[A-Za-z0-9]*M%s+[A-Za-z0-9]*G%s+[A-Za-z0-9]*E%s+%d+%s+%d+%s+[A-Z][A-Za-z0-9]*$") then
+            return true
+        end
+    end
+    if compact:match("^[A-Z][A-Za-z0-9]*%s+LV%s+%d+$") then
+        return true
+    end
+    if compact:match("^%S+%s+V%s+P%s+P%s+%d+%s+%d+%s+%S+%s+LV%s+%d+$") then
         return true
     end
 

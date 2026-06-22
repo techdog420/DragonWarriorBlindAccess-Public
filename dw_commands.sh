@@ -29,9 +29,13 @@
 #   export_blocks          Format all recorded blocked moves as MAP_BLOCKED_CELLS Lua
 #                          entries; output appears in dw_debug.log
 #   speech_status          Report speech backend, readiness, and last error
-#   sweep_map              Systematic engine-collision sweep: teleports player to every
-#                          walkable-looking tile, probes all 4 directions, outputs
-#                          MAP_BLOCKED_CELLS entries for hidden engine walls
+#   sweep_walk             Normal-movement sweep from current live tile using
+#                          map_crawler; teleport_used=false. Writes
+#                          sweep_status.txt while active plus JSON, summary,
+#                          and dw_crawl_MM.txt review-only files on finish.
+#   sweep_map              Legacy unsafe teleport-backed sweep. Logs trusted=false
+#                          review-only findings and skips trusted persistence
+#   sweep_teleport_legacy  Explicit alias for legacy unsafe teleport sweep
 #   stop_sweep             Cancel an active sweep
 #   report_blockers        Log current NPC blockers and runtime-discovered blocks
 #   report_runtime_blocks  Log current map's runtime_blocked cells
@@ -119,7 +123,7 @@
 #   stop_probe_edge             Cancel an active edge probe
 #
 # ── Teleport (debug) ─────────────────────────────────────────────────
-#   teleport_to:X,Y             Same-map teleport; refuses if target not walkable
+#   teleport_to:X,Y             Same-map debug teleport; refuses if target not walkable
 #   teleport_to:X,Y,near        Teleport to target, or first walkable cardinal/diagonal
 #                               neighbor if target is blocked
 #   teleport_to:X,Y,force       Skip walkability check (unstick/debug; risk of strand)

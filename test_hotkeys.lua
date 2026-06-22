@@ -555,9 +555,14 @@ function tests.path_actions_refresh_live_npcs_before_planning()
 
     env.update({})
     env.update({U = true})
+    assert_equal(env.object_cache_refresh_calls(), 1, "held auto-walk hotkey should defer route planning")
+    assert_equal(env.live_npc_refresh_calls(), 1, "held auto-walk hotkey should defer live NPC refresh")
+    assert_equal(env.autowalk_calls(), 0, "auto-walk hotkey should wait for key release")
+
+    env.update({})
     assert_equal(env.object_cache_refresh_calls(), 2, "auto-walk should refresh the current map object cache before planning")
     assert_equal(env.live_npc_refresh_calls(), 2, "auto-walk should refresh moving NPC positions before planning")
-    assert_equal(env.autowalk_calls(), 1, "auto-walk hotkey should still invoke route execution")
+    assert_equal(env.autowalk_calls(), 1, "auto-walk hotkey should invoke route execution after key release")
 
     env.restore()
 end

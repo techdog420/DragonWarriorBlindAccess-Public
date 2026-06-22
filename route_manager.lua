@@ -37,6 +37,20 @@ local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 
 local M = {}
 
+local function trace_autowalk_boundary(label, detail)
+    if not debug_tools.DEBUG_MODE then
+        return
+    end
+    local message = "AUTO_WALK_TRACE " .. tostring(label)
+    if detail and detail ~= "" then
+        message = message .. " " .. tostring(detail)
+    end
+    debug_tools.info(message)
+    if debug_tools.flush then
+        debug_tools.flush()
+    end
+end
+
 -- ============================================================
 -- Direction Constants
 -- ============================================================
@@ -3641,6 +3655,13 @@ local function queue_path_steps(path, opts)
         settle_same_direction = active_route_settle_same_direction
     end
     settle_same_direction = settle_same_direction ~= false
+    trace_autowalk_boundary("queue_path_steps_before_start_route", string.format(
+        "steps=%d start=(%s,%s) settle=%d same_direction=%s",
+        #steps,
+        tostring(start_x),
+        tostring(start_y),
+        settle_frames,
+        tostring(settle_same_direction)))
     if auto_step.start_route(steps, {
         settle_frames = settle_frames,
         settle_same_direction = settle_same_direction,
@@ -3648,11 +3669,17 @@ local function queue_path_steps(path, opts)
         start_x = start_x,
         start_y = start_y,
     }) then
+        trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
+            "result=true steps=%d",
+            #steps))
         active_route_settle_frames = settle_frames
         active_route_settle_same_direction = settle_same_direction
         reroute_failures = 0
         return true
     end
+    trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
+        "result=false steps=%d",
+        #steps))
     return false
 end
 
@@ -3738,6 +3765,13 @@ function M.autowalk_to_object(obj, opts)
         end
     end
     local map_id, px, py = nav.get_position()
+    trace_autowalk_boundary("autowalk_to_object_entry", string.format(
+        "target=%s map=0x%02X pos=(%d,%d) speak=%s",
+        tostring(obj.name),
+        map_id or -1,
+        px or -1,
+        py or -1,
+        tostring(opts.speak ~= false)))
     local terrain_offset = snapshot.terrain_offset
     active_route_temp_blocks = nil
     if maps.is_overworld(map_id, terrain_offset) then
@@ -3788,7 +3822,16 @@ function M.autowalk_to_object(obj, opts)
     if opts.hazard_preview == nil then
         opts.hazard_preview = true
     end
+    trace_autowalk_boundary("before_plan_path", string.format(
+        "target=%s npc_mode=%s",
+        tostring(obj.name),
+        tostring(npc_mode)))
     local plan = plan_path_to_object(obj, opts)
+    trace_autowalk_boundary("after_plan_path", string.format(
+        "target=%s result=%s path_len=%d",
+        tostring(obj.name),
+        tostring(plan and plan.result),
+        plan and plan.path and #plan.path or 0))
     plan, opts = maybe_use_unsafe_hazard_plan(obj, map_id, opts, plan)
     if opts.allow_hazards == true then
         plan = maybe_stop_before_hazard(plan)
@@ -3863,6 +3906,12 @@ function M.autowalk_to_object(obj, opts)
     if settle_same_direction == nil then
         settle_same_direction = true
     end
+    trace_autowalk_boundary("before_queue_path_steps", string.format(
+        "target=%s path_len=%d settle=%d same_direction=%s",
+        tostring(obj.name),
+        #plan.path,
+        settle_frames,
+        tostring(settle_same_direction)))
     if not queue_path_steps(plan.path, {
         settle_frames = settle_frames,
         settle_same_direction = settle_same_direction,
@@ -3878,14 +3927,32 @@ function M.autowalk_to_object(obj, opts)
         end
         return plan
     end
+    trace_autowalk_boundary("after_queue_path_steps", string.format(
+        "target=%s path_len=%d",
+        tostring(obj.name),
+        #plan.path))
     debug_tools.info("AUTO_WALK: queued " .. #plan.path .. " step(s) for " .. obj.name)
     opts.hazard_stop = plan.hazard_stop
+    trace_autowalk_boundary("before_set_active_route_context", string.format(
+        "target=%s path_len=%d face_dir=%s",
+        tostring(obj.name),
+        #plan.path,
+        tostring(should_face_after_plan(plan) and plan.face_dir or nil)))
     set_active_route_context(obj, #plan.path, should_face_after_plan(plan) and plan.face_dir or nil, opts)
+    trace_autowalk_boundary("after_set_active_route_context", string.format(
+        "target=%s",
+        tostring(obj.name)))
     plan.status = "queued"
     plan.ok = true
     plan.path_length = #plan.path
     if opts.speak ~= false then
+        trace_autowalk_boundary("before_autowalk_speech", string.format(
+            "target=%s",
+            tostring(obj.name)))
         tolk.output_interrupt("Auto-walk. " .. plan.message)
+        trace_autowalk_boundary("after_autowalk_speech", string.format(
+            "target=%s",
+            tostring(obj.name)))
     end
     return plan
 end

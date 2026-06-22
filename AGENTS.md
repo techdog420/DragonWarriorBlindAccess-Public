@@ -154,6 +154,7 @@ Stop conditions:
 
 ### Map / blocker discovery
 - `sweep_map`
+- `sweep_walk`
 - `stop_sweep`
 - `report_blockers`
 - `report_runtime_blocks`
@@ -168,9 +169,15 @@ Stop conditions:
 - `probe_edge`
 - `survey_target`
 
-`sweep_map` is legacy forensic tooling. Prefer `crawl_map_frontier` for new
-false-wall, one-way seam, hazard, door, and NPC-clutter decoding passes because
-it produces review-only candidates instead of persistent block data.
+`sweep_map` is legacy unsafe teleport-backed forensic tooling. Prefer
+`sweep_walk` / `crawl_map_frontier` for new false-wall, one-way seam, hazard,
+door, and NPC-clutter decoding passes because they use normal movement and
+produce review-only candidates instead of persistent block data. `sweep_walk`
+also writes `sweep_status.txt` while active and final
+`sweep_walk_MM_runNNN.json` / `sweep_walk_MM_runNNN_summary.txt` files alongside
+the existing `dw_crawl_MM.txt` candidate snippet. The JSON groups single-edge
+results into explicit `unknowns`, `dynamic_blockers`, `transitions`, and
+`unsafe_aborts` review buckets.
 
 ### Runtime blocked tile controls
 - `add_blocked_tile:X,Y`

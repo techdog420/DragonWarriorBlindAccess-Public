@@ -62,12 +62,48 @@ local function write_visible_row(row, value, scroll_tiles, base_nametable)
     end
 end
 
+local function write_scrolled_base_fragment(row, base_nametable, scroll_tiles, value)
+    local base = (base_nametable == 0) and 0x2000 or 0x2400
+    for i = 1, #value do
+        local ch = value:sub(i, i)
+        ppu_bytes[base + row * 32 + scroll_tiles + i - 1] = encode[ch] or 0x9F
+    end
+end
+
 local tests = {}
 
 function tests.status_text_accepts_lowercase_name()
     assert_true(
         text.is_status_text("Bill LV   1 HP  15 MP   0 G  120 E    0"),
         "status detector should catch lowercase hero names"
+    )
+end
+
+function tests.status_text_accepts_scrolled_fragmented_status_display()
+    assert_true(
+        text.is_status_text("Bi V P P 21 12 Bill LV  15"),
+        "status detector should catch scrolled status rows split into fragments"
+    )
+end
+
+function tests.status_text_accepts_command_menu_scroll_status_fragments()
+    for _, fragment in ipairs({
+        "V  15 llHP  86 1MP  54 8G21530 5E12610 530 610 Bill",
+        "L llH 1M 8G 5E 530 610 Bill",
+        "llH 1M 8G 5E 530 610 Bill",
+    }) do
+        assert_true(
+            text.is_status_text(fragment),
+            "status detector should catch command-menu scroll status fragment: " .. fragment
+        )
+    end
+end
+
+function tests.status_text_keeps_real_dialogue_with_hp_word()
+    assert_equal(
+        text.is_status_text("Low HP"),
+        false,
+        "ordinary dialogue mentioning HP should not be status text"
     )
 end
 
@@ -82,6 +118,421 @@ function tests.dialogue_filter_skips_status_only_row()
     )
 end
 
+function tests.dialogue_filter_skips_wrapped_status_name_fragment()
+    clear_ppu()
+    write_visible_row(1, "Bill", 8, 0)
+    write_visible_row(2, "LV  1 HP  8 MP  6 G2148 E1258", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 25, 0),
+        "",
+        "wrapped lower dialogue reader should ignore the player-name status fragment"
+    )
+end
+
+function tests.dialogue_filter_skips_wrapped_split_status_name_fragment()
+    clear_ppu()
+    write_visible_row(2, "Bill", 8, 0)
+    write_visible_row(4, "LV  1", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 25, 0),
+        "",
+        "wrapped lower dialogue reader should ignore name fragments near split status rows"
+    )
+end
+
+function tests.dialogue_filter_skips_cross_nametable_split_status_name_fragment()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "LV")
+    write_scrolled_base_fragment(6, 0, 6, "HP")
+    write_scrolled_base_fragment(8, 0, 6, "MP")
+    write_scrolled_base_fragment(10, 0, 6, "G21")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "64")
+    write_scrolled_base_fragment(10, 1, 6, "489")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 1, 0),
+        "",
+        "alternate nametable fallback should ignore split status-name fragments"
+    )
+end
+
+function tests.dialogue_filter_skips_reported_base_split_status_name_fragment()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "LV")
+    write_scrolled_base_fragment(6, 0, 6, "HP")
+    write_scrolled_base_fragment(8, 0, 6, "MP")
+    write_scrolled_base_fragment(10, 0, 6, "G21")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "64")
+    write_scrolled_base_fragment(10, 1, 6, "489")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 1, 1),
+        "",
+        "reported nametable base should ignore its own split status-name fragment"
+    )
+end
+
+function tests.dialogue_filter_skips_live_scrolled_status_name_fragment()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(8, 0, 6, "P")
+    write_scrolled_base_fragment(10, 0, 6, "21")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "64")
+    write_scrolled_base_fragment(10, 1, 6, "489")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 1, 0),
+        "",
+        "live scrolled status fragments should not announce the alternate-base name suffix"
+    )
+end
+
+function tests.dialogue_filter_skips_scroll_wrapped_status_name_fragment()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(8, 0, 6, "P")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "64")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 29, 0),
+        "",
+        "scroll-wrapped status labels should suppress the alternate-base name suffix"
+    )
+end
+
+function tests.dialogue_filter_skips_cross_base_status_context_name_fragment()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 27, 0),
+        "",
+        "split labels and values across nametable bases should suppress name suffix fragments"
+    )
+end
+
+function tests.dialogue_filter_skips_scroll_phase_split_name_with_one_status_pair()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 25, 0),
+        "",
+        "split name plus a nearby split status label/value should not announce during vertical scroll"
+    )
+end
+
+function tests.dialogue_filter_skips_clipped_label_value_status_rows()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 1, 6, "Bill")
+    write_scrolled_base_fragment(4, 1, 6, "V  15")
+    write_scrolled_base_fragment(6, 1, 6, "P  86")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 27, 1),
+        "",
+        "clipped status label/value rows should suppress nearby name rows"
+    )
+end
+
+function tests.dialogue_filter_uses_upper_status_context_when_lower_scan_only_has_name()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(8, 0, 6, "P")
+    write_scrolled_base_fragment(10, 0, 6, "21")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "53")
+    write_scrolled_base_fragment(10, 1, 6, "489")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 23, 0),
+        "",
+        "status-name fragments should use upper status rows for context when vertical scroll hides markers from the lower scan"
+    )
+end
+
+function tests.dialogue_filter_skips_fused_name_suffix_status_value_row()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "llHP  86")
+    write_scrolled_base_fragment(6, 0, 6, "1MP  54")
+    write_scrolled_base_fragment(8, 0, 6, "8G21530")
+    write_scrolled_base_fragment(10, 0, 6, "5E12610")
+    write_scrolled_base_fragment(12, 0, 6, "530")
+    write_scrolled_base_fragment(4, 1, 6, "LV")
+    write_scrolled_base_fragment(6, 1, 6, "HP")
+    write_scrolled_base_fragment(8, 1, 6, "MP")
+    write_scrolled_base_fragment(10, 1, 6, "G21")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 3, 0),
+        "",
+        "status rows with a fused hero-name suffix should not become lower dialogue"
+    )
+end
+
+function tests.dialogue_filter_strips_inline_status_fragment_from_real_command_result()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "llH")
+    write_scrolled_base_fragment(6, 0, 6, "1M")
+    write_scrolled_base_fragment(8, 0, 6, "8G")
+    write_scrolled_base_fragment(10, 0, 6, "5E")
+    write_scrolled_base_fragment(4, 1, 6, "LV")
+    write_scrolled_base_fragment(6, 1, 6, "HP")
+    write_scrolled_base_fragment(8, 1, 6, "MP")
+    write_scrolled_base_fragment(10, 1, 6, "G21")
+    write_visible_row(27, "'There is no one llH there.", 6, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 23, 0),
+        "'There is no one there.",
+        "inline scrolled status fragments should be stripped from real command results"
+    )
+end
+
+function tests.dialogue_filter_strips_status_prefix_glued_to_spell_text()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "llH")
+    write_scrolled_base_fragment(6, 0, 6, "1M")
+    write_scrolled_base_fragment(8, 0, 6, "8G")
+    write_scrolled_base_fragment(10, 0, 6, "5E")
+    write_scrolled_base_fragment(4, 1, 6, "LV")
+    write_scrolled_base_fragment(6, 1, 6, "HP")
+    write_scrolled_base_fragment(8, 1, 6, "MP")
+    write_scrolled_base_fragment(10, 1, 6, "G21")
+    write_visible_row(27, "Bill chanted llHof HURT.", 6, 0)
+    write_visible_row(28, "1MBut nothing happened.", 6, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 23, 0),
+        "Bill chanted of HURT. But nothing happened.",
+        "status prefixes glued to spell dialogue should be stripped without dropping the real words"
+    )
+end
+
+function tests.dialogue_filter_strips_derived_name_fragment_suffix_from_real_dialogue()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "Iv")
+    write_scrolled_base_fragment(2, 1, 6, "y")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(8, 0, 6, "P")
+    write_scrolled_base_fragment(10, 0, 6, "21")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "53")
+    write_scrolled_base_fragment(10, 1, 6, "489")
+    write_scrolled_base_fragment(27, 0, 6, "Ivy searched the ground")
+    write_scrolled_base_fragment(28, 0, 6, "all about.")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 23, 0),
+        "Ivy searched the ground all about.",
+        "status-derived name fragments should be stripped after real dialogue"
+    )
+end
+
+function tests.dialogue_filter_strips_derived_split_name_prefix_from_real_dialogue()
+    clear_ppu()
+    write_scrolled_base_fragment(2, 0, 6, "I")
+    write_scrolled_base_fragment(2, 1, 6, "vy")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(8, 0, 6, "P")
+    write_scrolled_base_fragment(10, 0, 6, "21")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+    write_scrolled_base_fragment(8, 1, 6, "53")
+    write_scrolled_base_fragment(10, 1, 6, "489")
+    write_scrolled_base_fragment(27, 0, 6, "vy searched the ground")
+    write_scrolled_base_fragment(28, 0, 6, "all about.")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 23, 0),
+        "searched the ground all about.",
+        "status-derived split-name prefixes should not contaminate real dialogue"
+    )
+end
+
+function tests.dialogue_filter_skips_derived_full_name_row_with_status_context()
+    clear_ppu()
+    write_visible_row(2, "Ivy", 8, 0)
+    write_visible_row(4, "V  1", 8, 0)
+    write_visible_row(6, "P  8", 8, 0)
+    write_visible_row(8, "P  6", 8, 0)
+    write_visible_row(10, "LV  15", 8, 0)
+    write_visible_row(12, "HP  86", 8, 0)
+    write_visible_row(14, "MP  51", 8, 0)
+    write_visible_row(16, "G21489", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 23, 0),
+        "",
+        "a visible status-context hero-name row should not announce as dialogue"
+    )
+end
+
+function tests.dialogue_filter_skips_arbitrary_short_status_name_rows()
+    for _, name in ipairs({"Ivy", "Rex", "Ada", "Zed"}) do
+        clear_ppu()
+        write_visible_row(2, name, 8, 0)
+        write_visible_row(4, "V  1", 8, 0)
+        write_visible_row(6, "P  8", 8, 0)
+        write_visible_row(8, "P  6", 8, 0)
+        write_visible_row(10, "LV  15", 8, 0)
+        write_visible_row(12, "HP  86", 8, 0)
+        write_visible_row(14, "MP  51", 8, 0)
+        write_visible_row(16, "G21489", 8, 0)
+
+        assert_equal(
+            text.read_dialogue_window_filtered(8, 23, 0),
+            "",
+            "visible status-context hero-name row should not announce for " .. name
+        )
+    end
+end
+
+function tests.dialogue_filter_skips_standalone_gold_map_noise_with_status_context()
+    clear_ppu()
+    write_visible_row(2, "Ivy", 8, 0)
+    write_visible_row(4, "V  1", 8, 0)
+    write_visible_row(6, "P  8", 8, 0)
+    write_visible_row(8, "P  6", 8, 0)
+    write_visible_row(10, "LV  15", 8, 0)
+    write_visible_row(12, "HP  86", 8, 0)
+    write_visible_row(14, "MP  51", 8, 0)
+    write_visible_row(16, "G21489", 8, 0)
+    write_visible_row(23, "Gold", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 23, 0),
+        "",
+        "standalone Gold map/status noise should not announce while status context is visible"
+    )
+end
+
+function tests.dialogue_filter_keeps_gold_reward_text()
+    clear_ppu()
+    write_row(19, "Of GOLD thou hast gained 12")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "Of GOLD thou hast gained 12",
+        "gold reward text should stay readable when it is part of a real sentence"
+    )
+end
+
+function tests.passive_field_status_noise_detects_name_and_gold_tokens()
+    for _, fragment in ipairs({"Bill", "Ivy", "Rex", "Ada", "Zed", "Gold"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify standalone status/name artifact " .. fragment
+        )
+    end
+end
+
+function tests.passive_field_status_noise_detects_split_name_suffixes()
+    for _, fragment in ipairs({"bi", "ll", "vy"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify lowercase split-name suffix artifact " .. fragment
+        )
+    end
+end
+
+function tests.passive_field_status_noise_detects_fused_status_value_rows()
+    for _, fragment in ipairs({"llHP  86", "vyMP  54", "rexP  86", "ivyV  15"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify fused status value artifact " .. fragment
+        )
+    end
+end
+
+function tests.passive_field_status_noise_keeps_real_dialogue()
+    for _, line in ipairs({
+        "Bill chanted the spell of STOPSPELL.",
+        "Of GOLD thou hast gained 12",
+        "Welcome.",
+        "Low HP",
+    }) do
+        assert_equal(
+            text.is_passive_field_status_noise(line),
+            false,
+            "passive field scanner should not classify real dialogue as status noise: " .. line
+        )
+    end
+end
+
+function tests.dialogue_filter_strips_separate_status_name_row_from_real_dialogue()
+    clear_ppu()
+    write_scrolled_base_fragment(27, 0, 6, "Bill searched the ground")
+    write_scrolled_base_fragment(28, 0, 6, "all about.")
+    write_scrolled_base_fragment(2, 0, 6, "Bi")
+    write_scrolled_base_fragment(2, 1, 6, "ll")
+    write_scrolled_base_fragment(4, 0, 6, "V")
+    write_scrolled_base_fragment(6, 0, 6, "P")
+    write_scrolled_base_fragment(4, 1, 6, "15")
+    write_scrolled_base_fragment(6, 1, 6, "86")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(6, 27, 0),
+        "Bill searched the ground all about.",
+        "status-name rows should be filtered even when real dialogue is present"
+    )
+end
+
+function tests.dialogue_filter_keeps_single_word_dialogue_without_status_context()
+    clear_ppu()
+    write_visible_row(2, "Bill", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 25, 0),
+        "Bill",
+        "single-word dialogue should remain readable without nearby status markers"
+    )
+end
+
 function tests.dialogue_filter_keeps_real_bill_dialogue()
     clear_ppu()
     write_row(19, "Bill LV   1 HP  15 MP   0 G  120 E    0")
@@ -91,6 +542,50 @@ function tests.dialogue_filter_keeps_real_bill_dialogue()
         text.read_dialogue_window_filtered(0, 19),
         "Bill, please save the Princess.",
         "status filtering should not suppress real dialogue with the hero name"
+    )
+end
+
+function tests.dialogue_filter_strips_padded_status_suffix_from_real_dialogue()
+    clear_ppu()
+    write_row(19, "'There is no one there.       HP")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "'There is no one there.",
+        "lower dialogue reader should strip padded trailing status fragments"
+    )
+end
+
+function tests.dialogue_filter_strips_padded_name_suffix_from_real_dialogue()
+    clear_ppu()
+    write_row(19, "All about.           Bi")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "All about.",
+        "lower dialogue reader should strip padded trailing name fragments"
+    )
+end
+
+function tests.dialogue_filter_strips_padded_status_infix_from_real_dialogue()
+    clear_ppu()
+    write_row(19, "But there found       V nothing.")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "But there found nothing.",
+        "lower dialogue reader should strip padded embedded status fragments"
+    )
+end
+
+function tests.dialogue_filter_keeps_unpadded_status_words_in_dialogue()
+    clear_ppu()
+    write_row(19, "Low HP")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "Low HP",
+        "ordinary dialogue should keep HP when it is not padded status-bar residue"
     )
 end
 

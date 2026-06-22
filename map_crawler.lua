@@ -24,6 +24,7 @@ local DEFAULT_MAX_EDGES = 200
 local MAX_ATTEMPTS = 15
 local MAX_EDGES = 2000
 local MANUAL_STOP_SETTLE_FRAMES = 30
+local STEP_SETTLE_FRAMES = 16
 
 local DIRECTIONS = {
     {key = "up",    name = "north", dx = 0,  dy = -1, approach = "south", reverse = "down"},
@@ -53,6 +54,8 @@ local last_report_map_id = nil
 -- M.get_passthrough_candidates, M.get_directional_candidates).
 local write_export_file
 local speak_finish_summary
+local write_sweep_status_file
+local write_sweep_output_files
 
 local function bit_and(a, b)
     if type(AND) == "function" then
@@ -131,6 +134,14 @@ end
 
 local function edge_key(from_x, from_y, dir)
     return string.format("%d,%d:%s", from_x, from_y, tostring(dir))
+end
+
+local function count_table_entries(tbl)
+    local n = 0
+    for _ in pairs(tbl or {}) do
+        n = n + 1
+    end
+    return n
 end
 
 local function is_active_npc_slot(byte0, byte1)
@@ -275,9 +286,8 @@ end
 -- Directional candidates are intentionally NOT pruned here: they are keyed by
 -- destination, not origin, so a candidate at cell D recorded via a probe from
 -- the now-unstable cell X is about what we observed AT D. The current unstable
--- reasons (origin_transition, origin_boundary_frontier, origin_movement_drift,
--- origin_position_drift, timing_suspect_false_wall) all describe issues with
--- the cell itself rather than with prior probes that completed cleanly.
+-- reasons describe issues with the cell itself or its entry edge; once marked,
+-- DFS skips remaining probes from that cell.
 local function mark_unstable_candidate(report, x, y, reason)
     if not report or x == nil or y == nil then
         return
@@ -342,7 +352,6 @@ local function record_edge(record)
         report.transitions[#report.transitions + 1] = record
     elseif record.classification == "boundary_frontier" then
         mark_unstable_candidate(report, record.from_x, record.from_y, "origin_boundary_frontier")
-        report.transitions[#report.transitions + 1] = record
     elseif record.classification == "door_frontier" then
         report.door_frontiers[cell_key(record.dest_x, record.dest_y)] = record
     elseif record.classification == "movement_drift" or record.classification == "position_drift" then
@@ -368,6 +377,9 @@ local function record_edge(record)
         tostring(record.approach or "-"),
         format_door_context(record.door_context),
         tostring(record.note or "-")))
+    if state and state.command_name == "sweep_walk" then
+        write_sweep_status_file(state, "probing", "edge:" .. tostring(record.classification), nil, record)
+    end
 end
 
 local function model_context(map_id, x, y)
@@ -405,6 +417,7 @@ local function make_record(edge, classification, extra)
         classification = classification,
         attempts = edge.attempt or 0,
         blocked_attempts = edge.blocked_attempts or 0,
+        timing_suspect_blocked_attempts = edge.timing_suspect_blocked_attempts or 0,
         model_walkable = ctx.model_walkable,
         model_reason = ctx.model_reason,
         tile_type = ctx.tile_type,
@@ -458,6 +471,10 @@ local function finish_run(completed, reason)
         debug_tools.info(string.format(
             "MAP_CRAWL_EXPORT_FILE run=%d map=0x%02X path=%s",
             state.run_id, state.map_id, export_path))
+    end
+    if state.command_name == "sweep_walk" then
+        write_sweep_output_files(state, completed == true, reason, export_path)
+        write_sweep_status_file(state, "finished", "finished:" .. tostring(reason or "complete"), reason)
     end
 
     speak_finish_summary(completed == true, reason, pt_count, dir_count)
@@ -556,13 +573,25 @@ local function start_edge(edge)
         edge.attempt,
         state.options.attempts,
         tostring(edge.kind or "probe")))
-    local ok = auto_step.inject_step(edge.dir)
+    if state.command_name == "sweep_walk" then
+        write_sweep_status_file(state, "probing", "probe_started", nil, edge)
+    end
+    local ok = auto_step.inject_step(edge.dir, {
+        source = "map_crawl",
+        release_after_inject_limit = true,
+    })
     if not ok then
         state.active_edge = nil
         record_edge(make_record(edge, "probe_refused", {note = "auto_step_refused"}))
         return false
     end
     return true
+end
+
+local function release_after_step_outcome()
+    if type(auto_step.cancel_active_step) == "function" then
+        auto_step.cancel_active_step(true, true)
+    end
 end
 
 local function build_edge(from_x, from_y, dir, kind)
@@ -576,6 +605,7 @@ local function build_edge(from_x, from_y, dir, kind)
         dest_y = from_y + meta.dy,
         approach = meta.approach,
         blocked_attempts = 0,
+        timing_suspect_blocked_attempts = 0,
         attempt = 0,
     }
 end
@@ -592,6 +622,13 @@ local function maybe_start_pending_return()
     local edge = state.pending_return
     state.pending_return = nil
     return start_return_edge(edge)
+end
+
+local function max_recorded_edges_reached(state)
+    if not state or not state.report or not state.options then
+        return false
+    end
+    return #(state.report.edges or {}) >= state.options.max_edges
 end
 
 local function record_preflight_skip(edge, classification, extra)
@@ -632,12 +669,17 @@ local function start_next_edge()
     local state = crawler_state
     if not state then return end
 
+    if max_recorded_edges_reached(state) then
+        finish_run(false, "max_edges")
+        return
+    end
+
     if maybe_start_pending_return() then
         return
     end
 
     while crawler_state do
-        if state.probed_edge_count >= state.options.max_edges then
+        if max_recorded_edges_reached(state) then
             finish_run(false, "max_edges")
             return
         end
@@ -722,28 +764,44 @@ local function handle_step_complete(data)
         return
     end
 
+    release_after_step_outcome()
+
     local classification = "open_floor"
     local note = nil
+    local mixed_origin_reason = nil
     if (edge.blocked_attempts or 0) > 0 then
         classification = "mixed_probe"
+        local ctx = model_context(edge.map_id, edge.dest_x, edge.dest_y)
+        if ctx.model_walkable == false then
+            mixed_origin_reason = "mixed_false_wall_origin"
+        else
+            mixed_origin_reason = "mixed_probe_origin"
+        end
+        note = mixed_origin_reason
     else
         local ctx = model_context(edge.map_id, edge.dest_x, edge.dest_y)
         if ctx.model_walkable == false then
             local timeout_retries = tonumber(data and data.timeout_retries) or 0
             local turn_represses = tonumber(data and data.turn_represses) or 0
             local source = data and data.source or nil
-            if source == "pending_repress" or timeout_retries > 0 or turn_represses > 0 then
+            if source == "pending_repress"
+               or timeout_retries > 0
+               or turn_represses > 0
+               or (edge.timing_suspect_blocked_attempts or 0) > 0 then
                 classification = "timing_suspect_false_wall"
                 note = string.format(
-                    "source=%s timeout_retries=%d turn_represses=%d",
+                    "source=%s timeout_retries=%d turn_represses=%d timing_suspect_blocks=%d",
                     tostring(source or "-"),
                     timeout_retries,
-                    turn_represses)
+                    turn_represses,
+                    edge.timing_suspect_blocked_attempts or 0)
             else
                 classification = "false_wall_candidate"
             end
         elseif edge.door_context and edge.door_context.is_door and edge.door_context.open then
             classification = "open_door_passage"
+        elseif (edge.timing_suspect_blocked_attempts or 0) > 0 then
+            note = "timing_suspect_retry"
         end
     end
 
@@ -755,7 +813,10 @@ local function handle_step_complete(data)
     }))
     if classification == "timing_suspect_false_wall" then
         mark_unstable_candidate(state.report, edge.dest_x, edge.dest_y, "timing_suspect_false_wall")
+    elseif mixed_origin_reason then
+        mark_unstable_candidate(state.report, edge.dest_x, edge.dest_y, mixed_origin_reason)
     end
+    state.step_settle_frames = STEP_SETTLE_FRAMES
 
     if edge.kind == "backtrack" or edge.kind == "return_to_frontier" then
         return
@@ -793,16 +854,25 @@ local function handle_blocked(data)
         return
     end
 
-    edge.blocked_attempts = (edge.blocked_attempts or 0) + 1
+    local timing_suspect_block = data
+        and (data.timing_suspect == true or data.movement_started == true)
+    if timing_suspect_block then
+        edge.timing_suspect_blocked_attempts = (edge.timing_suspect_blocked_attempts or 0) + 1
+    else
+        edge.blocked_attempts = (edge.blocked_attempts or 0) + 1
+    end
+    release_after_step_outcome()
+    state.step_settle_frames = STEP_SETTLE_FRAMES
     if edge.attempt < state.options.attempts then
         debug_tools.info(string.format(
-            "MAP_CRAWL_RETRY run=%d map=0x%02X from=(%d,%d) dir=%s blocked_attempts=%d next_attempt=%d/%d",
+            "MAP_CRAWL_RETRY run=%d map=0x%02X from=(%d,%d) dir=%s blocked_attempts=%d timing_suspect_blocks=%d next_attempt=%d/%d",
             state.run_id,
             state.map_id,
             edge.from_x,
             edge.from_y,
             edge.dir,
-            edge.blocked_attempts,
+            edge.blocked_attempts or 0,
+            edge.timing_suspect_blocked_attempts or 0,
             edge.attempt + 1,
             state.options.attempts))
         state.active_edge = nil
@@ -821,16 +891,40 @@ local function handle_blocked(data)
         -- a directional candidate for the parent cell.
         classification = "backtrack_blocked"
         extra = {note = "backtrack_to_parent_blocked"}
+    elseif edge.kind == "return_to_frontier" then
+        -- A failed return to a previously visited frontier leaves the
+        -- crawler standing away from the DFS frame it is about to resume.
+        -- Treat it like a recovery failure, not map geometry.
+        classification = "return_to_frontier_blocked"
+        extra = {note = "return_to_visited_frontier_blocked"}
+    elseif (edge.blocked_attempts or 0) == 0
+       and (edge.timing_suspect_blocked_attempts or 0) > 0 then
+        classification = "timing_suspect_blocked"
+        extra = {note = "movement_started_timeout"}
     else
         classification, extra = classify_blocked(edge)
     end
     record_edge(make_record(edge, classification, extra))
-    if edge.kind == "backtrack" then
-        finish_run(false, "backtrack_blocked")
+    if edge.kind == "backtrack" or edge.kind == "return_to_frontier" then
+        finish_run(false, classification)
     end
 end
 
-local function tick_impl(can_walk)
+local function tick_context_state(context)
+    if type(context) == "table" then
+        return context.state or context.game_state
+    end
+    return context
+end
+
+local function interrupted_step_classification(can_walk, context)
+    if can_walk == false and tick_context_state(context) == "battle" then
+        return "battle_interrupted", "battle_started_during_probe"
+    end
+    return "auto_step_lost", "active_step_cleared_without_event"
+end
+
+local function tick_impl(can_walk, context)
     local state = crawler_state
     if not debug_tools.DEBUG_MODE or not state then
         return
@@ -917,17 +1011,23 @@ local function tick_impl(can_walk)
             -- diagnostic-only -- record_edge does not promote it into
             -- passthroughs or directionals.
             local edge = state.active_edge
+            local classification, note = interrupted_step_classification(can_walk, context)
             state.active_edge = nil
-            record_edge(make_record(edge, "auto_step_lost", {
-                note = "active_step_cleared_without_event",
+            record_edge(make_record(edge, classification, {
+                note = note,
                 final_x = px,
                 final_y = py,
             }))
-            finish_run(false, "auto_step_lost")
+            finish_run(false, classification)
         end
         return
     end
     if auto_step.is_route_active and auto_step.is_route_active() then
+        return
+    end
+    if (state.step_settle_frames or 0) > 0 then
+        release_after_step_outcome()
+        state.step_settle_frames = state.step_settle_frames - 1
         return
     end
     if not can_walk then
@@ -944,7 +1044,8 @@ local function tick_impl(can_walk)
     start_next_edge()
 end
 
-function M.start(arg)
+local function start_impl(arg, context)
+    context = context or {}
     if crawler_state then
         return false, "Map crawl already active"
     end
@@ -980,6 +1081,11 @@ function M.start(arg)
     crawler_state = {
         run_id = run_counter,
         map_id = map_id,
+        command_name = context.command_name or "crawl_map_frontier",
+        method = "normal_movement",
+        teleport_used = false,
+        started_at = os.time(),
+        started_clock = os.clock(),
         options = opts,
         start_x = px,
         start_y = py,
@@ -1013,8 +1119,28 @@ function M.start(arg)
         tostring(opts.park_mobile_npcs),
         tostring(start.model_walkable),
         tostring(start.model_reason or "-")))
+    if crawler_state.command_name == "sweep_walk" then
+        debug_tools.info(string.format(
+            "SWEEP_WALK_START run=%d map=0x%02X method=%s teleport_used=%s backing=crawl_map_frontier",
+            crawler_state.run_id,
+            map_id,
+            crawler_state.method,
+            tostring(crawler_state.teleport_used)))
+        write_sweep_status_file(crawler_state, "starting", "started", nil, {
+            from_x = px,
+            from_y = py,
+        })
+    end
     tolk.output_interrupt(string.format("Map frontier crawl started on map %02X", map_id))
     return true
+end
+
+function M.start(arg)
+    return start_impl(arg, {command_name = "crawl_map_frontier"})
+end
+
+function M.start_walk_sweep(arg)
+    return start_impl(arg, {command_name = "sweep_walk"})
 end
 
 function M.stop()
@@ -1041,8 +1167,8 @@ function M.stop()
     return true, nil
 end
 
-function M.tick(can_walk)
-    local ok, err = pcall(tick_impl, can_walk)
+function M.tick(can_walk, context)
+    local ok, err = pcall(tick_impl, can_walk, context)
     if not ok then
         if crawler_state and crawler_state.active_edge then
             auto_step.cancel_active_step(true, true)
@@ -1256,6 +1382,413 @@ end
 
 local function export_file_path(map_id)
     return script_dir .. string.format("dw_crawl_%02x.txt", map_id or 0)
+end
+
+local function sweep_output_base_path(state)
+    return script_dir .. string.format("sweep_walk_%02x_run%03d", state.map_id or 0, state.run_id or 0)
+end
+
+local function sweep_status_file_path()
+    return script_dir .. "sweep_status.txt"
+end
+
+local function current_frame_count()
+    if type(emu) == "table" and type(emu.framecount) == "function" then
+        local ok, value = pcall(emu.framecount)
+        if ok and value ~= nil then
+            return value
+        end
+    end
+    if type(FCEU) == "table" and type(FCEU.framecount) == "function" then
+        local ok, value = pcall(FCEU.framecount)
+        if ok and value ~= nil then
+            return value
+        end
+    end
+    return -1
+end
+
+local function json_escape(value)
+    value = tostring(value or "")
+    value = value:gsub("\\", "\\\\")
+    value = value:gsub('"', '\\"')
+    value = value:gsub("\b", "\\b")
+    value = value:gsub("\f", "\\f")
+    value = value:gsub("\n", "\\n")
+    value = value:gsub("\r", "\\r")
+    value = value:gsub("\t", "\\t")
+    return value
+end
+
+local function json_string(value)
+    return '"' .. json_escape(value) .. '"'
+end
+
+local function json_bool(value)
+    return value and "true" or "false"
+end
+
+local function json_number(value)
+    return tostring(tonumber(value) or 0)
+end
+
+local function write_file(path, content, fail_tag, state)
+    local file, err = io.open(path, "w")
+    if not file then
+        debug_tools.error(string.format(
+            "%s run=%d map=0x%02X path=%s error=%s",
+            fail_tag,
+            state and state.run_id or 0,
+            state and state.map_id or 0,
+            tostring(path),
+            tostring(err)))
+        return nil
+    end
+    file:write(content)
+    file:close()
+    return path
+end
+
+local function sweep_edge_status(record)
+    local class = record and record.classification or ""
+    if class == "open_floor" or class == "open_door_passage" or class == "false_wall_candidate" then
+        return "passable"
+    end
+    if class == "directional_block_candidate" or class == "modeled_blocked" or class == "boundary_blocked" then
+        return "blocked"
+    end
+    if class == "stationary_npc_blocked" or class == "door_frontier" then
+        return "dynamic_blocked"
+    end
+    if class == "transition_candidate" then
+        return "transition"
+    end
+    if class == "movement_drift"
+        or class == "position_drift"
+        or class == "auto_step_lost"
+        or class == "battle_interrupted"
+        or class == "backtrack_blocked"
+        or class == "return_to_frontier_blocked" then
+        return "unsafe_abort"
+    end
+    return "unknown"
+end
+
+local function sweep_edge_confidence(record, status)
+    local class = record and record.classification or ""
+    if status == "passable" then
+        if class == "false_wall_candidate" then
+            return "observed_review"
+        end
+        return "observed"
+    end
+    if status == "blocked" then
+        if class == "modeled_blocked" or class == "boundary_blocked" then
+            return "modeled"
+        end
+        if tonumber(record and record.blocked_attempts) and tonumber(record.blocked_attempts) >= 2 then
+            return "verified"
+        end
+        return "candidate"
+    end
+    if status == "dynamic_blocked" then
+        return "dynamic"
+    end
+    if status == "transition" then
+        return "observed"
+    end
+    if status == "unsafe_abort" then
+        return "unsafe"
+    end
+    return "ambiguous"
+end
+
+local function build_sweep_stats(state, completed, reason)
+    local report = state.report or {}
+    local counts = {
+        passable = 0,
+        blocked = 0,
+        confirmed_blockers = 0,
+        unknown = 0,
+        dynamic_blocked = 0,
+        transition = 0,
+        unsafe_abort = 0,
+    }
+    for _, record in ipairs(report.edges or {}) do
+        local status = sweep_edge_status(record)
+        counts[status] = (counts[status] or 0) + 1
+        if status == "blocked" and sweep_edge_confidence(record, status) == "verified" then
+            counts.confirmed_blockers = counts.confirmed_blockers + 1
+        end
+    end
+
+    local runtime_seconds = 0
+    if state.started_at then
+        runtime_seconds = math.max(0, os.difftime(os.time(), state.started_at))
+    end
+
+    return {
+        run_id = state.run_id or 0,
+        completed = completed == true,
+        reason = reason or "complete",
+        runtime_seconds = runtime_seconds,
+        cells_visited = count_table_entries(state.cells),
+        frontier = #(state.stack or {}),
+        edges_tested = #(report.edges or {}),
+        passable_edges = counts.passable or 0,
+        blocked_edges = counts.blocked or 0,
+        confirmed_blockers = counts.confirmed_blockers or 0,
+        unknown_edges = counts.unknown or 0,
+        dynamic_blockers = counts.dynamic_blocked or 0,
+        transitions = counts.transition or 0,
+        unsafe_aborts = counts.unsafe_abort or 0,
+        passthrough_candidates = M.count_passthrough_candidates(state.map_id),
+        directional_candidate_cells = M.count_directional_candidate_cells(state.map_id),
+        stationary_npc_cells = M.count_stationary_npc_cells(state.map_id),
+    }
+end
+
+local function sorted_cells(cells)
+    local list = {}
+    for key in pairs(cells or {}) do
+        local x, y = key:match("^(-?%d+),(-?%d+)$")
+        list[#list + 1] = {
+            key = key,
+            x = tonumber(x) or 0,
+            y = tonumber(y) or 0,
+        }
+    end
+    table.sort(list, function(a, b)
+        if a.y == b.y then
+            return a.x < b.x
+        end
+        return a.y < b.y
+    end)
+    return list
+end
+
+local function format_json_edge(record)
+    local status = sweep_edge_status(record)
+    local confidence = sweep_edge_confidence(record, status)
+    local parts = {}
+    parts[#parts + 1] = "{"
+    parts[#parts + 1] = string.format('      "index": %s,', json_number(record.index))
+    parts[#parts + 1] = string.format('      "from": {"x": %s, "y": %s},',
+        json_number(record.from_x), json_number(record.from_y))
+    parts[#parts + 1] = string.format('      "direction": %s,', json_string(record.dir or ""))
+    parts[#parts + 1] = string.format('      "to": {"x": %s, "y": %s},',
+        json_number(record.dest_x), json_number(record.dest_y))
+    parts[#parts + 1] = string.format('      "status": %s,', json_string(status))
+    parts[#parts + 1] = string.format('      "confidence": %s,', json_string(confidence))
+    parts[#parts + 1] = string.format('      "source_classification": %s,',
+        json_string(record.classification or "unknown"))
+    parts[#parts + 1] = string.format('      "attempts": %s,', json_number(record.attempts))
+    parts[#parts + 1] = string.format('      "blocked_attempts": %s,',
+        json_number(record.blocked_attempts))
+    parts[#parts + 1] = string.format('      "reason": %s,',
+        json_string(record.model_reason or record.note or record.classification or "unknown"))
+    parts[#parts + 1] = string.format('      "note": %s', json_string(record.note or ""))
+    parts[#parts + 1] = "    }"
+    return table.concat(parts, "\n")
+end
+
+local function append_json_edge_array(lines, field_name, records, wanted_status)
+    local filtered = {}
+    for _, record in ipairs(records or {}) do
+        if sweep_edge_status(record) == wanted_status then
+            filtered[#filtered + 1] = record
+        end
+    end
+    lines[#lines + 1] = string.format('  "%s": [', field_name)
+    for index, record in ipairs(filtered) do
+        local edge_json = format_json_edge(record)
+        if index < #filtered then
+            edge_json = edge_json .. ","
+        end
+        lines[#lines + 1] = edge_json
+    end
+    lines[#lines + 1] = "  ],"
+end
+
+local function build_sweep_json(state, completed, reason, export_path, summary_path)
+    local stats = build_sweep_stats(state, completed, reason)
+    local report = state.report or {}
+    local map_name = (type(maps.get_name) == "function") and maps.get_name(state.map_id) or "?"
+    local lines = {}
+    lines[#lines + 1] = "{"
+    lines[#lines + 1] = string.format('  "command": %s,', json_string(state.command_name or "sweep_walk"))
+    lines[#lines + 1] = string.format('  "run_id": %s,', json_number(state.run_id))
+    lines[#lines + 1] = string.format('  "map_id": %s,', json_number(state.map_id))
+    lines[#lines + 1] = string.format('  "map_hex": %s,', json_string(string.format("%02X", state.map_id or 0)))
+    lines[#lines + 1] = string.format('  "map_name": %s,', json_string(map_name))
+    lines[#lines + 1] = string.format('  "method": %s,', json_string(state.method or "normal_movement"))
+    lines[#lines + 1] = string.format('  "teleport_used": %s,', json_bool(state.teleport_used == true))
+    lines[#lines + 1] = string.format('  "completed": %s,', json_bool(completed == true))
+    lines[#lines + 1] = string.format('  "reason": %s,', json_string(reason or "complete"))
+    lines[#lines + 1] = string.format('  "start": {"x": %s, "y": %s},',
+        json_number(state.start_x), json_number(state.start_y))
+    lines[#lines + 1] = '  "cells": ['
+    local cells = sorted_cells(state.cells)
+    for index, cell in ipairs(cells) do
+        local suffix = (index < #cells) and "," or ""
+        lines[#lines + 1] = string.format(
+            '    {"x": %s, "y": %s, "status": "walkable", "confidence": "observed"}%s',
+            json_number(cell.x), json_number(cell.y), suffix)
+    end
+    lines[#lines + 1] = "  ],"
+    lines[#lines + 1] = '  "edges": ['
+    for index, record in ipairs(report.edges or {}) do
+        local edge_json = format_json_edge(record)
+        if index < #(report.edges or {}) then
+            edge_json = edge_json .. ","
+        end
+        lines[#lines + 1] = edge_json
+    end
+    lines[#lines + 1] = "  ],"
+    append_json_edge_array(lines, "unknowns", report.edges, "unknown")
+    append_json_edge_array(lines, "dynamic_blockers", report.edges, "dynamic_blocked")
+    append_json_edge_array(lines, "transitions", report.edges, "transition")
+    append_json_edge_array(lines, "unsafe_aborts", report.edges, "unsafe_abort")
+    lines[#lines + 1] = '  "stats": {'
+    lines[#lines + 1] = string.format('    "runtime_seconds": %s,', json_number(stats.runtime_seconds))
+    lines[#lines + 1] = string.format('    "cells_visited": %s,', json_number(stats.cells_visited))
+    lines[#lines + 1] = string.format('    "frontier": %s,', json_number(stats.frontier))
+    lines[#lines + 1] = string.format('    "edges_tested": %s,', json_number(stats.edges_tested))
+    lines[#lines + 1] = string.format('    "passable_edges": %s,', json_number(stats.passable_edges))
+    lines[#lines + 1] = string.format('    "blocked_edges": %s,', json_number(stats.blocked_edges))
+    lines[#lines + 1] = string.format('    "confirmed_blockers": %s,', json_number(stats.confirmed_blockers))
+    lines[#lines + 1] = string.format('    "unknown_edges": %s,', json_number(stats.unknown_edges))
+    lines[#lines + 1] = string.format('    "dynamic_blockers": %s,', json_number(stats.dynamic_blockers))
+    lines[#lines + 1] = string.format('    "transitions": %s,', json_number(stats.transitions))
+    lines[#lines + 1] = string.format('    "unsafe_aborts": %s', json_number(stats.unsafe_aborts))
+    lines[#lines + 1] = "  },"
+    lines[#lines + 1] = '  "outputs": {'
+    lines[#lines + 1] = string.format('    "review_snippets": %s,', json_string(export_path or ""))
+    lines[#lines + 1] = string.format('    "summary": %s', json_string(summary_path or ""))
+    lines[#lines + 1] = "  },"
+    lines[#lines + 1] = string.format('  "confidence_notes": %s',
+        json_string("Safe to use passable edges; review confirmed blockers; do not blindly patch unknown or dynamic edges."))
+    lines[#lines + 1] = "}"
+    return table.concat(lines, "\n") .. "\n"
+end
+
+local function build_sweep_summary(state, completed, reason, export_path, json_path)
+    local stats = build_sweep_stats(state, completed, reason)
+    local verb = completed and "complete" or "ended"
+    local lines = {}
+    lines[#lines + 1] = "SWEEP_WALK " .. verb .. "."
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = string.format("Map: %02X", state.map_id or 0)
+    lines[#lines + 1] = "Method: normal movement"
+    lines[#lines + 1] = "Teleport used: no"
+    lines[#lines + 1] = string.format("Start cell: %d,%d", state.start_x or -1, state.start_y or -1)
+    lines[#lines + 1] = "Completed: " .. tostring(completed == true)
+    lines[#lines + 1] = "Reason: " .. tostring(reason or "complete")
+    lines[#lines + 1] = string.format("Runtime seconds: %d", stats.runtime_seconds or 0)
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = string.format("Visited cells: %d", stats.cells_visited or 0)
+    lines[#lines + 1] = string.format("Tested edges: %d", stats.edges_tested or 0)
+    lines[#lines + 1] = string.format("Passable edges: %d", stats.passable_edges or 0)
+    lines[#lines + 1] = string.format("Confirmed blockers: %d", stats.confirmed_blockers or 0)
+    lines[#lines + 1] = string.format("Blocked review edges: %d", stats.blocked_edges or 0)
+    lines[#lines + 1] = string.format("Unknown edges: %d", stats.unknown_edges or 0)
+    lines[#lines + 1] = string.format("Dynamic/NPC suspect edges: %d", stats.dynamic_blockers or 0)
+    lines[#lines + 1] = string.format("Map transitions found: %d", stats.transitions or 0)
+    lines[#lines + 1] = string.format("Unexpected aborts: %d", stats.unsafe_aborts or 0)
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "Output:"
+    lines[#lines + 1] = tostring(json_path or "")
+    lines[#lines + 1] = tostring(export_path or "")
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "Confidence:"
+    lines[#lines + 1] = "Safe to use passable edges."
+    lines[#lines + 1] = "Safe to review confirmed blockers."
+    lines[#lines + 1] = "Do not blindly patch unknown/dynamic edges."
+    return table.concat(lines, "\n") .. "\n"
+end
+
+write_sweep_status_file = function(state, phase, last_event, last_error, edge)
+    if not state or state.command_name ~= "sweep_walk" then
+        return nil
+    end
+    state.status_phase = phase or state.status_phase or "active"
+    state.status_last_event = last_event or state.status_last_event or "active"
+    state.status_last_error = last_error or state.status_last_error
+    if edge then
+        state.status_current_x = edge.from_x or edge.x or state.status_current_x or state.start_x
+        state.status_current_y = edge.from_y or edge.y or state.status_current_y or state.start_y
+        state.status_current_dir = edge.dir or state.status_current_dir or "-"
+    elseif not state.status_current_x then
+        state.status_current_x = state.start_x
+        state.status_current_y = state.start_y
+        state.status_current_dir = "-"
+    end
+
+    local stats = build_sweep_stats(state, phase == "finished", last_error)
+    local active = phase ~= "finished"
+    local lines = {}
+    lines[#lines + 1] = "active=" .. tostring(active)
+    lines[#lines + 1] = string.format("run=%d", state.run_id or 0)
+    lines[#lines + 1] = string.format("map=%02X", state.map_id or 0)
+    lines[#lines + 1] = "method=" .. tostring(state.method or "normal_movement")
+    lines[#lines + 1] = "teleport_used=" .. tostring(state.teleport_used == true)
+    lines[#lines + 1] = "phase=" .. tostring(state.status_phase or "-")
+    lines[#lines + 1] = string.format("cell=%d,%d", state.status_current_x or -1, state.status_current_y or -1)
+    lines[#lines + 1] = "dir=" .. tostring(state.status_current_dir or "-")
+    lines[#lines + 1] = string.format("visited=%d", stats.cells_visited or 0)
+    lines[#lines + 1] = string.format("frontier=%d", stats.frontier or 0)
+    lines[#lines + 1] = string.format("edges=%d", stats.edges_tested or 0)
+    lines[#lines + 1] = string.format("passable=%d", stats.passable_edges or 0)
+    lines[#lines + 1] = string.format("blocked=%d", stats.blocked_edges or 0)
+    lines[#lines + 1] = string.format("confirmed_blockers=%d", stats.confirmed_blockers or 0)
+    lines[#lines + 1] = string.format("unknown=%d", stats.unknown_edges or 0)
+    lines[#lines + 1] = string.format("dynamic=%d", stats.dynamic_blockers or 0)
+    lines[#lines + 1] = string.format("transitions=%d", stats.transitions or 0)
+    lines[#lines + 1] = string.format("unsafe_aborts=%d", stats.unsafe_aborts or 0)
+    lines[#lines + 1] = "last_event=" .. tostring(state.status_last_event or "-")
+    lines[#lines + 1] = "last_error=" .. tostring(state.status_last_error or "")
+    lines[#lines + 1] = string.format("updated_frame=%s", tostring(current_frame_count()))
+    local path = sweep_status_file_path()
+    local written = write_file(path, table.concat(lines, "\n") .. "\n",
+        "SWEEP_WALK_STATUS_FILE_FAIL", state)
+    if written then
+        debug_tools.info(string.format(
+            "SWEEP_WALK_STATUS_FILE run=%d map=0x%02X path=%s phase=%s active=%s",
+            state.run_id or 0,
+            state.map_id or 0,
+            written,
+            tostring(state.status_phase or "-"),
+            tostring(active)))
+    end
+    return written
+end
+
+write_sweep_output_files = function(state, completed, reason, export_path)
+    if not state or state.command_name ~= "sweep_walk" then
+        return nil, nil
+    end
+    local base = sweep_output_base_path(state)
+    local json_path = base .. ".json"
+    local summary_path = base .. "_summary.txt"
+    local summary = build_sweep_summary(state, completed, reason, export_path, json_path)
+    local summary_written = write_file(summary_path, summary, "SWEEP_WALK_SUMMARY_FILE_FAIL", state)
+    if summary_written then
+        debug_tools.info(string.format(
+            "SWEEP_WALK_SUMMARY_FILE run=%d map=0x%02X path=%s",
+            state.run_id or 0,
+            state.map_id or 0,
+            summary_written))
+    end
+    local json = build_sweep_json(state, completed, reason, export_path, summary_path)
+    local json_written = write_file(json_path, json, "SWEEP_WALK_JSON_FILE_FAIL", state)
+    if json_written then
+        debug_tools.info(string.format(
+            "SWEEP_WALK_JSON_FILE run=%d map=0x%02X path=%s",
+            state.run_id or 0,
+            state.map_id or 0,
+            json_written))
+    end
+    return json_written, summary_written
 end
 
 -- Body for the forward-declared write_export_file. Writes a per-map Lua

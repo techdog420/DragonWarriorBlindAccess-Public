@@ -10,6 +10,9 @@ dw_commands.processing.txt
 dw_blocks.log
 dw_keyboard_input.txt
 dw_crawl_*.txt
+sweep_status.txt
+sweep_walk_*.json
+sweep_walk_*_summary.txt
 dw_script_error.log
 startup_loop_diag.txt
 launch_dw_shim.log

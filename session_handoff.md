@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-18
+Updated: 2026-06-21
 
 ## Current State
 
@@ -58,6 +58,33 @@ Updated: 2026-06-18
   permanent map data.
 - Movement-changing field actions now refuse while command menus, prompts,
   dialogue, active routes, or probe/survey/crawl flows can consume input.
+- `sweep_walk` now writes `sweep_status.txt` while active and, on finish,
+  `sweep_walk_MM_runNNN.json`, `sweep_walk_MM_runNNN_summary.txt`, and the
+  existing `dw_crawl_MM.txt` review snippet. Its JSON includes explicit
+  `unknowns`, `dynamic_blockers`, `transitions`, and `unsafe_aborts` buckets
+  for single-edge probe outcomes. Reload `main.lua` in FCEUX before
+  live-testing newly edited sweep code.
+- Post-reload Garinham validation hammered the timing-suspect split with four
+  normal-movement 120-edge `sweep_walk` runs from the central/lower-left
+  component. All four hit `reason=max_edges` with zero passthrough exports,
+  zero directional exports, and zero unsafe aborts; remaining observations
+  stayed in timing-suspect unknown/unstable or informational door buckets.
+- Tantegel and Swamp Cave follow-up runs gave `sweep_walk` broader coverage,
+  including hostile-map interruptions. Random encounters now stop the active
+  sweep with `reason=battle_interrupted` /
+  `source_classification=battle_interrupted`; start a new sweep manually after
+  combat returns to field control.
+- Resume-from-JSON support is intentionally deferred. The current field design
+  is simpler and safer: battle interruption is a terminal graceful exit, not a
+  pause that waits through combat.
+- The crawler no longer writes movement RAM during sweep step cleanup. Hostile
+  Swamp Cave reruns after that change kept player stats clean across battle
+  interruptions, so this should stay a hard rule unless fresh evidence proves
+  otherwise.
+- The long sweep break-in scratchpad was archived; the active scratchpad is
+  concise again.
+- A local CodeRabbit review of the cleaned uncommitted diff completed with
+  zero findings.
 - A CodeRabbit review found one test-harness cleanup issue in
   `test_map_reader.lua`; the B2 pathfinder test now restores module/env state
   through a finally-style helper even if an assertion fails.
@@ -71,10 +98,13 @@ Updated: 2026-06-18
   `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_wrapup_full.md`
 - Archived scratchpad:
   `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_scratchpad.md`
+- Sweep break-in archive:
+  `handoff_archive/HANDOFF_2026-06-21_sweep_walk_break_in_scratchpad.md`
 
 ## Next Work
 
-1. Resume normal gameplay/playtesting from the post-Garin's Grave state.
+1. Resume normal gameplay/playtesting from the post-Garin's Grave / Swamp Cave
+   validation state.
 2. Pick the next practical playability/QoL issue or the next gameplay-exposed
    route failure instead of continuing broad Garin's Grave blocker hunting.
 3. If revisiting Garinham's inn-to-grave-stairs return, ignore old verifier
@@ -84,3 +114,5 @@ Updated: 2026-06-18
    `main.lua` before judging live behavior.
 5. If a new dungeon/floor becomes the active target, start with external map
    orientation, then use live movement evidence before permanent map edits.
+6. For more `sweep_walk` validation, move to a new play space and treat the
+   generated JSON as review-only until walked evidence supports a patch.

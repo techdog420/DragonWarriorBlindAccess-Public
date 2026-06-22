@@ -46,6 +46,7 @@ local object_nav_speech_queued_this_frame = false
 local teleport_handler = nil
 local route_guidance_key_pressed
 local route_guidance_key_down
+local pending_auto_walk_after_key_release = false
 
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
@@ -109,6 +110,19 @@ local function blocked_object_hotkey_down(keys)
         return "key_route_guidance"
     end
     return nil
+end
+
+local function auto_walk_key_down(keys)
+    return key_combo.is_down(keys, config.get("key_auto_walk"))
+end
+
+local function log_auto_walk_hotkey(message)
+    if debug_tools.info then
+        debug_tools.info(message)
+        if debug_tools.flush then
+            debug_tools.flush()
+        end
+    end
 end
 
 local function suppress_blocked_hotkey_game_input()
@@ -196,6 +210,26 @@ local function refresh_object_browser_context(opts)
         end
     end
     refresh_pathability_if_needed()
+end
+
+local function start_deferred_auto_walk_if_released(keys, object_hotkeys_allowed, object_hotkey_block_reason)
+    if not pending_auto_walk_after_key_release or auto_walk_key_down(keys) then
+        return false
+    end
+
+    pending_auto_walk_after_key_release = false
+    if not object_hotkeys_allowed then
+        if debug_tools.debug then
+            debug_tools.debug("AUTO_WALK_HOTKEY_CANCELLED reason=" .. tostring(object_hotkey_block_reason or "blocked"))
+        end
+        return false
+    end
+
+    clear_object_nav_speech()
+    refresh_object_browser_context({refresh_live_npcs = true})
+    log_auto_walk_hotkey("AUTO_WALK_HOTKEY_RELEASE_START")
+    route_mgr.autowalk_to_current()
+    return true
 end
 
 local function speak_filter(filter_name)
@@ -888,6 +922,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
     -- Object hotkeys are allowed in field play only. This keeps battle/input
     -- from running route/path/teleport/mark actions while the encounter is active.
     if not object_hotkeys_allowed then
+        start_deferred_auto_walk_if_released(keys, false, object_hotkey_block_reason)
         local route_status_handled = false
         if route_guidance_key_pressed(keys)
            and overworld_routes.is_active
@@ -913,6 +948,11 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
             speak_info(blocked_object_hotkey_message(object_hotkey_block_reason))
         end
     else
+        if start_deferred_auto_walk_if_released(keys, true) then
+            prev_keys = keys
+            return
+        end
+
         -- ============================================================
         -- Object Navigation (J/K/L/O/F)
         -- ============================================================
@@ -1008,8 +1048,8 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- so the player actually walks it on interior maps.
         if is_key_pressed(keys, config.get("key_auto_walk")) then
             clear_object_nav_speech()
-            refresh_object_browser_context({refresh_live_npcs = true})
-            route_mgr.autowalk_to_current()
+            pending_auto_walk_after_key_release = true
+            log_auto_walk_hotkey("AUTO_WALK_HOTKEY_DEFERRED awaiting_key_release=true")
         end
 
         -- Q key (default): Cycle object filter (All / NPCs / Services / Treasure / Travel / Doors)
@@ -1068,6 +1108,7 @@ end
 function M._reset_for_tests()
     prev_keys = {}
     object_nav_speech_queued_this_frame = false
+    pending_auto_walk_after_key_release = false
     teleport_handler = nil
     clear_object_nav_speech()
 end

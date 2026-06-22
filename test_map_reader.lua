@@ -578,8 +578,14 @@ function tests.garinham_grave_dark_wall_entry_is_passthrough()
     for _ = 1, 13 do table.insert(rle, 0x6F) end -- 208 floor tiles
     table.insert(rle, 0x6A) -- 11 more floor tiles: index 208..218
     table.insert(rle, 0x20) -- index 219 == (19,10), live-probed type-2 wall
-    for _ = 1, 11 do table.insert(rle, 0x6F) end
-    table.insert(rle, 0x63)
+    for _ = 1, 2 do table.insert(rle, 0x6F) end
+    table.insert(rle, 0x6A) -- indices 220..262 floor before (3,13)
+    table.insert(rle, 0x20) -- index 263 == (3,13), live-probed type-2 wall
+    for _ = 1, 4 do table.insert(rle, 0x6F) end
+    table.insert(rle, 0x6E) -- indices 264..342 floor before (3,17)
+    table.insert(rle, 0xB0) -- index 343 == (3,17), live-probed type-11 wall
+    for _ = 1, 3 do table.insert(rle, 0x6F) end
+    table.insert(rle, 0x67)
     for i, byte in ipairs(rle) do
         rom_bytes[data_start + i - 1] = byte
     end
@@ -611,11 +617,21 @@ function tests.garinham_grave_dark_wall_entry_is_passthrough()
     assert_equal(lower_bridge.tile_type, 2, "mocked Garinham lower bridge tile should match live wall type")
     assert_equal(lower_bridge.effective_walkable, false, "Garinham (19,10) should stay blocked after same-origin route/probe proof")
     assert_equal(lower_bridge.reason, "tile_type", "Garinham (19,10) should no longer report passthrough")
+    local tool_pocket_passage = env.map_reader.get_walkability_details(0x09, 3, 13)
+    assert_equal(tool_pocket_passage.tile_type, 2, "mocked Garinham tool-pocket passage should match live type-2 wall")
+    assert_equal(tool_pocket_passage.effective_walkable, true, "Garinham (3,13) should be walkable after same-origin sweep/probe proof")
+    assert_equal(tool_pocket_passage.reason, "passthrough", "Garinham (3,13) should report passthrough")
+    local hidden_passage = env.map_reader.get_walkability_details(0x09, 3, 17)
+    assert_equal(hidden_passage.tile_type, 11, "mocked Garinham lower passage should match live type-11 wall")
+    assert_equal(hidden_passage.effective_walkable, true, "Garinham (3,17) should be walkable after same-origin sweep/probe proof")
+    assert_equal(hidden_passage.reason, "passthrough", "Garinham (3,17) should report passthrough")
     local snapshot = env.map_reader.get_walkability_snapshot(0x09)
     assert_equal(snapshot[3][3], true, "walkability snapshot should honor Garinham dark-wall passthrough")
     assert_equal(snapshot[0][18], true, "walkability snapshot should honor Garinham top-edge passthrough")
     assert_equal(snapshot[0][19], true, "walkability snapshot should honor Garinham grave-stairs passthrough")
     assert_equal(snapshot[10][19], false, "walkability snapshot should keep stale Garinham lower bridge blocked")
+    assert_equal(snapshot[13][3], true, "walkability snapshot should honor Garinham tool-pocket passthrough")
+    assert_equal(snapshot[17][3], true, "walkability snapshot should honor Garinham lower-passage passthrough")
 
     env.restore()
 end
@@ -1580,6 +1596,8 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     assert_equal(dirs["3,12"].north, true, "(3,12) should block north approach after manual check from (3,11)")
     assert_equal(dirs["4,11"].west, true, "(4,11) should block west approach after manual check from (3,11)")
     assert_equal(dirs["3,12"].west, true, "(3,12) should block west approach after probe_edge_verify from (2,12)")
+    assert_equal(dirs["3,12"].south, true, "(3,12).south should block after walked verifier from (3,13)->UP")
+    assert_equal(dirs["4,12"].south, true, "(4,12).south should block after walked verifier from (4,13)->UP")
     assert_equal(dirs["4,10"].west, true, "(4,10) should block west approach after probe_edge_verify from (3,10)")
     assert_equal(dirs["3,9"].south, true, "(3,9) should block south approach after probe_edge_verify from (3,10)")
     assert_equal(dirs["2,9"].south, true, "(2,9) should block south approach after probe_edge_verify from (2,10)")
@@ -1601,6 +1619,7 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     for x = 14, 18 do
         assert_equal(dirs[x .. ",6"].south, true, string.format("(%d,6) should block south approach after Garin's Grave route verifier", x))
     end
+    assert_equal(dirs["15,10"].west, true, "(15,10).west should block after full-NPC-parked same-origin verifier from (14,10)->RIGHT")
     assert_equal(dirs["19,8"].west, true, "(19,8) should block west approach after Garin's Grave route verifier from (18,8)")
     assert_equal(dirs["19,7"].west, true, "(19,7) should block west approach after post-reload Garin's Grave route verifier from (18,7)")
     assert_equal(dirs["19,9"].west, true, "(19,9) should block west approach after post-reload Garin's Grave route verifier from (18,9)")
@@ -1609,6 +1628,9 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     assert_equal(dirs["16,10"].south, true, "(16,10) should block south approach after post-reload Garin's Grave route verifier from (16,11)")
     assert_equal(dirs["18,14"].east, true, "(18,14) should block east approach after Garin's Grave route verifier from (19,14)")
     assert_equal(dirs["4,4"].south, true, "(4,4).south should block after live raw probe from (4,5)->UP")
+    assert_equal(dirs["1,2"].south, true, "(1,2).south should block after walked verifier from (1,3)->UP")
+    assert_equal(dirs["2,2"].south, true, "(2,2).south should block after walked verifier from (2,3)->UP")
+    assert_equal(dirs["2,2"].east, true, "(2,2).east should block after walked verifier from (3,2)->LEFT")
     assert_equal(dirs["14,1"].west, true, "(14,1) should block west approach after door-to-grave trail verifier from (13,1)")
     assert_equal(dirs["14,1"].east, true, "(14,1).east should block after same-origin keyless return probes from (15,1)->LEFT")
     for x = 15, 18 do
@@ -1642,16 +1664,26 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     assert_equal(dirs["14,15"].west, true, "(14,15) should block west approach after successful-route reroute verifier from (13,15)")
     assert_equal(dirs["14,16"].east, true, "(14,16) should block east approach after entrance-to-Weapons-Merchant verifier from (15,16)")
     assert_open_approach("14,17", "east", "(14,17) should stay open from east after probe_edge_verify from (15,17) moved 5/5")
-    assert_open_approach("15,10", "west", "(15,10) should stay open from west after probe_edge_verify from (14,10) moved 6/6")
-    assert_open_approach("4,12", "south", "(4,12) should stay open from south after probe_edge_verify from (4,13) moved 6/6")
     assert_open_approach("3,10", "south", "(3,10) should stay open from south; user crossed north from (3,11)")
     assert_open_approach("3,10", "west", "(3,10) should stay open from west; manual movement crossed from (2,10)")
     assert_open_approach("2,10", "east", "(2,10) should stay open from east; manual movement crossed from (3,10)")
     assert_open_approach("2,11", "east", "(2,11) should stay open from east; user crossed west from (3,11)")
     assert_open_approach("3,11", "north", "(3,11) should stay open from north after reverse movement from (3,10)")
     assert_open_approach("3,11", "west", "(3,11) should stay open from west after reverse movement from (2,11)")
+    assert_equal(dirs["1,12"].south, true, "(1,12).south should block after walked probe from hidden (1,13)->UP")
+    assert_equal(dirs["6,17"].east, true, "(6,17).east should block after sweep_walk plus walked verifier from (7,17)->LEFT")
+    assert_equal(dirs["7,18"].north, true, "(7,18).north should block after sweep_walk plus walked verifier from (7,17)->DOWN")
+    assert_equal(dirs["8,17"].west, true, "(8,17).west should block after sweep_walk plus walked verifier from (7,17)->RIGHT")
+    assert_open_approach("7,17", "north", "(7,17).north should stay open after walked route entered from (7,16)")
+    assert_equal(dirs["8,16"].north, true, "(8,16).north should block after sweep_walk plus walked verifier from (8,15)->DOWN")
+    assert_equal(dirs["9,16"].east, true, "(9,16).east should block after sweep_walk plus walked verifier from (10,16)->LEFT")
+    assert_equal(dirs["9,16"].north, true, "(9,16).north should block after sweep_walk plus walked verifier from (9,15)->DOWN")
+    assert_equal(dirs["10,17"].north, true, "(10,17).north should block after sweep_walk plus walked verifier from (10,16)->DOWN")
+    assert_open_approach("8,15", "north", "(8,15).north should stay open after walked route entered from (8,14)")
+    assert_open_approach("9,15", "west", "(9,15).west should stay open after walked route entered from (8,15)")
+    assert_open_approach("10,16", "north", "(10,16).north should stay open after walked route entered from (10,15)")
     assert_equal(env.map_reader.is_walkable(0x09, 2, 13), true, "(2,13) should be a Garinham passthrough after 5/5 live moves from (2,12)")
-    assert_equal(env.map_reader.is_walkable(0x09, 1, 13), false, "nearby type-2 Garinham walls should stay non-walkable without passthrough proof")
+    assert_equal(env.map_reader.is_walkable(0x09, 1, 13), true, "(1,13) should be a Garinham passthrough after walked probes from east, west, and south")
 
     env.restore()
 end
@@ -3682,6 +3714,9 @@ function tests.swamp_cave_west_edge_corridor_overrides_boundary()
     end
 
     local dirs = env.map_reader.get_directional_blocks(0x15)
+    assert_equal(dirs["2,14"].north, true, "Swamp Cave should block southward entry from (2,13) into (2,14)")
+    assert_equal(dirs["3,9"].north, true, "Swamp Cave should block southward entry from (3,8) into (3,9)")
+    assert_equal(dirs["4,8"].west, true, "Swamp Cave should block eastward entry from (3,8) into (4,8)")
     assert_equal(dirs["1,24"].south, true, "Swamp Cave should block northward entry from (1,25) into (1,24)")
     assert_equal(dirs["1,27"].north, true, "Swamp Cave should block southward entry from (1,26) into (1,27)")
     assert_equal(dirs["1,27"].south, true, "Swamp Cave should block northward entry from (1,28) into (1,27)")

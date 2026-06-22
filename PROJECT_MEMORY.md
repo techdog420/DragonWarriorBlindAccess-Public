@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-06-17
+Updated: 2026-06-21
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -120,6 +120,22 @@ edge. Current policy:
   normal auto-walk route, retries timing-suspect seams, then stops at the first
   confirmed blocked queued step and reports the matching `add_blocked_edge`
   command without applying it automatically.
+- `sweep_walk` is the preferred broad edge-audit command when a reachable area
+  needs normal-movement coverage. It writes volatile `sweep_status.txt`,
+  `sweep_walk_MM_runNNN.json`, and `sweep_walk_MM_runNNN_summary.txt` files;
+  keep those generated artifacts ignored and review their candidates before
+  any permanent map patch.
+- In hostile maps, a random encounter during `sweep_walk` is a graceful
+  terminal condition, not a resumable pause for now. The run should export
+  `reason=battle_interrupted` / `source_classification=battle_interrupted`,
+  then the player or agent can start a new sweep manually after combat returns
+  to field control. Do not add JSON resume or wait-through-battle behavior
+  until field use proves the extra complexity is needed.
+- `map_crawler` must not call `auto_step.reset_movement_engine_state()` during
+  sweep step completion, blocked-step handling, or settle frames. That RAM
+  reset path is suspected to have caused FCEUX gameplay stat corruption during
+  hostile sweeps. Crawler cleanup should force-release script-owned input with
+  `auto_step.cancel_active_step(true, true)` only.
 - `dw_blocks.log` is legacy/forensic and is ignored unless
   `auto_step_record_debug_blocks=true`.
 - Blocked-only seam memory is diagnostic-only; reroute may temporarily avoid

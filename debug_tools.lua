@@ -38,7 +38,8 @@
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
 --   export_blocks        -- format all recorded blocked moves as MAP_BLOCKED_CELLS Lua entries
---   sweep_map            -- legacy systematic walkability sweep of current map
+--   sweep_map            -- legacy unsafe teleport-backed sweep of current map
+--   sweep_teleport_legacy -- explicit alias for the legacy teleport sweep
 --   crawl_map_frontier   -- review-only frontier crawl for candidate map data
 --   stop_sweep           -- cancel active sweep
 --   Lines beginning with ; are treated as comments and ignored.
@@ -274,6 +275,29 @@ local function flush_log()
         f:close()
     end
     log_buffer = {}
+end
+
+function M.flush()
+    flush_log()
+end
+
+local function trace_teleport_tick(label)
+    local qol = rawget(_G, "DW_QOL_STATE")
+    local guard = qol and qol.teleport_state_guard
+    if not M.DEBUG_MODE
+       or not guard
+       or (guard.frames or 0) <= 0 then
+        return
+    end
+    M.info(string.format(
+        "TELEPORT_TICK_%s map=0x%02X landing=(%d,%d) frames_left=%d reason=%s",
+        tostring(label),
+        guard.map_id or -1,
+        guard.x or -1,
+        guard.y or -1,
+        guard.frames or 0,
+        tostring(guard.reason or "teleport")))
+    flush_log()
 end
 
 -- ============================================================
@@ -1467,7 +1491,7 @@ local function process_command(cmd)
         local scroll_y = addr.SCROLL_Y and memory.readbyte(addr.SCROLL_Y) or 0
         local buttons = addr.BUTTONS_PRESSED and memory.readbyte(addr.BUTTONS_PRESSED) or 0
         M.info(string.format(
-            "MOVEMENT_STATE tag=%s map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) ppu_ctrl=0x%02X scroll_x=0x%02X scroll_y=0x%02X buttons=0x%02X ram0000_001F=%s ram0030_004F=%s",
+            "MOVEMENT_STATE tag=%s map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) ppu_ctrl=0x%02X scroll_x=0x%02X scroll_y=0x%02X buttons=0x%02X ram0000_001F=%s ram0030_004F=%s ram0090_0093=%s",
             tag,
             map_id,
             maps_m.get_name(map_id),
@@ -1481,7 +1505,8 @@ local function process_command(cmd)
             scroll_y,
             buttons,
             format_ram_range(0x0000, 0x001F),
-            format_ram_range(0x0030, 0x004F)
+            format_ram_range(0x0030, 0x004F),
+            format_ram_range(0x0090, 0x0093)
         ))
 
     elseif cmd == "toggle_debug" then
@@ -1649,7 +1674,7 @@ local function process_command(cmd)
         end
 
         if total == 0 then
-            M.info("export_blocks: no blocks recorded yet. Play with debug_mode=true to accumulate data, or run sweep_map.")
+            M.info("export_blocks: no blocks recorded yet. Play with debug_mode=true to accumulate trusted runtime data. Legacy sweep_map output is review-only.")
         else
             M.info(string.format("export_blocks: %d unique destination cells across %d maps",
                 total, (function() local n=0; for _ in pairs(by_map) do n=n+1 end; return n end)()))
@@ -1665,7 +1690,7 @@ local function process_command(cmd)
             M.info("=== end export_blocks ===")
         end
 
-    elseif cmd == "sweep_map" then
+    elseif cmd == "sweep_map" or cmd == "sweep_teleport_legacy" then
         -- Start a systematic walkability sweep of the current map.
         -- The sweep teleports the player to every tile that map_reader considers
         -- walkable, probes all 4 directions via joypad injection, and records any
@@ -1677,14 +1702,18 @@ local function process_command(cmd)
         --   - the player is teleported around the map automatically
         --   - random encounters may occur in dungeon maps (use with caution there)
         --
-        -- Results are written to the log and to dw_blocks.log. Run export_blocks
-        -- after completion to get the Lua table entries for map_reader.lua.
+        -- Legacy/unsafe: results are review-only and are not persisted to
+        -- dw_blocks.log because teleport setup can poison blocker evidence.
         --
-        -- Usage: echo sweep_map > dw_commands.txt
+        -- Usage: echo sweep_teleport_legacy > dw_commands.txt
+        --        (sweep_map remains a backwards-compatible legacy alias)
         -- To cancel mid-sweep: echo stop_sweep > dw_commands.txt
         if sweep then
             M.info("SWEEP: already active (use stop_sweep to cancel)")
         else
+            M.info(string.format(
+                "SWEEP_LEGACY_UNSAFE command=%s trusted=false teleport_used=true output=review_only persistence=skipped recommended=sweep_walk",
+                cmd))
             local map_id = memory.readbyte(addr.MAP_ID)
             local terrain = memory.readbyte(addr.TERRAIN_OFFSET)
             if maps_m.is_overworld(map_id, terrain) then
@@ -1704,6 +1733,9 @@ local function process_command(cmd)
                     inject_timer  = 0,
                     probe_timer   = 0,
                     found_blocks  = {},
+                    legacy_unsafe = true,
+                    trusted       = false,
+                    command_name   = cmd,
                     -- Cells that killed the player during a previous probe attempt.
                     -- These are skipped as probe origins and as probe destinations.
                     death_cells   = {},
@@ -1715,13 +1747,25 @@ local function process_command(cmd)
                     PROBE  = 45,  -- Total frames to wait for position change before
                                   -- declaring the move blocked (matches auto_step timeout).
                 }
-                M.info(string.format("SWEEP: starting on map 0x%02X — NPCs will auto-freeze, player will teleport",
+                M.info(string.format("SWEEP: starting on map 0x%02X — legacy unsafe, NPCs will auto-freeze, player will teleport",
                     map_id))
             end
         end
 
     elseif cmd == "stop_sweep" then
-        if sweep then
+        local stop_hook = custom_commands["__stop_sweep"]
+        local handled_by_hook = false
+        if stop_hook then
+            local ok, handled_or_err = pcall(stop_hook)
+            if not ok then
+                M.error("stop_sweep hook failed: " .. tostring(handled_or_err))
+            else
+                handled_by_hook = handled_or_err == true
+            end
+        end
+        if handled_by_hook then
+            -- Movement-backed sweep_walk/crawl_map_frontier stop was handled by main.lua.
+        elseif sweep then
             M.info(string.format("SWEEP: stopped by user at tile %d/%d",
                 sweep.tile_idx, sweep.tile_list and #sweep.tile_list or 0))
             persist_sweep_blocks(sweep)
@@ -1742,7 +1786,7 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, stop_sweep")
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, sweep_teleport_legacy, stop_sweep")
         end
     end
     local elapsed_ms = (os.clock() - command_start_clock) * 1000
@@ -1821,10 +1865,12 @@ function M.tick(frame, game_state_str)
     -- of when tick() starts being called.
     if frame % CMD_CHECK_FRAMES == 0 then
         check_commands()
+        trace_teleport_tick("POST_COMMANDS")
     end
 
     update_stuck_alt_watch(frame)
     update_input_trace(frame)
+    trace_teleport_tick("POST_INPUT_WATCH")
 
     -- Flush the log buffer to disk once per second as well.
     -- Staggering this from the command check (offset by 30 frames) spreads
@@ -1839,6 +1885,7 @@ function M.tick(frame, game_state_str)
     -- instead of through auto_step.inject_step() (which reads joypad.read()
     -- and wouldn't see our injection anyway).
     local sweep_inp = sweep_tick()
+    trace_teleport_tick("POST_SWEEP_TICK")
     if sweep_inp then
         pending_input_release = true
     end
@@ -1881,6 +1928,7 @@ function M.tick(frame, game_state_str)
     local stat_sample = capture_player_stat_trace_sample(frame, game_state_str or "unknown")
     monitor_player_stat_integrity(stat_sample)
     push_player_stat_trace_sample(stat_sample)
+    trace_teleport_tick("PRE_RETURN")
     return inp
         or build_external_keyboard_bridge_input(frame)
         or build_keyboard_bridge_input(frame)
@@ -1979,12 +2027,17 @@ end
 -- town/castle tileset: 5=stairs; dungeon tileset: 4=stairs.
 local TRANSITION_TYPES = { [4]=true, [5]=true }
 
--- persist_sweep_blocks(sw): Write all entries from sw.found_blocks to
--- dw_blocks.log (skipping duplicates already in blocked_entries).
--- Called both on normal completion (export phase) and on all abort paths so
--- that partial sweep data is never silently discarded.
+-- persist_sweep_blocks(sw): Write trusted entries from sw.found_blocks to
+-- dw_blocks.log (skipping duplicates already in blocked_entries). Legacy
+-- teleport sweep output is explicitly untrusted and is never persisted here.
 persist_sweep_blocks = function(sw)
     if not sw or not sw.found_blocks then return end
+    if sw.legacy_unsafe then
+        M.info(string.format(
+            "SWEEP_LEGACY_UNSAFE persist_skipped=true trusted=false teleport_used=true command=%s",
+            tostring(sw.command_name or "sweep_map")))
+        return
+    end
     -- Collect new keys first, then batch-write once (avoids open/close per entry).
     local new_keys = {}
     for key, _ in pairs(sw.found_blocks) do
@@ -2356,15 +2409,17 @@ sweep_tick = function()
                 end
             end
 
+            M.info("=== LEGACY UNSAFE SWEEP OUTPUT: review only, trusted=false, prefer sweep_walk ===")
             M.info(string.format("    [0x%02X] = {", sweep.origin_map))
             for cell, dirs in pairs(dest_cells) do
                 M.info(string.format('        ["%s"] = true,  -- blocked from: %s',
                     cell, table.concat(dirs, ", ")))
             end
             M.info("    },")
-            M.info("=== (paste the above block into MAP_BLOCKED_CELLS in map_reader.lua) ===")
+            M.info("=== end legacy unsafe sweep output; do not paste without walked verification ===")
 
-            -- Persist new blocks to dw_blocks.log so passive logger benefits too.
+            -- Legacy teleport-backed output is review-only; persist_sweep_blocks
+            -- logs trusted=false and skips dw_blocks.log for these runs.
             persist_sweep_blocks(sweep)
         else
             M.info("SWEEP: no hidden engine blocks found on this map — tile data matches engine.")

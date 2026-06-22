@@ -38,6 +38,7 @@ local function make_controller()
         probes = {},
         speaks = {},
         route_stops = {},
+        movement_resets = {},
         teleports = 0,
     }
     local ctrl = verifier.new({
@@ -77,6 +78,10 @@ local function make_controller()
         stop_route = function(reason)
             calls.route_stops[#calls.route_stops + 1] = reason
         end,
+        reset_movement_state = function(reason)
+            calls.movement_resets[#calls.movement_resets + 1] = reason
+        end,
+        post_route_settle_frames = 3,
         teleport = function()
             calls.teleports = calls.teleports + 1
         end,
@@ -97,12 +102,21 @@ function tests.routes_to_origin_before_starting_probe()
     assert_equal(calls.routes[1].target.y, 5, "route target y")
     assert_equal(calls.routes[1].opts.allow_adjacent_fallback, false, "route must land exactly on origin")
     assert_equal(calls.routes[1].opts.path_mode, "direct", "route planner must not choose adjacent-origin mode")
+    assert_equal(calls.routes[1].opts.park_mobile_npcs, true, "walked verifier route should park mobile NPC blockers")
+    assert_equal(calls.routes[1].opts.park_stationary_npcs, true, "walked verifier route should park stationary NPC blockers")
     assert_equal(#calls.probes, 0, "probe should wait until route completes")
 
     state.x = 4
     state.y = 5
     ctrl:on_route_completed()
     assert_equal(#calls.probes, 0, "route completion should arm, not immediately probe")
+    ctrl:tick()
+    assert_equal(#calls.probes, 0, "probe should wait through the post-route settle window")
+    ctrl:tick()
+    assert_equal(#calls.probes, 0, "probe should continue waiting until route settle expires")
+    ctrl:tick()
+    assert_equal(#calls.probes, 0, "probe should not start on the final reset frame")
+    assert_equal(#calls.movement_resets, 3, "route settle should reset movement state on each wait frame")
     ctrl:tick()
 
     assert_equal(#calls.probes, 1, "probe should start after route completion at origin")

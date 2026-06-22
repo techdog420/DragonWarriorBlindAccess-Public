@@ -6,6 +6,7 @@ local original_loaded = {}
 local original_input = _G.input
 local original_joypad = _G.joypad
 local original_memory = _G.memory
+local original_and = _G.AND
 local original_compat = _G.DW_EMULATOR_COMPAT
 local original_log_override = _G.DW_DEBUG_LOG_FILE_OVERRIDE
 
@@ -47,6 +48,7 @@ local function make_env(options)
         "debug_tools",
         "map_reader",
         "maps",
+        "route_manager",
         "tolk",
     }
 
@@ -100,6 +102,9 @@ local function make_env(options)
             COMBAT_FLAGS = 0x00DF,
             ENEMY_HP = 0x00E2,
             QUEST_FLAGS = 0x00E4,
+            NPC_COUNT = 20,
+            NPC_DATA_START = 0x0051,
+            NPC_ENTRY_SIZE = 3,
         }
     end
 
@@ -111,11 +116,31 @@ local function make_env(options)
                 end
                 return "Test Map"
             end,
+            is_overworld = function()
+                return options.overworld == true
+            end,
         }
     end
 
     package.preload["map_reader"] = function()
-        return {}
+        return {
+            get_map_dimensions = function()
+                return 10, 10
+            end,
+            get_tile_type = function()
+                return 1
+            end,
+            is_walkable = function()
+                return true
+            end,
+        }
+    end
+
+    package.preload["route_manager"] = function()
+        return {
+            freeze_npcs = function() end,
+            unfreeze_npcs = function() end,
+        }
     end
 
     local tolk_outputs = options.tolk_outputs
@@ -141,6 +166,21 @@ local function make_env(options)
             return joy_state
         end,
     }
+    _G.AND = function(a, b)
+        local result = 0
+        local bit = 1
+        a = tonumber(a) or 0
+        b = tonumber(b) or 0
+        while a > 0 and b > 0 do
+            if (a % 2 == 1) and (b % 2 == 1) then
+                result = result + bit
+            end
+            a = math.floor(a / 2)
+            b = math.floor(b / 2)
+            bit = bit * 2
+        end
+        return result
+    end
     local memory_bytes = options.memory_bytes or {}
     _G.memory = {
         readbyte = function(address)
@@ -180,6 +220,7 @@ local function make_env(options)
             _G.input = original_input
             _G.joypad = original_joypad
             _G.memory = original_memory
+            _G.AND = original_and
             _G.DW_EMULATOR_COMPAT = original_compat
             _G.DW_DEBUG_LOG_FILE_OVERRIDE = original_log_override
         end,
@@ -376,6 +417,88 @@ function tests.raw_sequence_release_frame_stays_raw()
 
     write_file("dw_commands.txt", original_commands or "")
     env.restore()
+end
+
+function tests.legacy_sweep_stop_reports_unsafe_untrusted_output()
+    local env = make_env({log_level = "INFO"})
+    local original_commands = read_file("dw_commands.txt")
+
+    write_file("dw_commands.txt", "sweep_map\n")
+    env.debug_tools.tick(60, "field")
+
+    write_file("dw_commands.txt", "stop_sweep\n")
+    env.debug_tools.tick(120, "field")
+    env.debug_tools.tick(150, "field")
+
+    local log = read_file(env.log_file) or ""
+    write_file("dw_commands.txt", original_commands or "")
+    env.restore()
+
+    assert_equal(
+        log:find("SWEEP_LEGACY_UNSAFE command=sweep_map trusted=false teleport_used=true", 1, true) ~= nil,
+        true,
+        "legacy sweep should announce that teleport-backed output is untrusted"
+    )
+    assert_equal(
+        log:find("SWEEP_LEGACY_UNSAFE persist_skipped=true trusted=false", 1, true) ~= nil,
+        true,
+        "legacy sweep stop should skip trusted persistence"
+    )
+end
+
+function tests.report_movement_state_includes_player_sprite_position_bytes()
+    local env = make_env({
+        log_level = "INFO",
+        memory_bytes = base_snapshot_ram({
+            [0x003A] = 4,
+            [0x003B] = 7,
+            [0x0090] = 0x40,
+            [0x0091] = 0x00,
+            [0x0092] = 0x70,
+            [0x0093] = 0x00,
+        }),
+    })
+    local original_commands = read_file("dw_commands.txt")
+
+    write_file("dw_commands.txt", "report_movement_state:teleport_probe\n")
+    env.debug_tools.tick(60, "field")
+
+    local log = read_file(env.log_file) or ""
+    write_file("dw_commands.txt", original_commands or "")
+    env.restore()
+
+    assert_equal(
+        log:find("MOVEMENT_STATE tag=teleport_probe", 1, true) ~= nil,
+        true,
+        "movement-state report should run with the supplied tag"
+    )
+    assert_equal(
+        log:find("ram0090_0093=40 00 70 00", 1, true) ~= nil,
+        true,
+        "movement-state report should include player sprite-position bytes"
+    )
+end
+
+function tests.flush_writes_buffered_debug_log_immediately()
+    local env = make_env({log_level = "INFO", memory_bytes = base_snapshot_ram()})
+
+    env.debug_tools.info("FLUSH_TEST_MARKER")
+    assert_equal(
+        (read_file(env.log_file) or ""):find("FLUSH_TEST_MARKER", 1, true) ~= nil,
+        false,
+        "log marker should remain buffered before explicit flush"
+    )
+
+    env.debug_tools.flush()
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("FLUSH_TEST_MARKER", 1, true) ~= nil,
+        true,
+        "explicit flush should write buffered debug log entries"
+    )
 end
 
 function tests.snapshot_logs_raw_player_stat_block()

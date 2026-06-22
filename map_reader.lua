@@ -523,10 +523,17 @@ local MAP_PASSTHROUGH_CELLS = {
     -- Map 0x09: Garinham
     -- Tool Merchant return-route pocket. The ROM decodes (2,13) as type-2
     -- wall, but a 2026-05-14 verifier moved (2,12)->DOWN into it 5/5 times.
-    -- Keep this scoped to the confirmed seam; nearby false exits are handled
-    -- by directional blockers below.
+    -- Keep this scoped to confirmed seams; nearby false exits are handled by
+    -- directional blockers below. A 2026-06-19 `sweep_walk` then crossed the
+    -- adjacent `(3,13)` type-2 wall from east, west, and south. Follow-up
+    -- non-teleport same-origin probes from walked origins `(4,13)->LEFT` and
+    -- `(2,13)->RIGHT` both entered `(3,13)` and carried through it. A later
+    -- door-pocket frontier check proved `(1,13)` is also standable from east,
+    -- west, and south, but its north exit into `(1,12)` blocks below.
     [0x09] = {
+        ["1,13"] = true,
         ["2,13"] = true,
+        ["3,13"] = true,
         -- Garin's Grave "wall of darkness" entrance. Guide clue says to push
         -- into the dark wall three tiles east of the west wall; live
         -- probe_edge_verify from (3,4)->UP moved into this ROM-wall tile 6/6
@@ -540,6 +547,11 @@ local MAP_PASSTHROUGH_CELLS = {
         -- teleport-backed verifier proof. A 2026-06-17 same-origin inn-return
         -- route plus direct probe from (19,11)->UP blocked repeatedly, so keep
         -- that wall closed unless a fresh walked route proves another approach.
+        -- Lower west passage. A 2026-06-19 `sweep_walk` reached `(4,17)` by
+        -- normal movement, then moved `(4,17)->LEFT` into this type-11 wall
+        -- cell and backtracked out. Fresh same-origin `probe_edge` checks
+        -- after reload reproduced `(4,17)->LEFT` and `(3,17)->RIGHT`.
+        ["3,17"] = true,
         -- ROM stair-down table entry 0xF411 is `09 13 00`; live STAIRS from
         -- this top-right boundary tile changed to map 0x18 / Garin's Grave B1.
         ["19,0"] = true,
@@ -2581,9 +2593,16 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (13,15)->RIGHT; raw verifiers confirmed both blocked 5/5. The
         -- nearby (15,17)->LEFT edge looked suspicious in route logs but raw
         -- verification moved 5/5, so keep (14,17).east open.
+        -- A 2026-06-20 locked-room door-stand pass then rechecked the
+        -- lower passage with non-teleport walked verifiers: `(3,13)->UP` and
+        -- `(4,13)->UP` both blocked after clean route-to-origin settles. This
+        -- supersedes the older teleport-backed/open `(4,12).south` note.
         ["11,15"] = {east = true, west = true},
         ["11,16"] = {east = true, west = true},
         ["12,16"] = {north = true},
+        ["3,12"] = {north = true, south = true, west = true},
+        ["4,12"] = {south = true},
+        ["5,12"] = {south = true},
         ["14,14"] = {east = true, north = true, west = true},
         ["14,15"] = {east = true, west = true},
         ["14,16"] = {east = true},
@@ -2596,9 +2615,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- route to `(18,1)` promoted the formerly mixed `(13,4).west`,
         -- `(19,7).west`, and `(19,9).west` seams after clean verifiers.
         -- Door-RAM seed tests did not open any of those three, so keep them as
-        -- walls. A post-reload route proved `(15,10)` is approach-sensitive:
-        -- `(14,10)->RIGHT` moved 6/6, but `(15,11)->UP` blocked 5/5, and
-        -- `(16,11)->UP` into `(16,10)` blocked 5/5.
+        -- walls. Older probe_edge_verify output suggested `(14,10)->RIGHT`
+        -- could move into `(15,10)`, but a 2026-06-20 full-NPC-parked
+        -- same-origin verifier blocked that approach with no NPC or runtime
+        -- blocker. `(15,11)->UP` blocked 5/5, and `(16,11)->UP` into
+        -- `(16,10)` blocked 5/5.
         -- Trail-blazing from the door to the grave later proved the top lane
         -- stops at `(13,1)->RIGHT`: `(14,1).west` blocked 5/5 with no NPC at
         -- `(14,1)`. Later keyless return cleanup produced one noisy moved
@@ -2613,10 +2634,15 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- the `(16,9)->LEFT` seam. Keep these directional so the cells
         -- themselves remain available for object browsing and alternate
         -- approaches.
+        -- A locked-room sweep review later verified `(1,3)->UP`,
+        -- `(2,3)->UP`, and `(3,2)->LEFT` as blocked walked edges despite
+        -- open tile previews.
         -- The Silver Harp return pass also proved `(19,0)->LEFT` into the
         -- top-edge exit cell `(18,0)` blocks 5/5, while `(18,1)->UP` moved
         -- before the world-map transition; close only the east approach.
         ["18,0"] = {east = true},
+        ["1,2"] = {south = true},
+        ["2,2"] = {east = true, south = true},
         ["4,2"] = {north = true, west = true},
         ["5,2"] = {north = true},
         ["6,2"] = {north = true},
@@ -2632,7 +2658,6 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,2"] = {north = true},
         ["2,4"] = {north = true},
         ["3,4"] = {north = true},
-        ["5,12"] = {south = true},
         ["1,9"] = {north = true},
         ["2,9"] = {north = true, south = true},
         ["3,9"] = {north = true, south = true},
@@ -2648,7 +2673,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["13,9"] = {north = true, south = true},
         ["14,9"] = {north = true, south = true},
         ["15,9"] = {east = true, north = true},
-        ["15,10"] = {south = true},
+        ["15,10"] = {south = true, west = true},
         ["16,10"] = {north = true, south = true},
         -- Inner locked-building guard pocket. After opening the floor-backed
         -- door at `(4,6)`, repeated manual taps plus a raw same-origin probe
@@ -2668,11 +2693,30 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,9"] = {west = true},
         ["17,14"] = {north = true},
         ["18,14"] = {east = true},
-        ["3,12"] = {north = true, west = true},
         ["4,10"] = {west = true},
         ["1,10"] = {east = true},
         ["1,11"] = {east = true},
-        ["1,12"] = {east = true},
+        ["1,12"] = {east = true, south = true},
+        -- 2026-06-20 sweep_walk from the broad Garinham component reached
+        -- `(7,17)` by normal movement, then found down/left/right blocked
+        -- twice each. Follow-up non-teleport walked verifiers from the same
+        -- origin reproduced all three raw-hold timeouts with no NPC/runtime
+        -- blocker while the north approach into `(7,17)` stayed usable.
+        ["6,17"] = {east = true},
+        ["7,18"] = {north = true},
+        ["8,17"] = {west = true},
+        -- Continuing that broad-component sweep after reload found another
+        -- lower-row pocket: `(8,15)->DOWN`, `(10,16)->DOWN`, and
+        -- `(10,16)->LEFT` each blocked twice, then non-teleport walked
+        -- verifiers reproduced all three raw-hold timeouts. The route into
+        -- `(8,15)` and `(10,16)` stayed open, so keep these approach-specific.
+        ["8,16"] = {north = true},
+        -- A follow-up reload sweep found `(9,15)->DOWN` blocked twice. A
+        -- walked verifier routed into `(9,15)` from the west, then reproduced
+        -- the down-edge raw-hold timeout; merge that north face with the
+        -- already verified east face from `(10,16)->LEFT`.
+        ["9,16"] = {east = true, north = true},
+        ["10,17"] = {north = true},
     },
 
     -- Map 0x18: Garin's Grave B1
@@ -3853,6 +3897,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
     -- approaches, while other approaches should remain available until direct
     -- probes say otherwise.
     [0x15] = {
+        -- 2026-06-21 Swamp Cave sweep/autowalk validation: non-teleport
+        -- verify_walked_edge reached each origin by normal movement, then
+        -- raw-held into an open preview that stayed blocked.
+        ["2,14"] = {north = true}, -- (2,13)->DOWN blocked
+        ["3,9"] = {north = true}, -- (3,8)->DOWN blocked
+        ["4,8"] = {west = true}, -- (3,8)->RIGHT blocked
         ["1,24"] = {south = true}, -- (1,25)->UP blocked, retried, then became PATH_RUNTIME_BLOCK
         ["1,27"] = {north = true, south = true}, -- north blocked 28x from (1,26); south blocked from (1,28)
         ["2,28"] = {south = true, east = true, west = true}, -- failed from (2,29), (3,28), and (1,28)

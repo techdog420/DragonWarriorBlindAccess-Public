@@ -1517,6 +1517,118 @@ function tests.turn_repress_uses_full_inject_window_after_turn_only_attempt()
     env.restore()
 end
 
+function tests.map_crawl_turn_repress_uses_short_release_window()
+    local env = make_env({
+        config_values = {
+            auto_step_route_pre_turn_inject_limit = "7",
+            auto_step_turn_repress_delay = "10",
+            auto_step_turn_repress_release_frames = "2",
+        },
+    })
+    env.auto_step.inject_step("right", {source = "map_crawl"})
+
+    for _ = 1, 40 do
+        env.update(true)
+    end
+
+    local sequences = collect_direction_sequences(env, "right", 40)
+    assert_truthy(sequences[1] and sequences[1].count <= 8,
+        "map crawl initial press should release after the short inject window")
+    assert_truthy(sequences[2] and sequences[2].count <= 8,
+        "map crawl turn re-press should also release after the short inject window")
+
+    env.restore()
+end
+
+function tests.map_crawl_early_subpixel_twitch_does_not_turn_repress_before_timeout()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_pre_turn_inject_limit = "7",
+            auto_step_turn_repress_delay = "12",
+            auto_step_turn_repress_release_frames = "2",
+            auto_step_turn_repress_limit = "1",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {source = "map_crawl"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 25 do
+        env.update(true)
+    end
+
+    local sequences = collect_direction_sequences(env, "right", 40)
+    assert_truthy(sequences[2] == nil,
+        "map crawl early movement twitches should not turn re-press because that can carry into an extra tile")
+
+    env.restore()
+end
+
+function tests.map_crawl_late_subpixel_twitch_does_not_turn_repress_before_timeout()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_pre_turn_inject_limit = "7",
+            auto_step_turn_repress_delay = "18",
+            auto_step_turn_repress_release_frames = "2",
+            auto_step_turn_repress_limit = "1",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {source = "map_crawl"})
+
+    for _ = 1, 15 do
+        env.update(true)
+    end
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 25 do
+        env.update(true)
+    end
+
+    local sequences = collect_direction_sequences(env, "right", 50)
+    assert_truthy(sequences[2] == nil,
+        "map crawl late movement twitches should not turn re-press because that can carry into an extra tile")
+
+    env.restore()
+end
+
+function tests.map_crawl_timeout_retry_preserves_short_release_window()
+    local env = make_env({
+        config_values = {
+            auto_step_inject_limit = "12",
+            auto_step_route_pre_turn_inject_limit = "7",
+            auto_step_timeout = "15",
+            auto_step_turn_repress_limit = "0",
+            auto_step_block_retry_limit = "1",
+        },
+    })
+    env.auto_step.inject_step("right", {source = "map_crawl"})
+
+    for _ = 1, 16 do
+        env.update(true)
+    end
+
+    local state = env.auto_step.get_active_step_state()
+    assert_truthy(state and state.timeout_retries == 1,
+        "test setup should reach the first timeout retry")
+    assert_equal(state.inject_limit, 7,
+        "map crawl timeout retries should keep the short inject window")
+    assert_truthy(state.release_after_inject_limit == true,
+        "map crawl timeout retries should keep release-after-inject behavior")
+
+    env.restore()
+end
+
 function tests.turn_repress_waits_for_release_gap_before_rearming()
     local env = make_env()
     env.auto_step.inject_step("right")
@@ -1603,6 +1715,30 @@ function tests.live_direction_input_cancels_active_queued_route_step()
     assert_truthy(
         not saw_recontinued_right,
         "live manual direction input should cancel an active queued route step"
+    )
+
+    env.restore()
+end
+
+function tests.live_direction_input_flushes_manual_auto_hold()
+    local env = make_env({sticky_joypad_set = true})
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    assert_truthy(
+        env.injected[2] and env.injected[2].right,
+        "test setup should start a script-owned manual right hold"
+    )
+
+    env.set_joy({left = true})
+    env.update(true)
+
+    assert_truthy(
+        env.injected[3] and not has_any_direction(env.injected[3]),
+        "live opposite-direction input should flush the stale script-owned D-pad hold"
     )
 
     env.restore()
@@ -1704,6 +1840,33 @@ function tests.inject_step_success_force_releases_sticky_direction_after_complet
     assert_truthy(
         env.injected[9] and not has_any_direction(env.injected[9]),
         "debug/probe injected steps should keep neutral long enough to prevent post-arrival overshoot"
+    )
+
+    env.restore()
+end
+
+function tests.map_crawl_success_force_releases_sticky_direction_after_completion()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right", {source = "map_crawl"})
+
+    for _ = 1, 6 do
+        env.update(true)
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    assert_truthy(
+        env.injected[8] and not has_any_direction(env.injected[8]),
+        "map crawl injected steps should force a neutral frame even if the emulator still reports the old direction"
+    )
+    assert_truthy(
+        env.injected[9] and not has_any_direction(env.injected[9]),
+        "map crawl injected steps should keep neutral long enough to prevent post-arrival overshoot"
     )
 
     env.restore()

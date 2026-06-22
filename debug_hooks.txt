@@ -63,7 +63,7 @@ COMMANDS (write to dw_commands.txt, one per line)
   debug_seed_open_doors:X,Y[;X,Y...]  Seed opened-door RAM slots for route/debug tests
   debug_seed_open_doors:clear         Clear opened-door RAM slots after a route test
   report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
-  report_movement_state    Dump movement/camera-adjacent RAM windows
+  report_movement_state    Dump movement/camera/sprite-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons
   reset_movement_state[:TAG]
                            Zero movement state/subpixel bytes and clear injected
@@ -123,12 +123,22 @@ COMMANDS (write to dw_commands.txt, one per line)
   clear_seam_cells         Clear current map seam observations
   is_blocked_tile:X,Y      Inspect runtime blocked/effective passability state
   dump_blocked_tiles       Dump current map runtime blocked tiles as Lua lines
-  sweep_map                Legacy forensic engine-collision sweep of current map.
+  sweep_map                Legacy unsafe forensic engine-collision sweep.
                            Teleports player to every walkable-looking tile,
-                           probes all 4 directions, records hidden engine walls.
+                           probes all 4 directions, logs review-only hidden
+                           wall findings with trusted=false, and does not
+                           persist trusted blocker data.
                            auto_step is suspended while sweep runs.
-                           Outputs ready-to-paste MAP_BLOCKED_CELLS entries.
+  sweep_teleport_legacy    Explicit alias for the legacy teleport sweep.
   stop_sweep               Cancel an active sweep mid-run
+  sweep_walk               Start a normal-movement sweep from the current live
+                           tile using the map crawler. Teleport used: no.
+                           Writes sweep_status.txt while active and, on finish,
+                           sweep_walk_MM_runNNN.json,
+                           sweep_walk_MM_runNNN_summary.txt, and the existing
+                           dw_crawl_MM.txt review-only candidate snippets.
+                           JSON includes explicit unknowns, dynamic_blockers,
+                           transitions, and unsafe_aborts edge buckets.
   crawl_map_frontier       Start a review-only frontier crawl from the current
                            live tile. Parks mobile NPCs by default, leaves
                            stationary NPCs in place, skips hazards, stops on
@@ -305,7 +315,7 @@ TELEPORT (DEBUG)
 Writes new player coordinates directly to RAM. Same-map only. Refused during
 menus, dialogue, battle, sweeps, active auto-walk, surveys, and edge probes.
 
-  teleport_to:X,Y          Exact teleport; refused if target not walkable
+  teleport_to:X,Y          Exact debug teleport; refused if target not walkable
   teleport_to:X,Y,near     Teleport to target, or to the first walkable cardinal/
                            diagonal neighbor (N,E,S,W,NE,SE,SW,NW) if target is blocked
   teleport_to:X,Y,force    Bypass the walkability check (unstick/debug). Can strand
@@ -379,16 +389,16 @@ BLOCK DETECTION WORKFLOW
     2. echo export_blocks > dw_commands.txt
     3. Check dw_debug.log for MAP_BLOCKED_CELLS Lua entries to review
 
-  Active (exhaustive per-map sweep):
+  Active (normal-movement sweep):
     1. Set debug_mode=true in dw_access.ini
-    2. Navigate into the map you want to sweep (e.g. Tantegel Castle)
-    3. echo sweep_map > dw_commands.txt
-    4. Wait for sweep to finish (watch dw_debug.log; "SWEEP COMPLETE" appears)
-    5. Review MAP_BLOCKED_CELLS entries from dw_debug.log before promotion
-    6. Reload script to apply
+    2. Navigate to the reachable map component you want to sweep
+    3. echo sweep_walk > dw_commands.txt
+    4. Wait for crawl to finish or stop it with stop_map_crawl
+    5. Review MAP_CRAWL_* candidate output before promotion
+    6. Add permanent map data only after walked verification
 
-  NOTE: sweep_map is safe for town/castle maps (no random encounters).
-        Use with caution in dungeons — random battles may interrupt the sweep.
+  NOTE: sweep_map / sweep_teleport_legacy are legacy unsafe teleport-backed
+        tools. Their output is review-only and marked trusted=false.
 
   Survey workflow (preferred for new maps):
     1. freeze_npcs

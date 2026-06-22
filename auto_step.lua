@@ -41,6 +41,20 @@ end
 
 local M = {}
 
+local function trace_auto_step_boundary(label, detail)
+    if not debug_tools.DEBUG_MODE then
+        return
+    end
+    local message = "AUTO_STEP_TRACE " .. tostring(label)
+    if detail and detail ~= "" then
+        message = message .. " " .. tostring(detail)
+    end
+    debug_tools.info(message)
+    if debug_tools.flush then
+        debug_tools.flush()
+    end
+end
+
 -- Optional callback: called when a step times out (player was blocked by
 -- a wall or moving NPC). Main.lua sets this to trigger automatic re-routing.
 -- Signature: M.on_blocked(from_x, from_y, blocked_dir, block_data)
@@ -111,6 +125,7 @@ local auto_movement_start_frame = nil
 local auto_step_source = nil
 local auto_hold_after_movement_start = false
 local auto_hold_after_movement_start_frames = nil
+local auto_release_after_inject_limit = false
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
@@ -238,6 +253,10 @@ end
 
 local function get_route_pre_turn_inject_limit()
     return config_int("auto_step_route_pre_turn_inject_limit", ROUTE_PRE_TURN_INJECT_LIMIT, 1, 120)
+end
+
+local function get_map_crawl_inject_limit()
+    return config_int("auto_step_map_crawl_inject_limit", get_route_pre_turn_inject_limit(), 1, 120)
 end
 
 local function get_turn_repress_delay()
@@ -541,6 +560,7 @@ local function begin_step(dir, px, py, state)
     auto_step_source = state and state.source or (route_steps and "queued_route" or "manual_tap")
     auto_hold_after_movement_start = state and state.hold_after_movement_start == true or false
     auto_hold_after_movement_start_frames = state and tonumber(state.hold_after_movement_start_frames) or nil
+    auto_release_after_inject_limit = state and state.release_after_inject_limit == true or false
     route_final_settle_active = false
     route_settle_frames = 0
     pending_repress = nil
@@ -549,7 +569,25 @@ local function begin_step(dir, px, py, state)
         "auto_step begin_step dir=%s from=(%d,%d) timeout_retries=%d turn_represses=%d inject_limit=%d source=%s",
         tostring(dir), px or -1, py or -1, auto_timeout_retries, auto_turn_represses,
         auto_inject_limit or -1, tostring(auto_step_source)))
+    if route_steps ~= nil or auto_step_source ~= "manual_tap" then
+        trace_auto_step_boundary("begin_step_before_joypad", string.format(
+            "dir=%s from=(%d,%d) source=%s route_index=%s route_len=%s",
+            tostring(dir),
+            px or -1,
+            py or -1,
+            tostring(auto_step_source),
+            tostring(route_index),
+            tostring(route_steps and #route_steps or nil)))
+    end
     joypad.set(1, {[dir] = true})
+    if route_steps ~= nil or auto_step_source ~= "manual_tap" then
+        trace_auto_step_boundary("begin_step_after_joypad", string.format(
+            "dir=%s from=(%d,%d) source=%s",
+            tostring(dir),
+            px or -1,
+            py or -1,
+            tostring(auto_step_source)))
+    end
 end
 
 local function direction_delta(dir)
@@ -665,11 +703,14 @@ local function schedule_turn_repress(dir)
         dir = dir,
         timeout_retries = auto_timeout_retries,
         turn_represses = auto_turn_represses + 1,
-        inject_limit = get_turn_repress_inject_limit(),
+        inject_limit = auto_release_after_inject_limit
+            and (auto_inject_limit or get_map_crawl_inject_limit())
+            or get_turn_repress_inject_limit(),
         release_frames = get_turn_repress_release_frames(),
         start_x = auto_start_x,
         start_y = auto_start_y,
         source = auto_step_source,
+        release_after_inject_limit = auto_release_after_inject_limit,
     }
     auto_dir = nil
     auto_frames = 0
@@ -691,6 +732,7 @@ local function reset_active_step()
     auto_step_source = nil
     auto_hold_after_movement_start = false
     auto_hold_after_movement_start_frames = nil
+    auto_release_after_inject_limit = false
     clear_pending_repress()
 end
 
@@ -989,6 +1031,8 @@ local function handle_active_auto_step(joy, px, py, timeout)
         if DEBUG then tolk.output("auto-step cancelled, different direction") end
         reset_active_step()
         clear_route()
+        neutralize_direction(joy)
+        start_post_step_release()
         if had_route then
             emit_route_cancelled({
                 reason = "live_input_interrupt",
@@ -1171,7 +1215,10 @@ local function handle_active_auto_step(joy, px, py, timeout)
                 neutralize_direction(joy)
             elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
                 joypad.set(1, {[auto_dir] = true})
-            elseif route_steps == nil and not auto_movement_started and not is_any_direction_pressed(joy) then
+            elseif route_steps == nil
+               and not auto_release_after_inject_limit
+               and not auto_movement_started
+               and not is_any_direction_pressed(joy) then
                 joypad.set(1, {[auto_dir] = true})
             elseif route_steps or not is_any_direction_pressed(joy) then
                 neutralize_direction(joy)
@@ -1203,7 +1250,9 @@ local function handle_active_auto_step(joy, px, py, timeout)
             if auto_timeout_retries < block_retry_limit and not timing_suspect_timeout then
                 auto_timeout_retries = auto_timeout_retries + 1
                 auto_frames = 1
-                auto_inject_limit = get_inject_limit()
+                auto_inject_limit = auto_release_after_inject_limit
+                    and (auto_inject_limit or get_map_crawl_inject_limit())
+                    or get_inject_limit()
                 auto_start_subpixel = read_movement_subpixel()
                 auto_movement_started = false
                 auto_movement_start_frame = nil
@@ -1624,11 +1673,12 @@ function M.inject_step(dir, opts)
     end
     begin_step(dir, px, py, {
         source = source,
-        inject_limit = opts.inject_limit,
+        inject_limit = opts.inject_limit or (source == "map_crawl" and get_map_crawl_inject_limit() or nil),
         timeout_retries = opts.timeout_retries,
         turn_represses = opts.turn_represses,
         hold_after_movement_start = opts.hold_after_movement_start == true,
         hold_after_movement_start_frames = hold_after_movement_start_frames,
+        release_after_inject_limit = opts.release_after_inject_limit == true or source == "map_crawl",
     })
     return true
 end
@@ -1654,8 +1704,16 @@ end
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
+    trace_auto_step_boundary("start_route_entry", string.format(
+        "steps=%d settle=%s initial_settle=%s start=(%s,%s)",
+        steps and #steps or 0,
+        tostring(opts.settle_frames),
+        tostring(opts.initial_settle_frames),
+        tostring(opts.start_x),
+        tostring(opts.start_y)))
     clear_route()
     if not steps or #steps == 0 then
+        trace_auto_step_boundary("start_route_reject_empty")
         return false
     end
     route_steps = {}
@@ -1680,6 +1738,13 @@ function M.start_route(steps, opts)
             route_last_x or -1,
             route_last_y or -1))
     end
+    trace_auto_step_boundary("start_route_ready", string.format(
+        "steps=%d settle=%d same_direction=%s start=(%s,%s)",
+        #route_steps,
+        route_settle_default,
+        tostring(route_settle_same_direction),
+        tostring(route_last_x),
+        tostring(route_last_y)))
     return true
 end
 
@@ -1700,6 +1765,7 @@ function M.get_active_step_state()
             movement_started = auto_movement_started,
             movement_start_frame = auto_movement_start_frame,
             source = auto_step_source,
+            release_after_inject_limit = auto_release_after_inject_limit,
         }
     end
     if pending_repress then
@@ -1714,6 +1780,7 @@ function M.get_active_step_state()
             movement_started = false,
             movement_start_frame = nil,
             source = pending_repress.source or auto_step_source,
+            release_after_inject_limit = pending_repress.release_after_inject_limit == true,
         }
     end
     return nil
