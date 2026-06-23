@@ -43,6 +43,7 @@ local function make_env(options)
     local all_filter_calls = 0
     local debug_errors = {}
     local input_suppress_calls = 0
+    local auto_step_suppress_calls = {}
     local object_count = options.object_count or 1
     local delay = options.delay
     if delay == nil then delay = 2 end
@@ -51,6 +52,7 @@ local function make_env(options)
 
     local module_names = {
         "addresses",
+        "auto_step",
         "chars",
         "config",
         "debug_tools",
@@ -123,6 +125,14 @@ local function make_env(options)
             end,
             output_interrupt = function(message)
                 outputs[#outputs + 1] = {frame = frame, message = message, interrupt = true}
+            end,
+        }
+    end
+
+    package.preload["auto_step"] = function()
+        return {
+            suppress_direction_tracking = function(frames)
+                auto_step_suppress_calls[#auto_step_suppress_calls + 1] = frames
             end,
         }
     end
@@ -454,6 +464,7 @@ local function make_env(options)
         input_suppress_calls = function()
             return input_suppress_calls
         end,
+        auto_step_suppress_calls = auto_step_suppress_calls,
         debug_errors = debug_errors,
         teleport_modes = teleport_modes,
         describe_calls = describe_calls,
@@ -567,6 +578,42 @@ function tests.path_actions_refresh_live_npcs_before_planning()
     env.restore()
 end
 
+function tests.pathfind_hotkey_suppresses_nearby_direction_edges()
+    local env = make_env({delay = 0})
+
+    env.update({O = true})
+
+    assert_equal(env.pathfind_calls(), 1, "pathfind hotkey should still invoke route planning")
+    assert_equal(#env.auto_step_suppress_calls, 1, "pathfind should debounce near-simultaneous D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8, "pathfind should use the short object-hotkey debounce window")
+
+    env.restore()
+end
+
+function tests.route_guidance_hotkey_suppresses_nearby_direction_edges()
+    local env = make_env({delay = 0, snapshot_terrain_offset = 0x00})
+
+    env.update({R = true})
+
+    assert_equal(env.route_start_calls(), 1, "route guidance should still start from the selected object")
+    assert_equal(#env.auto_step_suppress_calls, 1, "route guidance should debounce near-simultaneous D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8, "route guidance should use the short object-hotkey debounce window")
+
+    env.restore()
+end
+
+function tests.pathability_hotkey_suppresses_nearby_direction_edges()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, O = true})
+
+    assert_equal(env.pathability_filter_calls(), 1, "pathability filter should still cycle")
+    assert_equal(#env.auto_step_suppress_calls, 1, "pathability filter should debounce near-simultaneous D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8, "pathability filter should use the short object-hotkey debounce window")
+
+    env.restore()
+end
+
 function tests.tile_diag_hotkey_speaks_without_full_dump_by_default()
     local env = make_env()
 
@@ -644,7 +691,8 @@ function tests.object_only_hotkeys_respect_allowance_and_non_object_hotkeys_stil
         "blocked object hotkey should give an audible guard message")
     assert_equal(env.outputs[6].message, "Object controls unavailable right now",
         "each fresh blocked object hotkey should give an audible guard message")
-    assert_equal(env.input_suppress_calls(), 5, "blocked object hotkeys should suppress leaked game input")
+    assert_equal(env.input_suppress_calls(), 3, "blocked non-path object hotkeys should suppress leaked game input")
+    assert_equal(#env.auto_step_suppress_calls, 2, "blocked path/readout hotkeys should debounce direction edges instead")
     assert_equal(#env.describe_calls, 0, "object navigation should be fully blocked when allowance is false")
     assert_equal(env.freeze_calls(), 0, "freeze command should not run when blocked")
     assert_equal(env.pathfind_calls(), 0, "pathfind should not run when blocked")
@@ -664,7 +712,65 @@ function tests.blocked_object_hotkey_uses_specific_reason_when_available()
     assert_equal(env.outputs[1].message, "Wait for movement to finish",
         "movement gating should avoid the generic object-controls message")
     assert_equal(env.outputs[1].interrupt, false, "blocked guard speech should not interrupt route announcements")
-    assert_equal(env.input_suppress_calls(), 1, "blocked object hotkey should still suppress leaked game input")
+    assert_equal(#env.auto_step_suppress_calls, 1, "movement-gated object hotkeys should debounce nearby D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8, "movement-gated object hotkeys should use the short debounce window")
+    assert_equal(env.input_suppress_calls(), 0,
+        "movement-gated object hotkeys should not trigger teleport-style controller suppression")
+
+    env.restore()
+end
+
+function tests.blocked_object_browse_hotkeys_use_movement_safe_guard()
+    local env = make_env({delay = 0})
+    local state = {state = "field"}
+
+    env.update({J = true}, state, false, "Wait for movement to finish")
+    env.update({}, state, false, "Wait for movement to finish")
+    env.update({K = true}, state, false, "Wait for movement to finish")
+    env.update({}, state, false, "Wait for movement to finish")
+    env.update({L = true}, state, false, "Wait for movement to finish")
+
+    assert_equal(#env.outputs, 3, "each blocked browse hotkey should speak one guard")
+    assert_equal(env.outputs[1].message, "Wait for movement to finish",
+        "blocked J should ask the player to wait for stable movement")
+    assert_equal(env.outputs[2].message, "Wait for movement to finish",
+        "blocked K should ask the player to wait for stable movement")
+    assert_equal(env.outputs[3].message, "Wait for movement to finish",
+        "blocked L should ask the player to wait for stable movement")
+    assert_equal(#env.auto_step_suppress_calls, 3,
+        "blocked J/K/L should debounce nearby D-pad taps during active movement")
+    assert_equal(env.input_suppress_calls(), 0,
+        "blocked J/K/L should not trigger teleport-style controller suppression during active movement")
+
+    env.restore()
+end
+
+function tests.blocked_pathfind_hotkey_suppresses_nearby_direction_edges()
+    local env = make_env({delay = 0})
+
+    env.update({O = true}, {state = "field"}, false, "Wait for movement to finish")
+
+    assert_equal(env.pathfind_calls(), 0, "blocked O should not run pathfinding while movement is active")
+    assert_equal(#env.auto_step_suppress_calls, 1, "blocked O should still debounce near-simultaneous D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8, "blocked O should use the short object-hotkey debounce window")
+    assert_equal(env.input_suppress_calls(), 0, "blocked O should not trigger teleport-style controller suppression during active movement")
+    assert_equal(env.outputs[1].message, "Wait for movement to finish",
+        "blocked O should still explain why pathfinding did not run")
+
+    env.restore()
+end
+
+function tests.blocked_autowalk_hotkey_suppresses_nearby_direction_edges()
+    local env = make_env({delay = 0})
+
+    env.update({U = true}, {state = "field"}, false, "Wait for movement to finish")
+
+    assert_equal(env.autowalk_calls(), 0, "blocked U should not start auto-walk while movement is active")
+    assert_equal(#env.auto_step_suppress_calls, 1, "blocked U should debounce near-simultaneous D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8, "blocked U should use the short object-hotkey debounce window")
+    assert_equal(env.input_suppress_calls(), 0, "blocked U should not trigger teleport-style controller suppression during active movement")
+    assert_equal(env.outputs[1].message, "Wait for movement to finish",
+        "blocked U should still explain why auto-walk did not start")
 
     env.restore()
 end

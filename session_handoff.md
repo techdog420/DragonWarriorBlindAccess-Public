@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-21
+Updated: 2026-06-23
 
 ## Current State
 
@@ -21,6 +21,41 @@ Updated: 2026-06-21
 - FCEUX remains the normal gameplay and agent-driven runtime for this repo.
   BizHawk is still useful for explicit automation/debug/reload/profiling work,
   but it is not the default route-testing runtime.
+- Swamp Cave rescue branch is now live-confirmed through Gwaelin. Door cell
+  `(5,20)` is open in slot `0`, Gwaelin is reached from `(5,19)` facing north
+  toward `(5,18)`, the escort prompt was accepted, and final field state was
+  map `0x15` at `(5,19)` with `combat=0x09`, `quest=0x40`, runtime blocks none.
+  Object navigation now exposes Princess Gwaelin as a Swamp Cave NPC target
+  before the escort bit, then hides her once `combat` bit `0x01` is set. Next
+  gameplay step is escorting her back to Tantegel Castle.
+- Swamp Cave known-route polish is promoted in `map_reader.lua`: the Gwaelin
+  door / Princess route and south-stairs route now include the walked
+  directional blockers found by `auto_walk_blocker`, the live middle strip
+  `(2,16)..(2,18)` is modeled as passthrough, and static tests cover the
+  south-stairs route, reverse route to the door stand, and opened-door return
+  route. FCEUX must reload `main.lua` before live planning reflects these
+  source edits; the current live runtime overlay already contained the
+  equivalent blockers during validation.
+- A live FCEUX hang after `O` path preview plus close-timed D-pad taps left
+  command polling stopped with no fresh `dw_script_error.log` entry. The fix
+  debounces `O`, `R`, `U`, and `Shift+O` object/path route hotkeys by suppressing
+  `auto_step` direction-edge tracking for 8 frames before planning/speech.
+  A post-reload repro showed the ROM still accepted controller input while the
+  Lua loop stopped, with the final repeated log line in
+  `auto_step cancel manual_tap early-twitch wait`. `auto_step.lua` now avoids
+  reissuing neutral `joypad.set` frames in that physical-tap cancel branch and
+  applies a short direction-edge dampening window after the cancel, so rapid
+  retaps are not converted into another synthetic manual step immediately.
+  Later repros spoke `Wait for movement to finish`, which proved blocked
+  object hotkeys were hitting the guarded object-control path during active
+  movement. That path now suppresses nearby direction edges for any object
+  hotkey blocked by the movement-settle guard, including blocked `O`, `U`, and
+  `J/K/L`, but does not use the teleport-style controller suppression that
+  pauses `auto_step.update` during active movement. It also logs/flushed
+  `OBJECT_HOTKEY_BLOCKED` breadcrumbs if this still recurs. `test_hotkeys.lua`
+  and `test_auto_step.lua` cover the allowed hotkey debounce, blocked-`O`,
+  blocked-`U`, and blocked-`J/K/L` debounce without teleport suppression,
+  manual early-twitch cancel cleanup, and rapid-retap dampening.
 
 ## Garin's Grave Result
 
@@ -103,8 +138,13 @@ Updated: 2026-06-21
 
 ## Next Work
 
-1. Resume normal gameplay/playtesting from the post-Garin's Grave / Swamp Cave
-   validation state.
+1. Reload `main.lua` in FCEUX before judging Swamp Cave live route planning
+   or the hotkey / manual early-twitch fixes; the latest live script loop
+   stopped after blocked `L` spoke `Wait for movement to finish` during an
+   active auto-walk, with the breadcrumb confirming `key_object_next`.
+   The stale command probe has been cleared. After reload, stress `O`, `U`,
+   `J/K/L`, and movement timing, then resume escorting Gwaelin back to
+   Tantegel Castle if stable.
 2. Pick the next practical playability/QoL issue or the next gameplay-exposed
    route failure instead of continuing broad Garin's Grave blocker hunting.
 3. If revisiting Garinham's inn-to-grave-stairs return, ignore old verifier

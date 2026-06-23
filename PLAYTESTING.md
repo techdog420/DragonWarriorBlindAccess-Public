@@ -1,10 +1,22 @@
 # Playtesting Notes
 
-Updated: 2026-06-18
+Updated: 2026-06-22
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Swamp Cave route polish (`2026-06-22`): after the dragon and Gwaelin door
+  route were verified, targeted `auto_walk_blocker` passes cleaned the known
+  routes between the opened Gwaelin door stand `(5,21)`, Princess talk stand
+  `(5,19)`, and `South Stairs Up` `(0,29)`. `map_reader.lua` now models the
+  route-derived directional blockers exposed by those passes, promotes the
+  formerly mixed `(5,24)->LEFT` into `(4,24).east`, and adds passthrough cells
+  `(2,16)..(2,18)` for the live-walked middle strip. Static regression tests
+  keep the south-stairs route, reverse route to the Gwaelin door stand, and
+  opened-door return route available while blocking the false shortcuts.
+  Reload `main.lua` in FCEUX before judging the live planner without the
+  runtime overlay.
 
 - Garinham inner locked-building door (`2026-06-18`): live OPEN/door RAM
   confirmed the inner door cell at `(4,6)`, opened from the south stand
@@ -700,7 +712,14 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   frame `04095` reported "A Green Dragon draws near!" Later restarts/manual
   checks also produced Green Dragon snapshots at `(4,14)`. Treat the door route
   as a rescue-branch hazard, not a player-safe objective for the current level 9
-  hero.
+  hero. After the dragon is defeated, the rescue target is near the opened door,
+  not in the northern dragon pocket: from the opened door route, stand at
+  `(5,19)`, face north, and TALK to Princess Gwaelin at `(5,18)`. The successful
+  rescue dialogue confirmed Gwaelin, accepted the castle escort prompt, and
+  changed `combat` from `0x08` to `0x09` while leaving the opened-door slot
+  `0=(5,20)`. Object navigation now treats her as a Swamp Cave-only special NPC
+  before that escort bit, and removes the target once `combat` bit `0x01` is
+  set.
 
 - Fresh overworld-route grinding notes: Tantegel to Kol now works rather well.
   A few points still needed manual navigation, but side-stepping a couple of

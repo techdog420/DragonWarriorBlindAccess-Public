@@ -1195,16 +1195,20 @@ local function handle_active_auto_step(joy, px, py, timeout)
            and auto_movement_start_frame ~= nil
            and (auto_frames - auto_movement_start_frame) >= 20
            and not is_any_direction_pressed(joy) then
+            local dampen_frames = math.max(COOLDOWN_FRAMES, get_manual_early_hold_frames() + COOLDOWN_FRAMES)
             debug_tools.debug(string.format(
-                "auto_step cancel manual_tap early-twitch wait dir=%s from=(%d,%d) frames=%d movement_start_frame=%s",
+                "auto_step cancel manual_tap early-twitch wait dir=%s from=(%d,%d) frames=%d movement_start_frame=%s dampen_frames=%d",
                 tostring(auto_dir),
                 auto_start_x or -1,
                 auto_start_y or -1,
                 auto_frames or -1,
-                tostring(auto_movement_start_frame)))
+                tostring(auto_movement_start_frame),
+                dampen_frames))
             reset_active_step()
-            neutralize_direction(joy)
-            start_post_step_release()
+            clear_direction_press_tracking()
+            if dampen_frames > suppress_direction_tracking_frames then
+                suppress_direction_tracking_frames = dampen_frames
+            end
             sync_prev_held(joy)
             return true
         end

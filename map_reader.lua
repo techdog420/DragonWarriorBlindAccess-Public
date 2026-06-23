@@ -884,6 +884,9 @@ local MAP_PASSTHROUGH_CELLS = {
     -- A later route from the island exit back to the original entrance proved
     -- (0,28) passable from the south/east side. Keep (0,26)..(0,27) closed
     -- until live movement proves otherwise.
+    -- The 2026-06-22 reverse South Stairs route walked the middle strip
+    -- `(2,16)..(2,18)` while returning to the Gwaelin door stand; these decode
+    -- blocked but are standable from the vertical route.
     [0x15] = {
         ["0,0"] = true,
         ["0,1"] = true,
@@ -913,6 +916,9 @@ local MAP_PASSTHROUGH_CELLS = {
         ["0,25"] = true,
         ["0,28"] = true,
         ["0,29"] = true,
+        ["2,16"] = true,
+        ["2,17"] = true,
+        ["2,18"] = true,
     },
 
     -- Map 0x1C: Erdrick's Cave B1 entrance strip.
@@ -3900,7 +3906,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- 2026-06-21 Swamp Cave sweep/autowalk validation: non-teleport
         -- verify_walked_edge reached each origin by normal movement, then
         -- raw-held into an open preview that stayed blocked.
-        ["2,14"] = {north = true}, -- (2,13)->DOWN blocked
+        ["2,14"] = {north = true, south = true}, -- blocked from (2,13)->DOWN and later (2,15)->UP
         ["3,9"] = {north = true}, -- (3,8)->DOWN blocked
         ["4,8"] = {west = true}, -- (3,8)->RIGHT blocked
         ["1,24"] = {south = true}, -- (1,25)->UP blocked, retried, then became PATH_RUNTIME_BLOCK
@@ -3910,7 +3916,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- Gwaelin Door route: south-exit-to-door auto-walk looped at (3,23)
         -- until stopped, then direct edge probes confirmed both approaches
         -- block despite walkable tile previews.
-        ["3,22"] = {south = true}, -- (3,23)->UP blocked 37x, then direct probe blocked
+        ["3,22"] = {south = true, north = true}, -- (3,23)->UP and later (3,21)->DOWN blocked
         ["4,23"] = {west = true, east = true}, -- blocked from (3,23)->RIGHT and (5,23)->LEFT
         -- Follow-up post-battle route from (3,26) toward Gwaelin Door looped
         -- on (3,24)->RIGHT. probe_edge_verify:3,24,RIGHT,3 confirmed 3/3
@@ -3923,25 +3929,44 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (0,21)->RIGHT into (1,21), and (0,22)->RIGHT into (1,22) as
         -- blocked 3/3. Follow-up manual validation found the x=0 corridor's
         -- east re-entry blocked through (0,9)->RIGHT, with (0,8) the first
-        -- open eastward cell. The nearby
-        -- (5,24)->LEFT into (4,24) result was mixed and remains unmodeled.
-        ["1,9"] = {west = true},
-        ["1,10"] = {west = true},
-        ["1,11"] = {west = true},
-        ["1,12"] = {west = true},
-        ["1,13"] = {west = true},
+        -- open eastward cell. A later reverse-route polish cleanly confirmed
+        -- the formerly mixed (5,24)->LEFT into (4,24) seam plus lower return
+        -- reroute blockers at (3,29)->RIGHT, (3,26)->RIGHT, and
+        -- (3,25)->LEFT.
+        -- 2026-06-22 South Stairs Up polish used auto_walk_blocker from the
+        -- opened-door / Princess route side. The west-corridor route remained
+        -- passable through (1,26)..(0,29), while these route-derived seams
+        -- repeatedly blocked and then allowed the route to reach (0,29).
+        ["1,9"] = {west = true, east = true, north = true},
+        ["1,10"] = {west = true, east = true},
+        ["1,11"] = {west = true, east = true},
+        ["1,12"] = {west = true, east = true},
+        ["1,13"] = {west = true, east = true},
         ["1,14"] = {west = true},
-        ["1,15"] = {west = true},
-        ["1,16"] = {west = true},
-        ["1,17"] = {west = true},
-        ["1,18"] = {west = true},
-        ["1,19"] = {west = true},
-        ["1,20"] = {west = true},
-        ["1,21"] = {west = true},
+        ["1,15"] = {west = true, east = true},
+        ["1,16"] = {west = true, east = true},
+        ["1,17"] = {west = true, east = true},
+        ["1,18"] = {west = true, east = true},
+        ["1,19"] = {west = true, east = true},
+        ["1,20"] = {west = true, east = true},
+        ["1,21"] = {west = true, east = true},
         ["1,22"] = {south = true, west = true},
-        ["2,22"] = {south = true},
-        ["4,24"] = {west = true, south = true},
-        ["5,22"] = {south = true},
+        ["2,22"] = {south = true, north = true},
+        ["2,25"] = {west = true, east = true},
+        ["3,14"] = {north = true, east = true, south = true},
+        ["3,16"] = {north = true, west = true},
+        ["3,17"] = {west = true},
+        ["3,18"] = {west = true},
+        ["3,19"] = {west = true},
+        ["3,20"] = {south = true, west = true},
+        ["4,16"] = {north = true},
+        ["4,20"] = {south = true},
+        ["4,22"] = {north = true},
+        ["4,24"] = {west = true, south = true, east = true},
+        ["4,26"] = {west = true},
+        ["4,29"] = {west = true},
+        ["5,16"] = {north = true},
+        ["5,22"] = {south = true, north = true},
     },
 
     -- Map 0x1C: Erdrick's Cave B1

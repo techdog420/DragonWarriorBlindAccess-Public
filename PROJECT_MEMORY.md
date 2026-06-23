@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-06-21
+Updated: 2026-06-23
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -358,6 +358,22 @@ Emulator compatibility direction:
   commands still do route work. The hotkey path now explicitly requests brief
   name/direction/count descriptions and suppresses raw player/object coordinate
   suffixes while browsing.
+- Object/path route and browse hotkeys that can be followed immediately by
+  manual movement should debounce `auto_step` direction-edge tracking. `O`,
+  `R`, `U`, and `Shift+O` call `auto_step.suppress_direction_tracking(8)`
+  before planning, route execution, readout, or pathability speech so a
+  near-simultaneous D-pad tap is ignored instead of being fused into a
+  synthetic manual auto-step. The blocked object-control path that says
+  `Wait for movement to finish` now applies the same debounce to any blocked
+  object hotkey, including `J/K/L` object browsing. Movement-settle blocked
+  hotkeys should not use the teleport-style controller suppression path,
+  because that neutralizes input and skips `auto_step.update` for several
+  frames while active manual movement is trying to settle. If the player keeps
+  manually tapping after an early subpixel
+  twitch, the physical manual-tap cancel path must not reissue neutral
+  `joypad.set` cleanup frames and should briefly dampen direction-edge
+  tracking, because synthetic input has already been released and rapid retaps
+  can otherwise chain into repeated synthetic manual `joypad.set` cycles.
 - Object navigator speech from rapid previous/next hotkeys is coalesced by
   default with `object_nav_speech_coalesce_frames=18`. J/L selection changes
   still happen immediately; the speech layer only speaks the newest selected
@@ -551,20 +567,32 @@ Emulator compatibility direction:
   `probe_edge_verify` results; static routes still detour from `(5,23)` to the
   door stand through `(5,24)->(4,24)->(4,23)->(4,22)->(4,21)->(5,21)`.
   The next lower-branch loop confirmed `(4,24).south` from `(4,25)->UP` with a
-  3/3 verifier, while `(4,24).east` from `(5,24)->LEFT` stayed mixed despite
-  heavy loop evidence. Keep `(4,24).east` runtime-only unless a future verifier
-  reaches consensus.
+  3/3 verifier. A later 2026-06-22 reverse-route polish resolved the formerly
+  mixed `(5,24)->LEFT` evidence: `auto_walk_blocker` confirmed it cleanly, so
+  `(4,24).east` is now promoted too.
   The following lower-left detour run promoted more confirmed approach-only
   seams: `(2,22).south`, `(1,22).south/west`, `(1,21).west`, `(1,20).west`,
   and `(1,19).west`, all from 3/3 `probe_edge_verify` results. The next
   candidate re-entry was row 18, but manual follow-up confirmed the x=0 east
   re-entry stays blocked through row 9 and first opens at `(0,8)`. Model
   `(1,9).west` through `(1,18).west`, while keeping `(1,8).west` open.
+  The 2026-06-22 South Stairs polish also promoted the opposite x=1 approach
+  blockers for rows 9..13 and 15..21, lower route blockers around `(2,25)`,
+  `(4,26)`, and `(4,29)`, and the opened-door-side false shortcuts around
+  `(3,14)`, `(3,16)..(3,20)`, `(4,16)`, `(4,20)`, `(4,22)`, `(5,16)`, and
+  `(5,22)`. The same pass proved `(2,16)..(2,18)` are standable despite their
+  blocked decode, so they are passthrough cells.
   The Green Dragon fixed encounter is log-confirmed at `(4,14)`: after
   auto-walk reached `(4,14)` and attempted `DOWN`, battle started at field
   position `(4,14)`, followed by `A Green Dragon draws near!`. Later restarts
   also reported Green Dragon snapshots at `(4,14)`, so the dragon is on the
   rescue branch before the door-route continuation rather than behind the door.
+  After the dragon is defeated, Princess Gwaelin is reached from the door-side
+  stand `(5,19)` by facing north and TALKing to the special target at `(5,18)`.
+  Accepting her escort prompt changed `combat=0x08` to `combat=0x09`; the
+  opened-door slot stayed `0=(5,20)`. `objects.lua` now synthesizes Princess
+  Gwaelin as a Swamp Cave-only NPC target until `combat` bit `0x01` indicates
+  she is being escorted, and refreshes object visibility when that flag changes.
   Random encounters can still interrupt auto-walk. If a touch-plus-probe
   source reload appears to succeed but `inspect_move` still lacks those latest
   disk directions, inject matching runtime edges or manually reload before

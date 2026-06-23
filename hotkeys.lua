@@ -24,6 +24,7 @@ local objects    = require "objects"
 local items      = require "items"
 local map_reader = require "map_reader"
 local route_mgr  = require "route_manager"
+local auto_step  = require "auto_step"
 local overworld_routes = require "overworld_routes"
 local debug_tools = require "debug_tools"
 local key_combo  = require "key_combo"
@@ -47,6 +48,8 @@ local teleport_handler = nil
 local route_guidance_key_pressed
 local route_guidance_key_down
 local pending_auto_walk_after_key_release = false
+local OBJECT_HOTKEY_DIRECTION_SUPPRESS_FRAMES = 8
+local MOVEMENT_SETTLE_BLOCK_REASON = "Wait for movement to finish"
 
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
@@ -123,6 +126,30 @@ local function log_auto_walk_hotkey(message)
             debug_tools.flush()
         end
     end
+end
+
+local function suppress_object_hotkey_direction_edges()
+    if auto_step and type(auto_step.suppress_direction_tracking) == "function" then
+        auto_step.suppress_direction_tracking(OBJECT_HOTKEY_DIRECTION_SUPPRESS_FRAMES)
+    end
+end
+
+local function blocked_hotkey_is_movement_settle_guard(object_hotkey_block_reason)
+    return object_hotkey_block_reason == MOVEMENT_SETTLE_BLOCK_REASON
+end
+
+local function blocked_hotkey_should_suppress_direction_edges(config_key, object_hotkey_block_reason)
+    if blocked_hotkey_is_movement_settle_guard(object_hotkey_block_reason) then
+        return true
+    end
+    return config_key == "key_pathfind"
+        or config_key == "key_route_guidance"
+        or config_key == "key_pathability_filter"
+        or config_key == "key_auto_walk"
+end
+
+local function blocked_hotkey_should_suppress_game_input(config_key, object_hotkey_block_reason)
+    return not blocked_hotkey_should_suppress_direction_edges(config_key, object_hotkey_block_reason)
 end
 
 local function suppress_blocked_hotkey_game_input()
@@ -928,6 +955,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
            and overworld_routes.is_active
            and overworld_routes.is_active() then
             debug_tools.debug("object hotkey read-only while blocked: key_route_guidance")
+            suppress_object_hotkey_direction_edges()
             speak_active_route_status()
             route_status_handled = true
         end
@@ -940,10 +968,20 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         if route_status_handled and held_key == "key_route_guidance" then
             held_key = nil
         end
-        if held_key then
+        if held_key and blocked_hotkey_should_suppress_game_input(held_key, object_hotkey_block_reason) then
             suppress_blocked_hotkey_game_input()
         end
         if blocked_key then
+            if blocked_hotkey_should_suppress_direction_edges(blocked_key, object_hotkey_block_reason) then
+                suppress_object_hotkey_direction_edges()
+            end
+            if debug_tools.info then
+                debug_tools.info("OBJECT_HOTKEY_BLOCKED key=" .. tostring(blocked_key)
+                    .. " reason=" .. tostring(object_hotkey_block_reason or "blocked"))
+                if debug_tools.flush then
+                    debug_tools.flush()
+                end
+            end
             debug_tools.debug("object hotkey blocked: " .. blocked_key)
             speak_info(blocked_object_hotkey_message(object_hotkey_block_reason))
         end
@@ -1020,6 +1058,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         local pathability_filter_handled = false
         if is_key_pressed(keys, config.get("key_pathability_filter")) then
             pathability_filter_handled = true
+            suppress_object_hotkey_direction_edges()
             clear_object_nav_speech()
             refresh_live_objects_for_browse()
             speak_pathability_filter(route_mgr.next_object_pathability_filter())
@@ -1028,6 +1067,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- R key (default): Start or check curated route guidance for the
         -- selected destination. This keeps O as a plain heading/path preview.
         if route_guidance_key_pressed(keys) then
+            suppress_object_hotkey_direction_edges()
             refresh_object_browser_context({refresh_live_npcs = true})
             speak_route_guidance()
         end
@@ -1038,6 +1078,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- NPC positions are passed so the pathfinder routes around other NPCs
         -- that physically block tiles along the way.
         if not pathability_filter_handled and is_key_pressed(keys, config.get("key_pathfind")) then
+            suppress_object_hotkey_direction_edges()
             clear_object_nav_speech()
             refresh_object_browser_context({refresh_live_npcs = true})
             route_mgr.pathfind_to_current()

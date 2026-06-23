@@ -45,6 +45,7 @@ local function make_env(options)
         [1] = 0x07, -- y=7
     }
     local terrain_offset = 0x10
+    local combat_flags = options.combat_flags or 0
     local nav_map_id = 0x01
     local nav_x = 0
     local nav_y = 0
@@ -72,6 +73,9 @@ local function make_env(options)
             if address == 0x0016 then
                 return terrain_offset
             end
+            if address == 0x00DF then
+                return combat_flags
+            end
             return npc_ram[address] or 0
         end,
     }
@@ -96,6 +100,7 @@ local function make_env(options)
             ROM_CHEST_END = options.rom_chest_end or -1,
             ROM_CHEST_SIZE = 4,
             TERRAIN_OFFSET = 0x0016,
+            COMBAT_FLAGS = 0x00DF,
         }
     end
 
@@ -166,6 +171,9 @@ local function make_env(options)
         objects = objects,
         set_terrain_offset = function(value)
             terrain_offset = value
+        end,
+        set_combat_flags = function(value)
+            combat_flags = value
         end,
         set_npc = function(slot, byte0, byte1, byte2)
             local base = slot * 3
@@ -512,6 +520,60 @@ function tests.swamp_cave_exposes_distinct_north_and_south_travel_objects()
     assert_equal(door.interaction_x, 5, "Swamp Cave Gwaelin door should route to the south stand x")
     assert_equal(door.interaction_y, 21, "Swamp Cave Gwaelin door should route to the south stand y")
     assert_equal(door.interaction_face_dir, "north", "Swamp Cave Gwaelin door should face north from the stand")
+
+    env.restore()
+end
+
+function tests.swamp_cave_exposes_gwaelin_before_escort_flag()
+    local env = make_env({combat_flags = 0x08})
+
+    env.set_position(0x15, 5, 19)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x15)
+
+    local princess = find_by_id(env.objects, "npc_princess_gwaelin")
+    assert_equal(princess ~= nil, true, "Swamp Cave should expose Princess Gwaelin before the escort flag is set")
+    assert_equal(princess.name, "Princess Gwaelin", "Princess object should use the live dialogue name")
+    assert_equal(princess.type, env.objects.TYPE_NPC, "Princess should be browsed with NPCs")
+    assert_equal(princess.x, 5, "Princess object x should match the live TALK target")
+    assert_equal(princess.y, 18, "Princess object y should match the live TALK target")
+    assert_equal(princess.interaction_x, 5, "Princess should route to the live stand tile")
+    assert_equal(princess.interaction_y, 19, "Princess should route to the live stand tile")
+    assert_equal(princess.interaction_face_dir, "north", "Princess interaction should face north from the stand")
+    assert_equal(princess.interaction_label, "talk", "Princess interaction should be labeled as talk")
+    assert_equal(princess.service, false, "Princess should not appear in the service filter")
+
+    env.objects.set_filter(env.objects.FILTER_NPC)
+    local filtered_princess = env.objects.find_object_by_id("npc_princess_gwaelin", {filtered = true})
+    assert_equal(filtered_princess ~= nil, true, "NPC filter should include Princess Gwaelin in Swamp Cave")
+
+    env.restore()
+end
+
+function tests.swamp_cave_hides_gwaelin_after_escort_flag()
+    local env = make_env({combat_flags = 0x09})
+
+    env.set_position(0x15, 5, 19)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x15)
+
+    local princess = find_by_id(env.objects, "npc_princess_gwaelin")
+    assert_equal(princess, nil, "Swamp Cave should hide Princess Gwaelin once the escort flag is set")
+
+    env.restore()
+end
+
+function tests.swamp_cave_refreshes_gwaelin_visibility_when_escort_flag_changes()
+    local env = make_env({combat_flags = 0x08})
+
+    env.set_position(0x15, 5, 19)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x15)
+    assert_equal(find_by_id(env.objects, "npc_princess_gwaelin") ~= nil, true, "Princess should be visible before escort acceptance")
+
+    env.set_combat_flags(0x09)
+    env.objects.check_refresh(0x15)
+    assert_equal(find_by_id(env.objects, "npc_princess_gwaelin"), nil, "Princess should be hidden as soon as the escort flag appears")
 
     env.restore()
 end

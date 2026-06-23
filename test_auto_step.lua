@@ -33,6 +33,7 @@ local function make_env(opts)
     local movement_state = opts.movement_state or 0x10
     local movement_subpixel = opts.movement_subpixel or 0x10
     local memory_writes = {}
+    local debug_messages = {}
     local clock_now = 0
 
     local module_names = {
@@ -85,9 +86,15 @@ local function make_env(opts)
             record_block = function(...)
                 recorded_blocks[#recorded_blocks + 1] = {...}
             end,
-            debug = function() end,
-            info = function() end,
-            error = function() end,
+            debug = function(message)
+                debug_messages[#debug_messages + 1] = {level = "debug", frame = frame, message = message}
+            end,
+            info = function(message)
+                debug_messages[#debug_messages + 1] = {level = "info", frame = frame, message = message}
+            end,
+            error = function(message)
+                debug_messages[#debug_messages + 1] = {level = "error", frame = frame, message = message}
+            end,
         }
     end
 
@@ -189,6 +196,7 @@ local function make_env(opts)
         injected = injected,
         published = published,
         recorded_blocks = recorded_blocks,
+        debug_messages = debug_messages,
         outputs = outputs,
         memory_writes = memory_writes,
         set_position = function(x, y)
@@ -994,6 +1002,103 @@ function tests.physical_manual_early_subpixel_twitch_silently_cancels_before_blo
         not env.auto_step.is_auto_active(),
         "released physical wall bump should be inactive after early twitch cancellation"
     )
+
+    env.restore()
+end
+
+function tests.physical_manual_early_twitch_cancel_does_not_reissue_neutral_input()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_manual_early_hold_frames = "4",
+        },
+    })
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 45 do
+        env.update(true)
+    end
+
+    local cancel_frame = nil
+    for _, entry in ipairs(env.debug_messages) do
+        if tostring(entry.message):find("auto_step cancel manual_tap early%-twitch wait", 1, false) then
+            cancel_frame = entry.frame
+            break
+        end
+    end
+    assert_truthy(cancel_frame ~= nil, "test setup should reach the manual early-twitch cancel path")
+
+    for frame, buttons in pairs(env.injected) do
+        assert_truthy(
+            frame < cancel_frame,
+            string.format("manual early-twitch cancel should not issue joypad.set after cancel frame %d; saw frame %d", cancel_frame, frame)
+        )
+    end
+
+    env.restore()
+end
+
+function tests.physical_manual_early_twitch_cancel_dampens_rapid_retap()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_manual_early_hold_frames = "4",
+        },
+    })
+
+    for _ = 1, 5 do
+        env.update(true)
+    end
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    local cancel_frame = nil
+    for _ = 1, 45 do
+        env.update(true)
+        for _, entry in ipairs(env.debug_messages) do
+            if tostring(entry.message):find("auto_step cancel manual_tap early%-twitch wait", 1, false) then
+                cancel_frame = entry.frame
+                break
+            end
+        end
+        if cancel_frame ~= nil then
+            break
+        end
+    end
+    assert_truthy(cancel_frame ~= nil, "test setup should reach the manual early-twitch cancel path")
+
+    env.set_joy({right = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+
+    for _, entry in ipairs(env.debug_messages) do
+        assert_truthy(
+            not (entry.frame > cancel_frame and tostring(entry.message):find("auto_step begin_step", 1, false)),
+            string.format("rapid retap after early-twitch cancel should not start another synthetic step at frame %d", entry.frame)
+        )
+    end
+    for frame, buttons in pairs(env.injected) do
+        if frame > cancel_frame then
+            assert_truthy(
+                not has_any_direction(buttons),
+                string.format("rapid retap after early-twitch cancel should not inject direction at frame %d", frame)
+            )
+        end
+    end
 
     env.restore()
 end

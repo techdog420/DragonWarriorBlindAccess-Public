@@ -500,12 +500,14 @@ local pathability_status_by_id = {}
 -- Which map we last built the object list for (to detect map changes)
 local current_map_id = nil
 local current_terrain_offset = nil
+local current_combat_flags = nil
 
 -- Frame counter for periodic NPC position updates
 local npc_refresh_counter = 0
 local NPC_REFRESH_INTERVAL = 20  -- Re-read NPC positions every 20 frames (~0.33s)
 local MAP_ENTRY_NPC_REFRESH_CHECKS = 90
 local MAP_ENTRY_NPC_REFRESH_INTERVAL = 8
+local PRINCESS_GWAELIN_ESCORT_FLAG = 0x01
 
 -- When true, check_refresh() will rebuild the object list on the next call
 -- (after frameadvance has run and RAM reflects real NPC positions).
@@ -536,6 +538,17 @@ end
 
 local function get_terrain_offset()
     return memory.readbyte(addr.TERRAIN_OFFSET)
+end
+
+local function get_combat_flags()
+    if addr.COMBAT_FLAGS == nil then
+        return 0
+    end
+    return memory.readbyte(addr.COMBAT_FLAGS)
+end
+
+local function princess_gwaelin_is_escorted()
+    return AND(get_combat_flags(), PRINCESS_GWAELIN_ESCORT_FLAG) ~= 0
 end
 
 local function is_overworld_context()
@@ -1471,6 +1484,28 @@ local function get_static_objects(map_id)
     return objects
 end
 
+local function get_special_npcs(map_id)
+    if map_id ~= 0x15 or princess_gwaelin_is_escorted() then
+        return {}
+    end
+
+    return {
+        {
+            x = 5,
+            y = 18,
+            name = "Princess Gwaelin",
+            type = M.TYPE_NPC,
+            id = "npc_princess_gwaelin",
+            service = false,
+            blocks_movement = true,
+            interaction_x = 5,
+            interaction_y = 19,
+            interaction_face_dir = "north",
+            interaction_label = "talk",
+        },
+    }
+end
+
 -- build_object_list(map_id): Assemble the full object list for a map.
 -- Combines NPCs, stairs, chests, and exits into a single flat list
 -- sorted by distance from the player (closest first).
@@ -1500,6 +1535,7 @@ local function build_object_list(map_id, opts)
         local npcs = parse_npcs(map_id)
         append_objects(objects, npcs)
     end
+    append_objects(objects, get_special_npcs(map_id))
     append_objects(objects, get_static_objects(map_id))
 
     -- Sort by distance from player (closest first)
@@ -1605,6 +1641,7 @@ function M.refresh(map_id, opts)
     opts = opts or {}
     current_map_id = map_id
     current_terrain_offset = get_terrain_offset()
+    current_combat_flags = get_combat_flags()
     prewarm_path_grid(map_id)
     object_list = build_object_list(map_id, opts)
     pathability_status_by_id = {}
@@ -1670,19 +1707,24 @@ end
 
 function M.needs_refresh(map_id)
     local terrain_offset = get_terrain_offset()
+    local combat_flags = get_combat_flags()
     return refresh_pending
         or map_entry_npc_refresh_checks > 0
         or map_id ~= current_map_id
         or terrain_offset ~= current_terrain_offset
+        or combat_flags ~= current_combat_flags
 end
 
 -- check_refresh(map_id): Called every frame from the main loop.
 -- Handles map-change detection and periodic NPC position refresh.
 function M.check_refresh(map_id)
     local terrain_offset = get_terrain_offset()
+    local combat_flags = get_combat_flags()
 
-    -- Full rebuild on map change
-    if map_id ~= current_map_id or terrain_offset ~= current_terrain_offset then
+    -- Full rebuild on map, terrain, or quest/combat flag changes.
+    if map_id ~= current_map_id
+       or terrain_offset ~= current_terrain_offset
+       or combat_flags ~= current_combat_flags then
         M.on_map_change(map_id, {previous_map_id = current_map_id})
         return
     end
