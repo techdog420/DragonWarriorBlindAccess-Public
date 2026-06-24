@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-23
+Updated: 2026-06-24
 
 ## Current State
 
@@ -11,9 +11,25 @@ Updated: 2026-06-23
 - The detailed scratchpad evidence was archived to
   `handoff_archive/HANDOFF_2026-06-17_garins_grave_final_scratchpad.md`.
 - Garinham grave-return stairs now have a verified escape to the inn by
-  leaving town and re-entering from the world map, but no clean return route
-  from the inn back to the grave stairs. The old `(19,10)` lower bridge was
-  verifier/teleport fallout and is no longer modeled as a passthrough.
+  leaving town and re-entering from the world map. The old `(19,10)` lower
+  bridge was verifier/teleport fallout and is no longer modeled as a
+  passthrough. A later manual route check found the return-side top-edge bypass:
+  `(12,0)->RIGHT` enters `(13,0)`, `(13,0)->RIGHT` enters `(14,0)`, and
+  `(14,0)->LEFT` returns to `(13,0)`. Follow-up grave-stairs route polishing
+  proved the row-0 bypass continues one step farther via `(14,0)->RIGHT` into
+  `(15,0)`, then descends through `(15,1)` and reaches the grave stairs at
+  `(19,0)` along row 1. `map_reader.lua` now models `(13,0)`, `(14,0)`, and
+  `(15,0)` as Garinham passthrough cells, preserves `(14,1)` as blocked from
+  north/east/west, and closes the false shortcut edges exposed from `(9,3)`
+  onward, including the post-reload `(6,7)->UP` and `(3,7)->UP` cleanup. Reload
+  `main.lua` in FCEUX before judging the live planner against this source fix.
+- Garinham `Grave Route Door` now preserves both verified interaction sides:
+  north-side `(17,9)` facing south from the grave-route component, and
+  public-side `(17,11)` facing north toward closed door cell `(17,10)`.
+  `objects.lua` exposes them through `interaction_points` so the existing
+  alternate-stand route planner can choose the reachable side after a full
+  FCEUX Lua reload. This fixes object routing to the door stand, but does not
+  prove a clean route onward to the grave stairs.
 - Garinham's inner locked-building door is now modeled at `(4,6)` with object
   stand `(4,7)` facing north. It leads to a one-cell guard pocket at `(4,5)`;
   `(4,5)->UP` is blocked as `(4,4).south`, and the side exits are stationary
@@ -29,13 +45,29 @@ Updated: 2026-06-23
   before the escort bit, then hides her once `combat` bit `0x01` is set. Next
   gameplay step is escorting her back to Tantegel Castle.
 - Swamp Cave known-route polish is promoted in `map_reader.lua`: the Gwaelin
-  door / Princess route and south-stairs route now include the walked
-  directional blockers found by `auto_walk_blocker`, the live middle strip
-  `(2,16)..(2,18)` is modeled as passthrough, and static tests cover the
-  south-stairs route, reverse route to the door stand, and opened-door return
-  route. FCEUX must reload `main.lua` before live planning reflects these
-  source edits; the current live runtime overlay already contained the
-  equivalent blockers during validation.
+  door / Princess route, south-stairs route, and return route to the North Exit
+  now include the walked directional blockers found by `auto_walk_blocker` plus
+  direct `probe_edge` checks. The live middle strip `(2,16)..(2,18)` is modeled
+  as passthrough, and the latest return overlay reached `(0,0)` through row 21,
+  `(2,13)..(2,8)`, and the x=0 corridor. Follow-up route polish from the x=0
+  corridor back to the Princess stand confirmed `(2,12)->RIGHT` blocked into
+  `(3,12).west`, then a north-exit route check confirmed `(3,13)->UP` blocked
+  into `(3,12).south`; runtime-patched routes reached both `(5,19)` and
+  `(0,0)`. Follow-up top-corridor polish confirmed `(0,2)->RIGHT` into
+  `(1,2).west`, `(0,5)->RIGHT` into `(1,5).west`, the walked `(1,6)` pocket
+  exits into `(1,5).south`, `(2,6).west`, and `(1,7).north`, plus
+  `(0,7)->RIGHT` into `(1,7).west`. The next noisy route from `(3,4)` then
+  confirmed `(3,5).north`, `(4,4).west`, `(2,6).north`, `(3,5).west`,
+  `(2,3).south`, `(4,4).north`, and `(5,14).north`, while preserving
+  `(0,8)->RIGHT` as the first open east re-entry; after combat cleared, the
+  route reached `(5,19)`. Entrance-to-entrance polish then confirmed
+  `(1,23)->DOWN` blocked into `(1,24).north`; with that runtime edge active,
+  the north-exit-to-south-stairs route detoured through row 23, descended at
+  x=3, and reached `(0,29)`.
+  Static tests cover the south-stairs route, reverse route to the door stand,
+  opened-door return route, and latest return blockers. FCEUX must reload
+  `main.lua` before live planning reflects these source edits; the current live
+  runtime overlay already contained the equivalent blockers during validation.
 - A live FCEUX hang after `O` path preview plus close-timed D-pad taps left
   command polling stopped with no fresh `dw_script_error.log` entry. The fix
   debounces `O`, `R`, `U`, and `Shift+O` object/path route hotkeys by suppressing
@@ -55,7 +87,27 @@ Updated: 2026-06-23
   `OBJECT_HOTKEY_BLOCKED` breadcrumbs if this still recurs. `test_hotkeys.lua`
   and `test_auto_step.lua` cover the allowed hotkey debounce, blocked-`O`,
   blocked-`U`, and blocked-`J/K/L` debounce without teleport suppression,
-  manual early-twitch cancel cleanup, and rapid-retap dampening.
+  manual early-twitch cancel cleanup, and rapid-retap dampening. A later
+  dialogue repro stopped the Lua loop after blocked `K` spoke `Wait for dialogue
+  to finish`, with no new `dw_script_error.log` entry and a timed-out
+  `launcher_probe`. `hotkeys.lua` now also treats dialogue / upper-dialogue
+  blocked object controls as lightweight direction-edge debounce only, avoiding
+  teleport-style neutral `joypad.set` suppression during dialogue. The new
+  `test_hotkeys.lua` regression covers blocked `K` during active dialogue. A
+  follow-up live state capture showed the command menu was fully clear
+  (`raw_open=false`, `active_block=false`) while lower dialogue remained stuck
+  on compact status residue (`PREV.dialogue="BillG2234"`). `text.lua` now
+  treats generic short-name-plus-`G`/`E` numeric fragments such as `BillG2234`,
+  `IvyE1298`, and `RexG42` as passive status noise, so that residue cannot keep
+  object controls blocked after dialogue/menu cleanup. A later post-dialogue
+  upper-window repro spoke `MBill GLV  15` just before
+  `UPPER_DIALOGUE_STALE_CLEAR`; the passive status classifier now also catches
+  generic status-letter/name fragments followed by uppercase status-label
+  clusters and numeric residue, e.g. `MBill GLV  15` and `MIvy GLV  15`.
+  A dialogue timing pass then found north-edge NPC lines reaching final visible
+  length roughly 4 seconds before speech; the row-1 lower dialogue reader now
+  filters low-row passive status/name crumbs before they can reset the stable
+  text timer. FCEUX needs a manual Lua reload before this timing fix is live.
 
 ## Garin's Grave Result
 
@@ -139,17 +191,21 @@ Updated: 2026-06-23
 ## Next Work
 
 1. Reload `main.lua` in FCEUX before judging Swamp Cave live route planning
-   or the hotkey / manual early-twitch fixes; the latest live script loop
-   stopped after blocked `L` spoke `Wait for movement to finish` during an
-   active auto-walk, with the breadcrumb confirming `key_object_next`.
-   The stale command probe has been cleared. After reload, stress `O`, `U`,
-   `J/K/L`, and movement timing, then resume escorting Gwaelin back to
-   Tantegel Castle if stable.
+   or the hotkey / manual early-twitch fixes. The latest hang repro stopped
+   after blocked `K` spoke `Wait for dialogue to finish` while NPC dialogue was
+   active, with the breadcrumb confirming `key_object_current`; after the crash
+   fix, the script stayed alive but cached compact status residue as lower
+   dialogue after the command menu cleared, then exposed an upper residue shape
+   like `MBill GLV  15`. After reload, stress object readout/browse keys during
+   active NPC dialogue and after the menu clears, then recheck `O`, `U`,
+   `J/K/L`, and movement timing before resuming escorting Gwaelin back to
+   Tantegel Castle.
 2. Pick the next practical playability/QoL issue or the next gameplay-exposed
    route failure instead of continuing broad Garin's Grave blocker hunting.
 3. If revisiting Garinham's inn-to-grave-stairs return, ignore old verifier
-   proof for `(19,10)` and start from walked same-origin evidence. Current
-   notes are in `work_notes/current_investigation.md` and `PLAYTESTING.md`.
+   proof for `(19,10)` and use the current top-lane route evidence:
+   `(13,0)->(14,0)->(15,0)->(15,1)->...->(19,0)`. Current notes are in
+   `work_notes/current_investigation.md` and `PLAYTESTING.md`.
 4. If future work touches live FCEUX after source edits, manually reload
    `main.lua` before judging live behavior.
 5. If a new dungeon/floor becomes the active target, start with external map

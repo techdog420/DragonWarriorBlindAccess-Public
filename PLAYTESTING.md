@@ -1,10 +1,86 @@
 # Playtesting Notes
 
-Updated: 2026-06-22
+Updated: 2026-06-24
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Garinham door and service-route polish (`2026-06-24`): fresh live checks
+  confirmed the town door roster is still exactly the two modeled doors:
+  `Grave Route Door` at `(17,10)` and `Locked Building Door` at `(4,6)`.
+  `pathability_filter:reachable` reported no reachable door objects from the
+  current public/lower corridor state, while the unreachable door filter
+  reported those two doors. Walked-origin probes reclosed both lower hidden
+  bridge candidates, `(18,11)->UP` into `(18,10)` and `(19,11)->UP` into
+  `(19,10)`, with raw-hold timeouts and no NPC/runtime/directional block, so
+  neither should be promoted as a passthrough. A follow-up route-to-door issue
+  showed `Grave Route Door` was routing only to the north-side stand `(17,9)`,
+  which is valid from the grave side but unreachable from the public side while
+  door cell `(17,10)` is closed. A public-side verifier reached `(17,11)`,
+  facing north toward the same expected door cell, so `objects.lua` now exposes
+  both stands and lets route planning choose the reachable side. Public service
+  route polish reached the Tool Merchant stand `(3,11)`, Weapons Merchant stand
+  `(10,16)`, Inn stand `(15,15)`, and exit stand `(1,14)` in live
+  `auto_walk_blocker` runs. One Weapons-to-Inn attempt was stopped by a live
+  NPC at `(15,13)` and succeeded on retry. A later user-reported Inn clutter
+  pass rechecked the
+  previously transient `(14,16).west` and `(14,17).west` bumps from walked
+  origins: `(13,16)->RIGHT` blocked twice, `(13,17)->RIGHT` blocked under
+  autowalk plus direct probe, and the runtime overlay then reached the Inn
+  stand. These two west-approach blockers are now promoted in `map_reader.lua`.
+  The actual grave-stairs route then reopened when manual movement found the
+  top-edge bypass: `(12,0)->RIGHT` entered `(13,0)`, `(13,0)->RIGHT` entered
+  `(14,0)`, and `(14,0)->LEFT` returned to `(13,0)`. `(13,0)` and `(14,0)` are
+  now Garinham passthrough cells. A follow-up route polish pass started from
+  the user-reported `(9,3)->UP` blocker, closed the confirmed false shortcuts
+  around the left building face, then proved the route continues
+  `(14,0)->RIGHT` into hidden `(15,0)` and descends at `(15,0)->DOWN` to
+  `(15,1)`. From there, live `auto_walk_blocker:19,0` reached the grave stairs
+  through row 1. `(15,0)` is now also a passthrough, `(14,1).north` is closed,
+  and static pathfinder coverage requires the `(13,0)->(14,0)->(15,0)->(15,1)`
+  route shape. A post-reload continuation from `(6,7)` confirmed the remaining
+  upper-entry false cuts `(6,7)->UP` and `(3,7)->UP`; with those runtime blocks
+  active, the route reached `(19,0)` cleanly. Follow-up inspection showed the
+  user-reported `(3,2)->WEST` was already modeled, while adjacent
+  `(3,1)->LEFT` into `(2,1).east` was newly confirmed and promoted. Reload
+  `main.lua` before judging the live planner.
+
+- Swamp Cave entrance-to-entrance polish (`2026-06-23`): while walking the
+  north-exit route toward `South Stairs Up`, same-origin `probe_edge:DOWN` at
+  `(1,23)` confirmed the open-preview seam into `(1,24).north` is blocked.
+  With runtime `add_blocked_edge:1,23,DOWN`, `auto_walk_blocker:0,29` detoured
+  east through row 23, descended the x=3 column, and reached `(0,29)`. Timing
+  retries at `(2,23)->RIGHT`, `(3,28)->DOWN`, and `(1,29)->LEFT` moved or were
+  battle-interrupted and were not promoted.
+
+- Swamp Cave south-stairs-to-Princess return polish (`2026-06-23`): from the
+  x=0 return corridor, same-origin `probe_edge:RIGHT` at `(2,12)` confirmed
+  the open-preview seam into `(3,12).west` is blocked. With only that new
+  runtime block added, `auto_walk_blocker:5,19` reached the Princess talk stand
+  through the opened Gwaelin door. A follow-up north-exit route check from
+  `(3,13)` confirmed `(3,12).south` the same way, and the runtime-patched route
+  reached `(0,0)`. A top-corridor return-to-Princess pass then confirmed
+  `(1,2).west` from `(0,2)->RIGHT`, `(1,5).west` from `(0,5)->RIGHT`,
+  `(2,6).west` plus `(1,5).south` / `(1,7).north` from the walked `(1,6)`
+  pocket, and `(1,7).west` from `(0,7)->RIGHT`; with those active, the route
+  reached `(5,19)` while `(0,8)->RIGHT` remained the first open re-entry.
+  A later noisy-route pass from `(3,4)` closed `(3,5).north`, `(4,4).west`,
+  `(2,6).north`, `(3,5).west`, `(2,3).south`, `(4,4).north`, and
+  `(5,14).north`; with that overlay active, the route reached `(5,19)` after
+  combat interruptions at `(2,17)`, `(2,18)`, and `(5,20)` cleared.
+  `map_reader.lua` and `test_map_reader.lua` now cover these approaches and
+  keep the relevant routes from retrying them.
+
+- Swamp Cave north-exit return polish (`2026-06-23`): starting from the
+  opened-door / Gwaelin branch side, `auto_walk_blocker:0,0` plus same-origin
+  `probe_edge` checks promoted the remaining false shortcuts on the return to
+  `North Exit to World Map`. New directional-only blockers cover
+  `(4,16).south`, `(5,16).south`, `(3,17..19).east`, `(4,20).north/east`,
+  `(4,12).south`, and `(2,7).south`. With the runtime overlay applied, the route
+  detoured through row 21, climbed via `(2,13)..(2,8)`, entered the x=0 corridor
+  at `(0,8)`, and reached `(0,0)`. `lua test_map_reader.lua`,
+  `lua test_pathfinder.lua`, and `git diff --check` pass.
 
 - Swamp Cave route polish (`2026-06-22`): after the dragon and Gwaelin door
   route were verified, targeted `auto_walk_blocker` passes cleaned the known
@@ -34,7 +110,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   Garinham overworld route to `(1,2)`, step right back into town at `(0,14)`,
   then route normally to the inn stand `(15,15)`. The inn route completed;
   transient bumps at `(14,16).west` and `(14,17).west` remain unpromoted
-  because they were not same-origin re-probed. The return leg from the inn
+  because they were not same-origin re-probed. These two bumps were later
+  rechecked and promoted during the 2026-06-24 Inn clutter pass. The return
+  leg from the inn
   back to the grave stairs is not currently viable: the old `(19,10)`
   passthrough was verifier/teleport fallout, and same-origin route/probe
   evidence blocked `(19,11)->UP` into `(19,10)` repeatedly. With that bridge
