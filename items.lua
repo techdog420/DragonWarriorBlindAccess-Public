@@ -21,6 +21,8 @@ local snapshot = require "game_snapshot"
 
 local M = {}
 
+local PRINCESS_GWAELIN_ESCORT_FLAG = 0x01
+
 -- ============================================================
 -- Item Nybble Lookup (DataCrystal RAM map)
 -- ============================================================
@@ -331,6 +333,10 @@ function M.read_status_string()
         parts[#parts + 1] = "Spells: " .. table.concat(spells, ", ")
     else
         parts[#parts + 1] = "Spells: none"
+    end
+
+    if AND(tonumber(snapshot.combat_flags) or 0, PRINCESS_GWAELIN_ESCORT_FLAG) ~= 0 then
+        parts[#parts + 1] = "Status: Escorting Princess Gwaelin"
     end
 
     return table.concat(parts, ". ")

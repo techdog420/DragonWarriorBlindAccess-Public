@@ -65,6 +65,12 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local function assert_contains(text, pattern, message)
+    if not string.find(text, pattern, 1, true) then
+        error(string.format("%s: expected %q to contain %q", message, tostring(text), tostring(pattern)), 2)
+    end
+end
+
 local tests = {}
 
 function tests.spell_menu_helpers_index_known_spells_by_d9()
@@ -119,6 +125,34 @@ function tests.spell_menu_helpers_report_empty_when_no_spells_known()
     assert_equal(env.items.get_spell_count(), 0, "no spell bits should produce an empty menu list")
     assert_equal(env.items.get_spell_at_d9(0), "Empty", "empty spell list should read as Empty")
     assert_equal(env.items.describe_spell_at_d9(0), "Empty", "empty spell list should describe as Empty")
+
+    env.restore()
+end
+
+function tests.status_readout_reports_princess_escort_flag()
+    local env = make_env({
+        level = 15,
+        hp = 86,
+        max_hp = 86,
+        mp = 52,
+        max_mp = 64,
+        strength = 0x44,
+        agility = 0x39,
+        attack = 0x58,
+        defense = 0x40,
+        exp = 12964,
+        gold = 22294,
+        equipment = 0x00,
+        spells = 0x00,
+        flags_cf = 0x00,
+        combat_flags = 0x09,
+    })
+
+    assert_contains(
+        env.items.read_status_string(),
+        "Status: Escorting Princess Gwaelin",
+        "status readout should include Princess Gwaelin escort state"
+    )
 
     env.restore()
 end

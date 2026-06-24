@@ -542,6 +542,15 @@ local MAP_PASSTHROUGH_CELLS = {
         -- Top-edge hidden lane. Live probe_edge from (18,1)->UP moved into
         -- (18,0), then (18,0)->UP changed to 0x01 World Map, not Garin's
         -- Grave B1. Keep the standable edge cell open.
+        -- A 2026-06-24 manual route check then proved the western top-lane
+        -- bypass: `(12,0)->RIGHT` entered `(13,0)`, `(13,0)->RIGHT` entered
+        -- `(14,0)`, and `(14,0)->LEFT` returned to `(13,0)`. A follow-up
+        -- grave-stairs route probe entered `(15,0)` from `(14,0)`, then
+        -- descended through `(15,1)`; `(15,0)->RIGHT` stayed blocked, so this
+        -- only opens the confirmed descent cell.
+        ["13,0"] = true,
+        ["14,0"] = true,
+        ["15,0"] = true,
         ["18,0"] = true,
         -- The old lower hidden-bridge candidate at (19,10) came from
         -- teleport-backed verifier proof. A 2026-06-17 same-origin inn-return
@@ -2599,6 +2608,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (13,15)->RIGHT; raw verifiers confirmed both blocked 5/5. The
         -- nearby (15,17)->LEFT edge looked suspicious in route logs but raw
         -- verification moved 5/5, so keep (14,17).east open.
+        -- 2026-06-24 inn-route cleanup then confirmed the other side of the
+        -- throat: same-origin probes blocked (13,16)->RIGHT into
+        -- (14,16).west twice, and the runtime-patched reroute exposed
+        -- (13,17)->RIGHT into (14,17).west. With both active, autowalk
+        -- reached the Inn stand at (15,15).
         -- A 2026-06-20 locked-room door-stand pass then rechecked the
         -- lower passage with non-teleport walked verifiers: `(3,13)->UP` and
         -- `(4,13)->UP` both blocked after clean route-to-origin settles. This
@@ -2611,7 +2625,8 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["5,12"] = {south = true},
         ["14,14"] = {east = true, north = true, west = true},
         ["14,15"] = {east = true, west = true},
-        ["14,16"] = {east = true},
+        ["14,16"] = {east = true, west = true},
+        ["14,17"] = {west = true},
         ["6,10"] = {east = true},
         ["6,11"] = {east = true},
         ["6,12"] = {east = true, south = true},
@@ -2630,8 +2645,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- stops at `(13,1)->RIGHT`: `(14,1).west` blocked 5/5 with no NPC at
         -- `(14,1)`. Later keyless return cleanup produced one noisy moved
         -- observation, but same-origin probes from `(15,1)->LEFT` then
-        -- blocked on `(14,1).east`; keep both approaches closed.
-        ["14,1"] = {east = true, west = true},
+        -- blocked on `(14,1).east`; keep both side approaches closed. The
+        -- 2026-06-24 top-lane route also directly blocked `(14,0)->DOWN`, so
+        -- the valid descent is one tile east at `(15,0)->DOWN`.
+        ["14,1"] = {east = true, north = true, west = true},
         -- Reverse trail-blazing from Garin's Grave stairs showed the upper
         -- row is one-way/exit-prone: clean verifiers blocked downward movement
         -- from x=15..18 into row 2. The 2026-06-17 grave-to-inn cleanup then
@@ -2648,21 +2665,37 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- before the world-map transition; close only the east approach.
         ["18,0"] = {east = true},
         ["1,2"] = {south = true},
+        ["2,1"] = {east = true},
         ["2,2"] = {east = true, south = true},
         ["4,2"] = {north = true, west = true},
         ["5,2"] = {north = true},
-        ["6,2"] = {north = true},
-        ["7,2"] = {north = true},
-        ["8,2"] = {north = true},
-        ["9,2"] = {north = true},
-        ["10,2"] = {north = true},
+        ["6,2"] = {north = true, south = true},
+        ["7,2"] = {north = true, south = true},
+        ["8,2"] = {north = true, south = true},
+        ["9,2"] = {north = true, south = true},
+        ["10,2"] = {north = true, south = true},
         ["11,2"] = {north = true, south = true},
         ["15,2"] = {north = true},
         ["16,2"] = {north = true},
         ["17,2"] = {north = true},
         ["18,2"] = {north = true},
         ["19,2"] = {north = true},
-        ["2,4"] = {north = true},
+        -- 2026-06-24 grave-stairs route polish from the reopened top-lane
+        -- path: same-origin raw probes blocked the false shortcuts around the
+        -- left building face while the live route eventually reached `(19,0)`
+        -- via `(14,0)->RIGHT`, `(15,0)->DOWN`, and row 1. Post-reload
+        -- continuations from `(6,7)` and `(5,7)` confirmed the remaining upper
+        -- entries at `(6,6).south`, `(3,6).south`, and `(5,6).south` before
+        -- reaching the stairs. The grave-stairs-to-Inn return pass then
+        -- confirmed `(2,4).west` from same-origin `(1,4)->RIGHT`; with that
+        -- edge patched, the route reached the Inn stand.
+        ["3,6"] = {south = true},
+        ["2,6"] = {south = true},
+        ["5,6"] = {south = true},
+        ["6,4"] = {east = true, north = true},
+        ["6,5"] = {east = true},
+        ["6,6"] = {east = true, south = true},
+        ["2,4"] = {north = true, west = true},
         ["3,4"] = {north = true},
         ["1,9"] = {north = true},
         ["2,9"] = {north = true, south = true},
@@ -2680,7 +2713,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["14,9"] = {north = true, south = true},
         ["15,9"] = {east = true, north = true},
         ["15,10"] = {south = true, west = true},
-        ["16,10"] = {north = true, south = true},
+        -- 2026-06-24 grave-stairs return route: from the walked route origin
+        -- `(17,10)`, both `auto_walk_blocker` seam retry and same-origin
+        -- `probe_edge:LEFT` blocked into `(16,10).east` with no NPC/runtime
+        -- blocker; with that edge patched, the route reached the exit stand.
+        ["16,10"] = {east = true, north = true, south = true},
         -- Inner locked-building guard pocket. After opening the floor-backed
         -- door at `(4,6)`, repeated manual taps plus a raw same-origin probe
         -- from `(4,5)->UP` blocked into `(4,4)` with no NPC/runtime blocker.
@@ -3909,7 +3946,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["2,14"] = {north = true, south = true}, -- blocked from (2,13)->DOWN and later (2,15)->UP
         ["3,9"] = {north = true}, -- (3,8)->DOWN blocked
         ["4,8"] = {west = true}, -- (3,8)->RIGHT blocked
-        ["1,24"] = {south = true}, -- (1,25)->UP blocked, retried, then became PATH_RUNTIME_BLOCK
+        ["1,24"] = {north = true, south = true, west = true}, -- (1,23)->DOWN, (1,25)->UP, and (0,24)->RIGHT blocked
         ["1,27"] = {north = true, south = true}, -- north blocked 28x from (1,26); south blocked from (1,28)
         ["2,28"] = {south = true, east = true, west = true}, -- failed from (2,29), (3,28), and (1,28)
         ["2,27"] = {north = true, east = true}, -- north blocked 26x from (2,26); east blocked from (3,27)
@@ -3937,6 +3974,26 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- opened-door / Princess route side. The west-corridor route remained
         -- passable through (1,26)..(0,29), while these route-derived seams
         -- repeatedly blocked and then allowed the route to reach (0,29).
+        -- 2026-06-23 North Exit return polish resumed from the Gwaelin branch
+        -- and direct-probed each auto_walk_blocker stop before promotion. With
+        -- these approach-only blocks, the route detours through (5,21), crosses
+        -- west at row 21, climbs to (2,8), then uses the x=0 corridor to reach
+        -- (0,0). Follow-up return-to-Princess / north-exit polish from the
+        -- x=0 corridor same-origin probed the west and south approaches into
+        -- (3,12), then reached the target with only those runtime blockers.
+        -- Later top-corridor passes confirmed row 8 is still the first open
+        -- eastward re-entry by closing (0,2)->RIGHT, (0,5)->RIGHT, the
+        -- three bad exits from the walked (1,6) pocket, and (0,7)->RIGHT.
+        -- Geometry changes then made the planner try the upper east pockets;
+        -- same-origin probes from the walked route closed the false exits
+        -- around (2,4)/(3,4)/(2,5)/(4,3) before the route escaped down the
+        -- east column and back into the known middle corridor. Entrance-to-
+        -- entrance pass polish then confirmed the false drop from (1,23) into
+        -- (1,24).north; with that edge patched, the north-exit route detoured
+        -- through row 23, down x=3, and reached the south stairs.
+        ["1,2"] = {west = true},
+        ["1,5"] = {south = true, west = true},
+        ["1,7"] = {north = true, west = true},
         ["1,9"] = {west = true, east = true, north = true},
         ["1,10"] = {west = true, east = true},
         ["1,11"] = {west = true, east = true},
@@ -3951,21 +4008,29 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["1,20"] = {west = true, east = true},
         ["1,21"] = {west = true, east = true},
         ["1,22"] = {south = true, west = true},
+        ["2,3"] = {south = true},
         ["2,22"] = {south = true, north = true},
         ["2,25"] = {west = true, east = true},
+        ["2,6"] = {north = true, west = true},
+        ["2,7"] = {south = true},
+        ["3,12"] = {south = true, west = true},
         ["3,14"] = {north = true, east = true, south = true},
+        ["3,5"] = {north = true, west = true},
         ["3,16"] = {north = true, west = true},
-        ["3,17"] = {west = true},
-        ["3,18"] = {west = true},
-        ["3,19"] = {west = true},
+        ["3,17"] = {west = true, east = true},
+        ["3,18"] = {west = true, east = true},
+        ["3,19"] = {west = true, east = true},
         ["3,20"] = {south = true, west = true},
-        ["4,16"] = {north = true},
-        ["4,20"] = {south = true},
+        ["4,12"] = {south = true},
+        ["4,4"] = {north = true, west = true},
+        ["4,16"] = {north = true, south = true},
+        ["4,20"] = {south = true, north = true, east = true},
         ["4,22"] = {north = true},
         ["4,24"] = {west = true, south = true, east = true},
         ["4,26"] = {west = true},
         ["4,29"] = {west = true},
-        ["5,16"] = {north = true},
+        ["5,14"] = {north = true},
+        ["5,16"] = {north = true, south = true},
         ["5,22"] = {south = true, north = true},
     },
 
