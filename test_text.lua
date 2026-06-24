@@ -347,6 +347,83 @@ function tests.dialogue_filter_strips_status_prefix_glued_to_spell_text()
     )
 end
 
+function tests.dialogue_filter_strips_split_status_label_values_from_live_npc_text()
+    clear_ppu()
+    write_visible_row(2, "Bill", 24, 0)
+    write_visible_row(4, "LV  15", 24, 0)
+    write_visible_row(6, "HP  86", 24, 0)
+    write_visible_row(8, "MP  64", 24, 0)
+    write_visible_row(10, "G22345", 24, 0)
+    write_visible_row(12, "E12981", 24, 0)
+    write_visible_row(13, "'It is said that the", 24, 0)
+    write_visible_row(14, "P  8 Princess was", 24, 0)
+    write_visible_row(15, "kidnapped and taken", 24, 0)
+    write_visible_row(16, "P  6 eastward.", 24, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(24, 13, 0),
+        "'It is said that the Princess was kidnapped and taken eastward.",
+        "split status label/value crumbs should not leak into scrolled NPC dialogue"
+    )
+end
+
+function tests.dialogue_filter_strips_gold_exp_status_tokens_from_live_npc_text()
+    clear_ppu()
+    write_visible_row(2, "Bill", 8, 0)
+    write_visible_row(4, "LV  15", 8, 0)
+    write_visible_row(6, "HP  86", 8, 0)
+    write_visible_row(8, "MP  64", 8, 0)
+    write_visible_row(10, "G22345", 8, 0)
+    write_visible_row(12, "E12981", 8, 0)
+    write_visible_row(23, "I hate people! G22 Go!", 8, 0)
+    write_visible_row(24, "Once there was a town E12", 8, 0)
+    write_visible_row(25, "called Hauksness.", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 23, 0),
+        "I hate people! Go! Once there was a town called Hauksness.",
+        "G/E status-value crumbs should be stripped from otherwise real dialogue"
+    )
+end
+
+function tests.dialogue_filter_strips_split_numeric_status_values_from_live_npc_text()
+    clear_ppu()
+    write_visible_row(2, "Bill", 8, 0)
+    write_visible_row(4, "LV  15", 8, 0)
+    write_visible_row(6, "HP  86", 8, 0)
+    write_visible_row(8, "MP  64", 8, 0)
+    write_visible_row(10, "G22345", 8, 0)
+    write_visible_row(12, "E12981", 8, 0)
+    write_visible_row(23, "'The harp attracts 4 1", 8, 0)
+    write_visible_row(24, "enemies. Stay away from", 8, 0)
+    write_visible_row(25, "the grave in Garinham.", 8, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(8, 23, 0),
+        "'The harp attracts enemies. Stay away from the grave in Garinham.",
+        "split numeric status values should not leak into scrolled NPC dialogue"
+    )
+end
+
+function tests.dialogue_filter_skips_live_compact_status_residue_after_menu_clear()
+    clear_ppu()
+    write_visible_row(2, "HP  86", 28, 0)
+    write_visible_row(4, "MP  64", 28, 0)
+    write_visible_row(6, "G22345", 28, 0)
+    write_visible_row(8, "E12981", 28, 0)
+    write_visible_row(14, "E12HP  8", 28, 1)
+    write_visible_row(16, "IvyMP  6", 28, 1)
+    write_visible_row(18, "IvyG2234", 28, 1)
+    write_visible_row(20, "LV  15E1298", 28, 1)
+    write_visible_row(22, "HP  86", 28, 1)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(28, 13, 0),
+        "",
+        "compact status residue should not keep lower dialogue active after the menu clears"
+    )
+end
+
 function tests.dialogue_filter_strips_derived_name_fragment_suffix_from_real_dialogue()
     clear_ppu()
     write_scrolled_base_fragment(2, 0, 6, "Iv")
@@ -485,6 +562,26 @@ function tests.passive_field_status_noise_detects_fused_status_value_rows()
             text.is_passive_field_status_noise(fragment),
             true,
             "passive field scanner should classify fused status value artifact " .. fragment
+        )
+    end
+end
+
+function tests.passive_field_status_noise_detects_compact_gold_exp_residue_rows()
+    for _, fragment in ipairs({"BillG2234", "IvyE1298", "RexG42"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify compact gold/exp status residue " .. fragment
+        )
+    end
+end
+
+function tests.passive_field_status_noise_detects_spaced_status_residue_rows()
+    for _, fragment in ipairs({"Bill 6", "E Bill", "Billll LV  15 1", "MBill GLV  15", "MIvy GLV  15"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify spaced status residue " .. fragment
         )
     end
 end

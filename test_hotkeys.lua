@@ -745,6 +745,24 @@ function tests.blocked_object_browse_hotkeys_use_movement_safe_guard()
     env.restore()
 end
 
+function tests.blocked_object_hotkey_during_dialogue_uses_safe_guard()
+    local env = make_env({delay = 0})
+
+    env.update({K = true}, {state = "field"}, false, "Wait for dialogue to finish")
+
+    assert_equal(#env.outputs, 1, "blocked object readout should explain why it did not run")
+    assert_equal(env.outputs[1].message, "Wait for dialogue to finish",
+        "dialogue gating should avoid the generic object-controls message")
+    assert_equal(#env.auto_step_suppress_calls, 1,
+        "dialogue-gated object hotkeys should debounce nearby D-pad taps")
+    assert_equal(env.auto_step_suppress_calls[1], 8,
+        "dialogue-gated object hotkeys should use the short object-hotkey debounce window")
+    assert_equal(env.input_suppress_calls(), 0,
+        "dialogue-gated object hotkeys should not trigger teleport-style controller suppression")
+
+    env.restore()
+end
+
 function tests.blocked_pathfind_hotkey_suppresses_nearby_direction_edges()
     local env = make_env({delay = 0})
 

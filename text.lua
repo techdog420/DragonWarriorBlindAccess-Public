@@ -270,7 +270,7 @@ local function is_status_name_token(decoded)
         and compact:match("^[A-Za-z0-9]+$") ~= nil
 end
 
-local STATUS_VALUE_LABELS = {"LV", "HP", "MP", "V", "P"}
+local STATUS_VALUE_LABELS = {"LV", "HP", "MP", "V", "P", "G", "E"}
 
 local function is_fused_status_value_fragment(decoded)
     local compact = compact_text(decoded)
@@ -325,12 +325,93 @@ local function strip_fused_status_label_prefix(token)
     return raw
 end
 
+local INLINE_STATUS_VALUE_LABELS = {
+    LV = true,
+    HP = true,
+    MP = true,
+    V = true,
+    P = true,
+    G = true,
+    E = true,
+}
+
+local INLINE_STATUS_SINGLE_LABELS = {
+    L = true,
+    H = true,
+    M = true,
+    V = true,
+    P = true,
+    G = true,
+    E = true,
+}
+
+local function split_dialogue_token(token)
+    local prefix, bare, suffix = tostring(token or ""):match("^([^A-Za-z0-9]*)([A-Za-z0-9]+)([^A-Za-z0-9]*)$")
+    return prefix or "", bare, suffix or ""
+end
+
+local function is_numeric_dialogue_token(token)
+    local _, bare = split_dialogue_token(token)
+    return bare ~= nil and bare:match("^%d+$") ~= nil
+end
+
+local function is_status_label_cluster(token)
+    token = tostring(token or "")
+    if token == "" or token:find("[^A-Z]") then
+        return false
+    end
+    if not token:match("^[GHMELPV]+$") then
+        return false
+    end
+    for _, label in ipairs(STATUS_VALUE_LABELS) do
+        if token:find(label, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_spaced_status_value_fragment(compact)
+    compact = compact_text(compact)
+    if compact == "" or compact:find("[%.%!%?,'\"]") then
+        return false
+    end
+    local clustered_name, clustered_label = compact:match("^([A-Z][A-Za-z0-9]*)%s+([A-Z]+)%s+[%d%s]+$")
+    if clustered_name
+       and #clustered_name <= 8
+       and clustered_name:find("[a-z]")
+       and is_status_label_cluster(clustered_label) then
+        return true
+    end
+    for _, label in ipairs(STATUS_VALUE_LABELS) do
+        local name = compact:match("^([A-Z][A-Za-z0-9]*)%s+" .. label .. "%s+[%d%s]+$")
+        if name and #name <= 8 and name:find("[a-z]") then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_spaced_status_name_value_fragment(compact)
+    compact = compact_text(compact)
+    local name = compact:match("^([A-Z][A-Za-z0-9]*)%s+%d+$")
+    if name and #name <= 4 and name:find("[a-z]") then
+        return true
+    end
+
+    local status_name = compact:match("^[GHMELPV]%s+([A-Z][A-Za-z0-9]*)$")
+    return status_name ~= nil and #status_name <= 4 and status_name:find("[a-z]") ~= nil
+end
+
 function M.is_passive_field_status_noise(dialogue)
     local compact = compact_text(dialogue)
     if compact == "" then
         return false
     end
     if is_fused_status_value_fragment(compact) then
+        return true
+    end
+    if is_spaced_status_value_fragment(compact) or is_spaced_status_name_value_fragment(compact) then
         return true
     end
     if compact:find("%s") then
@@ -521,13 +602,42 @@ local function strip_inline_status_fragment_noise(decoded, context)
         return cleaned
     end
 
-    local parts = {}
+    local tokens = {}
     for token in cleaned:gmatch("%S+") do
-        if not is_fused_status_label_fragment_token(token) then
+        tokens[#tokens + 1] = token
+    end
+
+    local parts = {}
+    local i = 1
+    while i <= #tokens do
+        local token = tokens[i]
+        local _, bare = split_dialogue_token(token)
+
+        if bare and is_status_marker_fragment(bare) then
+            i = i + 1
+        elseif bare
+           and INLINE_STATUS_VALUE_LABELS[bare]
+           and i < #tokens
+           and is_numeric_dialogue_token(tokens[i + 1]) then
+            i = i + 2
+        elseif bare
+           and bare:match("^%d+$")
+           and i < #tokens
+           and is_numeric_dialogue_token(tokens[i + 1]) then
+            i = i + 2
+        elseif bare
+           and #bare == 1
+           and INLINE_STATUS_SINGLE_LABELS[bare] then
+            i = i + 1
+        elseif not is_fused_status_label_fragment_token(token) then
             parts[#parts + 1] = strip_fused_status_label_prefix(token)
+            i = i + 1
+        else
+            i = i + 1
         end
     end
-    return table.concat(parts, " "):match("^%s*(.-)%s*$") or ""
+    local joined = table.concat(parts, " "):gsub("%s+([%.%!%?,:;])", "%1")
+    return joined:match("^%s*(.-)%s*$") or ""
 end
 
 local function has_nearby_status_marker(rows, index)

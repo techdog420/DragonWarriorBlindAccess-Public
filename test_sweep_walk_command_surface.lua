@@ -26,6 +26,8 @@ local hooks = read_file("debug_hooks.txt")
 local commands = read_file("dw_commands.sh")
 local lower_status_guard = main:match("local function lower_status_noise_suppression_active%(%)(.-)\nend\n\nlocal function bizhawk_dialogue_hint")
 assert(lower_status_guard, "main.lua should expose lower_status_noise_suppression_active before bizhawk_dialogue_hint")
+local y1_dialogue_reader = main:match("local function read_y1_dialogue%(dialogue_fallback%)(.-)\nend\n\n%-%- strip_noise")
+assert(y1_dialogue_reader, "main.lua should expose read_y1_dialogue before strip_noise")
 
 assert_contains(main,
     'debug_tools.register_command("sweep_walk"',
@@ -105,6 +107,9 @@ assert_contains(main,
 assert_contains(main,
     "text.is_passive_field_status_noise(dialogue)",
     "check_dialogue should absorb passive status/name artifacts before stabilizing lower dialogue")
+assert_contains(y1_dialogue_reader,
+    "text.is_passive_field_status_noise(cleaned)",
+    "row-1 dialogue reader should not let status/name fragments reset dialogue stability")
 assert_contains(main,
     "lower_status_noise_suppression_active",
     "check_dialogue should use a named guard for status/name lower-window artifacts")

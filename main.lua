@@ -3260,8 +3260,11 @@ local function read_y1_dialogue(dialogue_fallback)
     local lines = {}
     for row = text_row, math.min(29, text_row + 8) do
         local decoded = text.decode_row(row, get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
-        if decoded:find("[a-z]") and not text.is_status_text(decoded) then
-            lines[#lines + 1] = decoded
+        local cleaned = text.clean_low_row_dialogue(decoded)
+        if cleaned:find("[a-z]")
+           and not text.is_status_text(cleaned)
+           and not text.is_passive_field_status_noise(cleaned) then
+            lines[#lines + 1] = cleaned
         end
     end
     local result = table.concat(lines, " ")
@@ -4172,6 +4175,14 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
         PREV.announced_upper = upper
         PREV.upper_active = false
         debug_tools.debug("UPPER_DIALOGUE_SUPPRESS_STATUS: " .. new_text)
+        return
+    end
+
+    if new_text ~= "" and text.is_passive_field_status_noise(new_text) then
+        PREV.upper_baseline = upper
+        PREV.announced_upper = upper
+        PREV.upper_active = false
+        debug_tools.debug("UPPER_DIALOGUE_SUPPRESS_PASSIVE_STATUS: " .. new_text)
         return
     end
 

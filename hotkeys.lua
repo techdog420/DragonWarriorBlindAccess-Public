@@ -50,6 +50,10 @@ local route_guidance_key_down
 local pending_auto_walk_after_key_release = false
 local OBJECT_HOTKEY_DIRECTION_SUPPRESS_FRAMES = 8
 local MOVEMENT_SETTLE_BLOCK_REASON = "Wait for movement to finish"
+local DIALOGUE_BLOCK_REASONS = {
+    ["Wait for dialogue to finish"] = true,
+    ["Wait for the upper window to clear"] = true,
+}
 
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
@@ -138,8 +142,13 @@ local function blocked_hotkey_is_movement_settle_guard(object_hotkey_block_reaso
     return object_hotkey_block_reason == MOVEMENT_SETTLE_BLOCK_REASON
 end
 
+local function blocked_hotkey_is_dialogue_guard(object_hotkey_block_reason)
+    return DIALOGUE_BLOCK_REASONS[tostring(object_hotkey_block_reason or "")] == true
+end
+
 local function blocked_hotkey_should_suppress_direction_edges(config_key, object_hotkey_block_reason)
-    if blocked_hotkey_is_movement_settle_guard(object_hotkey_block_reason) then
+    if blocked_hotkey_is_movement_settle_guard(object_hotkey_block_reason)
+       or blocked_hotkey_is_dialogue_guard(object_hotkey_block_reason) then
         return true
     end
     return config_key == "key_pathfind"
