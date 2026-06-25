@@ -72,6 +72,9 @@ assert_contains(main,
     "emulator_compat.is_fceux and teleport_guard_active",
     "FCEUX should skip guard-frame joypad neutralization after teleport")
 assert_contains(main,
+    "TELEPORT_INPUT_SKIP_NEUTRALIZE_FCEUX",
+    "FCEUX teleport input suppression should not immediately call neutral joypad.set")
+assert_contains(main,
     'trace_teleport_loop("SKIP_NEUTRALIZE_FCEUX_GUARD_ACTIVE")',
     "teleport guard should log when FCEUX guard-frame neutralization is skipped")
 assert_contains(main,
@@ -89,6 +92,12 @@ assert_contains(main,
 assert_contains(main,
     'trace_teleport_loop("POST_NEUTRALIZE")',
     "teleport guard should log after neutralizing teleport input")
+assert_contains(main,
+    'debug_tools.register_command("report_input_guard_state"',
+    "main.lua should expose a read-only input guard diagnostic command")
+assert_contains(main,
+    "INPUT_GUARD_STATE",
+    "input guard diagnostic should log a structured INPUT_GUARD_STATE line")
 assert_contains(main,
     'trace_teleport_frameadvance("ENTER")',
     "teleport guard should log before frameadvance while debugging stalls")

@@ -1886,7 +1886,9 @@ function tests.brecconary_confirmed_named_services_are_labeled()
 
     assert_equal(fairy_water ~= nil, true, "Woman 1 should be labeled as Fairy Water Merchant")
     assert_equal(fairy_water.service, true, "Fairy Water Merchant should appear in Services")
-    assert_equal(fairy_water.interaction_x, nil, "Fairy Water Merchant should route as an adjacent NPC")
+    assert_equal(fairy_water.interaction_x, 22, "Fairy Water Merchant should route to the public counter stand")
+    assert_equal(fairy_water.interaction_y, 4, "Fairy Water Merchant stand should stay on the trigger row")
+    assert_equal(fairy_water.interaction_face_dir, "east", "Fairy Water Merchant stand should face east across the counter")
     assert_equal(curse_remover ~= nil, true, "Old Man 2 should be labeled as Curse Remover")
     assert_equal(curse_remover.service, true, "Curse Remover should appear in Services")
     assert_equal(curse_remover.interaction_x, nil, "Curse Remover should route as an adjacent NPC")
@@ -1902,6 +1904,35 @@ function tests.brecconary_confirmed_named_services_are_labeled()
     assert_equal(service_text:find("Curse Remover", 1, true) ~= nil, true, "Services should include Curse Remover")
 
     env.restore()
+end
+
+function tests.brecconary_fairy_water_moving_rows_use_fixed_public_counter_stand()
+    for _, y in ipairs({3, 4, 5}) do
+        local env = make_env({npc_count = 1})
+
+        env.set_position(0x08, 22, y)
+        env.set_terrain_offset(0x10)
+        env.set_npc(0, 0xC0 + 24, y, 0x00) -- Woman 1, Fairy Water merchant
+        env.objects.refresh(0x08)
+
+        local fairy_water = nil
+        for _, obj in ipairs(env.objects.get_objects()) do
+            if obj.name == "Fairy Water Merchant" then
+                fairy_water = obj
+                break
+            end
+        end
+
+        assert_equal(fairy_water ~= nil, true, "Fairy Water Merchant should be labeled on row " .. tostring(y))
+        assert_equal(fairy_water.service, true, "Fairy Water Merchant should remain a Service on row " .. tostring(y))
+        assert_equal(fairy_water.interaction_x, 22, "Fairy Water Merchant should use the fixed public west stand on row " .. tostring(y))
+        assert_equal(fairy_water.interaction_y, 4, "Fairy Water Merchant stand should stay on the live-confirmed trigger row")
+        assert_equal(fairy_water.interaction_face_dir, "east", "Fairy Water Merchant should face east from the fixed stand")
+        assert_equal(fairy_water.target_hold_x, 24, "Fairy Water Merchant should pin the target NPC on the trigger column")
+        assert_equal(fairy_water.target_hold_y, 4, "Fairy Water Merchant should pin the target NPC on the trigger row")
+
+        env.restore()
+    end
 end
 
 function tests.tantegel_castle_sage_service_is_labeled()
@@ -2324,7 +2355,7 @@ function tests.brecconary_exposes_hidden_locked_doors()
     for _, door in ipairs(doors) do
         if door.id == "door_21_6" then
             northeast = door
-        elseif door.id == "door_5_22" then
+        elseif door.id == "door_5_23" then
             inn_west = door
         end
     end
@@ -2336,8 +2367,8 @@ function tests.brecconary_exposes_hidden_locked_doors()
 
     assert_equal(inn_west ~= nil, true, "Brecconary should expose the inn west-room door")
     assert_equal(inn_west.name, "Inn West Room Door", "inn west-room door should have a distinct navigation label")
-    assert_equal(inn_west.x, 5, "inn west-room door x should match the topology frontier")
-    assert_equal(inn_west.y, 22, "inn west-room door y should match the topology frontier")
+    assert_equal(inn_west.x, 5, "inn west-room door x should match live opened-door RAM")
+    assert_equal(inn_west.y, 23, "inn west-room door y should match live opened-door RAM")
 
     env.restore()
 end

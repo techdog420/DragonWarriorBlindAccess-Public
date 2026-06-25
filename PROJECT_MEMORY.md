@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-06-23
+Updated: 2026-06-24
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -368,8 +368,12 @@ Emulator compatibility direction:
   object hotkey, including `J/K/L` object browsing. Movement-settle blocked
   hotkeys should not use the teleport-style controller suppression path,
   because that neutralizes input and skips `auto_step.update` for several
-  frames while active manual movement is trying to settle. If the player keeps
-  manually tapping after an early subpixel
+  frames while active manual movement is trying to settle. FCEUX selected-object
+  teleport hotkeys should also avoid that pre-teleport suppression path:
+  `hotkeys.lua` passes `suppress_input=false` for FCEUX selected teleport, and
+  `main.lua` skips the immediate neutral `joypad.set` inside shared teleport
+  input suppression on FCEUX while preserving the BizHawk path. If the player
+  keeps manually tapping after an early subpixel
   twitch, the physical manual-tap cancel path must not reissue neutral
   `joypad.set` cleanup frames and should briefly dampen direction-edge
   tracking, because synthetic input has already been released and rapid retaps
@@ -997,7 +1001,25 @@ Emulator compatibility direction:
   NPC blocker instead of telling the player to wait.
 - Brecconary (`map 0x08`) has two guide-backed locked doors that the ROM tile
   scan does not find: `Northeast Door` at `(21,6)` for the northeast building
-  and `Inn West Room Door` at `(5,22)`. Mike's map labels `4) Fairy Water` in
+  and `Inn West Room Door` at `(5,23)`. The old `(5,22)` inn-door model was
+  disproved live by OPEN from `(6,22)` facing west reporting `There is no door
+  here`; `verify_door_after` from `(6,23)` facing west confirmed
+  `expected_door=(5,23)`, key count `3 -> 2`, and opened-door RAM slot
+  `0=(5,23)`. The route-out collapse from the opened door cell was two more
+  map-model issues: live raw movement from `(5,23)` can carry through
+  `(4,23)` into type-0 `(3,23)`, but same-origin `(3,23)->WEST` into `(2,23)`
+  blocks and should be modeled as `(2,23).east`. A later restored-route retest
+  superseded the earlier noisy north-corridor read: autowalk from `(6,23)`
+  blocked twice on `(8,23)->UP`, and a direct same-origin probe from `(8,23)`
+  timed out with `blocked_despite_open_preview`, so `(8,22).south` remains a
+  permanent directional block. The next walked verifier crossed
+  `(6,21)->RIGHT` through `(7,21)`, so the older `(7,21).west` block was stale
+  and should stay open. After `reload_navigation_modules`,
+  `auto_walk_blocker:1,15` from `(8,21)` queued `4 north, 7 west, 2 north`,
+  reached `(1,15)`, restored parked NPCs, and left no runtime blocks. The
+  earlier `(8,11)->UP` passthrough through decoded wall `(8,10)` remains useful
+  once a route reaches that corridor.
+  Mike's map labels `4) Fairy Water` in
   the center-east building and `5) Removes Curses` in the top-right building
   (local copy: `project_resources/maps/brecconary/mikesrpgcenter_brecconary.png`),
   so keep the object labels positional instead of overcommitting to a service
@@ -1770,11 +1792,25 @@ Brecconary/map `0x08`:
   interactions, not ordinary adjacent-NPC TALK targets.
 - Brecconary `Merchant 1` is dialogue-only, not a service. Keep him browsable
   as an NPC but exclude him from the Services filter. Woman 1 is the
-  `Fairy Water Merchant` behind the northeast door; do not treat her as
-  public-route cleanup. Old Man 2 is the `Curse Remover` based on his live
-  dialogue claim; verify the actual effect later when the hero is cursed. The
-  2026-05-14 route pass solved Old Man 2's public approach by promoting
-  `(24,12)` as a Brecconary passthrough and leaving `(24,11)<->(24,12)` open.
+  `Fairy Water Merchant` behind the northeast door. With Magic Keys, route her
+  as a counter service: she can pace on `(24,3)`, `(24,4)`, or `(24,5)`, but
+  the public stand is fixed at `(22,4)` facing east across the counter and the
+  target NPC should be held briefly at `(24,4)`. Live prompt evidence at frame
+  `02209` proved that trigger; later same-row `(22,row)` attempts failed after
+  the target was held on the wrong row. Keep the route-polish blockers around
+  that counter: `(20,3).east`, `(20,5).east`, `(21,2).south`,
+  `(22,2).south`, and `(23,3..5).west`. Old Man 2 is the `Curse Remover` based
+  on his live dialogue claim; verify the actual effect later when the hero is
+  cursed. The 2026-05-14 route pass solved Old Man 2's public approach by
+  promoting `(24,12)` as a Brecconary passthrough and leaving
+  `(24,11)<->(24,12)` open.
+- The 2026-06-24 Magic Key revisit completed Brecconary for alpha-prep
+  playtesting. One important object-browser lesson from that closeout:
+  standing on the in-town west exit tile `(0,15)` leaves the player on map
+  `0x08`, but the tile itself reports non-walkable because it is an engine
+  boundary. Pathability/reachable filtering must seed from adjacent walkable
+  cells in that boundary-start case, or the scanner collapses to only
+  `Exit to World Map`.
   Live proof after reload: `debug_pathfind_adjacent:24,10` from entrance
   `(1,15)` chooses the TALK stand `(24,11)` with a 29-step route and
   `Face north`; `debug_pathfind_to:1,15` from `(24,11)` returns in 29 steps;

@@ -2,6 +2,66 @@
 
 Updated: 2026-06-24
 
+## 2026-06-24 Brecconary Fairy Water Route / Input Lock Capture
+
+### CLOSEOUT
+
+- User verified routes to and from the Fairy Water merchant are clean.
+- Brecconary Magic Key revisit is complete for the current alpha-prep pass.
+- Remaining caveat is source reload only: FCEUX must reload `main.lua` before
+  the fixed Fairy Water target hold and exit-tile pathability behavior are live
+  in the emulator script.
+
+### CLEAN / PROMOTED
+
+- Map `0x08` Fairy Water route pocket evidence was fresh route/manual evidence,
+  not old broad survey noise. The route repeatedly tried to enter the NE shop
+  counter cells from the public west-side aisle:
+  `(21,3)->LEFT` into `(20,3).east`, `(21,5)->LEFT` into `(20,5).east`,
+  `(21,3)->UP` into `(21,2).south`, `(22,3)->UP` into `(22,2).south`,
+  and `(22,3/4/5)->RIGHT` into `(23,3/4/5).west`.
+- Promoted those approach blockers in `map_reader.lua`.
+- `Fairy Water Merchant` is a moving Woman sprite behind the NE counter.
+  `objects.lua` now labels live rows `(24,3)`, `(24,4)`, and `(24,5)` and
+  routes each to the fixed public counter stand `(22,4)` facing east.
+- Live prompt evidence at frame `02209` proved the trigger when the player was
+  at `(22,4)` facing east and the target NPC was held at `(24,4)`.
+- Later failed access after returning was explained by the same-row route model:
+  the route targeted `(22,3)` when the merchant was on `(24,3)` and held the
+  target at `(24,3)`, then TALK reported `There is no one there.` Controlled
+  raw/TALK probes from `(22,3)`, `(22,4)`, `(22,5)`, and `(25,4)` did not open
+  the prompt when the target was not held on `(24,4)`.
+- Focused tests now cover the Fairy Water directional blockers and all three
+  moving-row service records, the fixed counter stand, and explicit target
+  hold coordinates.
+
+### EARLIER INPUT LOCK CAPTURE
+
+- During Fairy Water TALK testing, the emulator entered a funky state where
+  Lua command polling stayed alive and `joy1=A` was visible for controlled
+  12-frame `simulate_sequence:A` presses, but the game never opened the field
+  command menu.
+- Captured state showed no active command menu, submenu, dialogue, merchant
+  screen, route, runtime blocks, or script error. `dw_script_error.log` had no
+  fresh entry.
+- `report_movement_state` showed `buttons=0x00` after failed `A` presses.
+  Movement bytes around `0x003C/0x003D` varied during the bad state, but
+  `reset_movement_state:funky_input_fix` did not restore `A` menu behavior.
+- `recover_fceux_input.sh` briefly produced a clean `left_alt=false` marker,
+  but FCEUX rel latched `LeftAlt`; controlled `A` still did not open the menu.
+- `freeze_npcs` was released with `unfreeze_npcs`; the issue persisted.
+- Added read-only diagnostic command `report_input_guard_state`, but FCEUX must
+  manually reload `main.lua` before that command exists in the live script.
+- Current merchant access failure is explained by the fixed-row trigger above;
+  return to this input-lock thread only if `(22,4)` facing east with the target
+  held at `(24,4)` still fails after reload.
+
+### RESOLVED NEXT CHECK
+
+- If Brecconary is revisited after reload, only spot-check the Fairy Water
+  route and the `(0,15)` reachable-filter boundary behavior. Do not reopen
+  broad blocker hunting unless a new gameplay route failure appears.
+
 ## 2026-06-22 Swamp Cave Door / Princess Route
 
 ### CLEAN / CURRENT LIVE STATE

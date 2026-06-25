@@ -1515,8 +1515,16 @@ local function start_target_npc_hold(obj, opts)
     local byte0 = memory.readbyte(base)
     local byte1 = memory.readbyte(base + 1)
     local byte2 = memory.readbyte(base + 2)
-    local target_byte0, used_target_x = encode_npc_coordinate_byte(byte0, obj.x)
-    local target_byte1, used_target_y = encode_npc_coordinate_byte(byte1, obj.y)
+    local hold_x = obj.target_hold_x
+    if hold_x == nil then
+        hold_x = obj.x
+    end
+    local hold_y = obj.target_hold_y
+    if hold_y == nil then
+        hold_y = obj.y
+    end
+    local target_byte0, used_target_x = encode_npc_coordinate_byte(byte0, hold_x)
+    local target_byte1, used_target_y = encode_npc_coordinate_byte(byte1, hold_y)
     local snapshot = {
         target_byte0,
         target_byte1,
@@ -1534,8 +1542,8 @@ local function start_target_npc_hold(obj, opts)
         tostring(obj.name),
         slot,
         frames,
-        used_target_x and tostring(obj.x) or "live",
-        used_target_y and tostring(obj.y) or "live"))
+        used_target_x and tostring(hold_x) or "live",
+        used_target_y and tostring(hold_y) or "live"))
     return true
 end
 
@@ -2926,22 +2934,47 @@ local function build_pathability_reachable_set(map_id, start_x, start_y, blockin
         return nil
     end
 
-    local walkability_snapshot = map_reader.get_walkability_snapshot
-        and map_reader.get_walkability_snapshot(map_id)
-        or nil
-    local walkability_cache = {}
-    if not is_walkable_from_snapshot(map_id, start_x, start_y, walkability_snapshot, walkability_cache) then
-        return {}
-    end
     if is_fully_blocked(blocking, start_x, start_y) then
         return {}
     end
 
+    local walkability_snapshot = map_reader.get_walkability_snapshot
+        and map_reader.get_walkability_snapshot(map_id)
+        or nil
+    local walkability_cache = {}
     local directional_blocks = map_reader.get_directional_blocks
         and map_reader.get_directional_blocks(map_id)
         or {}
-    local reachable = {[cell_key(start_x, start_y)] = true}
-    local queue = {{x = start_x, y = start_y}}
+    local reachable = {}
+    local queue = {}
+    local function enqueue_reachable(x, y)
+        local key = cell_key(x, y)
+        if reachable[key] then
+            return
+        end
+        reachable[key] = true
+        queue[#queue + 1] = {x = x, y = y}
+    end
+
+    if is_walkable_from_snapshot(map_id, start_x, start_y, walkability_snapshot, walkability_cache) then
+        enqueue_reachable(start_x, start_y)
+    else
+        for _, dir in ipairs(PATH_DIRECTIONS) do
+            local nx = start_x + dir.dx
+            local ny = start_y + dir.dy
+            if nx >= 0 and nx < width
+            and ny >= 0 and ny < height
+            and not is_blocked_from_approach(blocking, nx, ny, dir.approach)
+            and not is_static_directional_blocked(directional_blocks, nx, ny, dir.approach)
+            and is_walkable_from_snapshot(map_id, nx, ny, walkability_snapshot, walkability_cache) then
+                enqueue_reachable(nx, ny)
+            end
+        end
+        if #queue == 0 then
+            return {}
+        end
+    end
+
     local head = 1
 
     while head <= #queue do
@@ -2958,8 +2991,7 @@ local function build_pathability_reachable_set(map_id, start_x, start_y, blockin
             and not is_blocked_from_approach(blocking, nx, ny, dir.approach)
             and not is_static_directional_blocked(directional_blocks, nx, ny, dir.approach)
             and is_walkable_from_snapshot(map_id, nx, ny, walkability_snapshot, walkability_cache) then
-                reachable[key] = true
-                queue[#queue + 1] = {x = nx, y = ny}
+                enqueue_reachable(nx, ny)
             end
         end
     end

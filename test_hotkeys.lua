@@ -32,6 +32,7 @@ local function make_env(options)
     local pathability_filter_calls = 0
     local pathability_refresh_calls = 0
     local teleport_modes = {}
+    local teleport_requests = {}
     local describe_calls = {}
     local route_start_objects = {}
     local focused_route_ids = {}
@@ -148,6 +149,7 @@ local function make_env(options)
 
     package.preload["emulator_compat"] = function()
         return {
+            is_fceux = options.is_fceux == true,
             clear_ppu_cache = function() end,
             get_ppu_source_rows = function()
                 return {}
@@ -405,8 +407,9 @@ local function make_env(options)
 
     local hotkeys = require "hotkeys"
     hotkeys._reset_for_tests()
-    hotkeys.set_teleport_handler(function(mode)
+    hotkeys.set_teleport_handler(function(mode, opts)
         teleport_modes[#teleport_modes + 1] = mode
+        teleport_requests[#teleport_requests + 1] = opts or false
     end)
 
     return {
@@ -467,6 +470,7 @@ local function make_env(options)
         auto_step_suppress_calls = auto_step_suppress_calls,
         debug_errors = debug_errors,
         teleport_modes = teleport_modes,
+        teleport_requests = teleport_requests,
         describe_calls = describe_calls,
         restore = function()
             _G.memory = original_memory
@@ -1067,6 +1071,18 @@ function tests.teleport_hotkeys_call_registered_handler()
     assert_equal(env.teleport_modes[1], "exact", "Shift+Enter should request exact teleport")
     assert_equal(env.teleport_modes[2], "north", "Shift+Up should request north-of-target teleport")
     assert_equal(env.teleport_modes[3], "east", "Shift+Right should request east-of-target teleport")
+
+    env.restore()
+end
+
+function tests.fceux_selected_teleport_hotkey_skips_pre_input_suppression()
+    local env = make_env({delay = 0, is_fceux = true})
+
+    env.update({Shift = true, Enter = true})
+
+    assert_equal(env.teleport_modes[1], "exact", "FCEUX exact teleport hotkey should still request selected-object teleport")
+    assert_equal(type(env.teleport_requests[1]), "table", "FCEUX teleport hotkey should pass handler options")
+    assert_equal(env.teleport_requests[1].suppress_input, false, "FCEUX selected teleport should not run pre-teleport joypad neutralization")
 
     env.restore()
 end

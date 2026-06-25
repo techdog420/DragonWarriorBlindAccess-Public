@@ -1074,11 +1074,11 @@ local EXTRA_DOORS = {
     -- Map 0x08: Brecconary has two locked doors that are not encoded as a
     -- distinct town door tile: the northeast building and the west room in the
     -- inn. External guide/map labels disagree on nearby service names, so keep
-    -- the navigation labels positional; local topology isolates Woman 1 behind
-    -- (21,6) and Guard 4 behind (5,22).
+    -- the navigation labels positional. The inn door was live-confirmed by
+    -- OPEN from (6,23) facing west, which wrote opened-door RAM slot (5,23).
     [0x08] = {
         {x=21, y=6, name="Northeast Door", type=M.TYPE_DOOR, id="door_21_6"},
-        {x=5, y=22, name="Inn West Room Door", type=M.TYPE_DOOR, id="door_5_22"},
+        {x=5, y=23, name="Inn West Room Door", type=M.TYPE_DOOR, id="door_5_23"},
     },
     -- Map 0x09: Garinham. The old `(19,16)` east guess was disproved live by
     -- OPEN reporting "There is no door here." The grave-route follow-up found
@@ -1195,6 +1195,13 @@ local SERVICE_INTERACTION_OVERRIDES = {
     [0x08] = {
         ["5,4"] = {x = 5, y = 6, face_dir = "north", label = "counter", name = "Weapons Merchant"},
         ["10,21"] = {x = 8, y = 21, face_dir = "east", label = "counter", name = "Inn"},
+        -- The Fairy Water seller is a Woman sprite who can pace behind the NE
+        -- counter, but live TALK proof only opens the prompt when she is held
+        -- on the center trigger row. Route to the fixed public stand and pin
+        -- the target row briefly after arrival.
+        ["24,3"] = {x = 22, y = 4, face_dir = "east", label = "counter", name = "Fairy Water Merchant", target_hold_x = 24, target_hold_y = 4},
+        ["24,4"] = {x = 22, y = 4, face_dir = "east", label = "counter", name = "Fairy Water Merchant", target_hold_x = 24, target_hold_y = 4},
+        ["24,5"] = {x = 22, y = 4, face_dir = "east", label = "counter", name = "Fairy Water Merchant", target_hold_x = 24, target_hold_y = 4},
         ["25,25"] = {x = 23, y = 25, face_dir = "east", label = "counter", name = "Tool Merchant"},
     },
 
@@ -1262,7 +1269,9 @@ local SERVICE_ROLE_OVERRIDES = {
             ["Old Man 2"] = {name = "Curse Remover", infer_counter = false},
         },
         cells = {
+            ["24,3"] = {name = "Fairy Water Merchant", infer_counter = false},
             ["24,4"] = {name = "Fairy Water Merchant", infer_counter = false},
+            ["24,5"] = {name = "Fairy Water Merchant", infer_counter = false},
             ["24,10"] = {name = "Curse Remover", infer_counter = false},
         },
     },
@@ -1453,6 +1462,8 @@ apply_service_interaction_override = function(obj, map_id)
         obj.interaction_y = override.y
         obj.interaction_face_dir = override.face_dir
         obj.interaction_label = override.label
+        obj.target_hold_x = override.target_hold_x
+        obj.target_hold_y = override.target_hold_y
         return obj
     end
     if role_override and role_override.infer_counter == false then

@@ -37,6 +37,37 @@ Updated: 2026-06-24
 - FCEUX remains the normal gameplay and agent-driven runtime for this repo.
   BizHawk is still useful for explicit automation/debug/reload/profiling work,
   but it is not the default route-testing runtime.
+- Brecconary Magic Key cleanup is complete for current alpha-prep playtesting.
+  The inn west-room door is now
+  live-confirmed at door cell `(5,23)`, opened from `(6,23)` facing west; the
+  old `(5,22)` model is a ghost. The opened-door side uses passthrough
+  `(3,23)`, blocks false west exit `(3,23)->WEST` as `(2,23).east`, and keeps
+  `(8,23)->UP` blocked as `(8,22).south` after restored-route autowalk plus a
+  same-origin raw probe timed out. The old `(7,21).west` one-way block was
+  stale: `verify_walked_edge:6,21,right` crossed `(6,21)->RIGHT`, and
+  `auto_walk_blocker:1,15` then reached the entrance-side stand `(1,15)` from
+  `(8,21)` via `4 north, 7 west, 2 north` with no runtime blocks left.
+- Brecconary exit-tile object browsing needs the latest `route_manager.lua`
+  reload before judging `reachable` pathability from `(0,15)`. Live state on
+  map `0x08` showed `(0,15)` is a non-walkable engine-boundary tile even while
+  the hero is standing there; old pathability flood-fill treated that as a
+  one-tile component and exposed only `Exit to World Map`. The patch seeds the
+  reachable set from adjacent walkable cells in that boundary-start case.
+  Live workaround already applied: `pathability_filter:all` restored the full
+  object list (`Exit to World Map: here (1 of 23)`).
+- Brecconary Fairy Water routing is verified clean to and from the merchant.
+  The seller
+  is a moving Woman behind the northeast counter at `(24,3)..(24,5)`, but the
+  live-confirmed trigger is fixed: route to `(22,4)` facing east and hold the
+  target NPC briefly at `(24,4)`, not into the blocked pocket at `(23,row)` or
+  to a same-row `(22,row)` stand.
+  `map_reader.lua` now closes the fresh route/manual blockers around that
+  counter: `(20,3).east`, `(20,5).east`, `(21,2).south`, `(22,2).south`, and
+  `(23,3..5).west`. An earlier TALK test also captured a possible FCEUX input-lock
+  state where Lua saw controlled `A` presses and command polling stayed alive,
+  but the ROM did not open the field command menu. Treat that as a secondary
+  diagnostic path only if the fixed `(22,4)` stand plus `(24,4)` target hold
+  still fails after reload; `report_input_guard_state` is staged for that case.
 - Swamp Cave rescue branch is now live-confirmed through Gwaelin. Door cell
   `(5,20)` is open in slot `0`, Gwaelin is reached from `(5,19)` facing north
   toward `(5,18)`, the escort prompt was accepted, and final field state was
@@ -107,7 +138,17 @@ Updated: 2026-06-24
   A dialogue timing pass then found north-edge NPC lines reaching final visible
   length roughly 4 seconds before speech; the row-1 lower dialogue reader now
   filters low-row passive status/name crumbs before they can reset the stable
-  text timer. FCEUX needs a manual Lua reload before this timing fix is live.
+  text timer. A later selected-teleport repro in Garinham stopped command
+  polling after object browsing / selected teleport plus TALK, again with no
+  fresh `dw_script_error.log` entry. FCEUX selected-object teleport hotkeys now
+  pass `suppress_input=false`, and the shared teleport input suppressor skips
+  immediate neutral `joypad.set` on FCEUX while preserving BizHawk behavior.
+  Post-reload validation reached Guard 2 at `(3,4)`, completed the teleport
+  guard, survived command-menu TALK attempts, and answered fresh launcher
+  probes afterward. The user then manually verified selected teleport to Guard
+  2 without a crash; this is one of Brecconary's key trap guards, so keep this
+  as the important end-to-end FCEUX confirmation. FCEUX needs a manual Lua
+  reload before these timing / teleport-input fixes are live.
 
 ## Garin's Grave Result
 
@@ -190,17 +231,13 @@ Updated: 2026-06-24
 
 ## Next Work
 
-1. Reload `main.lua` in FCEUX before judging Swamp Cave live route planning
-   or the hotkey / manual early-twitch fixes. The latest hang repro stopped
-   after blocked `K` spoke `Wait for dialogue to finish` while NPC dialogue was
-   active, with the breadcrumb confirming `key_object_current`; after the crash
-   fix, the script stayed alive but cached compact status residue as lower
-   dialogue after the command menu cleared, then exposed an upper residue shape
-   like `MBill GLV  15`. After reload, stress object readout/browse keys during
-   active NPC dialogue and after the menu clears, then recheck `O`, `U`,
-   `J/K/L`, and movement timing before resuming escorting Gwaelin back to
-   Tantegel Castle.
-2. Pick the next practical playability/QoL issue or the next gameplay-exposed
+1. Reload `main.lua` in FCEUX before judging source-level changes from the
+   latest Brecconary closeout, selected-teleport/input fixes, or Swamp Cave
+   route planning. Brecconary itself is complete for the current alpha town
+   pass; after reload, only spot-check the exit-tile reachable filter and Fairy
+   Water route if needed.
+2. Continue the Magic Key alpha-prep pass in the next early town, or pick the
+   next practical playability/QoL issue or the next gameplay-exposed
    route failure instead of continuing broad Garin's Grave blocker hunting.
 3. If revisiting Garinham's inn-to-grave-stairs return, ignore old verifier
    proof for `(19,10)` and use the current top-lane route evidence:

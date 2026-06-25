@@ -410,6 +410,13 @@ local function tick_object_nav_speech()
     end
 end
 
+local function selected_teleport_handler_opts()
+    if emulator_compat.is_fceux then
+        return {suppress_input = false}
+    end
+    return nil
+end
+
 -- ============================================================
 -- Main Update
 -- ============================================================
@@ -1122,23 +1129,23 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
             if is_key_pressed(keys, config.get("key_teleport_exact")) then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
-                teleport_handler("exact")
+                teleport_handler("exact", selected_teleport_handler_opts())
             elseif is_key_pressed(keys, config.get("key_teleport_north")) then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
-                teleport_handler("north")
+                teleport_handler("north", selected_teleport_handler_opts())
             elseif is_key_pressed(keys, config.get("key_teleport_south")) then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
-                teleport_handler("south")
+                teleport_handler("south", selected_teleport_handler_opts())
             elseif is_key_pressed(keys, config.get("key_teleport_west")) then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
-                teleport_handler("west")
+                teleport_handler("west", selected_teleport_handler_opts())
             elseif is_key_pressed(keys, config.get("key_teleport_east")) then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
-                teleport_handler("east")
+                teleport_handler("east", selected_teleport_handler_opts())
             end
         end
     end

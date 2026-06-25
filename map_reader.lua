@@ -484,6 +484,18 @@ local MAP_PASSTHROUGH_CELLS = {
         -- (18,22). Keep it explicitly walkable so the model matches the
         -- engine-passable corridor.
         ["17,22"] = true,
+        -- Inn west-room escape throat. After the Magic Key door correction,
+        -- live movement from the opened door cell (5,23) carried west through
+        -- (4,23) into this type-0 false wall at (3,23). A later same-origin
+        -- probe proved (3,23)->WEST blocks, so this remains only the door-side
+        -- bridge cell; the route back out escapes through the north inn
+        -- passthrough below.
+        ["3,23"] = true,
+        -- Inn north escape. Movement-backed crawl crossed the decoded wall at
+        -- (8,10), and a same-origin probe from (8,11)->UP carried through it
+        -- to (8,9). This reconnects the opened inn west-room door to the
+        -- public entrance route.
+        ["8,10"] = true,
         -- Merchant 4 lower-west bridge candidate. The ROM decodes (17,25) as
         -- type-0/non-walkable, and it remains modeled as a standable
         -- passthrough so other approaches can be investigated. A later
@@ -1075,12 +1087,13 @@ local MAP_DOOR_CELLS = {
         ["4,7"] = {x=4, y=7},
     },
     -- Map 0x08: Brecconary
-    -- External guide/map comparison plus local topology frontier analysis found
-    -- two locked doors that the ROM tile scan cannot infer: the northeast
-    -- building door and the west room in the inn.
+    -- External guide/map comparison plus live door-RAM verification found two
+    -- locked doors that the ROM tile scan cannot infer: the northeast building
+    -- door and the west room in the inn. The inn door opens from (6,23) facing
+    -- west and records opened-door RAM slot (5,23).
     [0x08] = {
         ["21,6"] = {x=21, y=6},
-        ["5,22"] = {x=5, y=22},
+        ["5,23"] = {x=5, y=23},
     },
     -- Map 0x09: Garinham
     -- Guide data lists town-scope locked doors, but the old `(19,16)` east
@@ -2328,16 +2341,24 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,12"] = {south = true},
         -- NE building west wall (x=20)
         ["20,2"] = {west = true, north = true},
-        ["20,3"] = {west = true},
+        -- 2026-06-24 Fairy Water route polish: route and manual attempts from
+        -- the public west-side aisle repeatedly blocked eastward into the NE
+        -- counter/pocket while the merchant paced at (24,3)..(24,5).
+        ["20,3"] = {west = true, east = true},
         ["20,4"] = {west = true},
-        ["20,5"] = {west = true},
+        ["20,5"] = {west = true, east = true},
         -- NE building north wall (y=2)
-        ["21,2"] = {north = true},
-        ["22,2"] = {north = true},
+        ["21,2"] = {north = true, south = true},
+        ["22,2"] = {north = true, south = true},
         ["23,2"] = {north = true},
         ["24,2"] = {north = true},
         ["25,2"] = {north = true},
         ["26,2"] = {north = true},
+        -- Fairy Water counter face. The public TALK stands are two tiles west
+        -- at x=22; entering the intermediate counter cells from x=22 blocks.
+        ["23,3"] = {west = true},
+        ["23,4"] = {west = true},
+        ["23,5"] = {west = true},
         -- NE building east wall / top edge corner.
         -- Survey rerun after per-target runtime-block resets on 2026-04-02
         -- repeatedly trapped routes against the same band, surfacing
@@ -2404,38 +2425,45 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- the northeast fixes. A focused replay from (8,13) toward Merchant 1
         -- confirmed the first blocked step at (8,19)->(7,19): validation
         -- stalled, then auto_step published runtime block approach=east for
-        -- cell (7,19). Follow-up live probes then confirmed three more cells
+        -- cell (7,19). Follow-up live probes then confirmed two more cells
         -- in the same pocket: (6,21)->(6,20) fails with approach=south,
-        -- (6,21)->(5,21) fails with approach=east, and (6,21)->(7,21) fails
-        -- with approach=west. Promote only the directly reproduced entries.
+        -- and (6,21)->(5,21) fails with approach=east. A 2026-06-24 walked
+        -- verifier later crossed (6,21)->RIGHT through (7,21), so do not keep
+        -- the older noisy west-approach block for (7,21).
         ["5,21"]  = {east = true},
         ["6,20"]  = {south = true},
         ["7,19"]  = {east = true},
-        ["7,21"]  = {west = true},
         ["7,22"]  = {north = true, south = true, west = true},
         -- 2026-05-07 inn route follow-up: after retargeting the inn to the
         -- public stand tile at (8,21), auto-walk from the town entrance first
         -- planned through (7,17)->RIGHT, timed out on entry to (8,17), then
         -- rerouted cleanly around it and reached the inn.
         ["8,17"]  = {west = true},
+        -- 2026-06-24 restored-route check: autowalk from the opened inn door
+        -- blocked twice on (8,23)->UP, then a same-origin raw probe from
+        -- (8,23) also timed out despite an open static preview.
         ["8,22"]  = {north = true, south = true},
         ["9,20"]  = {west = true},
         ["9,21"]  = {west = true},
         ["9,22"]  = {south = true},
         ["10,22"] = {south = true},
         ["8,24"]  = {east = true, north = true},
+        -- Inn west-room escape cleanup: same-origin probe from (3,23)->WEST
+        -- into (2,23) timed out despite an open tile preview. Route out via the
+        -- north inn passthrough instead of this false west exit.
+        ["2,23"]  = {east = true},
         -- Southwest survey reroute trap.
         -- The 2026-04-03 survey regression that dropped from 13/21 to 1/21
         -- successes repeatedly failed the same reroute sequence from (9,25):
         -- (9,26)->(9,27) published approach=north, (9,26)->(8,26) published
         -- approach=east, and (9,25)->(8,25) published approach=east. The very
         -- first attempt from (6,23) also failed on (6,23)->(5,23) with
-        -- approach=east. Promote these directly reproduced cells so the next
-        -- survey can test beyond the same southwest pocket.
+        -- approach=east; later Magic Key verification proved that edge is the
+        -- Brecconary inn west-room door, so it belongs in MAP_DOOR_CELLS
+        -- instead of directional wall data.
         -- 2026-04-26 follow-up: direct probes after Guard 4 churn confirmed
         -- (7,25)->RIGHT into (8,25), (7,26)->RIGHT into (8,26), and
         -- (8,25)->DOWN into (8,26) are blocked despite open previews.
-        ["5,23"]  = {east = true},
         ["8,25"]  = {east = true, west = true},
         ["8,26"]  = {east = true, north = true, west = true},
         ["3,27"]  = {south = true},

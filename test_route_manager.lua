@@ -1735,6 +1735,32 @@ function tests.object_pathability_filter_recomputes_when_position_changes()
     env.restore()
 end
 
+function tests.object_pathability_filter_seeds_from_boundary_exit_neighbor()
+    local env = make_env({
+        start_map_id = 0x08,
+        start_x = 0,
+        start_y = 15,
+        map_width = 30,
+        map_height = 30,
+        object_list = {
+            {id = "exit_0_15", name = "Exit to World Map", type = "exit", x = 0, y = 15},
+            {id = "npc_inside", name = "Townsperson", type = "npc", x = 2, y = 15},
+        },
+        non_walkable_cells = {
+            ["0,15"] = true,
+        },
+    })
+
+    local info = env.route_manager.set_object_pathability_filter("reachable")
+    local statuses = env.pathability_statuses()
+
+    assert_equal(info.reachable, 2, "boundary exit start should still reach the adjacent town component")
+    assert_equal(statuses.exit_0_15, true, "standing on the exit should keep the exit reachable")
+    assert_equal(statuses.npc_inside, true, "reachable filter should not collapse to only the exit from the exit tile")
+
+    env.restore()
+end
+
 function tests.object_pathability_filter_resets_to_all_on_overworld()
     local env = make_env({is_overworld = true})
 
@@ -3301,6 +3327,37 @@ function tests.selected_teleport_can_hold_target_npc_without_autowalk()
     assert_equal(env.memory_writes[2].address, 7, "selected-teleport hold should write the target slot byte 1")
     assert_equal(env.memory_writes[2].value, 0x40 + 13, "selected-teleport hold should pin the target Y")
     assert_equal(#env.memory_writes, 2, "selected-teleport hold should skip unchanged movement byte writes")
+
+    env.restore()
+end
+
+function tests.target_npc_hold_uses_explicit_hold_coordinates()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+        },
+        memory_values = {
+            [6] = 0x80 + 24,
+            [7] = 0x60 + 5,
+            [8] = 0x22,
+        },
+    })
+
+    local ok = env.route_manager.hold_target_npc({
+        name = "Fairy Water Merchant",
+        type = "npc",
+        id = "npc_2",
+        x = 24,
+        y = 3,
+        target_hold_x = 24,
+        target_hold_y = 4,
+    }, "fixed service trigger", 3)
+
+    assert_equal(ok, true, "explicit hold coordinates should still start the NPC hold")
+    assert_equal(env.memory_writes[1].address, 7, "explicit hold should write the target slot Y byte")
+    assert_equal(env.memory_writes[1].value, 0x60 + 4, "explicit hold should pin target hold Y instead of object Y")
+    assert_equal(#env.memory_writes, 1, "explicit hold should skip unchanged X and movement byte writes")
 
     env.restore()
 end

@@ -6,6 +6,32 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Brecconary Magic Key revisit complete (`2026-06-24`): locked-door placement,
+  service routes, Fairy Water access, and exit/object-browser behavior are
+  clean enough for the alpha-prep pass. Remaining Brecconary caveat is runtime
+  only: FCEUX needs a manual Lua reload before the latest source fixes are live.
+
+- Brecconary exit-tile object browser (`2026-06-24`): standing on the in-town
+  west exit tile `(0,15)` with the pathability filter on `reachable` collapsed
+  the scanner to `Exit to World Map: here (1 of 1)`. Live inspection showed the
+  player was still on map `0x08`; `(0,15)` reports `walkable=false` because it
+  is an engine boundary, while `(1,15)` is walkable and path debug can route
+  `1 east` from the exit tile. `route_manager.lua` now seeds pathability from
+  adjacent walkable cells when the player stands on a non-walkable boundary
+  tile. The live workaround used `pathability_filter:all`, restoring
+  `Exit to World Map: here (1 of 23)`.
+
+- Brecconary Fairy Water route / input capture (`2026-06-24`): the northeast
+  locked-door service route now treats the Fairy Water seller as a moving Woman
+  sprite behind the counter at rows `(24,3)..(24,5)`, with one public TALK stand
+  at `(22,4)` facing east and a temporary target hold at `(24,4)`. Fresh
+  route/manual evidence closed the noisy NE
+  counter shortcuts at `(20,3).east`, `(20,5).east`, `(21,2).south`,
+  `(22,2).south`, and `(23,3..5).west`; these were route-specific findings,
+  not broad-survey leftovers. Live prompt evidence at frame `02209` proved the
+  `(22,4)` / `(24,4)` trigger; later failed `(22,row)` attempts were routing
+  and target-hold errors, not new geometry.
+
 - Garinham door and service-route polish (`2026-06-24`): fresh live checks
   confirmed the town door roster is still exactly the two modeled doors:
   `Grave Route Door` at `(17,10)` and `Locked Building Door` at `(4,6)`.
@@ -1530,12 +1556,31 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   baseline synchronized with the visible prompt. Closing the item list now
   speaks only `I will be waiting for thy next visit.` instead of dragging the
   prior welcome / `What dost thou want?` text back into the farewell.
+- Brecconary inn west-room door correction: the old `(5,22)` model is a ghost.
+  OPEN from `(6,22)` facing west reported `There is no door here`. The
+  live-confirmed stand is `(6,23)` facing west; `verify_door_after` recorded
+  `expected_door=(5,23)`, `expected_present=true`, key count `3 -> 2`, and
+  opened-door RAM slot `0=(5,23)`. The old directional blocker on
+  `(5,23).east` was really the closed inn door and should not remain as a
+  permanent wall after the door opens. The follow-up route-out failure was a
+  second decode issue: `(3,23)` is a type-0 false-wall bridge on the door
+  side, but same-origin `(3,23)->WEST` into `(2,23)` blocks and is now modeled
+  as `(2,23).east`. A later restored-route retest superseded the earlier noisy
+  north-corridor read: autowalk from `(6,23)` blocked twice on `(8,23)->UP`,
+  and a direct same-origin probe from `(8,23)` timed out with
+  `blocked_despite_open_preview`, so `(8,22).south` remains a permanent
+  directional block. The next walked verifier crossed `(6,21)->RIGHT` through
+  `(7,21)`, so the older `(7,21).west` block was stale and should stay open.
+  After `reload_navigation_modules`, `auto_walk_blocker:1,15` from `(8,21)`
+  queued `4 north, 7 west, 2 north`, reached `(1,15)`, restored parked NPCs,
+  and left no runtime blocks. The earlier `(8,11)->UP` passthrough through
+  decoded wall `(8,10)` remains useful once a route reaches that corridor.
 - Brecconary current door-attribution check: from the public origin `(1,15)`,
   with NPC blockers skipped and door RAM simulated, the known doors split the
   current live NPC table cleanly. `Northeast Door` `(21,6)` unlocks `Woman 1`;
   the user manually verified that `Woman 1` is the Fairy Water merchant, so
   this target is expected to be locked behind that door. `Inn West Room Door`
-  `(5,22)` unlocks `Old Man 1` at his current `(1,20)` position and `Guard 4`.
+  `(5,23)` unlocks `Old Man 1` at his current `(1,20)` position and `Guard 4`.
   Opening both doors still does not route to
   `Weapons Merchant` stand `(5,6)`, the center-east room (`Person 3`,
   `Old Man 2`, `Guard 2`), the southeast room (`Person 1`, `Person 5`),
@@ -1547,7 +1592,7 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   Magic Key, and Gamer Corner lists two Brecconary locked doors: northeast
   building and west room in the inn. The object locator previously exposed no
   doors on map `0x08`; it now exposes `Northeast Door` `(21,6)` and
-  `Inn West Room Door` `(5,22)`, and `map_reader.lua` checks both through the
+  `Inn West Room Door` `(5,23)`, and `map_reader.lua` checks both through the
   opened-door RAM array. With both doors synthetically open in RAM, the
   earlier static pass made only `Guard 4` and `Woman 1` reachable; the current
   live-NPC refinement also puts `Old Man 1` behind the inn west-room door.

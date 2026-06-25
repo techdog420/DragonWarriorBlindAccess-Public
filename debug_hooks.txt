@@ -70,6 +70,7 @@ COMMANDS (write to dw_commands.txt, one per line)
                            teleport input; useful after teleport/control-lock
                            diagnostics.
   report_menu_state        Dump command-menu parser/cursor state
+  report_input_guard_state Dump read-only Lua input/teleport guard state
   report_npcs              Dump active NPC slots with decoded names, coordinates,
                            facing, movement byte, service flag, and raw bytes
   toggle_debug             Flip debug_mode on/off at runtime

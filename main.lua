@@ -4500,6 +4500,51 @@ debug_tools.register_command("report_menu_state", function()
     tolk.output_interrupt("Menu state reported")
 end)
 
+debug_tools.register_command("report_input_guard_state", function()
+    local function pressed_names(buttons, names)
+        local out = {}
+        for _, name in ipairs(names) do
+            if buttons and buttons[name] then
+                out[#out + 1] = name
+            end
+        end
+        if #out == 0 then
+            return "-"
+        end
+        return table.concat(out, "+")
+    end
+
+    local keys = input.get and input.get() or {}
+    local joy = joypad.read and joypad.read(1) or {}
+    local hold = DW_QOL_STATE.teleport_input_suppress_until_release
+    local face = DW_QOL_STATE.pending_teleport_face
+    local guard = DW_QOL_STATE.teleport_state_guard
+    local unavailable_reason = _G.DW_FIELD_ACTION_UNAVAILABLE_REASON
+        and _G.DW_FIELD_ACTION_UNAVAILABLE_REASON("input_guard_report")
+        or nil
+    debug_tools.info(string.format(
+        "INPUT_GUARD_STATE suppress_frames=%d suppress_hold=%s suppress_trigger=%s suppress_held_frames=%d pending_face=%s pending_face_frames=%d teleport_guard=%s teleport_guard_frames=%d current_joy_any=%s joy=%s keys=%s buttons=0x%02X menu_active=%s submenu=%s merchant_active=%s dialogue_len=%d upper_active=%s unavailable_reason=%s",
+        tonumber(DW_QOL_STATE.teleport_input_suppress_frames) or 0,
+        hold and tostring(hold.mode or true) or "nil",
+        hold and tostring(hold.trigger_spec or hold.spec or "") or "nil",
+        hold and tonumber(hold.held_frames) or 0,
+        face and tostring(face.dir or true) or "nil",
+        face and tonumber(face.frames) or 0,
+        guard and tostring(guard.reason or true) or "nil",
+        guard and tonumber(guard.frames) or 0,
+        tostring(current_joy_any == true),
+        pressed_names(joy, {"up", "down", "left", "right", "A", "B", "start", "select"}),
+        pressed_names(keys, {"LeftAlt", "RightAlt", "Shift", "Control", "Enter", "Up", "Down", "Left", "Right", "F", "A", "S", "D", "W"}),
+        addr.BUTTONS_PRESSED and memory.readbyte(addr.BUTTONS_PRESSED) or 0,
+        tostring(DW_QOL_STATE.command_menu_blocks_field_movement()),
+        tostring(submenu_mode),
+        tostring(MER.active),
+        #(PREV.dialogue or ""),
+        tostring(PREV.upper_active),
+        tostring(unavailable_reason or "nil")))
+    tolk.output_interrupt("Input guard state reported")
+end)
+
 debug_tools.register_command("report_merchant_state", function()
     if emulator_compat.clear_ppu_cache then
         emulator_compat.clear_ppu_cache()
@@ -5167,6 +5212,10 @@ local function neutralize_teleport_input(extra)
     joypad.set(1, make_teleport_neutral_input(extra))
 end
 
+local function should_skip_immediate_teleport_neutralize()
+    return emulator_compat.is_fceux == true
+end
+
 DW_QOL_STATE.suppress_teleport_input = function(mode)
     DW_QOL_STATE.pending_teleport_face = nil
     DW_QOL_STATE.teleport_input_suppress_frames = DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES
@@ -5184,8 +5233,12 @@ DW_QOL_STATE.suppress_teleport_input = function(mode)
             tostring(spec),
             tostring(DW_QOL_STATE.teleport_input_suppress_until_release.trigger_spec)))
     end
-    neutralize_teleport_input()
-    DW_QOL_STATE.teleport_input_neutralized_frame = frame_count
+    if should_skip_immediate_teleport_neutralize() then
+        debug_tools.debug("TELEPORT_INPUT_SKIP_NEUTRALIZE_FCEUX mode=" .. tostring(mode))
+    else
+        neutralize_teleport_input()
+        DW_QOL_STATE.teleport_input_neutralized_frame = frame_count
+    end
 end
 
 DW_QOL_STATE.teleport_hotkey_still_held = function(keys)
@@ -5553,7 +5606,9 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
             landing_x, landing_y, map_id, table.concat(bytes, " ")))
     end
 
-    DW_QOL_STATE.suppress_teleport_input()
+    if opts.suppress_input ~= false then
+        DW_QOL_STATE.suppress_teleport_input()
+    end
     DW_QOL_STATE.arm_teleport_state_guard(map_id, landing_x, landing_y, "teleport_to")
 
     local msg
@@ -5661,7 +5716,11 @@ local function teleport_selected_object(mode, opts)
         end
     end
 
-    local teleport_opts = {check_npc = true, manual = true}
+    local teleport_opts = {
+        check_npc = true,
+        manual = true,
+        suppress_input = opts.suppress_input,
+    }
     if landing and landing.reason == "overworld_travel" then
         teleport_opts.check_npc = false
         teleport_opts.trust_walkable = true
@@ -5697,8 +5756,13 @@ local function teleport_selected_object(mode, opts)
     return ok
 end
 
-hotkeys.set_teleport_handler(function(mode)
-    teleport_selected_object(mode, {suppress_input = true})
+hotkeys.set_teleport_handler(function(mode, handler_opts)
+    handler_opts = handler_opts or {}
+    local suppress_input = handler_opts.suppress_input
+    if suppress_input == nil then
+        suppress_input = true
+    end
+    teleport_selected_object(mode, {suppress_input = suppress_input})
 end)
 
 debug_tools.register_command("teleport_selected", function(arg)
@@ -7162,6 +7226,8 @@ while true do
         if DW_QOL_STATE.teleport_input_neutralized_frame ~= frame_count then
             if emulator_compat.is_fceux and teleport_guard_active then
                 trace_teleport_loop("SKIP_NEUTRALIZE_FCEUX_GUARD_ACTIVE")
+            elseif emulator_compat.is_fceux then
+                trace_teleport_loop("SKIP_NEUTRALIZE_FCEUX_INPUT_SUPPRESS")
             else
                 trace_teleport_loop("PRE_NEUTRALIZE")
                 neutralize_teleport_input()
