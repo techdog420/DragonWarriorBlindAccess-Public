@@ -1692,8 +1692,16 @@ function M.on_map_change(map_id, opts)
         if previous_map_id == nil and current_map_id ~= map_id then
             previous_map_id = current_map_id
         end
-        local previous_signature = previous_map_id and accepted_npc_signature_by_map[previous_map_id]
-            or last_accepted_npc_signature
+        local previous_signature = nil
+        -- Only quarantine byte-identical NPC RAM from a different previous map.
+        -- Same-map terrain flips and script reloads can legitimately see the
+        -- already-known NPC signature and should settle after the normal
+        -- one-frame deferred refresh.
+        if previous_map_id ~= nil and previous_map_id ~= map_id then
+            previous_signature = accepted_npc_signature_by_map[previous_map_id]
+        elseif previous_map_id == nil and accepted_npc_signature_by_map[map_id] ~= current_signature then
+            previous_signature = last_accepted_npc_signature
+        end
         if previous_signature ~= nil and current_signature == previous_signature then
             stale_npc_signature = current_signature
             npc_refresh_checks = MAP_ENTRY_NPC_REFRESH_CHECKS

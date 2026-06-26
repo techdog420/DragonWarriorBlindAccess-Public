@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-25
+Updated: 2026-06-26
 
 ## Current State
 
@@ -110,6 +110,20 @@ Updated: 2026-06-25
   `(4,5)->RIGHT` moved on route retry, and the x=2 vertical moves plus row-7
   bypass should stay open. Reload `main.lua` before judging live planning
   without the runtime overlay.
+- Rain Shrine / Northern Cave map `0x0D` Staff of Rain return-route cleanup is
+  promoted in `map_reader.lua`: same-origin route/probe evidence closed
+  `(5,4)->UP` as `(5,3).south` and `(8,8)->DOWN` as `(8,9).north`. With those
+  runtime edges active, `auto_walk_blocker:4,9` reached the exit at `(4,9)` via
+  the row-8 bypass. The x=8 descent lane above row 9, the row-8 westbound lane,
+  and `(4,9).north` moved and should stay open. Reload `main.lua` before
+  judging live planning without the runtime overlay.
+- Rain Shrine old-man object population is patched in `objects.lua`: re-entering
+  from the world map, flipping from map-entry terrain into NPC terrain, or
+  reloading the script while already inside Rain Shrine no longer treats the
+  old man's already-known NPC signature as stale previous-map residue. He
+  should appear after the normal one-frame deferred NPC refresh instead of
+  waiting roughly 10-15 seconds. Reload `main.lua` before judging the live
+  object browser against this source fix.
 - Swamp Cave rescue branch is now live-confirmed through Gwaelin. Door cell
   `(5,20)` is open in slot `0`, Gwaelin is reached from `(5,19)` facing north
   toward `(5,18)`, the escort prompt was accepted, and final field state was

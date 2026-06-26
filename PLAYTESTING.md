@@ -1035,11 +1035,14 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(6,7).east/west`, `(7,4).west/east`, and `(7,7).west` moved seams stay
   open. Final noisy-cleanup verifiers promoted `(7,6).east`, `(5,3).east`,
   `(7,5).east`, `(7,9).north`, and `(6,9).north` after each confirmed blocked
-  5/5. `(5,3).south` was checked but mixed 3 moved / 2 blocked, so it stays
-  open. `(8,9).north` stays open because its raw verifier hit a map-change
-  case instead of a stable block. Follow-up live testing reported both routes
-  to and from the old man finishing smoothly. The return route still had one
-  recovered reroute, which is polish-level rather than a blocker. The chest is
+  5/5. Follow-up Staff of Rain return-route cleanup superseded the earlier
+  mixed raw verifier: from `(5,4)`, `(5,4)->UP` into `(5,3).south` blocked
+  under same-origin route/probe evidence, then the reroute confirmed
+  `(8,8)->DOWN` into `(8,9).north` the same way. With those runtime blockers,
+  `auto_walk_blocker:4,9` reached the exit at `(4,9)` via row 8 and
+  `(4,8)->DOWN`; the x=8 descent lane above row 9, row-8 westbound lane, and
+  `(4,9).north` moved and stay open. Follow-up live testing reported both
+  routes to and from the old man finishing smoothly. The chest is
   progression-gated until the old man receives what he is waiting for.
 
 - The reverse route from Kol back to Tantegel now has its own connected
@@ -2610,6 +2613,15 @@ Evidence:
   refresh. Under BizHawk scan throttling that delay could leave only "Exit to
   World Map" in Brecconary briefly. `objects.needs_refresh(map_id)` now lets
   map-entry and deferred NPC refreshes bypass the periodic 120-frame throttle.
+- Rain Shrine re-entry exposed the related stale-signature edge case on FCEUX:
+  after leaving to the world map and descending again, the map ID and terrain
+  can settle in separate frames; script reloads can also restart while already
+  inside Rain Shrine. In both paths, the old man's NPC RAM matched the already
+  accepted Rain Shrine signature, so the stale-previous-map guard waited out
+  the long retry budget before accepting him. `objects.lua` now quarantines
+  byte-identical NPC RAM only when it comes from a different known previous NPC
+  map. World-map re-entry, same-map terrain flips, and same-map script reloads
+  now let known same-map NPCs populate on the first deferred refresh.
 - Route-planning/object-refresh validation passed `luac -p pathfinder.lua
   objects.lua main.lua test_pathfinder.lua test_objects.lua`,
   `lua test_pathfinder.lua`, `lua test_objects.lua`, `lua test_route_manager.lua`,

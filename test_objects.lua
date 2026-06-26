@@ -698,6 +698,87 @@ function tests.map_entry_rejects_previous_map_npc_signature_until_ram_changes()
     env.restore()
 end
 
+function tests.reentering_known_npc_map_from_world_does_not_wait_out_stale_retry()
+    local env = make_env()
+
+    env.set_position(0x0D, 4, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x0D)
+    env.objects.set_filter(env.objects.FILTER_NPC)
+    assert_equal(env.objects.get_count(), 1, "initial Rain Shrine visit should accept the old man NPC RAM")
+
+    env.set_position(0x01, 81, 1)
+    env.set_terrain_offset(0x00)
+    env.objects.check_refresh(0x01)
+    assert_equal(env.objects.get_count(), 0, "world map should clear the prior shrine NPC list")
+
+    env.set_position(0x0D, 4, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.on_map_change(0x0D, {previous_map_id = 0x01})
+    assert_equal(env.objects.get_count(), 0, "transition frame should still defer NPC parsing")
+    assert_equal(env.objects.needs_refresh(0x0D), true, "deferred NPC rebuild should be visible to the main loop")
+
+    env.objects.check_refresh(0x0D)
+    assert_equal(env.objects.get_count(), 1, "known same-map NPC signature should populate on the first deferred refresh")
+    assert_equal(env.objects.needs_refresh(0x0D), false, "known same-map NPC signature should not trigger the long stale retry")
+
+    env.restore()
+end
+
+function tests.known_npc_map_terrain_flip_does_not_treat_same_map_signature_as_stale()
+    local env = make_env()
+
+    env.set_position(0x0D, 4, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x0D)
+    env.objects.set_filter(env.objects.FILTER_NPC)
+    assert_equal(env.objects.get_count(), 1, "initial Rain Shrine visit should accept the old man NPC RAM")
+
+    env.set_position(0x01, 81, 1)
+    env.set_terrain_offset(0x00)
+    env.objects.check_refresh(0x01)
+    assert_equal(env.objects.get_count(), 0, "world map should clear the prior shrine NPC list")
+
+    env.set_position(0x0D, 4, 9)
+    env.objects.check_refresh(0x0D)
+    assert_equal(env.objects.get_count(), 0, "map-id transition with non-NPC terrain should not parse NPCs")
+
+    env.set_terrain_offset(0x10)
+    env.objects.check_refresh(0x0D)
+    assert_equal(env.objects.get_count(), 0, "terrain transition frame should still defer NPC parsing")
+    assert_equal(env.objects.needs_refresh(0x0D), true, "terrain transition should request the deferred NPC rebuild")
+
+    env.objects.check_refresh(0x0D)
+    assert_equal(env.objects.get_count(), 1, "same-map known NPC signature should populate after the terrain flip")
+    assert_equal(env.objects.needs_refresh(0x0D), false, "same-map terrain flip should not enter the long stale retry")
+
+    env.restore()
+end
+
+function tests.reload_inside_known_npc_map_does_not_treat_same_map_signature_as_stale()
+    local env = make_env()
+
+    env.set_position(0x0D, 4, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x0D)
+    env.objects.set_filter(env.objects.FILTER_NPC)
+    assert_equal(env.objects.get_count(), 1, "initial Rain Shrine visit should accept the old man NPC RAM")
+
+    env.objects = env.reload_objects()
+    env.set_position(0x0D, 4, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.check_refresh(0x0D)
+    env.objects.set_filter(env.objects.FILTER_NPC)
+    assert_equal(env.objects.get_count(), 0, "reload startup frame should still defer NPC parsing")
+    assert_equal(env.objects.needs_refresh(0x0D), true, "reload startup should request the deferred NPC rebuild")
+
+    env.objects.check_refresh(0x0D)
+    assert_equal(env.objects.get_count(), 1, "reloaded same-map NPC signature should populate on the first deferred refresh")
+    assert_equal(env.objects.needs_refresh(0x0D), false, "reloaded same-map signature should not enter the long stale retry")
+
+    env.restore()
+end
+
 function tests.map_entry_npc_signature_survives_objects_module_reload()
     local env = make_env()
 

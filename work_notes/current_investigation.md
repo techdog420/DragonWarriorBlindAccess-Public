@@ -619,3 +619,18 @@ For the next live map task, start a new dated section here with:
   `(4,3).south`, `(5,3).south`, `(6,4).west`, and `(6,5).west`,
   `auto_walk_blocker:0,4` returned from the chest-side pocket to the stairs
   via `(5,5)->(5,7)->(1,7)->(1,4)->(0,4)`.
+
+## 2026-06-26 Rain Shrine Staff Return Route
+
+- CLEAN / PROMOTED CANDIDATES: starting from the Staff of Rain side on map
+  `0x0D`, route failure plus same-origin `probe_edge:up` from `(5,4)`
+  confirmed `(5,3).south`. After runtime patching that edge, the reroute found
+  `(8,8)->DOWN`; same-origin `probe_edge:down` confirmed `(8,9).north`. Both
+  blocked with raw-hold timeout, no NPC blocker, and no pre-existing runtime
+  blocker.
+- DO NOT PROMOTE: the route successfully walked down the x=8 lane through
+  `(8,5)..(8,8)`, then after the second patch walked west across row 8 through
+  `(7,8)`, `(6,8)`, `(5,8)`, `(4,8)` and down through `(4,9).north`. Keep
+  those seams open.
+- LIVE RESULT: with runtime blockers for `(5,3).south` and `(8,9).north`,
+  `auto_walk_blocker:4,9` reached the exit tile at `(4,9)`.

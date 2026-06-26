@@ -2328,9 +2328,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
     -- (5,5), (6,6), (7,5), and (7,6) from the listed approaches verified
     -- blocked 5/5. The final noisy-cleanup passes added (5,3).east,
     -- (7,6).east, (7,5).east, and the lower row north-approach blocks at
-    -- (6,9)/(7,9). A raw verifier left (5,3).south open because that edge was
-    -- mixed/passable; (8,9).north also stays open because the verifier hit a
-    -- map-change case instead of a stable block.
+    -- (6,9)/(7,9). The Staff of Rain return route later superseded the older
+    -- noisy verifier results with same-origin route/probe evidence for
+    -- (5,3).south and (8,9).north while preserving the x=8 descent lane above
+    -- row 9 and the row-8 westbound bypass.
     [0x0D] = {
         ["3,2"] = {north = true},
         ["4,2"] = {north = true},
@@ -2340,7 +2341,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["2,4"] = {west = true},
         ["2,5"] = {west = true},
         ["2,6"] = {south = true, west = true},
-        ["5,3"] = {east = true},
+        ["5,3"] = {east = true, south = true},
         ["3,6"] = {south = true},
         ["4,6"] = {south = true},
         ["5,5"] = {north = true, east = true},
@@ -2350,6 +2351,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,5"] = {east = true, north = true, west = true},
         ["7,6"] = {east = true, south = true},
         ["7,9"] = {north = true},
+        ["8,9"] = {north = true},
     },
 
     -- Map 0x08: Brecconary (30x30 town)
