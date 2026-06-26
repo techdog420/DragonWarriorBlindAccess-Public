@@ -2061,21 +2061,97 @@ function tests.kol_entry_exit_tiles_are_passthrough_false_walls()
         },
     })
 
+    assert_equal(env.map_reader.is_walkable(0x07, 1, 17), true, "(1,17) should be walkable after live west-side throat proof")
+    assert_equal(env.map_reader.is_walkable(0x07, 5, 14), true, "(5,14) should be walkable after live public-route hidden-throat proof")
+    assert_equal(env.map_reader.is_walkable(0x07, 3, 17), true, "(3,17) should be walkable after live Tool Merchant hidden-bridge proof")
     assert_equal(env.map_reader.is_walkable(0x07, 18, 23), true, "(18,23) should be walkable after live Kol pathability proof")
     assert_equal(env.map_reader.is_walkable(0x07, 19, 23), true, "(19,23) should be walkable after live Kol entry/exit proof")
     assert_equal(env.map_reader.is_walkable(0x07, 20, 23), true, "(20,23) should be walkable after live west-approach proof")
+    assert_equal(env.map_reader.is_walkable(0x07, 0, 17), false, "nearby unconfirmed west-edge cells should stay non-walkable")
+    assert_equal(env.map_reader.is_walkable(0x07, 2, 17), false, "unproven Tool Merchant hidden-bridge sibling (2,17) should stay non-walkable")
+    assert_equal(env.map_reader.is_walkable(0x07, 4, 17), false, "unproven Tool Merchant hidden-bridge sibling (4,17) should stay non-walkable")
+    assert_equal(env.map_reader.is_walkable(0x07, 6, 14), false, "unproven Kol hidden-throat sibling (6,14) should stay non-walkable")
+    assert_equal(env.map_reader.is_walkable(0x07, 7, 14), false, "unproven Kol hidden-throat sibling (7,14) should stay non-walkable")
     assert_equal(env.map_reader.is_walkable(0x07, 17, 23), false, "nearby unconfirmed type-0 cells should stay non-walkable")
 
-    local details = env.map_reader.get_walkability_details(0x07, 18, 23)
+    local details = env.map_reader.get_walkability_details(0x07, 1, 17)
+    assert_equal(details.reason, "passthrough", "(1,17) should report the passthrough override")
+    details = env.map_reader.get_walkability_details(0x07, 5, 14)
+    assert_equal(details.reason, "passthrough", "(5,14) should report the passthrough override")
+    details = env.map_reader.get_walkability_details(0x07, 3, 17)
+    assert_equal(details.reason, "passthrough", "(3,17) should report the passthrough override")
+    details = env.map_reader.get_walkability_details(0x07, 18, 23)
     assert_equal(details.reason, "passthrough", "(18,23) should report the passthrough override")
     details = env.map_reader.get_walkability_details(0x07, 19, 23)
     assert_equal(details.reason, "passthrough", "(19,23) should report the passthrough override")
 
     local snapshot = env.map_reader.get_walkability_snapshot(0x07)
+    assert_equal(snapshot[17][1], true, "walkability snapshot should include the Kol west-side throat")
+    assert_equal(snapshot[14][5], true, "walkability snapshot should include the Kol public-route hidden throat")
+    assert_equal(snapshot[17][3], true, "walkability snapshot should include the Tool Merchant hidden bridge")
+    assert_equal(snapshot[17][2], false, "walkability snapshot should keep unproven Tool Merchant bridge siblings closed")
+    assert_equal(snapshot[17][4], false, "walkability snapshot should keep unproven Tool Merchant bridge siblings closed")
+    assert_equal(snapshot[14][6], false, "walkability snapshot should keep unproven Kol hidden-throat siblings closed")
+    assert_equal(snapshot[14][7], false, "walkability snapshot should keep unproven Kol hidden-throat siblings closed")
+    assert_equal(snapshot[17][0], false, "walkability snapshot should keep unconfirmed west-edge cells closed")
     assert_equal(snapshot[23][18], true, "walkability snapshot should include the west Kol entry strip")
     assert_equal(snapshot[23][19], true, "walkability snapshot should include the Kol exit tile")
     assert_equal(snapshot[23][20], true, "walkability snapshot should include the adjacent Kol entry strip")
     assert_equal(snapshot[23][17], false, "walkability snapshot should keep unconfirmed bottom-edge cells closed")
+
+    env.restore()
+end
+
+function tests.kol_locked_doors_open_from_door_ram_array()
+    local base = 7 * 5
+    local memory_bytes = {}
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,
+            [base + 1] = 0x80,
+            [base + 2] = 23,
+            [base + 3] = 23,
+            [base + 4] = 0,
+        },
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local context = env.map_reader.get_door_cell_context(0x07, 7, 12)
+    assert_equal(context ~= nil, true, "Kol western-building locked door should be modeled")
+    assert_equal(context.open, false, "Kol western-building door should start closed without door RAM")
+    local west_side_context = env.map_reader.get_door_cell_context(0x07, 1, 14)
+    assert_equal(west_side_context ~= nil, true, "Kol west-side locked door should be modeled")
+    assert_equal(west_side_context.open, false, "Kol west-side door should start closed without door RAM")
+
+    local closed = env.map_reader.get_walkability_details(0x07, 7, 12)
+    assert_equal(closed.effective_walkable, false, "closed Kol western-building door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Kol western-building door should report door_closed")
+    local west_side_closed = env.map_reader.get_walkability_details(0x07, 1, 14)
+    assert_equal(west_side_closed.effective_walkable, false, "closed Kol west-side door should block movement")
+    assert_equal(west_side_closed.reason, "door_closed", "closed Kol west-side door should report door_closed")
+
+    local dirs = env.map_reader.get_directional_blocks(0x07)
+    assert_equal(dirs["7,12"] and dirs["7,12"].east or nil, nil, "(7,12).east is the confirmed Kol door approach, not a permanent wall")
+
+    memory_bytes[0x600C] = 7
+    memory_bytes[0x600D] = 12
+    context = env.map_reader.get_door_cell_context(0x07, 7, 12)
+    assert_equal(context.open, true, "Kol western-building door should open from door RAM at (7,12)")
+    local open = env.map_reader.get_walkability_details(0x07, 7, 12)
+    assert_equal(open.effective_walkable, true, "opened Kol western-building door should become walkable")
+    assert_equal(open.reason, "door_open", "opened Kol western-building door should report door_open")
+
+    memory_bytes[0x600E] = 1
+    memory_bytes[0x600F] = 14
+    west_side_context = env.map_reader.get_door_cell_context(0x07, 1, 14)
+    assert_equal(west_side_context.open, true, "Kol west-side door should open from door RAM at (1,14)")
+    local west_side_open = env.map_reader.get_walkability_details(0x07, 1, 14)
+    assert_equal(west_side_open.effective_walkable, true, "opened Kol west-side door should become walkable")
+    assert_equal(west_side_open.reason, "door_open", "opened Kol west-side door should report door_open")
 
     env.restore()
 end
@@ -2086,16 +2162,21 @@ function tests.kol_first_survey_loop_blocks_are_directional_only()
 
     assert_equal(dirs["10,18"].east, true, "(10,18) should block entry from the east after the Merchant 1 autowalk bounce")
     assert_equal(dirs["10,19"].east, true, "(10,19) should block entry from the east after the Merchant 1 autowalk bounce")
-    assert_equal(dirs["10,18"].west, nil, "(10,18) should remain open from unproven approaches")
-    assert_equal(dirs["10,19"].west, nil, "(10,19) should remain open from unproven approaches")
+    assert_equal(dirs["10,18"].west, true, "(10,18) should block entry from the west after the Tool Merchant return-route probe")
+    assert_equal(dirs["10,19"].west, true, "(10,19) should block entry from the west after the Tool Merchant final-segment probe")
     assert_equal(dirs["7,15"].east, true, "(7,15) should block entry from the east after the inner Merchant 1 loop")
     assert_equal(dirs["7,11"].east, true, "(7,11) should block entry from the east after the west NPC route loop")
-    assert_equal(dirs["7,12"].east, true, "(7,12) should block entry from the east after the west NPC route loop")
+    assert_equal(dirs["7,12"] and dirs["7,12"].east or nil, nil, "(7,12).east is the confirmed Kol door approach, not a permanent wall")
     assert_equal(dirs["8,16"].north, true, "(8,16) should block entry from the north after the inner Merchant 1 loop")
     assert_equal(dirs["9,16"].north, true, "(9,16) should block entry from the north after the Merchant 1 route retry")
     assert_equal(dirs["10,16"].east, true, "(10,16) should block entry from the east after the Merchant 1 route retry")
     assert_equal(dirs["10,16"].north, true, "(10,16) should block entry from the north after the Merchant 1 route retry")
+    assert_equal(dirs["5,16"].north, true, "(5,16) should block entry from the north after the Tool Merchant route probe from (5,15)")
+    assert_equal(dirs["2,15"].east, true, "(2,15) should block entry from the east after the Tool Merchant route probe from (3,15)")
+    assert_equal(dirs["2,16"].east, true, "(2,16) should block entry from the east after the Tool Merchant route probe from (3,16)")
+    assert_equal(dirs["3,14"].south, true, "(3,14) should block entry from the south after the Tool Merchant route probe from (3,15)")
     assert_equal(dirs["11,20"].north, true, "(11,20) should block entry from the north after the Merchant 1 route retry")
+    assert_equal(dirs["11,20"].south, true, "(11,20) should block entry from the south after the Tool Merchant return-route probe")
     assert_equal(dirs["12,19"].west, true, "(12,19) should block entry from the west after queued-route proof")
     assert_equal(dirs["12,19"].north, true, "(12,19) should block entry from the north after the later Merchant 1 loop")
     assert_equal(dirs["13,19"].north, true, "(13,19) should block entry from the north after the later Merchant 1 loop")
@@ -2105,8 +2186,49 @@ function tests.kol_first_survey_loop_blocks_are_directional_only()
     assert_equal(dirs["16,19"].north, true, "(16,19) should block entry from the north after the later Merchant 1 route retry")
     assert_equal(dirs["16,20"].east, true, "(16,20) should block entry from the east after the Merchant 1 route retry")
     assert_equal(dirs["16,21"].east, true, "(16,21) should block entry from the east after the Merchant 1 route retry")
-    assert_equal(dirs["16,22"] and dirs["16,22"].east, nil, "(16,22).east was disproved during Merchant 4 path testing")
-    assert_equal(dirs["17,22"] and dirs["17,22"].west, nil, "(17,22).west should stay open after Merchant 4 path testing")
+    assert_equal(dirs["16,22"].east, true, "(16,22).east should block after 2026-06-26 Tool Merchant route probe from (17,22)->LEFT")
+    assert_equal(dirs["17,22"] and dirs["17,22"].west, nil, "(17,22).west should stay open; the blocked approach is modeled on destination (16,22).east")
+    for x = 1, 4 do
+        assert_equal(dirs[x .. ",10"].north, true, string.format("(%d,10).north should block after Tool Merchant route probe from (%d,9)->DOWN", x, x))
+    end
+    for y = 10, 13 do
+        assert_equal(dirs["4," .. y].east, true, string.format("(4,%d).east should block after Tool Merchant route probe from (5,%d)->LEFT", y, y))
+    end
+    assert_equal(dirs["7,9"].west, true, "(7,9).west should block after Tool Merchant route probe from (6,9)->RIGHT")
+    assert_equal(dirs["7,13"].west, true, "(7,13).west should block after Tool Merchant route probe from (6,13)->RIGHT")
+    assert_equal(dirs["7,13"].east, true, "(7,13).east should block after Tool Merchant route probe from (8,13)->LEFT")
+    assert_equal(dirs["2,19"].west, true, "(2,19).west should block after Tool Merchant route probe from the (1,19) pocket")
+    assert_equal(dirs["2,19"].south, true, "(2,19).south should block after Tool Merchant return-route probe from (2,20)->UP")
+    assert_equal(dirs["2,19"].east, true, "(2,19).east should block after Tool Merchant return-route probe from (3,19)->LEFT")
+    assert_equal(dirs["1,20"].north, true, "(1,20).north should block after Tool Merchant route probe from the (1,19) pocket")
+    assert_equal(dirs["1,18"].south, true, "(1,18).south should block after Tool Merchant route probe from the (1,19) pocket")
+    assert_equal(dirs["1,20"].south, nil, "(1,20) should stay open from unproven approaches")
+    assert_equal(dirs["1,18"].north, nil, "(1,18) should stay open from unproven approaches")
+    assert_equal(dirs["4,16"].west, true, "(4,16).west should block after Tool Merchant return-route probe from (3,16)->RIGHT")
+    assert_equal(dirs["4,16"].north, true, "(4,16).north should block after Tool Merchant return-route probe from (4,15)->DOWN")
+    assert_equal(dirs["4,18"].east, true, "(4,18).east should block after Tool Merchant return-route probe from (5,18)->LEFT")
+    assert_equal(dirs["6,16"].north, true, "(6,16).north should block after Tool Merchant return-route probe from (6,15)->DOWN")
+    assert_equal(dirs["12,20"].south, true, "(12,20).south should block after Tool Merchant return-route probe from (12,21)->UP")
+    assert_equal(dirs["10,20"].west, true, "(10,20).west should block after Tool Merchant return-route probe from (9,20)->RIGHT")
+    assert_equal(dirs["10,20"].south, true, "(10,20).south should block after Tool Merchant return-route probe from (10,21)->UP")
+    assert_equal(dirs["3,21"].north, true, "(3,21).north should block after Tool Merchant return-route probe from (3,20)->DOWN")
+    assert_equal(dirs["3,21"].south, true, "(3,21).south should block after Tool Merchant return-route probe from (3,22)->UP")
+    assert_equal(dirs["3,21"].west, true, "(3,21).west should block after Tool Merchant return-route probe from (2,21)->RIGHT")
+    assert_equal(dirs["4,20"].east, true, "(4,20).east should block after Tool Merchant return-route probe from (5,20)->LEFT")
+    assert_equal(dirs["4,20"].north, true, "(4,20).north should block after Tool Merchant return-route probe from (4,19)->DOWN")
+    assert_equal(dirs["4,20"].west, true, "(4,20).west should block after Tool Merchant return-route probe from (3,20)->RIGHT")
+    assert_equal(dirs["4,21"].east, true, "(4,21).east should block after Tool Merchant return-route probe from (5,21)->LEFT")
+    assert_equal(dirs["13,21"].west, true, "(13,21).west should block after Tool Merchant return-route probe from (12,21)->RIGHT")
+    assert_equal(dirs["4,22"].east, true, "(4,22).east should block after Tool Merchant return-route probe from (5,22)->LEFT")
+    assert_equal(dirs["4,22"].west, true, "(4,22).west should block after Tool Merchant return-route probe from (3,22)->RIGHT")
+    assert_equal(dirs["10,22"].north, true, "(10,22).north should block after Tool Merchant return-route probe from (10,21)->DOWN")
+    assert_equal(dirs["10,22"].west, true, "(10,22).west should block after Tool Merchant return-route probe from (9,22)->RIGHT")
+    assert_equal(dirs["11,22"].north, true, "(11,22).north should block after Tool Merchant return-route probe from (11,21)->DOWN")
+    assert_equal(dirs["12,22"].north, true, "(12,22).north should block after Tool Merchant return-route probe from (12,21)->DOWN")
+    assert_equal(dirs["4,23"].west, true, "(4,23).west should block after Tool Merchant return-route probe from (3,23)->RIGHT")
+    for x = 5, 9 do
+        assert_equal(dirs[x .. ",23"].north, true, string.format("(%d,23).north should block after Tool Merchant return-route probe from (%d,22)->DOWN", x, x))
+    end
     assert_equal(dirs["21,3"].north, true, "(21,3) should block entry from the north after the Inn-to-exit loop")
     assert_equal(dirs["22,3"].north, true, "(22,3) should block entry from the north after the Inn-to-exit loop")
     assert_equal(dirs["21,3"].south, true, "(21,3) should block entry from the south after the return-to-Inn loop")
@@ -2118,6 +2240,7 @@ function tests.kol_first_survey_loop_blocks_are_directional_only()
     assert_equal(dirs["10,4"].north, true, "(10,4) should block entry from the north after the third Inn-to-exit loop")
     assert_equal(dirs["11,3"].west, true, "(11,3) should block entry from the west after the third Inn-to-exit loop")
     assert_equal(dirs["10,4"].south, true, "(10,4) should block entry from the south after noisy Inn round-trip cleanup")
+    assert_equal(dirs["10,4"].west, true, "(10,4) should block entry from the west after the 2026-06-26 route/probe check from (9,4)->RIGHT")
     assert_equal(dirs["11,3"].north, true, "(11,3) should block entry from the north after repeated Inn route reroutes")
     assert_equal(dirs["9,2"].south, true, "(9,2) should block entry from the south after noisy Inn round-trip cleanup")
     assert_equal(dirs["9,2"].east, true, "(9,2) should block entry from the east after the Old Man 4 bath-route loop")
@@ -2180,9 +2303,9 @@ function tests.kol_first_survey_loop_blocks_are_directional_only()
     assert_equal(dirs["23,14"].north, nil, "(23,14) should remain open from unproven approaches")
     assert_equal(dirs["22,15"] and dirs["22,15"].east, nil, "(22,15).east moved repeatedly during the fourth entrance-to-Weapons-Merchant loop and should stay open")
     assert_equal(dirs["23,15"] and dirs["23,15"].west, nil, "(23,15).west moved repeatedly during the fourth entrance-to-Weapons-Merchant loop and should stay open")
-    assert_equal(dirs["7,15"].west, nil, "(7,15) should remain open from unproven approaches")
+    assert_equal(dirs["7,15"].west, true, "(7,15).west should block after Tool Merchant return-route probe from (6,15)->RIGHT")
     assert_equal(dirs["7,11"].west, nil, "(7,11) should remain open from unproven approaches")
-    assert_equal(dirs["7,12"].west, nil, "(7,12) should remain open from unproven approaches")
+    assert_equal(dirs["7,12"] and dirs["7,12"].west or nil, nil, "(7,12) should remain open from unproven approaches")
     assert_equal(dirs["8,11"] and dirs["8,11"].south, nil, "(8,11).south moved during the west NPC route loop and should stay open")
     assert_equal(dirs["8,12"] and dirs["8,12"].north, nil, "(8,12).north moved during the west NPC route loop and should stay open")
     assert_equal(dirs["8,16"].south, nil, "(8,16) should remain open from unproven approaches")

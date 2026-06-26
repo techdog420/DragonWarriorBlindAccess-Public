@@ -268,8 +268,38 @@ Follow-up Merchant 1 autowalk evidence:
 - The user live-confirmed `npc_15` / Merchant 4 as the item/tool shop. The
   selected teleport proof targeted `(14,21)`, landed at `(12,21)`, and faced
   east. TALK opened the buy list, and the reader spoke: Herb 24 G, Torch 8 G,
-  Dragon's Scale 20 G, and Wings 70 G. `objects.lua` now labels this service
-  as `Tool Merchant` and pins the public stand/facing.
+  Dragon's Scale 20 G, and Wings 70 G. `objects.lua` currently labels this
+  service as `Tool Merchant` through `(12,21)` facing east. Public-route
+  cleanup first ruled out the east-side lane: route checks could not reach
+  `(12,21)`, `(15,21)`, `(14,22)`, or `(16,21)`, TALK from `(17,22)` /
+  `(17,21)` facing west returned "There is no one there," and door checks from
+  `(17,21)` / `(17,22)` facing west produced no-door/no-key-delta results.
+  The missing public throat was then found west of the shop route: manual
+  movement from `(1,16)->DOWN` reaches `(1,17)` even though `(1,17)` decodes
+  as tile-0/non-walkable. Once standing on `(1,17)`, the route to `(12,21)`
+  returns. A later clean-restore frontier check from the town entrance found
+  the entrance-side connector to that throat: `(5,14)` decodes as tile-0, but
+  normal walking to `(5,13)` and same-origin `probe_edge:DOWN` moved through
+  `(5,14)` and settled at `(5,15)`. `map_reader.lua` now exposes only
+  `(1,17)` and `(5,14)` as Kol passthroughs; sibling candidates `(6,14)` and
+  `(7,14)` stay unmodeled until live proof. The follow-up reload proved
+  `(1,19)` is a standable dead pocket rather than a route segment:
+  `(1,19)->RIGHT`, `(1,19)->DOWN`, and `(1,19)->UP` all blocked from
+  same-origin probes, while west is the map boundary. Final entrance-to-stand
+  cleanup found the real lower bridge: from a normally walked `(3,15)`,
+  `probe_edge:DOWN` carried through `(3,16)` onto tile-0 `(3,17)`, and
+  `(3,17)->DOWN` exited to the target-side lane. The false pocket exits
+  `(5,15)->DOWN`, `(3,15)->LEFT`, `(3,16)->LEFT`, `(3,15)->UP`, and the final
+  `(9,19)->RIGHT` shortcut into `(10,19)` are now directional blockers. With
+  those runtime blockers active, live `auto_walk_blocker:12,21` reached the
+  stand. A follow-up return-route cleanup from stand `(12,21)` to the town
+  exit `(19,23)` promoted the remaining public-route false edges around
+  `(4,16)/(4,18)`, `(4,20)..(4,23)`, `(10,18)`, `(10,20)..(10,22)`,
+  `(11,20)/(11,22)`, `(12,20)/(12,22)`, `(13,21)`, `(7,15)`, `(2,19)`,
+  and the north wall of row 23 at x `5..9`. With that runtime overlay active,
+  `auto_walk_blocker:19,23` reached the exit and the reverse
+  `auto_walk_blocker:12,21` reached the stand. Reload `main.lua` in FCEUX
+  before validating the live planner against these fixes.
 
 NPC/service slot snapshot after the stopped survey:
 
@@ -281,8 +311,9 @@ NPC/service slot snapshot after the stopped survey:
   facing south.
 - `npc_13` / Merchant 3: `(22,12)`, confirmed `Weapons Merchant`; public stand
   `(20,12)` facing east.
-- `npc_15` / Merchant 4: `(14,21)`, confirmed `Tool Merchant`; public stand
-  `(12,21)` facing east.
+- `npc_15` / Merchant 4: `(14,21)`, confirmed `Tool Merchant`;
+  interaction stand `(12,21)` facing east, reached through the `(5,14)` and
+  `(3,17)` public-route passthroughs after reload.
 
 ## Overworld Route Orientation
 

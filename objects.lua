@@ -1071,6 +1071,30 @@ local EXTRA_DOORS = {
     -- The ROM tile is type-15; is_walkable() in map_reader.lua checks the
     -- opened-door RAM directly for this cell.
     [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
+    -- Map 0x07: Kol locked doors. Live verifier proof opened them from the
+    -- public east stands and recorded their opened-door RAM slots.
+    [0x07] = {
+        {
+            x=7,
+            y=12,
+            name="Western Building Door",
+            type=M.TYPE_DOOR,
+            id="door_7_12",
+            interaction_x=8,
+            interaction_y=12,
+            interaction_face_dir="west",
+        },
+        {
+            x=1,
+            y=14,
+            name="West Side Door",
+            type=M.TYPE_DOOR,
+            id="door_1_14",
+            interaction_x=2,
+            interaction_y=14,
+            interaction_face_dir="west",
+        },
+    },
     -- Map 0x08: Brecconary has two locked doors that are not encoded as a
     -- distinct town door tile: the northeast building and the west room in the
     -- inn. External guide/map labels disagree on nearby service names, so keep

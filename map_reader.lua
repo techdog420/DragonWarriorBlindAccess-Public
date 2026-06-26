@@ -880,6 +880,22 @@ local MAP_PASSTHROUGH_CELLS = {
     -- ROM-decode as type-0 walls, so expose only the confirmed strip cells as
     -- passthroughs.
     [0x07] = {
+        -- West-side door lower throat. Live manual movement repeatedly crossed
+        -- (1,16)<->(1,17), and standing at (1,17) restored the public route to
+        -- Kol's Tool Merchant. The ROM decodes (1,17) as type-0, so expose
+        -- only this proven bridge cell; (1,16) and (1,18) are ordinary floor.
+        ["1,17"] = true,
+        -- Public route to the west-side throat. Frontier analysis flagged
+        -- (5,14), (6,14), and (7,14) as possible one-cell false walls; live
+        -- same-origin probe from (5,13)->DOWN moved through tile-0 (5,14) and
+        -- settled at (5,15). Keep the sibling candidates unmodeled until they
+        -- get their own movement proof.
+        ["5,14"] = true,
+        -- Follow-up Tool Merchant route cleanup proved the next hidden bridge:
+        -- from a normally-walked (3,15), probe_edge:DOWN carried through
+        -- (3,16) and settled on tile-0 (3,17), then (3,17)->DOWN exited to the
+        -- target-side lane. Keep this as the narrow confirmed bridge cell.
+        ["3,17"] = true,
         ["18,23"] = true,
         ["19,23"] = true,
         ["20,23"] = true,
@@ -1085,6 +1101,14 @@ local MAP_DOOR_CELLS = {
     -- the cell becomes passable (leading to the corridor and stairs at (8,8)).
     [0x05] = {
         ["4,7"] = {x=4, y=7},
+    },
+    -- Map 0x07: Kol locked doors. Live FCEUX verifier proof from stand
+    -- `(8,12)` facing west consumed one key and wrote opened-door RAM slot
+    -- `(7,12)`. The second guide-listed door was confirmed from stand
+    -- `(2,14)` facing west, writing opened-door RAM slot `(1,14)`.
+    [0x07] = {
+        ["7,12"] = {x=7, y=12},
+        ["1,14"] = {x=1, y=14},
     },
     -- Map 0x08: Brecconary
     -- External guide/map comparison plus live door-RAM verification found two
@@ -2157,8 +2181,8 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- and (10,19) from the east blocked 35+ times each with no moved
         -- observations, while nearby seams such as (11,18) from the south and
         -- (11,19) from the north remained passable/noisy.
-        ["10,18"] = {east = true},
-        ["10,19"] = {east = true},
+        ["10,18"] = {east = true, west = true},
+        ["10,19"] = {east = true, west = true},
         -- Follow-up Merchant 1 attempts after a clean reload advanced into
         -- Kol's inner west approach. The route repeatedly rediscovered these
         -- counter/building seams while trying to reach the target near
@@ -2166,26 +2190,29 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- east and (8,16) from the north both reached 45+ blocked observations
         -- with no moves before the route was manually broken by moving right
         -- to (9,15).
-        ["7,15"] = {east = true},
+        ["7,15"] = {east = true, west = true},
         -- After the service routes opened up more Kol NPC browsing, the route
         -- toward the west-side Old Man 1 looped between (8,11) and (8,12).
-        -- Entering (7,11)/(7,12) from the east repeatedly blocked with no
-        -- moves, while the vertical connector between (8,11) and (8,12)
-        -- remained passable.
+        -- Entering (7,11) from the east repeatedly blocked with no moves,
+        -- while the vertical connector between (8,11) and (8,12) remained
+        -- passable. The matching `(7,12).east` observation was later explained
+        -- by the live-confirmed Kol western-building Magic Key door at (7,12),
+        -- so it is modeled in MAP_DOOR_CELLS instead of as a permanent wall.
         ["7,11"] = {east = true},
-        ["7,12"] = {east = true},
         ["8,16"] = {north = true},
         ["9,16"] = {north = true},
         ["10,16"] = {east = true, north = true},
-        ["11,20"] = {north = true},
+        ["11,20"] = {north = true, south = true},
         -- The next clean run routed from (9,15) toward Merchant 1's stand at
         -- (11,21). It looped between (12,18) and (13,18), repeatedly trying
         -- to enter (12,19) and (13,19) from the north. Earlier in the same
         -- route, one queued step plus its seam retry also proved the adjacent
         -- north/east seams below. Noisy seams such as (15,16).west and
         -- (17,21).east had moved evidence and are intentionally left open.
-        -- Later Merchant 4 path testing disproved the old (16,22).east
-        -- candidate; the (16,22)<->(17,22) seam is passable both ways.
+        -- Fresh 2026-06-26 Tool Merchant route cleanup retested the old
+        -- (16,22).east candidate from live (17,22); the same-origin raw probe
+        -- blocked, matching the user's earlier failed probe, so only this
+        -- east approach is closed.
         ["12,19"] = {west = true, north = true},
         ["13,19"] = {north = true},
         ["14,19"] = {north = true},
@@ -2193,6 +2220,63 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["16,19"] = {east = true, north = true},
         ["16,20"] = {east = true},
         ["16,21"] = {east = true},
+        ["16,22"] = {east = true},
+        -- The same Tool Merchant pass cleaned the west route lip. Each edge
+        -- below was rechecked from the live origin with probe_edge after the
+        -- route hit it, and each raw hold timed out without NPC involvement.
+        -- The follow-up push toward the row-17 bridge candidate proved the
+        -- x=4 east lip too: (5,10..13)->LEFT and (8,13)->LEFT all blocked
+        -- from the live origin after the route hit them.
+        ["1,10"] = {north = true},
+        ["2,10"] = {north = true},
+        ["3,10"] = {north = true},
+        ["4,10"] = {east = true, north = true},
+        ["4,11"] = {east = true},
+        ["4,12"] = {east = true},
+        ["4,13"] = {east = true},
+        ["7,9"] = {west = true},
+        ["7,13"] = {east = true, west = true},
+        -- After the (1,17) passthrough was loaded, the Tool Merchant route
+        -- briefly found a standable pocket at (1,19). Same-origin probes from
+        -- (1,19) confirmed east/south/north all raw-hold-timeout blocked with
+        -- no NPC involvement; west is already the engine boundary. Keep the
+        -- destination cells open from other approaches, but prevent routes from
+        -- entering this dead pocket's false exits.
+        ["2,19"] = {east = true, west = true, south = true},
+        ["1,20"] = {north = true},
+        ["1,18"] = {south = true},
+        -- Final entrance-to-Tool-Merchant cleanup after the (5,14) bridge was
+        -- live. Same-origin probes from normal autowalk stops closed the false
+        -- west-side pocket exits, while the real hidden bridge moved through
+        -- (3,17) and the final route reached the stand at (12,21).
+        ["5,16"] = {north = true},
+        ["2,15"] = {east = true},
+        ["2,16"] = {east = true},
+        ["3,14"] = {south = true},
+        -- Return route from the Tool Merchant stand back to the town exit.
+        -- These edges were discovered by auto_walk_blocker from (12,21) to
+        -- (19,23), then verified from the live origin with probe_edge before
+        -- being injected. The reverse route from (19,23) back to (12,21)
+        -- completed with the same runtime overlay.
+        ["4,16"] = {north = true, west = true},
+        ["4,18"] = {east = true},
+        ["6,16"] = {north = true},
+        ["12,20"] = {south = true},
+        ["10,20"] = {south = true, west = true},
+        ["3,21"] = {north = true, south = true, west = true},
+        ["4,20"] = {east = true, north = true, west = true},
+        ["4,21"] = {east = true},
+        ["13,21"] = {west = true},
+        ["4,22"] = {east = true, west = true},
+        ["10,22"] = {north = true, west = true},
+        ["11,22"] = {north = true},
+        ["12,22"] = {north = true},
+        ["4,23"] = {west = true},
+        ["5,23"] = {north = true},
+        ["6,23"] = {north = true},
+        ["7,23"] = {north = true},
+        ["8,23"] = {north = true},
+        ["9,23"] = {north = true},
         -- Inn-to-exit autowalk from the confirmed Inn stand at (19,2)
         -- repeatedly bounced along row 2, trying to enter (21,3) and (22,3)
         -- from the north. The later return-to-Inn route reached the same cells
@@ -2215,7 +2299,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (11,3), both blocked-only with repeated seam retries. Later noisy
         -- but successful round-trip evidence also showed (10,4) blocking from
         -- the south, and (11,3) from the north.
-        ["10,4"] = {north = true, south = true},
+        ["10,4"] = {north = true, south = true, west = true},
         ["11,3"] = {west = true, north = true},
         -- Entrance-to-Inn retest after the row-3 south blocks routed around the
         -- northeast wall and looped across row 4. The repeated blockers were

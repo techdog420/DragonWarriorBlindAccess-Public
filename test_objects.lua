@@ -1944,6 +1944,43 @@ function tests.kol_hidden_fairy_flute_search_tile_is_treasure()
     env.restore()
 end
 
+function tests.kol_exposes_confirmed_locked_doors()
+    local env = make_env({npc_count = 0})
+
+    env.set_position(0x07, 8, 12)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x07)
+
+    env.objects.set_filter(env.objects.FILTER_DOOR)
+
+    local doors = env.objects.get_objects({filtered = true})
+    assert_equal(#doors, 2, "Kol should expose both live-confirmed locked doors")
+    local by_id = {}
+    for _, door in ipairs(doors) do
+        by_id[door.id] = door
+    end
+
+    local western = by_id.door_7_12
+    assert_equal(western ~= nil, true, "Kol should expose the western-building door")
+    assert_equal(western.name, "Western Building Door", "Kol western-building door should have a useful navigation label")
+    assert_equal(western.x, 7, "Kol western-building door x should match opened-door RAM")
+    assert_equal(western.y, 12, "Kol western-building door y should match opened-door RAM")
+    assert_equal(western.interaction_x, 8, "Kol western-building door should route to the public east stand")
+    assert_equal(western.interaction_y, 12, "Kol western-building door stand should match live verifier proof")
+    assert_equal(western.interaction_face_dir, "west", "Kol western-building door should open from the east stand facing west")
+
+    local west_side = by_id.door_1_14
+    assert_equal(west_side ~= nil, true, "Kol should expose the west-side locked door")
+    assert_equal(west_side.name, "West Side Door", "Kol west-side door should have a distinct navigation label")
+    assert_equal(west_side.x, 1, "Kol west-side door x should match opened-door RAM")
+    assert_equal(west_side.y, 14, "Kol west-side door y should match opened-door RAM")
+    assert_equal(west_side.interaction_x, 2, "Kol west-side door should route to the public east stand")
+    assert_equal(west_side.interaction_y, 14, "Kol west-side door stand should match live verifier proof")
+    assert_equal(west_side.interaction_face_dir, "west", "Kol west-side door should open from the east stand facing west")
+
+    env.restore()
+end
+
 function tests.brecconary_confirmed_named_services_are_labeled()
     local env = make_env({npc_count = 4})
 
