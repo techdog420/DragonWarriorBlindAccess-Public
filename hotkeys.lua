@@ -54,6 +54,7 @@ local DIALOGUE_BLOCK_REASONS = {
     ["Wait for dialogue to finish"] = true,
     ["Wait for the upper window to clear"] = true,
 }
+local blocked_object_hotkey_message
 
 -- is_key_pressed(keys, key_name): Check if a key was just pressed
 -- this frame (wasn't pressed last frame). This prevents the action
@@ -258,6 +259,7 @@ local function start_deferred_auto_walk_if_released(keys, object_hotkeys_allowed
         if debug_tools.debug then
             debug_tools.debug("AUTO_WALK_HOTKEY_CANCELLED reason=" .. tostring(object_hotkey_block_reason or "blocked"))
         end
+        speak_info(blocked_object_hotkey_message(object_hotkey_block_reason))
         return false
     end
 
@@ -348,7 +350,7 @@ local function speak_active_route_status()
     speak_info(info.message)
 end
 
-local function blocked_object_hotkey_message(reason)
+blocked_object_hotkey_message = function(reason)
     reason = tostring(reason or "")
     if reason ~= "" then
         return reason

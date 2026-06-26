@@ -20,6 +20,14 @@ local function assert_not_contains(haystack, needle, message)
     end
 end
 
+local function assert_order(haystack, first, second, message)
+    local first_pos = string.find(haystack, first, 1, true)
+    local second_pos = string.find(haystack, second, 1, true)
+    if not first_pos or not second_pos or first_pos >= second_pos then
+        error(string.format("%s: expected %s before %s", message, first, second), 2)
+    end
+end
+
 local main = read_file("main.lua")
 local debug_tools = read_file("debug_tools.lua")
 local hooks = read_file("debug_hooks.txt")
@@ -28,6 +36,12 @@ local lower_status_guard = main:match("local function lower_status_noise_suppres
 assert(lower_status_guard, "main.lua should expose lower_status_noise_suppression_active before bizhawk_dialogue_hint")
 local y1_dialogue_reader = main:match("local function read_y1_dialogue%(dialogue_fallback%)(.-)\nend\n\n%-%- strip_noise")
 assert(y1_dialogue_reader, "main.lua should expose read_y1_dialogue before strip_noise")
+local command_menu_handler = main:match("local function check_command_menu%(frame_delta%)(.-)\nend\n\n%-%- check_yesno_prompt")
+assert(command_menu_handler, "main.lua should expose check_command_menu before check_yesno_prompt")
+local command_menu_field_guard = main:match("DW_QOL_STATE%.command_menu_blocks_field_movement = function%(%)(.-)\nend\n\nDW_QOL_STATE%.arm_talk_visit_marker")
+assert(command_menu_field_guard, "main.lua should expose command_menu_blocks_field_movement before arm_talk_visit_marker")
+local dialogue_handler = main:match("local function check_dialogue%(frame_delta, refresh_ppu%)(.-)\nend\n\n%-%- check_upper_dialogue")
+assert(dialogue_handler, "main.lua should expose check_dialogue before check_upper_dialogue")
 
 assert_contains(main,
     'debug_tools.register_command("sweep_walk"',
@@ -77,6 +91,15 @@ assert_contains(main,
 assert_contains(main,
     'trace_teleport_loop("SKIP_NEUTRALIZE_FCEUX_GUARD_ACTIVE")',
     "teleport guard should log when FCEUX guard-frame neutralization is skipped")
+assert_contains(command_menu_field_guard,
+    "menu.is_open()",
+    "field movement guard should consult raw command-menu visibility")
+assert_contains(command_menu_field_guard,
+    "has_visible_cursor_tile()",
+    "field movement guard should require a visible cursor before blocking an unconfirmed command menu")
+assert_contains(command_menu_field_guard,
+    "CMD.menu_live",
+    "field movement guard should keep the confirmed-session branch for stale COMMAND text")
 assert_contains(main,
     "TELEPORT_FRAMEADVANCE_%s",
     "teleport guard should log frameadvance boundaries while debugging stalls")
@@ -108,6 +131,9 @@ assert_contains(main,
     "map_crawler.is_active and map_crawler.is_active()",
     "can-walk diagnostics should also fire while map crawl/sweep_walk is active")
 assert_contains(main,
+    'debug_tools.register_command("door_verify_after"',
+    "main.lua should accept door_verify_after as a compatibility alias")
+assert_contains(main,
     "map_crawl_active=%s",
     "can-walk diagnostics should identify active map crawl state")
 assert_contains(main,
@@ -122,12 +148,36 @@ assert_contains(y1_dialogue_reader,
 assert_contains(main,
     "lower_status_noise_suppression_active",
     "check_dialogue should use a named guard for status/name lower-window artifacts")
-assert_contains(main,
-    "map_crawler.is_active and map_crawler.is_active()",
-    "status/name lower-window artifact suppression should apply during sweep_walk map crawl movement")
+assert_not_contains(lower_status_guard,
+    "DW_QOL_STATE.command_menu_blocks_field_movement()",
+    "status/name lower-window artifact suppression should also apply while the field command menu is open")
 assert_contains(lower_status_guard,
-    "auto_step.is_route_active and auto_step.is_route_active()",
-    "status/name lower-window artifact suppression should apply during auto-walk and door verifier routes")
+    'submenu_mode ~= nil and submenu_mode ~= "SPELL"',
+    "status/name lower-window artifact suppression should still respect non-spell submenus")
+assert_contains(lower_status_guard,
+    "return true",
+    "status/name lower-window artifact suppression should apply whenever field UI is otherwise clear")
+assert_not_contains(lower_status_guard,
+    "return map_crawler.is_active and map_crawler.is_active()",
+    "status/name lower-window artifact suppression should not be limited to map crawl movement")
+assert_contains(command_menu_handler,
+    "text.is_passive_field_status_noise(lower_dialogue)",
+    "command-menu lower-dialogue gate should ignore passive status/name fragments such as split hero-name suffixes")
+assert_contains(dialogue_handler,
+    'submenu_mode == "STATUS" or submenu_mode == "ITEM" or submenu_mode == "SPELL"',
+    "lower dialogue reader should not announce visual rows from memory-spoken command submenus")
+assert_order(command_menu_handler,
+    'trace_row1("CMD_ITEM_FIRE"',
+    "local merchant_present = MER.active or MER.scan_present",
+    "confirmed ITEM submenu entry should win before merchant false positives can own the held-item list")
+assert_order(command_menu_handler,
+    "local joy_a_now = joypad.read(1).A or false",
+    "local merchant_present = MER.active or MER.scan_present",
+    "A-button edge tracking should happen before merchant override so direct ITEM selection can claim ownership")
+assert_order(command_menu_handler,
+    "live_x == 1 and live_y == 1",
+    "local merchant_present = MER.active or MER.scan_present",
+    "direct ITEM selection from the command menu should win before merchant false positives can own the held-item list")
 assert_contains(debug_tools,
     "TELEPORT_TICK_%s",
     "debug_tools.tick should log teleport breadcrumbs around command polling")

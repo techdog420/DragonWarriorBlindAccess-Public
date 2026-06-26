@@ -297,6 +297,67 @@ function tests.detects_kol_tool_shop_layout_and_extracts_live_offers()
     env.restore()
 end
 
+function tests.held_item_menu_backdrop_is_not_merchant_offer_list()
+    local env = make_env()
+
+    local rows = {
+        [2] = "COMMAND",
+        [4] = "Bill  TALK    SPELL",
+        [6] = "LV  15 STATUS  ITEM",
+        [8] = "HP  86 STAIRS  DOOR",
+        [10] = "MP  64 SEARCH  TAKE",
+        [12] = "G22044",
+        [14] = "E12982",
+        [17] = "Herb",
+        [18] = "Magic",
+        [19] = "Armor",
+        [20] = "Fairy",
+        [21] = "Flute",
+        [22] = "Dragon's",
+        [23] = "Scale",
+        [24] = "Wings",
+        [25] = "Stones of",
+        [26] = "Sunlight",
+        [27] = "Silver Harp",
+        [28] = "Cursed Belt",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 22044})
+    assert_equal(info.active, false, "held ITEM menu should not trigger merchant mode")
+
+    env.restore()
+end
+
+function tests.held_item_menu_without_command_backdrop_is_not_merchant_offer_list()
+    local env = make_env()
+
+    local rows = {
+        [4] = "Bill",
+        [6] = "LV  15",
+        [8] = "HP  86llE",
+        [10] = "MP  64 1",
+        [12] = "G22044 86",
+        [14] = "E12982 64",
+        [17] = "Herb",
+        [18] = "Magic",
+        [19] = "Armor",
+        [20] = "Fairy",
+        [21] = "Flute",
+        [22] = "Dragon's",
+        [23] = "Scale",
+        [24] = "Wings",
+        [25] = "Stones of",
+        [26] = "Sunlight",
+        [27] = "Silver Harp",
+        [28] = "Cursed Belt",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 22044})
+    assert_equal(info.active, false, "held ITEM menu without visible command words should not trigger merchant mode")
+
+    env.restore()
+end
+
 function tests.detects_brecconary_buy_sell_action_prompt()
     local env = make_env()
 

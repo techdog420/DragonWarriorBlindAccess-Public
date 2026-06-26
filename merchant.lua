@@ -37,6 +37,17 @@ local ACTION_PROMPT_SELECTIONS = {
     [1] = "Sell",
 }
 
+local FIELD_COMMAND_TOKENS = {
+    TALK = true,
+    SPELL = true,
+    STATUS = true,
+    ITEM = true,
+    STAIRS = true,
+    DOOR = true,
+    SEARCH = true,
+    TAKE = true,
+}
+
 local catalog_cache = nil
 
 local function read_ppu_range(address, length)
@@ -211,6 +222,59 @@ local function extract_status_marker_count(rows)
     return count
 end
 
+local function has_field_command_backdrop(rows)
+    local seen = {}
+    local count = 0
+
+    for row = ROW_START, ROW_END do
+        local line = row_text(rows, row)
+        for token in tostring(line or ""):gmatch("[A-Za-z']+") do
+            if FIELD_COMMAND_TOKENS[token] and not seen[token] then
+                seen[token] = true
+                count = count + 1
+            end
+        end
+    end
+
+    -- A held ITEM list keeps the normal field command menu visible behind the
+    -- inventory. Merchant action prompts can leave a few command words visible,
+    -- but not the full command backdrop.
+    return count >= 6 and (seen.TALK or seen.STATUS or seen.STAIRS)
+end
+
+local function has_shop_offer_layout_evidence(rows)
+    for row = ROW_START, ROW_END do
+        local line = row_text(rows, row)
+
+        -- Tool and equipment shops usually show a numeric price on at least one
+        -- offer row. Held ITEM lists do not price inventory entries.
+        if extract_price(line) and match_offer_prefix(line) then
+            return true
+        end
+
+        local saw_status = false
+        local saw_offer_fragment = false
+        for token in tostring(line or ""):gmatch("[A-Za-z']+") do
+            if STATUS_TOKENS[token] then
+                saw_status = true
+            elseif not FIELD_COMMAND_TOKENS[token]
+                   and token:match("^[A-Z]")
+                   and #token > 1 then
+                saw_offer_fragment = true
+            end
+        end
+
+        -- Older/shop-scroll layouts split offers across status rows, e.g.
+        -- "LV 1 Pole" or "MP 18 Scale". That is strong shop evidence even when
+        -- the active buy prompt is not visible in the current scan.
+        if saw_status and saw_offer_fragment then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function extract_offer_names(rows)
     local words = {}
     for row = ROW_START, ROW_END do
@@ -352,8 +416,11 @@ function M.analyze_rows(rows, opts)
     local buy_prompt = has_buy_prompt(raw_text)
     local action_prompt = has_action_prompt(raw_text, rows)
     local action_selection = action_prompt and get_action_selection(opts.cursor_y) or nil
-    local offer_list_active = (status_marker_count >= 4 and #offers >= 2)
-        or (buy_prompt and #offers >= 2)
+    local command_backdrop = has_field_command_backdrop(rows)
+    local offer_layout_evidence = has_shop_offer_layout_evidence(rows)
+    local offer_list_active = not command_backdrop
+        and #offers >= 2
+        and (buy_prompt or (status_marker_count >= 4 and offer_layout_evidence))
     local active = offer_list_active or action_prompt
 
     local summary = nil

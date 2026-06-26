@@ -1821,6 +1821,7 @@ local CMD = {
     recent_field_action  = 0,      -- recent field input window
     bizhawk_boot_dialogue = 0,     -- early-boot dialogue throttle (BizHawk)
     spell_entry_pending  = false,  -- suppress first SPELL submenu cursor jump
+    item_entry_pending   = 0,      -- suppress immediate ITEM submenu cursor jump
 }
 
 -- Merchant module state. PREV.merchant_text / .announced_merchant /
@@ -1835,6 +1836,7 @@ MER = {
 
 local current_joy = {}
 local current_joy_any = false
+local has_visible_cursor_tile
 
 DW_QOL_STATE.cmd_open_speech_delay = 6
 DW_QOL_STATE.cmd_open_speech_pending_frames = 0
@@ -1881,10 +1883,12 @@ end
 DW_QOL_STATE.command_menu_blocks_field_movement = function()
     -- menu.is_open() is a raw COMMAND-header PPU match. After TALK or other
     -- dialogue transitions, COMMAND text can linger in nametable memory after
-    -- the field menu has stopped being interactive. Movement/autowalk should
-    -- only be blocked by a confirmed live command-menu session. The raw header
-    -- is safe once paired with CMD.menu_live, because TALK/menu-close paths
-    -- clear CMD.menu_live before stale PPU text can linger.
+    -- the field menu has stopped being interactive. A visible cursor tile is
+    -- the safe early signal for a fresh live command menu before check_command_menu()
+    -- has armed CMD.menu_live in the current frame.
+    if menu.is_open() and has_visible_cursor_tile and has_visible_cursor_tile() then
+        return true
+    end
     return CMD.menu_live and (CMD.cursor_hold > 0 or menu.is_open())
 end
 
@@ -2320,21 +2324,19 @@ local function field_dialogue_guard_active()
 end
 
 local function lower_status_noise_suppression_active()
-    if field_dialogue_guard_active() then
-        return true
-    end
     if game_state.state ~= state.STATE_FIELD then return false end
     if not in_gameplay then return false end
-    if DW_QOL_STATE.command_menu_blocks_field_movement()
-       or submenu_mode ~= nil
+    if submenu_mode ~= nil and submenu_mode ~= "SPELL"
        or menu.is_yesno_active()
        or MER.active then
         return false
     end
-    if auto_step.is_route_active and auto_step.is_route_active() then
-        return true
-    end
-    return map_crawler.is_active and map_crawler.is_active()
+    -- Scrolling field maps can leave tiny status/name fragments in the lower
+    -- reader after movement, raw probes, or command-menu redraws. Known passive
+    -- fragments such as "Bill" or the hero-name suffix "ll" should never become
+    -- PREV.dialogue and compete with menu/object/readout speech. SPELL is safe
+    -- here because its speech comes from cursor/RAM state, not lower dialogue.
+    return true
 end
 
 local function bizhawk_dialogue_hint()
@@ -2690,7 +2692,7 @@ local function check_battle_menu()
     end
 end
 
-local function has_visible_cursor_tile()
+has_visible_cursor_tile = function()
     for row = 0, 29 do
         local row_start = 0x2000 + row * 32
         for col = 0, 31 do
@@ -2712,10 +2714,10 @@ end
 --           and for a few frames after it dismisses, because guard 1 reuses
 --           the same window and cursor RAM while asking about Princess Gwaelin.
 --
---   ITEM:   While the menu is open, cursor jumps from ITEM(1,1) to (0,*)
---           in a single frame with D9 also changing. This can't happen from
---           normal cursor movement since DW1 menus only move one axis per
---           frame. In ITEM mode, D9 tracks the item cursor and we announce
+--   ITEM:   A confirmed A press on ITEM(1,1) claims ITEM ownership before
+--           merchant/shop scanning, because held inventory can resemble shop
+--           offers on some maps. The older cursor-jump detector remains as a
+--           fallback. In ITEM mode, D9 tracks the item cursor and we announce
 --           item names from the nybble-encoded RAM slots. Exits when D8
 --           returns to 1 (back to command menu) or menu closes entirely.
 --
@@ -2735,7 +2737,83 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.item_entry_pending = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
+        return
+    end
+
+    -- Track A button EVERY frame (even during yes/no) so PREV.joy_a_cmd
+    -- stays fresh. This must run before merchant detection so selecting ITEM
+    -- can claim the inventory submenu before held items look like shop offers.
+    local joy_a_now = joypad.read(1).A or false
+    local a_just = joy_a_now and not PREV.joy_a_cmd
+    PREV.joy_a_cmd = joy_a_now
+
+    -- Save previous cursor position before merchant detection. Held ITEM menus
+    -- can resemble shop lists for a few frames; a confirmed transition from the
+    -- command ITEM slot must claim submenu ownership before the merchant reader
+    -- can override the field menu path.
+    local was_x = PREV.cmd_x
+    local was_y = PREV.cmd_y
+    local confirmed_item_entry =
+        changes.cursor_moved
+        and CMD.menu_confirmed
+        and CMD.menu_live
+        and was_x == 1
+        and was_y == 1
+        and changes.cursor_x == 0
+        and changes.cursor_y ~= was_y
+        and not menu.is_yesno_active()
+    if confirmed_item_entry then
+        reset_merchant_state(false)
+        PREV.cmd_x = changes.cursor_x
+        PREV.cmd_y = changes.cursor_y
+        local count = items.get_item_count()
+        if count == 0 then
+            -- No items: game will show an error message and return to the
+            -- command menu. Don't enter ITEM mode (exit conditions won't
+            -- fire because the item list never actually opens).
+            trace_row1("CMD_ITEM_EMPTY", changes, {})
+            tolk.output("Items. Empty.")
+        else
+            submenu_mode = "ITEM"
+            CMD.menu_live = false
+            trace_row1("CMD_ITEM_FIRE", changes, {
+                "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
+                "source=pre_merchant",
+            })
+            tolk.output("Items. " .. items.get_item_at_d9(changes.cursor_y))
+        end
+        return
+    end
+
+    local live_x = CMD.last_live_x or changes.cursor_x
+    local live_y = CMD.last_live_y or changes.cursor_y
+
+    if a_just and CMD.menu_confirmed and CMD.menu_live
+       and not CMD.rearm_required
+       and live_x == 1 and live_y == 1
+       and not menu.is_yesno_active() then
+        reset_merchant_state(false)
+        local count = items.get_item_count()
+        if count == 0 then
+            trace_row1("CMD_ITEM_EMPTY", changes, {
+                "source=direct_a",
+                "live_xy=" .. tostring(live_x) .. "," .. tostring(live_y),
+            })
+            tolk.output("Items. Empty.")
+        else
+            local first_item = items.get_item_at_d9(0)
+            submenu_mode = "ITEM"
+            CMD.menu_live = false
+            CMD.item_entry_pending = 8
+            trace_row1("CMD_ITEM_FIRE", changes, {
+                "item=" .. tostring(first_item),
+                "source=direct_a",
+                "live_xy=" .. tostring(live_x) .. "," .. tostring(live_y),
+            })
+            tolk.output("Items. " .. first_item)
+        end
         return
     end
 
@@ -2758,6 +2836,7 @@ local function check_command_menu(frame_delta)
         CMD.menu_live = false
         CMD.cursor_hold = 0
         CMD.spell_entry_pending = false
+        CMD.item_entry_pending = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         if submenu_mode == "ITEM" or submenu_mode == "STATUS" or submenu_mode == "SPELL" then
             submenu_mode = nil
@@ -2766,8 +2845,6 @@ local function check_command_menu(frame_delta)
     end
 
     -- Save previous cursor position for transition detection, then update.
-    local was_x = PREV.cmd_x
-    local was_y = PREV.cmd_y
     PREV.cmd_x = changes.cursor_x
     PREV.cmd_y = changes.cursor_y
 
@@ -2814,6 +2891,7 @@ local function check_command_menu(frame_delta)
             submenu_mode = nil
             CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
             CMD.menu_live = false
+            CMD.item_entry_pending = 0
             DW_QOL_STATE.clear_cmd_open_speech_pending()
             trace_row1("CMD_CLOSE_FROM_ITEM", changes, {})
             return
@@ -2824,6 +2902,7 @@ local function check_command_menu(frame_delta)
             submenu_mode = nil
             CMD.menu_live = true
             CMD.rearm_required = false
+            CMD.item_entry_pending = 0
             local cmd_item = menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             if cmd_item then
                 trace_row1("CMD_CURSOR_FROM_ITEM", changes, {
@@ -2832,6 +2911,13 @@ local function check_command_menu(frame_delta)
                 tolk.output(cmd_item)
             end
             return
+        end
+        if changes.cursor_moved and CMD.item_entry_pending > 0 and changes.cursor_x == 0 then
+            CMD.item_entry_pending = 0
+            return
+        end
+        if CMD.item_entry_pending > 0 then
+            CMD.item_entry_pending = math.max(0, CMD.item_entry_pending - frame_delta)
         end
         -- Item cursor moved within the list — announce the new item name.
         if changes.cursor_moved then
@@ -2897,13 +2983,6 @@ local function check_command_menu(frame_delta)
         menu.reset_yesno()
     end
 
-    -- Track A button EVERY frame (even during yes/no) so PREV.joy_a_cmd
-    -- stays fresh. If we only tracked after the yesno guard, PREV.joy_a_cmd
-    -- would go stale and produce a false rising-edge when yesno dismisses.
-    local joy_a_now = joypad.read(1).A or false
-    local a_just = joy_a_now and not PREV.joy_a_cmd
-    PREV.joy_a_cmd = joy_a_now
-
     -- Yes/No prompt reuses the command menu UI — suppress command menu
     -- announcements while it is active (check_yesno_prompt handles them).
     if menu.is_yesno_active() then
@@ -2913,12 +2992,20 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.item_entry_pending = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         trace_row1("CMD_BLOCK_YESNO", changes, {})
         return
     end
 
-    local lower_dialogue_active = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable()) ~= ""
+    local lower_dialogue = text.read_dialogue_window_filtered(
+        get_scroll_tiles(),
+        get_dialogue_start_row(),
+        DW_QOL_STATE.get_scroll_base_nametable())
+    if text.is_passive_field_status_noise(lower_dialogue) then
+        lower_dialogue = ""
+    end
+    local lower_dialogue_active = lower_dialogue ~= ""
     local cursor_visible = has_visible_cursor_tile()
 
     -- If lower dialogue is still visible, COMMAND/header/cursor tiles are
@@ -2961,8 +3048,6 @@ local function check_command_menu(frame_delta)
     -- Row-1 interiors can produce noisy COMMAND-header matches, so rely on
     -- either a real menu-open A press or a subsequent cursor movement to mark
     -- the session confirmed instead of allowing any bare A press on STATUS.
-    local live_x = CMD.last_live_x or changes.cursor_x
-    local live_y = CMD.last_live_y or changes.cursor_y
     if a_just and CMD.menu_confirmed and CMD.menu_live
        and CMD.yesno_status_block == 0
        and not CMD.rearm_required
@@ -3033,6 +3118,7 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.item_entry_pending = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
         trace_row1("CMD_CLOSE", changes, {})
@@ -3811,11 +3897,10 @@ local function check_dialogue(frame_delta, refresh_ppu)
     local lower_dialogue_visible = (dialogue ~= "")
     local stable_threshold = lower_dialogue_stable_threshold(dialogue)
 
-    -- STATUS is already spoken from memory when the player selects it from the
-    -- command menu. Its visual window reuses the lower dialogue rows for
-    -- equipment text, so the generic dialogue reader would otherwise interrupt
-    -- the full status readout with only the bottom half of the box.
-    if submenu_mode == "STATUS" then
+    -- These command submenus are already spoken from cursor/RAM state. Their
+    -- visual windows reuse lower dialogue rows for status, item, or spell list
+    -- text, so the generic dialogue reader must absorb them as UI state.
+    if submenu_mode == "STATUS" or submenu_mode == "ITEM" or submenu_mode == "SPELL" then
         PREV.dialogue = dialogue
         PREV.announced_dialogue = dialogue
         PREV.stable_count = 0
@@ -5012,9 +5097,12 @@ debug_tools.register_command("verify_door_stand", function(arg)
     DW_QOL_STATE.walked_verify:start_door_stand(arg)
 end)
 
-debug_tools.register_command("verify_door_after", function()
+local function finish_verify_door_after()
     DW_QOL_STATE.walked_verify:finish_door_after()
-end)
+end
+
+debug_tools.register_command("verify_door_after", finish_verify_door_after)
+debug_tools.register_command("door_verify_after", finish_verify_door_after)
 
 debug_tools.register_command("stop_verify_door", function()
     if not DW_QOL_STATE.walked_verify:cancel_door("manual_stop") then

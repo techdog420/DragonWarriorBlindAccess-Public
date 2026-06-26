@@ -582,6 +582,22 @@ function tests.path_actions_refresh_live_npcs_before_planning()
     env.restore()
 end
 
+function tests.deferred_autowalk_cancels_if_release_frame_is_blocked()
+    local env = make_env({delay = 0})
+    local state = {state = "field"}
+
+    env.update({U = true}, state, true)
+    assert_equal(env.autowalk_calls(), 0, "held auto-walk hotkey should defer while U is down")
+
+    env.update({}, state, false, "Close the command menu first")
+
+    assert_equal(env.autowalk_calls(), 0, "deferred auto-walk should re-check object guards when U is released")
+    assert_equal(env.outputs[1].message, "Close the command menu first",
+        "cancelled deferred auto-walk should explain the current object-control guard")
+
+    env.restore()
+end
+
 function tests.pathfind_hotkey_suppresses_nearby_direction_edges()
     local env = make_env({delay = 0})
 
