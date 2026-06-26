@@ -1246,10 +1246,15 @@ local SERVICE_ROLE_OVERRIDES = {
         },
     },
     -- Tantegel Throne Room King. Players visit him to save, so include him in
-    -- Services while keeping normal adjacent-NPC routing.
+    -- Services while keeping normal adjacent-NPC routing. Returned Gwaelin is
+    -- a normal Woman sprite at the throne-room cell, so label her without
+    -- adding service behavior.
     [0x05] = {
         names = {
             ["King"] = {name = "King", infer_counter = false},
+        },
+        cells = {
+            ["6,3"] = {name = "Princess Gwaelin", infer_counter = false, service = false},
         },
     },
     -- Kol public services; stand/facing data is modeled in
@@ -1395,7 +1400,7 @@ local function apply_service_role_override(obj, map_id)
     if not entry then
         return nil
     end
-    obj.service = true
+    obj.service = entry.service ~= false
     if entry.name then
         obj.name = entry.name
     end

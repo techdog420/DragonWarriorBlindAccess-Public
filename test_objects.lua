@@ -1999,6 +1999,45 @@ function tests.tantegel_throne_room_king_appears_in_services()
     env.restore()
 end
 
+function tests.tantegel_throne_room_returned_gwaelin_is_labeled_as_npc()
+    local env = make_env({npc_count = 2})
+
+    env.set_position(0x05, 6, 4)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x80 + 3, 0x03, 0x00) -- King at the throne
+    env.set_npc(1, 0xC0 + 6, 0x03, 0x00) -- Returned Gwaelin at the live-confirmed throne-room cell
+    env.objects.refresh(0x05)
+
+    local princess = nil
+    for _, obj in ipairs(env.objects.get_objects()) do
+        if obj.name == "Princess Gwaelin" then
+            princess = obj
+            break
+        end
+    end
+
+    assert_equal(princess ~= nil, true, "Returned Gwaelin should be labeled in the throne room")
+    assert_equal(princess.type, env.objects.TYPE_NPC, "Returned Gwaelin should remain browsable as an NPC")
+    assert_equal(princess.service, false, "Returned Gwaelin should not appear in Services")
+    assert_equal(princess.x, 6, "Returned Gwaelin x should match the live throne-room object")
+    assert_equal(princess.y, 3, "Returned Gwaelin y should match the live throne-room object")
+
+    env.objects.next_filter() -- NPCs
+    local npc_princess = env.objects.find_object_by_id(princess.id, {filtered = true})
+    assert_equal(npc_princess ~= nil, true, "NPC filter should include returned Gwaelin")
+
+    env.objects.next_filter() -- Services
+    local service_names = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_names[#service_names + 1] = obj.name
+    end
+    local service_text = table.concat(service_names, ", ")
+    assert_equal(service_text:find("Princess Gwaelin", 1, true), nil, "Services should omit returned Gwaelin")
+    assert_equal(service_text:find("King", 1, true) ~= nil, true, "Services should still include the King")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_dialogue_merchants_stay_out_of_services()
     local env = make_env({npc_count = 3})
 
