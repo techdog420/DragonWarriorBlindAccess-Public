@@ -877,9 +877,16 @@ Emulator compatibility direction:
   blockers only; do not promote whole cells from that survey.
 - Kol west-NPC browsing after the service pass exposed Old Man 1 at object
   `(2,13)`, with route loops between `(8,11)` and `(8,12)` trying west into
-  `(7,11)` and `(7,12)`. Keep `(7,11).east` and `(7,12).east` as map-0x07
-  directional blockers only; the `(8,11)<->(8,12)` vertical connector moved
-  repeatedly and stays open.
+  `(7,11)` and `(7,12)`. Keep `(7,11).east` as a map-0x07 directional
+  blocker; `(7,12)` was later live-confirmed as the western-building Magic Key
+  door cell opened from stand `(8,12)` facing west, so do not model
+  `(7,12).east` as a permanent wall. The `(8,11)<->(8,12)` vertical connector
+  moved repeatedly and stays open.
+- Kol has two live-confirmed Magic Key doors on map `0x07`: `Western Building
+  Door` at `(7,12)`, opened from `(8,12)` facing west, and `West Side Door` at
+  `(1,14)`, opened from `(2,14)` facing west. False candidates checked live:
+  `(1,13)` from `(1,14)` facing up, `(1,3)` from `(1,4)` facing up, and
+  `(1,4)` from `(2,4)` facing left all reported no door / no key delta.
 - Merchant 1 routing in Kol has narrow directional wall evidence from two live
   autowalk runs. Keep these map-0x07 blockers directional-only: `(10,18).east`,
   `(10,19).east`, `(11,20).north`, `(12,19).west`, `(16,21).east`,

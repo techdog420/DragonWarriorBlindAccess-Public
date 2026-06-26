@@ -1068,9 +1068,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 - Kol west-side NPC browsing is opening up after the service pass. The route to
   `Old Man 1` at object `(2,13)` looped between `(8,11)` and `(8,12)` while
-  trying to enter `(7,11)` and `(7,12)` from the east. Both are now modeled as
-  narrow directional blockers; the vertical connector between `(8,11)` and
-  `(8,12)` stays open because it moved repeatedly.
+  trying to enter `(7,11)` and `(7,12)` from the east. `(7,11).east` remains a
+  narrow directional blocker, but `(7,12)` was later confirmed as the
+  western-building Magic Key door cell opened from `(8,12)` facing west. Do not
+  keep `(7,12).east` as a permanent blocker; the vertical connector between
+  `(8,11)` and `(8,12)` stays open because it moved repeatedly.
+
+- Kol Magic Key doors are now pinned from live verifier proof. `Western
+  Building Door` is door cell `(7,12)`, opened from public stand `(8,12)`
+  facing west. `West Side Door` is door cell `(1,14)`, opened from public stand
+  `(2,14)` facing west. False candidates checked during the search were
+  `(1,13)` from `(1,14)` facing up, `(1,3)` from `(1,4)` facing up, and
+  `(1,4)` from `(2,4)` facing left; all produced no-door/no-key-delta results.
 
 - Kol Merchant 1 autowalk keeps exposing narrow service-route wall bands, and
   the current model has been tightened from two live runs. The first run proved
@@ -1137,8 +1146,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 - Kol Merchant 4 is live-confirmed as the item/tool shop. Selected teleport to
   `npc_15` / `Merchant 4` held the target at `(14,21)`, landed at `(12,21)`,
   and faced east. TALK opened the buy list, and the merchant reader spoke Herb
-  24 G, Torch 8 G, Dragon's Scale 20 G, and Wings 70 G. `objects.lua` now
-  labels him `Tool Merchant` and routes through `(12,21)` facing east.
+  24 G, Torch 8 G, Dragon's Scale 20 G, and Wings 70 G. `objects.lua` still
+  labels him `Tool Merchant`. A public-route polish pass promoted the real
+  blocker band around the attempted east-side route: `(16,22).east`,
+  `(1..4,10).north`, `(4,10..13).east`, `(7,9).west`, and
+  `(7,13).east/west`; TALK checks from `(17,22)` and `(17,21)` facing west
+  both returned "There is no one there." The missing public throat was found
+  later on the west side: manual movement from `(1,16)->DOWN` reaches `(1,17)`,
+  which ROM-decodes as tile-0/non-walkable, and route planning from `(1,17)`
+  restores the Tool Merchant path to `(12,21)`. `map_reader.lua` now models
+  `(1,17)` as a Kol passthrough. A clean-restore frontier pass then found the
+  entrance-side connector: `(5,14)` also decodes as tile-0, but a normal walk
+  to `(5,13)` followed by same-origin `probe_edge:DOWN` moved through `(5,14)`
+  and settled at `(5,15)`. After reload, the planner found the standable
+  `(1,19)` pocket; same-origin probes proved its east, south, and north exits
+  blocked, so those false exits are now modeled as narrow directional blockers.
+  Reload `main.lua` in FCEUX before validating the live route from the town
+  entrance.
 
 - FCEUX stale-Alt remains a polishing issue, separate from dialogue state.
   Logs show `keys=LeftAlt`, `joy1=-`, and an empty external bridge while idle;

@@ -68,6 +68,71 @@ Updated: 2026-06-26
   but the ROM did not open the field command menu. Treat that as a secondary
   diagnostic path only if the fixed `(22,4)` stand plus `(24,4)` target hold
   still fails after reload; `report_input_guard_state` is staged for that case.
+- Kol Magic Key door discovery is now pinned in source. `Western Building Door`
+  is door cell `(7,12)`, opened from `(8,12)` facing west; `West Side Door` is
+  door cell `(1,14)`, opened from `(2,14)` facing west. The stale
+  `(7,12).east` wall is removed because it was the closed door, while
+  `(7,11).east` remains a real directional blocker. False checked candidates:
+  `(1,13)` from `(1,14)` facing up, `(1,3)` from `(1,4)` facing up, and
+  `(1,4)` from `(2,4)` facing left all produced no-door/no-key-delta results.
+  FCEUX needs a manual Lua reload before object browsing and pathfinding use
+  the new Kol door objects.
+- Kol Tool Merchant route polish promoted the current blocker batch in
+  `map_reader.lua`: `(16,22).east`, `(1..4,10).north`, `(4,10..13).east`,
+  `(7,9).west`, and `(7,13).east/west`. The current Tool Merchant identity is
+  still valid from selected-teleport TALK proof at `(12,21)` facing east. A
+  later manual route check found the missing public throat: `(1,16)->DOWN`
+  enters `(1,17)`, even though `(1,17)` ROM-decodes as tile-0/non-walkable;
+  once standing on `(1,17)`, the planner finds the Tool Merchant route again.
+  The missing entrance-side connector to that throat is `(5,14)`: after a clean
+  restore from the town entrance, `debug_route_frontier_skip_npcs` flagged
+  `(5,14)/(6,14)/(7,14)` as wall-looking one-cell bridge candidates, and a
+  normal walk to `(5,13)` plus same-origin `probe_edge:DOWN` moved through
+  tile-0 `(5,14)` and settled at `(5,15)`. `map_reader.lua` now models only
+  proven `(1,17)` and `(5,14)` as Kol passthroughs. The earlier post-`(1,17)`
+  reload route also tried the standable `(1,19)` pocket; same-origin probes
+  proved its east, south, and north exits blocked, so `(2,19).west`,
+  `(1,20).north`, and `(1,18).south` are now directional blockers. Final
+  entrance-to-stand cleanup found the lower public bridge: from normally walked
+  `(3,15)`, `probe_edge:DOWN` carried through `(3,16)` onto tile-0 `(3,17)`,
+  then `(3,17)->DOWN` exited to the target-side lane. `map_reader.lua` now
+  models `(3,17)` as the narrow Tool Merchant bridge and closes the route
+  false exits `(5,16).north`, `(2,15).east`, `(2,16).east`, `(3,14).south`,
+  and `(10,19).west`; with those runtime blockers active,
+  `auto_walk_blocker:12,21` reached the stand. Reload `main.lua` again before
+  judging the live planner against these source fixes, then retest route
+  guidance/autowalk to Tool Merchant from the town entrance. Do
+  not promote the later post-teleport `(1,16)->DOWN` or `(1,16)->RIGHT`
+  failures: even the ordinary east step to `(2,16)` falsely blocked from that
+  seed, so the live movement state was contaminated. Kol also exposed stale
+  lower-window status residue (`ll` / `Bill`) after movement, probe, and
+  command-menu activity; `main.lua` now suppresses known passive status/name
+  fragments during field play, command menu, and SPELL submenu while still
+  respecting STATUS/ITEM submenus, prompts, and merchants, so `J/K/L/O`, edge
+  probes, command-menu speech, and spell-list speech should not remain stuck
+  behind those fragments. Reload `main.lua` before live-testing that dialogue
+  guard fix. A follow-up held-ITEM menu bug was also fixed in `merchant.lua`:
+  the merchant parser no longer treats full command-menu backdrop plus
+  inventory entries, or status rows plus unpriced inventory entries, as a shop
+  offer list, preventing `MERCHANT_SELECT` speech such as item names with bogus
+  prices while browsing items. A later live attempt still produced
+  `MERCHANT_SELECT` before any `CMD_ITEM_FIRE`; `check_command_menu()` now lets
+  ITEM ownership run before merchant detection. After a full emulator restart,
+  the remaining root cause was that the cursor-jump detector never fired before
+  merchant ownership; the direct A press on confirmed ITEM(1,1) now sets
+  `submenu_mode = "ITEM"` first, with the older cursor-jump detector retained as
+  a fallback. A final follow-up fixed the remaining bulk inventory speech:
+  after ITEM ownership worked, `check_dialogue()` still announced visible item
+  rows as lower dialogue (`Silver Harp Cursed Belt Gwaelin's Love Torch`).
+  STATUS, ITEM, and SPELL submenu windows are now absorbed by the generic lower
+  dialogue reader because those screens are spoken from cursor/RAM state.
+  A later Kol wrap-up test found deferred `U` autowalk could start while the
+  field command menu was visibly open because hotkeys ran before
+  `check_command_menu()` armed `CMD.menu_live` for that frame. `main.lua` now
+  blocks field movement on raw COMMAND text only when a visible cursor tile is
+  present, and `hotkeys.lua` speaks the current guard reason when a deferred
+  autowalk release is cancelled. Reload `main.lua` before live-testing these
+  menu/parser/guard fixes.
 - Tantegel Castle downstairs Magic Key merchant return polish is promoted in
   `map_reader.lua`: the merchant-to-throne-room-stairs route closed the false
   east/northeast cuts at `(22,6).north`, `(21,5).east`, `(21,4).east`,

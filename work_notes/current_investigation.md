@@ -1,6 +1,6 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-06-24
+Updated: 2026-06-26
 
 ## 2026-06-24 Brecconary Fairy Water Route / Input Lock Capture
 
@@ -634,3 +634,237 @@ For the next live map task, start a new dated section here with:
   those seams open.
 - LIVE RESULT: with runtime blockers for `(5,3).south` and `(8,9).north`,
   `auto_walk_blocker:4,9` reached the exit tile at `(4,9)`.
+
+## 2026-06-26 Kol Tool Merchant Trigger Hunt
+
+- LIVE BASELINE: map `0x07` / Kol, both known magic-key doors already open:
+  `(7,12)` and `(1,14)`. Tool Merchant NPC remained at `(14,21)`. The
+  selected-teleport stand `(12,21)` is still a valid shop trigger but not
+  reachable from the public route graph.
+- CLEAN / CONFIRMED EXISTING GEOMETRY: direct same-origin probes confirmed the
+  frontier bridges into the tool-counter component are sealed in live play:
+  `(12,18)->DOWN`, `(11,19)->DOWN`, `(11,19)->RIGHT`, `(13,18)->DOWN`,
+  `(14,18)->DOWN`, `(15,18)->DOWN`, `(16,18)->DOWN`, `(11,18)->LEFT`,
+  `(11,19)->LEFT`, `(17,19)->LEFT`, and `(17,20)->LEFT` all blocked with
+  raw-hold timeout. Earlier same-state route work had already confirmed
+  `(17,21)->LEFT` and `(17,22)->LEFT`.
+- DOOR THEORY CHECKED: `verify_door_stand:17,21,LEFT` plus manual DOOR logged
+  "There is no door here"; `verify_door_after` reported expected door
+  `(16,21)` absent, keys `4 -> 4`, door slots unchanged. Repeated from
+  `(17,22)` facing left for expected door `(16,22)` with the same no-door,
+  no-key-delta result.
+- TALK CHECKED: `(17,20)` facing west returned "There is no one there" and did
+  not activate the merchant detector.
+- LIVE RESULT: `debug_route_frontier_skip_npcs:12,21` still reports
+  `hidden_bridge_candidates=0`; all direct bridge-to-target candidates are
+  accounted for. No new permanent map data was discovered in this pass. The
+  current open question is whether Kol's item shop has a different public
+  trigger than the selected-teleport stand, or whether this service should stay
+  unrouteable/flagged until a manual trigger is found.
+
+### Follow-Up: West-Side Throat Found
+
+- LIVE PROOF: the user found that walking `(1,16)->DOWN` reaches `(1,17)` and
+  immediately revives the known Tool Merchant route. Fresh logs showed
+  `(1,16)` itself is ordinary walkable floor, while `(1,17)` ROM-decodes as
+  tile-0/non-walkable. Manual movement repeatedly crossed `(1,16)<->(1,17)`,
+  and route planning from `(1,17)` found the Tool Merchant route again.
+- CLEAN / PROMOTED: `map_reader.lua` now models only `(1,17)` as a Kol
+  passthrough. `(1,18)` inspected as ordinary walkable floor; no nearby
+  directional blockers were removed.
+- RELOAD NEEDED: FCEUX needs a manual `main.lua` reload before live
+  `debug_pathfind_to_skip_npcs:12,21` or Tool Merchant autowalk will reflect
+  the source fix from `(1,16)`.
+
+### Follow-Up: `(1,19)` Pocket Closed
+
+- LIVE PROOF: after the script reload picked up the `(1,17)` passthrough, the
+  Tool Merchant route next tried the standable pocket at `(1,19)`. Route
+  failure plus same-origin probes confirmed `(1,19)->RIGHT` into `(2,19).west`,
+  `(1,19)->DOWN` into `(1,20).north`, and `(1,19)->UP` into `(1,18).south`
+  all block with raw-hold timeout and no NPC involvement. `(1,19)->LEFT`
+  already fails as the west engine boundary.
+- CLEAN / PROMOTED: `map_reader.lua` now models only those three false exits
+  as Kol directional blockers. The destination cells remain open from
+  unproven/opposite approaches.
+- RELOAD NEEDED: FCEUX needs another manual `main.lua` reload before the live
+  planner reflects the new pocket blockers.
+- DO NOT PROMOTE: after teleporting back to `(1,16)` only to escape the
+  confirmed `(1,19)` dead pocket, `auto_walk_blocker:12,21` reported
+  `(1,16)->DOWN` into `(1,17).north` as blocked. Follow-up raw/sequence input
+  from the same seed also failed to move, and a one-step autowalk to ordinary
+  open floor `(2,16)` falsely reported `(2,16).west` blocked. Treat those
+  `(1,16)` failures as contaminated post-teleport/input-state evidence. Next
+  clean route check should start after a manual reload/restore or after the
+  player has manually re-established normal movement at the west-side throat.
+
+### Follow-Up: Entrance-Side Connector Found
+
+- LIVE BASELINE: after a clean script/game restore at Kol `(19,23)`, both
+  known Magic Key doors were open in RAM: door slots `(7,12)` and `(1,14)`.
+  Runtime blockers were empty. Normal and skip-NPC pathfinding from the town
+  entrance could not reach `(1,16)` or Tool Merchant stand `(12,21)`.
+- LIVE PROOF: `debug_route_frontier_skip_npcs:1,16,20` and
+  `debug_route_frontier_skip_npcs:12,21,30` both reported three hidden bridge
+  candidates: `(5,13)->DOWN` into `(5,14)`, `(6,13)->DOWN` into `(6,14)`, and
+  `(7,13)->DOWN` into `(7,14)`. All three candidate cells decode as tile-0.
+  A normal autowalk from `(19,23)` reached `(5,13)`, and same-origin
+  `probe_edge:DOWN` moved through `(5,14)` and settled at `(5,15)`, logging
+  `moved_through_modeled_block`. From `(5,15)`, skip-NPC paths exist to
+  `(1,16)` and `(12,21)`.
+- CLEAN / PROMOTED: `map_reader.lua` now models only `(5,14)` as the
+  entrance-side Kol passthrough. `(6,14)` and `(7,14)` remain unmodeled until
+  they get their own live movement proof.
+- RELOAD NEEDED: FCEUX needs a manual `main.lua` reload before entrance-side
+  Tool Merchant autowalk can use `(5,14)`.
+
+### Dialogue Filter Detour
+
+- LIVE BUG: Kol's scrolling/status layout exposed a stale lower-window fragment
+  `ll` while the field UI was otherwise clear. Diagnostics showed
+  `MENU_STATE lower_len=2`, `UPPER_STATE lower="ll"`, and
+  `INPUT_GUARD_STATE dialogue_len=0 unavailable_reason=nil`. Starting an edge
+  probe then let the fragment re-enter `PREV.dialogue`, causing
+  `EDGE_PROBE_RESULT status=interrupted reason=Wait for dialogue to finish`.
+  The same shared guard can block object/readout hotkeys such as `J/K/L/O`
+  until the stale fragment clears.
+- SOURCE FIX: `lower_status_noise_suppression_active()` now suppresses known
+  passive status/name fragments whenever the game is in field play and no
+  modal field UI is active, instead of limiting that suppression to passive
+  idle, autowalk, or map-crawl windows.
+- FOLLOW-UP SOURCE FIX: the command-menu lower-dialogue gate now applies the
+  same passive status/name fragment filter before deciding whether lower
+  dialogue should block menu speech. Live bad state had raw/cached command menu
+  open with `lower="ll"`, `active_block=false`, and `cmd_confirmed=false`,
+  which cleared the live command-menu session and made SPELL/`J/K/L/O` style
+  controls behave as though dialogue were still active.
+- FOLLOW-UP SOURCE FIX: after a restore to the Kol entrance, opening the
+  command menu still announced standalone `Bill`. Logs showed
+  `EVENT: command menu opened`, then `PREV.dialogue_len=4` and
+  `EVENT: dialogue: Bill` while `menu_active=true`. The status/name fragment
+  suppression now also runs during the field command menu; it still skips
+  submenus, Yes/No prompts, merchants, battle, and non-field states. Real
+  command responses are preserved because they do not match
+  `text.is_passive_field_status_noise()`.
+- FOLLOW-UP SOURCE FIX: after that source reload, the command menu stopped
+  speaking the hero name, but the same standalone `Bill` fragment could migrate
+  to the SPELL submenu. The suppression guard now also runs while
+  `submenu_mode == "SPELL"` because spell-list speech comes from cursor/RAM
+  state; STATUS, ITEM, Yes/No, merchant, battle, and non-field screens remain
+  excluded from this passive-fragment suppression.
+- FOLLOW-UP SOURCE FIX: held ITEM menu browsing then exposed the merchant
+  parser claiming the inventory list. Recent logs showed `MERCHANT_SELECT`
+  lines for held inventory entries such as `Fairy Flute`, `Wings`,
+  `Gwaelin's Love`, and bogus prices like `Magic Armor. 4 gold.` before ITEM
+  submenu ownership could stabilize. `merchant.lua` now rejects offer-list
+  detection when a full field-command backdrop is visible behind the item list,
+  and when only status rows plus unpriced inventory entries are visible after
+  scroll/base context selection, while preserving actual shop offer screens and
+  Buy/Sell prompts.
+- FOLLOW-UP SOURCE FIX: after another reload/test, the log still showed
+  `MERCHANT_SELECT` at frames `01488`, `01643`, and `01712`, but no
+  `CMD_ITEM_FIRE`/`ITEM_CURSOR` ownership. Root cause is order as well as
+  parser shape: `check_command_menu()` let merchant detection return before a
+  confirmed command-ITEM-to-item-list cursor jump could set
+  `submenu_mode = "ITEM"`. Confirmed ITEM entry now runs before merchant
+  override and clears stale merchant state.
+- FOLLOW-UP SOURCE FIX: after a full emulator restart, held ITEM browsing still
+  spoke as merchant. Fresh logs showed command-menu input reaching ITEM, then
+  `MERCHANT_SELECT` at frame `00913` with no `CMD_ITEM_FIRE`; a live
+  `report_menu_state` while the item list was open showed `submenu=nil` and
+  `merchant_active=true`. The cursor-jump detector is too late for this screen,
+  so `check_command_menu()` now handles the direct A press on confirmed
+  ITEM(1,1) before merchant detection, sets `submenu_mode = "ITEM"`, and keeps
+  the older cursor-jump detector as a fallback.
+- FOLLOW-UP SOURCE FIX: after the direct ITEM ownership fix, merchant speech was
+  gone but the generic lower dialogue reader still announced visible inventory
+  rows such as `Silver Harp Cursed Belt Gwaelin's Love Torch`. Live state while
+  the menu was open showed `submenu=ITEM`, `merchant_active=false`, and
+  `PREV.dialogue_len=25`. `check_dialogue()` now absorbs STATUS, ITEM, and
+  SPELL submenu windows because those screens are spoken from cursor/RAM state,
+  not generic dialogue.
+- LIVE VERIFICATION: after the ITEM/menu fixes were manually reloaded, the user
+  verified command responses and submenus were reading normally. Fresh logs
+  showed no new `MERCHANT_SELECT` pollution while browsing command responses.
+- FOLLOW-UP SOURCE FIX: during Kol wrap-up, the user attempted `U` autowalk
+  while the field command menu was open. Logs showed
+  `AUTO_WALK_HOTKEY_RELEASE_START` at frame `01195`, but
+  `EVENT: command menu closed` did not occur until frame `01860`, so the
+  route queued before the menu guard caught up. Root cause: the main loop runs
+  `hotkeys.update()` before `check_command_menu()`, and
+  `DW_QOL_STATE.command_menu_blocks_field_movement()` only trusted
+  `CMD.menu_live`; a fresh visible command menu could therefore slip through
+  for that early frame. `main.lua` now also blocks raw `menu.is_open()` when a
+  visible cursor tile is present, preserving the older stale-COMMAND protection
+  because raw text alone is still ignored. `hotkeys.lua` now speaks the current
+  guard reason if a deferred `U` release is cancelled. Focused checks passed:
+  `luac -p main.lua hotkeys.lua test_hotkeys.lua
+  test_sweep_walk_command_surface.lua`, `lua test_hotkeys.lua`, and
+  `lua test_sweep_walk_command_surface.lua`.
+
+### Follow-Up: Lower Tool Merchant Bridge Found
+
+- LIVE PROOF: continuing from the entrance-to-Tool-Merchant route, autowalk
+  reached `(5,15)` through the existing `(5,14)` passthrough. Same-origin
+  probes confirmed the false route exits `(5,15)->DOWN`,
+  `(3,15)->LEFT`, `(3,16)->LEFT`, and `(3,15)->UP` all raw-hold-timeout
+  blocked without menu/dialogue/NPC contamination.
+- FRONTIER LEAD: with those runtime blockers active, `debug_route_frontier_skip_npcs:12,21,40`
+  reported row-17 hidden bridge candidates. The nearest live candidate was
+  `(3,16)->DOWN` into tile-0 `(3,17)`, with target-side exit down to `(3,18)`.
+- LIVE PROOF: from normally walked `(3,15)`, `probe_edge:DOWN` moved through
+  `(3,16)` and settled on tile-0 `(3,17)`. `inspect_tile:3,17` reported
+  tile-0/non-walkable in the current model while the hero stood there.
+  `probe_edge:DOWN` from `(3,17)` then moved through `(3,18)` and settled at
+  `(3,19)`, where skip-NPC pathfinding found `7 east, 2 south, 2 east` to
+  `(12,21)`.
+- LIVE PROOF: final autowalk from `(3,19)` found one more false shortcut,
+  `(9,19)->RIGHT` into `(10,19).west`, confirmed by same-origin
+  `probe_edge:RIGHT`. After runtime `add_blocked_edge:9,19,RIGHT`,
+  `auto_walk_blocker:12,21` reached `(12,21)`.
+- CLEAN / PROMOTED: `map_reader.lua` now adds Kol passthrough `(3,17)` and
+  directional blockers `(5,16).north`, `(2,15).east`, `(2,16).east`,
+  `(3,14).south`, and `(10,19).west`. Focused `test_map_reader.lua`
+  assertions cover the new passthrough, keep adjacent row-17 siblings closed,
+  and verify the promoted edge blockers.
+- RELOAD NEEDED: FCEUX needs a manual `main.lua` reload before validating the
+  full entrance-to-Tool-Merchant route against source instead of runtime
+  blockers.
+
+### Follow-Up: Tool Merchant Return Route Cleaned
+
+- LIVE PROOF: continuing from the Tool Merchant stand `(12,21)`, repeated
+  `auto_walk_blocker:19,23` route failures plus same-origin `probe_edge`
+  checks closed the false return-route shortcuts. The promoted destination
+  blockers are `(7,15).west`, `(4,16).west/north`, `(4,18).east`,
+  `(6,16).north`, `(10,18).west`, `(2,19).east/south`, `(4,20).east/north/west`,
+  `(10,20).south/west`, `(11,20).south`, `(12,20).south`,
+  `(3,21).north/south/west`, `(4,21).east`, `(13,21).west`,
+  `(4,22).east/west`, `(10,22).north/west`, `(11,22).north`,
+  `(12,22).north`, `(4,23).west`, and `(5..9,23).north`.
+- LIVE RESULT: with the runtime overlay active, `auto_walk_blocker:19,23`
+  reached the town exit `(19,23)`. The reverse check
+  `auto_walk_blocker:12,21` then walked from the exit back to the Tool
+  Merchant stand, completing at `(12,21)`.
+- CLEAN / PROMOTED: `map_reader.lua` now carries the return-route blockers in
+  Kol `MAP_DIRECTIONAL_BLOCKS[0x07]`; `test_map_reader.lua` covers the
+  promoted edges. Focused checks passed: `luac -p map_reader.lua
+  test_map_reader.lua`, `lua test_map_reader.lua`, and `git diff --check`.
+- RELOAD NEEDED: FCEUX still has the runtime overlay from this investigation.
+  Manual `main.lua` reload is needed before validating the route against source
+  alone.
+
+### Follow-Up: Inn Route Final Edge
+
+- LIVE PROOF: while cleaning the entrance-to-Inn route, autowalk stopped at
+  `(9,4)->RIGHT` into `(10,4).west`. The same-origin `probe_edge:right` from
+  `(9,4)` also raw-hold-timeout blocked with no NPC involvement. Runtime
+  `add_blocked_edge:9,4,RIGHT` then planned around the edge and
+  `auto_walk_blocker:19,2` reached the confirmed Inn stand at `(19,2)`.
+- CLEAN / PROMOTED: `map_reader.lua` now adds `(10,4).west` to Kol
+  `MAP_DIRECTIONAL_BLOCKS[0x07]`, and `test_map_reader.lua` asserts it beside
+  the existing Kol inn-route blockers. Focused checks passed: `luac -p
+  map_reader.lua test_map_reader.lua`, `lua test_map_reader.lua`,
+  `lua test_pathfinder.lua`, and `git diff --check`.
+- RELOAD NEEDED: FCEUX still has the runtime overlay for this edge. Manual
+  `main.lua` reload is needed before validating the route against source alone.
