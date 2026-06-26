@@ -550,3 +550,72 @@ For the next live map task, start a new dated section here with:
     `add_blocked_edge:1,4,RIGHT` rerouted down the x=1 corridor, crossed row 8,
     descended through the grave-door/Inn approach, and reached the Inn stand
     `(15,15)`. Promoted `(2,4).west` with a focused assertion.
+
+## 2026-06-25 Tantegel Sun Shrine Return Route
+
+- Working from Sun Shrine stairs back to `Stairs Up to Tantegel Castle Throne
+  Room` on map `0x04`.
+- CLEAN / PROMOTED CANDIDATES: route plus same-origin `probe_edge:left`
+  confirmed `(28,9)->LEFT`, `(28,10)->LEFT`, `(28,12)->LEFT`,
+  `(28,13)->LEFT`, `(28,14)->LEFT`, `(28,15)->LEFT`, and `(28,16)->LEFT`
+  as blocked with raw-hold timeout and no NPC/runtime contamination. These are
+  east-approach blocks into `(27,9)`, `(27,10)`, `(27,12)`, `(27,13)`,
+  `(27,14)`, `(27,15)`, and `(27,16)`. Follow-up continued the same pattern
+  through `(28,17)->LEFT`, `(28,18)->LEFT`, and `(28,19)->LEFT`, confirming
+  east-approach blocks into `(27,17)`, `(27,18)`, and `(27,19)`.
+- DO NOT PROMOTE: intervening vertical moves down the x=28 lane repeatedly
+  looked sticky on first hold but moved on seam retry; keep those vertical
+  seams open.
+- LIVE RESULT: with runtime east-approach blockers active for `(27,9)`,
+  `(27,10)`, and `(27,12)..(27,19)`, `auto_walk_blocker:7,7` reached the
+  throne-room stairs from `(28,19)`, and `auto_walk_blocker:28,19` returned to
+  the Sun Shrine-side stand. `(6,17)` east/west twitches recovered on seam
+  retry in both directions and remain timing noise, not map blockers.
+
+## 2026-06-25 Sun Shrine Chest / Old Man Cleanup
+
+- Map `0x0C` live baseline: started at `Stairs to Tantegel Castle` `(0,4)`
+  with no runtime blockers. Object browsing only exposed the stairs from the
+  west-edge tile, so cleanup used direct coordinate routing to chest `(4,5)`
+  and old-man stand `(4,7)`.
+- CLEAN / PROMOTED CANDIDATES: route retries plus same-origin probes confirmed
+  `(2,4)->RIGHT`, `(2,5)->RIGHT`, and `(2,6)->RIGHT` block into
+  `(3,4).west`, `(3,5).west`, and `(3,6).west`; route/probe also confirmed
+  `(3,7)->UP` blocks into `(3,6).south`.
+- DO NOT PROMOTE: `(2,4)->DOWN`, `(2,5)->DOWN`, `(2,6)->DOWN`, and
+  `(4,5)->RIGHT` were retry-passable and should stay open.
+- LIVE RESULT: with runtime blockers active, `auto_walk_blocker:4,5` reached
+  the chest, `auto_walk_blocker:4,7` reached the old-man stand from the stairs,
+  and `auto_walk_blocker:0,4` returned to the Tantegel stairs. Final position
+  was map `0x0C` at `(0,4)`.
+
+## 2026-06-25 Sun Shrine Follow-Up Route Polish
+
+- Follow-up route from the stairs was still bouncy after the first geometry
+  change. Fresh route retries plus same-origin probes confirmed additional
+  false cuts: `(2,3)->RIGHT` into `(3,3).west`, `(3,2)->DOWN` into
+  `(3,3).north`, `(4,2)->DOWN` into `(4,3).north`, `(5,2)->DOWN` into
+  `(5,3).north`, `(6,2)->DOWN` into `(6,3).north`, and the right-wall
+  entries `(7,3..6)->LEFT` into `(6,3..6).east`.
+- DO NOT PROMOTE: `(2,2)->DOWN` was rechecked from a normal-walked origin and
+  moved through `(2,3)`, ending at `(2,4)` during the probe hold. The x=2
+  vertical lane and row-7 bypass remain the intended open route.
+- LIVE RESULT: with the runtime overlay active, fresh
+  `auto_walk_blocker:4,7` from `(0,4)` reached the old-man stand through
+  `(2,4)->(2,7)->(4,7)`, and `auto_walk_blocker:0,4` returned to the stairs.
+
+## 2026-06-25 Sun Shrine Chest Return Polish
+
+- CLEAN / PROMOTED CANDIDATES: starting from chest cell `(4,5)`, the return
+  route to `Stairs to Tantegel Castle` first tried `(4,5)->LEFT`; route failure
+  plus same-origin `probe_edge:left` confirmed `(3,5).east` with raw-hold
+  timeout and no NPC/runtime contamination. Follow-up reroutes confirmed
+  `(3,4).east` from `(4,4)->LEFT`, `(4,3).south` from `(4,4)->UP`,
+  `(5,3).south` from `(5,4)->UP`, `(6,4).west` from `(5,4)->RIGHT`, and
+  `(6,5).west` from `(5,5)->RIGHT` using the same route-plus-probe pattern.
+- DO NOT PROMOTE: `(4,5)->UP` into `(4,4).south` and `(4,4)->RIGHT` into
+  `(5,4).west` both moved on seam retry and should stay open.
+- LIVE RESULT: with runtime blockers for `(3,5).east`, `(3,4).east`,
+  `(4,3).south`, `(5,3).south`, `(6,4).west`, and `(6,5).west`,
+  `auto_walk_blocker:0,4` returned from the chest-side pocket to the stairs
+  via `(5,5)->(5,7)->(1,7)->(1,4)->(0,4)`.

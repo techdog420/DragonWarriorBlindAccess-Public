@@ -1527,13 +1527,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- 5/5, so close the south approach too while leaving (14,5) itself
         -- standable for routes that can naturally reach it from valid sides.
         ["14,5"] = {north = true, south = true},
-        ["15,5"] = {north = true},
+        -- 2026-06-25 Magic Key merchant -> throne-room stairs route polish:
+        -- live route evidence from (16,5)->LEFT closed the east approach too.
+        ["15,5"] = {north = true, east = true},
         -- 2026-05-25 restored-state autowalk and direct verifier:
-        -- (12,9)->RIGHT blocked 5/5 while reverse (13,9)->LEFT moved 6/6,
-        -- but closing west by default can remove the only entrance-side route
-        -- around stationary Guard 7. Keep west open here and let route-local
-        -- temp blocks handle live gate rejection.
-        ["13,9"] = {north = true, south = true},
+        -- (12,9)->RIGHT blocked 5/5 while reverse (13,9)->LEFT moved 6/6.
+        -- It was kept open for entrance-side routes around stationary Guard 7,
+        -- but 2026-06-25 throne-room-stairs -> Magic Key merchant routing hit
+        -- the same face and a same-origin probe from (12,9)->RIGHT timed out.
+        -- With (13,9).west closed plus (19,6).west below, the merchant route
+        -- reached the stand through the x=18/row-7 detour.
+        ["13,9"] = {north = true, south = true, west = true},
         -- 2026-05-23 fixed-verifier retest: (14,8)->DOWN into (14,9)
         -- blocked 5/5 with blocked_model_mismatch=5. Earlier moved evidence
         -- was another unstable row-9 latch result. Keep west open but close
@@ -1573,7 +1577,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- mixed (21,17).east seam, direct probe_edge_verify:24,8,DOWN,5
         -- blocked 5/5 with blocked_model_mismatch=5. Keep the top strip
         -- horizontal-only here instead of letting A* descend through (24,9).
-        ["24,9"] = {north = true},
+        -- 2026-06-25 Magic Key merchant -> throne-room stairs route polish:
+        -- route-shaped movement also closed (23,8)->DOWN, (25,9)->LEFT, and
+        -- (25,10)->LEFT before the overlay reached the stairs via the west detour.
+        ["23,9"] = {north = true},
+        ["24,9"] = {north = true, east = true},
+        ["24,10"] = {east = true},
         -- Survey-confirmed directional blocks 2026-04-09 (survey_map run, 22 failures / 30 targets)
         -- All entries confidence=high unless noted. Approach conventions:
         --   north=true: approaching from north (moving south into cell) is blocked
@@ -1687,16 +1696,18 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- 2026-05-24 west-pocket continuation after emulator recovery:
         -- direct probe_edge_verify from live `(19,14)` blocked 5/5 on the west
         -- approach into `(18,14)`, while forced `(18,14)->RIGHT` moved back
-        -- through and settled east. Keep only the east approach closed; the
-        -- north face stayed mixed and should remain unmodeled for now.
-        ["18,14"] = {east = true},
+        -- through and settled east. The north face stayed mixed until the
+        -- 2026-06-25 Magic Key merchant -> main entrance route hit
+        -- (18,13)->DOWN and two same-origin probes also timed out.
+        ["18,14"] = {east = true, north = true},
         -- 2026-05-24 west-pocket continuation after the hidden-alcove bridge:
         -- live `(19,15)->LEFT` blocked cleanly from a natural routed arrival,
         -- while forced `(18,15)->RIGHT` moved back through and later
-        -- `(17,15)->RIGHT` also moved into `(18,15)`. Keep only the east
-        -- approach closed; the old west-side runtime helper was disproved and
-        -- removed after the direct reverse probe.
-        ["18,15"] = {east = true},
+        -- `(17,15)->RIGHT` also moved into `(18,15)`. A later 2026-06-25
+        -- Magic Key merchant -> main entrance route reached this face from
+        -- a normal route, and a same-origin probe from `(17,15)->RIGHT`
+        -- timed out, so close the west approach too.
+        ["18,15"] = {east = true, west = true},
         -- 2026-05-24 southeast-pocket bridge retest after user manual run-up:
         -- live `(20,22)->RIGHT` kept blocking from a natural route arrival and
         -- from a clean reloaded standstill, while forced `(21,22)->LEFT` moved
@@ -1787,30 +1798,40 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- OPEN from (18,5) facing south consumed a key and wrote door RAM
         -- slot 1=(18,6), so it is modeled in MAP_DOOR_CELLS instead of as
         -- a permanent directional blocker.
-        ["17,6"]  = {north = true},
-        ["19,6"]  = {north = true},
+        ["17,6"]  = {north = true, south = true},
         -- 2026-05-22 key-merchant entrance-route follow-up: the actual route
         -- to the merchant stand can traverse row 6 horizontally, but row 7
         -- cannot enter the row-6 counter/wall band from below at x=20..23.
         -- Direct probe_edge_verify checks from (20,7)..(23,7) UP each blocked
-        -- 5/5; (18,6)->RIGHT and (19,7)->UP later rechecked passable 5/5, so
-        -- keep (19,6).west/south open.
+        -- 5/5; (19,7)->UP later rechecked passable 5/5, so keep (19,6).south
+        -- open. 2026-06-25 throne-room-stairs -> Magic Key merchant routing
+        -- blocked (18,6)->RIGHT, and a same-origin probe agreed, so close west.
+        ["19,6"]  = {north = true, west = true},
         ["20,6"]  = {north = true, south = true},
         ["21,6"]  = {south = true},
-        ["22,6"]  = {south = true},
-        ["23,6"]  = {south = true},
-        -- 2026-05-25 follow-up after the southeast-stairs detour: later clean
-        -- verifiers moved 6/6 for (25,5)->DOWN, (26,5)->DOWN, (25,7)->UP,
-        -- (26,7)->UP, and (26,7)->RIGHT. Keep (25,6), (26,6), and the
-        -- west approach into (27,7) open; the earlier route blockers were
-        -- state/timing contamination.
+        ["22,6"]  = {south = true, north = true},
+        ["23,6"]  = {south = true, north = true, east = true},
+        -- 2026-05-25 follow-up after the southeast-stairs detour had kept
+        -- (25,6).north, (25,6).west, (26,6), and the west approach into
+        -- (27,7) open. The 2026-06-25 Magic Key merchant -> main entrance
+        -- route later rechecked those faces from normal walked origins;
+        -- same-origin probes timed out on each, and the overlay reached the
+        -- exit stand and returned to the merchant.
+        ["25,6"]  = {south = true, north = true, west = true},
+        ["26,6"]  = {north = true, south = true},
+        ["27,6"]  = {east = true},
+        ["27,7"]  = {east = true, west = true},
         -- Magic-key merchant counter/wall pocket. The service stand is (24,3)
         -- facing north; (24,2)/(25,2) look walkable to the ROM decoder but
-        -- direct raw verifiers from below blocked 5/5.
+        -- direct raw verifiers from below blocked 5/5. Follow-up entrance-route
+        -- polish also proved (23,3)->UP into (23,2) blocked via same-origin
+        -- probe_edge:up; the route reached the exit stand and returned with
+        -- that runtime edge active.
+        ["23,2"]  = {south = true},
         ["24,2"]  = {south = true},
         ["25,2"]  = {south = true},
-        ["21,4"]  = {west = true},
-        ["21,5"]  = {west = true},
+        ["21,4"]  = {west = true, east = true},
+        ["21,5"]  = {west = true, east = true},
         -- x=15 east-entry: re-confirmed 2026-04-24 via natural walk (teleport
         -- normalization removed as a variable). 90-frame LEFT hold from (17,y)
         -- stopped at (16,y) for y=1,2,3 — engine blocks entry from (16,y)->LEFT.
@@ -1889,7 +1910,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["26,28"] = {east = true},
         ["27,27"] = {south = true},
         ["27,29"] = {north = true},
-        ["28,28"] = {west = true},
+        -- 2026-06-25 Magic Key merchant -> main entrance route later proved
+        -- `(29,28)->LEFT` blocks too, so close the east approach.
+        ["28,28"] = {west = true, east = true},
         -- 2026-05-22 accidental throne-room route shakedown: the route looped
         -- between (28,16)/(28,17), and direct queued + seam-retry evidence
         -- showed the east approach into (27,17) blocked in that run.
@@ -1955,13 +1978,19 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- bridge is unresolved again rather than executable through 26,21.
         ["26,15"] = {west = true, north = true},
         ["26,16"] = {south = true, west = true},
-        ["27,18"] = {west = true},
-        ["27,19"] = {west = true},
         ["27,21"] = {north = true, west = true},
-        ["27,12"] = {west = true},
-        ["27,13"] = {west = true},
-        ["27,14"] = {west = true},
-        ["27,17"] = {west = true},
+        -- 2026-06-25 Sun Shrine stairs return-route cleanup: from the shrine
+        -- side, route retries plus same-origin `probe_edge:left` showed the
+        -- east approaches from x=28 into this wall band also block. Intervening
+        -- vertical x=28 moves were retry-passable and stay open.
+        ["27,12"] = {west = true, east = true},
+        ["27,13"] = {west = true, east = true},
+        ["27,14"] = {west = true, east = true},
+        ["27,15"] = {east = true},
+        ["27,16"] = {east = true},
+        ["27,17"] = {west = true, east = true},
+        ["27,18"] = {west = true, east = true},
+        ["27,19"] = {west = true, east = true},
         -- 2026-05-24 FCEUX lower-shelf retest around the shrine approach:
         -- (23,21)->DOWN into (23,22) blocked on raw hold timeout, while
         -- reverse (23,22)->UP moved cleanly. The adjacent west shelf showed
@@ -2053,7 +2082,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["28,21"] = {west = true},
         ["28,22"] = {east = true},
         ["27,24"] = {north = true, west = true, east = true, south = true},
-        ["28,24"] = {north = true, west = true},
+        -- 2026-06-25 Magic Key merchant -> main entrance route closed the
+        -- lower east-lane false westward cuts from x=29 on rows 24..28.
+        ["28,24"] = {north = true, west = true, east = true},
+        ["28,25"] = {east = true},
+        ["28,26"] = {east = true},
+        ["28,27"] = {east = true},
         ["27,25"] = {north = true},
         -- Upper-right exterior lane: clean route testing with both doors open
         -- showed westward entries into (29,9) and (29,10) can trigger the
@@ -2066,11 +2100,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["29,9"] = {west = true},
         ["29,10"] = {west = true},
         -- 2026-05-23 autowalk stall near the throne-side bridge corridor:
-        -- direct probe_edge_verify showed one-way west-approach blocks into
-        -- (27,9) and (27,10): moving from (26,9)->(27,9) and (26,10)->(27,10)
-        -- was blocked 5/5 while reverse moves stayed open.
-        ["27,9"] = {west = true},
-        ["27,10"] = {west = true},
+        -- direct probe_edge_verify showed west-approach blocks into (27,9) and
+        -- (27,10): moving from (26,9)->(27,9) and (26,10)->(27,10) was blocked
+        -- 5/5 while reverse moves stayed open. The 2026-06-25 Sun Shrine stairs
+        -- return route later proved the opposite/east approaches from x=28
+        -- also block.
+        ["27,9"] = {west = true, east = true},
+        ["27,10"] = {west = true, east = true},
         -- Southeast exterior lane / world-map exit pocket. Fresh 2026-05-24
         -- rechecks showed this east boundary is mixed, not uniformly open:
         -- - (28,20)->RIGHT changes to the World Map immediately
@@ -2252,6 +2288,27 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,17"] = {north = true, south = true},
         ["20,17"] = {north = true, south = true},
         ["21,18"] = {west = true},
+    },
+
+    -- Map 0x0C: Sun Shrine / Stones of Sunlight chamber.
+    --
+    -- 2026-06-25 route cleanup from the Tantegel stairs/entrance to the
+    -- chest and old-man stand: direct east cuts into the central wall mass,
+    -- the row-2 descents into row 3, and return-route cuts back through the
+    -- central wall all blocked under route retries plus same-origin probes.
+    -- The valid route uses the x=2 lane, crosses row 7, and returns through
+    -- the lower bypass instead of cutting west/north from the chest cell.
+    [0x0C] = {
+        ["3,3"] = {north = true, west = true},
+        ["3,4"] = {east = true, west = true},
+        ["3,5"] = {east = true, west = true},
+        ["3,6"] = {south = true, west = true},
+        ["4,3"] = {north = true, south = true},
+        ["5,3"] = {north = true, south = true},
+        ["6,3"] = {east = true, north = true},
+        ["6,4"] = {east = true, west = true},
+        ["6,5"] = {east = true, west = true},
+        ["6,6"] = {east = true},
     },
 
     -- Map 0x0D: Rain Shrine / Northern Cave

@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-24
+Updated: 2026-06-25
 
 ## Current State
 
@@ -68,6 +68,48 @@ Updated: 2026-06-24
   but the ROM did not open the field command menu. Treat that as a secondary
   diagnostic path only if the fixed `(22,4)` stand plus `(24,4)` target hold
   still fails after reload; `report_input_guard_state` is staged for that case.
+- Tantegel Castle downstairs Magic Key merchant return polish is promoted in
+  `map_reader.lua`: the merchant-to-throne-room-stairs route closed the false
+  east/northeast cuts at `(22,6).north`, `(21,5).east`, `(21,4).east`,
+  `(23,6).north`, `(23,9).north`, `(24,9).east`, `(24,10).east`,
+  `(25,6).south`, `(17,6).south`, and `(15,5).east`. With those runtime blocks
+  active, `auto_walk_blocker` reached `Stairs Up to Tantegel Castle Throne Room`
+  at `(7,7)` via the west detour. Reload `main.lua` in FCEUX before judging the
+  live planner against this source fix. The reverse route back to the Magic Key
+  merchant then confirmed `(13,9).west` from `(12,9)->RIGHT` and `(19,6).west`
+  from `(18,6)->RIGHT`; with both runtime edges active, `auto_walk_blocker`
+  reached the merchant stand at `(24,3)`. The `(18,6)->DOWN` retry moved on seam
+  retry and should stay open. The Magic Key merchant <-> main entrance route is
+  also promoted: same-origin route/probe evidence closed `(18,14).north`,
+  `(18,15).west`, `(23,2).south`, `(23,6).east`, `(25,6).north/west`,
+  `(26,6).north/south`, `(27,6).east`, `(27,7).east/west`, and
+  `(28,24..28).east`; with that runtime overlay, `auto_walk_blocker` reached
+  the exit stand at `(11,29)` and returned to the merchant stand at `(24,3)`;
+  the follow-up `(23,2).south` edge came from same-origin `probe_edge:up` at
+  `(23,3)`.
+  Reload `main.lua` before judging the live planner without those runtime
+  blocks.
+- Tantegel Castle downstairs Sun Shrine stairs route polish is promoted in
+  `map_reader.lua`: same-origin route/probe evidence from the Sun Shrine-side
+  lane confirmed the east approaches into `(27,9)`, `(27,10)`, and
+  `(27,12)..(27,19)` are blocked from x=28. With those runtime edges active,
+  `auto_walk_blocker:7,7` reached `Stairs Up to Tantegel Castle Throne Room`
+  from `(28,19)`, and the reverse route `auto_walk_blocker:28,19` reached the
+  Sun Shrine-side stand again. The x=28 vertical moves and the `(6,17)` west/east
+  crossings moved on seam retry and should stay open. Reload `main.lua` before
+  judging live planning without the runtime overlay.
+- Sun Shrine map `0x0C` chest / old-man cleanup is promoted in `map_reader.lua`:
+  route retries plus same-origin probes closed `(3,3).north/west`,
+  `(3,4).east/west`, `(3,5).east/west`, `(3,6).west/south`,
+  `(4,3).north/south`, `(5,3).north/south`, `(6,3).north/east`,
+  `(6,4).east/west`, `(6,5).east/west`, and `(6,6).east`. With those runtime
+  blockers active, a fresh `auto_walk_blocker:4,7` from the Tantegel stairs
+  `(0,4)` reached the old-man stand through the x=2 lane, row 7 bypass, and
+  east-side pocket, and `auto_walk_blocker:0,4` returned to the stairs through
+  the lower bypass. The explicit `(2,2)->DOWN` recheck moved through `(2,3)`,
+  `(4,5)->RIGHT` moved on route retry, and the x=2 vertical moves plus row-7
+  bypass should stay open. Reload `main.lua` before judging live planning
+  without the runtime overlay.
 - Swamp Cave rescue branch is now live-confirmed through Gwaelin. Door cell
   `(5,20)` is open in slot `0`, Gwaelin is reached from `(5,19)` facing north
   toward `(5,18)`, the escort prompt was accepted, and final field state was

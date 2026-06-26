@@ -84,6 +84,7 @@ end
 
 local MAP_NAMES = {
     [0x04] = "Tantegel Castle",
+    [0x0C] = "Sun Shrine",
     [0x08] = "Brecconary",
     [0x18] = "Garin's Grave B1",
     [0x19] = "Garin's Grave B2",
@@ -114,6 +115,10 @@ end
 
 local function assert_tantegel_dir(env, cell, approach, message)
     assert_directional_block(env, 0x04, cell, approach, message)
+end
+
+local function assert_sun_shrine_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x0C, cell, approach, message)
 end
 
 local function assert_garins_grave_b1_dir(env, cell, approach, message)
@@ -1084,7 +1089,7 @@ function tests.tantegel_castle_east_connector_raw_confirmed_blocks_are_modeled()
     assert_equal(dirs["21,6"].south, true, "(21,6) south approach should block after key-merchant route verifier from (21,7)")
     assert_equal(dirs["22,6"].south, true, "(22,6) south approach should block after key-merchant route verifier from (22,7)")
     assert_equal(dirs["23,6"].south, true, "(23,6) south approach should block after key-merchant route verifier from (23,7)")
-    assert_equal(dirs["19,6"].west, nil, "(19,6) west approach should stay open after repeat verifier from (18,6) moved 5/5")
+    assert_tantegel_dir(env, "19,6", "west", "(19,6) west approach should block after 2026-06-25 throne-stairs-to-merchant route plus same-origin probe from (18,6)->RIGHT")
     assert_equal(dirs["19,6"].south, nil, "(19,6) south approach should stay open after repeat verifier from (19,7) moved 5/5")
     assert_equal(dirs["21,4"].west, true, "(21,4) west approach should block after post-reload raw RIGHT,90 stayed at (20,4)")
     assert_equal(dirs["21,5"].west, true, "(21,5) west approach should block after post-reload raw RIGHT,90 stayed at (20,5)")
@@ -1097,6 +1102,59 @@ function tests.tantegel_castle_key_merchant_counter_blocks_are_modeled()
     assert_equal(dirs["24,2"].south, true, "(24,2) south approach should block after key-merchant counter verifier from (24,3)")
     assert_equal(dirs["25,2"].south, true, "(25,2) south approach should block after key-merchant counter verifier from (25,3)")
     assert_equal(dirs["24,3"], nil, "(24,3) should stay open; entrance-to-merchant route reached the stand from (23,3)")
+    env.restore()
+end
+
+function tests.tantegel_castle_magic_key_merchant_to_throne_stairs_false_cuts_are_modeled()
+    -- Confirmed 2026-06-25 while routing from the downstairs Magic Key
+    -- merchant back to the throne-room stairs. With this runtime overlay,
+    -- auto_walk_blocker reached the stairs at (7,7) through the long west detour.
+    local env = make_env()
+    assert_tantegel_dir(env, "22,6", "north", "(22,6).north should block after same-origin probe from (22,5)->DOWN")
+    assert_tantegel_dir(env, "21,5", "east", "(21,5).east should block after route failure from (22,5)->LEFT")
+    assert_tantegel_dir(env, "21,4", "east", "(21,4).east should block after route failure from (22,4)->LEFT")
+    assert_tantegel_dir(env, "23,6", "north", "(23,6).north should block after route failure from (23,5)->DOWN")
+    assert_tantegel_dir(env, "23,9", "north", "(23,9).north should block after route failure from (23,8)->DOWN")
+    assert_tantegel_dir(env, "24,9", "east", "(24,9).east should block after route failure from (25,9)->LEFT")
+    assert_tantegel_dir(env, "24,10", "east", "(24,10).east should block after route failure from (25,10)->LEFT")
+    assert_tantegel_dir(env, "25,6", "south", "(25,6).south should block after route failure from (25,7)->UP")
+    assert_tantegel_dir(env, "17,6", "south", "(17,6).south should block after route failure from (17,7)->UP")
+    assert_tantegel_dir(env, "15,5", "east", "(15,5).east should block after route failure from (16,5)->LEFT")
+    env.restore()
+end
+
+function tests.tantegel_castle_throne_stairs_to_magic_key_merchant_false_cuts_are_modeled()
+    -- Confirmed 2026-06-25 while returning from the throne-room stairs to the
+    -- downstairs Magic Key merchant. With both runtime blocks active,
+    -- auto_walk_blocker reached the merchant stand at (24,3).
+    local env = make_env()
+    assert_tantegel_dir(env, "13,9", "west", "(13,9).west should block after route failure and same-origin probe from (12,9)->RIGHT")
+    assert_tantegel_dir(env, "19,6", "west", "(19,6).west should block after route failure and same-origin probe from (18,6)->RIGHT")
+    env.restore()
+end
+
+function tests.tantegel_castle_magic_key_merchant_to_main_entrance_false_cuts_are_modeled()
+    -- Confirmed 2026-06-25 while routing between the downstairs Magic Key
+    -- merchant and the main castle entrance. With this runtime overlay,
+    -- auto_walk_blocker reached the exit stand at (11,29) and returned to
+    -- the merchant stand at (24,3).
+    local env = make_env()
+    assert_tantegel_dir(env, "18,14", "north", "(18,14).north should block after route failure and same-origin probes from (18,13)->DOWN")
+    assert_tantegel_dir(env, "18,15", "west", "(18,15).west should block after route failure and same-origin probe from (17,15)->RIGHT")
+    assert_tantegel_dir(env, "23,6", "east", "(23,6).east should block after route failure and same-origin probe from (24,6)->LEFT")
+    assert_tantegel_dir(env, "25,6", "north", "(25,6).north should block after route failure and same-origin probe from (25,5)->DOWN")
+    assert_tantegel_dir(env, "25,6", "west", "(25,6).west should block after route failure and same-origin probe from (24,6)->RIGHT")
+    assert_tantegel_dir(env, "26,6", "north", "(26,6).north should block after route failure and same-origin probe from (26,5)->DOWN")
+    assert_tantegel_dir(env, "26,6", "south", "(26,6).south should block after route failure and same-origin probe from (26,7)->UP")
+    assert_tantegel_dir(env, "27,6", "east", "(27,6).east should block after route failure and same-origin probe from (28,6)->LEFT")
+    assert_tantegel_dir(env, "27,7", "east", "(27,7).east should block after route failure and same-origin probe from (28,7)->LEFT")
+    assert_tantegel_dir(env, "27,7", "west", "(27,7).west should block after route failure and same-origin probe from (26,7)->RIGHT")
+    assert_tantegel_dir(env, "28,24", "east", "(28,24).east should block after route failure and same-origin probe from (29,24)->LEFT")
+    assert_tantegel_dir(env, "28,25", "east", "(28,25).east should block after route failure and same-origin probe from (29,25)->LEFT")
+    assert_tantegel_dir(env, "28,26", "east", "(28,26).east should block after route failure and same-origin probe from (29,26)->LEFT")
+    assert_tantegel_dir(env, "28,27", "east", "(28,27).east should block after route failure and same-origin probe from (29,27)->LEFT")
+    assert_tantegel_dir(env, "28,28", "east", "(28,28).east should block after route failure and same-origin probe from (29,28)->LEFT")
+    assert_tantegel_dir(env, "23,2", "south", "(23,2).south should block after route churn and same-origin probe from (23,3)->UP")
     env.restore()
 end
 
@@ -1184,7 +1242,7 @@ function tests.tantegel_castle_x15_east_entries_are_engine_blocked()
     assert_tantegel_dir(env, "14,5", "north", "(14,5) should block north approach after Sun Shrine route shakedown from (14,4)")
     assert_tantegel_dir(env, "14,5", "south", "(14,5) should block south approach after reloaded route stall from (14,6)")
     assert_tantegel_dir(env, "15,5", "north", "(15,5) should block north approach after Sun Shrine route shakedown from (15,4)")
-    assert_equal(dirs["13,9"].west, nil, "(13,9) west approach should stay default-open; restored-state gate blocks are handled route-locally")
+    assert_tantegel_dir(env, "13,9", "west", "(13,9) west approach should block after 2026-06-25 route and same-origin probe from (12,9)->RIGHT")
     assert_tantegel_dir(env, "13,9", "north", "(13,9) north approach stays closed after mixed north-entry evidence")
     assert_tantegel_dir(env, "13,9", "south", "(13,9) south approach should block after stable south-entry verifier from (13,10)")
     assert_tantegel_dir(env, "14,9", "north", "(14,9) north approach should block after fixed-verifier retest from (14,8)")
@@ -1198,6 +1256,9 @@ function tests.tantegel_castle_x15_east_entries_are_engine_blocked()
     assert_tantegel_dir(env, "22,9", "north", "(22,9) should block north approach after top-right Sun Shrine route verifier from (22,8)")
     assert_tantegel_dir(env, "27,9", "west", "(27,9) should block west approach after direct probe_edge_verify:26,9,RIGHT,5")
     assert_tantegel_dir(env, "27,10", "west", "(27,10) should block west approach after direct probe_edge_verify:26,10,RIGHT,5")
+    for _, cell in ipairs({"27,9", "27,10", "27,12", "27,13", "27,14", "27,15", "27,16", "27,17", "27,18", "27,19"}) do
+        assert_tantegel_dir(env, cell, "east", cell .. " east approach should block after Sun Shrine stairs return-route same-origin LEFT probes from x=28")
+    end
     assert_equal(dirs["26,9"] and dirs["26,9"].east, nil, "(26,9) should remain open from east after seam confirmation")
     assert_equal(dirs["26,10"] and dirs["26,10"].west, nil, "(26,10) should remain open from west after one-way seam confirmation")
 
@@ -1340,7 +1401,7 @@ function tests.tantegel_castle_upper_chamber_row_16_updates_are_modeled()
     assert_tantegel_dir(env, "26,15", "north", "(26,15) north approach should block after direct probe_edge_verify:26,14,DOWN,5")
     assert_tantegel_dir(env, "27,18", "west", "(27,18).west should block after repeated live hazard-pocket raw probes from (26,18)")
     assert_tantegel_dir(env, "27,19", "west", "(27,19).west should block after repeated live hazard-pocket raw probes from (26,19)")
-    assert_equal(dirs["27,17"] and dirs["27,17"].east or nil, nil, "(27,17).east should stay open; reverse checks from (28,17) still move")
+    assert_tantegel_dir(env, "27,17", "east", "(27,17).east should block after 2026-06-25 Sun Shrine return-route same-origin probe from (28,17)->LEFT")
     assert_tantegel_dir(env, "27,17", "west", "(27,17).west should block after repeated route stalls at (26,17)->RIGHT")
     assert_tantegel_dir(env, "27,21", "north", "(27,21).north should block after repeated live southward raw probes from (27,20)")
     assert_tantegel_dir(env, "27,12", "west", "(27,12) west approach should block after hazard-patched Sun Shrine route verifier from (26,12)")
@@ -1385,12 +1446,12 @@ function tests.tantegel_castle_upper_chamber_row_16_updates_are_modeled()
     assert_tantegel_dir(env, "28,24", "north", "(28,24) north approach should block after the 2026-05-24 east-pocket verifier from (28,23)")
     local row23_bridge = env.map_reader.get_walkability_details(0x04, 21, 23)
     assert_equal(row23_bridge.permanent_blocked, false, "(21,23) should not remain permanently blocked after 2026-05-24 live east-west probes from (20,23) and (22,23) moved through it")
-    assert_equal(dirs["25,6"] and dirs["25,6"].north or nil, nil, "(25,6) north approach should stay open after 2026-05-25 verifier from (25,5) moved 6/6")
-    assert_equal(dirs["25,6"] and dirs["25,6"].south or nil, nil, "(25,6) south approach should stay open after 2026-05-25 verifier from (25,7) moved 6/6")
-    assert_equal(dirs["25,6"] and dirs["25,6"].west or nil, nil, "(25,6) west approach should stay open after probe_edge_verify:24,6,RIGHT,5 moved 6/6")
-    assert_equal(dirs["26,6"] and dirs["26,6"].north or nil, nil, "(26,6) north approach should stay open after 2026-05-25 verifier from (26,5) moved 6/6")
-    assert_equal(dirs["26,6"] and dirs["26,6"].south or nil, nil, "(26,6) south approach should stay open after 2026-05-25 verifier from (26,7) moved 6/6")
-    assert_equal(dirs["27,7"] and dirs["27,7"].west or nil, nil, "(27,7) west approach should stay open after 2026-05-25 verifier from (26,7) moved 6/6")
+    assert_tantegel_dir(env, "25,6", "north", "(25,6) north approach should now block after the 2026-06-25 merchant-to-main-entrance route failed from (25,5)->DOWN")
+    assert_tantegel_dir(env, "25,6", "south", "(25,6) south approach should now block after the 2026-06-25 merchant-to-stairs route failed from (25,7)->UP")
+    assert_tantegel_dir(env, "25,6", "west", "(25,6) west approach should now block after the 2026-06-25 merchant-to-main-entrance route failed from (24,6)->RIGHT")
+    assert_tantegel_dir(env, "26,6", "north", "(26,6) north approach should now block after the 2026-06-25 merchant-to-main-entrance route failed from (26,5)->DOWN")
+    assert_tantegel_dir(env, "26,6", "south", "(26,6) south approach should now block after the 2026-06-25 merchant-to-main-entrance route failed from (26,7)->UP")
+    assert_tantegel_dir(env, "27,7", "west", "(27,7) west approach should now block after the 2026-06-25 merchant-to-main-entrance route failed from (26,7)->RIGHT")
     assert_not_brecconary_dir(env, "15,16", "recent Tantegel throne-to-shrine blocker should not be present on Brecconary")
     assert_not_brecconary_dir(env, "27,12", "recent Tantegel throne-route blocker should not be present on Brecconary")
     assert_not_brecconary_dir(env, "27,13", "recent Tantegel throne-route blocker should not be present on Brecconary")
@@ -3712,6 +3773,31 @@ function tests.sun_shrine_west_edge_entry_and_return_stairs_override_boundary()
     local floor = env.map_reader.get_walkability_details(0x0C, 1, 2)
     assert_equal(floor.base_walkable, true, "Sun Shrine interior floor should stay tile-walkable")
     assert_equal(floor.reason, "tile_type", "Sun Shrine interior floor should not need passthrough")
+
+    local dirs = env.map_reader.get_directional_blocks(0x0C)
+    assert_sun_shrine_dir(env, "3,3", "west", "(3,3).west should block after top shortcut probe from (2,3)->RIGHT")
+    assert_sun_shrine_dir(env, "3,3", "north", "(3,3).north should block after top shortcut probe from (3,2)->DOWN")
+    assert_sun_shrine_dir(env, "3,4", "west", "(3,4).west should block after entrance-to-chest route probe from (2,4)->RIGHT")
+    assert_sun_shrine_dir(env, "3,4", "east", "(3,4).east should block after chest-return route probe from (4,4)->LEFT")
+    assert_sun_shrine_dir(env, "3,5", "west", "(3,5).west should block after entrance-to-chest route probe from (2,5)->RIGHT")
+    assert_sun_shrine_dir(env, "3,5", "east", "(3,5).east should block after chest-return route probe from (4,5)->LEFT")
+    assert_sun_shrine_dir(env, "3,6", "west", "(3,6).west should block after entrance-to-chest route probe from (2,6)->RIGHT")
+    assert_sun_shrine_dir(env, "3,6", "south", "(3,6).south should block after chest route probe from (3,7)->UP")
+    assert_sun_shrine_dir(env, "4,3", "north", "(4,3).north should block after top shortcut probe from (4,2)->DOWN")
+    assert_sun_shrine_dir(env, "4,3", "south", "(4,3).south should block after chest-return route probe from (4,4)->UP")
+    assert_sun_shrine_dir(env, "5,3", "north", "(5,3).north should block after top shortcut probe from (5,2)->DOWN")
+    assert_sun_shrine_dir(env, "5,3", "south", "(5,3).south should block after chest-return route probe from (5,4)->UP")
+    assert_sun_shrine_dir(env, "6,3", "north", "(6,3).north should block after top shortcut probe from (6,2)->DOWN")
+    assert_sun_shrine_dir(env, "6,3", "east", "(6,3).east should block after right-wall probe from (7,3)->LEFT")
+    assert_sun_shrine_dir(env, "6,4", "east", "(6,4).east should block after right-wall probe from (7,4)->LEFT")
+    assert_sun_shrine_dir(env, "6,4", "west", "(6,4).west should block after chest-return route probe from (5,4)->RIGHT")
+    assert_sun_shrine_dir(env, "6,5", "east", "(6,5).east should block after right-wall probe from (7,5)->LEFT")
+    assert_sun_shrine_dir(env, "6,5", "west", "(6,5).west should block after chest-return route probe from (5,5)->RIGHT")
+    assert_sun_shrine_dir(env, "6,6", "east", "(6,6).east should block after right-wall probe from (7,6)->LEFT")
+
+    assert_equal(dirs["2,3"], nil, "(2,3) should stay open after same-origin probe from (2,2)->DOWN moved")
+    assert_equal(dirs["3,7"], nil, "(3,7) should stay open for the live row-7 old-man/chest bypass")
+    assert_equal(dirs["6,7"], nil, "(6,7) should stay open for the live row-7 old-man/chest bypass")
 
     env.restore()
 end

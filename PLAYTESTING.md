@@ -1,10 +1,50 @@
 # Playtesting Notes
 
-Updated: 2026-06-24
+Updated: 2026-06-25
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Tantegel Castle downstairs Magic Key merchant return polish (`2026-06-25`):
+  routing from the Magic Key merchant back to the throne-room stairs exposed ten
+  false shortcut edges in the east/northeast strip. Runtime-blocking
+  `(22,6).north`, `(21,5).east`, `(21,4).east`, `(23,6).north`,
+  `(23,9).north`, `(24,9).east`, `(24,10).east`, `(25,6).south`,
+  `(17,6).south`, and `(15,5).east` let `auto_walk_blocker` reach the stairs
+  at `(7,7)` through the long west detour. These are now modeled in
+  `map_reader.lua`; reload `main.lua` in FCEUX before judging the live planner
+  without the runtime overlay.
+  The reverse route from the throne-room stairs back to the Magic Key merchant
+  then confirmed `(13,9).west` from `(12,9)->RIGHT` and `(19,6).west` from
+  `(18,6)->RIGHT`; with both runtime edges active, `auto_walk_blocker` reached
+  the merchant stand at `(24,3)`. The `(18,6)->DOWN` retry moved on seam retry
+  and should stay open.
+  Main entrance route polish from the merchant then exposed a compact false
+  wall/counter cluster plus lower east-lane cuts. The promoted runtime overlay
+  is `(18,14).north`, `(18,15).west`, `(23,6).east`, `(25,6).north/west`,
+  `(26,6).north/south`, `(27,6).east`, `(27,7).east/west`, and
+  `(28,24..28).east`. A follow-up pass from `(23,3)` confirmed `(23,2).south`
+  with same-origin `probe_edge:up`; with that edge added, `auto_walk_blocker`
+  reached the exit stand at `(11,29)` and returned cleanly to the merchant
+  stand at `(24,3)`.
+  Sun Shrine stairs return-route polish then confirmed the east approaches into
+  `(27,9)`, `(27,10)`, and `(27,12)..(27,19)` are blocked from the x=28 lane.
+  With those runtime edges active, `auto_walk_blocker:7,7` reached the
+  throne-room stairs from `(28,19)`, and `auto_walk_blocker:28,19` returned to
+  the Sun Shrine-side stand. The sticky-looking x=28 vertical moves and the
+  `(6,17)` east/west crossings recovered on seam retry and should stay open.
+  Inside Sun Shrine map `0x0C`, the route from `Stairs to Tantegel Castle`
+  `(0,4)` to the chest `(4,5)` and old-man stand `(4,7)` now closes the hidden
+  direct cuts at `(3,3).north/west`, `(3,4).east/west`,
+  `(3,5).east/west`, `(3,6).west/south`, `(4,3).north/south`,
+  `(5,3).north/south`, `(6,3).north/east`, `(6,4).east/west`, and
+  `(6,5).east/west` plus `(6,6).east`. The validated route descends the x=2
+  lane, crosses row 7, approaches the chest/old-man area from the east, and
+  returns to `(0,4)` by the lower row-7 bypass instead of cutting west or north
+  from the chest-side pocket. A same-origin recheck of the suspected
+  `(2,2)->DOWN` edge moved through `(2,3)`, so `(2,3).north` remains open.
+  Reload `main.lua` before testing this route without runtime blocks.
 
 - Brecconary Magic Key revisit complete (`2026-06-24`): locked-door placement,
   service routes, Fairy Water access, and exit/object-browser behavior are
