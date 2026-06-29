@@ -149,6 +149,7 @@ function M.normalize_dialogue(text)
     normalized = normalized:gsub("%[GOLD%]", "")
     normalized = normalized:gsub("Experience%s+Gold%s+increases", "Experience increases")
     normalized = normalized:gsub("GOLD%s+Gold%s+increases", "GOLD increases")
+    normalized = normalized:gsub("Thy%s+([A-Za-z%s]+)%s+Gold%s+(increases?%s+by)", "Thy %1 %2")
 
     -- The battle command prompt has dedicated menu speech and should not be
     -- appended to the log narration. If both sides are present, keep the

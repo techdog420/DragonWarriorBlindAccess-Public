@@ -961,6 +961,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   cutting one another off. Battle start/opening lines still interrupt so a new
   encounter is announced promptly.
 
+- Level-up stat pages now preserve numeric-only continuation rows. Live FCEUX
+  evidence from the level-15 to level-16 Magidrakee fight showed the lower
+  dialogue reader speaking `Thy power increases by Thy Response Speed
+  increases by 6.` while the visible rows were `Thy power increases by` / `4.`
+  / `Thy Response Speed` / `increases by 6.` The lower dialogue filter now
+  keeps numeric-only rows only when they complete an incomplete
+  `increase(s)/reduced/decreased by` phrase, so level-up stat values should not
+  be dropped while ordinary status-row filtering remains intact. Follow-up live
+  speech showed stale `Gold` tiles leaking into stat labels such as
+  `Thy Response Speed Gold increases by 6.` and
+  `Thy Maximum Hit Points Gold increase by 6.`; those artifacts broke battle
+  overlap detection and caused earlier stat rows to repeat. `battle.lua` now
+  removes leaked `Gold` only when it appears between a `Thy ...` stat label and
+  an `increase(s) by` phrase, preserving real reward text such as
+  `Thy GOLD increases`. FCEUX needs a manual Lua reload before judging the
+  final follow-up live.
+
 - Overworld safety-route waypoints around Garinham east field and Erdrick's
   Cave road have been tightened from live grinding evidence. The old route
   aimed too coarsely from `Garinham ridge entry` to `Garinham east field`, and

@@ -671,6 +671,19 @@ local function is_cross_nametable_status_fragment(candidate, candidate_rows, oth
     return false
 end
 
+local function wants_numeric_dialogue_continuation(decoded)
+    local compact = compact_text(decoded)
+    return compact:match("[Ii]ncreases by$") ~= nil
+        or compact:match("[Ii]ncrease by$") ~= nil
+        or compact:match("reduced by$") ~= nil
+        or compact:match("decreased by$") ~= nil
+end
+
+local function is_numeric_dialogue_continuation(decoded)
+    local compact = compact_text(decoded)
+    return compact:match("^%d+[%.,!%?]*$") ~= nil
+end
+
 local function read_dialogue_rows_for_base(scroll_tiles, start_row, base_nametable)
     start_row = start_row or 19
     local decoded_rows = {}
@@ -716,6 +729,10 @@ local function filtered_dialogue_from_rows(decoded_rows, paired_rows, context_ro
            and not M.is_status_text(decoded)
            and not fused_status_value
            and not is_status_name_fragment(i, cleaned) then
+            lines[#lines + 1] = cleaned
+        elseif #lines > 0
+           and is_numeric_dialogue_continuation(cleaned)
+           and wants_numeric_dialogue_continuation(lines[#lines]) then
             lines[#lines + 1] = cleaned
         end
     end

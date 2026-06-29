@@ -118,6 +118,20 @@ function tests.dialogue_filter_skips_status_only_row()
     )
 end
 
+function tests.dialogue_filter_keeps_levelup_numeric_continuation_row()
+    clear_ppu()
+    write_visible_row(19, "Thy power increases by", 0, 0)
+    write_visible_row(20, "4.", 0, 0)
+    write_visible_row(21, "Thy Response Speed", 0, 0)
+    write_visible_row(22, "increases by 6.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "Thy power increases by 4. Thy Response Speed increases by 6.",
+        "lower dialogue reader should preserve numeric-only level-up stat values"
+    )
+end
+
 function tests.dialogue_filter_skips_wrapped_status_name_fragment()
     clear_ppu()
     write_visible_row(1, "Bill", 8, 0)

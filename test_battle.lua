@@ -73,6 +73,30 @@ function tests.normalize_dialogue_removes_leaked_gold_reward_macros()
     )
 end
 
+function tests.normalize_dialogue_removes_leaked_gold_from_levelup_stat_labels()
+    assert_equal(
+        battle.normalize_dialogue("Thy power increases by 4. Thy Response Speed Gold increases by 6."),
+        "Thy power increases by 4. Thy Response Speed increases by 6.",
+        "leaked gold macro text should not split level-up stat labels"
+    )
+    assert_equal(
+        battle.normalize_dialogue("Thy Maximum Hit Points Gold increase by 6."),
+        "Thy Maximum Hit Points increase by 6.",
+        "leaked gold macro text should not split max-stat level-up labels"
+    )
+end
+
+function tests.extract_new_text_uses_normalized_levelup_overlap_after_gold_artifact_cleanup()
+    local old = battle.normalize_dialogue("Thy power increases by 4. Thy Response Speed Gold increases by 6.")
+    local new = battle.normalize_dialogue("Thy power increases by 4. Thy Response Speed increases by 6. Thy Maximum Hit Points Gold increase by 6.")
+
+    assert_equal(
+        battle.extract_new_text(old, new),
+        "Thy Maximum Hit Points increase by 6.",
+        "level-up stat overlap should not repeat earlier lines after gold artifacts are removed"
+    )
+end
+
 function tests.normalize_dialogue_keeps_text_before_command_prompt()
     assert_equal(
         battle.normalize_dialogue("The Slime attacks! Thy Hit Points decreased by 1. Command? BILL attacks!"),
