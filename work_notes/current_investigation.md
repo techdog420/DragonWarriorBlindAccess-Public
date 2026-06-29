@@ -1240,3 +1240,43 @@ For the next live map task, start a new dated section here with:
   route, timeout retry, and seam retry. Runtime `(2,8).west` was restored.
   Current conservative runtime overlay has seven entries, including the
   review-only `(27,8).east`; current position after the pass was `(1,8)`.
+
+## 2026-06-29 Clean Rimuldar Magic Key Baseline
+
+- CHECKPOINT / PUSHED: before the clean baseline, committed and pushed
+  `f980728` (`Checkpoint Rimuldar route investigation`) with the existing
+  route/map/tooling changes and handoff cleanup. Verification before that
+  checkpoint passed: `luac -p main.lua map_reader.lua objects.lua
+  debug_tools.lua test_debug_tools.lua test_map_reader.lua test_objects.lua`,
+  `git diff --check`, `lua test_debug_tools.lua` (19 tests),
+  `lua test_map_reader.lua` (55 tests), and `lua test_objects.lua` (85 tests).
+  The debug-tools test race was fixed by letting tests override the command
+  file path, so live FCEUX command polling no longer steals test commands from
+  the real `dw_commands.txt`.
+- CLEAN BASELINE / STILL BLOCKED: after the user reloaded save state, reloaded
+  the Lua script, walked out of Rimuldar, and walked back in, the first fresh
+  probe found the hero on the World Map at `(102,71)` with no runtime blocks.
+  A single `simulate_raw_input:DOWN,30` entered Rimuldar at `(29,14)`, again
+  with no runtime blocks and no active path target.
+- STATIC PLANNER CHECK: from `(29,14)`, both `debug_pathfind_to:4,6` with live
+  NPCs and `debug_pathfind_to_skip_npcs:4,6` found a 45-step route to the Magic
+  Key stand `(4,6)`. Before adding any runtime closure,
+  `debug_route_frontier_skip_npcs:4,6,80` reported `target_reachable=true`.
+- LIVE MOVEMENT CHECK: `auto_walk_blocker:4,6` walked the route normally to
+  `(1,8)`, then the next step `(1,8)->RIGHT` into `(2,8).west` failed under
+  queued movement, timeout retry, and seam retry. The log emitted
+  `AUTO_WALK_BLOCKER_FOUND` with `patch_command=add_blocked_edge:1,8,RIGHT`,
+  `npc_blocked=false`, and `timing_suspect=false`.
+- RUNTIME CLOSURE CHECK: adding runtime `add_blocked_edge:1,8,RIGHT` from the
+  stopped `(1,8)` state made `debug_route_frontier_skip_npcs:4,6,80` report
+  `target_reachable=false`, `bridge_candidates=12`, and
+  `hidden_bridge_candidates=0`. The twelve bridge candidates were the same
+  local blocked-directional set already reviewed; the only runtime candidate
+  was the disputed `(1,8)->RIGHT` / `(2,8).west` edge.
+- CLEANUP / NEXT: the runtime block was cleared after the check. Final live
+  state was Rimuldar `(1,8)`, no active path, no runtime blocks. Do not promote
+  `(2,8).west` into permanent map data yet: closing it isolates the known
+  merchant-side component, while leaving it open produces a route that fails
+  live. The best next move is no longer broad local candidate hunting; pivot to
+  a manual route trace, a transition/state investigation, or explicitly mark
+  the Magic Key merchant route unresolved until new state evidence appears.

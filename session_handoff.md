@@ -10,13 +10,19 @@ Updated: 2026-06-29
   not solid: newer live FCEUX evidence repeatedly blocks `(1,8)->RIGHT` into
   `(2,8).west`, but permanently closing that edge currently isolates the known
   merchant-side component. Keep `(2,8).west` unpromoted until a missing bridge,
-  transition/state condition, or manual route trace explains the route. Current
-  best next step after the user's clean save-state/script reload and town
-  leave/re-enter reset is a bounded baseline: confirm position/runtime blocks,
-  compare `debug_pathfind_to_skip_npcs:4,6` and
-  `debug_route_frontier_skip_npcs:4,6,80`, try one `auto_walk_blocker:4,6`,
-  then repeat the frontier with only runtime `add_blocked_edge:1,8,RIGHT` if
-  the route still depends on the disputed bridge.
+  transition/state condition, or manual route trace explains the route. The
+  2026-06-29 clean reset baseline is complete: after the user's save-state /
+  script reload plus town leave/re-enter reset, the agent re-entered Rimuldar
+  at `(29,14)` with no runtime blocks; both live-NPC and skip-NPC planners
+  found a 45-step route to `(4,6)`, but live `auto_walk_blocker:4,6` walked to
+  `(1,8)` and seam-retry blocked `(1,8)->RIGHT` into `(2,8).west` with no
+  NPC/timing cause. Runtime-closing that edge made the target unreachable with
+  the same twelve bridge candidates and `hidden_bridge_candidates=0`; the
+  runtime block was then cleared. Final live state for the handoff was
+  Rimuldar `(1,8)`, no active path, no runtime blocks. Next recommendation:
+  stop broad local candidate-blocker hunting and pivot to a manual route trace,
+  transition/state explanation, or explicitly mark this merchant route
+  unresolved until new state evidence appears.
 - Garin's Grave / Grave of Garinham route decoding is complete for current
   playtesting needs.
 - The detailed final Garin's Grave wrap-up was archived to
