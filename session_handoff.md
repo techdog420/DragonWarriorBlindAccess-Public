@@ -1,9 +1,22 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-26
+Updated: 2026-06-29
 
 ## Current State
 
+- Rimuldar / Remuldar Magic Key merchant is the active route target. The service
+  identity is solid: `Old Man 1` at `(4,7)`, public stand `(4,6)` facing south,
+  and TALK from that stand opens the 53 G Magic Key prompt. The route model is
+  not solid: newer live FCEUX evidence repeatedly blocks `(1,8)->RIGHT` into
+  `(2,8).west`, but permanently closing that edge currently isolates the known
+  merchant-side component. Keep `(2,8).west` unpromoted until a missing bridge,
+  transition/state condition, or manual route trace explains the route. Current
+  best next step after the user's clean save-state/script reload and town
+  leave/re-enter reset is a bounded baseline: confirm position/runtime blocks,
+  compare `debug_pathfind_to_skip_npcs:4,6` and
+  `debug_route_frontier_skip_npcs:4,6,80`, try one `auto_walk_blocker:4,6`,
+  then repeat the frontier with only runtime `add_blocked_edge:1,8,RIGHT` if
+  the route still depends on the disputed bridge.
 - Garin's Grave / Grave of Garinham route decoding is complete for current
   playtesting needs.
 - The detailed final Garin's Grave wrap-up was archived to

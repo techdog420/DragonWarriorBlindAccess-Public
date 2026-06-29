@@ -113,16 +113,19 @@ function Send-VirtualKeyTap {
 function Invoke-AltReleasePulse {
     # Repeat Alt key-up around Escape to clear the common Alt+Tab case where
     # FCEUX/SDL saw Alt-down but missed Alt-up during a focus transition.
+    Send-VirtualKeyUp -VirtualKey 0x0D  # VK_RETURN / clear Alt+Enter latch
     Send-VirtualKeyUp -VirtualKey 0xA4  # VK_LMENU / Left Alt
     Send-VirtualKeyUp -VirtualKey 0xA5  # VK_RMENU / Right Alt
     Send-VirtualKeyUp -VirtualKey 0x12  # VK_MENU / generic Alt
     Start-Sleep -Milliseconds 60
     Send-VirtualKeyTap -VirtualKey 0x1B # VK_ESCAPE / dismiss menu focus
     Start-Sleep -Milliseconds 60
+    Send-VirtualKeyUp -VirtualKey 0x0D
     Send-VirtualKeyUp -VirtualKey 0xA4
     Send-VirtualKeyUp -VirtualKey 0xA5
     Send-VirtualKeyUp -VirtualKey 0x12
     Start-Sleep -Milliseconds 60
+    Send-VirtualKeyUp -VirtualKey 0x0D
     Send-VirtualKeyUp -VirtualKey 0xA4
     Send-VirtualKeyUp -VirtualKey 0xA5
     Send-VirtualKeyUp -VirtualKey 0x12
@@ -198,7 +201,7 @@ $process = Get-FceuxProcess
 if ($DryRun) {
     Write-Host "FCEUX input recovery dry run"
     Write-Host ("  Process:   {0}" -f $(if ($process) { "$($process.ProcessName) PID $($process.Id)" } else { "(none)" }))
-    Write-Host "  Key-up:    repeated LeftAlt, RightAlt, generic Alt"
+    Write-Host "  Key-up:    repeated Return, LeftAlt, RightAlt, generic Alt"
     Write-Host "  Tap:       Escape"
     Write-Host ("  Bridge:    reset {0} to '-'" -f $KeyboardBridgePath)
     if ($NoBridgeStart) {
@@ -230,4 +233,4 @@ if (-not $NoQueue) {
     Write-Host ("FCEUX input recovery: queued input_status:{0}" -f $Tag)
 }
 
-Write-Host "FCEUX input recovery: sent repeated LeftAlt/RightAlt/generic Alt key-up pulse and Escape tap."
+Write-Host "FCEUX input recovery: sent repeated Return/LeftAlt/RightAlt/generic Alt key-up pulse and Escape tap."

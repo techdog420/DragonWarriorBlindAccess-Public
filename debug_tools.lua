@@ -112,9 +112,17 @@ end
 local _src       = debug.getinfo(1, "S").source
 local script_dir = _src:match("@?(.*[\\/])") or ""
 
+local function default_processing_file(command_file)
+    local base, ext = tostring(command_file or ""):match("^(.*)(%.[^%.\\/]+)$")
+    if base then
+        return base .. ".processing" .. ext
+    end
+    return tostring(command_file or "dw_commands") .. ".processing"
+end
+
 local LOG_FILE    = rawget(_G, "DW_DEBUG_LOG_FILE_OVERRIDE") or (script_dir .. "dw_debug.log")
-local CMD_FILE    = script_dir .. "dw_commands.txt"
-local CMD_PROCESSING_FILE = script_dir .. "dw_commands.processing.txt"
+local CMD_FILE    = rawget(_G, "DW_COMMAND_FILE_OVERRIDE") or (script_dir .. "dw_commands.txt")
+local CMD_PROCESSING_FILE = rawget(_G, "DW_COMMAND_PROCESSING_FILE_OVERRIDE") or default_processing_file(CMD_FILE)
 local KEYBOARD_BRIDGE_FILE = script_dir .. "dw_keyboard_input.txt"
 -- Optional legacy record of engine-blocked moves. This is disabled by default
 -- because noisy movement/probe collisions should not become persistent map
@@ -1088,7 +1096,9 @@ local function build_keyboard_bridge_input(frame)
     if is_key_pressed(keys, "Right", "RIGHT", "right") then bridge.right = true end
     if is_key_pressed(keys, "F", "f") then bridge.A = true end
     if is_key_pressed(keys, "D", "d") then bridge.B = true end
-    if is_key_pressed(keys, "Return", "Enter", "RETURN", "ENTER", "return", "enter") then bridge.start = true end
+    -- Do not translate Return here: Alt+Enter is an FCEUX/windowing shortcut
+    -- that can latch in SDL and become repeated Start. The external sidecar
+    -- bridge still maps an intentional Enter press to "start" ahead of this.
     if is_key_pressed(keys, "S", "s") then bridge.select = true end
 
     if not has_joy_buttons(bridge) then

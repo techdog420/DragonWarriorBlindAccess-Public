@@ -680,14 +680,19 @@ local MAP_PASSTHROUGH_CELLS = {
     -- blocked from a forced origin, so (5,9) is useful as lane data but is
     -- not the missing key-counter bridge. The later (2,5) lead was a stale /
     -- noisy bridge too: fresh route and probe evidence block westward entry
-    -- from (1,5). A clean post-recovery edge verifier later corrected the
-    -- last west-side candidate: (1,8)->RIGHT into (2,8) moved 5/5, and a raw
-    -- forced-origin reverse probe from (2,8)->LEFT also moved. This makes
-    -- (2,8) the missing standable false-wall connector into the (3,8)->(3,7)
-    -- turn; keep the lower south approach from (2,9) blocked directionally.
+    -- from (1,5). A post-recovery edge verifier later reported
+    -- (1,8)->RIGHT into (2,8) moving 5/5, but the 2026-06-28 Magic Key
+    -- Merchant cleanup contradicted that with route-shaped evidence,
+    -- same-origin probe_edge, and verifier all blocking westward entry into
+    -- (2,8). Do not promote (2,8).west yet because doing so isolates the
+    -- known merchant component; keep the cell itself as a standable
+    -- passthrough and record the edge as unresolved route-model evidence.
+    -- Keep the lower south approach from (2,9) blocked directionally.
     -- The corrected town-tileset route then reached the row-10 frontier, where
-    -- (9,10)->LEFT into (8,10) reconfirmed blocked 5/5 but (9,10)->UP into
-    -- (9,9) moved 5/5. Expose only (9,9) here; keep (8,10).east closed.
+    -- (9,10)->LEFT into (8,10) reconfirmed blocked 5/5. A later route-shaped
+    -- pass superseded the old (9,10)->UP verifier note: (9,9) remains a
+    -- standable passthrough, but the south approach from (9,10) is blocked.
+    -- Keep (8,10).east closed.
     --
     -- The post-merchant NPC walkabout found Old Man 3's west-side access seam:
     -- the player moved (2,23)->LEFT into false-wall (1,23) twice, then moved
@@ -723,6 +728,15 @@ local MAP_PASSTHROUGH_CELLS = {
     -- (29,13)->UP into (29,12) moved 5/5, then forced raw probes moved
     -- (29,12)->UP, (29,11)->UP, (29,10)->UP, and (29,9)->UP cleanly 5/5
     -- each. (29,8) is ordinary floor, so no passthrough is needed there.
+    --
+    -- 2026-06-27 Weapons Merchant bridge candidate: the route frontier
+    -- identified (22,4) as the remaining target-side connector after the
+    -- nearby (25,4), (26,4), and (27,7) hidden candidates blocked from
+    -- same-origin probes. A forensic probe from (22,3)->DOWN moved into
+    -- (22,4), then (22,4)->DOWN moved to (22,5); live-NPC pathing from
+    -- (22,5) reaches the public Weapons Merchant stand at (24,7) without
+    -- crossing the merchant's occupied cell. Revalidate by normal route after
+    -- source reload.
     [0x0B] = {
         ["1,5"] = true,
         ["1,7"] = true,
@@ -807,11 +821,17 @@ local MAP_PASSTHROUGH_CELLS = {
         ["14,8"] = true,
         ["15,5"] = true,
         ["16,8"] = true,
+        -- 2026-06-26 live route cleanup toward the Rimuldar inn outer door:
+        -- same-origin `probe_edge:DOWN` from (18,17) moved through decoded
+        -- wall tile (18,18) and settled at (18,19), reconnecting the door
+        -- route network from normal play state.
+        ["18,18"] = true,
         ["18,25"] = true,
         ["19,9"] = true,
         ["19,25"] = true,
         ["21,22"] = true,
         ["21,24"] = true,
+        ["22,4"] = true,
         ["22,22"] = true,
         ["23,22"] = true,
         ["23,18"] = true,
@@ -3294,7 +3314,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["6,7"] = {south = true},
         ["6,9"] = {north = true, east = true, south = true, west = true},
         ["7,9"] = {north = true},
-        ["9,9"] = {south = true},
+        ["9,9"] = {south = true, west = true},
         ["10,9"] = {south = true},
         ["12,9"] = {east = true, south = true},
         -- 2026-05-30 out-and-back cleanup after the stat-corruption A/B rerun.
@@ -3737,7 +3757,6 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["21,7"] = {west = true},
         ["21,11"] = {west = true},
         ["21,12"] = {south = true, west = true},
-        ["24,8"] = {south = true},
         ["13,6"] = {north = true, south = true},
         ["13,8"] = {east = true},
         ["14,6"] = {east = true, north = true, south = true},
@@ -3764,7 +3783,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["6,6"] = {east = true},
         ["2,6"] = {west = true},
         ["17,6"] = {east = true},
-        ["17,7"] = {east = true},
+        ["17,7"] = {east = true, west = true},
         -- Entrance-side one-way maze cleanup from the final Magic Key route
         -- pass. The false row-10 north entries into row 9 blocked under raw
         -- verification, while the proven connector is farther east:
@@ -3873,9 +3892,11 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- then closed the candidate south entries into (2,8) and (5,8), plus
         -- the x=7 candidate exits left into (6,8), (6,7), and (6,2). The
         -- (3,8)->(3,7)->(3,6) false-wall turn still keeps (3,7) and
-        -- (3,6).south open. A clean post-recovery verifier later proved
-        -- (1,8)->RIGHT into (2,8) 5/5 passable, making this the missing
-        -- west-side bridge while the lower (2,9)->UP approach remains closed.
+        -- (3,6).south open. Later post-reload route/probe evidence
+        -- contradicted the old (1,8)->RIGHT verifier, so keep (2,8).west
+        -- unresolved and do not model it here while the missing west-side
+        -- bridge is still under investigation. The lower (2,9)->UP approach
+        -- remains closed.
         -- The lower-lane candidate also self-disproved: (4,8)->RIGHT into
         -- (5,8) blocked 5/5, so do not let A* enter that pocket from the west.
         -- Wings chest room shelf follow-up: after NPCs were frozen,
@@ -3916,6 +3937,21 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- A later drifted exit route stepped (28,16)->RIGHT into (29,16) and
         -- immediately changed to the world map, so guard that transition row
         -- the same way the northwest exit guards (4,2).south.
+        -- 2026-06-27 Weapons Merchant service polish: route from the town exit
+        -- initially appeared to block (28,8)->LEFT into (27,8), but a reloaded
+        -- manual pass crossed (28,8)<->(27,8) and restored the merchant route,
+        -- so keep (27,8).east open. The later (27,5)->LEFT into (26,5) and
+        -- (24,3)->DOWN into (24,4) same-origin probes still timed out from
+        -- normal play state, so close only those approaches.
+        -- Post-reload route validation from (19,3) then tried
+        -- (19,3)->RIGHT into (20,3); both route seam retries and a
+        -- same-origin probe timed out, so close only the west approach.
+        -- Continuing toward the next bridge candidate exposed lower-loop
+        -- false cuts at (10,7)->UP, (12,8)->DOWN, (12,8)->RIGHT, and
+        -- (15,6)->RIGHT; each also timed out with a same-origin probe.
+        -- 2026-06-28 reset-route cleanup after the edge-probe guard reload
+        -- added same-origin proof for (8,9)->RIGHT, (16,7)->RIGHT,
+        -- (16,8)->DOWN, (16,7)->UP, and (14,8)->DOWN.
         ["0,5"] = {east = true},
         ["1,4"] = {south = true},
         ["2,5"] = {west = true},
@@ -3958,9 +3994,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,11"] = {south = true},
         ["7,15"] = {south = true},
         ["9,6"] = {north = true, west = true},
+        ["9,9"] = {south = true, west = true},
         ["9,11"] = {north = true},
         ["9,12"] = {east = true, south = true},
-        ["10,6"] = {east = true, north = true},
+        ["10,6"] = {east = true, north = true, south = true},
         -- 2026-05-21: parked-NPC entrance-to-chest reroutes tried the lower
         -- west branch; direct verifiers confirmed these entries blocked 5/5.
         ["12,21"] = {east = true},
@@ -3970,20 +4007,26 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["12,25"] = {east = true},
         ["12,26"] = {east = true},
         ["12,6"] = {north = true, south = true, west = true},
+        ["12,9"] = {north = true, south = true},
+        ["13,8"] = {east = true, west = true},
         ["13,7"] = {east = true, west = true},
         ["13,9"] = {south = true},
-        ["14,9"] = {east = true, south = true},
+        ["14,9"] = {east = true, north = true, south = true},
         -- 2026-05-21: after the entrance-to-Wings route stopped overshooting,
         -- direct raw verifiers exposed a real north-approach barrier along
         -- row 17. These entries each blocked 5/5 from y=16; (18,16)->DOWN and
         -- (28,16)->DOWN moved 5/5 and remain open crossings.
-        ["19,17"] = {north = true},
+        ["16,6"] = {south = true, west = true},
+        ["19,17"] = {north = true, west = true},
+        ["20,3"] = {west = true},
         ["20,17"] = {north = true},
         ["21,17"] = {north = true, west = true},
         ["22,17"] = {north = true},
-        ["23,17"] = {north = true},
+        ["23,17"] = {north = true, south = true},
         ["24,17"] = {north = true},
-        ["25,17"] = {north = true},
+        ["25,17"] = {north = true, east = true},
+        ["24,4"] = {north = true},
+        ["26,5"] = {east = true},
         -- (15,19): one-way row-19 connector. Fresh FCEUX verification after
         -- closing the command menu blocked (14,19)->RIGHT 3/3, while the
         -- reverse (15,19)->LEFT moved 3/3. Close only the west approach.
@@ -4013,10 +4056,12 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["15,28"] = {north = true},
         -- (15,17): west approach from (14,17) confirmed blocked 5/5 in FCEUX
         -- on 2026-05-20. Reverse (15,17)->LEFT evidence stays modeled separately
-        -- as open on (14,17).east.
-        ["15,17"] = {west = true},
+        -- as open on (14,17).east. The 2026-06-27 Inn route then found
+        -- (15,16)->DOWN into this cell blocked under route failure plus
+        -- same-origin raw probe.
+        ["15,17"] = {west = true, north = true},
         ["15,9"] = {south = true},
-        ["16,9"] = {south = true},
+        ["16,9"] = {north = true, south = true},
         -- (16,19): west approach from (15,19) is now confirmed 5/5 blocked in direct `probe_edge_verify` checks.
         ["16,19"] = {south = true, west = true, east = true},
         -- 2026-05-21: return-route fallback reached (17,21) and repeatedly
@@ -4036,8 +4081,15 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- approach blocked 5/5.
         ["16,28"] = {north = true},
         ["17,9"] = {east = true, south = true},
+        -- 2026-06-28 entrance-to-Inn route proof: removing this blocker let the
+        -- planner choose (18,17)->LEFT into (17,17), which then blocked through
+        -- queued movement and both seam retries. Keep the east approach closed;
+        -- the opposite (17,17)->RIGHT into (18,17) evidence remains one-way.
         ["17,17"] = {east = true},
-        ["17,19"] = {south = true},
+        -- 2026-06-27 Inn route polish supersedes the older mixed verifier:
+        -- (18,19)->LEFT into this cell blocked during autowalk and again under
+        -- same-origin raw probe from normal play state.
+        ["17,19"] = {south = true, east = true},
         -- 2026-05-21: same lower fallback reached (16,27), but
         -- probe_edge_verify:16,27,RIGHT,5 confirmed this west approach
         -- blocked 5/5.
@@ -4048,10 +4100,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (18,20)->DOWN, (19,20)->DOWN, and (20,20)->DOWN all blocked 5/5.
         -- The next reroute crossed through (17,21) and tried (17,21)->RIGHT;
         -- direct verifier confirmed that west approach into (18,21) too.
-        ["18,21"] = {north = true, west = true},
+        ["18,21"] = {north = true, west = true, south = true},
         ["19,21"] = {north = true},
-        ["19,22"] = {east = true},
-        ["19,23"] = {east = true},
+        ["19,22"] = {east = true, west = true},
+        ["19,23"] = {east = true, west = true},
         ["20,21"] = {north = true, south = true},
         ["20,24"] = {north = true, south = true},
         ["20,26"] = {north = true},
@@ -4067,11 +4119,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- 2026-05-21: chest-return autowalk from the lower fallback area
         -- looped on (23,20)->LEFT into (22,20); direct verifier confirmed
         -- the east approach blocked 5/5. The older west approach remains
-        -- from the Wings route verifier.
-        ["22,20"] = {east = true, west = true},
+        -- from the Wings route verifier. The 2026-06-26 outer-door cleanup
+        -- also confirmed the north approach blocked from (22,19).
+        ["22,20"] = {east = true, west = true, north = true},
         -- 2026-05-20: `probe_edge_verify:24,20,RIGHT,5` was confirmed
         -- blocked 5/5 as a one-way wall. Keep reverse approach open.
         ["24,20"] = {east = true},
+        -- 2026-06-26 outer-door stand route cleanup: each entry paired a
+        -- normal autowalk blocker with a same-origin raw probe while routing
+        -- toward the south stand at (21,22).
+        ["25,19"] = {west = true},
+        ["25,20"] = {west = true},
         -- 2026-05-21: once row-17 north approaches were modeled, the next
         -- entrance-to-chest route tried (21,21)->RIGHT into (22,21). Direct
         -- raw verification blocked 5/5, so close only the west approach.
@@ -4080,8 +4138,9 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- to enter the upper shelf at (24,21); direct
         -- probe_edge_verify:24,22,UP,5 confirmed this south approach blocked
         -- 5/5. Keep (24,22)<->(24,23) open; that edge moved during the same
-        -- run and is only noisy.
-        ["24,21"] = {south = true},
+        -- run and is only noisy. The later route-to-outer-door pass also
+        -- confirmed the north approach from (24,20) blocked.
+        ["24,21"] = {south = true, north = true},
         -- 2026-05-21: after the outer-door-to-chest route succeeded, the
         -- chest-to-exit/entrance return planner looped on (23,20)->DOWN.
         -- Direct probe_edge_verify:23,20,DOWN,5 confirmed the north approach
@@ -4091,10 +4150,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["23,21"] = {north = true, south = true},
         -- Same return-route run alternated with (23,22)->LEFT into the
         -- row-22 shelf; direct probe_edge_verify:23,22,LEFT,5 confirmed this
-        -- east approach into (22,22) blocked 5/5.
-        ["22,22"] = {east = true},
+        -- east approach into (22,22) blocked 5/5. The 2026-06-26 opened
+        -- outer-door route then hit (21,22)->RIGHT, and same-origin
+        -- probe_edge:RIGHT confirmed the west approach blocked too.
+        ["22,22"] = {east = true, west = true},
         ["22,26"] = {north = true},
         ["23,25"] = {west = true},
+        -- 2026-06-27: after the opened-door chest routes were otherwise clean,
+        -- the entrance-to-chest planner tried (29,16)->LEFT into (28,16).
+        -- Same-origin probe_edge:LEFT timed out from normal play state, so
+        -- close only the east approach into (28,16).
+        ["28,16"] = {east = true},
         -- 2026-05-21: full entrance-to-chest validation first tried crossing
         -- west from (29,17); probe_edge_verify:29,17,LEFT,5 blocked 5/5.
         -- (28,16)->DOWN into this cell moved 5/5, so keep the north approach

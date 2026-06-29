@@ -1162,10 +1162,24 @@ local EXTRA_DOORS = {
     },
     -- Map 0x0B: Rimuldar inn / Wings chest doors. Gamer Corner lists the inn
     -- treasure as behind an outer and inner door; live opened-door RAM confirmed
-    -- (21,21) from the south stand and (22,23) from inside the chest room.
+    -- (21,21) from the south stand and (22,23) from both approach/chest sides.
     [0x0B] = {
-        {x=21, y=21, name="Rimuldar Inn Outer Door", type=M.TYPE_DOOR, id="door_21_21"},
-        {x=22, y=23, name="Wings Chest Door", type=M.TYPE_DOOR, id="door_22_23"},
+        {
+            x=21, y=21, name="Rimuldar Inn Outer Door", type=M.TYPE_DOOR, id="door_21_21",
+            interaction_x=21, interaction_y=20, interaction_face_dir="south",
+            interaction_points={
+                {x=21, y=20, face_dir="south"},
+                {x=21, y=22, face_dir="north"},
+            },
+        },
+        {
+            x=22, y=23, name="Wings Chest Door", type=M.TYPE_DOOR, id="door_22_23",
+            interaction_x=21, interaction_y=23, interaction_face_dir="east",
+            interaction_points={
+                {x=21, y=23, face_dir="east"},
+                {x=23, y=23, face_dir="west"},
+            },
+        },
     },
     -- Map 0x15: Swamp Cave / Quagmire Cave. Live OPEN probes from both (5,21)
     -- and (5,19) reported the no-key door message, triangulating the door cell
@@ -1248,12 +1262,23 @@ local SERVICE_INTERACTION_OVERRIDES = {
     -- (23,9), but the public route from the entrance could not reach that
     -- stale stand. Later selected teleport and TALK proof confirmed the
     -- accessible counter stand at (24,7), facing west. Merchant 3 occupies
-    -- (16,18); the route from the east entrance reached (16,17), faced south,
-    -- and TALK opened the 55 GOLD inn prompt.
+    -- (16,18); early TALK proof opened the 55 GOLD inn prompt from (16,17),
+    -- but the public route to that stand later collapsed. A follow-up live
+    -- prompt opened from the reachable east-side stand at (18,18), facing west.
     [0x0B] = {
         ["4,7"] = {x = 4, y = 6, face_dir = "south", label = "counter", name = "Magic Key Merchant"},
         ["23,7"] = {x = 24, y = 7, face_dir = "west", label = "counter", name = "Weapons Merchant"},
-        ["16,18"] = {x = 16, y = 17, face_dir = "south", label = "counter", name = "Inn"},
+        ["16,18"] = {
+            x = 18,
+            y = 18,
+            face_dir = "west",
+            label = "counter",
+            name = "Inn",
+            interaction_points = {
+                {x = 18, y = 18, face_dir = "west", label = "counter"},
+                {x = 16, y = 17, face_dir = "south", label = "counter"},
+            },
+        },
     },
 }
 
@@ -1491,6 +1516,7 @@ apply_service_interaction_override = function(obj, map_id)
         obj.interaction_y = override.y
         obj.interaction_face_dir = override.face_dir
         obj.interaction_label = override.label
+        obj.interaction_points = override.interaction_points
         obj.target_hold_x = override.target_hold_x
         obj.target_hold_y = override.target_hold_y
         return obj

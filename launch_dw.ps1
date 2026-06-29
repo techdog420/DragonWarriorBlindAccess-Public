@@ -335,19 +335,23 @@ function Send-VirtualKeyTap {
 }
 
 function Invoke-AltReleasePulse {
-    # Release every Alt flavor before and after Escape. The repeated key-up
-    # pulses are deliberately harmless if Alt is already up, and they help when
-    # FCEUX/SDL missed one side of an Alt+Tab focus transition.
+    # Release Return plus every Alt flavor before and after Escape. The
+    # repeated key-up pulses are deliberately harmless if keys are already up,
+    # and they help when FCEUX/SDL missed one side of an Alt+Tab or Alt+Enter
+    # focus transition.
+    Send-VirtualKeyUp -VirtualKey 0x0D  # VK_RETURN / clear Alt+Enter latch
     Send-VirtualKeyUp -VirtualKey 0xA4  # VK_LMENU / Left Alt
     Send-VirtualKeyUp -VirtualKey 0xA5  # VK_RMENU / Right Alt
     Send-VirtualKeyUp -VirtualKey 0x12  # VK_MENU / generic Alt
     Start-Sleep -Milliseconds 60
     Send-VirtualKeyTap -VirtualKey 0x1B # VK_ESCAPE / dismiss menu focus
     Start-Sleep -Milliseconds 60
+    Send-VirtualKeyUp -VirtualKey 0x0D
     Send-VirtualKeyUp -VirtualKey 0xA4
     Send-VirtualKeyUp -VirtualKey 0xA5
     Send-VirtualKeyUp -VirtualKey 0x12
     Start-Sleep -Milliseconds 60
+    Send-VirtualKeyUp -VirtualKey 0x0D
     Send-VirtualKeyUp -VirtualKey 0xA4
     Send-VirtualKeyUp -VirtualKey 0xA5
     Send-VirtualKeyUp -VirtualKey 0x12
@@ -416,7 +420,7 @@ function Invoke-StartupInputRecovery {
             Add-Content -LiteralPath $CommandFile -Value "input_status:fceux_recovery"
             Write-Host ("Startup input recovery ({0}): queued input_status:fceux_recovery." -f $Phase)
         }
-        Write-Host ("Startup input recovery ({0}): sent repeated LeftAlt/RightAlt/generic Alt key-up pulse and Escape tap." -f $Phase)
+        Write-Host ("Startup input recovery ({0}): sent repeated Return/LeftAlt/RightAlt/generic Alt key-up pulse and Escape tap." -f $Phase)
     } catch {
         Write-Warning ("Startup input recovery failed: {0}" -f $_.Exception.Message)
     }

@@ -629,10 +629,19 @@ Emulator compatibility direction:
   planner-safe public counter stand at `(24,7)` facing west. Live inventory is
   Copper Sword 180 G, Hand Axe 560 G, Broad Sword 1500 G, Half Plate 1000 G,
   Full Plate 3000 G, and Magic Armor 7700 G. `Merchant 3` at `(16,18)` is the
-  inn keeper, reached from `(16,17)` facing south. The Magic Key seller is
-  `Old Man 1` at `(4,7)`, reached from `(4,6)` facing south, and TALK opens the
-  53 G key prompt. Rimuldar `Merchant 1` only says `Welcome!` and should stay
-  out of Services. The entrance-side key-shop route requires hidden connector
+  inn keeper. The old `(16,17)` south-facing prompt stand works but is not the
+  public route target; live follow-up opened the 55 G prompt from `(18,18)`
+  facing west, and path debug from there reaches the town exit. `objects.lua`
+  now uses `(18,18)` as the primary Inn interaction point and keeps `(16,17)`
+  as an alternate. A 2026-06-27 route recheck closed false cuts at
+  `(15,17).north` and `(17,19).east`. Follow-up FCEUX checks showed the
+  `(17,17)`/`(18,17)` seam is one-way at best: `(17,17)->RIGHT` can move into
+  `(18,17)`, but the entrance-to-Inn route proved `(18,17)->LEFT` still
+  blocks, so `(17,17).east` remains modeled. The Magic Key seller is
+  `Old Man 1` at `(4,7)`, reached from
+  `(4,6)` facing south, and TALK opens the 53 G key prompt. Rimuldar
+  `Merchant 1` only says `Welcome!` and should stay out of Services. The
+  entrance-side key-shop route requires hidden connector
   cells: `(24,7)->UP` into `(24,6)`, the false-wall bridge at `(19,9)` proved
   by `(19,10)->UP` and `(18,9)->RIGHT` verifier/probe evidence, the row-8 /
   column-13 connectors `(14,8)`, `(13,9)`, and `(13,8)`, the upper hidden
@@ -694,7 +703,7 @@ Emulator compatibility direction:
   `(9,11).north`, `(9,12).south`, and `(8,13).east`. The next pass added
   `(22,12).south`, `(9,12).east`, `(8,14).east`, `(3,12).north`,
   `(4,11).west`, `(5,8).north`, `(6,7).west`, `(7,15).south`, `(6,16).east`,
-  and `(17,17).east`, followed by the newest `(4,16).south`, `(3,16).south`,
+  and `(17,17).east`, followed by `(4,16).south`, `(3,16).south`,
   `(7,11).south`, `(4,8).south`, `(6,8).south`, `(2,15).south/west`,
   `(3,16).west`, `(4,12).south`, `(3,13).east`, `(5,2).south`,
   `(4,2).south`, `(4,3).south`, `(4,4).south`, `(6,11).south`,
@@ -728,11 +737,17 @@ Emulator compatibility direction:
   other approaches. The `(3,7)` lead is now solved through the corrected
   `(2,8)` bridge: a clean post-recovery verifier showed `(1,8)->RIGHT` into
   `(2,8)` moved 5/5, and a forced-origin raw probe showed `(2,8)->LEFT` moved
-  back to `(1,8)`. Keep `(2,8).south` closed because `(2,9)->UP` still blocks,
-  but expose `(2,8)` as a passthrough and do not block `(2,8).west` or
-  `(1,8).east`. The corrected town-tileset live route then found one more
-  connector: `(9,10)->LEFT` into `(8,10)` reconfirmed blocked 5/5, while
-  `(9,10)->UP` into `(9,9)` moved 5/5, so expose `(9,9)` as a passthrough.
+  back to `(1,8)`. Later Magic Key Merchant cleanup on 2026-06-28 superseded
+  that west-entry result: route failure, same-origin probe, and 5/5 verifier
+  all blocked `(1,8)->RIGHT` into `(2,8).west`, but promoting that edge
+  currently isolates the known merchant-side component. Keep `(2,8).south`
+  closed because `(2,9)->UP` still blocks, keep `(2,8)` exposed as a standable
+  passthrough, and leave `(2,8).west` as unresolved route-model evidence until
+  the missing alternate bridge or state condition is found. The corrected
+  town-tileset live route then found one more connector:
+  `(9,10)->LEFT` into `(8,10)` reconfirmed blocked 5/5. The 2026-06-28 pass
+  also superseded the old `(9,10)->UP` open note: `(9,9)` remains a
+  passthrough, but `(9,9).south` now blocks from `(9,10)`.
   Follow-up raw/probe checks confirmed the row-9 lane west of it through
   `(8,9)`, `(7,9)`, `(6,9)`, `(5,9)`, `(4,9)`, `(3,9)`, `(2,9)`, and then
   `(1,9)->UP` into `(1,8)`. The rest of the stand approach is live-confirmed:
@@ -776,9 +791,11 @@ Emulator compatibility direction:
   `(22,22)->UP` into `(22,21)` is a real directional wall
   (`probe_edge_verify:22,22,UP,3` blocked 3/3). Once north of that wall, the
   exit route exposed two clean row-19 blockers now modeled as
-  `(16,19).south` and `(17,19).south`. Keep `(17,19).east`,
-  `(21,24).south`, and `(15,24).south` unpromoted because direct verifiers
-  were mixed/passable.
+  `(16,19).south` and `(17,19).south`. The later 2026-06-27 inn-route pass
+  superseded the old mixed `(17,19).east` verifier: route failure plus
+  same-origin raw probe from `(18,19)->LEFT` proved it blocked, so it is now
+  modeled. Keep `(21,24).south` and `(15,24).south` unpromoted because direct
+  verifiers were mixed/passable.
   Follow-up user testing reached the outer-door route network and confirmed
   one autowalk did leave town: the log changed to World Map after
   `(28,16)->RIGHT` entered `(29,16)`. The clean current planner route to

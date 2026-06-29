@@ -9,6 +9,9 @@ local original_memory = _G.memory
 local original_and = _G.AND
 local original_compat = _G.DW_EMULATOR_COMPAT
 local original_log_override = _G.DW_DEBUG_LOG_FILE_OVERRIDE
+local original_command_override = _G.DW_COMMAND_FILE_OVERRIDE
+local original_command_processing_override = _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE
+local env_counter = 0
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -42,6 +45,9 @@ local function make_env(options)
     options = options or {}
     local input_state = options.input_state or {}
     local joy_state = options.joy_state or {}
+    env_counter = env_counter + 1
+    local command_file = "/tmp/test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".txt"
+    local processing_file = "/tmp/test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".processing.txt"
     local module_names = {
         "addresses",
         "config",
@@ -156,6 +162,8 @@ local function make_env(options)
 
     _G.DW_EMULATOR_COMPAT = {is_fceux = true, is_bizhawk = false}
     _G.DW_DEBUG_LOG_FILE_OVERRIDE = options.log_file or "/tmp/test_debug_tools_dw_debug.log"
+    _G.DW_COMMAND_FILE_OVERRIDE = command_file
+    _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE = processing_file
     _G.input = {
         get = function()
             return input_state
@@ -197,6 +205,10 @@ local function make_env(options)
     return {
         debug_tools = debug_tools,
         log_file = _G.DW_DEBUG_LOG_FILE_OVERRIDE,
+        command_file = command_file,
+        write_command_file = function(text)
+            write_file(command_file, text or "")
+        end,
         set_input = function(keys)
             input_state = keys or {}
         end,
@@ -215,6 +227,8 @@ local function make_env(options)
             end
         end,
         restore = function()
+            os.remove(command_file)
+            os.remove(processing_file)
             write_file(bridge_path, original_bridge or "")
             restore_modules(module_names)
             _G.input = original_input
@@ -223,6 +237,8 @@ local function make_env(options)
             _G.AND = original_and
             _G.DW_EMULATOR_COMPAT = original_compat
             _G.DW_DEBUG_LOG_FILE_OVERRIDE = original_log_override
+            _G.DW_COMMAND_FILE_OVERRIDE = original_command_override
+            _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE = original_command_processing_override
         end,
     }
 end
@@ -293,6 +309,15 @@ function tests.fceux_stale_alt_neutral_bridge_is_ignored()
 
     local input = env.debug_tools.tick(1, "field")
     assert_equal(input, nil, "idle stale FCEUX Alt should not synthesize joypad input")
+
+    env.restore()
+end
+
+function tests.fceux_stale_alt_return_is_ignored_without_external_bridge()
+    local env = make_env({input_state = {LeftAlt = true, Return = true}, bridge_text = "-\n"})
+
+    local input = env.debug_tools.tick(1, "field")
+    assert_equal(input, nil, "latched FCEUX Alt+Return should not synthesize repeated Start")
 
     env.restore()
 end
@@ -393,9 +418,8 @@ end
 
 function tests.raw_sequence_release_frame_stays_raw()
     local env = make_env({input_state = {}, bridge_text = "-\n"})
-    local original_commands = read_file("dw_commands.txt")
 
-    write_file("dw_commands.txt", "simulate_raw_sequence:RIGHT,2,0\n")
+    env.write_command_file("simulate_raw_sequence:RIGHT,2,0\n")
 
     local first = env.debug_tools.tick(60, "field")
     assert_equal(first ~= nil, true, "raw sequence should emit first frame")
@@ -415,23 +439,20 @@ function tests.raw_sequence_release_frame_stays_raw()
     local idle = env.debug_tools.tick(63, "field")
     assert_equal(idle, nil, "raw sequence should be done after the raw release frame")
 
-    write_file("dw_commands.txt", original_commands or "")
     env.restore()
 end
 
 function tests.legacy_sweep_stop_reports_unsafe_untrusted_output()
     local env = make_env({log_level = "INFO"})
-    local original_commands = read_file("dw_commands.txt")
 
-    write_file("dw_commands.txt", "sweep_map\n")
+    env.write_command_file("sweep_map\n")
     env.debug_tools.tick(60, "field")
 
-    write_file("dw_commands.txt", "stop_sweep\n")
+    env.write_command_file("stop_sweep\n")
     env.debug_tools.tick(120, "field")
     env.debug_tools.tick(150, "field")
 
     local log = read_file(env.log_file) or ""
-    write_file("dw_commands.txt", original_commands or "")
     env.restore()
 
     assert_equal(
@@ -458,13 +479,11 @@ function tests.report_movement_state_includes_player_sprite_position_bytes()
             [0x0093] = 0x00,
         }),
     })
-    local original_commands = read_file("dw_commands.txt")
 
-    write_file("dw_commands.txt", "report_movement_state:teleport_probe\n")
+    env.write_command_file("report_movement_state:teleport_probe\n")
     env.debug_tools.tick(60, "field")
 
     local log = read_file(env.log_file) or ""
-    write_file("dw_commands.txt", original_commands or "")
     env.restore()
 
     assert_equal(

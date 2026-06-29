@@ -367,13 +367,23 @@ end
 
 local function set_edge_probe_input(dir)
     if joypad and joypad.set then
-        joypad.set(1, {[dir] = true})
+        joypad.set(1, {
+            up = dir == "up",
+            down = dir == "down",
+            left = dir == "left",
+            right = dir == "right",
+        })
     end
 end
 
 local function clear_edge_probe_input()
     if joypad and joypad.set then
-        joypad.set(1, {})
+        joypad.set(1, {
+            up = false,
+            down = false,
+            left = false,
+            right = false,
+        })
     end
 end
 
@@ -1261,6 +1271,12 @@ local function tick_seeded_edge_probe()
         clear_edge_probe_input()
         if seed.wait_remaining > 0 then
             seed.wait_remaining = seed.wait_remaining - 1
+            return true
+        end
+
+        if seed.target_x ~= nil and seed.target_y ~= nil
+           and (px ~= seed.target_x or py ~= seed.target_y) then
+            finish_seeded_edge_probe("aborted", "target_drifted")
             return true
         end
 

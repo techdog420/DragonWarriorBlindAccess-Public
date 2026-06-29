@@ -2,6 +2,98 @@
 
 Updated: 2026-06-26
 
+## 2026-06-26 Rimuldar Inn / Wings Door Route Cleanup
+
+### PROMOTED THIS PASS
+
+- Live route cleanup started from the user-reported blocker `(29,16)->WEST`.
+  Source already modeled that as the row-16 transition guard, so no new
+  permanent change was needed for `(29,16).west`.
+- Promoted the hidden passthrough `(18,18)`: same-origin `probe_edge:DOWN`
+  from `(18,17)` moved through decoded wall tile `(18,18)` and settled at
+  `(18,19)`, then later live routing traversed `(18,19)->(18,18)->(18,17)`
+  while returning to the entrance.
+- Promoted route/probe-confirmed Rimuldar directional blockers:
+  `(19,17).west`, `(25,17).east`, `(19,22).west`, `(18,21).south`,
+  `(19,23).west`, `(22,20).north`, `(24,21).north`, `(25,20).west`,
+  `(25,19).west`, `(23,17).south`, `(22,22).west`, and `(28,16).east`.
+- Added explicit interaction points for `Rimuldar Inn Outer Door`:
+  public side `(21,20)` facing south, plus the previously proven inside stand
+  `(21,22)` facing north. The public side is the primary stand so route-to-door
+  from the entrance no longer chooses the unreachable inside stand.
+- Added explicit interaction points for `Wings Chest Door`: approach side
+  `(21,23)` facing east is now primary, with the previously pinned chest-side
+  stand `(23,23)` facing west preserved as an alternate.
+- Focused checks passed after the updates:
+  `luac -p map_reader.lua objects.lua test_map_reader.lua test_objects.lua`,
+  `lua test_map_reader.lua`, `lua test_objects.lua`, and `git diff --check`.
+
+### LIVE STATUS / NEXT
+
+- With the current runtime overlay active, route from the entrance `(29,13)`
+  to the public outer-door stand `(21,20)` completed cleanly, and later route
+  from `(21,22)` to the inner-door approach stand `(21,23)` completed after a
+  timing retry that resolved as passable.
+- Door RAM was closed (`slots all (0,0)`) before debug seeding; after real
+  manual opens, `report_door_state` showed keys `2` and slots
+  `0=(21,21) 1=(22,23)`.
+- `debug_seed_open_doors:21,21` was used only for planner inspection, not real
+  gameplay. With the outer door seeded, planner paths from `(21,20)` exist to
+  `(21,22)`, `(23,23)`, and chest `(24,23)`.
+- Real post-door validation is now clean:
+  `(21,23)->(24,23)` reached `chest_7` through opened door `(22,23)`, return
+  route from chest `(24,23)` to town exit `(29,13)` reached the exit, and full
+  town-exit-to-chest route reached `(24,23)`. A later polish pass found the
+  remaining row-16 false cut: `(29,16)->LEFT` into `(28,16)` blocked during
+  autowalk and same-origin `probe_edge:LEFT`, so `(28,16).east` is promoted.
+
+## 2026-06-27 Rimuldar Weapons Merchant Route Polish
+
+### PROMOTED THIS PASS
+
+- SUPERSEDED: the earlier `(27,8).east` blocker was wrong. After a FCEUX Lua
+  reload, the user manually crossed `(28,8)->LEFT` into `(27,8)` and reported
+  `(27,8)->RIGHT` also open. A fresh same-origin probe from `(27,8)->RIGHT`
+  moved through `(28,8)` and carried to `(29,8)`. Since crossing from
+  `(28,8)` into `(27,8)` immediately restores the Weapons Merchant path,
+  `map_reader.lua` now keeps `(27,8).east` open.
+- Follow-up route hit `(27,5)->LEFT` into `(26,5)`; same-origin
+  `probe_edge:LEFT` timed out from `(27,5)`. Promoted `(26,5).east`.
+- Follow-up route hit `(24,3)->DOWN` into `(24,4)`; same-origin
+  `probe_edge:DOWN` timed out from `(24,3)`. Promoted `(24,4).north`.
+- After those three closures, the public stand `(24,7)` became a separate
+  target-side component. Frontier analysis listed four hidden bridge
+  candidates; same-origin probes from normally reached `(25,3)->DOWN`,
+  `(26,3)->DOWN`, and `(28,7)->LEFT` all timed out. The remaining
+  `(22,3)->DOWN` candidate was checked from a teleport-seeded forensic origin:
+  it moved into hidden `(22,4)`, then `(22,4)->DOWN` moved to `(22,5)`.
+  From `(22,5)`, live-NPC pathing reaches the Weapons Merchant stand via
+  `2 east, 2 south` without crossing the occupied merchant cell. Promoted
+  `(22,4)` as the likely missing passthrough; revalidate entrance/return
+  routes after script reload because the bridge proof started from teleport.
+- Post-reload validation from `(19,3)` found the next false shortcut:
+  autowalk to `Weapons Merchant` tried `(19,3)->RIGHT` into `(20,3)`, seam
+  retries blocked twice, and same-origin `probe_edge:RIGHT` from `(19,3)`
+  timed out. Promoted `(20,3).west` and injected
+  `add_blocked_edge:19,3,RIGHT` at runtime. With this closed, frontier search
+  shows the next candidate bridge is likely around `(24,3)->LEFT` into
+  hidden `(23,3)` or `(22,1)->DOWN` into hidden `(22,2)`.
+- Attempting to walk the long lower route to `(24,3)` exposed and verified
+  four more lower-loop false exits: `(10,7)->UP` into `(10,6)`,
+  `(12,8)->DOWN` into `(12,9)`, `(12,8)->RIGHT` into `(13,8)`, and
+  `(15,6)->RIGHT` into `(16,6)`. Each blocked during route/seam retry and
+  also timed out from a same-origin probe, so `(10,6).south`,
+  `(12,9).north`, `(13,8).west`, and `(16,6).west` are promoted.
+  The route later suspected `(8,9)->RIGHT` into `(9,9)`, but that edge was
+  not same-origin probed in this pass and remains unpromoted.
+- Later target-side forensic routing exposed the actual weapon-shop throat:
+  from the stand `(24,7)`, `debug_pathfind_to:29,13` planned
+  `1 south, 5 east, 5 south`; live probes moved `(24,7)->DOWN` through
+  `(24,8)` to `(24,9)` and then `(24,9)->UP` back through `(24,8)` to the
+  stand. This supersedes the older `(24,8).south` blocker, which was removed
+  so the entrance can route through the real counter aisle. A manual FCEUX Lua
+  reload is required before live route validation.
+
 ## 2026-06-24 Brecconary Fairy Water Route / Input Lock Capture
 
 ### CLOSEOUT
@@ -868,3 +960,283 @@ For the next live map task, start a new dated section here with:
   `lua test_pathfinder.lua`, and `git diff --check`.
 - RELOAD NEEDED: FCEUX still has the runtime overlay for this edge. Manual
   `main.lua` reload is needed before validating the route against source alone.
+
+## 2026-06-27 Rimuldar Inn Route Recheck
+
+- LIVE PROOF: entrance-to-Inn route planning targeted the stored public stand
+  `(16,17)` for `Merchant 3` / `Inn` at `(16,18)`, then failed at
+  `(15,16)->DOWN`. Same-origin `probe_edge:DOWN` from normally walked
+  `(15,16)` raw-hold-timeout blocked with no NPC involvement, so
+  `(15,17).north` is promoted.
+- LIVE PROOF: after runtime `add_blocked_edge:15,16,DOWN`, the next lower
+  route reached `(18,19)` and failed `(18,19)->LEFT`. Same-origin
+  `probe_edge:LEFT` from normally walked `(18,19)` raw-hold-timeout blocked
+  with no NPC involvement, superseding the older mixed `(17,19).east` note.
+- LIVE RESULT: with runtime blockers for `(15,17).north` and `(17,19).east`,
+  `debug_route_frontier_skip_npcs:16,17,60` reports no remaining untested
+  bridge into the stored stand. The hidden bridge candidates
+  `(16,15)->DOWN`, `(15,16)->RIGHT`, `(18,18)->LEFT`, `(18,16)->LEFT`, and
+  `(17,15)->DOWN` were already checked from walked origins and blocked.
+- LIVE RESULT: `debug_pathfind_adjacent_skip_npcs:16,18` shows no route to any
+  innkeeper-adjacent stand. `(16,17)` and `(16,19)` are walkable but
+  unreachable; `(15,18)` and `(17,18)` are not walkable. A focused
+  `debug_route_frontier_skip_npcs:16,19,40` found only the already-modeled
+  `(16,20)->UP` south approach as a bridge to the south stand.
+- CLEAN / PROMOTED: `map_reader.lua` now adds Rimuldar blockers
+  `(15,17).north` and `(17,19).east`; `test_map_reader.lua` covers both.
+- REOPENED / DO NOT PROMOTE: the apparent `(17,17)`/`(18,17)` connector was not
+  bidirectional. The command-side `probe_edge:RIGHT` from `(17,17)` moved
+  through `(18,17)`, but the clean entrance-to-Inn route from `(29,13)` reached
+  `(18,17)` and repeatedly blocked on `(18,17)->LEFT` into `(17,17)`. Seam
+  retries logged `blocked=6 moved=0`, added runtime block `(17,17)` with
+  `approach=east`, and then the route collapsed with `No path found`.
+- CLEAN / PROMOTED: restored `(17,17).east` in `map_reader.lua` and updated
+  `test_map_reader.lua` to guard the entrance-to-Inn regression. Keep the
+  reverse movement clue as one-way evidence only; this seam is not the missing
+  public connector to the inn stand.
+- CLEAN / PROMOTED: user found the actual reachable Inn stand. From `(18,18)`,
+  TALK opened the `Welcome to the traveler's Inn. Room and board is 55 GOLD per
+  night` prompt; `report_position` confirmed `(18,18)`, `report_npcs` confirmed
+  `npc_16` / `Inn` remains at `(16,18)`, and path debug from `(18,18)` to the
+  town exit `(29,13)` found routes in both skip-NPC and live-NPC modes. Updated
+  `objects.lua` so the Inn routes primarily to `(18,18)` facing west, while
+  preserving `(16,17)` facing south as an alternate prompt stand.
+
+### Follow-Up: Magic Key Merchant Route Cleanup
+
+- LIVE PROOF / PROMOTED: entrance-to-Magic-Key route stopped at
+  `(9,10)->UP` into `(9,9).south`; route seam retry and same-origin
+  `probe_edge:UP` both raw-hold-timeout blocked with no NPC involvement.
+  Runtime `add_blocked_edge:9,10,UP` opened the next route stage.
+- LIVE PROOF / PROMOTED: the next stage stopped at `(12,10)->UP` into
+  `(12,9).south`; same-origin `probe_edge:UP` also blocked. Runtime
+  `add_blocked_edge:12,10,UP` opened the west-side route stage.
+- UNRESOLVED: the west-side stage then stopped at `(1,8)->RIGHT` into
+  `(2,8).west`. Same-origin `probe_edge:RIGHT` and forensic
+  `probe_edge_verify:1,8,RIGHT,5` both blocked. However, adding that runtime
+  edge makes the route to the Magic Key Merchant no-path. `debug_route_frontier`
+  reported 12 one-step bridge candidates into the merchant-side component; the
+  reachable candidates checked from normal origins all blocked:
+  `(1,6)->RIGHT`, `(1,7)->RIGHT`, `(4,9)->UP`, `(3,9)->UP`, `(2,9)->UP`,
+  `(6,9)->UP`, `(7,6)->LEFT`, `(7,5)->LEFT`, `(7,4)->LEFT`,
+  `(7,3)->LEFT`, and `(1,5)->RIGHT`. A focused
+  `crawl_map_frontier:attempts=2,max_edges=80` was manually stopped after 41
+  edges and found no passthrough or directional candidates.
+- Fresh tainted-verifier audit rechecked `(6,9)->UP` with
+  `verify_walked_edge:6,9,UP`: the route reached `(6,9)` through normal
+  movement, then the up probe into `(6,8)` raw-hold-timeout blocked with no
+  NPC/runtime blocker involved. Keep `(6,8).south` closed unless contradicted
+  by later live movement from a cleaner state.
+- Fresh tainted-verifier audit also rechecked the disputed bridge
+  `(1,8)->RIGHT` after FCEUX input recovery. The walked verifier reached
+  `(1,8)` and raw-hold-timeout blocked into `(2,8)` even though current source
+  still treats `(2,8).west` as passable. This strongly suggests the old
+  passable verifier proof was tainted or state-dependent.
+- With temporary runtime `add_blocked_edge:1,8,RIGHT`, `debug_route_frontier`
+  from the town entrance still reported only the same 12 one-step bridge
+  candidates into the Magic Key Merchant component. Fresh audit rechecked
+  `(7,6)->LEFT`, `(4,9)->UP`, `(1,6)->RIGHT`, `(1,7)->RIGHT`, and
+  `(1,5)->RIGHT`; all reached their origins through normal movement and then
+  raw-hold-timeout blocked. That leaves no known single-edge reopen candidate.
+- UNRESOLVED / TRANSITION CHECK: the apparent alternate-overworld-entry theory
+  did not hold up in live FCEUX. Leaving Rimuldar through the east edge changed
+  to the world map at `(102,72)`. Re-entering the town tile from all four
+  adjacent overworld sides landed at the same interior coordinate `(29,14)`:
+  `(103,72)->LEFT`, `(101,72)->RIGHT`, `(102,71)->DOWN`, and
+  `(102,73)->UP`. A normally reached `(4,3)->UP` probe also stayed blocked,
+  so do not assume the modeled `Northwest Exit to World Map` gives a second
+  key-shop-side town entrance without fresh transition proof.
+- CLEAN / PROMOTED: `map_reader.lua` now models `(9,9).south` and
+  `(12,9).south`; `test_map_reader.lua` covers both and flips the stale
+  `(9,9).south must stay open` assertion. Do not promote `(2,8).west` yet; it
+  needs either a missing alternate bridge or a state-condition explanation.
+- FRESH AUDIT / DO NOT PROMOTE: after clearing the temporary `(2,8).west`
+  runtime close, a source-planned route from the normally reached row-2/top
+  strip walked to `(1,8)` and again blocked on `(1,8)->RIGHT` into
+  `(2,8).west`. Seam retry logged `blocked=3 moved=0`, no runtime blocks were
+  active, and `auto_walk_blocker` reported `patch_command=add_blocked_edge:1,8,RIGHT`.
+  This reinforces that the old 5/5 open verifier was tainted or state-dependent.
+- FRESH AUDIT / REVIEW ONLY: with `(2,8).west` closed at runtime, local
+  ROM-backed reranking found only row-1/top-strip hypotheses. Walked-origin
+  probes proved `(9,2)`, `(10,2)`, and `(11,2)` are real hidden row-2 strip
+  cells, and row-2 movement also crossed through `(12,2)->RIGHT` to `(14,2)`.
+  However, north entries into row 1 from `(9,2)`, `(10,2)`, `(11,2)`,
+  `(12,2)`, `(13,2)`, and cleanly reached `(14,2)` all raw-hold-timeout
+  blocked. Do not promote the row-2 cells as a route fix yet; they did not
+  reconnect the Magic Key Merchant component.
+- FRESH AUDIT / UNRESOLVED: with temporary runtime
+  `add_blocked_edge:1,8,RIGHT` active, `debug_route_frontier_skip_npcs:4,6,80`
+  from the cleanly reached `(14,2)` strip still reported the same 12
+  bridge-to-target candidates and no hidden bridge candidates. The top-ranked
+  candidate remained the runtime-blocked `(1,8)->RIGHT`; all other high-value
+  bridge candidates match already-rejected edges from this cleanup pass.
+- FRESH CRAWL / UNRESOLVED: after FCEUX input recovery, with runtime
+  `(2,8).west` still closed and no bridge input active, a normal-movement
+  `crawl_map_frontier:attempts=2,max_edges=80,park_mobile_npcs=true` from the
+  key-shop-side component hit the edge cap at 80 edges. It exported
+  `passthrough=0`, `directional=0`, `stationary_npc=0`, and
+  `door_frontier=0`; only x=1 boundary/timing cells plus `(2,12)` were marked
+  unstable. A read-only frontier comparison from `(3,10)` likewise found no
+  hidden bridges and ranked the temporary runtime-closed `(1,8)->RIGHT` edge
+  first. This pass did not find an alternate bridge into the Magic Key
+  Merchant component.
+- GUIDE-ALIGNED REGION AUDIT / UNRESOLVED: external guide/map data points to
+  the northwest water-hugging route, so the upper x=7 bridge candidates were
+  rechecked from walked origins. `verify_walked_edge:7,3,LEFT`,
+  `verify_walked_edge:7,4,LEFT`, `verify_walked_edge:7,5,LEFT`, and
+  `verify_walked_edge:7,6,LEFT` all reached their origins normally and then
+  raw-hold-timeout blocked into `(6,3)..(6,6)`. A stateful carry test on the
+  x=1 strip did not prove `(1,8)->RIGHT`: entering `(1,8)` from `(1,7)` with
+  raw Down and a short wait drifted to `(1,9)`, while entering from `(1,9)`
+  with raw Up and a longer wait overshot to `(1,7)` and then blocked
+  `(1,7)->RIGHT`. Treat these seed-flow runs as evidence that the x=1 strip
+  has carry/scroll timing quirks, not as passability proof for `(2,8).west`.
+- USER SCREENSHOT FOLLOW-UP / BLOCKED: user positioned the hero at `(1,8)`.
+  Fresh `report_position` confirmed map `0x0B` at `(1,8)`. Direct same-origin
+  `probe_edge:RIGHT` into `(2,8)` first blocked with runtime `(2,8).west`
+  active, then blocked again after `clear_runtime_blocks:0x0B`, with
+  `reason=raw_hold_timeout`, no NPC or permanent blocker, and source preview
+  still effectively passable. Runtime `(2,8).west` was restored afterward as
+  a live-only blocker. This is clean evidence that `(1,8)->RIGHT` is currently
+  not the missing bridge, but the alternate bridge into the key-shop component
+  remains unresolved.
+- TOOLING BUG / PATCHED, NEEDS RELOAD: FCEUX repeatedly latched
+  `LeftAlt+Return`; the external bridge ignored stale Alt, but the native
+  stuck-Alt fallback in `debug_tools.lua` translated Return into repeated
+  Start. Added regression coverage in `test_debug_tools.lua` and changed the
+  native fallback to ignore Return/Enter while stale Alt is active. The
+  explicit sidecar bridge can still send `start`. `recover_fceux_input.ps1`
+  and `launch_dw.ps1` now release Return in the same key-up pulse as Alt.
+  FCEUX must reload `main.lua` before further live route probing benefits
+  from this fix.
+- POST-RELOAD FRONTIER SWEEP / STILL UNRESOLVED: after the script reload and
+  stale-Alt hardening, the player stood at `(1,8)` with the command menu
+  closed. A local normal-movement crawl from `(1,8)` with runtime
+  `add_blocked_edge:1,8,RIGHT` completed 69 edges and exported
+  `passthrough=0`, `directional=0`, `stationary_npc=0`, and
+  `door_frontier=0`; the only notable excluded cell was the already-known
+  dead pocket `(1,19)`. Fresh walked-origin checks then revalidated all
+  twelve `debug_route_frontier_skip_npcs:4,6` bridge-to-target candidates:
+  `(1,8)->RIGHT` is the runtime-blocked edge; `(1,6)->RIGHT`,
+  `(1,7)->RIGHT`, `(1,5)->RIGHT`, `(2,9)->UP`, `(3,9)->UP`,
+  `(4,9)->UP`, `(6,9)->UP`, and `(7,3..7,6)->LEFT` all reached their
+  origins by normal walking and raw-hold-timeout blocked with no NPC cause.
+  A fresh frontier snapshot from `(7,3)` still reported exactly those twelve
+  bridge-to-target entries and no `hidden_bridge=true` candidates. With the
+  runtime block briefly cleared for read-only comparison, the source model's
+  route from `(7,3)` to `(4,6)` was
+  `3 south, 1 east, 3 south, 7 west, 1 north, 3 east, 2 north`, confirming
+  the permanent model still relies on the contested `(1,8)->RIGHT` bridge.
+  The runtime `(2,8).west` block was restored immediately. Do not promote the
+  permanent block until either the missing state condition / bridge is found
+  or the key-merchant route is intentionally marked unresolved.
+- FORENSIC NORTHWEST EXIT CHECK / REVIEW ONLY: explicit `teleport_to:4,3`
+  followed by `probe_edge:UP` moved to `(4,2)` and logged a
+  `moved_through_modeled_block` mismatch for `(4,2).south`; this was
+  teleport-seeded and is not valid route proof. Follow-up `probe_edge:UP` from
+  `(4,2)` blocked into `(4,1)` and did not transition to the world map. The
+  player was returned to `(7,3)` afterward. This does not solve the missing
+  public route; keep the earlier alternate-overworld-entry theory unresolved /
+  unproven.
+- FORENSIC Y=0 CHECK / REVIEW ONLY: after clearing stale FCEUX Alt input, the
+  source model rejected `(13,0)` / `(4,0)` as `engine_boundary` and rejected
+  `(13,1)` / `(4,1)` as non-walkable tile type, while `(13,2)` remained a
+  modeled passthrough. A forced `teleport_to:13,0,force` then proved the user's
+  top-row observation is real in a forced seed: `probe_edge:RIGHT` moved through
+  modeled boundary `(14,0)` and carried to `(15,0)`, and a second right probe
+  carried from `(15,0)` to `(17,0)`. Descent samples from `(15,0)->DOWN` and
+  `(17,0)->DOWN` both raw-hold-timeout blocked into row 1. This is not
+  promotable map evidence yet; look for a normal-walk entry into y=0 or a
+  descent back into the trusted map before exposing any row-0 Rimuldar cells.
+  The player was restored to `(1,8)` afterward.
+- SECOND GUIDE-ALIGNED PASS / STILL UNRESOLVED: after input recovery, the user
+  / live state had the player at `(7,2)`, near the upper water-hugging strip.
+  With temporary runtime `(2,8).west` closed, `debug_route_frontier_skip_npcs`
+  from `(7,2)` to the key stand reported `target_reachable=false`,
+  `bridge_candidates=13`, and `hidden_bridge_candidates=0`. The 13th
+  bridge-to-target candidate not covered by the prior 12-edge sweep was
+  `(7,2)->LEFT` into `(6,2)`; same-origin `probe_edge:LEFT` from the live
+  `(7,2)` origin raw-hold-timeout blocked with the permanent `(6,2).east`
+  directional blocker active. Alternate adjacent talk stands around Old Man 1
+  were also no-path while `(2,8).west` was closed: `(4,6)`, `(4,8)`, `(3,7)`,
+  and `(5,7)` all stayed unreachable, so there is no obvious alternate stand
+  workaround. Carry/timing tests from normally reached `(1,7)` and `(1,9)`
+  did not prove `(1,8)->RIGHT`: down-seeded and up-seeded targeted probes to
+  `(1,8)` drifted vertically to `(1,9)` / `(1,7)` before the right probe could
+  enter `(2,8)`. A short wait (`wait_frames=8`) still drifted. The seeded
+  helper's trace shows the vertical seed/carry can remain visible at arm time,
+  so these runs are diagnostic rather than passability proof. Runtime blocks
+  were cleared afterward; final state was map `0x0B` at `(2,9)`.
+- ORDER / STATE FOLLOW-UP / STILL BLOCKED: a normal route from `(2,9)` to the
+  Magic Key stand approached `(1,8)` from the south and then tried
+  `(1,8)->RIGHT`; queued route, timeout retry, and seam retry all blocked, and
+  `AUTO_WALK_BLOCKER_FOUND` again reported `add_blocked_edge:1,8,RIGHT` with
+  no runtime block active. A north-side setup then routed to `(1,7)`, stepped
+  down to a settled `(1,8)`, and direct `probe_edge:RIGHT` again
+  raw-hold-timeout blocked into `(2,8)`. This reduces the odds that the
+  missing path is simply "enter `(1,8)` from the right prior direction."
+- TOOLING FOLLOW-UP / PATCHED, NEEDS RELOAD: `main.lua` now makes edge-probe
+  input switching/release explicit by sending false for all D-pad directions
+  instead of `joypad.set(1, {})`, matching the safer FCEUX patterns used by
+  `auto_step.lua`, `route_manager.lua`, and `debug_tools.lua`. The targeted
+  seeded probe also now aborts with `target_drifted` if the hero continues
+  moving off the requested target tile during the neutral wait, so future
+  stateful probe logs do not accidentally report an edge from the wrong origin.
+- POST-RELOAD GUARD TEST / WORKING: after manual FCEUX Lua reload,
+  `probe_edge_after_raw_to:DOWN,120,1,8,16,RIGHT` reached `(1,8)` but then
+  drifted to `(1,9)` during the neutral wait. The new guard ended the run as
+  `reason=target_drifted`, preventing a wrong-origin right probe from being
+  logged as evidence for `(1,8)->RIGHT`.
+- POST-GUARD MAGIC KEY HUNT / STILL UNRESOLVED: mid-carry raw tests from
+  `(1,6)` with Down holds of 28, 32, 35, 36, 37, and 43 frames did not cross
+  east into `(2,8)`. With live-only `(2,8).west` closed, route-frontier
+  snapshots still show the same twelve bridge-to-target candidates and no
+  hidden bridge candidates. A read-only source route still depends on the
+  disputed `(1,8)->RIGHT` edge, while a true entrance-to-merchant autowalk
+  again blocked there. Do not promote `(2,8).west` until the missing bridge or
+  state condition is understood.
+- CLEAN / PROMOTED: the return/reset route back toward the entrance found five
+  ordinary false shortcuts with route failure plus same-origin probe evidence:
+  `(8,9)->RIGHT` into `(9,9).west`, `(16,7)->RIGHT` into `(17,7).west`,
+  `(16,8)->DOWN` into `(16,9).north`, `(16,7)->UP` into `(16,6).south`, and
+  `(14,8)->DOWN` into `(14,9).north`. These are now in `map_reader.lua` with
+  regression assertions in `test_map_reader.lua`.
+- POST-RESTORE BRIDGE AUDIT / STILL UNRESOLVED: after the user restored a clean
+  save state, fresh baseline was Rimuldar `(29,13)` with command/menu state
+  clear. Clearing only the live-only `(2,8).west` edge let the source route walk
+  from the town entrance to `(1,8)`, where it again blocked on
+  `(1,8)->RIGHT`; same-origin `probe_edge:RIGHT` from `(1,8)` also timed out,
+  so runtime `(2,8).west` was restored as review-only route protection. With
+  that edge closed, `debug_route_frontier_skip_npcs:4,6` reported exactly the
+  same twelve bridge-to-target candidates and no hidden bridge candidates.
+  Eleven were already covered, and the remaining NPC-contaminated
+  `(1,7)->RIGHT` candidate was later rechecked after Woman 2 moved away:
+  `probe_edge:RIGHT` from cleanly reached `(1,7)` raw-hold-timeout blocked into
+  `(2,7)`. The apparent `(1,5)->DOWN` blocker during an NPC-adjacent autowalk
+  was invalid timing/NPC noise; a later direct `probe_edge:DOWN` from `(1,5)`
+  moved through to `(1,7)`. Net: every known one-edge bridge into the Magic Key
+  Merchant component is currently blocked from walked origins, so the remaining
+  explanation is likely a transition/state/modeling issue rather than another
+  obvious local false-wall bridge.
+- FOLLOW-UP / RUNTIME ONLY: while checking the user's current screenshot
+  position, the hero was standing at `(23,2)` even though source still decodes
+  it as non-walkable. Neighbor inspection showed `(24,2)` and `(24,3)` are the
+  already-modeled northeast strip passthroughs. Same-origin `probe_edge:RIGHT`
+  from `(23,2)` moved through `(24,2)` and carried to `(25,2)`, confirming a
+  real hidden upper-east pocket, but `debug_pathfind_to_skip_npcs:4,6` from
+  `(25,2)` still found no path to the Magic Key stand while runtime
+  `(2,8).west` was closed. `debug_route_frontier_skip_npcs:4,6` reported the
+  same twelve bridge-to-target candidates and no hidden bridge candidates, so
+  this pocket is not the missing key-shop connector.
+- CONTROLLED REOPEN / STILL BLOCKED: clearing only the review-only
+  `(2,8).west` runtime block and keeping the other reset-route blockers let the
+  planner create a 53-step path from `(25,2)` to `(4,6)`. The first live run
+  stopped at `(28,8)->LEFT` into `(27,8).east`; same-origin `probe_edge:LEFT`
+  also blocked. Do not promote this edge yet: earlier reloaded manual evidence
+  crossed `(28,8)<->(27,8)` and source/test comments intentionally keep
+  `(27,8).east` open, so today's result is state-dependent route evidence only.
+  With runtime `(27,8).east` added for the current pass, the route continued to
+  `(1,8)` and again blocked on `(1,8)->RIGHT` into `(2,8).west` under queued
+  route, timeout retry, and seam retry. Runtime `(2,8).west` was restored.
+  Current conservative runtime overlay has seven entries, including the
+  review-only `(27,8).east`; current position after the pass was `(1,8)`.

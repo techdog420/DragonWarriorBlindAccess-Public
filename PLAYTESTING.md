@@ -585,11 +585,20 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(27,15).west` seam self-disproved with a moved retry and stays open. Keep
   the weapon/armor route target on `(24,7)` facing west; `(23,9)` can open the
   shop in some stale/live contexts, but is not the planner-safe entrance-side
-  target. Rimuldar `Merchant 3` is now live-confirmed as the inn keeper at
-  `(16,18)`: autowalk from the east entrance routed cleanly to `(16,17)`,
-  faced south, and TALK opened the 55 GOLD inn prompt. No additional town
-  blockers were needed for either direction of that route. Rimuldar's Magic Key
-  seller is now live-confirmed too: it is `Old Man 1` at `(4,7)`, not
+  target. Rimuldar `Merchant 3` is live-confirmed as the inn keeper at
+  `(16,18)`. Early TALK proof from `(16,17)` facing south opened the 55 GOLD
+  inn prompt, but that stand later proved unreachable from the public route.
+  Follow-up live testing found the reachable stand at `(18,18)` facing west:
+  TALK opened the same 55 GOLD inn prompt, and path debug from there reaches
+  the town exit. `objects.lua` now makes `(18,18)` the primary Inn interaction
+  point while preserving `(16,17)` as an alternate. The 2026-06-27 route
+  polishing closed false cuts at
+  `(15,17).north` and `(17,19).east`. Follow-up FCEUX checks showed the
+  `(17,17)`/`(18,17)` seam is not bidirectional: `(17,17)->RIGHT` can move
+  into `(18,17)`, but the entrance-to-Inn route proved `(18,17)->LEFT` still
+  blocks, so `(17,17).east` remains modeled and this is not the missing public
+  connector. Rimuldar's Magic Key seller is now live-confirmed too: it is
+  `Old Man 1` at `(4,7)`, not
   `Merchant 1`. TALK from `(4,6)` facing south opened the 53 GOLD Magic Key
   prompt, while probes around `Merchant 1` only produced the short `Welcome!`
   greeting. `objects.lua` now labels Old Man 1 as `Magic Key Merchant`, keeps
@@ -647,9 +656,10 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   Follow-up testing showed `(5,7)` is only a one-way trap east of the seller: exits into
   `(5,6)`, `(4,7)`, `(6,7)`, and `(5,8)` all repeatedly blocked, so
   `(5,6).south`, `(4,7).east`, `(6,7).west`, and `(5,8).north` are modeled.
-  The same route batch closed `(17,17).east`; the replacement entrance-side
-  connector is the live-walked south turn `(13,15)` and `(13,16)`. The latest
-  blocker batch added `(7,15).south`, `(6,16).east`, and `(7,10).north`. Manual
+  The attempted 2026-06-28 removal of `(17,17).east` was reverted: the reverse
+  movement clue was one-way, and the entrance-to-Inn route repeatedly blocked
+  on `(18,17)->LEFT` into `(17,17)`. The latest blocker batch added
+  `(7,15).south`, `(6,16).east`, and `(7,10).north`. Manual
   movement also proved `(7,9)<->(8,9)`, so `(8,9)` is now the return connector
   around the blocked `(7,10)` drop. The next pass added `(6,16).south`,
   `(5,16).south`, `(3,13).south`, `(3,15).north`, `(8,10).north`,
@@ -690,7 +700,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   into `(0,6)` and changed to world map, so that was exit behavior, not the key
   stand route.
 
-  Latest clean check (`2026-05-18`):
+  Older clean check (`2026-05-18`, partially superseded by the 2026-06-28
+  Magic Key Merchant cleanup):
   - A post-recovery verifier disproved the noisy `(2,8).west` blocker:
     `probe_edge_verify:1,8,RIGHT,5` moved 5/5 into `(2,8)`.
   - A raw forced-origin reverse probe from `(2,8)->LEFT` moved back to `(1,8)`,
@@ -715,6 +726,16 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     clutter from teleport/FCEUX bridge state, not map evidence: `(29,14).north`
     changed from 9 blocked observations to `noisy` when the same edge later
     moved, and `(2,7).south` also moved on retry. Do not promote either edge.
+  - Follow-up Magic Key Merchant route cleanup (`2026-06-28`) superseded two
+    row-9 verifier notes with route-shaped FCEUX evidence. The route and
+    same-origin probes blocked `(9,10)->UP` into `(9,9).south` and
+    `(12,10)->UP` into `(12,9).south`; both are now modeled while keeping
+    `(9,9)` and `(12,9)` standable passthrough cells for other approaches.
+    The same pass found `(1,8)->RIGHT` into `(2,8).west` blocked by route
+    failure, same-origin probe, and 5/5 verifier, but promoting that edge
+    currently isolates the known merchant-side component. Leave `(2,8).west`
+    as unresolved route-model evidence until the missing alternate bridge or
+    state condition is found.
   - Follow-up NPC chat found two useful clue NPCs. `Old Man 3` at `(3,23)`
     asks about a magic temple with a yes/no prompt; its public west stand is
     `(2,23)`, reached through the false-wall seam `(1,23)<->(2,23)` that moved
@@ -724,13 +745,16 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     have enough live coverage for now. Leave full dialogue-only NPC route
     validation for optional polish. The inn / Wings chest pocket has two
     confirmed magic-key doors: the outer door at `(21,21)` and the inner Wings
-    chest door at `(22,23)`. The inner door was pinned first from opened-door
-    RAM while Bill stood at `(23,23)`; the phantom outer door was later found
-    by opening from `(21,22)` facing north, after which `report_door_state`
-    reported `slots=0=(22,23) 1=(21,21)` and
-    `probe_edge_verify:21,22,UP,3` moved 3/3 through the opened door. The model
-    now gates both floor-decoding cells as magic-key doors until opened-door
-    RAM lists them; the nearby Wings chest object is `chest_7` at `(24,23)`.
+    chest door at `(22,23)`. Current live cleanup confirms the outer door opens
+    from the public stand `(21,20)` facing south, with `(21,22)` facing north as
+    the inside-side stand. The Wings chest door opens from `(21,23)` facing east,
+    with `(23,23)` facing west as the chest-side stand. After real manual opens,
+    `report_door_state` showed `keys=2 slots=0=(21,21) 1=(22,23)`. The model now
+    gates both floor-decoding cells as magic-key doors until opened-door RAM lists
+    them; the nearby Wings chest object is `chest_7` at `(24,23)`. Full FCEUX
+    validation reached the chest from the town exit `(29,13)` through both
+    opened doors, and the return route from the chest back to `(29,13)` also
+    completed.
     Clean FCEUX movement proved `(13,18)` is a real false-wall connector from
     `(13,19)` to the public side and back, but it is not the Wings-room escape.
     The lower row-25 hidden strip is real but isolated. The apparent
@@ -738,8 +762,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     origin; every legitimate door-side approach blocked there, raw held DOWN
     did not move, and OPEN while facing south reported "There is no door here."
     The earlier no-path from `(23,23)` to `exit_29_13` was missing the outer
-    door and should not be treated as current route truth. Do
-    not promote `(19,25).east`; that verifier was NPC-contaminated.
+    door and should not be treated as current route truth. Do not promote
+    `(19,25).east`; that verifier was NPC-contaminated. The later opened-door
+    route to the chest also confirmed `(22,22).west` is blocked from
+    `(21,22)->RIGHT`; the valid route reaches the inner door stand by stepping
+    south to `(21,23)`.
     Later door-side retesting explains the current no-route behavior around
     `(22,23)`: with opened-door RAM empty, `(22,24)->UP` into `(22,23)` and
     `(21,22)->UP` into `(21,21)` both inspect as `door_closed`, while
@@ -749,15 +776,19 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     doors. The direct north edge
     `(22,22)->UP` into `(22,21)` is a real directional wall
     (`probe_edge_verify:22,22,UP,3` blocked 3/3). After the user got north of
-    that wall, exit autowalk exposed two clean blockers now modeled as
-    directional-only seams: `(16,19).south` and `(17,19).south`. Do not promote
-    `(17,19).east` (mixed 1 moved / 2 blocked), `(21,24).south` (moved 3/3),
-    or `(15,24).south` (mixed 1 moved / 2 blocked).
+    that wall, exit autowalk exposed two clean blockers modeled as
+    directional-only seams: `(16,19).south` and `(17,19).south`. A later
+    2026-06-27 inn-route pass superseded the older mixed `(17,19).east`
+    verifier: `(18,19)->LEFT` blocked during autowalk and same-origin raw
+    probe, so `(17,19).east` is now promoted. Keep `(21,24).south` (moved 3/3)
+    and `(15,24).south` (mixed 1 moved / 2 blocked) unpromoted.
     A later manual/autowalk mix reached the outer door route network and did
     leave town once: the log changed to World Map after stepping
     `(28,16)->RIGHT` into `(29,16)`. Since the clean current planner route to
     the modeled exit `(29,13)` does not use `(29,16)`, `(29,16).west` is now a
-    transition guard, not a corridor seam. The user believes the throne-room
+    transition guard, not a corridor seam. A later route/probe polish pass also
+    confirmed `(29,16)->LEFT` is blocked, modeled as `(28,16).east`, so the
+    row-16 false cut stays closed in both directions. The user believes the throne-room
     door stays open after unlocking; keep that as a possible special case, not
     a contradiction of Rimuldar doors resetting after map leave.
   The later `(2,5)` lead was also stale/noisy: fresh route and direct verifier
