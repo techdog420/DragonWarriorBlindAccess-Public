@@ -56,6 +56,12 @@ Updated: 2026-06-29
 - FCEUX remains the normal gameplay and agent-driven runtime for this repo.
   BizHawk is still useful for explicit automation/debug/reload/profiling work,
   but it is not the default route-testing runtime.
+- FCEUX native Player 2 hotkeys were tried and preserved on local branch
+  `codex/fceux-player2-buttons` as commit `1c63fea`; do not treat that branch
+  as merge-ready. Live testing proved the Lua probe could log `joy2=...`, but
+  native `GamePad.1` did not expose spare controller buttons as Player 2 input
+  even after editing `D:\emulation\fceux\bin\fceux.cfg`. Next likely path is a
+  bridge-based fallback instead of native FCEUX Player 2 mapping.
 - Brecconary Magic Key cleanup is complete for current alpha-prep playtesting.
   The inn west-room door is now
   live-confirmed at door cell `(5,23)`, opened from `(6,23)` facing west; the
