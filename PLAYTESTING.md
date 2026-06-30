@@ -1,10 +1,32 @@
 # Playtesting Notes
 
-Updated: 2026-06-25
+Updated: 2026-06-29
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Kol speech/menu regression follow-up (`2026-06-29`): manual Kol entrance
+  checks passed for command-menu open/close, SPELL entry, and ITEM browsing
+  without stale `Bill` / `ll` fragments or bogus merchant prices. Two follow-up
+  fixes are live-verified in `main.lua`: ITEM entry suppresses the delayed duplicate
+  first-item announcement, and SPELL lower-dialogue absorption now allows
+  lowercase spell-result text through while still absorbing uppercase spell-list
+  rows. Post-reload bridge proof: casting RADIANT spoke both
+  `Bill chanted the spell of RADIANT.` and `But nothing happened.`, and ITEM
+  entry spoke `Items. Dragon's Scale` without immediately repeating
+  `Dragon's Scale`.
+  A final Kol Tool Merchant sell-list retest also passed after reload: the
+  lower inventory rows spoke item names without repeated `Merchant. Gold...`
+  summary spam. The visible game list only shows a price for the highlighted
+  Herb row; other sell prices appear in the confirmation dialogue.
+
+- Kol door/service routes clean (`2026-06-29`): after the West Side Door stand
+  correction and return-route blocker cleanup, live FCEUX validation completed
+  to-and-from autowalks for `West Side Door`, `Western Building Door`,
+  `Tool Merchant`, `Weapons Merchant`, and `Inn`. Each return reached
+  `Exit to World Map` at `(19,23)` and faced south; the validation log contains
+  no blocker/no-path/interrupt markers for that pass.
 
 - Tantegel Castle downstairs Magic Key merchant return polish (`2026-06-25`):
   routing from the Magic Key merchant back to the throne-room stairs exposed ten

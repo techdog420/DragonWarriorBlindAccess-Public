@@ -1,6 +1,118 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-06-26
+Updated: 2026-06-29
+
+## 2026-06-29 Kol Speech/Menu Regression Follow-Up
+
+- User manual pass from the Kol entrance confirmed command-menu open/close,
+  SPELL menu entry, and ITEM menu browsing no longer speak stale `Bill` / `ll`
+  fragments or bogus merchant prices.
+- Follow-up Kol service pass confirmed the Weapons Merchant buy flow and Tool
+  Merchant buy screen read correctly. The Tool Merchant sell list exposed a
+  lower-row regression: after the cursor reached `Gwaelin's Love` / `Torch`,
+  `speech_bridge.log` repeatedly spoke the full merchant summary (`Merchant.
+  Gold 22041. Offered: ...`) between item names.
+- Source fix in `main.lua`: after a merchant offer selection is already known,
+  changed cursor selections still speak, but the fallback full-offer summary is
+  suppressed on cursor-blink/split-row redraw frames. Verification passed with
+  `luac -p main.lua test_sweep_walk_command_surface.lua merchant.lua
+  test_merchant.lua`, `lua test_sweep_walk_command_surface.lua`, `lua
+  test_merchant.lua`, and `git diff --check`. POST-RELOAD LIVE VERIFIED:
+  fresh `speech_bridge.log` session at `2026-06-29 20:01:20` read the sell
+  list as `Herb. 6 gold`, then item names only (`Fairy Flute`, `Dragon's
+  Scale`, `Wings`, `Stones of Sunlight`, `Staff of Rain`, `Cursed Belt`,
+  `Gwaelin's Love`, `Torch`) without repeated full merchant summaries. The
+  game only rendered the Herb sell-list price; later confirmation dialogue read
+  `Cursed Belt` as 180 GOLD.
+- Two follow-up speech issues were captured from `speech_bridge.log`: field
+  spell casts only spoke MP deltas (`Used 4 MP. MP 60`, `Used 3 MP. MP 57`)
+  with no result dialogue, and ITEM menu entry spoke the first item twice
+  (`Items. Dragon's Scale` followed by `Dragon's Scale`).
+- Source fix in `main.lua`: ITEM entry now remembers the item name already
+  spoken on submenu entry and suppresses the delayed first cursor update only
+  when it matches that name; different immediate cursor movement still speaks.
+- Source fix in `main.lua`: STATUS and ITEM lower-window rows remain absorbed
+  as memory-spoken submenu UI, but SPELL only absorbs uppercase/no-lowercase
+  spell-list rows. Lowercase field spell-result dialogue can now stabilize and
+  speak even if it appears before `submenu_mode` clears.
+- Verification: `luac -p main.lua test_sweep_walk_command_surface.lua`,
+  `lua test_sweep_walk_command_surface.lua`, `lua test_items.lua`,
+  `lua test_text.lua`, `lua test_menu.lua`, `lua test_merchant.lua`,
+  `lua test_hotkeys.lua`, and `git diff --check` passed.
+- POST-RELOAD LIVE VERIFIED: fresh `speech_bridge.log` session at
+  `2026-06-29 19:38:55` showed RADIANT cast speech as `Used 3 MP. MP 54`,
+  then `Bill chanted the spell of RADIANT.`, then `But nothing happened.` The
+  ITEM retest spoke `Items. Dragon's Scale` and then the next movement spoke
+  `Fairy Flute`, with no immediate duplicate `Dragon's Scale`.
+
+## 2026-06-29 Kol West Side Door Route Cleanup
+
+### PROMOTED THIS PASS
+
+- Live baseline: map `0x07` / Kol. `report_door_state` showed only the
+  western-building door `(7,12)` open; the West Side Door `(1,14)` remained
+  closed. Runtime blockers were initially clear.
+- The entrance-to-door-stand route originally stalled at `(3,18)->LEFT` into
+  `(2,18)`. Same-origin `probe_edge:LEFT` from `(3,18)` raw-hold timed out
+  with no NPC and no existing approach block, so `(2,18).east` was promoted.
+- Frontier analysis then found the real lower connector: from `(3,17)`,
+  `probe_edge:LEFT` entered decoded type-0 `(2,17)` and carried through to
+  the already modeled `(1,17)` throat. `map_reader.lua` now models `(2,17)`
+  as a Kol passthrough.
+- Follow-up route/probe work proved the apparent door-side lane is sealed:
+  `(2,15).west`, `(2,16).west`, `(2,16).south`, and `(2,18).west` all blocked
+  from same-origin live probes. The upper bridge candidates into decoded
+  type-0 `(4,14)` also blocked from `(4,15)->UP` and `(5,14)->LEFT`, so
+  `(4,14).south` and `(4,14).east` are modeled as closed approaches.
+
+### LIVE STATUS / NEXT
+
+- Follow-up manual movement proved the route target was wrong, not unreachable:
+  the user reached `(1,15)`, pressed north, and the next `report_door_state`
+  showed keys `0` with opened-door slot `1=(1,14)`. `objects.lua` now models
+  the West Side Door public stand as `(1,15)` facing north.
+- Opened-door return route to the Kol exit is now validated. From the
+  West-Side-Door area, route retries plus same-origin `probe_edge` checks
+  confirmed `(2,10).south`, `(3,10).south`, `(4,11).west`, `(4,12).west`,
+  `(4,13).west`, `(2,14).north/west`, and `(3,14).north`. After injecting that
+  runtime overlay, `auto_walk_blocker:19,23` reached `(19,23)` and faced south.
+- User validation pass then exercised all current Kol door/service routes both
+  directions: `West Side Door`, `Western Building Door`, `Tool Merchant`,
+  `Weapons Merchant`, and `Inn`, each with a clean return to `Exit to World Map`
+  at `(19,23)`. Follow-up log scan found only route-complete markers for the
+  validation sequence and no blocker/no-path/interrupt lines.
+
+## 2026-06-29 Kol Closed-Door Tool Merchant Cleanup
+
+### PROMOTED THIS PASS
+
+- Live baseline: map `0x07` / Kol, player at the north-west building lip,
+  `report_door_state` showed keys `2` and all opened-door slots `(0,0)`, so
+  both known Kol magic-key doors were closed.
+- The closed-door route to Tool Merchant stand `(12,21)` repeatedly tried
+  false cuts around the western building instead of collapsing at the locked
+  boundary. Runtime blockers added and promoted:
+  `(7,10).east`, `(7,9).east`, `(7,8).east`, `(6,8).north`,
+  `(7,8).north`, `(5,7).east`, `(5,6).east`, `(5,5).east`,
+  `(6,4).south`, `(7,4).south`, and `(8,4).south`.
+- Most entries were confirmed by route/seam-retry plus same-origin
+  `probe_edge`; `(7,8).north` had route evidence only but matches the same
+  closed lip and was needed for the no-path collapse.
+- With the first five runtime edges active, `auto_walk_blocker:12,21`
+  reported `AUTO_WALK: no path` with no opened-door RAM. The follow-up frontier
+  still listed row-7 hidden-bridge candidates, so the pass continued by probing
+  their reachable approaches and exposed the x=5 east lip / north cap above.
+
+### LIVE STATUS / NEXT
+
+- Current live runtime overlay has ten destination entries:
+  `6,4(south)`, `7,4(south)`, `8,4(south)`, `5,5(east)`,
+  `5,6(east)`, `5,7(east)`, `6,8(north)`, `7,8(east,north)`,
+  `7,9(east)`, and `7,10(east)`.
+- FCEUX still needs a manual `main.lua` reload before the permanent source
+  blockers affect live pathfinding. After reload, rerun the closed-door
+  `auto_walk_blocker:12,21` and `debug_route_frontier_skip_npcs:12,21,80`
+  from a clean Kol entrance or the current north-west lip.
 
 ## 2026-06-26 Rimuldar Inn / Wings Door Route Cleanup
 

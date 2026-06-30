@@ -916,6 +916,10 @@ local MAP_PASSTHROUGH_CELLS = {
         -- (3,16) and settled on tile-0 (3,17), then (3,17)->DOWN exited to the
         -- target-side lane. Keep this as the narrow confirmed bridge cell.
         ["3,17"] = true,
+        -- West Side Door cleanup later proved the neighboring tile-0 cell too:
+        -- same-origin probe_edge:LEFT from (3,17) entered (2,17) and carried
+        -- through to (1,17), making it the connector toward the door stand lane.
+        ["2,17"] = true,
         ["18,23"] = true,
         ["19,23"] = true,
         ["20,23"] = true,
@@ -2246,15 +2250,30 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- route hit it, and each raw hold timed out without NPC involvement.
         -- The follow-up push toward the row-17 bridge candidate proved the
         -- x=4 east lip too: (5,10..13)->LEFT and (8,13)->LEFT all blocked
-        -- from the live origin after the route hit them.
+        -- from the live origin after the route hit them. Later West Side Door
+        -- return-route work also proved the west approaches into (4,11..13)
+        -- and the south approaches into (2,10)/(3,10) from same-origin probes.
         ["1,10"] = {north = true},
-        ["2,10"] = {north = true},
-        ["3,10"] = {north = true},
+        ["2,10"] = {north = true, south = true},
+        ["3,10"] = {north = true, south = true},
         ["4,10"] = {east = true, north = true},
-        ["4,11"] = {east = true},
-        ["4,12"] = {east = true},
-        ["4,13"] = {east = true},
-        ["7,9"] = {west = true},
+        ["4,11"] = {east = true, west = true},
+        ["4,12"] = {east = true, west = true},
+        ["4,13"] = {east = true, west = true},
+        -- Closed-door Tool Merchant cleanup: with both Kol doors closed, the
+        -- planner tried wall/counter lips north of the confirmed door instead
+        -- of stopping at the locked-door boundary. Each edge below was hit by
+        -- auto_walk_blocker and verified with a same-origin probe where noted.
+        ["6,4"] = {south = true},
+        ["7,4"] = {south = true},
+        ["8,4"] = {south = true},
+        ["5,5"] = {east = true},
+        ["5,6"] = {east = true},
+        ["5,7"] = {east = true},
+        ["6,8"] = {north = true},
+        ["7,8"] = {east = true, north = true},
+        ["7,9"] = {east = true, west = true},
+        ["7,10"] = {east = true},
         ["7,13"] = {east = true, west = true},
         -- After the (1,17) passthrough was loaded, the Tool Merchant route
         -- briefly found a standable pocket at (1,19). Same-origin probes from
@@ -2268,11 +2287,24 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- Final entrance-to-Tool-Merchant cleanup after the (5,14) bridge was
         -- live. Same-origin probes from normal autowalk stops closed the false
         -- west-side pocket exits, while the real hidden bridge moved through
-        -- (3,17) and the final route reached the stand at (12,21).
+        -- (3,17) and the final route reached the stand at (12,21). The later
+        -- West Side Door route pass closed the west approaches into (2,15)
+        -- and (2,16), the south approach into (2,16) from the newly proven
+        -- (2,17) passthrough, and both east/west approaches into the lower
+        -- false lane at (2,18). Follow-up frontier probes also proved the
+        -- apparent upper bridge into non-walkable (4,14) is closed from both
+        -- (4,15) and (5,14). After the West Side Door stand moved to (1,15)
+        -- and the door was opened, the return route to the town exit also
+        -- closed the false door-side entries into (2,14) and the north
+        -- approach into (3,14); with those runtime edges active, autowalk
+        -- reached the Kol exit at (19,23).
         ["5,16"] = {north = true},
-        ["2,15"] = {east = true},
-        ["2,16"] = {east = true},
-        ["3,14"] = {south = true},
+        ["2,14"] = {north = true, west = true},
+        ["2,15"] = {east = true, west = true},
+        ["2,16"] = {east = true, south = true, west = true},
+        ["2,18"] = {east = true, west = true},
+        ["3,14"] = {north = true, south = true},
+        ["4,14"] = {east = true, south = true},
         -- Return route from the Tool Merchant stand back to the town exit.
         -- These edges were discovered by auto_walk_blocker from (12,21) to
         -- (19,23), then verified from the live origin with probe_edge before

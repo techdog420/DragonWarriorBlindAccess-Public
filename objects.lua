@@ -1090,9 +1090,9 @@ local EXTRA_DOORS = {
             name="West Side Door",
             type=M.TYPE_DOOR,
             id="door_1_14",
-            interaction_x=2,
-            interaction_y=14,
-            interaction_face_dir="west",
+            interaction_x=1,
+            interaction_y=15,
+            interaction_face_dir="north",
         },
     },
     -- Map 0x08: Brecconary has two locked doors that are not encoded as a

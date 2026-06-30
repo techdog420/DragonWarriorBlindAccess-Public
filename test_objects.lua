@@ -1974,9 +1974,9 @@ function tests.kol_exposes_confirmed_locked_doors()
     assert_equal(west_side.name, "West Side Door", "Kol west-side door should have a distinct navigation label")
     assert_equal(west_side.x, 1, "Kol west-side door x should match opened-door RAM")
     assert_equal(west_side.y, 14, "Kol west-side door y should match opened-door RAM")
-    assert_equal(west_side.interaction_x, 2, "Kol west-side door should route to the public east stand")
-    assert_equal(west_side.interaction_y, 14, "Kol west-side door stand should match live verifier proof")
-    assert_equal(west_side.interaction_face_dir, "west", "Kol west-side door should open from the east stand facing west")
+    assert_equal(west_side.interaction_x, 1, "Kol west-side door should route to the public south stand")
+    assert_equal(west_side.interaction_y, 15, "Kol west-side door stand should match live open proof")
+    assert_equal(west_side.interaction_face_dir, "north", "Kol west-side door should open from the south stand facing north")
 
     env.restore()
 end

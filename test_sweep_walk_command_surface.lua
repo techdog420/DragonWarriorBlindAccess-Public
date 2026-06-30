@@ -42,6 +42,8 @@ local command_menu_field_guard = main:match("DW_QOL_STATE%.command_menu_blocks_f
 assert(command_menu_field_guard, "main.lua should expose command_menu_blocks_field_movement before arm_talk_visit_marker")
 local dialogue_handler = main:match("local function check_dialogue%(frame_delta, refresh_ppu%)(.-)\nend\n\n%-%- check_upper_dialogue")
 assert(dialogue_handler, "main.lua should expose check_dialogue before check_upper_dialogue")
+local merchant_handler = main:match("local function check_merchant_screen%(frame_delta%)(.-)\nend\n\nlocal function check_battle_menu")
+assert(merchant_handler, "main.lua should expose check_merchant_screen before check_battle_menu")
 
 assert_contains(main,
     'debug_tools.register_command("sweep_walk"',
@@ -163,9 +165,34 @@ assert_not_contains(lower_status_guard,
 assert_contains(command_menu_handler,
     "text.is_passive_field_status_noise(lower_dialogue)",
     "command-menu lower-dialogue gate should ignore passive status/name fragments such as split hero-name suffixes")
+assert_contains(main,
+    "local function submenu_absorbs_lower_dialogue(dialogue)",
+    "submenu lower-dialogue absorption should be centralized so SPELL results can be distinguished from spell-list rows")
+assert_contains(main,
+    'submenu_mode == "STATUS" or submenu_mode == "ITEM"',
+    "STATUS and ITEM submenu visual rows should still be absorbed as memory-spoken UI")
+assert_contains(main,
+    'if submenu_mode == "SPELL" then',
+    "SPELL submenu absorption should be handled separately from STATUS/ITEM")
+assert_contains(main,
+    'return not tostring(dialogue or ""):find("[a-z]")',
+    "SPELL submenu should absorb uppercase spell-list rows but allow lowercase result dialogue")
 assert_contains(dialogue_handler,
-    'submenu_mode == "STATUS" or submenu_mode == "ITEM" or submenu_mode == "SPELL"',
-    "lower dialogue reader should not announce visual rows from memory-spoken command submenus")
+    "if submenu_absorbs_lower_dialogue(dialogue) then",
+    "lower dialogue reader should allow lowercase field spell-result dialogue through instead of marking it announced during SPELL mode")
+assert_contains(command_menu_handler,
+    "CMD.item_entry_pending_name",
+    "ITEM submenu entry should remember the first spoken item so a delayed cursor jump cannot repeat it")
+assert_contains(command_menu_handler,
+    "if pending_name and current_item == pending_name then",
+    "ITEM submenu cursor handling should suppress the delayed first-item duplicate by name, not only by short frame timing")
+assert_contains(merchant_handler,
+    'PREV.merchant_mode == "offers" and PREV.merchant_selection ~= nil',
+    "merchant offer-list summary should stay quiet after an item selection is already known")
+assert_order(merchant_handler,
+    'debug_tools.info("MERCHANT_SELECT: " .. msg)',
+    'PREV.merchant_mode == "offers" and PREV.merchant_selection ~= nil',
+    "merchant summary suppression should run after changed cursor selections have a chance to speak")
 assert_order(command_menu_handler,
     'trace_row1("CMD_ITEM_FIRE"',
     "local merchant_present = MER.active or MER.scan_present",

@@ -280,9 +280,10 @@ Follow-up Merchant 1 autowalk evidence:
   returns. A later clean-restore frontier check from the town entrance found
   the entrance-side connector to that throat: `(5,14)` decodes as tile-0, but
   normal walking to `(5,13)` and same-origin `probe_edge:DOWN` moved through
-  `(5,14)` and settled at `(5,15)`. `map_reader.lua` now exposes only
-  `(1,17)` and `(5,14)` as Kol passthroughs; sibling candidates `(6,14)` and
-  `(7,14)` stay unmodeled until live proof. The follow-up reload proved
+  `(5,14)` and settled at `(5,15)`. `map_reader.lua` now exposes the live
+  hidden-route cells `(1,17)`, `(5,14)`, `(3,17)`, and `(2,17)` as Kol
+  passthroughs; sibling candidates `(6,14)` and `(7,14)` stay unmodeled until
+  live proof. The follow-up reload proved
   `(1,19)` is a standable dead pocket rather than a route segment:
   `(1,19)->RIGHT`, `(1,19)->DOWN`, and `(1,19)->UP` all blocked from
   same-origin probes, while west is the map boundary. Final entrance-to-stand
@@ -300,6 +301,20 @@ Follow-up Merchant 1 autowalk evidence:
   `auto_walk_blocker:19,23` reached the exit and the reverse
   `auto_walk_blocker:12,21` reached the stand. Reload `main.lua` in FCEUX
   before validating the live planner against these fixes.
+- West Side Door cleanup later corrected the object stand from stale `(2,14)`
+  facing west to `(1,15)` facing north. Evidence: the user reached `(1,15)`,
+  pressed north, and `report_door_state` changed from one remaining key and no
+  west-side door slot to `keys=0 slots=1=(1,14)`. The false approaches around
+  `(2,15)`, `(2,16)`, `(2,18)`, and `(4,14)` remain modeled as blockers.
+- Opened-door return routing from the west-side door area back to the Kol exit
+  is validated. Same-origin probes closed `(2,10).south`, `(3,10).south`,
+  `(4,11..13).west`, `(2,14).north/west`, and `(3,14).north`; with that
+  runtime overlay active, `auto_walk_blocker:19,23` reached the town exit at
+  `(19,23)`.
+- Full post-reload route validation is clean for current Kol doors and services:
+  `West Side Door`, `Western Building Door`, `Tool Merchant`,
+  `Weapons Merchant`, and `Inn` all route from the exit side and return to
+  `Exit to World Map` at `(19,23)` without blocker/no-path/interrupt markers.
 
 NPC/service slot snapshot after the stopped survey:
 

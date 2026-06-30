@@ -89,13 +89,33 @@ Updated: 2026-06-29
   still fails after reload; `report_input_guard_state` is staged for that case.
 - Kol Magic Key door discovery is now pinned in source. `Western Building Door`
   is door cell `(7,12)`, opened from `(8,12)` facing west; `West Side Door` is
-  door cell `(1,14)`, opened from `(2,14)` facing west. The stale
+  door cell `(1,14)`, opened from `(1,15)` facing north. The stale
   `(7,12).east` wall is removed because it was the closed door, while
   `(7,11).east` remains a real directional blocker. False checked candidates:
   `(1,13)` from `(1,14)` facing up, `(1,3)` from `(1,4)` facing up, and
   `(1,4)` from `(2,4)` facing left all produced no-door/no-key-delta results.
-  FCEUX needs a manual Lua reload before object browsing and pathfinding use
-  the new Kol door objects.
+  Post-reload route validation now reaches both Kol door stands and returns to
+  the town exit cleanly.
+- Kol West Side Door route cleanup found that the old `(2,14)` stand was a
+  stale model, not an unreachable required tile. The user manually reached
+  `(1,15)`, pressed north, and the follow-up `DOOR_STATE` showed keys `0` with
+  opened-door slot `1=(1,14)`, confirming the public stand is `(1,15)` facing
+  north. The false route through `(3,18)->LEFT` is now closed, `(2,17)` is
+  modeled as a real passthrough, and the remaining false exits are modeled:
+  `(2,15).west`, `(2,16).south/west`, `(2,18).east/west`, plus `(4,14).east`
+  and `(4,14).south`.
+- Opened West Side Door return routing to the Kol exit is now clean in live
+  FCEUX with the runtime overlay that was promoted to `map_reader.lua`.
+  Starting from the opened-door side, same-origin probes closed
+  `(2,10).south`, `(3,10).south`, `(4,11..13).west`, `(2,14).north/west`,
+  and `(3,14).north`; with those edges active,
+  `auto_walk_blocker:19,23` reached `(19,23)` and faced south.
+- Kol route validation is clean for the current door/service set. The live
+  FCEUX log shows route-complete autowalks to and back from `West Side Door`,
+  `Western Building Door`, `Tool Merchant`, `Weapons Merchant`, and `Inn`;
+  each return reached `Exit to World Map` at `(19,23)` and faced south. The
+  validation sequence contains no `AUTO_WALK_BLOCKER_FOUND`, `AUTO_WALK: no
+  path`, `reason=stop on blocker`, or `live_input_interrupt` lines.
 - Kol Tool Merchant route polish promoted the current blocker batch in
   `map_reader.lua`: `(16,22).east`, `(1..4,10).north`, `(4,10..13).east`,
   `(7,9).west`, and `(7,13).east/west`. The current Tool Merchant identity is
@@ -117,10 +137,8 @@ Updated: 2026-06-29
   then `(3,17)->DOWN` exited to the target-side lane. `map_reader.lua` now
   models `(3,17)` as the narrow Tool Merchant bridge and closes the route
   false exits `(5,16).north`, `(2,15).east`, `(2,16).east`, `(3,14).south`,
-  and `(10,19).west`; with those runtime blockers active,
-  `auto_walk_blocker:12,21` reached the stand. Reload `main.lua` again before
-  judging the live planner against these source fixes, then retest route
-  guidance/autowalk to Tool Merchant from the town entrance. Do
+  and `(10,19).west`; post-reload validation reached the stand from the town
+  exit and returned cleanly. Do
   not promote the later post-teleport `(1,16)->DOWN` or `(1,16)->RIGHT`
   failures: even the ordinary east step to `(2,16)` falsely blocked from that
   seed, so the live movement state was contaminated. Kol also exposed stale
@@ -143,8 +161,20 @@ Updated: 2026-06-29
   a fallback. A final follow-up fixed the remaining bulk inventory speech:
   after ITEM ownership worked, `check_dialogue()` still announced visible item
   rows as lower dialogue (`Silver Harp Cursed Belt Gwaelin's Love Torch`).
-  STATUS, ITEM, and SPELL submenu windows are now absorbed by the generic lower
-  dialogue reader because those screens are spoken from cursor/RAM state.
+  STATUS and ITEM submenu windows are now absorbed by the generic lower
+  dialogue reader because those screens are spoken from cursor/RAM state; SPELL
+  still absorbs uppercase/no-lowercase spell-list rows but now lets lowercase
+  spell-result dialogue announce if it appears before `submenu_mode` clears.
+  A later manual Kol speech pass found two staged fixes in `main.lua`: field
+  spell casts had only spoken MP deltas, and ITEM menu entry repeated the first
+  item (`Items. Dragon's Scale` then `Dragon's Scale`). ITEM entry now remembers
+  the first spoken item and suppresses only the matching delayed cursor update.
+  Post-reload live verification confirmed RADIANT spoke its result dialogue
+  (`Bill chanted the spell of RADIANT.` / `But nothing happened.`), and ITEM
+  entry no longer immediately repeats the first item. A later Tool Merchant
+  sell-list retest confirmed the full merchant summary no longer repeats on
+  lower inventory rows; the game only renders Herb's sell price in-list, while
+  other item prices appear in the confirmation dialogue.
   A later Kol wrap-up test found deferred `U` autowalk could start while the
   field command menu was visibly open because hotkeys ran before
   `check_command_menu()` armed `CMD.menu_live` for that frame. `main.lua` now

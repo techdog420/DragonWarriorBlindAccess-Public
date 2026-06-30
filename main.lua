@@ -1838,6 +1838,7 @@ local CMD = {
     bizhawk_boot_dialogue = 0,     -- early-boot dialogue throttle (BizHawk)
     spell_entry_pending  = false,  -- suppress first SPELL submenu cursor jump
     item_entry_pending   = 0,      -- suppress immediate ITEM submenu cursor jump
+    item_entry_pending_name = nil, -- first item already spoken on ITEM entry
 }
 
 -- Merchant module state. PREV.merchant_text / .announced_merchant /
@@ -2550,6 +2551,16 @@ local function check_merchant_screen(frame_delta)
         return true
     end
 
+    if PREV.merchant_mode == "offers" and PREV.merchant_selection ~= nil then
+        -- Cursor blink/split-row redraws can make the current offer unreadable
+        -- for a frame. Keep the established item selection instead of speaking
+        -- the full merchant summary as noise.
+        PREV.merchant_text = info.raw_text
+        PREV.announced_merchant = info.raw_text
+        MER.stable_count = 0
+        return true
+    end
+
     if info.raw_text ~= PREV.merchant_text then
         PREV.merchant_text = info.raw_text
         MER.stable_count = 0
@@ -2792,13 +2803,16 @@ local function check_command_menu(frame_delta)
             trace_row1("CMD_ITEM_EMPTY", changes, {})
             tolk.output("Items. Empty.")
         else
+            local entry_item = items.get_item_at_d9(changes.cursor_y)
             submenu_mode = "ITEM"
             CMD.menu_live = false
+            CMD.item_entry_pending = 60
+            CMD.item_entry_pending_name = entry_item
             trace_row1("CMD_ITEM_FIRE", changes, {
-                "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
+                "item=" .. tostring(entry_item),
                 "source=pre_merchant",
             })
-            tolk.output("Items. " .. items.get_item_at_d9(changes.cursor_y))
+            tolk.output("Items. " .. entry_item)
         end
         return
     end
@@ -2822,7 +2836,8 @@ local function check_command_menu(frame_delta)
             local first_item = items.get_item_at_d9(0)
             submenu_mode = "ITEM"
             CMD.menu_live = false
-            CMD.item_entry_pending = 8
+            CMD.item_entry_pending = 60
+            CMD.item_entry_pending_name = first_item
             trace_row1("CMD_ITEM_FIRE", changes, {
                 "item=" .. tostring(first_item),
                 "source=direct_a",
@@ -2908,6 +2923,7 @@ local function check_command_menu(frame_delta)
             CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
             CMD.menu_live = false
             CMD.item_entry_pending = 0
+            CMD.item_entry_pending_name = nil
             DW_QOL_STATE.clear_cmd_open_speech_pending()
             trace_row1("CMD_CLOSE_FROM_ITEM", changes, {})
             return
@@ -2919,6 +2935,7 @@ local function check_command_menu(frame_delta)
             CMD.menu_live = true
             CMD.rearm_required = false
             CMD.item_entry_pending = 0
+            CMD.item_entry_pending_name = nil
             local cmd_item = menu.get_menu_item(changes.cursor_x, changes.cursor_y)
             if cmd_item then
                 trace_row1("CMD_CURSOR_FROM_ITEM", changes, {
@@ -2929,11 +2946,25 @@ local function check_command_menu(frame_delta)
             return
         end
         if changes.cursor_moved and CMD.item_entry_pending > 0 and changes.cursor_x == 0 then
+            local current_item = items.get_item_at_d9(changes.cursor_y)
+            local pending_name = CMD.item_entry_pending_name
             CMD.item_entry_pending = 0
+            CMD.item_entry_pending_name = nil
+            if pending_name and current_item == pending_name then
+                return
+            end
+            trace_row1("ITEM_CURSOR", changes, {
+                "item=" .. tostring(current_item),
+                "source=pending_mismatch",
+            })
+            tolk.output(current_item)
             return
         end
         if CMD.item_entry_pending > 0 then
             CMD.item_entry_pending = math.max(0, CMD.item_entry_pending - frame_delta)
+            if CMD.item_entry_pending == 0 then
+                CMD.item_entry_pending_name = nil
+            end
         end
         -- Item cursor moved within the list — announce the new item name.
         if changes.cursor_moved then
@@ -3157,12 +3188,15 @@ local function check_command_menu(frame_delta)
             trace_row1("CMD_ITEM_EMPTY", changes, {})
             tolk.output("Items. Empty.")
         else
+            local entry_item = items.get_item_at_d9(changes.cursor_y)
             submenu_mode = "ITEM"
             CMD.menu_live = false
+            CMD.item_entry_pending = 60
+            CMD.item_entry_pending_name = entry_item
             trace_row1("CMD_ITEM_FIRE", changes, {
-                "item=" .. tostring(items.get_item_at_d9(changes.cursor_y)),
+                "item=" .. tostring(entry_item),
             })
-            tolk.output("Items. " .. items.get_item_at_d9(changes.cursor_y))
+            tolk.output("Items. " .. entry_item)
         end
         return
     end
@@ -3886,6 +3920,16 @@ local function maybe_announce_fast_battle_dialogue(dialogue, frame_delta)
     return true
 end
 
+local function submenu_absorbs_lower_dialogue(dialogue)
+    if submenu_mode == "STATUS" or submenu_mode == "ITEM" then
+        return true
+    end
+    if submenu_mode == "SPELL" then
+        return not tostring(dialogue or ""):find("[a-z]")
+    end
+    return false
+end
+
 local function check_dialogue(frame_delta, refresh_ppu)
     frame_delta = scan_profiler.stable_delta(frame_delta)
     if refresh_ppu and emulator_compat.clear_ppu_cache then
@@ -3915,8 +3959,10 @@ local function check_dialogue(frame_delta, refresh_ppu)
 
     -- These command submenus are already spoken from cursor/RAM state. Their
     -- visual windows reuse lower dialogue rows for status, item, or spell list
-    -- text, so the generic dialogue reader must absorb them as UI state.
-    if submenu_mode == "STATUS" or submenu_mode == "ITEM" or submenu_mode == "SPELL" then
+    -- text, so the generic dialogue reader must absorb them as UI state. Field
+    -- spell-result dialogue contains lowercase text and should still announce
+    -- even if it appears before the SPELL submenu mode clears.
+    if submenu_absorbs_lower_dialogue(dialogue) then
         PREV.dialogue = dialogue
         PREV.announced_dialogue = dialogue
         PREV.stable_count = 0
