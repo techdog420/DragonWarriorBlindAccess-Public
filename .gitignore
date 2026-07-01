@@ -9,6 +9,7 @@ dw_commands.txt
 dw_commands.processing.txt
 dw_blocks.log
 dw_keyboard_input.txt
+dw_bridge_hotkeys.txt
 dw_crawl_*.txt
 sweep_status.txt
 sweep_walk_*.json

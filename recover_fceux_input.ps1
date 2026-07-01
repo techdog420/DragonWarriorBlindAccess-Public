@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string] $KeyboardBridgePath,
+    [string] $BridgeHotkeyPath,
     [string] $CommandFile,
     [string] $Tag = "fceux_recovery",
     [int] $ProcessId = 0,
@@ -15,6 +16,9 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $PSCommandPath
 if ([string]::IsNullOrWhiteSpace($KeyboardBridgePath)) {
     $KeyboardBridgePath = Join-Path $scriptDir "dw_keyboard_input.txt"
+}
+if ([string]::IsNullOrWhiteSpace($BridgeHotkeyPath)) {
+    $BridgeHotkeyPath = Join-Path $scriptDir "dw_bridge_hotkeys.txt"
 }
 if ([string]::IsNullOrWhiteSpace($CommandFile)) {
     $CommandFile = Join-Path $scriptDir "dw_commands.txt"
@@ -167,7 +171,8 @@ function Get-KeyboardBridgeProcess {
 function Ensure-KeyboardBridgeRunning {
     param(
         [string] $BridgeScript,
-        [string] $OutputPath
+        [string] $OutputPath,
+        [string] $HotkeyOutputPath
     )
 
     if ($NoBridgeStart) {
@@ -181,17 +186,25 @@ function Ensure-KeyboardBridgeRunning {
     }
 
     $existing = @(Get-KeyboardBridgeProcess -BridgeScript $BridgeScript -OutputPath $OutputPath)
-    if ($existing.Count -gt 0) {
-        $ids = ($existing | ForEach-Object { $_.ProcessId }) -join ","
+    $withHotkeyOutput = @($existing | Where-Object {
+        Test-CommandLineContains -CommandLine $_.CommandLine -Needle ([System.IO.Path]::GetFullPath($HotkeyOutputPath))
+    })
+    if ($withHotkeyOutput.Count -gt 0) {
+        $ids = ($withHotkeyOutput | ForEach-Object { $_.ProcessId }) -join ","
         Write-Host ("FCEUX input recovery: keyboard bridge already running: PID {0}" -f $ids)
         return
+    }
+    foreach ($oldBridge in $existing) {
+        Write-Host ("FCEUX input recovery: stopping stale keyboard bridge PID {0} without mod-hotkey output..." -f $oldBridge.ProcessId)
+        Stop-Process -Id $oldBridge.ProcessId -Force -ErrorAction SilentlyContinue
     }
 
     $bridgeProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
         "-File", $BridgeScript,
-        "-OutputPath", $OutputPath
+        "-OutputPath", $OutputPath,
+        "-HotkeyOutputPath", $HotkeyOutputPath
     ) -WindowStyle Hidden -PassThru
     Start-Sleep -Milliseconds 150
     Write-Host ("FCEUX input recovery: started keyboard bridge PID {0}" -f $bridgeProcess.Id)
@@ -204,6 +217,7 @@ if ($DryRun) {
     Write-Host "  Key-up:    repeated Return, LeftAlt, RightAlt, generic Alt"
     Write-Host "  Tap:       Escape"
     Write-Host ("  Bridge:    reset {0} to '-'" -f $KeyboardBridgePath)
+    Write-Host ("  ModBridge: reset {0} to '-'" -f $BridgeHotkeyPath)
     if ($NoBridgeStart) {
         Write-Host "  Sidecar:   start skipped"
     } else {
@@ -226,7 +240,9 @@ Invoke-AltReleasePulse
 
 [System.IO.File]::WriteAllText($KeyboardBridgePath, "-" + [Environment]::NewLine)
 Write-Host ("FCEUX input recovery: reset keyboard bridge state: {0}" -f $KeyboardBridgePath)
-Ensure-KeyboardBridgeRunning -BridgeScript $KeyboardBridgeScript -OutputPath $KeyboardBridgePath
+[System.IO.File]::WriteAllText($BridgeHotkeyPath, "-" + [Environment]::NewLine)
+Write-Host ("FCEUX input recovery: reset bridge hotkey state: {0}" -f $BridgeHotkeyPath)
+Ensure-KeyboardBridgeRunning -BridgeScript $KeyboardBridgeScript -OutputPath $KeyboardBridgePath -HotkeyOutputPath $BridgeHotkeyPath
 
 if (-not $NoQueue) {
     Add-Content -LiteralPath $CommandFile -Value ("input_status:{0}" -f $Tag)

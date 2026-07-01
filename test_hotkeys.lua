@@ -110,6 +110,9 @@ local function make_env(options)
         object_nav_speech_coalesce_frames = tostring(delay),
         tile_diag_dump_on_hotkey = options.tile_diag_dump_on_hotkey or "false",
     }
+    for key, value in pairs(options.settings or {}) do
+        settings[key] = value
+    end
 
     package.preload["config"] = function()
         return {
@@ -556,6 +559,66 @@ function tests.object_browse_hotkeys_do_not_rebuild_full_npc_list()
     env.update({J = true})
     assert_equal(env.object_cache_refresh_calls(), 3, "previous-object browse should refresh the current map object cache")
     assert_equal(env.live_npc_refresh_calls(), 0, "previous-object browse should not rebuild all moving NPC positions")
+
+    env.restore()
+end
+
+function tests.bridge_alias_can_trigger_current_object()
+    local env = make_env({
+        delay = 0,
+        settings = {
+            key_object_current = "K|Bridge2",
+        },
+    })
+
+    env.update({Bridge2 = true})
+
+    assert_equal(#env.outputs, 1, "Bridge2 should trigger the current-object readout")
+    assert_equal(env.outputs[1].message, "Object 0", "Bridge2 current-object readout should speak the selected object")
+    assert_equal(env.object_cache_refresh_calls(), 1, "Bridge2 current-object readout should refresh the current map cache")
+
+    env.restore()
+end
+
+function tests.bridge_aliases_can_trigger_pathfind_and_autowalk()
+    local env = make_env({
+        delay = 0,
+        settings = {
+            key_pathfind = "O|Bridge4",
+            key_auto_walk = "U|Bridge6",
+        },
+    })
+
+    env.update({Bridge4 = true})
+    assert_equal(env.pathfind_calls(), 1, "Bridge4 should trigger pathfind")
+    assert_equal(env.autowalk_calls(), 0, "Bridge4 should not trigger auto-walk")
+
+    env.update({})
+    env.update({Bridge6 = true})
+    assert_equal(env.autowalk_calls(), 0, "auto-walk should wait until the Bridge6 release frame")
+    env.update({})
+    assert_equal(env.autowalk_calls(), 1, "Bridge6 release should trigger auto-walk")
+
+    env.restore()
+end
+
+function tests.bridge_aliases_can_trigger_hp_and_gold_readouts()
+    local env = make_env({
+        delay = 0,
+        settings = {
+            key_hp = "H|Bridge7",
+            key_gold = "G|Bridge8",
+        },
+    })
+
+    env.update({Bridge7 = true})
+    assert_equal(#env.outputs, 1, "Bridge7 should trigger HP readout")
+    assert_equal(env.outputs[1].message, "HP 0 of 0, MP 0 of 0", "Bridge7 should speak HP and MP")
+
+    env.update({})
+    env.update({Bridge8 = true})
+    assert_equal(#env.outputs, 2, "Bridge8 should trigger gold readout")
+    assert_equal(env.outputs[2].message, "0 gold", "Bridge8 should speak gold")
 
     env.restore()
 end

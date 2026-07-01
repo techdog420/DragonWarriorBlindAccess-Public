@@ -400,6 +400,7 @@ function Invoke-StartupInputRecovery {
         [System.Diagnostics.Process] $Process,
         [string] $Phase = "startup",
         [string] $KeyboardBridgePath,
+        [string] $BridgeHotkeyPath,
         [string] $CommandFile,
         [switch] $QueueStatus
     )
@@ -415,6 +416,10 @@ function Invoke-StartupInputRecovery {
         if (-not [string]::IsNullOrWhiteSpace($KeyboardBridgePath)) {
             [System.IO.File]::WriteAllText($KeyboardBridgePath, "-" + [Environment]::NewLine)
             Write-Host ("Startup input recovery ({0}): reset keyboard bridge state." -f $Phase)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($BridgeHotkeyPath)) {
+            [System.IO.File]::WriteAllText($BridgeHotkeyPath, "-" + [Environment]::NewLine)
+            Write-Host ("Startup input recovery ({0}): reset bridge hotkey state." -f $Phase)
         }
         if ($QueueStatus -and -not [string]::IsNullOrWhiteSpace($CommandFile)) {
             Add-Content -LiteralPath $CommandFile -Value "input_status:fceux_recovery"
@@ -581,6 +586,7 @@ $commandFile = Join-Path $scriptDir "dw_commands.txt"
 $processingFile = Join-Path $scriptDir "dw_commands.processing.txt"
 $keyboardBridgeScript = Join-Path $scriptDir "keyboard_bridge.ps1"
 $keyboardBridgeFile = Join-Path $scriptDir "dw_keyboard_input.txt"
+$bridgeHotkeyFile = Join-Path $scriptDir "dw_bridge_hotkeys.txt"
 $debugLog = Join-Path $scriptDir "dw_debug.log"
 $startupLoopDiag = Join-Path $scriptDir "startup_loop_diag.txt"
 $launchShim = Join-Path $scriptDir "launch_dw.cmd"
@@ -626,6 +632,7 @@ if ($DryRun) {
         Write-Host "Dry run: would close the running emulator process(es)."
     }
     Write-Host ("Dry run: would clear {0}" -f $commandFile)
+    Write-Host ("Dry run: would clear {0}" -f $bridgeHotkeyFile)
     if (Test-Path -LiteralPath $startupLoopDiag) {
         Write-Host ("Dry run: would remove {0}" -f $startupLoopDiag)
     }
@@ -709,6 +716,7 @@ foreach ($bridgeProcess in $existingBridgeProcesses) {
 
 [System.IO.File]::WriteAllText($commandFile, "")
 [System.IO.File]::WriteAllText($keyboardBridgeFile, "-" + [Environment]::NewLine)
+[System.IO.File]::WriteAllText($bridgeHotkeyFile, "-" + [Environment]::NewLine)
 if (Test-Path -LiteralPath $startupLoopDiag) {
     Remove-Item -LiteralPath $startupLoopDiag -Force
     Write-Host ("Removed stale startup loop trace: {0}" -f $startupLoopDiag)
@@ -719,6 +727,7 @@ if (Test-Path -LiteralPath $processingFile) {
 }
 Write-Host ("Cleared command queue: {0}" -f $commandFile)
 Write-Host ("Cleared keyboard bridge state: {0}" -f $keyboardBridgeFile)
+Write-Host ("Cleared bridge hotkey state: {0}" -f $bridgeHotkeyFile)
 
 if ($BatterySavePath) {
     New-Item -ItemType Directory -Path $saveDir -Force | Out-Null
@@ -754,7 +763,8 @@ $bridgeProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", $keyboardBridgeScript,
-    "-OutputPath", $keyboardBridgeFile
+    "-OutputPath", $keyboardBridgeFile,
+    "-HotkeyOutputPath", $bridgeHotkeyFile
 ) -WindowStyle Hidden -PassThru
 Write-Host ("Started keyboard bridge PID {0}" -f $bridgeProcess.Id)
 & $launchShim @shimArgs
@@ -778,7 +788,7 @@ if (-not $process) {
 
 Write-Host ("Started emulator PID {0}" -f $process.Id)
 Write-Host ("Launch args: {0}" -f ($launchArgs -join " "))
-Invoke-StartupInputRecovery -Process $process -Phase "post-start" -KeyboardBridgePath $keyboardBridgeFile
+Invoke-StartupInputRecovery -Process $process -Phase "post-start" -KeyboardBridgePath $keyboardBridgeFile -BridgeHotkeyPath $bridgeHotkeyFile
 
 if ($NoWait) {
     Write-Host "Skipping readiness wait."
@@ -816,4 +826,4 @@ if (-not (Wait-ForCommandPolling -CommandFile $commandFile -LogPath $debugLog -P
     throw $hint
 }
 
-Invoke-StartupInputRecovery -Process $process -Phase "post-ready" -KeyboardBridgePath $keyboardBridgeFile -CommandFile $commandFile -QueueStatus
+Invoke-StartupInputRecovery -Process $process -Phase "post-ready" -KeyboardBridgePath $keyboardBridgeFile -BridgeHotkeyPath $bridgeHotkeyFile -CommandFile $commandFile -QueueStatus

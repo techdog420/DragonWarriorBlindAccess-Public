@@ -80,7 +80,7 @@ _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
 -- state, leaving required project modules cached. Clear our modules before
 -- requiring them so a console reload actually picks up code changes.
 for _, mod_name in ipairs({
-    "addresses", "auto_step", "battle", "chars", "config",
+    "addresses", "auto_step", "battle", "bridge_hotkeys", "chars", "config",
     "debug_tools", "edge_flow_guard", "emulator_compat", "event_bus", "field_action_guard", "game_snapshot",
     "edge_verify_classifier",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
@@ -120,6 +120,7 @@ local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freez
 local teleport_state = require "teleport_state" -- RAM synchronization for debug teleports
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
+local bridge_hotkeys = require "bridge_hotkeys" -- FCEUX sidecar mod-hotkey aliases
 require "edge_flow_guard" -- Shared mutually-exclusive edge probe command guard
 require "field_action_guard" -- Shared field movement/action guards
 require "edge_verify_classifier" -- Shared edge verify result classification
@@ -6932,6 +6933,7 @@ while true do
     if emulator_compat.is_bizhawk then
         keys = hotkey_filter.filter_bizhawk_keys(keys, config)
     end
+    keys = checked_scan("bridge_hotkeys.merge_keys", bridge_hotkeys.merge_keys, keys)
     current_joy = checked_scan("joypad.read", joypad.read, 1)
     current_joy_any = joypad_has_input(current_joy)
     -- No explicit PPU flush needed: frameadvance() already cleared the cache

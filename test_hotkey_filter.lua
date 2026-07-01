@@ -169,6 +169,30 @@ function tests.combo_allowlist_does_not_pass_bare_component_key()
     assert_equal(filtered.F, nil, "bare freeze key should not pass without Shift")
 end
 
+function tests.alternative_combo_allowlist_preserves_keyboard_combo()
+    local config = make_config({
+        enable_bizhawk_keyboard_hotkeys = "false",
+        enable_bizhawk_diagnostic_hotkeys = "false",
+        bizhawk_keyboard_hotkey_allowlist = "key_hp",
+        key_hp = "Shift+H|Bridge7",
+    })
+
+    local held_combo = hotkey_filter.filter_bizhawk_keys({
+        Shift = true,
+        H = true,
+    }, config)
+
+    assert_equal(held_combo.Shift, true, "alternative combo should still allow held modifier")
+    assert_equal(held_combo.H, true, "alternative combo should still allow held key")
+
+    hotkey_filter.reload_config()
+    local bare_key = hotkey_filter.filter_bizhawk_keys({
+        H = true,
+    }, config)
+
+    assert_equal(bare_key.H, nil, "bare key from a combo alternative should remain blocked")
+end
+
 function tests.custom_allowlist_can_enable_pathability_combo()
     local config = make_config({
         enable_bizhawk_keyboard_hotkeys = "false",

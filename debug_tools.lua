@@ -34,7 +34,7 @@
 --   simulate_input:SELECT
 --   clear_input          -- inject a neutral joypad frame to clear stale held input
 --   input_status[:TAG]   -- log current input.get(), joypad.read(1), and bridge state
---   trace_input[:FRAMES] -- log input.get() and joypad.read(1) changes
+--   trace_input[:FRAMES] -- log input.get(), joypad.read(1), and bridge changes
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
 --   dump_grid            -- dump tile type + walkability grid for current map
 --   export_blocks        -- format all recorded blocked moves as MAP_BLOCKED_CELLS Lua entries
@@ -50,6 +50,7 @@ local M = {}
 -- Dependencies
 -- ============================================================
 local config     = require "config"
+local bridge_hotkeys = require "bridge_hotkeys"
 local addr       = require "addresses"
 local maps_m     = require "maps"
 local map_reader = require "map_reader"
@@ -1288,12 +1289,14 @@ local function log_input_status(tag)
     local keys = input.get()
     local joy = joypad.read(1)
     local bridge_line = read_keyboard_bridge_line()
+    local mod_bridge_line = bridge_hotkeys.read_state_line()
     M.info(string.format(
-        "INPUT_STATUS tag=%s keys=%s joy1=%s bridge=%s left_alt=%s",
+        "INPUT_STATUS tag=%s keys=%s joy1=%s bridge=%s mod_bridge=%s left_alt=%s",
         tostring(tag or "manual"),
         format_pressed_keys(keys),
         format_joy_buttons(joy),
         bridge_line,
+        mod_bridge_line,
         tostring(is_left_alt_pressed(keys))
     ))
 end
@@ -1349,20 +1352,25 @@ local function update_input_trace(frame)
 
     local keys = format_pressed_keys(input.get())
     local joy = format_joy_buttons(joypad.read(1))
-    local changed = (keys ~= input_trace.last_keys) or (joy ~= input_trace.last_joy)
+    local mod_bridge = bridge_hotkeys.read_state_line()
+    local changed = (keys ~= input_trace.last_keys)
+        or (joy ~= input_trace.last_joy)
+        or (mod_bridge ~= input_trace.last_mod_bridge)
     local heartbeat = (input_trace.frames_remaining % 60 == 0)
 
     if changed or heartbeat then
         M.info(string.format(
-            "INPUT_TRACE frame=%d remaining=%d keys=%s joy1=%s reason=%s",
+            "INPUT_TRACE frame=%d remaining=%d keys=%s joy1=%s mod_bridge=%s reason=%s",
             frame or current_frame,
             input_trace.frames_remaining,
             keys,
             joy,
+            mod_bridge,
             changed and "changed" or "heartbeat"
         ))
         input_trace.last_keys = keys
         input_trace.last_joy = joy
+        input_trace.last_mod_bridge = mod_bridge
         input_trace.samples = input_trace.samples + 1
     end
 
@@ -1593,6 +1601,7 @@ local function process_command(cmd)
             frames_remaining = frames,
             last_keys = nil,
             last_joy = nil,
+            last_mod_bridge = nil,
             samples = 0,
         }
         M.info(string.format("INPUT_TRACE_START frames=%d", frames))

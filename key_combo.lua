@@ -32,6 +32,19 @@ local function trim(value)
     return tostring(value or ""):match("^%s*(.-)%s*$")
 end
 
+local function split_alternatives(spec)
+    local alternatives = {}
+    spec = trim(spec)
+    if spec == "" then return alternatives end
+    for part in spec:gmatch("[^|]+") do
+        local cleaned = trim(part)
+        if cleaned ~= "" then
+            alternatives[#alternatives + 1] = cleaned
+        end
+    end
+    return alternatives
+end
+
 local function canonical_modifier(part)
     local cleaned = trim(part):lower():gsub("[%s_-]", "")
     if cleaned == "ctrl" or cleaned == "control" or cleaned == "ctl" then
@@ -80,7 +93,12 @@ function M.parse(spec)
 end
 
 function M.is_combo(spec)
-    return #M.parse(spec) > 1
+    for _, alternative in ipairs(split_alternatives(spec)) do
+        if #M.parse(alternative) > 1 then
+            return true
+        end
+    end
+    return false
 end
 
 local function any_alias_down(keys, aliases)
@@ -93,7 +111,12 @@ local function any_alias_down(keys, aliases)
 end
 
 function M.is_down(keys, spec)
-    return M.is_down_parsed(keys, M.parse(spec))
+    for _, alternative in ipairs(split_alternatives(spec)) do
+        if M.is_down_parsed(keys, M.parse(alternative)) then
+            return true
+        end
+    end
+    return false
 end
 
 -- Same as is_down but takes the already-parsed parts table from M.parse().
@@ -113,9 +136,11 @@ function M.is_pressed(keys, prev_keys, spec)
 end
 
 function M.add_aliases(allowed, spec)
-    for _, aliases in ipairs(M.parse(spec)) do
-        for _, alias in ipairs(aliases) do
-            allowed[alias] = true
+    for _, alternative in ipairs(split_alternatives(spec)) do
+        for _, aliases in ipairs(M.parse(alternative)) do
+            for _, alias in ipairs(aliases) do
+                allowed[alias] = true
+            end
         end
     end
 end

@@ -11,6 +11,7 @@ local original_compat = _G.DW_EMULATOR_COMPAT
 local original_log_override = _G.DW_DEBUG_LOG_FILE_OVERRIDE
 local original_command_override = _G.DW_COMMAND_FILE_OVERRIDE
 local original_command_processing_override = _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE
+local original_bridge_hotkey_override = _G.DW_BRIDGE_HOTKEY_FILE_OVERRIDE
 local env_counter = 0
 
 local function save_module(name)
@@ -50,6 +51,7 @@ local function make_env(options)
     local processing_file = "/tmp/test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".processing.txt"
     local module_names = {
         "addresses",
+        "bridge_hotkeys",
         "config",
         "debug_tools",
         "map_reader",
@@ -71,6 +73,8 @@ local function make_env(options)
                 elseif key == "debug_log_level" then
                     return options.log_level or "ERROR"
                 elseif key == "enable_keyboard_input_bridge" then
+                    return "true"
+                elseif key == "enable_fceux_bridge_hotkeys" then
                     return "true"
                 end
                 return nil
@@ -199,6 +203,9 @@ local function make_env(options)
     local bridge_path = "dw_keyboard_input.txt"
     local original_bridge = read_file(bridge_path)
     write_file(bridge_path, options.bridge_text or "-\n")
+    local bridge_hotkey_path = "/tmp/test_debug_tools_bridge_hotkeys_" .. tostring(env_counter) .. ".txt"
+    write_file(bridge_hotkey_path, options.bridge_hotkey_text or "-\n")
+    _G.DW_BRIDGE_HOTKEY_FILE_OVERRIDE = bridge_hotkey_path
 
     local debug_tools = require "debug_tools"
 
@@ -218,6 +225,9 @@ local function make_env(options)
         set_bridge = function(text)
             write_file(bridge_path, text or "-\n")
         end,
+        set_bridge_hotkeys = function(text)
+            write_file(bridge_hotkey_path, text or "-\n")
+        end,
         set_memory = function(address, value)
             memory_bytes[address] = value
         end,
@@ -229,6 +239,7 @@ local function make_env(options)
         restore = function()
             os.remove(command_file)
             os.remove(processing_file)
+            os.remove(bridge_hotkey_path)
             write_file(bridge_path, original_bridge or "")
             restore_modules(module_names)
             _G.input = original_input
@@ -239,6 +250,7 @@ local function make_env(options)
             _G.DW_DEBUG_LOG_FILE_OVERRIDE = original_log_override
             _G.DW_COMMAND_FILE_OVERRIDE = original_command_override
             _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE = original_command_processing_override
+            _G.DW_BRIDGE_HOTKEY_FILE_OVERRIDE = original_bridge_hotkey_override
         end,
     }
 end
@@ -414,6 +426,63 @@ function tests.fceux_stale_alt_with_real_bridge_input_does_not_warn()
     assert_equal(#spoken, 0, "bridged controls should not trigger idle stuck-Alt speech")
 
     env.restore()
+end
+
+function tests.input_status_includes_mod_bridge_state()
+    local env = make_env({
+        log_level = "INFO",
+        bridge_hotkey_text = "Bridge2\n",
+    })
+
+    env.write_command_file("input_status:bridge_probe\n")
+    env.debug_tools.tick(60, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("INPUT_STATUS tag=bridge_probe", 1, true) ~= nil,
+        true,
+        "input_status should run with the supplied tag"
+    )
+    assert_equal(
+        log:find("mod_bridge=Bridge2", 1, true) ~= nil,
+        true,
+        "input_status should include the bridge hotkey state"
+    )
+end
+
+function tests.trace_input_includes_mod_bridge_state_changes()
+    local env = make_env({
+        log_level = "INFO",
+        bridge_hotkey_text = "-\n",
+    })
+
+    env.write_command_file("trace_input:3\n")
+    env.debug_tools.tick(60, "field")
+    env.debug_tools.tick(61, "field")
+    env.set_bridge_hotkeys("Bridge3\n")
+    env.debug_tools.tick(62, "field")
+    env.debug_tools.flush()
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(
+        log:find("INPUT_TRACE", 1, true) ~= nil,
+        true,
+        "trace_input should log samples"
+    )
+    assert_equal(
+        log:find("mod_bridge=-", 1, true) ~= nil,
+        true,
+        "trace_input should log neutral bridge hotkey state"
+    )
+    assert_equal(
+        log:find("mod_bridge=Bridge3", 1, true) ~= nil,
+        true,
+        "trace_input should log bridge hotkey state changes"
+    )
 end
 
 function tests.raw_sequence_release_frame_stays_raw()
