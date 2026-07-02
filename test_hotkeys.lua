@@ -78,10 +78,10 @@ local function make_env(options)
     end
 
     local settings = {
-        key_position = "Shift+W",
-        key_hp = "Shift+H",
+        key_position = "Shift+W|F17",
+        key_hp = "Shift+H|F19",
         key_level = "Shift+I",
-        key_gold = "Shift+G",
+        key_gold = "Shift+G|F20",
         key_experience = "Shift+E",
         key_stats = "Shift+R",
         key_screen_text = "Shift+T",
@@ -90,12 +90,12 @@ local function make_env(options)
         key_diag_title = "Ctrl+Y",
         key_diag_tiles = "Ctrl+N",
         key_freeze_npcs = "Shift+F",
-        key_object_prev = "J",
-        key_object_current = "K",
-        key_object_next = "L",
-        key_pathfind = "O",
+        key_object_prev = "J|F13",
+        key_object_current = "K|F14",
+        key_object_next = "L|F15",
+        key_pathfind = "O|F16",
         key_route_guidance = "R",
-        key_auto_walk = "U",
+        key_auto_walk = "U|F18",
         key_filter = "Q",
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
@@ -536,6 +536,43 @@ function tests.current_object_speaks_immediately_and_clears_pending_nav_speech()
     env.update({})
     env.update({})
     assert_equal(#env.outputs, 1, "cleared pending object speech should not speak later")
+
+    env.restore()
+end
+
+function tests.high_function_key_alternatives_trigger_controller_hotkeys()
+    local env = make_env({delay = 0})
+
+    env.update({F17 = true})
+    assert_equal(#env.outputs, 1, "F17 should speak position")
+    assert_equal(env.outputs[1].message, "Tantegel Castle Throne Room, 5, 7",
+        "F17 should use the position readout binding")
+
+    env.update({})
+    env.update({F19 = true})
+    assert_equal(#env.outputs, 2, "F19 should speak HP and MP")
+    assert_equal(env.outputs[2].message, "HP 0 of 0, MP 0 of 0", "F19 should use the HP readout binding")
+
+    env.update({})
+    env.update({F20 = true})
+    assert_equal(#env.outputs, 3, "F20 should speak gold")
+    assert_equal(env.outputs[3].message, "0 gold", "F20 should use the gold readout binding")
+
+    env.update({})
+    env.update({F14 = true})
+    assert_equal(#env.outputs, 4, "F14 should describe the current object")
+    assert_equal(env.outputs[4].message, "Object 0", "F14 should use the current-object binding")
+
+    env.update({})
+    env.update({F16 = true})
+    assert_equal(env.pathfind_calls(), 1, "F16 should use the pathfind binding")
+
+    env.update({})
+    env.update({F18 = true})
+    assert_equal(env.autowalk_calls(), 0, "held F18 auto-walk should defer route execution")
+
+    env.update({})
+    assert_equal(env.autowalk_calls(), 1, "released F18 should use the auto-walk binding")
 
     env.restore()
 end

@@ -10,7 +10,7 @@
 --
 -- Usage:
 --   local config = require "config"
---   local key = config.get("key_position")  -- returns "Shift+W" (or whatever user set)
+--   local key = config.get("key_position")  -- returns "Shift+W|F17" (or whatever user set)
 
 local M = {}
 
@@ -41,28 +41,29 @@ local DEFAULTS_ORDERED = {
     {comment = ";   Letters: A-Z (uppercase)"},
     {comment = ";   Combos: Ctrl+N, Shift+F"},
     {comment = ";   Numbers: 0-9"},
-    {comment = ";   Function keys: F1-F12"},
+    {comment = ";   Function keys: F1-F24"},
     {comment = ";   Special: space, enter, tab, backspace, up, down, left, right"},
+    {comment = ";   Alternatives: separate choices with |, e.g. K|F14"},
     {comment = "; BizHawk NES controls use X=A, Z=B, Enter=Start, Space=Select; avoid those for mod hotkeys."},
     {comment = "; BizHawk's S and A keys are NES autofire by default, so avoid those too."},
     {comment = ""},
     {comment = "; === Information Hotkeys (Shift+key) ==="},
-    {key = "key_position",      value = "Shift+W",  comment = "; Announce map name and coordinates"},
-    {key = "key_hp",            value = "Shift+H",  comment = "; Announce current HP and MP"},
+    {key = "key_position",      value = "Shift+W|F17",  comment = "; Announce map name and coordinates"},
+    {key = "key_hp",            value = "Shift+H|F19",  comment = "; Announce current HP and MP"},
     {key = "key_level",         value = "Shift+I",  comment = "; Announce player level"},
-    {key = "key_gold",          value = "Shift+G",  comment = "; Announce gold"},
+    {key = "key_gold",          value = "Shift+G|F20",  comment = "; Announce gold"},
     {key = "key_experience",    value = "Shift+E",  comment = "; Announce experience points"},
     {key = "key_stats",         value = "Shift+R",  comment = "; Announce full stat summary"},
     {key = "key_screen_text",   value = "Shift+T",  comment = "; Read all text on screen"},
     {comment = ""},
     {comment = "; === Object Navigation ==="},
     {comment = "; Cycle through nearby objects (NPCs, stairs, chests, exits)"},
-    {key = "key_object_prev",   value = "J",  comment = "; Previous object in list"},
-    {key = "key_object_current", value = "K", comment = "; Describe current object"},
-    {key = "key_object_next",   value = "L",  comment = "; Next object in list"},
-    {key = "key_pathfind",      value = "O",  comment = "; Pathfind to selected object"},
+    {key = "key_object_prev",   value = "J|F13",  comment = "; Previous object in list"},
+    {key = "key_object_current", value = "K|F14", comment = "; Describe current object"},
+    {key = "key_object_next",   value = "L|F15",  comment = "; Next object in list"},
+    {key = "key_pathfind",      value = "O|F16",  comment = "; Pathfind to selected object"},
     {key = "key_route_guidance", value = "R", comment = "; Start or check guided route for selected Travel object"},
-    {key = "key_auto_walk",     value = "U",  comment = "; Auto-walk to selected object using pathfinder"},
+    {key = "key_auto_walk",     value = "U|F18",  comment = "; Auto-walk to selected object using pathfinder"},
     {key = "key_freeze_npcs",   value = "Shift+F",  comment = "; Toggle NPC position freeze (locks NPCs in place for reliable pathfinding)"},
     {key = "key_filter",        value = "Q",  comment = "; Cycle object filter (All/NPCs/Services/Treasure/Travel/Doors)"},
     {key = "key_filter_prev",   value = "Shift+J", comment = "; Previous object filter"},

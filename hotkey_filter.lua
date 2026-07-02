@@ -82,7 +82,7 @@ local function rebuild_cache(config)
     end
     local diagnostic_hotkeys_enabled = (config.get("enable_bizhawk_diagnostic_hotkeys") == "true")
 
-    -- entries: list of { spec=string, parts=table, is_combo=bool, aliases=table }
+    -- entries: list of { spec=string, is_combo=bool, aliases=table }
     -- non_combo_aliases: precomputed merged alias set for all non-combo entries,
     --                    so the per-frame fast path is a single union.
     local entries = {}
@@ -99,13 +99,11 @@ local function rebuild_cache(config)
             if key_name ~= nil then
                 key_name = trim(key_name)
                 if key_name ~= "" then
-                    local parts = key_combo.parse(key_name)
-                    local is_combo = #parts > 1
+                    local is_combo = key_combo.is_combo(key_name)
                     local entry_aliases = {}
                     key_combo.add_aliases(entry_aliases, key_name)
                     entries[#entries + 1] = {
                         spec = key_name,
-                        parts = parts,
                         is_combo = is_combo,
                         aliases = entry_aliases,
                     }
@@ -138,13 +136,13 @@ local function build_allowed_keys(config, keys)
     local c = get_cache(config)
     -- Start with the precomputed non-combo aliases and union in combos that
     -- are currently held. Combos must be evaluated per frame because their
-    -- modifier state changes; the parsed `parts` table is reused.
+    -- modifier state changes.
     local allowed = {}
     for alias in pairs(c.non_combo_aliases) do
         allowed[alias] = true
     end
     for _, entry in ipairs(c.entries) do
-        if entry.is_combo and key_combo.is_down_parsed(keys, entry.parts) then
+        if entry.is_combo and key_combo.is_down(keys, entry.spec) then
             for alias in pairs(entry.aliases) do
                 allowed[alias] = true
             end

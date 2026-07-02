@@ -189,6 +189,30 @@ function tests.custom_allowlist_can_enable_pathability_combo()
     assert_equal(filtered.L, nil, "unlisted object navigation key should remain blocked")
 end
 
+function tests.alternative_combo_allowlist_preserves_keyboard_alternative()
+    local config = make_config({
+        enable_bizhawk_keyboard_hotkeys = "false",
+        enable_bizhawk_diagnostic_hotkeys = "false",
+        bizhawk_keyboard_hotkey_allowlist = "key_object_current,key_pathability_filter",
+        key_object_current = "K|F14",
+        key_pathability_filter = "Shift+O|F20",
+    })
+
+    local filtered = hotkey_filter.filter_bizhawk_keys({
+        K = true,
+        F14 = true,
+        Shift = true,
+        O = true,
+        F20 = true,
+    }, config)
+
+    assert_equal(filtered.K, true, "primary object-current key should pass")
+    assert_equal(filtered.F14, true, "function-key object-current alternative should pass")
+    assert_equal(filtered.Shift, true, "pathability combo modifier should pass")
+    assert_equal(filtered.O, true, "pathability combo primary key should pass")
+    assert_equal(filtered.F20, true, "pathability function-key alternative should pass")
+end
+
 function tests.custom_allowlist_can_enable_future_qol_shortcut()
     local config = make_config({
         enable_bizhawk_keyboard_hotkeys = "false",
