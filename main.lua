@@ -170,12 +170,15 @@ local function parse_map_xy_arg(arg, default_map_id)
 end
 
 local function refresh_navigation_modules()
+    package.loaded["overworld_routes"] = nil
+    package.loaded["object_commands"] = nil
     package.loaded["objects"] = nil
     package.loaded["map_reader"] = nil
     package.loaded["pathfinder"] = nil
     package.loaded["path_debug"] = nil
     package.loaded["map_survey"] = nil
     package.loaded["map_crawler"] = nil
+    overworld_routes = require "overworld_routes"
     objects = require "objects"
     map_reader = require "map_reader"
     pathfinder = require "pathfinder"
@@ -185,6 +188,7 @@ local function refresh_navigation_modules()
     if route_mgr.refresh_navigation_modules then
         route_mgr.refresh_navigation_modules()
     end
+    require("object_commands").register()
     debug_tools.info("NAVIGATION_MODULES_REFRESHED")
 end
 

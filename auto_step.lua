@@ -126,6 +126,10 @@ local auto_step_source = nil
 local auto_hold_after_movement_start = false
 local auto_hold_after_movement_start_frames = nil
 local auto_release_after_inject_limit = false
+local route_early_twitch_timeout_frames_override = nil
+local route_hold_after_movement_start_frames_override = nil
+local route_reset_movement_on_turn_settle_override = nil
+local route_accept_final_drift_completion_override = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_index = 1
@@ -307,6 +311,9 @@ local function get_route_turn_repress_timeout_frames()
 end
 
 local function get_route_early_twitch_timeout_frames()
+    if route_early_twitch_timeout_frames_override ~= nil then
+        return route_early_twitch_timeout_frames_override
+    end
     return config_int("auto_step_route_early_twitch_timeout_frames", ROUTE_EARLY_TWITCH_TIMEOUT_FRAMES, 1, 120)
 end
 
@@ -315,7 +322,14 @@ local function get_route_final_settle_frames()
 end
 
 local function should_reset_movement_on_route_turn_settle()
+    if route_reset_movement_on_turn_settle_override ~= nil then
+        return route_reset_movement_on_turn_settle_override == true
+    end
     return config_bool("auto_step_reset_movement_on_route_turn_settle", false)
+end
+
+local function should_accept_final_drift_completion()
+    return route_accept_final_drift_completion_override == true
 end
 
 local function get_seam_retry_hold_after_movement_start_frames()
@@ -530,6 +544,10 @@ local function clear_route()
     route_settle_reset_movement_active = false
     route_last_x = nil
     route_last_y = nil
+    route_early_twitch_timeout_frames_override = nil
+    route_hold_after_movement_start_frames_override = nil
+    route_reset_movement_on_turn_settle_override = nil
+    route_accept_final_drift_completion_override = nil
 end
 
 local function start_post_step_release(force)
@@ -906,6 +924,25 @@ local function consume_route_drift(px, py, source)
     end
 
     return matched, false
+end
+
+local function complete_route_from_final_drift(px, py, source)
+    debug_tools.debug(string.format(
+        "auto_step route final drift accepted from=(%d,%d) current=(%d,%d) next_index=%d source=%s",
+        route_last_x or -1,
+        route_last_y or -1,
+        px or -1,
+        py or -1,
+        route_index or -1,
+        tostring(source)))
+    clear_route()
+    event_bus.publish("route_completed")
+    if M.on_route_complete then
+        local ok, err = pcall(M.on_route_complete)
+        if not ok then
+            debug_tools.error("on_route_complete error: " .. tostring(err))
+        end
+    end
 end
 
 local function handle_pending_repress_state(joy, px, py)
@@ -1356,6 +1393,11 @@ local function handle_route_progress(joy, px, py)
             return true
         end
         if off_path then
+            if route_final_settle_active and should_accept_final_drift_completion() then
+                complete_route_from_final_drift(px, py, "route_final_settle_carry")
+                sync_prev_held(joy)
+                return true
+            end
             cancel_route_for_drift(px, py, "route_settle_catchup")
             sync_prev_held(joy)
             return true
@@ -1400,6 +1442,11 @@ local function handle_route_progress(joy, px, py)
                     inject_limit = get_route_pre_turn_inject_limit(),
                     source = "queued_route",
                 }
+            end
+            if route_hold_after_movement_start_frames_override ~= nil then
+                step_opts = step_opts or {source = "queued_route"}
+                step_opts.hold_after_movement_start = true
+                step_opts.hold_after_movement_start_frames = route_hold_after_movement_start_frames_override
             end
             route_index = route_index + 1
             if refuse_hazard_step(next_dir, px, py, "queued_route") then
@@ -1727,6 +1774,34 @@ function M.start_route(steps, opts)
     route_index = 1
     route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
     route_settle_same_direction = opts.settle_same_direction ~= false
+    local early_twitch_timeout = tonumber(opts.route_early_twitch_timeout_frames)
+    if early_twitch_timeout then
+        early_twitch_timeout = math.floor(early_twitch_timeout)
+        if early_twitch_timeout < 1 then early_twitch_timeout = 1 end
+        if early_twitch_timeout > 120 then early_twitch_timeout = 120 end
+        route_early_twitch_timeout_frames_override = early_twitch_timeout
+    else
+        route_early_twitch_timeout_frames_override = nil
+    end
+    local hold_after_start_frames = tonumber(opts.route_hold_after_movement_start_frames)
+    if hold_after_start_frames then
+        hold_after_start_frames = math.floor(hold_after_start_frames)
+        if hold_after_start_frames < 1 then hold_after_start_frames = 1 end
+        if hold_after_start_frames > 120 then hold_after_start_frames = 120 end
+        route_hold_after_movement_start_frames_override = hold_after_start_frames
+    else
+        route_hold_after_movement_start_frames_override = nil
+    end
+    if opts.route_reset_movement_on_turn_settle ~= nil then
+        route_reset_movement_on_turn_settle_override = opts.route_reset_movement_on_turn_settle == true
+    else
+        route_reset_movement_on_turn_settle_override = nil
+    end
+    if opts.route_accept_final_drift_completion ~= nil then
+        route_accept_final_drift_completion_override = opts.route_accept_final_drift_completion == true
+    else
+        route_accept_final_drift_completion_override = nil
+    end
     local start_x = tonumber(opts.start_x)
     local start_y = tonumber(opts.start_y)
     if start_x ~= nil and start_y ~= nil then

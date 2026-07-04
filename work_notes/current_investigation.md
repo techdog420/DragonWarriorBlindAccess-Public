@@ -1,6 +1,443 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-06-29
+Updated: 2026-07-03
+
+## 2026-07-03 Cantlin Overworld Trail
+
+- Baseline after user relocation: `report_position` confirmed World Map
+  `(15,93)` and `report_runtime_blocks` showed no runtime blocks on map `0x01`.
+- `debug_pathfind_to:73,102` reported the direct coordinate guess
+  `9 south, 58 east`, but `trace_path` showed this coordinate plan does not
+  store an A* path (`path_length=0`), so it is guide-orientation only.
+- `auto_walk_blocker:15,102` is not usable for overworld coordinate trail
+  cutting in the currently running script: before cleanup it correctly refused
+  because the command menu was open; after closing the menu with
+  `simulate_input:B`, it reached the overworld-route branch and reported
+  `No overworld route active`.
+- Live movement evidence: same-origin `probe_edge:DOWN` moved from `(15,93)`
+  to `(15,94)`, then another `probe_edge:DOWN` moved from `(15,94)` to
+  `(15,95)`.
+- Follow-up after the user healed: southbound probes confirmed the guide's
+  southwest descent from `(15,95)` through `(15,97)`, `(15,99)`,
+  `(15,101)`, and the southwest corner at `(15,103)`. Raw `probe_edge`
+  carries often landed two tiles away, so keep the route waypoints coarse
+  rather than treating every destination cell as a precise single-step proof.
+- The guide-shaped east crossing is live-confirmed from `(15,103)` through
+  `(17,103)`, `(19,103)`, `(21,103)`, `(23,103)`, `(25,103)`, `(27,103)`,
+  `(29,103)`, `(31,103)`, and `(32,103)`.
+- After the `(32,103)` battle, live route checks confirmed the first bend:
+  `(32,103)->UP` carried to `(32,101)` and `(32,101)->UP` carried to
+  `(32,99)`. East from `(32,103)` and east from `(32,101)` both blocked.
+- Contamination boundary: user reported the emulator/controller became
+  unresponsive after the later battle sequence and explicitly asked that the
+  last-battle evidence be discarded and retried. Treat row-99 exploration
+  after reaching `(32,99)`, including `(32,99)->RIGHT`, the `(37,99)` /
+  `(35,99)` spurs, isolated-looking `(33,99)`, forced teleports to `(32,99)` /
+  `(32,103)`, and all post-force blocker results as tainted route evidence.
+- Read-only input diagnostics while left in the bad state: command polling and
+  Lua were alive, `report_position` still showed World Map `(32,103)`,
+  `report_menu_state` showed no active command menu/dialogue, and
+  `report_input_guard_state` showed no suppress/teleport/menu guard. At rest
+  Lua saw only stale `LeftAlt` (`joy=-`, bridge buttons `0x00`). A passive
+  `trace_input:300` also saw no joypad/bridge input. Earlier manual presses did
+  reach Lua as rapidly changing directions, but `auto_step` canceled each
+  attempted step from the contaminated movement state.
+- Recovery observation: user pressed Start; log showed
+  `INPUT_STUCK_ALT_CLEAR ... joy1=start`, then command menu opened and closed.
+  Normal manual movement immediately resumed: down completed from `(32,103)` to
+  `(32,104)`, up returned to `(32,103)`, and another up completed to
+  `(32,102)`. Fresh read-only snapshot at `(32,102)` showed no active menu, no
+  input guard, no active path, and no runtime blocks. `LeftAlt` is still latched
+  at idle, but the code treats LeftAlt-only FCEUX idle state as benign latch
+  noise rather than synthetic input.
+- Clean reprobe after Start recovery: from `(32,102)`, raw `probe_edge:UP`
+  moved through `(32,101)` and carried to `(32,100)`. A second
+  `probe_edge:UP` from `(32,100)` reached `(32,99)` and carried to `(32,98)`.
+  After calibrating a short raw `UP,20` hold to settle exactly on `(32,99)`,
+  `probe_edge:RIGHT` cleanly moved from `(32,99)` through `(33,99)` and carried
+  to `(34,99)`. Further clean right probes reached `(36,99)` and then
+  `(37,99)`. From `(37,99)`, `probe_edge:UP` cleanly moved through `(37,98)`
+  and carried to `(37,97)`.
+- Current live interruption: immediately after reaching `(37,97)`, a Wraith
+  Knight battle started. The queued follow-up `probe_edge:RIGHT` was refused
+  because edge probes are only available while walking on the field. Resume
+  after battle from the live position if still on/near `(37,97)`, and re-run
+  the east/north/south spur checks from clean field state.
+- Post-Wraith clean continuation: after battle, fresh baseline confirmed field
+  state at `(37,97)` with no menu/input guard/runtime blocks. Same-origin
+  `probe_edge:RIGHT` moved cleanly into `(38,97)`, then immediately triggered a
+  Demon Knight battle. Treat `(37,97)->RIGHT` as passable; resume after the
+  Demon Knight from the live field position, likely `(38,97)`, and continue
+  checking exits from that spur.
+- Post-Demon clean continuation: after battle and user HEAL, fresh baseline
+  confirmed field state at `(38,97)` with no menu/input guard/runtime blocks.
+  Clean probes found `(38,97)->RIGHT` blocked, `(38,97)->UP` blocked, and
+  `(38,97)->DOWN` open to `(38,98)`.
+- The clean trail from `(38,98)` then continued east/north/east/north:
+  `(38,98)->RIGHT` carried to `(40,98)`, `(40,98)->RIGHT` moved to `(41,98)`
+  and triggered a Metal Slime encounter that ran away, then fresh baseline at
+  `(41,98)` was clean. Continuing from there: `(41,98)->RIGHT` reached
+  `(42,98)`, `(42,98)->RIGHT` blocked, `(42,98)->UP` reached `(42,97)`,
+  `(42,97)->UP` blocked, `(42,97)->RIGHT` carried to `(44,97)`,
+  `(44,97)->RIGHT` blocked, `(44,97)->UP` carried to `(44,95)`, and
+  `(44,95)->UP` reached `(44,94)`.
+- Current live interruption: a Metal Slime battle started immediately after
+  reaching `(44,94)` and did not clear during the short watch window. Resume
+  only after battle from a clean field baseline at/near `(44,94)`.
+- Post-Metal-Slime continuation: fresh field baseline confirmed World Map
+  `(44,94)` with no menu/input guard/runtime blocks. Clean probes found
+  `(44,94)->UP` blocked and `(44,94)->RIGHT` open, carrying to `(46,94)`.
+  The east leg continued through `(48,94)`, `(49,94)`, and `(50,94)`;
+  `(50,94)->RIGHT` blocked. The route then bent north: `(50,94)->UP` reached
+  `(50,93)`, and `(50,93)->UP` reached `(50,92)` before a Knight battle
+  started.
+- Post-Knight continuation: after battle and user HEAL, fresh field baseline
+  confirmed World Map `(50,92)` with no menu/input guard/runtime blocks. Clean
+  north probes moved through `(50,91)`, `(50,90)`, carried to `(50,88)`, then
+  carried to `(50,86)`. `(50,86)->UP` blocked, and `(50,86)->RIGHT` carried to
+  `(52,86)`. `(52,86)->RIGHT` then moved to `(53,86)` before another Knight
+  battle started.
+- Post-second-Knight continuation: fresh field baseline confirmed World Map
+  `(53,86)` with no menu/input guard/runtime blocks. Clean east probes moved
+  through `(54,86)`, `(55,86)`, `(56,86)`, `(57,86)`, `(58,86)`, and
+  `(59,86)`. From the tip, `(59,86)->RIGHT`, `(59,86)->UP`, and
+  `(59,86)->DOWN` all blocked, so the route backed west to `(58,86)`.
+  `(58,86)->UP` reached `(58,85)`, and `(58,85)->UP` reached `(58,84)` before
+  a Werewolf battle started.
+- Post-Werewolf continuation: fresh field baseline confirmed World Map
+  `(58,84)` with no menu/input guard/runtime blocks. From there,
+  `(58,84)->UP` blocked, while right carried to `(60,84)` and `(62,84)`,
+  with `(62,84)->RIGHT` blocked. The south/east side pocket from `(62,84)`
+  was explored through `(62,85)`, `(63,85)`, `(63,86)`, `(65,86)`, and
+  `(67,86)`; its right, up, and down exits at the tip all blocked, and the
+  branch was a dead end. Backtracking exposed the real continuation:
+  `(62,85)->UP` carried to `(62,83)`, then the clean route moved north to
+  `(62,82)`, east to `(63,82)`, north to `(63,81)`, east to `(64,81)`, north
+  to `(64,80)`, and east via carries through `(66,80)`, `(68,80)`, and
+  `(70,80)`.
+- Post-Magiwyvern continuation: after battle and user HEALs, fresh field
+  baseline confirmed World Map `(71,80)` with no menu/input guard/runtime
+  blocks. The clean route continued east through `(73,80)`, `(75,80)`, and
+  `(77,80)`, where right and up blocked and south opened to `(77,81)`.
+  From there, down blocked, east reached `(78,81)`, east/up blocked, and south
+  carried to `(78,83)`. The route then bent east to `(79,83)`, south to
+  `(79,84)`, east via `(81,84)` to `(82,84)`, with `(82,84)->RIGHT` blocked.
+  South from `(82,84)` carried through `(82,86)` and `(82,88)`.
+- Post-Demon-Knight continuation: after battle and user HEALs, fresh field
+  baseline confirmed World Map `(82,89)` with no menu/input guard/runtime
+  blocks. The clean route moved south to `(82,90)`, where south blocked and
+  east reached `(83,90)`. From there, east blocked, south carried to
+  `(83,92)`, south blocked, east reached `(84,92)`, and south carried through
+  `(84,94)` to `(84,96)`. From `(84,96)`, south blocked, east carried to
+  `(86,96)`, east blocked, south reached `(86,97)`, south blocked, east reached
+  `(87,97)`, east blocked, and south carried through `(87,99)` to `(87,100)`.
+  From `(87,100)`, south blocked and east carried to `(89,100)`, where east
+  blocked and south continued through `(89,102)`, `(89,103)`, `(89,104)`, and
+  `(89,105)`.
+- Post-Knight-at-89106 continuation: after battle and user HEAL, fresh field
+  baseline confirmed World Map `(89,106)` with no menu/input guard/runtime
+  blocks. The clean route continued straight south through `(89,107)`,
+  `(89,108)`, and `(89,109)`.
+- Post-Knight-at-89110 continuation: after battle, user HEAL, and some
+  transient FCEUX input-bridge chatter, a fresh baseline confirmed World Map
+  `(89,110)` with menu closed, no dialogue/input guard, no runtime blocks, and
+  only the known idle `LeftAlt` latch. Clean probes continued south through
+  `(89,111)`, `(89,112)`, and `(89,113)`. From `(89,113)`, south and east
+  blocked, while west opened to `(88,113)`.
+- The clean trail then snaked southwest through the lower forest corridor:
+  `(88,113)->DOWN` to `(88,114)`, south blocked, west to `(87,114)`, south to
+  `(87,115)`, south blocked, west to `(86,115)`, south blocked, west to
+  `(85,115)`, south to `(85,116)`, south blocked, west to `(84,116)`, south
+  blocked, west to `(83,116)`, south blocked, west to `(82,116)`. At
+  `(82,116)`, south and west blocked; north opened to `(82,115)`, then west
+  continued through `(81,115)`, `(80,115)`, and `(79,115)`. At `(79,115)`,
+  south and west blocked; north opened to `(79,114)`. The trail then went west
+  to `(78,114)`, where west and south blocked; north opened to `(78,113)`,
+  west continued through `(77,113)` and `(76,113)`, south at `(76,113)`
+  blocked, west continued through `(75,113)` to `(74,113)`, then south opened
+  through `(74,114)` to `(74,115)`.
+- Current live interruption: moving down from `(74,114)` reached `(74,115)` and
+  triggered a regular `Starwyvern` battle (`A Starwyvern draws near!`), not the
+  Golem. Resume only after battle from a clean field baseline at/near
+  `(74,115)`.
+- Starwyvern death/reposition boundary: the user reported the hero lost the
+  Starwyvern RNG battle, refreshed, teleported back, and walked around to clear
+  taint. Treat the battle/death/teleport sequence as a hard contamination
+  boundary, but the fresh post-teleport baseline is clean: after closing a
+  leftover command menu, `report_position` confirmed World Map `(73,115)` with
+  menu closed, no dialogue/input guard/runtime blocks, no active path, HP
+  `85/92`, MP `85/85`, and only the known idle `LeftAlt` latch.
+- Post-reposition continuation: clean same-origin probes found
+  `(73,115)->DOWN` to `(73,116)`, where south and east blocked; west opened to
+  `(72,116)`. The route then continued south/west through `(72,117)`,
+  `(71,117)`, `(71,118)`, and west through `(70,118)` to `(69,118)`. South
+  from `(72,117)` and south from `(71,118)` both blocked. Moving west from
+  `(70,118)` reached `(69,118)` and triggered a regular `Werewolf` battle
+  (`A Werewolf draws near!`), not the Golem. Resume only after battle from a
+  clean field baseline at/near `(69,118)`.
+- Post-Werewolf-at-69118 continuation: after battle, fresh baseline confirmed
+  World Map `(69,118)`, menu closed, no dialogue/input guard/runtime blocks,
+  no active path, HP `72/92`, MP `85/85`, and only the known idle `LeftAlt`
+  latch. The clean route continued west through `(68,118)` and `(67,118)`,
+  then south to `(67,119)`, west through `(66,119)`, `(65,119)`, `(64,119)`,
+  and `(63,119)`. From there north opened to `(63,118)`, west continued through
+  `(62,118)`, `(61,118)`, and `(60,118)`, and north opened to `(60,117)`.
+  West from `(60,117)` carried to `(58,117)`; west from `(58,117)` carried to
+  `(56,117)`. At `(56,117)`, HP was still `52/92`; west reached `(55,117)`,
+  where west blocked and north carried to `(55,115)`. West from `(55,115)`
+  carried through `(53,115)` to `(51,115)`, where west blocked and north
+  carried to `(51,113)`. West from `(51,113)` reached `(50,113)` and triggered
+  another regular `Werewolf` battle (`A Werewolf draws near!`), not the Golem.
+  Resume only after battle from a clean field baseline at/near `(50,113)`.
+- Post-Werewolf-at-50113 continuation: after battle, user HEALs, and manual
+  movement, a fresh baseline confirmed World Map `(52,113)` with menu closed,
+  no dialogue/input guard/runtime blocks, HP `81/92`, MP `69/85`, and only the
+  known idle `LeftAlt` latch. Same-origin east probes then carried
+  `(52,113)->RIGHT` to `(54,113)` and `(54,113)->RIGHT` to `(56,113)`. The
+  latter move immediately triggered a regular `Starwyvern` battle (`A
+  Starwyvern draws near!`), not the Golem. Resume only after battle from a
+  clean field baseline at/near `(56,113)`.
+- Post-Starwyvern-at-56113 continuation: after battle and user HEALs, fresh
+  baseline confirmed World Map `(56,113)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `91/92`, MP `57/85`, and only the
+  known idle `LeftAlt` latch. The route continued east through `(58,113)`,
+  `(60,113)`, `(62,113)`, `(64,113)`, `(65,113)`, and `(66,113)`, then north
+  through `(66,112)`, `(66,111)`, `(66,110)`, carried to `(66,108)`, and
+  reached `(66,107)`. From `(66,107)`, north and east blocked; west carried to
+  `(64,107)`. From there north reached `(64,106)`, where north and east
+  blocked; west carried to `(62,106)`. North reached `(62,105)`, where north
+  blocked and east reached `(63,105)`. From `(63,105)`, east and north blocked;
+  south reached `(63,106)` and triggered another regular `Starwyvern` battle
+  (`A Starwyvern draws near!`), not the Golem. Resume only after battle from a
+  clean field baseline at/near `(63,106)`.
+- Post-Starwyvern-at-63106 continuation: after battle and user HEALs, fresh
+  baseline confirmed World Map `(63,106)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `84/92`, MP `45/85`, and only the
+  known idle `LeftAlt` latch. Clean probes found `(63,106)->RIGHT` open to
+  `(64,106)`, `(64,106)->DOWN` carrying to `(64,108)`, then east through
+  `(66,108)` to `(67,108)`. From `(67,108)`, east and north blocked while
+  south opened to `(67,109)`. The route then bent east/south/east through
+  `(68,109)`, `(69,109)`, `(69,110)`, `(70,110)`, `(71,110)`, `(72,110)`,
+  `(72,111)`, `(73,111)`, `(73,112)`, `(74,112)`, and `(74,113)`, with
+  north/east blockers at the tested tips. Read-only `debug_pathfind_to:73,102`
+  from `(74,113)` only produced compass fallback (`path_len=0`) because the
+  overworld is not A*-decoded; `teleport_to:89,102` was refused by missing
+  model walkability and should not be treated as live map proof.
+- Post-heal continuation near Cantlin maze: from `(74,113)`, clean probes found
+  a live loop back through `(73,113)`, `(73,112)`, `(72,112)`, `(72,111)`,
+  `(71,111)`, and `(71,110)`, with north from `(71,110)` blocked. After the
+  user took a healing break, fresh baseline confirmed World Map `(70,110)`,
+  menu closed, no dialogue/input guard/runtime blocks, no active path,
+  HP `91/92`, MP `33/85`, and only the known idle `LeftAlt` latch. From there,
+  north blocked; west reached `(69,110)`, north reached `(69,109)`, west
+  reached `(68,109)`, north blocked, west reached `(67,109)`, west carried to
+  `(65,109)`, north carried to `(65,107)`, north blocked, west carried to
+  `(63,107)`, north carried to `(63,105)`, and west carried to `(61,105)`.
+  Immediately after reaching `(61,105)`, a regular `Starwyvern` battle started
+  (`A Starwyvern draws near!`), not the Golem. A queued `probe_edge:UP` was
+  refused during battle. The log later reported `Thou art dead.` Treat the
+  death/refresh/reposition sequence as the next hard contamination boundary;
+  resume only after a fresh field baseline.
+- Post-death restore at `(61,105)`: the user restored from death and returned
+  to the field at/near `(61,105)`. Fresh baseline confirmed World Map
+  `(61,105)`, menu closed, no dialogue/input guard/runtime blocks, no active
+  path, HP `87/92`, MP `85/85`, and only the known idle `LeftAlt` latch.
+  Clean probes found `(61,105)->UP` blocked, `(61,105)->LEFT` carrying to
+  `(59,105)`, `(59,105)->UP` open to `(59,104)`, and `(59,104)->UP` blocked.
+  West from `(59,104)` reached `(58,104)` and immediately triggered another
+  regular `Starwyvern` battle (`A Starwyvern draws near!`), not the Golem.
+  Resume only after battle from a clean field baseline at/near `(58,104)`.
+- Post-Starwyvern-at-58104 continuation: after battle and user HEALs, fresh
+  baseline confirmed World Map `(58,104)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `84/92`, MP `69/85`, and only the
+  known idle `LeftAlt` latch. Clean probes found north blocked at `(58,104)`;
+  west then carried through `(56,104)` and `(54,104)`. From `(54,104)`, north
+  opened to `(54,103)` but north from there blocked, so the trail bent west
+  through `(52,103)` to `(51,103)`, where north and west blocked. South from
+  `(51,103)` carried to `(51,105)`, then west/north/west/north/west/north
+  traced `(50,105)`, `(50,104)`, `(48,104)`, `(48,102)`, `(48,100)`,
+  `(48,98)`, and `(48,97)`, with north at `(48,97)` blocked. East from
+  `(48,97)` carried to `(50,97)`, and north from `(50,97)` reached `(50,96)`
+  immediately before a regular `Werewolf` battle started (`A Werewolf draws
+  near!`), not the Golem. Resume only after battle from a clean field baseline
+  at/near `(50,96)`.
+- Post-Werewolf-at-50096 continuation: after battle and user HEALs, fresh
+  baseline confirmed World Map `(50,96)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `84/92`, MP `57/85`, and only the
+  known idle `LeftAlt` latch. Clean probes found north blocked at `(50,96)`,
+  east carrying to `(52,96)`, north opening to `(52,95)`, north from there
+  blocked, east carrying to `(54,95)`, and north carrying to `(54,93)`.
+  Immediately after reaching `(54,93)`, a regular `Magiwyvern` battle started
+  (`A Magiwyvern draws near!`), not the Golem. A queued follow-up
+  `probe_edge:UP` was refused during battle; resume only after battle from a
+  clean field baseline at/near `(54,93)`.
+- Post-Magiwyvern-at-54093 continuation: after battle, user HEALs, and a brief
+  FCEUX input-bridge recovery sequence, fresh baseline confirmed World Map
+  `(54,93)`, menu closed, no dialogue/input guard/runtime blocks, no active
+  path, HP `88/92`, MP `43/85`, and only the known idle `LeftAlt` latch.
+  Clean probes found north blocked at `(54,93)`, east carrying to `(56,93)`,
+  north opening to `(56,92)`, north from there blocked, east carrying to
+  `(58,92)`, and north from `(58,92)` blocked. East from `(58,92)` reached
+  `(59,92)` and immediately triggered a regular `Demon Knight` battle (`A
+  Demon Knight draws near!`), not the Golem. Resume only after battle from a
+  clean field baseline at/near `(59,92)`.
+- Post-Demon-Knight-at-59092 continuation: after battle, user HEALs, and an
+  interrupted probe recovery, fresh baseline confirmed World Map `(83,102)`
+  with menu closed, no dialogue/input guard/runtime blocks, no active path, HP
+  `85/92`, MP `39/85`, and only the known idle `LeftAlt` latch. Clean route
+  evidence from `(59,92)` continued north to `(59,91)`, then east to
+  `(61,91)`, north to `(61,89)`, east through `(63,89)`, `(65,89)`, and
+  `(67,89)`, north to `(67,88)`, and a dead-end check at `(68,88)` where
+  north/east/south blocked. Backtracking exposed the lower continuation:
+  `(66,88)` south to `(66,90)`, east through `(68,90)` and `(69,90)`, south to
+  `(69,91)`, east through `(71,91)`, `(72,91)`, and `(73,91)`, north to
+  `(73,90)`, then east through `(74,90)`, `(75,90)`, `(76,90)`, and `(77,90)`.
+  East blocked there, so the route bent south/east through `(77,92)`,
+  `(79,92)`, `(79,91)`, back south to `(79,93)`, west to `(77,93)`, south to
+  `(77,95)`, east through `(79,95)` and `(80,95)`, south to `(80,97)`, east to
+  `(82,97)`, south to `(82,99)`, east to `(83,99)`, north/east dead-end checks
+  through `(83,98)` and `(84,98)`, then back through `(82,98)`, south to
+  `(82,100)`, south to `(82,102)`, and east to `(83,102)`. The interrupted
+  `(83,102)->UP` probe later logged cleanly blocked; after closing the
+  accidental command menu and re-baselining, `(83,102)->RIGHT` also blocked,
+  while south carried to `(83,104)` and east from `(83,104)` reached
+  `(84,104)`. That last move immediately triggered a regular `Wizard` battle
+  (`A Wizard draws near!`), not the Golem. A fresh read-only baseline during
+  the pause confirmed battle state at `(84,104)`, HP `74/92`, MP `39/85`,
+  enemy HP `65`, and no runtime blocks. Resume only after battle from a clean
+  field baseline at/near `(84,104)`.
+- Post-Wizard-at-84104 continuation: after battle and user HEALs, fresh
+  baseline confirmed World Map `(84,104)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `83/92`, MP `23/85`, and only the
+  known idle `LeftAlt` latch. Clean probes found `(84,104)->DOWN` and
+  `(84,104)->RIGHT` blocked, while north opened to `(84,103)`. From
+  `(84,103)`, north blocked and east opened to `(85,103)`, but `(85,103)` was
+  a dead-end tip with east, south, and north all blocked. Backtracking west
+  from `(85,103)` carried through `(84,103)` to `(83,103)`, then west carried
+  cleanly through `(81,103)`, `(79,103)`, and `(77,103)`. West from
+  `(77,103)` reached `(76,103)` and immediately triggered a regular
+  `Starwyvern` battle (`A Starwyvern draws near!`), not the Golem. Resume only
+  after battle from a clean field baseline at/near `(76,103)`.
+- Quick-load contamination/config boundary: after the Starwyvern interruption,
+  the user accidentally hit FCEUX quick load on `P` while recovering. Treat the
+  resulting restored state as a hard contamination boundary until the user
+  returns to position and a fresh field baseline is captured. Local FCEUX config
+  `D:\emulation\fceux\bin\fceux.cfg` was backed up to
+  `fceux.cfg.pre_unbind_savestate_20260704`, and the general
+  `SDL.Hotkeys.LoadState` / `SDL.Hotkeys.SaveState` bindings were blanked.
+  Slot-specific F-key savestate bindings remain unchanged.
+- Post-quick-load continuation: after FCEUX restart/reposition, fresh baseline
+  confirmed World Map `(78,103)`, menu initially open, no runtime blocks, HP
+  `92/92`, MP `85/85`, and only idle `LeftAlt`; the command menu was closed
+  and stale `Cantlin` auto-walk target cleared before probing. Treat this as a
+  new clean route evidence segment after the quick-load contamination boundary.
+  West from `(78,103)` carried to `(76,103)`, then continued west through
+  `(74,103)`, `(72,103)`, `(70,103)`, `(68,103)`, `(66,103)`, `(64,103)`, and
+  `(62,103)`. South from `(62,103)` opened and carried down the vertical lane
+  through `(62,105)`, `(62,107)`, `(62,109)`, `(62,111)`, `(62,113)`,
+  `(62,114)`, `(62,116)`, `(62,117)`, `(62,118)`, and finally `(62,119)`.
+  The move into `(62,119)` triggered a regular `Starwyvern` battle (`A
+  Starwyvern draws near!`), not the Golem. Resume only after battle from a
+  clean field baseline at/near `(62,119)`.
+- Post-Starwyvern-at-62119 continuation: after battle, fresh baseline confirmed
+  World Map `(62,119)`, menu closed, no dialogue/input guard/runtime blocks,
+  no active path, HP `91/92`, MP `73/85`, and only the known idle `LeftAlt`
+  latch. South from `(62,119)` blocked at the map edge/bottom lane, while east
+  opened and continued along row 119 through `(63,119)`, `(64,119)`,
+  `(65,119)`, `(66,119)`, `(67,119)`, `(68,119)`, and `(69,119)`. East from
+  `(69,119)` blocked, and north opened through `(69,118)`, `(69,117)`, and
+  `(69,116)` to `(69,115)`. The move into `(69,115)` triggered another regular
+  `Starwyvern` battle (`A Starwyvern draws near!`), not the Golem. Resume only
+  after battle from a clean field baseline at/near `(69,115)`.
+- Post-Starwyvern-death/reposition boundary: the hero lost the Starwyvern fight
+  and the user restored, manually walked back, and healed. Treat the
+  death/restore/manual-walk sequence as a hard contamination boundary. Fresh
+  baseline confirmed World Map `(69,115)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `92/92`, MP `69/85`, and only the
+  known idle `LeftAlt` latch. Clean probes confirmed the north lane from
+  `(69,115)` through `(69,114)`, `(69,113)`, `(69,112)`, `(69,111)`,
+  `(69,110)`, and `(69,109)`. East and north from `(69,109)` both blocked.
+  West then opened through `(68,109)` and `(67,109)`, with the next west hold
+  carrying to `(65,109)`. North from `(65,109)` reached `(65,108)` and
+  immediately triggered a regular `Wizard` battle (`A Wizard draws near!`),
+  not the Golem. Resume only after battle from a clean field baseline at/near
+  `(65,108)`.
+- Post-Wizard-at-65108 continuation: after battle and user HEALs, fresh
+  baseline confirmed World Map `(65,108)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `80/92`, MP `55/85`, and only the
+  known idle `LeftAlt` latch. North opened to `(65,107)`. East opened to
+  `(66,107)`, but east and north from `(66,107)` both blocked, making that a
+  short spur. West back to `(65,107)` moved cleanly and immediately triggered a
+  regular `Starwyvern` battle (`A Starwyvern draws near!`), not the Golem.
+  Resume only after battle from a clean field baseline at/near `(65,107)`.
+- Post-Starwyvern-death-at-65107 restore: after the Starwyvern killed the hero,
+  the user restored to `(65,108)`. Treat the death/restore as a hard evidence
+  boundary. Fresh baseline confirmed World Map `(65,108)`, menu closed, no
+  dialogue/input guard/runtime blocks, no active path, HP `80/92`, MP `55/85`,
+  and only idle `LeftAlt`. Clean probes found north to `(65,107)`, north from
+  `(65,107)` blocked, west carrying to `(63,107)`, north carrying to
+  `(63,105)`, and then a regular `Green Dragon` battle, not the Golem. The
+  queued `(63,105)->UP` probe was refused during battle and is not evidence.
+  After the Green Dragon was defeated and HEALs were cast, fresh baseline at
+  `(63,105)` was clean: HP `83/92`, MP `43/85`, no runtime blocks or active
+  path. From there, north blocked, west carried to `(61,105)`, south carried to
+  `(61,107)`, east carried back through `(63,107)`, and south/east traced a
+  lower connector through `(63,109)`, `(65,109)`, `(65,110)`, `(66,110)`,
+  `(67,110)`, `(68,110)`, `(69,110)`, `(70,110)`, `(71,110)`, and `(72,110)`.
+  North and east from `(72,110)` blocked; the route curled through `(72,111)`,
+  `(73,111)`, `(73,112)`, `(74,112)`, and `(74,113)`, with north/east blocks
+  at the tested tips. East from `(74,113)` opened into a new lane:
+  `(75,113)`, `(76,113)`, `(77,113)`, `(78,113)`, north to `(78,112)`, east
+  to `(79,112)`, north to `(79,111)`, east to `(80,111)`, north to `(80,110)`,
+  east to `(81,110)`, north to `(81,109)`, then east through `(82,109)`,
+  `(83,109)`, `(84,109)`, `(85,109)`, north to `(85,108)`, east to `(86,108)`.
+  A transient `dw_commands.txt` write hiccup occurred before the first
+  `(86,108)->UP` attempt; it produced no consumed command and no map evidence.
+  After a clean re-anchor at `(86,108)`, north opened to `(86,107)`, north from
+  `(86,107)` blocked, and east reached `(87,107)` immediately before a regular
+  `Werewolf` battle (`A Werewolf draws near!`), not the Golem. Resume only
+  after battle from a clean field baseline at/near `(87,107)`.
+- Post-Werewolf-death-at-87107 restore: after the Werewolf killed the hero, the
+  user restored and relocated to `(87,107)`. Treat the death/restore/relocation
+  as a hard evidence boundary. Fresh baseline confirmed World Map `(87,107)`,
+  menu closed, no dialogue/input guard/runtime blocks, no active path,
+  HP `92/92`, MP `85/85`, and only idle `LeftAlt`. Clean probes found north to
+  `(87,106)`, north to `(87,105)`, north carrying to `(87,103)`, north carrying
+  to `(87,101)`, west carrying to `(85,101)`, then west to `(84,101)`. The move
+  into `(84,101)` immediately triggered a regular `Wizard` battle (`A Wizard
+  draws near!`), not the Golem. Resume only after battle from a clean field
+  baseline at/near `(84,101)`.
+- Post-Wizard-at-84101 continuation: after battle and user HEALs, fresh field
+  baseline confirmed World Map `(84,101)`, menu closed, no dialogue/input
+  guard/runtime blocks, no active path, HP `92/92`, MP `75/85`, and only idle
+  `LeftAlt`. Clean west probes found `(84,101)->LEFT` carrying to `(82,101)`,
+  then `(82,101)->LEFT` carrying to `(80,101)`. The next west step moved into
+  `(79,101)` and immediately triggered a regular `Green Dragon` battle (`A
+  Green Dragon draws near!`), not the Golem. Resume only after battle from a
+  clean field baseline at/near `(79,101)`.
+- Cantlin entry completion: after the Green Dragon, fresh baseline confirmed
+  World Map `(79,101)`, menu closed, no dialogue/input guard/runtime blocks,
+  no active path, HP `82/92`, MP `63/85`, and only idle `LeftAlt`. West from
+  `(79,101)` reached `(77,101)` and a regular `Werewolf` encounter fired a few
+  frames after the probe result; the log then showed `RUN` and returned to
+  field. Because there was no post-battle baseline before the next movement,
+  treat that Werewolf/run sequence as a battle boundary, not clean route-state
+  evidence. Subsequent west movement reached `(75,101)`, and west into
+  `(74,101)` triggered another regular `Werewolf` encounter, again not the
+  Golem; the log again returned to field after `RUN`. A clean read-only
+  re-baseline at `(74,101)` then confirmed menu closed, no input guard/runtime
+  blocks, no active path, HP `84/92`, MP `63/85`. From that clean baseline:
+  `(74,101)->LEFT` carried through `(73,101)` to `(72,101)`;
+  `(72,101)->DOWN` carried through `(72,102)` to `(72,103)`;
+  `(72,103)->RIGHT` carried through `(73,103)` to `(74,103)`.
+  `simulate_raw_input:LEFT,12` corrected precisely back to `(73,103)`.
+  Two short `UP,12` nudges from `(73,103)` did not move, but same-origin
+  `probe_edge:UP` from `(73,103)` produced `map change -> 0x0A (Cantlin)`,
+  landing at in-town `(15,0)`. No Golem encounter fired during this approach;
+  either the Golem is already cleared in the current save/state, is at a
+  different approach square, or the guide's forced encounter condition was not
+  active for this run. Final confirmed state: Cantlin `(15,0)`, menu closed,
+  no input guard/runtime blocks, no active path.
 
 ## 2026-06-29 Kol Speech/Menu Regression Follow-Up
 

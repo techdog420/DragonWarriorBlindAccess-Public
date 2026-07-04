@@ -1,9 +1,33 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-06-29
+Updated: 2026-07-03
 
 ## Current State
 
+- Cantlin overworld approach reached the town in live FCEUX. From the validated
+  western/southern trail, the final clean entry sequence was: clean re-baseline
+  at World Map `(74,101)`, west carrying through `(73,101)` to `(72,101)`,
+  south carrying through `(72,102)` to `(72,103)`, east carrying through
+  `(73,103)` to `(74,103)`, short raw left nudge back to `(73,103)`, then
+  same-origin `probe_edge:UP` from `(73,103)` triggered `map change -> 0x0A
+  (Cantlin)` and landed in-town at `(15,0)`. No Golem encounter fired during
+  this approach in the current save/state; regular Green Dragon/Werewolf
+  encounters near `(79,101)`, `(77,101)`, and `(74,101)` were random battles,
+  not the fixed boss. Detailed route evidence is in
+  `work_notes/current_investigation.md`.
+- Hauksness / Haukness / Damdara overworld guidance now uses the
+  Garinham/western-continent route instead of the stale Tantegel/Rock Mountain
+  Cave branch. Live FCEUX validation reached the destination: from the lower
+  western lane `(15,93)`, `auto_walk_blocker:25,89` climbed to row 89, crossed
+  east to `(24,89)`, then the single right step triggered
+  `map change -> 0x03 (Ruins of Hauksness)` and route arrival at in-town
+  `(0,10)`. The source route keeps the Kol-side opening through the known
+  north road to `Erdrick's Cave road`, turns back through the Garinham connector,
+  then follows the live-validated desert detours through `(5,4)`, `(15,28)`,
+  `(29,82)`, `(15,93)`, `(15,89)`, and `(24,89)`. No fixed overworld boss
+  triggered on entry; the tough Demon Knight / Wraith Knight / Knight fights
+  observed near Hauksness behaved like random encounters. FCEUX needs a manual
+  Lua reload before judging the patched source route live.
 - Rimuldar / Remuldar Magic Key merchant is the active route target. The service
   identity is solid: `Old Man 1` at `(4,7)`, public stand `(4,6)` facing south,
   and TALK from that stand opens the 53 G Magic Key prompt. The route model is

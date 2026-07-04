@@ -724,7 +724,15 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
         current_object = {id = "route_garinham_14", name = "Route next: Garinham east ridge", type = "exit", x = 16, y = 6},
         overworld_segment = {
             route = {id = "garinham", title = "Garinham"},
-            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            waypoint = {
+                name = "Garinham east ridge",
+                x = 16,
+                y = 6,
+                route_early_twitch_timeout_frames = 90,
+                route_hold_after_movement_start_frames = 60,
+                route_reset_movement_on_turn_settle = true,
+                route_accept_final_drift_completion = true,
+            },
             index = 14,
             steps = {"up", "left", "left", "left"},
             message = "Auto-walk to Garinham east ridge, 1 north, 3 west. 4 step(s).",
@@ -740,6 +748,26 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
     assert_equal(env.start_route_calls(), 1, "overworld segment should queue auto_step")
     assert_equal(env.last_start_route_steps()[1], "up", "queued segment should preserve planned steps")
     assert_equal(env.last_start_route_opts().settle_frames, 0, "overworld segment should use no interior settle delay")
+    assert_equal(
+        env.last_start_route_opts().route_early_twitch_timeout_frames,
+        90,
+        "overworld segment should forward waypoint-specific queued-route twitch timing"
+    )
+    assert_equal(
+        env.last_start_route_opts().route_hold_after_movement_start_frames,
+        60,
+        "overworld segment should forward waypoint-specific queued-route hold timing"
+    )
+    assert_equal(
+        env.last_start_route_opts().route_reset_movement_on_turn_settle,
+        true,
+        "overworld segment should forward waypoint-specific movement-reset timing"
+    )
+    assert_equal(
+        env.last_start_route_opts().route_accept_final_drift_completion,
+        true,
+        "overworld segment should forward waypoint-specific final-drift completion behavior"
+    )
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk", "overworld auto-walk should be announced")
 
     env.restore()

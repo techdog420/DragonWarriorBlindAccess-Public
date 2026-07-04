@@ -287,21 +287,21 @@ def check_bridge_config() -> tuple[bool, str]:
 
 
 def check_command_queue() -> tuple[bool, str]:
-    cmd_file = ROOT / "dw_commands.txt"
-    backup = None
-    if cmd_file.exists():
-        backup = cmd_file.read_text(encoding="utf-8")
-    try:
+    with tempfile.TemporaryDirectory(prefix="dw_commands_test_") as tmp:
+        tmp_path = Path(tmp)
+        script_path = tmp_path / "dw_commands.sh"
+        cmd_file = tmp_path / "dw_commands.txt"
+        shutil.copy2(ROOT / "dw_commands.sh", script_path)
         cmd_file.write_text("", encoding="utf-8")
         first = subprocess.run(
-            ["bash", "dw_commands.sh", "freeze_npcs", "debug_pathfind_to:3,3"],
-            cwd=ROOT,
+            ["bash", str(script_path), "freeze_npcs", "debug_pathfind_to:3,3"],
+            cwd=tmp_path,
             text=True,
             capture_output=True,
         )
         second = subprocess.run(
-            ["bash", "dw_commands.sh", "validate_path"],
-            cwd=ROOT,
+            ["bash", str(script_path), "validate_path"],
+            cwd=tmp_path,
             text=True,
             capture_output=True,
         )
@@ -319,14 +319,6 @@ def check_command_queue() -> tuple[bool, str]:
             f"contents={contents!r}",
         ]
         return False, "; ".join(detail)
-    finally:
-        if backup is None:
-            try:
-                cmd_file.unlink()
-            except FileNotFoundError:
-                pass
-        else:
-            cmd_file.write_text(backup, encoding="utf-8")
 
 
 def shutil_which(name: str) -> str | None:

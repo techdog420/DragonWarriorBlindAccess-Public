@@ -18,6 +18,17 @@ local function assert_contains(value, needle, message)
     end
 end
 
+local function find_waypoint(route_id, name)
+    local route = routes._route_for_tests(route_id)
+    if not route then return nil end
+    for _, waypoint in ipairs(route.waypoints or {}) do
+        if waypoint.name == name then
+            return waypoint
+        end
+    end
+    return nil
+end
+
 local tests = {}
 
 function tests.erdric_alias_starts_erdrick_route_from_current_progress()
@@ -90,6 +101,50 @@ function tests.north_trail_marker_advances_to_cave_after_pinch_markers()
 
     assert_contains(event.message, "Reached North trail marker", "north trail should still be a route step")
     assert_contains(event.message, "Next: Erdrick's Cave", "north trail should point to the cave after pinch markers")
+
+    routes.reset_for_tests()
+end
+
+function tests.north_trail_to_ridge_goes_horizontal_first_on_forward_routes()
+    local forward_routes = {"brecconary", "tantegel", "tantegel_kol"}
+
+    for _, route_id in ipairs(forward_routes) do
+        routes.reset_for_tests()
+        routes.start(route_id, 0x01, 28, 20)
+
+        local segment = assert(routes.plan_next_segment(0x01, 28, 20))
+
+        assert_equal(segment.waypoint.name, "North ridge bend", route_id .. " should still target the ridge bend")
+        assert_equal(segment.steps[1], "right", route_id .. " should avoid the live-blocked north edge from the trail marker")
+    end
+
+    local reverse_routes = {"garinham", "kol", "erdrick"}
+    for _, route_id in ipairs(reverse_routes) do
+        routes.reset_for_tests()
+        routes.start(route_id, 0x01, 35, 24)
+
+        local segment = assert(routes.plan_next_segment(0x01, 35, 24))
+
+        assert_equal(segment.waypoint.name, "North ridge bend", route_id .. " should still target the ridge bend")
+        assert_equal(segment.steps[1], "up", route_id .. " should keep the mountain-lane approach unchanged")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.bridge_west_bend_recovers_horizontally_after_upper_lane_drift()
+    local forward_routes = {"brecconary", "tantegel", "tantegel_kol"}
+
+    for _, route_id in ipairs(forward_routes) do
+        routes.reset_for_tests()
+        routes.start(route_id, 0x01, 35, 32)
+        routes.observe_position(0x01, 38, 32)
+
+        local segment = assert(routes.plan_next_segment(0x01, 39, 32))
+
+        assert_equal(segment.waypoint.name, "Bridge west bend", route_id .. " should still target the bridge bend after upper-lane drift")
+        assert_equal(segment.steps[1], "left", route_id .. " should recover horizontally before descending from the drifted east lane")
+    end
 
     routes.reset_for_tests()
 end
@@ -750,6 +805,11 @@ function tests.swamp_cave_route_uses_lower_bridge_swamp_approach()
 
     routes.observe_position(0x01, 96, 13)
     routes.observe_position(0x01, 96, 21)
+    local detour = assert(routes.plan_next_segment(0x01, 96, 26))
+    assert_equal(detour.waypoint.name, "Kol south road east detour", "southbound route should avoid the blocked x96 lower seam")
+    assert_equal(detour.steps[1], "right", "southbound route should step east from the blocked x96 seam")
+    routes.observe_position(0x01, 98, 26)
+    routes.observe_position(0x01, 98, 32)
     routes.observe_position(0x01, 96, 32)
     local south_road = routes.observe_position(0x01, 96, 35)
 
@@ -1107,6 +1167,163 @@ function tests.tantegel_object_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 end
 
+function tests.hauksness_object_from_kol_starts_conservative_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_hauksness",
+        name = "Hauksness",
+        x = 25,
+        y = 89,
+    }, 0x01, 104, 10)
+
+    assert_equal(err, nil, "Hauksness Travel object should start guidance from Kol")
+    assert_equal(info.route.id, "hauksness", "Hauksness object should choose the Hauksness route")
+    assert_equal(info.object_id, "route_hauksness_02", "Kol start should skip the current Kol anchor")
+    assert_contains(info.message, "Route to Hauksness", "started route should name Hauksness")
+    assert_contains(info.message, "Kol forest west edge", "route should begin on the proven Kol return road")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge", "first segment should target the Kol forest edge")
+    assert_equal(segment.steps[1], "left", "Hauksness route should leave Kol westward")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_route_turns_through_garinham_before_southwest_leg()
+    routes.reset_for_tests()
+    routes.start("damdara", 0x01, 104, 10)
+
+    routes.observe_position(0x01, 96, 13)
+    routes.observe_position(0x01, 96, 21)
+    local detour = assert(routes.plan_next_segment(0x01, 96, 26))
+    assert_equal(detour.waypoint.name, "Kol south road east detour", "Hauksness should detour around the blocked x96 seam")
+    assert_equal(detour.steps[1], "right", "Hauksness should step east at the live-confirmed seam")
+    routes.observe_position(0x01, 98, 26)
+    routes.observe_position(0x01, 98, 32)
+    routes.observe_position(0x01, 96, 32)
+    routes.observe_position(0x01, 96, 35)
+    routes.observe_position(0x01, 93, 35)
+    routes.observe_position(0x01, 93, 36)
+    routes.observe_position(0x01, 92, 36)
+    routes.observe_position(0x01, 92, 37)
+    routes.observe_position(0x01, 90, 37)
+    routes.observe_position(0x01, 84, 26)
+    routes.observe_position(0x01, 74, 18)
+    routes.observe_position(0x01, 61, 18)
+    routes.observe_position(0x01, 61, 19)
+    routes.observe_position(0x01, 59, 19)
+    routes.observe_position(0x01, 58, 18)
+    routes.observe_position(0x01, 54, 15)
+    routes.observe_position(0x01, 45, 13)
+    routes.observe_position(0x01, 35, 13)
+    local erdrick_road = routes.observe_position(0x01, 28, 13)
+    assert_contains(erdrick_road.message, "Next: Cave road south lane", "Hauksness should turn back toward Garinham instead of the central bridge route")
+
+    local cave_south = assert(routes.plan_next_segment(0x01, 28, 13))
+    assert_equal(cave_south.waypoint.name, "Cave road south lane", "route should reuse the Garinham-side connector")
+    assert_equal(cave_south.steps[1], "left", "Garinham connector should leave Erdrick's Cave road westward")
+
+    routes.observe_position(0x01, 23, 13)
+    routes.observe_position(0x01, 23, 11)
+    routes.observe_position(0x01, 21, 11)
+    routes.observe_position(0x01, 21, 10)
+    routes.observe_position(0x01, 20, 9)
+    routes.observe_position(0x01, 20, 7)
+    routes.observe_position(0x01, 19, 6)
+    routes.observe_position(0x01, 16, 6)
+    routes.observe_position(0x01, 16, 5)
+    routes.observe_position(0x01, 15, 4)
+    routes.observe_position(0x01, 14, 4)
+    routes.observe_position(0x01, 14, 3)
+    routes.observe_position(0x01, 8, 3)
+    local garinham_outskirts = routes.observe_position(0x01, 5, 4)
+    assert_contains(garinham_outskirts.message, "Next: Hauksness north road", "route should start the live-proven west-continent leg from Garinham outskirts")
+
+    routes.observe_position(0x01, 7, 4)
+    routes.observe_position(0x01, 7, 14)
+    routes.observe_position(0x01, 15, 14)
+    local shelf = routes.observe_position(0x01, 15, 28)
+    assert_contains(shelf.message, "Next: Western desert west detour", "route should detour west at the live-blocked south edge")
+
+    local west_detour = assert(routes.plan_next_segment(0x01, 15, 28))
+    assert_equal(west_detour.waypoint.name, "Western desert west detour", "first desert detour should be explicit")
+    assert_equal(west_detour.steps[1], "left", "route should not descend from the blocked shelf")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_western_leg_uses_validated_desert_detours()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 29, 82)
+
+    local ridge = assert(routes.plan_next_segment(0x01, 29, 82))
+    assert_equal(ridge.waypoint.name, "Hauksness northwest bend", "route should leave the north ridge through the east/up bend")
+    assert_equal(ridge.steps[1], "right", "north ridge recovery should move east before turning north")
+
+    routes.observe_position(0x01, 31, 81)
+    routes.observe_position(0x01, 26, 81)
+    routes.observe_position(0x01, 26, 79)
+    routes.observe_position(0x01, 22, 79)
+    routes.observe_position(0x01, 22, 83)
+    routes.observe_position(0x01, 20, 83)
+    routes.observe_position(0x01, 20, 85)
+    routes.observe_position(0x01, 18, 85)
+    routes.observe_position(0x01, 16, 85)
+    routes.observe_position(0x01, 16, 86)
+    routes.observe_position(0x01, 15, 86)
+    routes.observe_position(0x01, 15, 88)
+    routes.observe_position(0x01, 26, 88)
+    routes.observe_position(0x01, 26, 90)
+    routes.observe_position(0x01, 26, 91)
+    routes.observe_position(0x01, 24, 91)
+    routes.observe_position(0x01, 24, 93)
+    local lower_lane = routes.observe_position(0x01, 15, 93)
+    assert_contains(lower_lane.message, "Next: Hauksness west approach", "lower lane should turn north for the final town entry")
+
+    local final_approach = assert(routes.plan_next_segment(0x01, 15, 93))
+    assert_equal(final_approach.waypoint.name, "Hauksness west approach", "final approach should use the live-proven row-89 lane")
+    assert_equal(final_approach.steps[1], "up", "final approach should climb from the lower lane before heading east")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_final_entry_steps_east_from_west_doorstep()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 15, 93)
+
+    local west_approach = assert(routes.plan_next_segment(0x01, 15, 93))
+    assert_equal(west_approach.waypoint.name, "Hauksness west approach", "route should recover from the lower lane")
+    assert_equal(west_approach.path_length, 4, "live route climbs four tiles to row 89 before crossing east")
+
+    routes.observe_position(0x01, 15, 89)
+    local doorstep = assert(routes.plan_next_segment(0x01, 15, 89))
+    assert_equal(doorstep.waypoint.name, "Hauksness doorstep west", "route should stop at the live-confirmed west doorstep")
+    assert_equal(doorstep.path_length, 9, "doorstep run should cross row 89 from x15 to x24")
+    assert_equal(doorstep.steps[1], "right", "doorstep run should head east along row 89")
+
+    routes.observe_position(0x01, 24, 89)
+    local entry = assert(routes.plan_next_segment(0x01, 24, 89))
+    assert_equal(entry.waypoint.name, "Hauksness", "final waypoint should be the town transition tile")
+    assert_equal(entry.path_length, 1, "town entry is the single east step from (24,89)")
+    assert_equal(entry.steps[1], "right", "town entry should step east into Hauksness")
+
+    routes.reset_for_tests()
+end
+
+function tests.entering_hauksness_stops_route()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 25, 88)
+
+    local event = routes.observe_position(0x03, 0, 0)
+
+    assert_contains(event.message, "Arrived at Hauksness", "entering Hauksness should complete the route")
+    assert_equal(event.refresh, true, "destination map arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "route should stop after entering Hauksness")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
@@ -1125,6 +1342,11 @@ function tests.tantegel_kol_return_reconnects_to_cave_road_route()
 
     routes.observe_position(0x01, 96, 13)
     routes.observe_position(0x01, 96, 21)
+    local detour = assert(routes.plan_next_segment(0x01, 96, 26))
+    assert_equal(detour.waypoint.name, "Kol south road east detour", "Kol return should detour around the blocked x96 seam")
+    assert_equal(detour.steps[1], "right", "Kol return should step east at the live-confirmed seam")
+    routes.observe_position(0x01, 98, 26)
+    routes.observe_position(0x01, 98, 32)
     routes.observe_position(0x01, 96, 32)
     routes.observe_position(0x01, 96, 35)
     routes.observe_position(0x01, 93, 35)

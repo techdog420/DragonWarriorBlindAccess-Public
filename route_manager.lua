@@ -174,8 +174,10 @@ end
 -- changes after the current session started (for example manual script
 -- edits in a long-running FCEUX run).
 local function refresh_navigation_modules()
+    package.loaded["overworld_routes"] = nil
     package.loaded["map_reader"] = nil
     package.loaded["pathfinder"] = nil
+    overworld_routes = require "overworld_routes"
     map_reader = require "map_reader"
     pathfinder = require "pathfinder"
 end
@@ -3606,7 +3608,12 @@ function M.autowalk_overworld_segment(opts)
     last_pathfind_obj = nil
     reroute_failures = 0
 
-    if not queue_overworld_segment_steps(segment.steps) then
+    if not queue_overworld_segment_steps(segment.steps, {
+        route_early_twitch_timeout_frames = segment.waypoint and segment.waypoint.route_early_twitch_timeout_frames,
+        route_hold_after_movement_start_frames = segment.waypoint and segment.waypoint.route_hold_after_movement_start_frames,
+        route_reset_movement_on_turn_settle = segment.waypoint and segment.waypoint.route_reset_movement_on_turn_settle,
+        route_accept_final_drift_completion = segment.waypoint and segment.waypoint.route_accept_final_drift_completion,
+    }) then
         debug_tools.error(string.format(
             "OVERWORLD_AUTO_WALK: event=queue_failed route=%s waypoint=%s index=%s steps=%d",
             tostring(segment.route and segment.route.id or "-"),
@@ -3715,13 +3722,18 @@ local function queue_path_steps(path, opts)
     return false
 end
 
-queue_overworld_segment_steps = function(steps)
+queue_overworld_segment_steps = function(steps, opts)
+    opts = opts or {}
     if not steps or #steps == 0 then
         return false
     end
     if auto_step.start_route(steps, {
         settle_frames = 0,
         settle_same_direction = true,
+        route_early_twitch_timeout_frames = opts.route_early_twitch_timeout_frames,
+        route_hold_after_movement_start_frames = opts.route_hold_after_movement_start_frames,
+        route_reset_movement_on_turn_settle = opts.route_reset_movement_on_turn_settle,
+        route_accept_final_drift_completion = opts.route_accept_final_drift_completion,
     }) then
         active_route_settle_frames = 0
         active_route_settle_same_direction = true

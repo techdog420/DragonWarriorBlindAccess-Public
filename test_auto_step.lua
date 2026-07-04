@@ -1453,6 +1453,129 @@ function tests.queued_route_early_twitch_waits_for_late_tile_completion()
     env.restore()
 end
 
+function tests.queued_route_early_twitch_override_extends_late_completion_window()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_early_twitch_timeout_frames = "32",
+            auto_step_route_turn_repress_timeout_frames = "24",
+            auto_step_inject_limit = "3",
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_release_frames = "1",
+        },
+    })
+    env.auto_step.start_route({"right", "up"}, {
+        route_early_twitch_timeout_frames = 60,
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 40 do
+        env.update(true)
+    end
+
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "waypoint timeout override should wait past the default queued-route twitch window"
+        )
+    end
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_completion = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.queued_route == true
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_completion = true
+        end
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "late tile completion inside the waypoint override should not start a seam retry"
+        )
+    end
+    assert_truthy(
+        saw_completion,
+        "queued route should accept late completion inside the waypoint timeout override"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_hold_override_keeps_turn_step_held_until_completion()
+    local env = make_env({
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "90",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_early_twitch_timeout_frames = "32",
+            auto_step_inject_limit = "3",
+        },
+    })
+    env.auto_step.start_route({"right", "down"}, {
+        route_early_twitch_timeout_frames = 90,
+        route_hold_after_movement_start_frames = 60,
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+
+    for _ = 1, 20 do
+        env.update(true)
+    end
+
+    local state = env.auto_step.get_active_step_state()
+    assert_truthy(
+        state and state.dir == "right" and state.movement_started == true,
+        "test setup should still be on the first queued route step after an early twitch"
+    )
+    assert_truthy(
+        env.injected[#env.injected] and env.injected[#env.injected].right,
+        "waypoint hold override should keep a pre-turn queued step held after an early twitch"
+    )
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local saw_completion = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.queued_route == true
+           and payload.from_x == 3
+           and payload.from_y == 1
+           and payload.to_x == 4
+           and payload.to_y == 1
+           and payload.dir == "right" then
+            saw_completion = true
+        end
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "held bridge-style queued step should complete instead of reporting a timing block"
+        )
+    end
+    assert_truthy(
+        saw_completion,
+        "held bridge-style queued step should publish completion when the tile finally changes"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_turn_repress_timing_timeout_counts_after_movement_start()
     local env = make_env({
         config_values = {
@@ -2527,6 +2650,75 @@ function tests.queued_route_final_settle_skips_movement_reset_when_disabled()
     env.restore()
 end
 
+function tests.queued_route_final_settle_drift_cancels_by_default()
+    local env = make_env({
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(5, 1)
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled" and payload.reason == "route_drift_off_path" then
+            saw_cancel = true
+        end
+    end
+
+    assert_truthy(
+        saw_cancel,
+        "queued route final-settle drift should remain conservative by default"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_final_settle_drift_can_complete_when_opted_in()
+    local env = make_env({
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_accept_final_drift_completion = true,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(5, 1)
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    local saw_complete = false
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_cancelled",
+            "opted-in final-settle drift should not cancel the queued route"
+        )
+        if event.name == "route_completed" then
+            saw_complete = true
+        end
+    end
+
+    assert_truthy(
+        saw_complete,
+        "opted-in final-settle drift should complete the queued route"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_turn_settle_skips_movement_reset_by_default()
     local env = make_env({
         movement_state = 0x40,
@@ -2681,6 +2873,40 @@ function tests.queued_route_turn_settle_resets_movement_state()
     assert_truthy(
         cleared_again,
         "queued route turn settle should keep clearing movement state during the settle window"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_turn_settle_reset_override_clears_movement_state()
+    local env = make_env({
+        movement_state = 0x40,
+        movement_subpixel = 0x90,
+        config_values = {
+            auto_step_reset_movement_on_route_turn_settle = "false",
+        },
+    })
+    env.auto_step.start_route({"right", "up"}, {
+        route_reset_movement_on_turn_settle = true,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local cleared_move = false
+    local cleared_subpixel = false
+    for _, write in ipairs(env.memory_writes) do
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_move = true
+        elseif write.address == 0x003D and write.value == 0x00 then
+            cleared_subpixel = true
+        end
+    end
+
+    assert_truthy(
+        cleared_move and cleared_subpixel,
+        "route-specific turn-settle reset should clear movement state without enabling the global config"
     )
 
     env.restore()

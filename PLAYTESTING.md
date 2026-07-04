@@ -1,10 +1,31 @@
 # Playtesting Notes
 
-Updated: 2026-06-29
+Updated: 2026-07-03
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Cantlin overworld approach reached town in live FCEUX (`2026-07-03`):
+  after the Hauksness-side southern trail, a clean re-baseline at World Map
+  `(74,101)` led through `(73,101)`, `(72,101)`, `(72,103)`, and `(73,103)`;
+  `probe_edge:UP` from `(73,103)` triggered `map change -> 0x0A (Cantlin)` and
+  landed in-town at `(15,0)`. No Golem encounter fired in the current
+  save/state during this approach. The fights near `(79,101)`, `(77,101)`,
+  and `(74,101)` were regular Green Dragon/Werewolf encounters, not the fixed
+  boss.
+
+- Hauksness overworld route completed for current playtesting (`2026-07-03`):
+  source exposes Hauksness/Haukness/Damdara route guidance from the Kol-side
+  overworld start at `(104,10)`, but now turns back through the Garinham-side
+  connector instead of the stale Tantegel/Rock Mountain Cave branch. Live FCEUX
+  validation reached Hauksness from the western route: `auto_walk_blocker:25,89`
+  from `(15,93)` crossed row 89, stepped right from `(24,89)`, and entered
+  `map=0x03 (Ruins of Hauksness)` at `(0,10)`. The patched source includes the
+  validated western desert detours and warnings before the dangerous Hauksness
+  approach. No fixed overworld boss triggered on entry; the difficult fights
+  observed nearby appeared to be random encounters. Reload `main.lua` in FCEUX
+  before judging the patched source route live.
 
 - Kol speech/menu regression follow-up (`2026-06-29`): manual Kol entrance
   checks passed for command-menu open/close, SPELL entry, and ITEM browsing

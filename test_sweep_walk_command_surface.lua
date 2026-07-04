@@ -44,10 +44,30 @@ local dialogue_handler = main:match("local function check_dialogue%(frame_delta,
 assert(dialogue_handler, "main.lua should expose check_dialogue before check_upper_dialogue")
 local merchant_handler = main:match("local function check_merchant_screen%(frame_delta%)(.-)\nend\n\nlocal function check_battle_menu")
 assert(merchant_handler, "main.lua should expose check_merchant_screen before check_battle_menu")
+local navigation_refresh = main:match("local function refresh_navigation_modules%(%)(.-)\nend\n\nlocal function ensure_navigation_modules_fresh")
+assert(navigation_refresh, "main.lua should expose refresh_navigation_modules before ensure_navigation_modules_fresh")
+local route_manager = read_file("route_manager.lua")
+local route_manager_refresh = route_manager:match("local function refresh_navigation_modules%(%)(.-)\nend\n\n%-%- Explicit manual/diagnostic hook")
+assert(route_manager_refresh, "route_manager.lua should expose refresh_navigation_modules before its public hook")
 
 assert_contains(main,
     'debug_tools.register_command("sweep_walk"',
     "main.lua should register the sweep_walk command")
+assert_contains(navigation_refresh,
+    'package.loaded["overworld_routes"] = nil',
+    "navigation module reload should refresh overworld route tables")
+assert_contains(navigation_refresh,
+    'package.loaded["object_commands"] = nil',
+    "navigation module reload should refresh command closures that capture overworld routes")
+assert_contains(navigation_refresh,
+    'overworld_routes = require "overworld_routes"',
+    "navigation module reload should refresh main.lua's overworld route reference")
+assert_contains(navigation_refresh,
+    'require("object_commands").register()',
+    "navigation module reload should re-register object commands after refreshing route tables")
+assert_contains(route_manager_refresh,
+    'package.loaded["overworld_routes"] = nil',
+    "route_manager navigation reload should refresh its overworld route module reference")
 assert_contains(main,
     "map_crawler.start_walk_sweep",
     "sweep_walk should use the map_crawler movement path")
