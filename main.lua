@@ -629,6 +629,23 @@ local function record_edge_probe_settle_sample(probe, state)
     }
 end
 
+local function abort_edge_probe_if_input_contaminated(command_name, speech, source)
+    local input_refusal, input_details = debug_tools.edge_probe_input_refusal(command_name)
+    if not input_refusal then
+        return false
+    end
+    debug_tools.error(input_refusal)
+    debug_tools.info(string.format(
+        "EDGE_PROBE_ABORT reason=input_contaminated command=%s%s %s",
+        tostring(command_name or "probe_edge"),
+        source and (" source=" .. tostring(source)) or "",
+        tostring(input_details or "")))
+    if speech then
+        tolk.output_interrupt(speech)
+    end
+    return true
+end
+
 local function edge_probe_mismatch_kind(probe, status)
     if not probe or not probe.start_report then
         return nil
@@ -1124,6 +1141,12 @@ local function start_edge_probe_from_current(dir, source, speak)
     end
     if edge_probe_state then
         return false, "probe active"
+    end
+    if abort_edge_probe_if_input_contaminated(
+        "probe_edge",
+        speak ~= false and "Edge probe refused. Input contaminated." or nil,
+        source or "command") then
+        return false, "input contaminated"
     end
 
     ensure_navigation_modules_fresh()
@@ -4807,6 +4830,10 @@ DW_QOL_STATE.walked_verify_start_refusal = function(command_name)
     if reason then
         return command_name .. " refused: " .. reason
     end
+    local input_refusal = debug_tools.edge_probe_input_refusal(command_name)
+    if input_refusal then
+        return input_refusal
+    end
     return nil
 end
 
@@ -4847,6 +4874,11 @@ debug_tools.register_command("probe_edge", function(arg)
     local reason = get_edge_probe_unavailable_reason()
     if reason then
         debug_tools.error("probe_edge refused: " .. reason)
+        return
+    end
+    if abort_edge_probe_if_input_contaminated(
+        "probe_edge",
+        "Edge probe refused. Input contaminated.") then
         return
     end
     objects.update_npcs()
@@ -4922,6 +4954,11 @@ debug_tools.register_command("probe_edge_after_raw", function(arg)
         debug_tools.error("probe_edge_after_raw refused: " .. reason)
         return
     end
+    if abort_edge_probe_if_input_contaminated(
+        "probe_edge_after_raw",
+        "Seeded edge probe refused. Input contaminated.") then
+        return
+    end
 
     local map_id, px, py = nav.get_position()
     seeded_edge_probe_state = {
@@ -4989,6 +5026,11 @@ debug_tools.register_command("probe_edge_after_raw_to", function(arg)
     local reason = get_edge_probe_unavailable_reason()
     if reason then
         debug_tools.error("probe_edge_after_raw_to refused: " .. reason)
+        return
+    end
+    if abort_edge_probe_if_input_contaminated(
+        "probe_edge_after_raw_to",
+        "Targeted seeded edge probe refused. Input contaminated.") then
         return
     end
 
@@ -5071,6 +5113,11 @@ debug_tools.register_command("probe_edge_verify", function(arg)
     local reason = get_edge_probe_unavailable_reason()
     if reason then
         debug_tools.error("probe_edge_verify refused: " .. reason)
+        return
+    end
+    if abort_edge_probe_if_input_contaminated(
+        "probe_edge_verify",
+        "Edge verification refused. Input contaminated.") then
         return
     end
     local delta = DIR_TO_DELTA[dir]
@@ -5239,6 +5286,40 @@ debug_tools.register_command("stop_auto_walk", function()
     route_mgr.clear_active_route_context("manual stop_auto_walk")
     debug_tools.info("AUTO_WALK: manually stopped")
     tolk.output_interrupt("Auto-walk stopped")
+end)
+
+debug_tools.register_command("__input_isolation", function(details)
+    local frames = type(details) == "table" and tonumber(details.frames) or nil
+    local command = type(details) == "table" and tostring(details.command or "isolate_input") or "isolate_input"
+    local reason = command .. " runtime cleanup"
+
+    if map_survey.is_active and map_survey.is_active() then
+        local ok, err = pcall(map_survey.stop_survey)
+        if not ok then
+            debug_tools.error("INPUT_ISOLATION_RUNTIME_CLEANUP survey_stop_failed=" .. tostring(err))
+        end
+    end
+
+    if edge_probe_state then
+        finish_edge_probe("cancelled", reason)
+    end
+    if edge_verify_state then
+        finish_edge_verify("cancelled", reason)
+    end
+    if seeded_edge_probe_state then
+        finish_seeded_edge_probe("aborted", reason)
+    end
+    if DW_QOL_STATE.walked_verify then
+        pcall(function() DW_QOL_STATE.walked_verify:cancel_edge(reason) end)
+        pcall(function() DW_QOL_STATE.walked_verify:cancel_door(reason) end)
+    end
+
+    auto_step.cancel_active_step(true, true)
+    route_mgr.clear_active_route_context(reason)
+    debug_tools.info(string.format(
+        "INPUT_ISOLATION_RUNTIME_CLEANUP command=%s frames=%s",
+        command,
+        tostring(frames or "-")))
 end)
 
 debug_tools.register_command("__config_reloaded", function()

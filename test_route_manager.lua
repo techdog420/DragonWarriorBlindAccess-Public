@@ -45,6 +45,7 @@ local function make_env(options)
     local joypad_sets = {}
     local memory_values = options.memory_values or {}
     local memory_writes = {}
+    local input_refusal = options.input_refusal
     local current_object = options.current_object or {id = "chest_1", name = "Chest", type = "chest", x = 6, y = 1}
     local object_list = options.object_list or {current_object}
     local current_map_id = options.start_map_id or 0x05
@@ -488,6 +489,22 @@ local function make_env(options)
     end
 
     package.preload["debug_tools"] = function()
+        local function input_refusal_details(value)
+            if type(value) == "table" then
+                return tostring(value.details or "")
+            end
+            return tostring(value)
+        end
+
+        local function input_refusal_allowed(value, opts)
+            return type(value) == "table"
+                and value.allow_route_blocked_self_input == true
+                and opts
+                and opts.allow_route_blocked_self_input == true
+                and opts.route_blocked_timing_suspect == true
+                and tostring(opts.route_blocked_dir or "") == tostring(value.route_blocked_dir or "")
+        end
+
         return {
             DEBUG_MODE = true,
             info = function(msg)
@@ -499,6 +516,21 @@ local function make_env(options)
             end,
             register_command = function(name, fn)
                 registered_commands[name] = fn
+            end,
+            input_contamination_refusal = function(command_name, opts)
+                if not input_refusal then
+                    return nil
+                end
+                if input_refusal_allowed(input_refusal, opts) then
+                    debug_infos[#debug_infos + 1] = "INPUT_CONTAMINATION_IGNORED test_stub"
+                    return nil
+                end
+                local details = input_refusal_details(input_refusal)
+                return string.format(
+                    "%s refused: input contaminated (%s)",
+                    tostring(command_name or "command"),
+                    details),
+                    details
             end,
         }
     end
@@ -576,6 +608,9 @@ local function make_env(options)
             current_map_id = map_id
             current_x = x
             current_y = y
+        end,
+        set_input_refusal = function(value)
+            input_refusal = value
         end,
         joypad_sets = joypad_sets,
         restore = function()
@@ -798,6 +833,85 @@ function tests.overworld_blocked_segment_stops_without_reroute()
     assert_equal(env.start_route_calls(), 1, "blocked overworld segment should not queue a reroute")
     assert_equal(events[#events].payload.reason, "overworld_blocked", "blocked overworld segment should publish a stop reason")
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk stopped", "blocked segment should tell the player it stopped")
+
+    env.restore()
+end
+
+function tests.autowalk_refuses_contaminated_input_before_planning()
+    local env = make_env({
+        input_refusal = "keys=LeftAlt joy=- bridge=- buttons=0x20",
+    })
+
+    local result = env.route_manager.autowalk_to_object(
+        {id = "exit_1", name = "Exit", type = "exit", x = 6, y = 1},
+        {speak = true})
+
+    assert_equal(result.status, "input_contaminated", "contaminated input should refuse auto-walk")
+    assert_equal(result.ok, false, "contaminated input should not report a queued route")
+    assert_equal(env.pathfind_calls(), 0, "contaminated auto-walk should not plan a path")
+    assert_equal(env.start_route_calls(), 0, "contaminated auto-walk should not queue movement")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_ABORT reason=input_contaminated target=Exit source=autowalk_to_object keys=LeftAlt joy=- bridge=- buttons=0x20",
+        "auto-walk should log the same contamination details as probe guardrails")
+    assert_contains(table.concat(env.outputs, "\n"),
+        "Auto-walk refused. Input contaminated.",
+        "auto-walk should announce the refusal")
+
+    env.restore()
+end
+
+function tests.autowalk_aborts_contaminated_input_on_block_without_reroute_or_seam_record()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_object(
+        {id = "exit_1", name = "Exit", type = "exit", x = 6, y = 1},
+        {speak = true})
+    local pathfinds_after_start = env.pathfind_calls()
+    env.set_input_refusal("keys=LeftAlt joy=- bridge=- buttons=0x20")
+
+    env.auto_step.on_blocked(5, 4, "up", {queued_route = true})
+
+    local events = env.published_events()
+    assert_equal(env.pathfind_calls(), pathfinds_after_start, "contaminated block should not trigger reroute planning")
+    assert_equal(env.start_route_calls(), 1, "contaminated block should not queue another route")
+    assert_equal(events[#events].name, "route_cancelled", "contaminated block should publish route cancellation")
+    assert_equal(events[#events].payload.reason, "input_contaminated", "route cancellation should tag contamination")
+    assert_equal(#env.seam_entries(0x05), 0, "contaminated block should not record seam evidence")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_ABORT reason=input_contaminated target=Exit source=route_blocked keys=LeftAlt joy=- bridge=- buttons=0x20",
+        "in-flight auto-walk abort should include contamination details")
+    assert_contains(table.concat(env.outputs, "\n"),
+        "Auto-walk refused. Input contaminated.",
+        "in-flight auto-walk abort should be announced")
+
+    env.restore()
+end
+
+function tests.autowalk_allows_timing_suspect_route_blocked_self_input_for_retry()
+    local env = make_env()
+
+    env.route_manager.autowalk_to_current()
+    env.set_input_refusal({
+        details = "keys=LeftAlt joy=- bridge=- buttons=0x20",
+        allow_route_blocked_self_input = true,
+        route_blocked_dir = "down",
+    })
+    env.auto_step.on_blocked(5, 4, "down", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 4,
+        timeout_retries = 0,
+        turn_represses = 0,
+        timing_suspect = true,
+        source = "queued_route",
+    })
+
+    assert_equal(env.inject_step_calls(), 1, "self-input route block should continue into the timing retry path")
+    assert_equal(env.last_injected_dir(), "down", "timing retry should retry the same blocked direction")
+    assert_equal(#env.published_events(), 0, "self-input timing retry should not cancel the route")
+    assert_not_contains(table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_ABORT reason=input_contaminated",
+        "self-input timing retry should not log an auto-walk contamination abort")
 
     env.restore()
 end
@@ -2704,9 +2818,9 @@ function tests.autowalk_parks_mobile_non_target_npcs_when_enabled()
     assert_equal(env.route_manager.is_npc_freeze_active(), false, "mobile parking should use targeted parking instead of full freeze")
     assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "autowalk parking should stay active while route is queued")
     assert_equal(env.memory_writes[1].address, 0, "parking should write the mobile non-target slot X")
-    assert_equal(env.memory_writes[1].value, 0x80 + 31, "parking should move mobile NPC X to sentinel coordinate")
+    assert_equal(env.memory_writes[1].value, 0x80, "parking should move mobile NPC X to the ROM-inactive coordinate")
     assert_equal(env.memory_writes[2].address, 1, "parking should write the mobile non-target slot Y")
-    assert_equal(env.memory_writes[2].value, 0x60 + 31, "parking should move mobile NPC Y to sentinel coordinate")
+    assert_equal(env.memory_writes[2].value, 0x60, "parking should move mobile NPC Y to the ROM-inactive coordinate")
     assert_equal(#env.memory_writes, 2, "parking should not write stationary or selected target NPC slots")
 
     env.auto_step.on_route_complete()
@@ -2811,8 +2925,8 @@ function tests.parked_autowalk_reactively_parks_new_mobile_npc_blocker()
     local logs = table.concat(env.debug_infos(), "\n")
     assert_equal(env.start_route_calls(), 2, "blocked parked autowalk should reroute after reactively parking a new mobile NPC")
     assert_equal(direct.blocking["5,3"], nil, "reactively parked mobile NPC should not remain in the reroute blocking table")
-    assert_equal(env.memory_writes[1].value, 0x80 + 31, "reactive parking should move the blocking NPC X")
-    assert_equal(env.memory_writes[2].value, 0x60 + 31, "reactive parking should move the blocking NPC Y")
+    assert_equal(env.memory_writes[1].value, 0x80, "reactive parking should move the blocking NPC X to the ROM-inactive coordinate")
+    assert_equal(env.memory_writes[2].value, 0x60, "reactive parking should move the blocking NPC Y to the ROM-inactive coordinate")
     assert_contains(logs, "AUTO_WALK_NPC_BLOCK", "reactive parking should still log the NPC blocker")
     assert_contains(logs, "kind=mobile", "NPC blocker log should classify mobile blockers")
     assert_contains(logs, "AUTO_WALK_NPC_REACTIVE_PARK", "reactive parking should be visible in route logs")
@@ -3088,8 +3202,8 @@ function tests.autowalk_parking_merges_pending_deferred_restore_with_new_mobile_
     assert_equal(direct.blocking["7,4"], nil, "new mobile NPCs should be parked even when a deferred restore is pending")
     assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "new autowalk should keep the deferred restore in the active parking state")
     assert_equal(#env.memory_writes, 4, "new autowalk should park newly scanned mobile NPCs while preserving the deferred one")
-    assert_equal(env.memory_writes[3].value, 0x80 + 31, "new mobile NPC X should be parked")
-    assert_equal(env.memory_writes[4].value, 0x60 + 31, "new mobile NPC Y should be parked")
+    assert_equal(env.memory_writes[3].value, 0x80, "new mobile NPC X should be parked at the ROM-inactive coordinate")
+    assert_equal(env.memory_writes[4].value, 0x60, "new mobile NPC Y should be parked at the ROM-inactive coordinate")
     assert_contains(
         table.concat(env.debug_infos(), "\n"),
         "AUTO_WALK_NPC_PARK_START merged_pending_restore slots=1",
@@ -3174,8 +3288,8 @@ function tests.autowalk_parking_restores_on_immediate_no_path()
     env.route_manager.autowalk_to_current()
 
     assert_equal(env.route_manager.is_autowalk_npc_parking_active(), false, "immediate no-path should restore parked NPCs")
-    assert_equal(env.memory_writes[1].value, 0x80 + 31, "no-path setup should park the mobile NPC")
-    assert_equal(env.memory_writes[2].value, 0x60 + 31, "no-path setup should park the mobile NPC")
+    assert_equal(env.memory_writes[1].value, 0x80, "no-path setup should park the mobile NPC at the ROM-inactive X coordinate")
+    assert_equal(env.memory_writes[2].value, 0x60, "no-path setup should park the mobile NPC at the ROM-inactive Y coordinate")
     assert_equal(env.memory_writes[3].value, 0x80 + 4, "no-path cleanup should restore the mobile NPC X")
     assert_equal(env.memory_writes[4].value, 0x60 + 4, "no-path cleanup should restore the mobile NPC Y")
 
@@ -3195,10 +3309,10 @@ function tests.manual_park_npcs_command_parks_all_npcs_and_restores()
 
     assert_equal(env.route_manager.is_autowalk_npc_parking_active(), true, "manual park should leave parking active")
     assert_equal(#env.memory_writes, 4, "manual full park should move mobile and stationary NPCs")
-    assert_equal(env.memory_writes[1].value, 0x80 + 31, "manual park should sentinel the first NPC X")
-    assert_equal(env.memory_writes[2].value, 0x60 + 31, "manual park should sentinel the first NPC Y")
-    assert_equal(env.memory_writes[3].value, 0x80 + 31, "manual park should sentinel the second NPC X")
-    assert_equal(env.memory_writes[4].value, 0x60 + 31, "manual park should sentinel the second NPC Y")
+    assert_equal(env.memory_writes[1].value, 0x80, "manual park should move the first NPC X to the ROM-inactive coordinate")
+    assert_equal(env.memory_writes[2].value, 0x60, "manual park should move the first NPC Y to the ROM-inactive coordinate")
+    assert_equal(env.memory_writes[3].value, 0x80, "manual park should move the second NPC X to the ROM-inactive coordinate")
+    assert_equal(env.memory_writes[4].value, 0x60, "manual park should move the second NPC Y to the ROM-inactive coordinate")
     assert_contains(table.concat(env.outputs, "\n"), "Parked 2 all NPC slot(s).", "manual park should announce parked slot count")
 
     env.invoke_command("restore_parked_npcs")

@@ -1,6 +1,326 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-07-03
+Updated: 2026-07-07
+
+## 2026-07-04 Cantlin Town First Survey
+
+- Baseline: fresh command polling verified with
+  `launcher_probe:codex_cantlin_survey`; `report_position` confirmed
+  Cantlin `map=0x0A` at `(20,24)`, `DOOR_STATE keys=6`, and
+  `RUNTIME_BLOCKS map=0x0A none`.
+- Parked-NPC survey preflight from `(20,24)` was viable:
+  `targets=20`, `reachable_area=128`, `reachable_targets=20`,
+  `unreachable_targets=0`, and `open_exits=north|south|west|east`.
+- `survey_objects:park_npcs` run 1 started at `(20,24)` with 20 targets.
+  It completed `Merchant 1` at `(21,25)` and `Guard 2` at `(20,21)`, then
+  stalled on `Old Man 4` at `(22,22)`. The run was manually stopped after
+  target 3; summary: `targets=3 successes=2 failures=1`, with Old Man 4
+  classified as `suspected_engine_blocked_tile`.
+- Old Man 4 failure details: survey ended at `(25,23)` and reported suspected
+  cells around `21,22|21,21|22,21|23,21|24,22|25,22|26,22|23,23|24,24|25,24|26,23|24,23`.
+  `SURVEY_STRONG_CANDIDATES map=0x0A none`, so do not promote a broad block
+  batch from this run.
+- Read-only follow-up from `(25,23)` showed `debug_pathfind_adjacent:22,22`
+  expects a simple stand route to `(22,23)` via `3 west`, and tile inspection
+  says `(24,23)`, `(25,23)`, `(25,22)`, `(21,22)`, and `(20,22)` are statically
+  walkable. The failed route is therefore a live engine/state issue, not an
+  obvious static wall.
+- Contamination/recovery boundary: after the first direct `auto_walk_blocker`
+  and same-origin `probe_edge:LEFT`, `report_movement_state` still showed a
+  stuck left/movement state. `recover_fceux_input.sh` cleared the FCEUX
+  `LeftAlt` latch (`INPUT_STATUS tag=fceux_recovery keys=- joy1=- bridge=-
+  left_alt=false`), then `reset_movement_state` zeroed the movement/subpixel
+  bytes. Treat evidence before this cleanup as noisy unless rechecked after the
+  reset.
+- Clean same-origin probes after input/movement cleanup from `(25,23)`:
+  `(25,23)->LEFT`, `(25,23)->DOWN`, `(25,23)->UP`, and `(25,23)->RIGHT` all
+  timed out with `EDGE_PROBE_MODEL_MISMATCH ... kind=blocked_despite_open_preview`.
+  Runtime blocks for LEFT and DOWN were injected only long enough to retest the
+  route and were cleared afterward (`RUNTIME_BLOCKS map=0x0A none`).
+- Current live state after cleanup: hero remains at Cantlin `(25,23)`, no
+  runtime blocks. Because all four exits from `(25,23)` blocked cleanly, this
+  looks like a standable but boxed engine pocket reached during the survey.
+  Do not promote it directly to `map_reader.lua` until either the entry edge is
+  reconstructed from clean walking or the pocket is deliberately modeled as an
+  isolated/non-routeable tile.
+- Hard-lock follow-up: the user's controller lock was not a Lua crash or total
+  emulator hang. `qfceux` was OS-responsive, `launcher_probe` and later
+  `trace_input:180` were consumed, and `dw_keyboard_input.txt` was neutral.
+  Windows did not report Alt or any direction physically held, but FCEUX/Lua
+  continued to see stable `keys=LeftAlt joy1=- bridge=-`; the game input byte
+  remained `buttons=0x20`. Treat all movement evidence from this live state as
+  contaminated until recovery/relaunch plus a fresh baseline clears or explains
+  that stale game-side button byte.
+- Recovery attempts: `recover_fceux_input.sh` foregrounded FCEUX, reset the
+  bridge, and briefly cleared the stale Alt report
+  (`INPUT_STATUS tag=fceux_recovery keys=- joy1=- bridge=- left_alt=false`).
+  It did not clear the game-side `buttons=0x20`, and FCEUX later relatched
+  `LeftAlt`. `clear_input` and a raw `START`/`B` pulse did not open the menu or
+  clear `buttons=0x20`; the raw `START` did reach Lua as `joy1=start`. No
+  scripted relaunch was attempted because `SDL.AutoResume = 0` and there was no
+  obvious current Cantlin quickslot, so relaunching from Codex risked landing
+  in unrelated state.
+- Source guardrail added after restart: direct `probe_edge`,
+  `probe_edge_verify`, and seeded edge probes now check for the contamination
+  signature before starting. If Lua joy and the bridge are idle while
+  `$0047`/`BUTTONS_PRESSED` remains nonzero, the command refuses and logs
+  `EDGE_PROBE_ABORT reason=input_contaminated ...` instead of producing new
+  movement evidence. This needs a Lua reload before it affects the live
+  emulator session.
+- Reload replay / DO NOT PROMOTE: after user reloaded Lua, focused unit tests
+  passed (`luac -p`, `lua test_debug_tools.lua`, and `git diff --check`), and
+  `launcher_probe:codex_guard_reload` confirmed command polling. Fresh baseline
+  was Cantlin `map=0x0A` at `(20,22)`, `keys=6`, no runtime blocks, stale
+  FCEUX `LeftAlt` only, and `buttons=0x00`.
+- The repeat `report_survey_start:park_npcs` was viable from `(20,22)` with
+  `targets=21`, `reachable_area=128`, `reachable_targets=21`, and
+  `open_exits=north|south|west|east`. The follow-up
+  `survey_objects:park_npcs` immediately looped on `Old Man 4` at `(22,22)`
+  with route-timeout reroutes from `(20,22)`.
+- Contaminated replay details: survey logs showed repeated
+  `movement_started=true` twitch timeouts for LEFT, RIGHT, UP, and DOWN from
+  `(20,22)`, with temporary suspected cells `(19,22)`, `(21,22)`, `(20,21)`,
+  and `(20,23)`. Manual `stop_survey` produced `SURVEY_COMPLETE targets=1
+  successes=0 failures=1 suspected_engine_blocked=1`; treat this whole replay
+  as movement-state evidence, not Cantlin geometry.
+- Read-only `inspect_move:20,22,UP/DOWN/LEFT/RIGHT` says all four adjacent
+  destinations are `effective_passable=true`. `recover_fceux_input.sh` cleared
+  the stale Alt latch (`keys=- joy1=- bridge=- left_alt=false`), but a small
+  post-recovery `simulate_input:RIGHT` still only twitched and left the hero at
+  `(20,22)`. Current recommendation: do not continue Cantlin surveys from this
+  emulator state; re-establish a known-clean walked position or restart/load a
+  clean state before collecting map evidence.
+- Manual recovery replay: after the user verified the emulator manually and
+  reloaded Lua, `launcher_probe:codex_cantlin_reverify` confirmed the command
+  loop. Baseline was Cantlin `(18,24)`, `keys=6`, no runtime blocks, stale
+  LeftAlt only, and `buttons=0x00`. `auto_walk_blocker:19,24` proved queued
+  route movement was viable by moving east to `(19,24)` via seam retry.
+- The next `survey_objects:park_npcs` again drove toward `Old Man 4`, walked
+  around the target area, then returned to the suspect `(25,23)` pocket. At
+  `codex_survey_timeout_state`, Lua/bridge input were idle but
+  `buttons=0x20` was stuck again. `stop_survey` completed with
+  `targets=1 successes=0 failures=1 suspected_engine_blocked=1`.
+- Live guard proof: in the reproduced contaminated state, `probe_edge:LEFT`
+  refused with
+  `EDGE_PROBE_ABORT reason=input_contaminated command=probe_edge keys=LeftAlt joy=- bridge=- buttons=0x20`.
+  `recover_fceux_input.sh` did not clear the game-side byte; the post-recovery
+  state remained Cantlin `(25,23)` with `buttons=0x20`. Do not continue surveys
+  or edge probing from this state without a fresh manual recovery/reload.
+- Source guardrail follow-up: the shared contamination detector now also stops
+  survey and auto-walk work. `survey_objects` refuses contaminated startup,
+  aborts active runs from tick/route events without recording candidates, and
+  clears route context; auto-walk refuses before planning and aborts in-flight
+  route blocks before reroute planning or seam-observation recording. Verified
+  with `lua test_map_survey.lua`, `lua test_route_manager.lua`,
+  `lua test_debug_tools.lua`, `luac -p ...`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep`. FCEUX still needs a
+  manual Lua reload before the new live behavior is active.
+- Post-save-state retest found a guardrail false positive, not new Cantlin
+  geometry. After the user restored a save state, fresh baseline was clean at
+  Cantlin `(20,22)` with `buttons=0x00`, no menu, and no runtime blocks.
+  Broad `survey_objects:park_npcs` and targeted
+  `survey_target:Guard 2,park_npcs` both started movement normally, but
+  `map_survey.tick` saw the expected active auto-step game button byte
+  (`buttons=0x10`) while joy/bridge were idle and aborted as
+  `reason=input_contaminated`. Source fix: skip the tick-time contamination
+  check while `auto_step.get_active_step_state()` is non-nil, leaving startup,
+  route-event, and route-manager block guards intact. Verified with
+  `lua test_map_survey.lua`, `lua test_route_manager.lua`,
+  `lua test_debug_tools.lua`, `luac -p ...`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep`. FCEUX needs another manual
+  Lua reload before continuing live survey.
+- Reload after the tick-guard refinement: command polling verified with
+  `launcher_probe:codex_after_tick_guard_reload`. Fresh baseline was Cantlin
+  `(20,21)`, `buttons=0x00`, no menu/guard, and no runtime blocks. Preflight
+  `report_survey_start:park_npcs` was viable (`targets=21`,
+  `reachable_targets=20`, `unreachable_targets=1`, `open_exits=north|south|west|east`).
+  `survey_objects:park_npcs` started and the refined tick guard allowed normal
+  active movement/rerouting to proceed through many Old Man 4 seam-retry steps.
+  The run eventually aborted on a real stuck-input signature at `(23,26)`:
+  after a seam retry right from `(23,26)` blocked, Lua joy/bridge were idle but
+  game input RAM remained `buttons=0x80`; both survey and auto-walk guards
+  refused with `reason=input_contaminated`. A post-abort snapshot still showed
+  Cantlin `(23,26)`, `buttons=0x80`, no runtime blocks. Standard
+  `recover_fceux_input.sh` did not clear it; follow-up snapshot remained
+  `(23,26)`, `buttons=0x80`. Treat this as emulator/input contamination, not
+  promotable Cantlin map evidence.
+- After another save-state restore, fresh baseline was Cantlin `(20,22)`,
+  `buttons=0x00`, no menu/guard, and no runtime blocks. Targeted
+  `survey_target:Guard 2,park_npcs` avoided the Old Man 4 opener and made real
+  route progress north to `(20,8)`, then rerouted around `(20,8)->UP` and
+  completed a step right into `(21,8)`. The survey then aborted on tick with
+  `buttons=0x80`; follow-up snapshot had progressed to `(22,8)` and was clean
+  again (`buttons=0x00`, no runtime blocks). This was another guard timing
+  false positive: route-settle / between-step time can briefly leave the game
+  button byte nonzero after a queued step completed. Source fix: skip tick-time
+  contamination checks while `auto_step.is_route_active()` is true as well as
+  while `get_active_step_state()` is non-nil. Verified with
+  `lua test_map_survey.lua`, `lua test_route_manager.lua`,
+  `lua test_debug_tools.lua`, `luac -p ...`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep`. FCEUX needs another
+  manual Lua reload before continuing live survey from the clean `(22,8)` area
+  or after a fresh save-state restore.
+- Reload validation after the route-active tick fix: command polling verified
+  with `launcher_probe:codex_after_reload_20260705`; baseline was Cantlin
+  `(20,22)`, `buttons=0x00`, no runtime blocks. Retrying
+  `survey_target:Guard 2,park_npcs` no longer aborted from the route-active
+  contamination guard, confirming the tick false positive fix live.
+- The same `Guard 2` run exposed a separate survey safety problem: it rerouted
+  repeatedly around the top-wall approach and accumulated 69 blocked events /
+  43 temporary route blocks before manual `stop_survey`. Final survey result:
+  `movement_succeeded=false`, `failure_class=suspected_engine_blocked_tile`,
+  `reason=manual_stop`, `final=(12,5)`. Post-stop snapshot was healthy:
+  Cantlin `(12,5)`, `buttons=0x00`, `RUNTIME_BLOCKS map=0x0A none`, and
+  `PATH_STATE target=nil`. DO NOT PROMOTE the broad suspected-tile list from
+  this run; it is route-churn diagnostic noise until focused same-origin
+  evidence isolates real geometry.
+- Source guardrail added: `map_survey.lua` now stops a target after more than
+  32 route-block events, logs `SURVEY_ROUTE_CHURN_ABORT`, cancels active route
+  state, finishes the run, and classifies the target as
+  `command_timing_or_state_issue` instead of clean engine-blocker evidence.
+  Regression coverage: `route_churn_cap_stops_target_as_state_issue`.
+  Verification passed: `lua test_map_survey.lua`, `lua test_route_manager.lua`,
+  `lua test_debug_tools.lua`, `luac -p ...`, `git diff --check`, and
+  `python3 run_tests.py --allow-missing-speech-dep`. FCEUX needs another
+  manual Lua reload before this cap is active live.
+- Reload validation for the route-churn cap: after the user reloaded Lua,
+  `launcher_probe:codex_churn_reload_20260705` confirmed polling and the
+  baseline was clean at Cantlin `(20,22)`, `buttons=0x00`, no runtime blocks.
+  A focused `survey_target:Guard 2,park_npcs` matched the currently moving
+  `npc_9` at `(24,10)` and succeeded, ending adjacent at `(23,10)`. It logged
+  one reroute-only suspect `(21,11)` and `reason=reroute_succeeded_after_runtime_block`;
+  do not promote that single target-route observation without focused
+  same-origin proof.
+- A broad `survey_objects:park_npcs` from `(23,10)` did not produce survey
+  attempts because the command menu/dialogue was open (`menu_active=true`,
+  `dialogue_len=23`). `stop_survey` restored all 19 parked NPCs with zero
+  targets attempted, and `simulate_input:B` closed the command menu. Treat this
+  as workflow contamination, not map survey data.
+- Focused `survey_target:Old Man 4,park_npcs` then reproduced the hard
+  input-contamination signature before the new route-churn cap could fire:
+  at `(23,26)`, after 14 temporary route blocks and while under the cap,
+  survey and auto-walk refused with `reason=input_contaminated`,
+  `keys=LeftAlt joy=- bridge=- buttons=0x80`. Cleanup worked: the survey
+  restored all 19 NPC slots, recorded no targets/results, and left no runtime
+  blocks or active path. Standard `recover_fceux_input.sh` cleared/restarted
+  the bridge but did not clear the game-side byte; the live snapshot remained
+  Cantlin `(23,26)`, `buttons=0x80`. Stop condition: do not continue Cantlin
+  movement/survey/probe work from this state.
+- Reload/hypothesis check after suspecting the overworld auto-walk timing
+  refinements: `launcher_probe:codex_ram_hypothesis_reload_20260705` confirmed
+  polling, and baseline was clean at Cantlin `(18,23)`, `buttons=0x00`, no
+  menu, no runtime blocks, and no active path. A 180-frame `trace_input` idle
+  sample showed only benign stale `LeftAlt`; `dw_keyboard_input.txt` was
+  neutral. Code inspection found the recent timing helpers can write movement
+  engine bytes `$003C/$003D`, but not `$0047` / `BUTTONS_PRESSED`.
+- Focused repro with `survey_target:npc_18,park_npcs` started run 4 cleanly
+  from `(18,23)` and reproduced contamination at frame `137384`. The final
+  triggering event was a queued-route `DOWN` attempt from `(25,23)`:
+  `movement_started=true`, `movement_start_frame=4`, blocked after 36 frames,
+  then survey/auto-walk refused with `keys=LeftAlt joy=- bridge=- buttons=0x20`.
+  The guard restored all 20 parked NPC slots, recorded no target results, and
+  left no runtime blocks or active path.
+- Diagnostic recovery checks from the contaminated `(25,23)` state:
+  `reset_movement_state` cleared `$003C/$003D` from `0x08/0x08` to `0x00/0x00`
+  but left `$0047` stuck at `0x20`. `clear_input` also left `$0047=0x20`.
+  This suggests the timing code may be leaving the game in a stale input-byte
+  state indirectly, but the current movement reset/neutral joypad hooks are not
+  enough to recover it. Next diagnostic should be an explicit, guarded
+  debug-only `$0047` clear to see whether the game immediately relatches the
+  byte or stays recovered.
+- Source diagnostic added: `debug_tools.lua` now supports `clear_game_input`,
+  which reads `BUTTONS_PRESSED` (`$0047`), writes `0x00`, re-reads it, and logs
+  `GAME_INPUT_CLEAR before=... after=... addr=0x0047`. `debug_hooks.txt`
+  documents it, and `test_debug_tools.lua` pins the exact one-byte write/log
+  behavior. Verified with `lua test_debug_tools.lua`, `luac -p debug_tools.lua
+  test_debug_tools.lua`, and `git diff --check`. FCEUX needs a manual Lua
+  reload before the command is available live.
+- Live validation after fresh emulator/script reload: command polling was
+  confirmed with `launcher_probe:codex_clear_game_input_live_20260706`.
+  Baseline was Cantlin `(20,22)`, `buttons=0x00`, no runtime blocks, and no
+  active path. Running `clear_game_input` logged
+  `GAME_INPUT_CLEAR before=0x00 after=0x00 addr=0x0047`, so the command is live
+  and harmless against a clean byte. Repeating the bad
+  `survey_target:npc_18,park_npcs` run did not reproduce stuck `$0047`; it hit
+  `SURVEY_ROUTE_CHURN_ABORT` after 33 blocked events / 4 suspected tiles at
+  `(20,22)`, restored all 20 parked NPCs, classified the target as
+  `command_timing_or_state_issue`, and recorded no promotable map evidence.
+  Post-abort state remained clean: Cantlin `(20,22)`, `buttons=0x00`, no
+  runtime blocks, no active path, and 20 NPC blockers restored. Recovery from a
+  genuinely contaminated `$0047` byte remains unproven until the stuck state
+  recurs or is reproduced under controlled conditions.
+- Follow-up survey repro after the user noted yesterday's failures were quick:
+  `launcher_probe:codex_survey_repro_20260706_a` confirmed polling, baseline
+  was again Cantlin `(20,22)` with `buttons=0x00`, and `lua
+  test_debug_tools.lua` still passed 23 tests. A focused
+  `survey_target:npc_18,park_npcs` run reproduced route churn but not input
+  contamination; it hit `SURVEY_ROUTE_CHURN_ABORT` at 33 blocked events,
+  restored all 20 parked NPCs, and left the state clean. A broader
+  `survey_objects:park_npcs` run also routed immediately to `npc_18` and churned
+  around `(20,22)` for 28 timing-block events without sticking `$0047`; it was
+  manually stopped before the cap, restored all 20 NPCs, and left Cantlin
+  `(20,22)`, `buttons=0x00`, no runtime blocks, and no active path. Because
+  the manual stop recorded `failure_class=suspected_engine_blocked_tile`, treat
+  run 3 as diagnostic churn noise and DO NOT PROMOTE its
+  `21,22|20,21|20,23|19,22` suspected tiles. A post-survey `clear_game_input`
+  check logged `before=0x00 after=0x00`, so recovery from a real stuck byte
+  remains unproven.
+- Source follow-up before the next targeted survey reload: the shared
+  `debug_tools.input_contamination_refusal` path now captures and auto-clears
+  idle-input/nonzero-`$0047` cases. The next real stuck-byte event should log
+  `INPUT_CONTAMINATION_CAPTURE`, `GAME_INPUT_AUTO_CLEAR`, and a delayed
+  `GAME_INPUT_AUTO_CLEAR_CHECK` sample while still refusing/aborting the
+  contaminated command based on the pre-clear state. `map_survey.lua` now also
+  classifies manual-stop route/churn evidence as `command_timing_or_state_issue`
+  instead of `suspected_engine_blocked_tile`, so a manual survey stop cannot
+  promote timing churn into Cantlin geometry. Verified with focused TDD
+  regressions in `lua test_debug_tools.lua` and `lua test_map_survey.lua`.
+- Bridge-off A/B / recovery boundary: after reload, `set_input_bridge:off`
+  persisted through save-state restore and a focused Old Man 4 survey ran much
+  longer, but it still reproduced the stuck input byte at `(25,23)` on a
+  queued-route `DOWN` attempt: `INPUT_CONTAMINATION_CAPTURE ... buttons=0x20`,
+  `GAME_INPUT_AUTO_CLEAR ... after=0x00`, and delayed
+  `GAME_INPUT_AUTO_CLEAR_CHECK ... buttons=0x00`. Manual controls nevertheless
+  stayed dead until the user restored a save state. Post-restore baseline at
+  `(25,23)` had `buttons=0x00`, `bridge_enabled=false`, no runtime blocks, no
+  active path, and `report_survey_start:park_npcs` still considered all four
+  exits open/reachable; read-only `inspect_move:25,23,UP/DOWN/LEFT/RIGHT`
+  also reported every edge `effective_passable=true`. Treat this as evidence
+  that `$0047` is a tripwire/symptom rather than the whole root cause.
+- Source mitigation after that boundary: contamination auto-clear now also
+  opens a 30-frame raw-neutral `GAME_INPUT_AUTO_NEUTRAL` window via the existing
+  isolation machinery. This is a mitigation/evidence cleanup step, not proven
+  emulator recovery. Verified with a red/green update to
+  `test_debug_tools.lua`, plus `lua test_debug_tools.lua`,
+  `lua test_map_survey.lua`, `lua test_route_manager.lua`,
+  `luac -p debug_tools.lua test_debug_tools.lua main.lua map_survey.lua
+  route_manager.lua`, and `git diff --check`. FCEUX needs a manual Lua reload
+  before live testing this behavior.
+- Strong hard-lock signature after reload: command polling still worked and
+  `isolate_input:180` completed, but manual controls stayed dead. The visible
+  input layers were clean or recoverable: `$0047=0x00`, bridge disabled during
+  the test, and `recover_fceux_input.sh` cleared the stale Alt report to
+  `keys=- joy1=- bridge=- buttons=0x00`. Manual direction presses and
+  Lua-injected raw `START`/`A` reached `joypad.read()` (`joy1=right`,
+  `joy1=start`, `joy1=A`), but the hero did not move and raw `A` did not open
+  the normal field command menu. `reset_movement_state` cleared `$003C/$003D`
+  from `0x08/0x08`, but raw `A` still did not open the menu afterward. The
+  user also confirmed physical controller `A` cannot open the command menu in
+  this state. This is stronger evidence of a FCEUX/game-core input consumption
+  wedge below the mod's visible input surfaces; restore save state or emulator
+  investigation is the next honest recovery path.
+- FCEUX source detour: upstream `TASEmulators/fceux` tag `v2.6.6` was cloned to
+  `/mnt/d/modding/fceux-input-debug` on branch
+  `codex/input-hardlock-diagnostics`. Diagnostic-only instrumentation was added
+  behind `FCEUX_DW_INPUT_TRACE=1` with optional
+  `FCEUX_DW_INPUT_TRACE_FILE=...`; it logs Qt key/gamepad events, Lua
+  `joypad.set` / `FCEU_LuaReadJoypad` masks, core `UpdateGP`, `$4016` strobe
+  and serial reads, and savestate load boundaries. Verification so far:
+  `git diff --check`, `g++ -std=c++11 -fsyntax-only -DPSS_STYLE=1 -Isrc
+  src/input.cpp`, `g++ -std=c++11 -fsyntax-only -DPSS_STYLE=1 -Isrc
+  src/state.cpp`, and standalone syntax for `src/input_trace.h`. Full FCEUX
+  build was not run because WSL and Windows both lack `cmake`; Windows also
+  lacks the expected MSBuild/Qt 5.15 paths from upstream's `qwin64_build.bat`.
 
 ## 2026-07-03 Cantlin Overworld Trail
 
@@ -1829,3 +2149,332 @@ For the next live map task, start a new dated section here with:
   live. The best next move is no longer broad local candidate hunting; pivot to
   a manual route trace, a transition/state investigation, or explicitly mark
   the Magic Key merchant route unresolved until new state evidence appears.
+
+## 2026-07-06 Cantlin FCEUX Input Trace Repro
+
+- REPRO: with the diagnostic qfceux binary at
+  `D:\modding\DragonWarrior1\.tools\fceux-build-tools\build-fceux\bin\qfceux.exe`,
+  `survey_target:Old Man 4,park_npcs` reproduced input contamination in
+  Cantlin at `(25,23)` on a queued-route `DOWN` attempt. Lua logged
+  `INPUT_CONTAMINATION_CAPTURE command=survey_objects keys=LeftAlt joy=- bridge=- buttons=0x20`,
+  immediately followed by `GAME_INPUT_AUTO_CLEAR ... before=0x20 after=0x00`
+  and `GAME_INPUT_AUTO_NEUTRAL ... frames=30`.
+- TRACE RESULT: `D:\modding\fceux-input-debug\dw_fceux_input_trace.log`
+  showed raw host/gamepad input was `0x00` while Lua was issuing
+  `joypad.set` Down. The key diagnostic window had `LUA_JOYPAD_SET
+  frame=6655686 ... force_mask=0x20`, `UPDATE_GP ... raw=[00,00,00,00]
+  before=[00,00,00,00] after=[20,00,00,00]`, then neutralization at
+  `frame=6655699` with `force_mask=0x00` and `after=[00,00,00,00]`.
+  A second Down burst began at `frame=6655707` and neutralized at
+  `frame=6655720`. No nearby `QT_KEY`/`QT_GAMEPAD` event produced Down.
+- LOW-LEVEL CONFIRMATION: when FCEUX internal `joy0=0x20`, the `$4016` trace
+  serializes Down as `READ_GP ... bit_before=5 ... ret=0x01` / `JPREAD
+  ... ret=0x41`. When Lua neutralizes, `UPDATE_INPUT` returns to
+  `joy=[00,00,00,00]`. This points at Lua automation/retry input reaching
+  the NES input port normally, not a physical controller or keyboard source.
+- AFTER-STATE: the survey aborted cleanly, restored parked NPCs, and command
+  polling remained alive. Follow-up `stop_survey stop_auto_walk report_position
+  report_runtime_blocks report_path_state input_status:after_repro
+  report_input_guard_state` reported Cantlin `(25,23)`, no runtime blocks,
+  no active path, `$0047=0x00`, and only the known benign stale `LeftAlt`.
+
+## 2026-07-06 FCEUX RAM Trace Build
+
+- SOURCE PATCH: extended the diagnostic FCEUX tree at
+  `D:\modding\fceux-input-debug` with watched CPU/Lua RAM-write tracing for
+  canonical RAM `$0038-$004F`, named `$003C` as `MOVEMENT_STATE`, `$003D` as
+  `MOVEMENT_SUBPIXEL`, and `$0047` as `BUTTONS_PRESSED`. The patch also adds
+  `pc=0x%04X` to the existing `$4016`/gamepad serial trace lines.
+- BUILD FIX: the first compile failed in `src\x6502.cpp` because the new
+  `WrRAM` trace used `currFrameCounter` without a local declaration. Added
+  `extern int currFrameCounter;` in that file.
+- BUILD RESULT: direct CMake/MSBuild still fails from the Codex environment
+  with duplicate `PATH` / `Path`, so the compile was run through a clean
+  PowerShell wrapper. The wrapper did not return cleanly, but the build log
+  shows `fceux.vcxproj -> ...\src\Release\fceux.exe`, stderr stayed empty,
+  and no `cmake`, `MSBuild`, `cl`, or `link` process remained afterward.
+- DEPLOYED BINARY: copied the new
+  `.tools\fceux-build-tools\build-fceux\src\Release\fceux.exe` over
+  `.tools\fceux-build-tools\build-fceux\bin\qfceux.exe`. The deployed binary
+  is 3,864,576 bytes, SHA256
+  `ECFB2571C8260750C1A3CA73590CDF97BCCE5F8AE759E49F8184660294679ADE`, and
+  contains `RAM_WRITE`, `LUA_MEM_WRITE`, `BUTTONS_PRESSED`,
+  `source=cpu_fast_ram`, `source=cpu_handler_low`, and `pc=0x%04X`.
+- NEXT REPRO: launch the deployed diagnostic `qfceux.exe` with
+  `FCEUX_DW_INPUT_TRACE=1`, load the Cantlin state and `main.lua`, then rerun
+  the narrow repro (`survey_target:Old Man 4,park_npcs`) so the new trace can
+  distinguish CPU/game RAM writes from Lua `memory.writebyte` cleanup.
+
+## 2026-07-06 RAM Trace Live Repro Attempt
+
+- BASELINE: diagnostic `qfceux.exe` was running from
+  `.tools\fceux-build-tools\build-fceux\bin\qfceux.exe`. Command polling was
+  alive but slowed; `launcher_probe:codex_lag_baseline` took about 8 seconds
+  to match. Baseline state was Cantlin `(20,22)`, `$0047 buttons=0x00`, no
+  runtime blocks, no active path, and only benign stale `LeftAlt`.
+- TRACE LOAD: `D:\modding\fceux-input-debug\dw_fceux_input_trace.log` grew by
+  about `1.3-1.6 MB` per 2 seconds while idle/near-idle. The tail was dominated
+  by `RAM_WRITE` lines for watched RAM, including repeated `$0047`
+  `old=0x00 new=0x00`. Treat the current trace build as too noisy for long
+  live repro loops.
+- PREFLIGHT: `report_survey_start:park_npcs` from `(20,22)` reported
+  `status=viable`, `targets=21`, `reachable_area=128`, `open_exit_count=4`,
+  `reachable_targets=21`, and `npc_mode=park_npcs`.
+- REPRO ATTEMPT: `survey_target:Old Man 4,park_npcs` started cleanly but did
+  not produce `INPUT_CONTAMINATION_CAPTURE` within a 240-second wait. It
+  churned through timing-sensitive movement and route retries toward Old Man 4.
+  Manual stop at frame `5280` produced `SURVEY_RESULT ... failure_class=
+  command_timing_or_state_issue ... blocked_events=16 ... reason=manual_stop`;
+  do not promote the suspected tiles from this run.
+- RECOVERY: after `stop_survey stop_auto_walk`, state was Cantlin `(27,21)`,
+  no runtime blocks, no active path, but visible input was still
+  `joy1=down buttons=0x20`. `isolate_input:180` cleared the condition; final
+  check at frame `5700` was Cantlin `(27,22)`, no runtime blocks, no active
+  path, `joy1=-`, bridge `-`, and `$0047 buttons=0x00`.
+- NEXT: quiet/rebuild the RAM trace before the next long repro. A better
+  default is to log `$0047` only on changed or nonzero writes and put the broad
+  `$0038-$004F` firehose behind `FCEUX_DW_INPUT_TRACE_VERBOSE=1`.
+
+## 2026-07-06 Quiet RAM Trace Build
+
+- SOURCE PATCH: updated `D:\modding\fceux-input-debug\src\input_trace.h` so
+  default RAM-write tracing still watches `$0038-$004F`, but only logs
+  `$0047` / `BUTTONS_PRESSED` when the old or new byte is nonzero or the byte
+  changes. `FCEUX_DW_INPUT_TRACE_VERBOSE=1` still logs all watched RAM writes,
+  including `$003C/$003D` movement state.
+- BUILD RESULT: direct CMake/MSBuild remains unsuitable from the Codex
+  environment because of duplicate `PATH` / `Path`. The clean wrapper again
+  timed out externally, but
+  `.tools\fceux-build-tools\quiet_ramtrace_build_stdout.log` shows
+  `fceux.vcxproj -> ...\src\Release\fceux.exe`, stderr is empty, and no
+  compiler/build process remained afterward.
+- DEPLOYED BINARY: copied the rebuilt
+  `.tools\fceux-build-tools\build-fceux\src\Release\fceux.exe` over
+  `.tools\fceux-build-tools\build-fceux\bin\qfceux.exe`. SHA256 is
+  `D3AEBB34138EF9FC026FAF8F90BEF9867B3434AAF6B3948474359A1D7B6A520F`.
+- NEXT REPRO: launch the deployed diagnostic with only
+  `FCEUX_DW_INPUT_TRACE=1` and without
+  `FCEUX_DW_INPUT_TRACE_VERBOSE=1`; then rerun
+  `survey_target:Old Man 4,park_npcs`.
+
+## 2026-07-07 Quiet Trace Cantlin Repro
+
+- BASELINE: diagnostic `.tools\fceux-build-tools\build-fceux\bin\qfceux.exe`
+  was running with SHA256
+  `D3AEBB34138EF9FC026FAF8F90BEF9867B3434AAF6B3948474359A1D7B6A520F`.
+  `launcher_probe:codex_quiet_baseline` confirmed command polling. Cantlin
+  baseline was `(20,22)`, `$0047 buttons=0x00`, no runtime blocks, no active
+  path, and only benign stale `LeftAlt`.
+- PREFLIGHT: `report_survey_start:park_npcs` reported `status=viable`,
+  `targets=21`, `reachable_area=128`, and `reachable_targets=21`.
+- REPRO: `survey_target:Old Man 4,park_npcs` reproduced the contamination at
+  frame `20166` while probing from `(24,23)` toward `UP`. The mod log reported
+  `INPUT_CONTAMINATION_CAPTURE command=survey_objects keys=LeftAlt joy=-
+  bridge=- buttons=0x11`, followed by `GAME_INPUT_AUTO_CLEAR before=0x11
+  after=0x00` and `GAME_INPUT_AUTO_CLEAR_CHECK ... buttons=0x00`.
+- TRACE RESULT: `D:\modding\fceux-input-debug\dw_fceux_input_trace.log`
+  showed Lua forcing `force_mask=0x10` for the movement direction. At FCEUX
+  frame `6642700`, `QT_GAMEPAD ... pads=[01,00,00,00]` appeared and
+  `LUA_READ_JOYPAD ... input=0x01 ... output=0x11` merged the raw native A
+  bit with Lua's direction. There was no nearby `QT_KEY` event in the tail,
+  so the raw A bit was probably stale native keyboard-backed GamePad.0 state.
+- CONFIG FINDING: direct `.tools` launch was using
+  `.tools\fceux-build-tools\build-fceux\bin\fceux.cfg`, which still had
+  `SDL.Input.GamePad.0.DeviceType = Keyboard`, `SDL.ToggleMenu = 0`,
+  `SDL.Hotkeys.MainMenuHide = Alt+/`, and
+  `SDL.Hotkeys.FullScreen = Alt+Return`. This bypassed the normal launcher
+  mitigations documented in `launch_dw.ps1`.
+- MITIGATION APPLIED: patched the `.tools` `fceux.cfg` so
+  `SDL.Input.GamePad.0.DeviceType = None`, `SDL.ToggleMenu = 1`, and both
+  Alt hotkeys are blank. This affects the next FCEUX start; the currently
+  running emulator had already loaded the old config.
+- RELOAD FOLLOW-UP: after the user reloaded back to the Cantlin save state,
+  `launcher_probe:codex_after_config_reload` confirmed command polling and
+  Cantlin `(20,22)` with `$0047 buttons=0x00`, but the `.tools` config had
+  reverted/restored to `SDL.Input.GamePad.0.DeviceType = Keyboard`,
+  `SDL.ToggleMenu = 0`, `SDL.Hotkeys.MainMenuHide = Alt+/`, and
+  `SDL.Hotkeys.FullScreen = Alt+Return`. Conditions are good for reproducing
+  the old path, but not for judging the config mitigation. Next clean test
+  should launch the diagnostic binary via `launch_dw.ps1 -FceuxPath` or add
+  source-level `DTestButton` source tracing/suppression.
+- AFTER-STATE: `simulate_input:B` closed the command menu. Final live check
+  was Cantlin `(24,23)`, `$0047 buttons=0x00`, no runtime blocks, no active
+  path, and `menu_active=false`.
+
+## 2026-07-07 Launcher Config And Self-Input Guard
+
+- VERIFY: user launched through `launch_dw.ps1`; live process was the
+  diagnostic `.tools\fceux-build-tools\build-fceux\bin\qfceux.exe`. The
+  `.tools` runtime config still showed `SDL.Input.GamePad.0.DeviceType = None`,
+  `SDL.ToggleMenu = 1`, and blank Alt menu/fullscreen hotkeys while FCEUX was
+  running. This supports using the launcher as the durable pre-start mitigation
+  because direct FCEUX exits/restarts can rewrite the local config.
+- LIVE REPRO: `survey_target:Old Man 4,park_npcs` no longer reproduced the
+  direct-launch raw `A` merge. It eventually aborted at Cantlin `(25,23)` on a
+  queued-route `DOWN` timeout: `INPUT_CONTAMINATION_CAPTURE ... buttons=0x20`,
+  then `GAME_INPUT_AUTO_CLEAR ... after=0x00`.
+- TRACE RESULT: `D:\modding\fceux-input-debug\dw_fceux_input_trace.log` showed
+  raw host/gamepad input stayed `0x00`; Lua forced `Down` (`force_mask=0x20`),
+  FCEUX delivered it through `$4016`, the ROM wrote `$0047`, and Lua later
+  neutralized. The remaining `$0047=0x20` was therefore self-injected route
+  input sampled during route-block cleanup, not a physical/controller redirect.
+- CODE FIX: `debug_tools.input_contamination_refusal` now accepts contextual
+  route-block options and ignores only timing-suspect `route_blocked` samples
+  where `$0047` exactly matches the direction just injected. `map_survey.lua`
+  and `route_manager.lua` pass that context; startup, idle/tick, wrong-button,
+  raw `A`, and raw `Start` contamination paths still refuse/abort.
+- VERIFY: `luajit -b debug_tools.lua NUL`, `luajit -b route_manager.lua NUL`,
+  and `luajit -b map_survey.lua NUL` passed. `luajit test_route_manager.lua`
+  passed 103 tests. `luajit test_map_survey.lua` passed 53 tests.
+  `luajit test_debug_tools.lua` passed 27 tests when run with
+  `DW_TEST_TMPDIR` pointed at a workspace-local temp directory; a filtered run
+  also passed `input_guard_allows_timing_suspect_route_blocked_self_direction`.
+- NEXT: manually reload `main.lua` in FCEUX, then re-run the narrow
+  `survey_target:Old Man 4,park_npcs` from a clean Cantlin save state. Expect
+  `INPUT_CONTAMINATION_IGNORED ... reason=route_blocked_self_input` instead of
+  `SURVEY_ABORT reason=input_contaminated` for the self-injected `DOWN`
+  timing sample; any raw `A`/wrong-button recurrence should still abort and be
+  treated as a separate input-source bug.
+- POST-RELOAD HARD-LOCK: after the user manually reloaded `main.lua`, command
+  polling stayed live at Cantlin `(25,23)` and visible input was clean
+  (`joy1=-`, bridge `-`, `$0047=0x00`). The pre-recovery movement snapshot
+  still had `$003C/$003D = 0x08/0x08`; `reset_movement_state` cleared those to
+  `0x00/0x00`, and `clear_game_input` / `isolate_input:30` left `$0047=0x00`.
+  A corrected quoted `simulate_raw_input:A,12` reached Lua/FCEUX
+  (`Queued raw joypad: A for 12 frames`, `joy1=A`), but the normal field
+  command menu still did not open (`menu_active=false`). This confirms the
+  deeper hard-lock persists below the mod-visible input layers; save-state
+  restore is the right recovery before further Cantlin surveying.
+
+## 2026-07-07 Post-Restore Self-Input Filter And Controller-Poll Wedge
+
+- BASELINE: after save-state restore, `launcher_probe:post_restore_cantlin_baseline`
+  confirmed command polling. Cantlin was `map=0x0A` at `(20,22)`, `$0047
+  buttons=0x00`, no menu/dialogue, no runtime blocks, and no active path.
+  `report_survey_start:park_npcs` was viable with `targets=21`,
+  `reachable_area=128`, and all four exits open.
+- FOCUSED REPRO: `survey_target:Old Man 4,park_npcs` started from `(20,22)`.
+  It churned through multiple route retries and reached the familiar `(25,23)`
+  pocket. At frame `26108`, queued-route `DOWN` produced `$0047=0x20`; the new
+  guard correctly logged `INPUT_CONTAMINATION_IGNORED ... reason=route_blocked_self_input`
+  for both `survey_objects` and `auto_walk`, then continued instead of
+  aborting.
+- SECOND-STAGE WEDGE: the follow-up seam retry from `(25,23)` toward `DOWN`
+  timed out with `movement_started=false`. At frame `26251`, the guard captured
+  `keys=LeftAlt joy=- bridge=- buttons=0x20`, with movement bytes
+  `$003C/$003D = 0x08/0x08`, logged `GAME_INPUT_AUTO_CLEAR ... before=0x20
+  after=0x00`, and the delayed `GAME_INPUT_AUTO_CLEAR_CHECK` still showed
+  `$0047 buttons=0x00`.
+- RECOVERY TEST: despite `$0047=0x00`, a raw `simulate_raw_input:A,12` at
+  frame `28260` reached Lua/FCEUX but did not open the field command menu.
+  `reset_movement_state:post_auto_clear_raw_a_failed` then cleared
+  `$003C/$003D` from `0x08/0x08` to `0x00/0x00`; a second raw
+  `simulate_raw_input:A,12` at frame `30780` still did not open the menu.
+  Final snapshot at frame `32160` was internally clean from Lua's view:
+  `(25,23)`, `$0047=0x00`, `$003C/$003D=0x00/0x00`, no runtime blocks, no
+  active path.
+- FCEUX TRACE RESULT: `D:\modding\fceux-input-debug\dw_fceux_input_trace.log`
+  showed the raw `A` injections were present in FCEUX (`LUA_READ_JOYPAD ...
+  output=0x01`, `UPDATE_INPUT joy=[01,00,00,00]`) for frames
+  `6638765..6638777` and `6641285..6641297`, but the tail segment showed no
+  `B4016`, `STROBE_GP`, `READ_GP`, or `JPREAD` during those raw-A windows.
+  This means the input is not being lost in the FCEUX/Lua merge path; the ROM
+  appears to have stopped polling `$4016` in the wedged state.
+- CPU TOOLING: `report_cpu_state[:TAG]` was implemented to capture the wedged
+  ROM PC/register/opcode state without disturbing gameplay.
+- CPU CAPTURE: after reload while still wedged, `report_cpu_state:fceux_wedged`
+  and `report_cpu_state:fceux_wedged_2` caught the ROM at `$B9F8` and `$B9ED`.
+  Live opcode bytes were `$B9F8: 4C ED B9` (`JMP $B9ED`) and
+  `$B9ED: C0 00 F0` (`CPY #$00; BEQ ...`). The relevant RAM window showed
+  `$004E=0x2A`, `$004F=0x81`, `$0047=0x00`, and `$003C/$003D=0x00/0x00`.
+- ROOT-CAUSE SHAPE: ROM bank 0 at `$B9E9-$B9F8` loads `Y` from `$004E`,
+  writes `0xF0` to `$0200,Y`, increments `Y` by 4, and loops until `Y==0`.
+  Starting at `$004E=0x2A` is impossible to terminate because `0x2A mod 4`
+  stays 2 forever. This explains why FCEUX/Lua can deliver input while the
+  ROM never polls `$4016`: the game is trapped in its sprite-OAM clear loop.
+- SOURCE FOLLOW-UP: `report_oam_offset[:TAG]` and
+  `watch_oam_offset[:on|off|status|TAG]` are implemented in
+  `debug_tools.lua`. A first live arm proved the hook survived save-state
+  restore, but `$004E` is a normal hot scratch/OAM cursor byte: it logged
+  79,902 writes before being disarmed, including many temporary misaligned
+  values that were later corrected. Do not use verbose logging for the repro.
+- QUIET WATCHER UPDATE: `watch_oam_offset[:TAG]` now keeps a recent-write ring
+  buffer silently and logs only `OAM_OFFSET_STUCK` if the CPU is actually at
+  `$B9ED`/`$B9F8` with a non-terminating `$004E` value. Verbose per-write
+  logging moved to `watch_oam_offset_verbose[:TAG]` for tiny captures only.
+  Verification passed: `luajit -b debug_tools.lua NUL`, focused
+  `DW_TEST_FILTER=oam_offset luajit test_debug_tools.lua`, full
+  `luajit test_debug_tools.lua` with 32 tests, and `git diff --check`.
+- NEXT: manually reload `main.lua`, restore the clean Cantlin save state if
+  the reload disturbs it, then arm quiet `watch_oam_offset:repro` before
+  reproducing `survey_target:Old Man 4,park_npcs`. The target evidence line is
+  `OAM_OFFSET_STUCK tag=repro ... value=0x2A ... recent=...`; runtime PC/write
+  context should decide which normal `$004E` writer leaves the final bad value.
+
+## 2026-07-07 OAM Root Cause And Parking Fix
+
+- CLEAN REPRO CAPTURE: after the user restored the Cantlin save state, quiet
+  `watch_oam_offset:repro` was armed from a clean `(20,22)` baseline and
+  `survey_target:Old Man 4,park_npcs` reproduced the hard lock at frame
+  `10601`. The key log line was
+  `OAM_OFFSET_STUCK tag=repro ... value=0x2A ... pc=0xB9F8 ...
+  diagnosis=misaligned_offset_will_never_exit_B9ED_B9F8`.
+- WRITER CONTEXT: the recent write ring ended with the ROM object-draw writer
+  logged as `pc=0xB972 value=0x2A` after the `STX $4E` at `$B970`. Since
+  `$2A / 3 = 14`, the bad offset maps to NPC object-table slot 14. A later
+  `report_npcs` after restore showed slot 14 is `Merchant 6`; the slot had
+  already been restored by then, so this names the table slot, not the live
+  parked bytes during the lock.
+- ROOT CAUSE: parked-NPC survey used low coordinate `(31,31)` for non-target
+  NPCs. The Dragon Warrior renderer does not treat that as inactive; it skips
+  only slots whose low x/y coordinate bits are both zero. During parked-NPC
+  survey, those offscreen-but-rendered slots can drive the object draw loop and
+  leave `$004E` as a non-multiple-of-4 object-table offset. The subsequent
+  `$B9ED-$B9F8` OAM clear loop increments by 4 until `Y==0`, so `$004E=0x2A`
+  can never terminate.
+- SOURCE FIX: `map_survey.lua` now parks non-target NPCs at low coordinate
+  `(0,0)`, and `route_manager.lua` does the same for proactive and reactive
+  autowalk NPC parking while preserving each raw byte's high bits. Tests were
+  updated in `test_map_survey.lua` and `test_route_manager.lua`.
+- VERIFY: `git diff --check`, `luajit -b map_survey.lua NUL`,
+  `luajit -b route_manager.lua NUL`, `luajit test_map_survey.lua`, and
+  `luajit test_route_manager.lua` passed. `luajit test_debug_tools.lua` also
+  passed 32 tests when run with `DW_TEST_TMPDIR` pointed at `.tmp-tests`; on
+  this Windows LuaJIT path the default `/tmp` fallback is not writable.
+- CONTAMINATED FOLLOW-UP: after the user reloaded `main.lua`, a baseline probe
+  still reported Cantlin `(25,23)`, `pc=$B9F6/$B9F8`, and `$004E=0x2A`. That
+  proves the script reload alone did not reset the ROM out of the prior OAM
+  loop. `watch_oam_offset:off` disarmed the stale watcher.
+- LIVE VALIDATION: after the user restored the clean Cantlin save state,
+  `launcher_probe:parking_fix_clean` confirmed a clean `(20,22)` baseline with
+  `$0047 buttons=0x00`. `report_oam_offset:parking_fix_clean` reported
+  `$004E=0x60`, `aligned=true`, `reaches_zero=true`, and the quiet watcher
+  armed with `stuck_reports=0`. Re-running
+  `survey_target:Old Man 4,park_npcs` did not produce `OAM_OFFSET_STUCK` and
+  did not hard-lock controls; the survey failed as a normal route issue with
+  `state_issues=1`.
+- ROUTE FOLLOW-UP: after the parking fix held, nine Cantlin Old Man 4
+  lower-pocket seams reproduced as route failures and were confirmed with
+  same-origin `probe_edge` checks:
+  `(20,23)->RIGHT` into `(21,23).west`,
+  `(20,24)->RIGHT` into `(21,24).west`,
+  `(22,24)->LEFT` into `(21,24).east`,
+  `(21,25)->UP` into `(21,24).south`,
+  `(22,24)->UP` into `(22,23).south`,
+  `(22,24)->RIGHT` into `(23,24).west`,
+  `(22,25)->RIGHT` into `(23,25).west`, and
+  `(23,26)->UP` into `(23,25).south`, and
+  `(24,25)->UP` into `(24,24).south`. These were promoted to
+  `MAP_DIRECTIONAL_BLOCKS[0x0A]` in `map_reader.lua` with regression coverage
+  in `test_map_reader.lua`.
+- POST-RELOAD CHECK: after the user reloaded `main.lua`, command polling was
+  live at Cantlin `(23,26)`, `RUNTIME_BLOCKS map=0x0A none`, and
+  `$0047 buttons=0x00`. The static model routed around the eight existing
+  seams, then same-origin probing confirmed `(24,25)->UP` into
+  `(24,24).south` as the ninth seam. Because that ninth seam was patched after
+  the reload, FCEUX needs one more manual `main.lua` reload before the current
+  source model is fully live.
+- NEXT: manually reload `main.lua` again so FCEUX picks up the ninth
+  `map_reader.lua` seam, confirm `report_runtime_blocks` is clear, then retry
+  the narrow `survey_target:Old Man 4,park_npcs` or a direct route to the Old
+  Man 4 stand.

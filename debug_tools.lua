@@ -19,6 +19,10 @@
 --   report_coords        -- write effective + raw coordinate bytes to the log
 --   debug_seed_open_doors:X,Y;X,Y -- seed opened-door RAM slots for route tests
 --   report_movement_state[:TAG] -- dump movement/camera-adjacent RAM bytes
+--   report_cpu_state[:TAG] -- dump CPU registers/opcode plus input/movement RAM
+--   report_oam_offset[:TAG] -- diagnose the $004E sprite clear-loop offset
+--   watch_oam_offset[:on|off|status|TAG] -- quietly track $004E writes and report stuck loop
+--   watch_oam_offset_verbose[:TAG] -- log every $004E write for tiny captures
 --   toggle_debug         -- flip DEBUG_MODE on/off at runtime
 --   simulate_input:UP    -- inject a one-frame D-pad or button press
 --   simulate_input:UP,12 -- inject 12 consecutive frames of the same press
@@ -33,6 +37,9 @@
 --   simulate_input:START
 --   simulate_input:SELECT
 --   clear_input          -- inject a neutral joypad frame to clear stale held input
+--   clear_game_input     -- zero the game-side BUTTONS_PRESSED byte ($0047)
+--   isolate_input[:N]    -- cancel debug input, clear $0047, and emit N neutral raw frames
+--   set_input_bridge:off -- runtime-disable FCEUX keyboard bridge until re-enabled
 --   input_status[:TAG]   -- log current input.get(), joypad.read(1), and bridge state
 --   trace_input[:FRAMES] -- log input.get() and joypad.read(1) changes
 --   launcher_probe[:TAG] -- write a deterministic launcher readiness marker
@@ -155,6 +162,23 @@ local keyboard_bridge_active = false
 local external_keyboard_bridge_active = false
 local external_stale_alt_ignored_active = false
 local external_keyboard_bridge_missing_logged = false
+local keyboard_bridge_runtime_override = nil
+local input_isolation = nil
+local GAME_INPUT_RECOVERY_CHECK_FRAMES = 8
+local GAME_INPUT_CONTAMINATION_NEUTRAL_FRAMES = 30
+local pending_game_input_recovery_check = nil
+local OAM_CLEAR_OFFSET_ADDR = 0x004E
+local OAM_OFFSET_RECENT_MAX = 16
+local oam_offset_watch = {
+    armed = false,
+    tag = "-",
+    verbose = false,
+    writes = 0,
+    last_value = nil,
+    recent = {},
+    stuck_reports = 0,
+    last_stuck_signature = nil,
+}
 -- Content cache for the keyboard_bridge.ps1 sidecar's output file. The sidecar
 -- only rewrites the file when key state changes, so the same bytes show up on
 -- the vast majority of frames. Caching the parsed bridge table avoids the
@@ -334,6 +358,334 @@ local function format_byte_table(bytes)
         parts[#parts + 1] = string.format("%02X", bytes[i])
     end
     return table.concat(parts, " ")
+end
+
+local function read_byte_safe(address)
+    if not memory or type(memory.readbyte) ~= "function" then
+        return nil
+    end
+    local ok, value = pcall(memory.readbyte, address)
+    if not ok or value == nil then
+        return nil
+    end
+    return tonumber(value) or 0
+end
+
+local function read_cpu_register_safe(name)
+    if not memory or type(memory.getregister) ~= "function" then
+        return nil, "memory.getregister_unavailable"
+    end
+    local ok, value = pcall(memory.getregister, name)
+    if not ok then
+        return nil, "memory.getregister_error:" .. tostring(value)
+    end
+    if value == nil then
+        return nil, "register_unavailable:" .. tostring(name)
+    end
+    return tonumber(value) or 0
+end
+
+local function format_opcode_at_pc(pc)
+    if pc == nil then
+        return "????:?? ?? ??"
+    end
+    local base = pc % 0x10000
+    local bytes = {}
+    for offset = 0, 2 do
+        local value = read_byte_safe((base + offset) % 0x10000)
+        bytes[#bytes + 1] = value and string.format("%02X", value % 0x100) or "??"
+    end
+    return string.format("%04X:%s %s %s", base, bytes[1], bytes[2], bytes[3])
+end
+
+local function cpu_state_context()
+    local map_id = read_byte_safe(addr.MAP_ID) or 0
+    local terrain = read_byte_safe(addr.TERRAIN_OFFSET) or 0
+    local player_x = read_byte_safe(addr.PLAYER_X) or 0
+    local player_y = read_byte_safe(addr.PLAYER_Y) or 0
+    local overworld_x = read_byte_safe(addr.OVERWORLD_X) or 0
+    local overworld_y = read_byte_safe(addr.OVERWORLD_Y) or 0
+    local buttons = addr.BUTTONS_PRESSED and (read_byte_safe(addr.BUTTONS_PRESSED) or 0) or 0
+    local move = read_byte_safe(0x003C) or 0
+    local sub = read_byte_safe(0x003D) or 0
+    return string.format(
+        "map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) buttons=0x%02X move=0x%02X sub=0x%02X ram0030_004F=%s",
+        map_id,
+        maps_m.get_name(map_id),
+        terrain,
+        player_x,
+        player_y,
+        overworld_x,
+        overworld_y,
+        buttons,
+        move,
+        sub,
+        format_ram_range(0x0030, 0x004F))
+end
+
+local function log_cpu_state(tag)
+    tag = tostring(tag or "-")
+    local pc, reason = read_cpu_register_safe("pc")
+    if not pc then
+        M.info(string.format(
+            "CPU_STATE_UNAVAILABLE tag=%s reason=%s %s",
+            tag,
+            tostring(reason),
+            cpu_state_context()))
+        return
+    end
+
+    local a = read_cpu_register_safe("a") or 0
+    local x = read_cpu_register_safe("x") or 0
+    local y = read_cpu_register_safe("y") or 0
+    local s = read_cpu_register_safe("s") or 0
+    local p = read_cpu_register_safe("p") or 0
+    M.info(string.format(
+        "CPU_STATE tag=%s pc=0x%04X a=0x%02X x=0x%02X y=0x%02X s=0x%02X p=0x%02X op=%s %s",
+        tag,
+        pc % 0x10000,
+        a % 0x100,
+        x % 0x100,
+        y % 0x100,
+        s % 0x100,
+        p % 0x100,
+        format_opcode_at_pc(pc),
+        cpu_state_context()))
+end
+
+local function oam_offset_diagnosis(value)
+    value = tonumber(value) or 0
+    value = value % 0x100
+    local aligned = (value % 4) == 0
+    local iterations
+    local reaches_zero
+    if value == 0 then
+        iterations = 0
+        reaches_zero = true
+    elseif aligned then
+        iterations = (0x100 - value) / 4
+        reaches_zero = true
+    else
+        iterations = nil
+        reaches_zero = false
+    end
+
+    local diagnosis
+    if value == 0 then
+        diagnosis = "exit_ready"
+    elseif reaches_zero then
+        diagnosis = "finite_sprite_clear_loop"
+    else
+        diagnosis = "misaligned_offset_will_never_exit_B9ED_B9F8"
+    end
+
+    return aligned, reaches_zero, iterations, diagnosis
+end
+
+local function log_oam_offset(tag, prefix, write_value)
+    tag = tostring(tag or "-")
+    local value = write_value
+    if value == nil then
+        value = read_byte_safe(OAM_CLEAR_OFFSET_ADDR) or 0
+    end
+    value = (tonumber(value) or 0) % 0x100
+    local aligned, reaches_zero, iterations, diagnosis = oam_offset_diagnosis(value)
+    local pc = read_cpu_register_safe("pc")
+    local y = read_cpu_register_safe("y")
+    local iterations_text = iterations == nil and "never" or tostring(iterations)
+    M.info(string.format(
+        "%s tag=%s addr=0x%04X value=0x%02X aligned=%s reaches_zero=%s iterations_to_zero=%s pc=%s y=%s op=%s diagnosis=%s ram004F=0x%02X",
+        prefix or "OAM_OFFSET",
+        tag,
+        OAM_CLEAR_OFFSET_ADDR,
+        value,
+        tostring(aligned),
+        tostring(reaches_zero),
+        iterations_text,
+        pc and string.format("0x%04X", pc % 0x10000) or "unavailable",
+        y and string.format("0x%02X", y % 0x100) or "unavailable",
+        pc and format_opcode_at_pc(pc) or "????:?? ?? ??",
+        diagnosis,
+        read_byte_safe(0x004F) or 0))
+end
+
+local function format_oam_offset_entry(entry)
+    if not entry then
+        return "-"
+    end
+    return string.format(
+        "frame=%s pc=%s value=0x%02X y=%s ram004F=0x%02X aligned=%s op=%s",
+        tostring(entry.frame or "-"),
+        entry.pc and string.format("0x%04X", entry.pc % 0x10000) or "unavailable",
+        entry.value or 0,
+        entry.y and string.format("0x%02X", entry.y % 0x100) or "unavailable",
+        entry.ram004F or 0,
+        tostring(entry.aligned),
+        tostring(entry.op or "????:?? ?? ??"))
+end
+
+local function format_recent_oam_offset_writes()
+    local recent = oam_offset_watch.recent or {}
+    if #recent == 0 then
+        return "-"
+    end
+    local parts = {}
+    for i = 1, #recent do
+        parts[#parts + 1] = string.format("{%s}", format_oam_offset_entry(recent[i]))
+    end
+    return table.concat(parts, " ")
+end
+
+local function push_oam_offset_write(entry)
+    local recent = oam_offset_watch.recent
+    if not recent then
+        recent = {}
+        oam_offset_watch.recent = recent
+    end
+    recent[#recent + 1] = entry
+    while #recent > OAM_OFFSET_RECENT_MAX do
+        table.remove(recent, 1)
+    end
+end
+
+local function record_oam_offset_write(value)
+    local written = (tonumber(value) or 0) % 0x100
+    local aligned, reaches_zero, iterations, diagnosis = oam_offset_diagnosis(written)
+    local pc = read_cpu_register_safe("pc")
+    local y = read_cpu_register_safe("y")
+    local entry = {
+        frame = current_frame,
+        value = written,
+        pc = pc,
+        y = y,
+        op = pc and format_opcode_at_pc(pc) or "????:?? ?? ??",
+        ram004F = read_byte_safe(0x004F) or 0,
+        aligned = aligned,
+        reaches_zero = reaches_zero,
+        iterations = iterations,
+        diagnosis = diagnosis,
+    }
+    oam_offset_watch.writes = (oam_offset_watch.writes or 0) + 1
+    oam_offset_watch.last_value = written
+    push_oam_offset_write(entry)
+    if oam_offset_watch.verbose then
+        local iterations_text = iterations == nil and "never" or tostring(iterations)
+        M.info(string.format(
+            "OAM_OFFSET_WRITE tag=%s addr=0x%04X value=0x%02X aligned=%s reaches_zero=%s iterations_to_zero=%s pc=%s y=%s op=%s diagnosis=%s ram004F=0x%02X",
+            tostring(oam_offset_watch.tag or "-"),
+            OAM_CLEAR_OFFSET_ADDR,
+            written,
+            tostring(aligned),
+            tostring(reaches_zero),
+            iterations_text,
+            pc and string.format("0x%04X", pc % 0x10000) or "unavailable",
+            y and string.format("0x%02X", y % 0x100) or "unavailable",
+            entry.op,
+            diagnosis,
+            entry.ram004F or 0))
+    end
+end
+
+local function tick_oam_offset_stuck_watch(frame)
+    if not oam_offset_watch.armed then
+        return
+    end
+    local pc = read_cpu_register_safe("pc")
+    if not pc then
+        return
+    end
+    pc = pc % 0x10000
+    if pc ~= 0xB9ED and pc ~= 0xB9F8 then
+        return
+    end
+
+    local value = read_byte_safe(OAM_CLEAR_OFFSET_ADDR) or 0
+    local aligned, reaches_zero, iterations, diagnosis = oam_offset_diagnosis(value)
+    if aligned then
+        return
+    end
+
+    local ram004F = read_byte_safe(0x004F) or 0
+    local signature = string.format("%02X:%02X", value % 0x100, ram004F % 0x100)
+    if oam_offset_watch.last_stuck_signature == signature then
+        return
+    end
+    oam_offset_watch.last_stuck_signature = signature
+    oam_offset_watch.stuck_reports = (oam_offset_watch.stuck_reports or 0) + 1
+
+    local y = read_cpu_register_safe("y")
+    local iterations_text = iterations == nil and "never" or tostring(iterations)
+    M.info(string.format(
+        "OAM_OFFSET_STUCK tag=%s frame=%d addr=0x%04X value=0x%02X aligned=%s reaches_zero=%s iterations_to_zero=%s pc=0x%04X y=%s op=%s diagnosis=%s ram004F=0x%02X writes=%d recent=%s",
+        tostring(oam_offset_watch.tag or "-"),
+        frame or current_frame or 0,
+        OAM_CLEAR_OFFSET_ADDR,
+        value % 0x100,
+        tostring(aligned),
+        tostring(reaches_zero),
+        iterations_text,
+        pc,
+        y and string.format("0x%02X", y % 0x100) or "unavailable",
+        format_opcode_at_pc(pc),
+        diagnosis,
+        ram004F,
+        oam_offset_watch.writes or 0,
+        format_recent_oam_offset_writes()))
+end
+
+local function set_oam_offset_watch(enabled, tag, verbose)
+    tag = tostring(tag or "-")
+    if not memory or type(memory.registerwrite) ~= "function" then
+        M.info(string.format(
+            "OAM_OFFSET_WATCH_UNAVAILABLE tag=%s reason=memory.registerwrite_unavailable",
+            tag))
+        return
+    end
+
+    if not enabled then
+        local ok, err = pcall(memory.registerwrite, OAM_CLEAR_OFFSET_ADDR, nil)
+        if ok then
+            oam_offset_watch.armed = false
+            M.info(string.format(
+                "OAM_OFFSET_WATCH_DISARMED tag=%s addr=0x%04X writes=%d last_value=%s stuck_reports=%d",
+                tag,
+                OAM_CLEAR_OFFSET_ADDR,
+                oam_offset_watch.writes or 0,
+                oam_offset_watch.last_value and string.format("0x%02X", oam_offset_watch.last_value) or "-",
+                oam_offset_watch.stuck_reports or 0))
+        else
+            M.info(string.format(
+                "OAM_OFFSET_WATCH_ERROR tag=%s action=off error=%s",
+                tag,
+                tostring(err)))
+        end
+        return
+    end
+
+    local watch_tag = tag
+    local ok, err = pcall(memory.registerwrite, OAM_CLEAR_OFFSET_ADDR, function(address, size, value)
+        record_oam_offset_write(value)
+    end)
+    if ok then
+        oam_offset_watch.armed = true
+        oam_offset_watch.tag = watch_tag
+        oam_offset_watch.verbose = verbose == true
+        oam_offset_watch.writes = 0
+        oam_offset_watch.last_value = nil
+        oam_offset_watch.recent = {}
+        oam_offset_watch.stuck_reports = 0
+        oam_offset_watch.last_stuck_signature = nil
+        M.info(string.format(
+            "OAM_OFFSET_WATCH_ARMED tag=%s addr=0x%04X mode=%s",
+            watch_tag,
+            OAM_CLEAR_OFFSET_ADDR,
+            oam_offset_watch.verbose and "verbose" or "quiet"))
+    else
+        M.info(string.format(
+            "OAM_OFFSET_WATCH_ERROR tag=%s action=on error=%s",
+            watch_tag,
+            tostring(err)))
+    end
 end
 
 local function capture_player_stat_trace_sample(frame_override, state_override)
@@ -819,6 +1171,53 @@ local function neutral_raw_joypad_state()
     return full_joypad_state({_raw = true})
 end
 
+local function keyboard_bridge_enabled()
+    if keyboard_bridge_runtime_override ~= nil then
+        return keyboard_bridge_runtime_override == true
+    end
+    return config.get("enable_keyboard_input_bridge") ~= "false"
+end
+
+local function format_bridge_override()
+    if keyboard_bridge_runtime_override == nil then
+        return "config"
+    end
+    return keyboard_bridge_runtime_override and "on" or "off"
+end
+
+local function reset_external_bridge_cache()
+    external_bridge_last_line = nil
+    external_bridge_cached_table = nil
+end
+
+local function reset_external_bridge_file()
+    local f = io.open(KEYBOARD_BRIDGE_FILE, "w")
+    if not f then
+        M.error("INPUT_BRIDGE_FILE_RESET_FAILED path=" .. tostring(KEYBOARD_BRIDGE_FILE))
+        return false
+    end
+    f:write("-\n")
+    f:close()
+    reset_external_bridge_cache()
+    return true
+end
+
+local function clear_keyboard_bridge_activity()
+    keyboard_bridge_active = false
+    external_keyboard_bridge_active = false
+    external_stale_alt_ignored_active = false
+end
+
+local function begin_neutral_input_window(frames, source, log_end)
+    frames = math.floor(tonumber(frames) or 1)
+    if frames < 1 then frames = 1 end
+    input_isolation = {
+        frames_remaining = frames,
+        source = tostring(source or "manual"),
+        log_end = log_end == true,
+    }
+end
+
 local function parse_button_command_args(arg_text)
     local btn_str, frames_str = tostring(arg_text or ""):match("^%s*([^,]+)%s*,?%s*(.-)%s*$")
     btn_str = btn_str and btn_str:upper() or ""
@@ -993,6 +1392,21 @@ local function clamp_trace_frames(value)
     return frames
 end
 
+local function clamp_input_isolation_frames(value)
+    local frames = tonumber(value)
+    if not frames then
+        return 60
+    end
+    frames = math.floor(frames)
+    if frames < 1 then
+        return 1
+    end
+    if frames > 600 then
+        return 600
+    end
+    return frames
+end
+
 local function format_pressed_keys(keys)
     local names = {}
     for name, pressed in pairs(keys or {}) do
@@ -1066,7 +1480,7 @@ local function build_keyboard_bridge_input(frame)
     if not emulator_compat.is_fceux then
         return nil
     end
-    if config.get("enable_keyboard_input_bridge") == "false" then
+    if not keyboard_bridge_enabled() then
         return nil
     end
 
@@ -1199,7 +1613,7 @@ local function build_external_keyboard_bridge_input(frame)
     if not emulator_compat.is_fceux then
         return nil
     end
-    if config.get("enable_keyboard_input_bridge") == "false" then
+    if not keyboard_bridge_enabled() then
         return nil
     end
 
@@ -1288,14 +1702,261 @@ local function log_input_status(tag)
     local keys = input.get()
     local joy = joypad.read(1)
     local bridge_line = read_keyboard_bridge_line()
+    local buttons = addr.BUTTONS_PRESSED and memory and memory.readbyte
+        and (memory.readbyte(addr.BUTTONS_PRESSED) or 0)
+        or 0
     M.info(string.format(
-        "INPUT_STATUS tag=%s keys=%s joy1=%s bridge=%s left_alt=%s",
+        "INPUT_STATUS tag=%s keys=%s joy1=%s bridge=%s buttons=0x%02X left_alt=%s bridge_enabled=%s bridge_override=%s",
         tostring(tag or "manual"),
         format_pressed_keys(keys),
         format_joy_buttons(joy),
         bridge_line,
-        tostring(is_left_alt_pressed(keys))
+        buttons,
+        tostring(is_left_alt_pressed(keys)),
+        tostring(keyboard_bridge_enabled()),
+        format_bridge_override()
     ))
+end
+
+local function safe_readbyte(address)
+    if not address or not memory or not memory.readbyte then
+        return 0
+    end
+    return memory.readbyte(address) or 0
+end
+
+local function capture_game_input_recovery_state()
+    local map_id = safe_readbyte(addr.MAP_ID)
+    return {
+        map_id = map_id,
+        map_name = maps_m.get_name(map_id),
+        terrain = safe_readbyte(addr.TERRAIN_OFFSET),
+        player_x = safe_readbyte(addr.PLAYER_X),
+        player_y = safe_readbyte(addr.PLAYER_Y),
+        overworld_x = safe_readbyte(addr.OVERWORLD_X),
+        overworld_y = safe_readbyte(addr.OVERWORLD_Y),
+        movement_state = safe_readbyte(addr.MOVEMENT_STATE),
+        movement_subpixel = safe_readbyte(addr.MOVEMENT_SUBPIXEL),
+        buttons = safe_readbyte(addr.BUTTONS_PRESSED),
+        ram0030_004F = format_ram_range(0x0030, 0x004F),
+    }
+end
+
+local function format_game_input_recovery_state(state)
+    if not state then
+        return "state=nil"
+    end
+    return string.format(
+        "map=0x%02X(%s) terrain=0x%02X player=(%d,%d) overworld=(%d,%d) move=0x%02X sub=0x%02X buttons=0x%02X ram0030_004F=%s",
+        state.map_id or 0,
+        tostring(state.map_name or ""),
+        state.terrain or 0,
+        state.player_x or -1,
+        state.player_y or -1,
+        state.overworld_x or -1,
+        state.overworld_y or -1,
+        state.movement_state or 0,
+        state.movement_subpixel or 0,
+        state.buttons or 0,
+        tostring(state.ram0030_004F or ""))
+end
+
+local function schedule_game_input_recovery_check(command_name)
+    pending_game_input_recovery_check = {
+        command_name = tostring(command_name or "command"),
+        start_frame = current_frame or 0,
+        target_frame = (current_frame or 0) + GAME_INPUT_RECOVERY_CHECK_FRAMES,
+    }
+end
+
+local function tick_game_input_recovery_check(frame)
+    local pending = pending_game_input_recovery_check
+    if not pending or frame < (pending.target_frame or 0) then
+        return
+    end
+    pending_game_input_recovery_check = nil
+    local state = capture_game_input_recovery_state()
+    M.info(string.format(
+        "GAME_INPUT_AUTO_CLEAR_CHECK command=%s buttons=0x%02X frames=%d %s",
+        tostring(pending.command_name or "command"),
+        state.buttons or 0,
+        frame - (pending.start_frame or frame),
+        format_game_input_recovery_state(state)))
+end
+
+local function capture_and_clear_game_input_contamination(command_name, details, before)
+    if not M.DEBUG_MODE then
+        return
+    end
+    local command = tostring(command_name or "command")
+    local state = capture_game_input_recovery_state()
+    M.info(string.format(
+        "INPUT_CONTAMINATION_CAPTURE command=%s %s %s",
+        command,
+        tostring(details or ""),
+        format_game_input_recovery_state(state)))
+
+    if not addr.BUTTONS_PRESSED or not memory or not memory.writebyte then
+        M.error(string.format(
+            "GAME_INPUT_AUTO_CLEAR_UNAVAILABLE command=%s addr=%s writebyte=%s",
+            command,
+            tostring(addr.BUTTONS_PRESSED),
+            tostring(memory and memory.writebyte ~= nil)))
+        return
+    end
+
+    memory.writebyte(addr.BUTTONS_PRESSED, 0x00)
+    local after = safe_readbyte(addr.BUTTONS_PRESSED)
+    M.info(string.format(
+        "GAME_INPUT_AUTO_CLEAR command=%s before=0x%02X after=0x%02X addr=0x%04X",
+        command,
+        before or 0,
+        after,
+        addr.BUTTONS_PRESSED))
+    schedule_game_input_recovery_check(command)
+    begin_neutral_input_window(GAME_INPUT_CONTAMINATION_NEUTRAL_FRAMES, command, true)
+    M.info(string.format(
+        "GAME_INPUT_AUTO_NEUTRAL command=%s frames=%d",
+        command,
+        GAME_INPUT_CONTAMINATION_NEUTRAL_FRAMES))
+end
+
+local function format_input_layer_snapshot()
+    local keys = input.get and input.get() or {}
+    local joy = joypad.read and joypad.read(1) or {}
+    local bridge_line = read_keyboard_bridge_line()
+    local buttons = safe_readbyte(addr.BUTTONS_PRESSED)
+    return string.format(
+        "keys=%s joy=%s bridge=%s buttons=0x%02X bridge_enabled=%s bridge_override=%s",
+        format_pressed_keys(keys),
+        format_joy_buttons(joy),
+        bridge_line,
+        buttons,
+        tostring(keyboard_bridge_enabled()),
+        format_bridge_override())
+end
+
+local ROUTE_BUTTON_MASKS = {
+    up = 0x10,
+    down = 0x20,
+    left = 0x40,
+    right = 0x80,
+}
+
+local function is_route_blocked_self_input(opts, game_buttons)
+    if not opts
+       or opts.allow_route_blocked_self_input ~= true
+       or opts.route_blocked_timing_suspect ~= true then
+        return false
+    end
+    local dir = tostring(opts.route_blocked_dir or ""):lower()
+    local expected = ROUTE_BUTTON_MASKS[dir]
+    return expected ~= nil and game_buttons == expected
+end
+
+local function clear_game_input_byte_for_command(command_name)
+    if not addr.BUTTONS_PRESSED or not memory or not memory.writebyte then
+        M.error(string.format(
+            "GAME_INPUT_CLEAR_UNAVAILABLE command=%s addr=%s writebyte=%s",
+            tostring(command_name or "command"),
+            tostring(addr.BUTTONS_PRESSED),
+            tostring(memory and memory.writebyte ~= nil)))
+        return nil, nil
+    end
+    local before = safe_readbyte(addr.BUTTONS_PRESSED)
+    memory.writebyte(addr.BUTTONS_PRESSED, 0x00)
+    local after = safe_readbyte(addr.BUTTONS_PRESSED)
+    M.info(string.format(
+        "GAME_INPUT_CLEAR command=%s before=0x%02X after=0x%02X addr=0x%04X",
+        tostring(command_name or "command"),
+        before,
+        after,
+        addr.BUTTONS_PRESSED))
+    return before, after
+end
+
+local function clear_pending_debug_input(reason)
+    pending_input = nil
+    pending_input_hold = nil
+    pending_input_release = false
+    pending_input_release_raw = false
+    pending_input_sequence = nil
+    M.debug("INPUT_PENDING_CLEAR reason=" .. tostring(reason or "manual"))
+end
+
+local function start_input_isolation(frames, source, opts)
+    opts = opts or {}
+    frames = clamp_input_isolation_frames(frames)
+    local command = tostring(source or "isolate_input")
+    clear_pending_debug_input(command)
+    clear_keyboard_bridge_activity()
+    reset_external_bridge_file()
+
+    if opts.log_start ~= false then
+        M.info(string.format(
+            "INPUT_ISOLATION_START frames=%d command=%s %s",
+            frames,
+            command,
+            format_input_layer_snapshot()))
+    end
+
+    if opts.notify_hook ~= false then
+        local hook = custom_commands["__input_isolation"]
+        if hook then
+            local ok, err = pcall(hook, {
+                command = command,
+                frames = frames,
+            })
+            if not ok then
+                M.error("input isolation hook failed: " .. tostring(err))
+            end
+        end
+    end
+
+    if opts.clear_game_input ~= false then
+        clear_game_input_byte_for_command(command)
+        schedule_game_input_recovery_check(command)
+    end
+
+    begin_neutral_input_window(frames, command, opts.log_end ~= false)
+end
+
+function M.input_contamination_refusal(command_name, opts)
+    local keys = input.get and input.get() or {}
+    local joy = joypad.read and joypad.read(1) or {}
+    local bridge = parse_external_keyboard_bridge() or full_joypad_state({})
+    local game_buttons = safe_readbyte(addr.BUTTONS_PRESSED)
+
+    if has_joy_buttons(joy) or has_joy_buttons(bridge) or game_buttons == 0 then
+        return nil
+    end
+
+    if is_route_blocked_self_input(opts, game_buttons) then
+        M.info(string.format(
+            "INPUT_CONTAMINATION_IGNORED command=%s reason=route_blocked_self_input dir=%s buttons=0x%02X source=%s",
+            tostring(command_name or "command"),
+            tostring(opts and opts.route_blocked_dir or "-"),
+            game_buttons,
+            tostring(opts and opts.route_blocked_source or "-")))
+        return nil
+    end
+
+    local details = string.format(
+        "keys=%s joy=%s bridge=%s buttons=0x%02X",
+        format_pressed_keys(keys),
+        format_joy_buttons(joy),
+        format_joy_buttons(bridge),
+        game_buttons)
+    capture_and_clear_game_input_contamination(command_name, details, game_buttons)
+    return string.format(
+        "%s refused: input contaminated (%s)",
+        tostring(command_name or "command"),
+        details),
+        details
+end
+
+function M.edge_probe_input_refusal(command_name)
+    return M.input_contamination_refusal(command_name)
 end
 
 local function update_stuck_alt_watch(frame)
@@ -1373,6 +2034,33 @@ local function update_input_trace(frame)
             input_trace.samples or 0))
         input_trace = nil
     end
+end
+
+local function input_isolation_tick(frame)
+    local isolation = input_isolation
+    if not isolation then
+        return nil
+    end
+
+    local remaining = tonumber(isolation.frames_remaining) or 0
+    if remaining <= 0 then
+        input_isolation = nil
+        return nil
+    end
+
+    isolation.frames_remaining = remaining - 1
+    local neutral = neutral_raw_joypad_state()
+    if isolation.frames_remaining <= 0 then
+        input_isolation = nil
+        if isolation.log_end then
+            M.info(string.format(
+                "INPUT_ISOLATION_END frame=%d command=%s %s",
+                frame or current_frame,
+                tostring(isolation.source or "manual"),
+                format_input_layer_snapshot()))
+        end
+    end
+    return neutral
 end
 
 -- process_command(cmd): Execute one trimmed command string.
@@ -1519,6 +2207,48 @@ local function process_command(cmd)
             format_ram_range(0x0090, 0x0093)
         ))
 
+    elseif cmd == "report_cpu_state" or cmd:sub(1, 17) == "report_cpu_state:" then
+        -- Dump read-only CPU state at the current command-poll point. This is
+        -- aimed at hard-lock diagnosis where FCEUX accepts input but the ROM
+        -- appears to stop polling $4016.
+        local tag = cmd:match("^report_cpu_state:(.+)$") or "-"
+        log_cpu_state(tag)
+
+    elseif cmd == "report_oam_offset" or cmd:sub(1, 18) == "report_oam_offset:" then
+        -- Diagnose Dragon Warrior's sprite-OAM clear offset at $004E. The ROM
+        -- loop at $B9ED increments Y by 4 until Y wraps to 0; a non-multiple
+        -- of 4 will never exit.
+        local tag = cmd:match("^report_oam_offset:(.+)$") or "-"
+        log_oam_offset(tag, "OAM_OFFSET")
+
+    elseif cmd == "watch_oam_offset" or cmd:sub(1, 17) == "watch_oam_offset:" then
+        -- One-address write trace for $004E. This is far cheaper than the
+        -- emulator-wide $0038-$004F verbose RAM trace and is only armed on
+        -- demand for the Cantlin hard-lock investigation.
+        local arg = cmd:match("^watch_oam_offset:(.+)$")
+        if arg == "off" then
+            set_oam_offset_watch(false, arg)
+        elseif arg == "status" then
+            M.info(string.format(
+                "OAM_OFFSET_WATCH_STATUS armed=%s tag=%s mode=%s writes=%d last_value=%s stuck_reports=%d recent_count=%d",
+                tostring(oam_offset_watch.armed),
+                tostring(oam_offset_watch.tag or "-"),
+                oam_offset_watch.verbose and "verbose" or "quiet",
+                oam_offset_watch.writes or 0,
+                oam_offset_watch.last_value and string.format("0x%02X", oam_offset_watch.last_value) or "-",
+                oam_offset_watch.stuck_reports or 0,
+                #(oam_offset_watch.recent or {})))
+            log_oam_offset(arg, "OAM_OFFSET")
+        else
+            local tag = (arg and arg ~= "on") and arg or "-"
+            set_oam_offset_watch(true, tag, false)
+        end
+
+    elseif cmd == "watch_oam_offset_verbose" or cmd:sub(1, 25) == "watch_oam_offset_verbose:" then
+        -- Verbose mode logs every $004E write and is only for tiny captures.
+        local tag = cmd:match("^watch_oam_offset_verbose:(.+)$") or "-"
+        set_oam_offset_watch(true, tag, true)
+
     elseif cmd == "toggle_debug" then
         -- Flip DEBUG_MODE at runtime. Useful for activating debug mid-session
         -- without reloading the script. Note: the log file is NOT re-cleared
@@ -1581,6 +2311,66 @@ local function process_command(cmd)
         -- Explicit recovery hook for stale joypad.set state after a failed probe
         -- or external script reload. tick() emits the neutral frame immediately.
         queue_pending_input(full_joypad_state({}), 1, "neutral joypad")
+
+    elseif cmd == "isolate_input" or cmd:sub(1, 14) == "isolate_input:" then
+        local arg = cmd:match("^isolate_input:(.+)$")
+        start_input_isolation(clamp_input_isolation_frames(arg), "isolate_input")
+
+    elseif cmd == "set_input_bridge" or cmd:sub(1, 17) == "set_input_bridge:" then
+        local mode = cmd:match("^set_input_bridge:%s*(.-)%s*$") or "status"
+        mode = mode:lower()
+        if mode == "" then
+            mode = "status"
+        end
+        if mode == "off" or mode == "false" or mode == "0" or mode == "disable" or mode == "disabled" then
+            keyboard_bridge_runtime_override = false
+            clear_keyboard_bridge_activity()
+            reset_external_bridge_file()
+            start_input_isolation(1, "set_input_bridge", {
+                clear_game_input = false,
+                notify_hook = false,
+                log_start = false,
+                log_end = false,
+            })
+            M.info(string.format(
+                "INPUT_BRIDGE_OVERRIDE state=off effective=%s config=%s",
+                tostring(keyboard_bridge_enabled()),
+                tostring(config.get("enable_keyboard_input_bridge"))))
+        elseif mode == "on" or mode == "true" or mode == "1" or mode == "enable" or mode == "enabled" then
+            keyboard_bridge_runtime_override = true
+            M.info(string.format(
+                "INPUT_BRIDGE_OVERRIDE state=on effective=%s config=%s",
+                tostring(keyboard_bridge_enabled()),
+                tostring(config.get("enable_keyboard_input_bridge"))))
+        elseif mode == "config" or mode == "default" or mode == "auto" or mode == "clear" then
+            keyboard_bridge_runtime_override = nil
+            M.info(string.format(
+                "INPUT_BRIDGE_OVERRIDE state=config effective=%s config=%s",
+                tostring(keyboard_bridge_enabled()),
+                tostring(config.get("enable_keyboard_input_bridge"))))
+        elseif mode == "status" then
+            M.info(string.format(
+                "INPUT_BRIDGE_OVERRIDE state=%s effective=%s config=%s",
+                format_bridge_override(),
+                tostring(keyboard_bridge_enabled()),
+                tostring(config.get("enable_keyboard_input_bridge"))))
+        else
+            M.error("set_input_bridge usage: set_input_bridge:off, :on, :config, or :status")
+        end
+
+    elseif cmd == "clear_game_input" then
+        if not addr.BUTTONS_PRESSED or not memory or not memory.writebyte then
+            M.error("clear_game_input unavailable: BUTTONS_PRESSED or memory.writebyte missing")
+        else
+            local before = memory.readbyte(addr.BUTTONS_PRESSED) or 0
+            memory.writebyte(addr.BUTTONS_PRESSED, 0x00)
+            local after = memory.readbyte(addr.BUTTONS_PRESSED) or 0
+            M.info(string.format(
+                "GAME_INPUT_CLEAR before=0x%02X after=0x%02X addr=0x%04X",
+                before,
+                after,
+                addr.BUTTONS_PRESSED))
+        end
 
     elseif cmd == "input_status" or cmd:sub(1, 13) == "input_status:" then
         local tag = cmd:match("^input_status:(.+)$") or "manual"
@@ -1796,7 +2586,7 @@ local function process_command(cmd)
                 M.error("Command '" .. cmd_name .. "' failed: " .. tostring(err))
             end
         else
-            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, sweep_teleport_legacy, stop_sweep")
+            M.error("Unknown command: '" .. cmd .. "'. Built-ins: log_state, report_position, report_coords, report_movement_state[:TAG], report_cpu_state[:TAG], report_oam_offset[:TAG], watch_oam_offset[:on|off|status|TAG], watch_oam_offset_verbose[:TAG], toggle_debug, simulate_input:BTN, simulate_raw_input:BTN, clear_input, clear_game_input, isolate_input[:FRAMES], set_input_bridge:off|on|config|status, input_status[:TAG], trace_input[:FRAMES], dump_grid, reload_config, launcher_probe[:TAG], export_blocks, sweep_map, sweep_teleport_legacy, stop_sweep")
         end
     end
     local elapsed_ms = (os.clock() - command_start_clock) * 1000
@@ -1880,6 +2670,8 @@ function M.tick(frame, game_state_str)
 
     update_stuck_alt_watch(frame)
     update_input_trace(frame)
+    tick_game_input_recovery_check(frame)
+    tick_oam_offset_stuck_watch(frame)
     trace_teleport_tick("POST_INPUT_WATCH")
 
     -- Flush the log buffer to disk once per second as well.
@@ -1889,12 +2681,17 @@ function M.tick(frame, game_state_str)
         flush_log()
     end
 
+    local isolation_inp = input_isolation_tick(frame)
+
     -- Advance the map sweep state machine one frame. The sweep returns a
     -- joypad input table when it needs to inject a direction key. That table
     -- is tagged with _sweep=true so main.lua routes it directly to joypad.set()
     -- instead of through auto_step.inject_step() (which reads joypad.read()
     -- and wouldn't see our injection anyway).
-    local sweep_inp = sweep_tick()
+    local sweep_inp = nil
+    if not isolation_inp then
+        sweep_inp = sweep_tick()
+    end
     trace_teleport_tick("POST_SWEEP_TICK")
     if sweep_inp then
         pending_input_release = true
@@ -1903,11 +2700,11 @@ function M.tick(frame, game_state_str)
     -- Return and clear any pending simulated input.
     -- Sweep input takes priority over queued button commands.
     local sequence_inp = nil
-    if not sweep_inp then
+    if not isolation_inp and not sweep_inp then
         sequence_inp = input_sequence_tick()
     end
     local held_inp = nil
-    if not sweep_inp and not sequence_inp and pending_input_hold then
+    if not isolation_inp and not sweep_inp and not sequence_inp and pending_input_hold then
         held_inp = pending_input_hold.buttons
         pending_input_hold.frames_remaining = pending_input_hold.frames_remaining - 1
         if pending_input_hold.frames_remaining <= 0 then
@@ -1920,8 +2717,8 @@ function M.tick(frame, game_state_str)
     -- pending_input and pending_input_hold are mutually exclusive: queue_pending_input
     -- sets one or the other but never both. So when held_inp is active, pending_input
     -- is already nil — the guard below is defensive insurance, not for the multi-frame case.
-    local inp = sweep_inp or sequence_inp or held_inp or pending_input
-    if not sweep_inp and not sequence_inp and not held_inp then
+    local inp = isolation_inp or sweep_inp or sequence_inp or held_inp or pending_input
+    if not isolation_inp and not sweep_inp and not sequence_inp and not held_inp then
         if pending_input then
             pending_input_release_raw = pending_input._raw or false
             pending_input_release = true

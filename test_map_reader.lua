@@ -86,6 +86,7 @@ local MAP_NAMES = {
     [0x04] = "Tantegel Castle",
     [0x0C] = "Sun Shrine",
     [0x08] = "Brecconary",
+    [0x0A] = "Cantlin",
     [0x18] = "Garin's Grave B1",
     [0x19] = "Garin's Grave B2",
 }
@@ -119,6 +120,10 @@ end
 
 local function assert_sun_shrine_dir(env, cell, approach, message)
     assert_directional_block(env, 0x0C, cell, approach, message)
+end
+
+local function assert_cantlin_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x0A, cell, approach, message)
 end
 
 local function assert_garins_grave_b1_dir(env, cell, approach, message)
@@ -748,6 +753,22 @@ function tests.throne_room_directional_candidates_are_promoted_conservatively()
     assert_equal(dirs["9,3"].west, true, "(9,3) should block west approach")
     assert_equal(dirs["9,4"].west, true, "(9,4) should block west approach")
     assert_equal(dirs["9,5"].west, true, "(9,5) should block west approach")
+
+    env.restore()
+end
+
+function tests.cantlin_old_man_4_route_edges_are_modeled()
+    local env = make_env()
+
+    assert_cantlin_dir(env, "21,23", "west", "(21,23).west should block after Old Man 4 route failure and same-origin probe from (20,23)->RIGHT")
+    assert_cantlin_dir(env, "21,24", "west", "(21,24).west should block after Old Man 4 route failure and same-origin probe from (20,24)->RIGHT")
+    assert_cantlin_dir(env, "21,24", "east", "(21,24).east should block after follow-up route failure and same-origin probe from (22,24)->LEFT")
+    assert_cantlin_dir(env, "21,24", "south", "(21,24).south should block after follow-up route failure and same-origin probe from (21,25)->UP")
+    assert_cantlin_dir(env, "22,23", "south", "(22,23).south should block after Old Man 4 route failure and same-origin probe from (22,24)->UP")
+    assert_cantlin_dir(env, "23,24", "west", "(23,24).west should block after Old Man 4 route failure and same-origin probe from (22,24)->RIGHT")
+    assert_cantlin_dir(env, "23,25", "west", "(23,25).west should block after follow-up route failure and same-origin probe from (22,25)->RIGHT")
+    assert_cantlin_dir(env, "23,25", "south", "(23,25).south should block after follow-up route failure and same-origin probe from (23,26)->UP")
+    assert_cantlin_dir(env, "24,24", "south", "(24,24).south should block after post-reload route failure and same-origin probe from (24,25)->UP")
 
     env.restore()
 end

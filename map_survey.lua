@@ -24,7 +24,10 @@ local blocked_candidates = {}
 local last_runs = {}
 local run_counter = 0
 local tick_counter = 0
-local PARKED_NPC_COORD = 31
+-- Dragon Warrior's NPC renderer skips slots only when both low coordinate bits
+-- are zero. Parking at 31,31 still leaves slots active and can wedge the OAM
+-- clear loop near Cantlin, so use the engine's inactive coordinate.
+local PARKED_NPC_COORD = 0
 local CONTINUATION_TRAP_AREA_LIMIT = 16
 local CONTINUATION_TRAP_MIN_REMAINING = 1
 local CONTINUATION_TRAP_MAX_DEFER_LANDINGS = 2
@@ -42,6 +45,7 @@ local SURVEY_START_ABORT_MAX_REACHABLE_TARGETS = 1
 local ADJACENT_ISOLATED_MAX_OPEN_EXITS = 1
 local ADJACENT_ISOLATED_TINY_AREA_LIMIT = 2
 local SURVEY_MAX_TOTAL_RETRIES_PER_TARGET = 2
+local SURVEY_ROUTE_CHURN_BLOCK_EVENT_LIMIT = 32
 -- Abort the survey if current HP drops to or below this value to prevent
 -- the character dying mid-run on damage tiles (swamp/traps in some areas).
 local SURVEY_LOW_HP_ABORT_THRESHOLD = 8
@@ -158,6 +162,30 @@ local function get_survey_npc_mode(opts)
         return "park_npcs"
     end
     return "live"
+end
+
+local function input_contamination_refusal(command_name, opts)
+    if debug_tools.input_contamination_refusal then
+        return debug_tools.input_contamination_refusal(command_name, opts)
+    end
+    if debug_tools.edge_probe_input_refusal then
+        return debug_tools.edge_probe_input_refusal(command_name)
+    end
+    return nil
+end
+
+local function has_active_auto_step()
+    if auto_step.is_route_active then
+        local ok, active = pcall(auto_step.is_route_active)
+        if ok and active == true then
+            return true
+        end
+    end
+    if not auto_step.get_active_step_state then
+        return false
+    end
+    local ok, state = pcall(auto_step.get_active_step_state)
+    return ok and state ~= nil
 end
 
 local function is_active_npc_slot(byte0, byte1)
@@ -1445,6 +1473,39 @@ local function finish_run(speak_message)
     survey_state = nil
 end
 
+local function abort_survey_if_input_contaminated(source, command_name, input_opts)
+    if not survey_state then
+        return false
+    end
+    if source == "tick" and has_active_auto_step() then
+        return false
+    end
+    local refusal, details = input_contamination_refusal(command_name or "survey_objects", input_opts)
+    if not refusal then
+        return false
+    end
+    local attempt = survey_state.active_attempt
+    debug_tools.error(refusal)
+    debug_tools.info(string.format(
+        "SURVEY_ABORT run=%d map=0x%02X reason=input_contaminated source=%s target_id=%s %s",
+        survey_state.run_id or 0,
+        survey_state.map_id or 0,
+        tostring(source or "-"),
+        tostring(attempt and attempt.target and attempt.target.id or "-"),
+        tostring(details or "")))
+    if attempt then
+        auto_step.cancel_active_step(true)
+        if route_mgr.clear_active_route_context then
+            route_mgr.clear_active_route_context("survey input contaminated")
+        end
+        survey_state.active_attempt = nil
+    end
+    survey_state.stop_reason = "input_contaminated"
+    finish_run(false)
+    tolk.output_interrupt("Survey aborted. Input contaminated.")
+    return true
+end
+
 local function resolve_target_by_token(token)
     token = trim(token)
     if not token or token == "" then
@@ -1688,6 +1749,21 @@ local function classify_attempt(attempt, final_map_id, final_x, final_y)
             return "command_timing_or_state_issue"
         end
         return "no_route_found"
+    end
+
+    if attempt.reason == "route_churn_cap" or attempt.route_churn_capped then
+        return "command_timing_or_state_issue"
+    end
+
+    if attempt.reason == "manual_stop" and (#attempt.suspected_tiles > 0 or #attempt.blocked_tiles > 0) then
+        debug_tools.info(string.format(
+            "SURVEY_CLASSIFY_DOWNGRADE run=%d map=0x%02X target_id=%s from=manual_stop_route_evidence to=command_timing_or_state_issue suspected_tiles=%d blocked_events=%d",
+            survey_state and survey_state.run_id or 0,
+            attempt.map_id or 0,
+            tostring(attempt.target and attempt.target.id or ""),
+            #attempt.suspected_tiles,
+            #attempt.blocked_tiles))
+        return "command_timing_or_state_issue"
     end
 
     if #attempt.suspected_tiles > 0 then
@@ -2206,8 +2282,50 @@ local function record_candidate(attempt, blocked_event)
     return true
 end
 
+local function abort_active_attempt_for_route_churn(attempt)
+    if not survey_state or not attempt or attempt.route_churn_capped then
+        return false
+    end
+    attempt.route_churn_capped = true
+    attempt.success = false
+    attempt.reason = "route_churn_cap"
+    survey_state.stop_after_attempt = true
+    survey_state.stop_reason = "route_churn_cap"
+    local _, final_x, final_y = nav.get_position()
+    debug_tools.info(string.format(
+        "SURVEY_ROUTE_CHURN_ABORT run=%d map=0x%02X target_id=%s blocked_events=%d suspected_tiles=%d limit=%d final=(%d,%d) reason=route_churn_cap",
+        survey_state.run_id or 0,
+        survey_state.map_id or 0,
+        tostring(attempt.target and attempt.target.id or "-"),
+        #attempt.blocked_tiles,
+        #attempt.suspected_tiles,
+        SURVEY_ROUTE_CHURN_BLOCK_EVENT_LIMIT,
+        final_x or -1,
+        final_y or -1))
+    auto_step.cancel_active_step(true)
+    if route_mgr.clear_active_route_context then
+        route_mgr.clear_active_route_context("survey route churn cap")
+    end
+    finalize_attempt(attempt)
+    finish_run(false)
+    tolk.output_interrupt("Survey stopped. Route churn cap reached.")
+    return true
+end
+
 local function on_route_blocked(data)
     if not survey_state or not survey_state.active_attempt or not data then
+        return
+    end
+    local input_opts = nil
+    if data.timing_suspect == true then
+        input_opts = {
+            allow_route_blocked_self_input = true,
+            route_blocked_timing_suspect = true,
+            route_blocked_dir = data.dir,
+            route_blocked_source = data.source,
+        }
+    end
+    if abort_survey_if_input_contaminated("route_blocked", "survey_objects", input_opts) then
         return
     end
     if data.timing_suspect == true then
@@ -2240,6 +2358,10 @@ local function on_route_blocked(data)
     }
     attempt.blocked_tiles[#attempt.blocked_tiles + 1] = cell_key(dest_x, dest_y)
     record_candidate(attempt, blocked_event)
+    if #attempt.blocked_tiles > SURVEY_ROUTE_CHURN_BLOCK_EVENT_LIMIT then
+        abort_active_attempt_for_route_churn(attempt)
+        return
+    end
     invalidate_preview_caches()
 end
 
@@ -2255,6 +2377,9 @@ end
 
 local function on_route_cancelled(data)
     if not survey_state or not survey_state.active_attempt then
+        return
+    end
+    if abort_survey_if_input_contaminated("route_cancelled", "survey_objects") then
         return
     end
     local attempt = survey_state.active_attempt
@@ -2351,6 +2476,9 @@ event_bus.subscribe("map_changed", on_map_changed)
 local function start_attempt(queue_entry)
     local target = queue_entry and queue_entry.target
     if not target then
+        return
+    end
+    if abort_survey_if_input_contaminated("start_attempt", "survey_objects") then
         return
     end
     update_survey_npc_parking_for_target(target)
@@ -2487,6 +2615,21 @@ local function start_run(targets, opts)
     if not targets or #targets == 0 then
         return false, no_targets_message(opts and opts.mode, map_id)
     end
+    local refusal, details = input_contamination_refusal("survey_objects")
+    if refusal then
+        run_counter = run_counter + 1
+        debug_tools.error(refusal)
+        debug_tools.info(string.format(
+            "SURVEY_START_ABORT run=%d map=0x%02X reason=input_contaminated start=(%d,%d) targets=%d %s",
+            run_counter,
+            map_id,
+            start_x,
+            start_y,
+            #targets,
+            tostring(details or "")))
+        tolk.output_interrupt("Survey aborted. Input contaminated.")
+        return false, refusal
+    end
     local start_info = analyze_survey_start(targets, map_id, start_x, start_y)
     run_counter = run_counter + 1
     if start_info.isolated_start then
@@ -2597,7 +2740,7 @@ local function start_run(targets, opts)
             survey_state.run_id,
             survey_state.map_id,
             apply_survey_npc_parking()))
-        objects.update_npcs()  -- sync cache: parked NPCs at (31,31) filtered out
+        objects.update_npcs()  -- sync cache: parked NPCs at inactive (0,0) filtered out
     end
     debug_tools.info(string.format(
         "SURVEY_START run=%d map=0x%02X start=(%d,%d) targets=%d mode=%s npc_mode=%s runtime_blocks=%d",
@@ -2738,6 +2881,10 @@ end
 function M.tick(can_walk)
     tick_counter = tick_counter + 1
     if not debug_tools.DEBUG_MODE or not survey_state then
+        return
+    end
+
+    if abort_survey_if_input_contaminated("tick", "survey_objects") then
         return
     end
 

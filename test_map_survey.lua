@@ -44,6 +44,8 @@ local function make_env(options)
     local object = options.object or {id = "chest_1", name = "Chest", type = "chest", x = 8, y = 5}
     local objects_list = options.objects or {object}
     local npc_bytes = {[0x00C5] = options.hp or 30}
+    local input_refusal = options.input_refusal
+    local active_step_state = options.active_step_state
     local module_names = {
         "addresses",
         "auto_step",
@@ -103,11 +105,42 @@ local function make_env(options)
     end
 
     package.preload["debug_tools"] = function()
+        local function input_refusal_details(value)
+            if type(value) == "table" then
+                return tostring(value.details or "")
+            end
+            return tostring(value)
+        end
+
+        local function input_refusal_allowed(value, opts)
+            return type(value) == "table"
+                and value.allow_route_blocked_self_input == true
+                and opts
+                and opts.allow_route_blocked_self_input == true
+                and opts.route_blocked_timing_suspect == true
+                and tostring(opts.route_blocked_dir or "") == tostring(value.route_blocked_dir or "")
+        end
+
         return {
             DEBUG_MODE = true,
             info = function(msg) logs[#logs + 1] = tostring(msg) end,
             debug = function(msg) logs[#logs + 1] = tostring(msg) end,
             error = function(msg) logs[#logs + 1] = tostring(msg) end,
+            input_contamination_refusal = function(command_name, opts)
+                if not input_refusal then
+                    return nil
+                end
+                if input_refusal_allowed(input_refusal, opts) then
+                    logs[#logs + 1] = "INPUT_CONTAMINATION_IGNORED test_stub"
+                    return nil
+                end
+                local details = input_refusal_details(input_refusal)
+                return string.format(
+                    "%s refused: input contaminated (%s)",
+                    tostring(command_name or "command"),
+                    details),
+                    details
+            end,
         }
     end
 
@@ -197,6 +230,7 @@ local function make_env(options)
     package.preload["auto_step"] = function()
         return {
             is_route_active = function() return route_active end,
+            get_active_step_state = function() return active_step_state end,
             cancel_active_step = function()
                 route_active = false
             end,
@@ -363,6 +397,15 @@ local function make_env(options)
             restore_modules(module_names)
             _G.memory = original_memory
             _G.AND = original_and
+        end,
+        set_input_refusal = function(value)
+            input_refusal = value
+        end,
+        set_active_step_state = function(value)
+            active_step_state = value
+        end,
+        set_route_active = function(value)
+            route_active = value == true
         end,
         read_npc_slot = function(slot)
             local base = 0x0051 + (slot * 3)
@@ -663,6 +706,134 @@ function tests.blocked_tile_failure_is_classified_as_suspected_engine_blocked()
     env.restore()
 end
 
+function tests.survey_start_refuses_contaminated_input()
+    local env = make_env({
+        input_refusal = "keys=LeftAlt joy=- bridge=- buttons=0x20",
+    })
+
+    local ok, err = env.survey.start_target_survey("chest_1")
+
+    assert_equal(ok, false, "contaminated input should refuse survey startup")
+    assert_contains(err or "", "input contaminated", "startup error should explain contamination")
+    assert_equal(env.survey.is_active(), false, "refused survey should not remain active")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_START_ABORT", "survey should log the startup abort")
+    assert_contains(joined, "reason=input_contaminated", "survey should tag input contamination aborts")
+    assert_contains(joined, "buttons=0x20", "survey abort log should include the stuck game button byte")
+
+    env.restore()
+end
+
+function tests.active_survey_aborts_contaminated_route_block_without_candidates()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_input_refusal("keys=LeftAlt joy=- bridge=- buttons=0x20")
+    env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+
+    assert_equal(env.survey.is_active(), false, "contaminated route evidence should stop the active survey")
+    assert_equal(env.route_active(), false, "survey abort should cancel the active auto-step route")
+    assert_equal(env.clear_route_context_calls() > 0, true, "survey abort should clear route manager context")
+    assert_equal(env.survey.list_blocked_candidates(0x08), 0, "contaminated route block should not record candidates")
+    local run = env.survey.get_last_run(0x08)
+    assert_equal(run and #run.results or -1, 0, "contaminated in-flight attempt should not become a survey result")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_ABORT", "survey should log the active abort")
+    assert_contains(joined, "reason=input_contaminated", "active abort should tag input contamination")
+    assert_contains(joined, "source=route_blocked", "active abort should identify the route event source")
+    assert_not_contains(joined, "SURVEY_CANDIDATE map=0x08", "contaminated blocks should not be visible candidates")
+
+    env.restore()
+end
+
+function tests.active_survey_allows_timing_suspect_route_blocked_self_input()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_input_refusal({
+        details = "keys=LeftAlt joy=- bridge=- buttons=0x20",
+        allow_route_blocked_self_input = true,
+        route_blocked_dir = "down",
+    })
+    env.publish("route_blocked", {
+        from_x = 5,
+        from_y = 5,
+        dir = "down",
+        timing_suspect = true,
+        source = "queued_route",
+    })
+
+    assert_equal(env.survey.is_active(), true, "self-injected timing-suspect route input should not abort the survey")
+    assert_equal(env.route_active(), true, "self-injected route-block input should leave the route active for retry handling")
+    assert_equal(env.survey.list_blocked_candidates(0x08), 0, "timing-suspect self input should not record survey candidates")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_TIMING_BLOCK_IGNORED", "timing-suspect route block should still be ignored by survey evidence")
+    assert_not_contains(joined, "SURVEY_ABORT", "self-injected timing-suspect input should not abort the survey")
+
+    env.restore()
+end
+
+function tests.active_survey_tick_aborts_contaminated_input_without_route_event()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_input_refusal("keys=LeftAlt joy=- bridge=- buttons=0x20")
+    env.set_route_active(false)
+    env.survey.tick(true)
+
+    assert_equal(env.survey.is_active(), false, "tick should stop a survey when contamination appears between events")
+    assert_equal(env.route_active(), false, "tick abort should cancel the active auto-step route")
+    assert_equal(env.survey.list_blocked_candidates(0x08), 0, "tick contamination abort should not create candidates")
+    local joined = table.concat(env.logs, "\n")
+    assert_contains(joined, "SURVEY_ABORT", "tick should log the survey abort")
+    assert_contains(joined, "source=tick", "tick abort should identify its source")
+    assert_contains(joined, "buttons=0x20", "tick abort should include the stuck game button byte")
+
+    env.restore()
+end
+
+function tests.active_survey_tick_does_not_abort_contamination_signature_during_active_route_settle()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_input_refusal("keys=LeftAlt joy=- bridge=- buttons=0x80")
+    env.set_active_step_state(nil)
+    env.set_route_active(true)
+    env.survey.tick(true)
+
+    assert_equal(env.survey.is_active(), true, "active queued route settle should not be treated as idle input contamination")
+    assert_equal(env.route_active(), true, "active queued route false positive should not cancel the route")
+    local joined = table.concat(env.logs, "\n")
+    assert_not_contains(joined, "SURVEY_ABORT", "active queued route false positive should not abort the survey")
+
+    env.restore()
+end
+
+function tests.active_survey_tick_does_not_abort_contamination_signature_during_active_auto_step()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_input_refusal("keys=LeftAlt joy=- bridge=- buttons=0x10")
+    env.set_active_step_state({
+        dir = "up",
+        source = "queued_route",
+        movement_started = true,
+    })
+    env.survey.tick(true)
+
+    assert_equal(env.survey.is_active(), true, "active auto-step movement should not be treated as idle input contamination")
+    assert_equal(env.route_active(), true, "active auto-step false positive should not cancel the route")
+    local joined = table.concat(env.logs, "\n")
+    assert_not_contains(joined, "SURVEY_ABORT", "active auto-step false positive should not abort the survey")
+
+    env.restore()
+end
+
 function tests.orphaned_route_landed_on_suspect_is_classified_as_state_issue()
     local env = make_env()
 
@@ -717,6 +888,64 @@ function tests.multi_tile_reroute_no_path_is_classified_as_state_issue()
     assert_equal(env.survey.export_blocked_candidates(0x08), 0, "state-issue-only candidates should not export pasteable blocked data")
     assert_contains(table.concat(env.logs, "\n"), "confidence=needs_repro",
         "state-issue-only candidates should be marked as needing direct repro")
+
+    env.restore()
+end
+
+function tests.route_churn_cap_stops_target_as_state_issue()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    for _ = 1, 33 do
+        env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    end
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(env.survey.is_active(), false, "route churn cap should stop the active survey")
+    assert_equal(env.route_active(), false, "route churn cap should cancel the active route")
+    assert_equal(env.clear_route_context_calls() > 0, true, "route churn cap should clear route manager context")
+    assert_equal(result.movement_succeeded, false, "capped target should be recorded as a failed movement attempt")
+    assert_equal(result.failure_classification, "command_timing_or_state_issue",
+        "route churn cap should not promote noisy reroute evidence as map truth")
+    assert_equal(result.blocked_event_count, 33, "capped result should preserve the observed block count")
+    assert_equal(result.reason, "route_churn_cap", "result should explain the safety stop")
+    assert_equal(run.summary.command_timing_or_state_issue, 1,
+        "route churn cap should be counted as a state issue")
+    assert_equal(env.survey.report_strong_candidates(0x08), 0,
+        "route churn candidates should not become strong map-data candidates")
+    assert_equal(env.survey.export_directional_candidates(0x08), 0,
+        "route churn candidates should not export directional blocks")
+    assert_contains(joined, "SURVEY_ROUTE_CHURN_ABORT",
+        "survey should log the route churn safety stop")
+
+    env.restore()
+end
+
+function tests.manual_stop_after_repeated_timing_blocks_is_state_issue_not_engine_block()
+    local env = make_env()
+
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    for _ = 1, 4 do
+        env.publish("route_blocked", {from_x = 5, from_y = 5, dir = "right"})
+    end
+    local ok = env.survey.stop_survey()
+
+    local run = env.survey.get_last_run(0x08)
+    local result = run and run.results[1]
+    assert_equal(ok, true, "manual stop should stop the survey")
+    assert_equal(result.reason, "manual_stop", "result should preserve the manual stop reason")
+    assert_equal(result.failure_classification, "command_timing_or_state_issue",
+        "manual-stop churn evidence should not become suspected engine-blocked geometry")
+    assert_equal(run.summary.command_timing_or_state_issue, 1,
+        "manual-stop churn should count as a state issue")
+    assert_equal(run.summary.suspected_engine_blocked_tile, 0,
+        "manual-stop churn should not count as suspected engine-blocked")
+    assert_equal(env.survey.report_strong_candidates(0x08), 0,
+        "manual-stop churn candidates should not be strong map-data candidates")
 
     env.restore()
 end
@@ -1354,8 +1583,8 @@ function tests.park_npcs_mode_parks_non_target_npcs_and_restores_on_finish()
     local joined = table.concat(env.logs, "\n")
     assert_equal(slot0_b0, 0x28, "target NPC should remain restored for its own attempt")
     assert_equal(slot0_b1, 0x05, "target NPC Y byte should remain unchanged")
-    assert_equal(slot1_b0, 0x3F, "non-target NPC should be parked off-screen on X")
-    assert_equal(slot1_b1, 0x1F, "non-target NPC should be parked off-screen on Y")
+    assert_equal(slot1_b0, 0x20, "non-target NPC should be parked at the ROM-inactive X coordinate")
+    assert_equal(slot1_b1, 0x00, "non-target NPC should be parked at the ROM-inactive Y coordinate")
     assert_contains(joined, "SURVEY_NPC_PARK_START run=1 map=0x08 parked_slots=2",
         "parked mode should log its initial parking pass")
     assert_contains(joined, "SURVEY_NPC_PARK_TARGET run=1 map=0x08 target_id=npc_0 exempt_slot=0 parked_slots=1",
@@ -1396,8 +1625,8 @@ function tests.park_npcs_mode_retargets_exemption_between_npc_attempts()
     local slot0_b0, slot0_b1 = env.read_npc_slot(0)
     local slot1_b0, slot1_b1 = env.read_npc_slot(1)
     local joined = table.concat(env.logs, "\n")
-    assert_equal(slot0_b0, 0x3F, "the first NPC should be re-parked for later attempts")
-    assert_equal(slot0_b1, 0x1F, "the first NPC Y byte should be parked off-screen")
+    assert_equal(slot0_b0, 0x20, "the first NPC should be re-parked at the ROM-inactive X coordinate")
+    assert_equal(slot0_b1, 0x00, "the first NPC Y byte should be parked at the ROM-inactive coordinate")
     assert_equal(slot1_b0, 0x2A, "the next target NPC should be restored for its attempt")
     assert_equal(slot1_b1, 0x05, "the next target NPC Y byte should be restored")
     assert_contains(joined, "SURVEY_NPC_PARK_TARGET run=1 map=0x08 target_id=npc_1 exempt_slot=1 parked_slots=1",

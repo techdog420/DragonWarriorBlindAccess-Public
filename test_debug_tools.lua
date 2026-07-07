@@ -13,6 +13,20 @@ local original_command_override = _G.DW_COMMAND_FILE_OVERRIDE
 local original_command_processing_override = _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE
 local env_counter = 0
 
+local function join_path(dir, name)
+    local last = dir:sub(-1)
+    if last == "/" or last == "\\" then
+        return dir .. name
+    end
+    local sep = (dir:match("^%a:") or dir:find("\\", 1, true)) and "\\" or "/"
+    return dir .. sep .. name
+end
+
+local function temp_path(name)
+    local dir = os.getenv("DW_TEST_TMPDIR") or os.getenv("TMPDIR") or "/tmp"
+    return join_path(dir, name)
+end
+
 local function save_module(name)
     original_preload[name] = package.preload[name]
     original_loaded[name] = package.loaded[name]
@@ -46,8 +60,8 @@ local function make_env(options)
     local input_state = options.input_state or {}
     local joy_state = options.joy_state or {}
     env_counter = env_counter + 1
-    local command_file = "/tmp/test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".txt"
-    local processing_file = "/tmp/test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".processing.txt"
+    local command_file = temp_path("test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".txt")
+    local processing_file = temp_path("test_debug_tools_dw_commands_" .. tostring(env_counter) .. ".processing.txt")
     local module_names = {
         "addresses",
         "config",
@@ -66,6 +80,9 @@ local function make_env(options)
     package.preload["config"] = function()
         return {
             get = function(key)
+                if options.config_values and options.config_values[key] ~= nil then
+                    return options.config_values[key]
+                end
                 if key == "debug_mode" then
                     return "true"
                 elseif key == "debug_log_level" then
@@ -108,6 +125,7 @@ local function make_env(options)
             COMBAT_FLAGS = 0x00DF,
             ENEMY_HP = 0x00E2,
             QUEST_FLAGS = 0x00E4,
+            BUTTONS_PRESSED = 0x0047,
             NPC_COUNT = 20,
             NPC_DATA_START = 0x0051,
             NPC_ENTRY_SIZE = 3,
@@ -161,7 +179,7 @@ local function make_env(options)
     end
 
     _G.DW_EMULATOR_COMPAT = {is_fceux = true, is_bizhawk = false}
-    _G.DW_DEBUG_LOG_FILE_OVERRIDE = options.log_file or "/tmp/test_debug_tools_dw_debug.log"
+    _G.DW_DEBUG_LOG_FILE_OVERRIDE = options.log_file or temp_path("test_debug_tools_dw_debug.log")
     _G.DW_COMMAND_FILE_OVERRIDE = command_file
     _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE = processing_file
     _G.input = {
@@ -190,11 +208,36 @@ local function make_env(options)
         return result
     end
     local memory_bytes = options.memory_bytes or {}
+    local memory_writes = {}
+    local memory_write_hooks = {}
     _G.memory = {
         readbyte = function(address)
             return memory_bytes[address] or 0
         end,
+        writebyte = function(address, value)
+            memory_writes[#memory_writes + 1] = {address = address, value = value}
+            memory_bytes[address] = value
+            if memory_write_hooks[address] then
+                memory_write_hooks[address](address, 1, value)
+            end
+        end,
+        registerwrite = function(address, size_or_fn, maybe_fn)
+            local fn = maybe_fn
+            if type(size_or_fn) == "function" or size_or_fn == nil then
+                fn = size_or_fn
+            end
+            memory_write_hooks[address] = fn
+        end,
     }
+    if options.register_values then
+        _G.memory.getregister = function(name)
+            return options.register_values[name]
+        end
+    elseif options.register_error then
+        _G.memory.getregister = function(name)
+            error(options.register_error)
+        end
+    end
 
     local bridge_path = "dw_keyboard_input.txt"
     local original_bridge = read_file(bridge_path)
@@ -206,6 +249,8 @@ local function make_env(options)
         debug_tools = debug_tools,
         log_file = _G.DW_DEBUG_LOG_FILE_OVERRIDE,
         command_file = command_file,
+        memory_writes = memory_writes,
+        memory_write_hooks = memory_write_hooks,
         write_command_file = function(text)
             write_file(command_file, text or "")
         end,
@@ -246,6 +291,12 @@ end
 local function assert_equal(actual, expected, message)
     if actual ~= expected then
         error((message or "assert_equal failed") .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual), 2)
+    end
+end
+
+local function assert_contains(text, needle, message)
+    if not tostring(text or ""):find(tostring(needle or ""), 1, true) then
+        error((message or "assert_contains failed") .. ": expected to find " .. tostring(needle) .. " in " .. tostring(text), 2)
     end
 end
 
@@ -384,6 +435,197 @@ function tests.fceux_idle_input_without_stale_alt_has_no_bridge_input()
     env.restore()
 end
 
+function tests.edge_probe_input_guard_refuses_game_button_contamination()
+    local env = make_env({
+        input_state = {LeftAlt = true},
+        joy_state = {},
+        bridge_text = "-\n",
+        memory_bytes = {[0x0047] = 0x20},
+    })
+
+    local refusal = env.debug_tools.edge_probe_input_refusal("probe_edge")
+    env.restore()
+
+    assert_equal(refusal ~= nil, true, "guard should refuse when game buttons stay set while Lua input is idle")
+    assert_contains(refusal, "probe_edge refused: input contaminated", "refusal should name contaminated input")
+    assert_contains(refusal, "keys=LeftAlt", "refusal should include stale Alt evidence")
+    assert_contains(refusal, "joy=-", "refusal should include idle joy evidence")
+    assert_contains(refusal, "bridge=-", "refusal should include neutral bridge evidence")
+    assert_contains(refusal, "buttons=0x20", "refusal should include game-side button byte")
+end
+
+function tests.input_guard_captures_and_clears_stuck_game_button_byte()
+    local env = make_env({
+        log_level = "INFO",
+        input_state = {LeftAlt = true},
+        joy_state = {},
+        bridge_text = "-\n",
+        memory_bytes = base_snapshot_ram({[0x0047] = 0x20}),
+    })
+
+    local refusal = env.debug_tools.input_contamination_refusal("survey_objects")
+    local neutral = env.debug_tools.tick(1, "field")
+    env.debug_tools.tick(8, "field")
+    env.debug_tools.tick(30, "field")
+
+    local log = read_file(env.log_file) or ""
+    local writes = env.memory_writes
+    env.restore()
+
+    assert_equal(refusal ~= nil, true, "contaminated input should still refuse the caller")
+    assert_equal(neutral ~= nil and neutral._raw == true, true, "contamination guard should emit raw neutral input")
+    assert_no_buttons(neutral)
+    assert_equal(#writes, 1, "contamination guard should clear exactly the game input byte")
+    assert_equal(writes[1].address, 0x0047, "auto-clear should target BUTTONS_PRESSED")
+    assert_equal(writes[1].value, 0x00, "auto-clear should zero BUTTONS_PRESSED")
+    assert_contains(log, "INPUT_CONTAMINATION_CAPTURE command=survey_objects", "guard should capture the pre-clear state")
+    assert_contains(log, "GAME_INPUT_AUTO_CLEAR command=survey_objects before=0x20 after=0x00 addr=0x0047", "guard should log the immediate clear result")
+    assert_contains(log, "GAME_INPUT_AUTO_CLEAR_CHECK command=survey_objects buttons=0x00 frames=8", "guard should log the delayed post-clear state")
+end
+
+function tests.input_guard_allows_timing_suspect_route_blocked_self_direction()
+    local env = make_env({
+        log_level = "INFO",
+        input_state = {LeftAlt = true},
+        joy_state = {},
+        bridge_text = "-\n",
+        memory_bytes = base_snapshot_ram({[0x0047] = 0x20}),
+    })
+
+    local refusal = env.debug_tools.input_contamination_refusal("survey_objects", {
+        allow_route_blocked_self_input = true,
+        route_blocked_timing_suspect = true,
+        route_blocked_dir = "down",
+        route_blocked_source = "queued_route",
+    })
+    env.debug_tools.flush()
+
+    local log = read_file(env.log_file) or ""
+    local writes = env.memory_writes
+    env.restore()
+
+    assert_equal(refusal, nil, "self-injected timing-suspect direction should not be refused")
+    assert_equal(#writes, 0, "allowed self-injected direction should not be auto-cleared by the guard")
+    assert_contains(log,
+        "INPUT_CONTAMINATION_IGNORED command=survey_objects reason=route_blocked_self_input dir=down buttons=0x20 source=queued_route",
+        "guard should log the precise self-input allowance")
+end
+
+function tests.edge_probe_input_guard_allows_benign_stale_alt_idle()
+    local env = make_env({
+        input_state = {LeftAlt = true},
+        joy_state = {},
+        bridge_text = "-\n",
+        memory_bytes = {[0x0047] = 0x00},
+    })
+
+    local refusal = env.debug_tools.edge_probe_input_refusal("probe_edge")
+    env.restore()
+
+    assert_equal(refusal, nil, "stale Alt alone should remain benign for probes")
+end
+
+function tests.edge_probe_input_guard_allows_active_bridge_input()
+    local env = make_env({
+        input_state = {LeftAlt = true},
+        joy_state = {},
+        bridge_text = "up\n",
+        memory_bytes = {[0x0047] = 0x20},
+    })
+
+    local refusal = env.debug_tools.edge_probe_input_refusal("probe_edge")
+    env.restore()
+
+    assert_equal(refusal, nil, "real bridge input should not be classified as idle contamination")
+end
+
+function tests.clear_game_input_byte_zeroes_buttons_pressed_and_logs_result()
+    local env = make_env({
+        log_level = "INFO",
+        memory_bytes = {[0x0047] = 0x20},
+    })
+
+    env.write_command_file("clear_game_input\n")
+    env.debug_tools.tick(60, "field")
+
+    local log = read_file(env.log_file) or ""
+    local writes = env.memory_writes
+    env.restore()
+
+    assert_equal(#writes, 1, "clear_game_input should write exactly one byte")
+    assert_equal(writes[1].address, 0x0047, "clear_game_input should target BUTTONS_PRESSED")
+    assert_equal(writes[1].value, 0x00, "clear_game_input should zero BUTTONS_PRESSED")
+    assert_contains(log, "GAME_INPUT_CLEAR before=0x20 after=0x00", "clear result should be logged")
+end
+
+function tests.input_bridge_runtime_off_suppresses_internal_and_external_bridge()
+    local env = make_env({
+        log_level = "INFO",
+        input_state = {LeftAlt = true, Up = true},
+        bridge_text = "A\n",
+    })
+
+    env.write_command_file("set_input_bridge:off\n")
+    local off_input = env.debug_tools.tick(60, "field")
+    local still_off = env.debug_tools.tick(61, "field")
+
+    env.set_bridge("A\n")
+    env.write_command_file("set_input_bridge:config\n")
+    local restored = env.debug_tools.tick(120, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_equal(off_input ~= nil and off_input._raw == true, true, "turning bridge off should emit a raw neutral release frame")
+    assert_no_buttons(off_input)
+    assert_equal(still_off, nil, "runtime bridge off should suppress later bridge input")
+    assert_equal(restored ~= nil, true, "clearing override should restore config-driven bridge behavior")
+    assert_equal(restored._raw, true, "restored bridge input should remain raw")
+    assert_equal(restored.A, true, "external bridge input should be restored after config mode")
+    assert_contains(log, "INPUT_BRIDGE_OVERRIDE state=off", "bridge override should log off state")
+    assert_contains(log, "INPUT_BRIDGE_OVERRIDE state=config", "bridge override should log config reset")
+end
+
+function tests.input_isolation_command_clears_input_and_emits_neutral_raw_frames()
+    local hook_calls = {}
+    local env = make_env({
+        log_level = "INFO",
+        input_state = {LeftAlt = true},
+        bridge_text = "up\n",
+        memory_bytes = base_snapshot_ram({[0x0047] = 0x80}),
+    })
+    env.debug_tools.register_command("__input_isolation", function(details)
+        hook_calls[#hook_calls + 1] = details
+    end)
+
+    env.write_command_file("isolate_input:3\n")
+    local first = env.debug_tools.tick(60, "field")
+    local second = env.debug_tools.tick(61, "field")
+    local third = env.debug_tools.tick(62, "field")
+    env.set_bridge("up\n")
+    local restored = env.debug_tools.tick(63, "field")
+    env.debug_tools.flush()
+
+    local log = read_file(env.log_file) or ""
+    local writes = env.memory_writes
+    env.restore()
+
+    assert_equal(#hook_calls, 1, "input isolation should notify the runtime cleanup hook")
+    assert_equal(hook_calls[1].frames, 3, "cleanup hook should receive the isolation duration")
+    assert_equal(#writes >= 1, true, "input isolation should clear game-side input")
+    assert_equal(writes[1].address, 0x0047, "input isolation should target BUTTONS_PRESSED")
+    assert_equal(writes[1].value, 0x00, "input isolation should zero BUTTONS_PRESSED")
+    assert_equal(first ~= nil and first._raw == true, true, "first isolation frame should emit raw neutral input")
+    assert_no_buttons(first)
+    assert_equal(second ~= nil and second._raw == true, true, "second isolation frame should stay raw neutral")
+    assert_no_buttons(second)
+    assert_equal(third ~= nil and third._raw == true, true, "third isolation frame should stay raw neutral")
+    assert_no_buttons(third)
+    assert_equal(restored ~= nil and restored.up == true, true, "bridge should resume after the isolation window expires")
+    assert_contains(log, "INPUT_ISOLATION_START frames=3", "isolation start should be logged")
+    assert_contains(log, "INPUT_ISOLATION_END", "isolation end should be logged")
+end
+
 function tests.fceux_stale_alt_warning_is_log_only()
     local spoken = {}
     local env = make_env({input_state = {LeftAlt = true}, bridge_text = "-\n", tolk_outputs = spoken})
@@ -496,6 +738,161 @@ function tests.report_movement_state_includes_player_sprite_position_bytes()
         true,
         "movement-state report should include player sprite-position bytes"
     )
+end
+
+function tests.report_cpu_state_logs_registers_and_game_context()
+    local env = make_env({
+        log_level = "INFO",
+        register_values = {
+            pc = 0xC626,
+            a = 0x41,
+            x = 0x02,
+            y = 0x03,
+            s = 0xFD,
+            p = 0x24,
+        },
+        memory_bytes = base_snapshot_ram({
+            [0x003A] = 25,
+            [0x003B] = 23,
+            [0x003C] = 0x08,
+            [0x003D] = 0x08,
+            [0x0045] = 0x0A,
+            [0x0047] = 0x20,
+            [0xC626] = 0xAD,
+            [0xC627] = 0x16,
+            [0xC628] = 0x40,
+        }),
+    })
+
+    env.write_command_file("report_cpu_state:wedged\n")
+    env.debug_tools.tick(60, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_contains(log, "CPU_STATE tag=wedged", "CPU report should run with the supplied tag")
+    assert_contains(log, "pc=0xC626 a=0x41 x=0x02 y=0x03 s=0xFD p=0x24", "CPU report should include registers")
+    assert_contains(log, "op=C626:AD 16 40", "CPU report should include opcode bytes at PC")
+    assert_contains(log, "map=0x0A(Test Map)", "CPU report should include current map")
+    assert_contains(log, "player=(25,23)", "CPU report should include current player position")
+    assert_contains(log, "buttons=0x20 move=0x08 sub=0x08", "CPU report should include stuck input/movement bytes")
+end
+
+function tests.report_cpu_state_logs_unavailable_when_register_api_missing()
+    local env = make_env({
+        log_level = "INFO",
+        memory_bytes = base_snapshot_ram({
+            [0x003A] = 25,
+            [0x003B] = 23,
+            [0x0045] = 0x0A,
+            [0x0047] = 0x00,
+        }),
+    })
+
+    env.write_command_file("report_cpu_state:missing_api\n")
+    env.debug_tools.tick(60, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_contains(log, "CPU_STATE_UNAVAILABLE tag=missing_api reason=memory.getregister_unavailable", "missing API should be logged")
+    assert_contains(log, "map=0x0A(Test Map)", "unavailable report should still include current map")
+    assert_contains(log, "player=(25,23)", "unavailable report should still include current player position")
+end
+
+function tests.report_oam_offset_flags_misaligned_sprite_clear_offset()
+    local env = make_env({
+        log_level = "INFO",
+        register_values = {
+            pc = 0xB9ED,
+            y = 0x2A,
+        },
+        memory_bytes = base_snapshot_ram({
+            [0x004E] = 0x2A,
+            [0x004F] = 0x81,
+            [0xB9ED] = 0xC0,
+            [0xB9EE] = 0x00,
+            [0xB9EF] = 0xF0,
+        }),
+    })
+
+    env.write_command_file("report_oam_offset:wedged\n")
+    env.debug_tools.tick(60, "field")
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_contains(log, "OAM_OFFSET tag=wedged", "OAM report should run with the supplied tag")
+    assert_contains(log, "addr=0x004E value=0x2A aligned=false", "misaligned offset should be explicit")
+    assert_contains(log, "reaches_zero=false iterations_to_zero=never", "bad offset should be diagnosed as non-terminating")
+    assert_contains(log, "pc=0xB9ED y=0x2A op=B9ED:C0 00 F0", "report should include CPU context")
+    assert_contains(log, "diagnosis=misaligned_offset_will_never_exit_B9ED_B9F8", "report should name the hard-lock loop")
+end
+
+function tests.watch_oam_offset_verbose_logs_writer_value_and_cpu_context()
+    local env = make_env({
+        log_level = "INFO",
+        register_values = {
+            pc = 0xB812,
+            y = 0x2A,
+        },
+        memory_bytes = base_snapshot_ram({
+            [0x004F] = 0x81,
+            [0xB812] = 0x84,
+            [0xB813] = 0x4E,
+            [0xB814] = 0xA9,
+        }),
+    })
+
+    env.write_command_file("watch_oam_offset_verbose:repro\n")
+    env.debug_tools.tick(60, "field")
+    _G.memory.writebyte(0x004E, 0x2A)
+    env.debug_tools.flush()
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_contains(log, "OAM_OFFSET_WATCH_ARMED tag=repro addr=0x004E mode=verbose", "verbose watch should arm on demand")
+    assert_contains(log, "OAM_OFFSET_WRITE tag=repro addr=0x004E value=0x2A aligned=false", "watch should log the bad write")
+    assert_contains(log, "pc=0xB812 y=0x2A op=B812:84 4E A9", "watch should include writer CPU context")
+end
+
+function tests.watch_oam_offset_quiet_logs_stuck_loop_with_recent_writes()
+    local regs = {
+        pc = 0xB812,
+        y = 0x2A,
+    }
+    local env = make_env({
+        log_level = "INFO",
+        register_values = regs,
+        memory_bytes = base_snapshot_ram({
+            [0x004F] = 0x81,
+            [0xB812] = 0x84,
+            [0xB813] = 0x4E,
+            [0xB814] = 0xA9,
+            [0xB9ED] = 0xC0,
+            [0xB9EE] = 0x00,
+            [0xB9EF] = 0xF0,
+        }),
+    })
+
+    env.write_command_file("watch_oam_offset:repro\n")
+    env.debug_tools.tick(60, "field")
+    _G.memory.writebyte(0x004E, 0x2A)
+    regs.pc = 0xB9ED
+    env.debug_tools.tick(61, "field")
+    env.debug_tools.tick(62, "field")
+    env.debug_tools.flush()
+
+    local log = read_file(env.log_file) or ""
+    env.restore()
+
+    assert_contains(log, "OAM_OFFSET_WATCH_ARMED tag=repro addr=0x004E mode=quiet", "quiet watch should arm on demand")
+    assert_equal(log:find("OAM_OFFSET_WRITE tag=repro", 1, true), nil, "quiet watch should not log every write")
+    assert_contains(log, "OAM_OFFSET_STUCK tag=repro", "quiet watch should log when the bad loop is reached")
+    assert_contains(log, "value=0x2A aligned=false", "stuck report should include bad value")
+    assert_contains(log, "pc=0xB9ED y=0x2A op=B9ED:C0 00 F0", "stuck report should include loop CPU context")
+    assert_contains(log, "recent={frame=60 pc=0xB812 value=0x2A", "stuck report should include recent writer context")
 end
 
 function tests.flush_writes_buffered_debug_log_immediately()
@@ -817,10 +1214,13 @@ function tests.battle_start_skips_duplicate_trace_after_recent_transition_dump()
 end
 
 local count = 0
+local filter = os.getenv("DW_TEST_FILTER")
 for name, fn in pairs(tests) do
-    fn()
-    count = count + 1
-    print("PASS  " .. name)
+    if not filter or name:find(filter, 1, true) then
+        fn()
+        count = count + 1
+        print("PASS  " .. name)
+    end
 end
 
 print(string.format("Ran %d Lua unit tests", count))

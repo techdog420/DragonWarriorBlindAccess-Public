@@ -1330,8 +1330,10 @@ local function start_autowalk_npc_parking(target, opts)
                     byte0 = byte0,
                     byte1 = byte1,
                     byte2 = byte2,
-                    parked_byte0 = (byte0 - (byte0 % 32)) + 31,
-                    parked_byte1 = (byte1 - (byte1 % 32)) + 31,
+                    -- Low coordinates (0,0) make the ROM skip the slot; (31,31)
+                    -- stays active and can wedge the sprite-OAM clear loop.
+                    parked_byte0 = byte0 - (byte0 % 32),
+                    parked_byte1 = byte1 - (byte1 % 32),
                     x = x,
                     y = y,
                 }
@@ -1402,8 +1404,9 @@ local function add_live_npc_to_autowalk_parking(map_id, npc, reason)
         byte0 = byte0,
         byte1 = byte1,
         byte2 = byte2,
-        parked_byte0 = (byte0 - (byte0 % 32)) + 31,
-        parked_byte1 = (byte1 - (byte1 % 32)) + 31,
+        -- Low coordinates (0,0) make the ROM skip the slot; (31,31) stays active.
+        parked_byte0 = byte0 - (byte0 % 32),
+        parked_byte1 = byte1 - (byte1 % 32),
         x = x,
         y = y,
     }
@@ -1971,6 +1974,54 @@ local function clear_active_route_context(reason, refresh_objects)
     if refresh_objects then
         objects.request_refresh()
     end
+end
+
+function M._input_contamination_refusal(command_name, opts)
+    if debug_tools.input_contamination_refusal then
+        return debug_tools.input_contamination_refusal(command_name, opts)
+    end
+    if debug_tools.edge_probe_input_refusal then
+        return debug_tools.edge_probe_input_refusal(command_name)
+    end
+    return nil
+end
+
+local function input_refusal_opts_for_route_block(block_data, blocked_dir)
+    if not block_data or block_data.timing_suspect ~= true then
+        return nil
+    end
+    return {
+        allow_route_blocked_self_input = true,
+        route_blocked_timing_suspect = true,
+        route_blocked_dir = block_data.dir or blocked_dir,
+        route_blocked_source = block_data.source,
+    }
+end
+
+function M._abort_autowalk_if_input_contaminated(command_name, target, source, opts)
+    local refusal, details = M._input_contamination_refusal(
+        command_name or "auto_walk",
+        opts and opts.input_refusal_opts or nil)
+    if not refusal then
+        return nil
+    end
+    local target_name = target and target.name or "destination"
+    debug_tools.error(refusal)
+    debug_tools.info(string.format(
+        "AUTO_WALK_ABORT reason=input_contaminated target=%s source=%s %s",
+        tostring(target_name),
+        tostring(source or "-"),
+        tostring(details or "")))
+    clear_active_route_context("autowalk input contaminated", should_refresh_objects_after_route())
+    if not opts or opts.speak ~= false then
+        tolk.output_interrupt("Auto-walk refused. Input contaminated.")
+    end
+    return {
+        status = "input_contaminated",
+        ok = false,
+        message = refusal,
+        target = target,
+    }
 end
 
 local function use_post_arrival_actions(opts)
@@ -3790,6 +3841,10 @@ function M.autowalk_to_object(obj, opts)
             message = "No object selected",
         }
     end
+    local contamination = M._abort_autowalk_if_input_contaminated("auto_walk", obj, "autowalk_to_object", opts)
+    if contamination then
+        return contamination
+    end
     if autowalk_guard then
         local ok, reason = autowalk_guard(opts)
         if ok == false then
@@ -4139,6 +4194,23 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     end
 
     local map_id = nav.get_position()
+    local blocked_target = active_route_target or last_pathfind_obj
+    local contamination = M._abort_autowalk_if_input_contaminated("auto_walk", blocked_target, "route_blocked", {
+        speak = true,
+        input_refusal_opts = input_refusal_opts_for_route_block(block_data, blocked_dir),
+    })
+    if contamination then
+        event_bus.publish("route_cancelled", {
+            reason = "input_contaminated",
+            target = blocked_target,
+            map_id = map_id,
+            from_x = from_x,
+            from_y = from_y,
+            blocked_dir = blocked_dir,
+        })
+        return
+    end
+
     local is_manual_block = (block_data and block_data.queued_route == false)
     local is_seam_retry_block = same_seam_retry(map_id, from_x, from_y, blocked_dir)
     local is_npc_block, npc_x, npc_y, npc_blocker = is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_dir)

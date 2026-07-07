@@ -2,6 +2,8 @@
 *.dll
 
 # Test/diagnostic output files
+.test_tmp/
+.tmp-tests/
 screen_dump.txt
 ppu_dump.txt
 dw_debug.log

@@ -3751,6 +3751,24 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,7"] = {north = true, west = true},
     },
 
+    -- Map 0x0A: Cantlin
+    [0x0A] = {
+        -- 2026-07-07 Old Man 4 lower-pocket route. The OAM/NPC parking
+        -- hard-lock was fixed first; these seams then reproduced as normal
+        -- route failures and were confirmed with same-origin probe_edge
+        -- checks from the listed adjacent tiles.
+        ["21,23"] = {west = true}, -- from (20,23)->RIGHT
+        -- (21,24) blocks from west, east, and south; confirmed from
+        -- (20,24)->RIGHT, (22,24)->LEFT, and (21,25)->UP.
+        ["21,24"] = {east = true, south = true, west = true},
+        ["22,23"] = {south = true}, -- from (22,24)->UP
+        ["23,24"] = {west = true}, -- from (22,24)->RIGHT
+        -- (23,25) blocks from west and south; confirmed from
+        -- (22,25)->RIGHT and (23,26)->UP.
+        ["23,25"] = {south = true, west = true},
+        ["24,24"] = {south = true}, -- from (24,25)->UP
+    },
+
     -- Map 0x0B: Rimuldar
     [0x0B] = {
         -- 2026-05-17 first town walkabout. The exit-route replan from

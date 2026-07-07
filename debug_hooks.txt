@@ -65,6 +65,24 @@ COMMANDS (write to dw_commands.txt, one per line)
   report_coords            Write current map/x/y plus raw coordinate-adjacent bytes
   report_movement_state    Dump movement/camera/sprite-adjacent RAM windows
   report_movement_state:TAG Same, with TAG included for before/after comparisons
+  report_cpu_state          Dump read-only CPU PC/registers, opcode bytes at PC,
+                            and current map/input/movement RAM context. Use this
+                            while FCEUX input is hard-locked to identify where
+                            the ROM is executing when it is not polling $4016.
+  report_cpu_state:TAG      Same, with TAG included for before/after comparisons
+  report_oam_offset         Diagnose RAM $004E, the Dragon Warrior sprite-OAM
+                            clear-loop offset. Non-multiples of 4 can trap the
+                            ROM in the $B9ED-$B9F8 loop.
+  report_oam_offset:TAG     Same, with TAG included for before/after comparisons
+  watch_oam_offset[:TAG]    Arm a quiet one-address FCEUX Lua write watch on
+                            $004E. It keeps recent write context in memory and
+                            logs OAM_OFFSET_STUCK only if the CPU reaches
+                            $B9ED/$B9F8 with a non-terminating $004E value.
+  watch_oam_offset:status   Report watch state plus current $004E diagnosis.
+  watch_oam_offset:off      Disarm the $004E write watch.
+  watch_oam_offset_verbose:TAG
+                           Log every $004E write. Use only for tiny captures;
+                           normal gameplay writes this byte constantly.
   reset_movement_state[:TAG]
                            Zero movement state/subpixel bytes and clear injected
                            teleport input; useful after teleport/control-lock
@@ -84,12 +102,33 @@ COMMANDS (write to dw_commands.txt, one per line)
   simulate_input:START     Inject one frame of Start
   simulate_input:SELECT    Inject one frame of Select
   clear_input              Inject a neutral joypad frame to clear stale held input
+  clear_game_input         Zero the game-side BUTTONS_PRESSED byte ($0047) and
+                           log before/after values.
+                           The shared input-contamination guard also captures
+                           idle Lua/bridge + nonzero $0047 cases, logs
+                           INPUT_CONTAMINATION_CAPTURE, auto-clears $0047 with
+                           GAME_INPUT_AUTO_CLEAR, emits a short raw-neutral
+                           GAME_INPUT_AUTO_NEUTRAL window, then logs a delayed
+                           GAME_INPUT_AUTO_CLEAR_CHECK sample.
+  isolate_input[:FRAMES]   Debug recovery/isolation hook. Cancels active
+                           survey/auto-walk/edge verifier state, clears pending
+                           debug-owned input, resets the keyboard-bridge file,
+                           clears $0047, logs all visible input layers, and
+                           emits neutral raw joypad frames for FRAMES
+                           (default 60, max 600).
+  set_input_bridge:off     Runtime-disable the FCEUX keyboard bridge without
+                           editing dw_access.ini; emits one neutral raw release
+                           frame. Useful for survey A/B testing.
+  set_input_bridge:on      Runtime-force the bridge on for this script session.
+  set_input_bridge:config  Clear the runtime override and follow dw_access.ini.
+  set_input_bridge:status  Log the current effective bridge state.
   trace_input              Log input.get() keys and joypad.read(1) changes for 300 frames
   trace_input:FRAMES       Same, with frame count clamped to 1..1800
   launcher_probe           Write a launcher readiness marker to dw_debug.log
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
   input_status[:TAG]       Log current input.get(), joypad.read(1), bridge-file
-                           state, and LeftAlt status.
+                           state, game-side $0047 byte, LeftAlt status, and
+                           effective bridge override.
   ./recover_fceux_input.sh Reset FCEUX stuck-Alt/menu focus from WSL, reset
                            dw_keyboard_input.txt to "-", restart the keyboard
                            bridge sidecar if missing, and queue
