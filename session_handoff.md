@@ -1,12 +1,55 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-07
+Updated: 2026-07-08
 
 ## Immediate FCEUX Handoff
 
-- The active detour is now FCEUX source-level input debugging, not more
-  Cantlin map surveying. A focused handoff for the PowerShell/Windows build is
-  in `work_notes/fceux_input_debug_handoff.md`.
+- 2026-07-07/08 Cantlin door decoding resumed from a clean live baseline:
+  `POSITION map=0x0A(Cantlin) x=20 y=22`, `DOOR_STATE keys=6 slots=none`,
+  and `RUNTIME_BLOCKS map=0x0A none`. Four western-shop door hypotheses were
+  verified with the non-teleport `verify_door_stand` workflow and all were
+  clean negatives: stand `(5,12)` facing right expected `(6,12)`, stand
+  `(5,12)` facing up expected `(5,11)`, stand `(4,12)` facing up expected
+  `(4,11)`, and stand `(4,12)` facing right expected `(5,12)`. Each manual
+  OPEN produced "There is no door here", `verify_door_after` logged
+  `expected_present=false`, keys stayed `6 -> 6`, and door RAM stayed empty.
+  A tentative eastern-building candidate `verify_door_stand:25,13,UP`
+  repeatedly failed to ready because walking to `(25,13)` churned around
+  timing-sensitive edges, especially near `(22,15)->UP`; it was manually
+  stopped with no runtime blocks and door RAM still empty. The actual eastern
+  building door was then confirmed at cell `(26,9)`: `verify_door_stand:25,9,RIGHT`
+  readied at the public west stand, manual OPEN played the door sound, and
+  `verify_door_after` logged `expected_present=true`, keys `6 -> 5`, and
+  opened-door RAM `0=(26,9)`. The central right door was then confirmed at
+  cell `(15,25)`: `verify_door_stand:15,24,DOWN` readied at the north stand,
+  manual OPEN played the door sound, and `verify_door_after` logged
+  `expected_present=true`, keys `5 -> 4`, and opened-door RAM
+  `0=(26,9) 1=(15,25)`. The central left door was then confirmed at cell
+  `(14,25)`: `verify_door_stand:14,24,DOWN` readied at the north stand,
+  manual OPEN played the audio message, and `verify_door_after` logged
+  `expected_present=true`, keys `4 -> 3`, and opened-door RAM
+  `0=(26,9) 1=(15,25) 2=(14,25)`. After the app restart, the pending manual
+  OPEN at `(4,20)` was recovered with `verify_door_after`: stand `(4,20)`
+  facing south confirmed western-shop north door cell `(4,21)`, keys `3 -> 2`,
+  and opened-door RAM slot `3=(4,21)`. The final guide-backed western-shop
+  east door was then confirmed from stand `(7,25)` facing east:
+  `verify_door_after` logged `expected_present=true`, keys `2 -> 1`, and
+  opened-door RAM slot `4=(8,25)`. `map_reader.lua` now models all five
+  Cantlin door-icon cells in `MAP_DOOR_CELLS[0x0A]`: `(26,9)`, `(15,25)`,
+  `(14,25)`, `(4,21)`, and `(8,25)`. `objects.lua` exposes
+  `door_26_9` as `Eastern Building Door`, `door_15_25` as `Central Right
+  Door`, `door_14_25` as `Central Left Door`, `door_4_21` as
+  `Western Shop North Door`, and `door_8_25` as `Western Shop East Door`.
+  Focused map/object tests pass. Current live state after verification:
+  Cantlin `(7,25)`, keys 1, door RAM
+  `0=(26,9) 1=(15,25) 2=(14,25) 3=(4,21) 4=(8,25)`, no runtime blocks, and
+  input byte `buttons=0x00`. FCEUX needs a manual `main.lua` reload before the
+  latest source-side door object/path data is live.
+
+- Earlier FCEUX source-level input debugging is summarized below, but current
+  active work has returned to Cantlin door/service decoding. A focused handoff
+  for the PowerShell/Windows build remains in
+  `work_notes/fceux_input_debug_handoff.md`.
 - FCEUX `v2.6.6` was cloned to `/mnt/d/modding/fceux-input-debug`
   (`D:\modding\fceux-input-debug`) on branch
   `codex/input-hardlock-diagnostics`. It contains opt-in trace instrumentation

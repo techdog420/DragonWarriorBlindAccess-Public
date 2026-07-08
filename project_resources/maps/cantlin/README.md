@@ -73,6 +73,28 @@ Known Cantlin services and points of interest:
   - eastern building,
   - left door in central building,
   - right door in central building.
+- Live locked-door status:
+  - Confirmed eastern building door: door cell `(26,9)`, opened from public
+    stand `(25,9)` while facing east. Live verifier proof on 2026-07-07 showed
+    keys `6 -> 5` and opened-door RAM slot `0=(26,9)`.
+  - Confirmed central right door: door cell `(15,25)`, opened from public
+    stand `(15,24)` while facing south. Live verifier proof on 2026-07-07
+    showed keys `5 -> 4` and opened-door RAM slot `1=(15,25)`.
+  - Confirmed central left door: door cell `(14,25)`, opened from public stand
+    `(14,24)` while facing south. Live verifier proof on 2026-07-07 showed
+    keys `4 -> 3` and opened-door RAM slot `2=(14,25)`.
+  - Confirmed western shop north door: door cell `(4,21)`, opened from public
+    stand `(4,20)` while facing south. Live verifier proof on 2026-07-08
+    showed keys `3 -> 2` and opened-door RAM slot `3=(4,21)`.
+  - Confirmed western shop east door: door cell `(8,25)`, opened from public
+    stand `(7,25)` while facing east. Live verifier proof on 2026-07-08 showed
+    keys `2 -> 1` and opened-door RAM slot `4=(8,25)`.
+  - The exact five-repeat door-icon tile in `mikesrpgcenter_cantlin.png`
+    appears at `(26,9)`, `(4,21)`, `(8,25)`, `(14,25)`, and `(15,25)`; all
+    five now have live OPEN/door-RAM proof.
+  - Disproved/non-door checks include `(5,12)` facing right/up, `(4,12)`
+    facing up/right, and the eastern facade candidate `(25,13)` facing up
+    toward `(25,12)`.
 - Progression notes:
   - Sources describe Cantlin as guarded by Golem and recommend the Fairy Flute.
     Current project evidence says the latest live approach entered town without

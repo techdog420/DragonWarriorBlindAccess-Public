@@ -2478,3 +2478,24 @@ For the next live map task, start a new dated section here with:
   `map_reader.lua` seam, confirm `report_runtime_blocks` is clear, then retry
   the narrow `survey_target:Old Man 4,park_npcs` or a direct route to the Old
   Man 4 stand.
+
+## 2026-07-08 Cantlin Locked Door Pinning
+
+- RESUME RECOVERY: after the Codex app restart, the pending manual OPEN at
+  `(4,20)` was recovered with `verify_door_after`. The armed verifier had
+  `stand=(4,20) dir=down expected_door=(4,21)`, and the result confirmed
+  `expected_present=true`, keys `3 -> 2`, and door RAM slot `3=(4,21)`.
+- FINAL DOOR: the remaining guide-backed icon door was not the north stand
+  `(8,24)` facing down; that verifier churned and was stopped cleanly. The
+  valid stand was `(7,25)` facing east toward `(8,25)`. Manual OPEN played the
+  door sound, and `verify_door_after` confirmed `expected_present=true`,
+  keys `2 -> 1`, and door RAM slot `4=(8,25)`.
+- PROMOTED: `map_reader.lua` now models all five Cantlin door cells:
+  `(26,9)`, `(15,25)`, `(14,25)`, `(4,21)`, and `(8,25)`. `objects.lua`
+  exposes matching door objects, including `Western Shop North Door` and
+  `Western Shop East Door`.
+- FINAL LIVE STATE: Cantlin `(7,25)`, keys `1`, door RAM
+  `0=(26,9) 1=(15,25) 2=(14,25) 3=(4,21) 4=(8,25)`,
+  `RUNTIME_BLOCKS map=0x0A none`, and `buttons=0x00`.
+- NEXT: manually reload `main.lua` in FCEUX before judging the latest door
+  object/path data live.

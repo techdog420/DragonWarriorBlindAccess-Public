@@ -1,10 +1,22 @@
 # Playtesting Notes
 
-Updated: 2026-07-03
+Updated: 2026-07-08
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Cantlin locked doors pinned (`2026-07-08`): the five guide-backed door-icon
+  cells on map `0x0A` now have live FCEUX OPEN/door-RAM proof. Confirmed cells
+  and public stands are `Eastern Building Door` `(26,9)` from `(25,9)` facing
+  east, `Central Right Door` `(15,25)` from `(15,24)` facing south,
+  `Central Left Door` `(14,25)` from `(14,24)` facing south,
+  `Western Shop North Door` `(4,21)` from `(4,20)` facing south, and
+  `Western Shop East Door` `(8,25)` from `(7,25)` facing east. Current live
+  state after the final check was Cantlin `(7,25)`, keys `1`, door RAM
+  `0=(26,9) 1=(15,25) 2=(14,25) 3=(4,21) 4=(8,25)`, no runtime blocks, and
+  input byte `buttons=0x00`. Reload `main.lua` in FCEUX before judging the
+  latest source-side door objects/routes.
 
 - Cantlin overworld approach reached town in live FCEUX (`2026-07-03`):
   after the Hauksness-side southern trail, a clean re-baseline at World Map

@@ -439,6 +439,122 @@ function tests.brecconary_locked_doors_open_from_door_ram_array()
     open_env.restore()
 end
 
+
+function tests.cantlin_confirmed_locked_doors_open_from_door_ram_array()
+    local base = 0x0A * 5
+    local data_start = 0x10
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    for i = 0, 56 do
+        rom_bytes[data_start + i] = 0xFF
+    end
+
+    local closed_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local context = closed_env.map_reader.get_door_cell_context(0x0A, 26, 9)
+    assert_equal(context ~= nil, true, "Cantlin eastern locked door should be modeled")
+    assert_equal(context.open, false, "Cantlin eastern door should start closed without door RAM")
+    local central_right_context = closed_env.map_reader.get_door_cell_context(0x0A, 15, 25)
+    assert_equal(central_right_context ~= nil, true, "Cantlin central right locked door should be modeled")
+    assert_equal(central_right_context.open, false, "Cantlin central right door should start closed without door RAM")
+    local central_left_context = closed_env.map_reader.get_door_cell_context(0x0A, 14, 25)
+    assert_equal(central_left_context ~= nil, true, "Cantlin central left locked door should be modeled")
+    assert_equal(central_left_context.open, false, "Cantlin central left door should start closed without door RAM")
+    local western_north_context = closed_env.map_reader.get_door_cell_context(0x0A, 4, 21)
+    assert_equal(western_north_context ~= nil, true, "Cantlin western shop north locked door should be modeled")
+    assert_equal(western_north_context.open, false, "Cantlin western shop north door should start closed without door RAM")
+    local western_east_context = closed_env.map_reader.get_door_cell_context(0x0A, 8, 25)
+    assert_equal(western_east_context ~= nil, true, "Cantlin western shop east locked door should be modeled")
+    assert_equal(western_east_context.open, false, "Cantlin western shop east door should start closed without door RAM")
+    local closed = closed_env.map_reader.get_walkability_details(0x0A, 26, 9)
+    assert_equal(closed.effective_walkable, false, "closed Cantlin eastern door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Cantlin eastern door should report door_closed")
+    local central_right_closed = closed_env.map_reader.get_walkability_details(0x0A, 15, 25)
+    assert_equal(central_right_closed.effective_walkable, false, "closed Cantlin central right door should block movement")
+    assert_equal(central_right_closed.reason, "door_closed", "closed Cantlin central right door should report door_closed")
+    local central_left_closed = closed_env.map_reader.get_walkability_details(0x0A, 14, 25)
+    assert_equal(central_left_closed.effective_walkable, false, "closed Cantlin central left door should block movement")
+    assert_equal(central_left_closed.reason, "door_closed", "closed Cantlin central left door should report door_closed")
+    local western_north_closed = closed_env.map_reader.get_walkability_details(0x0A, 4, 21)
+    assert_equal(western_north_closed.effective_walkable, false, "closed Cantlin western shop north door should block movement")
+    assert_equal(western_north_closed.reason, "door_closed", "closed Cantlin western shop north door should report door_closed")
+    local western_east_closed = closed_env.map_reader.get_walkability_details(0x0A, 8, 25)
+    assert_equal(western_east_closed.effective_walkable, false, "closed Cantlin western shop east door should block movement")
+    assert_equal(western_east_closed.reason, "door_closed", "closed Cantlin western shop east door should report door_closed")
+    local false_wall_band = closed_env.map_reader.get_door_cell_context(0x0A, 25, 12)
+    assert_equal(false_wall_band, nil, "disproved Cantlin facade candidate (25,12) should not be modeled as a door")
+    closed_env.restore()
+
+    local open_env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+            [0x600C] = 26,
+            [0x600D] = 9,
+            [0x600E] = 15,
+            [0x600F] = 25,
+            [0x6010] = 14,
+            [0x6011] = 25,
+            [0x6012] = 4,
+            [0x6013] = 21,
+            [0x6014] = 8,
+            [0x6015] = 25,
+        },
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    context = open_env.map_reader.get_door_cell_context(0x0A, 26, 9)
+    assert_equal(context.open, true, "Cantlin eastern door should open from door RAM at (26,9)")
+    local opened = open_env.map_reader.get_walkability_details(0x0A, 26, 9)
+    assert_equal(opened.effective_walkable, true, "opened Cantlin eastern door should become walkable")
+    assert_equal(opened.reason, "door_open", "opened Cantlin eastern door should report door_open")
+    central_right_context = open_env.map_reader.get_door_cell_context(0x0A, 15, 25)
+    assert_equal(central_right_context.open, true, "Cantlin central right door should open from door RAM at (15,25)")
+    local central_right_opened = open_env.map_reader.get_walkability_details(0x0A, 15, 25)
+    assert_equal(central_right_opened.effective_walkable, true, "opened Cantlin central right door should become walkable")
+    assert_equal(central_right_opened.reason, "door_open", "opened Cantlin central right door should report door_open")
+    central_left_context = open_env.map_reader.get_door_cell_context(0x0A, 14, 25)
+    assert_equal(central_left_context.open, true, "Cantlin central left door should open from door RAM at (14,25)")
+    local central_left_opened = open_env.map_reader.get_walkability_details(0x0A, 14, 25)
+    assert_equal(central_left_opened.effective_walkable, true, "opened Cantlin central left door should become walkable")
+    assert_equal(central_left_opened.reason, "door_open", "opened Cantlin central left door should report door_open")
+    western_north_context = open_env.map_reader.get_door_cell_context(0x0A, 4, 21)
+    assert_equal(western_north_context.open, true, "Cantlin western shop north door should open from door RAM at (4,21)")
+    local western_north_opened = open_env.map_reader.get_walkability_details(0x0A, 4, 21)
+    assert_equal(western_north_opened.effective_walkable, true, "opened Cantlin western shop north door should become walkable")
+    assert_equal(western_north_opened.reason, "door_open", "opened Cantlin western shop north door should report door_open")
+    western_east_context = open_env.map_reader.get_door_cell_context(0x0A, 8, 25)
+    assert_equal(western_east_context.open, true, "Cantlin western shop east door should open from door RAM at (8,25)")
+    local western_east_opened = open_env.map_reader.get_walkability_details(0x0A, 8, 25)
+    assert_equal(western_east_opened.effective_walkable, true, "opened Cantlin western shop east door should become walkable")
+    assert_equal(western_east_opened.reason, "door_open", "opened Cantlin western shop east door should report door_open")
+    local snapshot = open_env.map_reader.get_walkability_snapshot(0x0A)
+    assert_equal(snapshot[9][26], true, "walkability snapshot should honor opened Cantlin eastern door")
+    assert_equal(snapshot[25][15], true, "walkability snapshot should honor opened Cantlin central right door")
+    assert_equal(snapshot[25][14], true, "walkability snapshot should honor opened Cantlin central left door")
+    assert_equal(snapshot[21][4], true, "walkability snapshot should honor opened Cantlin western shop north door")
+    assert_equal(snapshot[25][8], true, "walkability snapshot should honor opened Cantlin western shop east door")
+
+    open_env.restore()
+end
+
 function tests.garinham_old_east_door_guess_is_not_a_door_override()
     local memory_bytes = {
         [0x600C] = 19,

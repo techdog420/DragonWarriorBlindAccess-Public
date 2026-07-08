@@ -1157,6 +1157,22 @@ local MAP_DOOR_CELLS = {
         ["17,10"] = {x=17, y=10},
         ["4,6"] = {x=4, y=6},
     },
+    -- Map 0x0A: Cantlin
+    -- 2026-07-07/08 live FCEUX verifier proof confirmed five door-icon cells:
+    -- OPEN from `(25,9)` facing east wrote door RAM `(26,9)`, then OPEN
+    -- from `(15,24)` and `(14,24)` facing south wrote door RAM `(15,25)`
+    -- and `(14,25)`. Follow-up `verify_door_after` from `(4,20)` facing
+    -- south confirmed door RAM `(4,21)`, and from `(7,25)` facing east
+    -- confirmed door RAM `(8,25)`.
+    -- The guide/image pass found other likely icon tiles, but keep only
+    -- live-confirmed doors modeled for now.
+    [0x0A] = {
+        ["26,9"] = {x=26, y=9},
+        ["15,25"] = {x=15, y=25},
+        ["14,25"] = {x=14, y=25},
+        ["4,21"] = {x=4, y=21},
+        ["8,25"] = {x=8, y=25},
+    },
     -- Map 0x0B: Rimuldar inn / Wings chest locked doors.
     -- External guide data lists two inn doors. Live FCEUX door RAM confirmed
     -- the outer door at (21,21) after OPEN from (21,22) facing north, and the

@@ -1139,6 +1139,63 @@ local EXTRA_DOORS = {
             interaction_face_dir="north",
         },
     },
+    -- Map 0x0A: Cantlin. Live OPEN proof confirmed the eastern building
+    -- door from `(25,9)` facing east, the central pair from `(15,24)`
+    -- and `(14,24)` facing south, and the western shop north door from
+    -- `(4,20)` facing south plus the western shop east door from `(7,25)`
+    -- facing east.
+    [0x0A] = {
+        {
+            x=26,
+            y=9,
+            name="Eastern Building Door",
+            type=M.TYPE_DOOR,
+            id="door_26_9",
+            interaction_x=25,
+            interaction_y=9,
+            interaction_face_dir="east",
+        },
+        {
+            x=15,
+            y=25,
+            name="Central Right Door",
+            type=M.TYPE_DOOR,
+            id="door_15_25",
+            interaction_x=15,
+            interaction_y=24,
+            interaction_face_dir="south",
+        },
+        {
+            x=14,
+            y=25,
+            name="Central Left Door",
+            type=M.TYPE_DOOR,
+            id="door_14_25",
+            interaction_x=14,
+            interaction_y=24,
+            interaction_face_dir="south",
+        },
+        {
+            x=4,
+            y=21,
+            name="Western Shop North Door",
+            type=M.TYPE_DOOR,
+            id="door_4_21",
+            interaction_x=4,
+            interaction_y=20,
+            interaction_face_dir="south",
+        },
+        {
+            x=8,
+            y=25,
+            name="Western Shop East Door",
+            type=M.TYPE_DOOR,
+            id="door_8_25",
+            interaction_x=7,
+            interaction_y=25,
+            interaction_face_dir="east",
+        },
+    },
     -- Map 0x18: Garin's Grave B1 southeast locked door toward B2. Live OPEN
     -- from `(17,18)` facing north wrote slot `1=(17,17)` into door RAM, and a
     -- direct edge probe immediately moved into `(17,17)`. Later live routing

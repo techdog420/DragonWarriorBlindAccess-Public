@@ -2558,6 +2558,74 @@ function tests.brecconary_exposes_hidden_locked_doors()
     env.restore()
 end
 
+
+function tests.cantlin_exposes_confirmed_locked_doors()
+    local env = make_env()
+
+    env.set_position(0x0A, 25, 9)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0A)
+
+    env.objects.set_filter(env.objects.FILTER_DOOR)
+
+    local doors = env.objects.get_objects({filtered = true})
+    local by_id = {}
+    for _, door in ipairs(doors) do
+        if door.id == "door_25_12" then
+            assert_equal(true, false, "Cantlin should not expose the disproved east facade door candidate")
+        end
+        by_id[door.id] = door
+    end
+
+    local eastern = by_id.door_26_9
+    assert_equal(eastern ~= nil, true, "Cantlin should expose the live-confirmed eastern building door")
+    assert_equal(eastern.name, "Eastern Building Door", "Cantlin eastern door should have a useful navigation label")
+    assert_equal(eastern.x, 26, "Cantlin eastern door x should match opened-door RAM")
+    assert_equal(eastern.y, 9, "Cantlin eastern door y should match opened-door RAM")
+    assert_equal(eastern.interaction_x, 25, "Cantlin eastern door should route to the public west stand")
+    assert_equal(eastern.interaction_y, 9, "Cantlin eastern door stand should match live verifier proof")
+    assert_equal(eastern.interaction_face_dir, "east", "Cantlin eastern door should open from the west stand facing east")
+
+    local central_right = by_id.door_15_25
+    assert_equal(central_right ~= nil, true, "Cantlin should expose the live-confirmed central right door")
+    assert_equal(central_right.name, "Central Right Door", "Cantlin central right door should have a useful navigation label")
+    assert_equal(central_right.x, 15, "Cantlin central right door x should match opened-door RAM")
+    assert_equal(central_right.y, 25, "Cantlin central right door y should match opened-door RAM")
+    assert_equal(central_right.interaction_x, 15, "Cantlin central right door should route to the public north stand")
+    assert_equal(central_right.interaction_y, 24, "Cantlin central right door stand should match live verifier proof")
+    assert_equal(central_right.interaction_face_dir, "south", "Cantlin central right door should open from the north stand facing south")
+
+    local central_left = by_id.door_14_25
+    assert_equal(central_left ~= nil, true, "Cantlin should expose the live-confirmed central left door")
+    assert_equal(central_left.name, "Central Left Door", "Cantlin central left door should have a useful navigation label")
+    assert_equal(central_left.x, 14, "Cantlin central left door x should match opened-door RAM")
+    assert_equal(central_left.y, 25, "Cantlin central left door y should match opened-door RAM")
+    assert_equal(central_left.interaction_x, 14, "Cantlin central left door should route to the public north stand")
+    assert_equal(central_left.interaction_y, 24, "Cantlin central left door stand should match live verifier proof")
+    assert_equal(central_left.interaction_face_dir, "south", "Cantlin central left door should open from the north stand facing south")
+
+    local western_north = by_id.door_4_21
+    assert_equal(western_north ~= nil, true, "Cantlin should expose the live-confirmed western shop north door")
+    assert_equal(western_north.name, "Western Shop North Door", "Cantlin western shop north door should have a useful navigation label")
+    assert_equal(western_north.x, 4, "Cantlin western shop north door x should match opened-door RAM")
+    assert_equal(western_north.y, 21, "Cantlin western shop north door y should match opened-door RAM")
+    assert_equal(western_north.interaction_x, 4, "Cantlin western shop north door should route to the public north stand")
+    assert_equal(western_north.interaction_y, 20, "Cantlin western shop north door stand should match live verifier proof")
+    assert_equal(western_north.interaction_face_dir, "south", "Cantlin western shop north door should open from the north stand facing south")
+
+    local western_east = by_id.door_8_25
+    assert_equal(western_east ~= nil, true, "Cantlin should expose the live-confirmed western shop east door")
+    assert_equal(western_east.name, "Western Shop East Door", "Cantlin western shop east door should have a useful navigation label")
+    assert_equal(western_east.x, 8, "Cantlin western shop east door x should match opened-door RAM")
+    assert_equal(western_east.y, 25, "Cantlin western shop east door y should match opened-door RAM")
+    assert_equal(western_east.interaction_x, 7, "Cantlin western shop east door should route to the public west stand")
+    assert_equal(western_east.interaction_y, 25, "Cantlin western shop east door stand should match live verifier proof")
+    assert_equal(western_east.interaction_face_dir, "east", "Cantlin western shop east door should open from the west stand facing east")
+
+    env.restore()
+end
+
 function tests.garinham_does_not_expose_disproved_east_locked_door()
     local env = make_env()
 
