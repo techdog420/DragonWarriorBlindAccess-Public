@@ -121,7 +121,7 @@ local teleport_state = require "teleport_state" -- RAM synchronization for debug
 local hotkeys   = require "hotkeys"        -- Keyboard hotkey handling
 local hotkey_filter = require "hotkey_filter" -- Emulator-specific keyboard policy
 require "edge_flow_guard" -- Shared mutually-exclusive edge probe command guard
-require "field_action_guard" -- Shared field movement/action guards
+local field_action_guard = require "field_action_guard" -- Shared field movement/action guards
 require "edge_verify_classifier" -- Shared edge verify result classification
 local key_combo = require "key_combo"      -- Configurable key-combo helpers
 local overworld_routes = require "overworld_routes" -- Manual route guidance for the world map
@@ -188,7 +188,11 @@ local function refresh_navigation_modules()
     if route_mgr.refresh_navigation_modules then
         route_mgr.refresh_navigation_modules()
     end
-    require("object_commands").register()
+    local object_command_module = require "object_commands"
+    if object_command_module.refresh_after_module_reload then
+        object_command_module.refresh_after_module_reload()
+    end
+    object_command_module.register()
     debug_tools.info("NAVIGATION_MODULES_REFRESHED")
 end
 
@@ -1577,6 +1581,7 @@ _G.DW_FIELD_ACTION_GUARD_STATE = function(sync_reason, opts)
         yesno_active = menu.is_yesno_active and menu.is_yesno_active() == true,
         merchant_active = MER and MER.active == true,
         dialogue_active = PREV.dialogue ~= "",
+        dialogue_text = PREV.dialogue,
         upper_dialogue_active = PREV.upper_active == true,
         survey_active = not opts.survey_safe and map_survey.is_active and map_survey.is_active() == true,
         map_crawl_active = map_crawler.is_active and map_crawler.is_active() == true,
@@ -4217,7 +4222,7 @@ local function check_upper_dialogue(frame_delta, refresh_ppu)
     if lower_dialogue ~= "" then
         PREV.upper_baseline = upper
         PREV.upper_dialogue = upper
-        PREV.announced_upper = upper
+        PREV.announced_upper = text.upper_marker_for_lower_dialogue(upper, lower_dialogue)
         PREV.upper_stable_count = 0
         PREV.upper_active = false
         return
@@ -7496,7 +7501,7 @@ while true do
                              not DW_QOL_STATE.command_menu_blocks_field_movement()
                              and submenu_mode == nil
                              and not MER.active
-                             and PREV.dialogue == ""
+                             and not field_action_guard.dialogue_blocks_movement(PREV.dialogue)
                              and not PREV.upper_active
                          )
                      )

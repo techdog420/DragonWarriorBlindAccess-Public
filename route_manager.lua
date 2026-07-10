@@ -177,6 +177,7 @@ local function refresh_navigation_modules()
     package.loaded["overworld_routes"] = nil
     package.loaded["map_reader"] = nil
     package.loaded["pathfinder"] = nil
+    objects = require "objects"
     overworld_routes = require "overworld_routes"
     map_reader = require "map_reader"
     pathfinder = require "pathfinder"

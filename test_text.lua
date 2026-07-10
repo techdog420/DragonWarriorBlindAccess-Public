@@ -560,6 +560,16 @@ function tests.passive_field_status_noise_detects_name_and_gold_tokens()
     end
 end
 
+function tests.passive_field_status_noise_detects_digit_prefixed_name_tokens()
+    for _, fragment in ipairs({"16Bill", "92Ivy"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify digit-prefixed status/name artifact " .. fragment
+        )
+    end
+end
+
 function tests.passive_field_status_noise_detects_split_name_suffixes()
     for _, fragment in ipairs({"bi", "ll", "vy"}) do
         assert_equal(
@@ -568,6 +578,27 @@ function tests.passive_field_status_noise_detects_split_name_suffixes()
             "passive field scanner should classify lowercase split-name suffix artifact " .. fragment
         )
     end
+end
+
+function tests.passive_field_status_noise_detects_fused_name_status_label()
+    assert_equal(
+        text.is_passive_field_status_noise("llE"),
+        true,
+        "passive field scanner should classify the live fused name/status fragment"
+    )
+end
+
+function tests.dialogue_filter_strips_wrapped_fused_name_status_suffix_from_real_dialogue()
+    clear_ppu()
+    write_visible_row(29, "Bill searched the ground", 0, 1)
+    write_visible_row(0, "all about.", 0, 1)
+    write_visible_row(8, "llE", 0, 1)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 29, 1),
+        "Bill searched the ground all about.",
+        "wrapped fused name/status residue should be removed from real command-result dialogue"
+    )
 end
 
 function tests.passive_field_status_noise_detects_fused_status_value_rows()
@@ -613,6 +644,17 @@ function tests.passive_field_status_noise_keeps_real_dialogue()
             "passive field scanner should not classify real dialogue as status noise: " .. line
         )
     end
+end
+
+function tests.upper_dialogue_marker_prefers_clean_lower_dialogue_when_command_status_overlay_visible()
+    local upper = "'There is no one there. COMMAND BillTALK    SPELL LV  16 STATUS  ITEM"
+    local lower = "'There is no one there."
+
+    assert_equal(
+        text.upper_marker_for_lower_dialogue(upper, lower),
+        lower,
+        "upper-dialogue guard should remember the clean lower text, not command/status overlay noise"
+    )
 end
 
 function tests.dialogue_filter_strips_separate_status_name_row_from_real_dialogue()

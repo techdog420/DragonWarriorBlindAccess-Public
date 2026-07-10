@@ -1497,6 +1497,16 @@ local MAP_HAZARD_CELLS = {
         ["23,20"] = "damage",
         ["23,21"] = "damage",
     },
+    [0x0A] = {
+        -- 2026-07-10 Cantlin exit-route autowalk crossed the top barrier row
+        -- and left the hero at 4 HP. The town reference map confirms the full
+        -- striped barrier footprint around the lower-center enclosure.
+        ["11,26"] = "damage", ["12,26"] = "damage", ["13,26"] = "damage", ["14,26"] = "damage",
+        ["15,26"] = "damage", ["16,26"] = "damage", ["17,26"] = "damage", ["18,26"] = "damage",
+        ["11,27"] = "damage", ["18,27"] = "damage",
+        ["11,28"] = "damage", ["12,28"] = "damage", ["13,28"] = "damage",
+        ["16,28"] = "damage", ["17,28"] = "damage", ["18,28"] = "damage",
+    },
 }
 
 -- ============================================================
@@ -3769,6 +3779,134 @@ local MAP_DIRECTIONAL_BLOCKS = {
 
     -- Map 0x0A: Cantlin
     [0x0A] = {
+        -- 2026-07-10 route from the debug-created (1,1) pocket. Both exits
+        -- blocked 3/3 under same-origin raw verification with no contamination.
+        ["1,2"] = {north = true}, -- from (1,1)->DOWN
+        ["2,1"] = {west = true}, -- from (1,1)->RIGHT
+        -- 2026-07-08 service-route decoding with all five Cantlin doors open.
+        ["1,11"] = {north = true}, -- from (1,10)->DOWN during Merchant 5 route
+        ["1,16"] = {east = true}, -- from (2,16)->LEFT during Merchant 5 route
+        ["1,17"] = {east = true}, -- from (2,17)->LEFT during Merchant 5 route
+        ["1,18"] = {south = true}, -- from (1,19)->UP during Merchant 5 route
+        ["2,11"] = {north = true}, -- from (2,10)->DOWN during Merchant 5 route
+        ["2,15"] = {south = true}, -- from (2,16)->UP during Merchant 5 route
+        ["2,18"] = {north = true, south = true}, -- from (2,17)->DOWN and (2,19)->UP during Merchant 5 route
+        ["3,11"] = {east = true, north = true}, -- from (4,11)->LEFT and (3,10)->DOWN during Merchant 5 route
+        ["3,12"] = {east = true}, -- from (4,12)->LEFT during Merchant 5 route
+        ["3,13"] = {east = true}, -- from (4,13)->LEFT during Merchant 5 route
+        ["3,14"] = {east = true}, -- from (4,14)->LEFT during Merchant 5 route
+        ["3,15"] = {east = true, south = true}, -- from (4,15)->LEFT and (3,16)->UP during Merchant 5 route
+        ["3,18"] = {north = true, south = true}, -- from (3,17)->DOWN and (3,19)->UP during Merchant 5 route
+        ["4,18"] = {north = true, south = true}, -- from (4,17)->DOWN and (4,19)->UP during Merchant 5 route
+        ["5,15"] = {north = true, west = true}, -- from (5,14)->DOWN and (4,15)->RIGHT during Merchant 5 route
+        ["5,16"] = {east = true, south = true, west = true}, -- from (6,16)->LEFT, (5,17)->UP, and (4,16)->RIGHT during Merchant 5 route
+        ["5,18"] = {north = true, south = true}, -- from (5,17)->DOWN and (5,19)->UP during Merchant 5 route
+        ["6,15"] = {north = true, south = true}, -- from (6,14)->DOWN and (6,16)->UP during Merchant 5 route
+        ["6,18"] = {north = true, south = true}, -- from (6,17)->DOWN and (6,19)->UP during Merchant 5 route
+        ["6,1"] = {west = true}, -- from (5,1)->RIGHT during Tool Merchant return-to-entrance route
+        ["6,2"] = {west = true}, -- from (5,2)->RIGHT during Tool Merchant return-to-entrance route
+        ["6,3"] = {west = true}, -- from (5,3)->RIGHT during Tool Merchant return-to-entrance route
+        ["6,4"] = {west = true}, -- from (5,4)->RIGHT during Tool Merchant return-to-entrance route
+        ["6,5"] = {east = true, west = true}, -- from (7,5)->LEFT and (5,5)->RIGHT during service routes
+        ["6,6"] = {south = true, west = true}, -- from (6,7)->UP and (5,6)->RIGHT during Tool Merchant return-to-entrance route
+        ["6,11"] = {north = true, west = true}, -- from (6,10)->DOWN and (5,11)->RIGHT during Merchant 6 route
+        ["6,12"] = {west = true}, -- from (5,12)->RIGHT during Merchant 6 route
+        ["6,13"] = {south = true, west = true}, -- from (6,14)->UP and (5,13)->RIGHT during Merchant 6 route
+        ["7,4"] = {south = true}, -- from (7,5)->UP during Tool Merchant return-to-entrance route
+        ["7,15"] = {north = true, south = true}, -- from (7,14)->DOWN and (7,16)->UP during Merchant 5 route
+        ["7,18"] = {north = true, south = true}, -- from (7,17)->DOWN and (7,19)->UP during Merchant 5 route
+        ["7,6"] = {east = true, north = true}, -- from (8,6)->LEFT during Tool Merchant return and (7,5)->DOWN during Merchant 1 route
+        ["7,7"] = {south = true, west = true}, -- from (7,8)->UP and (6,7)->RIGHT during Tool Merchant return-to-entrance route
+        ["7,11"] = {north = true, west = true}, -- from (7,10)->DOWN and (6,11)->RIGHT during Merchant 6 route
+        ["7,13"] = {south = true}, -- from (7,14)->UP during Merchant 6 route
+        ["8,4"] = {south = true}, -- from (8,5)->UP during entrance-to-Merchant 1 reroute
+        ["8,11"] = {east = true, north = true}, -- from (8,10)->DOWN during Merchant 5 route and (9,11)->LEFT during Merchant 6 route
+        ["8,12"] = {east = true}, -- from (9,12)->LEFT during Merchant 6 route
+        ["8,13"] = {east = true, south = true}, -- from (9,13)->LEFT and (8,14)->UP during Merchant 6 route
+        ["8,15"] = {east = true, north = true}, -- from (9,15)->LEFT and (8,14)->DOWN during Merchant 5 route
+        ["8,16"] = {east = true, west = true}, -- from (9,16)->LEFT and (7,16)->RIGHT during Merchant 5 route
+        ["8,17"] = {east = true, west = true}, -- from (9,17)->LEFT and (7,17)->RIGHT during Merchant 5 route
+        ["8,18"] = {east = true, south = true}, -- from (9,18)->LEFT and (8,19)->UP during Merchant 5 route
+        ["8,24"] = {south = true}, -- from open door cell (8,25)->UP during entrance reset
+        ["10,25"] = {west = true}, -- from (9,25)->RIGHT during entrance reset
+        ["9,2"] = {east = true}, -- from (10,2)->LEFT during Tool Merchant return-to-entrance route
+        ["9,3"] = {east = true}, -- from (10,3)->LEFT during Tool Merchant return-to-entrance route
+        ["9,4"] = {east = true, south = true}, -- from (10,4)->LEFT and (9,5)->UP during Tool Merchant return-to-entrance route
+        ["9,6"] = {north = true, south = true, west = true}, -- from (9,5)->DOWN, (9,7)->UP, and (8,6)->RIGHT during service routing
+        ["10,1"] = {south = true}, -- from (10,2)->UP during Tool Merchant return-to-entrance route
+        ["10,6"] = {east = true, north = true}, -- from (11,6)->LEFT and (10,5)->DOWN during Tool Merchant return-to-entrance route
+        ["10,7"] = {east = true, west = true}, -- from (11,7)->LEFT and (9,7)->RIGHT during service routes
+        ["10,8"] = {south = true, west = true}, -- from (10,9)->UP and (9,8)->RIGHT during entrance-to-Merchant 1 reroute
+        ["11,1"] = {south = true}, -- from (11,2)->UP during Tool Merchant return-to-entrance route
+        ["11,4"] = {north = true, south = true, west = true}, -- from (11,3)->DOWN, (11,5)->UP, and (10,4)->RIGHT during service routes
+        ["11,8"] = {north = true, south = true}, -- from (11,7)->DOWN and (11,9)->UP during service routes
+        ["11,13"] = {south = true}, -- from (11,14)->UP during Merchant 7 return route
+        ["12,1"] = {south = true}, -- from (12,2)->UP during Tool Merchant return-to-entrance route
+        ["12,4"] = {north = true, south = true}, -- from (12,3)->DOWN and (12,5)->UP during Tool Merchant return-to-entrance route
+        ["12,8"] = {north = true, south = true}, -- from (12,7)->DOWN and (12,9)->UP during service routes
+        ["12,14"] = {south = true, west = true}, -- from (12,15)->UP and (11,14)->RIGHT during Merchant 7 return route
+        ["12,27"] = {north = true}, -- from barrier cell (12,26)->DOWN during exit-route verifier
+        -- Entrance-to-Inn routing exposed the x=13 east-side wall; each east
+        -- edge below was confirmed 3/3 blocked with same-origin
+        -- probe_edge_verify from (14,y)->LEFT before runtime injection.
+        -- The Tool Merchant return-to-entrance route later confirmed
+        -- `(13,2).west`, `(13,3).west`, `(13,5).west`, `(13,6).west`,
+        -- and `(13,7).west` from `(12,y)->RIGHT`.
+        ["13,1"] = {east = true},
+        ["13,2"] = {east = true, west = true},
+        ["13,3"] = {east = true, west = true},
+        ["13,4"] = {east = true},
+        ["13,5"] = {east = true, west = true},
+        ["13,6"] = {east = true, west = true},
+        ["13,7"] = {east = true, west = true},
+        ["13,8"] = {east = true, south = true}, -- south from (13,9)->UP during restored-state entrance route
+        ["13,14"] = {south = true}, -- from (13,15)->UP during Merchant 7 return route
+        ["14,11"] = {east = true}, -- from (15,11)->LEFT during Merchant 6 route
+        ["14,14"] = {south = true}, -- from (14,15)->UP during Merchant 7 return route
+        ["15,12"] = {north = true}, -- from (15,11)->DOWN during Merchant 6 route
+        ["15,13"] = {south = true}, -- from (15,14)->UP during Merchant 7 return route
+        -- Entrance-to-Merchant 2 route from the practical entrance: the
+        -- tempting top-row shortcut (15,1)->RIGHT into (16,1) blocked 3/3
+        -- from the walked origin after route failure.
+        ["16,1"] = {east = true, west = true},
+        ["16,14"] = {south = true, west = true}, -- from (16,15)->UP and (15,14)->RIGHT during Merchant 7 return route
+        ["17,14"] = {north = true}, -- from (17,13)->DOWN during Merchant 7 forward route
+        ["19,25"] = {east = true}, -- from (20,25)->LEFT during Merchant 7 return route
+        -- Merchant 2 route follow-up. The top-row descent candidates blocked
+        -- from north, the x=18 wall blocked entry from the west at rows 2 and
+        -- 6, and the post-reload route exposed the row 3-7 east wall plus
+        -- row-7 south approaches. These are verifier-clean route
+        -- blockers only; survey-only suspects stay out of permanent data.
+        ["18,2"] = {north = true, west = true}, -- from (18,1)->DOWN and (17,2)->RIGHT
+        ["19,2"] = {north = true, south = true}, -- from (19,1)->DOWN and (19,3)->UP
+        ["20,2"] = {north = true, south = true}, -- from (20,1)->DOWN and (20,3)->UP
+        ["21,2"] = {north = true}, -- from (21,1)->DOWN
+        ["22,2"] = {north = true}, -- from (22,1)->DOWN
+        ["23,2"] = {east = true, north = true}, -- from (24,2)->LEFT and (23,1)->DOWN
+        ["23,3"] = {east = true}, -- from (24,3)->LEFT after post-reload Merchant 2 route
+        ["21,3"] = {west = true}, -- from (20,3)->RIGHT
+        ["21,4"] = {west = true}, -- from (20,4)->RIGHT
+        ["21,5"] = {west = true}, -- from (20,5)->RIGHT
+        ["21,6"] = {west = true}, -- from (20,6)->RIGHT
+        ["21,11"] = {north = true, west = true}, -- from (20,11)->RIGHT and (21,10)->DOWN during Merchant 7 reverse route
+        ["21,21"] = {north = true, west = true}, -- from (20,21)->RIGHT and (21,20)->DOWN during Merchant 7 routes
+        ["21,13"] = {west = true}, -- from (20,13)->RIGHT during Merchant 7 forward route
+        ["23,4"] = {east = true}, -- from (24,4)->LEFT after post-reload Merchant 2 route
+        ["23,5"] = {east = true}, -- from (24,5)->LEFT after post-reload Merchant 2 route
+        ["23,6"] = {east = true}, -- from (24,6)->LEFT after post-reload Merchant 2 route
+        ["23,7"] = {east = true, south = true}, -- from (24,7)->LEFT and (23,8)->UP
+        ["23,11"] = {north = true}, -- from (23,10)->DOWN during Merchant 7 reverse route
+        ["22,11"] = {north = true}, -- from (22,10)->DOWN during Merchant 7 reverse route
+        ["22,21"] = {north = true}, -- from (22,20)->DOWN during Merchant 7 forward route
+        ["21,7"] = {south = true}, -- from (21,8)->UP after post-reload Merchant 2 route
+        ["22,7"] = {south = true}, -- from (22,8)->UP after post-reload Merchant 2 route
+        ["18,7"] = {south = true, west = true}, -- from (18,8)->UP and (17,7)->RIGHT
+        ["19,7"] = {north = true, south = true}, -- from (19,6)->DOWN and (19,8)->UP
+        ["20,7"] = {north = true, south = true}, -- from (20,6)->DOWN and (20,8)->UP
+        ["20,29"] = {north = true}, -- from (20,28)->DOWN; physically passable but immediately exits to World Map
+        ["18,3"] = {east = true, south = true, west = true}, -- from (19,3)->LEFT, (18,4)->UP, and (17,3)->RIGHT
+        ["18,6"] = {east = true, north = true, west = true}, -- from (19,6)->LEFT, (18,5)->DOWN, and (17,6)->RIGHT
+
         -- 2026-07-07 Old Man 4 lower-pocket route. The OAM/NPC parking
         -- hard-lock was fixed first; these seams then reproduced as normal
         -- route failures and were confirmed with same-origin probe_edge
@@ -3777,12 +3915,23 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (21,24) blocks from west, east, and south; confirmed from
         -- (20,24)->RIGHT, (22,24)->LEFT, and (21,25)->UP.
         ["21,24"] = {east = true, south = true, west = true},
+        ["21,26"] = {east = true, west = true}, -- from (20,26)->RIGHT and (22,26)->LEFT during Merchant 7 return routes
+        ["21,27"] = {west = true}, -- from (20,27)->RIGHT during Merchant 7 reverse route
+        ["21,28"] = {west = true}, -- from (20,28)->RIGHT during Merchant 7 reverse route
         ["22,23"] = {south = true}, -- from (22,24)->UP
+        ["24,14"] = {south = true}, -- from (24,15)->UP during Merchant 7 return route
+        ["23,21"] = {east = true, north = true}, -- from (24,21)->LEFT and (23,20)->DOWN during Merchant 7 routes
+        ["23,23"] = {east = true}, -- from (24,23)->LEFT during Merchant 7 return route
+        ["24,22"] = {north = true, south = true}, -- from (24,21)->DOWN and (24,23)->UP during Merchant 7 routes
+        ["25,22"] = {north = true, south = true}, -- from (25,21)->DOWN and (25,23)->UP during Merchant 7 routes
+        ["26,22"] = {north = true, south = true}, -- from (26,21)->DOWN and (26,23)->UP during Merchant 7 routes
+        ["27,20"] = {south = true}, -- from (27,21)->UP during Merchant 7 return route
+        ["27,24"] = {north = true}, -- from (27,23)->DOWN during Merchant 7 route
         ["23,24"] = {west = true}, -- from (22,24)->RIGHT
         -- (23,25) blocks from west and south; confirmed from
         -- (22,25)->RIGHT and (23,26)->UP.
-        ["23,25"] = {south = true, west = true},
-        ["24,24"] = {south = true}, -- from (24,25)->UP
+        ["23,25"] = {east = true, south = true, west = true}, -- east from (24,25)->LEFT during Merchant 7 return route
+        ["24,24"] = {east = true, north = true, south = true}, -- from (25,24)->LEFT, (24,23)->DOWN, and (24,25)->UP
     },
 
     -- Map 0x0B: Rimuldar

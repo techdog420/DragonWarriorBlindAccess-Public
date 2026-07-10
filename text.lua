@@ -411,6 +411,9 @@ function M.is_passive_field_status_noise(dialogue)
     if is_fused_status_value_fragment(compact) then
         return true
     end
+    if is_fused_status_label_fragment_token(compact) then
+        return true
+    end
     if is_spaced_status_value_fragment(compact) or is_spaced_status_name_value_fragment(compact) then
         return true
     end
@@ -423,9 +426,22 @@ function M.is_passive_field_status_noise(dialogue)
     if #compact <= 3 and compact:match("^[a-z][a-z0-9]*$") then
         return true
     end
+    if #compact <= 8
+       and compact:find("[a-z]") ~= nil
+       and compact:match("^%d+[A-Z][A-Za-z0-9]*$") ~= nil then
+        return true
+    end
     return #compact <= 8
         and compact:find("[a-z]") ~= nil
         and compact:match("^[A-Z][A-Za-z0-9]*$") ~= nil
+end
+
+function M.upper_marker_for_lower_dialogue(upper, lower_dialogue)
+    local lower = compact_text(lower_dialogue)
+    if lower ~= "" then
+        return lower
+    end
+    return tostring(upper or "")
 end
 
 local function add_set_value(set, ordered, value)
@@ -728,6 +744,7 @@ local function filtered_dialogue_from_rows(decoded_rows, paired_rows, context_ro
         if cleaned ~= "" and cleaned:find("[a-z]")
            and not M.is_status_text(decoded)
            and not fused_status_value
+           and not is_fused_status_label_fragment_token(cleaned)
            and not is_status_name_fragment(i, cleaned) then
             lines[#lines + 1] = cleaned
         elseif #lines > 0

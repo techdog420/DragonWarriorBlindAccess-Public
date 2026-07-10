@@ -711,6 +711,31 @@ end
 
 local tests = {}
 
+function tests.navigation_reload_rebinds_objects_module()
+    local env = make_env({current_description = "Chest: 3 north (1 of 1)"})
+    local replacement = {}
+    for key, value in pairs(package.loaded["objects"]) do
+        replacement[key] = value
+    end
+    replacement.current_object = function()
+        return {id = "npc_4", name = "Weapons Merchant", type = "npc", x = 16, y = 3}
+    end
+    replacement.describe_current = function()
+        return "Weapons Merchant: 1 east (1 of 4)"
+    end
+    package.loaded["objects"] = replacement
+
+    env.route_manager.refresh_navigation_modules()
+
+    assert_equal(
+        env.route_manager.describe_current_object({include_reachability = false}),
+        "Weapons Merchant: 1 east (1 of 4)",
+        "navigation reload should keep route-manager object selection on the reloaded objects module"
+    )
+
+    env.restore()
+end
+
 function tests.autowalk_guard_blocks_planning()
     local env = make_env()
     env.route_manager.set_autowalk_guard(function()

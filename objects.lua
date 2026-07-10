@@ -1309,6 +1309,17 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["10,18"] = {x = 10, y = 16, face_dir = "south", label = "counter", name = "Weapons Merchant"},
     },
 
+    -- Cantlin services. Merchant 4 occupies (8,3); live TALK proof from the
+    -- public counter stand at (8,5) facing north opened the 100 GOLD inn
+    -- prompt. Merchant 6 occupies (7,12); live TALK proof from (5,12) facing
+    -- east opened the tool-shop prompt. Merchant 7 occupies (27,26); TALK from
+    -- public stand (25,26) facing east opened the weapons/armor prompt.
+    [0x0A] = {
+        ["8,3"] = {x = 8, y = 5, face_dir = "north", label = "counter", name = "Inn"},
+        ["7,12"] = {x = 5, y = 12, face_dir = "east", label = "counter", name = "Tool Merchant"},
+        ["27,26"] = {x = 25, y = 26, face_dir = "east", label = "counter", name = "Weapons Merchant"},
+    },
+
     -- Rimuldar services. Old Man 1 occupies (4,7); the Magic Key shop opens
     -- from the public north-side stand at (4,6), facing south. Merchant 1 at
     -- (2,4) only says "Welcome!" from the hidden adjacent shop cells, so keep
@@ -1395,6 +1406,32 @@ local SERVICE_ROLE_OVERRIDES = {
             ["Merchant 4"] = {name = "Weapons Merchant", infer_counter = true},
         },
     },
+    -- Cantlin service proof is still partial. Merchant 2 is the live-confirmed
+    -- weapons/armor shop, but he wanders and should keep adjacent-NPC routing.
+    -- Merchant 4 is the live-confirmed inn keeper, Merchant 6 is the tool shop,
+    -- and Merchant 7 is the second live-confirmed weapons/armor shop. Their
+    -- fixed stands are modeled in SERVICE_INTERACTION_OVERRIDES above.
+    -- Merchant 5 at (2,12) only gives the
+    -- radish dialogue from the public counter side, so keep him out of Services.
+    [0x0A] = {
+        names = {
+            ["Merchant 2"] = {name = "Weapons Merchant", infer_counter = false},
+            ["Merchant 4"] = {name = "Inn", infer_counter = true},
+            ["Merchant 6"] = {name = "Tool Merchant", infer_counter = true},
+            ["Merchant 7"] = {name = "Weapons Merchant", infer_counter = true},
+        },
+        cells = {
+            ["2,12"] = {
+                name = "Radish Merchant",
+                infer_counter = false,
+                service = false,
+                interaction_x = 4,
+                interaction_y = 12,
+                interaction_face_dir = "west",
+                interaction_label = "counter",
+            },
+        },
+    },
     -- Rimuldar Old Man 1 is the live-confirmed Magic Key seller, Merchant 2 is
     -- the weapon/armor shop, and Merchant 3 is the inn keeper. Interaction
     -- stands are modeled in SERVICE_INTERACTION_OVERRIDES above.
@@ -1434,6 +1471,13 @@ local SERVICE_EXCLUSIONS = {
     -- Keep him browseable under NPCs without sending Services to him.
     [0x09] = {
         ["Merchant 1"] = true,
+    },
+
+    -- Cantlin Merchants 1 and 3 only give Wynn/Hauksness treasure hints.
+    -- Keep them browsable under NPCs without advertising them as services.
+    [0x0A] = {
+        ["Merchant 1"] = true,
+        ["Merchant 3"] = true,
     },
 
     -- Rimuldar Merchant 1 only gives the short "Welcome!" greeting. The live
@@ -1509,6 +1553,12 @@ local function apply_service_role_override(obj, map_id)
     obj.service = entry.service ~= false
     if entry.name then
         obj.name = entry.name
+    end
+    if entry.interaction_x ~= nil and entry.interaction_y ~= nil then
+        obj.interaction_x = entry.interaction_x
+        obj.interaction_y = entry.interaction_y
+        obj.interaction_face_dir = entry.interaction_face_dir
+        obj.interaction_label = entry.interaction_label
     end
     return entry
 end

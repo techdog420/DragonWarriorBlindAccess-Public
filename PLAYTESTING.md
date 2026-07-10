@@ -1,10 +1,185 @@
 # Playtesting Notes
 
-Updated: 2026-07-08
+Updated: 2026-07-10
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Cantlin damage-barrier and reload-timing checkpoint (`2026-07-10`): the
+  lower-center striped barrier is now modeled as 16 damage hazards across rows
+  26-28, so ordinary route plans avoid it. The live route had crossed the top
+  barrier row and left the hero at 4 HP; after recovery to `(9,25)`, blocker
+  mode completed 30 safe steps to entrance `(15,1)`. `(12,27).north` is also a
+  clean 3/3 directional block. The one-frame navigation reload repro changed
+  from `NPCs. No objects` to a populated 19-NPC list after fresh object modules
+  began synchronously priming their live-map list during command registration.
+  Current checkpoint is `(15,1)`, all five doors open, menu/dialogue closed,
+  one key, and no runtime blockers.
+- Cantlin category reachability audit (`2026-07-10`): live reload validation
+  proved the Services module-rebind fix; all four services enumerate correctly,
+  and object-selected blocker mode routed three east to mobile Weapons Merchant
+  2, faced south, and held the target. Reachability reports 4/4 Services, 1/1
+  Travel, and 5/5 opened Doors reachable. NPCs were 18/19 reachable; the sole
+  false negative was non-service Radish Merchant `(2,12)`, whose previously
+  proven public TALK stand is `(4,12)` facing west. A fresh 22-step route from
+  `(17,3)` reached that stand with no blocker or runtime patch. Explicit NPC
+  role overrides can now carry interaction coordinates while remaining outside
+  Services, and Radish Merchant uses the confirmed stand. All 92 object tests
+  pass. Current checkpoint is `(4,12)`, all doors open, menu/dialogue closed,
+  and no runtime blocks. Reload `main.lua` and expect NPC reachability to become
+  19 reachable, 0 unreachable.
+- Cantlin Merchant 2 route and Services reload (`2026-07-10`): user validation
+  confirmed all command-menu actions, SPELL, ITEM, and the mobile Weapons
+  Merchant speak cleanly after the `llE` fix. Blocker-mode walking completed
+  from south merchant stand `(15,5)` to entrance `(15,1)` and back from the
+  entrance to stand `(14,3)` beside Merchant 2 at `(14,4)`; both legs were
+  clean and required no runtime blockers. The subsequent Services browser
+  exposed stale module state after navigation reload: it announced `Services`
+  but retained `Eastern Building Door (10 of 25)`. Route manager now rebinds
+  the reloaded `objects` module; the focused stale-selection regression and all
+  104 route-manager tests pass. Current live checkpoint is `(14,3)`, all five
+  doors open, menu/dialogue closed, and no runtime blocks. Reload `main.lua`,
+  verify the four-entry Services list, then validate object-selected auto-walk
+  to the mobile Weapons Merchant.
+- Cantlin pocket/fragment follow-up (`2026-07-10`): after reload verified the
+  cleaned Services list, routing out of debug checkpoint `(1,1)` found
+  `(2,1).west` and `(1,2).north`. Both were same-origin verified 3/3 blocked
+  with clean state and promoted to directional source/tests. Runtime mirroring
+  made both normal and skip-NPC planners visit only `(1,1)` before `No path
+  found`, confirming the checkpoint is an isolated pocket rather than a public
+  route origin. After repositioning to entrance `(15,1)`, the Merchant 2 route
+  canceled twice on `PREV.dialogue_len=3`; the corrected empty-coordinate run
+  captured exact phantom dialogue `llE`. The text filter now classifies this
+  fused name/status token as passive noise, and continuous auto-walk uses the
+  shared dialogue-blocking predicate while retaining real-dialogue stops.
+  Focused checks pass: 58 map, 58 text, and 7 field-action-guard tests. Current
+  live checkpoint is `(15,4)`, all five doors open, menu/dialogue closed, and
+  no runtime blocks. Reload `main.lua`, then retry the frozen mobile Weapons
+  Merchant 2 route from a freshly reported unoccupied adjacent coordinate.
+
+- Cantlin dialogue-merchant cleanup (`2026-07-10`): Merchant 3 was frozen at
+  `(4,27)` and TALK from `(5,27)` facing west produced the Wynn/Hauksness shop
+  hint. Merchant 1 was frozen at `(1,0)` and TALK from `(1,1)` facing north
+  produced the buried-treasure-behind-Wynn's-shop hint. Neither opened a shop
+  prompt; both are ordinary dialogue NPCs. `objects.lua` now keeps their
+  generic `Merchant 1` / `Merchant 3` labels under NPCs while excluding both
+  from Services. The focused regression passes with all 92 object tests. A
+  preceding frozen Merchant 3 route from `(25,26)` reached `(3,29)` but hit
+  `route_churn_cap` after 33 blocked events and was classified as a command
+  timing/state issue; its 19 suspected cells remain scratch evidence only.
+  Current live checkpoint is `(1,1)`, all five doors open, menu/dialogue
+  closed, NPCs frozen, and no runtime blocks. Reload `main.lua` before checking
+  the cleaned Services list.
+
+- Cantlin Merchant 7 bidirectional completion (`2026-07-09`): restored-state
+  routing promoted 16 clean directional results across the entrance reset,
+  forward route, and return route: `(8,24).south`, `(10,25).west`,
+  `(23,11).north`, `(22,11).north`, `(21,11).north`, `(21,21).west/north`,
+  `(21,26).east`, `(13,8).south`, `(17,14).north`, `(21,13).west`,
+  `(23,21).north`, `(22,21).north`, `(24,24).east`, `(23,25).east`, and
+  `(19,25).east`. Each same-origin verifier was 3/3 confirmed blocked with
+  clean state. With the runtime mirrors active, uninterrupted routes completed
+  entrance `(15,1)` to Merchant 7 stand `(25,26)`, stand back to entrance,
+  and entrance to stand again. Current checkpoint is `(25,26)`, all five doors
+  open, menu/dialogue closed, with nine post-restart runtime cells. Reload
+  `main.lua` before the next service hunt.
+
+- Cantlin Merchant 7 return/reverse pass (`2026-07-09`): from the public stand
+  `(25,26)`, the route reached entrance `(15,1)` after promoting 15 clean,
+  directional verifier results: `(25,22).south`, `(23,23).east`,
+  `(24,22).south`, `(24,24).north`, `(26,22).south`, `(27,20).south`,
+  `(24,14).south`, `(15,13).south`, `(16,14).south/west`,
+  `(14,14).south`, `(13,14).south`, `(12,14).south/west`, and
+  `(11,13).south`. The reverse entrance-to-stand run then promoted
+  `(21,11).west` and `(21,26..28).west`, all direct-verified 3/3 with clean
+  state. The next replan entered `(20,29)` from the north and immediately
+  exited to the World Map, proving this physically passable south-edge cell is
+  unsafe for ordinary in-town routes; `(20,29).north` is now a directional
+  transition guard. Recovery succeeded via overworld `(73,103)->UP`, but
+  re-entering Cantlin reset both runtime blockers and opened-door RAM. Current
+  live checkpoint is Cantlin `(15,2)`, no runtime blocks, all doors closed,
+  one key. Reload the all-doors-open save and `main.lua`, then retry
+  `(15,1)->(25,26)` without allowing another south-edge transition.
+
+- Cantlin Tool Merchant / Merchant 7 follow-up (`2026-07-09`): two
+  additional verifier-clean edges, `(7,6).east` and `(9,6).west`, completed
+  the Tool Merchant route in both directions between stand `(5,12)` and town
+  entrance `(15,1)`. Merchant 3 was reached by targeted survey but proved
+  mobile, so no role was assigned. Merchant 7 is stationary at `(27,26)`;
+  route work to stand `(25,26)` promoted `(23,21).east`,
+  `(24,22).north`, `(25,22).north`, `(26,22).north`, and
+  `(27,24).north`, all direct-verified 3/3. TALK from the stand facing east
+  opened the weapon/armor shop prompt, so Merchant 7 is now a second
+  `Weapons Merchant` with a fixed public counter stand. Current live
+  checkpoint is `(25,26)`, menu/dialogue closed, NPCs frozen, with seven
+  current-pass runtime blocker cells. Reload `main.lua` before testing the
+  new source label and blockers without that overlay.
+
+- Cantlin Tool Merchant return-to-entrance pass (`2026-07-09`): after reload,
+  the Services filter correctly exposed `Tool Merchant` at `(7,12)` with public
+  stand `(5,12)` facing east. Route work back toward the practical entrance
+  `(15,1)` promoted verifier-clean hidden-wall blockers in the upper/central
+  service maze: `(6,1..4).west`, `(6,5).west`, `(6,6).south/west`,
+  `(7,4).south`, `(7,7).south/west`, `(9,2).east`, `(9,3).east`,
+  `(9,4).east/south`, `(10,1).south`, `(10,6).east/north`,
+  `(10,7).east`, `(11,1).south`, `(11,4).north/west`, `(11,8).north`,
+  `(12,1).south`, `(12,4).north/south`, `(12,8).north`, and
+  `(13,2).west`, `(13,3).west`, `(13,5).west`, `(13,6).west`,
+  `(13,7).west`. Each was same-origin `probe_edge_verify:...,3`,
+  `moved=0 blocked=3`. Current live checkpoint is Cantlin `(10,5)`, NPCs
+  frozen, menu closed, runtime overlay `count=25`; reload `main.lua` before
+  judging this source batch without runtime blockers, then retry
+  `auto_walk_blocker:15,1`.
+
+- Cantlin Merchant 5 route pass (`2026-07-09`): after a reload baseline at
+  `(8,6)` with all doors open and `RUNTIME_BLOCKS none`, the route toward
+  Merchant 5 at `(2,12)` exposed a west-shop wall/counter cluster. Promoted
+  verifier-clean blockers are `(8,11).north`, `(2,11).north`,
+  `(3,11).east`, `(3,12).east`, `(3,13).east`, `(3,14).east`,
+  `(3,15).east/south`, `(2,15).south`, `(1,16).east`, `(1,17).east`,
+  `(2,18).north`, `(3,18).north`, `(4,18).north`, `(3,11).north`,
+  `(1,11).north`, `(5,15).north`, `(6,15).north`, `(7,15).north`,
+  `(8,15).north`, `(8,18).east`, `(1,18).south`, `(2,18).south`,
+  `(3,18).south`, `(5,18).south`, and `(4,18).south`. Current live checkpoint
+  is Cantlin `(4,19)`, NPCs frozen, menu closed, with current-pass runtime
+  blocker cells `count=7`. Reload `main.lua` to absorb the source batch, then
+  retry `auto_walk_blocker:2,13`; the latest planner route is `2 east, 1
+  north, 5 west, 5 north, 1 east` to stand `(2,13)`, facing north.
+
+- Cantlin service-route follow-up after reload (`2026-07-09`): live route
+  decoding promoted additional Merchant 1-area blockers in
+  `MAP_DIRECTIONAL_BLOCKS[0x0A]`: `(6,5).east`, `(7,6).north`,
+  `(8,4).south`, `(9,6).north/south`, `(10,7).west`,
+  `(10,8).south/west`, `(11,4).south`, `(11,8).south`, `(12,8).south`,
+  plus the entrance-return `(16,1).east`. With runtime copies active, the
+  route chain reached `(4,9)`, then the moving Merchant 1 contact area at
+  `(8,7)` and `(8,6)`. Merchant 1 wandered during prompt attempts and ended
+  at `(12,5)`, so this pass does not promote a Merchant 1 role label. Current
+  live checkpoint was Cantlin `(8,6)`, NPCs frozen, runtime blocker cells
+  `count=10`. Reload `main.lua` before judging these latest source blockers
+  without the runtime overlay.
+
+- Cantlin service-route decoding started from the all-doors-open save state
+  (`2026-07-08`): live FCEUX routing from the practical entrance tile `(15,1)`
+  to `Merchant 4`'s counter at `(8,5)` now succeeds after promoting verifier-
+  clean directional blockers in `MAP_DIRECTIONAL_BLOCKS[0x0A]`. TALK from
+  `(8,5)` facing north opened the live Inn prompt:
+  `Welcome to the traveler's Inn. Room and board is 100 GOLD per night.`
+  `objects.lua` now labels that service as `Inn`, matching the other town inn
+  labels. Merchant 2 live TALK proof opened the weapon/armor prompt from an
+  adjacent stand, and `objects.lua` now labels it `Weapons Merchant` while
+  preserving adjacent-NPC routing; the entrance route is still being decoded.
+  Post-reload follow-up promoted more verifier-clean Merchant 2 blockers:
+  `(18,2).north`, `(18,7).south/west`, `(19,7).south`,
+  `(20,7).south`, `(21,7).south`, `(22,7).south`, `(23,2).east`,
+  `(23,3).east`, `(23,4..6).east`, and `(23,7).east/south`, in
+  addition to the earlier service-route blockers. With those blockers active,
+  live frontier search from `(24,2)` to Merchant 2 at `(22,5)` found no
+  untested bridge candidates into the merchant-side component. A counter-stand
+  experiment from `(24,4)` facing west while Merchant 2 was frozen at `(22,4)`
+  returned `There is no one there`, so no fixed Cantlin Weapons Merchant stand
+  has been promoted yet.
 
 - Cantlin locked doors pinned (`2026-07-08`): the five guide-backed door-icon
   cells on map `0x0A` now have live FCEUX OPEN/door-RAM proof. Confirmed cells
@@ -2940,6 +3115,42 @@ Recommended next step:
 - If the throne-room `(4,4)->(4,5)` route block appears again, do not promote it
   to map data from a single auto-walk. Reprobe with `probe_edge:DOWN` from
   `(4,4)` and compare against the latest noisy evidence.
+
+## 2026-07-09 Cantlin Merchant 5/6 Follow-Up
+
+- Merchant 5 at `(2,12)` is now a non-service `Radish Merchant`, not an
+  essential shop/inn route target. After the west-shop blockers were modeled,
+  `debug_pathfind_adjacent_skip_npcs:2,12` still had no public adjacent path
+  and `debug_route_frontier_skip_npcs:2,13,30` found
+  `hidden_bridge_candidates=0`. A live TALK probe from `(4,12)` facing west
+  produced only the radish dialogue: `Come buy my radishes! They are fresh and
+  cheap. Buy thy radishes today!`
+- Promoted additional same-origin `probe_edge_verify:...,3` Cantlin blockers:
+  Merchant 5 west-pocket edges `(5,15).west`, `(5,16).east/south/west`,
+  `(5,18).north`, `(6,15).south`, `(6,18).north/south`,
+  `(7,15).south`, `(7,18).north/south`, `(8,15).east`,
+  `(8,16).east/west`, `(8,17).east/west`, and `(8,18).south`; Merchant 6
+  route edges `(14,11).east`, `(7,11).north/west`, `(15,12).north`,
+  `(8,12).east`, `(8,11).east`, `(8,13).east/south`, `(6,11).north/west`,
+  `(7,13).south`, `(6,12).west`, and `(6,13).west/south`.
+- Merchant 6 at `(7,12)` is now the live-confirmed `Tool Merchant`. Adjacent
+  routing has no public path after the verified blockers above, and
+  `debug_route_frontier_skip_npcs:7,12,40` found no hidden bridge into the
+  adjacent pocket. Counter probes found `(9,12)` facing west and `(7,14)`
+  facing north both produce `There is no one there`; `(5,12)` facing east
+  opens the tool-shop prompt: `Welcome. We deal in tools. What can I do for
+  thee?` Route the Tool Merchant service to `(5,12)` facing east.
+- Current live stop: Cantlin `(5,12)`, NPCs frozen, command menu closed, no
+  lower/merchant dialogue active, runtime overlay `RUNTIME_BLOCKS map=0x0A
+  count=5` for the newest source-only Merchant 6 edges.
+- Source fix: `field_action_guard.lua` now receives `dialogue_text` from
+  `main.lua` and ignores passive status/name fragments classified by
+  `text.is_passive_field_status_noise`; `text.lua` now treats short
+  digit-prefixed name fragments such as `16Bill` as passive field status
+  noise. A follow-up upper-dialogue fix also prevents lower dialogue plus
+  stale command/status overlays such as `COMMAND BillTALK ... LV 16` from
+  becoming the processed upper-dialogue marker. Reload `main.lua` before
+  relying on the new blocker, object-label, or text-guard source changes.
 
 When adding issues, use this format:
 - ID

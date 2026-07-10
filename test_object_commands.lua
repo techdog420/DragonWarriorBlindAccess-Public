@@ -23,7 +23,8 @@ local function assert_equal(actual, expected, message)
     end
 end
 
-local function make_env()
+local function make_env(opts)
+    opts = opts or {}
     local module_names = {
         "debug_tools",
         "navigation",
@@ -43,6 +44,7 @@ local function make_env()
     local spoken = {}
     local logs = {}
     local last_autowalk_opts = nil
+    local filter_count = 0
 
     package.preload["debug_tools"] = function()
         return {
@@ -73,10 +75,27 @@ local function make_env()
                 sequence[#sequence + 1] = string.format("check_refresh:0x%02X", map_id)
             end,
             needs_refresh = function()
-                return false
+                return opts.needs_refresh == true
             end,
             update_npcs = function()
                 sequence[#sequence + 1] = "update_npcs"
+            end,
+            refresh = function(map_id)
+                sequence[#sequence + 1] = string.format("refresh:0x%02X", map_id)
+                filter_count = 19
+            end,
+            next_filter = function()
+                sequence[#sequence + 1] = "next_filter"
+                return "NPCs"
+            end,
+            get_filter_name = function()
+                return "NPCs"
+            end,
+            get_filter_summary = function()
+                return "NPCs"
+            end,
+            get_count = function()
+                return filter_count
             end,
             get_objects = function()
                 return {}
@@ -120,6 +139,7 @@ local function make_env()
     object_commands.register()
 
     return {
+        object_commands = object_commands,
         commands = commands,
         sequence = sequence,
         spoken = spoken,
@@ -134,6 +154,18 @@ local function make_env()
 end
 
 local tests = {}
+function tests.navigation_module_reload_primes_objects_for_same_frame_filter_navigation()
+    local env = make_env({needs_refresh = true})
+
+    assert_equal(env.sequence[1], "refresh:0x09", "registering commands after reload should synchronously build objects for the live map")
+    env.commands.next_filter()
+
+    assert_equal(env.sequence[2], "next_filter", "filter navigation should run after the live map object list exists")
+    assert_equal(env.spoken[1], "NPCs. fresh object", "same-frame NPC filter navigation should not announce an empty list")
+
+    env.restore()
+end
+
 
 function tests.current_object_refreshes_object_cache_for_current_map_before_describing()
     local env = make_env()

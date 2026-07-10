@@ -45,6 +45,31 @@ function tests.teleport_refuses_dialogue_with_teleport_wording()
     )
 end
 
+function tests.auto_walk_ignores_passive_status_dialogue_fragment()
+    assert_equal(
+        guard.reason("auto_walk", {
+            is_field = true,
+            dialogue_active = true,
+            dialogue_text = "16Bill",
+        }),
+        nil,
+        "auto-walk should ignore passive status/name fragments cached as dialogue"
+    )
+end
+
+function tests.continuous_movement_ignores_passive_dialogue_fragments()
+    assert_equal(
+        guard.dialogue_blocks_movement("llE"),
+        false,
+        "fused name/status residue should not cancel active movement"
+    )
+    assert_equal(
+        guard.dialogue_blocks_movement("There is no one there."),
+        true,
+        "real dialogue should still cancel active movement"
+    )
+end
+
 function tests.survey_reason_beats_generic_route_reason()
     assert_equal(
         guard.reason("auto_walk", {

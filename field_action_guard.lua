@@ -2,6 +2,7 @@
 -- Shared refusal reasons for field actions that can move or steer the player.
 
 local M = {}
+local ok_text, text = pcall(require, "text")
 
 local MESSAGES = {
     auto_walk = {
@@ -75,9 +76,28 @@ local CHECK_ORDER = {
     "route_active",
 }
 
+function M.dialogue_blocks_movement(dialogue_text)
+    if dialogue_text == nil or dialogue_text == "" then
+        return false
+    end
+    if ok_text and text.is_passive_field_status_noise(dialogue_text) then
+        return false
+    end
+    return true
+end
+
 local function check_active(check, states)
     if check == "not_field" then
         return states.is_field == false
+    end
+    if check == "dialogue_active" then
+        if states.dialogue_active ~= true then
+            return false
+        end
+        if states.dialogue_text == nil then
+            return true
+        end
+        return M.dialogue_blocks_movement(states.dialogue_text)
     end
     return states[check] == true
 end

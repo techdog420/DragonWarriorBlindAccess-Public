@@ -243,7 +243,21 @@ local function run_auto_walk_command(arg, opts)
     route_mgr.autowalk_to_current()
 end
 
+function M.refresh_after_module_reload()
+    local map_id = select(1, nav.get_position())
+    if objects.refresh then
+        objects.refresh(map_id)
+    elseif objects.check_refresh then
+        objects.check_refresh(map_id)
+    end
+end
+
 function M.register()
+    local map_id = select(1, nav.get_position())
+    if not objects.needs_refresh or objects.needs_refresh(map_id) then
+        M.refresh_after_module_reload()
+    end
+
     debug_tools.register_command("next_object", function()
         refresh_object_browser_context()
         local obj = objects.next_object()
