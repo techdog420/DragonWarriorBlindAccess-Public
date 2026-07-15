@@ -64,6 +64,19 @@ function tests.continuous_movement_ignores_passive_dialogue_fragments()
         "fused name/status residue should not cancel active movement"
     )
     assert_equal(
+        guard.dialogue_blocks_movement("EE13994Bill"),
+        false,
+        "fused EXP/name residue should not cancel active movement"
+    )    assert_equal(
+        guard.dialogue_blocks_movement("1520Bill3"),
+        false,
+        "fused Gold/name/status residue should not cancel active movement"
+    )    assert_equal(
+        guard.dialogue_blocks_movement("BillE13E1399 16Bill"),
+        false,
+        "two-token fused status/name residue should not cancel active movement"
+    )
+    assert_equal(
         guard.dialogue_blocks_movement("There is no one there."),
         true,
         "real dialogue should still cancel active movement"

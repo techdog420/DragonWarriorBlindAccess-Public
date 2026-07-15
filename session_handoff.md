@@ -1,9 +1,267 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-10
+Updated: 2026-07-15
 
 ## Immediate FCEUX Handoff
 
+- 2026-07-15 Cantlin checkpoint complete for now. The user manually validated
+  both directions between Town Entrance and the Magic Key Merchant with the
+  eastern door open, and confirmed the expected `No path found` result when
+  doors are closed. The Golem was defeated; fresh live state at Cantlin
+  `(15,0)` reports quest flag `0x42`, six keys, every door RAM slot `(0,0)`,
+  and `RUNTIME_BLOCKS map=0x0A none`. A new closed-door save state was taken.
+
+- 2026-07-14 Cantlin Magic Key Merchant and NPC movement status validated. Object
+  speech identifies live NPC movement as `stationary`, `roaming`, or
+  `movement unknown`. Fixed `npc_11` sells Magic Keys at `(27,6)`; TALK succeeds
+  from public stand `(27,8)` facing north across counter `(27,7)`. The shop is
+  intentionally key-locked behind eastern door `(26,9)`, opened from `(25,9)`
+  facing east. After town reentry relocked the door, route failures plus
+  same-origin raw probes confirmed `(27,5).north`, `(27,1).south`, and
+  `(28,2).west`; all three are now permanent directional blockers with tests.
+  Runtime mirrors produced a clean return through `(24,2)` and `(24,1)` to
+  Town Entrance `(16,0)`. After clearing those mirrors, all three source edges
+  remained blocked and the closed-door planner returned clean `No path found`
+  for `(16,0)->(27,8)`. Current hero is `(16,0)`, doors closed, six keys, and
+  runtime blocks none. Focused tests pass: objects 99, map reader 61, route
+  manager 104.
+
+- 2026-07-13 Cantlin Golem and closed-door service baseline confirmed. Moving
+  north on the World Map from `(73,101)` to `(73,100)` triggered the fixed
+  `A Golem draws near!` battle at `(73,100)`. Victory changed quest flags from
+  `0x40` to `0x42`, confirming the one-time clear bit; moving south from that
+  cell then entered Cantlin at `(15,0)`. All door RAM slots were zero and
+  `RUNTIME_BLOCKS map=0x0A none`. With NPCs frozen separately for each leg,
+  closed-door round trips passed between entrance `(16,0)` and Tool Merchant 2
+  `(4,7)`, Inn `(8,5)`, Tool Merchant `(5,12)`, Fairy Water Merchant
+  `(20,13)`, and Weapons Merchant `(25,26)`. Premium Weapons Merchant
+  `(26,12)` correctly returned `No path found` with `reason=closed_door`; no
+  map blocker was promoted. Initial unfrozen attempts exposed idle roaming NPCs
+  escaping parking, but the reloaded full-mobility-history fix passed unfrozen
+  round trips for all five reachable fixed services, parking six to eight
+  roaming slots per leg. No `AUTO_WALK_NPC_BLOCK` or
+  `AUTO_WALK_BLOCKER_FOUND` event occurred. One return paused at `(15,0)` only
+  because the command menu was genuinely open; it completed after closing the
+  menu. Premium Weapons Merchant still correctly reports `reason=closed_door`.
+  Roaming Weapons Merchant `npc_4` moved from `(22,4)` to `(22,5)` but remained
+  unreachable from its current pocket, so selected-object navigation refused
+  safely. Current hero is Cantlin `(16,0)`, doors closed, menu closed, runtime
+  blocks none.
+
+- 2026-07-13 Tool Merchant 2 confirmed and routed. Fixed `npc_12` at `(2,7)`
+  opened a Buy/Sell shop from `(4,7)` facing west; inventory is Herb 24 G and
+  Torch 8 G. Source now labels it `Tool Merchant 2`, service=true, with counter
+  stand `(4,7)` facing west. Blocker-hunt retries and same-origin raw probes
+  confirmed `(3,7).east` from `(4,7)->LEFT` and `(3,8).south` from
+  `(3,9)->UP`; both are promoted to Cantlin directional data. After a live
+  navigation-module reload and clearing the one-cell runtime overlay,
+  source-only routes completed `(3,9)->(4,7)`, `(4,7)->(16,0)`, and
+  `(16,0)->(4,7)` with no new blocker and no runtime blocks. All 61 map-reader
+  and 98 object tests pass. Current hero is `(4,7)`, facing west at Tool
+  Merchant 2's counter, with menu/dialogue closed and RUNTIME_BLOCKS none.
+
+- 2026-07-13 SEARCH trace resolved the remaining post-52 fragments. Fresh live
+  evidence showed "Bill searched the ground all about. 99 LBut there found
+  nothing." and a later standalone "MP 63ll" after the menu closed. The EXP
+  row was absent from the transient numeric context, so 99 could not match the
+  earlier derived-slice list; L was a single fused status label; ll was the
+  current hero-name tail. text.lua now removes an otherwise-unmatched bare
+  number only after an already completed sentence under strong status context,
+  repairs a single status letter fused before a second capital (LBut -> But),
+  and classifies status-value rows with any one- or two-letter lowercase name
+  tail rather than hard-coding Bill. Semantic reward/stat/shop numbers and
+  ordinary L-words remain covered. The diagnostic trace now waits for terminal
+  punctuation to avoid logging each growing redraw. All 70 text and 7 field-
+  guard tests pass; text.lua, main.lua, and test_text.lua byte-compile; git
+  diff --check passes. Current hero remains (15,1), RUNTIME_BLOCKS none. Reload
+  main.lua and retest failed SEARCH plus the post-menu-clear pause once.
+
+- 2026-07-12 command-result numeric status-slice fix pending reload. Fresh
+  post-reload speech exposed valid SEARCH/TAKE results contaminated as
+  "Bill searched the ground all about. 6", "But there found 152 nothing.",
+  and after the first filter reload, "But there found 52 nothing." Earlier
+  command results also included
+  "'There is no one there. 6", and "There is nothing to take here, Bill. 6".
+  A live report with the menu closed showed lower rows 6, 52, and 99 while
+  the status window held LV 16, G 1520, and E 13994. text.lua now derives
+  every contiguous numeric slice from visible status values and removes it only
+  in suspicious redraw positions; semantic reward and level-up numbers remain.
+  The exact regressions failed before source, then all 66 text and 7 field-guard
+  tests passed; LuaJIT byte-compilation and git diff --check also pass. Current
+  hero is (15,1) with no runtime blockers. Reload main.lua, exercise the command
+  menu results once, then resume Person 2 / npc_12 at (2,7).
+
+- 2026-07-12 Person 2 approach paused on a second status fragment. The initial
+  route began while hero and fixed Old Man 2 both occupied (27,6), likely from
+  selected teleport. West, south, north, and east movement all raw-held
+  blocked from that overlap state. These four results are contaminated origin
+  evidence: do not promote (26,6).east, (27,7).north, (27,5).south, or
+  (28,6).west from this pass. All temporary runtime edges were cleared and the
+  hero was relocated to known-safe entrance (15,1). Before the clean Person 2
+  route could start, lower dialogue cached BillE13E1399 16Bill and the old
+  script refused auto-walk. Exact text and movement-guard regressions failed
+  before source; text.lua now recognizes the narrow fused-name/two-GE-value
+  plus digit-prefixed-name pattern. All 63 text and 7 field-guard tests pass.
+  Current hero is (15,1), no runtime blocks, old script still has the fragment
+  cached. Reload main.lua, then route to stable Person 2 / npc_12 at (2,7).
+- 2026-07-12 Cantlin dialogue-scroll lock at (27,6): after SEARCH, the lower
+  scan assembled 1520Bill3 from status rows (G 1520, hero name Bill, trailing
+  status digit). MENU_STATE showed no real menu or prompt, but PREV.dialogue
+  and announced dialogue both retained the 9-character fragment, causing
+  object hotkeys to report Wait for dialogue to finish. The exact text failed
+  passive-status and field-action-guard regressions before the fix. text.lua
+  now recognizes a numeric value wrapped around a short capitalized name and
+  trailing numeric status fragment. All 63 text and 7 field-guard tests pass,
+  and text.lua byte-compiles. Current live script is pre-fix and still cached;
+  reload main.lua, then verify object controls at (27,6).
+- NPC follow-up from the user's manual conversation pass: live RAM currently
+  identifies Old Man 1 as stable slot 6 at (14,28), Merchant 1 as stable slot
+  2 at (9,7), Person 2 as stable slot 12 at (2,7), and the NPC at the stopped
+  position (27,6) as fixed Old Man 2 / slot 11. The user reports Old Man 1 has
+  an important clue and Merchant 1 gives an armor-location clue. External NES
+  script/layout references confirm Cantlin has two tool shops, so Person 2 is
+  a plausible second seller, but do not label it until live TALK opens the
+  tool transaction prompt. After reload, test Person 2 at (2,7).
+- 2026-07-12 Cantlin fixed-service circuit complete after the stable-slot full
+  reload. Live report_npcs confirmed slot 10 Inn, slot 13 Radish Merchant
+  service=false, slot 14 Tool Merchant, slot 15 Premium Weapons Merchant,
+  slot 16 Fairy Water Merchant, and slot 19 Weapons Merchant. Source-only
+  blocker-mode round trips passed for entrance (15,1) <-> fixed Weapons stand
+  (25,26) and entrance (15,1) <-> Premium stand (26,12). Fairy Water forward
+  reached (20,13); return later stopped at (16,12)->LEFT into (15,12).east.
+  Route retries and a same-origin raw probe blocked without NPC or runtime
+  contamination. After mirroring that edge, return completed at (15,1).
+  Source/tests now add east to the existing (15,12) directional entry; the
+  focused assertion failed before promotion and all 61 map tests pass after.
+  Current hero is (15,1), all five doors open, one key, with the single
+  (15,12).east runtime mirror. Reload main.lua before the next pass.
+- 2026-07-12 Cantlin stable service identities: the post-reload NPC table had
+  inactive slot 5, so duplicate Merchant display names renumbered. Fixed slot
+  10 at (8,3) became generic Merchant 3 and was excluded from Services,
+  while fixed slot 13 at (2,12) inherited the Inn role and inferred stand
+  (4,12). Confirmed Cantlin roles now prefer stable npc_<slot> IDs while
+  retaining name fallbacks for older fixtures. After
+  reload_navigation_modules, report_npcs shows slot 10 as Inn, service=true,
+  and slot 13 as Radish Merchant, service=false; Services again routes the Inn
+  to (8,5). Source-only blocker-mode round trips completed entrance (15,1)
+  <-> Inn (8,5) and entrance (15,1) <-> Tool Merchant (5,12) with no runtime
+  blockers. The reloaded Fairy Water return also completed source-only from
+  (20,13) to (15,1). The new inactive-slot regression failed before the fix
+  and all 97 object tests pass afterward. Current hero is (15,1), all five
+  doors open, one key, and RUNTIME_BLOCKS none; reload main.lua before
+  continuing.
+- 2026-07-12 Cantlin premium-shop route RESOLVED: fixed Guard 4 at `(24,12)`
+  is the Flame Sword 9800 G / Silver Shield 14800 G seller. The earlier
+  `(24,13)` north-facing TALK proof came from an isolated private-side tile.
+  NES map alignment plus normal-route probing found the real public stand:
+  `(27,12)->LEFT` enters raw type-15 `(26,12)`, while another LEFT into counter
+  cell `(25,12)` blocks. TALK from `(26,12)` facing west opened the same shop.
+  `map_reader.lua` now exposes only `(26,12)` as the additional passthrough,
+  and `objects.lua` routes `Premium Weapons Merchant` there facing west.
+  Blocker-mode routes completed both ways between practical entrance `(15,1)`
+  and `(26,12)` in 24 steps; selected-object autowalk reports `Already there`,
+  faces west, and holds Guard 4. `merchant.lua` still disambiguates the split
+  14800-G `Silver` row as `Silver Shield`. The user manually verified the
+  Services-selected route, shop prompt, Flame Sword row, and Silver Shield row.
+  Focused suites pass 61 map and 96 object tests.
+
+- 2026-07-12 Fairy Water route: TALK from `(20,13)` facing east toward Woman 2
+  `(22,13)` opened the 38-GOLD prompt. Source-only entrance routing reached
+  the fixed counter stand cleanly. Return routing repeatedly blocked at
+  `(17,13)->LEFT` into `(16,13).east`; a same-origin raw probe agreed with
+  no NPC or runtime contamination. After mirroring that edge, return completed
+  at practical entrance `(15,1)`, and a fresh selected-service route completed
+  back at `(20,13)` facing east. Source/tests now include `(16,13).east`;
+  61 map tests pass. Current hero is `(20,13)`, all five doors open, one key,
+  with that single runtime mirror. Reload `main.lua` before the next live pass.
+
+- 2026-07-12 Cantlin Weapons Merchant clarification: stationary slot 19 is
+  `Weapons Merchant` at `(27,26)`, with public stand `(25,26)`; the user has
+  already validated that route both ways. Nearby slot 4 is now labeled
+  `Roaming Weapons Merchant`. In the current save it patrols x=22, rows 3
+  through 6, inside the verified sealed upper-east compartment. Normal and
+  skip-NPC planners return `No path found`, frontier analysis has
+  `hidden_bridge_candidates=0`, and four two-away TALK checks all returned
+  `There is no one there`: north `(22,1)->(22,3)`, south
+  `(22,8)->(22,6)`, west `(20,5)->(22,5)`, and east `(24,4)->(22,4)`.
+  Do not assign slot 4 a static stand or remove compartment walls; its
+  adjacent-NPC route remains valid when it wanders into the reachable town
+  component. Live Services output confirms the new label and NPC freeze is off.
+
+- 2026-07-11 Cantlin service validation: the user confirmed the Tool Merchant
+  route and both the forward Inn route and Inn interaction. Inn return stopped
+  at `(16,2)->UP` into `(16,1).south`; the normal-origin probe and 3/3 verifier
+  all blocked without NPC or state contamination. Source/tests now make
+  `(16,1)` fully blocked. With the south approach mirrored live, return routing
+  used `1 east, 2 north, 1 west` through x=17 and completed at Town Entrance
+  `(16,0)`. Current live state is `(16,0)`, all five doors open, runtime block
+  count 1. Reload Lua before clearing the overlay.
+
+- 2026-07-11 Cantlin north lane: normal movement proved all `y=0` cells
+  `(1,0)..(29,0)`. Travel exposes Town Entrance `(16,0)`, north exit `(23,0)`
+  via safe stand `(23,1)`, northeast exit `(29,0)` via `(28,0)`, and southeast
+  exit `(20,29)`.
+  The exact carry repro now passes live: `(4,1)->UP` needed a seam retry,
+  queued `initial_settle=16`, stayed in Cantlin, then reached `(1,0)` west.
+  Initial route settles reset movement immediately; 88 auto-step tests pass.
+  Clean normal-origin probes plus 3/3 verifiers promote north approaches on
+  `(1..3,1)`, `(6..13,1)`, and `(26..28,1)`; existing arrival-shelf proof
+  keeps `(15..16,1).north`. Descents at `x=4`, `x=5`, `x=14`, and `x=17..25`
+  moved. `(23,1)->UP` proved a directional north exit, landing on World Map
+  `(73,102)` before the queued east step. Source guards `(23,0).south`.
+  A teleport-seeded `(17,0)->RIGHT` failure was disproved after normal
+  reacquisition; the edge moved and carried to `(19,0)`. `sweep_walk`
+  trusted-boundary handling remains covered by 51 tests.
+  Fresh source-only routing with no runtime blocks completed `9 east, 2 south`
+  from `(16,0)` through open x=25 to `(25,2)`; x=18 also descended cleanly.
+  Post-reload `(6,0)->DOWN` then blocked directly and 3/3 with no artifact.
+  Its runtime mirror made the route choose `1 west, 2 south` through x=5.
+  Current live state: Cantlin `(5,2)`, all five doors open, runtime block count
+  1 for `(6,1).north`; reload Lua before clearing it. Focused object and
+  map-reader suites pass 94 and 60 tests.
+
+- 2026-07-10 Cantlin Travel-exit correction: `objects.lua` had the sole Travel
+  object pinned to placeholder `(14,29)` behind the striped damage barrier,
+  while prior live movement proved `(20,29)` immediately changes to the World
+  Map. It now exposes `exit_20_29` with safe stand `(20,28)` facing south and no
+  `exit_14_29`. Live `reload_navigation_modules` changed Travel from `2 south,
+  10 west` to object `(20,29)`, stand `(20,28)`. Route cleanup then promoted
+  same-origin 3/3 `(23,27).east/west`, `(24,28).north`, and `(22,28).north`.
+  With those three runtime cells active, selected-object autowalk completed at
+  `(20,28)`, faced south, announced `exit here`, and stayed stable across two
+  position samples. All five doors remain open. Reload `main.lua` before
+  clearing the three-cell overlay.
+  Follow-up from fixed Weapons Merchant slot 19 at `(27,26)` proved the user's
+  return blocker was not roaming Merchant slot 4: `(23,26)->DOWN` into
+  `(23,27).north` blocked 3/3 with `npc_blocked=false`. Source/tests and the
+  live overlay now include it; the replanned return completed at `(20,28)` and
+  faced south. Reload `main.lua` before clearing this four-cell overlay.
+
+- 2026-07-10 Cantlin essential-service route cleanup: blocker-mode routes
+  completed both ways from practical entrance `(15,1)` to Inn stand `(8,5)`
+  (19 steps), Tool Merchant stand `(5,12)` (21 steps), and fixed Weapons
+  Merchant stand `(25,26)` (35 steps), with no new blockers on those six legs.
+  A preceding return from `(22,27)` found `(21,27).east`; same-origin
+  `probe_edge_verify:LEFT,3` confirmed `moved=0 blocked=3` without contamination.
+  Source/test plus a live runtime mirror now include that edge, and the retried
+  33-step return reached `(15,1)`. Mobile Weapons Merchant 2 remains correctly
+  position-dependent: current slot 4 at `(22,6)` is inside the verified
+  upper-east compartment, both normal and skip-NPC planners return `No path
+  found`, and frontier analysis reports `hidden_bridge_candidates=0`. Do not
+  remove any of the 34 modeled compartment boundaries. Prior same-day evidence
+  already proves object-selected routing works when Merchant 2 is reachable at
+  `(17,4)`. A later user-observed bouncing route was targeting the south
+  `Exit to World Map` `(14,29)`, not practical entrance `(15,1)`. Cleaning that
+  path and the subsequent entrance route promoted seven same-origin 3/3 edges:
+  `(19,28).east`, `(19,25).north`, `(17,24).east/north`,
+  `(17,21).east/south`, and `(18,20).south`. With all seven mirrored live,
+  blocker mode completed to `(15,1)` and stayed stable across immediate and
+  four-second position checks. One seam-retry completion briefly reported
+  `(17,23)` before later position `(16,23)`; a controlled normal step and the
+  final route did not reproduce the carry, so retain it as a timing watch item.
+  Current hero position is `(15,1)`, all five doors are open, and five runtime
+  cells mirror the newest source entries. Reload `main.lua` before clearing the
+  overlay or beginning the next route-cleaning pass.
 - 2026-07-10 Cantlin barrier/timing checkpoint: autowalk from `(4,12)` toward
   Travel exit `(14,29)` crossed the lower striped barrier and left the hero at
   4 HP. `map_reader.lua` now marks the full 16-cell barrier footprint at

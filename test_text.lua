@@ -419,6 +419,110 @@ function tests.dialogue_filter_strips_split_numeric_status_values_from_live_npc_
     )
 end
 
+function tests.dialogue_filter_strips_single_numeric_status_slices_from_command_results()
+    clear_ppu()
+    write_visible_row(2, "Bill", 0, 0)
+    write_visible_row(4, "LV  16", 0, 0)
+    write_visible_row(6, "HP  92", 0, 0)
+    write_visible_row(8, "MP  63", 0, 0)
+    write_visible_row(10, "G 1520", 0, 0)
+    write_visible_row(12, "E13994", 0, 0)
+    write_visible_row(23, "Bill searched the ground", 0, 0)
+    write_visible_row(24, "all about. 6", 0, 0)
+    write_visible_row(25, "But there found 152 nothing.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 23, 0),
+        "Bill searched the ground all about. But there found nothing.",
+        "single numeric status slices should not leak into command-result dialogue"
+    )
+end
+
+function tests.dialogue_filter_strips_middle_numeric_status_slice_from_command_result()
+    clear_ppu()
+    write_visible_row(2, "Bill", 0, 0)
+    write_visible_row(4, "LV  16", 0, 0)
+    write_visible_row(6, "HP  92", 0, 0)
+    write_visible_row(8, "MP  63", 0, 0)
+    write_visible_row(10, "G 1520", 0, 0)
+    write_visible_row(12, "E13994", 0, 0)
+    write_visible_row(23, "But there found 52 nothing.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 23, 0),
+        "But there found nothing.",
+        "middle numeric status slices should not leak into command-result dialogue"
+    )
+end
+
+function tests.dialogue_filter_strips_numeric_slice_with_fused_live_status_context()
+    clear_ppu()
+    write_visible_row(2, "HP  92LV  16", 0, 0)
+    write_visible_row(4, "MP  63HP  92", 0, 0)
+    write_visible_row(6, "G 1520 BillL", 0, 0)
+    write_visible_row(8, "LV  16 HP  92", 0, 0)
+    write_visible_row(10, "MP  63 G 1520", 0, 0)
+    write_visible_row(12, "E13994ll", 0, 0)
+    write_visible_row(23, "But there found 52 nothing.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 23, 0),
+        "But there found nothing.",
+        "fused live status rows should activate numeric-slice filtering"
+    )
+end
+
+function tests.dialogue_filter_strips_live_search_status_fragments_without_exp_context()
+    clear_ppu()
+    write_visible_row(2, "LV  16 STATUS ITEM", 0, 0)
+    write_visible_row(4, "HP  92 STAIRS DOOR", 0, 0)
+    write_visible_row(6, "MP  63 SEARCH TAKE", 0, 0)
+    write_visible_row(8, "G 1520", 0, 0)
+    write_visible_row(23, "Bill searched the ground", 0, 0)
+    write_visible_row(24, "all about. 99", 0, 0)
+    write_visible_row(25, "LBut there found", 0, 0)
+    write_visible_row(26, "nothing.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 23, 0),
+        "Bill searched the ground all about. But there found nothing.",
+        "live search fragments should be removed when the EXP row is not in status context"
+    )
+end
+
+function tests.dialogue_filter_keeps_words_beginning_with_status_letters()
+    clear_ppu()
+    write_visible_row(2, "LV  16", 0, 0)
+    write_visible_row(4, "MP  63", 0, 0)
+    write_visible_row(6, "G 1520", 0, 0)
+    write_visible_row(23, "Lancelot arrived.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 23, 0),
+        "Lancelot arrived.",
+        "ordinary words beginning with a status letter should remain intact"
+    )
+end
+
+function tests.dialogue_filter_keeps_semantic_numbers_with_status_context()
+    clear_ppu()
+    write_visible_row(2, "Bill", 0, 0)
+    write_visible_row(4, "LV  16", 0, 0)
+    write_visible_row(6, "HP  92", 0, 0)
+    write_visible_row(8, "MP  63", 0, 0)
+    write_visible_row(10, "G  120", 0, 0)
+    write_visible_row(12, "E13994", 0, 0)
+    write_visible_row(23, "Of GOLD thou hast gained 12", 0, 0)
+    write_visible_row(24, "Thy power increases by 6.", 0, 0)
+    write_visible_row(25, "Wilt thou buy it for 52 GOLD?", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 23, 0),
+        "Of GOLD thou hast gained 12 Thy power increases by 6. Wilt thou buy it for 52 GOLD?",
+        "real reward and stat numbers should survive while status rows are visible"
+    )
+end
+
 function tests.dialogue_filter_skips_live_compact_status_residue_after_menu_clear()
     clear_ppu()
     write_visible_row(2, "HP  86", 28, 0)
@@ -561,13 +665,21 @@ function tests.passive_field_status_noise_detects_name_and_gold_tokens()
 end
 
 function tests.passive_field_status_noise_detects_digit_prefixed_name_tokens()
-    for _, fragment in ipairs({"16Bill", "92Ivy"}) do
+    for _, fragment in ipairs({"16Bill", "92Ivy", "1520Bill3"}) do
         assert_equal(
             text.is_passive_field_status_noise(fragment),
             true,
             "passive field scanner should classify digit-prefixed status/name artifact " .. fragment
         )
     end
+end
+
+function tests.passive_field_status_noise_detects_fused_exp_value_and_name()
+    assert_equal(
+        text.is_passive_field_status_noise("EE13994Bill"),
+        true,
+        "passive field scanner should classify the live EXP/name scroll artifact"
+    )
 end
 
 function tests.passive_field_status_noise_detects_split_name_suffixes()
@@ -611,6 +723,16 @@ function tests.passive_field_status_noise_detects_fused_status_value_rows()
     end
 end
 
+function tests.passive_field_status_noise_detects_live_spaced_value_suffix()
+    for _, fragment in ipairs({"MP 63ll", "MP 63vy", "HP 92ex", "LV 16da"}) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify status values with arbitrary name tails: " .. fragment
+        )
+    end
+end
+
 function tests.passive_field_status_noise_detects_compact_gold_exp_residue_rows()
     for _, fragment in ipairs({"BillG2234", "IvyE1298", "RexG42"}) do
         assert_equal(
@@ -627,6 +749,21 @@ function tests.passive_field_status_noise_detects_spaced_status_residue_rows()
             text.is_passive_field_status_noise(fragment),
             true,
             "passive field scanner should classify spaced status residue " .. fragment
+        )
+    end
+end
+
+function tests.passive_field_status_noise_detects_multi_token_shop_status_residue()
+    for _, fragment in ipairs({
+        "G25008 E13994 ll 16 ll 16",
+        "MP  63 G25008 llE13994 16 ll 16",
+        "G25008 E13994 V  16 Bi LV",
+        "BillE13E1399 16Bill",
+    }) do
+        assert_equal(
+            text.is_passive_field_status_noise(fragment),
+            true,
+            "passive field scanner should classify multi-token shop status residue: " .. fragment
         )
     end
 end
@@ -739,6 +876,30 @@ function tests.dialogue_filter_keeps_unpadded_status_words_in_dialogue()
         text.read_dialogue_window_filtered(0, 19, 0),
         "Low HP",
         "ordinary dialogue should keep HP when it is not padded status-bar residue"
+    )
+end
+
+function tests.dialogue_filter_strips_repeated_inline_single_status_letters()
+    clear_ppu()
+    write_row(19, "'My Grandfather Wynn M once")
+    write_row(20, "had a shop on the east side of G")
+    write_row(21, "Hauksness.")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "'My Grandfather Wynn once had a shop on the east side of Hauksness.",
+        "repeated isolated status letters should not corrupt real NPC dialogue"
+    )
+end
+
+function tests.dialogue_filter_keeps_lone_uppercase_initial_without_status_context()
+    clear_ppu()
+    write_row(19, "'A man named G lives here.")
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "'A man named G lives here.",
+        "a lone uppercase initial should remain when no repeated status noise is present"
     )
 end
 

@@ -894,6 +894,22 @@ function tests.boundary_destination_is_logged_without_leaving_map()
     env.restore()
 end
 
+function tests.modeled_boundary_origin_continues_to_next_edge()
+    local env = make_env({
+        y = 0,
+        details = {
+            ["5,0"] = {effective_walkable = true, permanent_blocked = false, reason = "passthrough", tile_type = 0},
+        },
+    })
+
+    assert_equal(env.crawler.start("attempts=1,max_edges=2"), true, "crawler should start")
+    env.tick(true)
+    assert_equal(env.injects[1], "down",
+        "trusted boundary origin should skip out-of-bounds north and continue probing south")
+
+    env.restore()
+end
+
 function tests.boundary_from_false_wall_origin_removes_passthrough_candidate()
     local env = make_env({
         details = {

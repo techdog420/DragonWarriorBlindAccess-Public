@@ -888,12 +888,135 @@ function tests.cantlin_old_man_4_route_edges_are_modeled()
 
     env.restore()
 end
+function tests.cantlin_north_lane_routes_through_west_descent()
+    local base = 0x0A * 5
+    local data_start = 0x10
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    for i = 0, 56 do
+        rom_bytes[data_start + i] = 0x66
+    end
+    local env = make_env({rom_bytes = rom_bytes})
+
+    for x = 1, 29 do
+        local details = env.map_reader.get_walkability_details(0x0A, x, 0)
+        assert_equal(details.effective_walkable, true, string.format("Cantlin (%d,0) should be pathable after live north-lane proof", x))
+        assert_equal(details.reason, "passthrough", string.format("Cantlin (%d,0) should override the generic engine boundary", x))
+    end
+    assert_equal(env.map_reader.get_walkability_details(0x0A, 0, 0).effective_walkable, false, "Cantlin (0,0) should remain blocked after the west-boundary probe")
+
+    assert_cantlin_dir(env, "15,1", "north", "(15,1).north should block after live arrival-shelf probe from (15,0)->DOWN")
+    assert_cantlin_dir(env, "16,1", "north", "(16,1).north should block after live arrival-shelf probe from (16,0)->DOWN")
+    assert_cantlin_dir(env, "23,0", "south", "(23,0).south should guard the north world-map transition from ordinary routing")
+    assert_cantlin_dir(env, "26,1", "north", "(26,1).north should block after normal probe and 3/3 verifier from (26,0)->DOWN")
+    assert_cantlin_dir(env, "27,1", "north", "(27,1).north should block after normal probe and 3/3 verifier from (27,0)->DOWN")
+    assert_cantlin_dir(env, "28,1", "north", "(28,1).north should block after normal probe and 3/3 verifier from (28,0)->DOWN")
+    assert_cantlin_dir(env, "29,0", "west", "(29,0).west should guard the northeast world-map transition from ordinary routing")
+
+    save_module("pathfinder")
+    package.loaded["pathfinder"] = nil
+    local pathfinder = require "pathfinder"
+    local north_lane_path = pathfinder.find_path(0x0A, 1, 0, 28, 0, {})
+    assert_equal(north_lane_path ~= nil, true, "Cantlin should route across the confirmed north lane")
+    assert_equal(path_has_step(north_lane_path, 28, 0, "east"), true, "Cantlin north-lane path should reach the safe northeast-exit stand; path=" .. path_to_string(north_lane_path))
+    local path = pathfinder.find_path(0x0A, 16, 0, 14, 2, {})
+    assert_equal(path ~= nil, true, "Cantlin should route from the player-facing entrance through the west descent")
+    assert_equal(path_has_step(path, 15, 0, "west"), true, "Cantlin entrance path should cross (16,0)->(15,0); path=" .. path_to_string(path))
+    assert_equal(path_has_step(path, 14, 0, "west"), true, "Cantlin entrance path should cross (15,0)->(14,0); path=" .. path_to_string(path))
+    assert_equal(path_has_step(path, 14, 1, "south"), true, "Cantlin entrance path should descend only at (14,0)->(14,1); path=" .. path_to_string(path))
+    local key_merchant_path = pathfinder.find_path(0x0A, 16, 0, 27, 5, {})
+    assert_equal(key_merchant_path ~= nil, true, "Cantlin should route from the town entrance to the verified Magic Key Merchant stand")
+    restore_modules({"pathfinder"})
+
+    env.restore()
+end
+
+function tests.cantlin_premium_merchant_hidden_bridge_is_passthrough()
+    local base = 0x0A * 5
+    local data_start = 0x120
+    local rom_bytes = {
+        [base] = 0x10,
+        [base + 1] = 0x81,
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+
+    -- Fill through index 384 with floor, place type-15 at (25..27,12), one
+    -- floor cell at (28,12), type-15 at (29,12), then fill the remainder.
+    for i = 0, 23 do
+        rom_bytes[data_start + i] = 0x6F
+    end
+    rom_bytes[data_start + 24] = 0x60
+    rom_bytes[data_start + 25] = 0xF2
+    rom_bytes[data_start + 26] = 0x60
+    rom_bytes[data_start + 27] = 0xF0
+    for i = 28, 58 do
+        rom_bytes[data_start + i] = 0x6F
+    end
+    rom_bytes[data_start + 59] = 0x6D
+
+    local env = make_env({rom_bytes = rom_bytes})
+    local counter = env.map_reader.get_walkability_details(0x0A, 25, 12)
+    assert_equal(counter.tile_type, 15, "Cantlin premium merchant counter should decode as type 15")
+    assert_equal(counter.effective_walkable, false, "Cantlin (25,12) should stay closed after the same-origin probe from (26,12)->LEFT blocked")
+
+    local inner_bridge = env.map_reader.get_walkability_details(0x0A, 26, 12)
+    assert_equal(inner_bridge.tile_type, 15, "Cantlin premium merchant stand should decode as type 15")
+    assert_equal(inner_bridge.effective_walkable, true, "Cantlin (26,12) should be walkable after normal-route entry from (27,12)->LEFT")
+    assert_equal(inner_bridge.reason, "passthrough", "Cantlin (26,12) should report passthrough")
+
+    local bridge = env.map_reader.get_walkability_details(0x0A, 27, 12)
+    assert_equal(bridge.tile_type, 15, "Cantlin premium merchant bridge should decode as type 15")
+    assert_equal(bridge.effective_walkable, true, "Cantlin (27,12) should be walkable after live two-sided bridge proof")
+    assert_equal(bridge.reason, "passthrough", "Cantlin (27,12) should report passthrough")
+
+    local outer_bridge = env.map_reader.get_walkability_details(0x0A, 29, 12)
+    assert_equal(outer_bridge.tile_type, 15, "Cantlin outer premium merchant bridge should decode as type 15")
+    assert_equal(outer_bridge.effective_walkable, true, "Cantlin (29,12) should be walkable after live carry-through proof")
+    assert_equal(outer_bridge.reason, "passthrough", "Cantlin (29,12) should report passthrough")
+
+    save_module("pathfinder")
+    package.loaded["pathfinder"] = nil
+    local pathfinder = require "pathfinder"
+    local path = pathfinder.find_path(0x0A, 27, 10, 26, 12, {})
+    assert_equal(path ~= nil, true, "Cantlin should route to the reachable premium merchant stand")
+    assert_equal(path_has_step(path, 27, 12, "south"), true, "Cantlin premium merchant path should cross the outer hidden bridge; path=" .. path_to_string(path))
+    assert_equal(path_has_step(path, 26, 12, "west"), true, "Cantlin premium merchant path should finish on the inner hidden stand; path=" .. path_to_string(path))
+    local outer_path = pathfinder.find_path(0x0A, 29, 13, 29, 11, {})
+    assert_equal(outer_path ~= nil, true, "Cantlin should route through the outer hidden bridge")
+    assert_equal(path_has_step(outer_path, 29, 12, "north"), true, "Cantlin outer premium path should cross (29,12); path=" .. path_to_string(outer_path))
+    restore_modules({"pathfinder"})
+
+    env.restore()
+end
+
+
 
 function tests.cantlin_service_route_edges_are_modeled()
     local env = make_env()
 
+    assert_cantlin_dir(env, "1,1", "north", "(1,1).north should block after north-lane verifier from (1,0)->DOWN")
+    assert_cantlin_dir(env, "2,1", "north", "(2,1).north should block after north-lane verifier from (2,0)->DOWN")
+    assert_cantlin_dir(env, "3,1", "north", "(3,1).north should block after north-lane verifier from (3,0)->DOWN")
+    assert_cantlin_dir(env, "6,1", "north", "(6,1).north should block after post-reload normal probe and 3/3 verifier from (6,0)->DOWN")
+    assert_cantlin_dir(env, "7,1", "north", "(7,1).north should block after normal probe and north-lane verifier from (7,0)->DOWN")
+    assert_cantlin_dir(env, "8,1", "north", "(8,1).north should block after normal probe and north-lane verifier from (8,0)->DOWN")
+    assert_cantlin_dir(env, "9,1", "north", "(9,1).north should block after normal probe and north-lane verifier from (9,0)->DOWN")
+    assert_cantlin_dir(env, "10,1", "north", "(10,1).north should block after normal probe and north-lane verifier from (10,0)->DOWN")
+    assert_cantlin_dir(env, "11,1", "north", "(11,1).north should block after normal probe and north-lane verifier from (11,0)->DOWN")
+    assert_cantlin_dir(env, "12,1", "north", "(12,1).north should block after normal probe and north-lane verifier from (12,0)->DOWN")
+    assert_cantlin_dir(env, "13,1", "north", "(13,1).north should block after normal probe and north-lane verifier from (13,0)->DOWN")
     assert_cantlin_dir(env, "1,2", "north", "(1,2).north should block after isolated-pocket verifier from (1,1)->DOWN")
     assert_cantlin_dir(env, "2,1", "west", "(2,1).west should block after isolated-pocket verifier from (1,1)->RIGHT")
+    assert_cantlin_dir(env, "3,1", "east", "(3,1).east should block after west-descent return failure and raw verifier from (4,1)->LEFT")
+    assert_cantlin_dir(env, "3,7", "east", "(3,7).east should block after Tool Merchant 2 route failure and same-origin raw probe from (4,7)->LEFT")
+    assert_cantlin_dir(env, "3,8", "south", "(3,8).south should block after Tool Merchant 2 route failure and same-origin raw probe from (3,9)->UP")
     assert_cantlin_dir(env, "1,11", "north", "(1,11).north should block after Merchant 5 route verifier from (1,10)->DOWN")
     assert_cantlin_dir(env, "1,16", "east", "(1,16).east should block after Merchant 5 route verifier from (2,16)->LEFT")
     assert_cantlin_dir(env, "1,17", "east", "(1,17).east should block after Merchant 5 route verifier from (2,17)->LEFT")
@@ -1012,12 +1135,22 @@ function tests.cantlin_service_route_edges_are_modeled()
     assert_cantlin_dir(env, "14,11", "east", "(14,11).east should block after Merchant 6 route verifier from (15,11)->LEFT")
     assert_cantlin_dir(env, "14,14", "south", "(14,14).south should block after Merchant 7 return verifier from (14,15)->UP")
     assert_cantlin_dir(env, "15,12", "north", "(15,12).north should block after Merchant 6 route verifier from (15,11)->DOWN")
+    assert_cantlin_dir(env, "15,12", "east", "(15,12).east should block after Fairy Water return route and same-origin raw probe from (16,12)->LEFT")
     assert_cantlin_dir(env, "15,13", "south", "(15,13).south should block after Merchant 7 return verifier from (15,14)->UP")
+    assert_cantlin_dir(env, "16,13", "east", "(16,13).east should block after Fairy Water Merchant return route and same-origin raw probe from (17,13)->LEFT")
     assert_cantlin_dir(env, "16,1", "west", "(16,1).west should block after Merchant 2 route verifier from (15,1)->RIGHT")
     assert_cantlin_dir(env, "16,1", "east", "(16,1).east should block after entrance return verifier from (17,1)->LEFT")
+    assert_cantlin_dir(env, "16,1", "south", "(16,1).south should block after Inn return failure and same-origin verifier from (16,2)->UP")
     assert_cantlin_dir(env, "16,14", "west", "(16,14).west should block after Merchant 7 return verifier from (15,14)->RIGHT")
     assert_cantlin_dir(env, "17,14", "north", "(17,14).north should block after Merchant 7 forward verifier from (17,13)->DOWN")
+    assert_cantlin_dir(env, "17,24", "east", "(17,24).east should block after exit-route verifier from (18,24)->LEFT")
+    assert_cantlin_dir(env, "17,24", "north", "(17,24).north should block after exit-route verifier from (17,23)->DOWN")
+    assert_cantlin_dir(env, "17,21", "south", "(17,21).south should block after entrance-route verifier from (17,22)->UP")
+    assert_cantlin_dir(env, "17,21", "east", "(17,21).east should block after entrance-route verifier from (18,21)->LEFT")
+    assert_cantlin_dir(env, "18,20", "south", "(18,20).south should block after entrance-route verifier from (18,21)->UP")
     assert_cantlin_dir(env, "19,25", "east", "(19,25).east should block after Merchant 7 return verifier from (20,25)->LEFT")
+    assert_cantlin_dir(env, "19,25", "north", "(19,25).north should block after exit-route verifier from (19,24)->DOWN")
+    assert_cantlin_dir(env, "19,28", "east", "(19,28).east should block after exit-route verifier from (20,28)->LEFT")
     assert_cantlin_dir(env, "16,14", "south", "(16,14).south should block after Merchant 7 return verifier from (16,15)->UP")
     assert_cantlin_dir(env, "20,2", "north", "(20,2).north should block after Merchant 2 route verifier from (20,1)->DOWN")
     assert_cantlin_dir(env, "20,2", "south", "(20,2).south should block after Merchant 2 route verifier from (20,3)->UP")
@@ -1034,12 +1167,15 @@ function tests.cantlin_service_route_edges_are_modeled()
     assert_cantlin_dir(env, "21,5", "west", "(21,5).west should block after Merchant 2 route verifier from (20,5)->RIGHT")
     assert_cantlin_dir(env, "21,11", "west", "(21,11).west should block after Merchant 7 reverse verifier from (20,11)->RIGHT")
     assert_cantlin_dir(env, "21,11", "north", "(21,11).north should block after Merchant 7 reverse verifier from (21,10)->DOWN")
+    assert_cantlin_dir(env, "21,12", "west", "(21,12).west should block after premium merchant forward failure and same-origin probe from (20,12)->RIGHT")
     assert_cantlin_dir(env, "21,21", "west", "(21,21).west should block after Merchant 7 reverse verifier from (20,21)->RIGHT")
     assert_cantlin_dir(env, "21,21", "north", "(21,21).north should block after Merchant 7 forward verifier from (21,20)->DOWN")
     assert_cantlin_dir(env, "21,13", "west", "(21,13).west should block after Merchant 7 forward verifier from (20,13)->RIGHT")
+    assert_cantlin_dir(env, "21,14", "west", "(21,14).west should block after premium merchant forward failure and same-origin probe from (20,14)->RIGHT")
     assert_cantlin_dir(env, "21,26", "west", "(21,26).west should block after Merchant 7 reverse verifier from (20,26)->RIGHT")
     assert_cantlin_dir(env, "21,26", "east", "(21,26).east should block after Merchant 7 return verifier from (22,26)->LEFT")
     assert_cantlin_dir(env, "21,27", "west", "(21,27).west should block after Merchant 7 reverse verifier from (20,27)->RIGHT")
+    assert_cantlin_dir(env, "21,27", "east", "(21,27).east should block after service return verifier from (22,27)->LEFT")
     assert_cantlin_dir(env, "21,28", "west", "(21,28).west should block after Merchant 7 reverse verifier from (20,28)->RIGHT")
     assert_cantlin_dir(env, "21,6", "west", "(21,6).west should block after Merchant 2 route verifier from (20,6)->RIGHT")
     assert_cantlin_dir(env, "23,4", "east", "(23,4).east should block after Merchant 2 route verifier from (24,4)->LEFT")
@@ -1049,13 +1185,66 @@ function tests.cantlin_service_route_edges_are_modeled()
     assert_cantlin_dir(env, "22,7", "south", "(22,7).south should block after Merchant 2 route verifier from (22,8)->UP")
     assert_cantlin_dir(env, "23,7", "south", "(23,7).south should block after Merchant 2 route verifier from (23,8)->UP")
     assert_cantlin_dir(env, "23,11", "north", "(23,11).north should block after Merchant 7 reverse verifier from (23,10)->DOWN")
+    assert_cantlin_dir(env, "23,14", "south", "(23,14).south should block after premium merchant forward failure and same-origin probe from (23,15)->UP")
     assert_cantlin_dir(env, "22,11", "north", "(22,11).north should block after Merchant 7 reverse verifier from (22,10)->DOWN")
     assert_cantlin_dir(env, "22,21", "north", "(22,21).north should block after Merchant 7 forward verifier from (22,20)->DOWN")
     assert_cantlin_dir(env, "23,21", "east", "(23,21).east should block after Merchant 7 route verifier from (24,21)->LEFT")
     assert_cantlin_dir(env, "23,21", "north", "(23,21).north should block after Merchant 7 forward verifier from (23,20)->DOWN")
     assert_cantlin_dir(env, "23,25", "east", "(23,25).east should block after Merchant 7 return verifier from (24,25)->LEFT")
+    assert_cantlin_dir(env, "23,27", "east", "(23,27).east should block after corrected exit-route verifier from (24,27)->LEFT")
+    assert_cantlin_dir(env, "23,27", "west", "(23,27).west should block after corrected exit-route verifier from (22,27)->RIGHT")
+    assert_cantlin_dir(env, "23,27", "north", "(23,27).north should block after fixed Weapons Merchant return verifier from (23,26)->DOWN")
+    assert_cantlin_dir(env, "24,28", "north", "(24,28).north should block after corrected exit-route verifier from (24,27)->DOWN")
+    assert_cantlin_dir(env, "22,28", "north", "(22,28).north should block after corrected exit-route verifier from (22,27)->DOWN")
     assert_cantlin_dir(env, "23,23", "east", "(23,23).east should block after Merchant 7 return verifier from (24,23)->LEFT")
+    assert_cantlin_dir(env, "23,13", "east", "(23,13).east should block after premium merchant stand egress failure and same-origin probe from (24,13)->LEFT")
+    assert_cantlin_dir(env, "24,14", "north", "(24,14).north should block after premium merchant outer-route failure and same-origin probe from (24,13)->DOWN")
     assert_cantlin_dir(env, "24,14", "south", "(24,14).south should block after Merchant 7 return verifier from (24,15)->UP")
+    assert_cantlin_dir(env, "24,11", "north", "(24,11).north should block after premium merchant forward failure and same-origin probe from (24,10)->DOWN")
+    assert_cantlin_dir(env, "21,14", "south", "(21,14).south should block after premium merchant forward failure and same-origin probe from (21,15)->UP")
+    assert_cantlin_dir(env, "22,14", "south", "(22,14).south should block after premium merchant forward failure and same-origin probe from (22,15)->UP")
+    assert_cantlin_dir(env, "25,14", "south", "(25,14).south should block after premium merchant forward failure and same-origin probe from (25,15)->UP")
+    assert_cantlin_dir(env, "26,14", "north", "(26,14).north should block after premium merchant stand failure and same-origin probe from (26,13)->DOWN")
+    assert_cantlin_dir(env, "26,14", "south", "(26,14).south should block after premium merchant forward failure and same-origin probe from (26,15)->UP")
+    assert_cantlin_dir(env, "25,10", "north", "(25,10).north should block after premium merchant forward failure and same-origin probe from (25,9)->DOWN")
+    assert_cantlin_dir(env, "25,10", "west", "(25,10).west should block after premium merchant forward failure and same-origin probe from (24,10)->RIGHT")
+    assert_cantlin_dir(env, "25,13", "east", "(25,13).east should block after premium merchant stand failure and same-origin probe from (26,13)->LEFT")
+    assert_cantlin_dir(env, "25,13", "west", "(25,13).west should block after premium merchant outer-route failure and same-origin probe from (24,13)->RIGHT")
+    assert_cantlin_dir(env, "25,11", "east", "(25,11).east should block after premium merchant return failure and same-origin probe from (26,11)->LEFT")
+    assert_cantlin_dir(env, "26,2", "east", "(26,2).east should block after the key-merchant return failure and same-origin raw probe from (27,2)->LEFT")
+    assert_cantlin_dir(env, "26,3", "east", "(26,3).east should block after the key-merchant return failure and same-origin raw probe from (27,3)->LEFT")
+    assert_cantlin_dir(env, "26,5", "north", "(26,5).north should block after premium merchant east-lane descent failure and same-origin probe from (26,4)->DOWN")
+    assert_cantlin_dir(env, "26,5", "west", "(26,5).west should block after premium merchant outer-route failure and same-origin probe from (25,5)->RIGHT")
+    assert_cantlin_dir(env, "26,6", "west", "(26,6).west should block after premium merchant outer-route failure and same-origin probe from (25,6)->RIGHT")
+    assert_cantlin_dir(env, "26,7", "west", "(26,7).west should block after premium merchant outer-route failure and same-origin probe from (25,7)->RIGHT")
+    assert_cantlin_dir(env, "26,8", "east", "(26,8).east should block after premium merchant return failure and same-origin probe from (27,8)->LEFT")
+    assert_cantlin_dir(env, "26,8", "south", "(26,8).south should block after premium merchant outer-route failure and same-origin probe from (26,9)->UP")
+    assert_cantlin_dir(env, "26,8", "west", "(26,8).west should block after premium merchant outer-route failure and same-origin probe from (25,8)->RIGHT")
+    assert_cantlin_dir(env, "26,10", "east", "(26,10).east should block after premium merchant forward failure and same-origin probe from (27,10)->LEFT")
+    assert_cantlin_dir(env, "26,10", "north", "(26,10).north should block after premium merchant forward failure and same-origin probe from (26,9)->DOWN")
+    assert_cantlin_dir(env, "26,10", "south", "(26,10).south should block after premium merchant return failure and same-origin probe from (26,11)->UP")
+    assert_cantlin_dir(env, "27,1", "south", "(27,1).south should block after the closed-door key-merchant return and same-origin raw probe from (27,2)->UP")
+    assert_cantlin_dir(env, "27,5", "north", "(27,5).north should block after the closed-door key-merchant route and same-origin raw probe from (27,4)->DOWN")
+    assert_cantlin_dir(env, "27,14", "north", "(27,14).north should block after premium merchant stand failure and same-origin probe from (27,13)->DOWN")
+    assert_cantlin_dir(env, "27,7", "south", "(27,7).south should block after premium merchant return failure and same-origin probe from (27,8)->UP")
+    assert_cantlin_dir(env, "27,14", "south", "(27,14).south should block after premium merchant forward failure and same-origin probe from (27,15)->UP")
+    assert_cantlin_dir(env, "28,2", "west", "(28,2).west should block after the closed-door key-merchant return and same-origin raw probe from (27,2)->RIGHT")
+    assert_cantlin_dir(env, "28,5", "north", "(28,5).north should block after premium merchant east-lane descent failure and same-origin probe from (28,4)->DOWN")
+    assert_cantlin_dir(env, "28,5", "east", "(28,5).east should block after premium merchant outer-lane failure and same-origin probe from (29,5)->LEFT")
+    assert_cantlin_dir(env, "28,6", "east", "(28,6).east should block after premium merchant outer-lane failure and same-origin probe from (29,6)->LEFT")
+    assert_cantlin_dir(env, "28,7", "east", "(28,7).east should block after premium merchant outer-lane failure and same-origin probe from (29,7)->LEFT")
+    assert_cantlin_dir(env, "28,8", "east", "(28,8).east should block after premium merchant outer-lane failure and same-origin probe from (29,8)->LEFT")
+    assert_cantlin_dir(env, "28,8", "west", "(28,8).west should block after premium merchant return failure and same-origin probe from (27,8)->RIGHT")
+    assert_cantlin_dir(env, "28,9", "east", "(28,9).east should block after premium merchant outer-lane failure and same-origin probe from (29,9)->LEFT")
+    assert_cantlin_dir(env, "28,9", "west", "(28,9).west should block after premium merchant outer-route failure and same-origin probe from (27,9)->RIGHT")
+    assert_cantlin_dir(env, "28,10", "east", "(28,10).east should block after premium merchant outer-lane failure and same-origin probe from (29,10)->LEFT")
+    assert_cantlin_dir(env, "28,10", "west", "(28,10).west should block after premium merchant outer-route failure and same-origin probe from (27,10)->RIGHT")
+    assert_cantlin_dir(env, "28,11", "east", "(28,11).east should block after premium merchant outer-lane failure and same-origin probe from (29,11)->LEFT")
+    assert_cantlin_dir(env, "28,11", "west", "(28,11).west should block after premium merchant bridge failure and same-origin probe from (27,11)->RIGHT")
+    assert_cantlin_dir(env, "28,13", "east", "(28,13).east should block after premium merchant forward failure and same-origin probe from (29,13)->LEFT")
+    assert_cantlin_dir(env, "28,13", "west", "(28,13).west should block after premium merchant stand failure and same-origin probe from (27,13)->RIGHT")
+    assert_cantlin_dir(env, "28,14", "south", "(28,14).south should block after premium merchant forward failure and same-origin probe from (28,15)->UP")
+    assert_cantlin_dir(env, "28,14", "east", "(28,14).east should block after premium merchant forward failure and same-origin probe from (29,14)->LEFT")
     assert_cantlin_dir(env, "24,22", "north", "(24,22).north should block after Merchant 7 route verifier from (24,21)->DOWN")
     assert_cantlin_dir(env, "24,22", "south", "(24,22).south should block after Merchant 7 return verifier from (24,23)->UP")
     assert_cantlin_dir(env, "24,24", "north", "(24,24).north should block after Merchant 7 return verifier from (24,23)->DOWN")

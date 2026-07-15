@@ -351,7 +351,10 @@ local function record_edge(record)
         mark_unstable_candidate(report, record.from_x, record.from_y, "origin_transition")
         report.transitions[#report.transitions + 1] = record
     elseif record.classification == "boundary_frontier" then
-        mark_unstable_candidate(report, record.from_x, record.from_y, "origin_boundary_frontier")
+        local origin = map_reader.get_walkability_details(record.map_id, record.from_x, record.from_y)
+        if not origin or origin.effective_walkable ~= true then
+            mark_unstable_candidate(report, record.from_x, record.from_y, "origin_boundary_frontier")
+        end
     elseif record.classification == "door_frontier" then
         report.door_frontiers[cell_key(record.dest_x, record.dest_y)] = record
     elseif record.classification == "movement_drift" or record.classification == "position_drift" then

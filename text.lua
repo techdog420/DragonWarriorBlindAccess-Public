@@ -314,6 +314,11 @@ local function strip_fused_status_label_prefix(token)
         return raw
     end
 
+    local single_prefix, remainder = bare:match("^([LHMVGEP])([A-Z][a-z].*)$")
+    if single_prefix and remainder then
+        return remainder .. (suffix or "")
+    end
+
     for prefix_len = math.min(6, #bare - 1), 2, -1 do
         local prefix = bare:sub(1, prefix_len)
         local remainder = bare:sub(prefix_len + 1)
@@ -403,6 +408,53 @@ local function is_spaced_status_name_value_fragment(compact)
     return status_name ~= nil and #status_name <= 4 and status_name:find("[a-z]") ~= nil
 end
 
+local function is_fused_status_value_name_fragment(compact)
+    compact = compact_text(compact)
+    local labels, name = compact:match("^([GHMELPV]+)%d+([A-Z][A-Za-z0-9]*)$")
+    return labels ~= nil
+        and is_status_label_cluster(labels)
+        and #name <= 8
+        and name:find("[a-z]") ~= nil
+end
+
+local function is_multi_token_status_residue(compact)
+    compact = compact_text(compact)
+    if compact == "" or not compact:find("%s")
+       or compact:find("[%.%!%?,'\"]") then
+        return false
+    end
+
+    local token_count = 0
+    local markers = 0
+    local values = 0
+    for token in compact:gmatch("%S+") do
+        token_count = token_count + 1
+        local marker = is_status_marker_fragment(token)
+            or INLINE_STATUS_VALUE_LABELS[token] == true
+            or is_fused_status_value_fragment(token)
+        local value = token:match("^%d+$") ~= nil
+            or token:match("^[GE]%d+$") ~= nil
+            or is_fused_status_value_fragment(token)
+        local tiny_name_fragment = #token <= 2
+            and token:find("[a-z]") ~= nil
+            and token:match("^[A-Za-z0-9]+$") ~= nil
+
+
+        if marker then
+            markers = markers + 1
+        end
+        if value then
+            values = values + 1
+        end
+        if not marker and not value and not tiny_name_fragment then
+            return false
+        end
+    end
+
+    return token_count >= 3 and markers >= 1 and values >= 1
+end
+
+
 function M.is_passive_field_status_noise(dialogue)
     local compact = compact_text(dialogue)
     if compact == "" then
@@ -414,11 +466,30 @@ function M.is_passive_field_status_noise(dialogue)
     if is_fused_status_label_fragment_token(compact) then
         return true
     end
+    local label, tiny_suffix = compact:match("^([A-Z]+)%s+%d+([a-z][a-z]?)$")
+    if label and INLINE_STATUS_VALUE_LABELS[label] and tiny_suffix then
+        return true
+    end
     if is_spaced_status_value_fragment(compact) or is_spaced_status_name_value_fragment(compact) then
+        return true
+    end
+    if is_fused_status_value_name_fragment(compact) then
+        return true
+    end
+    if compact:match("^[A-Z][A-Za-z]*[GE]%d+[GE]%d+%s+%d+[A-Z][A-Za-z]*$") then
+        return true
+    end
+    if is_multi_token_status_residue(compact) then
         return true
     end
     if compact:find("%s") then
         return false
+    end
+    local numeric_wrapped_name = compact:match("^%d+([A-Z][A-Za-z]*)%d+$")
+    if numeric_wrapped_name
+       and #numeric_wrapped_name <= 8
+       and numeric_wrapped_name:find("[a-z]") ~= nil then
+        return true
     end
     if compact:upper() == "GOLD" then
         return true
@@ -522,18 +593,38 @@ local function has_fragmented_status_context_anywhere(rows, paired_rows)
     return (labels >= 2 and values >= 1) or labels >= 3
 end
 
+local function add_numeric_status_fragments(set, decoded)
+    local compact = compact_text(decoded)
+    for label, value in compact:gmatch("([A-Z]+)%s*(%d+)") do
+        if INLINE_STATUS_VALUE_LABELS[label] then
+            set[value] = true
+            for start_index = 1, #value do
+                for end_index = start_index, #value do
+                    set[value:sub(start_index, end_index)] = true
+                end
+            end
+        end
+    end
+end
+
 local function build_status_context(rows, paired_rows)
     local context = {
         has_status = has_fragmented_status_context_anywhere(rows, paired_rows),
         name_fragments = {},
         split_fragments = {},
         ordered_split_fragments = {},
+        numeric_fragments = {},
     }
     local ordered_name_fragments = {}
 
     for i = 1, #(rows or {}) do
         local selected = compact_text(rows[i])
         local paired = compact_text(paired_rows and paired_rows[i] or "")
+
+        add_numeric_status_fragments(context.numeric_fragments, selected)
+        add_numeric_status_fragments(context.numeric_fragments, paired)
+        add_numeric_status_fragments(context.numeric_fragments, selected .. paired)
+        add_numeric_status_fragments(context.numeric_fragments, paired .. selected)
 
         if selected ~= "" and paired ~= "" then
             local joined = selected .. paired
@@ -612,6 +703,54 @@ local function strip_derived_name_fragment_noise(decoded, context)
     return cleaned:match("^%s*(.-)%s*$") or ""
 end
 
+local function is_numeric_status_slice(tokens, index, context)
+    if not context or not context.numeric_fragments then
+        return false
+    end
+
+    local prefix, bare, suffix = split_dialogue_token(tokens[index])
+    if not bare or not bare:match("^%d+$") or prefix ~= "" or suffix ~= ""
+       or not context.has_status then
+        return false
+    end
+
+    local follows_completed_sentence = index == #tokens and index > 1
+        and tostring(tokens[index - 1]):match("[%.%!%?][\"']?$") ~= nil
+    if not context.numeric_fragments[bare] then
+        return follows_completed_sentence
+    end
+
+    local candidate_count = 0
+    for _, candidate in ipairs(tokens) do
+        local candidate_prefix, candidate_bare, candidate_suffix = split_dialogue_token(candidate)
+        if candidate_bare and candidate_bare:match("^%d+$")
+           and candidate_prefix == "" and candidate_suffix == ""
+           and context.numeric_fragments[candidate_bare] then
+            candidate_count = candidate_count + 1
+        end
+    end
+    if candidate_count >= 2 then
+        return true
+    end
+
+    if #bare >= 2 and index > 1 and index < #tokens then
+        local _, previous = split_dialogue_token(tokens[index - 1])
+        local _, following = split_dialogue_token(tokens[index + 1])
+        if previous and previous:lower() == "for" then
+            return false
+        end
+        if following and following:upper() == "GOLD" then
+            return false
+        end
+        return true
+    end
+
+    if follows_completed_sentence then
+        return true
+    end
+    return false
+end
+
 local function strip_inline_status_fragment_noise(decoded, context)
     local cleaned = tostring(decoded or "")
     if not context or not context.has_status then
@@ -636,6 +775,8 @@ local function strip_inline_status_fragment_noise(decoded, context)
            and i < #tokens
            and is_numeric_dialogue_token(tokens[i + 1]) then
             i = i + 2
+        elseif bare and is_numeric_status_slice(tokens, i, context) then
+            i = i + 1
         elseif bare
            and bare:match("^%d+$")
            and i < #tokens
@@ -654,6 +795,30 @@ local function strip_inline_status_fragment_noise(decoded, context)
     end
     local joined = table.concat(parts, " "):gsub("%s+([%.%!%?,:;])", "%1")
     return joined:match("^%s*(.-)%s*$") or ""
+end
+
+local function strip_repeated_inline_single_status_noise(dialogue)
+    local tokens = {}
+    local noise_count = 0
+    for token in tostring(dialogue or ""):gmatch("%S+") do
+        tokens[#tokens + 1] = token
+        local _, bare = split_dialogue_token(token)
+        if bare and #bare == 1 and INLINE_STATUS_SINGLE_LABELS[bare] then
+            noise_count = noise_count + 1
+        end
+    end
+    if noise_count < 2 then
+        return dialogue
+    end
+
+    local parts = {}
+    for _, token in ipairs(tokens) do
+        local _, bare = split_dialogue_token(token)
+        if not (bare and #bare == 1 and INLINE_STATUS_SINGLE_LABELS[bare]) then
+            parts[#parts + 1] = token
+        end
+    end
+    return table.concat(parts, " "):gsub("%s+([%.%!%?,:;])", "%1")
 end
 
 local function has_nearby_status_marker(rows, index)
@@ -795,7 +960,61 @@ function M.read_dialogue_window_filtered(scroll_tiles, start_row, base_nametable
     if M.is_status_equipment_text(result) then
         return ""
     end
-    return result
+    return strip_repeated_inline_single_status_noise(result)
+end
+
+local function dialogue_debug_rows(rows)
+    local parts = {}
+    for index, row in ipairs(rows or {}) do
+        local compact = compact_text(row)
+        if compact ~= "" then
+            parts[#parts + 1] = string.format("%d:%q", index, compact)
+        end
+    end
+    return table.concat(parts, "|")
+end
+
+local function dialogue_debug_numbers(context)
+    local values = {}
+    for value in pairs((context and context.numeric_fragments) or {}) do
+        values[#values + 1] = value
+    end
+    table.sort(values, function(a, b)
+        if #a == #b then return a < b end
+        return #a < #b
+    end)
+    return table.concat(values, ",")
+end
+
+function M.describe_dialogue_filter_state(scroll_tiles, start_row, base_nametable)
+    local primary_base = math.floor(tonumber(base_nametable) or 0) % 2
+    local alternate_base = (primary_base + 1) % 2
+    local primary_rows = read_dialogue_rows_for_base(scroll_tiles, start_row, primary_base)
+    local alternate_rows = read_dialogue_rows_for_base(scroll_tiles, start_row, alternate_base)
+    local primary_context_rows = read_status_context_rows_for_base(scroll_tiles, primary_base)
+    local alternate_context_rows = read_status_context_rows_for_base(scroll_tiles, alternate_base)
+
+    local function describe(base, rows, paired_rows, context_rows, paired_context_rows)
+        local context = build_status_context(context_rows, paired_context_rows)
+        local filtered = filtered_dialogue_from_rows(
+            rows, paired_rows, context_rows, paired_context_rows)
+        return string.format(
+            "base=%d has_status=%s numbers={%s} rows={%s} context={%s} filtered=%q",
+            base,
+            tostring(context.has_status),
+            dialogue_debug_numbers(context),
+            dialogue_debug_rows(rows),
+            dialogue_debug_rows(context_rows),
+            filtered)
+    end
+
+    return describe(
+        primary_base, primary_rows, alternate_rows,
+        primary_context_rows, alternate_context_rows)
+        .. " || "
+        .. describe(
+            alternate_base, alternate_rows, primary_rows,
+            alternate_context_rows, primary_context_rows)
 end
 
 -- extract_new_dialogue(old, new): Return only the text that was not already

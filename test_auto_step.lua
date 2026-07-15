@@ -2294,6 +2294,26 @@ function tests.queued_routes_honor_initial_settle_before_first_step()
     env.restore()
 end
 
+function tests.queued_route_initial_settle_clears_movement_carry_immediately()
+    local env = make_env({
+        movement_state = 0x05,
+        movement_subpixel = 0x20,
+    })
+
+    env.auto_step.start_route({"left"}, {initial_settle_frames = 16})
+
+    assert_equal(env.memory_writes[1] and env.memory_writes[1].address, 0x003C,
+        "initial settle should clear movement state in the queueing frame")
+    assert_equal(env.memory_writes[1] and env.memory_writes[1].value, 0x00,
+        "initial settle should zero movement state")
+    assert_equal(env.memory_writes[2] and env.memory_writes[2].address, 0x003D,
+        "initial settle should clear movement subpixel in the queueing frame")
+    assert_equal(env.memory_writes[2] and env.memory_writes[2].value, 0x00,
+        "initial settle should zero movement subpixel")
+
+    env.restore()
+end
+
 function tests.queued_routes_consume_matching_drift_during_initial_settle()
     local env = make_env()
     env.auto_step.start_route({"right", "down"}, {

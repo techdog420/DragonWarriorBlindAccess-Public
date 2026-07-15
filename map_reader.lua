@@ -925,6 +925,32 @@ local MAP_PASSTHROUGH_CELLS = {
         ["20,23"] = true,
     },
 
+    -- Map 0x0A: Cantlin north perimeter lane. Normal same-origin movement
+    -- crossed every cell from (1,0) through (29,0). (1,0)->LEFT blocked,
+    -- while continuing east from (29,0) transitioned to the World Map.
+    -- The generic interior boundary rule would otherwise remove the lane.
+    [0x0A] = {
+        ["1,0"] = true,  ["2,0"] = true,  ["3,0"] = true,
+        ["4,0"] = true,  ["5,0"] = true,  ["6,0"] = true,
+        ["7,0"] = true,  ["8,0"] = true,  ["9,0"] = true,
+        ["10,0"] = true, ["11,0"] = true, ["12,0"] = true,
+        ["13,0"] = true, ["14,0"] = true, ["15,0"] = true,
+        ["16,0"] = true, ["17,0"] = true, ["18,0"] = true,
+        ["19,0"] = true, ["20,0"] = true, ["21,0"] = true,
+        ["22,0"] = true, ["23,0"] = true, ["24,0"] = true,
+        ["25,0"] = true, ["26,0"] = true, ["27,0"] = true,
+        ["28,0"] = true, ["29,0"] = true,
+        -- 2026-07-12 the premium-shop route entered type-15 (26,12) from
+        -- (27,12)->LEFT, and TALK from there facing west opened the Flame
+        -- Sword/Silver Shield shop. A follow-up LEFT into counter cell
+        -- (25,12) blocked, so expose only the reachable stand and outer bridge.
+        ["26,12"] = true,
+        ["27,12"] = true,
+        -- A normal route reached (29,13), then a same-origin north probe
+        -- crossed type-15 (29,12) and carried through to (29,11).
+        ["29,12"] = true,
+    },
+
     -- Map 0x0C: Sun Shrine / Stones of Sunlight chamber.
     -- The player lands live on (0,2), the return stairs are the west-edge
     -- object at (0,4), and manual movement proved (1,7)->LEFT reaches (0,7).
@@ -3782,7 +3808,25 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- 2026-07-10 route from the debug-created (1,1) pocket. Both exits
         -- blocked 3/3 under same-origin raw verification with no contamination.
         ["1,2"] = {north = true}, -- from (1,1)->DOWN
-        ["2,1"] = {west = true}, -- from (1,1)->RIGHT
+        -- 2026-07-11 north-lane descents. Normal arrival plus same-origin
+        -- raw probes blocked 3/3. The initially mixed (6,0)->DOWN result was
+        -- later confirmed blocked after reload and is modeled below.
+        ["1,1"] = {north = true}, -- from (1,0)->DOWN
+        ["2,1"] = {north = true, west = true}, -- from (2,0)->DOWN and (1,1)->RIGHT
+        -- 2026-07-11 west-descent return route failed here, then the
+        -- same-origin raw verifier blocked 3/3 with no drift or NPC state.
+        ["3,1"] = {east = true, north = true}, -- from (4,1)->LEFT and (3,0)->DOWN
+        -- 2026-07-13 Tool Merchant 2 route reached the public stand at (4,7),
+        -- then both blocker-hunt retries and a same-origin raw LEFT probe
+        -- confirmed that the intervening counter cell blocks east-side entry.
+        ["3,7"] = {east = true}, -- from (4,7)->LEFT
+        -- The first route toward the counter also stopped at (3,9)->UP;
+        -- blocker-hunt retries and a later same-origin raw UP probe agreed
+        -- that the south approach into (3,8) is engine-blocked.
+        ["3,8"] = {south = true}, -- from (3,9)->UP
+        ["7,1"] = {north = true}, -- from (7,0)->DOWN
+        ["8,1"] = {north = true}, -- from (8,0)->DOWN
+        ["9,1"] = {north = true}, -- from (9,0)->DOWN
         -- 2026-07-08 service-route decoding with all five Cantlin doors open.
         ["1,11"] = {north = true}, -- from (1,10)->DOWN during Merchant 5 route
         ["1,16"] = {east = true}, -- from (2,16)->LEFT during Merchant 5 route
@@ -3803,7 +3847,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["5,18"] = {north = true, south = true}, -- from (5,17)->DOWN and (5,19)->UP during Merchant 5 route
         ["6,15"] = {north = true, south = true}, -- from (6,14)->DOWN and (6,16)->UP during Merchant 5 route
         ["6,18"] = {north = true, south = true}, -- from (6,17)->DOWN and (6,19)->UP during Merchant 5 route
-        ["6,1"] = {west = true}, -- from (5,1)->RIGHT during Tool Merchant return-to-entrance route
+        ["6,1"] = {north = true, west = true}, -- from (6,0)->DOWN and (5,1)->RIGHT during north-lane/service routes
         ["6,2"] = {west = true}, -- from (5,2)->RIGHT during Tool Merchant return-to-entrance route
         ["6,3"] = {west = true}, -- from (5,3)->RIGHT during Tool Merchant return-to-entrance route
         ["6,4"] = {west = true}, -- from (5,4)->RIGHT during Tool Merchant return-to-entrance route
@@ -3833,15 +3877,15 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["9,3"] = {east = true}, -- from (10,3)->LEFT during Tool Merchant return-to-entrance route
         ["9,4"] = {east = true, south = true}, -- from (10,4)->LEFT and (9,5)->UP during Tool Merchant return-to-entrance route
         ["9,6"] = {north = true, south = true, west = true}, -- from (9,5)->DOWN, (9,7)->UP, and (8,6)->RIGHT during service routing
-        ["10,1"] = {south = true}, -- from (10,2)->UP during Tool Merchant return-to-entrance route
+        ["10,1"] = {north = true, south = true}, -- from (10,0)->DOWN and (10,2)->UP
         ["10,6"] = {east = true, north = true}, -- from (11,6)->LEFT and (10,5)->DOWN during Tool Merchant return-to-entrance route
         ["10,7"] = {east = true, west = true}, -- from (11,7)->LEFT and (9,7)->RIGHT during service routes
         ["10,8"] = {south = true, west = true}, -- from (10,9)->UP and (9,8)->RIGHT during entrance-to-Merchant 1 reroute
-        ["11,1"] = {south = true}, -- from (11,2)->UP during Tool Merchant return-to-entrance route
+        ["11,1"] = {north = true, south = true}, -- from (11,0)->DOWN and (11,2)->UP
         ["11,4"] = {north = true, south = true, west = true}, -- from (11,3)->DOWN, (11,5)->UP, and (10,4)->RIGHT during service routes
         ["11,8"] = {north = true, south = true}, -- from (11,7)->DOWN and (11,9)->UP during service routes
         ["11,13"] = {south = true}, -- from (11,14)->UP during Merchant 7 return route
-        ["12,1"] = {south = true}, -- from (12,2)->UP during Tool Merchant return-to-entrance route
+        ["12,1"] = {north = true, south = true}, -- from (12,0)->DOWN and (12,2)->UP
         ["12,4"] = {north = true, south = true}, -- from (12,3)->DOWN and (12,5)->UP during Tool Merchant return-to-entrance route
         ["12,8"] = {north = true, south = true}, -- from (12,7)->DOWN and (12,9)->UP during service routes
         ["12,14"] = {south = true, west = true}, -- from (12,15)->UP and (11,14)->RIGHT during Merchant 7 return route
@@ -3852,7 +3896,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- The Tool Merchant return-to-entrance route later confirmed
         -- `(13,2).west`, `(13,3).west`, `(13,5).west`, `(13,6).west`,
         -- and `(13,7).west` from `(12,y)->RIGHT`.
-        ["13,1"] = {east = true},
+        ["13,1"] = {east = true, north = true}, -- from (14,1)->LEFT and (13,0)->DOWN
         ["13,2"] = {east = true, west = true},
         ["13,3"] = {east = true, west = true},
         ["13,4"] = {east = true},
@@ -3863,15 +3907,24 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["13,14"] = {south = true}, -- from (13,15)->UP during Merchant 7 return route
         ["14,11"] = {east = true}, -- from (15,11)->LEFT during Merchant 6 route
         ["14,14"] = {south = true}, -- from (14,15)->UP during Merchant 7 return route
-        ["15,12"] = {north = true}, -- from (15,11)->DOWN during Merchant 6 route
+        ["15,1"] = {north = true}, -- from (15,0)->DOWN during arrival-shelf decoding
+        ["15,12"] = {east = true, north = true}, -- from (16,12)->LEFT and (15,11)->DOWN during service returns
         ["15,13"] = {south = true}, -- from (15,14)->UP during Merchant 7 return route
         -- Entrance-to-Merchant 2 route from the practical entrance: the
         -- tempting top-row shortcut (15,1)->RIGHT into (16,1) blocked 3/3
         -- from the walked origin after route failure.
-        ["16,1"] = {east = true, west = true},
+        ["16,1"] = {east = true, north = true, south = true, west = true}, -- fully blocked after arrival-shelf, service, and Inn-return verifiers
+        -- 2026-07-12 Fairy Water Merchant return stopped repeatedly at
+        -- (17,13)->LEFT; a same-origin raw probe also blocked without NPC or
+        -- runtime contamination. The mirrored edge produced a clean reroute.
+        ["16,13"] = {east = true},
         ["16,14"] = {south = true, west = true}, -- from (16,15)->UP and (15,14)->RIGHT during Merchant 7 return route
         ["17,14"] = {north = true}, -- from (17,13)->DOWN during Merchant 7 forward route
-        ["19,25"] = {east = true}, -- from (20,25)->LEFT during Merchant 7 return route
+        ["17,21"] = {east = true, south = true}, -- from (18,21)->LEFT and (17,22)->UP during entrance-route cleanup
+        ["17,24"] = {east = true, north = true}, -- from (18,24)->LEFT and (17,23)->DOWN during exit-route cleanup
+        ["18,20"] = {south = true}, -- from (18,21)->UP during entrance-route cleanup
+        ["19,25"] = {east = true, north = true}, -- from (20,25)->LEFT and (19,24)->DOWN during service/exit routes
+        ["19,28"] = {east = true}, -- from (20,28)->LEFT during exit-route cleanup
         -- Merchant 2 route follow-up. The top-row descent candidates blocked
         -- from north, the x=18 wall blocked entry from the west at rows 2 and
         -- 6, and the post-reload route exposed the row 3-7 east wall plus
@@ -3889,13 +3942,19 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["21,5"] = {west = true}, -- from (20,5)->RIGHT
         ["21,6"] = {west = true}, -- from (20,6)->RIGHT
         ["21,11"] = {north = true, west = true}, -- from (20,11)->RIGHT and (21,10)->DOWN during Merchant 7 reverse route
+        ["21,12"] = {west = true}, -- from (20,12)->RIGHT during premium merchant forward route; same-origin raw probe blocked
         ["21,21"] = {north = true, west = true}, -- from (20,21)->RIGHT and (21,20)->DOWN during Merchant 7 routes
         ["21,13"] = {west = true}, -- from (20,13)->RIGHT during Merchant 7 forward route
+        ["21,14"] = {south = true, west = true}, -- from (20,14)->RIGHT and (21,15)->UP during premium merchant forward route; same-origin raw probes blocked
+        ["22,14"] = {south = true}, -- from (22,15)->UP during premium merchant forward route; same-origin raw probe blocked
         ["23,4"] = {east = true}, -- from (24,4)->LEFT after post-reload Merchant 2 route
         ["23,5"] = {east = true}, -- from (24,5)->LEFT after post-reload Merchant 2 route
         ["23,6"] = {east = true}, -- from (24,6)->LEFT after post-reload Merchant 2 route
         ["23,7"] = {east = true, south = true}, -- from (24,7)->LEFT and (23,8)->UP
         ["23,11"] = {north = true}, -- from (23,10)->DOWN during Merchant 7 reverse route
+        ["23,13"] = {east = true}, -- from (24,13)->LEFT during premium merchant stand egress; same-origin raw probe blocked
+        ["24,11"] = {north = true}, -- from (24,10)->DOWN during premium merchant forward route; same-origin raw probe blocked
+        ["23,14"] = {south = true}, -- from (23,15)->UP during premium merchant forward route; same-origin raw probe blocked
         ["22,11"] = {north = true}, -- from (22,10)->DOWN during Merchant 7 reverse route
         ["22,21"] = {north = true}, -- from (22,20)->DOWN during Merchant 7 forward route
         ["21,7"] = {south = true}, -- from (21,8)->UP after post-reload Merchant 2 route
@@ -3904,6 +3963,37 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,7"] = {north = true, south = true}, -- from (19,6)->DOWN and (19,8)->UP
         ["20,7"] = {north = true, south = true}, -- from (20,6)->DOWN and (20,8)->UP
         ["20,29"] = {north = true}, -- from (20,28)->DOWN; physically passable but immediately exits to World Map
+        ["23,0"] = {south = true}, -- from (23,1)->UP; physically passable but immediately exits to World Map
+        ["25,10"] = {north = true, west = true}, -- from (25,9)->DOWN and (24,10)->RIGHT during premium merchant forward route; same-origin raw probes blocked
+        ["25,11"] = {east = true}, -- from (26,11)->LEFT during premium merchant return route; same-origin raw probe blocked
+        ["25,13"] = {east = true, west = true}, -- from (26,13)->LEFT and (24,13)->RIGHT during premium merchant routes; same-origin raw probes blocked
+        ["26,1"] = {north = true}, -- from (26,0)->DOWN after normal probe and 3/3 verifier
+        -- 2026-07-14 Magic Key Merchant return route stopped on these two
+        -- westbound edges; separate same-origin raw probes blocked cleanly.
+        ["26,2"] = {east = true}, -- from (27,2)->LEFT
+        ["26,3"] = {east = true}, -- from (27,3)->LEFT
+        ["26,5"] = {north = true, west = true}, -- from (26,4)->DOWN and (25,5)->RIGHT during premium merchant outer route; same-origin raw probes blocked
+        ["26,6"] = {west = true}, -- from (25,6)->RIGHT during premium merchant outer route; same-origin raw probe blocked
+        ["26,7"] = {west = true}, -- from (25,7)->RIGHT during premium merchant outer route; same-origin raw probe blocked
+        ["26,8"] = {east = true, south = true, west = true}, -- from (27,8)->LEFT, (26,9)->UP, and (25,8)->RIGHT during premium merchant outer routes; same-origin raw probes blocked
+        ["26,10"] = {east = true, north = true, south = true}, -- from (27,10)->LEFT, (26,9)->DOWN, and (26,11)->UP during premium merchant routes; same-origin raw probes blocked
+        ["27,1"] = {north = true, south = true}, -- from (27,0)->DOWN and closed-door key return (27,2)->UP; both direct probes blocked
+        -- 2026-07-14 closed-door Magic Key Merchant route tried this false
+        -- shortcut three times; a separate same-origin raw probe from (27,4)
+        -- also blocked with no NPC or runtime contamination.
+        ["27,5"] = {north = true},
+        ["27,7"] = {south = true}, -- from (27,8)->UP during premium merchant return route; same-origin raw probe blocked
+        ["28,1"] = {north = true}, -- from (28,0)->DOWN after normal probe and 3/3 verifier
+        ["28,2"] = {west = true}, -- from (27,2)->RIGHT during closed-door Magic Key Merchant return; same-origin raw probe blocked
+        ["28,5"] = {east = true, north = true}, -- from (29,5)->LEFT and (28,4)->DOWN during premium merchant east-lane routes; same-origin raw probes blocked
+        ["28,6"] = {east = true}, -- from (29,6)->LEFT during premium merchant outer-lane route; same-origin raw probe blocked
+        ["28,7"] = {east = true}, -- from (29,7)->LEFT during premium merchant outer-lane route; same-origin raw probe blocked
+        ["28,8"] = {east = true, west = true}, -- from (29,8)->LEFT and (27,8)->RIGHT during premium merchant routes; same-origin raw probes blocked
+        ["28,9"] = {east = true, west = true}, -- from (29,9)->LEFT and (27,9)->RIGHT during premium merchant routes; same-origin raw probes blocked
+        ["28,10"] = {east = true, west = true}, -- from (29,10)->LEFT and (27,10)->RIGHT during premium merchant routes; same-origin raw probes blocked
+        ["28,11"] = {east = true, west = true}, -- from (29,11)->LEFT and (27,11)->RIGHT during premium merchant routes; same-origin raw probes blocked
+        ["28,13"] = {east = true, west = true}, -- from (29,13)->LEFT and (27,13)->RIGHT during premium merchant routes; same-origin raw probes blocked
+        ["29,0"] = {west = true}, -- from (28,0)->RIGHT enters the transition cell; continuing east exits to World Map
         ["18,3"] = {east = true, south = true, west = true}, -- from (19,3)->LEFT, (18,4)->UP, and (17,3)->RIGHT
         ["18,6"] = {east = true, north = true, west = true}, -- from (19,6)->LEFT, (18,5)->DOWN, and (17,6)->RIGHT
 
@@ -3916,10 +4006,15 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (20,24)->RIGHT, (22,24)->LEFT, and (21,25)->UP.
         ["21,24"] = {east = true, south = true, west = true},
         ["21,26"] = {east = true, west = true}, -- from (20,26)->RIGHT and (22,26)->LEFT during Merchant 7 return routes
-        ["21,27"] = {west = true}, -- from (20,27)->RIGHT during Merchant 7 reverse route
+        ["21,27"] = {east = true, west = true}, -- from (20,27)->RIGHT and (22,27)->LEFT during service return routes
         ["21,28"] = {west = true}, -- from (20,28)->RIGHT during Merchant 7 reverse route
         ["22,23"] = {south = true}, -- from (22,24)->UP
-        ["24,14"] = {south = true}, -- from (24,15)->UP during Merchant 7 return route
+        ["22,28"] = {north = true}, -- from (22,27)->DOWN during corrected exit-route cleanup
+        ["24,14"] = {north = true, south = true}, -- from (24,13)->DOWN and (24,15)->UP during premium merchant and Merchant 7 routes; same-origin raw probes blocked
+        ["25,14"] = {south = true}, -- from (25,15)->UP during premium merchant forward route; same-origin raw probe blocked
+        ["26,14"] = {north = true, south = true}, -- from (26,13)->DOWN and (26,15)->UP during premium merchant routes; same-origin raw probes blocked
+        ["27,14"] = {north = true, south = true}, -- from (27,13)->DOWN and (27,15)->UP during premium merchant routes; same-origin raw probes blocked
+        ["28,14"] = {east = true, south = true}, -- from (29,14)->LEFT and (28,15)->UP during premium merchant forward route; same-origin raw probes blocked
         ["23,21"] = {east = true, north = true}, -- from (24,21)->LEFT and (23,20)->DOWN during Merchant 7 routes
         ["23,23"] = {east = true}, -- from (24,23)->LEFT during Merchant 7 return route
         ["24,22"] = {north = true, south = true}, -- from (24,21)->DOWN and (24,23)->UP during Merchant 7 routes
@@ -3931,6 +4026,8 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- (23,25) blocks from west and south; confirmed from
         -- (22,25)->RIGHT and (23,26)->UP.
         ["23,25"] = {east = true, south = true, west = true}, -- east from (24,25)->LEFT during Merchant 7 return route
+        ["23,27"] = {east = true, north = true, west = true}, -- from (24,27)->LEFT, (23,26)->DOWN, and (22,27)->RIGHT during exit/service return cleanup
+        ["24,28"] = {north = true}, -- from (24,27)->DOWN during corrected exit-route cleanup
         ["24,24"] = {east = true, north = true, south = true}, -- from (25,24)->LEFT, (24,23)->DOWN, and (24,25)->UP
     },
 

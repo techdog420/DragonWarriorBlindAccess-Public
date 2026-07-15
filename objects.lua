@@ -311,7 +311,41 @@ local EXITS = {
         interaction_face_dir = "west",
         interaction_label = "exit",
     },                                                                      -- Garinham
-    {map = 0x0A, x = 14, y = 29, name = "Exit", dest = "World Map"},      -- Cantlin
+    {
+        map = 0x0A,
+        x = 20,
+        y = 29,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 20,
+        interaction_y = 28,
+        interaction_face_dir = "south",
+        interaction_label = "exit",
+    },                                                                      -- Cantlin, live southeast transition
+    {
+        map = 0x0A,
+        x = 23,
+        y = 0,
+        name = "Exit",
+        dest = "World Map",
+        object_name = "North Exit to World Map",
+        interaction_x = 23,
+        interaction_y = 1,
+        interaction_face_dir = "north",
+        interaction_label = "exit",
+    },                                                                      -- Cantlin, live north transition
+    {
+        map = 0x0A,
+        x = 29,
+        y = 0,
+        name = "Exit",
+        dest = "World Map",
+        object_name = "Northeast Exit to World Map",
+        interaction_x = 28,
+        interaction_y = 0,
+        interaction_face_dir = "east",
+        interaction_label = "exit",
+    },                                                                      -- Cantlin, live northeast transition
     {
         map = 0x0B,
         x = 29,
@@ -382,6 +416,13 @@ local EXITS = {
     {map = 0x16, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Mountain Cave
     {map = 0x1C, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Erdrick's Cave B1
 }
+
+-- Interior waypoints that belong under Travel but do not change maps.
+-- Cantlin's world-map arrival shelf is separate from its southeast exit.
+local LOCAL_TRAVEL_POINTS = {
+    {map = 0x0A, x = 16, y = 0, name = "Town Entrance", id = "travel_cantlin_entrance"},
+}
+
 
 -- Major overworld destinations, stored relative to Tantegel Castle using the
 -- coordinate convention from Gamer Corner's Dragon Warrior location guide.
@@ -950,6 +991,22 @@ local function get_exits(map_id)
     return result
 end
 
+local function get_local_travel_points(map_id)
+    local result = {}
+    for _, point in ipairs(LOCAL_TRAVEL_POINTS) do
+        if point.map == map_id then
+            result[#result + 1] = {
+                x = point.x,
+                y = point.y,
+                name = point.name,
+                type = M.TYPE_EXIT,
+                id = point.id,
+            }
+        end
+    end
+    return result
+end
+
 local function get_overworld_landmarks()
     local result = {}
     for _, landmark in ipairs(OVERWORLD_LANDMARKS) do
@@ -1309,14 +1366,26 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["10,18"] = {x = 10, y = 16, face_dir = "south", label = "counter", name = "Weapons Merchant"},
     },
 
-    -- Cantlin services. Merchant 4 occupies (8,3); live TALK proof from the
+    -- Cantlin services. Person 2 occupies (2,7); live TALK proof from the
+    -- public counter stand at (4,7) facing west opened the Herb/Torch shop.
+    -- Merchant 4 occupies (8,3); live TALK proof from the
     -- public counter stand at (8,5) facing north opened the 100 GOLD inn
     -- prompt. Merchant 6 occupies (7,12); live TALK proof from (5,12) facing
-    -- east opened the tool-shop prompt. Merchant 7 occupies (27,26); TALK from
-    -- public stand (25,26) facing east opened the weapons/armor prompt.
+    -- east opened the tool-shop prompt. Woman 2 occupies (22,13); TALK from
+    -- (20,13) facing east opened the 38 GOLD Fairy Water prompt. Merchant 7
+    -- occupies (27,26); TALK from public stand (25,26) facing east opened the
+    -- weapons/armor prompt. Guard 4 occupies (24,12); the reachable public
+    -- stand is the hidden type-15 cell (26,12), where west-facing TALK opened
+    -- the premium Flame Sword/Silver Shield shop across counter cell (25,12).
+    -- Old Man 2 occupies (27,6); live TALK proof opened the Magic Key shop
+    -- from the public stand at (27,8), facing north across counter cell (27,7).
     [0x0A] = {
+        ["2,7"] = {x = 4, y = 7, face_dir = "west", label = "counter", name = "Tool Merchant 2"},
         ["8,3"] = {x = 8, y = 5, face_dir = "north", label = "counter", name = "Inn"},
         ["7,12"] = {x = 5, y = 12, face_dir = "east", label = "counter", name = "Tool Merchant"},
+        ["22,13"] = {x = 20, y = 13, face_dir = "east", label = "counter", name = "Fairy Water Merchant"},
+        ["24,12"] = {x = 26, y = 12, face_dir = "west", label = "counter", name = "Premium Weapons Merchant"},
+        ["27,6"] = {x = 27, y = 8, face_dir = "north", label = "counter", name = "Magic Key Merchant"},
         ["27,26"] = {x = 25, y = 26, face_dir = "east", label = "counter", name = "Weapons Merchant"},
     },
 
@@ -1407,20 +1476,61 @@ local SERVICE_ROLE_OVERRIDES = {
         },
     },
     -- Cantlin service proof is still partial. Merchant 2 is the live-confirmed
-    -- weapons/armor shop, but he wanders and should keep adjacent-NPC routing.
-    -- Merchant 4 is the live-confirmed inn keeper, Merchant 6 is the tool shop,
-    -- and Merchant 7 is the second live-confirmed weapons/armor shop. Their
-    -- fixed stands are modeled in SERVICE_INTERACTION_OVERRIDES above.
+    -- roaming weapons/armor shop and should keep adjacent-NPC routing.
+    -- Person 2 is the live-confirmed Herb/Torch tool shop. Merchant 4 is the
+    -- live-confirmed inn keeper, Merchant 6 is the other tool shop,
+    -- Woman 2 is the live-confirmed Fairy Water seller, and Merchant 7 is the
+    -- second live-confirmed weapons/armor shop. Old Man 2 is the confirmed
+    -- stationary Magic Key seller. Their fixed stands are modeled in
+    -- SERVICE_INTERACTION_OVERRIDES above.
     -- Merchant 5 at (2,12) only gives the
     -- radish dialogue from the public counter side, so keep him out of Services.
     [0x0A] = {
+        -- Cantlin can deactivate an earlier NPC RAM slot, which renumbers
+        -- duplicate Merchant display names. Prefer stable RAM-slot IDs for
+        -- confirmed roles; retain name mappings for older fixtures/fallbacks.
+        ids = {
+            ["npc_4"] = {name = "Roaming Weapons Merchant", infer_counter = false},
+            ["npc_10"] = {name = "Inn", infer_counter = true},
+            ["npc_11"] = {name = "Magic Key Merchant", infer_counter = true},
+            ["npc_12"] = {name = "Tool Merchant 2", infer_counter = true},
+            ["npc_13"] = {
+                name = "Radish Merchant",
+                infer_counter = false,
+                service = false,
+                interaction_x = 4,
+                interaction_y = 12,
+                interaction_face_dir = "west",
+                interaction_label = "counter",
+            },
+            ["npc_14"] = {name = "Tool Merchant", infer_counter = true},
+            ["npc_15"] = {name = "Premium Weapons Merchant", infer_counter = true},
+            ["npc_16"] = {name = "Fairy Water Merchant", infer_counter = true},
+            ["npc_19"] = {name = "Weapons Merchant", infer_counter = true},
+        },
         names = {
-            ["Merchant 2"] = {name = "Weapons Merchant", infer_counter = false},
+            ["Merchant 2"] = {name = "Roaming Weapons Merchant", infer_counter = false},
             ["Merchant 4"] = {name = "Inn", infer_counter = true},
             ["Merchant 6"] = {name = "Tool Merchant", infer_counter = true},
             ["Merchant 7"] = {name = "Weapons Merchant", infer_counter = true},
+            ["Woman 2"] = {name = "Fairy Water Merchant", infer_counter = true},
         },
         cells = {
+            ["2,7"] = {
+                name = "Tool Merchant 2",
+                infer_counter = true,
+                service = true,
+            },
+            ["27,6"] = {
+                name = "Magic Key Merchant",
+                infer_counter = true,
+                service = true,
+            },
+            ["24,12"] = {
+                name = "Premium Weapons Merchant",
+                infer_counter = true,
+                service = true,
+            },
             ["2,12"] = {
                 name = "Radish Merchant",
                 infer_counter = false,
@@ -1543,7 +1653,10 @@ local function apply_service_role_override(obj, map_id)
     if not by_map then
         return nil
     end
-    local entry = by_map.names and by_map.names[obj.name]
+    local entry = by_map.ids and by_map.ids[obj.id]
+    if not entry then
+        entry = by_map.names and by_map.names[obj.name]
+    end
     if not entry and by_map.cells then
         entry = by_map.cells[obj.x .. "," .. obj.y]
     end
@@ -1649,6 +1762,7 @@ local function get_static_objects(map_id)
     append_objects(objects, get_stairs(map_id))
     append_objects(objects, parse_chests(map_id))
     append_objects(objects, get_exits(map_id))
+    append_objects(objects, get_local_travel_points(map_id))
     append_objects(objects, parse_doors(map_id))
 
     local extra = EXTRA_DOORS[map_id]
@@ -2525,8 +2639,20 @@ local function apply_description_interaction_override(obj, opts)
     return next_obj
 end
 
+local function npc_movement_status(obj)
+    local movement = tonumber(obj and obj.movement)
+    if movement == nil then
+        return "movement unknown"
+    end
+    if movement == 0 then
+        return "stationary"
+    end
+    return "roaming"
+end
+
 function M.describe_object(obj, opts)
     if not obj then return "No objects" end
+    opts = opts or {}
     obj = apply_description_interaction_override(obj, opts)
 
     local _, px, py = nav.get_position()
@@ -2538,9 +2664,18 @@ function M.describe_object(obj, opts)
     if obj.type == M.TYPE_DOOR and is_door_opened(obj.x, obj.y) then
         name = name .. " (opened)"
     end
-    if M.is_visited(obj) then
+
+    local visited = M.is_visited(obj)
+    if obj.type == M.TYPE_NPC and opts.include_npc_movement_status == true then
+        local annotations = {npc_movement_status(obj)}
+        if visited then
+            annotations[#annotations + 1] = "visited"
+        end
+        name = name .. " (" .. table.concat(annotations, ", ") .. ")"
+    elseif visited then
         name = name .. " (visited)"
     end
+
     if obj.interaction_x ~= nil and obj.interaction_y ~= nil then
         local interaction_direction = M.get_direction_string(px, py, obj.interaction_x, obj.interaction_y)
         local label = obj.interaction_label or "interaction"
@@ -2566,7 +2701,9 @@ function M.describe_current(opts)
         obj = live_npc_object(obj, opts.map_id)
     end
     obj = apply_description_interaction_override(obj, opts)
-    local desc = M.describe_object(obj)
+    local desc = M.describe_object(obj, {
+        include_npc_movement_status = opts.include_npc_movement_status ~= false,
+    })
     local with_count = desc .. " (" .. current_index .. " of " .. #filtered_list .. ")"
     if opts.include_debug_coords == false then
         return with_count

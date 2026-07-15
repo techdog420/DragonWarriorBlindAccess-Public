@@ -1810,6 +1810,8 @@ function M.start_route(steps, opts)
     end
     route_settle_frames = math.max(0, tonumber(opts.initial_settle_frames) or 0)
     if route_settle_frames > 0 then
+        route_settle_reset_movement_active = true
+        reset_movement_engine_state("queued_route_initial_settle", {log = false})
         debug_tools.debug(string.format(
             "auto_step route initial settle frames=%d steps=%d start=(%d,%d)",
             route_settle_frames,

@@ -1,5 +1,10 @@
 # Cantlin Map And Route Reference
 
+Current status (`2026-07-15`): essential service routes are manually validated.
+The Magic Key Merchant route passes both ways with eastern door `(26,9)` open
+and correctly returns no path while doors are closed. The Golem clear flag is
+`0x42`; the final checkpoint is at `(15,0)` with all door RAM slots cleared.
+
 Fetched: 2026-07-04
 
 ## Local Images
@@ -63,6 +68,14 @@ Known Cantlin services and points of interest:
 - Magic Key shop:
   - Magic Key, 98 G
   - Guide sources mark this shop as key-locked.
+  - Live seller: fixed `npc_11` at `(27,6)`.
+  - Verified public stand: `(27,8)`, facing north across counter `(27,7)`.
+  - The route uses the opened eastern building door at `(26,9)`.
+  - With that door relocked, a clean no-path result is expected until it is
+    opened from `(25,9)` while facing east.
+  - Closed-door route cleanup confirmed directional blocks `(27,5).north`,
+    `(27,1).south`, and `(28,2).west`; the corrected return reaches the north
+    lane through `(24,2)` and `(24,1)`.
 - Locked weapon/armor shop:
   - Flame Sword, 9800 G
   - Silver Shield, 14800 G
@@ -96,10 +109,11 @@ Known Cantlin services and points of interest:
     facing up/right, and the eastern facade candidate `(25,13)` facing up
     toward `(25,12)`.
 - Progression notes:
-  - Sources describe Cantlin as guarded by Golem and recommend the Fairy Flute.
-    Current project evidence says the latest live approach entered town without
-    a fixed Golem encounter in this save/state, so treat guide boss notes as
-    gameplay orientation rather than current-state proof.
+  - Live FCEUX proof on 2026-07-13 confirmed the fixed Golem encounter at World
+    Map `(73,100)`, triggered by moving north from `(73,101)`. The battle began
+    with quest flags `0x40`; victory changed them to `0x42`, confirming the
+    one-time clear bit. Moving south from `(73,100)` then entered Cantlin at
+    `(15,0)`. The Fairy Flute put Golem to sleep as the guide describes.
   - A wise man in town gives Erdrick's Token coordinates.
   - The town is a major gear stop before further overworld validation.
 

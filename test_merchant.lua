@@ -514,6 +514,32 @@ function tests.detects_scrolled_weapon_shop_layout()
     env.restore()
 end
 
+function tests.cursor_selection_disambiguates_silver_shield_by_shop_price()
+    local env = make_env()
+
+    local NT0 = 0x2000
+    local bytes = {}
+    local ctx = {
+        scroll_tiles = 0,
+        base_nametable = 0,
+        vertical_scroll_tiles = 0,
+    }
+
+    write_visible_text(bytes, ctx, 19, 1, "Silver     14800")
+    bytes[NT0 + 19 * 32] = 0x42 -- cursor immediately before the offer
+    write_visible_text(bytes, ctx, 20, 3, "Shield")
+
+    _G.ppu.readbyte = function(address)
+        return bytes[address] or 0x9F
+    end
+
+    local offer = env.merchant.get_cursor_offer()
+    assert_equal(offer.name, "Silver Shield", "14800-gold Silver offer should not be confused with the quest item Silver Harp")
+    assert_equal(offer.price, 14800, "Silver Shield cursor offer should preserve its price")
+
+    env.restore()
+end
+
 function tests.default_shop_reader_ignores_field_scroll_registers()
     local env = make_env()
     local bytes = build_fixed_shop_screen()

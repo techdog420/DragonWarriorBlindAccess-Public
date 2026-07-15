@@ -3974,6 +3974,22 @@ local function check_dialogue(frame_delta, refresh_ppu)
     -- lowercase filter to exclude status bar fragments (uppercase "E", "G",
     -- digits) that bleed into rows 19-29 at certain NES scroll positions.
     local dialogue = text.read_dialogue_window_filtered(get_scroll_tiles(), get_dialogue_start_row(), DW_QOL_STATE.get_scroll_base_nametable())
+    local suspicious_numeric = dialogue:match("%s%d+%s")
+    local dialogue_complete = dialogue:match("[%.%!%?][\"']?$")
+    if debug_tools.DEBUG_MODE and suspicious_numeric and dialogue_complete
+       and PREV.dialogue_filter_trace ~= dialogue
+       and text.describe_dialogue_filter_state then
+        PREV.dialogue_filter_trace = dialogue
+        debug_tools.info(string.format(
+            "DIALOGUE_FILTER_TRACE dialogue=%q %s",
+            dialogue,
+            text.describe_dialogue_filter_state(
+                get_scroll_tiles(),
+                get_dialogue_start_row(),
+                DW_QOL_STATE.get_scroll_base_nametable())))
+    elseif not suspicious_numeric or not dialogue_complete then
+        PREV.dialogue_filter_trace = nil
+    end
     local battle_dialogue_mode = (game_state.state == state.STATE_BATTLE or battle_dialogue_grace_frames > 0)
     if battle_dialogue_mode then
         dialogue = battle.normalize_dialogue(dialogue)

@@ -380,10 +380,16 @@ function M.get_cursor_offer(opts)
                 end
                 local fragment = chars.decode_bytes(bytes):match("^%s*(.-)%s*$") or ""
                 local selection = match_offer_prefix(fragment)
+                local price = extract_price(fragment)
+                -- The premium Cantlin row contains only the shared "Silver"
+                -- prefix and its price; the item name continues on the next row.
+                if selection == "Silver Harp" and price == 14800 then
+                    selection = "Silver Shield"
+                end
                 if selection then
                     return {
                         name = selection,
-                        price = extract_price(fragment),
+                        price = price,
                         row = visible_row,
                     }
                 end

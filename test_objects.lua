@@ -1080,6 +1080,72 @@ function tests.kol_exit_uses_live_south_entry_tile()
     env.restore()
 end
 
+function tests.cantlin_exit_uses_live_southeast_transition_stand()
+    local env = make_env()
+
+    env.set_position(0x0A, 20, 28)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0A)
+
+    local obj = env.objects.select_object_by_id("exit_20_29")
+    assert_equal(obj ~= nil, true, "Cantlin should expose the live southeast world-map exit")
+    assert_equal(obj.name, "Exit to World Map", "Cantlin should keep the normal town-exit label")
+    assert_equal(obj.x, 20, "Cantlin exit should use the live transition X")
+    assert_equal(obj.y, 29, "Cantlin exit should use the live transition row")
+    assert_equal(obj.interaction_x, 20, "Cantlin exit route should stop on the safe north stand")
+    assert_equal(obj.interaction_y, 28, "Cantlin exit stand should avoid stepping through the transition")
+    assert_equal(obj.interaction_face_dir, "south", "Cantlin exit stand should face toward the world transition")
+    assert_equal(env.objects.select_object_by_id("exit_14_29"), nil, "Cantlin should not expose the striped-barrier placeholder exit")
+
+    env.restore()
+end
+
+function tests.cantlin_exposes_separate_town_entrance_waypoint()
+    local env = make_env()
+
+    env.set_position(0x0A, 16, 0)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0A)
+
+    local entrance = env.objects.select_object_by_id("travel_cantlin_entrance")
+    assert_equal(entrance ~= nil, true, "Cantlin should expose its arrival shelf as a Travel waypoint")
+    assert_equal(entrance.name, "Town Entrance", "Cantlin arrival waypoint should have a player-facing label")
+    assert_equal(entrance.x, 16, "Cantlin arrival waypoint should use the live player-facing X")
+    assert_equal(entrance.y, 0, "Cantlin arrival waypoint should use the live top shelf")
+
+    local exit = env.objects.select_object_by_id("exit_20_29")
+    assert_equal(exit ~= nil, true, "Cantlin should preserve the separate southeast world-map exit")
+
+    local northeast_exit = env.objects.select_object_by_id("exit_29_0")
+    assert_equal(northeast_exit ~= nil, true, "Cantlin should expose the live northeast world-map exit")
+    assert_equal(northeast_exit.name, "Northeast Exit to World Map", "Cantlin northeast exit should have a distinct Travel label")
+    assert_equal(northeast_exit.interaction_x, 28, "Cantlin northeast exit should route to the safe west stand")
+    assert_equal(northeast_exit.interaction_y, 0, "Cantlin northeast exit stand should remain on the north lane")
+    assert_equal(northeast_exit.interaction_face_dir, "east", "Cantlin northeast exit stand should face toward the transition")
+
+    local north_exit = env.objects.select_object_by_id("exit_23_0")
+    assert_equal(north_exit ~= nil, true, "Cantlin should expose the live north world-map exit")
+    assert_equal(north_exit.name, "North Exit to World Map", "Cantlin north exit should have a distinct Travel label")
+    assert_equal(north_exit.interaction_x, 23, "Cantlin north exit should route to the safe south stand")
+    assert_equal(north_exit.interaction_y, 1, "Cantlin north exit stand should remain inside town")
+    assert_equal(north_exit.interaction_face_dir, "north", "Cantlin north exit stand should face toward the transition")
+
+    env.objects.travel_filter()
+    local travel_ids = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        travel_ids[obj.id] = true
+    end
+    assert_equal(travel_ids["travel_cantlin_entrance"], true, "Cantlin Town Entrance should appear under Travel")
+    assert_equal(travel_ids["exit_20_29"], true, "Cantlin southeast exit should remain under Travel")
+    assert_equal(travel_ids["exit_29_0"], true, "Cantlin northeast exit should appear under Travel")
+    assert_equal(travel_ids["exit_23_0"], true, "Cantlin north exit should appear under Travel")
+
+    env.restore()
+end
+
+
 function tests.garinham_exit_uses_live_west_entry_not_inn_corridor()
     local env = make_env()
 
@@ -1408,16 +1474,16 @@ function tests.current_object_description_reads_live_npc_slot_without_full_refre
     env.objects.refresh(0x04)
     env.objects.next_filter()
 
-    env.set_npc(0, 0x2A, 0x08) -- x=10, y=8 with sprite type 1
+    env.set_npc(0, 0x2A, 0x08, 0x60) -- x=10, y=8 with a roaming movement byte
     assert_equal(env.objects.current_object().x, 5, "object list should stay stale before a refresh")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard: 1 north (1 of 1)",
-        "current-object speech should use the selected NPC slot's live position")
+        "Guard (roaming): 1 north (1 of 1)",
+        "current-object speech should use the selected NPC slot's live position and movement status")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false, use_live_npc = false}),
-        "Guard: 2 north, 5 west (1 of 1)",
-        "tests and debug callers can still opt into cached object-list coordinates")
+        "Guard (stationary): 2 north, 5 west (1 of 1)",
+        "tests and debug callers can still opt into cached object-list coordinates and movement status")
 
     env.restore()
 end
@@ -1611,7 +1677,7 @@ function tests.visited_flags_are_map_scoped_and_clearable()
     assert_equal(env.objects.is_visited(obj), true, "marked object should be visited on the current map")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (visited): 2 south (1 of 1)",
+        "Guard (stationary, visited): 2 south (1 of 1)",
         "visited object descriptions should include the visited flag")
 
     env.set_position(0x09, 5, 5)
@@ -1646,7 +1712,7 @@ function tests.visited_flags_survive_objects_module_reload()
     env.objects.next_filter()
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (visited): 2 south (1 of 1)",
+        "Guard (stationary, visited): 2 south (1 of 1)",
         "reloaded object descriptions should keep the visited flag")
 
     assert_equal(env.objects.clear_visited("all"), 1, "clear_visited all should clear the reload-persistent visit")
@@ -1673,7 +1739,7 @@ function tests.talk_visit_marker_uses_live_npc_ram_when_object_list_position_is_
     assert_equal(env.objects.is_visited(obj, 0x04), true, "visited flag should apply to the cached object with the same NPC slot id")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (visited): 1 north (1 of 1)",
+        "Guard (stationary, visited): 1 north (1 of 1)",
         "visited object speech should use the live selected NPC slot")
 
     env.restore()
@@ -1694,7 +1760,7 @@ function tests.brecconary_counter_service_marks_selected_merchant_visited()
     assert_equal(obj.interaction_face_dir, "north", "Brecconary merchant should face north from the counter")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Weapons Merchant: 2 north, counter here (1 of 4)",
+        "Weapons Merchant (stationary): 2 north, counter here (1 of 4)",
         "merchant description should name the usable counter square")
 
     local marked = env.objects.mark_adjacent_npc_visited(0x08, 5, 6)
@@ -1807,7 +1873,44 @@ function tests.cantlin_confirmed_inn_merchant_uses_live_counter_stand()
     env.restore()
 end
 
-function tests.cantlin_confirmed_weapons_merchant_keeps_adjacent_routing()
+function tests.cantlin_service_roles_survive_inactive_merchant_slots()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x0A, 15, 1)
+    env.set_terrain_offset(0x10)
+    env.set_npc(2, 0x60 + 20, 0x06, 0x00)
+    env.set_npc(4, 0x60 + 22, 0x04, 0x00)
+    env.set_npc(10, 0x60 + 8, 0x03, 0x00) -- Stable inn slot; ordinal shifts to Merchant 3.
+    env.set_npc(13, 0x60 + 2, 0x0C, 0x00) -- Stable radish slot; ordinal shifts to Merchant 4.
+    env.set_npc(14, 0x60 + 7, 0x0C, 0x00)
+    env.set_npc(15, 0x40 + 24, 0x0C, 0x00)
+    env.set_npc(16, 0xC0 + 22, 0x0D, 0x00)
+    env.set_npc(19, 0x60 + 27, 0x1A, 0x00)
+    env.objects.refresh(0x0A)
+
+    local inn = find_by_id(env.objects, "npc_10")
+    local radish = find_by_id(env.objects, "npc_13")
+    assert_equal(inn.name, "Inn", "Cantlin stable slot 10 should remain the Inn when merchant ordinals shift")
+    assert_equal(inn.service, true, "Cantlin stable Inn slot should remain in Services")
+    assert_equal(inn.interaction_x, 8, "Cantlin stable Inn slot should keep the public counter stand X")
+    assert_equal(inn.interaction_y, 5, "Cantlin stable Inn slot should keep the public counter stand Y")
+    assert_equal(radish.name, "Radish Merchant", "Cantlin stable slot 13 should not inherit the shifted Inn ordinal")
+    assert_equal(radish.service, false, "Cantlin Radish Merchant should stay out of Services")
+    assert_equal(radish.interaction_x, 4, "Cantlin Radish Merchant should keep its dialogue counter stand X")
+    assert_equal(radish.interaction_y, 12, "Cantlin Radish Merchant should keep its dialogue counter stand Y")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    local service_ids = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_ids[obj.id] = true
+    end
+    assert_equal(service_ids["npc_10"], true, "Services should include the stable Cantlin Inn slot")
+    assert_equal(service_ids["npc_13"], nil, "Services should exclude the stable Cantlin Radish Merchant slot")
+
+    env.restore()
+end
+function tests.cantlin_roaming_weapons_merchant_keeps_adjacent_routing()
     local env = make_env({npc_count = 2})
 
     env.set_position(0x0A, 22, 5)
@@ -1816,21 +1919,21 @@ function tests.cantlin_confirmed_weapons_merchant_keeps_adjacent_routing()
     env.set_npc(1, 0x60 + 22, 0x04, 0x00) -- Merchant 2, live-confirmed weapons/armor shop
     env.objects.refresh(0x0A)
 
-    local weapons = nil
+    local roaming_weapons = nil
     local generic_merchant2 = nil
     for _, obj in ipairs(env.objects.get_objects()) do
-        if obj.name == "Weapons Merchant" then
-            weapons = obj
+        if obj.name == "Roaming Weapons Merchant" then
+            roaming_weapons = obj
         elseif obj.name == "Merchant 2" then
             generic_merchant2 = obj
         end
     end
 
-    assert_equal(weapons ~= nil, true, "Cantlin Merchant 2 should be labeled as Weapons Merchant after live TALK proof")
-    assert_equal(weapons.service, true, "Cantlin Weapons Merchant should remain in Services")
-    assert_equal(weapons.x, 22, "Cantlin Weapons Merchant NPC X should match live NPC RAM")
-    assert_equal(weapons.y, 4, "Cantlin Weapons Merchant NPC Y should match live NPC RAM")
-    assert_equal(weapons.interaction_x, nil, "Cantlin Weapons Merchant should not infer a fixed counter stand")
+    assert_equal(roaming_weapons ~= nil, true, "Cantlin Merchant 2 should be labeled as Roaming Weapons Merchant")
+    assert_equal(roaming_weapons.service, true, "Cantlin Roaming Weapons Merchant should remain in Services")
+    assert_equal(roaming_weapons.x, 22, "Cantlin Roaming Weapons Merchant NPC X should match live NPC RAM")
+    assert_equal(roaming_weapons.y, 4, "Cantlin Roaming Weapons Merchant NPC Y should match live NPC RAM")
+    assert_equal(roaming_weapons.interaction_x, nil, "Cantlin Roaming Weapons Merchant should not infer a fixed counter stand")
     assert_equal(generic_merchant2, nil, "Cantlin Merchant 2 should not keep the generic label")
 
     env.objects.next_filter() -- NPCs
@@ -1840,8 +1943,104 @@ function tests.cantlin_confirmed_weapons_merchant_keeps_adjacent_routing()
         service_names[#service_names + 1] = obj.name
     end
     local service_text = table.concat(service_names, ", ")
-    assert_equal(service_text:find("Weapons Merchant", 1, true) ~= nil, true, "Services should include the confirmed Cantlin Weapons Merchant")
+    assert_equal(service_text:find("Roaming Weapons Merchant", 1, true) ~= nil, true, "Services should identify the roaming Cantlin Weapons Merchant")
     assert_equal(service_text:find("Merchant 2", 1, true), nil, "Services should not keep the stale Cantlin Merchant 2 label")
+
+    env.restore()
+end
+
+function tests.cantlin_magic_key_merchant_uses_verified_south_counter_stand()
+    local env = make_env({npc_count = 12})
+
+    env.set_position(0x0A, 16, 0)
+    env.set_terrain_offset(0x10)
+    env.set_npc(11, 0xA0 + 27, 0x06, 0x00) -- Stable Old Man 2 slot at (27,6)
+    env.objects.refresh(0x0A)
+
+    local key_merchant = env.objects.find_object_by_id("npc_11")
+    assert_equal(key_merchant ~= nil, true, "Cantlin stable Old Man 2 slot should be present")
+    assert_equal(key_merchant.name, "Magic Key Merchant", "Cantlin Old Man 2 should use the confirmed key-shop label")
+    assert_equal(key_merchant.service, true, "Cantlin Magic Key Merchant should appear in Services")
+    assert_equal(key_merchant.movement, 0x00, "Cantlin Magic Key Merchant should be classified as stationary")
+    assert_equal(key_merchant.x, 27, "Cantlin Magic Key Merchant NPC X should match live NPC RAM")
+    assert_equal(key_merchant.y, 6, "Cantlin Magic Key Merchant NPC Y should match live NPC RAM")
+    assert_equal(key_merchant.interaction_x, 27, "Cantlin Magic Key Merchant should use the public south counter stand X")
+    assert_equal(key_merchant.interaction_y, 8, "Cantlin Magic Key Merchant should use the public south counter stand Y")
+    assert_equal(key_merchant.interaction_face_dir, "north", "Cantlin Magic Key Merchant stand should face north")
+    assert_equal(key_merchant.interaction_label, "counter", "Cantlin Magic Key Merchant stand should be labeled as a counter")
+
+    env.objects.set_filter(env.objects.FILTER_SERVICE)
+    local service_ids = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_ids[obj.id] = true
+    end
+    assert_equal(service_ids["npc_11"], true, "Services should include the Cantlin Magic Key Merchant")
+
+    env.set_position(0x0A, 27, 8)
+    local marked = env.objects.mark_adjacent_npc_visited(0x0A, 27, 8)
+    assert_equal(marked.id, key_merchant.id, "Cantlin key-shop stand should mark the Magic Key Merchant visited")
+    assert_equal(env.objects.is_visited(key_merchant, 0x0A), true, "Cantlin key-shop visit should persist on the seller")
+
+    env.restore()
+end
+function tests.cantlin_fairy_water_merchant_uses_live_counter_stand()
+    local env = make_env({npc_count = 2})
+
+    env.set_position(0x0A, 20, 13)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0xC0 + 1, 0x01, 0x00)
+    env.set_npc(1, 0xC0 + 22, 0x0D, 0x00) -- Woman 2, live-confirmed Fairy Water seller
+    env.objects.refresh(0x0A)
+
+    local fairy_water = env.objects.find_object_by_id("npc_1")
+    assert_equal(fairy_water ~= nil, true, "Cantlin Woman 2 should be present")
+    assert_equal(fairy_water.name, "Fairy Water Merchant", "Cantlin Woman 2 should use the live service label")
+    assert_equal(fairy_water.service, true, "Cantlin Fairy Water Merchant should appear in Services")
+    assert_equal(fairy_water.x, 22, "Cantlin Fairy Water Merchant NPC X should match live NPC RAM")
+    assert_equal(fairy_water.y, 13, "Cantlin Fairy Water Merchant NPC Y should match live NPC RAM")
+    assert_equal(fairy_water.interaction_x, 20, "Cantlin Fairy Water Merchant should use the live west counter stand X")
+    assert_equal(fairy_water.interaction_y, 13, "Cantlin Fairy Water Merchant should use the live counter row")
+    assert_equal(fairy_water.interaction_face_dir, "east", "Cantlin Fairy Water Merchant should face east across the counter")
+    assert_equal(fairy_water.interaction_label, "counter", "Cantlin Fairy Water Merchant stand should be labeled as a counter")
+
+    env.objects.set_filter(env.objects.FILTER_SERVICE)
+    local selected = env.objects.find_object_by_id("npc_1")
+    assert_equal(selected ~= nil, true, "Services should include the Cantlin Fairy Water Merchant")
+    assert_equal(selected.name, "Fairy Water Merchant", "Services should expose the live Fairy Water label")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x0A, 20, 13)
+    assert_equal(marked.id, fairy_water.id, "Cantlin Fairy Water counter stand should mark the seller visited")
+    assert_equal(env.objects.is_visited(fairy_water, 0x0A), true, "Cantlin Fairy Water visit should persist from the counter stand")
+
+    env.restore()
+end
+function tests.cantlin_premium_weapons_merchant_uses_live_counter_stand()
+    local env = make_env({npc_count = 2})
+
+    env.set_position(0x0A, 26, 12)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x60 + 1, 0x01, 0x00)
+    env.set_npc(1, 0x40 + 24, 0x0C, 0x00) -- Guard 4 sprite, live-confirmed premium seller
+    env.objects.refresh(0x0A)
+
+    local premium = env.objects.find_object_by_id("npc_1")
+    assert_equal(premium ~= nil, true, "Cantlin Guard 4 should be present")
+    assert_equal(premium.name, "Premium Weapons Merchant", "Cantlin Guard 4 should use the live premium shop label")
+    assert_equal(premium.service, true, "Cantlin premium weapons merchant should appear in Services")
+    assert_equal(premium.x, 24, "Cantlin premium weapons merchant NPC X should match live NPC RAM")
+    assert_equal(premium.y, 12, "Cantlin premium weapons merchant NPC Y should match live NPC RAM")
+    assert_equal(premium.interaction_x, 26, "Cantlin premium weapons merchant should use the reachable east counter stand X")
+    assert_equal(premium.interaction_y, 12, "Cantlin premium weapons merchant should use the live counter row")
+    assert_equal(premium.interaction_face_dir, "west", "Cantlin premium weapons merchant should face west across the counter")
+    assert_equal(premium.interaction_label, "counter", "Cantlin premium weapons merchant stand should be labeled as a counter")
+
+    env.objects.set_filter(env.objects.FILTER_SERVICE)
+    local selected = env.objects.find_object_by_id("npc_1")
+    assert_equal(selected ~= nil, true, "Services should include the Cantlin premium weapons merchant")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x0A, 26, 12)
+    assert_equal(marked.id, premium.id, "Cantlin premium counter stand should mark the seller visited")
+    assert_equal(env.objects.is_visited(premium, 0x0A), true, "Cantlin premium merchant visit should persist from the counter stand")
 
     env.restore()
 end
@@ -1890,6 +2089,36 @@ function tests.cantlin_confirmed_tool_merchant_uses_live_counter_stand()
     local marked = env.objects.mark_adjacent_npc_visited(0x0A, 5, 12)
     assert_equal(marked.id, tool_merchant.id, "Cantlin Tool Merchant public counter stand should mark the tool merchant visited")
     assert_equal(env.objects.is_visited(tool_merchant, 0x0A), true, "Cantlin Tool Merchant counter visit should persist from the public stand")
+
+    env.restore()
+end
+
+function tests.cantlin_second_tool_merchant_uses_live_counter_stand()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x0A, 4, 7)
+    env.set_terrain_offset(0x10)
+    env.set_npc(12, 0x00 + 2, 0x07, 0x00) -- Person 2, live-confirmed Herb/Torch shop
+    env.objects.refresh(0x0A)
+
+    local tool_merchant = env.objects.find_object_by_id("npc_12")
+    assert_equal(tool_merchant ~= nil, true, "Cantlin Person 2 should be present")
+    assert_equal(tool_merchant.name, "Tool Merchant 2", "Cantlin Person 2 should use the second tool-shop label")
+    assert_equal(tool_merchant.service, true, "Cantlin Tool Merchant 2 should appear in Services")
+    assert_equal(tool_merchant.x, 2, "Cantlin Tool Merchant 2 NPC X should match live NPC RAM")
+    assert_equal(tool_merchant.y, 7, "Cantlin Tool Merchant 2 NPC Y should match live NPC RAM")
+    assert_equal(tool_merchant.interaction_x, 4, "Cantlin Tool Merchant 2 should use the public east counter stand X")
+    assert_equal(tool_merchant.interaction_y, 7, "Cantlin Tool Merchant 2 should use the live counter row")
+    assert_equal(tool_merchant.interaction_face_dir, "west", "Cantlin Tool Merchant 2 should face west across the counter")
+    assert_equal(tool_merchant.interaction_label, "counter", "Cantlin Tool Merchant 2 stand should be labeled as a counter")
+
+    env.objects.set_filter(env.objects.FILTER_SERVICE)
+    local selected = env.objects.find_object_by_id("npc_12")
+    assert_equal(selected ~= nil, true, "Services should include Cantlin Tool Merchant 2")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x0A, 4, 7)
+    assert_equal(marked.id, tool_merchant.id, "Cantlin Tool Merchant 2 counter stand should mark the seller visited")
+    assert_equal(env.objects.is_visited(tool_merchant, 0x0A), true, "Cantlin Tool Merchant 2 visit should persist from the counter stand")
 
     env.restore()
 end
@@ -1956,20 +2185,16 @@ function tests.cantlin_dialogue_only_merchants_stay_out_of_services()
 end
 
 function tests.cantlin_radish_merchant_stays_out_of_services()
-    local env = make_env({npc_count = 5})
+    local env = make_env({npc_count = 14})
 
     env.set_position(0x0A, 4, 12)
     env.set_terrain_offset(0x10)
-    env.set_npc(0, 0x60 + 11, 0x02, 0x00)
-    env.set_npc(1, 0x60 + 22, 0x03, 0x00)
-    env.set_npc(2, 0x60 + 1, 0x14, 0x00)
-    env.set_npc(3, 0x60 + 8, 0x03, 0x00)
-    env.set_npc(4, 0x60 + 2, 0x0C, 0x00) -- Merchant 5, live-confirmed radish dialogue
+    env.set_npc(13, 0x60 + 2, 0x0C, 0x00) -- Stable slot 13, live-confirmed radish dialogue
     env.objects.refresh(0x0A)
 
-    local radish = env.objects.find_object_by_id("npc_4")
-    assert_equal(radish ~= nil, true, "Cantlin Merchant 5 should be present")
-    assert_equal(radish.name, "Radish Merchant", "Cantlin Merchant 5 should get the live dialogue label")
+    local radish = env.objects.find_object_by_id("npc_13")
+    assert_equal(radish ~= nil, true, "Cantlin stable Radish Merchant slot should be present")
+    assert_equal(radish.name, "Radish Merchant", "Cantlin stable slot 13 should get the live dialogue label")
     assert_equal(radish.service, false, "Radish dialogue merchant should not be treated as an essential service")
     assert_equal(radish.interaction_x, 4, "Radish Merchant should route to the live-confirmed public stand X")
     assert_equal(radish.interaction_y, 12, "Radish Merchant should route to the live-confirmed public stand Y")
@@ -1979,7 +2204,7 @@ function tests.cantlin_radish_merchant_stays_out_of_services()
     env.objects.set_filter(env.objects.FILTER_SERVICE)
     for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
         assert_equal(obj.name ~= "Radish Merchant", true, "Services should not include the radish dialogue merchant")
-        assert_equal(obj.id ~= "npc_4", true, "Services should not route to Cantlin Merchant 5")
+        assert_equal(obj.id ~= "npc_13", true, "Services should not route to the stable Cantlin Radish Merchant slot")
     end
 
     env.restore()
