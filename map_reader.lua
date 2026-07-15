@@ -715,6 +715,40 @@ local MAP_PASSTHROUGH_CELLS = {
     -- crossing the merchant's occupied cell. Revalidate by normal route after
     -- source reload.
     [0x0B] = {
+        -- 2026-07-15 normal-movement Magic Key Merchant route. The live path
+        -- climbs the east edge, turns west on row 2, reaches the top bank at
+        -- x=21, descends x=0, and enters the shop over the northwest bridge.
+        -- The full bank stays terrain-walkable on both sides of fixed Person 4
+        -- at (27,0); live NPC blocking forces the route onto the x=21 jog.
+        -- These raw type-0 cells
+        -- complete that route; previously promoted cells farther below supply
+        -- the rest of the east strip and row-2 jog without duplicate keys.
+        -- Top bank, including the terrain beneath Person 4 at (27,0).
+        ["0,0"] = true,  ["1,0"] = true,  ["2,0"] = true,
+        ["3,0"] = true,  ["4,0"] = true,  ["5,0"] = true,
+        ["6,0"] = true,  ["7,0"] = true,  ["8,0"] = true,
+        ["9,0"] = true,  ["10,0"] = true, ["11,0"] = true,
+        ["12,0"] = true, ["13,0"] = true, ["14,0"] = true,
+        ["15,0"] = true, ["16,0"] = true, ["17,0"] = true,
+        ["18,0"] = true, ["19,0"] = true, ["20,0"] = true,
+        ["21,0"] = true, ["22,0"] = true, ["23,0"] = true,
+        ["24,0"] = true, ["25,0"] = true, ["26,0"] = true,
+        ["27,0"] = true, ["28,0"] = true, ["29,0"] = true,
+        -- x=21 connector and the missing west end of the row-2 jog.
+        ["21,1"] = true,
+        ["21,2"] = true,
+        ["22,2"] = true,
+        ["23,2"] = true,
+        -- Missing cells in the existing x=29 east-edge strip.
+        ["29,5"] = true,
+        ["29,8"] = true,
+        ["29,13"] = true,
+        -- Left descent and the type-0 landing beyond the ordinary bridge tile.
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["2,3"] = true,
+        ["3,3"] = true,
         ["1,5"] = true,
         ["1,7"] = true,
         ["1,8"] = true,
@@ -4010,6 +4044,13 @@ local MAP_DIRECTIONAL_BLOCKS = {
 
     -- Map 0x0B: Rimuldar
     [0x0B] = {
+        -- The live Magic Key route travels vertically along x=0. Entering
+        -- (0,1..3) from the east means moving west from x=1, which triggers
+        -- an unintended world-map transition. Block only that entry side;
+        -- north/south movement along the hidden strip remains available.
+        ["0,1"] = {east = true},
+        ["0,2"] = {east = true},
+        ["0,3"] = {east = true},
         -- 2026-05-17 first town walkabout. The exit-route replan from
         -- (28,14) repeatedly failed moving UP into (28,13), including the
         -- seam brute-force retry, while (29,14)->UP into the confirmed east

@@ -135,6 +135,160 @@ local function make_stub_env()
     }
 end
 
+local function make_rimuldar_integration_env()
+    local rows = {
+        "000000000000000000000000000000",
+        "000222222222222222000000000000",
+        "022244488000000002222000000000",
+        "0E0066480000088800082222000000",
+        "220066400006666666688002222000",
+        "284666408006080611600000882000",
+        "2844F4400446444644600444442000",
+        "204666400466646664600466642200",
+        "20444440046664666468044F441200",
+        "200000000444444444666666641200",
+        "20000002280000080060C466641200",
+        "208022222200066666660466641220",
+        "210228882208666666660444448020",
+        "212280082006660000660000888820",
+        "2111808220666008006666666666E6",
+        "2122882200660088006666666666E6",
+        "21022220006608804D600880088820",
+        "208000080066008444644444448020",
+        "20000088806608846F646646640220",
+        "204444444466408444666666640200",
+        "204666666666400466666646648200",
+        "204666646666408446444B44448200",
+        "204446646666401466646646642200",
+        "2846F66664464014666466B6342000",
+        "284446646666401444444444442000",
+        "224666646666481111800882222000",
+        "024666666666488008002222000000",
+        "024444444444488882222000000000",
+        "000222222222222222000000000000",
+        "000000000000000000000000000000",
+    }
+    local data_start = 0x200
+    local map_id = 0x0B
+    local base = map_id * 5
+    local cpu_ptr = data_start - 0x10 + 0x8000
+    local rom_bytes = {
+        [base] = cpu_ptr % 256,
+        [base + 1] = math.floor(cpu_ptr / 256),
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+
+    for y, row in ipairs(rows) do
+        assert(#row == 30, string.format("Rimuldar fixture row %d must contain 30 block IDs", y - 1))
+        for x = 1, 30, 2 do
+            rom_bytes[data_start + (y - 1) * 15 + math.floor((x - 1) / 2)] = assert(tonumber(row:sub(x, x + 1), 16))
+        end
+    end
+
+    local module_names = {
+        "addresses",
+        "config",
+        "debug_tools",
+        "map_reader",
+        "maps",
+        "pathfinder",
+    }
+    local saved_modules = {}
+    for _, name in ipairs(module_names) do
+        saved_modules[name] = {
+            preload = package.preload[name],
+            loaded = package.loaded[name],
+        }
+        package.loaded[name] = nil
+    end
+
+    package.preload["addresses"] = function()
+        return {
+            ROM_MAP_META_START = 0,
+            ROM_MAP_META_SIZE = 5,
+            DOOR_ARRAY_MAX = 0,
+            DOOR_X_POS_START = 0,
+            DOOR_Y_POS_START = 0,
+            DOOR_ARRAY_STRIDE = 0,
+            TERRAIN_OFFSET = 0x10,
+        }
+    end
+    package.preload["config"] = function()
+        return {get = function() return nil end}
+    end
+    package.preload["debug_tools"] = function()
+        return {
+            info = function() end,
+            debug = function() end,
+            error = function() end,
+        }
+    end
+    package.preload["map_reader"] = nil
+    package.preload["maps"] = nil
+    package.preload["pathfinder"] = nil
+
+    local saved_globals = {
+        rom = _G.rom,
+        memory = _G.memory,
+        AND = _G.AND,
+    }
+    _G.rom = {
+        readbyte = function(address)
+            return rom_bytes[address] or 0
+        end,
+    }
+    _G.memory = {
+        readbyte = function(address)
+            if address == 0x10 then return 0x10 end
+            return 0
+        end,
+    }
+    _G.AND = function(a, b)
+        local result = 0
+        local bit = 1
+        while a > 0 and b > 0 do
+            if a % 2 == 1 and b % 2 == 1 then
+                result = result + bit
+            end
+            a = math.floor(a / 2)
+            b = math.floor(b / 2)
+            bit = bit * 2
+        end
+        return result
+    end
+
+    local restored = false
+    local function restore()
+        if restored then return end
+        for _, name in ipairs(module_names) do
+            package.preload[name] = saved_modules[name].preload
+            package.loaded[name] = saved_modules[name].loaded
+        end
+        _G.rom = saved_globals.rom
+        _G.memory = saved_globals.memory
+        _G.AND = saved_globals.AND
+        restored = true
+    end
+
+    local ok, result = pcall(function()
+        local map_reader = require "map_reader"
+        local pathfinder = require "pathfinder"
+        return {
+            map_reader = map_reader,
+            pathfinder = pathfinder,
+        }
+    end)
+    if not ok then
+        restore()
+        error(result, 0)
+    end
+
+    result.restore = restore
+    return result
+end
+
 local function assert_equal(actual, expected, message)
     if actual ~= expected then
         error(string.format("%s: expected %s, got %s", message, tostring(expected), tostring(actual)), 2)
@@ -151,6 +305,29 @@ local function assert_contains(haystack, needle, message)
     if not string.find(haystack, needle, 1, true) then
         error(string.format("%s: missing %s in %s", message, needle, haystack), 2)
     end
+end
+
+local function with_cleanup(body, cleanup)
+    local ok, err = pcall(body)
+    local cleanup_ok, cleanup_err = pcall(cleanup)
+
+    if not ok then
+        if not cleanup_ok then
+            error(string.format("%s (cleanup failed: %s)", tostring(err), tostring(cleanup_err)), 0)
+        end
+        error(err, 0)
+    end
+    if not cleanup_ok then
+        error(cleanup_err, 0)
+    end
+end
+
+local function path_to_string(path)
+    local parts = {}
+    for _, step in ipairs(path or {}) do
+        parts[#parts + 1] = string.format("%s->%d,%d", step.direction or "?", step.x or -1, step.y or -1)
+    end
+    return table.concat(parts, " ")
 end
 
 local tests = {}
@@ -482,6 +659,67 @@ function tests.find_path_prefers_straight_progress_on_equal_length_ties()
     assert_equal(path[6].direction, "north", "remaining shortest path should still finish with the needed north steps")
 
     env.restore()
+end
+
+function tests.rimuldar_live_magic_key_route_uses_real_decoder_and_pathfinder()
+    local env = make_rimuldar_integration_env()
+
+    with_cleanup(function()
+        assert_equal(env.map_reader.get_raw_block_id(0x0B, 1, 3), 0xE, "Rimuldar bridge raw block")
+        assert_equal(env.map_reader.get_raw_block_id(0x0B, 4, 5), 0x6, "Rimuldar merchant stand raw block")
+        assert_equal(env.map_reader.get_raw_block_id(0x0B, 4, 6), 0xF, "Rimuldar counter raw block")
+        assert_equal(env.map_reader.is_walkable(0x0B, 4, 6), false, "Rimuldar counter should not be walkable")
+
+        local blockers = {
+            ["27,0"] = true,
+            ["2,4"] = true,
+            ["4,7"] = true,
+        }
+        local path = env.pathfinder.find_path(0x0B, 29, 14, 4, 5, blockers)
+        assert_truthy(path ~= nil, "real Rimuldar stack should find the live Magic Key route")
+        -- The manually walked proof used a 54-move x=5 tail. Correct terrain
+        -- also permits the shorter (4,3)->(4,4)->(4,5) tail, so A* uses 52.
+        assert_equal(#path, 52, "real Rimuldar route should use the deterministic shortest path: " .. path_to_string(path))
+
+        local waypoints = {
+            {29, 2}, {21, 2}, {21, 0}, {0, 0}, {0, 3}, {1, 3}, {2, 3},
+            {3, 3}, {4, 3}, {4, 4}, {4, 5},
+        }
+        local next_waypoint = 1
+        for _, step in ipairs(path) do
+            local waypoint = waypoints[next_waypoint]
+            if waypoint and step.x == waypoint[1] and step.y == waypoint[2] then
+                next_waypoint = next_waypoint + 1
+            end
+        end
+        assert_equal(
+            next_waypoint,
+            #waypoints + 1,
+            "real Rimuldar route should visit every required waypoint in order: " .. path_to_string(path)
+        )
+
+        local forbidden = {
+            ["27,0"] = true,
+            ["2,4"] = true,
+            ["4,7"] = true,
+            ["4,6"] = true,
+        }
+        for _, step in ipairs(path) do
+            local key = step.x .. "," .. step.y
+            assert_equal(forbidden[key], nil, "real Rimuldar route should avoid blocked/counter cell " .. key)
+        end
+
+        local open_top_bank = env.pathfinder.find_path(0x0B, 26, 0, 28, 0, {})
+        assert_truthy(open_top_bank ~= nil, "unoccupied top-bank control should have a path")
+        assert_equal(#open_top_bank, 2, "unoccupied top-bank control should use the direct two-step route")
+        assert_equal(open_top_bank[1].x, 27, "unoccupied top-bank control should cross terrain under Person 4")
+        assert_equal(open_top_bank[1].y, 0, "unoccupied top-bank control should remain on row 0")
+        assert_equal(open_top_bank[2].x, 28, "unoccupied top-bank control should reach the east-side endpoint")
+        assert_equal(open_top_bank[2].y, 0, "unoccupied top-bank endpoint should remain on row 0")
+
+        local blocked_top_bank = env.pathfinder.find_path(0x0B, 26, 0, 28, 0, {["27,0"] = true})
+        assert_equal(blocked_top_bank, nil, "Person 4 at (27,0) should split the local top-bank lane")
+    end, env.restore)
 end
 
 function tests.trace_path_distinguishes_no_path_from_already_there()

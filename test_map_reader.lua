@@ -106,6 +106,7 @@ local MAP_NAMES = {
     [0x0C] = "Sun Shrine",
     [0x08] = "Brecconary",
     [0x0A] = "Cantlin",
+    [0x0B] = "Rimuldar",
     [0x18] = "Garin's Grave B1",
     [0x19] = "Garin's Grave B2",
 }
@@ -313,6 +314,84 @@ function tests.rimuldar_packed_fixture_keeps_raw_and_grid_values_aligned()
     end
 
     env.restore()
+end
+
+function tests.rimuldar_live_magic_key_route_is_walkable_and_exit_seams_are_guarded()
+    local map_id = 0x0B
+    local base = map_id * 5
+    local data_start = 0x420
+    local rom_bytes = {
+        [base] = 0x10,      -- CPU $8410 -> file offset $0420
+        [base + 1] = 0x84,
+        [base + 2] = 29,    -- width 30
+        [base + 3] = 29,    -- height 30
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x0)
+
+    -- Ordinary terrain along the live route; all other route cells intentionally
+    -- remain raw type 0 so the test exercises map-scoped passthrough data.
+    for _, cell in ipairs({
+        {29, 14, 0x6},
+        {1, 3, 0xE},
+        {4, 3, 0x6},
+        {5, 3, 0x6},
+        {5, 4, 0x6},
+        {5, 5, 0x6},
+        {4, 5, 0x6},
+        {4, 6, 0xF},
+    }) do
+        set_packed_block(rom_bytes, data_start, 30, cell[1], cell[2], cell[3])
+    end
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x10},
+    })
+
+    with_cleanup(function()
+        local route = {}
+        local function add_route_cell(x, y)
+            route[#route + 1] = {x = x, y = y}
+        end
+
+        for y = 14, 2, -1 do add_route_cell(29, y) end
+        for x = 28, 21, -1 do add_route_cell(x, 2) end
+        add_route_cell(21, 1)
+        add_route_cell(21, 0)
+        for x = 20, 0, -1 do add_route_cell(x, 0) end
+        for y = 1, 3 do add_route_cell(0, y) end
+        for _, cell in ipairs({
+            {1, 3}, {2, 3}, {3, 3}, {4, 3}, {5, 3},
+            {5, 4}, {5, 5}, {4, 5},
+        }) do
+            add_route_cell(cell[1], cell[2])
+        end
+
+        for _, cell in ipairs(route) do
+            local details = env.map_reader.get_walkability_details(map_id, cell.x, cell.y)
+            assert_equal(
+                details and details.effective_walkable or nil,
+                true,
+                string.format("Rimuldar live Magic Key route cell (%d,%d) should be walkable", cell.x, cell.y)
+            )
+        end
+
+        local counter = env.map_reader.get_walkability_details(map_id, 4, 6)
+        assert_equal(counter.tile_type, 0xF, "Rimuldar counter (4,6) should retain raw type 15")
+        assert_equal(counter.base_walkable, false, "Rimuldar counter (4,6) should not be a passthrough")
+        assert_equal(counter.effective_walkable, false, "Rimuldar counter (4,6) should remain globally non-walkable")
+        assert_equal(counter.reason, "tile_type", "Rimuldar counter (4,6) should be blocked by corrected tile decoding")
+
+        local dirs = env.map_reader.get_directional_blocks(map_id)
+        for y = 1, 3 do
+            local cell = "0," .. y
+            local guard = dirs[cell] or {}
+            assert_equal(guard.east, true, cell .. " should block entry from the east to prevent a world-map transition")
+            assert_equal(guard.north, nil, cell .. " should keep northward travel open along the x=0 strip")
+            assert_equal(guard.south, nil, cell .. " should keep southward travel open along the x=0 strip")
+        end
+    end, env.restore)
 end
 
 function tests.directional_block_comments_match_their_map_block()
@@ -2541,7 +2620,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["4,8"].south, true, "Rimuldar (4,8) should block entry from the south after latest key-route loop from (4,9)")
     assert_equal(dirs["4,3"].south, true, "Rimuldar (4,3) should block entry from the south after latest northwest-exit route loop from (4,4)")
     assert_equal(dirs["4,4"].south, true, "Rimuldar (4,4) should block entry from the south after latest northwest-exit route loop from (4,5)")
-    assert_open_approach("4,6", "north", "Rimuldar (4,6).north must stay open so the key-merchant public stand is reachable from (4,5)")
+    assert_open_approach("4,6", "north", "Rimuldar (4,6).north should stay unmodeled; corrected decoding makes the counter itself non-walkable")
     assert_equal(dirs["4,2"].south, true, "Rimuldar (4,2) should block entry from the south because (4,3)->UP is a world-map transition")
     assert_equal(dirs["5,2"].south, true, "Rimuldar (5,2) should block entry from the south after latest return-route loop from (5,3)")
     assert_equal(dirs["6,8"].south, true, "Rimuldar (6,8) should block entry from the south after latest key-route loop from (6,9)")
