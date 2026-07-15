@@ -1,7 +1,8 @@
 # Rimuldar Magic Key Route Correctness Design
 
 Date: 2026-07-15
-Status: Approved approach; implementation awaits written-spec review
+Status: Approved design; static route repair complete; live executor amendment
+awaits written-spec review
 
 ## Goal
 
@@ -35,9 +36,41 @@ After the shop proof and upper-route audit, the final live state was entry
 `(29,14)`, menu/dialogue closed, six keys, and
 `RUNTIME_BLOCKS map=0x0B none`.
 
+## Live Acceptance Findings
+
+The corrected source plans a 52-step route from `(29,14)` to `(4,5)`:
+
+- 12 north;
+- 8 west;
+- 2 north;
+- 21 west;
+- 3 south;
+- 4 east;
+- 2 south.
+
+The first source-only autowalk followed that route until `(1,0)->LEFT`, where
+the normal attempt and both seam retries failed to enter `(0,0)`. The planner
+still reported the edge passable, no NPC occupied either endpoint, and
+`RUNTIME_BLOCKS map=0x0B none` remained true.
+
+Raw input calibration isolated the difference: an uninterrupted 64-frame
+RIGHT hold moved `(1,0)->(5,0)`, and an uninterrupted 80-frame LEFT hold moved
+`(5,0)->(0,0)`. The edge is therefore passable through normal movement, but
+the engine requires the westbound top-bank run to remain continuously held.
+The queued executor currently inserts neutral input, a four-frame cooldown,
+and a forced post-step release after every crossed tile.
+
+Starting from `(0,0)`, the remaining nine-step autowalk reached `(4,5)`. Its
+last seam retry succeeded, but the seam-retry destination branch published
+route completion and cleared route context without running the normal arrival
+path. It consequently skipped the target-facing and completion behavior.
+After a manual one-frame DOWN face, TALK opened the verified `53 GOLD?` Magic
+Key prompt. These findings add an executor amendment to the approved static
+map, planner, and service design; they do not change the decoded route.
+
 ## Root Causes
 
-Three independent source assumptions combine to break routing:
+Five independent source assumptions combine to break routing and execution:
 
 1. `map_reader.lua` describes and expands interior map bytes as nibble RLE.
    The ROM instead stores two block IDs per byte. When map pointers are sorted
@@ -48,6 +81,12 @@ Three independent source assumptions combine to break routing:
    Rimuldar's intended outer bank deliberately uses both boundaries.
 3. `SERVICE_INTERACTION_OVERRIDES[0x0B]["4,7"]` targets counter `(4,6)` as the
    player stand. The live stand is `(4,5)` facing south.
+4. Queued movement always releases and represses the D-pad after each tile.
+   Rimuldar's westbound top-bank entry into `(0,0)` requires uninterrupted
+   input across the straight run leading to that edge.
+5. A successful seam retry that lands directly on the route destination uses
+   a shortened completion branch. That branch bypasses the standard final
+   facing, settle, and completion-speech behavior.
 
 ## Approaches Considered
 
@@ -134,8 +173,62 @@ The route goal is `(4,5)`, not adjacency to seller `(4,7)` and not counter
 real bridge, avoid fixed NPCs `(27,0)` and `(2,4)`, never require
 `(1,8)->(2,8)`, and finish facing south.
 
-No quest flag, opened door, movement cadence, teleport state, or runtime block
-is part of route eligibility.
+No quest flag, opened door, teleport state, or runtime block is part of route
+eligibility. Movement cadence is an execution requirement for one verified
+Rimuldar boundary, not a planner eligibility rule.
+
+### 5. Map-scoped continuous-run execution
+
+Add explicit, map-scoped metadata for cadence-sensitive entries. Rimuldar map
+`0x0B` marks entry into `(0,0)` from the east. Keep `auto_step.lua` generic and
+coordinate-free: `route_manager.lua` translates a planned path containing a
+marked entry into per-boundary `continuous_hold_after_steps` options.
+
+For a marked entry, walk backward through the contiguous same-direction run
+and mark each internal tile boundary in that run. This keeps the entire
+westbound approach continuously held rather than releasing only one tile
+before `(0,0)`. The executor retains the existing flat per-tile queue and must
+still publish exactly one `route_step_completed` event for every crossed tile.
+
+At a marked internal boundary, when the next queued direction is identical,
+the executor will:
+
+- update the completed-tile coordinates and per-tile watchdog state;
+- publish that tile's normal completion event;
+- validate the next step and any hazard refusal;
+- consume and begin the next same-direction step in the same frame;
+- omit neutral input, cooldown, and forced post-step release only at that
+  marked boundary.
+
+All safety behavior remains mandatory. If the next direction changes, the
+route ends, the completion callback clears or replans the route, a hazard is
+refused, or cancellation occurs, input neutralizes through the existing safe
+path. In particular, the final west tile releases normally at `(0,0)` before
+the route turns south, preventing an extra west input from triggering the
+World Map transition. Ordinary routes and unmarked boundaries retain current
+release timing.
+
+The marker is route/path data, not merchant-specific state. Every fresh plan,
+reroute, or seam-followup recomputes its markers from the map metadata and
+actual path. Do not overload `settle_same_direction=false`; survey-safe routes
+already use that option for a different purpose.
+
+Log entry into, continuation of, and exit from a continuous run with map,
+origin, destination, direction, and route-step index. Existing blocker,
+timeout, cancellation, hazard, and progress logs remain intact.
+
+### 6. One standard arrival path
+
+Extract or reuse one route-manager arrival helper for both ordinary completion
+and a successful seam retry that lands on the destination. The helper must
+capture the active target and facing direction before clearing route context,
+perform the normal final neutral/settle behavior, face south at the merchant
+stand, and issue the usual completion feedback.
+
+Per-tile completion and route arrival remain separate events: exactly one
+`route_step_completed` event is emitted for the final tile, followed later by
+exactly one route-complete event. A seam retry must neither double-complete nor
+discard the target context needed for facing.
 
 ## Test Strategy
 
@@ -177,12 +270,43 @@ the stand. Keep this separate from a route-manager test that asserts the
 selected service goal is `(4,5)` with south-facing interaction state; the
 existing route-manager tests stub pathfinding and cannot prove map integration.
 
+### Continuous-run executor tests
+
+- A route with an explicitly marked straight-run boundary proves there is no
+  neutral frame between the marked same-direction steps.
+- The same route proves one direction sequence and exactly one
+  `route_step_completed` event per tile.
+- A turn immediately after the marked run proves neutral release before the
+  new direction and no old-direction overshoot.
+- A route ending after a marked run proves normal final neutralization.
+- Blocker reporting after multiple continuously held tiles identifies the
+  correct current origin and attempted destination.
+- Opposite-direction input still cancels immediately.
+- Hazard refusal before the next tile neutralizes input and does not consume
+  that unsafe step.
+- An otherwise identical unmarked route retains the existing forced release
+  between tiles.
+
+### Cadence metadata and arrival tests
+
+- A synthetic Rimuldar path ending in the east approach to `(0,0)` marks only
+  the internal boundaries of its contiguous westbound run.
+- Turns, the final entry tile, unrelated straight runs, other maps, and paths
+  that do not cross the marked edge remain unmarked.
+- A successful seam retry that lands on `(4,5)` emits one final step event and
+  one route-complete event, preserves the Magic Key target, faces south, and
+  produces the standard completion feedback.
+- Existing survey-safe seam completion remains unchanged.
+
 ### Verification commands
 
 Run focused map-reader, object, pathfinder, and route-manager suites first,
-then every repository Lua test and `luac -p` over changed Lua files. The final
-live check requires a manual FCEUX Lua reload, `RUNTIME_BLOCKS map=0x0B none`,
-normal entry `(29,14)`, source-only autowalk to `(4,5)`, and the 53 G prompt.
+then every repository Lua test and `luac -p` over changed Lua files. Capture
+the injected-input waveform in executor tests so continuous means no neutral
+frame, not merely a shorter delay. The final live check requires a manual
+FCEUX Lua reload, `RUNTIME_BLOCKS map=0x0B none`, normal entry `(29,14)`, one
+source-only autowalk to `(4,5)`, standard south-facing arrival, and the 53 G
+prompt.
 
 ## Failure Handling
 
@@ -195,6 +319,12 @@ normal entry `(29,14)`, source-only autowalk to `(4,5)`, and the 53 G prompt.
   `main.lua`; if polling remains stale, relaunch with `./launch_dw.sh`.
 - Keep runtime/test-only blocks separate from permanent map data throughout
   live verification.
+- If continuous execution loses route context, encounters a refused hazard, or
+  sees a different next direction, fail closed by neutralizing input and using
+  the existing release/replan behavior.
+- Never infer continuous execution merely from adjacent equal directions;
+  require explicit map/path metadata so ordinary routes retain their proven
+  anti-overshoot timing.
 
 ## Scope Boundaries
 
@@ -204,6 +334,8 @@ Included:
 - Rimuldar outer-bank passability and transition direction;
 - Magic Key Merchant interaction geometry;
 - focused and end-to-end regressions;
+- map-scoped cadence metadata and generic per-boundary executor support;
+- standard arrival handling after a destination seam retry;
 - stale source comments directly describing this route.
 
 Excluded:
@@ -211,6 +343,8 @@ Excluded:
 - unrelated Rimuldar inn/Wings routes;
 - broad cleanup of historical per-map overrides;
 - promotion of `(2,8).west`;
+- a global continuous-hold default or merchant-specific executor flag;
+- fake blockers, teleports, or quest-state gates for the `(0,0)` seam;
 - emulator launcher or desktop-control automation.
 
 ## Acceptance Criteria
@@ -219,7 +353,11 @@ Excluded:
    on the pre-fix source.
 2. `git diff --check` and Lua syntax checks pass.
 3. The planner selects `(4,5)` facing south for the Magic Key Merchant.
-4. Source-only live autowalk reaches `(4,5)` from `(29,14)` via the row-2 /
-   x=21 jog and bridge `(1,3)`.
-5. TALK opens the 53 G key prompt with no runtime blocks.
-6. Active handoff, playtesting, map notes, and durable project memory agree.
+4. One source-only live autowalk reaches `(4,5)` from `(29,14)` via the row-2 /
+   x=21 jog, uninterrupted top-bank run into `(0,0)`, and bridge `(1,3)`.
+5. The executor releases before turning south at `(0,0)`, never transitions to
+   the World Map, and preserves per-tile progress/blocker/cancel safety.
+6. A destination seam retry uses the standard arrival path, leaves the player
+   at `(4,5)` facing south, and emits one route-complete result.
+7. TALK opens the 53 G key prompt with no runtime blocks.
+8. Active handoff, playtesting, map notes, and durable project memory agree.
