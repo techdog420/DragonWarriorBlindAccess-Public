@@ -1389,11 +1389,10 @@ local SERVICE_INTERACTION_OVERRIDES = {
         ["27,26"] = {x = 25, y = 26, face_dir = "east", label = "counter", name = "Weapons Merchant"},
     },
 
-    -- Rimuldar services. Old Man 1 occupies (4,7); the Magic Key shop opens
-    -- from the public north-side stand at (4,6), facing south. Merchant 1 at
-    -- (2,4) only says "Welcome!" from the hidden adjacent shop cells, so keep
-    -- him browsable but out of Services. Merchant 2 occupies (23,7). The first
-    -- key-shop route bridge is modeled in map_reader.lua at (24,6).
+    -- Rimuldar services. Old Man 1 is the Magic Key seller at (4,7), behind
+    -- the raw-0xF counter at (4,6). The player uses the public stand at (4,5),
+    -- facing south. Merchant 1 at (2,4) is only the greeter, so keep him
+    -- browsable but out of Services. Merchant 2 occupies (23,7).
     --
     -- The first weapon-shop proof saw the shop prompt while standing at
     -- (23,9), but the public route from the entrance could not reach that
@@ -1403,7 +1402,7 @@ local SERVICE_INTERACTION_OVERRIDES = {
     -- but the public route to that stand later collapsed. A follow-up live
     -- prompt opened from the reachable east-side stand at (18,18), facing west.
     [0x0B] = {
-        ["4,7"] = {x = 4, y = 6, face_dir = "south", label = "counter", name = "Magic Key Merchant"},
+        ["4,7"] = {x = 4, y = 5, face_dir = "south", label = "counter", name = "Magic Key Merchant"},
         ["23,7"] = {x = 24, y = 7, face_dir = "west", label = "counter", name = "Weapons Merchant"},
         ["16,18"] = {
             x = 18,

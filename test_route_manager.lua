@@ -1440,19 +1440,19 @@ end
 
 function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service()
     local merchant = {
-        name = "Merchant 2",
+        name = "Magic Key Merchant",
         type = "npc",
-        id = "npc_1",
-        x = 5,
-        y = 4,
-        interaction_x = 5,
-        interaction_y = 6,
-        interaction_face_dir = "north",
+        id = "npc_3",
+        x = 4,
+        y = 7,
+        interaction_x = 4,
+        interaction_y = 5,
+        interaction_face_dir = "south",
     }
     local env = make_env({
-        start_map_id = 0x08,
-        start_x = 8,
-        start_y = 5,
+        start_map_id = 0x0B,
+        start_x = 29,
+        start_y = 14,
         current_object = merchant,
         config_values = {
             auto_walk_npc_hold_frames = "0",
@@ -1462,17 +1462,21 @@ function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service
 
     local plan = env.route_manager.plan_path_to_object(merchant)
     local direct = env.last_direct_call()
-    assert_equal(plan.path_mode, "direct", "counter services should route directly to the interaction square")
-    assert_equal(plan.goal_x, 5, "counter service plan should target the doorway X")
-    assert_equal(plan.goal_y, 6, "counter service plan should target the doorway Y")
-    assert_equal(plan.face_dir, "north", "counter service plan should face toward the merchant after arrival")
-    assert_equal(direct.goal_x, 5, "direct pathfinder call should use the interaction X")
-    assert_equal(direct.goal_y, 6, "direct pathfinder call should use the interaction Y")
+    assert_equal(plan.path_mode, "direct", "Rimuldar key service should route directly to the public stand")
+    assert_equal(plan.interaction_goal, true, "Rimuldar key service plan should identify the public stand as an interaction goal")
+    assert_equal(plan.goal_x, 4, "Rimuldar key service plan should target the public stand X")
+    assert_equal(plan.goal_y, 5, "Rimuldar key service plan should target the public stand Y")
+    assert_equal(plan.face_dir, "south", "Rimuldar key service plan should use service metadata instead of pathfinder facing")
+    assert_equal(direct.start_x, 29, "Rimuldar key service pathfinder call should start at the live entrance X")
+    assert_equal(direct.start_y, 14, "Rimuldar key service pathfinder call should start at the live entrance Y")
+    assert_equal(direct.goal_x, 4, "Rimuldar key service pathfinder call should use the interaction X")
+    assert_equal(direct.goal_y, 5, "Rimuldar key service pathfinder call should use the interaction Y")
 
-    env.route_manager.autowalk_to_current()
+    local queued = env.route_manager.autowalk_to_current()
+    assert_equal(queued.status, "queued", "Rimuldar key service autowalk should queue the direct route")
     env.auto_step.on_route_complete()
     env.route_manager.apply_npc_freeze()
-    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.up, true, "direct service arrival should face the merchant")
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.down, true, "Rimuldar key service arrival should face south toward the seller")
 
     env.restore()
 end
