@@ -26,23 +26,40 @@ class RunTestsCommandQueueTests(unittest.TestCase):
         run.assert_not_called()
 
     def test_check_command_queue_uses_resolved_bash_and_helper_path(self):
-        resolved_bash = str(Path("C:/Program Files/Git/bin/bash.exe"))
-        original_path = os.environ.get("PATH", "")
+        with tempfile.TemporaryDirectory() as tmp:
+            git_root = Path(tmp) / "Git"
+            bash_dir = git_root / "bin"
+            helper_dir = git_root / "usr" / "bin"
+            bash_dir.mkdir(parents=True)
+            helper_dir.mkdir(parents=True)
+            resolved_bash = bash_dir / "bash.exe"
+            resolved_bash.write_bytes(b"")
+            caller_path = str(Path(tmp) / "caller-only")
 
-        with mock.patch.object(run_tests, "shutil_which", return_value=resolved_bash):
-            with mock.patch.object(run_tests.subprocess, "run") as run:
-                run.return_value = subprocess.CompletedProcess([], 0, "", "")
-                run_tests.check_command_queue()
+            def run_queue_command(command, **kwargs):
+                child_path = kwargs["env"]["PATH"].split(os.pathsep)
+                self.assertEqual(child_path[:2], [str(helper_dir), str(bash_dir)])
+                self.assertEqual(child_path[2:], [caller_path])
+                cmd_file = Path(kwargs["cwd"]) / "dw_commands.txt"
+                commands = cmd_file.read_text(encoding="utf-8").splitlines()
+                commands.extend(command[2:])
+                cmd_file.write_text("\n".join(commands) + "\n", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "", "")
 
+            with mock.patch.dict(os.environ, {"PATH": caller_path}):
+                with mock.patch.object(
+                    run_tests, "shutil_which", return_value=str(resolved_bash)
+                ):
+                    with mock.patch.object(
+                        run_tests.subprocess, "run", side_effect=run_queue_command
+                    ) as run:
+                        ok, detail = run_tests.check_command_queue()
+
+        self.assertTrue(ok)
+        self.assertEqual(detail, "dw_commands.sh append queue OK")
         self.assertEqual(run.call_count, 2)
         for call in run.call_args_list:
-            command = call.args[0]
-            child_env = call.kwargs["env"]
-            self.assertEqual(command[0], resolved_bash)
-            self.assertEqual(
-                child_env["PATH"],
-                os.pathsep.join([str(Path(resolved_bash).parent), original_path]),
-            )
+            self.assertEqual(call.args[0][0], str(resolved_bash))
 
 
 class DwCommandsShTests(unittest.TestCase):

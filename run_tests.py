@@ -291,10 +291,23 @@ def check_command_queue() -> tuple[bool, str]:
     if not bash:
         return False, "bash not found on PATH"
 
+    bash_dir = Path(bash).parent
+    if bash_dir.parent.name.casefold() == "usr":
+        git_root = bash_dir.parent.parent
+    else:
+        git_root = bash_dir.parent
+    helper_dir = git_root / "usr" / "bin"
+
+    path_prefixes = []
+    if helper_dir.is_dir() and helper_dir != bash_dir:
+        path_prefixes.append(str(helper_dir))
+    path_prefixes.append(str(bash_dir))
+
     child_env = os.environ.copy()
-    child_env["PATH"] = os.pathsep.join(
-        [str(Path(bash).parent), child_env.get("PATH", "")]
-    )
+    original_path = child_env.get("PATH", "")
+    if original_path:
+        path_prefixes.append(original_path)
+    child_env["PATH"] = os.pathsep.join(path_prefixes)
 
     with tempfile.TemporaryDirectory(prefix="dw_commands_test_") as tmp:
         tmp_path = Path(tmp)
