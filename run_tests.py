@@ -287,6 +287,15 @@ def check_bridge_config() -> tuple[bool, str]:
 
 
 def check_command_queue() -> tuple[bool, str]:
+    bash = shutil_which("bash")
+    if not bash:
+        return False, "bash not found on PATH"
+
+    child_env = os.environ.copy()
+    child_env["PATH"] = os.pathsep.join(
+        [str(Path(bash).parent), child_env.get("PATH", "")]
+    )
+
     with tempfile.TemporaryDirectory(prefix="dw_commands_test_") as tmp:
         tmp_path = Path(tmp)
         script_path = tmp_path / "dw_commands.sh"
@@ -294,16 +303,18 @@ def check_command_queue() -> tuple[bool, str]:
         shutil.copy2(ROOT / "dw_commands.sh", script_path)
         cmd_file.write_text("", encoding="utf-8")
         first = subprocess.run(
-            ["bash", str(script_path), "freeze_npcs", "debug_pathfind_to:3,3"],
+            [bash, str(script_path), "freeze_npcs", "debug_pathfind_to:3,3"],
             cwd=tmp_path,
             text=True,
             capture_output=True,
+            env=child_env,
         )
         second = subprocess.run(
-            ["bash", str(script_path), "validate_path"],
+            [bash, str(script_path), "validate_path"],
             cwd=tmp_path,
             text=True,
             capture_output=True,
+            env=child_env,
         )
         contents = cmd_file.read_text(encoding="utf-8").splitlines()
         ok = (

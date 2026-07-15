@@ -7,9 +7,42 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import run_tests
 
 
 REPO_ROOT = Path(__file__).resolve().parent
+
+
+class RunTestsCommandQueueTests(unittest.TestCase):
+    def test_check_command_queue_fails_clearly_when_bash_is_missing(self):
+        with mock.patch.object(run_tests, "shutil_which", return_value=None):
+            with mock.patch.object(run_tests.subprocess, "run") as run:
+                ok, detail = run_tests.check_command_queue()
+
+        self.assertFalse(ok)
+        self.assertEqual(detail, "bash not found on PATH")
+        run.assert_not_called()
+
+    def test_check_command_queue_uses_resolved_bash_and_helper_path(self):
+        resolved_bash = str(Path("C:/Program Files/Git/bin/bash.exe"))
+        original_path = os.environ.get("PATH", "")
+
+        with mock.patch.object(run_tests, "shutil_which", return_value=resolved_bash):
+            with mock.patch.object(run_tests.subprocess, "run") as run:
+                run.return_value = subprocess.CompletedProcess([], 0, "", "")
+                run_tests.check_command_queue()
+
+        self.assertEqual(run.call_count, 2)
+        for call in run.call_args_list:
+            command = call.args[0]
+            child_env = call.kwargs["env"]
+            self.assertEqual(command[0], resolved_bash)
+            self.assertEqual(
+                child_env["PATH"],
+                os.pathsep.join([str(Path(resolved_bash).parent), original_path]),
+            )
 
 
 class DwCommandsShTests(unittest.TestCase):
