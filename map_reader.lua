@@ -718,10 +718,10 @@ local MAP_PASSTHROUGH_CELLS = {
         -- 2026-07-15 normal-movement Magic Key Merchant route. The live path
         -- climbs the east edge, turns west on row 2, reaches the top bank at
         -- x=21, descends x=0, and enters the shop over the northwest bridge.
-        -- The full bank stays terrain-walkable on both sides of fixed Person 4
-        -- at (27,0); live NPC blocking forces the route onto the x=21 jog.
-        -- These raw type-0 cells
-        -- complete that route; previously promoted cells farther below supply
+        -- The full bank stays terrain-walkable, including beneath fixed
+        -- Person 4 at (27,0); normal NPC blocking prevents crossing that
+        -- occupied cell. These raw type-0 cells complete the proven route;
+        -- previously promoted cells farther below supply
         -- the rest of the east strip and row-2 jog without duplicate keys.
         -- Top bank, including the terrain beneath Person 4 at (27,0).
         ["0,0"] = true,  ["1,0"] = true,  ["2,0"] = true,
