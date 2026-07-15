@@ -2,12 +2,12 @@
 -- ROM map data reading for Dragon Warrior.
 --
 -- Reads map metadata and tile data from the ROM to build 2D tile grids.
--- Dragon Warrior stores maps as RLE-compressed tile data in the ROM.
+-- Dragon Warrior stores interior maps as packed tile data in the ROM.
 -- Each map has a metadata entry (5 bytes) with a data pointer, width,
 -- height, and border tile. The width/height bytes are stored as the
 -- maximum in-map coordinate, so the actual dimensions are +1. The tile
--- data uses nibble-based RLE:
--- high nibble = tile type (0-15), low nibble = repeat count minus 1.
+-- data stores two block IDs per byte: the even linear tile index uses the
+-- high nibble and the odd linear tile index uses the low nibble.
 --
 -- The overworld uses a more complex system with row-offset
 -- pointers, so we skip A* pathfinding for it and only build tile grids
@@ -86,16 +86,29 @@ function M.get_metadata(map_id)
 end
 
 -- ============================================================
--- RLE Decompression
+-- Packed Interior Map Decoding
 -- ============================================================
 
--- decompress_map(map_id): Read RLE-compressed tile data from ROM and
--- produce a 2D tile grid.
---
--- RLE format (nibble-based):
---   Each byte encodes one run of tiles.
---   High nibble (bits 7-4) = tile type (0-15)
---   Low nibble (bits 3-0) = repeat count minus 1 (so 0 means 1 tile, 15 means 16)
+-- read_packed_block_id(meta, tile_index): Read one block ID from the linear
+-- packed-nibble stream. Rows do not begin on separate byte boundaries, so an
+-- odd-width row can share a byte with the next row.
+local function read_packed_block_id(meta, tile_index)
+    if not meta or tile_index < 0 or tile_index >= meta.width * meta.height then
+        return nil
+    end
+
+    local byte = rom.readbyte(meta.data_ptr + math.floor(tile_index / 2))
+    if byte == nil then return nil end
+    byte = math.floor(tonumber(byte) or 0) % 256
+
+    if tile_index % 2 == 0 then
+        return math.floor(byte / 16) % 16
+    end
+    return byte % 16
+end
+
+-- decompress_map(map_id): Read packed interior tile data from ROM and produce
+-- a 2D tile grid.
 --
 -- The tiles fill the grid left-to-right, top-to-bottom.
 -- Returns a 2D table: tiles[y][x] where y and x are 0-based.
@@ -120,35 +133,10 @@ function M.decompress_map(map_id)
         tiles[y] = {}
     end
 
-    -- Read RLE data starting at the map's data pointer.
-    -- The data_ptr from metadata is the ROM file offset.
-    local rom_offset = meta.data_ptr
-    local tile_count = 0
-
-    -- Safety limit to prevent infinite loops if data is corrupt
-    local max_bytes = 4096
-
-    for _ = 1, max_bytes do
-        if tile_count >= total_tiles then break end
-
-        local byte = rom.readbyte(rom_offset)
-        rom_offset = rom_offset + 1
-
-        -- High nibble = tile type, low nibble = run length - 1
-        -- FCEUX bitwise: AND() for masking, divide for shift
-        local tile_type = AND(byte, 0xF0) / 16  -- bits 7-4
-        local run_length = AND(byte, 0x0F) + 1  -- bits 3-0, plus 1
-
-        -- Place tiles into the grid
-        for _ = 1, run_length do
-            if tile_count >= total_tiles then break end
-
-            local y = math.floor(tile_count / width)
-            local x = tile_count % width
-
-            tiles[y][x] = tile_type
-            tile_count = tile_count + 1
-        end
+    for tile_index = 0, total_tiles - 1 do
+        local y = math.floor(tile_index / width)
+        local x = tile_index % width
+        tiles[y][x] = read_packed_block_id(meta, tile_index)
     end
 
     return tiles
@@ -202,18 +190,7 @@ function M.get_raw_block_id(map_id, x, y)
         return nil
     end
 
-    local bytes_per_row = math.ceil(meta.width / 2)
-    local byte_offset = meta.data_ptr + y * bytes_per_row + math.floor(x / 2)
-    local byte = rom.readbyte(byte_offset)
-    if byte == nil then
-        return nil
-    end
-
-    byte = math.floor(tonumber(byte) or 0) % 256
-    if x % 2 == 0 then
-        return math.floor(byte / 16) % 16
-    end
-    return byte % 16
+    return read_packed_block_id(meta, y * meta.width + x)
 end
 
 function M.is_large_tile(map_id, x, y)
@@ -225,7 +202,7 @@ end
 -- ============================================================
 -- Tile walkability depends on the tileset. Dragon Warrior uses
 -- different graphics for different map categories, but the tile
--- type numbers (0-15 from the RLE data) have consistent meanings.
+-- type numbers (0-15 from the packed map data) have consistent meanings.
 --
 -- These tables are best guesses based on common NES RPG patterns
 -- and will need empirical verification. Use the diagnostic hotkey

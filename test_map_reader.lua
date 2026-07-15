@@ -82,6 +82,25 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local function fill_packed_map(rom_bytes, data_start, width, height, block_id)
+    local packed = (block_id % 16) * 0x11
+    for offset = 0, math.ceil(width * height / 2) - 1 do
+        rom_bytes[data_start + offset] = packed
+    end
+end
+
+local function set_packed_block(rom_bytes, data_start, width, x, y, block_id)
+    local tile_index = y * width + x
+    local offset = data_start + math.floor(tile_index / 2)
+    local byte = rom_bytes[offset] or 0
+    block_id = block_id % 16
+    if tile_index % 2 == 0 then
+        rom_bytes[offset] = block_id * 16 + byte % 16
+    else
+        rom_bytes[offset] = math.floor(byte / 16) * 16 + block_id
+    end
+end
+
 local MAP_NAMES = {
     [0x04] = "Tantegel Castle",
     [0x0C] = "Sun Shrine",
@@ -197,6 +216,103 @@ function tests.with_cleanup_runs_cleanup_after_body_failure()
     assert_equal(ok, false, "with_cleanup should rethrow the body failure")
     assert_equal(cleaned, true, "with_cleanup should run cleanup even when the body fails")
     assert_equal(string.find(tostring(err), "forced body failure", 1, true) ~= nil, true, "with_cleanup should preserve the body failure")
+end
+
+function tests.interior_decoder_reads_even_width_packed_nibbles()
+    local map_id = 0x04
+    local base = map_id * 5
+    local data_start = 0x120
+    local rom_bytes = {
+        [base] = 0x10,      -- CPU $8110 -> file offset $0120
+        [base + 1] = 0x81,
+        [base + 2] = 3,     -- width 4
+        [base + 3] = 1,     -- height 2
+        [base + 4] = 0,
+        [data_start + 0] = 0x4F,
+        [data_start + 1] = 0xC0,
+        [data_start + 2] = 0x9A,
+        [data_start + 3] = 0x12,
+    }
+    local expected = {
+        [0] = {[0] = 0x4, [1] = 0xF, [2] = 0xC, [3] = 0x0},
+        [1] = {[0] = 0x9, [1] = 0xA, [2] = 0x1, [3] = 0x2},
+    }
+    local env = make_env({rom_bytes = rom_bytes})
+    local grid = env.map_reader.decompress_map(map_id)
+
+    for y = 0, 1 do
+        for x = 0, 3 do
+            local message = string.format("packed 4x2 coordinate (%d,%d)", x, y)
+            assert_equal(grid[y][x], expected[y][x], message .. " grid value")
+            assert_equal(env.map_reader.get_raw_block_id(map_id, x, y), expected[y][x], message .. " raw value")
+        end
+    end
+
+    env.restore()
+end
+
+function tests.interior_decoder_keeps_odd_width_rows_byte_contiguous()
+    local map_id = 0x08
+    local base = map_id * 5
+    local data_start = 0x220
+    local rom_bytes = {
+        [base] = 0x10,      -- CPU $8210 -> file offset $0220
+        [base + 1] = 0x82,
+        [base + 2] = 2,     -- width 3
+        [base + 3] = 1,     -- height 2
+        [base + 4] = 0,
+        [data_start + 0] = 0x12,
+        [data_start + 1] = 0x34,
+        [data_start + 2] = 0x56,
+    }
+    local expected = {
+        [0] = {[0] = 0x1, [1] = 0x2, [2] = 0x3},
+        [1] = {[0] = 0x4, [1] = 0x5, [2] = 0x6},
+    }
+    local env = make_env({rom_bytes = rom_bytes})
+    local grid = env.map_reader.decompress_map(map_id)
+
+    for y = 0, 1 do
+        for x = 0, 2 do
+            local message = string.format("packed 3x2 coordinate (%d,%d)", x, y)
+            assert_equal(grid[y][x], expected[y][x], message .. " grid value")
+            assert_equal(env.map_reader.get_raw_block_id(map_id, x, y), expected[y][x], message .. " raw value")
+        end
+    end
+
+    env.restore()
+end
+
+function tests.rimuldar_packed_fixture_keeps_raw_and_grid_values_aligned()
+    local map_id = 0x0B
+    local base = map_id * 5
+    local data_start = 0x320
+    local rom_bytes = {
+        [base] = 0x10,      -- CPU $8310 -> file offset $0320
+        [base + 1] = 0x83,
+        [base + 2] = 29,    -- width 30
+        [base + 3] = 29,    -- height 30
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x0)
+    set_packed_block(rom_bytes, data_start, 30, 1, 3, 0xE)
+    set_packed_block(rom_bytes, data_start, 30, 4, 5, 0x6)
+    set_packed_block(rom_bytes, data_start, 30, 4, 6, 0xF)
+
+    local env = make_env({rom_bytes = rom_bytes})
+    local grid = env.map_reader.decompress_map(map_id)
+    local checks = {
+        {x = 1, y = 3, expected = 0xE, label = "bridge"},
+        {x = 4, y = 5, expected = 0x6, label = "merchant stand"},
+        {x = 4, y = 6, expected = 0xF, label = "counter"},
+    }
+    for _, check in ipairs(checks) do
+        local message = string.format("Rimuldar %s (%d,%d)", check.label, check.x, check.y)
+        assert_equal(grid[check.y][check.x], check.expected, message .. " grid value")
+        assert_equal(env.map_reader.get_raw_block_id(map_id, check.x, check.y), check.expected, message .. " raw value")
+    end
+
+    env.restore()
 end
 
 function tests.directional_block_comments_match_their_map_block()
@@ -603,9 +719,7 @@ function tests.garinham_grey_building_door_opens_from_door_ram_array()
         [base + 3] = 19,
         [base + 4] = 0,
     }
-    for i = 0, 24 do
-        rom_bytes[data_start + i] = 0x2F
-    end
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0x2)
 
     local memory_bytes = {
         [0] = 0x10,
@@ -654,9 +768,7 @@ function tests.garins_grave_b1_southeast_door_opens_from_door_ram_array()
         [base + 3] = 19,
         [base + 4] = 0,
     }
-    for i = 0, 24 do
-        rom_bytes[data_start + i] = 0x2F
-    end
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0x2)
 
     local memory_bytes = {
         [0] = 0x20,
@@ -702,21 +814,10 @@ function tests.garinham_grave_dark_wall_entry_is_passthrough()
         [base + 3] = 19,
         [base + 4] = 0,
     }
-    local rle = {}
-    for _ = 1, 13 do table.insert(rle, 0x6F) end -- 208 floor tiles
-    table.insert(rle, 0x6A) -- 11 more floor tiles: index 208..218
-    table.insert(rle, 0x20) -- index 219 == (19,10), live-probed type-2 wall
-    for _ = 1, 2 do table.insert(rle, 0x6F) end
-    table.insert(rle, 0x6A) -- indices 220..262 floor before (3,13)
-    table.insert(rle, 0x20) -- index 263 == (3,13), live-probed type-2 wall
-    for _ = 1, 4 do table.insert(rle, 0x6F) end
-    table.insert(rle, 0x6E) -- indices 264..342 floor before (3,17)
-    table.insert(rle, 0xB0) -- index 343 == (3,17), live-probed type-11 wall
-    for _ = 1, 3 do table.insert(rle, 0x6F) end
-    table.insert(rle, 0x67)
-    for i, byte in ipairs(rle) do
-        rom_bytes[data_start + i - 1] = byte
-    end
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0x6)
+    set_packed_block(rom_bytes, data_start, 20, 19, 10, 0x2)
+    set_packed_block(rom_bytes, data_start, 20, 3, 13, 0x2)
+    set_packed_block(rom_bytes, data_start, 20, 3, 17, 0xB)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -800,9 +901,7 @@ function tests.rimuldar_inn_doors_override_walkable_floor_until_open()
         [base + 3] = 29,
         [base + 4] = 0,
     }
-    for i = 0, 56 do
-        rom_bytes[data_start + i] = 0x6F
-    end
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x6)
 
     local closed_env = make_env({
         rom_bytes = rom_bytes,
@@ -890,17 +989,15 @@ function tests.cantlin_old_man_4_route_edges_are_modeled()
 end
 function tests.cantlin_north_lane_routes_through_west_descent()
     local base = 0x0A * 5
-    local data_start = 0x10
+    local data_start = 0x1010
     local rom_bytes = {
         [base] = 0x00,
-        [base + 1] = 0x80,
+        [base + 1] = 0x90,
         [base + 2] = 29,
         [base + 3] = 29,
         [base + 4] = 0,
     }
-    for i = 0, 56 do
-        rom_bytes[data_start + i] = 0x66
-    end
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x6)
     local env = make_env({rom_bytes = rom_bytes})
 
     for x = 1, 29 do
@@ -947,19 +1044,11 @@ function tests.cantlin_premium_merchant_hidden_bridge_is_passthrough()
         [base + 4] = 0,
     }
 
-    -- Fill through index 384 with floor, place type-15 at (25..27,12), one
-    -- floor cell at (28,12), type-15 at (29,12), then fill the remainder.
-    for i = 0, 23 do
-        rom_bytes[data_start + i] = 0x6F
-    end
-    rom_bytes[data_start + 24] = 0x60
-    rom_bytes[data_start + 25] = 0xF2
-    rom_bytes[data_start + 26] = 0x60
-    rom_bytes[data_start + 27] = 0xF0
-    for i = 28, 58 do
-        rom_bytes[data_start + i] = 0x6F
-    end
-    rom_bytes[data_start + 59] = 0x6D
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x6)
+    set_packed_block(rom_bytes, data_start, 30, 25, 12, 0xF)
+    set_packed_block(rom_bytes, data_start, 30, 26, 12, 0xF)
+    set_packed_block(rom_bytes, data_start, 30, 27, 12, 0xF)
+    set_packed_block(rom_bytes, data_start, 30, 29, 12, 0xF)
 
     local env = make_env({rom_bytes = rom_bytes})
     local counter = env.map_reader.get_walkability_details(0x0A, 25, 12)
@@ -1312,7 +1401,7 @@ function tests.raw_block_reader_uses_high_and_low_nibbles_by_coordinate()
     assert_equal(env.map_reader.get_raw_block_id(0, 1, 0), 0x0F, "odd X should read the low nibble")
     assert_equal(env.map_reader.get_raw_block_id(0, 2, 0), 0x0C, "next byte high nibble should read the next even X")
     assert_equal(env.map_reader.get_raw_block_id(0, 3, 0), 0x00, "next byte low nibble should read the next odd X")
-    assert_equal(env.map_reader.get_raw_block_id(0, 0, 1), 0x09, "Y should advance by ceil(width / 2) bytes")
+    assert_equal(env.map_reader.get_raw_block_id(0, 0, 1), 0x09, "the next row should continue at the next linear packed tile")
     assert_equal(env.map_reader.get_raw_block_id(0, 4, 0), nil, "out-of-bounds X should return nil")
 
     env.restore()
@@ -1424,9 +1513,7 @@ function tests.tantegel_castle_damage_tiles_are_modeled_as_hazards()
         [23] = 29,
         [24] = 0,
     }
-    for i = 0, 56 do
-        rom_bytes[data_start + i] = 0x4F
-    end
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x4)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -2211,16 +2298,15 @@ end
 
 function tests.garinham_public_shop_route_edges_match_live_checks()
     local base = 9 * 5
+    local data_start = 0x1010
     local rom_bytes = {
         [base] = 0x00,
-        [base + 1] = 0x80,
+        [base + 1] = 0x90,
         [base + 2] = 19,
         [base + 3] = 19,
         [base + 4] = 0,
     }
-    for i = 0x10, 0x28 do
-        rom_bytes[i] = 0x2F
-    end
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0x2)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -3041,18 +3127,17 @@ end
 
 function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     local base = 8 * 5
+    local data_start = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,      -- CPU $9000 -> file offset $1010
+        [base + 1] = 0x90,
+        [base + 2] = 29,    -- width 30
+        [base + 3] = 29,    -- height 30
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x0)
     local env = make_env({
-        rom_bytes = {
-            [base] = 0x00,      -- CPU $8000 -> file offset $0010
-            [base + 1] = 0x80,
-            [base + 2] = 29,    -- width 30
-            [base + 3] = 29,    -- height 30
-            [base + 4] = 0,
-            [0x10] = 0x0F, [0x11] = 0x0F, [0x12] = 0x0F, [0x13] = 0x0F,
-            [0x14] = 0x0F, [0x15] = 0x0F, [0x16] = 0x0F, [0x17] = 0x0F,
-            [0x18] = 0x0F, [0x19] = 0x0F, [0x1A] = 0x0F, [0x1B] = 0x0F,
-            [0x1C] = 0x0F, [0x1D] = 0x0F, [0x1E] = 0x0F,
-        },
+        rom_bytes = rom_bytes,
         memory_bytes = {
             [0] = 0x10, -- TERRAIN_OFFSET stubbed to 0 in make_env()
         },
@@ -3452,19 +3537,24 @@ end
 
 function tests.erdricks_cave_b1_entrance_passthrough_overrides_edge_boundary()
     local base = 0x1C * 5
+    local data_start = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,      -- CPU $9000 -> file offset $1010
+        [base + 1] = 0x90,
+        [base + 2] = 9,     -- width 10
+        [base + 3] = 9,     -- height 10
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0x0)
+    for x = 0, 9 do
+        set_packed_block(rom_bytes, data_start, 10, x, 0, 0x9)
+    end
+    set_packed_block(rom_bytes, data_start, 10, 0, 1, 0x9)
+    for x = 1, 9 do
+        set_packed_block(rom_bytes, data_start, 10, x, 1, 0x8)
+    end
     local env = make_env({
-        rom_bytes = {
-            [base] = 0x00,      -- CPU $8000 -> file offset $0010
-            [base + 1] = 0x80,
-            [base + 2] = 9,     -- width 10
-            [base + 3] = 9,     -- height 10
-            [base + 4] = 0,
-            [0x10] = 0x99,      -- row 0: ten type-9 edge/wall tiles
-            [0x11] = 0x90,      -- row 1 x=0: type-9 boundary tile
-            [0x12] = 0x88,      -- row 1 x=1-9: type-8 floor/stair strip
-            [0x13] = 0x0F, [0x14] = 0x0F, [0x15] = 0x0F,
-            [0x16] = 0x0F, [0x17] = 0x0F, -- remaining 80 floor tiles
-        },
+        rom_bytes = rom_bytes,
         memory_bytes = {
             [0] = 0x20, -- TERRAIN_OFFSET stubbed to 0 in make_env()
         },
@@ -3497,20 +3587,17 @@ end
 
 function tests.garins_grave_b1_treasure_row_overrides_top_edge_boundary()
     local base = 0x18 * 5
+    local data_start = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,      -- CPU $9000 -> file offset $1010
+        [base + 1] = 0x90,
+        [base + 2] = 19,    -- width 20
+        [base + 3] = 19,    -- height 20
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0x2)
     local env = make_env({
-        rom_bytes = {
-            [base] = 0x00,      -- CPU $8000 -> file offset $0010
-            [base + 1] = 0x80,
-            [base + 2] = 19,    -- width 20
-            [base + 3] = 19,    -- height 20
-            [base + 4] = 0,
-            [0x10] = 0x2F, [0x11] = 0x0B,
-            [0x12] = 0x2F, [0x13] = 0x0C,
-            [0x14] = 0x2F, [0x15] = 0x0D,
-            [0x16] = 0x2F, [0x17] = 0x0E,
-            [0x18] = 0x0F, [0x19] = 0x0F, [0x1A] = 0x0F,
-            [0x1B] = 0x0F, [0x1C] = 0x0F, [0x1D] = 0x0F,
-        },
+        rom_bytes = rom_bytes,
         memory_bytes = {
             [0] = 0x20,
         },
@@ -3539,11 +3626,9 @@ function tests.garins_grave_b2_northwest_escape_strip_overrides_left_edge_bounda
         [base + 3] = 11,    -- height 12
         [base + 4] = 0,
     }
-    for i = 0, 167 do
-        rom_bytes[data_offset + i] = 0x00
-    end
+    fill_packed_map(rom_bytes, data_offset, 14, 12, 0x0)
     for y = 3, 10 do
-        rom_bytes[data_offset + y * 14 + 1] = 0x10
+        set_packed_block(rom_bytes, data_offset, 14, 1, y, 0x1)
     end
 
     local env = make_env({
@@ -3623,9 +3708,7 @@ function tests.garins_grave_b4_west_return_stairs_override_boundary()
         [base + 3] = 19,    -- height 20
         [base + 4] = 0,
     }
-    for i = 0, 49 do
-        rom_bytes[data_offset + i] = 0x00
-    end
+    fill_packed_map(rom_bytes, data_offset, 20, 20, 0x0)
     local env = make_env({
         rom_bytes = rom_bytes,
         memory_bytes = {
@@ -3702,14 +3785,11 @@ function tests.garins_grave_b3_hidden_bridge_to_southwest_exit_is_passthrough()
         [base + 3] = 19,    -- height 20
         [base + 4] = 0,
     }
-    for i = 0, 399 do
-        rom_bytes[data_offset + i] = 0x00
-    end
-    rom_bytes[data_offset + 41] = 0x10 -- (1,2) grid tile 1, live false wall
-    rom_bytes[data_offset + 42] = 0x10 -- (2,2) grid tile 1, live false wall
-    rom_bytes[data_offset + 43] = 0x10 -- (3,2) grid tile 1, blocked east of the false-wall pocket
-    rom_bytes[data_offset + 142] = 0xF0 -- raw-block fixture for (4,14)
-    rom_bytes[data_offset + 284] = 0xF0 -- (4,14) grid tile F, live hidden bridge
+    fill_packed_map(rom_bytes, data_offset, 20, 20, 0x0)
+    set_packed_block(rom_bytes, data_offset, 20, 1, 2, 0x1)
+    set_packed_block(rom_bytes, data_offset, 20, 2, 2, 0x1)
+    set_packed_block(rom_bytes, data_offset, 20, 3, 2, 0x1)
+    set_packed_block(rom_bytes, data_offset, 20, 4, 14, 0xF)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -4480,9 +4560,7 @@ function tests.sun_shrine_west_edge_entry_and_return_stairs_override_boundary()
         [base + 3] = 9,     -- height 10
         [base + 4] = 0,
     }
-    for i = 0, 6 do
-        rom_bytes[data_offset + i] = 0x6F
-    end
+    fill_packed_map(rom_bytes, data_offset, 10, 10, 0x6)
     local env = make_env({
         rom_bytes = rom_bytes,
         memory_bytes = {
@@ -4794,17 +4872,17 @@ end
 
 function tests.erdricks_cave_b2_left_edge_loop_passthrough_overrides_boundary()
     local base = 0x1D * 5
+    local data_start = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,      -- CPU $9000 -> file offset $1010
+        [base + 1] = 0x90,
+        [base + 2] = 9,     -- width 10
+        [base + 3] = 9,     -- height 10
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0xA)
     local env = make_env({
-        rom_bytes = {
-            [base] = 0x00,      -- CPU $8000 -> file offset $0010
-            [base + 1] = 0x80,
-            [base + 2] = 9,     -- width 10
-            [base + 3] = 9,     -- height 10
-            [base + 4] = 0,
-            [0x10] = 0xAF, [0x11] = 0xAF, [0x12] = 0xAF,
-            [0x13] = 0xAF, [0x14] = 0xAF, [0x15] = 0xAF,
-            [0x16] = 0xA3,      -- 100 type-A cave-floor cells
-        },
+        rom_bytes = rom_bytes,
         memory_bytes = {
             [0] = 0x20, -- TERRAIN_OFFSET stubbed to 0 in make_env()
         },
