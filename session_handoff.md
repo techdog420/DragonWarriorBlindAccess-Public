@@ -877,25 +877,27 @@ Updated: 2026-07-15
   triggered on entry; the tough Demon Knight / Wraith Knight / Knight fights
   observed near Hauksness behaved like random encounters. FCEUX needs a manual
   Lua reload before judging the patched source route live.
-- Rimuldar / Remuldar Magic Key merchant is the active route target. The service
-  identity is solid: `Old Man 1` at `(4,7)`, public stand `(4,6)` facing south,
-  and TALK from that stand opens the 53 G Magic Key prompt. The route model is
-  not solid: newer live FCEUX evidence repeatedly blocks `(1,8)->RIGHT` into
-  `(2,8).west`, but permanently closing that edge currently isolates the known
-  merchant-side component. Keep `(2,8).west` unpromoted until a missing bridge,
-  transition/state condition, or manual route trace explains the route. The
-  2026-06-29 clean reset baseline is complete: after the user's save-state /
-  script reload plus town leave/re-enter reset, the agent re-entered Rimuldar
-  at `(29,14)` with no runtime blocks; both live-NPC and skip-NPC planners
-  found a 45-step route to `(4,6)`, but live `auto_walk_blocker:4,6` walked to
-  `(1,8)` and seam-retry blocked `(1,8)->RIGHT` into `(2,8).west` with no
-  NPC/timing cause. Runtime-closing that edge made the target unreachable with
-  the same twelve bridge candidates and `hidden_bridge_candidates=0`; the
-  runtime block was then cleared. Final live state for the handoff was
-  Rimuldar `(1,8)`, no active path, no runtime blocks. Next recommendation:
-  stop broad local candidate-blocker hunting and pivot to a manual route trace,
-  transition/state explanation, or explicitly mark this merchant route
-  unresolved until new state evidence appears.
+- Rimuldar / Remuldar Magic Key merchant access is live-resolved. The old
+  `(1,8)->RIGHT` target was a false lead. From entry `(29,14)`, the intended
+  normal route follows `x=29` north to `(29,2)`, crosses row 2 west to
+  `(21,2)`, climbs to `(21,0)`, follows `y=0` west to `(0,0)`, descends `x=0`
+  to `(0,3)`, and crosses the real far-left bridge `(1,3)->(2,3)`. At `(1,0)`,
+  turn LEFT into `(0,0)` and then DOWN; entering `x=0` horizontally below the
+  top row exits to the World Map. Fixed `Person 4` at `(27,0)` blocks the
+  tempting full-top-row route: a normal self-review pass crossed through
+  `(26,0)`, then `(26,0)->RIGHT` timed out with `npc_blocked=true`. Fixed
+  `Merchant 1` at `(2,4)` is bypassed through
+  `(3,3)->(4,3)->(5,3)->(5,4)->(5,5)->(4,5)`. `Old Man 1` remains the Magic
+  Key seller at `(4,7)`, but the real public TALK stand is `(4,5)` facing south
+  across impassable counter `(4,6)`, not `(4,6)`. Live TALK opened the 53 G
+  Magic Key prompt; it was cancelled cleanly. The follow-up route audit
+  returned the hero to Rimuldar entry `(29,14)` with six keys, menu/dialogue
+  closed, and `RUNTIME_BLOCKS map=0x0B none`. Source is
+  not yet repaired: `objects.lua` still targets `(4,6)`, `map_reader.lua`'s
+  decompressor still reads packed-nibble interior maps as RLE, and blanket
+  `engine_boundary` handling rejects the valid top/left outer bank. Add failing
+  regressions before changing those three behaviors; do not promote
+  `(2,8).west` as part of this fix.
 - Garin's Grave / Grave of Garinham route decoding is complete for current
   playtesting needs.
 - The detailed final Garin's Grave wrap-up was archived to

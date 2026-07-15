@@ -949,7 +949,7 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   better gameplay-feel path; BizHawk remains the better automated debugging
   path unless it gets tuned further.
 
-- Rimuldar is now the next guide target after exiting Swamp Cave to the south
+- Rimuldar was the next guide target after exiting Swamp Cave to the south
   island. External orientation from Gamer Corner: Rimuldar entrance is
   `(29S,59E)`, which is local world coordinate `(102,72)` from the current
   Tantegel anchor; inn is 55 G; there are 2 locked doors; treasure is Wings;
@@ -1012,14 +1012,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(17,17)`/`(18,17)` seam is not bidirectional: `(17,17)->RIGHT` can move
   into `(18,17)`, but the entrance-to-Inn route proved `(18,17)->LEFT` still
   blocks, so `(17,17).east` remains modeled and this is not the missing public
-  connector. Rimuldar's Magic Key seller is now live-confirmed too: it is
-  `Old Man 1` at `(4,7)`, not
-  `Merchant 1`. TALK from `(4,6)` facing south opened the 53 GOLD Magic Key
-  prompt, while probes around `Merchant 1` only produced the short `Welcome!`
-  greeting. `objects.lua` now labels Old Man 1 as `Magic Key Merchant`, keeps
-  `Merchant 1` out of Services, and routes the key seller through `(4,6)`
-  facing south. The entrance-side route needs hidden north/water-edge
-  connectors: live `(24,7)->UP` moved into `(24,6)` even though the ROM tile
+  connector. Historical pre-2026-07-15 service work correctly identified
+  `Old Man 1` at `(4,7)` as the Magic Key seller and `Merchant 1` as the
+  greeting-only NPC, but it misidentified counter `(4,6)` as the player stand
+  and then explored the wrong hidden-connector network. The following details
+  remain only as local seam history: `(24,7)->UP` moved into `(24,6)` even though the ROM tile
   decodes as blocked, and the later key-route shakedown proved `(19,9)` is the
   real bridge around the false `(24,9)` north pocket. Further probing added
   the hidden row-8/column-13 connectors `(14,8)`, `(13,9)`, and `(13,8)`,
@@ -1063,10 +1060,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   route, then showed the visible return pocket below `(3,11)` is a dead end:
   `(3,12).north` and `(4,11).west` are now modeled. Keep `(5,3).east` open for
   now. The route-back no-path was an NPC/model issue in the other direction:
-  fresh attempts to leave `(4,6)` by walking south into Old Man 1 at `(4,7)`
-  repeatedly blocked, while TALK from `(4,6)` facing south still opened the
-  Magic Key shop. The seller now blocks movement again; the valid service stand
-  remains `(4,6)`. The lower false-wall area around `(4,8)` and `(4,9)` is
+  historical attempts to leave `(4,6)` by walking south into Old Man 1 at
+  `(4,7)` repeatedly blocked, while TALK from `(4,6)` facing south still opened
+  the Magic Key shop. That evidence led to the then-current `(4,6)` stand model,
+  which the 2026-07-15 counter proof supersedes with `(4,5)`. The lower
+  false-wall area around `(4,8)` and `(4,9)` is
   passthrough, but the seller's occupied `(4,7)` cell is not a return corridor.
   Follow-up testing showed `(5,7)` is only a one-way trap east of the seller: exits into
   `(5,6)`, `(4,7)`, `(6,7)`, and `(5,8)` all repeatedly blocked, so
@@ -1087,8 +1085,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   passability, not a full-cell blocker; only the south approach is modeled.
   The latest route/manual pass adds blockers `(2,15).south`, `(3,16).west`,
   `(4,12).south`, `(3,13).east`, and `(5,2).south`, plus false-wall cells
-  `(3,4)` and `(4,3)`. A later check reopened `(4,6).north` because the
-  Magic Key stand must be reachable from `(4,5)->DOWN`. `(4,3)->UP` is a live northwest
+  `(3,4)` and `(4,3)`. A historical check reopened `(4,6).north` under the
+  stale assumption that `(4,6)` was the stand; the 2026-07-15 live route
+  supersedes it because `(4,5)->DOWN` correctly hits the counter. `(4,3)->UP` is a live northwest
   world-map exit, now exposed as `Northwest Exit to World Map`; `(4,2).south`
   is blocked so pathfinding treats that edge as an exit transition instead of
   an in-town corridor.
@@ -1106,8 +1105,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(1,7)->RIGHT` probe: repeated movement into `(2,7)` from the west failed and
   reached `blocked=18 moved=0`, so `(2,7).west` is now modeled as blocked while
   `(2,7)` stays a passable hidden cell. With that west approach closed, the
-  current model needed an alternate bridge into the key-counter lane. Key-to-east-exit
-  remains no-path when NPC occupancy is modeled because the geometry-only route
+  then-current model needed an alternate bridge into the key-counter lane.
+  Key-to-east-exit then remained no-path when NPC occupancy was modeled because
+  the geometry-only route
   walks through the seller. Follow-up probing found `(5,9)` is a real lower-lane
   false-wall tile from `(4,9)->RIGHT` 5/5, but `(5,9)->UP` into `(5,8)` blocked
   from a forced origin. The upper-left candidate through `(1,4)/(0,5)` also
@@ -1115,8 +1115,45 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   into `(0,6)` and changed to world map, so that was exit behavior, not the key
   stand route.
 
+  Resolved normal-route check (`2026-07-15`, supersedes the old `(1,8)` bridge
+  hypothesis):
+  - External guide orientation and the NES map put the real access bridge at
+    the far-left outer bank, `(1,3)`, not `(1,8)`.
+  - Starting at the normal east entry `(29,14)`, raw normal movement stayed on
+    map `0x0B` while walking north along `x=29` to `(29,2)`, west along row 2
+    to `(21,2)`, north to `(21,0)`, west along `y=0` to `(0,0)`, south along
+    `x=0` to `(0,3)`, and right across
+    `(1,3)->(2,3)`. Entering `x=0` horizontally below `y=0` returned to the
+    World Map, so the northwest turn must be made through `(0,0)`.
+  - Design self-review disproved the simpler full-top-row interpretation.
+    Normal movement crossed east through `(26,0)`, but `(26,0)->RIGHT` into
+    fixed `Person 4` at `(27,0)` blocked with `npc_blocked=true`. Keep the
+    live row-2 / x=21 jog in the end-to-end route.
+  - Static `Merchant 1` at `(2,4)` correctly blocked the direct south step.
+    The clean bypass moved through
+    `(3,3)->(4,3)->(5,3)->(5,4)->(5,5)->(4,5)`.
+  - `(4,5)->DOWN` into `(4,6)` blocked under both a timed hold and a same-origin
+    raw probe because `(4,6)` is the shop counter. From `(4,5)` facing south,
+    TALK opened `Magic keys! They will unlock any door. Dost thou wish to
+    purchase one for 53 GOLD?` toward seller `(4,7)`. The true player stand is
+    therefore `(4,5)`, not the stale `(4,6)` interaction override.
+  - The route used no teleport, runtime block, opened door, quest-state change,
+    or special cadence. After cancelling the prompt and auditing the upper
+    route, final state was entry `(29,14)`, six keys, and
+    `RUNTIME_BLOCKS map=0x0B none`.
+  - Static follow-up, independently rechecked against the local ROM, found that
+    all 27 consecutive interior-map pointer spans match
+    `ceil(width*height/2)` when sorted by ROM address. Rimuldar is exactly 450
+    bytes from pointer `$8B62` to `$8D24`, matching `30*30/2`: the ROM stores
+    two block nibbles per byte.
+    `get_raw_block_id()` already uses that layout, but `decompress_map()` still
+    expands the low nibble as an RLE length. This and blanket boundary rejection
+    explain the false A* network. Preserve this live route with failing tests
+    before repairing the decoder, Rimuldar boundary corridor, and service stand.
+
   Older clean check (`2026-05-18`, partially superseded by the 2026-06-28
-  Magic Key Merchant cleanup):
+  cleanup and fully superseded for end-to-end merchant access by the
+  2026-07-15 outer-bank route):
   - A post-recovery verifier disproved the noisy `(2,8).west` blocker:
     `probe_edge_verify:1,8,RIGHT,5` moved 5/5 into `(2,8)`.
   - A raw forced-origin reverse probe from `(2,8)->LEFT` moved back to `(1,8)`,
@@ -1132,11 +1169,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     `(2,9)->LEFT`, and `(1,9)->UP` each verified 5/5 passable.
   - The rest of the key-stand approach is live-confirmed:
     `(3,8)->UP`, `(3,7)->UP`, and `(3,6)->RIGHT` each verified 5/5 passable.
-  - A ROM-backed local A* using the patched files and real ROM finds a
-    39-step route from `(29,14)` to the key stand `(4,6)` while treating
+  - A ROM-backed local A* using the then-patched files and real ROM found a
+    39-step route from `(29,14)` to the then-modeled key stand `(4,6)` while treating
     Old Man 1 at `(4,7)` as blocked.
-  - After manual FCEUX reload, live autowalk from the town entrance `(29,13)`
-    queued 40 steps and reached `(4,6)`, faced south, held the merchant, and
+  - After manual FCEUX reload, that historical live autowalk from the town
+    entrance `(29,13)` queued 40 steps and reached `(4,6)`, faced south, held the merchant, and
     opened the 53 G Magic Key prompt. The first few failed attempts were input
     clutter from teleport/FCEUX bridge state, not map evidence: `(29,14).north`
     changed from 9 blocked observations to `noisy` when the same edge later
@@ -1147,10 +1184,10 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
     `(12,10)->UP` into `(12,9).south`; both are now modeled while keeping
     `(9,9)` and `(12,9)` standable passthrough cells for other approaches.
     The same pass found `(1,8)->RIGHT` into `(2,8).west` blocked by route
-    failure, same-origin probe, and 5/5 verifier, but promoting that edge
-    currently isolates the known merchant-side component. Leave `(2,8).west`
-    as unresolved route-model evidence until the missing alternate bridge or
-    state condition is found.
+    failure, same-origin probe, and 5/5 verifier. At that time, promoting the
+    edge isolated the modeled merchant-side component. The 2026-07-15 route
+    resolved the apparent contradiction: this seam is irrelevant because the
+    real bridge is `(1,3)` on the outer-bank route.
   - Follow-up NPC chat found two useful clue NPCs. `Old Man 3` at `(3,23)`
     asks about a magic temple with a yes/no prompt; its public west stand is
     `(2,23)`, reached through the false-wall seam `(1,23)<->(2,23)` that moved

@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-06-24
+Updated: 2026-07-15
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -601,7 +601,7 @@ Emulator compatibility direction:
   source reload appears to succeed but `inspect_move` still lacks those latest
   disk directions, inject matching runtime edges or manually reload before
   judging the live session.
-- Rimuldar is the next south-island target after Swamp Cave. Gamer Corner lists
+- Rimuldar was the next south-island target after Swamp Cave. Gamer Corner lists
   Rimuldar at `(29S,59E)`, which maps to local world coordinate `(102,72)` from
   the current Tantegel anchor. Rimuldar has an inn for 55 G, 2 locked doors,
   Wings treasure, a Weapons/Armor shop, and the first Magic Key shop that does
@@ -638,11 +638,19 @@ Emulator compatibility direction:
   `(17,17)`/`(18,17)` seam is one-way at best: `(17,17)->RIGHT` can move into
   `(18,17)`, but the entrance-to-Inn route proved `(18,17)->LEFT` still
   blocks, so `(17,17).east` remains modeled. The Magic Key seller is
-  `Old Man 1` at `(4,7)`, reached from
-  `(4,6)` facing south, and TALK opens the 53 G key prompt. Rimuldar
-  `Merchant 1` only says `Welcome!` and should stay out of Services. The
-  entrance-side key-shop route requires hidden connector
-  cells: `(24,7)->UP` into `(24,6)`, the false-wall bridge at `(19,9)` proved
+  `Old Man 1` at `(4,7)`. The 2026-07-15 normal route proved the real public
+  stand is `(4,5)` facing south across impassable counter `(4,6)`; TALK there
+  opens the 53 G key prompt. Rimuldar `Merchant 1` at `(2,4)` only says
+  `Welcome!` and should stay out of Services. The valid entrance-side route
+  follows the outer bank from `(29,14)` north to `(29,2)`, west to `(21,2)`,
+  north to `(21,0)`, west to `(0,0)`, south to `(0,3)`, across bridge
+  `(1,3)->(2,3)`, then bypasses the fixed greeter through
+  `(3,3)->(4,3)->(5,3)->(5,4)->(5,5)->(4,5)`. Fixed `Person 4` at `(27,0)`
+  blocks the full-top-row shortcut, so retain the row-2 / x=21 jog. The older
+  hidden-connector investigation below is retained as historical false-lead
+  evidence only; the current route does not require `(1,8)->(2,8)`. Those old
+  notes used cells such as `(24,7)->UP` into `(24,6)`, the false-wall bridge
+  at `(19,9)` proved
   by `(19,10)->UP` and `(18,9)->RIGHT` verifier/probe evidence, the row-8 /
   column-13 connectors `(14,8)`, `(13,9)`, and `(13,8)`, the upper hidden
   turn `(16,8)`, plus the northwest strip `(1,8)` and `(1,7)`. The earlier
@@ -668,16 +676,16 @@ Emulator compatibility direction:
   live-walked row-14 false-wall cells `(4,14)` and `(5,14)` for the shorter
   inbound/recovery route. The next route/manual pass adds `(2,15).south`,
   `(3,16).west`, `(4,12).south`, `(3,13).east`, and `(5,2).south`, plus
-  false-wall cells `(3,4)` and `(4,3)`. `(4,6).north` was reopened after TALK
-  confirmed `(4,6)` as the public key stand and static proof showed it must be
-  reachable from `(4,5)->DOWN`. `(4,3)->UP`
+  false-wall cells `(3,4)` and `(4,3)`. The old `(4,6).north` reopening is
+  superseded: live `(4,5)->DOWN` blocks because `(4,6)` is the counter, and
+  TALK south from `(4,5)` reaches the seller. `(4,3)->UP`
   exits to the world map, so `objects.lua` exposes `Northwest Exit to World Map`
   there and `map_reader.lua` blocks `(4,2).south` as an in-town transition
   guard. Later northwest-exit routing also promoted `(4,3).south` and
   `(4,4).south`, forcing the key-stand-to-northwest-exit route through
   `(5,3)->LEFT`. `objects.lua` treats the Magic Key seller as movement-blocking
-  again; the interaction override still targets `(4,6)` facing south. The
-  stand-to-northwest-exit route still survives as 5 steps. The old east-exit
+  again; the interaction override still needs correction from `(4,6)` to
+  `(4,5)` facing south. The old stand-to-northwest-exit and east-exit
   return is geometry-only and invalid while the seller occupies `(4,7)`. A
   follow-up route/manual pass adds passthroughs `(1,5)`, `(1,13)`, `(3,9)`,
   and `(15,5)`, and blockers `(3,15).west`, `(4,12).east`, `(5,11).south`,
@@ -734,32 +742,12 @@ Emulator compatibility direction:
   `(1,5)->UP` and `(1,5)->LEFT` each verified blocked 5/5. The later `(2,5)`
   bridge lead was stale/noisy: fresh route and direct verifier evidence block
   `(1,5)->RIGHT`, so `(2,5).west` is modeled while `(2,5)` stays standable for
-  other approaches. The `(3,7)` lead is now solved through the corrected
-  `(2,8)` bridge: a clean post-recovery verifier showed `(1,8)->RIGHT` into
-  `(2,8)` moved 5/5, and a forced-origin raw probe showed `(2,8)->LEFT` moved
-  back to `(1,8)`. Later Magic Key Merchant cleanup on 2026-06-28 superseded
-  that west-entry result: route failure, same-origin probe, and 5/5 verifier
-  all blocked `(1,8)->RIGHT` into `(2,8).west`, but promoting that edge
-  currently isolates the known merchant-side component. Keep `(2,8).south`
-  closed because `(2,9)->UP` still blocks, keep `(2,8)` exposed as a standable
-  passthrough, and leave `(2,8).west` as unresolved route-model evidence until
-  the missing alternate bridge or state condition is found. The corrected
-  town-tileset live route then found one more connector:
-  `(9,10)->LEFT` into `(8,10)` reconfirmed blocked 5/5. The 2026-06-28 pass
-  also superseded the old `(9,10)->UP` open note: `(9,9)` remains a
-  passthrough, but `(9,9).south` now blocks from `(9,10)`.
-  Follow-up raw/probe checks confirmed the row-9 lane west of it through
-  `(8,9)`, `(7,9)`, `(6,9)`, `(5,9)`, `(4,9)`, `(3,9)`, `(2,9)`, and then
-  `(1,9)->UP` into `(1,8)`. The rest of the stand approach is live-confirmed:
-  `(3,8)->UP`, `(3,7)->UP`, and `(3,6)->RIGHT` each verified 5/5 passable.
-  ROM-backed local A* with the real ROM now finds a 39-step
-  entrance-to-key-stand route from `(29,14)` to `(4,6)` while treating Old Man
-  1 at `(4,7)` as blocked. After manual FCEUX reload, live autowalk from the
-  town entrance `(29,13)` queued 40 steps, reached `(4,6)`, faced south, held
-  Old Man 1, and opened the 53 G Magic Key prompt. Treat the earlier
-  `(29,13)->DOWN` failures and the first `(2,8)->UP` failure as input/timing
-  clutter, not permanent blocker evidence; both later moved in the successful
-  route.
+  other approaches. All subsequent `(1,8)/(2,8)` bridge and 39-step
+  `(4,6)`-target route claims are superseded by the 2026-07-15 normal-route
+  proof above. `(1,8)->RIGHT` is irrelevant to merchant access, `(4,6)` is the
+  impassable counter, and the correct route/goal are bridge `(1,3)` and TALK
+  stand `(4,5)`. Preserve older seam observations only as local map evidence,
+  not as an end-to-end Magic Key route.
   Rimuldar NPC clue follow-up: `Old Man 3` at `(3,23)` asks about a magic
   temple with a yes/no prompt. Its public stand is `(2,23)` facing east, reached
   by the live-open false-wall seam `(1,23)<->(2,23)`. `Old Man 4` / Howard at

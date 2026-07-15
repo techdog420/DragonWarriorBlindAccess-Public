@@ -2,6 +2,44 @@
 
 Updated: 2026-07-15
 
+## 2026-07-15 Rimuldar Magic Key Route Reopen
+
+- CLEAN BASELINE: current FCEUX script consumed
+  `launcher_probe:rimuldar_baseline`; hero is Rimuldar `0x0B` at `(1,8)`,
+  six keys, all opened-door RAM slots `(0,0)`, `PATH_STATE target=nil`, and
+  `RUNTIME_BLOCKS map=0x0B none`.
+- NORMAL ROUTE FAILURE: immediately before that baseline, the source-planned
+  Magic Key Merchant route walked normally from `(29,14)` to `(1,8)`. The
+  queued RIGHT step and seam retry both failed into `(2,8).west`; the log
+  recorded `AUTO_WALK_BLOCKER_FOUND`, `npc_blocked=false`, and
+  `timing_suspect=false`.
+- INPUT NOTE: idle FCEUX reports `LeftAlt`, but bridge input is neutral and
+  game-side buttons are `0x00`; per the current FCEUX rules this latch is
+  benign unless movement evidence shows other contamination.
+- RESOLVED ROUTE: `(1,8)->RIGHT` was the wrong access point. From the normal
+  east entry `(29,14)`, walk north along `x=29` to `(29,2)`, west along row 2
+  to `(21,2)`, north to `(21,0)`, west along `y=0` to `(0,0)`, south along
+  `x=0` to `(0,3)`, then east across the real bridge `(1,3)->(2,3)`. At the
+  northwest corner, enter `(0,0)` from `(1,0)` and turn
+  DOWN; entering `x=0` horizontally below `y=0` changes to the World Map.
+- TOP-ROW GUARD: a normal-movement design self-review crossed `y=0` east to
+  `(26,0)`, then `(26,0)->RIGHT` blocked with `npc_blocked=true` because fixed
+  `Person 4` occupies `(27,0)`. Do not route directly from `(29,0)` across the
+  full top row; the row-2 / x=21 jog above is required with live NPCs.
+- SHOP APPROACH: fixed `Merchant 1` occupies `(2,4)`, so bypass him via
+  `(2,3)->(3,3)->(4,3)->(5,3)->(5,4)->(5,5)->(4,5)`.
+- LIVE SERVICE PROOF: `(4,5)->DOWN` correctly blocks because `(4,6)` is the
+  counter, not a player stand. TALK from `(4,5)` facing south opened:
+  `Magic keys! They will unlock any door. Dost thou wish to purchase one for
+  53 GOLD?` The prompt was cancelled with B. After the route audit, final live
+  state is Rimuldar entry `(29,14)`, menu/dialogue closed, six keys, and
+  `RUNTIME_BLOCKS map=0x0B none`.
+- SOURCE GAPS: `objects.lua` still targets stale stand `(4,6)`; the local map
+  decoder still treats packed nibbles as RLE; and blanket `engine_boundary`
+  handling rejects the valid `y=0` / `x=0` outer-bank route. Preserve the live
+  evidence above before changing source, and add red/green route regressions
+  before implementing those fixes.
+
 ## 2026-07-15 Cantlin Final Checkpoint
 
 - MANUAL ROUTES: Town Entrance to Magic Key Merchant and return both passed

@@ -129,10 +129,10 @@ hidden seams, locked doors, and service interaction tiles.
   The route to and from the east entrance is already smooth, so no new map
   blockers are attached to this service proof.
 - Rimuldar `Old Man 1` is live-confirmed as the Magic Key merchant at `(4,7)`.
-  The public route stand is `(4,6)` facing south, and TALK opens the 53 G Magic
-  Key prompt. `Merchant 1` at `(2,4)` is dialogue-only; reachable hidden-cell
-  probes only produced the short `Welcome!` greeting, so he should stay out of
-  Services.
+  The public route stand is `(4,5)` facing south across impassable counter
+  `(4,6)`, and TALK opens the 53 G Magic Key prompt. `Merchant 1` at `(2,4)`
+  is dialogue-only; reachable hidden-cell probes only produced the short
+  `Welcome!` greeting, so he should stay out of Services.
 - Rimuldar `Old Man 3` is live-confirmed as a temple-clue NPC at `(3,23)`.
   The practical public stand is `(2,23)` facing east; the west-side seam
   `(1,23)<->(2,23)` moved both ways during manual FCEUX play.
@@ -155,7 +155,18 @@ hidden seams, locked doors, and service interaction tiles.
   here." Final parked-NPC survey from `(23,23)` to `exit_29_13` reports
   `path_found=false`, `blocked_events=0`, and `reason=no_path`. Do not promote
   `(19,25).east`; the verifier there was NPC-contaminated.
-- The key-shop approach uses confirmed hidden connector cells. `(24,7)->UP`
+- The intended key-shop approach is the outer-bank route. From entry `(29,14)`,
+  walk north along `x=29` to `(29,2)`, west along row 2 to `(21,2)`, north to
+  `(21,0)`, west along `y=0` to `(0,0)`, south along `x=0` to `(0,3)`, and
+  east across bridge `(1,3)->(2,3)`. Entering
+  `x=0` horizontally below the top row exits to the World Map, so turn through
+  `(0,0)`. Do not cross the entire top row from `(29,0)`: fixed `Person 4` at
+  `(27,0)` blocks `(26,0)->RIGHT`, so the row-2 / x=21 jog is required. Bypass
+  fixed `Merchant 1` at `(2,4)` via
+  `(3,3)->(4,3)->(5,3)->(5,4)->(5,5)->(4,5)`, then TALK south across counter
+  `(4,6)`. This full normal-movement route opened the 53 G shop prompt with no
+  runtime blocks on 2026-07-15.
+- Older key-shop modeling used hidden connector cells. `(24,7)->UP`
   moves into `(24,6)` even though tile `(24,6)` decodes blocked. The later
   entrance-to-key-shop shakedown proved `(19,9)` as the route bridge around the
   false `(24,9)` north pocket: `(19,10)->UP` into `(19,9)` moved 3/3,
@@ -204,9 +215,10 @@ hidden seams, locked doors, and service interaction tiles.
   previous plan that tried to return through `(5,4)->RIGHT` and
   `(5,3)->RIGHT`. The latest route/manual pass adds `(2,15).south`,
   `(3,16).west`, `(4,12).south`, `(3,13).east`, `(5,2).south`, and
-  `(4,2).south`. The later Magic Key counter check reopens `(4,6).north`
-  because `(4,6)` is the correct public stand and must be reachable from
-  `(4,5)->DOWN`. The `(4,2).south` edge is a transition guard: `(4,3)->UP`
+  `(4,2).south`. The 2026-07-15 live route supersedes the old counter check:
+  `(4,5)->DOWN` correctly blocks because `(4,6)` is the counter, while TALK
+  south from `(4,5)` reaches the seller at `(4,7)`. The `(4,2).south` edge is
+  a transition guard: `(4,3)->UP`
   changes to the world map, so in-town A* should route to the exit stand rather
   than through row 2. Follow-up route/manual evidence
   adds passthroughs `(1,5)`, `(1,13)`, `(3,9)`, and `(15,5)`, plus blockers
@@ -224,22 +236,19 @@ hidden seams, locked doors, and service interaction tiles.
   `(4,10).north`, `(6,10).north`,
   `(25,14).east`, `(26,14).east`, `(28,14).east`, `(29,14).north`,
   `(4,5).south`, `(5,5).west`, and `(5,3).south` moved on retry or later
-  passes and stay open. Keep `(23,10).south`, `(14,8).south`, and
+  passes and stay open. That `(4,5).south` approach enters `(4,5)` from below
+  and is distinct from the counter collision at `(4,6).north`. Keep
+  `(23,10).south`, `(14,8).south`, and
   `(5,3).east` open unless fresh proof supersedes this: they were
   mixed/passable later, affected by NPC occupancy, or explicitly passable.
-- The entrance route from the town entrance `(29,13)` to the key stand `(4,6)`
-  remains unresolved after the latest 2026-06-28 cleanup. The older successful
-  39-step route and live prompt proof are real historical evidence, but newer
-  route-shaped FCEUX evidence supersedes the old clean `(2,8)` bridge proof:
-  `(1,8)->RIGHT` into `(2,8).west` repeatedly blocks under route failure,
-  same-origin probe, walked-origin verifier, and user-positioned same-origin
-  probe. Permanently closing `(2,8).west` currently isolates the known
-  merchant-side component, and repeated frontier/crawl checks found no alternate
-  single-edge or hidden-bridge candidate. Keep `(2,8).west` unpromoted until a
-  missing bridge, transition/state condition, or manual route trace explains the
-  route. The key stand and service identity are still valid: `Old Man 1`
-  occupies `(4,7)`, `objects.lua` blocks that occupied cell for movement, and
-  the public interaction override remains `(4,6)` facing south.
+- The old `(1,8)->RIGHT` bridge hypothesis is resolved as the wrong route, not
+  a stateful seam. Keep `(2,8).west` unpromoted; it is irrelevant to the valid
+  outer-bank route through `(1,3)`. Source still needs a test-first repair:
+  `objects.lua` points the Magic Key service at stale stand `(4,6)` instead of
+  `(4,5)`; `decompress_map()` treats packed-nibble interior map bytes as RLE;
+  and blanket `engine_boundary` handling rejects the valid Rimuldar `y=0` and
+  `x=0` bank cells. The live route above is the source of truth until those
+  regressions and fixes land.
 - `(6,6)` is not a full-cell blocker. It remains walkable from the modeled west
   lane, but the east approach from `(7,6)->LEFT` is a confirmed 3/3 raw verifier
   block. Do not delete `(6,6).east` to fix route planning.
