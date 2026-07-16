@@ -762,7 +762,7 @@ function continuous_hold.log(event_name, step_index, dir, from_x, from_y, reason
         tostring(reason or "-")))
 end
 
-function continuous_hold.build_step_opts(step_index, next_dir, event_name)
+function continuous_hold.build_step_opts(step_index, next_dir, event_name, from_x, from_y)
     local step_opts = {
         source = "queued_route",
         continuous_hold = continuous_hold.step_uses(step_index),
@@ -776,7 +776,7 @@ function continuous_hold.build_step_opts(step_index, next_dir, event_name)
     end
     if step_opts.continuous_hold then
         continuous_hold.log(event_name or "enter", step_index, next_dir,
-            route_last_x, route_last_y)
+            from_x, from_y)
     end
     return step_opts
 end
@@ -790,7 +790,7 @@ function continuous_hold.begin_next_step(px, py, event_name)
     if refuse_hazard_step(next_dir, px, py, "queued_route") then
         return false, "hazard_refused", next_dir
     end
-    local step_opts = continuous_hold.build_step_opts(step_index, next_dir, event_name)
+    local step_opts = continuous_hold.build_step_opts(step_index, next_dir, event_name, px, py)
     route_index = step_index + 1
     begin_step(next_dir, px, py, step_opts)
     return true, nil, next_dir

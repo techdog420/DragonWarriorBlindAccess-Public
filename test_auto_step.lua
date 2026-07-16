@@ -2470,6 +2470,22 @@ function tests.marked_run_holds_through_movement_start_and_releases_before_turn(
     env.restore()
 end
 
+function tests.marked_route_without_explicit_origin_uses_live_position()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        continuous_hold_after_steps = {[1] = true},
+    })
+
+    env.update(true)
+
+    assert_frame_only_direction(env, 1, "right", "marked route without explicit origin")
+    local active = env.auto_step.get_active_step_state()
+    assert_equal(active and active.start_x, 3, "marked route should use live origin X")
+    assert_equal(active and active.start_y, 1, "marked route should use live origin Y")
+
+    env.restore()
+end
+
 function tests.marked_run_final_tile_neutralizes_before_route_complete()
     local env = make_env({
         sticky_joypad_set = true,
