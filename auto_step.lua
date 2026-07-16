@@ -144,6 +144,7 @@ local route_last_y = nil
 local post_step_release_frames = 0
 local suppress_direction_tracking_frames = 0
 local manual_hazard_confirm = nil
+local step_completion_neutral_depth = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
 -- allowing another one. This prevents accidental double-steps when
@@ -935,12 +936,19 @@ local function emit_step_complete(from_x, from_y, dir, to_x, to_y, source, extra
         frames = extra.frames,
         inject_limit = extra.inject_limit,
     }
-    event_bus.publish("route_step_completed", step_data)
-    if M.on_step_complete then
+    local previous_completion_depth = step_completion_neutral_depth
+    step_completion_neutral_depth = previous_completion_depth + 1
+    local published, publish_err = pcall(
+        event_bus.publish, "route_step_completed", step_data)
+    if published and M.on_step_complete then
         local ok, err = pcall(M.on_step_complete, from_x, from_y, dir, to_x, to_y, step_data)
         if not ok then
             debug_tools.error("on_step_complete error: " .. tostring(err))
         end
+    end
+    step_completion_neutral_depth = previous_completion_depth
+    if not published then
+        error(publish_err, 0)
     end
 end
 
@@ -1966,13 +1974,18 @@ function M.start_route(steps, opts)
     end
     local configured_initial_settle = math.max(
         0, tonumber(opts.initial_settle_frames) or 0)
-    local first_step_settle = settle_before_step(1)
-    route_settle_frames = math.max(configured_initial_settle, first_step_settle)
-    if first_step_settle > 0 then
+    local first_step_required = settle_before_step(1)
+    local completion_frame_counted = step_completion_neutral_depth > 0
+    local first_step_remaining = math.max(
+        0,
+        first_step_required - (completion_frame_counted and 1 or 0))
+    route_settle_frames = math.max(
+        configured_initial_settle, first_step_remaining)
+    if first_step_required > 0 then
         -- A completion callback may requeue this marked route after already
         -- scheduling forced release for the prior route.
         post_step_release_frames = 0
-        log_entry_settle(1, first_step_settle, first_step_settle)
+        log_entry_settle(1, first_step_required, first_step_remaining)
     end
     if route_settle_frames > 0 then
         route_settle_reset_movement_active = true

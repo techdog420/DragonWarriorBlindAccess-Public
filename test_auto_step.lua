@@ -2614,6 +2614,38 @@ function tests.callback_requeued_marked_first_step_owns_initial_settle()
     env.restore()
 end
 
+function tests.callback_requeued_marked_first_step_counts_completion_frame()
+    local env = make_env({sticky_joypad_set = true})
+    local requeued = false
+    env.auto_step.on_step_complete = function()
+        if requeued then return end
+        requeued = true
+        env.auto_step.start_route({"right"}, {
+            start_x = 4,
+            start_y = 1,
+            settle_before_steps = {[1] = 16},
+        })
+    end
+    env.auto_step.start_route({"right"}, {start_x = 3, start_y = 1})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    -- Frame 2 is the neutral completion/callback frame. Frames 3-17 are
+    -- the remaining 15 neutral frames.
+    for frame = 3, 17 do
+        env.update(true)
+        assert_frame_neutral(env, frame,
+            "callback-requeued marked first-step settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 18, "right",
+        "callback-requeued fresh marked first-step press")
+
+    env.restore()
+end
+
 function tests.callback_unmarked_replacement_preserves_stale_blip_release()
     local env = make_env()
     local replacement_started = false
