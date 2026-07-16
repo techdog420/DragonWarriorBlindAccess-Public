@@ -3719,6 +3719,49 @@ local function queue_path_steps(path, opts)
         return false
     end
     opts = opts or {}
+    local function continuous_hold_after_steps_for_path(map_id, route_path, start_x, start_y)
+        if not map_reader.requires_continuous_hold_entry then
+            return nil
+        end
+
+        local markers = {}
+        for entry_index, step in ipairs(route_path or {}) do
+            local key_dir = DIR_NAME_TO_KEY[step.direction]
+            local approach = key_dir and DIR_TO_APPROACH[key_dir]
+            if approach
+               and map_reader.requires_continuous_hold_entry(
+                    map_id, step.x, step.y, approach) then
+                local run_start = entry_index
+                while run_start > 1
+                  and route_path[run_start - 1].direction == step.direction do
+                    run_start = run_start - 1
+                end
+
+                for completed_index = run_start, entry_index - 1 do
+                    markers[completed_index] = true
+                end
+
+                if entry_index > run_start then
+                    local origin = run_start == 1
+                        and {x = start_x, y = start_y}
+                        or route_path[run_start - 1]
+                    debug_tools.info(string.format(
+                        "AUTO_WALK_CONTINUOUS_RUN map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s steps=%d-%d",
+                        map_id or -1,
+                        tonumber(origin and origin.x) or -1,
+                        tonumber(origin and origin.y) or -1,
+                        tonumber(step.x) or -1,
+                        tonumber(step.y) or -1,
+                        tostring(key_dir),
+                        run_start,
+                        entry_index))
+                end
+            end
+        end
+
+        return next(markers) and markers or nil
+    end
+
     local steps = {}
     local start_x = tonumber(opts.start_x)
     local start_y = tonumber(opts.start_y)
@@ -3736,6 +3779,10 @@ local function queue_path_steps(path, opts)
             end
         end
     end
+    local live_map_id = select(1, nav.get_position())
+    local map_id = tonumber(opts.map_id) or live_map_id
+    local continuous_hold_after_steps = continuous_hold_after_steps_for_path(
+        map_id, path, start_x, start_y)
     local settle_frames = opts.settle_frames
     if settle_frames == nil then
         settle_frames = active_route_settle_frames or 0
@@ -3759,6 +3806,7 @@ local function queue_path_steps(path, opts)
         initial_settle_frames = opts.initial_settle_frames,
         start_x = start_x,
         start_y = start_y,
+        continuous_hold_after_steps = continuous_hold_after_steps,
     }) then
         trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
             "result=true steps=%d",
@@ -4013,6 +4061,7 @@ function M.autowalk_to_object(obj, opts)
         settle_frames,
         tostring(settle_same_direction)))
     if not queue_path_steps(plan.path, {
+        map_id = plan.map_id,
         settle_frames = settle_frames,
         settle_same_direction = settle_same_direction,
     }) then
@@ -4149,6 +4198,7 @@ local function reroute_after_route_drift(cancel_data, target)
     end
 
     if not queue_path_steps(plan.path, {
+        map_id = map_id,
         settle_frames = active_route_settle_frames,
         settle_same_direction = active_route_settle_same_direction,
         initial_settle_frames = route_turn_settle_frames(),
@@ -4478,6 +4528,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
 
     if plan.path and #plan.path > 0 then
         if queue_path_steps(plan.path, {
+            map_id = map_id,
             settle_frames = active_route_settle_frames,
             initial_settle_frames = route_turn_settle_frames(),
         }) then
@@ -4625,6 +4676,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     end
 
     if not queue_path_steps(plan.path, {
+        map_id = map_id,
         settle_frames = active_route_settle_frames,
         initial_settle_frames = route_turn_settle_frames(),
     }) then

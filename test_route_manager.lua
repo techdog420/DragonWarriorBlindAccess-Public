@@ -382,6 +382,12 @@ local function make_env(options)
             get_directional_blocks = function()
                 return {}
             end,
+            requires_continuous_hold_entry = function(map_id, x, y, approach)
+                local by_map = options.continuous_hold_entries
+                    and options.continuous_hold_entries[map_id]
+                local entry = by_map and by_map[tostring(x) .. "," .. tostring(y)]
+                return type(entry) == "table" and entry[approach] == true
+            end,
             is_hazard_cell = function(_, x, y)
                 return hazard_cells[x .. "," .. y] or false
             end,
@@ -1477,6 +1483,42 @@ function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service
     env.auto_step.on_route_complete()
     env.route_manager.apply_npc_freeze()
     assert_equal(env.joypad_sets[#env.joypad_sets].buttons.down, true, "Rimuldar key service arrival should face south toward the seller")
+
+    env.restore()
+end
+
+function tests.rimuldar_path_marks_only_internal_boundaries_before_cadence_entry()
+    local target = {id = "exit_test", name = "Test destination", type = "exit", x = 1, y = 1}
+    local path = {
+        {x = 3, y = 0, direction = "north"},
+        {x = 2, y = 0, direction = "west"},
+        {x = 1, y = 0, direction = "west"},
+        {x = 0, y = 0, direction = "west"},
+        {x = 0, y = 1, direction = "south"},
+        {x = 1, y = 1, direction = "east"},
+    }
+    local env = make_env({
+        start_map_id = 0x0B,
+        start_x = 3,
+        start_y = 1,
+        current_object = target,
+        continuous_hold_entries = {
+            [0x0B] = { ["0,0"] = {east = true} },
+        },
+        pathfind_to_fn = function()
+            return "Path: north, 3 west, south, east", "east", path
+        end,
+    })
+
+    local result = env.route_manager.autowalk_to_object(target, {speak = false})
+    local markers = env.last_start_route_opts().continuous_hold_after_steps
+
+    assert_equal(result.status, "queued", "synthetic Rimuldar route should queue")
+    assert_equal(markers and markers[2], true, "first internal west boundary should stay held")
+    assert_equal(markers and markers[3], true, "second internal west boundary should stay held")
+    assert_equal(markers and markers[1], nil, "turn into the west run should retain ordinary input")
+    assert_equal(markers and markers[4], nil, "entry tile should release before the south turn")
+    assert_equal(markers and markers[5], nil, "south turn should not inherit west continuity")
 
     env.restore()
 end

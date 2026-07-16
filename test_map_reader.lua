@@ -2515,6 +2515,33 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     env.restore()
 end
 
+function tests.rimuldar_marks_only_verified_continuous_hold_entry()
+    local env = make_env()
+
+    assert_equal(
+        env.map_reader.requires_continuous_hold_entry(0x0B, 0, 0, "east"),
+        true,
+        "Rimuldar (0,0) east entry should require uninterrupted input"
+    )
+    assert_equal(
+        env.map_reader.requires_continuous_hold_entry(0x0B, 0, 0, "west"),
+        false,
+        "Rimuldar reverse entry should retain ordinary cadence"
+    )
+    assert_equal(
+        env.map_reader.requires_continuous_hold_entry(0x0B, 1, 0, "east"),
+        false,
+        "neighboring top-bank cells should not become cadence entries"
+    )
+    assert_equal(
+        env.map_reader.requires_continuous_hold_entry(0x0A, 0, 0, "east"),
+        false,
+        "continuous-hold metadata should remain map-scoped"
+    )
+
+    env.restore()
+end
+
 function tests.rimuldar_exit_route_avoids_false_north_entry()
     local env = make_env()
 

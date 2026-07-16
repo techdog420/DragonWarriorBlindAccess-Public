@@ -4681,6 +4681,36 @@ local MAP_DIRECTIONAL_BLOCKS = {
     },
 }
 
+-- ============================================================
+-- Per-Map Continuous-Hold Entry Overrides
+-- ============================================================
+-- These entries do not change passability. They identify live-passable
+-- destination approaches whose preceding straight run must keep the D-pad
+-- asserted without a release/repress gap.
+--
+-- Format: MAP_CONTINUOUS_HOLD_ENTRIES[map_id]["x,y"] = {approach=true}
+-- Approach names use the same destination-side convention as
+-- MAP_DIRECTIONAL_BLOCKS.
+local MAP_CONTINUOUS_HOLD_ENTRIES = {
+    [0x0B] = {
+        -- Normal westbound top-bank entry `(1,0)->(0,0)`. Raw uninterrupted
+        -- LEFT movement succeeds; per-tile release/repress fails live.
+        ["0,0"] = {east = true},
+    },
+}
+
+function M.requires_continuous_hold_entry(map_id, x, y, approach)
+    local map_entries = MAP_CONTINUOUS_HOLD_ENTRIES[tonumber(map_id)]
+    local nx = tonumber(x)
+    local ny = tonumber(y)
+    if not map_entries or nx == nil or ny == nil or approach == nil then
+        return false
+    end
+    local key = tostring(math.floor(nx)) .. "," .. tostring(math.floor(ny))
+    local entry = map_entries[key]
+    return type(entry) == "table" and entry[tostring(approach)] == true
+end
+
 -- get_directional_blocks(map_id): Return the directional block table for
 -- a map, or an empty table if none are defined.
 -- Each entry is keyed by "x,y" with a value table of blocked approach
