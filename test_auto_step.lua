@@ -2631,6 +2631,7 @@ function tests.callback_requeued_marked_first_step_counts_completion_frame()
     env.update(true)
     env.set_position(4, 1)
     env.update(true)
+    assert_frame_neutral(env, 2, "callback-requeued completion frame")
 
     -- Frame 2 is the neutral completion/callback frame. Frames 3-17 are
     -- the remaining 15 neutral frames.
