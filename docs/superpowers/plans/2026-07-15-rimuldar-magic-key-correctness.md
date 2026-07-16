@@ -1,5 +1,10 @@
 # Rimuldar Magic Key Route Correctness Implementation Plan
 
+> **Status:** Static decoder, map, pathfinder, and service tasks were completed
+> through the commits preceding `923d426`. Live acceptance exposed a separate
+> executor-cadence and seam-arrival defect. Remaining work is superseded by
+> `docs/superpowers/plans/2026-07-15-rimuldar-seam-cadence-and-arrival.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the live-proven normal-movement route from Rimuldar's east entrance at `(29,14)` to the Magic Key Merchant's public interaction stand at `(4,5)` reproducible by the decoder, pathfinder, object model, and route manager.
@@ -236,7 +241,7 @@
 
   Set map-`0x0B` metadata to a `30x30` map at a synthetic data start (for example `0x200`), set terrain RAM to town value `0x10`, require real `map_reader` first and real `pathfinder` second, and restore `addresses`, `config`, `debug_tools`, `map_reader`, `maps`, `pathfinder`, `rom`, `memory`, and `AND` in cleanup.
 
-  With NPC blockers `27,0`, `2,4`, and `4,7`, assert a path exists from `(29,14)` to `(4,5)`, has the live-proven length `54`, and visits these waypoints in order:
+  With NPC blockers `27,0`, `2,4`, and `4,7`, assert a path exists from `(29,14)` to `(4,5)`, has the corrected planner length `52`, and visits these waypoints in order:
 
   ```text
   (29,2), (21,2), (21,0), (0,0), (0,3), (1,3), (2,3),
@@ -290,7 +295,7 @@
   git diff -- 'map_reader.lua' 'test_map_reader.lua' 'test_pathfinder.lua'
   ```
 
-  Expected: both suites exit `0`; exact route length is `54`; causal NPC control passes; counter remains non-walkable; only intended Rimuldar map data changes.
+  Expected: both suites exit `0`; exact route length is `52`; causal NPC control passes; counter remains non-walkable; only intended Rimuldar map data changes.
 
 - [ ] **Step 7: Commit Task 2.**
 
@@ -482,7 +487,7 @@
 
 - Packed decoder regressions prove high/low nibble order, odd-width continuity, and raw/grid agreement.
 - `test_map_reader.lua`, `test_pathfinder.lua`, `test_objects.lua`, and `test_route_manager.lua` all pass sequentially.
-- Real-stack pathfinding reaches `(4,5)` from `(29,14)` in the expected 54-step route while honoring fixed NPC blockers.
+- Real-stack pathfinding reaches `(4,5)` from `(29,14)` in the expected 52-step route while honoring fixed NPC blockers.
 - `(4,6)` is non-walkable; seller `(4,7)` is a blocker; interaction stand is `(4,5)` facing south.
 - Vertical movement along x=0 remains open, while east-origin entry into `(0,1..3)` is guarded against unintended world-map transitions.
 - Full static suite passes with no whitespace errors.

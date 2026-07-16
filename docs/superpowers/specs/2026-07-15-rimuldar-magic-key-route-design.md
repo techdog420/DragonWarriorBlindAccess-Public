@@ -1,8 +1,8 @@
 # Rimuldar Magic Key Route Correctness Design
 
 Date: 2026-07-15
-Status: Approved design; static route repair complete; live executor amendment
-awaits written-spec review
+Status: Approved design; static route repair complete; executor implementation
+plan ready for execution
 
 ## Goal
 
