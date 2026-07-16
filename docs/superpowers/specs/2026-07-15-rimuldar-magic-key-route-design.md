@@ -203,6 +203,12 @@ therefore waits all 16 frames before step 1. The existing flat per-tile queue
 and exactly-one `route_step_completed` event per crossed tile remain
 unchanged.
 
+A route started synchronously by a step-completion event or callback is the
+exception to that fresh-step rule: its marked step 1 does have the current
+neutral completion frame available, so it waits only the remaining 15 frames.
+The executor tracks the completion-dispatch boundary generically; no caller
+or merchant-specific flag is required.
+
 Implement this through the existing route-settle state rather than a second
 input state machine. Extract a coordinate-free `begin_next_route_step()` from
 the current continuous-hold helper before deleting that obsolete branch.
@@ -308,6 +314,8 @@ existing route-manager tests stub pathfinding and cannot prove map integration.
   15 countdown frames are neutral before the second same-direction press.
 - A route with `settle_before_steps={[1]=16}` proves a fresh first step waits
   all 16 neutral frames.
+- A completion callback that requeues a marked step 1 proves the current
+  completion frame plus 15 countdown frames precede its fresh press.
 - The marked route emits exactly one `route_step_completed` event per crossed
   tile and one route-complete event.
 - The per-step requirement still applies when `settle_same_direction=false`.

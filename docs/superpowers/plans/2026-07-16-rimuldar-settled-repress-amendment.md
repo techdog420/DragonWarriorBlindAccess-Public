@@ -396,6 +396,38 @@ function tests.callback_requeued_marked_first_step_owns_initial_settle()
     env.restore()
 end
 
+function tests.callback_requeued_marked_first_step_counts_completion_frame()
+    local env = make_env({sticky_joypad_set = true})
+    local requeued = false
+    env.auto_step.on_step_complete = function()
+        if requeued then return end
+        requeued = true
+        env.auto_step.start_route({"right"}, {
+            start_x = 4,
+            start_y = 1,
+            settle_before_steps = {[1] = 16},
+        })
+    end
+    env.auto_step.start_route({"right"}, {start_x = 3, start_y = 1})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    -- Frame 2 is the neutral completion/callback frame. Frames 3-17 are
+    -- the remaining 15 neutral frames.
+    for frame = 3, 17 do
+        env.update(true)
+        assert_frame_neutral(env, frame,
+            "callback-requeued marked first-step settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 18, "right",
+        "callback-requeued fresh marked first-step press")
+
+    env.restore()
+end
+
 function tests.callback_unmarked_replacement_preserves_stale_blip_release()
     local env = make_env()
     local replacement_started = false
@@ -770,19 +802,35 @@ the route table and next index, assign all three return values from
 post-callback release mutation and log. If a callback clears or replaces the
 route, do not claim the old marked settle.
 
-In `start_route()`, a marked first step has no preceding neutral completion
-frame, so merge the full requirement into the initial settle:
+Track synchronous completion dispatch with a private depth counter that is
+incremented before `event_bus.publish("route_step_completed", ...)`, remains
+active through `M.on_step_complete`, and is decremented before
+`emit_step_complete()` returns:
+
+```lua
+local step_completion_neutral_depth = 0
+```
+
+This covers both event-bus subscribers and the compatibility callback. A
+fresh marked first step has no preceding neutral completion frame and uses the
+full requirement. A marked step 1 started synchronously inside completion
+dispatch counts the current frame and uses `required - 1`:
 
 ```lua
 local configured_initial_settle = math.max(
     0, tonumber(opts.initial_settle_frames) or 0)
-local first_step_settle = settle_before_step(1)
-route_settle_frames = math.max(configured_initial_settle, first_step_settle)
-if first_step_settle > 0 then
+local first_step_required = settle_before_step(1)
+local completion_frame_counted = step_completion_neutral_depth > 0
+local first_step_remaining = math.max(
+    0,
+    first_step_required - (completion_frame_counted and 1 or 0))
+route_settle_frames = math.max(
+    configured_initial_settle, first_step_remaining)
+if first_step_required > 0 then
     -- A completion callback may requeue this marked route after already
     -- scheduling forced release for the prior route.
     post_step_release_frames = 0
-    log_entry_settle(1, first_step_settle, first_step_settle)
+    log_entry_settle(1, first_step_required, first_step_remaining)
 end
 ```
 
@@ -1075,7 +1123,7 @@ Expected: all checks pass and the documentation commit succeeds.
 
 - `get_entry_settle_frames(0x0B, 0, 0, "east") == 16`; unrelated queries return `0`.
 - The 52-step path marks only step 43 with `settle_before_steps[43] == 16`.
-- Auto-step keeps the route queued through exactly 16 physical neutral frames before the fresh LEFT press: the completion frame plus 15 remaining frames, or all 16 frames when the marked entry is step 1.
+- Auto-step keeps the route queued through exactly 16 physical neutral frames before the fresh LEFT press: the completion frame plus 15 remaining frames, all 16 frames for a fresh marked step 1, or the callback completion frame plus 15 frames for a synchronously requeued marked step 1.
 - Marked settling owns the first follow-up frame after both active-step and pending-repress completion only while the same route/index remains; callback-cleared or unmarked replacement routes retain ordinary forced release, while a callback-requeued marked step 1 owns its initial settle.
 - Drift catch-up that exposes a marked entry installs the same exact remaining settle, and callback mutation stops old-route catch-up before it can alter replacement state.
 - An equivalent unmarked two-step route retains its existing frame-6 second press.
