@@ -132,7 +132,7 @@ local route_reset_movement_on_turn_settle_override = nil
 local route_accept_final_drift_completion_override = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
-local continuous_hold = {active = false, markers = nil}
+local route_settle_before_steps = nil
 local route_index = 1
 local route_settle_frames = 0
 local route_settle_default = 0
@@ -362,9 +362,6 @@ local function queued_route_continuing_step_before_turn(next_dir)
 end
 
 local function should_hold_after_movement_start()
-    if continuous_hold.active then
-        return true
-    end
     if auto_hold_after_movement_start then
         if auto_movement_start_frame ~= nil and auto_hold_after_movement_start_frames ~= nil then
             return auto_frames < (auto_movement_start_frame + auto_hold_after_movement_start_frames)
@@ -540,7 +537,7 @@ M.reset_movement_engine_state = reset_movement_engine_state
 
 local function clear_route()
     route_steps = nil
-    continuous_hold.markers = nil
+    route_settle_before_steps = nil
     route_index = 1
     route_settle_frames = 0
     route_settle_default = 0
@@ -584,7 +581,6 @@ local function begin_step(dir, px, py, state)
     auto_hold_after_movement_start = state and state.hold_after_movement_start == true or false
     auto_hold_after_movement_start_frames = state and tonumber(state.hold_after_movement_start_frames) or nil
     auto_release_after_inject_limit = state and state.release_after_inject_limit == true or false
-    continuous_hold.active = state and state.continuous_hold == true or false
     route_final_settle_active = false
     route_settle_frames = 0
     pending_repress = nil
@@ -722,51 +718,52 @@ local function step_destination(from_x, from_y, dir)
     return from_x + dx, from_y + dy
 end
 
-function continuous_hold.copy_markers(markers, step_count)
+local function copy_settle_before_steps(entries, step_count)
     local copied = {}
-    for raw_index, enabled in pairs(type(markers) == "table" and markers or {}) do
+    for raw_index, raw_frames in pairs(type(entries) == "table" and entries or {}) do
         local index = tonumber(raw_index)
-        if enabled == true and index ~= nil then
+        local frames = tonumber(raw_frames)
+        if index and frames then
             index = math.floor(index)
-            if index >= 1 and index < step_count then
-                copied[index] = true
+            frames = math.floor(frames)
+            if index >= 1 and index <= step_count and frames > 0 then
+                copied[index] = math.min(frames, 120)
             end
         end
     end
     return next(copied) and copied or nil
 end
 
-function continuous_hold.after_step(step_index)
-    return continuous_hold.markers ~= nil
-        and continuous_hold.markers[step_index] == true
+local function settle_before_step(step_index)
+    return route_settle_before_steps
+        and route_settle_before_steps[step_index]
+        or 0
 end
 
-function continuous_hold.step_uses(step_index)
-    return continuous_hold.after_step(step_index)
-        or continuous_hold.after_step(step_index - 1)
-end
-
-function continuous_hold.log(event_name, step_index, dir, from_x, from_y, reason)
-    local map_id = select(1, nav.get_position())
-    local dest_x, dest_y = step_destination(from_x, from_y, dir)
+local function log_entry_settle(step_index, required_frames, remaining_frames)
+    local next_dir = route_steps and route_steps[step_index]
+    if not next_dir or required_frames <= 0 then
+        return
+    end
+    local map_id, live_x, live_y = nav.get_position()
+    local from_x = route_last_x or live_x
+    local from_y = route_last_y or live_y
+    local dest_x, dest_y = step_destination(from_x, from_y, next_dir)
     debug_tools.info(string.format(
-        "AUTO_STEP_CONTINUOUS_HOLD event=%s map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s step=%d reason=%s",
-        tostring(event_name),
+        "AUTO_STEP_ENTRY_SETTLE map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s step=%d required=%d remaining=%d",
         map_id or -1,
         from_x or -1,
         from_y or -1,
         dest_x or -1,
         dest_y or -1,
-        tostring(dir),
+        tostring(next_dir),
         step_index or -1,
-        tostring(reason or "-")))
+        required_frames,
+        remaining_frames))
 end
 
-function continuous_hold.build_step_opts(step_index, next_dir, event_name, from_x, from_y)
-    local step_opts = {
-        source = "queued_route",
-        continuous_hold = continuous_hold.step_uses(step_index),
-    }
+local function build_route_step_opts(step_index, next_dir)
+    local step_opts = {source = "queued_route"}
     if queued_route_continuing_step_before_turn(next_dir) then
         step_opts.inject_limit = get_route_pre_turn_inject_limit()
     end
@@ -774,14 +771,10 @@ function continuous_hold.build_step_opts(step_index, next_dir, event_name, from_
         step_opts.hold_after_movement_start = true
         step_opts.hold_after_movement_start_frames = route_hold_after_movement_start_frames_override
     end
-    if step_opts.continuous_hold then
-        continuous_hold.log(event_name or "enter", step_index, next_dir,
-            from_x, from_y)
-    end
     return step_opts
 end
 
-function continuous_hold.begin_next_step(px, py, event_name)
+local function begin_next_route_step(px, py)
     local step_index = route_index
     local next_dir = route_steps and route_steps[step_index]
     if not next_dir then
@@ -790,7 +783,7 @@ function continuous_hold.begin_next_step(px, py, event_name)
     if refuse_hazard_step(next_dir, px, py, "queued_route") then
         return false, "hazard_refused", next_dir
     end
-    local step_opts = continuous_hold.build_step_opts(step_index, next_dir, event_name, px, py)
+    local step_opts = build_route_step_opts(step_index, next_dir)
     route_index = step_index + 1
     begin_step(next_dir, px, py, step_opts)
     return true, nil, next_dir
@@ -809,13 +802,11 @@ local function schedule_turn_repress(dir)
         start_y = auto_start_y,
         source = auto_step_source,
         release_after_inject_limit = auto_release_after_inject_limit,
-        continuous_hold = continuous_hold.active,
     }
     auto_dir = nil
     auto_frames = 0
     auto_start_x = nil
     auto_start_y = nil
-    continuous_hold.active = false
 end
 
 local function reset_active_step()
@@ -833,7 +824,6 @@ local function reset_active_step()
     auto_hold_after_movement_start = false
     auto_hold_after_movement_start_frames = nil
     auto_release_after_inject_limit = false
-    continuous_hold.active = false
     clear_pending_repress()
 end
 
@@ -849,7 +839,7 @@ local function route_settle_after_step(completed_dir)
                 "auto_step route final settle prev=%s frames=%d",
                 tostring(completed_dir), final_settle))
         end
-        return final_settle
+        return final_settle, 0, 0
     end
     route_final_settle_active = false
     route_settle_reset_movement_active = false
@@ -872,7 +862,51 @@ local function route_settle_after_step(completed_dir)
        and should_reset_movement_on_route_turn_settle() then
         route_settle_reset_movement_active = true
     end
-    return settle_frames
+    local entry_required = settle_before_step(route_index)
+    local entry_remaining = math.max(0, entry_required - 1)
+    if entry_remaining > settle_frames then
+        settle_frames = entry_remaining
+    end
+    return settle_frames, entry_required, entry_remaining
+end
+
+local function route_still_matches(expected_steps, expected_index)
+    return route_steps == expected_steps
+        and route_index == expected_index
+end
+
+local function claim_entry_settle_after_callback(
+        expected_steps, expected_index, entry_required, entry_remaining)
+    entry_required = tonumber(entry_required) or 0
+    if entry_required <= 0
+       or not route_still_matches(expected_steps, expected_index) then
+        return false
+    end
+    post_step_release_frames = 0
+    log_entry_settle(expected_index, entry_required, entry_remaining)
+    return true
+end
+
+local function install_entry_settle_after_drift(
+        expected_steps, start_index, consumed)
+    local expected_index = start_index + consumed
+    if consumed <= 0
+       or not route_still_matches(expected_steps, expected_index) then
+        return false, false
+    end
+
+    local entry_required = settle_before_step(route_index)
+    if entry_required <= 0 then
+        return false, true
+    end
+
+    local completed_dir = expected_steps[route_index - 1]
+    local settle_frames, required, remaining =
+        route_settle_after_step(completed_dir)
+    route_settle_frames = settle_frames
+    post_step_release_frames = 0
+    log_entry_settle(route_index, required, remaining)
+    return true, true
 end
 
 local function reset_movement_for_route_settle()
@@ -968,16 +1002,19 @@ local function consume_route_drift(px, py, source)
         return 0, false
     end
 
+    local expected_steps = route_steps
+    local start_index = route_index
     local simulated_x = route_last_x
     local simulated_y = route_last_y
     local matched = 0
-    local max_index = math.min(#route_steps, route_index + ROUTE_DRIFT_CATCHUP_LIMIT - 1)
-    for i = route_index, max_index do
-        local dx, dy = direction_delta(route_steps[i])
+    local max_index = math.min(
+        #expected_steps, start_index + ROUTE_DRIFT_CATCHUP_LIMIT - 1)
+    for i = start_index, max_index do
+        local dx, dy = direction_delta(expected_steps[i])
         simulated_x = simulated_x + dx
         simulated_y = simulated_y + dy
         if simulated_x == px and simulated_y == py then
-            matched = i - route_index + 1
+            matched = i - start_index + 1
             break
         end
     end
@@ -989,8 +1026,13 @@ local function consume_route_drift(px, py, source)
         return 0, true
     end
 
+    local consumed = 0
     for _ = 1, matched do
-        local dir = route_steps[route_index]
+        if not route_still_matches(expected_steps, start_index + consumed) then
+            break
+        end
+        local step_index = start_index + consumed
+        local dir = expected_steps[step_index]
         local from_x = route_last_x
         local from_y = route_last_y
         local dx, dy = direction_delta(dir)
@@ -998,15 +1040,19 @@ local function consume_route_drift(px, py, source)
         local to_y = from_y + dy
         route_last_x = to_x
         route_last_y = to_y
-        route_index = route_index + 1
+        route_index = step_index + 1
+        consumed = consumed + 1
         debug_tools.debug(string.format(
             "auto_step route catch-up dir=%s from=(%d,%d) to=(%d,%d) source=%s",
             tostring(dir), from_x or -1, from_y or -1, to_x or -1, to_y or -1,
             tostring(source)))
         emit_step_complete(from_x, from_y, dir, to_x, to_y, source)
+        if not route_still_matches(expected_steps, start_index + consumed) then
+            break
+        end
     end
 
-    return matched, false
+    return consumed, false
 end
 
 local function complete_route_from_final_drift(px, py, source)
@@ -1039,6 +1085,10 @@ local function handle_pending_repress_state(joy, px, py)
        and pending_repress.start_y ~= nil
        and (px ~= pending_repress.start_x or py ~= pending_repress.start_y) then
         local completed = pending_repress
+        local completed_route_steps = route_steps
+        local completed_next_index = route_index
+        local entry_required = 0
+        local entry_remaining = 0
         debug_tools.debug(string.format(
             "auto_step cancel pending repress: position changed to (%d,%d) from (%d,%d)",
             px or -1, py or -1, pending_repress.start_x or -1, pending_repress.start_y or -1))
@@ -1075,7 +1125,8 @@ local function handle_pending_repress_state(joy, px, py)
         if route_steps then
             route_last_x = px
             route_last_y = py
-            route_settle_frames = route_settle_after_step(completed.dir)
+            route_settle_frames, entry_required, entry_remaining =
+                route_settle_after_step(completed.dir)
         end
         if completed.source == "seam_retry" then
             reset_movement_engine_state("seam_retry_complete")
@@ -1092,6 +1143,11 @@ local function handle_pending_repress_state(joy, px, py)
             turn_represses = completed.turn_represses,
             inject_limit = completed.inject_limit,
         })
+        claim_entry_settle_after_callback(
+            completed_route_steps,
+            completed_next_index,
+            entry_required,
+            entry_remaining)
         sync_prev_held(joy)
         return true
     end
@@ -1173,13 +1229,8 @@ local function handle_active_auto_step(joy, px, py, timeout)
         local completed_source = auto_step_source
         local completed_route_steps = route_steps
         local completed_next_index = route_index
-        local completed_step_index = completed_next_index - 1
-        local completed_continuous_hold = continuous_hold.active
-        local next_route_dir = completed_route_steps
-            and completed_route_steps[completed_next_index]
-        local marked_continuation = completed_queued_route
-            and continuous_hold.after_step(completed_step_index)
-            and next_route_dir == completed_dir
+        local entry_required = 0
+        local entry_remaining = 0
         local expected_x, expected_y = step_destination(completed_from_x, completed_from_y, completed_dir)
         if completed_queued_route and (px ~= expected_x or py ~= expected_y) then
             reset_active_step()
@@ -1223,46 +1274,6 @@ local function handle_active_auto_step(joy, px, py, timeout)
             completed_inject_limit or -1,
             tostring(completed_queued_route)))
         if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
-        if marked_continuation then
-            reset_active_step()
-            route_last_x = px
-            route_last_y = py
-            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
-                input_source = completed_source,
-                timeout_retries = completed_retries,
-                turn_represses = completed_turn_represses,
-                frames = completed_frames,
-                inject_limit = completed_inject_limit,
-            })
-
-            if route_steps == completed_route_steps
-               and route_index == completed_next_index then
-                local started, reason = continuous_hold.begin_next_step(px, py, "continue")
-                if started then
-                    cooldown = 0
-                    post_step_release_frames = 0
-                    sync_prev_held(joy)
-                    return true
-                end
-
-                cooldown = COOLDOWN_FRAMES
-                neutralize_direction(joy)
-                start_post_step_release(true)
-                continuous_hold.log("exit", completed_step_index, completed_dir,
-                    completed_from_x, completed_from_y, reason)
-                sync_prev_held(joy)
-                return true
-            end
-
-            cooldown = COOLDOWN_FRAMES
-            neutralize_direction(joy)
-            start_post_step_release(true)
-            continuous_hold.log("exit", completed_step_index, completed_dir,
-                completed_from_x, completed_from_y, "callback_changed_route")
-            sync_prev_held(joy)
-            return true
-        end
-
         reset_active_step()
         cooldown = COOLDOWN_FRAMES
         neutralize_direction(joy)
@@ -1270,7 +1281,8 @@ local function handle_active_auto_step(joy, px, py, timeout)
         if route_steps then
             route_last_x = px
             route_last_y = py
-            route_settle_frames = route_settle_after_step(completed_dir)
+            route_settle_frames, entry_required, entry_remaining =
+                route_settle_after_step(completed_dir)
         end
         if completed_source == "seam_retry" then
             reset_movement_engine_state("seam_retry_complete")
@@ -1281,11 +1293,6 @@ local function handle_active_auto_step(joy, px, py, timeout)
         elseif completed_queued_route and route_steps ~= nil then
             reset_movement_for_route_settle()
         end
-        if completed_continuous_hold then
-            local exit_reason = next_route_dir == nil and "route_end" or "direction_change"
-            continuous_hold.log("exit", completed_step_index, completed_dir,
-                completed_from_x, completed_from_y, exit_reason)
-        end
         emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
             input_source = completed_source,
             timeout_retries = completed_retries,
@@ -1293,6 +1300,11 @@ local function handle_active_auto_step(joy, px, py, timeout)
             frames = completed_frames,
             inject_limit = completed_inject_limit,
         })
+        claim_entry_settle_after_callback(
+            completed_route_steps,
+            completed_next_index,
+            entry_required,
+            entry_remaining)
     elseif route_settle_frames > 0 then
         neutralize_direction(joy)
         reset_movement_for_route_settle()
@@ -1391,8 +1403,6 @@ local function handle_active_auto_step(joy, px, py, timeout)
                 joypad.set(1, {[auto_dir] = true})
             elseif auto_movement_started then
                 neutralize_direction(joy)
-            elseif continuous_hold.active and not auto_movement_started then
-                joypad.set(1, {[auto_dir] = true})
             elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
                 joypad.set(1, {[auto_dir] = true})
             elseif route_steps == nil
@@ -1523,11 +1533,17 @@ local function handle_route_progress(joy, px, py)
         end
         neutralize_direction(joy)
         reset_movement_for_route_settle()
+        local expected_steps = route_steps
+        local start_index = route_index
         local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
         if consumed > 0 then
-            route_final_settle_active = false
-            route_settle_reset_movement_active = false
-            route_settle_frames = route_settle_default or 0
+            local marked_settle, same_route = install_entry_settle_after_drift(
+                expected_steps, start_index, consumed)
+            if same_route and not marked_settle then
+                route_final_settle_active = false
+                route_settle_reset_movement_active = false
+                route_settle_frames = route_settle_default or 0
+            end
             sync_prev_held(joy)
             return true
         end
@@ -1562,9 +1578,17 @@ local function handle_route_progress(joy, px, py)
     end
 
     if route_steps and cooldown <= 0 then
+        local expected_steps = route_steps
+        local start_index = route_index
         local consumed, off_path = consume_route_drift(px, py, "route_settle_catchup")
         if consumed > 0 then
-            route_settle_frames = route_settle_default or 0
+            local marked_settle, same_route = install_entry_settle_after_drift(
+                expected_steps, start_index, consumed)
+            if marked_settle then
+                neutralize_direction(joy)
+            elseif same_route then
+                route_settle_frames = route_settle_default or 0
+            end
             sync_prev_held(joy)
             return true
         end
@@ -1575,7 +1599,7 @@ local function handle_route_progress(joy, px, py)
         end
         local next_dir = route_steps[route_index]
         if next_dir then
-            local started, reason = continuous_hold.begin_next_step(px, py, "enter")
+            local started, reason = begin_next_route_step(px, py)
             if started or reason == "hazard_refused" then
                 if reason == "hazard_refused" then
                     neutralize_direction(joy)
@@ -1879,8 +1903,9 @@ function M.suppress_direction_tracking(frames)
     clear_direction_press_tracking()
 end
 
--- opts: { settle_frames = N, settle_same_direction = true|false, start_x = X, start_y = Y,
---         continuous_hold_after_steps = {[step_index] = true} }
+-- opts: { settle_frames = N, settle_same_direction = true|false,
+--         start_x = X, start_y = Y,
+--         settle_before_steps = {[step_index] = frames} }
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
@@ -1900,8 +1925,8 @@ function M.start_route(steps, opts)
     for i, dir in ipairs(steps) do
         route_steps[i] = dir
     end
-    continuous_hold.markers = continuous_hold.copy_markers(
-        opts.continuous_hold_after_steps, #route_steps)
+    route_settle_before_steps = copy_settle_before_steps(
+        opts.settle_before_steps, #route_steps)
     route_index = 1
     route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
     route_settle_same_direction = opts.settle_same_direction ~= false
@@ -1939,7 +1964,16 @@ function M.start_route(steps, opts)
         route_last_x = start_x
         route_last_y = start_y
     end
-    route_settle_frames = math.max(0, tonumber(opts.initial_settle_frames) or 0)
+    local configured_initial_settle = math.max(
+        0, tonumber(opts.initial_settle_frames) or 0)
+    local first_step_settle = settle_before_step(1)
+    route_settle_frames = math.max(configured_initial_settle, first_step_settle)
+    if first_step_settle > 0 then
+        -- A completion callback may requeue this marked route after already
+        -- scheduling forced release for the prior route.
+        post_step_release_frames = 0
+        log_entry_settle(1, first_step_settle, first_step_settle)
+    end
     if route_settle_frames > 0 then
         route_settle_reset_movement_active = true
         reset_movement_engine_state("queued_route_initial_settle", {log = false})

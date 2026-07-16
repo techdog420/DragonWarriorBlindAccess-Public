@@ -2432,96 +2432,423 @@ function tests.queued_routes_cancel_unmatched_drift_during_initial_settle()
     env.restore()
 end
 
-function tests.marked_run_holds_through_movement_start_and_releases_before_turn()
+local function complete_route_step_via_pending_repress(env)
+    local pending = nil
+    for _ = 1, 40 do
+        env.update(true)
+        local state = env.auto_step.get_active_step_state()
+        if state
+           and state.frames == 0
+           and state.turn_represses == 1
+           and state.source == "queued_route" then
+            pending = state
+            break
+        end
+    end
+    assert_truthy(pending ~= nil,
+        "test setup should reach queued pending-repress state")
+
+    env.set_joy({})
+    env.set_position(4, 1)
+    env.update(true)
+
+    local completion = nil
+    for i = #env.published, 1, -1 do
+        local event = env.published[i]
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "pending_repress" then
+            completion = event
+            break
+        end
+    end
+    assert_truthy(completion ~= nil,
+        "position change during release gap should complete through pending-repress")
+    assert_equal(completion.payload.input_source, "queued_route",
+        "pending completion should preserve queued-route input source")
+    return completion.frame
+end
+
+function tests.marked_entry_waits_for_sixteen_physical_neutral_frames_before_repress()
     local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    -- Frame 2 is the neutral completion frame. Frames 3-17 supply the
+    -- remaining 15 neutral frames.
+    for frame = 3, 17 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "marked entry settle")
+    end
+
+    env.update(true)
+    assert_frame_only_direction(env, 18, "right", "fresh marked-entry press")
+
+    local saw_log = false
+    for _, entry in ipairs(env.debug_messages) do
+        if entry.message ==
+           "AUTO_STEP_ENTRY_SETTLE map=0x05 from=(4,1) dest=(5,1) dir=right step=2 required=16 remaining=15" then
+            saw_log = true
+            break
+        end
+    end
+    assert_truthy(saw_log,
+        "marked completion should log its required and remaining settle frames")
+
+    env.restore()
+end
+
+function tests.marked_first_step_waits_for_all_sixteen_neutral_frames()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[1] = 16},
+    })
+
+    for frame = 1, 16 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "marked first-step settle")
+    end
+
+    env.update(true)
+    assert_frame_only_direction(env, 17, "right", "fresh first-step press")
+
+    env.restore()
+end
+
+function tests.settle_before_steps_is_copied_at_route_start()
+    local env = make_env({sticky_joypad_set = true})
+    local settle_before_steps = {[1] = 2}
+    env.auto_step.start_route({"right"}, {
+        settle_before_steps = settle_before_steps,
+    })
+    settle_before_steps[1] = 0
+
+    env.update(true)
+    assert_frame_neutral(env, 1, "copied first-step settle")
+    env.update(true)
+    assert_frame_neutral(env, 2, "copied first-step settle")
+    env.update(true)
+    assert_frame_only_direction(env, 3, "right", "copied settle fresh press")
+
+    env.restore()
+end
+
+function tests.marked_entry_settle_owns_first_followup_frame()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled" and event.frame == 3 then
+            cancelled = payload
+            break
+        end
+    end
+
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt",
+        "first followup frame should cancel through route settle")
+    assert_equal(cancelled and cancelled.source, "route_settle",
+        "marked route settle should own the first followup frame")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "live input should cancel the marked settle immediately")
+
+    env.restore()
+end
+
+function tests.callback_requeued_marked_first_step_owns_initial_settle()
+    local env = make_env({sticky_joypad_set = true})
+    local requeued = false
+    env.auto_step.on_step_complete = function()
+        if requeued then return end
+        requeued = true
+        env.auto_step.start_route({"right"}, {
+            start_x = 4,
+            start_y = 1,
+            settle_before_steps = {[1] = 16},
+        })
+    end
+    env.auto_step.start_route({"right"}, {start_x = 3, start_y = 1})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled" and event.frame == 3 then
+            cancelled = payload
+            break
+        end
+    end
+
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt",
+        "callback-requeued first-step settle should see live input immediately")
+    assert_equal(cancelled and cancelled.source, "route_settle",
+        "marked initial settle should replace stale post-step release")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "live input should cancel callback-requeued marked route")
+
+    env.restore()
+end
+
+function tests.callback_unmarked_replacement_preserves_stale_blip_release()
+    local env = make_env()
+    local replacement_started = false
+    env.auto_step.on_step_complete = function()
+        if replacement_started then return end
+        replacement_started = true
+        env.auto_step.start_route({"down"}, {
+            start_x = 4,
+            start_y = 1,
+        })
+    end
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({right = true})
+    env.update(true)
+
+    assert_frame_neutral(env, 3,
+        "callback replacement stale-input release")
+    assert_equal(env.auto_step.is_route_active(), true,
+        "unmarked callback replacement should survive the stale blip")
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        assert_truthy(
+            not (event.frame == 3
+                and event.name == "route_cancelled"
+                and payload.reason == "live_input_interrupt"),
+            "old marked settle must not clear replacement-route release state")
+    end
+
+    env.restore()
+end
+
+function tests.marked_entry_settle_applies_when_straight_settle_is_disabled()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_same_direction = false,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    for frame = 3, 17 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "required same-direction entry settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 18, "right", "required same-direction re-press")
+
+    env.restore()
+end
+
+function tests.larger_turn_settle_remains_authoritative()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {auto_step_route_turn_settle_frames = "20"},
+    })
+    env.auto_step.start_route({"right", "down"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    for frame = 3, 22 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "maximum merged settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 23, "down", "post-turn fresh press")
+
+    env.restore()
+end
+
+function tests.completion_callback_can_abort_marked_entry_settle()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.on_step_complete = function()
+        env.auto_step.clear_route()
+    end
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({right = true})
+    env.update(true)
+    assert_frame_neutral(env, 3,
+        "callback-cleared route should retain completion release")
+    env.set_joy({})
+    for _ = 1, 19 do env.update(true) end
+
+    for frame = 2, 22 do
+        assert_truthy(
+            not (env.injected[frame] and env.injected[frame].right),
+            "callback-cleared route should not start marked next step"
+        )
+    end
+    assert_equal(env.auto_step.is_route_active(), false,
+        "completion callback should clear the marked route")
+
+    env.restore()
+end
+
+function tests.pending_repress_completion_uses_exact_marked_entry_settle()
+    local env = make_env({
+        config_values = {
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_limit = "1",
+        },
+    })
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    local completion_frame = complete_route_step_via_pending_repress(env)
+    assert_frame_neutral(env, completion_frame,
+        "pending-repress completion frame")
+    for offset = 1, 15 do
+        env.update(true)
+        assert_frame_neutral(env, completion_frame + offset,
+            "pending-repress marked settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, completion_frame + 16, "right",
+        "pending-repress fresh marked-entry press")
+
+    env.restore()
+end
+
+function tests.drift_before_marked_entry_starts_exact_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        initial_settle_frames = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local catchup = nil
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "route_settle_catchup"
+           and payload.from_x == 3
+           and payload.to_x == 4 then
+            catchup = event
+            break
+        end
+    end
+    assert_truthy(catchup ~= nil,
+        "drift should consume the step immediately before the marked entry")
+    assert_frame_neutral(env, catchup.frame,
+        "marked-entry drift observation")
+
+    for offset = 1, 15 do
+        env.update(true)
+        assert_frame_neutral(env, catchup.frame + offset,
+            "post-drift marked-entry settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, catchup.frame + 16, "right",
+        "fresh marked press after drift settle")
+
+    env.restore()
+end
+
+function tests.multi_step_drift_callback_replacement_stops_old_route_catchup()
+    local env = make_env()
+    local replaced = false
+    env.auto_step.on_step_complete = function()
+        if replaced then return end
+        replaced = true
+        env.auto_step.start_route({"down"}, {
+            start_x = 5,
+            start_y = 1,
+            initial_settle_frames = 2,
+        })
+    end
     env.auto_step.start_route({"right", "right", "down"}, {
         start_x = 3,
         start_y = 1,
-        continuous_hold_after_steps = {[1] = true, [2] = true},
+        initial_settle_frames = 1,
     })
 
-    env.update(true)
-    env.set_subpixel(0x20)
-    env.update(true)
-    env.set_position(4, 1)
-    env.update(true)
-    env.set_subpixel(0x30)
-    env.update(true)
     env.set_position(5, 1)
     env.update(true)
 
-    for frame = 1, 4 do
-        assert_frame_only_direction(env, frame, "right", "marked straight run")
-    end
-    assert_frame_neutral(env, 5, "marked run before direction change")
-
-    local completed = {}
+    local catchups = {}
     for _, event in ipairs(env.published) do
-        if event.name == "route_step_completed" then
-            completed[#completed + 1] = event.payload
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "route_settle_catchup" then
+            catchups[#catchups + 1] = payload
         end
     end
-    assert_equal(#completed, 2, "marked run should emit one completion per crossed tile")
-    assert_equal(completed[1].from_x, 3, "first marked step should retain its origin")
-    assert_equal(completed[1].to_x, 4, "first marked step should retain its destination")
-    assert_equal(completed[2].from_x, 4, "second marked step should rebase its origin")
-    assert_equal(completed[2].to_x, 5, "second marked step should retain its destination")
+    assert_equal(#catchups, 1,
+        "old-route catch-up should stop after its first completion callback replaces the route")
+    assert_equal(catchups[1].from_x, 3,
+        "the only catch-up completion should come from the old route")
+    assert_equal(catchups[1].to_x, 4,
+        "replacement route must not emit a synthetic catch-up completion")
+    assert_frame_neutral(env, 1, "replacement initial settle observation")
+
+    env.update(true)
+    assert_frame_neutral(env, 2, "replacement initial settle")
+    env.update(true)
+    assert_frame_neutral(env, 3, "replacement initial settle")
+    env.update(true)
+    assert_frame_only_direction(env, 4, "down",
+        "replacement should retain its first direction and route index")
 
     env.restore()
 end
 
-function tests.marked_route_without_explicit_origin_uses_live_position()
-    local env = make_env({sticky_joypad_set = true})
-    env.auto_step.start_route({"right", "right"}, {
-        continuous_hold_after_steps = {[1] = true},
-    })
-
-    env.update(true)
-
-    assert_frame_only_direction(env, 1, "right", "marked route without explicit origin")
-    local active = env.auto_step.get_active_step_state()
-    assert_equal(active and active.start_x, 3, "marked route should use live origin X")
-    assert_equal(active and active.start_y, 1, "marked route should use live origin Y")
-
-    env.restore()
-end
-
-function tests.marked_run_final_tile_neutralizes_before_route_complete()
-    local env = make_env({
-        sticky_joypad_set = true,
-        config_values = {auto_step_route_final_settle_frames = "5"},
-    })
-    env.auto_step.start_route({"right", "right"}, {
-        start_x = 3,
-        start_y = 1,
-        continuous_hold_after_steps = {[1] = true},
-    })
-
-    env.update(true)
-    env.set_subpixel(0x20)
-    env.update(true)
-    env.set_position(4, 1)
-    env.update(true)
-    env.set_subpixel(0x30)
-    env.update(true)
-    env.set_position(5, 1)
-    env.update(true)
-
-    assert_frame_neutral(env, 5, "final marked tile")
-    for _, event in ipairs(env.published) do
-        assert_truthy(event.name ~= "route_completed", "final settle should delay route completion")
-    end
-    for _ = 1, 10 do env.update(true) end
-    local count = 0
-    for _, event in ipairs(env.published) do
-        if event.name == "route_completed" then count = count + 1 end
-    end
-    assert_equal(count, 1, "marked route should complete exactly once after neutral settle")
-
-    env.restore()
-end
-
-function tests.marked_boundary_refuses_next_hazard_before_continuing()
+function tests.marked_entry_refuses_hazard_after_required_settle()
     local env = make_env({
         sticky_joypad_set = true,
         hazard_cells = {[0x05] = {["5,1"] = "damage"}},
@@ -2529,30 +2856,42 @@ function tests.marked_boundary_refuses_next_hazard_before_continuing()
     env.auto_step.start_route({"right", "right"}, {
         start_x = 3,
         start_y = 1,
-        continuous_hold_after_steps = {[1] = true},
+        settle_before_steps = {[2] = 16},
     })
 
     env.update(true)
     env.set_position(4, 1)
     env.update(true)
+    for _ = 3, 18 do env.update(true) end
 
-    assert_frame_neutral(env, 2, "hazard refusal inside marked run")
-    assert_equal(env.auto_step.is_route_active(), false, "hazard refusal should clear the marked route")
+    assert_frame_neutral(env, 18, "hazard refusal after marked settle")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "hazard refusal should clear the marked route")
     local completed = 0
     local cancelled = nil
+    local cancelled_frame = nil
     for _, event in ipairs(env.published) do
         if event.name == "route_step_completed" then completed = completed + 1 end
-        if event.name == "route_cancelled" then cancelled = event.payload end
+        if event.name == "route_cancelled" then
+            cancelled = event.payload
+            cancelled_frame = event.frame
+        end
     end
-    assert_equal(completed, 1, "hazard refusal should preserve the completed safe tile")
-    assert_equal(cancelled and cancelled.reason, "dangerous_tile", "hazard should cancel before the next tile")
-    assert_equal(cancelled and cancelled.dest_x, 5, "hazard cancellation should report destination X")
-    assert_equal(cancelled and cancelled.dest_y, 1, "hazard cancellation should report destination Y")
+    assert_equal(completed, 1,
+        "hazard refusal should preserve the completed safe tile")
+    assert_equal(cancelled_frame, 18,
+        "hazard should be checked when the marked press would begin")
+    assert_equal(cancelled and cancelled.reason, "dangerous_tile",
+        "hazard should cancel before the marked tile")
+    assert_equal(cancelled and cancelled.dest_x, 5,
+        "hazard cancellation should report destination X")
+    assert_equal(cancelled and cancelled.dest_y, 1,
+        "hazard cancellation should report destination Y")
 
     env.restore()
 end
 
-function tests.marked_boundary_rebases_block_watchdog_origin()
+function tests.marked_entry_rebases_block_watchdog_origin()
     local env = make_env({
         config_values = {
             auto_step_timeout = "4",
@@ -2563,85 +2902,88 @@ function tests.marked_boundary_rebases_block_watchdog_origin()
     env.auto_step.start_route({"right", "right"}, {
         start_x = 3,
         start_y = 1,
-        continuous_hold_after_steps = {[1] = true},
+        settle_before_steps = {[2] = 16},
     })
 
     env.update(true)
     env.set_position(4, 1)
     env.update(true)
+    for _ = 3, 18 do env.update(true) end
+
     local active = env.auto_step.get_active_step_state()
-    assert_equal(active and active.start_x, 4, "continued step should rebase blocker origin X")
-    assert_equal(active and active.start_y, 1, "continued step should rebase blocker origin Y")
+    assert_equal(active and active.start_x, 4,
+        "marked step should rebase blocker origin X")
+    assert_equal(active and active.start_y, 1,
+        "marked step should rebase blocker origin Y")
     for _ = 1, 6 do env.update(true) end
 
     local blocked = nil
     for _, event in ipairs(env.published) do
         if event.name == "route_blocked" then blocked = event.payload end
     end
-    assert_equal(blocked and blocked.from_x, 4, "continuous timeout should report current origin X")
-    assert_equal(blocked and blocked.from_y, 1, "continuous timeout should report current origin Y")
-    assert_equal(blocked and blocked.dir, "right", "continuous timeout should report current direction")
-    assert_equal(blocked and blocked.queued_route, true, "continuous timeout should remain a queued-route block")
+    assert_equal(blocked and blocked.from_x, 4,
+        "marked timeout should report current origin X")
+    assert_equal(blocked and blocked.from_y, 1,
+        "marked timeout should report current origin Y")
+    assert_equal(blocked and blocked.dir, "right",
+        "marked timeout should report current direction")
+    assert_equal(blocked and blocked.queued_route, true,
+        "marked timeout should remain a queued-route block")
 
     env.restore()
 end
 
-function tests.opposite_input_cancels_active_continuous_step()
+function tests.marked_entry_emits_one_completion_per_crossed_tile()
     local env = make_env({sticky_joypad_set = true})
     env.auto_step.start_route({"right", "right"}, {
         start_x = 3,
         start_y = 1,
-        continuous_hold_after_steps = {[1] = true},
+        settle_before_steps = {[2] = 16},
     })
 
     env.update(true)
     env.set_position(4, 1)
     env.update(true)
-    env.set_joy({left = true})
+    for _ = 3, 18 do env.update(true) end
+    env.set_position(5, 1)
     env.update(true)
 
-    assert_frame_neutral(env, 3, "opposite input during continuous route")
-    assert_equal(env.auto_step.is_route_active(), false, "opposite input should stop continuous route")
-    local cancelled = nil
+    local completed = {}
     for _, event in ipairs(env.published) do
-        if event.name == "route_cancelled" then cancelled = event.payload end
+        if event.name == "route_step_completed" then
+            completed[#completed + 1] = event.payload
+        end
     end
-    assert_equal(cancelled and cancelled.reason, "live_input_interrupt", "opposite input should use normal cancellation")
-    assert_equal(cancelled and cancelled.active_dir, "right", "cancellation should report injected direction")
+    assert_equal(#completed, 2,
+        "marked route should emit one completion per crossed tile")
+    assert_equal(completed[1].from_x, 3,
+        "first marked-route step should retain its origin")
+    assert_equal(completed[1].to_x, 4,
+        "first marked-route step should retain its destination")
+    assert_equal(completed[2].from_x, 4,
+        "second marked-route step should rebase its origin")
+    assert_equal(completed[2].to_x, 5,
+        "second marked-route step should retain its destination")
 
     env.restore()
 end
 
-function tests.completion_callback_can_abort_marked_continuation()
-    local env = make_env({sticky_joypad_set = true})
-    env.auto_step.on_step_complete = function()
-        env.auto_step.clear_route()
-    end
-    env.auto_step.start_route({"right", "right"}, {
-        start_x = 3,
-        start_y = 1,
-        continuous_hold_after_steps = {[1] = true},
-    })
-
-    env.update(true)
-    env.set_position(4, 1)
-    env.update(true)
-
-    assert_frame_neutral(env, 2, "callback-cleared marked route")
-    assert_equal(env.auto_step.is_route_active(), false, "completion callback should be able to clear route")
-
-    env.restore()
-end
-
-function tests.unmarked_same_direction_route_keeps_forced_release()
+function tests.unmarked_same_direction_route_represses_on_frame_six()
     local env = make_env({sticky_joypad_set = true})
     env.auto_step.start_route({"right", "right"}, {start_x = 3, start_y = 1})
 
     env.update(true)
     env.set_position(4, 1)
     env.update(true)
+    for _ = 3, 5 do env.update(true) end
 
-    assert_frame_neutral(env, 2, "ordinary same-direction route")
+    for frame = 2, 5 do
+        assert_truthy(not has_any_direction(env.injected[frame]),
+            "ordinary same-direction route should remain released through frame 5")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 6, "right",
+        "ordinary same-direction route should retain frame-6 re-press timing")
 
     env.restore()
 end
