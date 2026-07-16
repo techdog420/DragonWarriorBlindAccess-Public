@@ -132,6 +132,7 @@ local route_reset_movement_on_turn_settle_override = nil
 local route_accept_final_drift_completion_override = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
+local continuous_hold = {active = false, markers = nil}
 local route_index = 1
 local route_settle_frames = 0
 local route_settle_default = 0
@@ -361,6 +362,9 @@ local function queued_route_continuing_step_before_turn(next_dir)
 end
 
 local function should_hold_after_movement_start()
+    if continuous_hold.active then
+        return true
+    end
     if auto_hold_after_movement_start then
         if auto_movement_start_frame ~= nil and auto_hold_after_movement_start_frames ~= nil then
             return auto_frames < (auto_movement_start_frame + auto_hold_after_movement_start_frames)
@@ -536,6 +540,7 @@ M.reset_movement_engine_state = reset_movement_engine_state
 
 local function clear_route()
     route_steps = nil
+    continuous_hold.markers = nil
     route_index = 1
     route_settle_frames = 0
     route_settle_default = 0
@@ -579,6 +584,7 @@ local function begin_step(dir, px, py, state)
     auto_hold_after_movement_start = state and state.hold_after_movement_start == true or false
     auto_hold_after_movement_start_frames = state and tonumber(state.hold_after_movement_start_frames) or nil
     auto_release_after_inject_limit = state and state.release_after_inject_limit == true or false
+    continuous_hold.active = state and state.continuous_hold == true or false
     route_final_settle_active = false
     route_settle_frames = 0
     pending_repress = nil
@@ -716,6 +722,80 @@ local function step_destination(from_x, from_y, dir)
     return from_x + dx, from_y + dy
 end
 
+function continuous_hold.copy_markers(markers, step_count)
+    local copied = {}
+    for raw_index, enabled in pairs(type(markers) == "table" and markers or {}) do
+        local index = tonumber(raw_index)
+        if enabled == true and index ~= nil then
+            index = math.floor(index)
+            if index >= 1 and index < step_count then
+                copied[index] = true
+            end
+        end
+    end
+    return next(copied) and copied or nil
+end
+
+function continuous_hold.after_step(step_index)
+    return continuous_hold.markers ~= nil
+        and continuous_hold.markers[step_index] == true
+end
+
+function continuous_hold.step_uses(step_index)
+    return continuous_hold.after_step(step_index)
+        or continuous_hold.after_step(step_index - 1)
+end
+
+function continuous_hold.log(event_name, step_index, dir, from_x, from_y, reason)
+    local map_id = select(1, nav.get_position())
+    local dest_x, dest_y = step_destination(from_x, from_y, dir)
+    debug_tools.info(string.format(
+        "AUTO_STEP_CONTINUOUS_HOLD event=%s map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s step=%d reason=%s",
+        tostring(event_name),
+        map_id or -1,
+        from_x or -1,
+        from_y or -1,
+        dest_x or -1,
+        dest_y or -1,
+        tostring(dir),
+        step_index or -1,
+        tostring(reason or "-")))
+end
+
+function continuous_hold.build_step_opts(step_index, next_dir, event_name)
+    local step_opts = {
+        source = "queued_route",
+        continuous_hold = continuous_hold.step_uses(step_index),
+    }
+    if queued_route_continuing_step_before_turn(next_dir) then
+        step_opts.inject_limit = get_route_pre_turn_inject_limit()
+    end
+    if route_hold_after_movement_start_frames_override ~= nil then
+        step_opts.hold_after_movement_start = true
+        step_opts.hold_after_movement_start_frames = route_hold_after_movement_start_frames_override
+    end
+    if step_opts.continuous_hold then
+        continuous_hold.log(event_name or "enter", step_index, next_dir,
+            route_last_x, route_last_y)
+    end
+    return step_opts
+end
+
+function continuous_hold.begin_next_step(px, py, event_name)
+    local step_index = route_index
+    local next_dir = route_steps and route_steps[step_index]
+    if not next_dir then
+        return false, "route_end", nil
+    end
+    if refuse_hazard_step(next_dir, px, py, "queued_route") then
+        return false, "hazard_refused", next_dir
+    end
+    local step_opts = continuous_hold.build_step_opts(step_index, next_dir, event_name)
+    route_index = step_index + 1
+    begin_step(next_dir, px, py, step_opts)
+    return true, nil, next_dir
+end
+
 local function schedule_turn_repress(dir)
     pending_repress = {
         dir = dir,
@@ -729,11 +809,13 @@ local function schedule_turn_repress(dir)
         start_y = auto_start_y,
         source = auto_step_source,
         release_after_inject_limit = auto_release_after_inject_limit,
+        continuous_hold = continuous_hold.active,
     }
     auto_dir = nil
     auto_frames = 0
     auto_start_x = nil
     auto_start_y = nil
+    continuous_hold.active = false
 end
 
 local function reset_active_step()
@@ -751,6 +833,7 @@ local function reset_active_step()
     auto_hold_after_movement_start = false
     auto_hold_after_movement_start_frames = nil
     auto_release_after_inject_limit = false
+    continuous_hold.active = false
     clear_pending_repress()
 end
 
@@ -1088,6 +1171,15 @@ local function handle_active_auto_step(joy, px, py, timeout)
         local completed_inject_limit = auto_inject_limit
         local completed_queued_route = (route_steps ~= nil)
         local completed_source = auto_step_source
+        local completed_route_steps = route_steps
+        local completed_next_index = route_index
+        local completed_step_index = completed_next_index - 1
+        local completed_continuous_hold = continuous_hold.active
+        local next_route_dir = completed_route_steps
+            and completed_route_steps[completed_next_index]
+        local marked_continuation = completed_queued_route
+            and continuous_hold.after_step(completed_step_index)
+            and next_route_dir == completed_dir
         local expected_x, expected_y = step_destination(completed_from_x, completed_from_y, completed_dir)
         if completed_queued_route and (px ~= expected_x or py ~= expected_y) then
             reset_active_step()
@@ -1131,6 +1223,46 @@ local function handle_active_auto_step(joy, px, py, timeout)
             completed_inject_limit or -1,
             tostring(completed_queued_route)))
         if DEBUG then tolk.output("step done, " .. auto_frames .. " frames") end
+        if marked_continuation then
+            reset_active_step()
+            route_last_x = px
+            route_last_y = py
+            emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
+                input_source = completed_source,
+                timeout_retries = completed_retries,
+                turn_represses = completed_turn_represses,
+                frames = completed_frames,
+                inject_limit = completed_inject_limit,
+            })
+
+            if route_steps == completed_route_steps
+               and route_index == completed_next_index then
+                local started, reason = continuous_hold.begin_next_step(px, py, "continue")
+                if started then
+                    cooldown = 0
+                    post_step_release_frames = 0
+                    sync_prev_held(joy)
+                    return true
+                end
+
+                cooldown = COOLDOWN_FRAMES
+                neutralize_direction(joy)
+                start_post_step_release(true)
+                continuous_hold.log("exit", completed_step_index, completed_dir,
+                    completed_from_x, completed_from_y, reason)
+                sync_prev_held(joy)
+                return true
+            end
+
+            cooldown = COOLDOWN_FRAMES
+            neutralize_direction(joy)
+            start_post_step_release(true)
+            continuous_hold.log("exit", completed_step_index, completed_dir,
+                completed_from_x, completed_from_y, "callback_changed_route")
+            sync_prev_held(joy)
+            return true
+        end
+
         reset_active_step()
         cooldown = COOLDOWN_FRAMES
         neutralize_direction(joy)
@@ -1148,6 +1280,11 @@ local function handle_active_auto_step(joy, px, py, timeout)
             end
         elseif completed_queued_route and route_steps ~= nil then
             reset_movement_for_route_settle()
+        end
+        if completed_continuous_hold then
+            local exit_reason = next_route_dir == nil and "route_end" or "direction_change"
+            continuous_hold.log("exit", completed_step_index, completed_dir,
+                completed_from_x, completed_from_y, exit_reason)
         end
         emit_step_complete(completed_from_x, completed_from_y, completed_dir, px, py, "auto_hold", {
             input_source = completed_source,
@@ -1254,6 +1391,8 @@ local function handle_active_auto_step(joy, px, py, timeout)
                 joypad.set(1, {[auto_dir] = true})
             elseif auto_movement_started then
                 neutralize_direction(joy)
+            elseif continuous_hold.active and not auto_movement_started then
+                joypad.set(1, {[auto_dir] = true})
             elseif auto_frames <= (auto_inject_limit or INJECT_LIMIT) then
                 joypad.set(1, {[auto_dir] = true})
             elseif route_steps == nil
@@ -1436,26 +1575,15 @@ local function handle_route_progress(joy, px, py)
         end
         local next_dir = route_steps[route_index]
         if next_dir then
-            local step_opts = nil
-            if queued_route_continuing_step_before_turn(next_dir) then
-                step_opts = {
-                    inject_limit = get_route_pre_turn_inject_limit(),
-                    source = "queued_route",
-                }
-            end
-            if route_hold_after_movement_start_frames_override ~= nil then
-                step_opts = step_opts or {source = "queued_route"}
-                step_opts.hold_after_movement_start = true
-                step_opts.hold_after_movement_start_frames = route_hold_after_movement_start_frames_override
-            end
-            route_index = route_index + 1
-            if refuse_hazard_step(next_dir, px, py, "queued_route") then
+            local started, reason = continuous_hold.begin_next_step(px, py, "enter")
+            if started or reason == "hazard_refused" then
+                if reason == "hazard_refused" then
+                    neutralize_direction(joy)
+                    start_post_step_release(true)
+                end
                 sync_prev_held(joy)
                 return true
             end
-            begin_step(next_dir, px, py, step_opts)
-            sync_prev_held(joy)
-            return true
         end
         clear_route()
         event_bus.publish("route_completed")
@@ -1751,7 +1879,8 @@ function M.suppress_direction_tracking(frames)
     clear_direction_press_tracking()
 end
 
--- opts: { settle_frames = N, settle_same_direction = true|false, start_x = X, start_y = Y }
+-- opts: { settle_frames = N, settle_same_direction = true|false, start_x = X, start_y = Y,
+--         continuous_hold_after_steps = {[step_index] = true} }
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
@@ -1771,6 +1900,8 @@ function M.start_route(steps, opts)
     for i, dir in ipairs(steps) do
         route_steps[i] = dir
     end
+    continuous_hold.markers = continuous_hold.copy_markers(
+        opts.continuous_hold_after_steps, #route_steps)
     route_index = 1
     route_settle_default = math.max(0, tonumber(opts.settle_frames) or 0)
     route_settle_same_direction = opts.settle_same_direction ~= false

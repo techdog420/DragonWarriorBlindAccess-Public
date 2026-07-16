@@ -25,6 +25,7 @@ local function make_env(opts)
     local px, py = 3, 1
     local frame = 0
     local injected = {}
+    local injected_calls = {}
     local published = {}
     local recorded_blocks = {}
     local outputs = {}
@@ -160,9 +161,14 @@ local function make_env(opts)
             return live_joy
         end,
         set = function(_, buttons)
-            injected[frame] = buttons
+            local copied = {}
+            for key, value in pairs(buttons or {}) do
+                copied[key] = value
+            end
+            injected[frame] = copied
+            injected_calls[#injected_calls + 1] = {frame = frame, buttons = copied}
             if opts.sticky_joypad_set then
-                sticky_joy = buttons or {}
+                sticky_joy = copied
             end
         end,
     }
@@ -194,6 +200,7 @@ local function make_env(opts)
     return {
         auto_step = auto_step,
         injected = injected,
+        injected_calls = injected_calls,
         published = published,
         recorded_blocks = recorded_blocks,
         debug_messages = debug_messages,
@@ -241,6 +248,37 @@ end
 
 local function has_any_direction(buttons)
     return buttons and (buttons.up or buttons.down or buttons.left or buttons.right)
+end
+
+local function injection_calls_for_frame(env, wanted_frame)
+    local calls = {}
+    for _, call in ipairs(env.injected_calls) do
+        if call.frame == wanted_frame then
+            calls[#calls + 1] = call.buttons
+        end
+    end
+    return calls
+end
+
+local function assert_frame_only_direction(env, frame, dir, message)
+    local calls = injection_calls_for_frame(env, frame)
+    assert_truthy(#calls > 0, message .. " should inject on frame " .. frame)
+    for _, buttons in ipairs(calls) do
+        assert_equal(buttons[dir], true, message .. " should keep " .. dir .. " pressed")
+        for _, other in ipairs({"up", "down", "left", "right"}) do
+            if other ~= dir then
+                assert_truthy(not buttons[other], message .. " should not press " .. other)
+            end
+        end
+    end
+end
+
+local function assert_frame_neutral(env, frame, message)
+    local calls = injection_calls_for_frame(env, frame)
+    assert_truthy(#calls > 0, message .. " should inject on frame " .. frame)
+    for _, buttons in ipairs(calls) do
+        assert_truthy(not has_any_direction(buttons), message .. " should be neutral")
+    end
 end
 
 local function collect_direction_sequences(env, dir, max_frame)
@@ -2390,6 +2428,204 @@ function tests.queued_routes_cancel_unmatched_drift_during_initial_settle()
         not (env.injected[2] and env.injected[2].right),
         "queued route should not continue after unmatched initial-settle drift"
     )
+
+    env.restore()
+end
+
+function tests.marked_run_holds_through_movement_start_and_releases_before_turn()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right", "down"}, {
+        start_x = 3,
+        start_y = 1,
+        continuous_hold_after_steps = {[1] = true, [2] = true},
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_subpixel(0x30)
+    env.update(true)
+    env.set_position(5, 1)
+    env.update(true)
+
+    for frame = 1, 4 do
+        assert_frame_only_direction(env, frame, "right", "marked straight run")
+    end
+    assert_frame_neutral(env, 5, "marked run before direction change")
+
+    local completed = {}
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then
+            completed[#completed + 1] = event.payload
+        end
+    end
+    assert_equal(#completed, 2, "marked run should emit one completion per crossed tile")
+    assert_equal(completed[1].from_x, 3, "first marked step should retain its origin")
+    assert_equal(completed[1].to_x, 4, "first marked step should retain its destination")
+    assert_equal(completed[2].from_x, 4, "second marked step should rebase its origin")
+    assert_equal(completed[2].to_x, 5, "second marked step should retain its destination")
+
+    env.restore()
+end
+
+function tests.marked_run_final_tile_neutralizes_before_route_complete()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {auto_step_route_final_settle_frames = "5"},
+    })
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        continuous_hold_after_steps = {[1] = true},
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_subpixel(0x30)
+    env.update(true)
+    env.set_position(5, 1)
+    env.update(true)
+
+    assert_frame_neutral(env, 5, "final marked tile")
+    for _, event in ipairs(env.published) do
+        assert_truthy(event.name ~= "route_completed", "final settle should delay route completion")
+    end
+    for _ = 1, 10 do env.update(true) end
+    local count = 0
+    for _, event in ipairs(env.published) do
+        if event.name == "route_completed" then count = count + 1 end
+    end
+    assert_equal(count, 1, "marked route should complete exactly once after neutral settle")
+
+    env.restore()
+end
+
+function tests.marked_boundary_refuses_next_hazard_before_continuing()
+    local env = make_env({
+        sticky_joypad_set = true,
+        hazard_cells = {[0x05] = {["5,1"] = "damage"}},
+    })
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        continuous_hold_after_steps = {[1] = true},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    assert_frame_neutral(env, 2, "hazard refusal inside marked run")
+    assert_equal(env.auto_step.is_route_active(), false, "hazard refusal should clear the marked route")
+    local completed = 0
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then completed = completed + 1 end
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(completed, 1, "hazard refusal should preserve the completed safe tile")
+    assert_equal(cancelled and cancelled.reason, "dangerous_tile", "hazard should cancel before the next tile")
+    assert_equal(cancelled and cancelled.dest_x, 5, "hazard cancellation should report destination X")
+    assert_equal(cancelled and cancelled.dest_y, 1, "hazard cancellation should report destination Y")
+
+    env.restore()
+end
+
+function tests.marked_boundary_rebases_block_watchdog_origin()
+    local env = make_env({
+        config_values = {
+            auto_step_timeout = "4",
+            auto_step_turn_repress_limit = "0",
+            auto_step_block_retry_limit = "0",
+        },
+    })
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        continuous_hold_after_steps = {[1] = true},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    local active = env.auto_step.get_active_step_state()
+    assert_equal(active and active.start_x, 4, "continued step should rebase blocker origin X")
+    assert_equal(active and active.start_y, 1, "continued step should rebase blocker origin Y")
+    for _ = 1, 6 do env.update(true) end
+
+    local blocked = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then blocked = event.payload end
+    end
+    assert_equal(blocked and blocked.from_x, 4, "continuous timeout should report current origin X")
+    assert_equal(blocked and blocked.from_y, 1, "continuous timeout should report current origin Y")
+    assert_equal(blocked and blocked.dir, "right", "continuous timeout should report current direction")
+    assert_equal(blocked and blocked.queued_route, true, "continuous timeout should remain a queued-route block")
+
+    env.restore()
+end
+
+function tests.opposite_input_cancels_active_continuous_step()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        continuous_hold_after_steps = {[1] = true},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+
+    assert_frame_neutral(env, 3, "opposite input during continuous route")
+    assert_equal(env.auto_step.is_route_active(), false, "opposite input should stop continuous route")
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt", "opposite input should use normal cancellation")
+    assert_equal(cancelled and cancelled.active_dir, "right", "cancellation should report injected direction")
+
+    env.restore()
+end
+
+function tests.completion_callback_can_abort_marked_continuation()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.on_step_complete = function()
+        env.auto_step.clear_route()
+    end
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        continuous_hold_after_steps = {[1] = true},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    assert_frame_neutral(env, 2, "callback-cleared marked route")
+    assert_equal(env.auto_step.is_route_active(), false, "completion callback should be able to clear route")
+
+    env.restore()
+end
+
+function tests.unmarked_same_direction_route_keeps_forced_release()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {start_x = 3, start_y = 1})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    assert_frame_neutral(env, 2, "ordinary same-direction route")
 
     env.restore()
 end
