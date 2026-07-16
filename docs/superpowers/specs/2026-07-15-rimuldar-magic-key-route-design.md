@@ -1,8 +1,8 @@
 # Rimuldar Magic Key Route Correctness Design
 
 Date: 2026-07-15
-Status: Approved design; static route repair complete; executor implementation
-plan ready for execution
+Revised: 2026-07-16
+Status: Revised executor design approved after live cadence calibration
 
 ## Goal
 
@@ -53,12 +53,20 @@ the normal attempt and both seam retries failed to enter `(0,0)`. The planner
 still reported the edge passable, no NPC occupied either endpoint, and
 `RUNTIME_BLOCKS map=0x0B none` remained true.
 
-Raw input calibration isolated the difference: an uninterrupted 64-frame
-RIGHT hold moved `(1,0)->(5,0)`, and an uninterrupted 80-frame LEFT hold moved
-`(5,0)->(0,0)`. The edge is therefore passable through normal movement, but
-the engine requires the westbound top-bank run to remain continuously held.
-The queued executor currently inserts neutral input, a four-frame cooldown,
-and a forced post-step release after every crossed tile.
+The first calibration was misread as a continuous-hold requirement. Fresh
+same-state trials disproved that model: an uninterrupted 80-frame LEFT hold
+from `(5,0)` advanced only to `(1,0)` and then stalled. Releasing there and
+pressing LEFT again entered `(0,0)`. Explicit two-press sequences showed the
+threshold: neutral gaps of 8 and 12 frames still failed, while a 16-frame
+neutral gap followed by a fresh LEFT press entered `(0,0)` and stayed in
+Rimuldar. The edge is therefore passable through normal movement, but the
+engine requires a settled release/repress before the final west step.
+
+The source-only continuous-run implementation correctly propagated its
+markers and kept LEFT asserted, but failed at `(1,0)->(0,0)` because it
+preserved the exact stale movement state that must settle. Raising the generic
+early-twitch watchdog from 32 to 60 frames did not help. Static source-order
+review also ruled out a later Lua `joypad.set()` writer overwriting the input.
 
 Starting from `(0,0)`, the remaining nine-step autowalk reached `(4,5)`. Its
 last seam retry succeeded, but the seam-retry destination branch published
@@ -81,9 +89,9 @@ Five independent source assumptions combine to break routing and execution:
    Rimuldar's intended outer bank deliberately uses both boundaries.
 3. `SERVICE_INTERACTION_OVERRIDES[0x0B]["4,7"]` targets counter `(4,6)` as the
    player stand. The live stand is `(4,5)` facing south.
-4. Queued movement always releases and represses the D-pad after each tile.
-   Rimuldar's westbound top-bank entry into `(0,0)` requires uninterrupted
-   input across the straight run leading to that edge.
+4. Ordinary queued movement releases for only its short generic cooldown.
+   Rimuldar's westbound top-bank entry into `(0,0)` requires at least 16
+   neutral frames at `(1,0)` before a fresh LEFT press.
 5. A successful seam retry that lands directly on the route destination uses
    a shortened completion branch. That branch bypasses the standard final
    facing, settle, and completion-speech behavior.
@@ -177,45 +185,50 @@ No quest flag, opened door, teleport state, or runtime block is part of route
 eligibility. Movement cadence is an execution requirement for one verified
 Rimuldar boundary, not a planner eligibility rule.
 
-### 5. Map-scoped continuous-run execution
+### 5. Map-scoped settled re-press execution
 
 Add explicit, map-scoped metadata for cadence-sensitive entries. Rimuldar map
-`0x0B` marks entry into `(0,0)` from the east. Keep `auto_step.lua` generic and
-coordinate-free: `route_manager.lua` translates a planned path containing a
-marked entry into per-boundary `continuous_hold_after_steps` options.
+`0x0B` marks entry into `(0,0)` from the east with `settle_frames=16`. Keep
+`auto_step.lua` generic and coordinate-free: `route_manager.lua` translates a
+planned path containing that entry into a per-step
+`settle_before_steps[step_index]=16` option.
 
-For a marked entry, walk backward through the contiguous same-direction run
-and mark each internal tile boundary in that run. This keeps the entire
-westbound approach continuously held rather than releasing only one tile
-before `(0,0)`. The executor retains the existing flat per-tile queue and must
-still publish exactly one `route_step_completed` event for every crossed tile.
+Only the destination-entry step is marked. The preceding westbound tiles use
+ordinary per-tile execution. After the route completes `(2,0)->(1,0)`, the
+executor keeps the next step queued and starts a fresh LEFT press only after
+16 physical neutral frames. The tile-completion frame is already neutral, so
+15 countdown frames remain after a normally completed prior step. A fresh
+plan or reroute whose first step is `(1,0)->(0,0)` has no completion frame and
+therefore waits all 16 frames before step 1. The existing flat per-tile queue
+and exactly-one `route_step_completed` event per crossed tile remain
+unchanged.
 
-At a marked internal boundary, when the next queued direction is identical,
-the executor will:
+Implement this through the existing route-settle state rather than a second
+input state machine. Extract a coordinate-free `begin_next_route_step()` from
+the current continuous-hold helper before deleting that obsolete branch.
+Per-step settle metadata takes the maximum of the normal settle requirement
+and the marked entry's remaining countdown. The metadata is honored even on a
+same-direction segment, on step 1, and when `settle_same_direction=false`,
+because it describes a verified engine requirement rather than optional route
+smoothing.
 
-- update the completed-tile coordinates and per-tile watchdog state;
-- publish that tile's normal completion event;
-- validate the next step and any hazard refusal;
-- consume and begin the next same-direction step in the same frame;
-- omit neutral input, cooldown, and forced post-step release only at that
-  marked boundary.
+All safety behavior remains mandatory. Live direction input during the settle
+still cancels the route, drift is consumed or rejected through existing
+logic, hazards are checked before the fresh step begins, and callback-driven
+route cancellation prevents the step from starting. The executor releases
+normally at `(0,0)` before turning south, preventing an extra west input from
+triggering the World Map transition. Ordinary routes and unmarked boundaries
+retain current release timing.
 
-All safety behavior remains mandatory. If the next direction changes, the
-route ends, the completion callback clears or replans the route, a hazard is
-refused, or cancellation occurs, input neutralizes through the existing safe
-path. In particular, the final west tile releases normally at `(0,0)` before
-the route turns south, preventing an extra west input from triggering the
-World Map transition. Ordinary routes and unmarked boundaries retain current
-release timing.
+The metadata is route/path data, not merchant-specific state. Every fresh
+plan, reroute, or seam follow-up recomputes it from the map entry and actual
+path. Remove the disproven continuous-hold metadata and executor branch rather
+than retaining two competing cadence models.
 
-The marker is route/path data, not merchant-specific state. Every fresh plan,
-reroute, or seam-followup recomputes its markers from the map metadata and
-actual path. Do not overload `settle_same_direction=false`; survey-safe routes
-already use that option for a different purpose.
-
-Log entry into, continuation of, and exit from a continuous run with map,
-origin, destination, direction, and route-step index. Existing blocker,
-timeout, cancellation, hazard, and progress logs remain intact.
+Log the scheduled settle with map, origin, destination, direction, route-step
+index, required physical neutral frames, and remaining countdown frames.
+Existing blocker, timeout, cancellation, hazard, and progress logs remain
+intact.
 
 ### 6. One standard arrival path
 
@@ -270,29 +283,34 @@ the stand. Keep this separate from a route-manager test that asserts the
 selected service goal is `(4,5)` with south-facing interaction state; the
 existing route-manager tests stub pathfinding and cannot prove map integration.
 
-### Continuous-run executor tests
+### Settled re-press executor tests
 
-- A route with an explicitly marked straight-run boundary proves there is no
-  neutral frame between the marked same-direction steps.
-- The same route proves one direction sequence and exactly one
-  `route_step_completed` event per tile.
-- A turn immediately after the marked run proves neutral release before the
-  new direction and no old-direction overshoot.
-- A route ending after a marked run proves normal final neutralization.
-- Blocker reporting after multiple continuously held tiles identifies the
-  correct current origin and attempted destination.
-- Opposite-direction input still cancels immediately.
-- Hazard refusal before the next tile neutralizes input and does not consume
-  that unsafe step.
-- An otherwise identical unmarked route retains the existing forced release
-  between tiles.
+- A route with `settle_before_steps={[2]=16}` proves the completion frame plus
+  15 countdown frames are neutral before the second same-direction press.
+- A route with `settle_before_steps={[1]=16}` proves a fresh first step waits
+  all 16 neutral frames.
+- The marked route emits exactly one `route_step_completed` event per crossed
+  tile and one route-complete event.
+- The per-step requirement still applies when `settle_same_direction=false`.
+- A larger ordinary turn/final settle remains authoritative through
+  maximum-value merging.
+- Live direction input during the marked settle cancels immediately.
+- Drift during the marked settle uses the existing catch-up/cancel behavior.
+- Hazard refusal before the fresh step neutralizes input and does not consume
+  the unsafe step.
+- A step-completion callback that clears the route prevents the marked next
+  step from starting.
+- An otherwise identical unmarked route retains its existing timing.
 
 ### Cadence metadata and arrival tests
 
-- A synthetic Rimuldar path ending in the east approach to `(0,0)` marks only
-  the internal boundaries of its contiguous westbound run.
-- Turns, the final entry tile, unrelated straight runs, other maps, and paths
-  that do not cross the marked edge remain unmarked.
+- `get_entry_settle_frames(0x0B, 0, 0, "east")` returns `16`.
+- Reverse approach, neighboring cells, other maps, and missing entries return
+  zero.
+- A synthetic Rimuldar path entering `(0,0)` from the east marks only that
+  path step with `settle_before_steps[entry_index]=16`.
+- Turns, unrelated straight runs, other maps, and paths that do not cross the
+  marked edge remain unmarked.
 - A successful seam retry that lands on `(4,5)` emits one final step event and
   one route-complete event, preserves the Magic Key target, faces south, and
   produces the standard completion feedback.
@@ -302,8 +320,8 @@ existing route-manager tests stub pathfinding and cannot prove map integration.
 
 Run focused map-reader, object, pathfinder, and route-manager suites first,
 then every repository Lua test and `luac -p` over changed Lua files. Capture
-the injected-input waveform in executor tests so continuous means no neutral
-frame, not merely a shorter delay. The final live check requires a manual
+the injected-input waveform in executor tests so exactly 16 physical neutral
+frames precede the fresh press. The final live check requires a manual
 FCEUX Lua reload, `RUNTIME_BLOCKS map=0x0B none`, normal entry `(29,14)`, one
 source-only autowalk to `(4,5)`, standard south-facing arrival, and the 53 G
 prompt.
@@ -319,12 +337,12 @@ prompt.
   `main.lua`; if polling remains stale, relaunch with `./launch_dw.sh`.
 - Keep runtime/test-only blocks separate from permanent map data throughout
   live verification.
-- If continuous execution loses route context, encounters a refused hazard, or
-  sees a different next direction, fail closed by neutralizing input and using
-  the existing release/replan behavior.
-- Never infer continuous execution merely from adjacent equal directions;
-  require explicit map/path metadata so ordinary routes retain their proven
-  anti-overshoot timing.
+- If settled re-press execution loses route context, encounters a refused
+  hazard, or sees off-path drift, fail closed through the existing
+  release/cancel/replan behavior.
+- Never infer a long settle merely from coordinates or adjacent equal
+  directions; require explicit map/path metadata so ordinary routes retain
+  their proven timing.
 
 ## Scope Boundaries
 
@@ -343,7 +361,7 @@ Excluded:
 - unrelated Rimuldar inn/Wings routes;
 - broad cleanup of historical per-map overrides;
 - promotion of `(2,8).west`;
-- a global continuous-hold default or merchant-specific executor flag;
+- a global long-settle default or merchant-specific executor flag;
 - fake blockers, teleports, or quest-state gates for the `(0,0)` seam;
 - emulator launcher or desktop-control automation.
 
@@ -354,9 +372,11 @@ Excluded:
 2. `git diff --check` and Lua syntax checks pass.
 3. The planner selects `(4,5)` facing south for the Magic Key Merchant.
 4. One source-only live autowalk reaches `(4,5)` from `(29,14)` via the row-2 /
-   x=21 jog, uninterrupted top-bank run into `(0,0)`, and bridge `(1,3)`.
-5. The executor releases before turning south at `(0,0)`, never transitions to
-   the World Map, and preserves per-tile progress/blocker/cancel safety.
+   x=21 jog, a 16-frame settled re-press at `(1,0)`, and bridge `(1,3)`.
+5. The executor sends exactly 16 physical neutral frames before the fresh west
+   press, including the already-neutral completion frame when applicable,
+   releases before turning south at `(0,0)`, never transitions to the World
+   Map, and preserves per-tile progress/blocker/cancel safety.
 6. A destination seam retry uses the standard arrival path, leaves the player
    at `(4,5)` facing south, and emits one route-complete result.
 7. TALK opens the 53 G key prompt with no runtime blocks.
