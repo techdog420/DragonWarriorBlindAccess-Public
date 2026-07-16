@@ -385,11 +385,13 @@ local function make_env(options)
             get_directional_blocks = function()
                 return {}
             end,
-            requires_continuous_hold_entry = function(map_id, x, y, approach)
-                local by_map = options.continuous_hold_entries
-                    and options.continuous_hold_entries[map_id]
+            get_entry_settle_frames = function(map_id, x, y, approach)
+                local by_map = options.entry_settle_frames
+                    and options.entry_settle_frames[map_id]
                 local entry = by_map and by_map[tostring(x) .. "," .. tostring(y)]
-                return type(entry) == "table" and entry[approach] == true
+                return math.max(0, math.floor(tonumber(
+                    type(entry) == "table" and entry[approach] or 0
+                ) or 0))
             end,
             is_hazard_cell = function(_, x, y)
                 return hazard_cells[x .. "," .. y] or false
@@ -1489,7 +1491,7 @@ function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service
     env.restore()
 end
 
-function tests.rimuldar_path_marks_only_internal_boundaries_before_cadence_entry()
+function tests.rimuldar_path_marks_only_the_cadence_entry_step()
     local target = {id = "exit_test", name = "Test destination", type = "exit", x = 1, y = 1}
     local path = {
         {x = 3, y = 0, direction = "north"},
@@ -1504,8 +1506,8 @@ function tests.rimuldar_path_marks_only_internal_boundaries_before_cadence_entry
         start_x = 3,
         start_y = 1,
         current_object = target,
-        continuous_hold_entries = {
-            [0x0B] = { ["0,0"] = {east = true} },
+        entry_settle_frames = {
+            [0x0B] = {["0,0"] = {east = 16}},
         },
         pathfind_to_fn = function()
             return "Path: north, 3 west, south, east", "east", path
@@ -1513,14 +1515,49 @@ function tests.rimuldar_path_marks_only_internal_boundaries_before_cadence_entry
     })
 
     local result = env.route_manager.autowalk_to_object(target, {speak = false})
-    local markers = env.last_start_route_opts().continuous_hold_after_steps
+    local settles = env.last_start_route_opts().settle_before_steps
 
     assert_equal(result.status, "queued", "synthetic Rimuldar route should queue")
-    assert_equal(markers and markers[2], true, "first internal west boundary should stay held")
-    assert_equal(markers and markers[3], true, "second internal west boundary should stay held")
-    assert_equal(markers and markers[1], nil, "turn into the west run should retain ordinary input")
-    assert_equal(markers and markers[4], nil, "entry tile should release before the south turn")
-    assert_equal(markers and markers[5], nil, "south turn should not inherit west continuity")
+    assert_equal(settles and settles[4], 16, "entry step should receive the verified settle")
+    assert_equal(settles and settles[2], nil, "earlier west steps should retain ordinary timing")
+    assert_equal(settles and settles[3], nil, "the approach step should not settle early")
+    assert_equal(settles and settles[5], nil, "the south turn should not inherit the entry settle")
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_ENTRY_SETTLE map=0x0B from=(1,0) dest=(0,0) dir=left step=4 frames=16",
+        "entry settle planning should log the immediate route origin"
+    )
+
+    env.restore()
+end
+
+function tests.rimuldar_path_marks_cadence_entry_when_it_is_step_one()
+    local target = {id = "entry_test", name = "Entry destination", type = "exit", x = 0, y = 0}
+    local env = make_env({
+        start_map_id = 0x0B,
+        start_x = 1,
+        start_y = 0,
+        current_object = target,
+        entry_settle_frames = {
+            [0x0B] = {["0,0"] = {east = 16}},
+        },
+        pathfind_to_fn = function()
+            return "Path: 1 west", "west", {
+                {x = 0, y = 0, direction = "west"},
+            }
+        end,
+    })
+
+    local result = env.route_manager.autowalk_to_object(target, {speak = false})
+    local settles = env.last_start_route_opts().settle_before_steps
+
+    assert_equal(result.status, "queued", "one-step Rimuldar route should queue")
+    assert_equal(settles and settles[1], 16, "first entry step should retain its settle")
+    assert_contains(
+        table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_ENTRY_SETTLE map=0x0B from=(1,0) dest=(0,0) dir=left step=1 frames=16",
+        "first-step entry settle planning should log the supplied route origin"
+    )
 
     env.restore()
 end

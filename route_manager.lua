@@ -3719,47 +3719,36 @@ local function queue_path_steps(path, opts)
         return false
     end
     opts = opts or {}
-    local function continuous_hold_after_steps_for_path(map_id, route_path, start_x, start_y)
-        if not map_reader.requires_continuous_hold_entry then
+    local function settle_before_steps_for_path(map_id, route_path, start_x, start_y)
+        if not map_reader.get_entry_settle_frames then
             return nil
         end
 
-        local markers = {}
-        for entry_index, step in ipairs(route_path or {}) do
+        local settles = {}
+        for step_index, step in ipairs(route_path or {}) do
             local key_dir = DIR_NAME_TO_KEY[step.direction]
             local approach = key_dir and DIR_TO_APPROACH[key_dir]
-            if approach
-               and map_reader.requires_continuous_hold_entry(
-                    map_id, step.x, step.y, approach) then
-                local run_start = entry_index
-                while run_start > 1
-                  and route_path[run_start - 1].direction == step.direction do
-                    run_start = run_start - 1
-                end
-
-                for completed_index = run_start, entry_index - 1 do
-                    markers[completed_index] = true
-                end
-
-                if entry_index > run_start then
-                    local origin = run_start == 1
-                        and {x = start_x, y = start_y}
-                        or route_path[run_start - 1]
-                    debug_tools.info(string.format(
-                        "AUTO_WALK_CONTINUOUS_RUN map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s steps=%d-%d",
-                        map_id or -1,
-                        tonumber(origin and origin.x) or -1,
-                        tonumber(origin and origin.y) or -1,
-                        tonumber(step.x) or -1,
-                        tonumber(step.y) or -1,
-                        tostring(key_dir),
-                        run_start,
-                        entry_index))
-                end
+            local frames = approach and map_reader.get_entry_settle_frames(
+                map_id, step.x, step.y, approach) or 0
+            if frames > 0 then
+                settles[step_index] = frames
+                local origin = step_index == 1
+                    and {x = start_x, y = start_y}
+                    or route_path[step_index - 1]
+                debug_tools.info(string.format(
+                    "AUTO_WALK_ENTRY_SETTLE map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s step=%d frames=%d",
+                    map_id or -1,
+                    tonumber(origin and origin.x) or -1,
+                    tonumber(origin and origin.y) or -1,
+                    tonumber(step.x) or -1,
+                    tonumber(step.y) or -1,
+                    tostring(key_dir),
+                    step_index,
+                    frames))
             end
         end
 
-        return next(markers) and markers or nil
+        return next(settles) and settles or nil
     end
 
     local steps = {}
@@ -3781,7 +3770,7 @@ local function queue_path_steps(path, opts)
     end
     local live_map_id = select(1, nav.get_position())
     local map_id = tonumber(opts.map_id) or live_map_id
-    local continuous_hold_after_steps = continuous_hold_after_steps_for_path(
+    local settle_before_steps = settle_before_steps_for_path(
         map_id, path, start_x, start_y)
     local settle_frames = opts.settle_frames
     if settle_frames == nil then
@@ -3806,7 +3795,7 @@ local function queue_path_steps(path, opts)
         initial_settle_frames = opts.initial_settle_frames,
         start_x = start_x,
         start_y = start_y,
-        continuous_hold_after_steps = continuous_hold_after_steps,
+        settle_before_steps = settle_before_steps,
     }) then
         trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
             "result=true steps=%d",

@@ -2515,28 +2515,28 @@ function tests.garinham_public_shop_route_edges_match_live_checks()
     env.restore()
 end
 
-function tests.rimuldar_marks_only_verified_continuous_hold_entry()
+function tests.rimuldar_marks_only_verified_entry_settle()
     local env = make_env()
 
     assert_equal(
-        env.map_reader.requires_continuous_hold_entry(0x0B, 0, 0, "east"),
-        true,
-        "Rimuldar (0,0) east entry should require uninterrupted input"
+        env.map_reader.get_entry_settle_frames(0x0B, 0, 0, "east"),
+        16,
+        "Rimuldar (0,0) east entry should require a 16-frame neutral settle"
     )
     assert_equal(
-        env.map_reader.requires_continuous_hold_entry(0x0B, 0, 0, "west"),
-        false,
+        env.map_reader.get_entry_settle_frames(0x0B, 0, 0, "west"),
+        0,
         "Rimuldar reverse entry should retain ordinary cadence"
     )
     assert_equal(
-        env.map_reader.requires_continuous_hold_entry(0x0B, 1, 0, "east"),
-        false,
+        env.map_reader.get_entry_settle_frames(0x0B, 1, 0, "east"),
+        0,
         "neighboring top-bank cells should not become cadence entries"
     )
     assert_equal(
-        env.map_reader.requires_continuous_hold_entry(0x0A, 0, 0, "east"),
-        false,
-        "continuous-hold metadata should remain map-scoped"
+        env.map_reader.get_entry_settle_frames(0x0A, 0, 0, "east"),
+        0,
+        "entry-settle metadata should remain map-scoped"
     )
 
     env.restore()
