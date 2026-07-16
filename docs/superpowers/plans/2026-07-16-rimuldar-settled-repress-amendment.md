@@ -14,6 +14,9 @@
 - The only marked entry is map `0x0B`, destination `(0,0)`, approach `east`, with `16` physical neutral frames before its press.
 - Treat the value as an entry execution requirement, not passability.
 - Ordinary and unmarked routes retain their existing timing.
+- After the completion callback, a still-current marked continuation owns the
+  next frame and bypasses redundant forced release; callback replacement keeps
+  the replacement route's appropriate release/settle state.
 - A marked settle keeps route cancellation, drift, hazard, blocker, and per-tile event behavior intact.
 - Remove the disproven continuous-hold metadata and executor behavior instead of retaining both models.
 - Write and run each regression before its production change.
@@ -321,6 +324,117 @@ function tests.marked_first_step_waits_for_all_sixteen_neutral_frames()
     env.restore()
 end
 
+function tests.marked_entry_settle_owns_first_followup_frame()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled" and event.frame == 3 then
+            cancelled = payload
+            break
+        end
+    end
+
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt",
+        "first followup frame should cancel through route settle")
+    assert_equal(cancelled and cancelled.source, "route_settle",
+        "marked route settle should own the first followup frame")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "live input should cancel the marked settle immediately")
+
+    env.restore()
+end
+
+function tests.callback_requeued_marked_first_step_owns_initial_settle()
+    local env = make_env({sticky_joypad_set = true})
+    local requeued = false
+    env.auto_step.on_step_complete = function()
+        if requeued then return end
+        requeued = true
+        env.auto_step.start_route({"right"}, {
+            start_x = 4,
+            start_y = 1,
+            settle_before_steps = {[1] = 16},
+        })
+    end
+    env.auto_step.start_route({"right"}, {start_x = 3, start_y = 1})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled" and event.frame == 3 then
+            cancelled = payload
+            break
+        end
+    end
+
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt",
+        "callback-requeued first-step settle should see live input immediately")
+    assert_equal(cancelled and cancelled.source, "route_settle",
+        "marked initial settle should replace stale post-step release")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "live input should cancel callback-requeued marked route")
+
+    env.restore()
+end
+
+function tests.callback_unmarked_replacement_preserves_stale_blip_release()
+    local env = make_env()
+    local replacement_started = false
+    env.auto_step.on_step_complete = function()
+        if replacement_started then return end
+        replacement_started = true
+        env.auto_step.start_route({"down"}, {
+            start_x = 4,
+            start_y = 1,
+        })
+    end
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({right = true})
+    env.update(true)
+
+    assert_frame_neutral(env, 3,
+        "callback replacement stale-input release")
+    assert_equal(env.auto_step.is_route_active(), true,
+        "unmarked callback replacement should survive the stale blip")
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        assert_truthy(
+            not (event.frame == 3
+                and event.name == "route_cancelled"
+                and payload.reason == "live_input_interrupt"),
+            "old marked settle must not clear replacement-route release state")
+    end
+
+    env.restore()
+end
+
 function tests.marked_entry_settle_applies_when_straight_settle_is_disabled()
     local env = make_env({sticky_joypad_set = true})
     env.auto_step.start_route({"right", "right"}, {
@@ -381,7 +495,12 @@ function tests.completion_callback_can_abort_marked_entry_settle()
     env.update(true)
     env.set_position(4, 1)
     env.update(true)
-    for _ = 1, 20 do env.update(true) end
+    env.set_joy({right = true})
+    env.update(true)
+    assert_frame_neutral(env, 3,
+        "callback-cleared route should retain completion release")
+    env.set_joy({})
+    for _ = 1, 19 do env.update(true) end
 
     for frame = 2, 22 do
         assert_truthy(
@@ -396,9 +515,132 @@ function tests.completion_callback_can_abort_marked_entry_settle()
 end
 ```
 
+Add a state-derived pending-repress helper and regression so both completion
+paths prove the same ownership and frame count:
+
+```lua
+local function complete_route_step_via_pending_repress(env)
+    local pending = nil
+    for _ = 1, 40 do
+        env.update(true)
+        local state = env.auto_step.get_active_step_state()
+        if state
+           and state.frames == 0
+           and state.turn_represses == 1
+           and state.source == "queued_route" then
+            pending = state
+            break
+        end
+    end
+    assert_truthy(pending ~= nil,
+        "test setup should reach queued pending-repress state")
+
+    env.set_joy({})
+    env.set_position(4, 1)
+    env.update(true)
+
+    local completion = nil
+    for i = #env.published, 1, -1 do
+        local event = env.published[i]
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "pending_repress" then
+            completion = event
+            break
+        end
+    end
+    assert_truthy(completion ~= nil,
+        "position change during release gap should complete through pending-repress")
+    assert_equal(completion.payload.input_source, "queued_route",
+        "pending completion should preserve queued-route input source")
+    return completion.frame
+end
+
+function tests.pending_repress_completion_uses_exact_marked_entry_settle()
+    local env = make_env({
+        config_values = {
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_limit = "1",
+        },
+    })
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    local completion_frame = complete_route_step_via_pending_repress(env)
+    assert_frame_neutral(env, completion_frame,
+        "pending-repress completion frame")
+    for offset = 1, 15 do
+        env.update(true)
+        assert_frame_neutral(env, completion_frame + offset,
+            "pending-repress marked settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, completion_frame + 16, "right",
+        "pending-repress fresh marked-entry press")
+
+    env.restore()
+end
+```
+
+Add drift regressions. The first proves that catch-up of the step immediately
+before a marked entry installs the exact countdown:
+
+```lua
+function tests.drift_before_marked_entry_starts_exact_settle()
+    local env = make_env()
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        initial_settle_frames = 1,
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local catchup = nil
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.source == "route_settle_catchup"
+           and payload.from_x == 3
+           and payload.to_x == 4 then
+            catchup = event
+            break
+        end
+    end
+    assert_truthy(catchup ~= nil,
+        "drift should consume the step immediately before the marked entry")
+    assert_frame_neutral(env, catchup.frame,
+        "marked-entry drift observation")
+
+    for offset = 1, 15 do
+        env.update(true)
+        assert_frame_neutral(env, catchup.frame + offset,
+            "post-drift marked-entry settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, catchup.frame + 16, "right",
+        "fresh marked press after drift settle")
+
+    env.restore()
+end
+```
+
+Add a second focused drift regression in which one observation matches at
+least two old-route steps and the first catch-up completion callback installs
+a replacement route. Assert that catch-up stops after that callback, emits no
+completion from the replacement route, and leaves the replacement's index and
+first direction intact.
+
 Keep the existing unmarked-route timing, drift, hazard, cancellation, final
-settle, and callback tests. Delete tests whose only requirement is a
-continuous asserted direction.
+settle, and callback tests. Strengthen the unmarked two-step regression to
+prove frames 2-5 remain without a direction and the second press begins on
+frame 6. Delete tests whose only requirement is a continuous asserted
+direction.
 
 - [ ] **Step 2: Run the executor test and verify RED.**
 
@@ -486,7 +728,9 @@ Update the public option comment to:
 
 In `route_settle_after_step(completed_dir)`, after computing ordinary
 same-direction/turn settling and before returning, count the already-neutral
-completion frame as the first required frame:
+completion frame as the first required frame. Return the requirement alongside
+the selected settle, but do not clear release state or log yet. Update the
+final-step return to provide zero requirement values:
 
 ```lua
 local entry_required = settle_before_step(route_index)
@@ -494,10 +738,37 @@ local entry_remaining = math.max(0, entry_required - 1)
 if entry_remaining > settle_frames then
     settle_frames = entry_remaining
 end
-if entry_required > 0 then
-    log_entry_settle(route_index, entry_required, entry_remaining)
+return settle_frames, entry_required, entry_remaining
+```
+
+Add an identity helper and claim marked ownership only after the completion
+callback returns:
+
+```lua
+local function route_still_matches(expected_steps, expected_index)
+    return route_steps == expected_steps
+        and route_index == expected_index
+end
+
+local function claim_entry_settle_after_callback(
+        expected_steps, expected_index, entry_required, entry_remaining)
+    entry_required = tonumber(entry_required) or 0
+    if entry_required <= 0
+       or not route_still_matches(expected_steps, expected_index) then
+        return false
+    end
+    post_step_release_frames = 0
+    log_entry_settle(expected_index, entry_required, entry_remaining)
+    return true
 end
 ```
+
+In both the ordinary active-step and pending-repress completion paths, capture
+the route table and next index, assign all three return values from
+`route_settle_after_step()`, emit `route_step_completed`, then call
+`claim_entry_settle_after_callback(...)`. The identity guard must cover every
+post-callback release mutation and log. If a callback clears or replaces the
+route, do not claim the old marked settle.
 
 In `start_route()`, a marked first step has no preceding neutral completion
 frame, so merge the full requirement into the initial settle:
@@ -508,13 +779,72 @@ local configured_initial_settle = math.max(
 local first_step_settle = settle_before_step(1)
 route_settle_frames = math.max(configured_initial_settle, first_step_settle)
 if first_step_settle > 0 then
+    -- A completion callback may requeue this marked route after already
+    -- scheduling forced release for the prior route.
+    post_step_release_frames = 0
     log_entry_settle(1, first_step_settle, first_step_settle)
 end
 ```
 
+Route drift bypasses both normal completion paths. In each
+`consume_route_drift()` caller, capture the expected route table and starting
+index before catch-up. When callbacks leave that same route at exactly
+`start_index + consumed`, and the new next step is marked:
+
+- use the last consumed old-route direction to recompute ordinary plus entry
+  settling;
+- count the already-neutral drift observation as the first physical frame;
+- explicitly neutralize the observation frame in the no-settle/cooldown
+  caller;
+- clear redundant release, log the marked settle, and leave
+  `handle_route_progress()` as the only countdown.
+
+When the next step is unmarked, retain the existing default-settle behavior.
+When a callback changed the route, mutate nothing and do not overwrite its
+new initial settle.
+
+Use one shared helper so both callers apply identical identity and entry
+logic:
+
+```lua
+local function install_entry_settle_after_drift(
+        expected_steps, start_index, consumed)
+    local expected_index = start_index + consumed
+    if consumed <= 0
+       or not route_still_matches(expected_steps, expected_index) then
+        return false, false
+    end
+
+    local entry_required = settle_before_step(route_index)
+    if entry_required <= 0 then
+        return false, true
+    end
+
+    local completed_dir = expected_steps[route_index - 1]
+    local settle_frames, required, remaining =
+        route_settle_after_step(completed_dir)
+    route_settle_frames = settle_frames
+    post_step_release_frames = 0
+    log_entry_settle(route_index, required, remaining)
+    return true, true
+end
+```
+
+The two returns mean `marked_settle_installed, same_route`. Only execute the
+caller's old default-settle reset when `same_route` is true and no marked
+settle was installed. In the no-settle/cooldown caller, explicitly call
+`neutralize_direction(joy)` when the helper installs a marked settle.
+
+Inside `consume_route_drift()`, use the captured old route table/index for
+each matched step and check `route_still_matches(...)` after every
+`emit_step_complete()`. Stop catch-up immediately when a callback changed the
+route, preventing later iterations from reading or advancing replacement
+route state.
+
 The existing `handle_route_progress` branch must remain the only countdown:
 it neutralizes, checks interruption/drift, decrements
 `route_settle_frames`, and begins the queued step after the full countdown.
+Do not reorder the general pending-release handler or change unmarked timing.
 
 - [ ] **Step 5: Remove the disproven continuous-hold implementation.**
 
@@ -746,6 +1076,9 @@ Expected: all checks pass and the documentation commit succeeds.
 - `get_entry_settle_frames(0x0B, 0, 0, "east") == 16`; unrelated queries return `0`.
 - The 52-step path marks only step 43 with `settle_before_steps[43] == 16`.
 - Auto-step keeps the route queued through exactly 16 physical neutral frames before the fresh LEFT press: the completion frame plus 15 remaining frames, or all 16 frames when the marked entry is step 1.
+- Marked settling owns the first follow-up frame after both active-step and pending-repress completion only while the same route/index remains; callback-cleared or unmarked replacement routes retain ordinary forced release, while a callback-requeued marked step 1 owns its initial settle.
+- Drift catch-up that exposes a marked entry installs the same exact remaining settle, and callback mutation stops old-route catch-up before it can alter replacement state.
+- An equivalent unmarked two-step route retains its existing frame-6 second press.
 - Continuous-hold metadata and executor behavior are removed.
 - One source-only autowalk reaches `(4,5)` from `(29,14)` without a seam retry, World Map transition, or runtime block.
 - Arrival faces south once and TALK opens the 53 G Magic Key prompt.

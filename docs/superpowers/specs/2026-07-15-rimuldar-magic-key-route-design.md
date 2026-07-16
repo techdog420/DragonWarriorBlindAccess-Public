@@ -212,6 +212,25 @@ same-direction segment, on step 1, and when `settle_same_direction=false`,
 because it describes a verified engine requirement rather than optional route
 smoothing.
 
+The existing forced two-frame post-step release runs before route-settle
+processing. After a prior tile completes and its completion callback returns,
+a marked later step clears that redundant release only if the same route table
+and next-step index still remain. Route settling then owns the very next
+frame; otherwise the press occurs two frames late and live input is hidden
+during those two frames. A callback that clears or installs an unmarked
+replacement leaves the ordinary forced release intact. When a callback queues
+a route whose first step is marked, installing that first-step settle clears
+the just-finished route's release itself. This transfer of ownership is
+targeted to marked entries. Unmarked routes keep their existing post-step
+release and cooldown timing.
+
+Matching route drift can complete a planned tile without using the normal
+active-step completion branch. If catch-up exposes a marked next step, the
+neutral drift-observation frame counts as its completion frame and installs
+the remaining 15-frame settle. Catch-up stops immediately if a completion
+callback replaces or clears the route, so old-route iterations cannot consume
+or mutate callback-installed route state.
+
 All safety behavior remains mandatory. Live direction input during the settle
 still cancels the route, drift is consumed or rejected through existing
 logic, hazards are checked before the fresh step begins, and callback-driven
@@ -295,12 +314,22 @@ existing route-manager tests stub pathfinding and cannot prove map integration.
 - A larger ordinary turn/final settle remains authoritative through
   maximum-value merging.
 - Live direction input during the marked settle cancels immediately.
+- Both ordinary active-step completion and pending-repress completion transfer
+  the first follow-up frame directly to marked route settling.
+- A callback-requeued route whose first step is marked does not inherit the
+  completed route's forced post-step release.
+- A callback that clears the marked continuation or replaces it with an
+  unmarked route retains ordinary forced-release behavior.
+- Drift catch-up that exposes a marked next step installs the exact remaining
+  settle, while callback mutation stops multi-step catch-up immediately.
 - Drift during the marked settle uses the existing catch-up/cancel behavior.
 - Hazard refusal before the fresh step neutralizes input and does not consume
   the unsafe step.
 - A step-completion callback that clears the route prevents the marked next
   step from starting.
-- An otherwise identical unmarked route retains its existing timing.
+- An otherwise identical unmarked route retains its existing forced-release
+  and cooldown timing, including its frame-6 second press in the focused
+  two-step regression.
 
 ### Cadence metadata and arrival tests
 
