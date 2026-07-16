@@ -22,6 +22,9 @@ local function make_env(options)
     options = options or {}
     local outputs = {}
     local published_events = {}
+    local function publish_event(name, payload)
+        published_events[#published_events + 1] = {name = name, payload = payload}
+    end
     local start_route_calls = 0
     local last_start_route_steps = nil
     local last_start_route_opts = nil
@@ -551,9 +554,7 @@ local function make_env(options)
 
     package.preload["event_bus"] = function()
         return {
-            publish = function(name, payload)
-                published_events[#published_events + 1] = {name = name, payload = payload}
-            end,
+            publish = publish_event,
         }
     end
 
@@ -577,6 +578,7 @@ local function make_env(options)
     return {
         outputs = outputs,
         published_events = function() return published_events end,
+        publish_event = publish_event,
         auto_step = package.loaded["auto_step"],
         route_manager = route_manager,
         pathfind_calls = function() return pathfind_calls end,
@@ -2616,6 +2618,84 @@ function tests.successful_seam_bruteforce_at_destination_publishes_route_complet
         true,
         "seam brute force that reaches the goal should publish route_completed for survey listeners"
     )
+
+    env.restore()
+end
+
+function tests.rimuldar_destination_seam_uses_standard_south_facing_arrival()
+    local merchant = {
+        id = "npc_12",
+        name = "Magic Key Merchant",
+        type = "npc",
+        x = 4,
+        y = 7,
+        interaction_x = 4,
+        interaction_y = 5,
+        interaction_face_dir = "south",
+    }
+    local env = make_env({
+        start_map_id = 0x0B,
+        start_x = 4,
+        start_y = 4,
+        current_object = merchant,
+        object_list = {merchant},
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+            auto_walk_face_target_frames = "1",
+        },
+        pathfind_to_fn = function(start_x, start_y)
+            if start_x == 4 and start_y == 4 then
+                return "Path: 1 south", "south", {
+                    {x = 4, y = 5, direction = "south"},
+                }
+            end
+            if start_x == 4 and start_y == 5 then
+                return "Already there", "south", {}
+            end
+        end,
+    })
+
+    local queued = env.route_manager.autowalk_to_object(merchant)
+    assert_equal(queued.status, "queued", "merchant seam test should queue its opening step")
+    env.auto_step.on_blocked(4, 4, "down", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 5,
+    })
+    env.publish_event("route_step_completed", {
+        from_x = 4, from_y = 4, dir = "down", to_x = 4, to_y = 5,
+        source = "auto_hold", input_source = "seam_retry", queued_route = false,
+    })
+    env.auto_step.on_step_complete(4, 4, "down", 4, 5, {
+        queued_route = false,
+        source = "auto_hold",
+        input_source = "seam_retry",
+    })
+
+    local step_index = nil
+    local route_index = nil
+    local route_count = 0
+    for index, event in ipairs(env.published_events()) do
+        if event.name == "route_step_completed" then step_index = index end
+        if event.name == "route_completed" then
+            route_index = index
+            route_count = route_count + 1
+        end
+    end
+
+    assert_equal(env.inject_step_calls(), 1, "blocked route should use one seam retry")
+    assert_equal(env.start_route_calls(), 1, "destination seam should not queue an empty follow-up")
+    assert_equal(route_count, 1, "destination seam should publish route completion exactly once")
+    assert_truthy(step_index and route_index and step_index < route_index,
+        "tile completion should precede route completion")
+    assert_equal(env.suppress_direction_tracking_calls(), 1,
+        "standard seam arrival should queue safe facing suppression")
+    env.route_manager.apply_npc_freeze()
+    assert_equal(env.joypad_sets[#env.joypad_sets].buttons.down, true,
+        "destination seam arrival should face south toward the seller")
+    assert_contains(table.concat(env.outputs, "\n"),
+        "Auto-walk complete. Arrived at Magic Key Merchant",
+        "destination seam should use standard completion speech")
 
     env.restore()
 end

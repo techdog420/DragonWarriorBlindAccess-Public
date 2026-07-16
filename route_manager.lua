@@ -4539,6 +4539,67 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     end
 end
 
+do
+    (function()
+        local function finish_active_route_arrival(reason, opts)
+            opts = opts or {}
+            local overworld_segment = active_overworld_segment
+            local target = opts.target or active_route_target or last_pathfind_obj
+            local face_dir = opts.face_dir or active_route_face_dir
+            local total_steps = active_route_total_steps
+            local completion_actions = active_route_completion_actions
+            local speak_completion = active_route_speak_completion
+            local hazard_stop = active_route_hazard_stop
+
+            if opts.publish_route_completed == true then
+                event_bus.publish("route_completed")
+            end
+            clear_active_route_context(reason or "autowalk route complete",
+                should_refresh_objects_after_route())
+
+            if overworld_segment then
+                debug_tools.info(string.format(
+                    "OVERWORLD_AUTO_WALK: event=complete route=%s waypoint=%s index=%s steps=%s",
+                    tostring(overworld_segment.route_id or "-"),
+                    tostring(overworld_segment.waypoint_name or "-"),
+                    tostring(overworld_segment.index),
+                    tostring(overworld_segment.steps)))
+            end
+
+            if target then
+                if hazard_stop then
+                    local msg = "Auto-walk stopped before hazard"
+                    if total_steps and total_steps > 0 then
+                        msg = msg .. string.format(" after %d steps", total_steps)
+                    end
+                    msg = msg .. ". " .. build_hazard_warning(hazard_stop.summary)
+                    if speak_completion then
+                        tolk.output_interrupt(msg)
+                    end
+                    return
+                end
+
+                local msg = string.format("Auto-walk complete. Arrived at %s",
+                    target.name or "destination")
+                if total_steps and total_steps > 0 then
+                    msg = msg .. string.format(" after %d steps", total_steps)
+                end
+                if completion_actions then
+                    queue_target_face(face_dir, target)
+                end
+                if completion_actions
+                   and target.type == objects.TYPE_NPC
+                   and start_target_npc_hold(target) then
+                    msg = msg .. ". Target held briefly. Use TALK now"
+                end
+                if speak_completion then
+                    tolk.output_interrupt(msg)
+                end
+            elseif speak_completion then
+                tolk.output_interrupt("Auto-walk complete")
+            end
+        end
+
 auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data)
     if path_debug.is_validating and path_debug.is_validating() then
         debug_tools.debug("route_manager: ignoring step completion during validation")
@@ -4665,13 +4726,11 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
             tolk.output_interrupt("Seam crossed. " .. build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
             return
         end
-        event_bus.publish("route_completed")
-        clear_active_route_context("seam brute force reached destination", should_refresh_objects_after_route())
-        tolk.output_interrupt("Seam crossed. " .. build_pathfind_message(
-            target,
-            plan.result,
-            plan.face_dir,
-            plan.no_path_reason))
+        finish_active_route_arrival("seam brute force reached destination", {
+            target = target,
+            face_dir = should_face_after_plan(plan) and plan.face_dir or nil,
+            publish_route_completed = true,
+        })
         return
     end
 
@@ -4694,50 +4753,9 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
 end
 
 auto_step.on_route_complete = function()
-    local overworld_segment = active_overworld_segment
-    local target = active_route_target or last_pathfind_obj
-    local face_dir = active_route_face_dir
-    local total_steps = active_route_total_steps
-    local completion_actions = active_route_completion_actions
-    local speak_completion = active_route_speak_completion
-    local hazard_stop = active_route_hazard_stop
-    clear_active_route_context("autowalk route complete", should_refresh_objects_after_route())
-    if overworld_segment then
-        debug_tools.info(string.format(
-            "OVERWORLD_AUTO_WALK: event=complete route=%s waypoint=%s index=%s steps=%s",
-            tostring(overworld_segment.route_id or "-"),
-            tostring(overworld_segment.waypoint_name or "-"),
-            tostring(overworld_segment.index),
-            tostring(overworld_segment.steps)))
-    end
-    if target then
-        if hazard_stop then
-            local msg = "Auto-walk stopped before hazard"
-            if total_steps and total_steps > 0 then
-                msg = msg .. string.format(" after %d steps", total_steps)
-            end
-            msg = msg .. ". " .. build_hazard_warning(hazard_stop.summary)
-            if speak_completion then
-                tolk.output_interrupt(msg)
-            end
-            return
-        end
-        local msg = string.format("Auto-walk complete. Arrived at %s", target.name or "destination")
-        if total_steps and total_steps > 0 then
-            msg = msg .. string.format(" after %d steps", total_steps)
-        end
-        if completion_actions then
-            queue_target_face(face_dir, target)
-        end
-        if completion_actions and target.type == objects.TYPE_NPC and start_target_npc_hold(target) then
-            msg = msg .. ". Target held briefly. Use TALK now"
-        end
-        if speak_completion then
-            tolk.output_interrupt(msg)
-        end
-    elseif speak_completion then
-        tolk.output_interrupt("Auto-walk complete")
-    end
+    finish_active_route_arrival("autowalk route complete")
+end
+    end)()
 end
 
 auto_step.on_route_cancelled = function(cancel_data)
