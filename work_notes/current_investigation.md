@@ -1,6 +1,32 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-07-15
+Updated: 2026-07-17
+
+## 2026-07-17 Rimuldar Safe NPC Parking Guard
+
+- CLEAN / PROMOTED: with `auto_walk_park_mobile_npcs=true`, proactive parking
+  is skipped on map `0x0B` because `(0,0)` is pathfinder-walkable. The
+  exact live log is
+  `AUTO_WALK_NPC_PARK_SKIP map=0x0B reason=walkable_origin origin=(0,0)`;
+  planning remains `npc_mode=live_npcs` and no NPC coordinate parking writes
+  occur.
+- VERIFIED RUN 1: after the user entered Rimuldar normally at `(29,14)`, the
+  52-step route crossed `(1,0)->(0,0)` at frame `9547`, continued south to
+  `(0,1)` at frame `9595`, and reached `(4,5)` at frame `9951`.
+- VERIFIED RUN 2: after a same-map reset to `(29,14)`, the repeat crossed
+  `(1,0)->(0,0)` at frame `31679`, continued south to `(0,1)` at frame
+  `31727`, and reached `(4,5)` at frame `32336`. Final snapshot:
+  `PATH_STATE target=nil`, `RUNTIME_BLOCKS map=0x0B none`.
+- RESOLVED: the earlier isolated stop-at-`(0,0)` exit did not reproduce when
+  the real route retained its next south step. Do not change `auto_step.lua`
+  for that isolated artifact.
+- UNRESOLVED / DO NOT PROMOTE: the return planner repeatedly tried
+  `(3,5)->LEFT` into `(2,5)` and blocked under bounded retries. This was
+  not followed by a clean same-origin manual probe and is outside the parking
+  guard acceptance test.
+- VERIFIED: the full `run_tests.py --allow-missing-speech-dep` gate passed
+  all seven top-level checks when Git Bash was injected inside the Python
+  process; `git diff --check` was clean before this documentation update.
 
 ## 2026-07-15 Rimuldar Magic Key Route Reopen
 

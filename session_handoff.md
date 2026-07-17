@@ -1,8 +1,22 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-15
+Updated: 2026-07-17
 
 ## Immediate FCEUX Handoff
+
+- 2026-07-17 Rimuldar Magic Key route and safe NPC parking guard are live
+  verified. With `auto_walk_park_mobile_npcs=true`, map `0x0B` now logs
+  `AUTO_WALK_NPC_PARK_SKIP ... reason=walkable_origin origin=(0,0)` and uses
+  the existing frozen/live-NPC path instead of writing parked NPC coordinates
+  onto the real route cell. One normal-entry run from `(29,14)` and one
+  same-map reset repeat each queued the 52-step outer-bank route, crossed
+  `(1,0)->(0,0)` without retry, turned south to `(0,1)` without leaving
+  Rimuldar, and reached the public key-shop stand `(4,5)`. Final live state
+  is `PATH_STATE target=nil` and `RUNTIME_BLOCKS map=0x0B none`. The
+  isolated stop-at-`(0,0)` waveform concern did not reproduce on the real
+  route, so `auto_step.lua` was not changed. A separate merchant-to-entry
+  shortcut through `(3,5)->LEFT` repeatedly blocked during return setup;
+  leave it unpromoted pending a focused same-origin check.
 
 - 2026-07-15 Cantlin checkpoint complete for now. The user manually validated
   both directions between Town Entrance and the Magic Key Merchant with the

@@ -1,10 +1,23 @@
 # Playtesting Notes
 
-Updated: 2026-07-15
+Updated: 2026-07-17
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+- Rimuldar safe NPC parking validation (`2026-07-17`): with parking requested
+  in `dw_access.ini`, auto-walk refuses proactive parking because map `0x0B`
+  has a walkable origin. It logs
+  `AUTO_WALK_NPC_PARK_SKIP map=0x0B reason=walkable_origin origin=(0,0)`
+  and plans with `npc_mode=live_npcs`. A normal-entry 52-step route and a
+  same-map reset repeat both crossed `(1,0)->(0,0)`, immediately continued
+  south to `(0,1)` without a map change, and reached the Magic Key public
+  stand `(4,5)`. Both runs ended with no runtime blocks. Do not change the
+  marked completion waveform based on the earlier isolated stop at `(0,0)`;
+  the complete route disproved that as a progression blocker. The attempted
+  merchant-to-entry shortcut through `(3,5)->LEFT` is still unverified map
+  evidence and must not be promoted without a separate same-origin check.
+
 - Cantlin final manual checkpoint (`2026-07-15`): entrance-to-Magic-Key-Merchant
   routes passed in both directions with eastern door `(26,9)` open; with doors
   closed, the expected clean `No path found` result was confirmed. The Golem is
