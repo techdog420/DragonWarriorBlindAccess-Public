@@ -1092,7 +1092,41 @@ local function same_seam_retry(map_id, from_x, from_y, dir)
         and seam_retry_state.dir == dir
 end
 
-local function start_seam_bruteforce(map_id, from_x, from_y, dir)
+local function start_seam_bruteforce(map_id, from_x, from_y, dir, block_data)
+    local function entry_cadence_for_seam(dest_x, dest_y, approach)
+        local prime_frames = 0
+        local settle_frames = 0
+        local hold_after_movement_start = false
+        local hold_after_movement_start_frames = nil
+
+        if block_data and block_data.entry_prime_waveform == true then
+            prime_frames = tonumber(block_data.entry_prime_frames) or 0
+            settle_frames = tonumber(block_data.entry_prime_settle_frames) or 0
+            hold_after_movement_start = block_data.entry_hold_after_movement_start == true
+            hold_after_movement_start_frames = tonumber(
+                block_data.entry_hold_after_movement_start_frames)
+        elseif same_seam_retry(map_id, from_x, from_y, dir)
+           and (tonumber(seam_retry_state.entry_prime_frames) or 0) > 0 then
+            prime_frames = tonumber(seam_retry_state.entry_prime_frames) or 0
+            settle_frames = tonumber(seam_retry_state.entry_settle_frames) or 0
+            hold_after_movement_start = seam_retry_state.entry_hold_after_movement_start == true
+            hold_after_movement_start_frames = tonumber(
+                seam_retry_state.entry_hold_after_movement_start_frames)
+        elseif map_reader.get_entry_prime_frames then
+            prime_frames = map_reader.get_entry_prime_frames(
+                map_id, dest_x, dest_y, approach)
+            if map_reader.get_entry_settle_frames then
+                settle_frames = map_reader.get_entry_settle_frames(
+                    map_id, dest_x, dest_y, approach)
+            end
+        end
+
+        prime_frames = math.max(0, math.min(120, math.floor(tonumber(prime_frames) or 0)))
+        settle_frames = math.max(0, math.min(120, math.floor(tonumber(settle_frames) or 0)))
+        return prime_frames, settle_frames,
+            hold_after_movement_start, hold_after_movement_start_frames
+    end
+
     local attempts = 1
     if same_seam_retry(map_id, from_x, from_y, dir) then
         attempts = seam_retry_state.attempts + 1
@@ -1101,6 +1135,9 @@ local function start_seam_bruteforce(map_id, from_x, from_y, dir)
         return false
     end
     local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, dir)
+    local entry_prime_frames, entry_settle_frames,
+        entry_hold_after_movement_start, entry_hold_after_movement_start_frames =
+        entry_cadence_for_seam(dest_x, dest_y, approach)
     seam_retry_state = {
         map_id = map_id,
         from_x = from_x,
@@ -1110,22 +1147,48 @@ local function start_seam_bruteforce(map_id, from_x, from_y, dir)
         dest_y = dest_y,
         approach = approach,
         attempts = attempts,
+        entry_prime_frames = entry_prime_frames,
+        entry_settle_frames = entry_settle_frames,
+        entry_hold_after_movement_start = entry_hold_after_movement_start,
+        entry_hold_after_movement_start_frames = entry_hold_after_movement_start_frames,
     }
-    debug_tools.info(string.format(
-        "SEAM_BRUTE_FORCE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d mode=hold_after_twitch",
-        map_id,
-        from_x,
-        from_y,
-        tostring(dir),
-        dest_x or -1,
-        dest_y or -1,
-        attempts,
-        SEAM_BRUTE_FORCE_RETRY_LIMIT))
-    auto_step.inject_step(dir, {
-        source = "seam_retry",
-        hold_after_movement_start = true,
-        hold_after_movement_start_frames = config_int("auto_step_seam_retry_hold_after_start_frames", 12, 0, 60),
-    })
+    if entry_prime_frames > 0 then
+        debug_tools.info(string.format(
+            "SEAM_BRUTE_FORCE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d mode=entry_cadence prime=%d settle=%d",
+            map_id,
+            from_x,
+            from_y,
+            tostring(dir),
+            dest_x or -1,
+            dest_y or -1,
+            attempts,
+            SEAM_BRUTE_FORCE_RETRY_LIMIT,
+            entry_prime_frames,
+            entry_settle_frames))
+        auto_step.inject_step(dir, {
+            source = "seam_retry",
+            entry_prime_frames = entry_prime_frames,
+            entry_settle_frames = entry_settle_frames,
+            hold_after_movement_start = entry_hold_after_movement_start,
+            hold_after_movement_start_frames = entry_hold_after_movement_start_frames,
+        })
+    else
+        debug_tools.info(string.format(
+            "SEAM_BRUTE_FORCE map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) attempt=%d/%d mode=hold_after_twitch",
+            map_id,
+            from_x,
+            from_y,
+            tostring(dir),
+            dest_x or -1,
+            dest_y or -1,
+            attempts,
+            SEAM_BRUTE_FORCE_RETRY_LIMIT))
+        auto_step.inject_step(dir, {
+            source = "seam_retry",
+            hold_after_movement_start = true,
+            hold_after_movement_start_frames = config_int("auto_step_seam_retry_hold_after_start_frames", 12, 0, 60),
+        })
+    end
     return true
 end
 
@@ -3719,24 +3782,35 @@ local function queue_path_steps(path, opts)
         return false
     end
     opts = opts or {}
-    local function settle_before_steps_for_path(map_id, route_path, start_x, start_y)
-        if not map_reader.get_entry_settle_frames then
-            return nil
+    local function entry_cadence_before_steps_for_path(map_id, route_path, start_x, start_y)
+        if not map_reader.get_entry_settle_frames
+           and not map_reader.get_entry_prime_frames then
+            return nil, nil
         end
 
         local settles = {}
+        local primes = {}
         for step_index, step in ipairs(route_path or {}) do
             local key_dir = DIR_NAME_TO_KEY[step.direction]
             local approach = key_dir and DIR_TO_APPROACH[key_dir]
-            local frames = approach and map_reader.get_entry_settle_frames(
-                map_id, step.x, step.y, approach) or 0
-            if frames > 0 then
-                settles[step_index] = frames
+            local settle_frames = approach and map_reader.get_entry_settle_frames
+                and map_reader.get_entry_settle_frames(
+                    map_id, step.x, step.y, approach) or 0
+            local prime_frames = approach and map_reader.get_entry_prime_frames
+                and map_reader.get_entry_prime_frames(
+                    map_id, step.x, step.y, approach) or 0
+            if settle_frames > 0 then
+                settles[step_index] = settle_frames
+            end
+            if prime_frames > 0 then
+                primes[step_index] = prime_frames
+            end
+            if settle_frames > 0 or prime_frames > 0 then
                 local origin = step_index == 1
                     and {x = start_x, y = start_y}
                     or route_path[step_index - 1]
                 debug_tools.info(string.format(
-                    "AUTO_WALK_ENTRY_SETTLE map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s step=%d frames=%d",
+                    "AUTO_WALK_ENTRY_SETTLE map=0x%02X from=(%d,%d) dest=(%d,%d) dir=%s step=%d frames=%d prime=%d",
                     map_id or -1,
                     tonumber(origin and origin.x) or -1,
                     tonumber(origin and origin.y) or -1,
@@ -3744,11 +3818,13 @@ local function queue_path_steps(path, opts)
                     tonumber(step.y) or -1,
                     tostring(key_dir),
                     step_index,
-                    frames))
+                    settle_frames,
+                    prime_frames))
             end
         end
 
-        return next(settles) and settles or nil
+        return next(settles) and settles or nil,
+            next(primes) and primes or nil
     end
 
     local steps = {}
@@ -3770,7 +3846,7 @@ local function queue_path_steps(path, opts)
     end
     local live_map_id = select(1, nav.get_position())
     local map_id = tonumber(opts.map_id) or live_map_id
-    local settle_before_steps = settle_before_steps_for_path(
+    local settle_before_steps, prime_before_steps = entry_cadence_before_steps_for_path(
         map_id, path, start_x, start_y)
     local settle_frames = opts.settle_frames
     if settle_frames == nil then
@@ -3796,6 +3872,7 @@ local function queue_path_steps(path, opts)
         start_x = start_x,
         start_y = start_y,
         settle_before_steps = settle_before_steps,
+        prime_before_steps = prime_before_steps,
     }) then
         trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
             "result=true steps=%d",
@@ -4322,7 +4399,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     if not last_pathfind_obj then return end
 
     if delay_timing_retry_observation
-       and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+       and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir, block_data) then
         record_active_route_temp_block(map_id, from_x, from_y, blocked_dir, "timing_retry")
         debug_tools.info(string.format(
             "AUTO_WALK_TIMING_RETRY map=0x%02X from=(%d,%d) dir=%s movement_start_frame=%s timeout_retries=%s turn_represses=%s",
@@ -4400,7 +4477,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
        and not is_seam_retry_block
        and not is_npc_block
        and seam_class ~= "confirmed_blocked"
-       and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+       and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir, block_data) then
         record_active_route_temp_block(map_id, from_x, from_y, blocked_dir, "timing_retry")
         debug_tools.info(string.format(
             "AUTO_WALK_TIMING_RETRY map=0x%02X from=(%d,%d) dir=%s movement_start_frame=%s timeout_retries=%s turn_represses=%s",
@@ -4469,7 +4546,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
     if plan.result == "No path found"
     and seam_class ~= "confirmed_blocked"
     and not is_npc_block
-    and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir) then
+    and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir, block_data) then
         return
     end
 

@@ -281,6 +281,27 @@ local function assert_frame_neutral(env, frame, message)
     end
 end
 
+local function assert_frame_owned_controller(env, frame, dir, message)
+    local calls = injection_calls_for_frame(env, frame)
+    assert_truthy(#calls > 0, message .. " should inject on frame " .. frame)
+    for _, buttons in ipairs(calls) do
+        for _, name in ipairs({"up", "down", "left", "right", "A", "B", "select", "start"}) do
+            assert_equal(
+                buttons[name],
+                name == dir,
+                string.format(
+                    "%s should explicitly force %s=%s",
+                    message,
+                    name,
+                    tostring(name == dir)))
+        end
+    end
+end
+
+local function assert_frame_owned_neutral(env, frame, message)
+    assert_frame_owned_controller(env, frame, nil, message)
+end
+
 local function collect_direction_sequences(env, dir, max_frame)
     local sequences = {}
     local active_start = nil
@@ -2542,6 +2563,854 @@ function tests.settle_before_steps_is_copied_at_route_start()
     env.restore()
 end
 
+function tests.primed_entry_pulses_once_then_settles_before_fresh_press()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[2] = 1},
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    assert_frame_neutral(env, 2, "primed-entry completion frame")
+
+    -- Preserve the ordinary post-step release/cooldown before priming the
+    -- cadence-sensitive origin. The established unmarked follow-up slot is
+    -- frame 6, but this marked step uses it only for the one-frame pulse.
+    for frame = 3, 5 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "primed-entry pre-pulse release")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 6, "right", "primed-entry pulse")
+
+    for frame = 7, 22 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "primed-entry post-pulse settle")
+    end
+
+    env.update(true)
+    assert_frame_only_direction(env, 23, "right", "primed-entry fresh press")
+    local active = env.auto_step.get_active_step_state()
+    assert_equal(active and active.inject_limit, 12,
+        "primed committed press should use the normal inject window")
+
+    local saw_prime = false
+    local saw_settle = false
+    for _, entry in ipairs(env.debug_messages) do
+        if entry.message ==
+           "AUTO_STEP_ENTRY_PRIME map=0x05 from=(4,1) dest=(5,1) dir=right step=2 frames=1" then
+            saw_prime = true
+        elseif entry.message ==
+           "AUTO_STEP_ENTRY_SETTLE map=0x05 from=(4,1) dest=(5,1) dir=right step=2 required=16 remaining=16" then
+            saw_settle = true
+        end
+    end
+    assert_truthy(saw_prime, "primed entry should log the explicit pulse")
+    assert_truthy(saw_settle,
+        "primed entry should log a full post-pulse neutral settle")
+
+    env.restore()
+end
+
+function tests.primed_entry_committed_press_owns_exact_window_across_early_twitch()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "4",
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "0",
+            auto_step_turn_repress_limit = "0",
+        },
+    })
+    env.auto_step.start_route({"right", "down"}, {
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 2},
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "queued entry prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "queued entry settle frame 1")
+    env.update(true)
+    assert_frame_neutral(env, 3, "queued entry settle frame 2")
+    env.update(true)
+    assert_frame_only_direction(env, 4, "right", "queued committed frame 1")
+
+    -- Rimuldar can expose a one-frame movement-state/subpixel twitch before
+    -- the coordinate changes. The cadence-owned committed press must ignore
+    -- that transient and still deliver exactly the configured four frames.
+    env.set_movement_state(0x40)
+    env.set_subpixel(0x20)
+    env.update(true)
+    assert_frame_only_direction(env, 5, "right", "queued committed frame 2")
+    env.set_movement_state(0x10)
+    env.set_subpixel(0x10)
+    env.update(true)
+    assert_frame_only_direction(env, 6, "right", "queued committed frame 3")
+    env.update(true)
+    assert_frame_only_direction(env, 7, "right", "queued committed frame 4")
+    env.update(true)
+    assert_frame_neutral(env, 8, "queued committed release")
+
+    env.restore()
+end
+
+function tests.primed_entry_retry_owns_exact_window_across_early_twitch()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "4",
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "0",
+            auto_step_turn_repress_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        timeout_retries = 1,
+        inject_limit = 4,
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "retry entry prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "retry entry settle frame 1")
+    env.update(true)
+    assert_frame_neutral(env, 3, "retry entry settle frame 2")
+    env.update(true)
+    assert_frame_only_direction(env, 4, "right", "retry committed frame 1")
+
+    env.set_movement_state(0x40)
+    env.set_subpixel(0x20)
+    env.update(true)
+    assert_frame_only_direction(env, 5, "right", "retry committed frame 2")
+    env.set_movement_state(0x10)
+    env.set_subpixel(0x10)
+    env.update(true)
+    assert_frame_only_direction(env, 6, "right", "retry committed frame 3")
+    env.update(true)
+    assert_frame_only_direction(env, 7, "right", "retry committed frame 4")
+    env.update(true)
+    assert_frame_neutral(env, 8, "retry committed release")
+
+    env.restore()
+end
+
+function tests.primed_standalone_entry_releases_after_exact_committed_window()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "4",
+            auto_step_release_on_movement_start = "true",
+            auto_step_turn_repress_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        inject_limit = 4,
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "standalone entry prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "standalone entry settle frame 1")
+    env.update(true)
+    assert_frame_neutral(env, 3, "standalone entry settle frame 2")
+    for frame = 4, 7 do
+        env.update(true)
+        assert_frame_only_direction(env, frame, "right", "standalone committed window")
+    end
+    env.update(true)
+    assert_frame_neutral(env, 8, "standalone committed release")
+
+    env.restore()
+end
+
+function tests.primed_entry_waveform_owns_complete_controller_state()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "2",
+            auto_step_turn_repress_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        inject_limit = 2,
+        entry_prime_frames = 1,
+        entry_settle_frames = 1,
+    })
+
+    env.update(true)
+    assert_frame_owned_controller(env, 1, "right", "owned entry prime")
+    env.update(true)
+    assert_frame_owned_neutral(env, 2, "owned entry settle")
+    env.update(true)
+    assert_frame_owned_controller(env, 3, "right", "owned committed frame 1")
+    env.update(true)
+    assert_frame_owned_controller(env, 4, "right", "owned committed frame 2")
+    env.update(true)
+    assert_frame_owned_neutral(env, 5, "owned committed release")
+
+    env.restore()
+end
+
+function tests.primed_entry_one_frame_committed_window_releases_next_frame()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "1",
+            auto_step_turn_repress_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        inject_limit = 1,
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "one-frame entry prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "one-frame entry settle frame 1")
+    env.update(true)
+    assert_frame_neutral(env, 3, "one-frame entry settle frame 2")
+    env.update(true)
+    assert_frame_only_direction(env, 4, "right", "one-frame committed window")
+    env.update(true)
+    assert_frame_neutral(env, 5, "one-frame committed release")
+
+    env.restore()
+end
+
+function tests.primed_entry_explicit_hold_owns_late_movement_start_frame()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "4",
+            auto_step_release_on_movement_start = "true",
+            auto_step_turn_repress_delay = "30",
+            auto_step_turn_repress_limit = "0",
+        },
+    })
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        inject_limit = 4,
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+        hold_after_movement_start = true,
+        hold_after_movement_start_frames = 3,
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "explicit-hold entry prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "explicit-hold entry settle frame 1")
+    env.update(true)
+    assert_frame_neutral(env, 3, "explicit-hold entry settle frame 2")
+    for frame = 4, 7 do
+        env.update(true)
+        assert_frame_only_direction(env, frame, "right", "explicit-hold committed window")
+    end
+    env.update(true)
+    assert_frame_neutral(env, 8, "explicit-hold pre-movement release")
+
+    env.set_subpixel(0x20)
+    env.update(true)
+    assert_frame_only_direction(env, 9, "right",
+        "explicit cadence hold should not gap on the movement-start frame")
+    env.update(true)
+    assert_frame_only_direction(env, 10, "right",
+        "explicit cadence hold should continue after movement starts")
+
+    env.restore()
+end
+
+function tests.primed_pre_turn_entry_keeps_normal_committed_inject_limit()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "12",
+            auto_step_route_pre_turn_inject_limit = "7",
+        },
+    })
+    env.auto_step.start_route({"right", "right", "down"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[2] = 1},
+        settle_before_steps = {[2] = 2},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    for _ = 1, 3 do env.update(true) end
+
+    local active = env.auto_step.get_active_step_state()
+    assert_equal(active and active.dir, "right",
+        "marked pre-turn step should start its committed press")
+    assert_equal(active and active.inject_limit, 12,
+        "marked pre-turn committed press should override the shorter pre-turn window")
+
+    env.restore()
+end
+
+function tests.primed_entry_turn_repress_replays_full_waveform()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "6",
+            auto_step_turn_repress_delay = "3",
+            auto_step_turn_repress_limit = "1",
+            auto_step_timeout = "40",
+            auto_step_block_retry_limit = "0",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 3},
+    })
+
+    for _ = 1, 30 do env.update(true) end
+
+    local sequences = collect_direction_sequences(env, "right", 30)
+    assert_truthy(sequences[4] ~= nil,
+        "marked turn retry should contain a retry pulse and a separate committed press")
+    assert_equal(sequences[3].count, 1,
+        "marked turn retry should restart with the configured one-frame prime")
+    assert_equal(sequences[4].start, sequences[3].start + 4,
+        "marked turn retry should preserve all three neutral frames after its prime")
+    assert_equal(sequences[2].count, 6,
+        "marked first attempt should own its exact committed window before turn retry")
+    assert_equal(sequences[4].count, 6,
+        "marked turn retry should rebuild the exact committed window")
+    assert_frame_neutral(env, sequences[4].start + sequences[4].count,
+        "marked turn retry committed release")
+
+    env.restore()
+end
+
+function tests.primed_entry_timeout_retry_replays_full_waveform()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "2",
+            auto_step_turn_repress_limit = "0",
+            auto_step_timeout = "6",
+            auto_step_block_retry_limit = "1",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 3},
+    })
+
+    for _ = 1, 24 do env.update(true) end
+
+    local sequences = collect_direction_sequences(env, "right", 24)
+    assert_truthy(sequences[4] ~= nil,
+        "marked timeout retry should contain a retry pulse and a separate committed press")
+    assert_equal(sequences[3].count, 1,
+        "marked timeout retry should restart with the configured one-frame prime")
+    assert_equal(sequences[4].start, sequences[3].start + 4,
+        "marked timeout retry should preserve all three neutral frames after its prime")
+    assert_equal(sequences[2].count, 2,
+        "marked first attempt should own its exact committed window before timeout")
+    assert_equal(sequences[4].count, 2,
+        "marked timeout retry should rebuild the exact committed window")
+    assert_frame_neutral(env, sequences[4].start + sequences[4].count,
+        "marked timeout retry committed release")
+
+    env.restore()
+end
+
+function tests.primed_entry_early_twitch_retry_stays_cadence_aware()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "2",
+            auto_step_turn_repress_limit = "0",
+            auto_step_timeout = "20",
+            auto_step_block_retry_limit = "1",
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "2",
+            auto_step_route_early_twitch_timeout_frames = "3",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 2},
+    })
+
+    for _ = 1, 4 do env.update(true) end
+    env.set_subpixel(0x20)
+    env.update(true)
+    for _ = 1, 30 do env.update(true) end
+
+    local sequences = collect_direction_sequences(env, "right", 35)
+    assert_truthy(sequences[4] ~= nil,
+        "marked early-twitch recovery should replay a complete cadence-aware retry")
+    assert_equal(sequences[3].count, 1,
+        "marked early-twitch retry should restart with a one-frame prime")
+    assert_equal(sequences[4].start, sequences[3].start + 3,
+        "marked early-twitch retry should preserve both neutral frames")
+    assert_equal(sequences[4].count, 2,
+        "marked early-twitch retry should rebuild the exact committed window")
+    assert_frame_neutral(env, sequences[4].start + sequences[4].count,
+        "marked early-twitch retry committed release")
+
+    local blocked = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then blocked = event.payload end
+    end
+    assert_equal(blocked and blocked.entry_prime_waveform, true,
+        "an exhausted marked edge should retain cadence identity in route_blocked")
+
+    env.restore()
+end
+
+function tests.cadenced_seam_injection_completes_exactly_once()
+    local env = make_env({sticky_joypad_set = true})
+    local callback_count = 0
+    env.auto_step.on_step_complete = function()
+        callback_count = callback_count + 1
+    end
+
+    assert_equal(env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+    }), true, "cadenced seam retry should arm")
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "cadenced seam prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "cadenced seam settle")
+    env.update(true)
+    assert_frame_neutral(env, 3, "cadenced seam settle")
+    env.update(true)
+    assert_frame_only_direction(env, 4, "right", "cadenced seam committed press")
+
+    env.set_position(4, 1)
+    env.update(true)
+    assert_frame_neutral(env, 5, "cadenced seam completion frame")
+    env.update(true)
+    assert_frame_neutral(env, 6, "cadenced seam forced-release frame")
+
+    local step_events = {}
+    local route_completed = 0
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then
+            step_events[#step_events + 1] = event.payload
+        elseif event.name == "route_completed" then
+            route_completed = route_completed + 1
+        end
+    end
+    assert_equal(#step_events, 1,
+        "cadenced seam movement should publish exactly one step completion")
+    assert_equal(callback_count, 1,
+        "cadenced seam movement should invoke exactly one completion callback")
+    assert_equal(step_events[1].queued_route, false,
+        "cadenced seam retry should remain outside queued-route ownership")
+    assert_equal(step_events[1].input_source, "seam_retry",
+        "cadenced seam completion should preserve its retry source")
+    assert_equal(route_completed, 0,
+        "cadenced seam injection must not publish queued-route completion")
+
+    env.restore()
+end
+
+function tests.cadenced_seam_hazard_cancels_pending_waveform()
+    local hazards = {[0x05] = {}}
+    local env = make_env({
+        sticky_joypad_set = true,
+        hazard_cells = hazards,
+    })
+
+    assert_equal(env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        entry_prime_frames = 1,
+        entry_settle_frames = 16,
+    }), true, "cadenced seam retry should arm before the hazard appears")
+    hazards[0x05]["4,1"] = "damage"
+
+    env.update(true)
+
+    assert_equal(env.auto_step.is_auto_active(), false,
+        "a newly detected hazard should clear the pending cadence retry")
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(cancelled and cancelled.reason, "dangerous_tile",
+        "standalone cadence hazard refusal should publish a clean cancellation")
+    assert_equal(cancelled and cancelled.source, "seam_retry",
+        "standalone cadence hazard cancellation should preserve retry ownership")
+
+    env.restore()
+end
+
+function tests.cadenced_seam_prime_wrong_direction_cancels()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+    })
+
+    env.update(true)
+    env.set_position(3, 2)
+    env.update(true)
+
+    local completed = 0
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then completed = completed + 1 end
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(completed, 0,
+        "wrong-direction movement during a cadence prime must not complete the seam")
+    assert_equal(cancelled and cancelled.reason, "route_drift_off_path",
+        "wrong-direction cadence-prime movement should cancel as drift")
+
+    env.restore()
+end
+
+function tests.cadenced_seam_committed_wrong_direction_cancels()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.inject_step("right", {
+        source = "seam_retry",
+        entry_prime_frames = 1,
+        entry_settle_frames = 2,
+    })
+
+    for _ = 1, 4 do env.update(true) end
+    env.set_position(3, 2)
+    env.update(true)
+
+    local completed = 0
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then completed = completed + 1 end
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(completed, 0,
+        "wrong-direction movement during a cadence committed press must not complete the seam")
+    assert_equal(cancelled and cancelled.reason, "route_drift_off_path",
+        "wrong-direction committed cadence movement should cancel as drift")
+
+    env.restore()
+end
+
+function tests.primed_first_step_runs_prime_then_full_settle()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 16},
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "primed first-step pulse")
+    for frame = 2, 17 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "primed first-step settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 18, "right", "primed first-step fresh press")
+
+    env.restore()
+end
+
+function tests.primed_entry_supports_multi_frame_pulse()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 2},
+        settle_before_steps = {[1] = 2},
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "multi-frame prime pulse")
+    env.update(true)
+    assert_frame_only_direction(env, 2, "right", "multi-frame prime pulse")
+    env.update(true)
+    assert_frame_neutral(env, 3, "multi-frame post-prime settle")
+    env.update(true)
+    assert_frame_neutral(env, 4, "multi-frame post-prime settle")
+    env.update(true)
+    assert_frame_only_direction(env, 5, "right", "multi-frame cadence fresh press")
+
+    env.restore()
+end
+
+function tests.prime_before_steps_is_copied_at_route_start()
+    local env = make_env({sticky_joypad_set = true})
+    local prime_before_steps = {[1] = 1}
+    env.auto_step.start_route({"right"}, {
+        prime_before_steps = prime_before_steps,
+        settle_before_steps = {[1] = 2},
+    })
+    prime_before_steps[1] = 0
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "copied entry prime")
+    env.update(true)
+    assert_frame_neutral(env, 2, "copied post-prime settle")
+    env.update(true)
+    assert_frame_neutral(env, 3, "copied post-prime settle")
+    env.update(true)
+    assert_frame_only_direction(env, 4, "right", "copied cadence fresh press")
+
+    env.restore()
+end
+
+function tests.live_input_cancels_before_primed_entry_pulse()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[2] = 1},
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_joy({left = true})
+    env.update(true)
+
+    assert_frame_neutral(env, 3, "cancelled primed-entry pulse")
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" and event.frame == 3 then
+            cancelled = event.payload
+            break
+        end
+    end
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt",
+        "live direction should cancel before the prime pulse")
+    assert_equal(cancelled and cancelled.source, "route_entry_prime",
+        "prime cancellation should expose the cadence phase")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "prime cancellation should clear the queued route")
+
+    env.restore()
+end
+
+function tests.primed_entry_echo_exemption_expires_after_immediate_frame()
+    local env = make_env()
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 16},
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "non-sticky prime pulse")
+    env.update(true)
+    assert_frame_neutral(env, 2, "non-sticky immediate release")
+
+    env.set_joy({right = true})
+    env.update(true)
+
+    assert_equal(env.auto_step.is_route_active(), false,
+        "same-direction live input after the immediate echo frame should cancel")
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" and event.frame == 3 then
+            cancelled = event.payload
+            break
+        end
+    end
+    assert_equal(cancelled and cancelled.reason, "live_input_interrupt",
+        "expired echo grace should not hide later same-direction input")
+
+    env.restore()
+end
+
+function tests.prime_movement_completes_marked_step_without_fresh_repress()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 16},
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "moving prime pulse")
+    env.set_position(4, 1)
+    env.update(true)
+    assert_frame_neutral(env, 2, "moving prime observation")
+    for _ = 1, 20 do env.update(true) end
+
+    local completed = {}
+    for _, event in ipairs(env.published) do
+        if event.name == "route_step_completed" then
+            completed[#completed + 1] = event.payload
+        end
+    end
+    assert_equal(#completed, 1,
+        "a prime that crosses the tile should complete it exactly once")
+    assert_equal(completed[1].from_x, 3,
+        "moving prime completion should retain origin X")
+    assert_equal(completed[1].to_x, 4,
+        "moving prime completion should retain destination X")
+    for frame = 2, 22 do
+        assert_truthy(not (env.injected[frame] and env.injected[frame].right),
+            "moving prime should not issue the stale fresh press")
+    end
+
+    env.restore()
+end
+
+function tests.primed_entry_refuses_hazard_before_pulse()
+    local env = make_env({
+        sticky_joypad_set = true,
+        hazard_cells = {[0x05] = {["5,1"] = "damage"}},
+    })
+    env.auto_step.start_route({"right", "right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[2] = 1},
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    for _ = 3, 6 do env.update(true) end
+
+    assert_frame_neutral(env, 6, "pre-prime hazard refusal")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "hazard should cancel before the prime pulse")
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(cancelled and cancelled.reason, "dangerous_tile",
+        "pre-prime hazard should use ordinary route safety")
+    assert_equal(cancelled and cancelled.source, "route_entry_prime",
+        "pre-prime hazard should identify the waveform phase")
+
+    env.restore()
+end
+
+function tests.primed_entry_rechecks_hazard_before_fresh_press()
+    local hazards = {[0x05] = {}}
+    local env = make_env({
+        sticky_joypad_set = true,
+        hazard_cells = hazards,
+    })
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 16},
+    })
+
+    env.update(true)
+    assert_frame_only_direction(env, 1, "right", "safe prime pulse")
+    hazards[0x05]["4,1"] = "damage"
+    for _ = 2, 18 do env.update(true) end
+
+    assert_frame_neutral(env, 18, "post-prime hazard refusal")
+    assert_equal(env.auto_step.is_route_active(), false,
+        "new hazard should cancel before the committed press")
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then cancelled = event.payload end
+    end
+    assert_equal(cancelled and cancelled.reason, "dangerous_tile",
+        "post-prime hazard should use ordinary route safety")
+    assert_equal(cancelled and cancelled.source, "route_entry_fresh",
+        "post-prime hazard should identify the fresh-press phase")
+
+    env.restore()
+end
+
+function tests.primed_entry_wrong_direction_movement_cancels()
+    local env = make_env({sticky_joypad_set = true})
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        prime_before_steps = {[1] = 1},
+        settle_before_steps = {[1] = 16},
+    })
+
+    env.update(true)
+    env.set_position(3, 2)
+    env.update(true)
+
+    local cancelled = nil
+    local completions = 0
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then cancelled = event.payload end
+        if event.name == "route_step_completed" then completions = completions + 1 end
+    end
+    assert_equal(cancelled and cancelled.reason, "route_drift_off_path",
+        "wrong-direction prime movement should cancel as drift")
+    assert_equal(cancelled and cancelled.source, "pending_repress_mismatch",
+        "wrong-direction prime movement should use pending mismatch handling")
+    assert_equal(completions, 0,
+        "wrong-direction prime movement must not complete the marked step")
+
+    env.restore()
+end
+
+function tests.callback_requeued_primed_first_step_owns_replacement_waveform()
+    local env = make_env({sticky_joypad_set = true})
+    local requeued = false
+    env.auto_step.on_step_complete = function()
+        if requeued then return end
+        requeued = true
+        env.auto_step.start_route({"right"}, {
+            start_x = 4,
+            start_y = 1,
+            prime_before_steps = {[1] = 1},
+            settle_before_steps = {[1] = 16},
+        })
+    end
+    env.auto_step.start_route({"right"}, {start_x = 3, start_y = 1})
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    for frame = 3, 5 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "replacement pre-prime release")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 6, "right", "replacement prime pulse")
+    for frame = 7, 22 do
+        env.update(true)
+        assert_frame_neutral(env, frame, "replacement post-prime settle")
+    end
+    env.update(true)
+    assert_frame_only_direction(env, 23, "right", "replacement fresh press")
+
+    env.restore()
+end
+
 function tests.marked_entry_settle_owns_first_followup_frame()
     local env = make_env({sticky_joypad_set = true})
     env.auto_step.start_route({"right", "right"}, {
@@ -3520,6 +4389,47 @@ function tests.queued_route_turn_settle_resets_movement_state()
     assert_truthy(
         cleared_again,
         "queued route turn settle should keep clearing movement state during the settle window"
+    )
+
+    env.restore()
+end
+
+function tests.primed_queued_route_turn_settle_resets_movement_state()
+    local env = make_env({
+        movement_state = 0x40,
+        movement_subpixel = 0x90,
+        config_values = {
+            auto_step_reset_movement_on_route_turn_settle = "true",
+        },
+    })
+    env.auto_step.start_route({"right", "up"}, {
+        prime_before_steps = {[2] = 1},
+        settle_before_steps = {[2] = 16},
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    local writes_after_completion = #env.memory_writes
+    env.set_movement_state(0x41)
+    env.set_subpixel(0x91)
+    env.update(true)
+
+    local cleared_move = false
+    local cleared_subpixel = false
+    for i = writes_after_completion + 1, #env.memory_writes do
+        local write = env.memory_writes[i]
+        if write.address == 0x003C and write.value == 0x00 then
+            cleared_move = true
+        elseif write.address == 0x003D and write.value == 0x00 then
+            cleared_subpixel = true
+        end
+    end
+
+    assert_truthy(
+        cleared_move and cleared_subpixel,
+        "primed queued route should preserve movement-state resets during its turn settle window"
     )
 
     env.restore()

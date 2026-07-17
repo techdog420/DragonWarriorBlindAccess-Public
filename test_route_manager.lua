@@ -393,6 +393,14 @@ local function make_env(options)
                     type(entry) == "table" and entry[approach] or 0
                 ) or 0))
             end,
+            get_entry_prime_frames = function(map_id, x, y, approach)
+                local by_map = options.entry_prime_frames
+                    and options.entry_prime_frames[map_id]
+                local entry = by_map and by_map[tostring(x) .. "," .. tostring(y)]
+                return math.max(0, math.floor(tonumber(
+                    type(entry) == "table" and entry[approach] or 0
+                ) or 0))
+            end,
             is_hazard_cell = function(_, x, y)
                 return hazard_cells[x .. "," .. y] or false
             end,
@@ -947,6 +955,70 @@ function tests.autowalk_allows_timing_suspect_route_blocked_self_input_for_retry
     assert_not_contains(table.concat(env.debug_infos(), "\n"),
         "AUTO_WALK_ABORT reason=input_contaminated",
         "self-input timing retry should not log an auto-walk contamination abort")
+
+    env.restore()
+end
+
+function tests.primed_entry_block_never_falls_back_to_raw_seam_retry()
+    local env = make_env({pathfind_mode = "reroute_no_path"})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "down", {
+        queued_route = true,
+        movement_started = true,
+        movement_start_frame = 4,
+        timeout_retries = 1,
+        turn_represses = 1,
+        timing_suspect = true,
+        source = "queued_route",
+        entry_prime_waveform = true,
+        entry_prime_frames = 1,
+        entry_prime_settle_frames = 16,
+    })
+
+    assert_equal(env.inject_step_calls(), 1,
+        "an exhausted primed entry should receive one cadence-aware seam retry")
+    local retry_opts = env.last_inject_opts()
+    assert_equal(retry_opts and retry_opts.source, "seam_retry",
+        "cadence-aware retry should preserve seam-retry ownership")
+    assert_equal(retry_opts and retry_opts.entry_prime_frames, 1,
+        "cadence-aware retry should preserve the one-frame prime")
+    assert_equal(retry_opts and retry_opts.entry_settle_frames, 16,
+        "cadence-aware retry should preserve all sixteen neutral frames")
+    assert_truthy(not (retry_opts and retry_opts.hold_after_movement_start),
+        "cadence-aware retry must not fall back to the raw hold-after-twitch mode")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "mode=entry_cadence prime=1 settle=16",
+        "cadence-aware seam retry should identify its waveform in the log")
+
+    env.restore()
+end
+
+function tests.entry_cadence_seam_state_does_not_leak_to_another_edge()
+    local env = make_env({pathfind_mode = "reroute_no_path"})
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(5, 4, "down", {
+        queued_route = true,
+        movement_started = true,
+        timing_suspect = true,
+        entry_prime_waveform = true,
+        entry_prime_frames = 1,
+        entry_prime_settle_frames = 16,
+    })
+    env.auto_step.on_blocked(6, 4, "down", {
+        queued_route = true,
+        movement_started = true,
+        timing_suspect = true,
+    })
+
+    assert_equal(env.inject_step_calls(), 2,
+        "test setup should start one retry for each distinct seam")
+    local unrelated_opts = env.last_inject_opts()
+    assert_truthy(not (unrelated_opts and unrelated_opts.entry_prime_frames),
+        "a different seam must not inherit the prior edge cadence")
+    assert_equal(unrelated_opts and unrelated_opts.hold_after_movement_start, true,
+        "an unrelated unmarked seam should retain ordinary hold-after-twitch retry")
 
     env.restore()
 end
@@ -1509,23 +1581,31 @@ function tests.rimuldar_path_marks_only_the_cadence_entry_step()
         entry_settle_frames = {
             [0x0B] = {["0,0"] = {east = 16}},
         },
+        entry_prime_frames = {
+            [0x0B] = {["0,0"] = {east = 1}},
+        },
         pathfind_to_fn = function()
             return "Path: north, 3 west, south, east", "east", path
         end,
     })
 
     local result = env.route_manager.autowalk_to_object(target, {speak = false})
-    local settles = env.last_start_route_opts().settle_before_steps
+    local route_opts = env.last_start_route_opts()
+    local settles = route_opts.settle_before_steps
+    local primes = route_opts.prime_before_steps
 
     assert_equal(result.status, "queued", "synthetic Rimuldar route should queue")
     assert_equal(settles and settles[4], 16, "entry step should receive the verified settle")
+    assert_equal(primes and primes[4], 1, "entry step should receive the verified movement prime")
     assert_equal(settles and settles[2], nil, "earlier west steps should retain ordinary timing")
     assert_equal(settles and settles[3], nil, "the approach step should not settle early")
     assert_equal(settles and settles[5], nil, "the south turn should not inherit the entry settle")
+    assert_equal(primes and primes[3], nil, "the approach step should not prime early")
+    assert_equal(primes and primes[5], nil, "the south turn should not inherit the entry prime")
     assert_contains(
         table.concat(env.debug_infos(), "\n"),
-        "AUTO_WALK_ENTRY_SETTLE map=0x0B from=(1,0) dest=(0,0) dir=left step=4 frames=16",
-        "entry settle planning should log the immediate route origin"
+        "AUTO_WALK_ENTRY_SETTLE map=0x0B from=(1,0) dest=(0,0) dir=left step=4 frames=16 prime=1",
+        "entry cadence planning should log both requirements and the immediate route origin"
     )
 
     env.restore()
@@ -1541,6 +1621,9 @@ function tests.rimuldar_path_marks_cadence_entry_when_it_is_step_one()
         entry_settle_frames = {
             [0x0B] = {["0,0"] = {east = 16}},
         },
+        entry_prime_frames = {
+            [0x0B] = {["0,0"] = {east = 1}},
+        },
         pathfind_to_fn = function()
             return "Path: 1 west", "west", {
                 {x = 0, y = 0, direction = "west"},
@@ -1549,14 +1632,17 @@ function tests.rimuldar_path_marks_cadence_entry_when_it_is_step_one()
     })
 
     local result = env.route_manager.autowalk_to_object(target, {speak = false})
-    local settles = env.last_start_route_opts().settle_before_steps
+    local route_opts = env.last_start_route_opts()
+    local settles = route_opts.settle_before_steps
+    local primes = route_opts.prime_before_steps
 
     assert_equal(result.status, "queued", "one-step Rimuldar route should queue")
     assert_equal(settles and settles[1], 16, "first entry step should retain its settle")
+    assert_equal(primes and primes[1], 1, "first entry step should retain its movement prime")
     assert_contains(
         table.concat(env.debug_infos(), "\n"),
-        "AUTO_WALK_ENTRY_SETTLE map=0x0B from=(1,0) dest=(0,0) dir=left step=1 frames=16",
-        "first-step entry settle planning should log the supplied route origin"
+        "AUTO_WALK_ENTRY_SETTLE map=0x0B from=(1,0) dest=(0,0) dir=left step=1 frames=16 prime=1",
+        "first-step entry cadence planning should log both requirements and the supplied route origin"
     )
 
     env.restore()

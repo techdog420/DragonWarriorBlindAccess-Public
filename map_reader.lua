@@ -4699,8 +4699,31 @@ local MAP_ENTRY_SETTLE_FRAMES = {
     },
 }
 
+-- Format and approach semantics match MAP_ENTRY_SETTLE_FRAMES. These entries
+-- request a brief movement press before the corresponding neutral settle.
+local MAP_ENTRY_PRIME_FRAMES = {
+    [0x0B] = {
+        -- The source-to-merchant route still stalled after settle-only entry;
+        -- one movement frame primes the verified 16-frame re-press sequence.
+        ["0,0"] = {east = 1},
+    },
+}
+
 function M.get_entry_settle_frames(map_id, x, y, approach)
     local map_entries = MAP_ENTRY_SETTLE_FRAMES[tonumber(map_id)]
+    local nx = tonumber(x)
+    local ny = tonumber(y)
+    if not map_entries or nx == nil or ny == nil or approach == nil then
+        return 0
+    end
+    local key = tostring(math.floor(nx)) .. "," .. tostring(math.floor(ny))
+    local entry = map_entries[key]
+    local frames = type(entry) == "table" and tonumber(entry[tostring(approach)]) or 0
+    return math.max(0, math.floor(frames or 0))
+end
+
+function M.get_entry_prime_frames(map_id, x, y, approach)
+    local map_entries = MAP_ENTRY_PRIME_FRAMES[tonumber(map_id)]
     local nx = tonumber(x)
     local ny = tonumber(y)
     if not map_entries or nx == nil or ny == nil or approach == nil then

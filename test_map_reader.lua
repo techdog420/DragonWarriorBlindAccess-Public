@@ -2542,6 +2542,43 @@ function tests.rimuldar_marks_only_verified_entry_settle()
     env.restore()
 end
 
+function tests.rimuldar_marks_only_verified_entry_prime()
+    local env = make_env()
+    local get_prime = env.map_reader.get_entry_prime_frames
+    local actual = {
+        verified = type(get_prime) == "function"
+            and get_prime(0x0B, 0, 0, "east") or nil,
+        reverse = type(get_prime) == "function"
+            and get_prime(0x0B, 0, 0, "west") or nil,
+        neighbor = type(get_prime) == "function"
+            and get_prime(0x0B, 1, 0, "east") or nil,
+        other_map = type(get_prime) == "function"
+            and get_prime(0x0A, 0, 0, "east") or nil,
+    }
+    env.restore()
+
+    assert_equal(
+        actual.verified,
+        1,
+        "Rimuldar (0,0) east entry should require a one-frame movement prime"
+    )
+    assert_equal(
+        actual.reverse,
+        0,
+        "Rimuldar reverse entry should not receive a movement prime"
+    )
+    assert_equal(
+        actual.neighbor,
+        0,
+        "neighboring top-bank cells should not become prime entries"
+    )
+    assert_equal(
+        actual.other_map,
+        0,
+        "entry-prime metadata should remain map-scoped"
+    )
+end
+
 function tests.rimuldar_exit_route_avoids_false_north_entry()
     local env = make_env()
 
