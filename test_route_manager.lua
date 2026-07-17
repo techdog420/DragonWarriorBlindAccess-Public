@@ -437,6 +437,9 @@ local function make_env(options)
                 }
             end,
             is_walkable = function(_, x, y)
+                if x == 0 and y == 0 then
+                    return options.walkable_origin == true
+                end
                 if non_walkable_cells[x .. "," .. y] then
                     return false
                 end
@@ -1615,6 +1618,7 @@ function tests.rimuldar_path_marks_cadence_entry_when_it_is_step_one()
     local target = {id = "entry_test", name = "Entry destination", type = "exit", x = 0, y = 0}
     local env = make_env({
         start_map_id = 0x0B,
+        walkable_origin = true,
         start_x = 1,
         start_y = 0,
         current_object = target,
@@ -3104,6 +3108,46 @@ function tests.autowalk_parks_mobile_non_target_npcs_when_enabled()
     assert_equal(env.memory_writes[3].value, 0x80 + 4, "restore should put the mobile NPC X back")
     assert_equal(env.memory_writes[4].address, 1, "restore should write the original mobile NPC Y")
     assert_equal(env.memory_writes[4].value, 0x60 + 4, "restore should put the mobile NPC Y back")
+
+    env.restore()
+end
+
+function tests.autowalk_skips_mobile_parking_when_map_origin_is_walkable()
+    local env = make_env({
+        start_map_id = 0x0B,
+        walkable_origin = true,
+        config_values = {
+            auto_walk_park_mobile_npcs = "true",
+            auto_walk_npc_hold_frames = "0",
+        },
+        memory_values = {
+            [0] = 0x80 + 4,
+            [1] = 0x60 + 4,
+            [2] = 0x12,
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+    local logs = table.concat(env.debug_infos(), "\n")
+
+    assert_equal(plan.status, "queued", "walkable-origin route should still queue")
+    assert_equal(plan.npc_mode, "live_npcs", "walkable-origin route should use live NPC blocking")
+    assert_equal(
+        env.route_manager.get_active_route_npc_mode(),
+        "live_npcs",
+        "queued route should retain the safe live-NPC mode"
+    )
+    assert_equal(
+        env.route_manager.is_autowalk_npc_parking_active(),
+        false,
+        "walkable-origin route must not activate coordinate parking"
+    )
+    assert_equal(#env.memory_writes, 0, "walkable-origin refusal must not write NPC RAM")
+    assert_contains(
+        logs,
+        "AUTO_WALK_NPC_PARK_SKIP map=0x0B reason=walkable_origin origin=(0,0)",
+        "parking refusal should name the collision reason"
+    )
 
     env.restore()
 end

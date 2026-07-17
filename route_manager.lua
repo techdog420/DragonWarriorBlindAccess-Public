@@ -496,6 +496,14 @@ local function should_park_mobile_npcs_for_autowalk(opts)
     return config_bool("auto_walk_park_mobile_npcs", false)
 end
 
+function M.autowalk_npc_parking_safe(map_id)
+    if map_reader.is_walkable
+       and map_reader.is_walkable(map_id, 0, 0) == true then
+        return false, "walkable_origin"
+    end
+    return true, nil
+end
+
 local function should_refresh_objects_after_route()
     if emulator_compat.is_bizhawk == true then
         return config_bool("bizhawk_route_cleanup_refresh_objects", false)
@@ -4022,7 +4030,19 @@ function M.autowalk_to_object(obj, opts)
     end
     local npc_mode = route_npc_mode_from_opts(opts)
     local parked_slots = nil
-    if should_park_mobile_npcs_for_autowalk(opts) then
+    local park_mobile_npcs = should_park_mobile_npcs_for_autowalk(opts)
+    if park_mobile_npcs then
+        local parking_safe, parking_skip_reason = M.autowalk_npc_parking_safe(map_id)
+        if not parking_safe then
+            park_mobile_npcs = false
+            npc_mode = "live_npcs"
+            debug_tools.info(string.format(
+                "AUTO_WALK_NPC_PARK_SKIP map=0x%02X reason=%s origin=(0,0)",
+                map_id or 0,
+                tostring(parking_skip_reason or "unsafe_origin")))
+        end
+    end
+    if park_mobile_npcs then
         parked_slots = start_autowalk_npc_parking(obj, opts)
         npc_mode = "park_mobile_npcs"
     elseif should_freeze_npcs_for_autowalk(opts) then
