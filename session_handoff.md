@@ -1,8 +1,48 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-17
+Updated: 2026-07-20
 
 ## Immediate FCEUX Handoff
+
+- 2026-07-20 user manual Rimuldar service sweep passed every service route.
+  The Weapons Merchant route only needed a wait-and-retry when a roaming NPC
+  occupied the corridor; it succeeded after the NPC moved. Treat this as
+  transient NPC interference, not permanent geometry or a new blocker.
+
+- 2026-07-20 Rimuldar Magic Key return is fully live-verified after reload.
+  Normal entry `(29,14)` to key stand `(4,5)` completed in 52 steps with no
+  runtime blockers. Selected Travel object `exit_0_3` then queued six steps,
+  reached in-town exit stand `(0,3)`, faced west, and cleared the route without
+  leaving Rimuldar. Autowalk returned six steps to `(4,5)`, then the full
+  key-stand-to-east-exit route queued 51 steps, reversed the proven x=0/top-bank
+  path, reached `(29,13)`, and faced east. Final state is
+  `PATH_STATE target=nil` and `RUNTIME_BLOCKS map=0x0B none`. Timing retries at
+  `(4,4)->DOWN`, `(4,5)->LEFT`, and `(3,4)->UP` all crossed and cleared their
+  temporary edges; none became permanent blockers. The direct false bridge
+  `(3,5)->(2,5)` remains closed as `(2,5).east`. Agent validation ended at
+  Rimuldar `(29,13)`; the subsequent manual service sweep moved the player, so
+  the current live coordinate is not recorded. Focused suites pass: map reader
+  67/67, objects 99/99, and pathfinder 21/21; the full seven-check smoke gate
+  passes.
+
+- 2026-07-17 Rimuldar Wings-pocket return and Weapons Merchant routing are
+  source-only live verified. The opened-door Wings return pass reached each
+  promoted origin through normal movement and paired route failures with
+  same-origin raw probes; the resulting directional-only boundary batch is in
+  `map_reader.lua` with exact regression coverage. For the weapon shop, the
+  real public stand is `(23,9)`, facing north toward Merchant 2 at `(23,7)`;
+  the older `(24,7)` prompt proof was teleport-only inside the enclosed room.
+  After a full Lua reload with `RUNTIME_BLOCKS map=0x0B none`, the source route
+  completed `(23,9)->(29,14)` in 21 steps. Normal object browsing then selected
+  `Weapons Merchant`, planned the inverse 21-step route (`11 west, 5 north,
+  5 east`), and completed at `(23,9)` with automatic north facing. TALK opened
+  `We deal in weapons and armor. Dost thou wish to buy anything today?` and
+  marked the merchant visited. A roaming `Guard 2` at `(19,9)` caused two
+  honest transient `No path found` results; retrying after he moved succeeded,
+  with no runtime block added. Final live state is `(23,9)`, menu closed,
+  selected Weapons Merchant visited, and runtime blocks none. The full smoke
+  runner and focused suites pass (`map_reader` 67, `objects` 99, `pathfinder`
+  20, `route_manager` 110, object commands 3).
 
 - 2026-07-17 Rimuldar Magic Key route and safe NPC parking guard are live
   verified. With `auto_walk_park_mobile_npcs=true`, map `0x0B` now logs
@@ -14,9 +54,11 @@ Updated: 2026-07-17
   Rimuldar, and reached the public key-shop stand `(4,5)`. Final live state
   is `PATH_STATE target=nil` and `RUNTIME_BLOCKS map=0x0B none`. The
   isolated stop-at-`(0,0)` waveform concern did not reproduce on the real
-  route, so `auto_step.lua` was not changed. A separate merchant-to-entry
-  shortcut through `(3,5)->LEFT` repeatedly blocked during return setup;
-  leave it unpromoted pending a focused same-origin check.
+  route, so `auto_step.lua` was not changed. The direct merchant-to-entry
+  shortcut through `(3,5)->LEFT` is live-blocked without an NPC, and source
+  closes `(2,5).east`. The corrected return may use the nearby west exit or
+  continue north from `(0,3)` along the proven outer-bank route to the east
+  town entrance; the west exit is shorter.
 
 - 2026-07-15 Cantlin checkpoint complete for now. The user manually validated
   both directions between Town Entrance and the Magic Key Merchant with the
@@ -906,12 +948,9 @@ Updated: 2026-07-17
   across impassable counter `(4,6)`, not `(4,6)`. Live TALK opened the 53 G
   Magic Key prompt; it was cancelled cleanly. The follow-up route audit
   returned the hero to Rimuldar entry `(29,14)` with six keys, menu/dialogue
-  closed, and `RUNTIME_BLOCKS map=0x0B none`. Source is
-  not yet repaired: `objects.lua` still targets `(4,6)`, `map_reader.lua`'s
-  decompressor still reads packed-nibble interior maps as RLE, and blanket
-  `engine_boundary` handling rejects the valid top/left outer bank. Add failing
-  regressions before changing those three behaviors; do not promote
-  `(2,8).west` as part of this fix.
+  closed, and `RUNTIME_BLOCKS map=0x0B none`. Those source gaps were
+  subsequently repaired and source-only live verified; use the current
+  Immediate FCEUX Handoff above for active route status.
 - Garin's Grave / Grave of Garinham route decoding is complete for current
   playtesting needs.
 - The detailed final Garin's Grave wrap-up was archived to

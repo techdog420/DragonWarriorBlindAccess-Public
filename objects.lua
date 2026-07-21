@@ -359,16 +359,16 @@ local EXITS = {
     },                                                                      -- Rimuldar
     {
         map = 0x0B,
-        x = 4,
+        x = 0,
         y = 3,
         name = "Exit",
         dest = "World Map",
         object_name = "Northwest Exit to World Map",
-        interaction_x = 4,
+        interaction_x = 0,
         interaction_y = 3,
-        interaction_face_dir = "north",
+        interaction_face_dir = "west",
         interaction_label = "exit",
-    },                                                                      -- Rimuldar Magic Key maze exit
+    },                                                                      -- Rimuldar west-edge Magic Key maze exit
 
     -- Castles — exits are typically at the south entrance
     -- NOTE: map 0x05 = Tantegel Throne Room (empirically confirmed, 9x9).
@@ -1394,16 +1394,17 @@ local SERVICE_INTERACTION_OVERRIDES = {
     -- facing south. Merchant 1 at (2,4) is only the greeter, so keep him
     -- browsable but out of Services. Merchant 2 occupies (23,7).
     --
-    -- The first weapon-shop proof saw the shop prompt while standing at
-    -- (23,9), but the public route from the entrance could not reach that
-    -- stale stand. Later selected teleport and TALK proof confirmed the
-    -- accessible counter stand at (24,7), facing west. Merchant 3 occupies
-    -- (16,18); early TALK proof opened the 55 GOLD inn prompt from (16,17),
-    -- but the public route to that stand later collapsed. A follow-up live
-    -- prompt opened from the reachable east-side stand at (18,18), facing west.
+    -- Normal movement from the east entrance reaches the public weapon-shop
+    -- counter stand at (23,9) through the lower west corridor. On 2026-07-17,
+    -- north-facing TALK there opened the weapons/armor prompt. The older
+    -- (24,7) prompt proof required teleporting into the enclosed merchant room,
+    -- so do not expose it as a route fallback. Merchant 3 occupies (16,18);
+    -- early TALK proof opened the 55 GOLD inn prompt from (16,17), but the
+    -- public route to that stand later collapsed. A follow-up live prompt
+    -- opened from the reachable east-side stand at (18,18), facing west.
     [0x0B] = {
         ["4,7"] = {x = 4, y = 5, face_dir = "south", label = "counter", name = "Magic Key Merchant"},
-        ["23,7"] = {x = 24, y = 7, face_dir = "west", label = "counter", name = "Weapons Merchant"},
+        ["23,7"] = {x = 23, y = 9, face_dir = "north", label = "counter", name = "Weapons Merchant"},
         ["16,18"] = {
             x = 18,
             y = 18,

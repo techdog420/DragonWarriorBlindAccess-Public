@@ -1,10 +1,51 @@
 # Playtesting Notes
 
-Updated: 2026-07-17
+Updated: 2026-07-20
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Rimuldar final manual service sweep (`2026-07-20`): every service route
+  passed. The Weapons Merchant route temporarily could not plan while a roaming
+  NPC occupied the corridor; waiting for that NPC to move and retrying worked.
+  This is expected dynamic interference and does not justify another map block.
+
+- Rimuldar Magic Key return correction (`2026-07-17`): the tempting direct
+  route toward the east entrance through `(3,5)->(2,5)` is genuinely blocked;
+  a natural-arrival probe failed with no NPC on the seam, so source retains
+  `(2,5).east`. The earlier northwest-exit proof held LEFT long enough to hide
+  an intermediate state. After selected Travel autowalk reached `(1,3)`, one
+  normal LEFT reached `(0,3)` and stayed in Rimuldar; only the second LEFT
+  exited to World Map `(102,72)`. A second normal-route recreation entered the
+  same `(0,3)` stand, then UP moved along the x=0 strip to `(0,1)` without exit.
+  Travel object `exit_0_3` now routes to `(0,3)` facing west, and row 3's false
+  east-entry guard is removed. The nearby-exit route from `(4,5)` is six steps:
+  `LEFT, UP, UP, LEFT, LEFT, LEFT`. The planner can alternatively continue
+  north along x=0 and reverse the proven outer-bank route to east entrance
+  `(29,13)` without touching the false bridge. `(4,3)->UP` remains blocked.
+  Final reload validation on 2026-07-20 passed both routes. Selected Travel
+  autowalk queued six steps from key stand `(4,5)`, reached `(0,3)`, faced west,
+  and stayed in Rimuldar. After returning to `(4,5)`, east-exit autowalk queued
+  51 steps, reversed the x=0/top-bank path, reached `(29,13)`, and faced east.
+  Both routes cleared with no runtime blockers. Current focused validation is
+  green in 67 map-reader, 99 object, and 21 pathfinder tests; the full
+  seven-check smoke gate passes with Git Bash pinned inside Python.
+
+- Rimuldar Wings-pocket and Weapons Merchant source-only validation
+  (`2026-07-17`): the opened-door Wings return reached every promoted origin
+  through normal movement, and each directional-only closure paired a route
+  failure with a same-origin raw probe. Natural arrivals supersede old
+  forced-origin open readings at `(22,24).north`, `(23,24).north`,
+  `(24,24).north`, `(25,22).west`, and `(25,23).west`. Fixed `npc_13` at
+  `(23,7)` now routes only to public stand `(23,9)`, facing north; `(24,7)`
+  is enclosed and teleport-only. After a fresh reload with no runtime blocks,
+  counter-to-entry and selected-object entry-to-counter autowalk both completed
+  in 21 steps. TALK opened the weapon/armor shop. `Guard 2` at `(19,9)` caused
+  two honest transient `No path found` attempts; retry succeeded after he
+  moved, so no blocker was added. Final state is `(23,9)`, menu closed, and
+  runtime blocks none. Focused suites and the full smoke runner pass.
+
 - Rimuldar safe NPC parking validation (`2026-07-17`): with parking requested
   in `dw_access.ini`, auto-walk refuses proactive parking because map `0x0B`
   has a walkable origin. It logs
@@ -14,9 +55,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   south to `(0,1)` without a map change, and reached the Magic Key public
   stand `(4,5)`. Both runs ended with no runtime blocks. Do not change the
   marked completion waveform based on the earlier isolated stop at `(0,0)`;
-  the complete route disproved that as a progression blocker. The attempted
-  merchant-to-entry shortcut through `(3,5)->LEFT` is still unverified map
-  evidence and must not be promoted without a separate same-origin check.
+  the complete route disproved that as a progression blocker. The direct
+  merchant-to-entry shortcut through `(3,5)->LEFT` is confirmed blocked without
+  NPC interference and modeled as `(2,5).east`. The corrected return can use
+  the x=0 outer-bank route to the east entrance; the nearby west exit remains
+  the shortest way out of town.
 
 - Cantlin final manual checkpoint (`2026-07-15`): entrance-to-Magic-Key-Merchant
   routes passed in both directions with eastern door `(26,9)` open; with doors
@@ -980,13 +1023,13 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   craggy-notch segment must not retry blocked `(93,57)->UP`, and the town
   approach must not push east from `(97,72)` into the north-side wall. The
   route now drops through `(93,57)` on the west side and uses the manually
-  proven east approach, entering Rimuldar from `(103,72)->LEFT`. First service
-  proof: Rimuldar `Merchant 2` is the weapon/armor merchant at `(23,7)`, opened
-  first from the stale south counter stand `(23,9)` facing north. Follow-up
-  selected-teleport and TALK proof found the planner-safe public stand at
-  `(24,7)` facing west, which fixes the inbound route from the town entrance.
-  Live merchant rows list Copper Sword 180 G, Hand Axe 560 G, Broad Sword
-  1500 G, Half Plate 1000 G, Full Plate 3000 G, and Magic Armor 7700 G. The
+  proven east approach, entering Rimuldar from `(103,72)->LEFT`. Fixed
+  `Merchant 2` / `npc_13` is the weapon/armor merchant at `(23,7)`. Earlier
+  selected-teleport evidence incorrectly treated enclosed tile `(24,7)` as a
+  public route target. Normal movement establishes `(23,9)` facing north as
+  the sole public counter stand. Live merchant rows list Copper Sword 180 G,
+  Hand Axe 560 G, Broad Sword 1500 G, Half Plate 1000 G, Full Plate 3000 G,
+  and Magic Armor 7700 G. The
   old town exit object at `(15,14)` is invalid: teleporting there and walking
   around showed it is just an ordinary interior tile. Live `probe_edge:RIGHT`
   from `(29,13)` triggered
@@ -1010,10 +1053,12 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   one real Rimuldar town seam worth modeling: `(28,14)->UP` into `(28,13)`
   blocked on both the queued route and seam retry, no NPC occupied either tile,
   and the valid exit route moved through `(29,14)->(29,13)` instead. The noisy
-  `(27,15).west` seam self-disproved with a moved retry and stays open. Keep
-  the weapon/armor route target on `(24,7)` facing west; `(23,9)` can open the
-  shop in some stale/live contexts, but is not the planner-safe entrance-side
-  target. Rimuldar `Merchant 3` is live-confirmed as the inn keeper at
+  `(27,15).west` seam self-disproved with a moved retry and stays open. The
+  2026-07-17 normal-movement pass supersedes the old teleport target: keep the
+  weapon/armor route on `(23,9)` facing north and do not restore `(24,7)` as a
+  fallback. From entry `(29,14)`, the source-only route is `11 west, 5 north,
+  5 east`; the return is `5 west, 5 south, 11 east`. Rimuldar `Merchant 3` is
+  live-confirmed as the inn keeper at
   `(16,18)`. Early TALK proof from `(16,17)` facing south opened the 55 GOLD
   inn prompt, but that stand later proved unreachable from the public route.
   Follow-up live testing found the reachable stand at `(18,18)` facing west:
@@ -1100,10 +1145,12 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(4,12).south`, `(3,13).east`, and `(5,2).south`, plus false-wall cells
   `(3,4)` and `(4,3)`. A historical check reopened `(4,6).north` under the
   stale assumption that `(4,6)` was the stand; the 2026-07-15 live route
-  supersedes it because `(4,5)->DOWN` correctly hits the counter. `(4,3)->UP` is a live northwest
-  world-map exit, now exposed as `Northwest Exit to World Map`; `(4,2).south`
-  is blocked so pathfinding treats that edge as an exit transition instead of
-  an in-town corridor.
+  supersedes it because `(4,5)->DOWN` correctly hits the counter. Fresh
+  2026-07-17 normal-arrival proof disproved the old `(4,3)->UP` exit claim.
+  LEFT from `(1,3)` reaches the in-town northwest exit stand `(0,3)`; a second
+  LEFT changes maps. `Northwest Exit to World Map` therefore routes to `(0,3)`
+  facing west.
+  `(4,2).south` remains blocked as a real wall, not a transition guard.
   Follow-up route/manual evidence adds
   false-wall cells `(1,5)`, `(1,13)`, `(3,9)`, and `(15,5)`, plus blockers
   `(3,15).west`, `(4,12).east`, `(5,11).south`, `(14,6).north`,

@@ -384,13 +384,17 @@ function tests.rimuldar_live_magic_key_route_is_walkable_and_exit_seams_are_guar
         assert_equal(counter.reason, "tile_type", "Rimuldar counter (4,6) should be blocked by corrected tile decoding")
 
         local dirs = env.map_reader.get_directional_blocks(map_id)
-        for y = 1, 3 do
+        for y = 1, 2 do
             local cell = "0," .. y
             local guard = dirs[cell] or {}
             assert_equal(guard.east, true, cell .. " should block entry from the east to prevent a world-map transition")
             assert_equal(guard.north, nil, cell .. " should keep northward travel open along the x=0 strip")
             assert_equal(guard.south, nil, cell .. " should keep southward travel open along the x=0 strip")
         end
+        local west_exit = dirs["0,3"] or {}
+        assert_equal(west_exit.east, nil, "0,3 should allow entry from the east onto the live exit stand")
+        assert_equal(west_exit.north, nil, "0,3 should keep northward travel open along the x=0 strip")
+        assert_equal(west_exit.south, nil, "0,3 should keep southward travel open along the x=0 strip")
     end, env.restore)
 end
 
@@ -2587,6 +2591,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
         assert_equal(dirs[cell] and dirs[cell][approach] or nil, nil, message)
     end
 
+    assert_open_approach("0,3", "east", "Rimuldar (0,3).east must stay open; normal movement from (1,3) reached the live west-exit stand before a second LEFT exited")
     assert_equal(dirs["28,13"].south, true, "Rimuldar (28,13) should block entry from the south after exit-route repro from (28,14)")
     assert_equal(dirs["28,13"].east, true, "Rimuldar (28,13).east should block entry from the east after the 2026-05-21 exit-tile verifier from (29,13)")
     assert_equal(dirs["24,12"].south, true, "Rimuldar (24,12) should block entry from the south after key-route verifier from (24,13)")
@@ -2598,7 +2603,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["25,12"].east, true, "Rimuldar (25,12) should block entry from the east after latest Weapons Merchant route loop from (26,12)")
     assert_equal(dirs["25,12"].south, true, "Rimuldar (25,12) should block entry from the south after latest Weapons Merchant route loop from (25,13)")
     assert_equal(dirs["26,5"].east, true, "Rimuldar (26,5).east should block after Weapons Merchant route/probe proof from (27,5)")
-    assert_open_approach("27,8", "east", "Rimuldar (27,8).east must stay open; reloaded live movement crossed (28,8)->LEFT and restored the Weapons Merchant path")
+    assert_open_approach("27,8", "east", "Rimuldar (27,8).east must stay open; reloaded movement confirmed internal upper-strip passability")
     assert_equal(dirs["20,3"].west, true, "Rimuldar (20,3).west should block after Weapons Merchant route/probe proof from (19,3)")
     assert_equal(dirs["10,6"].south, true, "Rimuldar (10,6).south should block after Weapons Merchant lower-loop verifier from (10,7)")
     assert_equal(dirs["9,9"] and dirs["9,9"].south, true, "Rimuldar (9,9).south should block after Magic Key Merchant route/probe proof from (9,10)")
@@ -2615,7 +2620,27 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["21,11"].west, true, "Rimuldar (21,11) should block entry from the west after key-route verifier from (20,11)")
     assert_equal(dirs["21,12"].south, true, "Rimuldar (21,12) should block entry from the south after key-route verifier from (21,13)")
     assert_equal(dirs["21,12"].west, true, "Rimuldar (21,12) should block entry from the west after key-route verifier from (20,12)")
-    assert_open_approach("24,8", "south", "Rimuldar (24,8).south must stay open; live weapon-shop probe from (24,9)->UP reached the stand")
+    local weapon_shop_boundary_blocks = {
+        {"21,8", "south", "(21,9)->UP"},
+        {"22,8", "south", "(22,9)->UP"},
+        {"24,8", "south", "(24,9)->UP"},
+        {"25,8", "east", "(26,8)->LEFT"},
+        {"25,9", "east", "(26,9)->LEFT"},
+        {"25,9", "west", "(24,9)->RIGHT"},
+        {"21,10", "east", "(22,10)->LEFT"},
+        {"21,10", "north", "(21,9)->DOWN"},
+        {"25,10", "east", "(26,10)->LEFT"},
+        {"25,10", "west", "(24,10)->RIGHT"},
+        {"21,11", "east", "(22,11)->LEFT"},
+        {"22,12", "north", "(22,11)->DOWN"},
+        {"23,12", "north", "(23,11)->DOWN"},
+    }
+    for _, expected in ipairs(weapon_shop_boundary_blocks) do
+        local cell, approach, origin = expected[1], expected[2], expected[3]
+        assert_equal((dirs[cell] or {})[approach], true,
+            string.format("Rimuldar Weapons boundary (%s).%s should block after normal-arrival proof from %s",
+                cell, approach, origin))
+    end
     assert_equal(dirs["13,6"].south, true, "Rimuldar (13,6) should block entry from the south after key-route verifier from (13,7)")
     assert_equal(dirs["13,8"].east, true, "Rimuldar (13,8) should block entry from the east after forced key-route probe from (14,8)")
     assert_equal(dirs["14,6"].south, true, "Rimuldar (14,6) should block entry from the south after key-route verifier from (14,7)")
@@ -2685,7 +2710,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["4,3"].south, true, "Rimuldar (4,3) should block entry from the south after latest northwest-exit route loop from (4,4)")
     assert_equal(dirs["4,4"].south, true, "Rimuldar (4,4) should block entry from the south after latest northwest-exit route loop from (4,5)")
     assert_open_approach("4,6", "north", "Rimuldar (4,6).north should stay unmodeled; corrected decoding makes the counter itself non-walkable")
-    assert_equal(dirs["4,2"].south, true, "Rimuldar (4,2) should block entry from the south because (4,3)->UP is a world-map transition")
+    assert_equal(dirs["4,2"].south, true, "Rimuldar (4,2) should block entry from the south after the natural-arrival probe from (4,3)->UP timed out")
     assert_equal(dirs["5,2"].south, true, "Rimuldar (5,2) should block entry from the south after latest return-route loop from (5,3)")
     assert_equal(dirs["6,8"].south, true, "Rimuldar (6,8) should block entry from the south after latest key-route loop from (6,9)")
     assert_equal(dirs["6,11"].south, true, "Rimuldar (6,11) should block entry from the south after latest entrance-route loop from (6,12)")
@@ -2722,23 +2747,33 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["19,17"].north, true, "Rimuldar (19,17).north should block after entrance-to-chest verifier from (19,16)")
     assert_equal(dirs["19,17"].west, true, "Rimuldar (19,17).west should block after route/probe proof from (18,17)")
     assert_equal(dirs["20,17"].north, true, "Rimuldar (20,17).north should block after entrance-to-chest verifier from (20,16)")
+    assert_equal(dirs["20,17"].south, true, "Rimuldar (20,17).south should block after Wings-return route failure and same-origin probe from (20,18)")
     assert_equal(dirs["21,17"].north, true, "Rimuldar (21,17).north should block after entrance-to-chest verifier from (21,16)")
+    assert_equal(dirs["21,17"].south, true, "Rimuldar (21,17).south should block after Wings-return route failure and same-origin probe from (21,18)")
     assert_equal(dirs["22,17"].north, true, "Rimuldar (22,17).north should block after entrance-to-chest verifier from (22,16)")
     assert_equal(dirs["23,17"].north, true, "Rimuldar (23,17).north should block after entrance-to-chest verifier from (23,16)")
     assert_equal(dirs["23,17"].south, true, "Rimuldar (23,17).south should block after return-to-entrance route/probe proof from (23,18)")
     assert_equal(dirs["24,17"].north, true, "Rimuldar (24,17).north should block after entrance-to-chest verifier from (24,16)")
+    assert_equal(dirs["24,17"].south, true, "Rimuldar (24,17).south should block after Wings-return route failure and same-origin probe from (24,18)")
     assert_equal(dirs["25,17"].north, true, "Rimuldar (25,17).north should block after entrance-to-chest verifier from (25,16)")
     assert_equal(dirs["25,17"].east, true, "Rimuldar (25,17).east should block after route/probe proof from (26,17)")
+    assert_equal(dirs["19,18"].east, true, "Rimuldar (19,18).east should block after Wings-return route failure and same-origin probe from (20,18)")
+    assert_equal(dirs["22,18"].west, true, "Rimuldar (22,18).west should block after Wings-return route failure and same-origin probe from (21,18)")
+    assert_equal(dirs["22,18"].south, true, "Rimuldar (22,18).south should block after Wings-return route failure and same-origin probe from (22,19)")
+    assert_equal(dirs["22,18"].east, true, "Rimuldar (22,18).east should block after Wings-return route failure and same-origin probe from (23,18)")
+    assert_equal(dirs["25,18"].west, true, "Rimuldar (25,18).west should block after Wings-return route failure and same-origin probe from (24,18)")
     assert_equal(dirs["0,5"].east, true, "Rimuldar (0,5) should block entry from the east after left-edge verifier from (1,5)")
     assert_equal(dirs["1,4"].south, true, "Rimuldar (1,4) should block entry from the south after upper-left verifier from (1,5)")
     assert_equal(dirs["2,5"].west, true, "Rimuldar (2,5) should block entry from the west after fresh route/probe proof from (1,5)")
+    assert_equal(dirs["2,5"].east, true, "Rimuldar (2,5) should block entry from the east after natural-arrival probe from (3,5)->LEFT blocked without NPC interference")
     assert_equal(dirs["2,7"].west, true, "Rimuldar (2,7) should block entry from the west after repeated route-shaped failures from (1,7)")
     assert_equal(dirs["2,8"].south, true, "Rimuldar (2,8) should block entry from the south after direct verifier from (2,9)")
     assert_equal(dirs["23,21"].north, true, "Rimuldar (23,21).north should block after chest-return verifier from (23,20)")
     assert_equal(dirs["23,21"].south, true, "Rimuldar (23,21).south should block after return-route verifier from (23,22)")
     assert_equal(dirs["22,22"].east, true, "Rimuldar (22,22).east should block after return-route verifier from (23,22)")
+    assert_equal(dirs["22,22"].south, true, "Rimuldar (22,22).south should block after opened-door Wings-return route failure and same-origin probe from (22,23)")
     assert_equal(dirs["24,21"].south, true, "Rimuldar (24,21).south should block after return-route verifier from (24,22)")
-    assert_open_approach("23,24", "north", "Rimuldar (23,24).north stayed open on direct probe despite inspect/entry mismatch")
+    assert_equal(dirs["23,24"].north, true, "Rimuldar (23,24).north should block after Wings-return route failure and same-origin probe from (23,23)")
     assert_equal(dirs["15,19"].west, true, "Rimuldar (15,19).west should block after clean verifier from (14,19); reverse from (15,19) moved")
     assert_equal(dirs["16,19"].south, true, "Rimuldar (16,19) should block entry from the south after exit-route verifier from (16,20)")
     assert_equal(dirs["16,19"].west, true, "Rimuldar (16,19).west should block entry from the west after direct seam proof from (15,19)")
@@ -2751,13 +2786,14 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["22,20"].east, true, "Rimuldar (22,20).east should block after chest-return verifier from (23,20)")
     assert_equal(dirs["22,20"].north, true, "Rimuldar (22,20).north should block after outer-door stand route/probe proof from (22,19)")
     assert_equal(dirs["22,21"].west, true, "Rimuldar (22,21).west should block after entrance-to-chest verifier from (21,21)")
-    assert_open_approach("25,22", "west", "Rimuldar (25,22).west stayed passable in forced probe checks from (24,22)")
+    assert_equal(dirs["25,22"].west, true, "Rimuldar (25,22).west should block after natural Wings-return arrival and same-origin probe from (24,22)")
     assert_equal(dirs["20,26"].north, true, "Rimuldar (20,26) should block entry from the north after lower-room reroute verifier from (20,25)")
     assert_equal(dirs["21,26"].north, true, "Rimuldar (21,26) should block entry from the north after lower-room reroute verifier from (21,25)")
     assert_equal(dirs["22,26"].north, true, "Rimuldar (22,26) should block entry from the north after lower-room reroute verifier from (22,25)")
     assert_equal(dirs["23,25"].west, true, "Rimuldar (23,25) should block entry from the west after lower-room reroute verifier from (22,25)")
     assert_equal(dirs["20,21"].south, true, "Rimuldar (20,21) should block entry from the south after parked Wings survey and direct verifier from (20,22)")
     assert_equal(dirs["20,21"].north, true, "Rimuldar (20,21).north should block after chest-return verifier from (20,20)")
+    assert_equal(dirs["20,21"].east, true, "Rimuldar (20,21).east should block after opened-door Wings-return route failure and same-origin probe from (21,21)")
     assert_equal(dirs["19,21"].north, true, "Rimuldar (19,21).north should block after chest-return verifier from (19,20)")
     assert_equal(dirs["18,21"].north, true, "Rimuldar (18,21).north should block after chest-return verifier from (18,20)")
     assert_equal(dirs["18,21"].west, true, "Rimuldar (18,21).west should block after chest-return verifier from (17,21)")
@@ -2768,7 +2804,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["19,23"].west, true, "Rimuldar (19,23).west should block after outer-door stand route/probe proof from (18,23)")
     assert_equal(dirs["20,24"].north, true, "Rimuldar (20,24) should block entry from the north after lower-room verifier from (20,23)")
     assert_equal(dirs["20,24"].south, true, "Rimuldar (20,24) should block entry from the south after lower-room side probe from (20,25)")
-    assert_open_approach("22,24", "north", "Rimuldar (22,24).north is open based on forced-origin probes from (22,23)")
+    assert_equal(dirs["22,24"].north, true, "Rimuldar (22,24).north should block after natural Wings-return arrival and same-origin probe from (22,23)")
     assert_equal(dirs["16,24"].north, true, "Rimuldar (16,24).north should block after return-route verifier from (16,23)")
     assert_equal(dirs["16,24"].south, true, "Rimuldar (16,24) should block entry from the south after lower-strip forced probe from (16,25)")
     assert_open_approach("22,21", "south", "Rimuldar (22,21).south should be open; direct probe from (22,22) moved")
@@ -2779,8 +2815,8 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["25,19"].west, true, "Rimuldar (25,19).west should block after outer-door stand route/probe proof from (24,19)")
     assert_equal(dirs["25,20"].west, true, "Rimuldar (25,20).west should block after outer-door stand route/probe proof from (24,20)")
     assert_equal(dirs["22,22"].west, true, "Rimuldar (22,22).west should block after opened outer-door route/probe proof from (21,22)")
-    assert_open_approach("25,23", "west", "Rimuldar (25,23).west is open after repeated forced probe checks from (24,23)")
-    assert_open_approach("24,24", "north", "Rimuldar (24,24).north is open after repeated forced probe checks from (24,23)")
+    assert_equal(dirs["25,23"].west, true, "Rimuldar (25,23).west should block after natural Wings-return arrival and same-origin probe from (24,23)")
+    assert_equal(dirs["24,24"].north, true, "Rimuldar (24,24).north should block after natural Wings-return arrival and same-origin probe from (24,23)")
     assert_open_approach("21,21", "south", "Rimuldar (21,21).south is the confirmed inn outer door, not a permanent wall")
     assert_open_approach("21,21", "north", "Rimuldar (21,21).north stayed mixed and should not be promoted")
     assert_equal(dirs["15,21"].west, true, "Rimuldar (15,21).west should stay blocked after repeated direct probe failure from (14,21)")
@@ -2801,6 +2837,48 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_equal(dirs["12,24"].east, true, "Rimuldar (12,24).east should block after lower-west verifier from (13,24)")
     assert_equal(dirs["12,26"].east, true, "Rimuldar (12,26).east should block after lower-west verifier from (13,26)")
     assert_equal(dirs["12,25"].east, true, "Rimuldar (12,25).east should block after lower-west verifier from (13,25)")
+    local wings_round_trip_blocks = {
+        {"17,16", "east", "(18,16)->LEFT"},
+        {"16,16", "west", "(15,16)->RIGHT"},
+        {"15,18", "west", "(14,18)->RIGHT"},
+        {"12,19", "north", "(12,18)->DOWN"},
+        {"12,19", "west", "(11,19)->RIGHT"},
+        {"3,19", "south", "(3,20)->UP"},
+        {"4,19", "south", "(4,20)->UP"},
+        {"2,20", "east", "(3,20)->LEFT"},
+        {"12,20", "west", "(11,20)->RIGHT"},
+        {"2,21", "east", "(3,21)->LEFT"},
+        {"12,21", "west", "(11,21)->RIGHT"},
+        {"3,22", "north", "(3,21)->DOWN"},
+        {"4,22", "north", "(4,21)->DOWN"},
+        {"4,22", "east", "(5,22)->LEFT"},
+        {"12,22", "west", "(11,22)->RIGHT"},
+        {"10,23", "east", "(11,23)->LEFT"},
+        {"12,23", "west", "(11,23)->RIGHT"},
+        {"3,24", "south", "(3,25)->UP"},
+        {"4,24", "south", "(4,25)->UP"},
+        {"4,24", "east", "(5,24)->LEFT"},
+        {"12,24", "west", "(11,24)->RIGHT"},
+        {"2,25", "east", "(3,25)->LEFT"},
+        {"12,25", "west", "(11,25)->RIGHT"},
+        {"2,26", "east", "(3,26)->LEFT"},
+        {"12,26", "west", "(11,26)->RIGHT"},
+        {"3,27", "north", "(3,26)->DOWN"},
+        {"4,27", "north", "(4,26)->DOWN"},
+        {"5,27", "north", "(5,26)->DOWN"},
+        {"6,27", "north", "(6,26)->DOWN"},
+        {"7,27", "north", "(7,26)->DOWN"},
+        {"8,27", "north", "(8,26)->DOWN"},
+        {"9,27", "north", "(9,26)->DOWN"},
+        {"10,27", "north", "(10,26)->DOWN"},
+        {"11,27", "north", "(11,26)->DOWN"},
+    }
+    for _, expected in ipairs(wings_round_trip_blocks) do
+        local cell, approach, origin = expected[1], expected[2], expected[3]
+        assert_equal((dirs[cell] or {})[approach], true,
+            string.format("Rimuldar (%s).%s should block after 2026-07-17 live round-trip probe from %s",
+                cell, approach, origin))
+    end
     assert_open_approach("19,25", "east", "Rimuldar (19,25).east evidence was NPC-contaminated and should not be promoted")
     assert_open_approach("2,8", "west", "Rimuldar (2,8).west should stay unpromoted until the Magic Key route has an alternate bridge or state explanation")
     assert_open_approach("1,8", "east", "Rimuldar (1,8).east should stay unpromoted with the unresolved (2,8).west route-model decision")

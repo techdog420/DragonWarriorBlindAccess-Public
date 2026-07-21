@@ -1,6 +1,75 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-07-17
+Updated: 2026-07-20
+
+## 2026-07-17 Rimuldar Magic Key Return And Northwest Exit
+
+- ROOT CAUSE / PROMOTED: the direct `(3,5)->LEFT` shortcut toward east entrance
+  `(29,13)` is false geometry, not NPC interference. A natural-arrival probe
+  stayed put with `npc_blocked=false`, so `(2,5).east` remains permanent.
+- ACTUAL EXIT / LIVE PROOF: the earlier long LEFT probe conflated two moves.
+  Reloaded selected Travel autowalk reached `(1,3)` facing west. The first
+  normal LEFT reached in-town `(0,3)`; the second exited to World `(102,72)`.
+  After normal reentry and another full route to `(4,5)`, LEFT again entered
+  `(0,3)`, then UP moved along the boundary strip to `(0,1)` without exit.
+- SOURCE / TESTS: `exit_0_3` now uses interaction stand `(0,3)`, facing west,
+  and `map_reader.lua` leaves `(0,3).east` open. The selected-exit regression
+  requires six steps: `LEFT, UP, UP, LEFT, LEFT, LEFT`. The planner can also
+  reverse the x=0/top-bank route to east entrance `(29,13)` while explicitly
+  avoiding the false `(3,5)->(2,5)` bridge. Focused totals pass: map 67,
+  objects 99, pathfinder 21; the current full seven-check smoke gate passes
+  with Git Bash pinned inside Python.
+- LIVE VERIFIED 2026-07-20: after reload, entry `(29,14)` to key stand `(4,5)`
+  completed in 52 steps. Selected `exit_0_3` then completed its six-step route
+  at `(0,3)` facing west without leaving town. After returning six steps to
+  `(4,5)`, the east-exit route completed 51 steps at `(29,13)` facing east.
+  All temporary timing edges cleared; final `PATH_STATE target=nil` and
+  `RUNTIME_BLOCKS map=0x0B none`.
+- CHECKPOINT: player is Rimuldar `(29,13)` at the east exit stand. No further
+  reload or route correction is pending for this issue.
+
+## 2026-07-17 Rimuldar Wings Return And Weapons Merchant Public Route
+
+- WINGS RETURN / PROMOTED: the opened-door return from the Wings chest pocket
+  reached every candidate origin by ordinary movement. Route failures followed
+  by same-origin raw probes confirmed the directional-only blocker batch now
+  covered by `wings_round_trip_blocks` plus the focused door/row-17/row-18
+  assertions in `test_map_reader.lua`. Natural arrivals supersede older
+  forced-origin open readings at `(22,24).north`, `(23,24).north`,
+  `(24,24).north`, `(25,22).west`, and `(25,23).west`.
+- WEAPON ROOT CAUSE: the earlier `(24,7)` weapon-shop prompt was reached only
+  by selected teleport into the enclosed upper room. Forensic passthrough cells
+  `(22,4)` and `(24,6)` do not form a normal public connector. The valid public
+  stand is `(23,9)`, facing north toward Merchant 2 at `(23,7)`, reached by the
+  lower west corridor.
+- WEAPON BOUNDARY / PROMOTED: normal-arrival route failures and same-origin raw
+  probes confirmed 13 approaches: `(21,8).south`, `(22,8).south`,
+  `(24,8).south`, `(25,8).east`, `(25,9).east/west`,
+  `(21,10).east/north`, `(25,10).east/west`, `(21,11).east`,
+  `(22,12).north`, and `(23,12).north`. No route fallback to `(24,7)` remains.
+- SOURCE-ONLY RELOAD PROOF: `launcher_probe:rimuldar_weapon_source_reload` was
+  consumed at frame `07620`; hero was `(23,9)` and
+  `RUNTIME_BLOCKS map=0x0B none`. Coordinate autowalk completed the 21-step
+  return to `(29,14)` as `5 west, 5 south, 11 east`. Normal `next_filter`
+  selected `Weapons Merchant (stationary)` with `interact 23,9`; `pathfind`
+  logged `11 west, 5 north, 5 east`, length 21.
+- ROAMING NPC CAVEAT: two selected-object attempts correctly returned
+  `No path found` while `Guard 2` occupied `(19,9)`. The diagnostic reported
+  `runtime_blocks=0`, `target_walkable=true`, and
+  `reason=stationary_npc_blocker`. A same-poll `pathfind auto_walk` retry after
+  he moved completed all 21 steps at frame `16192`, faced north, and held the
+  merchant without adding a blocker.
+- TALK PROOF: A opened the command menu; the second A produced
+  `We deal in weapons and armor. Dost thou wish to buy anything today?` and
+  `VISITED_AUTO ... target_name=Weapons Merchant`. B cancelled the prompt.
+  Final frame `20580`: hero `(23,9)`, menu/dialogue closed, Weapons Merchant
+  selected and visited, `RUNTIME_BLOCKS map=0x0B none`.
+- VERIFICATION: focused suites pass (`test_map_reader.lua` 67/67,
+  `test_objects.lua` 99/99, `test_pathfinder.lua` 20/20,
+  `test_route_manager.lua` 110/110, `test_object_commands.lua` 3/3), LuaJIT
+  byte-compilation passes, `git diff --check` is clean, and the full
+  `run_tests.py --allow-missing-speech-dep` gate passes through explicit Git
+  Bash.
 
 ## 2026-07-17 Rimuldar Safe NPC Parking Guard
 
@@ -20,10 +89,11 @@ Updated: 2026-07-17
 - RESOLVED: the earlier isolated stop-at-`(0,0)` exit did not reproduce when
   the real route retained its next south step. Do not change `auto_step.lua`
   for that isolated artifact.
-- UNRESOLVED / DO NOT PROMOTE: the return planner repeatedly tried
-  `(3,5)->LEFT` into `(2,5)` and blocked under bounded retries. This was
-  not followed by a clean same-origin manual probe and is outside the parking
-  guard acceptance test.
+- RESOLVED / PROMOTED: the return planner's direct `(3,5)->LEFT` attempt really
+  is blocked. A natural-arrival probe timed out with no NPC on the seam, so
+  source closes `(2,5).east`. The corrected route instead enters `(0,3)` from
+  the east, then either exits with another LEFT or continues north along x=0
+  to reverse the original entrance route.
 - VERIFIED: the full `run_tests.py --allow-missing-speech-dep` gate passed
   all seven top-level checks when Git Bash was injected inside the Python
   process; `git diff --check` was clean before this documentation update.
@@ -1220,6 +1290,9 @@ Updated: 2026-07-17
 
 ## 2026-06-27 Rimuldar Weapons Merchant Route Polish
 
+> Historical investigation only: the `(24,7)` and `(22,4)` public-route
+> hypotheses are superseded by the 2026-07-17 normal-movement validation above.
+
 ### PROMOTED THIS PASS
 
 - SUPERSEDED: the earlier `(27,8).east` blocker was wrong. After a FCEUX Lua
@@ -2214,9 +2287,10 @@ For the next live map task, start a new dated section here with:
   to the world map at `(102,72)`. Re-entering the town tile from all four
   adjacent overworld sides landed at the same interior coordinate `(29,14)`:
   `(103,72)->LEFT`, `(101,72)->RIGHT`, `(102,71)->DOWN`, and
-  `(102,73)->UP`. A normally reached `(4,3)->UP` probe also stayed blocked,
-  so do not assume the modeled `Northwest Exit to World Map` gives a second
-  key-shop-side town entrance without fresh transition proof.
+  `(102,73)->UP`. A normally reached `(4,3)->UP` probe stayed blocked. Later
+  live proof established `(1,3)->LEFT` reaches in-town stand `(0,3)` and a
+  second LEFT takes the actual west exit; overworld re-entry still returns to
+  the east-side interior at `(29,14)`.
 - CLEAN / PROMOTED: `map_reader.lua` now models `(9,9).south` and
   `(12,9).south`; `test_map_reader.lua` covers both and flips the stale
   `(9,9).south must stay open` assertion. Do not promote `(2,8).west` yet; it

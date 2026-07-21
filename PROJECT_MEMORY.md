@@ -625,10 +625,13 @@ Emulator compatibility direction:
   `(83,56)`, `(83,54)`, `(86,54)`, `(86,52)`, `(92,52)`, `(92,48)`,
   `(100,48)`, `(100,50)`, and `(104,50)`, with a recovery route for starts or
   recalculations at the bad notch. Rimuldar public services now have live
-  proof: `Merchant 2` occupies `(23,7)` and is the weapon/armor shop, with the
-  planner-safe public counter stand at `(24,7)` facing west. Live inventory is
-  Copper Sword 180 G, Hand Axe 560 G, Broad Sword 1500 G, Half Plate 1000 G,
-  Full Plate 3000 G, and Magic Armor 7700 G. `Merchant 3` at `(16,18)` is the
+  proof: `Merchant 2` occupies `(23,7)` and is the weapon/armor shop. The sole
+  normal-walk public counter stand is `(23,9)` facing north; the older
+  `(24,7)` prompt proof used selected teleport into the enclosed upper room
+  and must not return as a route fallback. Source-only entrance routing uses
+  `11 west, 5 north, 5 east` to reach the stand. Live inventory is Copper
+  Sword 180 G, Hand Axe 560 G, Broad Sword 1500 G, Half Plate 1000 G, Full
+  Plate 3000 G, and Magic Armor 7700 G. `Merchant 3` at `(16,18)` is the
   inn keeper. The old `(16,17)` south-facing prompt stand works but is not the
   public route target; live follow-up opened the 55 G prompt from `(18,18)`
   facing west, and path debug from there reaches the town exit. `objects.lua`
@@ -642,11 +645,27 @@ Emulator compatibility direction:
   stand is `(4,5)` facing south across impassable counter `(4,6)`; TALK there
   opens the 53 G key prompt. Rimuldar `Merchant 1` at `(2,4)` only says
   `Welcome!` and should stay out of Services. The valid entrance-side route
+  A 2026-07-20 user manual sweep revalidated every Rimuldar service route.
+  The Weapons Merchant route may temporarily fail to plan while a roaming NPC
+  occupies its corridor; waiting for the NPC to move and retrying succeeds, so
+  do not promote that transient obstruction into permanent map data.
   follows the outer bank from `(29,14)` north to `(29,2)`, west to `(21,2)`,
   north to `(21,0)`, west to `(0,0)`, south to `(0,3)`, across bridge
   `(1,3)->(2,3)`, then bypasses the fixed greeter through
   `(3,3)->(4,3)->(5,3)->(5,4)->(5,5)->(4,5)`. Fixed `Person 4` at `(27,0)`
-  blocks the full-top-row shortcut, so retain the row-2 / x=21 jog. The older
+  blocks the full-top-row shortcut, so retain the row-2 / x=21 jog. The route
+  is not one-way. From key stand `(4,5)`, the nearby west exit is the six-step
+  route `LEFT, UP, UP, LEFT, LEFT, LEFT` to live stand `(0,3)`; another LEFT
+  changes to World Map `(102,72)`. A second normal-route recreation entered
+  `(0,3)` from `(1,3)` and then moved UP along x=0 to `(0,1)`, proving the
+  intermediate stand does not itself transition. The planner can therefore
+  reverse the x=0/top-bank route to east entrance `(29,13)` without touching
+  the false bridge. The direct `(3,5)->LEFT` into `(2,5)` remains live-blocked
+  with `npc_blocked=false`, so source retains `(2,5).east`. `objects.lua`
+  exposes `exit_0_3` with interaction stand `(0,3)` facing west. `(4,3)->UP`
+  blocks and must not be modeled as an exit. The old `(0,3).east` guard came
+  from a long LEFT probe that crossed both `(0,3)` and the outward transition;
+  row 3 must remain open for routing. The older
   hidden-connector investigation below is retained as historical false-lead
   evidence only; the current route does not require `(1,8)->(2,8)`. Those old
   notes used cells such as `(24,7)->UP` into `(24,6)`, the false-wall bridge
@@ -678,16 +697,16 @@ Emulator compatibility direction:
   `(3,16).west`, `(4,12).south`, `(3,13).east`, and `(5,2).south`, plus
   false-wall cells `(3,4)` and `(4,3)`. The old `(4,6).north` reopening is
   superseded: live `(4,5)->DOWN` blocks because `(4,6)` is the counter, and
-  TALK south from `(4,5)` reaches the seller. `(4,3)->UP`
-  exits to the world map, so `objects.lua` exposes `Northwest Exit to World Map`
-  there and `map_reader.lua` blocks `(4,2).south` as an in-town transition
-  guard. Later northwest-exit routing also promoted `(4,3).south` and
-  `(4,4).south`, forcing the key-stand-to-northwest-exit route through
-  `(5,3)->LEFT`. `objects.lua` treats the Magic Key seller as movement-blocking
-  again; the interaction override still needs correction from `(4,6)` to
-  `(4,5)` facing south. The old stand-to-northwest-exit and east-exit
-  return is geometry-only and invalid while the seller occupies `(4,7)`. A
-  follow-up route/manual pass adds passthroughs `(1,5)`, `(1,13)`, `(3,9)`,
+  TALK south from `(4,5)` reaches the seller. Fresh 2026-07-17 normal-arrival
+  proof shows `(4,3)->UP` blocks. Normal LEFT from `(1,3)` reaches the in-town
+  northwest exit stand `(0,3)`; a second LEFT changes maps. `objects.lua`
+  exposes stand `(0,3)` facing west, while `(4,2).south` remains a real wall.
+  The older `(4,3).south` and `(4,4).south` directional evidence remains
+  valid local geometry, but the key-stand-to-exit route is now the direct
+  six-step path through `(3,5)/(3,4)/(3,3)/(2,3)/(1,3)/(0,3)`. The seller
+  remains movement-blocking at `(4,7)`, and its interaction override remains
+  `(4,5)` facing south. A follow-up route/manual pass adds passthroughs
+  `(1,5)`, `(1,13)`, `(3,9)`,
   and `(15,5)`, and blockers `(3,15).west`, `(4,12).east`, `(5,11).south`,
   `(14,6).north`, `(24,12).north`, and `(25,11).west`, followed by
   `(2,15).west`, `(6,11).south`, `(8,12).west`, `(7,14).west`,
@@ -741,8 +760,10 @@ Emulator compatibility direction:
   Upper-left shortcuts through `(1,4)` and `(0,5)` are closed:
   `(1,5)->UP` and `(1,5)->LEFT` each verified blocked 5/5. The later `(2,5)`
   bridge lead was stale/noisy: fresh route and direct verifier evidence block
-  `(1,5)->RIGHT`, so `(2,5).west` is modeled while `(2,5)` stays standable for
-  other approaches. All subsequent `(1,8)/(2,8)` bridge and 39-step
+  `(1,5)->RIGHT`, so `(2,5).west` is modeled. The 2026-07-17 return pass
+  also proved `(3,5)->LEFT` blocks without an NPC, so `(2,5).east` is now
+  modeled too; the cell remains standable from north/south. All subsequent
+  `(1,8)/(2,8)` bridge and 39-step
   `(4,6)`-target route claims are superseded by the 2026-07-15 normal-route
   proof above. `(1,8)->RIGHT` is irrelevant to merchant access, `(4,6)` is the
   impassable counter, and the correct route/goal are bridge `(1,3)` and TALK
@@ -804,8 +825,12 @@ Emulator compatibility direction:
   interior floor. Live edge proof from `(29,13)->RIGHT` changed to the world
   map and landed at `(102,72)`, so model Rimuldar's `Exit to World Map` at
   `(29,13)` with east-facing interaction. A follow-up user check confirmed the
-  corrected exit object lines up from inside town. A later manual pass found
-  the northwest exit from `(4,3)->UP`; keep both exit objects available.
+  corrected east exit object lines up from inside town. Fresh 2026-07-17 proof
+  disproved the old `(4,3)->UP` northwest-exit claim. `(1,3)->LEFT` reaches the
+  in-town west-edge stand `(0,3)`; a second LEFT exits. Normal UP from `(0,3)`
+  stays in town and moves along x=0. Keep both exit objects available, with the
+  northwest object's interaction stand at `(0,3)` facing west and no east-entry
+  guard on that row.
 - Kol service work should start from `project_resources/maps/kol/README.md`,
   which now has local map images and a screen-reader service transcription.
   External guides agree on these first priorities: Inn 20 G, weapon/armor shop

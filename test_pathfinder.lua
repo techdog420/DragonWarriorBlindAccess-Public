@@ -722,6 +722,80 @@ function tests.rimuldar_live_magic_key_route_uses_real_decoder_and_pathfinder()
     end, env.restore)
 end
 
+function tests.rimuldar_magic_key_return_uses_nearby_world_exit()
+    local env = make_rimuldar_integration_env()
+
+    with_cleanup(function()
+        local blockers = {
+            ["2,4"] = true,
+            ["4,7"] = true,
+        }
+        local nearby_exit = env.pathfinder.find_path(0x0B, 4, 5, 0, 3, blockers)
+        assert_truthy(nearby_exit ~= nil, "real Rimuldar stack should route from the Magic Key stand to the nearby west-exit stand")
+        assert_equal(#nearby_exit, 6, "Magic Key return should reach the live west-edge stand: " .. path_to_string(nearby_exit))
+
+        local expected = {
+            {"west", 3, 5},
+            {"north", 3, 4},
+            {"north", 3, 3},
+            {"west", 2, 3},
+            {"west", 1, 3},
+            {"west", 0, 3},
+        }
+        for index, step in ipairs(expected) do
+            assert_equal(nearby_exit[index].direction, step[1], "Magic Key exit route direction mismatch: " .. path_to_string(nearby_exit))
+            assert_equal(nearby_exit[index].x, step[2], "Magic Key exit route X mismatch: " .. path_to_string(nearby_exit))
+            assert_equal(nearby_exit[index].y, step[3], "Magic Key exit route Y mismatch: " .. path_to_string(nearby_exit))
+        end
+
+        local east_return = env.pathfinder.find_path(0x0B, 4, 5, 29, 13, blockers)
+        assert_truthy(east_return ~= nil, "Magic Key pocket should reverse the x=0 route back to the east entrance")
+        local entered_west_exit_stand = false
+        local used_false_bridge = false
+        for _, step in ipairs(east_return) do
+            if step.x == 0 and step.y == 3 and step.direction == "west" then
+                entered_west_exit_stand = true
+            elseif step.x == 2 and step.y == 5 and step.direction == "west" then
+                used_false_bridge = true
+            end
+        end
+        assert_equal(entered_west_exit_stand, true, "east-entrance return should enter the live (0,3) west-edge stand: " .. path_to_string(east_return))
+        assert_equal(used_false_bridge, false, "east-entrance return must avoid the blocked (3,5)->(2,5) false bridge: " .. path_to_string(east_return))
+    end, env.restore)
+end
+
+function tests.rimuldar_weapons_counter_round_trip_uses_west_corridor()
+    local env = make_rimuldar_integration_env()
+
+    with_cleanup(function()
+        local blockers = { ["23,7"] = true }
+        local function assert_run(path, first_index, last_index, direction, label)
+            for index = first_index, last_index do
+                assert_equal(path[index].direction, direction,
+                    string.format("%s step %d should move %s: %s", label, index, direction, path_to_string(path)))
+            end
+        end
+
+        local outbound = env.pathfinder.find_path(0x0B, 29, 14, 23, 9, blockers)
+        assert_truthy(outbound ~= nil, "real Rimuldar stack should route from the entrance to the Weapons counter")
+        assert_equal(#outbound, 21, "Weapons route should use the proven west corridor: " .. path_to_string(outbound))
+        assert_run(outbound, 1, 11, "west", "entrance-to-counter")
+        assert_run(outbound, 12, 16, "north", "entrance-to-counter")
+        assert_run(outbound, 17, 21, "east", "entrance-to-counter")
+        assert_equal(outbound[21].x, 23, "Weapons route should finish on public counter stand X")
+        assert_equal(outbound[21].y, 9, "Weapons route should finish on public counter stand Y")
+
+        local returned = env.pathfinder.find_path(0x0B, 23, 9, 29, 14, blockers)
+        assert_truthy(returned ~= nil, "real Rimuldar stack should route back from the Weapons counter")
+        assert_equal(#returned, 21, "Weapons return should use the proven west corridor: " .. path_to_string(returned))
+        assert_run(returned, 1, 5, "west", "counter-to-entrance")
+        assert_run(returned, 6, 10, "south", "counter-to-entrance")
+        assert_run(returned, 11, 21, "east", "counter-to-entrance")
+        assert_equal(returned[21].x, 29, "Weapons return should finish on entrance approach X")
+        assert_equal(returned[21].y, 14, "Weapons return should finish on entrance approach Y")
+    end, env.restore)
+end
+
 function tests.trace_path_distinguishes_no_path_from_already_there()
     local env = make_stub_env()
     env.set_grid(5, 5)
