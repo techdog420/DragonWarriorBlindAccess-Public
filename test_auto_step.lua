@@ -1320,7 +1320,7 @@ function tests.queued_route_early_subpixel_twitch_keeps_holding_input()
             auto_step_route_early_release_grace_frames = "10",
         },
     })
-    env.auto_step.start_route({"right"})
+    env.auto_step.start_route({"right", "right"})
 
     env.update(true)
     env.set_subpixel(0x20)
@@ -1334,13 +1334,14 @@ function tests.queued_route_early_subpixel_twitch_keeps_holding_input()
     env.restore()
 end
 
-function tests.queued_route_early_subpixel_twitch_releases_before_turn()
+function tests.queued_route_pre_turn_early_twitch_uses_guarded_fresh_press()
     local env = make_env({
         sticky_joypad_set = true,
         config_values = {
             auto_step_release_on_movement_start = "true",
             auto_step_route_early_release_grace_frames = "10",
-            auto_step_turn_repress_delay = "3",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "3",
         },
     })
     env.auto_step.start_route({"right", "down"})
@@ -1351,17 +1352,185 @@ function tests.queued_route_early_subpixel_twitch_releases_before_turn()
 
     assert_truthy(
         env.injected[2] and not has_any_direction(env.injected[2]),
-        "queued route should release early movement twitches when the next step turns"
+        "pre-turn twitch recovery should release the probe pulse"
     )
 
-    for _ = 1, 12 do
+    env.update(true)
+    env.update(true)
+    env.update(true)
+
+    assert_equal(
+        #collect_direction_sequences(env, "right", 5),
+        2,
+        "pre-turn twitch recovery should issue one guarded fresh press"
+    )
+
+    env.set_position(4, 1)
+    env.update(true)
+
+    local completed = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_step_completed"
+           and payload.from_x == 3 and payload.from_y == 1
+           and payload.to_x == 4 and payload.to_y == 1
+           and payload.dir == "right" then
+            completed = true
+        end
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "guarded pre-turn recovery should not publish a false block"
+        )
+    end
+    assert_truthy(
+        completed,
+        "guarded pre-turn recovery should complete the current route step"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_final_early_twitch_uses_guarded_fresh_press()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "3",
+        },
+    })
+    env.auto_step.start_route({"right"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+
+    assert_equal(
+        #collect_direction_sequences(env, "right", 5),
+        2,
+        "final-step twitch recovery should issue one guarded fresh press"
+    )
+
+    env.set_position(4, 1)
+    env.update(true)
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked",
+            "guarded final-step recovery should not publish a false block"
+        )
+    end
+
+    env.restore()
+end
+
+function tests.guarded_twitch_repress_skips_fresh_press_after_late_completion()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_settle_frames = "2",
+        },
+    })
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+
+    assert_equal(
+        #collect_direction_sequences(env, "right", 8),
+        1,
+        "late completion during guarded settle must suppress the fresh press"
+    )
+
+    env.restore()
+end
+
+function tests.guarded_twitch_repress_cancels_wrong_direction_drift()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_settle_frames = "2",
+        },
+    })
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.set_position(3, 2)
+    env.update(true)
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then
+            cancelled = event.payload
+        end
+    end
+    assert_equal(
+        cancelled and cancelled.reason,
+        "route_drift_off_path",
+        "wrong-direction guarded movement should cancel as route drift"
+    )
+    assert_equal(
+        cancelled and cancelled.source,
+        "pending_repress_mismatch",
+        "wrong-direction guarded movement should use pending-repress drift handling"
+    )
+
+    env.restore()
+end
+
+function tests.guarded_twitch_repress_failure_remains_bounded_timing_suspect()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "0",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_repress_timeout_frames = "12",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "3",
+        },
+    })
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.set_subpixel(0x30)
+    env.update(true)
+    for _ = 1, 30 do
         env.update(true)
     end
 
-    local right_sequences = collect_direction_sequences(env, "right", 20)
+    local blocked = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked = event.payload
+        end
+    end
     assert_truthy(
-        #right_sequences == 1,
-        "queued route should not re-press the old direction before a turn after an early twitch"
+        blocked ~= nil,
+        "unmoving guarded recovery should remain bounded"
+    )
+    assert_equal(
+        blocked and blocked.timing_suspect,
+        true,
+        "failed guarded recovery should retain timing-suspect classification"
     )
 
     env.restore()
@@ -1388,66 +1557,6 @@ function tests.queued_route_uses_shorter_inject_on_continuing_step_before_turn()
     assert_truthy(
         state and state.dir == "right" and state.inject_limit == 7,
         "last continuing queued step before a turn should use the shorter pre-turn inject limit"
-    )
-
-    env.restore()
-end
-
-function tests.queued_route_early_twitch_reports_short_timing_block_without_repress()
-    local env = make_env({
-        config_values = {
-            auto_step_release_on_movement_start = "true",
-            auto_step_timeout = "60",
-            auto_step_block_retry_limit = "1",
-            auto_step_route_early_release_grace_frames = "10",
-            auto_step_route_turn_repress_timeout_frames = "12",
-            auto_step_inject_limit = "3",
-            auto_step_turn_repress_delay = "3",
-            auto_step_turn_repress_release_frames = "1",
-        },
-    })
-    env.auto_step.start_route({"right"})
-
-    env.update(true)
-    env.set_subpixel(0x20)
-    env.update(true)
-
-    for _ = 1, 5 do
-        env.update(true)
-    end
-
-    env.set_subpixel(0x30)
-    env.update(true)
-
-    for _ = 1, 50 do
-        env.update(true)
-    end
-
-    local blocked_event
-    for _, event in ipairs(env.published) do
-        if event.name == "route_blocked" then
-            blocked_event = event
-            break
-        end
-    end
-
-    assert_truthy(
-        blocked_event and blocked_event.frame < 45,
-        "queued-route early movement twitches should report to the route manager before the full wall timeout"
-    )
-    assert_truthy(
-        blocked_event.payload and blocked_event.payload.movement_started == true,
-        "short route timeout reports should preserve movement-start metadata for the route manager timing retry"
-    )
-    assert_truthy(
-        blocked_event.payload and blocked_event.payload.timing_suspect == true,
-        "short route timeout reports should be marked as timing-suspect survey noise"
-    )
-
-    local right_sequences = collect_direction_sequences(env, "right", 35)
-    assert_truthy(
-        #right_sequences == 1,
-        "queued-route early movement twitches should not schedule a same-direction turn re-press that can commit an extra tile"
     )
 
     env.restore()

@@ -409,6 +409,21 @@ local function should_hold_after_movement_start()
     return auto_frames <= hold_until
 end
 
+local function queued_route_needs_guarded_twitch_repress()
+    return route_steps ~= nil
+        and auto_dir ~= nil
+        and auto_step_source ~= "manual_tap"
+        and auto_movement_started
+        and auto_movement_start_frame ~= nil
+        and auto_movement_start_frame <= get_route_early_release_grace_frames()
+        and not auto_hold_after_movement_start
+        and route_steps[route_index] ~= auto_dir
+        and (
+            route_steps[route_index] == nil
+            or not should_hold_after_movement_start()
+        )
+end
+
 local function is_early_route_movement_twitch()
     if route_steps == nil
        or auto_movement_start_frame == nil
@@ -972,7 +987,47 @@ local function begin_next_route_step(px, py)
     return true, nil, next_dir
 end
 
-local function schedule_turn_repress(dir)
+local function schedule_turn_repress(dir, guarded_twitch)
+    if guarded_twitch then
+        if not queued_route_needs_guarded_twitch_repress() then
+            return false
+        end
+        local settle_frames = get_route_turn_settle_frames()
+        local recovery = {
+            dir = auto_dir,
+            timeout_retries = auto_timeout_retries,
+            turn_represses = auto_turn_represses + 1,
+            inject_limit = math.max(
+                tonumber(auto_inject_limit) or 0,
+                tonumber(get_inject_limit()) or INJECT_LIMIT),
+            release_frames = settle_frames,
+            start_x = auto_start_x,
+            start_y = auto_start_y,
+            source = auto_step_source or "queued_route",
+            release_after_inject_limit = false,
+            hold_after_movement_start = false,
+            entry_prime_waveform = true,
+            entry_prime_pending = false,
+            entry_prime_frames = 1,
+            entry_prime_remaining = 0,
+            entry_prime_settle_frames = settle_frames,
+            entry_prime_echo_grace_frames = 0,
+            entry_step_index = route_index - 1,
+        }
+        clear_active_attempt_state()
+        pending_repress = recovery
+        route_settle_frames = 0
+        route_final_settle_active = false
+        route_settle_reset_movement_active = false
+        debug_tools.info(string.format(
+            "AUTO_STEP_GUARDED_TWITCH_REPRESS from=(%d,%d) dir=%s step=%s settle=%d",
+            recovery.start_x or -1,
+            recovery.start_y or -1,
+            tostring(recovery.dir),
+            tostring(recovery.entry_step_index or "-"),
+            settle_frames))
+        return true
+    end
     if auto_entry_waveform
        and schedule_entry_prime_retry(
            "turn_repress", auto_timeout_retries, auto_turn_represses + 1) then
@@ -1660,6 +1715,8 @@ local function handle_active_auto_step(joy, px, py, timeout)
             neutralize_direction(nil, auto_dir)
             auto_entry_waveform.committed_frames_remaining = entry_committed_frames_remaining - 1
             auto_frames = auto_frames + 1
+        elseif schedule_turn_repress(auto_dir, true) then
+            neutralize_direction(joy, "neutral")
         elseif should_hold_after_movement_start()
            and (auto_entry_waveform == nil
                 or auto_entry_waveform.hold_after_movement_start == true) then
