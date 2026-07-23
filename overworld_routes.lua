@@ -594,6 +594,7 @@ local ROUTES = {
                 y = 28,
                 name = "Western desert south shelf",
                 radius = 0,
+                axis_order = {"horizontal", "vertical"},
                 warning = "Hauksness route. Strong monsters ahead; keep HP high.",
             },
             {x = 13, y = 28, name = "Western desert west detour", radius = 0},

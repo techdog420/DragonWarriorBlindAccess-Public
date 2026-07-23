@@ -1308,6 +1308,28 @@ function tests.hauksness_south_road_moves_east_before_blocked_x1_descent()
     routes.reset_for_tests()
 end
 
+function tests.hauksness_south_shelf_corrects_west_before_blocked_x16_descent()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 16, 27)
+
+    local segment = assert(routes.plan_next_segment(0x01, 16, 27))
+    assert_equal(segment.waypoint.name, "Western desert south shelf", "blocked x16 approach should retain the south-shelf waypoint")
+    assert_equal(segment.steps[1], "left", "south-shelf approach should correct west before descending")
+    assert_equal(segment.steps[2], "down", "south-shelf approach should descend only after reaching x15")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_desert_seam_waypoints_remain_horizontal_first()
+    local east_shelf = assert(find_waypoint("hauksness", "Western desert east shelf"))
+    local south_shelf = assert(find_waypoint("hauksness", "Western desert south shelf"))
+
+    assert_equal(east_shelf.axis_order and east_shelf.axis_order[1], "horizontal", "east shelf should keep horizontal-first reverse-seam protection")
+    assert_equal(east_shelf.axis_order and east_shelf.axis_order[2], "vertical", "east shelf should turn vertical after correcting its column")
+    assert_equal(south_shelf.axis_order and south_shelf.axis_order[1], "horizontal", "south shelf should use horizontal-first forward-seam protection")
+    assert_equal(south_shelf.axis_order and south_shelf.axis_order[2], "vertical", "south shelf should descend after correcting its column")
+end
+
 function tests.hauksness_northern_ridge_uses_live_proven_western_gap()
     routes.reset_for_tests()
     routes.start("hauksness", 0x01, 7, 4)
