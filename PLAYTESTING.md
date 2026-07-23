@@ -452,8 +452,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `map=0x03 (Ruins of Hauksness)` at `(0,10)`. The patched source includes the
   validated western desert detours and warnings before the dangerous Hauksness
   approach. No fixed overworld boss triggered on entry; the difficult fights
-  observed nearby appeared to be random encounters. Reload `main.lua` in FCEUX
-  before judging the patched source route live.
+  observed nearby appeared to be random encounters. The Western desert
+  south-shelf and south-road approach-order fixes are live-verified: guidance
+  corrects LEFT before descending from `(16,27)` and RIGHT before descending
+  from the `(1,54)` carry landing. The full Hauksness return route is deferred
+  until it can be defined and validated from its own start.
 
 - Kol speech/menu regression follow-up (`2026-06-29`): manual Kol entrance
   checks passed for command-menu open/close, SPELL entry, and ITEM browsing
