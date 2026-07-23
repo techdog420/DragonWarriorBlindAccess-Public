@@ -1,8 +1,29 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-20
+Updated: 2026-07-22
 
 ## Immediate FCEUX Handoff
+
+- 2026-07-22 Hauksness overworld geometry is live-validated end-to-end. The
+  hero entered Ruins of Hauksness map `0x03` at `(0,10)`; final status is
+  `OVERWORLD_ROUTE: event=status route=none` and
+  `RUNTIME_BLOCKS map=0x03 none`. Do not call auto-walk fully clean yet:
+  `(15,90)->UP` and final entrance `(24,89)->RIGHT` each timed out under
+  auto-walk but succeeded from the same origin under raw `probe_edge`, so they
+  are executor/timing evidence rather than permanent blockers. The
+  horizontal-first Western desert south-road source patch has 92 passing route
+  tests and is now loaded, but that segment still needs a normal-route live
+  retest. Combat dialogue repeatedly emitted overlapping
+  windows near y=88, while fights at `(20,93)` and `(15,92)` behaved normally;
+  detailed evidence is in `work_notes/current_investigation.md` for the later
+  dialogue-tuning pass.
+- 2026-07-22 the waypoint-scoped movement-reset A/B was rejected and removed.
+  From a clean `(15,89)` baseline, the reset fired at `(24,89)` while movement
+  RAM was still active (`move=0x07`, `sub=0x1A`) and carried into map `0x03`
+  during final settle without the intended entry segment. Stats remained
+  clean, but this is an unsafe executor side effect, not a successful fix.
+  FCEUX has been reloaded with the override absent; keep the global reset
+  setting false.
 
 - 2026-07-20 user manual Rimuldar service sweep passed every service route.
   The Weapons Merchant route only needed a wait-and-retry when a roaming NPC

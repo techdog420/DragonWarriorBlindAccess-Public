@@ -4344,6 +4344,52 @@ function tests.queued_route_final_settle_drift_can_complete_when_opted_in()
     env.restore()
 end
 
+function tests.queued_route_final_settle_drift_rejects_nonmatching_carry_when_opted_in()
+    local cases = {
+        {name = "sideways", x = 4, y = 2},
+        {name = "reverse", x = 3, y = 1},
+        {name = "two cells forward", x = 6, y = 1},
+    }
+
+    for _, case in ipairs(cases) do
+        local env = make_env({
+            config_values = {
+                auto_step_route_final_settle_frames = "5",
+            },
+        })
+        env.auto_step.start_route({"right"}, {
+            route_accept_final_drift_completion = true,
+        })
+
+        env.update(true)
+        env.set_position(4, 1)
+        env.update(true)
+        env.set_position(case.x, case.y)
+        for _ = 1, 4 do
+            env.update(true)
+        end
+
+        local saw_cancel = false
+        for _, event in ipairs(env.published) do
+            local payload = event.payload or {}
+            assert_truthy(
+                event.name ~= "route_completed",
+                "opted-in final-settle " .. case.name .. " drift should not complete the queued route"
+            )
+            if event.name == "route_cancelled" and payload.reason == "route_drift_off_path" then
+                saw_cancel = true
+            end
+        end
+
+        assert_truthy(
+            saw_cancel,
+            "opted-in final-settle " .. case.name .. " drift should cancel as off-path"
+        )
+
+        env.restore()
+    end
+end
+
 function tests.queued_route_turn_settle_skips_movement_reset_by_default()
     local env = make_env({
         movement_state = 0x40,

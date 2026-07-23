@@ -1312,6 +1312,16 @@ local function consume_route_drift(px, py, source)
     return consumed, false
 end
 
+local function is_exact_final_direction_carry(px, py)
+    if not route_steps or #route_steps == 0
+       or route_last_x == nil or route_last_y == nil then
+        return false
+    end
+
+    local dx, dy = direction_delta(route_steps[#route_steps])
+    return px == route_last_x + dx and py == route_last_y + dy
+end
+
 local function complete_route_from_final_drift(px, py, source)
     debug_tools.debug(string.format(
         "auto_step route final drift accepted from=(%d,%d) current=(%d,%d) next_index=%d source=%s",
@@ -1991,7 +2001,9 @@ local function handle_route_progress(joy, px, py)
             return true
         end
         if off_path then
-            if route_final_settle_active and should_accept_final_drift_completion() then
+            if route_final_settle_active
+               and should_accept_final_drift_completion()
+               and is_exact_final_direction_carry(px, py) then
                 complete_route_from_final_drift(px, py, "route_final_settle_carry")
                 sync_prev_held(joy)
                 return true

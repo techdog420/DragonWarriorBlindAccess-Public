@@ -62,6 +62,16 @@ local function write_visible_row(row, value, scroll_tiles, base_nametable)
     end
 end
 
+local function write_visible_tile(row, screen_col, byte, scroll_tiles, base_nametable)
+    scroll_tiles = scroll_tiles or 0
+    base_nametable = base_nametable or 0
+    local virtual_col = scroll_tiles + screen_col
+    local nt_col = virtual_col % 32
+    local nt_index = (base_nametable + math.floor(virtual_col / 32)) % 2
+    local base = (nt_index == 0) and 0x2000 or 0x2400
+    ppu_bytes[base + row * 32 + nt_col] = byte
+end
+
 local function write_scrolled_base_fragment(row, base_nametable, scroll_tiles, value)
     local base = (base_nametable == 0) and 0x2000 or 0x2400
     for i = 1, #value do
@@ -71,6 +81,30 @@ local function write_scrolled_base_fragment(row, base_nametable, scroll_tiles, v
 end
 
 local tests = {}
+
+function tests.dialogue_filter_strips_gold_placeholder_from_talk_result()
+    clear_ppu()
+    write_visible_row(23, "There is no one       there.", 16, 0)
+    write_visible_tile(23, 20, 0xF5, 16, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(16, 23, 0),
+        "There is no one there.",
+        "literal GOLD placeholder tiles should not contaminate TALK results"
+    )
+end
+
+function tests.dialogue_filter_strips_gold_placeholder_from_stairs_result()
+    clear_ppu()
+    write_visible_row(23, "There are no stairs    here.", 16, 0)
+    write_visible_tile(23, 20, 0xF5, 16, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(16, 23, 0),
+        "There are no stairs here.",
+        "literal GOLD placeholder tiles should not contaminate STAIRS results"
+    )
+end
 
 function tests.status_text_accepts_lowercase_name()
     assert_true(

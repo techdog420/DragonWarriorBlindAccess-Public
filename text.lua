@@ -883,6 +883,12 @@ local function read_status_context_rows_for_base(scroll_tiles, base_nametable)
     return decoded_rows
 end
 
+local function strip_ppu_placeholder_noise(decoded)
+    local cleaned = tostring(decoded or ""):gsub("%[GOLD%]", " ")
+    cleaned = cleaned:gsub("%s+", " ")
+    return cleaned:match("^%s*(.-)%s*$") or ""
+end
+
 local function filtered_dialogue_from_rows(decoded_rows, paired_rows, context_rows, paired_context_rows)
     local status_context = build_status_context(context_rows or decoded_rows, paired_context_rows or paired_rows)
 
@@ -904,6 +910,7 @@ local function filtered_dialogue_from_rows(decoded_rows, paired_rows, context_ro
         local cleaned = strip_padded_status_suffix(decoded)
         cleaned = strip_derived_name_fragment_noise(cleaned, status_context)
         cleaned = strip_inline_status_fragment_noise(cleaned, status_context)
+        cleaned = strip_ppu_placeholder_noise(cleaned)
         local fused_status_value = status_context.has_status
             and is_fused_status_value_fragment(cleaned)
         if cleaned ~= "" and cleaned:find("[a-z]")

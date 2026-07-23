@@ -1,6 +1,25 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-07-20
+Updated: 2026-07-22
+
+## 2026-07-22 Hauksness Doorstep Movement-Reset A/B
+
+- TREATMENT UNSAFE / REMOVED: from a normal-walk baseline at world-map
+  `(15,89)`, the nine-step route reached `(24,89)` cleanly. The scoped reset
+  then logged at frame `23374` with active movement state
+  `before_move=0x07 before_sub=0x1A`.
+- UNCOMMANDED SETTLE CARRY: no town-entry segment was queued. Fifteen frames
+  after the reset, the game changed directly to Hauksness map `0x03` at
+  `(0,10)` during final settle, followed by
+  `route drift not on queued path ... source=route_settle_catchup`. This fails
+  the A/B safety criterion; it is not a clean entry success.
+- SAFETY CHECK: the post-event snapshot kept the level-16 stat block intact,
+  no `PLAYER_STAT_FRAMEADVANCE_TRANSITION`,
+  `PLAYER_STAT_INTEGRITY_TRANSITION`, or `PLAYER_STAT_INTEGRITY_WARNING`
+  appeared, and runtime blocks remained empty.
+- VERDICT: remove the `(24,89)` waypoint override and retain the global
+  `auto_step_reset_movement_on_route_turn_settle=false`. Do not use movement
+  RAM reset as the Hauksness entry fix, and do not promote a map blocker.
 
 ## 2026-07-17 Rimuldar Magic Key Return And Northwest Exit
 
@@ -3750,3 +3769,104 @@ For the next live map task, start a new dated section here with:
   it correctly reported `Not currently reachable` and did not move the hero.
 - CURRENT: hero is back at `(16,0)`, all doors closed, menu and dialogue closed,
   and `RUNTIME_BLOCKS map=0x0A none`.
+
+## 2026-07-21 Hauksness Overworld Route Validation
+
+- BASELINE: after manual `main.lua` reload, World Map `(48,41)`, no runtime
+  blockers, and no active local path. `start_overworld_route:hauksness`
+  selected waypoint 20, North Alefgard east road.
+- CLEAN SEGMENTS: normal overworld autowalk completed `(48,41)->(45,13)`
+  (31 steps), `(45,13)->(35,13)` (10), `(35,13)->(28,13)` (7),
+  `(28,13)->(23,13)` (5), `(23,13)->(23,11)` (2), and
+  `(23,11)->(21,11)` (2). No runtime blockers were added.
+- PASSABLE TIMING / DO NOT PROMOTE: the one-step segment `(21,11)->UP`
+  initially logged `blocked_only`. A same-origin `probe_edge:UP` then crossed
+  `(21,10)` and carried to `(21,9)`, advancing the route to waypoint 28.
+  Treat the autowalk result as a timing false positive, not map geometry.
+- PAUSED FOR COMBAT: a Drakee battle started at World Map `(21,9)` after the
+  probe. The newest dialogue says the Drakee is running away, but field control
+  has not returned. Resume only after the user dismisses the battle.
+- EXECUTOR FIX LIVE CHECK: after the guarded queued-route twitch-recovery
+  reload, Hauksness segments from `(19,7)` through `(7,4)` repeatedly logged
+  `AUTO_STEP_GUARDED_TWITCH_REPRESS` and completed. This covered immediate-turn
+  and final-step shapes. A Ghost battle interrupted the north-coast segment but
+  did not create a runtime block. One final-settle overshoot moved `(8,3)` to
+  `(7,3)` and cancelled as `route_drift_off_path`; keep that as a separate
+  executor watch item.
+- CLEAN GEOMETRY: normal route execution and same-origin raw probes both
+  confirmed `(7,6)->DOWN` and `(6,6)->DOWN` as blocked. The western probes
+  proved `(7,6)->(6,6)->(5,6)->(5,7)->(4,7)` open, then confirmed
+  `(5,7)->DOWN` and `(4,7)->DOWN` blocked. No runtime blocker was injected or
+  promoted.
+- ORIENTATION PLUS LIVE MATCH: the unlabeled NESMaps overworld image uses a
+  64-pixel border followed by 16-pixel tiles, so its tile coordinates align
+  with the game's 120x120 overworld coordinates. The map's mountain diagonal
+  exactly matches every live pass/block above and shows the missing opening at
+  `(3,7)->(3,8)`. The shortest passable crossing is
+  `(7,4)->(7,6)->(5,6)->(5,7)->(3,7)->(3,12)->(4,12)->(4,13)->`
+  `(5,13)->(5,14)->(7,14)`.
+- SOURCE PATCH READY FOR RELOAD: `overworld_routes.lua` now expresses that
+  crossing as explicit zero-radius waypoints. A focused regression verifies
+  each waypoint name and first direction, the existing Hauksness progression
+  test includes the new points, all 91 route tests pass, LuaJIT bytecode
+  compilation passes, and `git diff --check` is clean.
+- CURRENT: running FCEUX still has the pre-patch waypoint list and the hero is
+  at World Map `(8,5)`, with the Lua Script Control window open. Manually
+  restart `main.lua`, then re-establish Hauksness guidance and validate the new
+  ridge crossing with normal `auto_walk`.
+
+## 2026-07-22 Hauksness Drift and Western Desert Continuation
+
+- RELOAD BASELINE: fresh launcher probe succeeded at World Map `(10,30)`, with
+  no active local path and `RUNTIME_BLOCKS map=0x01 none`. Travel focus had
+  reset to Erdrick's Cave; `auto_walk` follows the selected Travel object and
+  can replace separately started route guidance, so Hauksness must be selected
+  before resuming.
+- FINAL-CARRY FIX LIVE VERIFIED: the Hauksness west-wall segment reached its
+  requested endpoint `(2,54)`, carried exactly one additional cell west to
+  `(1,54)`, logged `auto_step route final drift accepted`, and completed
+  without `route_drift_off_path`. No movement-state RAM reset was enabled.
+- GOLD PLACEHOLDER FIX LIVE VERIFIED: after REPEL expired, raw upper PPU text
+  contained multiple literal `[GOLD]` tiles while filtered lower dialogue and
+  speech remained `REPEL has lost its effect.` with no placeholder leakage.
+- SOUTH-ROAD ROUTE BUG / PATCHED SOURCE: from carry landing `(1,54)`, the old
+  vertical-first segment walked to `(1,63)` and cleanly blocked on
+  `(1,63)->DOWN`; a same-origin raw probe also blocked. Normal rightward
+  movement reached `(3,63)`, `(3,63)->DOWN` moved to `(3,64)`, and auto-walk
+  then completed left to waypoint `(2,64)`. `Western desert south road` now
+  uses horizontal-first ordering, with a regression proving recovery from
+  `(1,54)` begins right. All 92 overworld-route tests pass. FCEUX has not yet
+  reloaded this newest route-data patch.
+- CLEAN CONTINUATION: route segments completed from `(8,31)` through
+  `(8,34)`, `(8,51)`, `(6,51)`, `(6,52)`, `(4,52)`, `(4,54)`, `(2,54)`,
+  `(2,64)`, `(18,64)`, and `(18,69)`. A REPEL message and random battles
+  cancelled safely without runtime blockers.
+- LATER PROGRESS: after the Wolflord was defeated, waypoint 67 completed at
+  `(29,82)` and the northwest bend completed at `(31,81)`. The western-ridge
+  segment then moved cleanly west through `(27,81)`.
+- UNRESOLVED DIALOGUE TUNING: random battles in the scrolling overworld near
+  `(20,88)` and `(21,88)` repeatedly emitted overlapping combat-text windows.
+  The Wraith log progressed from the complete `Bill attacks! ... reduced by
+  23.` sentence into shifted variants containing the same attack plus the
+  enemy response, then fragments such as `Points have been reduced by 23 ...`
+  and `reduced by 23 ...`. The preceding Goldman battle showed the same
+  sliding-window repetition. A subsequent Wyvern battle at `(23,88)` repeated
+  the pattern with overlapping `reduced by 32`, enemy-attack, `A miss!`, and
+  `No damage hath been scored!` fragments. Two subsequent Rogue Scorpion
+  battles at `(20,93)` and `(15,92)` behaved normally, without the overlapping
+  sliding-window emissions. This nearby negative control strengthens a
+  coordinate/scroll-origin hypothesis but does not yet establish root cause.
+  Compare equivalent combat sequences at controlled overworld scroll positions
+  during the later dialogue-tuning pass. Do not patch during route validation.
+- FINAL APPROACH: normal route execution reached `(15,90)` but timed out on
+  `(15,90)->UP`; a same-origin raw probe moved to `(15,89)` and advanced the
+  route, proving a timing/executor false positive rather than geometry. The
+  doorstep lane then completed normally to `(24,89)`. Auto-walk similarly
+  timed out on final `(24,89)->RIGHT`, while a same-origin raw probe immediately
+  changed maps and logged `OVERWORLD_ROUTE: event=arrived`.
+- CURRENT / OVERWORLD GEOMETRY COMPLETE: hero is in Ruins of Hauksness map
+  `0x03` at `(0,10)`, `OVERWORLD_ROUTE: event=status route=none`, and
+  `RUNTIME_BLOCKS map=0x03 none`. The Hauksness overworld geometry is validated
+  end-to-end. Auto-walk is not fully clean because the two final edges above
+  required probes. The horizontal-first south-road source patch also remains
+  pending a future FCEUX reload/retest.

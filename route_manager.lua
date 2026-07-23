@@ -3731,11 +3731,14 @@ function M.autowalk_overworld_segment(opts)
     last_pathfind_obj = nil
     reroute_failures = 0
 
+    local accept_final_drift = not (
+        segment.waypoint
+        and segment.waypoint.route_accept_final_drift_completion == false)
     if not queue_overworld_segment_steps(segment.steps, {
         route_early_twitch_timeout_frames = segment.waypoint and segment.waypoint.route_early_twitch_timeout_frames,
         route_hold_after_movement_start_frames = segment.waypoint and segment.waypoint.route_hold_after_movement_start_frames,
         route_reset_movement_on_turn_settle = segment.waypoint and segment.waypoint.route_reset_movement_on_turn_settle,
-        route_accept_final_drift_completion = segment.waypoint and segment.waypoint.route_accept_final_drift_completion,
+        route_accept_final_drift_completion = accept_final_drift,
     }) then
         debug_tools.error(string.format(
             "OVERWORLD_AUTO_WALK: event=queue_failed route=%s waypoint=%s index=%s steps=%d",

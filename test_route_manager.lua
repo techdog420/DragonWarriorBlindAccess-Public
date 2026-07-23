@@ -812,7 +812,6 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
                 route_early_twitch_timeout_frames = 90,
                 route_hold_after_movement_start_frames = 60,
                 route_reset_movement_on_turn_settle = true,
-                route_accept_final_drift_completion = true,
             },
             index = 14,
             steps = {"up", "left", "left", "left"},
@@ -847,7 +846,7 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
     assert_equal(
         env.last_start_route_opts().route_accept_final_drift_completion,
         true,
-        "overworld segment should forward waypoint-specific final-drift completion behavior"
+        "overworld segments should enable guarded final-drift completion by default"
     )
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk", "overworld auto-walk should be announced")
 

@@ -1241,6 +1241,15 @@ function tests.hauksness_route_turns_through_garinham_before_southwest_leg()
     assert_contains(garinham_outskirts.message, "Next: Hauksness north road", "route should start the live-proven west-continent leg from Garinham outskirts")
 
     routes.observe_position(0x01, 7, 4)
+    routes.observe_position(0x01, 7, 6)
+    routes.observe_position(0x01, 5, 6)
+    routes.observe_position(0x01, 5, 7)
+    routes.observe_position(0x01, 3, 7)
+    routes.observe_position(0x01, 3, 12)
+    routes.observe_position(0x01, 4, 12)
+    routes.observe_position(0x01, 4, 13)
+    routes.observe_position(0x01, 5, 13)
+    routes.observe_position(0x01, 5, 14)
     routes.observe_position(0x01, 7, 14)
     routes.observe_position(0x01, 15, 14)
     local shelf = routes.observe_position(0x01, 15, 28)
@@ -1284,6 +1293,50 @@ function tests.hauksness_western_leg_uses_validated_desert_detours()
     local final_approach = assert(routes.plan_next_segment(0x01, 15, 93))
     assert_equal(final_approach.waypoint.name, "Hauksness west approach", "final approach should use the live-proven row-89 lane")
     assert_equal(final_approach.steps[1], "up", "final approach should climb from the lower lane before heading east")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_south_road_moves_east_before_blocked_x1_descent()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 2, 54)
+
+    local segment = assert(routes.plan_next_segment(0x01, 1, 54))
+    assert_equal(segment.waypoint.name, "Western desert south road", "west-wall carry should retain the south-road waypoint")
+    assert_equal(segment.steps[1], "right", "south-road recovery should leave x1 before descending")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_northern_ridge_uses_live_proven_western_gap()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 7, 4)
+
+    local expected = {
+        {x = 7, y = 6, name = "Hauksness ridge upper lip", first = "down"},
+        {x = 5, y = 6, name = "Hauksness ridge west turn", first = "left"},
+        {x = 5, y = 7, name = "Hauksness ridge west notch", first = "down"},
+        {x = 3, y = 7, name = "Hauksness ridge west gap", first = "left"},
+        {x = 3, y = 12, name = "Hauksness ridge lower coast", first = "down"},
+        {x = 4, y = 12, name = "Hauksness coast east step", first = "right"},
+        {x = 4, y = 13, name = "Hauksness coast south step", first = "down"},
+        {x = 5, y = 13, name = "Hauksness coast lower east step", first = "right"},
+        {x = 5, y = 14, name = "Hauksness coast lower bend", first = "down"},
+        {x = 7, y = 14, name = "Hauksness northern descent", first = "right"},
+    }
+
+    local x, y = 7, 4
+    for _, waypoint in ipairs(expected) do
+        local segment = assert(routes.plan_next_segment(0x01, x, y))
+        assert_equal(segment.waypoint.name, waypoint.name, "Hauksness ridge should follow the live-proven western gap")
+        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+        x, y = waypoint.x, waypoint.y
+    end
+
+    local shelf = assert(routes.plan_next_segment(0x01, 7, 14))
+    assert_equal(shelf.waypoint.name, "Western desert east shelf", "ridge exit should resume the validated desert route")
+    assert_equal(shelf.steps[1], "right", "ridge exit should continue east along row 14")
 
     routes.reset_for_tests()
 end
