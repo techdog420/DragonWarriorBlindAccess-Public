@@ -1,6 +1,6 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-07-22
+Updated: 2026-07-24
 
 ## 2026-07-22 Hauksness Doorstep Movement-Reset A/B
 
@@ -3858,6 +3858,112 @@ For the next live map task, start a new dated section here with:
   coordinate/scroll-origin hypothesis but does not yet establish root cause.
   Compare equivalent combat sequences at controlled overworld scroll positions
   during the later dialogue-tuning pass. Do not patch during route validation.
+- ADDITIONAL REPRO: a later Wyvern battle started at World Map `(20,89)` on
+  frame `53339`. The opening enemy turn was emitted as overlapping redraws on
+  frames `53472`, `53541`, `53548`, `53566`, and `53578`, repeatedly combining
+  `attacked before Bill was ready`, `The Wyvern attacks!`, and the same
+  4-point damage result. Bill's attack likewise appeared as a complete
+  32-point sentence at frame `53735`, then shifted punctuation/partial-window
+  variants at frames `53761` and `53792`. The victory page itself was coherent.
+  This independently reproduces the problem one row south of the earlier
+  `(20,88)` / `(21,88)` cluster and strengthens the scroll-position hypothesis;
+  it still does not isolate the underlying reader/overlap failure. Preserve for
+  a controlled dialogue-tuning comparison after route validation.
+- NEGATIVE CONTROLS: the user reported normal battle speech at World Map
+  `(10,77)`, `(9,75)`, and `(12,74)`. The log agrees: the Wyvern at `(10,77)`
+  emitted one clean event per attack, damage, victory, experience, and gold
+  line; the Knight at `(9,75)` and Magician at `(12,74)` likewise produced no
+  repeated sliding-window variants. These controls are substantially north of
+  the y=88/89 repro band and support a scroll-position-dependent trigger rather
+  than an enemy-specific failure. They do not yet identify the exact scroll
+  offset or text-reader state that causes the overlap.
+- X-DEPENDENT REPRO: a Wyvern battle at World Map `(18,77)` started on frame
+  `90501` and reproduced the sliding-window failure despite sharing y=77 with
+  the clean Wyvern control at `(10,77)`. Frames `90704` through `90839` emitted
+  six overlapping variants of Bill's 28-point attack, the Wyvern response, and
+  the same 7-point damage result. Frames `90991`, `91017`, and `91090` then
+  repeated/shifted Bill's 19-point attack around the victory transition. The
+  same-enemy, same-y clean/repro pair rules out a simple enemy-specific or
+  y-threshold explanation and makes horizontal scroll/nametable alignment the
+  stronger current hypothesis. A nearby Goldman battle logged at `(16,77)`
+  did not show the same repeated variants, giving a useful candidate boundary
+  for a later controlled x-position sweep. Root cause remains unproven; do not
+  patch during the route-validation run.
+- 2026-07-23 RETURN-APPROACH REPRO: a Goldman battle started at World Map
+  `(17,89)` on frame `281291`. Frame `281606` emitted one combined redraw
+  containing Bill's 27-point attack, the Goldman's counterattack, and Bill's
+  6-point damage result. Frames `281629` and `281643` then repeated stale
+  partial windows (`Points have been reduced by 27.` and the Goldman attack
+  plus damage). Bill's second attack split again across frames `281964` and
+  `282046`, and the victory text contained a stray punctuation break before
+  `increases`. This reproduces the same sliding-window behavior while
+  approaching Hauksness from the west and strengthens the horizontal
+  scroll/nametable-alignment hypothesis. Root cause remains unproven; preserve
+  this evidence for the later dialogue-tuning pass and do not patch it during
+  route validation.
+- ADJACENT NEGATIVE CONTROL: the next Goldman battle started one cell east at
+  `(18,89)` on frame `288020`, and the user confirmed normal spoken text.
+  The log advanced once through Bill's 23-point attack plus the Goldman
+  counterattack, Bill's 33-point attack, and victory; unlike `(17,89)`, it
+  emitted no stale partial repeats of either attack/counterattack window. This
+  same-enemy, same-y, adjacent-x contrast narrows the trigger to horizontal
+  scroll/nametable alignment rather than enemy behavior or y-position alone.
+- EXIT-AREA REPRO: a Wyvern battle started at World Map `(24,90)` on frame
+  `510266`. The surprise round was emitted as overlapping windows on frames
+  `510399`, `510468`, and `510505`; `DIALOGUE_FILTER_TRACE` at frame `510456`
+  captured the assembled enemy approach, surprise attack, normal attack, and
+  6-point damage page before the shifted partial re-emissions. The first normal
+  exchange repeated the pattern on frames `606804`, `606878`, and `606915`,
+  combining Bill's 34-point attack, the Wyvern counterattack, and Bill's
+  9-point damage. This farther-east repro means the `(17,89)` repro /
+  `(18,89)` control is not a simple one-way x threshold. It remains consistent
+  with particular horizontal scroll or nametable alignments; preserve it for
+  dialogue tuning and do not treat it as route geometry.
+- LOWER-POCKET REPRO: a Demon Knight battle started at World Map `(24,93)` on
+  frame `31377`. The approach line repeated on frames `31444` and `31496`.
+  Bill's first attack then expanded through overlapping windows on frames
+  `31605`, `31626`, `31640`, and `31694`, followed by shifted attack/damage
+  fragments through frame `31839`. Bill's second attack and the victory
+  transition similarly repeated or shifted on frames `31890`, `31916`,
+  `31941`, `31960`, `31979`, and `32038`. This confirms the dialogue defect
+  remains reproducible in the lower Hauksness pocket, independently of clean
+  route movement into the cell; preserve it for dialogue tuning and do not
+  treat it as route geometry.
+- ADJACENT LOWER-POCKET REPRO: another Demon Knight battle started at World Map
+  `(24,91)` on frame `41196`, interrupting an east turn after clean movement
+  from `(24,90)`. Its first attack/counterattack page emitted split and shifted
+  windows from frames `41444` through `41856`; the second attack split again on
+  frames `41907`, `41933`, and `41958`, followed by a fused victory/reward
+  window at frame `42055`. The adjacent `(24,93)` and `(24,91)` repros further
+  support a shared horizontal scroll/nametable alignment trigger.
+- RETURN SOUTH-ROAD SEAM: at route waypoint 28, queued execution twice failed
+  `(2,54)->RIGHT` and logged `(3,54)` as `blocked_only`. Same-origin
+  `probe_edge:RIGHT` then moved through `(3,54)`, carried to `(4,54)`, and
+  advanced `kol_hauksness` to waypoint 29. This disproves a permanent blocker
+  and confirms a reverse-direction executor timing false positive; do not add
+  map data for the seam.
+- RETURN WESTERN-RIDGE SEAM: normal `kol_hauksness` execution moved
+  `(3,8)->UP` into `(3,7)` and advanced to waypoint 49 without a retry, raw
+  probe, or runtime blocker. This live-validates the patched ridge crossing in
+  the reverse direction.
+- RETURN VARIANT HIJACK / LIVE VERIFIED: after `kol_hauksness` advanced
+  through waypoint 54 to `(8,3)`, the next ordinary Kol `auto_walk` replaced
+  the active return with route `kol` at waypoint 11 and attempted south. Root
+  cause was `route_manager.lua` comparing literal variant IDs even though
+  `overworld_routes.lua` already models their shared destination. The focused
+  fix keeps an active route when the selected object still matches that
+  route's destination. After a full Stop/Run, ordinary Kol remained selected
+  and `AUTO_WALK_TRACE ... active_route=kol_hauksness active_matches=true`
+  preserved the return at the `(8,3)` cutoff and throughout the remaining
+  journey. Regression totals now pass: overworld routes 104/104 and route
+  manager 111/111; LuaJIT syntax validation and `git diff --check` pass.
+- RETURN NORTH-COAST TIMING: before the hijack, queued `(5,4)->UP` timed out,
+  while same-origin `probe_edge:UP` crossed `(5,3)` and carried to `(5,2)`.
+  Replanning then reached `(5,3)` southbound but the 16-frame turn settle
+  carried back to `(5,4)` and cancelled `route_drift_off_path`. A raw RIGHT
+  probe to `(6,4)` let normal auto-walk complete `(6,4)->(8,3)`. This is
+  executor timing evidence, not permanent geometry; movement-state reset
+  remains disabled after its earlier unsafe A/B result.
 - FINAL APPROACH: normal route execution reached `(15,90)` but timed out on
   `(15,90)->UP`; a same-origin raw probe moved to `(15,89)` and advanced the
   route, proving a timing/executor false positive rather than geometry. The
@@ -3870,3 +3976,30 @@ For the next live map task, start a new dated section here with:
   end-to-end. Auto-walk is not fully clean because the two final edges above
   required probes. The horizontal-first south-road source patch also remains
   pending a future FCEUX reload/retest.
+
+## 2026-07-24 Hauksness Return Route Completion
+
+- BRIDGE WEST-BEND GEOMETRY: queued `(56,15)->RIGHT` into `(57,15)` timed out,
+  and same-origin `probe_edge:RIGHT` also returned `status=blocked`, with no
+  NPC or modeled directional blocker. Same-origin south probes crossed cleanly
+  through `(56,16)`, `(56,17)`, `(56,18)`, and `(56,19)`, followed by the
+  lower bridge lane to exact waypoint `(58,18)`. `kol_hauksness` now uses
+  vertical-first order for `Northeast bridge west bend`; the focused test
+  failed RED with `expected down, got right` before the one-field correction.
+- KOL SOUTHWEST-TRACK GEOMETRY: queued `(77,18)->RIGHT` into `(78,18)` and its
+  same-origin raw probe both blocked. South probes crossed cleanly to
+  `(77,26)`, and the row-26 east lane then continued toward `(84,26)`.
+  `kol_hauksness` now uses vertical-first order for `Kol southwest track`;
+  its focused regression likewise failed RED before the correction.
+- TIMING-ONLY CONTROLS: `(54,15)->RIGHT`, `(93,36)->UP`, and
+  `(93,35)->RIGHT` failed queued execution but passed same-origin raw probes.
+  Do not promote these as map blockers. Repel expiration canceled one route
+  segment at `(80,26)` through ordinary dialogue state; it resumed normally
+  after the user recast Repel.
+- COMPLETE: the route crossed the northeast bridge, followed the Kol south
+  road, and entered Kol. Live arrival was
+  `OVERWORLD_ROUTE: event=arrived route=kol_hauksness waypoint=Kol index=88`.
+  Final state is Kol map `0x07` at `(19,23)`, route inactive, menu closed, and
+  no runtime blocks. The two axis-order edits were not loaded into this live
+  Lua process; manual probes traversed the proven lanes. Full Stop/Run is
+  required before a focused live planner recheck of those source corrections.

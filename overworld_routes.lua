@@ -740,12 +740,12 @@ local ROUTES = {
             {x = 35, y = 13, name = "North Alefgard west road", radius = 1, axis_order = {"horizontal", "vertical"}},
             {x = 45, y = 13, name = "North Alefgard east road", radius = 1, axis_order = {"vertical", "horizontal"}},
             {x = 54, y = 15, name = "Northeast bridge west approach", radius = 1, axis_order = {"horizontal", "vertical"}},
-            {x = 58, y = 18, name = "Northeast bridge west bend", radius = 0, axis_order = {"horizontal", "vertical"}},
+            {x = 58, y = 18, name = "Northeast bridge west bend", radius = 0, axis_order = {"vertical", "horizontal"}},
             {x = 59, y = 19, name = "Northeast bridge lower west lane", radius = 0},
             {x = 61, y = 19, name = "Northeast bridge south lane", radius = 0},
             {x = 61, y = 18, name = "Northeast bridge", radius = 1, axis_order = {"horizontal", "vertical"}},
             {x = 74, y = 18, name = "North Alefgard bridge road", radius = 1, axis_order = {"horizontal", "vertical"}},
-            {x = 84, y = 26, name = "Kol southwest track", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 84, y = 26, name = "Kol southwest track", radius = 1, axis_order = {"vertical", "horizontal"}},
             {x = 90, y = 37, name = "Kol southwest bridge", radius = 0},
             {x = 92, y = 37, name = "Kol bridge east lane", radius = 0},
             {x = 92, y = 36, name = "Kol lower south lane", radius = 0},
@@ -1264,6 +1264,10 @@ local function route_destinations_match(a, b)
         end
     end
     return false
+end
+
+function M.active_route_matches_object(obj)
+    return object_matches_route(active_route(), obj)
 end
 
 function M.start(route_name, map_id, px, py, opts)

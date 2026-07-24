@@ -1,9 +1,25 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-23
+Updated: 2026-07-24
 
 ## Immediate FCEUX Handoff
 
+- 2026-07-24 the Hauksness-to-Kol return route `kol_hauksness` reached Kol
+  end-to-end. Final live state is Kol map `0x07` at `(19,23)`,
+  `OVERWORLD_ROUTE: event=status route=none`, menu closed, and
+  `RUNTIME_BLOCKS map=0x07 none`. The same-destination route-variant fix is
+  live-proven: with ordinary Kol selected, logs retained `kol_hauksness`
+  through the Garinham cutoff. Two real west-side geometry failures were
+  isolated with same-origin probes: `(56,15)->RIGHT` into `(57,15)` and
+  `(77,18)->RIGHT` into `(78,18)` were blocked, while the south-first lanes
+  were clean. `kol_hauksness` now plans vertical-first for `Northeast bridge
+  west bend` and `Kol southwest track`; focused regressions pass in the
+  104/104 route suite, and route-manager tests pass 111/111. These two route
+  data edits were traversed manually in the still-running pre-edit Lua session,
+  so a full Stop/Run of `main.lua` is still required before a focused live
+  planner recheck. Several other queued steps failed but passed same-origin
+  raw probes, notably `(54,15)->RIGHT`, `(93,36)->UP`, and `(93,35)->RIGHT`;
+  keep those as executor timing evidence, not map blockers.
 - 2026-07-22 Hauksness overworld geometry is live-validated end-to-end. The
   hero entered Ruins of Hauksness map `0x03` at `(0,10)`; final status is
   `OVERWORLD_ROUTE: event=status route=none` and
@@ -15,9 +31,9 @@ Updated: 2026-07-23
   `(16,27)`, south-shelf guidance moved LEFT to `(15,27)` before descending to
   `(15,28)`; from the west-wall carry landing `(1,54)`, south-road guidance
   moved RIGHT before descending and completed at `(2,64)` without retrying the
-  blocked `(1,63)->DOWN` edge. Runtime blocks remained empty. The next route
-  task is to define and validate the Hauksness return route from its own start.
-  Combat dialogue repeatedly emitted overlapping windows near y=88, while
+  blocked `(1,63)->DOWN` edge. Runtime blocks remained empty. The return route
+  is now also validated as recorded above. Combat dialogue repeatedly emitted
+  overlapping windows near y=88, while
   fights at `(20,93)` and `(15,92)` behaved normally; detailed evidence remains
   in `work_notes/current_investigation.md` for the later dialogue-tuning pass.
 - 2026-07-22 the waypoint-scoped movement-reset A/B was rejected and removed.

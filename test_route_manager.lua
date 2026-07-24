@@ -498,6 +498,12 @@ local function make_env(options)
             active_route_id = function()
                 return options.overworld_active_route_id
             end,
+            active_route_matches_object = function(obj)
+                if options.overworld_active_route_matches_object_fn then
+                    return options.overworld_active_route_matches_object_fn(obj)
+                end
+                return options.overworld_active_route_matches_object == true
+            end,
             start = function(route_id, map_id, x, y)
                 overworld_start_calls[#overworld_start_calls + 1] = {
                     route_id = route_id, map_id = map_id, x = x, y = y,
@@ -1139,6 +1145,34 @@ function tests.overworld_autowalk_to_object_skips_switch_when_same_destination()
 
     assert_equal(#env.overworld_start_calls(), 0, "same destination should not call start")
     assert_equal(env.overworld_plan_calls(), 1, "same-destination autowalk should still plan")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_preserves_active_variant_for_same_destination()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 8,
+        start_y = 3,
+        overworld_active_route_id = "kol_hauksness",
+        overworld_route_for_object = "kol",
+        overworld_active_route_matches_object = true,
+        overworld_segment = {
+            route = {id = "kol_hauksness", title = "Kol"},
+            waypoint = {name = "Garinham north coast lane", x = 14, y = 3},
+            index = 55,
+            steps = {"right"},
+            message = "Auto-walk to Garinham north coast lane.",
+            object_id = "route_kol_hauksness_55",
+        },
+    })
+
+    local kol_obj = {id = "overworld_kol", name = "Kol", x = 104, y = 10}
+    env.route_manager.autowalk_to_object(kol_obj, {speak = true})
+
+    assert_equal(#env.overworld_start_calls(), 0, "same-destination variant should remain active")
+    assert_equal(env.overworld_plan_calls(), 1, "active same-destination variant should plan its next segment")
 
     env.restore()
 end

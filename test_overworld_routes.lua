@@ -1433,6 +1433,22 @@ function tests.kol_object_from_hauksness_uses_hauksness_return_variant()
     routes.reset_for_tests()
 end
 
+function tests.active_hauksness_return_matches_ordinary_kol_object()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 25, 89)
+
+    local matches = routes.active_route_matches_object({
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
+    })
+
+    assert_equal(matches, true, "active Hauksness return should retain the ordinary Kol destination")
+
+    routes.reset_for_tests()
+end
+
 function tests.kol_hauksness_return_preserves_lower_pocket_recovery()
     routes.reset_for_tests()
     routes.start("hauksness to kol", 0x01, 25, 89)
@@ -1499,6 +1515,42 @@ function tests.kol_hauksness_return_uses_live_proven_ridge_gap()
         routes.observe_position(0x01, waypoint.x, waypoint.y)
         x, y = waypoint.x, waypoint.y
     end
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_hauksness_return_uses_south_first_northeast_bridge_approach()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 6, 4)
+
+    local route = routes._route_for_tests("kol_hauksness")
+    for index = 54, 70 do
+        local waypoint = route.waypoints[index]
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    local segment = assert(routes.plan_next_segment(0x01, 56, 15))
+
+    assert_equal(segment.waypoint.name, "Northeast bridge west bend", "return route should target the west bridge bend")
+    assert_equal(segment.steps[1], "down", "west bridge approach should move south before the blocked east edge")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_hauksness_return_descends_before_kol_southwest_track()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 6, 4)
+
+    local route = routes._route_for_tests("kol_hauksness")
+    for index = 54, 75 do
+        local waypoint = route.waypoints[index]
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    local segment = assert(routes.plan_next_segment(0x01, 77, 18))
+
+    assert_equal(segment.waypoint.name, "Kol southwest track", "return route should target the southwest track")
+    assert_equal(segment.steps[1], "down", "west approach should descend before the blocked east edge at 77,18")
 
     routes.reset_for_tests()
 end

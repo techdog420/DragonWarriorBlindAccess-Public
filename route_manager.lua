@@ -4006,7 +4006,17 @@ function M.autowalk_to_object(obj, opts)
         -- caller doesn't silently advance a stale destination.
         local target_route_id = overworld_routes.route_id_for_object(obj, map_id, px, py, terrain_offset)
         local active_route_id = overworld_routes.active_route_id()
-        if target_route_id and target_route_id ~= active_route_id then
+        local active_route_matches_object = active_route_id
+            and overworld_routes.active_route_matches_object(obj)
+        trace_autowalk_boundary("overworld_route_match", string.format(
+            "target_id=%s target_route=%s active_route=%s active_matches=%s",
+            tostring(obj.id or "-"),
+            tostring(target_route_id or "-"),
+            tostring(active_route_id or "-"),
+            tostring(active_route_matches_object == true)))
+        if target_route_id
+           and target_route_id ~= active_route_id
+           and not active_route_matches_object then
             local started, start_err = overworld_routes.start(target_route_id, map_id, px, py, {
                 terrain_offset = terrain_offset,
             })

@@ -455,8 +455,14 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   observed nearby appeared to be random encounters. The Western desert
   south-shelf and south-road approach-order fixes are live-verified: guidance
   corrects LEFT before descending from `(16,27)` and RIGHT before descending
-  from the `(1,54)` carry landing. The full Hauksness return route is deferred
-  until it can be defined and validated from its own start.
+  from the `(1,54)` carry landing. The full Hauksness-to-Kol return route was
+  subsequently live-validated end-to-end on `2026-07-24`, entering Kol at
+  `(19,23)` with no runtime blocks. Ordinary Kol selection now preserves the
+  active `kol_hauksness` variant. Live geometry also proved that the northeast
+  bridge approach at `(56,15)` and the Kol southwest-track approach at
+  `(77,18)` must descend before heading east; the return route now encodes both
+  as vertical-first. Several other apparent blocks passed same-origin raw
+  probes and remain classified as executor timing noise rather than map data.
 
 - Kol speech/menu regression follow-up (`2026-06-29`): manual Kol entrance
   checks passed for command-menu open/close, SPELL entry, and ITEM browsing
