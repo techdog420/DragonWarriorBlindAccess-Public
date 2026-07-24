@@ -289,6 +289,17 @@ local EXITS = {
     -- Towns — exits are at the town entrance. Most face south, but
     -- Brecconary's confirmed world-map handoff is on the west edge.
     {
+        map = 0x03,
+        x = 0,
+        y = 10,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 0,
+        interaction_y = 10,
+        interaction_face_dir = "west",
+        interaction_label = "exit",
+    },                                                                      -- Hauksness
+    {
         map = 0x07,
         x = 19,
         y = 23,
