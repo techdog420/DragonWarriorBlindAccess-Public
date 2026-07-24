@@ -2462,10 +2462,30 @@ function tests.queued_routes_honor_initial_settle_before_first_step()
     env.restore()
 end
 
-function tests.queued_route_initial_settle_clears_movement_carry_immediately()
+function tests.queued_route_initial_settle_preserves_movement_state_when_reset_disabled()
     local env = make_env({
         movement_state = 0x05,
         movement_subpixel = 0x20,
+        config_values = {
+            auto_step_reset_movement_on_route_turn_settle = "false",
+        },
+    })
+
+    env.auto_step.start_route({"left"}, {initial_settle_frames = 16})
+
+    assert_equal(#env.memory_writes, 0,
+        "disabled initial-settle reset should not write movement RAM")
+
+    env.restore()
+end
+
+function tests.queued_route_initial_settle_clears_movement_carry_when_reset_enabled()
+    local env = make_env({
+        movement_state = 0x05,
+        movement_subpixel = 0x20,
+        config_values = {
+            auto_step_reset_movement_on_route_turn_settle = "true",
+        },
     })
 
     env.auto_step.start_route({"left"}, {initial_settle_frames = 16})
