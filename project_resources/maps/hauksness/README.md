@@ -14,8 +14,20 @@ tables, or implementation code from the outside accessibility mod.
 - Moving west from Hauksness `(0,10)` returns to World Map `(25,89)`.
 - Hauksness is represented as a 20-by-20 map in the visual references and in
   the outside mod's independently extracted snapshot.
-- Interior passability, false walls, directional blockers, the fixed encounter,
-  and the hidden armor event have not yet been verified by this project.
+- Live blocker-hunt reached the objective through normal movement plus
+  same-origin probes. Nineteen runtime-only blocker cells remain to be promoted
+  into focused map data and tests.
+- A same-origin RIGHT probe from `(17,12)` moved onto `(18,12)` and triggered
+  `An Axe Knight draws near!`; the apparent autowalk block was the scripted
+  encounter transition, not permanent geometry or an NPC RAM object.
+- After victory, the hero remained at `(18,12)`. `SEARCH` announced
+  `Bill discovers the Erdrick's Armor.` Equipment byte `$00BE` changed from
+  `DB` to `DF`, defense changed from `0x4D` to `0x51`, and the armor was
+  automatically equipped. Quest flags remained `0x42`.
+- The live tile remains decoded as town tile type `8` before and after the
+  event. The visual references show it as a lone green tree behind the eastern
+  ruins, with no visible Axe Knight sprite; battle victory and armor discovery
+  do not replace the terrain tile.
 
 ## Local Images
 
@@ -83,8 +95,10 @@ coordinate hypothesis:
 4. Move three north to `(14,12)`.
 5. Move four east through the swamp to the guarded tree at `(18,12)`.
 
-Every coordinate after the verified entrance is a survey target, not permanent
-map truth, until normal live movement confirms it.
+This guide route was orientation rather than map truth. Live blocker-hunt
+confirmed the objective but required a substantially different route around
+engine-hidden ruined walls. The verified blocker batch remains runtime-only
+until source and regression work is complete.
 
 ## Outside Accessibility Mod Cross-Check
 
@@ -99,34 +113,29 @@ Its map-`0x03` snapshot proposes:
 - one hidden event at `(18,12)`;
 - no NPC/service navigation.
 
-The exit agrees with this project's live evidence. The proposed event tile
-also agrees with the independently labeled Mike's RPG Center image. This makes
-`(18,12)` a strong target for live inspection, fixed-battle confirmation, and
-post-battle `SEARCH`, but it must not be copied directly into source map data.
+The exit agrees with this project's live evidence. Live FCEUX evidence now
+independently confirms `(18,12)` as the fixed-battle and hidden-search tile.
+The outside snapshot remains reference-only and must not be copied directly
+into source map data.
 
 ## First Decode Priorities
 
-1. Reload or launch FCEUX and establish a fresh Hauksness `(0,10)` baseline
-   with no runtime blocks.
-2. Record the decoded tile and neighbor state at the entrance before starting
-   a normal-movement survey.
-3. Survey the entrance component and route toward the southeast shop area.
-4. Treat random battles as interruptions; do not convert combat stops into
-   blockers.
-5. Verify the proposed approach points `(16,15)`, `(14,15)`, and `(14,12)`
-   using normal arrival plus same-origin probes where needed.
-6. At `(18,12)`, separately capture:
-   - pre-battle position and tile;
-   - fixed Axe Knight trigger;
-   - post-battle position without movement;
-   - `SEARCH` result and resulting armor/quest state.
-7. Add permanent passability, directional, and object/search data only after
-   the live evidence is clean and regression tests cover map `0x03`.
+1. Promote the clean same-origin blocker batch into map `0x03` directional
+   data with focused regression assertions.
+2. Expose `Axe Knight Approach` under Travel, using `(18,12)` only as the
+   internal subject and routing to the safe preparation tile `(17,12)` facing
+   east.
+3. Keep the buried armor entirely out of player-facing object browsing,
+   Treasure filtering, route speech, and SEARCH guidance.
+4. Ensure autowalk does not convert the scripted `(17,12)->RIGHT` encounter
+   transition into a permanent blocker, then validate the source-only route
+   from `(0,10)` to the safe approach and back out.
 
 ## Accessibility And Spoiler Note
 
-The guarded tree and ruined shop are useful nonvisual landmarks. When the
-search event is eventually exposed through object navigation, prefer a
-progressive label such as `Guarded Tree Behind Ruined Shop` over announcing
-`Erdrick's Armor` before the player has defeated the Axe Knight or found the
-item. Exact guidance can remain an optional later disclosure.
+The fixed Axe Knight is useful as a nonvisual maze landmark even though the
+game draws no enemy sprite on the tile. Expose only the persistent
+`Axe Knight Approach` Travel landmark and stop at `(17,12)` facing east. The
+buried armor remains an intentional secret: do not add its tile under
+Treasure, name the reward, suggest SEARCH, or automate the final encounter
+step.

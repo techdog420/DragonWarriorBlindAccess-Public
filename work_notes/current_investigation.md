@@ -2,6 +2,80 @@
 
 Updated: 2026-07-24
 
+## 2026-07-24 Hauksness Interior Decode
+
+- BASELINE: fresh launcher probe confirmed Ruins of Hauksness map `0x03` at
+  `(0,10)`, no active path, and no runtime blocks.
+- ENTRANCE MODEL MISMATCH: live player entry is `(0,10)`, but
+  `inspect_tile:0,10` reports tile 6, `reason=engine_boundary`, and
+  `effective_passable=false`. Treat it as a likely map-specific entrance
+  passthrough candidate; verify the west exit and inward edge separately before
+  promoting it.
+- OBJECTIVE TARGET: `inspect_tile:18,12` reports map dimensions `20x20`,
+  tile 8, walkable/effective-passable true. The original 20-step static route
+  crossed visually ruined walls; live blocker-hunt is now tracing the real
+  route toward that coordinate.
+- STALE NPC ROOT CAUSE: `report_path_state` exposed 20 Hauksness NPC blockers,
+  including impossible out-of-bounds coordinates such as `(6,27)`, `(25,7)`,
+  and `(26,21)`. The known fixed Axe Knight tile `(18,12)` was not among them.
+  Hauksness uses town terrain offset `0x10`, causing generic town-NPC parsing to
+  accept unrelated RAM even though map `0x03` has no NPCs. Do not park or write
+  those phantom slots.
+- NPC PATCH LIVE VERIFIED: `objects.lua` now suppresses ordinary NPC RAM on
+  map `0x03`. The focused regression failed RED with `expected 0, got 2`, then
+  all 100 object tests passed after the one-map guard. After manual reload, a
+  fresh probe at `(0,10)` reported `npc_count=0` and no runtime blocks.
+- FIRST LIVE CORRIDOR: normal autowalk reached `(4,12)` from the entrance
+  before a Werewolf battle. After the field was cleared, route failure, seam
+  retry, and same-origin raw probe each confirmed west-approach engine blockers
+  at destination cells `(5,12)`, `(5,13)`, and `(5,11)`. All three are
+  runtime-only directional blocks pending a focused permanent source/test
+  batch.
+- UPPER-RUIN BOUNDARY: after the Starwyvern clear, route failure, retry, and
+  same-origin raw probe confirmed `(9,7)->DOWN` into `(9,8)`,
+  `(7,7)->DOWN` into `(7,8)`, and `(6,7)->DOWN` into `(6,8)`. The opening
+  `(5,7)->DOWN` into `(5,8)` is live-passable, but the opening cell is a
+  one-cell recess: `(5,8)->DOWN` into `(5,9)` and `(5,8)->RIGHT` into
+  `(6,8)` are also confirmed blocked.
+- EAST UPPER RECESS: the upper corridor is live-passable east through
+  `(16,6)` and south through `(16,7)` into `(16,8)`. From `(16,8)`, both
+  RIGHT into `(17,8)` and LEFT into `(15,8)` are confirmed blocked, so this is
+  another north-entry recess rather than a crossing.
+- CURRENT RUNTIME MODEL: nine destination cells hold eleven verified blocked
+  approaches: `(5,11).west`, `(5,12).west`, `(5,13).west`,
+  `(9,8).north`, `(17,8).west`, `(15,8).east`, `(7,8).north`,
+  `(6,8).north/west`, and `(5,9).north`. All remain runtime-only pending a
+  focused permanent source/test batch.
+- LOWER-RUIN BOUNDARY: after the Green Dragon clear at `(6,17)`, the planner
+  traced the lower approach. Same-origin probes confirmed `(6,15)->UP`,
+  `(16,14)->UP`, `(18,14)->UP`, `(17,14)->UP`, `(16,14)->LEFT`,
+  `(15,15)->UP`, `(16,16)->RIGHT/DOWN`, `(18,15)->RIGHT`,
+  `(19,16)->UP`, `(18,16)->LEFT/DOWN`. Shared destinations now carry multiple
+  approaches at `(15,14)`, `(17,16)`, and `(19,15)`.
+- OBJECTIVE REACHED / FIXED ENCOUNTER: the live route eventually reached
+  `(17,12)`, west of objective tile `(18,12)`. Autowalk initially classified
+  RIGHT as blocked, but the untouched same-origin raw probe moved onto
+  `(18,12)` and triggered `An Axe Knight draws near!`. This is a scripted fixed
+  encounter, not a permanent blocker and not an NPC RAM object; do not add
+  `(18,12).west` to map data.
+- ARMOR EVENT LIVE VERIFIED: the Axe Knight died to one critical hit. The hero
+  remained at `(18,12)`, and manual `SEARCH` announced
+  `Bill discovers the Erdrick's Armor.` Equipment byte `$00BE` changed
+  `DB->DF`, decoding Magic Armor to Erdrick's Armor; defense changed
+  `0x4D->0x51` (`77->81`), while quest flags remained `0x42`.
+  The generic object list still reports no object on the tile. The approved
+  follow-up is a persistent `Axe Knight Approach` Travel landmark that stops at
+  `(17,12)` facing east; keep the buried armor and SEARCH action out of
+  player-facing object data.
+- VISUAL BEHAVIOR: local labeled and unlabeled map references show `(18,12)`
+  as a lone green tree behind the eastern ruins, not a visible Axe Knight
+  sprite. Live tile decoding remains town tile type `8` after the battle and
+  search. The encounter and reward change battle/equipment state, not the
+  terrain image.
+- PRE-RELEASE WATCH ITEM: the user recalls similar phantom NPCs in Garin's
+  Grave. Verify that map live before changing its NPC behavior; do not infer a
+  second suppression rule solely from Hauksness.
+
 ## 2026-07-22 Hauksness Doorstep Movement-Reset A/B
 
 - TREATMENT UNSAFE / REMOVED: from a normal-walk baseline at world-map
