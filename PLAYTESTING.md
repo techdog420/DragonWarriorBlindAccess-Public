@@ -472,6 +472,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(24,91)`, then advanced to `Hauksness lower pocket` without runtime
   blockers.
 
+- Hauksness interior objective route completed (`2026-07-24`): after a full
+  script reload at exit `(0,10)`, runtime blockers were empty. Object guidance
+  reached the safe Axe Knight stand `(17,12)`, faced east toward the fixed
+  encounter at `(18,12)`, and restored all parked NPC slots. The fully loaded
+  reverse route then returned from `(17,12)` to exit `(0,10)` and faced west,
+  again with zero runtime blockers or deferred NPC restores. Starwyvern and
+  Werewolf battles interrupted both directions but resumed cleanly. The final
+  state retained correct level-17 stats. The object navigator intentionally
+  exposes the visible Axe Knight encounter but does not reveal the buried
+  Erdrick's Armor location.
+
 - Kol speech/menu regression follow-up (`2026-06-29`): manual Kol entrance
   checks passed for command-menu open/close, SPELL entry, and ITEM browsing
   without stale `Bill` / `ll` fragments or bogus merchant prices. Two follow-up

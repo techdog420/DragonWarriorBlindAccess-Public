@@ -102,6 +102,7 @@ local function set_packed_block(rom_bytes, data_start, width, x, y, block_id)
 end
 
 local MAP_NAMES = {
+    [0x03] = "Hauksness",
     [0x04] = "Tantegel Castle",
     [0x0C] = "Sun Shrine",
     [0x08] = "Brecconary",
@@ -136,6 +137,10 @@ end
 
 local function assert_tantegel_dir(env, cell, approach, message)
     assert_directional_block(env, 0x04, cell, approach, message)
+end
+
+local function assert_hauksness_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x03, cell, approach, message)
 end
 
 local function assert_sun_shrine_dir(env, cell, approach, message)
@@ -1943,6 +1948,77 @@ function tests.hauksness_west_exit_tile_overrides_engine_boundary()
     local unconfirmed_edge = env.map_reader.get_walkability_details(0x03, 0, 9)
     assert_equal(unconfirmed_edge.base_walkable, false, "nearby unconfirmed Hauksness west-edge cells should stay blocked")
     assert_equal(unconfirmed_edge.reason, "engine_boundary", "unconfirmed Hauksness west-edge cells should keep the boundary rule")
+
+    env.restore()
+end
+
+function tests.hauksness_objective_to_exit_directional_blocks_are_modeled()
+    local env = make_env()
+
+    assert_hauksness_dir(env, "11,11", "east", "(11,11).east should block after same-origin raw probe from (12,11)->LEFT")
+    assert_hauksness_dir(env, "11,12", "east", "(11,12).east should block after same-origin raw probe from (12,12)->LEFT")
+    assert_hauksness_dir(env, "5,11", "east", "(5,11).east should block after same-origin raw probe from (6,11)->LEFT")
+    assert_hauksness_dir(env, "5,11", "west", "(5,11).west should block after same-origin raw probe from (4,11)->RIGHT")
+    assert_hauksness_dir(env, "5,12", "east", "(5,12).east should block after same-origin raw probe from (6,12)->LEFT")
+    assert_hauksness_dir(env, "5,12", "west", "(5,12).west should block after same-origin raw probe from (4,12)->RIGHT")
+    assert_hauksness_dir(env, "5,13", "east", "(5,13).east should block after same-origin raw probe from (6,13)->LEFT")
+    assert_hauksness_dir(env, "5,13", "west", "(5,13).west should block after same-origin raw probe from (4,13)->RIGHT")
+    assert_hauksness_dir(env, "6,10", "south", "(6,10).south should block after same-origin raw probe from (6,11)->UP")
+    assert_hauksness_dir(env, "7,10", "south", "(7,10).south should block after same-origin raw probe from (7,11)->UP")
+    assert_hauksness_dir(env, "5,14", "south", "(5,14).south should block after same-origin raw probe from (5,15)->UP")
+    assert_hauksness_dir(env, "6,14", "north", "(6,14).north should block after same-origin raw probe from (6,13)->DOWN")
+    assert_hauksness_dir(env, "6,14", "east", "(6,14).east should block after same-origin raw probe from (7,14)->LEFT")
+    assert_hauksness_dir(env, "6,14", "south", "(6,14).south should block after same-origin raw probe from (6,15)->UP")
+
+    assert_hauksness_dir(env, "14,11", "south", "(14,11).south should block after queued and same-origin seam retries from (14,12)->UP")
+    assert_hauksness_dir(env, "9,12", "south", "(9,12).south should block after queued and same-origin seam retries from (9,13)->UP")
+    assert_hauksness_dir(env, "10,10", "south", "(10,10).south should block after same-origin raw probe from (10,11)->UP")
+    assert_hauksness_dir(env, "9,10", "south", "(9,10).south should block after queued and same-origin seam retries from (9,11)->UP")
+    assert_hauksness_dir(env, "11,11", "west", "(11,11).west should block after same-origin raw probe from (10,11)->RIGHT")
+    assert_hauksness_dir(env, "11,12", "west", "(11,12).west should block after same-origin raw probe from (10,12)->RIGHT")
+    assert_hauksness_dir(env, "11,12", "south", "(11,12).south should block after same-origin raw probe from (11,13)->UP")
+
+    assert_hauksness_dir(env, "15,13", "north", "(15,13).north should block after same-origin raw probe from (15,12)->DOWN")
+    assert_hauksness_dir(env, "16,13", "north", "(16,13).north should block after same-origin raw probe from (16,12)->DOWN")
+    assert_hauksness_dir(env, "16,13", "south", "(16,13).south should block after same-origin raw probe from (16,14)->UP")
+    assert_hauksness_dir(env, "17,13", "north", "(17,13).north should block after same-origin raw probe from (17,12)->DOWN")
+    assert_hauksness_dir(env, "17,13", "south", "(17,13).south should block after same-origin raw probe from (17,14)->UP")
+    assert_hauksness_dir(env, "18,13", "north", "(18,13).north should block after same-origin raw probe from (18,12)->DOWN")
+    assert_hauksness_dir(env, "18,13", "south", "(18,13).south should block after same-origin raw probe from (18,14)->UP")
+    assert_hauksness_dir(env, "19,12", "west", "(19,12).west should block after same-origin raw probe from (18,12)->RIGHT")
+    assert_hauksness_dir(env, "17,11", "south", "(17,11).south should block after same-origin raw probe from (17,12)->UP")
+    assert_hauksness_dir(env, "17,11", "north", "(17,11).north should block after same-origin raw probe from (17,10)->DOWN")
+    assert_hauksness_dir(env, "17,11", "west", "(17,11).west should block after same-origin raw probe from (16,11)->RIGHT")
+    assert_hauksness_dir(env, "18,11", "south", "(18,11).south should block after same-origin raw probe from (18,12)->UP")
+    assert_hauksness_dir(env, "15,11", "south", "(15,11).south should block after same-origin raw probe from (15,12)->UP")
+    assert_hauksness_dir(env, "15,11", "north", "(15,11).north should block after same-origin raw probe from (15,10)->DOWN")
+    assert_hauksness_dir(env, "15,11", "east", "(15,11).east should block after same-origin raw probe from (16,11)->LEFT")
+    assert_hauksness_dir(env, "14,10", "east", "(14,10).east should block after same-origin raw probe from (15,10)->LEFT")
+    assert_hauksness_dir(env, "15,8", "south", "(15,8).south should block after same-origin raw probe from (15,9)->UP")
+    assert_hauksness_dir(env, "15,8", "east", "(15,8).east should block after same-origin raw probe from (16,8)->LEFT")
+    assert_hauksness_dir(env, "6,8", "north", "(6,8).north should block after same-origin raw probe from (6,7)->DOWN")
+    assert_hauksness_dir(env, "6,8", "west", "(6,8).west should block after same-origin raw probe from (5,8)->RIGHT")
+    assert_hauksness_dir(env, "7,8", "north", "(7,8).north should block after same-origin raw probe from (7,7)->DOWN")
+    assert_hauksness_dir(env, "9,8", "north", "(9,8).north should block after same-origin raw probe from (9,7)->DOWN")
+    assert_hauksness_dir(env, "5,9", "north", "(5,9).north should block after same-origin raw probe from (5,8)->DOWN")
+    assert_hauksness_dir(env, "14,9", "east", "(14,9).east should block after same-origin raw probe from (15,9)->LEFT")
+    assert_hauksness_dir(env, "17,8", "south", "(17,8).south should block after same-origin raw probe from (17,9)->UP")
+    assert_hauksness_dir(env, "17,8", "west", "(17,8).west should block after same-origin raw probe from (16,8)->RIGHT")
+    assert_hauksness_dir(env, "18,9", "west", "(18,9).west should block after same-origin raw probe from (17,9)->RIGHT")
+    assert_hauksness_dir(env, "18,10", "west", "(18,10).west should block after same-origin raw probe from (17,10)->RIGHT")
+    assert_hauksness_dir(env, "11,14", "east", "(11,14).east should block after same-origin raw probe from (12,14)->LEFT")
+    assert_hauksness_dir(env, "15,14", "south", "(15,14).south should block after same-origin raw probe from (15,15)->UP")
+    assert_hauksness_dir(env, "15,14", "east", "(15,14).east should block after same-origin raw probe from (16,14)->LEFT")
+    assert_hauksness_dir(env, "19,14", "west", "(19,14).west should block after same-origin raw probe from (18,14)->RIGHT")
+    assert_hauksness_dir(env, "19,15", "west", "(19,15).west should block after same-origin raw probe from (18,15)->RIGHT")
+    assert_hauksness_dir(env, "19,15", "south", "(19,15).south should block after same-origin raw probe from (19,16)->UP")
+    assert_hauksness_dir(env, "17,16", "east", "(17,16).east should block after same-origin raw probe from (18,16)->LEFT")
+    assert_hauksness_dir(env, "18,17", "north", "(18,17).north should block after same-origin raw probe from (18,16)->DOWN")
+
+    local dirs = env.map_reader.get_directional_blocks(0x03)
+    assert_equal((dirs["7,11"] or {}).west, nil, "(7,11).west should stay open after same-origin raw probe from (6,11)->RIGHT moved")
+    assert_equal((dirs["7,13"] or {}).west, nil, "(7,13).west should stay open after same-origin raw probe from (6,13)->RIGHT moved")
+    assert_equal((dirs["6,14"] or {}).west, nil, "(6,14).west should stay open until its untested approach is verified")
 
     env.restore()
 end

@@ -4,12 +4,19 @@ Updated: 2026-07-24
 
 ## Immediate FCEUX Handoff
 
-- Current live state after the 2026-07-24 lower-pocket reload check is world
-  map `(24,91)`, route `kol_hauksness`, next waypoint `Hauksness lower pocket`,
-  with no active path, NPC blockers, or runtime blocks. The natural
-  lower-west-drop segment ended at `(24,93)` without carrying; a same-origin
-  RIGHT probe recreated the prior `(25,93)` carry landing. The loaded recovery
-  then executed `LEFT, UP, UP` to `(24,91)` and advanced correctly.
+- Current live state is Ruins of Hauksness map `0x03` at exit `(0,10)`,
+  facing west after the final source-only Axe Knight-to-exit replay. HP is
+  `89/100`, MP `78/90`, level-17 stats are intact, no path is active, and
+  `RUNTIME_BLOCKS map=0x03 none`. The entrance-to-Axe Knight route completed at
+  safe stand `(17,12)` facing east, then the fully loaded reverse route
+  completed back at the exit. Combat interruptions resumed cleanly; each
+  completion restored all four parked NPC slots with zero deferred.
+- The earlier lower-pocket reload check was world map `(24,91)`, route
+  `kol_hauksness`, next waypoint `Hauksness lower pocket`, with no active path,
+  NPC blockers, or runtime blocks. The natural lower-west-drop segment ended
+  at `(24,93)` without carrying; a same-origin RIGHT probe recreated the prior
+  `(25,93)` carry landing. The loaded recovery then executed `LEFT, UP, UP` to
+  `(24,91)` and advanced correctly.
 - Earlier the same session, generic `kol` was reload-verified from a fresh
   `(54,15)` baseline. It reached `(74,18)` and then completed `Kol southwest
   track` to `(84,26)` with eight DOWN moves before ten RIGHT moves, without
@@ -48,6 +55,14 @@ Updated: 2026-07-24
   overlapping windows near y=88, while
   fights at `(20,93)` and `(15,92)` behaved normally; detailed evidence remains
   in `work_notes/current_investigation.md` for the later dialogue-tuning pass.
+- 2026-07-24 Hauksness interior objective navigation is source-only
+  live-validated in both directions. From exit `(0,10)`, object guidance
+  reached safe Axe Knight stand `(17,12)` and faced east toward the fixed
+  encounter at `(18,12)`; the reverse guidance returned to `(0,10)` and faced
+  west. Runtime blockers remained empty after reload, NPC parking restored
+  cleanly after every route and battle interruption, and level-17 stats
+  remained intact. The landmark exposes the visible encounter location but
+  does not reveal the intentionally buried Erdrick's Armor square.
 - 2026-07-22 the waypoint-scoped movement-reset A/B was rejected and removed.
   From a clean `(15,89)` baseline, the reset fired at `(24,89)` while movement
   RAM was still active (`move=0x07`, `sub=0x1A`) and carried into map `0x03`

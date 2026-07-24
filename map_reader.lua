@@ -1569,6 +1569,69 @@ local MAP_HAZARD_CELLS = {
 --   east  = blocked when approaching from the east  (moving west into cell)
 --   west  = blocked when approaching from the west  (moving east into cell)
 local MAP_DIRECTIONAL_BLOCKS = {
+    -- Map 0x03: Hauksness objective-to-exit route.
+    -- Live FCEUX route failures were each confirmed by an untouched
+    -- same-origin raw probe. Keep these directional: nearby rightward
+    -- autowalk failures at (6,11) and (6,13) moved under raw probing and are
+    -- executor timing evidence, not map walls.
+    [0x03] = {
+        -- East-side wall encountered around the Axe Knight approach. Reverse
+        -- route probes confirmed the west side of both cells and the south
+        -- side of (11,12), while leaving their other approaches unchanged.
+        ["11,11"] = {east = true, west = true},
+        ["11,12"] = {east = true, west = true, south = true},
+
+        -- North-facing ruin walls found by the reverse route. The two
+        -- rightmost approaches were raw-probed; the others independently
+        -- failed both queued movement and the same-origin seam retry.
+        ["9,10"] = {south = true},
+        ["10,10"] = {south = true},
+        ["14,11"] = {south = true},
+        ["9,12"] = {south = true},
+
+        -- Central vertical wall. These approaches block westward movement from
+        -- x=6 while preserving other approaches until separately verified.
+        ["5,11"] = {east = true, west = true},
+        ["5,12"] = {east = true, west = true},
+        ["5,13"] = {east = true, west = true},
+
+        -- Row-10 south faces force the return route around the upper recess.
+        ["6,10"] = {south = true},
+        ["7,10"] = {south = true},
+
+        -- Row-14 wall around the southern detour. The west approach into
+        -- (6,14) remains deliberately open because it was not tested.
+        ["5,14"] = {south = true},
+        ["6,14"] = {north = true, east = true, south = true},
+
+        -- Axe Knight approach walls. Each direction first stopped the live
+        -- route and then remained blocked during a same-origin raw probe.
+        ["6,8"] = {north = true, west = true},
+        ["7,8"] = {north = true},
+        ["9,8"] = {north = true},
+        ["15,8"] = {east = true, south = true},
+        ["17,8"] = {south = true, west = true},
+        ["5,9"] = {north = true},
+        ["14,9"] = {east = true},
+        ["18,9"] = {west = true},
+        ["14,10"] = {east = true},
+        ["18,10"] = {west = true},
+        ["15,11"] = {north = true, east = true, south = true},
+        ["17,11"] = {north = true, south = true, west = true},
+        ["18,11"] = {south = true},
+        ["19,12"] = {west = true},
+        ["15,13"] = {north = true},
+        ["16,13"] = {north = true, south = true},
+        ["17,13"] = {north = true, south = true},
+        ["18,13"] = {north = true, south = true},
+        ["11,14"] = {east = true},
+        ["15,14"] = {east = true, south = true},
+        ["19,14"] = {west = true},
+        ["19,15"] = {south = true, west = true},
+        ["17,16"] = {east = true},
+        ["18,17"] = {north = true},
+    },
+
     -- Map 0x04: Tantegel Castle main hall
     -- West-wing barrier walls discovered via autowalk reroutes 2026-04-08.
     --

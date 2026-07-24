@@ -61,7 +61,7 @@ Use test-driven development in `test_auto_step.lua`:
    neutral input for the requested frame count.
 3. Update the existing reset regression to set
    `auto_step_reset_movement_on_route_turn_settle="true"` explicitly. It must
-   continue to assert zero writes to `$003C/$003D`.
+   continue to assert zero-value writes to `$003C/$003D`.
 4. Run the complete auto-step and route-manager suites, Lua byte-compilation,
    and `git diff --check`.
 
