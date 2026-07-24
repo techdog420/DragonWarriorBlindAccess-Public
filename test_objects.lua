@@ -378,6 +378,8 @@ function tests.hauksness_never_exposes_stale_town_npc_ram()
     end
 
     assert_equal(#env.objects.get_blocking_positions(), 0, "Hauksness should not turn unused town NPC RAM into blockers")
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "Hauksness NPC filter should not expose unused town NPC RAM")
 
     env.restore()
 end
