@@ -1287,6 +1287,45 @@ function tests.garins_grave_b1_exposes_live_return_stairs()
     env.restore()
 end
 
+function tests.hauksness_exit_uses_live_west_entry_tile_and_manual_transition()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x03, 17, 12)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x03)
+
+    local id = "exit_0_10"
+    local exit = env.objects.find_object_by_id(id)
+    assert_equal(exit ~= nil, true, "Hauksness should expose its live west-edge exit")
+    assert_equal(exit.name, "Exit to World Map", "Hauksness should use the normal world-map exit label")
+    assert_equal(exit.type, env.objects.TYPE_EXIT, "Hauksness exit should use the Travel-compatible type")
+    assert_equal(exit.x, 0, "Hauksness exit should use the live west boundary X")
+    assert_equal(exit.y, 10, "Hauksness exit should use the live entry row")
+    assert_equal(exit.interaction_x, 0, "Hauksness exit route should stop on the boundary tile")
+    assert_equal(exit.interaction_y, 10, "Hauksness exit stand should match the live entry row")
+    assert_equal(exit.interaction_face_dir, "west", "Hauksness exit stand should face the world transition")
+    assert_equal(exit.interaction_label, "exit", "Hauksness exit should use the generic interaction label")
+
+    local expected_by_filter = {
+        [env.objects.FILTER_ALL] = true,
+        [env.objects.FILTER_NPC] = false,
+        [env.objects.FILTER_SERVICE] = false,
+        [env.objects.FILTER_TREASURE] = false,
+        [env.objects.FILTER_TRAVEL] = true,
+        [env.objects.FILTER_DOOR] = false,
+    }
+    for filter, expected in pairs(expected_by_filter) do
+        env.objects.set_filter(filter)
+        assert_equal(
+            env.objects.find_object_by_id(id, {filtered = true}) ~= nil,
+            expected,
+            "Hauksness exit filter membership should match the approved design"
+        )
+    end
+
+    env.restore()
+end
+
 function tests.rimuldar_exits_use_live_transition_tiles()
     local env = make_env()
 
