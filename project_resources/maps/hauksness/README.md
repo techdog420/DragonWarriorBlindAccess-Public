@@ -29,36 +29,34 @@ tables, or implementation code from the outside accessibility mod.
   ruins, with no visible Axe Knight sprite; battle victory and armor discovery
   do not replace the terrain tile.
 
-## Local Images
+## External Image References
 
-- `external/mikesrpgcenter_hauksness.png`
+External images are reference links only and are not bundled with this
+repository.
+
+- Mike's RPG Center
   - Source page: https://mikesrpgcenter.com/dw1/maps/hauksness.html
   - Source image: https://mikesrpgcenter.com/dw1/maps/hauksness.png
-  - PNG, 320 by 320 pixels.
   - The image is a direct 20-by-20 tile map. Its numbered point `1` is on tile
     `(18,12)` and is identified by the source page as Erdrick's Armor guarded
     by an Axe Knight.
-- `external/realmofdarkness_hauksness.png`
+- Realm of Darkness
   - Source page:
     https://www.realmofdarkness.net/dq/nes-dw-hauksness/
   - Source image:
     https://www.realmofdarkness.net/dq/wp-content/img/nes/dw/maps/hauksness-3.png
-  - PNG, 770 by 535 pixels.
   - Includes the town map plus labels for Erdrick's Armor, the Axe Knight, and
     the town encounter set.
-- `external/vgmaps_hauksness.png`
+- VGMaps
   - Source page: https://vgmaps.de/maps/view?m=1945
   - Source image:
     https://vgmaps.com/Atlas/NES/DragonWarrior-Hauksness.png
-  - PNG, 770 by 535 pixels.
-  - Byte-for-byte identical to `realmofdarkness_hauksness.png`; retain only as
-    a source cross-check, not as independent map evidence.
-- `external/classicgamesparadise_hauksness.png`
+  - Retain only as a source cross-check, not as independent map evidence.
+- Classic Games Paradise
   - Source page:
     https://www.classicgamesparadise.com/nes/Dragon%20Warrior%20Maps.html
   - Source image:
     https://www.classicgamesparadise.com/nes/Dragon%20Warrior/map%20Dragon_Warrior_hauksness.png
-  - PNG, 412 by 414 pixels.
   - Unlabeled layout reference.
 
 ## Guide Cross-Checks
