@@ -75,6 +75,13 @@ Updated: 2026-07-24
 - PRE-RELEASE WATCH ITEM: the user recalls similar phantom NPCs in Garin's
   Grave. Verify that map live before changing its NPC behavior; do not infer a
   second suppression rule solely from Hauksness.
+- AXE KNIGHT LANDMARK LIVE VERIFIED: after a manual FCEUX script reload,
+  `Axe Knight Approach` appeared under Travel without armor or SEARCH speech.
+  Selected-object autowalk moved one cell west from `(18,12)` to `(17,12)`,
+  released movement, and faced east. A Werewolf battle interrupted after the
+  face release, but the route logged no east movement from `(17,12)`; after the
+  user cleared it, a fresh probe confirmed map `0x03`, player `(17,12)`, no
+  active path, and the selected landmark still present.
 
 ## 2026-07-22 Hauksness Doorstep Movement-Reset A/B
 
