@@ -306,6 +306,13 @@ local WALKABILITY_TABLES = {
 -- override non-walkable tile types and map-specific entrance edge cells
 -- can override the generic interior boundary rule.
 local MAP_PASSTHROUGH_CELLS = {
+    -- Map 0x03: Hauksness west entrance/exit stand.
+    -- Live FCEUX entry from World Map (25,89) lands on (0,10), and moving
+    -- west from that same stand returns to the world map. Override only this
+    -- proven boundary cell; neighboring west-edge cells remain closed.
+    [0x03] = {
+        ["0,10"] = true,
+    },
     -- Map 0x04: Tantegel Castle main hall
     -- Live probing on 2026-04-11 and 2026-04-13 confirmed a decoder gap in the
     -- y=16 corridor: the engine allows standing on and traversing these cells,

@@ -1914,6 +1914,39 @@ function tests.tantegel_castle_south_gate_exit_wall_blocks_are_modeled()
     env.restore()
 end
 
+function tests.hauksness_west_exit_tile_overrides_engine_boundary()
+    local base = 0x03 * 5
+    local data_offset = 0x10
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x80,
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_offset, 20, 20, 0x6)
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    local exit_tile = env.map_reader.get_walkability_details(0x03, 0, 10)
+    assert_equal(exit_tile.base_walkable, true, "Hauksness (0,10) should be standable after live entry and exit proof")
+    assert_equal(exit_tile.effective_walkable, true, "Hauksness (0,10) should be available to pathfinding")
+    assert_equal(exit_tile.reason, "passthrough", "Hauksness (0,10) should override the generic west-edge boundary")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x03)
+    assert_equal(snapshot[10][0], true, "walkability snapshot should include the Hauksness exit stand")
+
+    local unconfirmed_edge = env.map_reader.get_walkability_details(0x03, 0, 9)
+    assert_equal(unconfirmed_edge.base_walkable, false, "nearby unconfirmed Hauksness west-edge cells should stay blocked")
+    assert_equal(unconfirmed_edge.reason, "engine_boundary", "unconfirmed Hauksness west-edge cells should keep the boundary rule")
+
+    env.restore()
+end
+
 function tests.tantegel_castle_south_gate_exit_tile_is_passthrough()
     local base = 0x04 * 5
     local env = make_env({
