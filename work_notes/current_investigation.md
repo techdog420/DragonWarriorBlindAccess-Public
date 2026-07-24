@@ -4003,3 +4003,35 @@ For the next live map task, start a new dated section here with:
   no runtime blocks. The two axis-order edits were not loaded into this live
   Lua process; manual probes traversed the proven lanes. Full Stop/Run is
   required before a focused live planner recheck of those source corrections.
+- LOWER-POCKET FINAL-CARRY RECOVERY: after the route reached lower-west-drop
+  waypoint `(24,93)`, final settle carried to `(25,93)`. Four queued UP
+  attempts and a same-origin raw UP probe all blocked into `(25,92)`, while
+  same-origin LEFT crossed `(24,93)` and UP from `(24,93)` reached `(24,91)`.
+  The return-only `Hauksness lower west pocket` waypoint now uses
+  horizontal-first order. Its regression reproduces planning from `(25,93)`
+  and requires `left, up, up`; the existing exact `(24,93)` progression
+  remains UP-first. At that checkpoint, the later Hauksness-to-Kol pass was
+  active at `(24,91)`, targeting `Hauksness lower pocket` at waypoint index 7.
+  The subsequent reload cleared that route state before generic Kol testing.
+  LIVE VERIFIED after a later script reload and fresh Hauksness entry/exit:
+  the natural lower-west-drop segment ended at exact `(24,93)`, so a
+  same-origin RIGHT probe recreated the carry landing at `(25,93)`. With
+  `kol_hauksness` still active and no NPC or runtime blockers, the loaded route
+  executed `left, up, up`, completed at `(24,91)`, and advanced to `Hauksness
+  lower pocket`.
+- GENERIC KOL SOUTHWEST-TRACK GAP: after reload cleared route state, selecting
+  Kol at `(54,15)` chose generic `kol`. Its bridge correction moved DOWN first
+  and reached `(58,18)`, then the shared corridor reached `(74,18)`. Generic
+  `Kol southwest track` still planned horizontal-first, moved east to
+  `(77,18)`, and blocked on the already-proven `(77,18)->RIGHT` edge. A fresh
+  clean baseline at `(77,18)` had no path, NPC, menu, battle, or runtime
+  blocks; same-origin DOWN crossed `(77,19)` and carried to `(77,20)`. Generic
+  `kol` now uses vertical-first ordering at this waypoint. Its regression
+  requires eight DOWN steps before the first RIGHT step. Reverse routes remain
+  horizontal-first. LIVE VERIFIED after script restart: a fresh clean baseline
+  at `(54,15)` selected generic `kol` and Kol, the bridge approach reached
+  `(74,18)`, and `Kol southwest track` completed all 18 steps to `(84,26)`.
+  The log showed eight DOWN moves to row 26 before ten RIGHT moves; it never
+  attempted `(77,18)->RIGHT`. The next waypoint was `Kol southwest bridge`.
+  Two earlier bridge segments each needed one retry after movement-started
+  timing stalls; neither stall was promoted to permanent blocker data.

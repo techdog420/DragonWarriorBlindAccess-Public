@@ -155,7 +155,7 @@ local ROUTES = {
                 warning = "Northeast bridge crossing. Monsters may become more dangerous beyond this point.",
             },
             {x = 74, y = 18, name = "North Alefgard bridge road", radius = 1, axis_order = {"horizontal", "vertical"}},
-            {x = 84, y = 26, name = "Kol southwest track", radius = 1, axis_order = {"horizontal", "vertical"}},
+            {x = 84, y = 26, name = "Kol southwest track", radius = 1, axis_order = {"vertical", "horizontal"}},
             {
                 x = 90,
                 y = 37,
@@ -668,7 +668,13 @@ local ROUTES = {
             {x = 15, y = 89, name = "Hauksness west approach", radius = 0},
             {x = 15, y = 93, name = "Hauksness lower west lane", radius = 0},
             {x = 24, y = 93, name = "Hauksness lower west drop", radius = 0},
-            {x = 24, y = 91, name = "Hauksness lower west pocket", radius = 0},
+            {
+                x = 24,
+                y = 91,
+                name = "Hauksness lower west pocket",
+                radius = 0,
+                axis_order = {"horizontal", "vertical"},
+            },
             {x = 26, y = 91, name = "Hauksness lower pocket", radius = 0},
             {x = 26, y = 90, name = "Hauksness lower south bend", radius = 0},
             {x = 26, y = 88, name = "Hauksness lower east lane", radius = 0},

@@ -4,8 +4,20 @@ Updated: 2026-07-24
 
 ## Immediate FCEUX Handoff
 
+- Current live state after the 2026-07-24 lower-pocket reload check is world
+  map `(24,91)`, route `kol_hauksness`, next waypoint `Hauksness lower pocket`,
+  with no active path, NPC blockers, or runtime blocks. The natural
+  lower-west-drop segment ended at `(24,93)` without carrying; a same-origin
+  RIGHT probe recreated the prior `(25,93)` carry landing. The loaded recovery
+  then executed `LEFT, UP, UP` to `(24,91)` and advanced correctly.
+- Earlier the same session, generic `kol` was reload-verified from a fresh
+  `(54,15)` baseline. It reached `(74,18)` and then completed `Kol southwest
+  track` to `(84,26)` with eight DOWN moves before ten RIGHT moves, without
+  retrying the blocked `(77,18)->RIGHT` edge. Two earlier bridge segments each
+  needed one retry after movement-started timing stalls; do not promote those
+  stalls as map blockers.
 - 2026-07-24 the Hauksness-to-Kol return route `kol_hauksness` reached Kol
-  end-to-end. Final live state is Kol map `0x07` at `(19,23)`,
+  end-to-end. Its arrival state was Kol map `0x07` at `(19,23)`,
   `OVERWORLD_ROUTE: event=status route=none`, menu closed, and
   `RUNTIME_BLOCKS map=0x07 none`. The same-destination route-variant fix is
   live-proven: with ordinary Kol selected, logs retained `kol_hauksness`
@@ -13,13 +25,13 @@ Updated: 2026-07-24
   isolated with same-origin probes: `(56,15)->RIGHT` into `(57,15)` and
   `(77,18)->RIGHT` into `(78,18)` were blocked, while the south-first lanes
   were clean. `kol_hauksness` now plans vertical-first for `Northeast bridge
-  west bend` and `Kol southwest track`; focused regressions pass in the
-  104/104 route suite, and route-manager tests pass 111/111. These two route
-  data edits were traversed manually in the still-running pre-edit Lua session,
-  so a full Stop/Run of `main.lua` is still required before a focused live
-  planner recheck. Several other queued steps failed but passed same-origin
-  raw probes, notably `(54,15)->RIGHT`, `(93,36)->UP`, and `(93,35)->RIGHT`;
-  keep those as executor timing evidence, not map blockers.
+  west bend` and `Kol southwest track`; generic `kol` now also uses
+  vertical-first ordering for `Kol southwest track`. Focused regressions pass
+  in the 106/106 route suite, and route-manager tests pass 111/111. The generic
+  ordering is live-verified after a full Stop/Run as recorded above. Several
+  other queued steps failed but passed same-origin raw probes, notably
+  `(54,15)->RIGHT`, `(93,36)->UP`, and `(93,35)->RIGHT`; keep those as executor
+  timing evidence, not map blockers.
 - 2026-07-22 Hauksness overworld geometry is live-validated end-to-end. The
   hero entered Ruins of Hauksness map `0x03` at `(0,10)`; final status is
   `OVERWORLD_ROUTE: event=status route=none` and

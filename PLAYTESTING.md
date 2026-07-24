@@ -460,9 +460,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(19,23)` with no runtime blocks. Ordinary Kol selection now preserves the
   active `kol_hauksness` variant. Live geometry also proved that the northeast
   bridge approach at `(56,15)` and the Kol southwest-track approach at
-  `(77,18)` must descend before heading east; the return route now encodes both
-  as vertical-first. Several other apparent blocks passed same-origin raw
-  probes and remain classified as executor timing noise rather than map data.
+  `(77,18)` must descend before heading east; the return route encodes both as
+  vertical-first, and generic `kol` now encodes the southwest-track correction
+  as well. After a full script restart, generic Kol guidance from `(54,15)`
+  reached `(74,18)`, descended eight tiles to row 26, then moved ten tiles
+  right to `(84,26)` without attempting `(77,18)->RIGHT`. Several other
+  apparent blocks passed same-origin raw probes and remain classified as
+  executor timing noise rather than map data. The return route's lower-pocket
+  carry recovery is also reload-verified: from the reproduced carry landing
+  `(25,93)`, guidance moved LEFT to column 24 before moving UP twice to
+  `(24,91)`, then advanced to `Hauksness lower pocket` without runtime
+  blockers.
 
 - Kol speech/menu regression follow-up (`2026-06-29`): manual Kol entrance
   checks passed for command-menu open/close, SPELL entry, and ITEM browsing

@@ -509,6 +509,33 @@ function tests.kol_route_heads_north_from_southwest_bridge()
     routes.reset_for_tests()
 end
 
+function tests.kol_route_descends_before_southwest_track()
+    routes.reset_for_tests()
+
+    local start = assert(routes.start("kol", 0x01, 54, 15))
+    assert_equal(start.route.id, "kol", "north bridge start should use the generic Kol route")
+
+    local bridge_waypoints = {
+        {x = 58, y = 18},
+        {x = 59, y = 19},
+        {x = 61, y = 19},
+        {x = 61, y = 18},
+        {x = 74, y = 18},
+    }
+    for _, waypoint in ipairs(bridge_waypoints) do
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    local segment = assert(routes.plan_next_segment(0x01, 77, 18))
+
+    assert_equal(segment.waypoint.name, "Kol southwest track", "generic Kol route should retain the southwest-track target")
+    assert_equal(segment.steps[1], "down", "generic Kol route should descend before the blocked east edge")
+    assert_equal(segment.steps[8], "down", "generic Kol route should finish descending to row 26")
+    assert_equal(segment.steps[9], "right", "generic Kol route should turn east only after reaching row 26")
+
+    routes.reset_for_tests()
+end
+
 function tests.kol_route_follows_live_south_road_jog()
     routes.reset_for_tests()
     routes.start("kol", 0x01, 92, 37)
@@ -1473,6 +1500,25 @@ function tests.kol_hauksness_return_preserves_lower_pocket_recovery()
         routes.observe_position(0x01, waypoint.x, waypoint.y)
         x, y = waypoint.x, waypoint.y
     end
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_hauksness_return_recovers_west_after_lower_drop_carry()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 25, 89)
+
+    routes.observe_position(0x01, 24, 89)
+    routes.observe_position(0x01, 15, 89)
+    routes.observe_position(0x01, 15, 93)
+    routes.observe_position(0x01, 24, 93)
+
+    local segment = assert(routes.plan_next_segment(0x01, 25, 93))
+
+    assert_equal(segment.waypoint.name, "Hauksness lower west pocket", "carry recovery should retain the next return waypoint")
+    assert_equal(segment.steps[1], "left", "carry recovery should return to column 24 before climbing")
+    assert_equal(segment.steps[2], "up", "carry recovery should climb after returning to column 24")
+    assert_equal(segment.steps[3], "up", "carry recovery should reach the lower west pocket")
 
     routes.reset_for_tests()
 end
