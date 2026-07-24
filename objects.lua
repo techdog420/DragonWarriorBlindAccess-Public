@@ -552,7 +552,7 @@ local pathability_status_by_id = {}
 -- Which map we last built the object list for (to detect map changes)
 local current_map_id = nil
 local current_terrain_offset = nil
-local current_combat_flags = nil
+local current_object_state_flags = nil
 
 -- Frame counter for periodic NPC position updates
 local npc_refresh_counter = 0
@@ -599,8 +599,15 @@ local function get_combat_flags()
     return memory.readbyte(addr.COMBAT_FLAGS)
 end
 
+-- COMBAT_FLAGS also contains transient battle-status bits. Only the Gwaelin
+-- escort bit affects the object list, so battle state must not trigger a
+-- same-map full refresh and reset the selected object.
+local function get_object_state_flags()
+    return AND(get_combat_flags(), PRINCESS_GWAELIN_ESCORT_FLAG)
+end
+
 local function princess_gwaelin_is_escorted()
-    return AND(get_combat_flags(), PRINCESS_GWAELIN_ESCORT_FLAG) ~= 0
+    return get_object_state_flags() ~= 0
 end
 
 local function is_overworld_context()
@@ -1978,7 +1985,7 @@ function M.refresh(map_id, opts)
     opts = opts or {}
     current_map_id = map_id
     current_terrain_offset = get_terrain_offset()
-    current_combat_flags = get_combat_flags()
+    current_object_state_flags = get_object_state_flags()
     prewarm_path_grid(map_id)
     object_list = build_object_list(map_id, opts)
     pathability_status_by_id = {}
@@ -2052,24 +2059,24 @@ end
 
 function M.needs_refresh(map_id)
     local terrain_offset = get_terrain_offset()
-    local combat_flags = get_combat_flags()
+    local object_state_flags = get_object_state_flags()
     return refresh_pending
         or map_entry_npc_refresh_checks > 0
         or map_id ~= current_map_id
         or terrain_offset ~= current_terrain_offset
-        or combat_flags ~= current_combat_flags
+        or object_state_flags ~= current_object_state_flags
 end
 
 -- check_refresh(map_id): Called every frame from the main loop.
 -- Handles map-change detection and periodic NPC position refresh.
 function M.check_refresh(map_id)
     local terrain_offset = get_terrain_offset()
-    local combat_flags = get_combat_flags()
+    local object_state_flags = get_object_state_flags()
 
-    -- Full rebuild on map, terrain, or quest/combat flag changes.
+    -- Full rebuild on map, terrain, or object-relevant quest flag changes.
     if map_id ~= current_map_id
        or terrain_offset ~= current_terrain_offset
-       or combat_flags ~= current_combat_flags then
+       or object_state_flags ~= current_object_state_flags then
         M.on_map_change(map_id, {previous_map_id = current_map_id})
         return
     end

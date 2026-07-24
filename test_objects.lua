@@ -648,6 +648,30 @@ function tests.swamp_cave_refreshes_gwaelin_visibility_when_escort_flag_changes(
     env.restore()
 end
 
+function tests.battle_status_flag_changes_preserve_same_map_object_selection()
+    local env = make_env({combat_flags = 0x0A})
+
+    env.set_position(0x03, 0, 10)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x03)
+    env.objects.next_object()
+    assert_equal(
+        env.objects.current_object().id,
+        "landmark_hauksness_axe_knight",
+        "test should begin with the Axe Knight approach selected"
+    )
+
+    env.set_combat_flags(0x0E)
+    env.objects.check_refresh(0x03)
+    assert_equal(
+        env.objects.current_object().id,
+        "landmark_hauksness_axe_knight",
+        "battle-only status flag changes should not reset the object navigator"
+    )
+
+    env.restore()
+end
+
 function tests.terrain_flip_forces_refresh_even_when_map_id_sticks()
     local env = make_env()
 

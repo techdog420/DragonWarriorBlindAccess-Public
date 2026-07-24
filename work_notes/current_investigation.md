@@ -82,6 +82,38 @@ Updated: 2026-07-24
   face release, but the route logged no east movement from `(17,12)`; after the
   user cleared it, a fresh probe confirmed map `0x03`, player `(17,12)`, no
   active path, and the selected landmark still present.
+- EXIT LANDMARK LIVE VERIFIED: `Exit to World Map` is selected at `(0,10)`,
+  stops on the exit cell, releases movement, and faces west. The route reached
+  `(0,10)` from the Axe Knight area with no active path afterward, and
+  `current_object` reported `Exit to World Map: here`. The map-specific
+  passthrough for `(0,10)` is therefore required and working; neighboring
+  boundary cells must not be opened merely because the exit landmark works.
+- OBJECTIVE-TO-EXIT GEOMETRY / SOURCE PROMOTED: same-origin raw probes
+  confirmed eleven directional blockers across nine destination cells:
+  `(11,11).east`, `(11,12).east`, `(5,11).east`, `(5,12).east`,
+  `(5,13).east`, `(6,10).south`, `(7,10).south`, `(5,14).south`, and
+  `(6,14).north/east/south`. The three east approaches at x=5 complement the
+  already verified west approaches on those cells; do not collapse these into
+  unrelated whole-tile blockers without reviewing the directional model.
+  With those approaches loaded, the final detour ran from `(6,15)` two cells
+  south, four west to column 2, seven north to `(2,10)`, then two west to the
+  exit. The eleven approaches are now permanent map `0x03` directional data
+  with focused regression assertions; the two timing controls below and
+  `(6,14).west` remain explicitly open. All 69 map-reader tests and the full
+  Lua syntax/unit-test set pass. A manual FCEUX script reload and compact live
+  objective-to-exit replay remain pending.
+- RETURN TIMING CONTROLS: queued `(6,11)->RIGHT` and `(6,13)->RIGHT` each
+  exhausted entry retries and temporarily looked blocked. Same-origin raw
+  probes crossed both edges and carried to `(8,11)` and `(8,13)`
+  respectively. These are executor timing failures, not map geometry; do not
+  promote either rightward edge.
+- EXIT TRANSITION CONFIRMED: after route completion at `(0,10)`, the latest
+  manual trace first moved north to `(0,9)` and then west. The west step changed
+  to World Map `0x01` at `(25,89)`, with no active route or world-map runtime
+  blockers. Earlier live evidence separately confirmed west from `(0,10)`;
+  the latest trace additionally suggests the western exit boundary spans more
+  than one row. Keep `(0,10)` as the player-facing landmark unless route design
+  requires a reason to expose the broader boundary.
 
 ## 2026-07-22 Hauksness Doorstep Movement-Reset A/B
 
@@ -4116,3 +4148,237 @@ For the next live map task, start a new dated section here with:
   attempted `(77,18)->RIGHT`. The next waypoint was `Kol southwest bridge`.
   Two earlier bridge segments each needed one retry after movement-started
   timing stalls; neither stall was promoted to permanent blocker data.
+
+## 2026-07-24 Object Selection Reset After Battle
+
+- REPRODUCED: in Hauksness, auto-walk targeted `Axe Knight Approach` before
+  three separate battles, but the next auto-walk targeted `Exit to World Map`
+  without a map transition. The full refresh had reset selection to object 1.
+- ROOT CAUSE: `objects.check_refresh()` compared the complete
+  `COMBAT_FLAGS` byte, which also carries transient battle-status bits, and
+  treated those changes like a map or object-state change.
+- PATCHED / LIVE VERIFIED: object refresh detection now compares only
+  the `0x01` Gwaelin escort bit that can actually change object visibility.
+  Map changes, terrain changes, and Gwaelin visibility updates still force the
+  intended rebuild. The new regression preserves the Axe Knight selection
+  across a battle-only `0x0A -> 0x0E` change; all 103 object tests pass.
+  After reload, the Axe Knight and Exit selections each survived battles.
+  The strongest live control was the Wizard battle: Stopspell changed the
+  full combat byte from `0x0A` to `0x2A`, but Exit remained selected.
+
+## 2026-07-24 Hauksness Axe Knight-to-Exit Reverse Route
+
+- START / DESTINATION: began at the defeated Axe Knight square `(18,12)`,
+  selected `Exit to World Map`, and completed at `(0,10)` facing west.
+- NEW DIRECTIONAL BLOCKS: the reverse route found seven blocked approaches
+  across six destination cells:
+  - `(14,11).south`
+  - `(9,12).south`
+  - `(10,10).south`
+  - `(9,10).south`
+  - `(11,11).west`
+  - `(11,12).west`
+  - `(11,12).south`
+- RAW CONFIRMATION: `(10,11)->UP`, `(10,11)->RIGHT`,
+  `(10,12)->RIGHT`, and `(11,13)->UP` each remained at the origin under a
+  fresh 60-frame raw hold. The other three independently failed both queued
+  movement and the same-origin seam retry before runtime injection.
+- RUNTIME VALIDATION: the six-cell directional runtime model produced the
+  final clean segment from `(9,13)`: 1 west, 4 south, 6 west, 7 north,
+  2 west. It reached `(0,10)` without another blocker; the hero's armor healed
+  him from 72 to 92 HP during the segment.
+- SOURCE PROMOTED / LIVE RELOAD PENDING: `map_reader.lua` now contains the
+  seven approaches above, and the focused Hauksness regression covers them.
+  All 69 map-reader tests pass. A full reload and clean planner preview remain
+  before declaring the source-only route model complete.
+
+## 2026-07-24 Hauksness Exit-to-Axe Knight Source Validation
+
+- SOURCE-ONLY BASELINE: after a full script reload at the Hauksness exit
+  `(0,10)`, runtime blocks were empty and all seven reverse-route additions
+  above loaded as effective directional blockers. The source-only planner
+  selected `Axe Knight Approach` and initially found a route of 3 east,
+  3 south, 10 east, 1 north, and 4 east.
+- NEW RAW-CONFIRMED DIRECTIONS: live route failures were followed by
+  same-origin 60-frame raw probes which remained at their origins:
+  - `(15,13).north`, from `(15,12)->DOWN`
+  - `(16,13).north`, from `(16,12)->DOWN`
+  - `(16,13).south`, from `(16,14)->UP`
+  - `(17,13).north`, from `(17,12)->DOWN`
+  - `(17,13).south`, from `(17,14)->UP`
+  - `(18,13).north`, from `(18,12)->DOWN`
+  - `(19,12).west`, from `(18,12)->RIGHT`
+- SOURCE PROMOTED / LIVE RELOAD PENDING: `map_reader.lua` now contains those
+  seven destination-side approaches, and the focused Hauksness test failed
+  RED on the first missing direction before passing all 69 map-reader tests
+  after the minimal data patch.
+- UNCONFIRMED CANDIDATES: keep `(5,11).west`, `(5,12).west`,
+  `(5,13).west`, `(18,13).south`, `(19,14).west`, `(15,14).east`, and
+  `(15,14).south` out of permanent data until a same-origin raw probe confirms
+  each one. Their current evidence is route execution and seam-retry failure
+  only, except `(15,14).east`, which has only one queued block.
+- RUNTIME COMMAND NOTE: `add_blocked_edge:X,Y,DIR` takes the movement origin
+  and direction, not destination-cell approach notation. The two mistaken
+  reverse-direction injections were caught before movement, map `0x03`
+  runtime data was cleared, and only the correct origin-direction forms were
+  re-added. Permanent source data was never affected.
+- CURRENT CHECKPOINT: hero remains in Hauksness at `(15,12)`, field clear.
+  A full script reload is required before source-only inspection and continued
+  route validation.
+
+## 2026-07-24 Hauksness Stat-Corruption Reproduction
+
+- CORRUPTED STATE / DO NOT SAVE: source-only autowalk started clean at
+  Hauksness `(15,12)` with level 17, `HP 100/100`, `MP 43/90`, and
+  `BA-CF=E7 3E EE 20 DF 06 05 45 C3 2D 18 64 2B 11 48 46 64 5A 64 55 FF 11`.
+  The raw log is preserved at
+  `work_notes/hauksness_stat_corruption_20260724.log`.
+- EXACT TRANSITION: the two-step route reached intended safe stand `(17,12)`
+  at frame 6041, but the 16-frame final settle carried one extra cell east to
+  the fixed encounter square `(18,12)`. Frame 6057 was still clean. Between
+  frames 6057 and 6058, bytes `C8,C9,CA,CB,CC,CD,CE` changed to
+  `04 03 0F 00 20 33 00`, yielding `HP 100/15`, `MP 43/0`, Strength 4,
+  Agility 3, and no spells. Battle detection did not occur until frame 6108.
+- ROOT CAUSE: drift recovery at frame 6057 replanned one step west and called
+  `auto_step.start_route()` with `initial_settle_frames=16`. The initial-settle
+  branch unconditionally calls
+  `reset_movement_engine_state("queued_route_initial_settle")`, writing zero
+  to `$003C/$003D`, even though
+  `auto_step_reset_movement_on_route_turn_settle=false`. The corruption
+  appeared on the immediately following frame. This is the same unsafe
+  movement-reset mechanism implicated by the Grave A/B test, exposed through
+  a separate configuration-bypassing initial-settle path.
+- NPC PARKING CONTROL: proactive parking was active for five mobile NPC slots,
+  but guarded NPC writes are confined to `$0051-$008C`; they cannot directly
+  overwrite `$00C8-$00CE`. Parking restoration occurred at frame 6109, after
+  both the frame-6058 stat collapse and frame-6108 battle detection. Keep NPC
+  parking as a possible environmental precondition only; current evidence
+  identifies the immediate trigger as the initial-settle movement reset.
+- CURRENT STATE: the live battle remains corrupted at Hauksness `(18,12)`.
+  Latest snapshot was `HP 4/15`, `MP 43/0`; do not finish or save this fight.
+  Restore the known-good save state before any further live testing.
+- FIX NOT YET IMPLEMENTED: first add a focused `auto_step` regression proving
+  an initial settle waits without writing `$003C/$003D` when movement-reset
+  configuration is disabled. Then remove or gate only the unsafe reset and
+  rerun the focused route from the restored `(15,12)` state.
+- FIX IMPLEMENTED / LIVE VERIFIED: commit `dba1b19` gates the initial-settle
+  movement reset with `auto_step_reset_movement_on_route_turn_settle`. The
+  regression failed RED with two unexpected movement-RAM writes while disabled,
+  then all 136 `auto_step` and 112 route-manager tests passed after the gate.
+  After a full FCEUX Stop/Run, reroutes executed 16-frame initial settles at
+  frames `13362`, `13607`, and `14009`. Snapshots at frames `13980` and `14135`
+  retained level 17, max HP 100, max MP 90, and stat bytes
+  `48 46 64 5A 64 55 FF`; HP changes were normal armor healing. No stat
+  integrity warning appeared, and battle interruption restored all five parked
+  NPC slots.
+- RUNTIME-ONLY FOLLOW-UP: route failure, seam retry, and a same-origin raw UP
+  probe all confirmed `(18,14)->UP` blocked. A deliberate runtime edge at
+  destination `(18,13).south` was added so validation could continue. Later
+  failures at `(18,14)->RIGHT` and `(15,15)->UP` caused safe reroutes and
+  exercised the patched initial-settle path, but remain temporary route
+  evidence pending same-origin probes.
+- `(18,13).south` PROMOTED: the focused Hauksness assertion failed RED with
+  `expected true, got nil`; `map_reader.lua` now adds the one confirmed
+  approach beside the existing `(18,13).north` entry. All 69 map-reader tests
+  pass and both changed Lua files byte-compile.
+- SAFE APPROACH REACHED: after the Starwyvern battle, source plus the one
+  runtime edge routed from `(12,15)` through `(12,12)` and east along row 12.
+  It completed at `(17,12)`, faced east, released movement, and did not
+  overshoot onto `(18,12)`. Final snapshot retained clean level-17 stats,
+  `HP 100/100`, `MP 57/90`, no active path, and one runtime block.
+
+## 2026-07-24 Hauksness Updated Axe Knight-to-Exit Validation
+
+- NEW RAW-CONFIRMED DIRECTIONS: the updated reverse route stopped on each
+  approach, the built-in seam retry stayed blocked where applicable, and a
+  same-origin 60-frame raw probe then remained at its origin:
+  - `(17,8).south`, from `(17,9)->UP`
+  - `(18,9).west`, from `(17,9)->RIGHT`
+  - `(18,10).west`, from `(17,10)->RIGHT`
+  - `(17,11).north`, from `(17,10)->DOWN`
+  - `(17,11).west`, from `(16,11)->RIGHT`
+  - `(18,11).south`, from `(18,12)->UP`
+- TIMING FALSE POSITIVE KEPT OPEN: queued movement from `(17,10)->LEFT`
+  reported `(16,10).east` blocked, but the same-origin raw probe moved cleanly
+  into `(16,10)`. The move triggered a Starwyvern battle, but it is valid
+  movement evidence and no map entry was added.
+- SOURCE AND TESTS: each new approach first failed the focused Hauksness
+  regression with `expected true, got nil`, then passed after the minimal
+  `map_reader.lua` change. The final source model passes all 69 map-reader
+  tests; `map_reader.lua` and `test_map_reader.lua` byte-compile and
+  `git diff --check` is clean.
+- LIVE ROUTE COMPLETED: runtime mirrors for the newly promoted edges produced
+  a clean route from `(18,12)` west through row 12, then around the southern
+  lane. Battles interrupted at `(9,15)` and `(6,17)`, but the final 13-step
+  segment from `(6,17)` moved 4 west, 7 north, and 2 west without a blocker.
+  Autowalk completed at exit stand `(0,10)`, faced west, restored all five
+  parked NPC slots, and retained clean level-17 stats. Final snapshot:
+  `HP 70/100`, `MP 43/90`.
+- SOURCE-ONLY RELOAD PENDING: the source additions made during this pass still
+  require a full FCEUX Stop/Run followed by a clean route preview or replay
+  with no runtime overlay before declaring the updated reverse route model
+  fully source-validated.
+
+## 2026-07-24 Hauksness Exit-to-Axe Knight Discovery Completion
+
+- SOURCE-ONLY START / RUNTIME-ASSISTED FINISH: the pass began after a full
+  reload at exit `(0,10)` with no runtime blockers. Each new route failure was
+  tested with a same-origin 60-frame raw probe before its exact destination
+  approach was promoted and mirrored into the still-running session.
+- NEW RAW-CONFIRMED DIRECTIONS:
+  - `(5,11).west`, `(5,12).west`, and `(5,13).west`
+  - `(9,8).north`
+  - `(17,8).west` and `(15,8).east`
+  - `(7,8).north`
+  - `(6,8).north` and `(6,8).west`
+  - `(5,9).north`
+  - `(15,14).south` and `(15,14).east`
+  - `(19,14).west`
+  - `(19,15).west` and `(19,15).south`
+  - `(17,16).east`
+  - `(18,17).north`
+- LIVE COMPLETION: after the final blocker was mirrored, the last segment from
+  `(12,15)` moved 3 north and 5 east without another failure. Autowalk reached
+  safe stand `(17,12)`, faced east toward the fixed Axe Knight square, restored
+  all five parked NPC slots, and retained clean level-17 stats. Final snapshot:
+  `HP 100/100`, `MP 1/90`, runtime blocker count 14.
+- TEST STATUS: every new approach first failed the focused Hauksness assertion
+  before its source patch. The final model passes all 69 map-reader tests;
+  both Lua files byte-compile and `git diff --check` is clean.
+- NEXT CHECK: perform a full FCEUX Stop/Run at `(17,12)` to clear the runtime
+  overlay. Validate the source-only route back to exit, then return to exit and
+  replay exit-to-Axe Knight source-only before declaring both directions
+  complete.
+
+## 2026-07-24 Hauksness Bidirectional Source Validation Complete
+
+- FINAL REVERSE DISCOVERY: the pre-reload Axe Knight-to-exit pass found
+  `(12,14)->LEFT` blocked. A same-origin 60-frame raw probe remained at
+  `(12,14)` with `npc_blocked=false` and `reason=raw_hold_timeout`, confirming
+  destination approach `(11,14).east`. The focused Hauksness regression failed
+  RED before `map_reader.lua` added that direction, then all 69 map-reader
+  tests passed.
+- SOURCE-ONLY FORWARD: after a full Stop/Run at exit `(0,10)`,
+  `RUNTIME_BLOCKS map=0x03 none`. The planner used 3 east, 7 south, 5 east,
+  4 north, 5 east, 1 north, and 4 east. A Starwyvern interrupted at `(1,10)`;
+  after combat, guidance resumed and completed at safe stand `(17,12)`, faced
+  east toward the fixed encounter, restored all four parked NPC slots with
+  zero deferred, and still reported no runtime blockers. The completion
+  snapshot retained full HP/MP and clean level-17 stats.
+- SOURCE-ONLY REVERSE: without another reload or runtime injection, the
+  planner used 5 west, 3 south, 6 west, 2 south, 4 west, 7 north, and 2 west.
+  Starwyvern and Werewolf battles interrupted at `(10,15)` and `(2,12)`;
+  each resumed from a clean field state. Guidance completed at exit `(0,10)`,
+  faced west, restored all four parked NPC slots with zero deferred, and kept
+  `RUNTIME_BLOCKS map=0x03 none`. Final snapshot: `HP 89/100`, `MP 78/90`,
+  level-17 stats `STR=0x48 AGI=0x46 ATK=0x64 DEF=0x55`.
+- DIALOGUE FOLLOW-UP: the Starwyvern battle at `(10,15)` produced another
+  overlapping spell-text sample, including fragments of STOPSPELL, REPEL,
+  HEALMORE, and recovery text in one announcement. Preserve this as evidence
+  for the later coordinate-sensitive battle-dialogue tuning pass; it did not
+  affect route or stat validation.
+- RESULT: the Hauksness entrance-to-Axe Knight objective route and its return
+  are live-validated in both directions from loaded source with no runtime
+  blocker overlay. The exit and safe-approach landmarks, directional map
+  model, NPC parking/restoration, and movement-reset corruption fix all held
+  through combat interruptions.
