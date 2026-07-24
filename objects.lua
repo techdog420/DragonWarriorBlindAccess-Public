@@ -596,7 +596,14 @@ local function is_overworld_context()
     return get_terrain_offset() == 0x00
 end
 
-local function current_context_allows_npcs()
+local MAPS_WITHOUT_NPCS = {
+    [0x03] = true, -- Ruins of Hauksness uses town terrain but has no NPCs.
+}
+
+local function current_context_allows_npcs(map_id)
+    if map_id ~= nil and MAPS_WITHOUT_NPCS[map_id] then
+        return false
+    end
     local terrain_offset = get_terrain_offset()
     -- Dungeon/cave maps do not expose a usable NPC table. Town/castle NPC RAM
     -- can linger after map entry, so keep live NPC parsing to interior maps
@@ -686,7 +693,7 @@ local function remember_accepted_npc_signature(map_id, signature)
 end
 
 function M.observe_npcs(map_id)
-    if map_id == nil or is_overworld_context() then
+    if map_id == nil or not current_context_allows_npcs(map_id) then
         return
     end
     remember_accepted_npc_signature(map_id, read_npc_signature())
@@ -754,7 +761,7 @@ local function parse_npcs(map_id)
     -- Only town/castle interiors expose useful NPC RAM for object browsing.
     -- Overworld and dungeon/cave contexts can retain stale NPC bytes from the
     -- previous map, so never turn those bytes into current-map objects.
-    if not current_context_allows_npcs() then
+    if not current_context_allows_npcs(map_id) then
         return {}
     end
 
@@ -1954,7 +1961,7 @@ end
 
 function M.on_map_change(map_id, opts)
     opts = opts or {}
-    local allows_npcs = current_context_allows_npcs()
+    local allows_npcs = current_context_allows_npcs(map_id)
     local stale_npc_signature = nil
     local npc_refresh_checks = 0
     if allows_npcs then

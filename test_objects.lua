@@ -366,6 +366,22 @@ function tests.dungeon_refresh_drops_stale_town_npcs()
     env.restore()
 end
 
+function tests.hauksness_never_exposes_stale_town_npc_ram()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x03, 0, 10)
+    env.set_terrain_offset(0x10)
+    env.objects.on_map_change(0x03, {previous_map_id = 0x01})
+
+    for _ = 1, 100 do
+        env.objects.check_refresh(0x03)
+    end
+
+    assert_equal(#env.objects.get_blocking_positions(), 0, "Hauksness should not turn unused town NPC RAM into blockers")
+
+    env.restore()
+end
+
 function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     local env = make_env()
 
