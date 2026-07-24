@@ -1322,6 +1322,27 @@ local EXTRA_TREASURES = {
     },
 }
 
+-- Static local-map landmarks that belong under Travel but are not exits,
+-- stairs, NPCs, or treasure objects.
+local EXTRA_LANDMARKS = {
+    -- Hauksness fixed encounter. Route to the safe west stand and leave the
+    -- final east step under player control. The buried reward intentionally
+    -- remains absent from player-facing object data.
+    [0x03] = {
+        {
+            x = 18,
+            y = 12,
+            name = "Axe Knight Approach",
+            type = M.TYPE_EXIT,
+            id = "landmark_hauksness_axe_knight",
+            interaction_x = 17,
+            interaction_y = 12,
+            interaction_face_dir = "east",
+            interaction_label = "safe approach",
+        },
+    },
+}
+
 local SERVICE_INTERACTION_OVERRIDES = {
     -- Tantegel Castle MP-restoring Sage. The NPC occupies (20,26), but the
     -- live TALK trigger works from the public west-side stand at (18,26)
@@ -1777,6 +1798,10 @@ local function get_static_objects(map_id)
         append_objects(objects, extra)
     end
     extra = EXTRA_TREASURES[map_id]
+    if extra then
+        append_objects(objects, extra)
+    end
+    extra = EXTRA_LANDMARKS[map_id]
     if extra then
         append_objects(objects, extra)
     end

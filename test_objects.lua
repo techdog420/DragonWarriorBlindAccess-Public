@@ -384,6 +384,58 @@ function tests.hauksness_never_exposes_stale_town_npc_ram()
     env.restore()
 end
 
+function tests.hauksness_exposes_safe_axe_knight_travel_landmark_without_treasure_hint()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x03, 17, 12)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x03)
+
+    local id = "landmark_hauksness_axe_knight"
+    local landmark = env.objects.find_object_by_id(id)
+    assert_equal(landmark ~= nil, true, "Hauksness should expose the fixed Axe Knight approach")
+    assert_equal(landmark.name, "Axe Knight Approach", "encounter landmark should use the approved player-facing name")
+    assert_equal(landmark.type, env.objects.TYPE_EXIT, "encounter landmark should reuse the Travel-compatible type")
+    assert_equal(landmark.x, 18, "encounter landmark should retain the fixed battle X")
+    assert_equal(landmark.y, 12, "encounter landmark should retain the fixed battle Y")
+    assert_equal(landmark.interaction_x, 17, "encounter landmark should route to the safe west stand X")
+    assert_equal(landmark.interaction_y, 12, "encounter landmark should route to the safe west stand Y")
+    assert_equal(landmark.interaction_face_dir, "east", "safe stand should face east toward the encounter")
+    assert_equal(landmark.interaction_label, "safe approach", "object speech should identify the preparation point")
+    assert_equal(
+        env.objects.describe_object(landmark),
+        "Axe Knight Approach: 1 east, safe approach here",
+        "object speech should identify the encounter and safe stand without naming the reward"
+    )
+
+    local expected_by_filter = {
+        [env.objects.FILTER_ALL] = true,
+        [env.objects.FILTER_NPC] = false,
+        [env.objects.FILTER_SERVICE] = false,
+        [env.objects.FILTER_TREASURE] = false,
+        [env.objects.FILTER_TRAVEL] = true,
+        [env.objects.FILTER_DOOR] = false,
+    }
+    for filter, expected in pairs(expected_by_filter) do
+        env.objects.set_filter(filter)
+        assert_equal(
+            env.objects.find_object_by_id(id, {filtered = true}) ~= nil,
+            expected,
+            "Axe Knight approach filter membership should match the approved design"
+        )
+    end
+
+    env.objects.set_filter(env.objects.FILTER_TREASURE)
+    assert_equal(env.objects.get_count(), 0, "Hauksness should not expose the buried armor under Treasure")
+
+    local exposed = (landmark.name .. " " .. env.objects.describe_object(landmark)):lower()
+    assert_equal(exposed:find("armor", 1, true), nil, "landmark speech should not name the armor")
+    assert_equal(exposed:find("erdrick", 1, true), nil, "landmark speech should not name the reward")
+    assert_equal(exposed:find("search", 1, true), nil, "landmark speech should not suggest SEARCH")
+
+    env.restore()
+end
+
 function tests.erdricks_cave_static_stairs_use_live_confirmed_coordinates()
     local env = make_env()
 

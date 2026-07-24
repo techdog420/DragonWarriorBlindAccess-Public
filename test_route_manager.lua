@@ -1599,6 +1599,72 @@ function tests.service_interaction_goal_routes_to_counter_tile_and_faces_service
     env.restore()
 end
 
+function tests.hauksness_axe_knight_landmark_stops_at_safe_approach_and_faces_east()
+    local landmark = {
+        id = "landmark_hauksness_axe_knight",
+        name = "Axe Knight Approach",
+        type = "exit",
+        x = 18,
+        y = 12,
+        interaction_x = 17,
+        interaction_y = 12,
+        interaction_face_dir = "east",
+        interaction_label = "safe approach",
+    }
+    local env = make_env({
+        start_map_id = 0x03,
+        start_x = 15,
+        start_y = 12,
+        map_width = 20,
+        map_height = 20,
+        current_object = landmark,
+        object_list = {landmark},
+        config_values = {
+            auto_walk_face_target_frames = "1",
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            if goal_x == 17 and goal_y == 12 then
+                return "Path: 2 east", "east",
+                    make_path_from_dirs(start_x, start_y, {"east", "east"})
+            end
+            return "No path found", nil, nil
+        end,
+    })
+
+    local plan = env.route_manager.plan_path_to_object(landmark)
+    local direct = env.last_direct_call()
+    assert_equal(plan.interaction_goal, true, "Axe Knight route should use the safe interaction stand")
+    assert_equal(plan.goal_x, 17, "Axe Knight route should stop west of the encounter")
+    assert_equal(plan.goal_y, 12, "Axe Knight route should stay on the encounter row")
+    assert_equal(plan.face_dir, "east", "Axe Knight route should finish facing the encounter")
+    assert_equal(direct.goal_x, 17, "pathfinder should target the safe stand X")
+    assert_equal(direct.goal_y, 12, "pathfinder should target the safe stand Y")
+    for _, step in ipairs(plan.path) do
+        assert_equal(
+            step.x == 18 and step.y == 12,
+            false,
+            "planned movement must not include the combat trigger tile"
+        )
+    end
+
+    local queued = env.route_manager.autowalk_to_current()
+    local steps = env.last_start_route_steps()
+    assert_equal(queued.status, "queued", "Axe Knight approach should queue a normal route")
+    assert_equal(#steps, 2, "Axe Knight approach should queue only the two safe east steps")
+    assert_equal(steps[1], "right", "first queued step should move toward the safe stand")
+    assert_equal(steps[2], "right", "final queued step should land on the safe stand")
+
+    env.auto_step.on_route_complete()
+    env.route_manager.apply_npc_freeze()
+    assert_equal(
+        env.joypad_sets[#env.joypad_sets].buttons.right,
+        true,
+        "arrival should face east without taking another movement step"
+    )
+
+    env.restore()
+end
+
 function tests.rimuldar_path_marks_only_the_cadence_entry_step()
     local target = {id = "exit_test", name = "Test destination", type = "exit", x = 1, y = 1}
     local path = {
