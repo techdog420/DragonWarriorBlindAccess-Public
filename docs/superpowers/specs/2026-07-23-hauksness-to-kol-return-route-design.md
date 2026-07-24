@@ -48,6 +48,13 @@ object when the player is near Hauksness. Recalculation will also be able to
 switch between `kol_hauksness`, `kol`, `kol_rain_shrine`, and
 `kol_swamp_cave` when the player's location makes another variant nearer.
 
+The Hauksness variant is eligible for automatic selection only through its
+unique route section ending at Garinham outskirts. A route-local
+`selection_max_index` enforces that handoff during route-start scoring so the
+long reversed route cannot steal existing shared Kol-road starts. This
+selection constraint does not truncate an already active route; its complete
+waypoint chain remains available through Kol.
+
 No new command, Travel object, route-manager branch, or automatic route
 handoff is required.
 
