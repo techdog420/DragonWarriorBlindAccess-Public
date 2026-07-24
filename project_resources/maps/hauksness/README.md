@@ -122,9 +122,9 @@ into source map data.
 
 1. Promote the clean same-origin blocker batch into map `0x03` directional
    data with focused regression assertions.
-2. Expose `Axe Knight Approach` under Travel, using `(18,12)` only as the
-   internal subject and routing to the safe preparation tile `(17,12)` facing
-   east.
+2. Expose `Axe Knight Approach` under All and Travel only, using `(18,12)`
+   only as the internal subject and routing to the safe preparation tile
+   `(17,12)` facing east.
 3. Keep the buried armor entirely out of player-facing object browsing,
    Treasure filtering, route speech, and SEARCH guidance.
 4. Ensure autowalk does not convert the scripted `(17,12)->RIGHT` encounter
@@ -135,7 +135,7 @@ into source map data.
 
 The fixed Axe Knight is useful as a nonvisual maze landmark even though the
 game draws no enemy sprite on the tile. Expose only the persistent
-`Axe Knight Approach` Travel landmark and stop at `(17,12)` facing east. The
-buried armor remains an intentional secret: do not add its tile under
-Treasure, name the reward, suggest SEARCH, or automate the final encounter
-step.
+`Axe Knight Approach` landmark under All and Travel only, and stop at
+`(17,12)` facing east. The buried armor remains an intentional secret: do not
+add its tile under Treasure, name the reward, suggest SEARCH, or automate the
+final encounter step.
