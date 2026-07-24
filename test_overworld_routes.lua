@@ -1399,6 +1399,150 @@ function tests.entering_hauksness_stops_route()
     routes.reset_for_tests()
 end
 
+function tests.kol_route_from_hauksness_uses_hauksness_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("kol", 0x01, 25, 89)
+
+    assert_equal(err, nil, "Kol alias should resolve outside Hauksness")
+    assert_equal(info.route.id, "kol_hauksness", "route should use the Hauksness return variant")
+    assert_equal(info.object_id, "route_kol_hauksness_02", "Hauksness exit should target the west doorstep")
+    assert_contains(info.message, "Hauksness doorstep west", "route should begin by leaving the ruins westward")
+
+    local segment = assert(routes.plan_next_segment(0x01, 25, 89))
+    assert_equal(segment.waypoint.name, "Hauksness doorstep west", "first segment should target the west doorstep")
+    assert_equal(segment.steps[1], "left", "first return step should move west away from Hauksness")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_object_from_hauksness_uses_hauksness_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
+    }, 0x01, 25, 89)
+
+    assert_equal(err, nil, "Kol Travel object should start from Hauksness")
+    assert_equal(info.route.id, "kol_hauksness", "ordinary Kol object should choose the Hauksness return route")
+    assert_equal(info.object_id, "route_kol_hauksness_02", "Kol object should target the local west doorstep")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_hauksness_return_preserves_lower_pocket_recovery()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 25, 89)
+
+    local expected = {
+        {x = 24, y = 89, name = "Hauksness doorstep west", first = "left"},
+        {x = 15, y = 89, name = "Hauksness west approach", first = "left"},
+        {x = 15, y = 93, name = "Hauksness lower west lane", first = "down"},
+        {x = 24, y = 93, name = "Hauksness lower west drop", first = "right"},
+        {x = 24, y = 91, name = "Hauksness lower west pocket", first = "up"},
+        {x = 26, y = 91, name = "Hauksness lower pocket", first = "right"},
+        {x = 26, y = 90, name = "Hauksness lower south bend", first = "up"},
+        {x = 26, y = 88, name = "Hauksness lower east lane", first = "up"},
+        {x = 15, y = 88, name = "Hauksness west approach lower lane", first = "left"},
+    }
+
+    local x, y = 25, 89
+    for _, waypoint in ipairs(expected) do
+        local segment = assert(routes.plan_next_segment(0x01, x, y))
+        assert_equal(segment.waypoint.name, waypoint.name, "return route should preserve the lower-pocket recovery chain")
+        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+        x, y = waypoint.x, waypoint.y
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_hauksness_return_uses_reverse_desert_shelf_guard()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 15, 28)
+
+    local segment = assert(routes.plan_next_segment(0x01, 16, 28))
+
+    assert_equal(segment.waypoint.name, "Western desert east shelf", "return route should target the validated north shelf")
+    assert_equal(segment.steps[1], "left", "x16 return approach should correct west before moving north")
+    assert_equal(segment.steps[2], "up", "return route should move north only after reaching x15")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_hauksness_return_uses_live_proven_ridge_gap()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 7, 14)
+
+    local expected = {
+        {x = 5, y = 14, name = "Hauksness coast lower bend", first = "left"},
+        {x = 5, y = 13, name = "Hauksness coast lower east step", first = "up"},
+        {x = 4, y = 13, name = "Hauksness coast south step", first = "left"},
+        {x = 4, y = 12, name = "Hauksness coast east step", first = "up"},
+        {x = 3, y = 12, name = "Hauksness ridge lower coast", first = "left"},
+        {x = 3, y = 7, name = "Hauksness ridge west gap", first = "up"},
+        {x = 5, y = 7, name = "Hauksness ridge west notch", first = "right"},
+        {x = 5, y = 6, name = "Hauksness ridge west turn", first = "up"},
+        {x = 7, y = 6, name = "Hauksness ridge upper lip", first = "right"},
+        {x = 7, y = 4, name = "Hauksness north road", first = "up"},
+    }
+
+    local x, y = 7, 14
+    for _, waypoint in ipairs(expected) do
+        local segment = assert(routes.plan_next_segment(0x01, x, y))
+        assert_equal(segment.waypoint.name, waypoint.name, "return ridge should use the live-proven western gap")
+        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+        x, y = waypoint.x, waypoint.y
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_variants_recalculate_to_and_from_hauksness()
+    local starts = {
+        {alias = "kol", x = 43, y = 43},
+        {alias = "kol from rain shrine", x = 81, y = 1},
+        {alias = "kol from swamp cave", x = 104, y = 44},
+    }
+
+    for _, start in ipairs(starts) do
+        routes.reset_for_tests()
+        routes.start(start.alias, 0x01, start.x, start.y)
+
+        local info = routes.recalculate(0x01, 25, 89)
+
+        assert_equal(info.route.id, "kol_hauksness", start.alias .. " should recalculate to the Hauksness return variant")
+        assert_equal(info.object_id, "route_kol_hauksness_02", "recalculation should target the local west doorstep")
+    end
+
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 25, 89)
+
+    local swamp = routes.recalculate(0x01, 104, 44)
+
+    assert_equal(swamp.route.id, "kol_swamp_cave", "Hauksness variant should recalculate to the nearer Swamp Cave return")
+
+    routes.reset_for_tests()
+end
+
+function tests.entering_kol_stops_hauksness_return_route()
+    routes.reset_for_tests()
+    routes.start("hauksness to kol", 0x01, 25, 89)
+
+    local event = routes.observe_position(0x07, 0, 0)
+
+    assert_contains(event.message, "Arrived at Kol", "entering Kol should complete the Hauksness return route")
+    assert_equal(event.refresh, true, "Kol arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "route should stop after entering Kol")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
