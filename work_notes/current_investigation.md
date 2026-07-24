@@ -64,9 +64,9 @@ Updated: 2026-07-24
   `DB->DF`, decoding Magic Armor to Erdrick's Armor; defense changed
   `0x4D->0x51` (`77->81`), while quest flags remained `0x42`.
   The generic object list still reports no object on the tile. The approved
-  follow-up is a persistent `Axe Knight Approach` Travel landmark that stops at
-  `(17,12)` facing east; keep the buried armor and SEARCH action out of
-  player-facing object data.
+  follow-up is a persistent `Axe Knight Approach` landmark under All and
+  Travel only that stops at `(17,12)` facing east; keep the buried armor and
+  SEARCH action out of player-facing object data.
 - VISUAL BEHAVIOR: local labeled and unlabeled map references show `(18,12)`
   as a lone green tree behind the eastern ruins, not a visible Axe Knight
   sprite. Live tile decoding remains town tile type `8` after the battle and
