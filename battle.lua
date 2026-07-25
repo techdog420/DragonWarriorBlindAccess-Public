@@ -174,6 +174,11 @@ function M.normalize_dialogue(text)
 
     -- Border redraw noise often shows up as dot runs between real words.
     normalized = normalized:gsub("%.%.+", " ")
+    -- Horizontal nametable alignment can place a border dot directly after a
+    -- word while the battle window redraws. These two forms are continuations,
+    -- not sentence boundaries.
+    normalized = normalized:gsub("Hit%.%s+Points", "Hit Points")
+    normalized = normalized:gsub("(%l)%.%s+(%l)", "%1 %2")
     normalized = normalized:gsub("(%a)%s+%.%s+(%a)", "%1 %2")
     normalized = normalized:gsub("%s+%.([A-Z])", " %1")
     normalized = normalized:gsub("%s+%.([a-z])", " %1")
