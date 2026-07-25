@@ -627,6 +627,8 @@ local function begin_step(dir, px, py, state)
         step_index = tonumber(state.entry_step_index),
         hold_after_movement_start = state.hold_after_movement_start == true,
         hold_after_movement_start_frames = tonumber(state.hold_after_movement_start_frames),
+        guarded_twitch_recovery =
+            state.guarded_twitch_recovery == true,
         committed_frames = committed_frames,
         committed_frames_remaining = committed_frames - 1,
     } or nil
@@ -1006,6 +1008,7 @@ local function schedule_turn_repress(dir, guarded_twitch)
             source = auto_step_source or "queued_route",
             release_after_inject_limit = false,
             hold_after_movement_start = false,
+            guarded_twitch_recovery = true,
             entry_prime_waveform = true,
             entry_prime_pending = false,
             entry_prime_frames = 1,
@@ -1720,7 +1723,19 @@ local function handle_active_auto_step(joy, px, py, timeout)
             auto_start_subpixel or -1,
             current_subpixel or -1,
             tostring(route_steps ~= nil)))
-        if entry_committed_frames_remaining > 0 then
+        if auto_entry_waveform
+           and auto_entry_waveform.guarded_twitch_recovery == true then
+            auto_entry_waveform.committed_frames_remaining = 0
+            debug_tools.info(string.format(
+                "AUTO_STEP_GUARDED_TWITCH_RELEASE from=(%d,%d) dir=%s frame=%d subpixel=0x%02X->0x%02X",
+                auto_start_x or -1,
+                auto_start_y or -1,
+                tostring(auto_dir),
+                auto_frames or -1,
+                auto_start_subpixel or -1,
+                current_subpixel or -1))
+            neutralize_direction(joy, "neutral")
+        elseif entry_committed_frames_remaining > 0 then
             -- The marked cadence owns its complete bounded press.
             neutralize_direction(nil, auto_dir)
             auto_entry_waveform.committed_frames_remaining = entry_committed_frames_remaining - 1
