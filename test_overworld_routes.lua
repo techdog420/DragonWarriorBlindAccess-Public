@@ -1931,7 +1931,10 @@ end
 
 function tests.entering_hauksness_stops_cantlin_variant()
     routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 73, 103)
+    local info, err = routes.start("cantlin to hauksness", 0x01, 73, 103)
+
+    assert_equal(err, nil, "Cantlin Hauksness alias should start before destination arrival")
+    assert_equal(info.route.id, "hauksness_cantlin", "Cantlin Hauksness alias should select the local variant")
 
     local event = routes.observe_position(0x03, 0, 0)
 
