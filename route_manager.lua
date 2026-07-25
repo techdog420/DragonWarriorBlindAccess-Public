@@ -3731,14 +3731,12 @@ function M.autowalk_overworld_segment(opts)
     last_pathfind_obj = nil
     reroute_failures = 0
 
-    local accept_final_drift = not (
-        segment.waypoint
-        and segment.waypoint.route_accept_final_drift_completion == false)
     if not queue_overworld_segment_steps(segment.steps, {
         route_early_twitch_timeout_frames = segment.waypoint and segment.waypoint.route_early_twitch_timeout_frames,
         route_hold_after_movement_start_frames = segment.waypoint and segment.waypoint.route_hold_after_movement_start_frames,
         route_reset_movement_on_turn_settle = segment.waypoint and segment.waypoint.route_reset_movement_on_turn_settle,
-        route_accept_final_drift_completion = accept_final_drift,
+        route_final_carry_x = segment.route_final_carry_x,
+        route_final_carry_y = segment.route_final_carry_y,
     }) then
         debug_tools.error(string.format(
             "OVERWORLD_AUTO_WALK: event=queue_failed route=%s waypoint=%s index=%s steps=%d",
@@ -3763,13 +3761,15 @@ function M.autowalk_overworld_segment(opts)
         waypoint_y = segment.waypoint and segment.waypoint.y or nil,
         index = segment.index,
         steps = #segment.steps,
+        route_final_carry_x = segment.route_final_carry_x,
+        route_final_carry_y = segment.route_final_carry_y,
     }
     set_active_route_context(overworld_segment_target(segment), #segment.steps, nil, {
         post_arrival_actions = false,
         speak = false,
     })
     debug_tools.info(string.format(
-        "OVERWORLD_AUTO_WALK: event=start route=%s waypoint=%s index=%s steps=%d from=(%d,%d) to=(%s,%s)",
+        "OVERWORLD_AUTO_WALK: event=start route=%s waypoint=%s index=%s steps=%d from=(%d,%d) to=(%s,%s) carry=(%s,%s)",
         tostring(active_overworld_segment.route_id or "-"),
         tostring(active_overworld_segment.waypoint_name or "-"),
         tostring(active_overworld_segment.index),
@@ -3777,7 +3777,9 @@ function M.autowalk_overworld_segment(opts)
         px or -1,
         py or -1,
         tostring(active_overworld_segment.waypoint_x),
-        tostring(active_overworld_segment.waypoint_y)))
+        tostring(active_overworld_segment.waypoint_y),
+        tostring(active_overworld_segment.route_final_carry_x),
+        tostring(active_overworld_segment.route_final_carry_y)))
     segment.status = "queued"
     segment.ok = true
     if opts.speak ~= false then
@@ -3910,7 +3912,8 @@ queue_overworld_segment_steps = function(steps, opts)
         route_early_twitch_timeout_frames = opts.route_early_twitch_timeout_frames,
         route_hold_after_movement_start_frames = opts.route_hold_after_movement_start_frames,
         route_reset_movement_on_turn_settle = opts.route_reset_movement_on_turn_settle,
-        route_accept_final_drift_completion = opts.route_accept_final_drift_completion,
+        route_final_carry_x = opts.route_final_carry_x,
+        route_final_carry_y = opts.route_final_carry_y,
     }) then
         active_route_settle_frames = 0
         active_route_settle_same_direction = true
@@ -4864,13 +4867,15 @@ auto_step.on_route_cancelled = function(cancel_data)
     local had_target = active_route_target or last_pathfind_obj
     if overworld_segment then
         debug_tools.info(string.format(
-            "OVERWORLD_AUTO_WALK: event=cancel route=%s waypoint=%s index=%s reason=%s current=(%s,%s)",
+            "OVERWORLD_AUTO_WALK: event=cancel route=%s waypoint=%s index=%s reason=%s current=(%s,%s) expected_carry=(%s,%s)",
             tostring(overworld_segment.route_id or "-"),
             tostring(overworld_segment.waypoint_name or "-"),
             tostring(overworld_segment.index),
             tostring(reason),
             tostring(cancel_data and cancel_data.current_x),
-            tostring(cancel_data and cancel_data.current_y)))
+            tostring(cancel_data and cancel_data.current_y),
+            tostring(overworld_segment.route_final_carry_x),
+            tostring(overworld_segment.route_final_carry_y)))
         clear_active_route_context("overworld auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
         if reason ~= "can_walk_false" then
             tolk.output_interrupt("Overworld auto-walk cancelled. " .. tostring(message or reason))

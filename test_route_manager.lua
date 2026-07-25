@@ -821,6 +821,8 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
             },
             index = 14,
             steps = {"up", "left", "left", "left"},
+            route_final_carry_x = 16,
+            route_final_carry_y = 5,
             message = "Auto-walk to Garinham east ridge, 1 north, 3 west. 4 step(s).",
             object_id = "route_garinham_14",
         },
@@ -850,11 +852,56 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
         "overworld segment should forward waypoint-specific movement-reset timing"
     )
     assert_equal(
+        env.last_start_route_opts().route_final_carry_x,
+        16,
+        "overworld segment should forward the allowed carry column"
+    )
+    assert_equal(
+        env.last_start_route_opts().route_final_carry_y,
+        5,
+        "overworld segment should forward the allowed carry row"
+    )
+    assert_equal(
         env.last_start_route_opts().route_accept_final_drift_completion,
-        true,
-        "overworld segments should enable guarded final-drift completion by default"
+        nil,
+        "overworld segment should not use broad same-direction carry"
     )
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk", "overworld auto-walk should be announced")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_keeps_final_segment_strict()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 24,
+        start_y = 89,
+        current_object = {
+            id = "route_hauksness_final",
+            name = "Route next: Hauksness",
+            type = "exit",
+            x = 25,
+            y = 89,
+        },
+        overworld_segment = {
+            route = {id = "hauksness", title = "Hauksness"},
+            waypoint = {name = "Hauksness", x = 25, y = 89, final = true},
+            index = 1,
+            steps = {"right"},
+            message = "Auto-walk to Hauksness, 1 east. 1 step.",
+            object_id = "route_hauksness_final",
+        },
+    })
+
+    local plan = env.route_manager.autowalk_to_current()
+    local opts = env.last_start_route_opts()
+
+    assert_equal(plan.status, "queued", "final overworld segment should queue")
+    assert_equal(opts.route_final_carry_x, nil,
+        "final segment should not pass a carry column")
+    assert_equal(opts.route_final_carry_y, nil,
+        "final segment should not pass a carry row")
 
     env.restore()
 end
