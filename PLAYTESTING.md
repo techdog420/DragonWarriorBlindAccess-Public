@@ -1,10 +1,37 @@
 # Playtesting Notes
 
-Updated: 2026-07-20
+Updated: 2026-07-25
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Route-aware overworld carry recovery (`2026-07-25`): the user confirmed the
+  Hauksness guidance completed in both directions after loading the final
+  source. A fresh post-run probe tagged
+  `AUTOWALK_ROUTE_CARRY_20260725` confirmed World Map `(20,88)`, no active
+  path, no runtime blocks, neutral controller byte `0x00`, and intact level-17
+  stats: HP `94/100`, MP `40/90`, Strength `72`, Agility `70`, Attack `100`,
+  Defense `85`, spells `0xFF/0x11`. The fresh log contains no stat-integrity
+  transition/warning or movement-reset line. The pre-restart route log was not
+  preserved, so do not claim a natural
+  `AUTO_STEP_GUARDED_TWITCH_RELEASE` or
+  `AUTO_STEP_FINAL_CARRY_ACCEPTED` occurrence from this pass, and no preserved
+  final-segment log proves strict `carry=(nil,nil)` arrival. Exact guarded
+  release, carry acceptance/rejection, and strict-final behavior remain
+  deterministic-test evidence.
+  Focused suites pass at 108 overworld-route, 113 route-manager, and 140
+  auto-step tests; bytecode checks, `git diff --check`, and the full repository
+  harness pass with only the known optional `accessible_output2` warning under
+  WSL.
+- Cantlin route-status clarification (`2026-07-25`): the direct overworld
+  approach and town return are already live-validated. The approach enters
+  from World Map `(73,103)` into Cantlin `(15,0)`. Selected-object return
+  guidance reached southeast safe stand `(20,28)`, faced south, and uses
+  `(20,29)` for the World Map transition. The current
+  `overworld_routes.lua` does not define a named bidirectional Cantlin
+  waypoint route; adding one would be a separate route feature rather than
+  unfinished validation of the route-aware carry patch.
 
 - Rimuldar final manual service sweep (`2026-07-20`): every service route
   passed. The Weapons Merchant route temporarily could not plan while a roaming
