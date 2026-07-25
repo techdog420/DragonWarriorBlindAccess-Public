@@ -51,10 +51,13 @@ Updated: 2026-07-24
   `(15,28)`; from the west-wall carry landing `(1,54)`, south-road guidance
   moved RIGHT before descending and completed at `(2,64)` without retrying the
   blocked `(1,63)->DOWN` edge. Runtime blocks remained empty. The return route
-  is now also validated as recorded above. Combat dialogue repeatedly emitted
-  overlapping windows near y=88, while
-  fights at `(20,93)` and `(15,92)` behaved normally; detailed evidence remains
-  in `work_notes/current_investigation.md` for the later dialogue-tuning pass.
+  is now also validated as recorded above. The coordinate-sensitive combat
+  sliding-window bug is source-patched and live-verified: a post-reload Wraith
+  battle at the exact `(20,88)` reproduction coordinate logged and spoke each
+  opening, attack, damage, and reward once. Battle-only token comparison
+  suppresses punctuation-shifted and suffix-only redraws while preserving
+  appended counterattacks and rewards; the captured Wyvern sequence is covered
+  by the 43/43 battle regression suite.
 - 2026-07-24 Hauksness interior objective navigation is source-only
   live-validated in both directions. From exit `(0,10)`, object guidance
   reached safe Axe Knight stand `(17,12)` and faced east toward the fixed
