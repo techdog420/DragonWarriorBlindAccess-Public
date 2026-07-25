@@ -4362,14 +4362,15 @@ function tests.queued_route_final_settle_drift_cancels_by_default()
     env.restore()
 end
 
-function tests.queued_route_final_settle_drift_can_complete_when_opted_in()
+function tests.queued_route_final_settle_drift_completes_at_exact_allowed_target()
     local env = make_env({
         config_values = {
             auto_step_route_final_settle_frames = "5",
         },
     })
     env.auto_step.start_route({"right"}, {
-        route_accept_final_drift_completion = true,
+        route_final_carry_x = 5,
+        route_final_carry_y = 1,
     })
 
     env.update(true)
@@ -4399,6 +4400,109 @@ function tests.queued_route_final_settle_drift_can_complete_when_opted_in()
     env.restore()
 end
 
+function tests.queued_route_final_settle_rejects_same_direction_wrong_target()
+    local env = make_env({
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_accept_final_drift_completion = true,
+        route_final_carry_x = 4,
+        route_final_carry_y = 2,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(5, 1)
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then
+            cancelled = event.payload
+        end
+        assert_truthy(event.name ~= "route_completed",
+            "same-direction drift to the wrong target must not complete")
+    end
+    assert_equal(cancelled and cancelled.reason, "route_drift_off_path",
+        "wrong-target carry should cancel as route drift")
+
+    env.restore()
+end
+
+function tests.queued_route_final_settle_rejects_non_cardinal_carry_target()
+    local env = make_env({
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_final_carry_x = 5,
+        route_final_carry_y = 2,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(5, 2)
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "route_drift_off_path" then
+            saw_cancel = true
+        end
+        assert_truthy(event.name ~= "route_completed",
+            "diagonal carry metadata must not complete")
+    end
+    assert_truthy(saw_cancel,
+        "non-cardinal carry metadata should preserve strict arrival")
+
+    env.restore()
+end
+
+function tests.queued_route_final_settle_ignores_incomplete_carry_pair()
+    local env = make_env({
+        config_values = {
+            auto_step_route_final_settle_frames = "5",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_final_carry_x = 5,
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    env.set_position(5, 1)
+    for _ = 1, 4 do
+        env.update(true)
+    end
+
+    local saw_cancel = false
+    for _, event in ipairs(env.published) do
+        local payload = event.payload or {}
+        if event.name == "route_cancelled"
+           and payload.reason == "route_drift_off_path" then
+            saw_cancel = true
+        end
+        assert_truthy(event.name ~= "route_completed",
+            "incomplete carry metadata must not complete")
+    end
+    assert_truthy(saw_cancel,
+        "incomplete carry metadata should preserve strict arrival")
+
+    env.restore()
+end
+
 function tests.queued_route_final_settle_drift_rejects_nonmatching_carry_when_opted_in()
     local cases = {
         {name = "sideways", x = 4, y = 2},
@@ -4413,7 +4517,8 @@ function tests.queued_route_final_settle_drift_rejects_nonmatching_carry_when_op
             },
         })
         env.auto_step.start_route({"right"}, {
-            route_accept_final_drift_completion = true,
+            route_final_carry_x = 5,
+            route_final_carry_y = 1,
         })
 
         env.update(true)
