@@ -167,6 +167,54 @@ function tests.normalize_dialogue_removes_spaced_dot_artifacts()
     )
 end
 
+function tests.normalize_dialogue_removes_attached_dot_artifacts_without_erasing_sentences()
+    assert_equal(
+        battle.normalize_dialogue(
+            "The Wyvern attacks. Bill attacks! The Wyvern's Hit. Points have been. reduced by 29."
+        ),
+        "The Wyvern attacks. Bill attacks! The Wyvern's Hit Points have been reduced by 29.",
+        "attached redraw dots should be removed without erasing a real sentence boundary"
+    )
+end
+
+function tests.extract_new_text_suppresses_live_wyvern_redraw_sequence()
+    local first = battle.normalize_dialogue(
+        "Bill attacks! The Wyvern's Hit. Points have been reduced by 29."
+    )
+    local shifted = battle.normalize_dialogue(
+        "Bill attacks! The Wyvern's Hit Points have been. reduced by 29."
+    )
+    local suffix = battle.normalize_dialogue(
+        "The Wyvern's Hit Points have been reduced by 29."
+    )
+
+    assert_equal(
+        first,
+        "Bill attacks! The Wyvern's Hit Points have been reduced by 29.",
+        "the first live Wyvern message should be speech-safe"
+    )
+    assert_equal(
+        shifted,
+        first,
+        "the punctuation-shifted redraw should normalize to the first message"
+    )
+    assert_equal(
+        battle.extract_new_text("", first),
+        first,
+        "the first combat action should still be announced"
+    )
+    assert_equal(
+        battle.extract_new_text(first, shifted),
+        "",
+        "the punctuation-shifted redraw should not repeat"
+    )
+    assert_equal(
+        battle.extract_new_text(first, suffix),
+        "",
+        "the already-announced suffix redraw should not repeat"
+    )
+end
+
 function tests.normalize_dialogue_removes_reward_spaced_dot_artifacts()
     assert_equal(
         battle.normalize_dialogue("Thy Experience . increases by 1. Thy GOLD increases by 2."),
