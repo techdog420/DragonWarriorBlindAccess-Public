@@ -1453,6 +1453,41 @@ function tests.guarded_twitch_repress_skips_fresh_press_after_late_completion()
     env.restore()
 end
 
+function tests.guarded_twitch_fresh_press_releases_on_its_own_movement_start()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "6",
+        },
+    })
+    env.auto_step.start_route({"right", "down"})
+
+    env.update(true)          -- Frame 1: original press.
+    env.set_subpixel(0x20)
+    env.update(true)          -- Frame 2: early twitch schedules recovery.
+    env.update(true)          -- Frame 3: neutral settle.
+    env.update(true)          -- Frame 4: neutral settle.
+    env.update(true)          -- Frame 5: fresh recovery press.
+    env.set_subpixel(0x30)
+    env.update(true)          -- Frame 6: fresh movement must release.
+
+    local sequences = collect_direction_sequences(env, "right", 6)
+    assert_equal(#sequences, 2,
+        "guarded recovery should issue exactly one fresh press")
+    assert_equal(sequences[2].count, 1,
+        "guarded fresh press should stop when its own movement begins")
+    assert_frame_owned_neutral(
+        env,
+        6,
+        "guarded movement start should release the committed direction"
+    )
+
+    env.restore()
+end
+
 function tests.guarded_twitch_repress_cancels_wrong_direction_drift()
     local env = make_env({
         sticky_joypad_set = true,
