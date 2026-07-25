@@ -151,6 +151,50 @@ function tests.extract_new_text_trims_victory_prefix_overlap()
     )
 end
 
+function tests.extract_new_text_suppresses_equivalent_words_with_other_punctuation()
+    assert_equal(
+        battle.extract_new_text(
+            "Bill attacks! The Wyvern dodges! No damage hath been scored!",
+            "Bill attacks. The Wyvern dodges. No damage hath been scored."
+        ),
+        "",
+        "punctuation-only redraw changes should not repeat an announced action"
+    )
+end
+
+function tests.extract_new_text_keeps_counterattack_after_token_overlap()
+    assert_equal(
+        battle.extract_new_text(
+            "Bill attacks! The Wyvern's Hit Points have been reduced by 29.",
+            "The Wyvern's Hit Points have been reduced by 29! The Wyvern attacks! Thy Hit Point decreased by 8."
+        ),
+        "The Wyvern attacks! Thy Hit Point decreased by 8.",
+        "punctuation-insensitive overlap should keep the appended counterattack"
+    )
+end
+
+function tests.extract_new_text_keeps_rewards_after_token_overlap()
+    assert_equal(
+        battle.extract_new_text(
+            "Thou hast done well in defeating the Wyvern.",
+            "defeating the Wyvern! Thy Experience increases by 34. Thy GOLD increases by 90."
+        ),
+        "Thy Experience increases by 34. Thy GOLD increases by 90.",
+        "punctuation-insensitive overlap should keep appended rewards"
+    )
+end
+
+function tests.extract_new_text_does_not_use_two_token_ambiguous_overlap()
+    assert_equal(
+        battle.extract_new_text(
+            "Bill watches The Wyvern.",
+            "The Wyvern attacks!"
+        ),
+        "The Wyvern attacks!",
+        "two common tokens should not be enough to trim new battle text"
+    )
+end
+
 function tests.normalize_dialogue_removes_dot_artifacts()
     assert_equal(
         battle.normalize_dialogue("Thy Hit Point .decreased by 1. ..."),
