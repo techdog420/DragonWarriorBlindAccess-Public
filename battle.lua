@@ -12,8 +12,76 @@ local ITEMS = {
     [1] = {[0] = "RUN",   [1] = "ITEM"},
 }
 local OVERLAP_MIN_LEN = 8
+local TOKEN_OVERLAP_MIN_COUNT = 3
 local HERO_STOPSPELL_MASK = 0x10
 local HERO_SLEEP_MASK = 0x80
+
+local function dialogue_tokens(text)
+    local tokens = {}
+    local lower = tostring(text or ""):lower()
+    local cursor = 1
+
+    while cursor <= #lower do
+        local first, last = lower:find("[a-z0-9][a-z0-9']*", cursor)
+        if not first then
+            break
+        end
+        tokens[#tokens + 1] = {
+            value = lower:sub(first, last),
+            first = first,
+        }
+        cursor = last + 1
+    end
+
+    return tokens
+end
+
+local function meaningful_token_range(tokens, first, count)
+    if count < TOKEN_OVERLAP_MIN_COUNT then
+        return false
+    end
+
+    local character_count = 0
+    for index = first, first + count - 1 do
+        character_count = character_count + #tokens[index].value
+    end
+    return character_count >= OVERLAP_MIN_LEN
+end
+
+local function token_ranges_equal(left, left_first, right, right_first, count)
+    for offset = 0, count - 1 do
+        if left[left_first + offset].value ~= right[right_first + offset].value then
+            return false
+        end
+    end
+    return true
+end
+
+local function contains_token_sequence(old_tokens, new_tokens)
+    local count = #new_tokens
+    if count > #old_tokens or not meaningful_token_range(new_tokens, 1, count) then
+        return false
+    end
+
+    for first = 1, #old_tokens - count + 1 do
+        if token_ranges_equal(old_tokens, first, new_tokens, 1, count) then
+            return true
+        end
+    end
+    return false
+end
+
+local function longest_token_overlap(old_tokens, new_tokens)
+    local maximum = math.min(#old_tokens, #new_tokens)
+    for count = maximum, 1, -1 do
+        local old_first = #old_tokens - count + 1
+        if meaningful_token_range(new_tokens, 1, count)
+            and token_ranges_equal(old_tokens, old_first, new_tokens, 1, count) then
+            return count
+        end
+    end
+    return 0
+end
 
 local function has_mask(flags, mask)
     local value = math.floor(tonumber(flags) or 0)
@@ -210,6 +278,24 @@ function M.extract_new_text(old_text, new_text)
     -- page, there is nothing new to say.
     if old:find(new, 1, true) then
         return ""
+    end
+
+    local old_tokens = dialogue_tokens(old)
+    local new_tokens = dialogue_tokens(new)
+
+    if contains_token_sequence(old_tokens, new_tokens) then
+        return ""
+    end
+
+    local token_overlap = longest_token_overlap(old_tokens, new_tokens)
+    if token_overlap > 0 then
+        if token_overlap == #new_tokens then
+            return ""
+        end
+
+        local remainder = new:sub(new_tokens[token_overlap + 1].first)
+        remainder = remainder:match("^%s*(.-)%s*$") or remainder
+        return remainder
     end
 
     -- Strip only substantial prefix overlap. The generic dialogue matcher is
