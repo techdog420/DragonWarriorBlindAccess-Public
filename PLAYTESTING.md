@@ -2458,6 +2458,15 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   artifacts before overlap/fast-path comparison. Stronger-enemy testing should
   verify that each round's action/damage line speaks once without losing the
   next round.
+- Combat sliding-window redraw deduplication: the captured Wyvern sequence from
+  World Map `(20,88)` is now an automated regression. Battle-only
+  normalization removes attached `Hit. Points` and `been. reduced` artifacts,
+  while a three-token/eight-character word matcher suppresses contained
+  redraws and returns only genuine appended counterattack or reward text.
+  All 43 battle tests and Lua syntax checks pass. In a post-reload Wraith
+  battle at the same `(20,88)` reproduction coordinate, the opening, two hero
+  attacks, enemy attack, hero damage, and combined victory/reward line each
+  logged and reached the speech bridge exactly once.
 - Erdrick's Cave B2 first chest-route pass: the new B2 map `0x1D` had no
   permanent directional seam model, so auto-walk toward the chest at `(9,3)`
   kept learning hidden one-way maze walls during play and eventually gave up.
