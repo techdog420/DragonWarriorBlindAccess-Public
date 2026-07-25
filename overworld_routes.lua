@@ -1026,6 +1026,53 @@ local function waypoint_axis_order(route, point, opts)
     return point and point.axis_order or route and route.axis_order or opts.axis_order or {"vertical", "horizontal"}
 end
 
+local function build_axis_ordered_steps(route, point, px, py, opts)
+    local steps = {}
+    local cx = px
+    local cy = py
+
+    for _, axis in ipairs(waypoint_axis_order(route, point, opts)) do
+        cx, cy = append_axis_steps(
+            steps, axis, cx, cy, point.x, point.y)
+    end
+    if cx ~= point.x then
+        cx, cy = append_axis_steps(
+            steps, "horizontal", cx, cy, point.x, point.y)
+    end
+    if cy ~= point.y then
+        cx, cy = append_axis_steps(
+            steps, "vertical", cx, cy, point.x, point.y)
+    end
+
+    return steps
+end
+
+local function preview_final_carry(route, index, opts)
+    local point = route and route.waypoints and route.waypoints[index]
+    local next_point =
+        route and route.waypoints and route.waypoints[index + 1]
+    if not point
+       or point.final == true
+       or point.route_accept_final_drift_completion == false
+       or not next_point then
+        return nil, nil
+    end
+
+    local steps = build_axis_ordered_steps(
+        route, next_point, point.x, point.y, opts)
+    local first = steps[1]
+    if first == "up" then
+        return point.x, point.y - 1
+    elseif first == "down" then
+        return point.x, point.y + 1
+    elseif first == "left" then
+        return point.x - 1, point.y
+    elseif first == "right" then
+        return point.x + 1, point.y
+    end
+    return nil, nil
+end
+
 local function distance(px, py, point)
     return math.abs((px or 0) - point.x) + math.abs((py or 0) - point.y)
 end
@@ -1472,23 +1519,14 @@ function M.plan_next_segment(map_id, px, py, opts)
     end
     local direction = direction_string(px, py, point.x, point.y)
 
-    local steps = {}
-    local cx = px
-    local cy = py
-    for _, axis in ipairs(waypoint_axis_order(route, point, opts)) do
-        cx, cy = append_axis_steps(steps, axis, cx, cy, point.x, point.y)
-    end
-    if cx ~= point.x then
-        cx, cy = append_axis_steps(steps, "horizontal", cx, cy, point.x, point.y)
-    end
-    if cy ~= point.y then
-        cx, cy = append_axis_steps(steps, "vertical", cx, cy, point.x, point.y)
-    end
+    local steps = build_axis_ordered_steps(route, point, px, py, opts)
 
     local max_steps = tonumber(opts.max_steps) or 64
     if #steps > max_steps then
         return nil, string.format("Overworld segment too long: %d steps", #steps)
     end
+    local route_final_carry_x, route_final_carry_y =
+        preview_final_carry(route, index, opts)
 
     return {
         route = route,
@@ -1496,6 +1534,8 @@ function M.plan_next_segment(map_id, px, py, opts)
         index = index,
         steps = steps,
         path_length = #steps,
+        route_final_carry_x = route_final_carry_x,
+        route_final_carry_y = route_final_carry_y,
         status = "planned",
         direction = direction,
         message = string.format("Auto-walk to %s, %s. %d step(s).", point.name, direction, #steps),
@@ -1631,6 +1671,10 @@ end
 
 function M._route_for_tests(id)
     return ROUTES[id]
+end
+
+function M._preview_final_carry_for_tests(route, index, opts)
+    return preview_final_carry(route, index, opts)
 end
 
 return M

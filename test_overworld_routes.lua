@@ -132,6 +132,75 @@ function tests.north_trail_to_ridge_goes_horizontal_first_on_forward_routes()
     routes.reset_for_tests()
 end
 
+function tests.final_carry_preview_uses_next_waypoint_axis_order_and_strictness()
+    local horizontal_route = {
+        waypoints = {
+            {x = 10, y = 10, name = "Current"},
+            {
+                x = 13,
+                y = 12,
+                name = "Horizontal next",
+                axis_order = {"horizontal", "vertical"},
+            },
+        },
+    }
+    local vertical_route = {
+        waypoints = {
+            {x = 10, y = 10, name = "Current"},
+            {
+                x = 13,
+                y = 12,
+                name = "Vertical next",
+                axis_order = {"vertical", "horizontal"},
+            },
+        },
+    }
+
+    local hx, hy = routes._preview_final_carry_for_tests(horizontal_route, 1)
+    assert_equal(hx, 11, "horizontal-first lookahead should move east")
+    assert_equal(hy, 10, "horizontal-first lookahead should preserve the row")
+
+    local vx, vy = routes._preview_final_carry_for_tests(vertical_route, 1)
+    assert_equal(vx, 10, "vertical-first lookahead should preserve the column")
+    assert_equal(vy, 11, "vertical-first lookahead should move south")
+
+    local final_x, final_y =
+        routes._preview_final_carry_for_tests(vertical_route, 2)
+    assert_equal(final_x, nil, "final waypoint should have no carry target")
+    assert_equal(final_y, nil, "final waypoint should have no carry target")
+
+    horizontal_route.waypoints[1].route_accept_final_drift_completion = false
+    local strict_x, strict_y =
+        routes._preview_final_carry_for_tests(horizontal_route, 1)
+    assert_equal(strict_x, nil, "explicitly strict waypoint should reject carry")
+    assert_equal(strict_y, nil, "explicitly strict waypoint should reject carry")
+end
+
+function tests.plan_next_segment_includes_route_aware_final_carry()
+    routes.reset_for_tests()
+    routes.start("erdrick", 0x01, 30, 32)
+
+    local segment = assert(routes.plan_next_segment(0x01, 30, 32))
+
+    assert_equal(
+        segment.waypoint.name,
+        "East choke approach",
+        "fixture should target the east choke"
+    )
+    assert_equal(
+        segment.route_final_carry_x,
+        35,
+        "next segment should remain on the eastern mountain column"
+    )
+    assert_equal(
+        segment.route_final_carry_y,
+        31,
+        "next segment should begin one tile north toward the mountain lane"
+    )
+
+    routes.reset_for_tests()
+end
+
 function tests.bridge_west_bend_recovers_horizontally_after_upper_lane_drift()
     local forward_routes = {"brecconary", "tantegel", "tantegel_kol"}
 
