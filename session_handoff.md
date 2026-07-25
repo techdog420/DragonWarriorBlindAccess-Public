@@ -1,10 +1,33 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-24
+Updated: 2026-07-25
 
 ## Immediate FCEUX Handoff
 
-- Current live state is Ruins of Hauksness map `0x03` at exit `(0,10)`,
+- Current live state is World Map `(20,88)` after the user completed Hauksness
+  guidance in both directions with the final route-aware carry source loaded.
+  Fresh probe `AUTOWALK_ROUTE_CARRY_20260725` confirmed no active route or
+  path, `RUNTIME_BLOCKS map=0x01 none`, controller byte `0x00`, healthy speech,
+  and intact level-17 stats: HP `94/100`, MP `40/90`, STR `0x48`, AGI `0x46`,
+  ATK `0x64`, DEF `0x55`, spells `0xFF/0x11`. No stat-integrity warning or
+  movement-reset line appears in the fresh log.
+- Bidirectional Hauksness route smoke testing and post-run stat-integrity
+  validation passed, with a log-evidence limitation: the pre-restart route log
+  was not preserved, so natural guarded-twitch release, exact final-carry
+  acceptance, and a strict final-segment `carry=(nil,nil)` arrival were not
+  captured. Do not claim those live; exact waveform release, route-aware carry
+  acceptance/rejection, and strict-final behavior are automated-verified.
+  Focused totals are 108 overworld-route, 113 route-manager, and 140 auto-step
+  tests. All bytecode checks, `git diff --check`, and the full repository
+  harness pass; WSL reports only the known optional `accessible_output2`
+  warning.
+- Cantlin clarification: its direct World Map approach and town exit are
+  already live-proven. Entry from `(73,103)` lands at Cantlin `(15,0)`;
+  selected-object return reaches `(20,28)` facing south toward transition
+  `(20,29)`. There is no named bidirectional Cantlin route in
+  `overworld_routes.lua`. Building one is separate future route work, not a
+  remaining validation step for the current carry patch.
+- Historical 2026-07-24 checkpoint was Ruins of Hauksness map `0x03` at exit `(0,10)`,
   facing west after the final source-only Axe Knight-to-exit replay. HP is
   `89/100`, MP `78/90`, level-17 stats are intact, no path is active, and
   `RUNTIME_BLOCKS map=0x03 none`. The entrance-to-Axe Knight route completed at
