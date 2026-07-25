@@ -130,7 +130,8 @@ local auto_entry_waveform = nil
 local route_early_twitch_timeout_frames_override = nil
 local route_hold_after_movement_start_frames_override = nil
 local route_reset_movement_on_turn_settle_override = nil
-local route_accept_final_drift_completion_override = nil
+local route_final_carry_x_override = nil
+local route_final_carry_y_override = nil
 local pending_repress = nil
 local route_steps = nil    -- Array of queued directions for auto-walk
 local route_prime_before_steps = nil
@@ -330,10 +331,6 @@ local function should_reset_movement_on_route_turn_settle()
         return route_reset_movement_on_turn_settle_override == true
     end
     return config_bool("auto_step_reset_movement_on_route_turn_settle", false)
-end
-
-local function should_accept_final_drift_completion()
-    return route_accept_final_drift_completion_override == true
 end
 
 local function get_seam_retry_hold_after_movement_start_frames()
@@ -584,7 +581,8 @@ local function clear_route()
     route_early_twitch_timeout_frames_override = nil
     route_hold_after_movement_start_frames_override = nil
     route_reset_movement_on_turn_settle_override = nil
-    route_accept_final_drift_completion_override = nil
+    route_final_carry_x_override = nil
+    route_final_carry_y_override = nil
     if pending_repress and pending_repress.entry_prime_waveform then
         pending_repress = nil
     end
@@ -1315,21 +1313,38 @@ local function consume_route_drift(px, py, source)
     return consumed, false
 end
 
-local function is_exact_final_direction_carry(px, py)
-    if not route_steps or #route_steps == 0
-       or route_last_x == nil or route_last_y == nil then
+local function is_allowed_final_carry(px, py)
+    if route_final_carry_x_override == nil
+       or route_final_carry_y_override == nil
+       or route_last_x == nil
+       or route_last_y == nil then
         return false
     end
 
-    local dx, dy = direction_delta(route_steps[#route_steps])
-    return px == route_last_x + dx and py == route_last_y + dy
+    local distance =
+        math.abs(route_final_carry_x_override - route_last_x)
+        + math.abs(route_final_carry_y_override - route_last_y)
+    if distance ~= 1 then
+        debug_tools.info(string.format(
+            "AUTO_STEP_FINAL_CARRY_INVALID from=(%d,%d) target=(%s,%s)",
+            route_last_x or -1,
+            route_last_y or -1,
+            tostring(route_final_carry_x_override),
+            tostring(route_final_carry_y_override)))
+        return false
+    end
+
+    return px == route_final_carry_x_override
+        and py == route_final_carry_y_override
 end
 
 local function complete_route_from_final_drift(px, py, source)
-    debug_tools.debug(string.format(
-        "auto_step route final drift accepted from=(%d,%d) current=(%d,%d) next_index=%d source=%s",
+    debug_tools.info(string.format(
+        "AUTO_STEP_FINAL_CARRY_ACCEPTED from=(%d,%d) expected=(%s,%s) current=(%d,%d) next_index=%d source=%s",
         route_last_x or -1,
         route_last_y or -1,
+        tostring(route_final_carry_x_override),
+        tostring(route_final_carry_y_override),
         px or -1,
         py or -1,
         route_index or -1,
@@ -2017,8 +2032,7 @@ local function handle_route_progress(joy, px, py)
         end
         if off_path then
             if route_final_settle_active
-               and should_accept_final_drift_completion()
-               and is_exact_final_direction_carry(px, py) then
+               and is_allowed_final_carry(px, py) then
                 complete_route_from_final_drift(px, py, "route_final_settle_carry")
                 sync_prev_held(joy)
                 return true
@@ -2485,10 +2499,27 @@ function M.start_route(steps, opts)
     else
         route_reset_movement_on_turn_settle_override = nil
     end
-    if opts.route_accept_final_drift_completion ~= nil then
-        route_accept_final_drift_completion_override = opts.route_accept_final_drift_completion == true
+    local raw_final_carry_x = opts.route_final_carry_x
+    local raw_final_carry_y = opts.route_final_carry_y
+    local final_carry_x = tonumber(raw_final_carry_x)
+    local final_carry_y = tonumber(raw_final_carry_y)
+    local valid_final_carry =
+        final_carry_x ~= nil
+        and final_carry_y ~= nil
+        and final_carry_x == math.floor(final_carry_x)
+        and final_carry_y == math.floor(final_carry_y)
+    if valid_final_carry then
+        route_final_carry_x_override = final_carry_x
+        route_final_carry_y_override = final_carry_y
     else
-        route_accept_final_drift_completion_override = nil
+        route_final_carry_x_override = nil
+        route_final_carry_y_override = nil
+        if raw_final_carry_x ~= nil or raw_final_carry_y ~= nil then
+            debug_tools.info(string.format(
+                "AUTO_STEP_FINAL_CARRY_METADATA_INVALID target=(%s,%s)",
+                tostring(raw_final_carry_x),
+                tostring(raw_final_carry_y)))
+        end
     end
     local start_x = tonumber(opts.start_x)
     local start_y = tonumber(opts.start_y)
