@@ -1443,6 +1443,34 @@ function tests.swamp_cave_south_entrance_is_available_as_overworld_landmark()
     env.restore()
 end
 
+function tests.world_map_exposes_great_swamp_search_area_without_token_square()
+    local env = make_env()
+
+    env.set_position(0x01, 73, 102)
+    env.set_terrain_offset(0x00)
+    env.objects.refresh(0x01)
+
+    local obj = env.objects.select_object_by_id(
+        "overworld_eastern_great_swamp_search_area")
+    assert_equal(obj ~= nil, true, "World Map should expose the search area")
+    assert_equal(obj.name, "Eastern Great Swamp Search Area",
+        "landmark should use a clue-preserving name")
+    assert_equal(obj.type, env.objects.TYPE_EXIT,
+        "search area should remain Travel-compatible")
+    assert_equal(obj.x, 89, "safe pin x")
+    assert_equal(obj.y, 112, "safe pin y")
+    assert_equal(obj.x == 83 and obj.y == 113, false,
+        "search-area landmark must not expose the buried square")
+
+    local speech = env.objects.describe_object(obj):lower()
+    assert_equal(speech:find("token", 1, true), nil,
+        "object speech should not name the token")
+    assert_equal(speech:find("erdrick", 1, true), nil,
+        "object speech should not name Erdrick")
+
+    env.restore()
+end
+
 function tests.sun_shrine_exit_uses_live_west_entry_tile()
     local env = make_env()
 
