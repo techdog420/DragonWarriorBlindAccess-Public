@@ -1597,6 +1597,80 @@ function tests.queued_route_uses_shorter_inject_on_continuing_step_before_turn()
     env.restore()
 end
 
+function tests.queued_route_final_step_uses_pre_turn_limit_for_perpendicular_carry()
+    local env = make_env({
+        config_values = {
+            auto_step_inject_limit = "12",
+            auto_step_route_pre_turn_inject_limit = "10",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_final_carry_x = 4,
+        route_final_carry_y = 2,
+    })
+
+    for _ = 1, 12 do
+        env.update(true)
+    end
+
+    assert_frame_only_direction(
+        env, 11, "right",
+        "cross-waypoint pre-turn step final owned frame")
+    assert_frame_neutral(
+        env, 12,
+        "cross-waypoint pre-turn step release")
+
+    env.restore()
+end
+
+function tests.queued_route_final_step_keeps_normal_limit_without_perpendicular_carry()
+    local cases = {
+        {
+            name = "missing",
+            opts = {},
+        },
+        {
+            name = "straight",
+            opts = {route_final_carry_x = 5, route_final_carry_y = 1},
+        },
+        {
+            name = "incomplete",
+            opts = {route_final_carry_x = 4},
+        },
+        {
+            name = "diagonal",
+            opts = {route_final_carry_x = 5, route_final_carry_y = 2},
+        },
+        {
+            name = "reverse",
+            opts = {route_final_carry_x = 3, route_final_carry_y = 1},
+        },
+        {
+            name = "multi-cell",
+            opts = {route_final_carry_x = 4, route_final_carry_y = 3},
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        local env = make_env({
+            config_values = {
+                auto_step_inject_limit = "12",
+                auto_step_route_pre_turn_inject_limit = "10",
+            },
+        })
+        env.auto_step.start_route({"right"}, case.opts)
+
+        for _ = 1, 12 do
+            env.update(true)
+        end
+
+        assert_frame_only_direction(
+            env, 12, "right",
+            case.name .. " final carry timing")
+        env.restore()
+    end
+end
+
 function tests.queued_route_early_twitch_waits_for_late_tile_completion()
     local env = make_env({
         config_values = {
