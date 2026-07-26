@@ -63,7 +63,7 @@ assert_contains(navigation_refresh,
     'overworld_routes = require "overworld_routes"',
     "navigation module reload should refresh main.lua's overworld route reference")
 assert_contains(navigation_refresh,
-    'require("object_commands").register()',
+    "object_command_module.register()",
     "navigation module reload should re-register object commands after refreshing route tables")
 assert_contains(route_manager_refresh,
     'package.loaded["overworld_routes"] = nil',
@@ -189,8 +189,14 @@ assert_contains(main,
     "local function submenu_absorbs_lower_dialogue(dialogue)",
     "submenu lower-dialogue absorption should be centralized so SPELL results can be distinguished from spell-list rows")
 assert_contains(main,
-    'submenu_mode == "STATUS" or submenu_mode == "ITEM"',
-    "STATUS and ITEM submenu visual rows should still be absorbed as memory-spoken UI")
+    'if submenu_mode == "STATUS" then',
+    "STATUS submenu visual rows should still be absorbed as memory-spoken UI")
+assert_contains(main,
+    'if submenu_mode == "ITEM" then',
+    "ITEM submenu dialogue ownership should be handled separately from STATUS")
+assert_contains(main,
+    "return DW_QOL_STATE.command_menu_blocks_field_movement()",
+    "ITEM submenu should keep mixed-case item-list rows absorbed while its live cursor is present")
 assert_contains(main,
     'if submenu_mode == "SPELL" then',
     "SPELL submenu absorption should be handled separately from STATUS/ITEM")

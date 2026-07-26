@@ -3953,8 +3953,17 @@ local function maybe_announce_fast_battle_dialogue(dialogue, frame_delta)
 end
 
 local function submenu_absorbs_lower_dialogue(dialogue)
-    if submenu_mode == "STATUS" or submenu_mode == "ITEM" then
+    if submenu_mode == "STATUS" then
         return true
+    end
+    if submenu_mode == "ITEM" then
+        -- Held-item names are mixed case, so lowercase alone cannot
+        -- distinguish the list from an item's result dialogue. The list has
+        -- a live cursor; result pages such as Gwaelin's Love do not. Keep
+        -- uppercase transition noise absorbed while allowing those result
+        -- pages through the normal stable dialogue reader.
+        return DW_QOL_STATE.command_menu_blocks_field_movement()
+            or not tostring(dialogue or ""):find("[a-z]")
     end
     if submenu_mode == "SPELL" then
         return not tostring(dialogue or ""):find("[a-z]")
