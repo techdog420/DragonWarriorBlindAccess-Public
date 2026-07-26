@@ -1710,19 +1710,52 @@ function tests.entering_kol_stops_hauksness_return_route()
     routes.reset_for_tests()
 end
 
+local function assert_cantlin_route_group(start_x, start_y, expected, label)
+    routes.reset_for_tests()
+    routes.start("cantlin to hauksness", 0x01, start_x, start_y)
+
+    local x, y = start_x, start_y
+    for _, waypoint in ipairs(expected) do
+        local segment = assert(routes.plan_next_segment(0x01, x, y))
+        assert_equal(segment.waypoint.x, waypoint.x, label .. " x")
+        assert_equal(segment.waypoint.y, waypoint.y, label .. " y")
+
+        local expected_first
+        if waypoint.x > x then
+            expected_first = "right"
+        elseif waypoint.x < x then
+            expected_first = "left"
+        elseif waypoint.y > y then
+            expected_first = "down"
+        else
+            expected_first = "up"
+        end
+        assert_equal(segment.steps[1], expected_first, label .. " first direction")
+
+        if waypoint.final then
+            assert_equal(segment.path_length, 1, label .. " final entry length")
+        else
+            routes.observe_position(0x01, waypoint.x, waypoint.y)
+            x, y = waypoint.x, waypoint.y
+        end
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.hauksness_alias_from_cantlin_uses_cantlin_variant()
     routes.reset_for_tests()
 
-    local info, err = routes.start("hauksness", 0x01, 73, 103)
+    local info, err = routes.start("hauksness", 0x01, 73, 102)
 
     assert_equal(err, nil, "Hauksness alias should resolve outside Cantlin")
     assert_equal(info.route.id, "hauksness_cantlin", "Cantlin start should use the local Hauksness variant")
     assert_equal(info.object_id, "route_hauksness_cantlin_02", "Cantlin start should skip the current entrance anchor")
-    assert_contains(info.message, "Cantlin entrance west step", "route should begin by moving away from Cantlin")
+    assert_contains(info.message, "Cantlin north road", "route should begin north from Cantlin")
 
-    local segment = assert(routes.plan_next_segment(0x01, 73, 103))
-    assert_equal(segment.waypoint.name, "Cantlin entrance west step", "first segment should target the west step")
-    assert_equal(segment.steps[1], "left", "first return step should move west away from Cantlin")
+    local segment = assert(routes.plan_next_segment(0x01, 73, 102))
+    assert_equal(segment.waypoint.name, "Cantlin north road", "first segment should target the northern turn")
+    assert_equal(segment.steps[1], "up", "first return step should move north away from Cantlin")
 
     routes.reset_for_tests()
 end
@@ -1735,18 +1768,18 @@ function tests.hauksness_object_from_cantlin_uses_cantlin_variant()
         name = "Hauksness",
         x = 25,
         y = 89,
-    }, 0x01, 73, 103)
+    }, 0x01, 73, 102)
 
     assert_equal(err, nil, "Hauksness Travel object should start outside Cantlin")
     assert_equal(info.route.id, "hauksness_cantlin", "ordinary Hauksness object should choose the Cantlin variant")
-    assert_equal(info.object_id, "route_hauksness_cantlin_02", "Hauksness object should target the local west step")
+    assert_equal(info.object_id, "route_hauksness_cantlin_02", "Hauksness object should target the northern road")
 
     routes.reset_for_tests()
 end
 
 function tests.active_cantlin_hauksness_route_matches_ordinary_object()
     routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 73, 103)
+    routes.start("cantlin to hauksness", 0x01, 73, 102)
 
     local matches = routes.active_route_matches_object({
         id = "overworld_hauksness",
@@ -1761,160 +1794,85 @@ function tests.active_cantlin_hauksness_route_matches_ordinary_object()
 end
 
 function tests.cantlin_hauksness_departure_preserves_entry_seam()
-    routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 73, 103)
-
-    local expected = {
-        {x = 72, y = 103, name = "Cantlin entrance west step", first = "left"},
-        {x = 72, y = 101, name = "Cantlin entrance north lane", first = "up"},
-        {x = 74, y = 101, name = "Cantlin south road west bend", first = "right"},
-        {x = 87, y = 101, name = "Cantlin south road east bend", first = "right"},
-    }
-
-    local x, y = 73, 103
-    for _, waypoint in ipairs(expected) do
-        local segment = assert(routes.plan_next_segment(0x01, x, y))
-        assert_equal(segment.waypoint.name, waypoint.name, "Cantlin departure should preserve the proven entry seam")
-        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
-        routes.observe_position(0x01, waypoint.x, waypoint.y)
-        x, y = waypoint.x, waypoint.y
-    end
-
-    routes.reset_for_tests()
+    assert_cantlin_route_group(73, 102, {
+        {x = 73, y = 91},
+        {x = 68, y = 91},
+    }, "Cantlin northern departure")
 end
 
-function tests.cantlin_hauksness_preserves_eastern_forest_zigzag()
-    routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 87, 101)
-
-    local expected = {
-        {x = 87, y = 107, name = "Cantlin forest east descent", first = "down"},
-        {x = 86, y = 107, name = "Cantlin forest east west step", first = "left"},
-        {x = 86, y = 108, name = "Cantlin forest east lower step", first = "down"},
-        {x = 85, y = 108, name = "Cantlin forest middle west step", first = "left"},
-        {x = 85, y = 109, name = "Cantlin forest middle lower step", first = "down"},
-        {x = 81, y = 109, name = "Cantlin forest west corridor", first = "left"},
-        {x = 81, y = 110, name = "Cantlin forest west lower step", first = "down"},
-        {x = 80, y = 110, name = "Cantlin forest west first step", first = "left"},
-        {x = 80, y = 111, name = "Cantlin forest west first drop", first = "down"},
-        {x = 79, y = 111, name = "Cantlin forest west second step", first = "left"},
-        {x = 79, y = 112, name = "Cantlin forest west second drop", first = "down"},
-        {x = 78, y = 112, name = "Cantlin forest southwest step", first = "left"},
-        {x = 78, y = 113, name = "Cantlin forest southwest gate", first = "down"},
-    }
-
-    local x, y = 87, 101
-    for _, waypoint in ipairs(expected) do
-        local segment = assert(routes.plan_next_segment(0x01, x, y))
-        assert_equal(segment.waypoint.name, waypoint.name, "Cantlin forest route should preserve every narrow turn")
-        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
-        routes.observe_position(0x01, waypoint.x, waypoint.y)
-        x, y = waypoint.x, waypoint.y
-    end
-
-    routes.reset_for_tests()
+function tests.cantlin_hauksness_preserves_northern_westbound_route()
+    assert_cantlin_route_group(68, 91, {
+        {x = 68, y = 92},
+        {x = 64, y = 92},
+        {x = 64, y = 93},
+        {x = 60, y = 93},
+        {x = 60, y = 94},
+        {x = 56, y = 94},
+        {x = 56, y = 95},
+        {x = 54, y = 95},
+        {x = 54, y = 96},
+        {x = 53, y = 96},
+        {x = 53, y = 97},
+        {x = 52, y = 97},
+        {x = 52, y = 98},
+        {x = 51, y = 98},
+    }, "northern westbound route")
 end
 
-function tests.cantlin_hauksness_preserves_southern_maze_turns()
-    routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 78, 113)
-
-    local expected = {
-        {x = 78, y = 114, name = "Southern maze west entry", first = "down"},
-        {x = 79, y = 114, name = "Southern maze first east step", first = "right"},
-        {x = 79, y = 115, name = "Southern maze first drop", first = "down"},
-        {x = 82, y = 115, name = "Southern maze west corridor", first = "right"},
-        {x = 82, y = 116, name = "Southern maze lower west step", first = "down"},
-        {x = 85, y = 116, name = "Southern maze lower corridor", first = "right"},
-        {x = 85, y = 115, name = "Southern maze east rise", first = "up"},
-        {x = 87, y = 115, name = "Southern maze east corridor", first = "right"},
-        {x = 87, y = 114, name = "Southern maze second rise", first = "up"},
-        {x = 88, y = 114, name = "Southern maze northeast step", first = "right"},
-        {x = 88, y = 113, name = "Southern maze northeast rise", first = "up"},
-        {x = 89, y = 113, name = "Southern maze north gate", first = "right"},
-    }
-
-    local x, y = 78, 113
-    for _, waypoint in ipairs(expected) do
-        local segment = assert(routes.plan_next_segment(0x01, x, y))
-        assert_equal(segment.waypoint.name, waypoint.name, "southern maze should preserve every verified bend")
-        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
-        routes.observe_position(0x01, waypoint.x, waypoint.y)
-        x, y = waypoint.x, waypoint.y
-    end
-
-    routes.reset_for_tests()
+function tests.cantlin_hauksness_preserves_western_forest_switchbacks()
+    assert_cantlin_route_group(51, 98, {
+        {x = 51, y = 99},
+        {x = 50, y = 99},
+        {x = 50, y = 100},
+        {x = 49, y = 100},
+        {x = 49, y = 102},
+        {x = 48, y = 102},
+        {x = 48, y = 104},
+        {x = 47, y = 104},
+        {x = 47, y = 105},
+        {x = 45, y = 105},
+        {x = 45, y = 106},
+        {x = 44, y = 106},
+        {x = 44, y = 107},
+        {x = 43, y = 107},
+        {x = 43, y = 108},
+        {x = 42, y = 108},
+    }, "western forest switchback")
 end
 
-function tests.cantlin_hauksness_preserves_northwestern_connector()
-    routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 89, 113)
-
-    local expected = {
-        {x = 89, y = 100, name = "Southern forest north corridor", first = "up"},
-        {x = 87, y = 100, name = "Southern forest west bend", first = "left"},
-        {x = 87, y = 97, name = "Southern forest west rise", first = "up"},
-        {x = 86, y = 97, name = "Southern forest ridge west step", first = "left"},
-        {x = 86, y = 96, name = "Southern forest ridge rise", first = "up"},
-        {x = 84, y = 96, name = "Southern forest ridge west lane", first = "left"},
-        {x = 84, y = 92, name = "Southern forest middle rise", first = "up"},
-        {x = 83, y = 92, name = "Southern forest middle west step", first = "left"},
-        {x = 83, y = 90, name = "Southern forest upper rise", first = "up"},
-        {x = 82, y = 90, name = "Southern forest upper west step", first = "left"},
-        {x = 82, y = 84, name = "Southern forest long rise", first = "up"},
-        {x = 79, y = 84, name = "Southern forest northwest lane", first = "left"},
-        {x = 79, y = 83, name = "Southern forest northwest rise", first = "up"},
-        {x = 78, y = 83, name = "Southern forest northwest step", first = "left"},
-        {x = 78, y = 81, name = "Southern forest north rise", first = "up"},
-        {x = 77, y = 81, name = "Southern forest north west step", first = "left"},
-        {x = 77, y = 80, name = "Southern forest north gate", first = "up"},
-        {x = 64, y = 80, name = "Southern forest north road", first = "left"},
-        {x = 64, y = 81, name = "Southern forest northwest drop", first = "down"},
-        {x = 63, y = 81, name = "Southern forest northwest west step", first = "left"},
-        {x = 63, y = 82, name = "Southern forest northwest lower step", first = "down"},
-        {x = 62, y = 82, name = "Southern forest northwest notch", first = "left"},
-        {x = 62, y = 83, name = "Southern forest northwest exit", first = "down"},
-        {x = 62, y = 84, name = "Southern forest west shelf", first = "down"},
-    }
-
-    local x, y = 89, 113
-    for _, waypoint in ipairs(expected) do
-        local segment = assert(routes.plan_next_segment(0x01, x, y))
-        assert_equal(segment.waypoint.name, waypoint.name, "northwestern connector should preserve the verified turns")
-        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
-        routes.observe_position(0x01, waypoint.x, waypoint.y)
-        x, y = waypoint.x, waypoint.y
-    end
-
-    routes.reset_for_tests()
+function tests.cantlin_hauksness_preserves_southern_forest_maze()
+    assert_cantlin_route_group(42, 108, {
+        {x = 42, y = 111},
+        {x = 41, y = 111},
+        {x = 41, y = 112},
+        {x = 40, y = 112},
+        {x = 40, y = 113},
+        {x = 39, y = 113},
+        {x = 39, y = 114},
+        {x = 38, y = 114},
+        {x = 38, y = 115},
+        {x = 36, y = 115},
+        {x = 36, y = 116},
+        {x = 33, y = 116},
+        {x = 33, y = 117},
+        {x = 21, y = 117},
+        {x = 21, y = 116},
+        {x = 20, y = 116},
+    }, "southern forest maze")
 end
 
 function tests.cantlin_hauksness_joins_validated_final_approach()
-    routes.reset_for_tests()
-    routes.start("cantlin to hauksness", 0x01, 32, 103)
-
-    local expected = {
-        {x = 15, y = 103, name = "Hauksness southern origin road", first = "left"},
-        {x = 15, y = 93, name = "Hauksness lower west lane", first = "up"},
-        {x = 15, y = 89, name = "Hauksness west approach", first = "up"},
-        {x = 24, y = 89, name = "Hauksness doorstep west", first = "right"},
-        {x = 25, y = 89, name = "Hauksness", first = "right"},
-    }
-
-    local x, y = 32, 103
-    for _, waypoint in ipairs(expected) do
-        local segment = assert(routes.plan_next_segment(0x01, x, y))
-        assert_equal(segment.waypoint.name, waypoint.name, "Cantlin route should join the validated Hauksness approach")
-        assert_equal(segment.steps[1], waypoint.first, waypoint.name .. " should begin in the proven direction")
-        if waypoint.name == "Hauksness" then
-            assert_equal(segment.path_length, 1, "final Hauksness entry should remain one strict east step")
-        else
-            routes.observe_position(0x01, waypoint.x, waypoint.y)
-            x, y = waypoint.x, waypoint.y
-        end
-    end
-
-    routes.reset_for_tests()
+    assert_cantlin_route_group(20, 116, {
+        {x = 20, y = 108},
+        {x = 22, y = 108},
+        {x = 22, y = 107},
+        {x = 23, y = 107},
+        {x = 23, y = 95},
+        {x = 22, y = 95},
+        {x = 22, y = 89},
+        {x = 24, y = 89},
+        {x = 25, y = 89, final = true},
+    }, "Hauksness final approach")
 end
 
 function tests.cantlin_hauksness_variant_does_not_steal_shared_approach()
@@ -1931,7 +1889,7 @@ end
 
 function tests.entering_hauksness_stops_cantlin_variant()
     routes.reset_for_tests()
-    local info, err = routes.start("cantlin to hauksness", 0x01, 73, 103)
+    local info, err = routes.start("cantlin to hauksness", 0x01, 73, 102)
 
     assert_equal(err, nil, "Cantlin Hauksness alias should start before destination arrival")
     assert_equal(info.route.id, "hauksness_cantlin", "Cantlin Hauksness alias should select the local variant")

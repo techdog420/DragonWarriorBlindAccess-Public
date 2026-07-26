@@ -2,6 +2,27 @@
 
 Date: 2026-07-25
 
+## Live-Validated Correction
+
+The historical trail described below was useful only as an initial hypothesis.
+Live probing showed that its eastern and southern geometry was not a valid
+Cantlin-to-Hauksness route. The production route now starts at the actual
+Cantlin exit landing `(73,102)` and follows the NES map-oriented, live-walked
+western forest chain through `(68,91)`, `(42,111)`, `(21,117)`, `(20,108)`,
+and `(23,95)` before joining the Hauksness west approach at `(22,89)`.
+
+The final production route has 58 waypoints, uses
+`selection_max_index = 56`, stops at doorstep `(24,89)`, and enters Hauksness
+by one strict east step onto `(25,89)`. End-to-end FCEUX validation arrived on
+map `0x03` at `(0,10)` and cleared the active route.
+
+Two final-settle overshoots were observed and recovered without route-data
+changes: `(33,116)->(32,116)` after a westbound segment and
+`(22,89)->(22,88)` after a northbound segment. Both emitted
+`route_drift_off_path`; a fresh `auto_walk` replanned to the next waypoint.
+Several queued-step block reports also passed same-origin raw probes. These are
+executor timing evidence, not permanent World Map blockers.
+
 ## Goal
 
 Add reliable named overworld guidance from Cantlin to the Ruins of Hauksness.
@@ -21,17 +42,15 @@ does not combine that in-town route with an overworld route. After the map
 transition, the player selects the ordinary Hauksness Travel object and starts
 the new named overworld variant.
 
-The direct Cantlin approach is live-proven from World Map `(73,103)`: moving UP
-enters Cantlin and lands at town `(15,0)`. The historical Cantlin trail also
-contains clean, normally walked evidence connecting the Hauksness-side origin
-at `(15,93)` to the Cantlin approach. That investigation includes explicit
-battle, death, reload, teleport, and dead-end boundaries. Only clean route
-segments may become production waypoints.
+The actual Cantlin exit lands on World Map `(73,102)`. The initial historical
+trail was rejected during live validation. The replacement route was derived
+from decoded map orientation and then proven through normal FCEUX movement,
+with same-origin raw probes used whenever queued autowalk reported a block.
 
-The final Hauksness approach is already live-validated:
+The final Hauksness approach is live-validated:
 
-1. shared Hauksness-side origin `(15,93)`;
-2. Hauksness west approach `(15,89)`;
+1. western corridor `(23,95)`;
+2. Hauksness west approach `(22,89)`;
 3. Hauksness doorstep west `(24,89)`;
 4. Hauksness entrance `(25,89)`, moving east into map `0x03`.
 
@@ -68,16 +87,16 @@ reversing another route at runtime. The historical trail is evidence, not a
 canonical forward route definition, and its explored dead ends and
 contamination boundaries make mechanical reversal unsafe.
 
-Build the production chain from clean, normally walked segments in
-`work_notes/current_investigation.md`. The initial Cantlin departure must
-preserve the confirmed approach seam rather than cutting diagonally across it:
+Build the production chain from the live-validated western route. The initial
+Cantlin departure must move north along the open road rather than following
+the rejected historical eastern trail:
 
 1. establish the fresh World Map landing coordinate after using Cantlin's
    southeast exit;
 2. move away from the Cantlin entrance without accidentally re-entering town;
-3. reverse the clean `(73,103)`, `(72,103)`, `(72,101)`, `(74,101)` approach
-   geometry;
-4. follow the clean western trail toward `(15,93)`;
+3. follow `(73,102)->(73,91)->(68,91)`;
+4. follow the explicit western and southern forest switchbacks toward
+   `(20,108)`;
 5. append the already validated Hauksness final approach.
 
 Compress only broad straight corridors where the recorded evidence supports
@@ -134,11 +153,12 @@ Add focused regressions before production route data:
   `hauksness_cantlin`;
 - selecting the ordinary `overworld_hauksness` object near Cantlin chooses
   the new variant;
-- the initial Cantlin departure preserves the `(73,103)`, `(72,103)`,
-  `(72,101)`, `(74,101)` seam geometry and moves away from the entrance;
+- the initial Cantlin departure preserves
+  `(73,102)->(73,91)->(68,91)` and moves away from the entrance;
 - representative narrow bends from each major trail section remain explicit
   and use the correct axis order;
-- the route joins the validated Hauksness chain at `(15,93)`;
+- the route joins the validated Hauksness approach through
+  `(23,95)->(22,95)->(22,89)`;
 - the final segment approaches `(25,89)` from `(24,89)` and remains strict;
 - entering map `0x03` announces Hauksness arrival and clears the route;
 - active-route matching survives ordinary-object refresh and battle pause;
@@ -162,8 +182,8 @@ Select the ordinary Hauksness Travel object and confirm the active route is
 
 1. Cantlin departure and the first approach seam;
 2. each major trail corridor and narrow bend;
-3. the join at `(15,93)`;
-4. Hauksness west approach `(15,89)`;
+3. the western corridor join at `(23,95)`;
+4. Hauksness west approach `(22,89)`;
 5. doorstep `(24,89)` and strict east entry at `(25,89)`;
 6. destination-map completion on map `0x03`.
 
