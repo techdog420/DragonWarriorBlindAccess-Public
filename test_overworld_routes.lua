@@ -2239,6 +2239,169 @@ function tests.great_swamp_cantlin_arrival_preserves_clue_boundary()
     routes.reset_for_tests()
 end
 
+function tests.cantlin_object_from_great_swamp_uses_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }, 0x01, 89, 112)
+
+    assert_equal(err, nil,
+        "Cantlin Travel object should start at the Great Swamp safe pin")
+    assert_equal(info.route.id, "cantlin_great_swamp",
+        "Cantlin object should choose the Great Swamp return variant")
+    assert_equal(info.object_id, "route_cantlin_great_swamp_02",
+        "safe-pin start should target the live south departure")
+
+    local segment = assert(routes.plan_next_segment(0x01, 89, 112))
+    assert_equal(segment.waypoint.x, 89, "first return target x")
+    assert_equal(segment.waypoint.y, 113, "first return target y")
+    assert_equal(segment.steps[1], "down",
+        "first return step should leave the safe pin southward")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_great_swamp_aliases_are_unambiguous()
+    local aliases = {
+        "great swamp to cantlin",
+        "cantlin from great swamp",
+        "return to cantlin from great swamp",
+    }
+
+    for _, alias in ipairs(aliases) do
+        routes.reset_for_tests()
+        local info, err = routes.start(alias, 0x01, 89, 112)
+        assert_equal(err, nil, alias .. " should resolve")
+        assert_equal(info.route.id, "cantlin_great_swamp",
+            alias .. " should select the Cantlin return route")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_great_swamp_preserves_live_return_geometry()
+    local route = assert(routes._route_for_tests("cantlin_great_swamp"))
+    local expected = {
+        {89, 112}, {89, 113}, {75, 113}, {73, 113}, {73, 111},
+        {71, 111}, {71, 110}, {65, 110}, {65, 108}, {63, 108},
+        {63, 106}, {63, 105}, {59, 105}, {59, 104}, {48, 104},
+        {48, 102}, {49, 102}, {49, 100}, {50, 100}, {50, 99},
+        {50, 98}, {52, 98}, {52, 97}, {53, 97}, {53, 96}, {54, 96},
+        {54, 95}, {56, 95}, {56, 94}, {60, 94}, {60, 93}, {64, 93},
+        {64, 92}, {64, 91}, {68, 91}, {73, 91}, {73, 102},
+    }
+
+    assert_equal(#route.waypoints, #expected,
+        "return route should contain only live-proven anchors")
+    for index, coordinate in ipairs(expected) do
+        local waypoint = route.waypoints[index]
+        assert_equal(waypoint.x, coordinate[1],
+            "return waypoint " .. index .. " x")
+        assert_equal(waypoint.y, coordinate[2],
+            "return waypoint " .. index .. " y")
+        assert_equal(waypoint.radius, 0,
+            "return waypoint " .. index .. " should be strict")
+        assert_equal(waypoint.x == 83 and waypoint.y == 113, false,
+            "return route must not target the buried square")
+    end
+
+    routes.reset_for_tests()
+    routes.start("great swamp to cantlin", 0x01, 89, 112)
+    local x, y = 89, 112
+    for index = 2, #expected do
+        local coordinate = expected[index]
+        local segment = assert(routes.plan_next_segment(0x01, x, y))
+        local expected_first
+        if coordinate[1] > x then
+            expected_first = "right"
+        elseif coordinate[1] < x then
+            expected_first = "left"
+        elseif coordinate[2] > y then
+            expected_first = "down"
+        else
+            expected_first = "up"
+        end
+        assert_equal(segment.steps[1], expected_first,
+            "return segment " .. index .. " first direction")
+        routes.observe_position(0x01, coordinate[1], coordinate[2])
+        x, y = coordinate[1], coordinate[2]
+    end
+
+    assert_equal(routes.is_active(), false,
+        "Cantlin arrival should stop the return route")
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_great_swamp_retains_shared_carry_metadata()
+    local route = assert(routes._route_for_tests("cantlin_great_swamp"))
+    local north_entry = route.waypoints[20]
+    local upper_lane = route.waypoints[33]
+
+    assert_equal(north_entry.x, 50, "north-entry timing marker x")
+    assert_equal(north_entry.y, 99, "north-entry timing marker y")
+    assert_equal(north_entry.route_hold_after_movement_start_frames, 60,
+        "north-entry route should sustain the live-confirmed press")
+    assert_equal(north_entry.route_early_twitch_timeout_frames, 60,
+        "north-entry route should retain the late-completion window")
+    assert_equal(north_entry.route_reset_movement_on_turn_settle, false,
+        "north-entry route should preserve observed carry")
+    assert_equal(route.waypoints[21].x, 50, "north-entry carry target x")
+    assert_equal(route.waypoints[21].y, 98, "north-entry carry target y")
+
+    assert_equal(upper_lane.x, 64, "upper-lane timing marker x")
+    assert_equal(upper_lane.y, 92, "upper-lane timing marker y")
+    assert_equal(upper_lane.route_hold_after_movement_start_frames, 60,
+        "upper-lane route should sustain the live-confirmed press")
+    assert_equal(upper_lane.route_early_twitch_timeout_frames, 60,
+        "upper-lane route should retain the late-completion window")
+    assert_equal(upper_lane.route_reset_movement_on_turn_settle, false,
+        "upper-lane route should preserve observed carry")
+    assert_equal(route.waypoints[34].x, 64, "upper-lane carry target x")
+    assert_equal(route.waypoints[34].y, 91, "upper-lane carry target y")
+end
+
+function tests.great_swamp_return_does_not_steal_hauksness_cantlin_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }, 0x01, 25, 89)
+
+    assert_equal(err, nil, "Cantlin Travel object should still start at Hauksness")
+    assert_equal(info.route.id, "cantlin_hauksness",
+        "Great Swamp variant must not steal the Hauksness return")
+
+    routes.reset_for_tests()
+end
+
+function tests.arriving_at_cantlin_stops_great_swamp_return()
+    local route = assert(routes._route_for_tests("cantlin_great_swamp"))
+    routes.reset_for_tests()
+    routes.start("great swamp to cantlin", 0x01, 89, 112)
+
+    local event
+    for index = 2, #route.waypoints do
+        local waypoint = route.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_contains(event.message, "Arrived at Cantlin",
+        "return arrival should name Cantlin")
+    assert_equal(event.refresh, true,
+        "Cantlin arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false,
+        "Cantlin arrival should stop guidance")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
