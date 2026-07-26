@@ -1903,6 +1903,100 @@ function tests.entering_hauksness_stops_cantlin_variant()
     routes.reset_for_tests()
 end
 
+function tests.cantlin_object_from_hauksness_uses_reverse_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }, 0x01, 25, 89)
+
+    assert_equal(err, nil, "Cantlin Travel object should start at Hauksness")
+    assert_equal(info.route.id, "cantlin_hauksness", "Cantlin object should choose the Hauksness variant")
+    assert_equal(info.object_id, "route_cantlin_hauksness_02", "Hauksness start should skip the current entrance anchor")
+    assert_contains(info.message, "Hauksness doorstep west", "route should begin west from Hauksness")
+
+    local segment = assert(routes.plan_next_segment(0x01, 25, 89))
+    assert_equal(segment.waypoint.x, 24, "first reverse target x")
+    assert_equal(segment.waypoint.y, 89, "first reverse target y")
+    assert_equal(segment.steps[1], "left", "first reverse step should leave Hauksness to the west")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_hauksness_aliases_are_unambiguous()
+    local aliases = {
+        "cantlin from hauksness",
+        "hauksness to cantlin",
+        "return to cantlin",
+    }
+
+    for _, alias in ipairs(aliases) do
+        routes.reset_for_tests()
+        local info, err = routes.start(alias, 0x01, 25, 89)
+        assert_equal(err, nil, alias .. " should resolve")
+        assert_equal(info.route.id, "cantlin_hauksness", alias .. " should select the Cantlin route")
+    end
+
+    routes.reset_for_tests()
+    local kol_info, kol_err = routes.start("return from hauksness", 0x01, 25, 89)
+    assert_equal(kol_err, nil, "existing Kol return alias should still resolve")
+    assert_equal(kol_info.route.id, "kol_hauksness", "Cantlin route must not steal the Kol return alias")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_hauksness_exactly_reverses_validated_route()
+    local outbound = assert(routes._route_for_tests("hauksness_cantlin"))
+    local inbound = assert(routes._route_for_tests("cantlin_hauksness"))
+
+    assert_equal(#inbound.waypoints, 58, "Cantlin reverse route waypoint count")
+    assert_equal(#inbound.waypoints, #outbound.waypoints, "reverse route should preserve waypoint count")
+
+    for index, waypoint in ipairs(inbound.waypoints) do
+        local expected = outbound.waypoints[#outbound.waypoints - index + 1]
+        assert_equal(waypoint.x, expected.x, "reverse waypoint " .. index .. " x")
+        assert_equal(waypoint.y, expected.y, "reverse waypoint " .. index .. " y")
+    end
+
+    assert_equal(inbound.waypoints[1].radius, 0, "Hauksness start anchor should be strict")
+    assert_equal(inbound.waypoints[58].radius, 0, "Cantlin final anchor should be strict")
+    assert_equal(inbound.waypoints[58].final, true, "Cantlin final anchor should finish the route")
+end
+
+function tests.active_hauksness_cantlin_route_matches_ordinary_cantlin_object()
+    routes.reset_for_tests()
+    routes.start("hauksness to cantlin", 0x01, 25, 89)
+
+    local matches = routes.active_route_matches_object({
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    })
+
+    assert_equal(matches, true, "active reverse route should retain the ordinary Cantlin destination")
+    routes.reset_for_tests()
+end
+
+function tests.entering_cantlin_stops_hauksness_variant()
+    routes.reset_for_tests()
+    local info, err = routes.start("hauksness to cantlin", 0x01, 25, 89)
+
+    assert_equal(err, nil, "Hauksness Cantlin alias should start")
+    assert_equal(info.route.id, "cantlin_hauksness", "alias should select the reverse route")
+
+    local event = routes.observe_position(0x0A, 15, 0)
+
+    assert_contains(event.message, "Arrived at Cantlin", "entering Cantlin should complete the reverse route")
+    assert_equal(event.refresh, true, "Cantlin arrival should refresh Travel objects")
+    assert_equal(routes.is_active(), false, "reverse route should stop after entering Cantlin")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
