@@ -4,7 +4,27 @@ Updated: 2026-07-25
 
 ## Immediate FCEUX Handoff
 
-- Current live state is World Map `(20,88)` after the user completed Hauksness
+- Cantlin-to-Hauksness named route is live-validated end to end on
+  `codex/cantlin-hauksness-return`. The corrected 58-waypoint
+  `hauksness_cantlin` route starts from the actual Cantlin exit landing
+  `(73,102)`, follows the western/southern forest chain, and entered Hauksness
+  from doorstep `(24,89)` by one strict east step. Final proof at frame
+  `195814` was `event=arrived route=hauksness_cantlin waypoint=Hauksness
+  index=58`; a fresh probe confirmed Ruins of Hauksness map `0x03` at `(0,10)`,
+  route `none`, menu/dialogue closed, and no runtime blocks.
+- This live pass captured two recoverable route-aware settle overshoots:
+  `(33,116)->(32,116)` and `(22,89)->(22,88)`. Both cancelled with
+  `route_drift_off_path`, preserved the next route waypoint, and recovered on
+  a fresh `auto_walk`. Queued block reports at `(70,91)->LEFT`,
+  `(68,91)->DOWN`, `(56,95)->LEFT`, and `(20,110)->UP` passed same-origin raw
+  probes. Keep all of these as executor timing evidence, not World Map block
+  data.
+- Fresh publication verification passes: 118 overworld-route tests, 113
+  route-manager tests, 140 auto-step tests, 43 battle tests, Lua syntax,
+  `git diff --check`, and the full repository harness. WSL reports only the
+  known optional `accessible_output2` warning; its Windows-only speech bridge
+  launch also emits the known non-failing `cmd: not found` diagnostic.
+- Prior pre-feature live state was World Map `(20,88)` after the user completed Hauksness
   guidance in both directions with the final route-aware carry source loaded.
   Fresh probe `AUTOWALK_ROUTE_CARRY_20260725` confirmed no active route or
   path, `RUNTIME_BLOCKS map=0x01 none`, controller byte `0x00`, healthy speech,
@@ -21,12 +41,13 @@ Updated: 2026-07-25
   tests. All bytecode checks, `git diff --check`, and the full repository
   harness pass; WSL reports only the known optional `accessible_output2`
   warning.
-- Cantlin clarification: its direct World Map approach and town exit are
-  already live-proven. Entry from `(73,103)` lands at Cantlin `(15,0)`;
+- Prior Cantlin clarification, now superseded in part by the new named return
+  route: its direct World Map approach and town exit are live-proven. Entry
+  from `(73,103)` lands at Cantlin `(15,0)`;
   selected-object return reaches `(20,28)` facing south toward transition
-  `(20,29)`. There is no named bidirectional Cantlin route in
-  `overworld_routes.lua`. Building one is separate future route work, not a
-  remaining validation step for the current carry patch.
+  `(20,29)`, whose actual World Map landing is `(73,102)`.
+  `overworld_routes.lua` now has named Cantlin-to-Hauksness guidance; a
+  Hauksness-to-Cantlin named route remains separate future work.
 - Historical 2026-07-24 checkpoint was Ruins of Hauksness map `0x03` at exit `(0,10)`,
   facing west after the final source-only Axe Knight-to-exit replay. HP is
   `89/100`, MP `78/90`, level-17 stats are intact, no path is active, and

@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Cantlin-to-Hauksness named route (`2026-07-25`): the corrected explicit
+  `hauksness_cantlin` route is live-validated from the actual Cantlin World Map
+  exit landing `(73,102)` through all 58 waypoints. The final strict east step
+  from `(24,89)` emitted arrival at Hauksness and changed to map `0x03`,
+  position `(0,10)`; a fresh probe showed route `none`, menu/dialogue closed,
+  and no runtime blocks. The route follows the western/southern forest rather
+  than the rejected historical eastern trail.
+- The same pass captured two recoverable settle overshoots:
+  `(33,116)->(32,116)` and `(22,89)->(22,88)`. Both emitted
+  `route_drift_off_path`, retained the next waypoint, and recovered on a fresh
+  `auto_walk`. Queued block reports at `(70,91)->LEFT`, `(68,91)->DOWN`,
+  `(56,95)->LEFT`, and `(20,110)->UP` passed same-origin raw probes. These are
+  autowalk timing observations, not permanent map blockers.
+- Fresh verification passes at 118 overworld-route, 113 route-manager, 140
+  auto-step, and 43 battle tests. Lua syntax, `git diff --check`, and the full
+  repository harness pass; WSL reports only the known optional
+  `accessible_output2` warning plus the non-failing Windows-only speech bridge
+  `cmd: not found` diagnostic.
 - Route-aware overworld carry recovery (`2026-07-25`): the user confirmed the
   Hauksness guidance completed in both directions after loading the final
   source. A fresh post-run probe tagged
@@ -24,14 +42,13 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   auto-step tests; bytecode checks, `git diff --check`, and the full repository
   harness pass with only the known optional `accessible_output2` warning under
   WSL.
-- Cantlin route-status clarification (`2026-07-25`): the direct overworld
+- Prior Cantlin route-status clarification (`2026-07-25`): the direct overworld
   approach and town return are already live-validated. The approach enters
   from World Map `(73,103)` into Cantlin `(15,0)`. Selected-object return
   guidance reached southeast safe stand `(20,28)`, faced south, and uses
-  `(20,29)` for the World Map transition. The current
-  `overworld_routes.lua` does not define a named bidirectional Cantlin
-  waypoint route; adding one would be a separate route feature rather than
-  unfinished validation of the route-aware carry patch.
+  `(20,29)` for the World Map transition, landing at `(73,102)`.
+  `overworld_routes.lua` now defines Cantlin-to-Hauksness guidance; the
+  opposite named direction to Cantlin is still separate work.
 
 - Rimuldar final manual service sweep (`2026-07-20`): every service route
   passed. The Weapons Merchant route temporarily could not plan while a roaming

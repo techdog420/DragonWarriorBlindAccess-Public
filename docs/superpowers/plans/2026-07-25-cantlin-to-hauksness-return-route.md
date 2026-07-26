@@ -4,9 +4,27 @@
 
 **Goal:** Add an explicit, automatically selected overworld route from Cantlin to the confirmed Hauksness entrance and validate it through deterministic Lua tests and live FCEUX play.
 
-**Architecture:** `overworld_routes.lua` gains a literal `hauksness_cantlin` route built from the clean Cantlin-trail evidence, with contaminated explorations and redundant loops removed. Existing object matching and nearest-route scoring select this variant for the ordinary Hauksness Travel object near Cantlin; `selection_max_index = 69` prevents it from stealing the already validated Hauksness route after the new chain reaches `(15,103)`. No new command, Travel object, route-manager branch, or cross-map orchestration is introduced.
+**Architecture:** `overworld_routes.lua` gains a literal `hauksness_cantlin` route built from a map-oriented and live-validated 58-waypoint western chain. Existing object matching and nearest-route scoring select this variant for the ordinary Hauksness Travel object near Cantlin; `selection_max_index = 56` prevents it from stealing the established Hauksness route at the shared final approach. No new command, Travel object, route-manager branch, or cross-map orchestration is introduced.
 
 **Tech Stack:** Lua 5.1/LuaJIT, the existing `overworld_routes` state machine, table-driven Lua regression tests, FCEUX 2.6.6, `dw_commands.ps1`, `dw_debug.log`, PowerShell, and the WSL Python test harness.
+
+## Live Correction and Completion
+
+Tasks 1 through 4 below preserve the original rejected candidate for
+historical TDD context only. **Do not execute their code snippets, coordinate
+lists, expected results, or live-validation procedure.** Live probing showed
+that candidate's eastern/southern trail was invalid. The implemented route
+starts at the actual Cantlin exit landing `(73,102)`, runs north and west
+through the explicit forest switchbacks, and joins the Hauksness approach at
+`(23,95)->(22,95)->(22,89)->(24,89)->(25,89)`. The production route and
+`test_overworld_routes.lua` are authoritative.
+
+FCEUX validated the corrected route end to end. Arrival changed to map `0x03`
+at `(0,10)`, emitted `OVERWORLD_ROUTE: event=arrived
+route=hauksness_cantlin waypoint=Hauksness index=58`, and cleared the route.
+Two recoverable final-settle overshoots and several same-origin-probe-clean
+queued blocks were retained as autowalk timing evidence; none justify static
+map changes.
 
 ## Global Constraints
 
@@ -23,7 +41,7 @@
 
 ---
 
-### Task 1: Add failing selection and route-shape regressions
+### Historical Task 1: Rejected selection and route-shape regressions
 
 **Files:**
 - Modify: `test_overworld_routes.lua` after the existing Hauksness/Kol return tests
@@ -317,7 +335,7 @@ intentional failing regressions.
 
 ---
 
-### Task 2: Add the explicit Cantlin-side Hauksness variant
+### Historical Task 2: Rejected Cantlin-side Hauksness candidate
 
 **Files:**
 - Modify: `overworld_routes.lua` in `ROUTES`, `ROUTE_IDS`, and `ROUTE_ALTERNATES`
@@ -509,7 +527,7 @@ commit remains separate.
 
 ---
 
-### Task 3: Run the complete automated verification gate
+### Historical Task 3: Initial automated verification gate
 
 **Files:**
 - Verify: `overworld_routes.lua`
@@ -561,7 +579,7 @@ passes, allowing only the known optional `accessible_output2` warning.
 
 ---
 
-### Task 4: Validate the route live from Cantlin to Hauksness
+### Historical Task 4: Rejected live-validation procedure
 
 **Files:**
 - Read: `dw_debug.log`
@@ -735,27 +753,27 @@ Add this paragraph near the active Hauksness/Cantlin route status in
 - Cantlin-to-Hauksness return route (`2026-07-25`): after using Cantlin's
   existing southeast Exit to World Map, selecting the ordinary Hauksness
   Travel destination automatically chooses `hauksness_cantlin`. The explicit
-  route is live-validated through the Cantlin entrance seam, eastern forest
-  zigzag, southern maze, northwestern connector, southwest forest, shared
-  `(15,93)` approach, and strict east entry from `(24,89)` into Hauksness map
-  `0x03`. Combat remains a manual pause point; no runtime or permanent blocker
-  is part of the route definition.
+  route is live-validated from actual World Map landing `(73,102)` through the
+  northern departure, western and southern forest switchbacks, western
+  corridor `(23,95)`, west approach `(22,89)`, and strict east entry from
+  `(24,89)` into Hauksness map `0x03`. Combat remains a manual pause point; no
+  runtime or permanent blocker is part of the route definition.
 ```
 
 Add this concise item near the top of `session_handoff.md`:
 
 ```markdown
 - Cantlin return complete: `hauksness_cantlin` is automated-test and live
-  validated from the normal Cantlin World Map landing through the southern
-  route to Hauksness map `0x03`. The ordinary Hauksness Travel object selects
-  it automatically near Cantlin. Preserve the explicit entrance seam, forest
-  zigzags, southern-maze turns, `(15,93)` join, and strict `(24,89)->RIGHT`
-  final entry.
+  validated from normal Cantlin World Map landing `(73,102)` through the
+  western and southern forest route to Hauksness map `0x03`. The ordinary
+  Hauksness Travel object selects it automatically near Cantlin. Preserve the
+  explicit switchbacks, `(23,95)->(22,95)->(22,89)` final approach, and strict
+  `(24,89)->RIGHT` entry.
 ```
 
-If live validation changes any coordinate, replace that coordinate in both
-paragraphs and the route tests before committing; do not document the
-pre-validation hypothesis.
+The paragraphs above contain the live-corrected coordinates; do not restore
+the rejected pre-validation eastern-trail hypothesis from earlier task
+examples.
 
 - [ ] **Step 2: Re-run the complete verification gate**
 
