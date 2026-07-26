@@ -461,6 +461,7 @@ local OVERWORLD_LANDMARKS = {
     {dx =  65, dy =  66, name = "Southern Cave"},
     {dx =  30, dy =  59, name = "Cantlin"},
     {dx = -18, dy =  46, name = "Hauksness"},
+    {dx =  46, dy =  69, name = "Eastern Great Swamp Search Area"},
     {dx =   5, dy =   5, name = "Charlock Castle"},
 }
 

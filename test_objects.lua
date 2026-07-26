@@ -1055,7 +1055,7 @@ function tests.inactive_overworld_route_does_not_clutter_travel_filter()
     end
 
     assert_equal(found_route_marker, false, "inactive route waypoints should stay out of the Travel list")
-    assert_equal(env.objects.get_count(), 14, "plain world-map Travel should only list major destinations")
+    assert_equal(env.objects.get_count(), 15, "plain world-map Travel should only list major destinations")
 
     env.restore()
 end
