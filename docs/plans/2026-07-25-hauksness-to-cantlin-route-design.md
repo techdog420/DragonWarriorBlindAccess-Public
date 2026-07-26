@@ -19,11 +19,17 @@ the existing `codex/cantlin-hauksness-return` branch and draft PR #4.
   - `hauksness to cantlin`
   - `return to cantlin`
 
-The waypoint chain will be the exact reverse of all 58 waypoints in
-`hauksness_cantlin`. Names will describe travel toward Cantlin, and the warning
-will remain near Hauksness so the player hears the danger notice at the start.
-The first step away from Hauksness and the final Cantlin approach will use
-strict zero-radius anchors.
+The final waypoint chain contains 57 strict waypoints. It follows the reverse
+of `hauksness_cantlin` except for two validation-driven north-carry splices:
+
+- `(50,100)->(50,99)` carries to `(50,98)`, replacing the reverse-only
+  `(51,99)->(51,98)` jog.
+- `(64,93)->(64,92)` carries to `(64,91)`, replacing the reverse-only
+  `(68,92)` approach.
+
+Names describe travel toward Cantlin, and the warning remains near Hauksness so
+the player hears the danger notice at the start. The first step away from
+Hauksness and the final Cantlin approach use strict zero-radius anchors.
 
 `return from hauksness` will remain assigned only to the existing Kol route to
 avoid an alias collision.
@@ -38,8 +44,11 @@ The existing route manager will retain the route through random battles and
 resume from the current waypoint afterward. Entering map `0x0A` will announce
 arrival and clear the active route.
 
-No new permanent map blockers, runtime blockers, movement timing changes, or
-route-manager semantics are part of this change.
+No permanent or runtime map blockers and no route-manager semantics changed.
+The two north-entry waypoints use route-local sustained-hold, extended
+early-twitch, and carry-preserving settle controls. The final Cantlin waypoint
+uses horizontal-first recovery so an east-column settle corrects west before
+descending.
 
 ## Test-First Coverage
 
@@ -49,7 +58,8 @@ Focused tests will establish:
    `cantlin_hauksness`.
 2. The explicit Hauksness-to-Cantlin aliases resolve without colliding with the
    existing Kol return alias.
-3. The waypoint coordinates exactly reverse `hauksness_cantlin`.
+3. The waypoint coordinates reverse `hauksness_cantlin` except for the two
+   explicitly asserted live carry splices.
 4. Selection at the entrance advances past the current Hauksness anchor and
    targets the doorstep-west waypoint.
 5. The final Cantlin anchor remains strict and entering map `0x0A` completes
@@ -57,14 +67,16 @@ Focused tests will establish:
 6. Existing Hauksness, Kol, and Cantlin-to-Hauksness route behavior remains
    unchanged.
 
-## Live Validation
+## Live Validation Result
 
-After the Lua script is manually reloaded, validation will begin from the
-Hauksness entrance with a fresh probe and no active route.
+Completed on 2026-07-26 from the Hauksness entrance with a fresh script and no
+active route.
 
-The route will be walked normally to Cantlin. Battles are expected and are not
-route failures. After each interruption, the live state will be freshly
-checked before continuing.
+The route walked normally to Cantlin. Battles and a REPEL-expiry dialogue
+interrupted the run without losing safe route recovery. The two north entries
+produced the carry landings described above. The final east lane settled at
+`(74,91)`; horizontal-first recovery from `(74,99)` moved left to `(73,99)`
+before descending.
 
 Movement failures will be classified before any source change:
 
@@ -74,11 +86,10 @@ Movement failures will be classified before any source change:
 - transition behavior,
 - or repeated same-origin engine blockage.
 
-The final northern Cantlin approach is intentionally tested as the true reverse
-of the validated outbound route. If it proves unreliable, validation will stop
-at the failure and the final segment may be redesigned to use the independently
-proven southern entry from `(73,103)` by stepping `UP`. A single failure will
-not be promoted into permanent map data.
+The final northern Cantlin approach entered town from `(73,101)`. The route
+emitted arrival at waypoint 57 and landed on map `0x0A` at `(15,0)`. A fresh
+probe confirmed route `none`, neutral controller input, and no runtime blocks.
+No permanent blocker was added.
 
 ## Documentation and Publication
 

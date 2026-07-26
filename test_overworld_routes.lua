@@ -1948,22 +1948,131 @@ function tests.cantlin_hauksness_aliases_are_unambiguous()
     routes.reset_for_tests()
 end
 
-function tests.cantlin_hauksness_exactly_reverses_validated_route()
+function tests.cantlin_hauksness_reverses_validated_route_with_live_carry_splices()
     local outbound = assert(routes._route_for_tests("hauksness_cantlin"))
     local inbound = assert(routes._route_for_tests("cantlin_hauksness"))
+    local reversed = {}
 
-    assert_equal(#inbound.waypoints, 58, "Cantlin reverse route waypoint count")
-    assert_equal(#inbound.waypoints, #outbound.waypoints, "reverse route should preserve waypoint count")
+    for index = #outbound.waypoints, 1, -1 do
+        reversed[#reversed + 1] = outbound.waypoints[index]
+    end
 
-    for index, waypoint in ipairs(inbound.waypoints) do
-        local expected = outbound.waypoints[#outbound.waypoints - index + 1]
-        assert_equal(waypoint.x, expected.x, "reverse waypoint " .. index .. " x")
-        assert_equal(waypoint.y, expected.y, "reverse waypoint " .. index .. " y")
+    assert_equal(#inbound.waypoints, 57, "Cantlin reverse route waypoint count")
+    for index = 1, 40 do
+        assert_equal(inbound.waypoints[index].x, reversed[index].x, "reverse waypoint " .. index .. " x")
+        assert_equal(inbound.waypoints[index].y, reversed[index].y, "reverse waypoint " .. index .. " y")
+    end
+
+    assert_equal(inbound.waypoints[41].x, 50, "live carry splice x")
+    assert_equal(inbound.waypoints[41].y, 98, "live carry splice y")
+
+    for index = 42, 53 do
+        local expected = reversed[index + 1]
+        assert_equal(inbound.waypoints[index].x, expected.x, "post-splice waypoint " .. index .. " x")
+        assert_equal(inbound.waypoints[index].y, expected.y, "post-splice waypoint " .. index .. " y")
+    end
+
+    assert_equal(inbound.waypoints[54].x, 64, "upper-lane carry splice x")
+    assert_equal(inbound.waypoints[54].y, 91, "upper-lane carry splice y")
+
+    for index = 55, #inbound.waypoints do
+        local expected = reversed[index + 1]
+        assert_equal(inbound.waypoints[index].x, expected.x, "post-upper-splice waypoint " .. index .. " x")
+        assert_equal(inbound.waypoints[index].y, expected.y, "post-upper-splice waypoint " .. index .. " y")
     end
 
     assert_equal(inbound.waypoints[1].radius, 0, "Hauksness start anchor should be strict")
-    assert_equal(inbound.waypoints[58].radius, 0, "Cantlin final anchor should be strict")
-    assert_equal(inbound.waypoints[58].final, true, "Cantlin final anchor should finish the route")
+    assert_equal(inbound.waypoints[57].radius, 0, "Cantlin final anchor should be strict")
+    assert_equal(inbound.waypoints[57].final, true, "Cantlin final anchor should finish the route")
+end
+
+function tests.cantlin_hauksness_marks_unstable_north_entry_for_sustained_hold()
+    local route = assert(routes._route_for_tests("cantlin_hauksness"))
+    local waypoint = assert(route.waypoints[40])
+
+    assert_equal(waypoint.x, 50, "timing marker waypoint x")
+    assert_equal(waypoint.y, 99, "timing marker waypoint y")
+    assert_equal(
+        waypoint.route_hold_after_movement_start_frames,
+        60,
+        "reverse route should sustain the north press through the early movement twitch"
+    )
+    assert_equal(
+        waypoint.route_early_twitch_timeout_frames,
+        60,
+        "reverse route should wait through the observed late tile completion"
+    )
+    assert_equal(
+        waypoint.route_reset_movement_on_turn_settle,
+        false,
+        "reverse route should preserve the observed north carry during final settle"
+    )
+    assert_equal(route.waypoints[41].x, 50, "north carry target x")
+    assert_equal(route.waypoints[41].y, 98, "north carry target y")
+end
+
+function tests.cantlin_hauksness_north_entry_previews_observed_carry()
+    routes.reset_for_tests()
+    local info, err = routes.start("hauksness to cantlin", 0x01, 50, 100)
+
+    assert_equal(err, nil, "Cantlin reverse route should start at the north-entry seam")
+    assert_equal(info.route.id, "cantlin_hauksness", "north-entry seam should retain the reverse route")
+
+    local segment = assert(routes.plan_next_segment(0x01, 50, 100))
+    assert_equal(segment.waypoint.x, 50, "north-entry target x")
+    assert_equal(segment.waypoint.y, 99, "north-entry target y")
+    assert_equal(segment.route_final_carry_x, 50, "north-entry carry x")
+    assert_equal(segment.route_final_carry_y, 98, "north-entry carry y")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_hauksness_upper_lane_previews_observed_carry()
+    local route = assert(routes._route_for_tests("cantlin_hauksness"))
+    local waypoint = assert(route.waypoints[53])
+
+    assert_equal(waypoint.x, 64, "upper-lane timing marker x")
+    assert_equal(waypoint.y, 92, "upper-lane timing marker y")
+    assert_equal(waypoint.route_hold_after_movement_start_frames, 60, "upper-lane sustained hold")
+    assert_equal(waypoint.route_early_twitch_timeout_frames, 60, "upper-lane twitch window")
+    assert_equal(waypoint.route_reset_movement_on_turn_settle, false, "upper-lane carry preservation")
+    assert_equal(route.waypoints[54].x, 64, "upper-lane carry target x")
+    assert_equal(route.waypoints[54].y, 91, "upper-lane carry target y")
+
+    routes.reset_for_tests()
+    local info, err = routes.start("hauksness to cantlin", 0x01, 64, 93)
+    assert_equal(err, nil, "Cantlin reverse route should start at the upper-lane seam")
+    assert_equal(info.route.id, "cantlin_hauksness", "upper-lane seam should retain the reverse route")
+
+    local segment = assert(routes.plan_next_segment(0x01, 64, 93))
+    assert_equal(segment.waypoint.x, 64, "upper-lane target x")
+    assert_equal(segment.waypoint.y, 92, "upper-lane target y")
+    assert_equal(segment.route_final_carry_x, 64, "upper-lane carry x")
+    assert_equal(segment.route_final_carry_y, 91, "upper-lane carry y")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_hauksness_final_recovery_corrects_column_before_descent()
+    local route = assert(routes._route_for_tests("cantlin_hauksness"))
+    local cantlin = assert(route.waypoints[57])
+
+    assert_equal(cantlin.x, 73, "Cantlin final waypoint x")
+    assert_equal(cantlin.y, 102, "Cantlin final waypoint y")
+    assert_equal(cantlin.axis_order and cantlin.axis_order[1], "horizontal", "Cantlin recovery first axis")
+    assert_equal(cantlin.axis_order and cantlin.axis_order[2], "vertical", "Cantlin recovery second axis")
+
+    routes.reset_for_tests()
+    local info, err = routes.start("hauksness to cantlin", 0x01, 74, 99)
+    assert_equal(err, nil, "Cantlin reverse route should recover from the east column")
+    assert_equal(info.route.id, "cantlin_hauksness", "east-column recovery should retain the reverse route")
+
+    local segment = assert(routes.plan_next_segment(0x01, 74, 99))
+    assert_equal(segment.waypoint.x, 73, "Cantlin recovery target x")
+    assert_equal(segment.waypoint.y, 102, "Cantlin recovery target y")
+    assert_equal(segment.steps[1], "left", "Cantlin recovery should correct west before descending")
+
+    routes.reset_for_tests()
 end
 
 function tests.active_hauksness_cantlin_route_matches_ordinary_cantlin_object()
