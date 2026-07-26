@@ -4,6 +4,27 @@ Updated: 2026-07-26
 
 ## Immediate FCEUX Handoff
 
+- Cross-waypoint overworld turn timing is live-validated on
+  `codex/cantlin-hauksness-return`. The shorter
+  `auto_step_route_pre_turn_inject_limit=10` now survives both the guarded
+  re-press and its bounded timing retry instead of reverting to the ordinary
+  limit of 12. Live forward/reverse checks completed cleanly at
+  `(22,95)->RIGHT`, `(23,95)->LEFT`, `(23,106)->DOWN`,
+  `(23,107)->LEFT`, and `(22,107)->DOWN`; the guarded re-press used 10 on the
+  observed cross-waypoint turns, with no drift or blocker promotion. The
+  deepest bounded timing-retry preservation is deterministic-test evidence
+  because that branch did not naturally recur after the final reload.
+- One unrelated ordinary non-final step at `(23,102)->DOWN` produced a
+  timing-only false block after the same edge had already passed; its retry
+  succeeded. Keep it as executor timing evidence, not World Map data. Three
+  battles interrupted the route and resumed safely. Fresh final state is
+  World Map `(22,108)`, field control, no active path or runtime blocks,
+  HP `84/100`, MP `72/90`, and intact level-17 stats.
+- Current-source verification passes 144 auto-step, 113 route-manager, 127
+  overworld-route, and 43 battle tests, Lua syntax, `git diff --check`, and the
+  full repository harness. WSL reports only the known optional
+  `accessible_output2` warning and the known non-failing Windows-only speech
+  bridge `cmd: not found` diagnostic.
 - Hauksness-to-Cantlin named route is now live-validated end to end on
   `codex/cantlin-hauksness-return`. The final 57-waypoint
   `cantlin_hauksness` route starts at Hauksness World Map entrance `(25,89)`

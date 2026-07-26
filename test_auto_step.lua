@@ -1623,6 +1623,90 @@ function tests.queued_route_final_step_uses_pre_turn_limit_for_perpendicular_car
     env.restore()
 end
 
+function tests.queued_route_final_pre_turn_repress_keeps_shorter_inject_limit()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "12",
+            auto_step_route_pre_turn_inject_limit = "10",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_final_carry_x = 4,
+        route_final_carry_y = 2,
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+
+    local state = env.auto_step.get_active_step_state()
+    assert_equal(
+        state and state.inject_limit,
+        10,
+        "cross-waypoint guarded re-press should keep the shorter pre-turn inject limit"
+    )
+
+    env.restore()
+end
+
+function tests.queued_route_final_pre_turn_timing_retry_keeps_shorter_inject_limit()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_timeout = "60",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_repress_timeout_frames = "4",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "12",
+            auto_step_route_pre_turn_inject_limit = "10",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_final_carry_x = 4,
+        route_final_carry_y = 2,
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.update(true)
+    env.set_subpixel(0x30)
+    env.update(true)
+
+    local retry_state = nil
+    for _ = 1, 20 do
+        env.update(true)
+        local state = env.auto_step.get_active_step_state()
+        if state and state.timeout_retries == 1 then
+            retry_state = state
+            break
+        end
+    end
+
+    assert_truthy(
+        retry_state ~= nil,
+        "cross-waypoint guarded recovery should reach its bounded timing retry"
+    )
+    assert_equal(
+        retry_state and retry_state.inject_limit,
+        10,
+        "cross-waypoint timing retry should keep the shorter pre-turn inject limit"
+    )
+
+    env.restore()
+end
+
 function tests.queued_route_final_step_keeps_normal_limit_without_perpendicular_carry()
     local cases = {
         {

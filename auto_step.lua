@@ -390,6 +390,26 @@ local function queued_route_turn_after_current_step()
     return next_dir ~= nil and next_dir ~= auto_dir
 end
 
+local function queued_route_final_step_before_perpendicular_carry(
+        step_index, current_dir, start_x, start_y)
+    if route_steps == nil
+       or step_index == nil
+       or current_dir == nil
+       or step_index ~= #route_steps then
+        return false
+    end
+
+    local dx, dy = direction_delta(current_dir)
+    local endpoint_x = start_x and start_x + dx or nil
+    local endpoint_y = start_y and start_y + dy or nil
+    local carry_dir = cardinal_direction_between(
+        endpoint_x,
+        endpoint_y,
+        route_final_carry_x_override,
+        route_final_carry_y_override)
+    return directions_are_perpendicular(current_dir, carry_dir)
+end
+
 local function queued_route_step_before_turn(
         step_index, current_dir, start_x, start_y)
     if route_steps == nil
@@ -404,19 +424,8 @@ local function queued_route_step_before_turn(
         return previous_dir == current_dir
             and following_dir ~= current_dir
     end
-    if step_index ~= #route_steps then
-        return false
-    end
-
-    local dx, dy = direction_delta(current_dir)
-    local endpoint_x = start_x and start_x + dx or nil
-    local endpoint_y = start_y and start_y + dy or nil
-    local carry_dir = cardinal_direction_between(
-        endpoint_x,
-        endpoint_y,
-        route_final_carry_x_override,
-        route_final_carry_y_override)
-    return directions_are_perpendicular(current_dir, carry_dir)
+    return queued_route_final_step_before_perpendicular_carry(
+        step_index, current_dir, start_x, start_y)
 end
 
 local function should_hold_after_movement_start()
@@ -977,13 +986,20 @@ local function schedule_entry_prime_retry(reason, timeout_retries, turn_represse
         return false
     end
 
+    local retry_inject_limit = math.max(
+        tonumber(auto_inject_limit) or 0,
+        tonumber(get_inject_limit()) or INJECT_LIMIT)
+    if waveform.guarded_twitch_recovery == true
+       and queued_route_final_step_before_perpendicular_carry(
+            waveform.step_index, auto_dir, auto_start_x, auto_start_y) then
+        retry_inject_limit =
+            auto_inject_limit or get_route_pre_turn_inject_limit()
+    end
     local retry = {
         dir = auto_dir,
         timeout_retries = math.max(0, tonumber(timeout_retries) or 0),
         turn_represses = math.max(0, tonumber(turn_represses) or 0),
-        inject_limit = math.max(
-            tonumber(auto_inject_limit) or 0,
-            tonumber(get_inject_limit()) or INJECT_LIMIT),
+        inject_limit = retry_inject_limit,
         release_frames = 0,
         start_x = auto_start_x,
         start_y = auto_start_y,
@@ -1039,13 +1055,19 @@ local function schedule_turn_repress(dir, guarded_twitch)
             return false
         end
         local settle_frames = get_route_turn_settle_frames()
+        local recovery_inject_limit = math.max(
+            tonumber(auto_inject_limit) or 0,
+            tonumber(get_inject_limit()) or INJECT_LIMIT)
+        if queued_route_final_step_before_perpendicular_carry(
+                route_index - 1, auto_dir, auto_start_x, auto_start_y) then
+            recovery_inject_limit =
+                auto_inject_limit or get_route_pre_turn_inject_limit()
+        end
         local recovery = {
             dir = auto_dir,
             timeout_retries = auto_timeout_retries,
             turn_represses = auto_turn_represses + 1,
-            inject_limit = math.max(
-                tonumber(auto_inject_limit) or 0,
-                tonumber(get_inject_limit()) or INJECT_LIMIT),
+            inject_limit = recovery_inject_limit,
             release_frames = settle_frames,
             start_x = auto_start_x,
             start_y = auto_start_y,

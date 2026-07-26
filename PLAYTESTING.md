@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Cross-waypoint turn timing (`2026-07-26`): the final queued step before a
+  perpendicular route carry now retains the shorter inject limit of 10 through
+  its guarded re-press and bounded timing retry. Live checks passed in both
+  directions at `(22,95)<->(23,95)`, on the long segment ending
+  `(23,106)->(23,107)`, and through one-step turns
+  `(23,107)->(22,107)->(22,108)`. Observed guarded re-presses stayed at 10
+  without drift or blocker promotion. The deepest bounded retry did not recur
+  after the final reload, so that exact branch remains deterministic-test
+  evidence.
+- An ordinary non-final `(23,102)->DOWN` step produced one timing-only false
+  block after the edge had already passed, then succeeded on retry. Do not
+  promote it to map data. Three combat interruptions resumed safely. Fresh
+  final state is World Map `(22,108)`, no active path or runtime blocks,
+  HP `84/100`, MP `72/90`, with level-17 stats intact. Verification passes 144
+  auto-step, 113 route-manager, 127 overworld-route, and 43 battle tests plus
+  Lua syntax, `git diff --check`, and the full repository harness; only the
+  known optional WSL speech-dependency warnings remain.
 - Hauksness-to-Cantlin named route (`2026-07-26`): the final
   `cantlin_hauksness` route is live-validated from Hauksness World Map entrance
   `(25,89)` through 57 strict waypoints. It entered Cantlin from `(73,101)`,
