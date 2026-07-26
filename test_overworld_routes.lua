@@ -2106,6 +2106,139 @@ function tests.entering_cantlin_stops_hauksness_variant()
     routes.reset_for_tests()
 end
 
+function tests.great_swamp_search_area_alias_and_object_start_cantlin_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start(
+        "great swamp search area", 0x01, 73, 102)
+
+    assert_equal(err, nil, "Great Swamp search-area alias should resolve")
+    assert_equal(info.route.id, "great_swamp_cantlin",
+        "Cantlin start should use the Great Swamp route")
+    assert_equal(info.object_id, "route_great_swamp_cantlin_02",
+        "Cantlin start should skip the current entrance anchor")
+    assert_contains(info.message, "Cantlin north road",
+        "Great Swamp route should reuse the live Cantlin departure")
+
+    routes.reset_for_tests()
+    local object_info, object_err = routes.start_for_object({
+        id = "overworld_eastern_great_swamp_search_area",
+        name = "Eastern Great Swamp Search Area",
+        x = 89,
+        y = 112,
+    }, 0x01, 73, 102)
+
+    assert_equal(object_err, nil,
+        "search-area Travel object should start guidance from Cantlin")
+    assert_equal(object_info.route.id, "great_swamp_cantlin",
+        "search-area object should select the Cantlin route")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_cantlin_preserves_live_outbound_geometry()
+    local route = assert(routes._route_for_tests("great_swamp_cantlin"))
+    local expected = {
+        {73, 102}, {73, 91}, {68, 91}, {68, 92}, {64, 92}, {64, 93},
+        {60, 93}, {60, 94}, {56, 94}, {56, 95}, {54, 95}, {54, 96},
+        {53, 96}, {53, 97}, {52, 97}, {52, 98}, {51, 98}, {51, 99},
+        {50, 99}, {50, 100}, {49, 100}, {49, 102}, {48, 102},
+        {48, 104}, {59, 104}, {59, 105}, {63, 105}, {63, 106},
+        {64, 106}, {64, 108}, {66, 108}, {66, 110}, {72, 110},
+        {72, 112}, {74, 112}, {74, 113}, {89, 113}, {89, 112},
+    }
+
+    assert_equal(#route.waypoints, #expected,
+        "outbound route should contain only live-proven anchors")
+    for index, coordinate in ipairs(expected) do
+        local waypoint = route.waypoints[index]
+        assert_equal(waypoint.x, coordinate[1],
+            "outbound waypoint " .. index .. " x")
+        assert_equal(waypoint.y, coordinate[2],
+            "outbound waypoint " .. index .. " y")
+        assert_equal(waypoint.radius, 0,
+            "outbound waypoint " .. index .. " should be strict")
+    end
+
+    routes.reset_for_tests()
+    routes.start("great swamp search area", 0x01, 73, 102)
+    local x, y = 73, 102
+    for index = 2, #expected do
+        local coordinate = expected[index]
+        local segment = assert(routes.plan_next_segment(0x01, x, y))
+        local expected_first
+        if coordinate[1] > x then
+            expected_first = "right"
+        elseif coordinate[1] < x then
+            expected_first = "left"
+        elseif coordinate[2] > y then
+            expected_first = "down"
+        else
+            expected_first = "up"
+        end
+        assert_equal(segment.steps[1], expected_first,
+            "outbound segment " .. index .. " first direction")
+        if index < #expected then
+            routes.observe_position(0x01, coordinate[1], coordinate[2])
+            x, y = coordinate[1], coordinate[2]
+        else
+            assert_equal(segment.path_length, 1,
+                "safe-pin entry should be one strict north step")
+        end
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_cantlin_arrival_preserves_clue_boundary()
+    local route = assert(routes._route_for_tests("great_swamp_cantlin"))
+    local final = route.waypoints[#route.waypoints]
+
+    assert_equal(final.x, 89, "outbound safe pin x")
+    assert_equal(final.y, 112, "outbound safe pin y")
+    assert_equal(final.final, true, "safe pin should finish the route")
+    assert_contains(final.warning, "Gwaelin's Love",
+        "arrival should preserve the intended coordinate tool")
+    assert_contains(final.warning, "Search",
+        "arrival should preserve the intended interaction")
+
+    for _, alias in ipairs(route.aliases or {}) do
+        local normalized = alias:lower()
+        assert_equal(normalized:find("token", 1, true), nil,
+            "route aliases should not name the token")
+        assert_equal(normalized:find("erdrick", 1, true), nil,
+            "route aliases should not name Erdrick")
+    end
+    for _, waypoint in ipairs(route.waypoints) do
+        assert_equal(waypoint.x == 83 and waypoint.y == 113, false,
+            "outbound route must not target the buried square")
+        local normalized = waypoint.name:lower()
+        assert_equal(normalized:find("token", 1, true), nil,
+            "waypoint names should not name the token")
+        assert_equal(normalized:find("erdrick", 1, true), nil,
+            "waypoint names should not name Erdrick")
+    end
+
+    routes.reset_for_tests()
+    routes.start("great swamp search area", 0x01, 73, 102)
+    local event
+    for index = 2, #route.waypoints do
+        local waypoint = route.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_contains(event.message,
+        "Arrived at Eastern Great Swamp Search Area",
+        "safe-pin arrival should name only the search area")
+    assert_contains(event.message,
+        "Use Gwaelin's Love and Search to continue",
+        "safe-pin arrival should preserve clue-driven discovery")
+    assert_equal(routes.is_active(), false,
+        "safe-pin arrival should stop route guidance")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
