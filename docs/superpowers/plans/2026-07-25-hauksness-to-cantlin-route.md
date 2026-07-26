@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add and live-validate a named World Map route from the Hauksness entrance to Cantlin by exactly reversing the validated Cantlin-to-Hauksness waypoint coordinates.
+**Completion note (2026-07-26):** Implemented and live-validated. The final route has 57 waypoints, not the initially planned exact 58-point reversal. Live evidence required two north-carry splices at `(50,99)->(50,98)` and `(64,92)->(64,91)`, plus horizontal-first recovery for the final Cantlin waypoint. The checklist and code samples below preserve the original execution plan; use `overworld_routes.lua`, the focused tests, and the completed design document as the current specification.
 
-**Architecture:** Add one explicit route record to the existing `overworld_routes.lua` registry and expose it through the existing Cantlin Travel object. Keep route selection, battle persistence, autowalk timing, and map passability unchanged; tests compare the new coordinate chain directly with the validated outbound chain so any asymmetry is intentional and visible.
+**Goal:** Add and live-validate a named World Map route from the Hauksness entrance to Cantlin by primarily reversing the validated Cantlin-to-Hauksness waypoint coordinates and retaining any live-proven directional adjustments.
+
+**Architecture:** Add one explicit route record to the existing `overworld_routes.lua` registry and expose it through the existing Cantlin Travel object. Keep route selection, battle persistence, and map passability unchanged; tests compare the new coordinate chain with the validated outbound chain and explicitly assert validation-driven asymmetries.
 
 **Tech Stack:** Lua route registry and regression harness, FCEUX 2.6.6, `dw_commands.sh`, `dw_debug.log`, WSL Lua test runner, Git.
 
@@ -14,9 +16,9 @@
 - Route ID is `cantlin_hauksness`; title is `Cantlin`.
 - Target object is `overworld_cantlin`; destination map is `0x0A`.
 - Start anchor is Hauksness `(25,89)` and final World Map anchor is Cantlin `(73,102)`.
-- The coordinate chain must exactly reverse all 58 `hauksness_cantlin` waypoints.
+- Begin from the reversed `hauksness_cantlin` chain, then preserve live-proven carry splices explicitly. The validated result has 57 waypoints.
 - Preserve `return from hauksness` exclusively for `kol_hauksness`.
-- Do not change route-manager semantics, autowalk timing, or permanent/runtime map blockers.
+- Do not change route-manager semantics or permanent/runtime map blockers. Route-local timing metadata is allowed only when supported by live evidence.
 - During live QA, classify failures before changing source; a single failed movement is not map evidence.
 - If the northern Cantlin entry is unreliable, stop and gather evidence before considering the proven `(73,103)->UP` southern entry.
 - Preserve the unrelated untracked `work_notes/hauksness_stat_corruption_20260724.log`.
@@ -27,7 +29,7 @@
 - Modify `test_overworld_routes.lua`: cover selection, aliases, coordinate reversal, strict endpoints, destination matching, and arrival cleanup.
 - Modify `session_handoff.md`: record only the final live-validated state and next action.
 - Modify `PLAYTESTING.md`: record the durable route result and any verified timing behavior.
-- Read `docs/plans/2026-07-25-hauksness-to-cantlin-route-design.md`: approved behavior contract; no implementation edits required.
+- Update `docs/plans/2026-07-25-hauksness-to-cantlin-route-design.md` with the completed validation outcome.
 
 ---
 
@@ -363,7 +365,7 @@ For a movement stop, capture the origin, requested direction, actual position, r
 The success condition is a route event equivalent to:
 
 ```text
-event=arrived route=cantlin_hauksness waypoint=Cantlin index=58
+event=arrived route=cantlin_hauksness waypoint=Cantlin index=57
 ```
 
 followed by a fresh probe showing:

@@ -785,9 +785,18 @@ local ROUTES = {
             {x = 49, y = 102, name = "Western forest sixth east step", radius = 0},
             {x = 49, y = 100, name = "Western forest second long rise", radius = 0},
             {x = 50, y = 100, name = "Western forest seventh east step", radius = 0},
-            {x = 50, y = 99, name = "Western forest seventh rise", radius = 0},
-            {x = 51, y = 99, name = "Western forest eighth east step", radius = 0},
-            {x = 51, y = 98, name = "Western forest eighth rise", radius = 0},
+            {
+                x = 50,
+                y = 99,
+                name = "Western forest seventh rise",
+                radius = 0,
+                -- Live reverse-route entry from (50,100) can twitch before the
+                -- north step commits. Keep the press held through completion.
+                route_hold_after_movement_start_frames = 60,
+                route_early_twitch_timeout_frames = 60,
+                route_reset_movement_on_turn_settle = false,
+            },
+            {x = 50, y = 98, name = "Western forest north carry", radius = 0},
             {x = 52, y = 98, name = "Western forest ninth east step", radius = 0},
             {x = 52, y = 97, name = "Western forest ninth rise", radius = 0},
             {x = 53, y = 97, name = "Western forest tenth east step", radius = 0},
@@ -799,11 +808,28 @@ local ROUTES = {
             {x = 60, y = 94, name = "Upper forest middle east lane", radius = 0},
             {x = 60, y = 93, name = "Upper forest second rise", radius = 0},
             {x = 64, y = 93, name = "Upper forest upper east lane", radius = 0},
-            {x = 64, y = 92, name = "Upper forest third rise", radius = 0},
-            {x = 68, y = 92, name = "Cantlin western approach", radius = 0},
+            {
+                x = 64,
+                y = 92,
+                name = "Upper forest third rise",
+                radius = 0,
+                -- The north entry completes late and naturally carries onto
+                -- the validated upper lane at (64,91).
+                route_hold_after_movement_start_frames = 60,
+                route_early_twitch_timeout_frames = 60,
+                route_reset_movement_on_turn_settle = false,
+            },
+            {x = 64, y = 91, name = "Upper forest north carry", radius = 0},
             {x = 68, y = 91, name = "Cantlin northwest turn", radius = 0},
             {x = 73, y = 91, name = "Cantlin north road", radius = 0},
-            {x = 73, y = 102, name = "Cantlin", radius = 0, final = true},
+            {
+                x = 73,
+                y = 102,
+                name = "Cantlin",
+                radius = 0,
+                final = true,
+                axis_order = {"horizontal", "vertical"},
+            },
         },
     },
     kol_hauksness = {
