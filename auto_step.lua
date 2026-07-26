@@ -342,6 +342,46 @@ local function should_release_on_movement_start()
     return configured == "true" or configured == "1" or configured == "yes"
 end
 
+local function direction_delta(dir)
+    if dir == "up" then
+        return 0, -1
+    elseif dir == "down" then
+        return 0, 1
+    elseif dir == "left" then
+        return -1, 0
+    elseif dir == "right" then
+        return 1, 0
+    end
+    return 0, 0
+end
+
+local function cardinal_direction_between(from_x, from_y, to_x, to_y)
+    if from_x == nil or from_y == nil or to_x == nil or to_y == nil then
+        return nil
+    end
+    local dx = to_x - from_x
+    local dy = to_y - from_y
+    if dx == 0 and dy == -1 then
+        return "up"
+    elseif dx == 0 and dy == 1 then
+        return "down"
+    elseif dx == -1 and dy == 0 then
+        return "left"
+    elseif dx == 1 and dy == 0 then
+        return "right"
+    end
+    return nil
+end
+
+local function directions_are_perpendicular(first, second)
+    local first_vertical = first == "up" or first == "down"
+    local first_horizontal = first == "left" or first == "right"
+    local second_vertical = second == "up" or second == "down"
+    local second_horizontal = second == "left" or second == "right"
+    return (first_vertical and second_horizontal)
+        or (first_horizontal and second_vertical)
+end
+
 local function queued_route_turn_after_current_step()
     if route_steps == nil or auto_dir == nil then
         return false
@@ -350,15 +390,33 @@ local function queued_route_turn_after_current_step()
     return next_dir ~= nil and next_dir ~= auto_dir
 end
 
-local function queued_route_continuing_step_before_turn(next_dir)
-    if route_steps == nil or route_index == nil or next_dir == nil then
+local function queued_route_step_before_turn(
+        step_index, current_dir, start_x, start_y)
+    if route_steps == nil
+       or step_index == nil
+       or current_dir == nil then
         return false
     end
-    local previous_dir = route_steps[route_index - 1]
-    local following_dir = route_steps[route_index + 1]
-    return previous_dir == next_dir
-        and following_dir ~= nil
-        and following_dir ~= next_dir
+
+    local previous_dir = route_steps[step_index - 1]
+    local following_dir = route_steps[step_index + 1]
+    if following_dir ~= nil then
+        return previous_dir == current_dir
+            and following_dir ~= current_dir
+    end
+    if step_index ~= #route_steps then
+        return false
+    end
+
+    local dx, dy = direction_delta(current_dir)
+    local endpoint_x = start_x and start_x + dx or nil
+    local endpoint_y = start_y and start_y + dy or nil
+    local carry_dir = cardinal_direction_between(
+        endpoint_x,
+        endpoint_y,
+        route_final_carry_x_override,
+        route_final_carry_y_override)
+    return directions_are_perpendicular(current_dir, carry_dir)
 end
 
 local function should_hold_after_movement_start()
@@ -663,19 +721,6 @@ local function begin_step(dir, px, py, state)
     end
 end
 
-local function direction_delta(dir)
-    if dir == "up" then
-        return 0, -1
-    elseif dir == "down" then
-        return 0, 1
-    elseif dir == "left" then
-        return -1, 0
-    elseif dir == "right" then
-        return 1, 0
-    end
-    return 0, 0
-end
-
 local function approach_for_direction(dir)
     if dir == "up" then
         return "south"
@@ -846,9 +891,10 @@ local function log_entry_settle(step_index, required_frames, remaining_frames)
         remaining_frames))
 end
 
-local function build_route_step_opts(step_index, next_dir)
+local function build_route_step_opts(step_index, next_dir, start_x, start_y)
     local step_opts = {source = "queued_route"}
-    if queued_route_continuing_step_before_turn(next_dir) then
+    if queued_route_step_before_turn(
+            step_index, next_dir, start_x, start_y) then
         step_opts.inject_limit = get_route_pre_turn_inject_limit()
     end
     if route_hold_after_movement_start_frames_override ~= nil then
@@ -981,7 +1027,7 @@ local function begin_next_route_step(px, py)
     if refuse_hazard_step(next_dir, px, py, "queued_route") then
         return false, "hazard_refused", next_dir
     end
-    local step_opts = build_route_step_opts(step_index, next_dir)
+    local step_opts = build_route_step_opts(step_index, next_dir, px, py)
     route_index = step_index + 1
     begin_step(next_dir, px, py, step_opts)
     return true, nil, next_dir
