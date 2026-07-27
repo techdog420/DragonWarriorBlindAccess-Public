@@ -1437,6 +1437,7 @@ local K = {
     CHALLENGER_ACCEPT                 = 18,   -- competing-cursor accept threshold
     MOVEMENT_DIALOGUE_HOLD            = 360,
     MENU_UPPER_ABSORB                 = 45,
+    ITEM_RESULT_CURSOR_CLEAR          = 6,
     RECENT_FIELD_ACTION_HOLD          = 180,
     -- ~40s post-boot window where BizHawk's heavier scan path skips dialogue
     -- and menu polling on idle frames. The hint relaxes back to normal as
@@ -1849,7 +1850,7 @@ end)
 -- the command menu handler interprets item cursor positions as command menu
 -- items (D9=0 → "TALK", D9=1 → "STATUS", etc.).
 --
--- submenu_mode: nil (normal), "STATUS", "SPELL", or "ITEM"
+-- submenu_mode: nil (normal), "STATUS", "SPELL", "ITEM", or "ITEM_RESULT"
 -- PREV.cmd_x / .cmd_y: cursor position on the previous frame, used to detect
 --   the single-frame jump from a command menu item to a sub-menu cursor.
 
@@ -1871,6 +1872,7 @@ local CMD = {
     spell_entry_pending  = false,  -- suppress first SPELL submenu cursor jump
     item_entry_pending   = 0,      -- suppress immediate ITEM submenu cursor jump
     item_entry_pending_name = nil, -- first item already spoken on ITEM entry
+    item_result_cursor_clear = 0,  -- consecutive cursor-clear frames after using an item
 }
 
 -- Merchant module state. PREV.merchant_text / .announced_merchant /
@@ -2797,6 +2799,7 @@ local function check_command_menu(frame_delta)
         CMD.menu_live = false
         CMD.cursor_hold = 0
         CMD.item_entry_pending = 0
+        CMD.item_result_cursor_clear = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         return
     end
@@ -2880,6 +2883,26 @@ local function check_command_menu(frame_delta)
         return
     end
 
+    -- The item list can remain painted briefly after the selected item has
+    -- been used. Keep both the generic dialogue and merchant readers away
+    -- from those stale rows until the item cursor has been absent for several
+    -- consecutive frames. The semantic A press prevents unrelated cursor
+    -- flicker from entering this transition state.
+    if submenu_mode == "ITEM_RESULT" then
+        if has_visible_cursor_tile() then
+            CMD.item_result_cursor_clear = 0
+        else
+            CMD.item_result_cursor_clear =
+                CMD.item_result_cursor_clear + frame_delta
+        end
+        if CMD.item_result_cursor_clear >= K.ITEM_RESULT_CURSOR_CLEAR then
+            submenu_mode = nil
+            CMD.item_result_cursor_clear = 0
+            trace_row1("CMD_ITEM_RESULT_READY", changes, {})
+        end
+        return
+    end
+
     -- Merchant/shop layouts can coexist with the same cursor RAM and some of
     -- the same window/header signals the command-menu logic watches. When the
     -- merchant screen is present, it must fully override command-menu speech.
@@ -2958,6 +2981,20 @@ local function check_command_menu(frame_delta)
             CMD.item_entry_pending_name = nil
             DW_QOL_STATE.clear_cmd_open_speech_pending()
             trace_row1("CMD_CLOSE_FROM_ITEM", changes, {})
+            return
+        end
+        if a_just then
+            -- Selecting a held item starts a cursor-clear transition: stale
+            -- inventory pixels can remain visible after A, but they must not
+            -- become generic dialogue or a false merchant screen.
+            submenu_mode = "ITEM_RESULT"
+            CMD.menu_live = false
+            CMD.item_entry_pending = 0
+            CMD.item_entry_pending_name = nil
+            CMD.item_result_cursor_clear = 0
+            reset_merchant_state(false)
+            DW_QOL_STATE.clear_cmd_open_speech_pending()
+            trace_row1("CMD_ITEM_USE", changes, {})
             return
         end
         if changes.cursor_moved and changes.cursor_x == 1 then
@@ -3957,13 +3994,10 @@ local function submenu_absorbs_lower_dialogue(dialogue)
         return true
     end
     if submenu_mode == "ITEM" then
-        -- Held-item names are mixed case, so lowercase alone cannot
-        -- distinguish the list from an item's result dialogue. The list has
-        -- a live cursor; result pages such as Gwaelin's Love do not. Keep
-        -- uppercase transition noise absorbed while allowing those result
-        -- pages through the normal stable dialogue reader.
-        return DW_QOL_STATE.command_menu_blocks_field_movement()
-            or not tostring(dialogue or ""):find("[a-z]")
+        return true
+    end
+    if submenu_mode == "ITEM_RESULT" then
+        return true
     end
     if submenu_mode == "SPELL" then
         return not tostring(dialogue or ""):find("[a-z]")

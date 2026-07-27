@@ -1074,6 +1074,21 @@ function tests.extract_new_dialogue_keeps_non_overlapping_text()
     )
 end
 
+function tests.extract_new_dialogue_tolerates_live_page_punctuation_drift()
+    local old =
+        "by 70. My hope is with thee. .'From where thou art now, my castle lies.. " ..
+        ".69 to the north and.. 46 to the west."
+    local new =
+        "'From where thou art now, my castle lies.. 69 to the north and.. " ..
+        ".46 to the west. .'I love thee, Bill."
+
+    assert_equal(
+        text.extract_new_dialogue(old, new),
+        "'I love thee, Bill.",
+        "dialogue overlap should ignore repaint-only punctuation changes before the final Gwaelin page"
+    )
+end
+
 local failures = 0
 local total = 0
 

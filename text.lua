@@ -1032,6 +1032,49 @@ end
 -- line starting from the middle of the previous page. In that case the new
 -- visible text starts with a phrase already contained in old, followed by the
 -- actual question.
+local function dialogue_word_spans(value)
+    local result = {}
+    local offset = 1
+    while offset <= #value do
+        local first, last = value:find("[%w]+", offset)
+        if not first then break end
+        result[#result + 1] = {
+            text = value:sub(first, last):lower(),
+            first = first,
+            last = last,
+        }
+        offset = last + 1
+    end
+    return result
+end
+
+local function punctuation_tolerant_prefix_remainder(old, new)
+    local old_words = dialogue_word_spans(old)
+    local new_words = dialogue_word_spans(new)
+
+    for count = math.min(#old_words, #new_words), 1, -1 do
+        local matched_chars = new_words[count].last - new_words[1].first + 1
+        if matched_chars >= DIALOGUE_OVERLAP_MIN_LEN then
+            for old_start = 1, #old_words - count + 1 do
+                local matches = true
+                for index = 1, count do
+                    if old_words[old_start + index - 1].text ~= new_words[index].text then
+                        matches = false
+                        break
+                    end
+                end
+                if matches then
+                    local remainder = new:sub(new_words[count].last + 1)
+                    remainder = remainder:gsub("^[%s%.]+", "")
+                    return remainder:match("^%s*(.-)%s*$") or remainder
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
 function M.extract_new_dialogue(old, new)
     old = tostring(old or "")
     new = tostring(new or "")
@@ -1056,6 +1099,15 @@ function M.extract_new_dialogue(old, new)
 
     if found_overlap then
         return ""
+    end
+
+    -- Scrolling can repaint separator dots one row earlier or later while the
+    -- words remain identical (for example ".69" becoming "69"). Prefer the
+    -- longest word-for-word prefix already present in the old page before the
+    -- exact contained-prefix fallback below truncates at that punctuation.
+    local tolerant_remainder = punctuation_tolerant_prefix_remainder(old, new)
+    if tolerant_remainder ~= nil then
+        return tolerant_remainder
     end
 
     for len = math.min(#new, #old), DIALOGUE_OVERLAP_MIN_LEN, -1 do

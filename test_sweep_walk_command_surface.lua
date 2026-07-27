@@ -194,9 +194,9 @@ assert_contains(main,
 assert_contains(main,
     'if submenu_mode == "ITEM" then',
     "ITEM submenu dialogue ownership should be handled separately from STATUS")
-assert_contains(main,
-    "return DW_QOL_STATE.command_menu_blocks_field_movement()",
-    "ITEM submenu should keep mixed-case item-list rows absorbed while its live cursor is present")
+assert_contains(command_menu_handler,
+    'trace_row1("CMD_ITEM_USE"',
+    "ITEM submenu should hand result dialogue off on the semantic item-use action rather than cursor visibility")
 assert_contains(main,
     'if submenu_mode == "SPELL" then',
     "SPELL submenu absorption should be handled separately from STATUS/ITEM")
