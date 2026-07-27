@@ -358,6 +358,41 @@ function tests.held_item_menu_without_command_backdrop_is_not_merchant_offer_lis
     env.restore()
 end
 
+function tests.full_inventory_discard_prompt_is_not_a_merchant_offer_list()
+    local env = make_env()
+
+    local rows = {
+        [2] = "COMMAND",
+        [4] = "Bill TALK    SPELL",
+        [6] = "LV  17 STAT",
+        [7] = "Herb    6",
+        [8] = "HP  68 STAI",
+        [9] = "Magic   6",
+        [10] = "MP  58SEAR  Key",
+        [11] = "Fairy",
+        [12] = "G17089  Flute",
+        [13] = "Dragon's",
+        [14] = "E18973  Scale",
+        [15] = "Wings",
+        [17] = "Stones of",
+        [18] = "Sunlight",
+        [19] = "If thou would Staff of",
+        [20] = "Erdrick's Tok  Rain",
+        [21] = "must now disc Fairy",
+        [22] = "other item.    Water",
+        [23] = "Dost thou wis Gwaelin's",
+        [24] = "the Erdrick's  Love",
+        [25] = "What shall th Torch",
+    }
+
+    local info = env.merchant.analyze_rows(rows, {gold = 17089})
+    assert_equal(info.discard_prompt, true, "full-inventory discard prompt should be identified")
+    assert_equal(info.active, false, "discard inventory should not trigger merchant mode")
+    assert_equal(info.mode, nil, "discard inventory should not use merchant offer mode")
+
+    env.restore()
+end
+
 function tests.detects_brecconary_buy_sell_action_prompt()
     local env = make_env()
 

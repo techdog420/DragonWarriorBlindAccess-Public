@@ -73,6 +73,33 @@ end
 
 local tests = {}
 
+function tests.item_menu_matches_live_herb_key_and_packed_slot_order()
+    local env = make_env({
+        herbs = 6,
+        keys = 6,
+        items = {0x45, 0xC3, 0x2D, 0x18},
+    })
+
+    local names = {}
+    for _, entry in ipairs(env.items.get_all_items()) do
+        names[#names + 1] = entry.name
+    end
+
+    assert_equal(
+        table.concat(names, ", "),
+        "Herb, Magic Key, Fairy Flute, Dragon's Scale, Wings, " ..
+            "Stones of Sunlight, Staff of Rain, Fairy Water, Gwaelin's Love, Torch",
+        "item order should match the live full-inventory menu"
+    )
+    assert_equal(
+        env.items.get_item_at_d9(2),
+        "Fairy Flute",
+        "live discard cursor D9=2 should select Fairy Flute"
+    )
+
+    env.restore()
+end
+
 function tests.spell_menu_helpers_index_known_spells_by_d9()
     local env = make_env({
         spells = 0x05,   -- Heal + Sleep

@@ -348,6 +348,13 @@ local function has_action_prompt(raw_text, rows)
         and row_has_word(rows, "SELL")
 end
 
+local function has_discard_prompt(raw_text)
+    local lower = tostring(raw_text or ""):lower()
+    return lower:find("must now disc", 1, true) ~= nil
+        and lower:find("other item", 1, true) ~= nil
+        and lower:find("what shall th", 1, true) ~= nil
+end
+
 local function get_action_selection(cursor_y)
     local y = tonumber(cursor_y)
     if y == nil then
@@ -420,11 +427,13 @@ function M.analyze_rows(rows, opts)
     local offers = extract_offer_names(rows)
     local status_marker_count = extract_status_marker_count(rows)
     local buy_prompt = has_buy_prompt(raw_text)
-    local action_prompt = has_action_prompt(raw_text, rows)
+    local discard_prompt = has_discard_prompt(raw_text)
+    local action_prompt = not discard_prompt and has_action_prompt(raw_text, rows)
     local action_selection = action_prompt and get_action_selection(opts.cursor_y) or nil
     local command_backdrop = has_field_command_backdrop(rows)
     local offer_layout_evidence = has_shop_offer_layout_evidence(rows)
-    local offer_list_active = not command_backdrop
+    local offer_list_active = not discard_prompt
+        and not command_backdrop
         and #offers >= 2
         and (buy_prompt or (status_marker_count >= 4 and offer_layout_evidence))
     local active = offer_list_active or action_prompt
@@ -451,6 +460,7 @@ function M.analyze_rows(rows, opts)
         offers = offers,
         status_marker_count = status_marker_count,
         buy_prompt = buy_prompt,
+        discard_prompt = discard_prompt,
         action_prompt = action_prompt,
         action_selection = action_selection,
         mode = action_prompt and "action" or (offer_list_active and "offers" or nil),
@@ -460,6 +470,9 @@ end
 
 local function score_inactive_info(info)
     local score = 0
+    if info.discard_prompt then
+        score = score + 1000
+    end
     if info.buy_prompt then
         score = score + 100
     end
@@ -486,7 +499,7 @@ function M.analyze_current_screen(opts)
         local fallback_score = nil
         for _, ctx in ipairs(opts.contexts) do
             local info = analyze_context(ctx)
-            if info.active then
+            if info.active or info.discard_prompt then
                 return info
             end
 

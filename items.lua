@@ -5,8 +5,8 @@
 -- game snapshot and convert them to human-readable names. Used by the
 -- STATUS and ITEM sub-menu handlers in main.lua, and by the stats hotkey.
 --
--- Item encoding: RAM 0x00C1-0x00C4 holds 8 items in 4 bytes, 2 per byte
--- (high nybble = even slot, low nybble = odd slot). Values 0x1-0xF map
+-- Item encoding: RAM 0x00C1-0x00C4 holds 8 items in 4 bytes, 2 per byte.
+-- The menu displays each byte's low nybble before its high nybble. Values 0x1-0xF map
 -- to specific items; 0x0 = empty slot.
 --
 -- Equipment encoding: RAM 0x00BE packs weapon (bits 7-5), armor (bits 4-2),
@@ -26,9 +26,9 @@ local PRINCESS_GWAELIN_ESCORT_FLAG = 0x01
 -- ============================================================
 -- Item Nybble Lookup (DataCrystal RAM map)
 -- ============================================================
--- Each nybble in 0x00C1-0x00C4 maps to one item. The high nybble
--- of each byte is the even-numbered slot, low nybble is the odd slot.
--- Example: byte 0x00C1 = 0x1F means slot 0 = Torch, slot 1 = Herb.
+-- Each nybble in 0x00C1-0x00C4 maps to one item. Live ITEM and discard
+-- screens display the low nybble first, then the high nybble.
+-- Example: byte 0x00C1 = 0x45 displays Fairy Flute, then Dragon's Scale.
 
 local ITEM_NAMES = {
     -- [0x0] = nil (empty slot)
@@ -238,7 +238,7 @@ end
 
 -- get_nybble_items(): Read the 8 nybble-encoded item slots from the snapshot.
 -- Returns an ordered list of {name=string} for non-empty slots.
--- Slot 0 is high nybble of items[1], slot 1 is low nybble, etc.
+-- Slot 0 is low nybble of items[1], slot 1 is high nybble, etc.
 local function get_nybble_items()
     local result = {}
     for slot = 0, 7 do
@@ -247,11 +247,11 @@ local function get_nybble_items()
         local raw = snapshot.items[byte_index]
         local nybble
         if slot % 2 == 0 then
-            -- Even slot: high nybble (bits 7-4)
-            nybble = math.floor(AND(raw, 0xF0) / 16)
-        else
-            -- Odd slot: low nybble (bits 3-0)
+            -- Even displayed slot: low nybble (bits 3-0)
             nybble = AND(raw, 0x0F)
+        else
+            -- Odd displayed slot: high nybble (bits 7-4)
+            nybble = math.floor(AND(raw, 0xF0) / 16)
         end
         local name = ITEM_NAMES[nybble]
         if name then
@@ -262,17 +262,15 @@ local function get_nybble_items()
 end
 
 -- get_all_items(): Build the full ITEM menu list as the game displays it.
--- DW1's ITEM menu shows Magic Keys first (from 0x00BF count), then Herbs
--- (from 0x00C0 count), then the nybble-encoded items from 0x00C1-0x00C4.
+-- DW1's ITEM menu shows Herbs first (from 0x00C0 count), then Magic Keys
+-- (from 0x00BF count), then the nybble-encoded items from 0x00C1-0x00C4.
 -- Each entry is {name=string}. D9 indexes this combined list.
---
--- NOTE: Herbs also appear as nybble value 0xF in the item slots, so they
--- are NOT added separately from the herb counter — we only include the
--- nybble items. Magic Keys have no nybble value and ARE added from the
--- counter. If this ordering is wrong, we'll see it during testing and
--- swap herbs/keys position.
 function M.get_all_items()
     local result = {}
+
+    if snapshot.herbs > 0 then
+        result[#result + 1] = {name = "Herb"}
+    end
 
     -- Magic Keys: tracked separately (count), not in nybble slots.
     -- The game shows "Magic Key" in the ITEM menu when count > 0.
@@ -295,7 +293,7 @@ function M.get_item_count()
 end
 
 -- get_item_at_d9(d9): Get the item name at ITEM menu cursor position d9.
--- D9 indexes the combined item list (keys + nybble items, 0-based).
+-- D9 indexes the combined item list (herbs + keys + nybble items, 0-based).
 -- Returns the item name string, or "Empty" if d9 is past the last item.
 function M.get_item_at_d9(d9)
     local all = M.get_all_items()

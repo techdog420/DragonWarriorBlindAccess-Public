@@ -1879,6 +1879,8 @@ local CMD = {
 -- .merchant_selection / .merchant_price hold per-frame baselines.
 MER = {
     active            = false,  -- shop UI currently up
+    discard_active    = false,  -- full-inventory discard chooser currently up
+    discard_selection = nil,    -- last D9-backed discard item announced
     intro_pending     = false,  -- speak "Merchant" prefix on first selection
     stable_count      = 0,      -- stability counter for merchant text changes
     scan_present      = false,  -- last full merchant-layout scan result
@@ -2424,6 +2426,8 @@ end
 
 local function reset_merchant_state(sync_dialogue_baselines)
     MER.active = false
+    MER.discard_active = false
+    MER.discard_selection = nil
     PREV.merchant_text = ""
     PREV.announced_merchant = ""
     PREV.merchant_selection = nil
@@ -2456,9 +2460,9 @@ local function sync_merchant_lower_dialogue_baseline()
         return
     end
 
-    -- The merchant reader owns shop prompts/lists. Keep the lower dialogue
-    -- baseline aligned so closing/error lines append cleanly instead of
-    -- re-speaking the already-visible shop prompt.
+    -- The merchant-row reader owns shop prompts/lists and full-inventory
+    -- discard prompts. Keep the lower dialogue baseline aligned so closing or
+    -- result lines append cleanly instead of re-speaking the owned prompt.
     PREV.dialogue = lower
     PREV.announced_dialogue = lower
     PREV.stable_count = 0
@@ -2500,7 +2504,7 @@ end
 local function check_merchant_screen(frame_delta)
     frame_delta = scan_profiler.stable_delta(frame_delta)
     if not in_gameplay or submenu_mode ~= nil or menu.is_yesno_active() then
-        if MER.active then
+        if MER.active or MER.discard_active then
             reset_merchant_state(true)
         end
         MER.scan_present = false
@@ -2509,8 +2513,41 @@ local function check_merchant_screen(frame_delta)
     end
 
     local info = merchant.analyze_current_screen({contexts = get_merchant_screen_contexts()})
-    MER.scan_present = info.active
+    MER.scan_present = info.active or info.discard_prompt
     MER.scan_present_frame = frame_count
+
+    if info.discard_prompt then
+        local was_discard_active = MER.discard_active
+        if MER.active then
+            reset_merchant_state(false)
+        end
+        MER.active = false
+        MER.discard_active = true
+        MER.scan_present = true
+        MER.scan_present_frame = frame_count
+        sync_merchant_lower_dialogue_baseline()
+
+        local cursor_y = tonumber(snapshot.cursor_y) or 0
+        local selection = items.get_item_at_d9(cursor_y)
+        if not was_discard_active then
+            MER.discard_selection = selection
+            debug_tools.info("ITEM_DISCARD_OPEN cursor=" .. cursor_y .. " item=" .. selection)
+            tolk.output_interrupt(
+                "Inventory full. Choose an item to discard. " .. selection)
+        elseif selection ~= MER.discard_selection then
+            MER.discard_selection = selection
+            debug_tools.info("ITEM_DISCARD_CURSOR cursor=" .. cursor_y .. " item=" .. selection)
+            tolk.output_interrupt(selection)
+        end
+        return true
+    end
+
+    if MER.discard_active then
+        reset_merchant_state(true)
+        MER.scan_present = info.active
+        MER.scan_present_frame = frame_count
+    end
+
     if not info.active then
         if MER.active then
             reset_merchant_state(true)
@@ -2906,16 +2943,16 @@ local function check_command_menu(frame_delta)
     -- Merchant/shop layouts can coexist with the same cursor RAM and some of
     -- the same window/header signals the command-menu logic watches. When the
     -- merchant screen is present, it must fully override command-menu speech.
-    local merchant_present = MER.active or MER.scan_present
+    local merchant_present = MER.active or MER.scan_present or MER.discard_active
     -- Fallback scan only when MER.scan_present is stale (>4 frames). The
     -- check_merchant_screen producer runs at interval 3-12 frames, so a fresh
     -- false result is trustworthy and we can skip the duplicate full-screen
     -- PPU read here.
     if not merchant_present and (frame_count - MER.scan_present_frame) > 4 then
         local info = merchant.analyze_current_screen({contexts = get_merchant_screen_contexts()})
-        MER.scan_present = info.active
+        MER.scan_present = info.active or info.discard_prompt
         MER.scan_present_frame = frame_count
-        merchant_present = info.active
+        merchant_present = info.active or info.discard_prompt
     end
     if merchant_present then
         CMD.menu_confirmed = false
@@ -7422,8 +7459,8 @@ while true do
         -- those rows decode as spurious digits/uppercase and produce false
         -- announcements. check_title_screen() handles all title-screen text.
         if in_gameplay then
-            local merchant_active = MER.active
-            local merchant_interval = MER.active and 3
+            local merchant_active = MER.active or MER.discard_active
+            local merchant_interval = (MER.active or MER.discard_active) and 3
                 or (dialogue_hint and 12 or (CMD.recent_field_action > 0 and 8 or 16))
             local run_merchant = false
             local merchant_delta = 0
