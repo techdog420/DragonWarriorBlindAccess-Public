@@ -88,6 +88,7 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_turn_repress_limit", value = "1", comment = "; Number of quick turn-only re-press attempts before timeout retries"},
     {key = "auto_step_turn_repress_release_frames", value = "2", comment = "; Neutral frames between turn-only press and re-press"},
     {key = "auto_step_block_retry_limit", value = "1", comment = "; Internal retries before reporting a blocked step (lower reduces blocked-route audio hitches)"},
+    {key = "auto_step_route_block_retry_limit", value = "2", comment = "; Queued-route retries before reporting a blocked step (extra recovery for timing-sensitive turns)"},
     {key = "auto_step_manual_block_retry_limit", value = "0", comment = "; Internal retries for player tap-to-step collisions (0 keeps wall bumps responsive)"},
     {key = "auto_step_route_turn_settle_frames", value = "16", comment = "; Extra neutral frames before queued auto-walk changes direction"},
     {key = "auto_step_reset_movement_on_route_turn_settle", value = "false", comment = "; Experimental: clear stale movement RAM during queued route turns. Keep false; true reproduced stat corruption in FCEUX."},

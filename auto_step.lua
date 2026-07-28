@@ -292,9 +292,16 @@ local function get_manual_block_retry_limit()
     return config_int("auto_step_manual_block_retry_limit", 0, 0, 10)
 end
 
+local function get_route_block_retry_limit()
+    return config_int("auto_step_route_block_retry_limit", get_block_retry_limit(), 0, 10)
+end
+
 local function get_active_block_retry_limit()
     if auto_step_source == "manual_tap" then
         return get_manual_block_retry_limit()
+    end
+    if route_steps ~= nil then
+        return get_route_block_retry_limit()
     end
     return get_block_retry_limit()
 end

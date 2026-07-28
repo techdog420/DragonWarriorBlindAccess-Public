@@ -1,11 +1,25 @@
 # Playtesting Notes
 
-Updated: 2026-07-26
+Updated: 2026-07-28
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Route-specific second timing retry (`2026-07-28`): queued routes now use
+  `auto_step_route_block_retry_limit=2`; manual taps still use zero retries and
+  non-route injected/probe steps still use the general one-retry setting. A
+  post-reload Cantlin-to-Eastern-Great-Swamp forest pass live-exercised retry 2
+  at `(60,93)->DOWN` and `(50,99)->DOWN`; both steps completed automatically.
+  Three additional forest seams recovered on retry 1. The complete
+  `(73,102)->(48,104)` corridor had zero hard timing stops, zero off-path
+  drifts, and no runtime blockers. REPEL expiry interrupted once only after
+  `(68,91)->(68,92)` had completed, and route continuation remained safe.
+  Current live state is `(48,104)`, with `great_swamp_cantlin` active at
+  `Southern plains west road` index 25. Verification passes 145 auto-step,
+  113 route-manager, 127 overworld-route, and 1 config test plus Lua syntax,
+  `git diff --check`, and the full repository harness; only the known optional
+  WSL speech-dependency warnings remain.
 - Cross-waypoint turn timing (`2026-07-26`): the final queued step before a
   perpendicular route carry now retains the shorter inject limit of 10 through
   its guarded re-press and bounded timing retry. Live checks passed in both

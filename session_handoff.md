@@ -1,9 +1,27 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-26
+Updated: 2026-07-28
 
 ## Immediate FCEUX Handoff
 
+- Queued auto-walk routes now have a route-specific two-retry timing-recovery
+  budget via `auto_step_route_block_retry_limit=2`. Manual taps remain at zero
+  retries and non-route injected/probe steps retain the general one-retry
+  budget. This is live-proven on the Cantlin-to-Eastern-Great-Swamp reverse
+  forest: `(60,93)->DOWN` and `(50,99)->DOWN` both exhausted retry 1, used the
+  new retry 2, and completed without player intervention. Three other forest
+  seams completed after retry 1. Across the full `(73,102)->(48,104)` pass
+  there were zero hard timing stops, zero off-path drifts, and no runtime
+  blockers. One `can_walk_false` cancellation occurred only after
+  `(68,91)->(68,92)` completed, when REPEL-expiry dialogue opened; the route
+  resumed safely after the user restored REPEL.
+- Fresh live state is World Map `(48,104)`, active route
+  `great_swamp_cantlin`, next waypoint `Southern plains west road` index 25,
+  no active path, and no runtime blocks. Verification passes 145 auto-step,
+  113 route-manager, 127 overworld-route, and 1 config test, Lua syntax,
+  `git diff --check`, and the full repository harness. WSL reports only the
+  known optional `accessible_output2` warning and non-failing Windows-only
+  speech-bridge `cmd: not found` diagnostic.
 - Cross-waypoint overworld turn timing is live-validated on
   `codex/cantlin-hauksness-return`. The shorter
   `auto_step_route_pre_turn_inject_limit=10` now survives both the guarded

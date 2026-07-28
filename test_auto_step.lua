@@ -881,6 +881,40 @@ function tests.inject_step_collision_keeps_configured_retry_limit()
     env.restore()
 end
 
+function tests.queued_route_collision_uses_route_retry_limit()
+    local env = make_env({
+        config_values = {
+            auto_step_timeout = "4",
+            auto_step_block_retry_limit = "1",
+            auto_step_route_block_retry_limit = "2",
+            auto_step_manual_block_retry_limit = "0",
+            auto_step_turn_repress_delay = "30",
+        },
+    })
+
+    env.auto_step.start_route({"right"})
+    for _ = 1, 300 do
+        env.update(true)
+    end
+
+    local blocked_payload = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked_payload = event.payload
+            break
+        end
+    end
+
+    assert_truthy(blocked_payload ~= nil, "queued route wall should still report a blocked step")
+    assert_truthy(
+        blocked_payload.timeout_retries == 2,
+        "queued routes should use the route-specific recovery budget"
+    )
+    assert_truthy(blocked_payload.queued_route == true, "route-specific recovery should stay route-scoped")
+
+    env.restore()
+end
+
 function tests.queued_route_timeout_retry_does_not_hold_early_twitch()
     local env = make_env({
         sticky_joypad_set = true,
