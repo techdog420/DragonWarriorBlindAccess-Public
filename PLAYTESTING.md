@@ -6,6 +6,38 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Magic Temple return-route revalidation (`2026-07-28`): a second manual
+  `rimuldar_magic_temple` pass completed all 22 waypoints and entered Rimuldar
+  `0x0B` at `(29,14)`. Seven bounded retry events recovered automatically,
+  with no drift, seam brute-force fallback, timing-retry escalation,
+  temporary blocker, or runtime blocker. Six battles occurred; four
+  interrupted an active segment, and the route resumed safely. Fresh probe
+  `TEMPLE_RETURN_VALIDATED_20260728` reports route `none`, no active path, and
+  no runtime blocks at `(29,14)`.
+- Magic Temple interior navigation (`2026-07-28`): live same-origin raw probes
+  proved exit stair `(0,4)` is a passthrough and confirmed directional walls
+  at `(2,4).east/west`, `(2,5).east/south/west`, and
+  `(4,3).west`, `(4,4).west`, `(4,6).west`. With navigation modules reloaded
+  and map-0x0E runtime blockers cleared, source-only autowalk completed
+  `(3,6)->(0,4)` in 5 steps, then `(0,4)->(3,5)` in 6 steps and faced east
+  toward the Old Man at `(4,5)`. That source-only interior pass ended at
+  `(3,5)`, with no active path or runtime blocks. All 70 map-reader tests,
+  Lua syntax, and `git diff --check` pass.
+- Magic Temple / Rainbow Drop route (`2026-07-28`): the source-pinned
+  `magic_temple` and `rimuldar_magic_temple` routes are live geometry-validated
+  end to end. Outbound guidance reached `(108,109)`; the required `STAIRS`
+  command entered Magic Temple `0x0E` at `(0,4)`. The sage exchanged the Stones
+  of Sunlight and Staff of Rain for the Rainbow Drop while preserving
+  Erdrick's Token. The same stair tile returned to World Map `(108,109)`, and
+  the reverse route entered Rimuldar `0x0B` at `(29,14)`.
+- Timing qualification: the reverse mountain pocket drifted from the intended
+  `(107,111)` stop to `(106,111)`, while `(103,111)->LEFT` and
+  `(101,107)->RIGHT` exhausted both retries but passed same-origin raw probes.
+  The outbound route had equivalent timing-only hard stops at
+  `(110,86)->LEFT`, `(102,107)->LEFT`, and `(104,113)->DOWN`. No runtime or
+  permanent blockers were added. That reverse-route pass ended at Rimuldar
+  `(29,14)`, route `none`, no active path or runtime blocks, HP `115/115`,
+  MP `93/97`, and intact level-18 stats.
 - Route-specific second timing retry (`2026-07-28`): queued routes now use
   `auto_step_route_block_retry_limit=2`; manual taps still use zero retries and
   non-route injected/probe steps still use the general one-retry setting. A

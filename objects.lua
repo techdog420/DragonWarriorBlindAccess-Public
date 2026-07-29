@@ -413,7 +413,16 @@ local EXITS = {
         interaction_face_dir = "south",
         interaction_label = "exit",
     },                                                                      -- Rain Shrine
-    {map = 0x0E, x = 4, y = 4, name = "Exit", dest = "World Map"},        -- Magic Temple
+    {
+        map = 0x0E,
+        x = 0,
+        y = 4,
+        name = "Exit",
+        dest = "World Map",
+        interaction_x = 0,
+        interaction_y = 4,
+        interaction_label = "exit",
+    },                                                                      -- Magic Temple
 
     -- Cave entrances (the "stairs up" at the entrance)
     {
@@ -458,7 +467,13 @@ local OVERWORLD_LANDMARKS = {
     {dx =  61, dy =   1, name = "Swamp Cave"},
     {dx =  61, dy =   6, name = "Swamp Cave South Entrance"},
     {dx =  59, dy =  29, name = "Rimuldar"},
-    {dx =  65, dy =  66, name = "Southern Cave"},
+    {
+        dx = 65,
+        dy = 66,
+        name = "Magic Temple",
+        id = "overworld_southern_cave",
+        aliases = {"Southern Cave"},
+    },
     {dx =  30, dy =  59, name = "Cantlin"},
     {dx = -18, dy =  46, name = "Hauksness"},
     {dx =  46, dy =  69, name = "Eastern Great Swamp Search Area"},
@@ -497,7 +512,7 @@ local function build_overworld_landmark_object(landmark)
         y = wrap_overworld_coord(OVERWORLD_TANTEGEL_Y + landmark.dy),
         name = landmark.name,
         type = M.TYPE_EXIT,
-        id = overworld_landmark_id(landmark.name),
+        id = landmark.id or overworld_landmark_id(landmark.name),
     }
 end
 
@@ -1067,15 +1082,31 @@ function M.find_overworld_landmark(query)
         local id_slug = landmark_slug(obj.id)
         local name_compact = landmark_compact(obj.name)
         local id_compact = landmark_compact(obj.id)
+        local alias_exact = false
+        local alias_prefix = false
+        for _, alias in ipairs(landmark.aliases or {}) do
+            local alias_slug = landmark_slug(alias)
+            local alias_compact = landmark_compact(alias)
+            if needle_slug == alias_slug
+                or needle_compact == alias_compact then
+                alias_exact = true
+            end
+            if alias_slug:sub(1, #needle_slug) == needle_slug
+                or alias_compact:sub(1, #needle_compact) == needle_compact then
+                alias_prefix = true
+            end
+        end
         if needle_slug == name_slug
             or needle_slug == id_slug
             or needle_compact == name_compact
-            or needle_compact == id_compact then
+            or needle_compact == id_compact
+            or alias_exact then
             exact_match = obj
             break
         end
         if name_slug:sub(1, #needle_slug) == needle_slug
-            or name_compact:sub(1, #needle_compact) == needle_compact then
+            or name_compact:sub(1, #needle_compact) == needle_compact
+            or alias_prefix then
             prefix_matches[#prefix_matches + 1] = obj
         end
     end

@@ -1241,6 +1241,123 @@ function tests.swamp_cave_south_recovery_routes_stuck_notch_west()
     routes.reset_for_tests()
 end
 
+function tests.magic_temple_object_from_rimuldar_starts_candidate_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_southern_cave",
+        name = "Magic Temple",
+        x = 108,
+        y = 109,
+    }, 0x01, 102, 72)
+
+    assert_equal(err, nil, "Magic Temple Travel object should start from Rimuldar")
+    assert_equal(info.route.id, "magic_temple", "Magic Temple object should choose the Magic Temple route")
+    assert_equal(info.object_id, "route_magic_temple_02", "Rimuldar start should skip the current town anchor")
+    assert_contains(info.message, "Rimuldar east doorstep", "temple route should leave by the proven east causeway")
+
+    local segment = assert(routes.plan_next_segment(0x01, 102, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar east doorstep", "first segment should target the proven doorstep")
+    assert_equal(segment.steps[1], "right", "temple route should leave Rimuldar to the east")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_route_follows_map_derived_corridor()
+    local route = assert(routes._route_for_tests("magic_temple"))
+    local expected = {
+        {102, 72},
+        {103, 72},
+        {107, 72},
+        {107, 76},
+        {110, 76},
+        {110, 86},
+        {106, 86},
+        {106, 99},
+        {102, 99},
+        {102, 107},
+        {101, 107},
+        {101, 110},
+        {102, 110},
+        {102, 111},
+        {103, 111},
+        {103, 113},
+        {104, 113},
+        {104, 114},
+        {107, 114},
+        {107, 111},
+        {108, 111},
+        {108, 109},
+    }
+
+    assert_equal(#route.waypoints, #expected, "Magic Temple route should preserve every terrain-safe turn")
+    for i, point in ipairs(expected) do
+        assert_equal(route.waypoints[i].x, point[1], "Magic Temple waypoint " .. i .. " x")
+        assert_equal(route.waypoints[i].y, point[2], "Magic Temple waypoint " .. i .. " y")
+    end
+    assert_contains(
+        route.waypoints[#route.waypoints].warning,
+        "STAIRS",
+        "Magic Temple arrival should explain the required stairs command"
+    )
+end
+
+function tests.magic_temple_route_crosses_southern_bridge_westward()
+    routes.reset_for_tests()
+    routes.start("magic temple", 0x01, 106, 99)
+
+    local segment = assert(routes.plan_next_segment(0x01, 106, 99))
+    assert_equal(segment.waypoint.name, "Southern bridge west landing", "bridge approach should target the western landing")
+    assert_equal(segment.steps[1], "left", "temple route should cross the southern bridge westward")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_object_from_magic_temple_uses_return_variant()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_rimuldar",
+        name = "Rimuldar",
+        x = 102,
+        y = 72,
+    }, 0x01, 108, 109)
+
+    assert_equal(err, nil, "Rimuldar Travel object should start outside the Magic Temple")
+    assert_equal(info.route.id, "rimuldar_magic_temple", "Rimuldar object should choose the temple return route")
+    assert_equal(info.object_id, "route_rimuldar_magic_temple_02", "temple start should skip the current entrance anchor")
+
+    local segment = assert(routes.plan_next_segment(0x01, 108, 109))
+    assert_equal(segment.waypoint.name, "Temple inner east lane", "return route should first leave the temple pocket")
+    assert_equal(segment.steps[1], "down", "return route should leave the temple entrance to the south")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_return_exactly_reverses_candidate_route()
+    local outbound = assert(routes._route_for_tests("magic_temple"))
+    local inbound = assert(routes._route_for_tests("rimuldar_magic_temple"))
+
+    assert_equal(#inbound.waypoints, #outbound.waypoints, "temple return should preserve every outbound turn")
+    for i, point in ipairs(outbound.waypoints) do
+        local reverse = inbound.waypoints[#inbound.waypoints - i + 1]
+        assert_equal(reverse.x, point.x, "temple reverse waypoint " .. i .. " x")
+        assert_equal(reverse.y, point.y, "temple reverse waypoint " .. i .. " y")
+    end
+end
+
+function tests.entering_magic_temple_stops_outbound_route()
+    routes.reset_for_tests()
+    routes.start("magic temple", 0x01, 102, 72)
+
+    local arrival = routes.observe_position(0x0E, 0, 4)
+
+    assert_contains(arrival.message, "Arrived at Magic Temple", "entering map 0x0E should complete the route")
+    assert_equal(routes.is_active(), false, "temple route should stop after the map transition")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_object_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 

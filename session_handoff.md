@@ -4,6 +4,42 @@ Updated: 2026-07-28
 
 ## Immediate FCEUX Handoff
 
+- A second manual `rimuldar_magic_temple` return validation completed with
+  substantially cleaner timing. The route advanced through all 22 waypoints,
+  changed to Rimuldar map `0x0B`, and emitted `event=arrived` at `(29,14)`.
+  Seven bounded retry events recovered automatically; there was no drift,
+  seam brute-force fallback, timing-retry escalation, temporary blocker, or
+  runtime blocker. Six battles occurred, four while a route segment was
+  active, and continuation remained safe. Fresh probe
+  `TEMPLE_RETURN_VALIDATED_20260728` confirms Rimuldar `(29,14)`, route
+  `none`, no active path, and no runtime blocks.
+- Magic Temple map `0x0E` interior navigation is now source-clean. Live
+  same-origin raw probes promoted the exit stair `(0,4)` as a passthrough and
+  confirmed directional walls at `(2,4).east/west`,
+  `(2,5).east/south/west`, and `(4,3).west`, `(4,4).west`, `(4,6).west`.
+  After reloading navigation modules and clearing all map-0x0E runtime blocks,
+  source-only autowalk completed from `(3,6)` to exit `(0,4)` in 5 steps and
+  from the exit to the Old Man stand `(3,5)` in 6 steps, facing east. That
+  source-only interior pass ended at Magic Temple `(3,5)`, with no active path
+  or runtime blocks. Verification passes all 70 map-reader tests, Lua syntax,
+  and `git diff --check`.
+- Magic Temple travel is now source-pinned and live geometry-validated in both
+  directions. The outbound `magic_temple` route reached World Map `(108,109)`;
+  `STAIRS` entered map `0x0E` at `(0,4)`. After the sage exchanged the Stones
+  of Sunlight and Staff of Rain for the Rainbow Drop while retaining Erdrick's
+  Token, `STAIRS` at the same interior tile returned to `(108,109)`. The
+  corrected Travel exit is therefore `(0,4)`, not the stale `(4,4)`.
+- The reverse `rimuldar_magic_temple` route reached Rimuldar map `0x0B` at
+  `(29,14)` and emitted `event=arrived` at index 22. That route pass ended at
+  Rimuldar `(29,14)`, route `none`, no active path, no runtime blocks, HP
+  `115/115`, MP `93/97`, and intact level-18 stats. Geometry is proven, but
+  auto-walk timing is not fully clean: the reverse mountain pocket drifted
+  `(108,111)->(107,111)->(106,111)`, and queued steps
+  `(103,111)->LEFT` and `(101,107)->RIGHT` exhausted both retries before
+  same-origin raw probes moved through. Forward hard stops at
+  `(110,86)->LEFT`, `(102,107)->LEFT`, and `(104,113)->DOWN` likewise passed
+  same-origin probes. Keep all of these as executor timing evidence; no World
+  Map blocker was added.
 - Queued auto-walk routes now have a route-specific two-retry timing-recovery
   budget via `auto_step_route_block_retry_limit=2`. Manual taps remain at zero
   retries and non-route injected/probe steps retain the general one-retry

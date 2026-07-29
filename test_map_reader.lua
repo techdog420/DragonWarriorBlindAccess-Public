@@ -108,6 +108,7 @@ local MAP_NAMES = {
     [0x08] = "Brecconary",
     [0x0A] = "Cantlin",
     [0x0B] = "Rimuldar",
+    [0x0E] = "Magic Temple",
     [0x18] = "Garin's Grave B1",
     [0x19] = "Garin's Grave B2",
 }
@@ -287,6 +288,50 @@ function tests.interior_decoder_keeps_odd_width_rows_byte_contiguous()
     end
 
     env.restore()
+end
+
+function tests.magic_temple_exit_and_old_man_routes_honor_live_geometry()
+    local map_id = 0x0E
+    local base = map_id * 5
+    local data_start = 0x2A0
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 9, -- width 10
+        [base + 3] = 9, -- height 10
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 0, 4, 0x5)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {
+            [0] = 0x20,
+        },
+    })
+
+    with_cleanup(function()
+        local exit_stairs = env.map_reader.get_walkability_details(map_id, 0, 4)
+        assert_equal(exit_stairs.tile_type, 0x5, "Magic Temple exit stairs should retain raw type 5")
+        assert_equal(exit_stairs.effective_walkable, true, "Magic Temple exit stairs (0,4) should be walkable after live two-sided proof")
+        assert_equal(exit_stairs.reason, "passthrough", "Magic Temple exit stairs (0,4) should report passthrough")
+
+        assert_directional_block(env, map_id, "2,4", "west", "(2,4) should block entry from the west")
+        assert_directional_block(env, map_id, "2,4", "east", "(2,4) should block entry from the east")
+        assert_directional_block(env, map_id, "2,5", "west", "(2,5) should block entry from the west")
+        assert_directional_block(env, map_id, "2,5", "east", "(2,5) should block entry from the east")
+        assert_directional_block(env, map_id, "2,5", "south", "(2,5) should block entry from the south")
+        assert_directional_block(env, map_id, "4,3", "west", "(4,3) should block entry from the west")
+        assert_directional_block(env, map_id, "4,4", "west", "(4,4) should block entry from the west")
+        assert_directional_block(env, map_id, "4,6", "west", "(4,6) should block entry from the west")
+
+        local dirs = env.map_reader.get_directional_blocks(map_id)
+        assert_equal(dirs["2,4"].north, nil, "(2,4) should keep northward entry open")
+        assert_equal(dirs["2,4"].south, nil, "(2,4) should keep southward entry open")
+        assert_equal(dirs["2,5"].north, nil, "(2,5) should keep northward entry open")
+    end, env.restore)
 end
 
 function tests.rimuldar_packed_fixture_keeps_raw_and_grid_values_aligned()

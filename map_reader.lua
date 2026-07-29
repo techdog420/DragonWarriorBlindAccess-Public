@@ -980,6 +980,14 @@ local MAP_PASSTHROUGH_CELLS = {
         ["0,7"] = true,
     },
 
+    -- Map 0x0E: Magic Temple exit stairs.
+    -- Live FCEUX probes moved both (1,4)->LEFT onto (0,4) and
+    -- (0,4)->RIGHT back to (1,4), despite the dungeon type-5 tile decoding
+    -- as a closed door. Keep this override limited to the proven stair cell.
+    [0x0E] = {
+        ["0,4"] = true,
+    },
+
     -- Map 0x15: Swamp Cave north-south west-edge corridor.
     -- The generic dungeon edge rule marks x=0 as a boundary, but live play on
     -- 2026-05-16 walked the x=0 corridor in both directions. The proven
@@ -2622,6 +2630,22 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,6"] = {east = true, south = true},
         ["7,9"] = {north = true},
         ["8,9"] = {north = true},
+    },
+
+    -- Map 0x0E: Magic Temple old-man and exit routes.
+    --
+    -- Initial routes from the exit stairs to the old man blocked on the west
+    -- approaches into (2,4) and (2,5). The return route then blocked on the
+    -- matching east approaches. A follow-up cleanup also found the lower face
+    -- of (2,5) and west faces at (4,3), (4,4), and (4,6). Each edge remained
+    -- blocked during a fresh same-origin raw probe. Keep every unproven
+    -- approach open; both routes can bypass these walls through row 3.
+    [0x0E] = {
+        ["2,4"] = {east = true, west = true},
+        ["2,5"] = {east = true, south = true, west = true},
+        ["4,3"] = {west = true},
+        ["4,4"] = {west = true},
+        ["4,6"] = {west = true},
     },
 
     -- Map 0x08: Brecconary (30x30 town)

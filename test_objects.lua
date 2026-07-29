@@ -1400,6 +1400,25 @@ function tests.rain_shrine_exit_uses_live_bottom_entry_tile()
     env.restore()
 end
 
+function tests.magic_temple_exit_uses_live_west_entry_stairs()
+    local env = make_env()
+
+    env.set_position(0x0E, 0, 4)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x00, 0x00)
+    env.objects.refresh(0x0E)
+
+    local obj = env.objects.select_object_by_id("exit_0_4")
+    assert_equal(obj ~= nil, true, "Magic Temple should expose the live west entry stairs")
+    assert_equal(obj.name, "Exit to World Map", "Magic Temple should keep the normal exit label")
+    assert_equal(obj.x, 0, "Magic Temple exit should use the live entry X")
+    assert_equal(obj.y, 4, "Magic Temple exit should use the live entry row")
+    assert_equal(obj.interaction_x, 0, "Magic Temple exit route should stand on the stair tile")
+    assert_equal(obj.interaction_y, 4, "Magic Temple exit stand should match the live stair row")
+
+    env.restore()
+end
+
 function tests.garinham_overworld_landmark_uses_western_coordinate()
     local env = make_env()
 
@@ -1439,6 +1458,29 @@ function tests.swamp_cave_south_entrance_is_available_as_overworld_landmark()
 
     local lookup = env.objects.find_overworld_landmark("swamp cave south")
     assert_equal(lookup.id, "overworld_swamp_cave_south_entrance", "south entrance should be findable by prefix")
+
+    env.restore()
+end
+
+function tests.magic_temple_landmark_uses_clear_label_and_stable_id()
+    local env = make_env()
+
+    env.set_position(0x01, 108, 109)
+    env.set_terrain_offset(0x00)
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+
+    local temple = env.objects.select_object_by_id("overworld_southern_cave")
+    assert_equal(temple ~= nil, true, "Magic Temple should retain the route-compatible object id")
+    assert_equal(temple.name, "Magic Temple", "Travel should use the player-facing Magic Temple label")
+    assert_equal(temple.x, 108, "Magic Temple should retain the validated overworld X")
+    assert_equal(temple.y, 109, "Magic Temple should retain the validated overworld Y")
+
+    local by_name = assert(env.objects.find_overworld_landmark("Magic Temple"))
+    assert_equal(by_name.id, "overworld_southern_cave", "Magic Temple lookup should retain the stable object id")
+
+    local by_old_name = assert(env.objects.find_overworld_landmark("Southern Cave"))
+    assert_equal(by_old_name.id, "overworld_southern_cave", "legacy Southern Cave lookup should remain compatible")
 
     env.restore()
 end
