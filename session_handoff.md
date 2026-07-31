@@ -1,9 +1,28 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-28
+Updated: 2026-07-31
 
 ## Immediate FCEUX Handoff
 
+- Mountain Cave travel and both dungeon floors are complete. The bidirectional
+  World Map routes connect `Western desert east road` `(18,64)` with cave
+  entrance `(29,57)`; F1 entry/exit is `(0,7)`. F1 map `0x16` models its
+  live west/top boundary, walls, the `(8,2).north/south` upper-loop barrier,
+  and the northeast chest `(13,5)` via passthroughs `(11,0)..(13,0)`. B2 map `0x17` models
+  live-proven type-0/type-8 walls, every boundary passthrough, all four chest
+  tiles `(1,6)`, `(2,2)`, `(3,2)`, `(10,9)`, and all three stair pairs:
+  northwest A `(0,0)<->(0,0)`, central B `(6,5)<->(6,5)`, and southeast C
+  `(12,12)<->(12,12)`. A and C are isolated pockets; B reaches the treasure
+  area. Two manual return routes and a normal-origin raw probe proved
+  `(8,1)->DOWN` into `(8,2)` blocks just like the already modeled south-side
+  approach. After adding `(8,2).north`, the final loaded-source return moved
+  from chest `(13,5)` to exit `(0,7)` without a reroute or runtime blocker;
+  battle interruptions resumed from fresh field probes. The user then manually
+  validated the corrected route and reported it clean. Current FCEUX state is
+  F1 exit `(0,7)`, field clear, HP `115/115`, MP `75/97`, EXP `20341`, gold
+  `21537`, and intact level-18 stats. Focused verification passes 147
+  overworld-route, 107 object, and 71 map-reader tests plus Lua syntax and
+  `git diff --check`.
 - A second manual `rimuldar_magic_temple` return validation completed with
   substantially cleaner timing. The route advanced through all 22 waypoints,
   changed to Rimuldar map `0x0B`, and emitted `event=arrived` at `(29,14)`.

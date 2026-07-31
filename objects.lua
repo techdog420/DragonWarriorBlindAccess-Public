@@ -194,11 +194,18 @@ local STAIRS = {
     -- Confirmed live: STAIRS at (8,9) moves to B1 (map 0x1C) at (9,9).
     {map = 0x1D, x = 8, y = 9, name = "Stairs Up", dest = "B1", object_name = "Stairs Up"},
 
-    -- Mountain Cave (0x16)
-    {map = 0x16, x = 6, y = 5, name = "Stairs Down", dest = "B2", object_name = "Stairs Down"},
+    -- Mountain Cave F1 (0x16). All three STAIRS transitions were verified
+    -- live on 2026-07-30 and match the ROM pairs. Northwest and southeast
+    -- reach isolated B2 pockets; central reaches the main B2 area.
+    {map = 0x16, x = 0, y = 0, name = "Northwest Stairs Down", dest = "B2", object_name = "Northwest Stairs Down"},
+    {map = 0x16, x = 6, y = 5, name = "Central Stairs Down", dest = "B2", object_name = "Central Stairs Down"},
+    {map = 0x16, x = 12, y = 12, name = "Southeast Stairs Down", dest = "B2", object_name = "Southeast Stairs Down"},
 
-    -- Mountain Cave B2 (0x17)
-    {map = 0x17, x = 6, y = 5, name = "Stairs Up", dest = "Mountain Cave", object_name = "Stairs Up"},
+    -- Mountain Cave B2 (0x17). Reverse STAIRS transitions return to the
+    -- same coordinates on F1.
+    {map = 0x17, x = 0, y = 0, name = "Northwest Stairs Up", dest = "Mountain Cave", object_name = "Northwest Stairs Up"},
+    {map = 0x17, x = 6, y = 5, name = "Central Stairs Up", dest = "Mountain Cave", object_name = "Central Stairs Up"},
+    {map = 0x17, x = 12, y = 12, name = "Southeast Stairs Up", dest = "Mountain Cave", object_name = "Southeast Stairs Up"},
 
     -- Garinham (0x09)
     -- ROM stair-down table entry at 0xF411 is `09 13 00`. Live STAIRS from
@@ -433,7 +440,9 @@ local EXITS = {
         dest = "World Map",
         object_name = "North Exit to World Map",
     },                                                                      -- Swamp Cave
-    {map = 0x16, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Mountain Cave
+    -- Mountain Cave live entry and exit stand. The World Map entrance lands
+    -- at (0,7); using the STAIRS command on that tile returns to (29,57).
+    {map = 0x16, x = 0, y = 7, name = "Exit", dest = "World Map"},        -- Mountain Cave
     {map = 0x1C, x = 0, y = 0, name = "Exit", dest = "World Map"},        -- Erdrick's Cave B1
 }
 

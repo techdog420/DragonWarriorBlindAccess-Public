@@ -292,6 +292,40 @@ local WALKABILITY_TABLES = {
     [0x20] = WALKABLE_DUNGEON,
 }
 
+-- Some maps assign a different collision meaning to a shared dungeon block
+-- ID. Keep those differences map-scoped so live evidence from one floor does
+-- not silently change every cave.
+local MAP_TILE_WALKABILITY_OVERRIDES = {
+    -- Mountain Cave F1: the first normal-movement crawl and same-origin raw
+    -- probes on 2026-07-29 repeatedly blocked on type-0 cells while every
+    -- traversed corridor cell decoded as type 2.
+    [0x16] = {
+        [0] = false,
+    },
+    -- Mountain Cave B2: same-origin raw probes in both isolated stair pockets
+    -- repeatedly blocked on type-0 cells, while type-2 and type-A corridor
+    -- cells moved normally. Five distinct type-8 cells also rejected every
+    -- normal-movement and raw-probe attempt on 2026-07-30; the NES floor map
+    -- renders the same cells as solid rock rather than corridor floor.
+    [0x17] = {
+        [0] = false,
+        [8] = false,
+    },
+}
+
+local function resolve_tile_walkability(map_id, tile_type, walkable_table)
+    local map_overrides = MAP_TILE_WALKABILITY_OVERRIDES[map_id]
+    if map_overrides and map_overrides[tile_type] ~= nil then
+        return map_overrides[tile_type], "map_tile_type"
+    end
+
+    local result = walkable_table[tile_type]
+    if result == nil then
+        result = false
+    end
+    return result, "tile_type"
+end
+
 -- ============================================================
 -- Per-Map Passthrough Cell Overrides
 -- ============================================================
@@ -1035,6 +1069,73 @@ local MAP_PASSTHROUGH_CELLS = {
         ["2,18"] = true,
     },
 
+    -- Map 0x16: Mountain Cave F1 entry and upper boundary route.
+    -- Live FCEUX entry from World Map (29,57) lands on (0,7), and the STAIRS
+    -- command returns from that tile. Repeated normal-origin probes traced the
+    -- northwest route through (0,3)..(0,0), east through (3,0), then after the
+    -- interior y=1 turn through the second top segment (8,0)..(10,0). On
+    -- 2026-07-31, normal-route arrival and clean same-origin probes crossed
+    -- (10,0)..(13,0) in both directions; an ordinary five-step descent from
+    -- (13,0) then reached the F1 chest at (13,5).
+    [0x16] = {
+        ["0,0"] = true,
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,7"] = true,
+        ["1,0"] = true,
+        ["2,0"] = true,
+        ["3,0"] = true,
+        ["8,0"] = true,
+        ["9,0"] = true,
+        ["10,0"] = true,
+        ["11,0"] = true,
+        ["12,0"] = true,
+        ["13,0"] = true,
+    },
+
+    -- Map 0x17: Mountain Cave B2 northwest isolated pocket plus the main
+    -- treasure route's western and northern boundaries, plus the two other
+    -- live-verified stair landings whose raw type 1 is otherwise non-walkable.
+    -- Stair A lands at (0,0); live probes moved east to boundary cell (1,0),
+    -- south to (0,1), onward east to (1,1), and back in both directions. The
+    -- adjacent type-0 cells at
+    -- (2,1) and (1,2) remained blocked. From the main treasure route, raw
+    -- probes also moved bidirectionally through the boundary pockets
+    -- (1,4)<->(0,4)<->(0,3) and (1,6)<->(0,6)<->(0,7). Additional raw
+    -- probes moved (1,13)->(0,13), north through (0,9), then east to (1,9).
+    -- The northwestern chest branch moved through (5,0)..(3,0) in both
+    -- directions before descending through (3,1) to chests (3,2) and (2,2).
+    -- A continued live probe pass moved east across the rest of the same top
+    -- corridor through (13,0), then south to the modeled interior at (13,1).
+    [0x17] = {
+        ["0,0"] = true,
+        ["1,0"] = true,
+        ["0,1"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,6"] = true,
+        ["0,7"] = true,
+        ["0,9"] = true,
+        ["0,10"] = true,
+        ["0,11"] = true,
+        ["0,12"] = true,
+        ["0,13"] = true,
+        ["3,0"] = true,
+        ["4,0"] = true,
+        ["5,0"] = true,
+        ["6,0"] = true,
+        ["7,0"] = true,
+        ["8,0"] = true,
+        ["9,0"] = true,
+        ["10,0"] = true,
+        ["11,0"] = true,
+        ["12,0"] = true,
+        ["13,0"] = true,
+        ["6,5"] = true,
+        ["12,12"] = true,
+    },
+
     -- Map 0x1C: Erdrick's Cave B1 entrance strip.
     -- Live probes on 2026-05-08 confirmed the engine moves
     -- (0,0) -> right -> (1,0) -> down -> (1,1), and the reverse
@@ -1638,6 +1739,16 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["19,15"] = {south = true, west = true},
         ["17,16"] = {east = true},
         ["18,17"] = {north = true},
+    },
+
+    -- Map 0x16: Mountain Cave F1 upper-loop barrier.
+    -- Autowalk from (8,3) north into (8,2) failed repeatedly, and a same-origin
+    -- raw probe also remained at (8,3). On 2026-07-31, two return routes also
+    -- blocked from (8,1) south into (8,2); a normal-route same-origin probe
+    -- confirmed that north approach with raw_hold_timeout. Keep the untested
+    -- east and west approaches open.
+    [0x16] = {
+        ["8,2"] = {north = true, south = true},
     },
 
     -- Map 0x04: Tantegel Castle main hall
@@ -4966,13 +5077,10 @@ local function lookup_walkability_base(map_id, x, y)
         return details
     end
 
-    local result = walkable_table[tile_type]
-    if result == nil then
-        result = false
-    end
+    local result, reason = resolve_tile_walkability(map_id, tile_type, walkable_table)
     details.base_walkable = result
     details.effective_walkable = result
-    details.reason = "tile_type"
+    details.reason = reason
     return details
 end
 
@@ -5080,7 +5188,11 @@ function M.get_walkability_snapshot(map_id, opts)
                 walkable = open_doors and open_doors[dc.x .. "," .. dc.y] == true or false
             else
                 local tile_type = grid[y] and grid[y][x]
-                walkable = tile_type ~= nil and walkable_table[tile_type] == true or false
+                if tile_type ~= nil then
+                    walkable = resolve_tile_walkability(map_id, tile_type, walkable_table)
+                else
+                    walkable = false
+                end
             end
             if overrides and overrides[key] then
                 walkable = false

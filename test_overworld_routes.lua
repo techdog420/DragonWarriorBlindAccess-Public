@@ -727,6 +727,109 @@ function tests.northern_cave_near_entrance_does_not_stage_to_kol()
     routes.reset_for_tests()
 end
 
+function tests.mountain_cave_object_starts_from_western_desert_route_pin()
+    routes.reset_for_tests()
+
+    local info, err = routes.start_for_object({
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+        x = 29,
+        y = 57,
+    }, 0x01, 18, 64)
+
+    assert_equal(err, nil, "Mountain Cave Travel object should start the route")
+    assert_equal(info.route.id, "mountain_cave", "Mountain Cave object should use the local spur")
+    assert_equal(info.object_id, "route_mountain_cave_02", "route should leave the existing pin toward the forest turn")
+    assert_contains(info.message, "Mountain Cave forest turn", "route should begin with the two-tile west segment")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_route_recovers_from_live_north_carry_position()
+    routes.reset_for_tests()
+    routes.start("mountain cave", 0x01, 16, 61)
+
+    local segment = assert(routes.plan_next_segment(0x01, 16, 61))
+
+    assert_equal(segment.waypoint.name, "Mountain Cave west forest lane", "mid-corridor start should keep the north target")
+    assert_equal(#segment.steps, 3, "live carry position should be three steps south of the turn")
+    assert_equal(segment.steps[1], "up", "carry recovery should continue north")
+    assert_equal(segment.steps[3], "up", "carry recovery should finish the north segment")
+    assert_equal(segment.route_final_carry_x, 17, "turn lookahead should allow only eastward carry")
+    assert_equal(segment.route_final_carry_y, 58, "turn lookahead should stay on the target row")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_route_uses_exact_turns_and_finishes_on_entry()
+    routes.reset_for_tests()
+    routes.start("mountain cave", 0x01, 18, 64)
+
+    local forest_turn = routes.observe_position(0x01, 16, 64)
+    assert_contains(forest_turn.message, "Mountain Cave forest turn", "route should reach the forest turn")
+    assert_contains(forest_turn.message, "Next: Mountain Cave west forest lane", "forest turn should point north")
+
+    routes.observe_position(0x01, 16, 58)
+    routes.observe_position(0x01, 25, 58)
+    routes.observe_position(0x01, 25, 57)
+    local arrival = routes.observe_position(0x16, 0, 0)
+
+    assert_contains(arrival.message, "Arrived at Mountain Cave", "map entry should complete the route")
+    assert_equal(routes.is_active(), false, "Mountain Cave route should stop after entry")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_return_reverses_to_western_desert_pin()
+    routes.reset_for_tests()
+    local info, err = routes.start("mountain cave return", 0x01, 29, 57)
+
+    assert_equal(err, nil, "Mountain Cave return alias should resolve")
+    assert_equal(info.route.id, "mountain_cave_return", "return alias should use the reverse spur")
+    assert_equal(info.object_id, "route_mountain_cave_return_02", "return should first head west")
+
+    local first = assert(routes.plan_next_segment(0x01, 29, 57))
+    assert_equal(first.waypoint.name, "Mountain Cave west approach", "return should target the west approach")
+    assert_equal(first.steps[1], "left", "return should leave the cave westbound")
+
+    routes.observe_position(0x01, 25, 57)
+    routes.observe_position(0x01, 25, 58)
+    routes.observe_position(0x01, 16, 58)
+    routes.observe_position(0x01, 16, 64)
+    local arrival = routes.observe_position(0x01, 18, 64)
+
+    assert_contains(arrival.message, "Arrived at Western desert east road", "return should finish at the existing route pin")
+    assert_equal(routes.is_active(), false, "return route should stop at the route pin")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_return_keeps_physical_cave_selection_bound_to_active_route()
+    routes.reset_for_tests()
+    routes.start("mountain cave return", 0x01, 29, 57)
+
+    local cave = {
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+        x = 29,
+        y = 57,
+    }
+
+    assert_equal(
+        routes.active_route_matches_object(cave),
+        true,
+        "route-manager matching should keep the physical cave bound to the active return route")
+
+    local info, err = routes.guidance_for_object(cave, 0x01, 29, 57)
+
+    assert_equal(err, nil, "physical Mountain Cave selection should remain valid during the active return route")
+    assert_equal(routes.active_route_id(), "mountain_cave_return", "physical cave selection must not replace the active return route")
+    assert_equal(info.route.id, "mountain_cave_return", "guidance should continue using the return route")
+    assert_equal(info.object_id, "route_mountain_cave_return_02", "return guidance should keep the west-approach waypoint selected")
+
+    routes.reset_for_tests()
+end
+
 function tests.northern_cave_route_steps_through_rain_shrine_approach()
     routes.reset_for_tests()
     routes.start("rain shrine", 0x01, 104, 10)

@@ -1,11 +1,27 @@
 # Playtesting Notes
 
-Updated: 2026-07-28
+Updated: 2026-07-31
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Mountain Cave completion (`2026-07-31`): travel guidance is live-validated
+  in both directions between waypoint `(18,64)` and cave `(29,57)`. Both
+  interior floors are decoded, all three coordinate-matched stair pairs work
+  both ways, and B2 correctly separates the northwest and southeast dead-end
+  stair pockets from the central treasure region. Source-only navigation
+  reaches the F1 chest `(13,5)`, all four B2 chests, and central stair `(6,5)`.
+  F1 top cells `(11,0)..(13,0)` passed clean same-origin probes in both
+  directions after a normal-route arrival; after reload, source-only routing
+  completed from chest `(13,5)` to ordinary interior `(10,1)` and back with no
+  runtime blockers. Two manual returns and a normal-origin probe then confirmed
+  `(8,1)->DOWN` into `(8,2)` is blocked; source now models both the north and
+  south approaches to that upper-loop cell. A loaded-source chest-to-exit
+  return completed without rerouting or adding a runtime blocker, and the user
+  manually validated the corrected route as clean. The final B2 boundary cell `(1,0)` also passed a
+  loaded-source round trip from stair A `(0,0)`. Chests were not deliberately
+  opened during map QA.
 - Magic Temple return-route revalidation (`2026-07-28`): a second manual
   `rimuldar_magic_temple` pass completed all 22 waypoints and entered Rimuldar
   `0x0B` at `(29,14)`. Seven bounded retry events recovered automatically,

@@ -109,6 +109,8 @@ local MAP_NAMES = {
     [0x0A] = "Cantlin",
     [0x0B] = "Rimuldar",
     [0x0E] = "Magic Temple",
+    [0x16] = "Mountain Cave",
+    [0x17] = "Mountain Cave B2",
     [0x18] = "Garin's Grave B1",
     [0x19] = "Garin's Grave B2",
 }
@@ -142,6 +144,10 @@ end
 
 local function assert_hauksness_dir(env, cell, approach, message)
     assert_directional_block(env, 0x03, cell, approach, message)
+end
+
+local function assert_mountain_cave_f1_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x16, cell, approach, message)
 end
 
 local function assert_sun_shrine_dir(env, cell, approach, message)
@@ -285,6 +291,139 @@ function tests.interior_decoder_keeps_odd_width_rows_byte_contiguous()
             assert_equal(grid[y][x], expected[y][x], message .. " grid value")
             assert_equal(env.map_reader.get_raw_block_id(map_id, x, y), expected[y][x], message .. " raw value")
         end
+    end
+
+    env.restore()
+end
+
+function tests.mountain_cave_floors_use_live_proven_walls_boundary_routes_and_upper_loop_barrier()
+    local map_id = 0x16
+    local base = map_id * 5
+    local next_base = 0x17 * 5
+    local data_start = 0x300
+    local next_data_start = 0x380
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local next_data_cpu_ptr = 0x8000 + next_data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 13,
+        [base + 3] = 13,
+        [base + 4] = 0,
+        [next_base] = next_data_cpu_ptr % 0x100,
+        [next_base + 1] = math.floor(next_data_cpu_ptr / 0x100),
+        [next_base + 2] = 13,
+        [next_base + 3] = 13,
+        [next_base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 14, 14, 0x0)
+    fill_packed_map(rom_bytes, next_data_start, 14, 14, 0x0)
+    set_packed_block(rom_bytes, data_start, 14, 2, 2, 0x2)
+    set_packed_block(rom_bytes, data_start, 14, 0, 7, 0x1)
+    for x = 11, 13 do
+        set_packed_block(rom_bytes, data_start, 14, x, 0, 0xA)
+    end
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 0, 0x1)
+    set_packed_block(rom_bytes, next_data_start, 14, 1, 0, 0x2)
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 1, 0x2)
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 3, 0x2)
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 4, 0x2)
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 6, 0x2)
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 7, 0xA)
+    set_packed_block(rom_bytes, next_data_start, 14, 1, 1, 0x0)
+    set_packed_block(rom_bytes, next_data_start, 14, 2, 1, 0x8)
+    set_packed_block(rom_bytes, next_data_start, 14, 2, 2, 0x2)
+    set_packed_block(rom_bytes, next_data_start, 14, 6, 5, 0x1)
+    set_packed_block(rom_bytes, next_data_start, 14, 12, 12, 0x1)
+    set_packed_block(rom_bytes, next_data_start, 14, 0, 9, 0xA)
+    for x = 3, 13 do
+        set_packed_block(rom_bytes, next_data_start, 14, x, 0, 0x2)
+    end
+    for y = 10, 13 do
+        set_packed_block(rom_bytes, next_data_start, 14, 0, y, 0x2)
+    end
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    local live_wall = env.map_reader.get_walkability_details(map_id, 1, 2)
+    assert_equal(live_wall.tile_type, 0x0, "Mountain Cave F1 live wall should retain raw type 0")
+    assert_equal(live_wall.effective_walkable, false, "Mountain Cave F1 type-0 cells should use the live-proven wall rule")
+    assert_equal(live_wall.reason, "map_tile_type", "Mountain Cave F1 type-0 wall should report the map-specific rule")
+
+    local live_floor = env.map_reader.get_walkability_details(map_id, 2, 2)
+    assert_equal(live_floor.tile_type, 0x2, "Mountain Cave F1 live floor should retain raw type 2")
+    assert_equal(live_floor.effective_walkable, true, "Mountain Cave F1 type-2 corridor should remain walkable")
+
+    local entry = env.map_reader.get_walkability_details(map_id, 0, 7)
+    assert_equal(entry.effective_walkable, true, "Mountain Cave F1 world-entry landing (0,7) should be walkable")
+    assert_equal(entry.reason, "passthrough", "Mountain Cave F1 world-entry landing should override the generic boundary rule")
+
+    local f1_boundary_route = {
+        {0, 0}, {0, 1}, {0, 2}, {0, 3},
+        {1, 0}, {2, 0}, {3, 0},
+        {8, 0}, {9, 0}, {10, 0}, {11, 0}, {12, 0}, {13, 0},
+    }
+    for _, point in ipairs(f1_boundary_route) do
+        local details = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(
+            details.effective_walkable,
+            true,
+            string.format("Mountain Cave F1 live boundary route (%d,%d) should be walkable", point[1], point[2])
+        )
+        assert_equal(
+            details.reason,
+            "passthrough",
+            string.format("Mountain Cave F1 live boundary route (%d,%d) should override the generic boundary rule", point[1], point[2])
+        )
+    end
+
+    assert_mountain_cave_f1_dir(
+        env,
+        "8,2",
+        "south",
+        "Mountain Cave F1 should block the live-proven northward approach from (8,3)"
+    )
+    assert_mountain_cave_f1_dir(
+        env,
+        "8,2",
+        "north",
+        "Mountain Cave F1 should block the live-proven return-route approach from (8,1)"
+    )
+
+    local b2_wall = env.map_reader.get_walkability_details(0x17, 1, 1)
+    assert_equal(b2_wall.effective_walkable, false, "Mountain Cave B2 type-0 cells should use the repeated live-proven wall rule")
+    assert_equal(b2_wall.reason, "map_tile_type", "Mountain Cave B2 type-0 walls should report the map-specific rule")
+
+    local b2_type8_wall = env.map_reader.get_walkability_details(0x17, 2, 1)
+    assert_equal(b2_type8_wall.tile_type, 0x8, "Mountain Cave B2 solid rock should retain raw type 8")
+    assert_equal(b2_type8_wall.effective_walkable, false, "Mountain Cave B2 type-8 cells should use the live-proven wall rule")
+    assert_equal(b2_type8_wall.reason, "map_tile_type", "Mountain Cave B2 type-8 walls should report the map-specific rule")
+
+    local b2_floor = env.map_reader.get_walkability_details(0x17, 2, 2)
+    assert_equal(b2_floor.tile_type, 0x2, "Mountain Cave B2 live floor should retain raw type 2")
+    assert_equal(b2_floor.effective_walkable, true, "Mountain Cave B2 type-2 corridors should remain walkable")
+
+    for _, point in ipairs({
+        {0, 0}, {1, 0}, {0, 1}, {0, 3}, {0, 4}, {0, 6}, {0, 7},
+        {0, 9}, {0, 10}, {0, 11}, {0, 12}, {0, 13},
+        {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0}, {8, 0},
+        {9, 0}, {10, 0}, {11, 0}, {12, 0}, {13, 0},
+        {6, 5}, {12, 12},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x17, point[1], point[2])
+        assert_equal(
+            details.effective_walkable,
+            true,
+            string.format("Mountain Cave B2 live passthrough (%d,%d) should be walkable", point[1], point[2])
+        )
+        assert_equal(
+            details.reason,
+            "passthrough",
+            string.format("Mountain Cave B2 live passthrough (%d,%d) should override the generic boundary rule", point[1], point[2])
+        )
     end
 
     env.restore()

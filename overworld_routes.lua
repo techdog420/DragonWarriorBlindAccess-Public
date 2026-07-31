@@ -629,6 +629,61 @@ local ROUTES = {
             },
         },
     },
+    mountain_cave = {
+        id = "mountain_cave",
+        title = "Mountain Cave",
+        aliases = {
+            "mountain cave",
+            "rock mountain cave",
+            "rocky mountain cave",
+            "bonus dungeon",
+        },
+        target_object_ids = {"overworld_mountain_cave"},
+        destination_maps = {0x16, 0x17},
+        waypoints = {
+            {
+                x = 18,
+                y = 64,
+                name = "Western desert east road",
+                radius = 0,
+                warning = "Mountain Cave spur. Follow the forest corridor north, then approach the cave from the west.",
+            },
+            {x = 16, y = 64, name = "Mountain Cave forest turn", radius = 0},
+            {x = 16, y = 58, name = "Mountain Cave west forest lane", radius = 0},
+            {x = 25, y = 58, name = "Mountain Cave south approach", radius = 0},
+            {x = 25, y = 57, name = "Mountain Cave west approach", radius = 0},
+            {x = 29, y = 57, name = "Mountain Cave", radius = 0, final = true},
+        },
+    },
+    mountain_cave_return = {
+        id = "mountain_cave_return",
+        title = "Western desert east road",
+        -- Keep the manually selected return route active while the physical
+        -- cave remains selected after Travel-object refreshes at nearby
+        -- waypoints. This compatibility binding does not make the return route
+        -- eligible to start from an ordinary Mountain Cave selection.
+        compatible_target_object_ids = {"overworld_mountain_cave"},
+        aliases = {
+            "mountain cave return",
+            "return from mountain cave",
+            "mountain cave to western desert",
+            "mountain cave to hauksness route",
+        },
+        waypoints = {
+            {x = 29, y = 57, name = "Mountain Cave", radius = 0},
+            {
+                x = 25,
+                y = 57,
+                name = "Mountain Cave west approach",
+                radius = 0,
+                warning = "Returning to the Hauksness route at Western desert east road.",
+            },
+            {x = 25, y = 58, name = "Mountain Cave south approach", radius = 0},
+            {x = 16, y = 58, name = "Mountain Cave west forest lane", radius = 0},
+            {x = 16, y = 64, name = "Mountain Cave forest turn", radius = 0},
+            {x = 18, y = 64, name = "Western desert east road", radius = 0, final = true},
+        },
+    },
     hauksness = {
         id = "hauksness",
         title = "Hauksness",
@@ -1355,6 +1410,8 @@ local ROUTE_IDS = {
     "rimuldar_magic_temple",
     "swamp_cave_south",
     "swamp_cave_south_recovery",
+    "mountain_cave",
+    "mountain_cave_return",
     "hauksness",
     "hauksness_cantlin",
     "cantlin_hauksness",
@@ -1766,18 +1823,43 @@ local function route_destinations_match(a, b)
     if a.id == b.id then
         return true
     end
-    for _, a_id in ipairs(a.target_object_ids or {}) do
-        for _, b_id in ipairs(b.target_object_ids or {}) do
-            if a_id == b_id then
-                return true
+    local function ids_overlap(a_ids, b_ids)
+        for _, a_id in ipairs(a_ids or {}) do
+            for _, b_id in ipairs(b_ids or {}) do
+                if a_id == b_id then
+                    return true
+                end
             end
         end
+        return false
+    end
+    if ids_overlap(a.target_object_ids, b.target_object_ids)
+       or ids_overlap(a.compatible_target_object_ids, b.target_object_ids)
+       or ids_overlap(a.target_object_ids, b.compatible_target_object_ids) then
+        return true
     end
     return false
 end
 
 function M.active_route_matches_object(obj)
-    return object_matches_route(active_route(), obj)
+    local route = active_route()
+    if object_matches_route(route, obj) then
+        return true
+    end
+
+    -- Compatibility IDs bind a physical Travel object to an already active
+    -- route without making that route eligible to start from the object.
+    -- Return routes use this when object refresh keeps the departure landmark
+    -- selected after the player exits an interior map.
+    if route and obj and obj.id then
+        for _, object_id in ipairs(route.compatible_target_object_ids or {}) do
+            if obj.id == object_id then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 function M.start(route_name, map_id, px, py, opts)

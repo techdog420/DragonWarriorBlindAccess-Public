@@ -477,10 +477,14 @@ function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
     env.set_terrain_offset(0x20)
 
     env.objects.refresh(0x16)
-    assert_equal(find_by_id(env.objects, "stair_6_5").name, "Stairs Down", "Mountain Cave B1 stairs should keep direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_0_0").name, "Northwest Stairs Down", "Mountain Cave F1 northwest stairs should be distinct without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_6_5").name, "Central Stairs Down", "Mountain Cave F1 central stairs should be distinct without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_12_12").name, "Southeast Stairs Down", "Mountain Cave F1 southeast stairs should be distinct without naming B2")
 
     env.objects.refresh(0x17)
-    assert_equal(find_by_id(env.objects, "stair_6_5").name, "Stairs Up", "Mountain Cave B2 stairs should keep direction without naming Mountain Cave")
+    assert_equal(find_by_id(env.objects, "stair_0_0").name, "Northwest Stairs Up", "Mountain Cave B2 northwest stairs should be distinct without naming F1")
+    assert_equal(find_by_id(env.objects, "stair_6_5").name, "Central Stairs Up", "Mountain Cave B2 central stairs should be distinct without naming F1")
+    assert_equal(find_by_id(env.objects, "stair_12_12").name, "Southeast Stairs Up", "Mountain Cave B2 southeast stairs should be distinct without naming F1")
 
     env.objects.refresh(0x02)
     assert_equal(find_by_id(env.objects, "stair_10_1").name, "Stairs Down", "Charlock Castle stairs should keep down direction without naming B1")
@@ -495,6 +499,22 @@ function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
 
     env.objects.refresh(0x11)
     assert_equal(find_by_id(env.objects, "stair_3_3").name, "Stairs Up", "Dragonlord B3 stairs should keep up direction without naming B2")
+
+    env.restore()
+end
+
+function tests.mountain_cave_exit_uses_live_stairs_command_tile()
+    local env = make_env()
+
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x16)
+
+    local exit = env.objects.select_object_by_id("exit_0_7")
+    assert_equal(exit ~= nil, true, "Mountain Cave should expose the live STAIRS-command exit tile")
+    assert_equal(exit.name, "Exit to World Map", "Mountain Cave exit should keep the normal Travel label")
+    assert_equal(exit.x, 0, "Mountain Cave exit should stay on the west boundary")
+    assert_equal(exit.y, 7, "Mountain Cave exit should use the live entry and STAIRS-command row")
+    assert_equal(env.objects.select_object_by_id("exit_0_0"), nil, "Mountain Cave should not retain the stale unreachable exit at (0,0)")
 
     env.restore()
 end
