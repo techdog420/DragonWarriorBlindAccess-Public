@@ -239,7 +239,14 @@ Durable FCEUX facts:
 - FCEUX's local DW1 battery save target is
   `D:\emulation\fceux\bin\sav\Dragon Warrior (USA) (Rev 1).sav`; the launcher
   can seed it from a raw `.sav` / `.SaveRAM` source with `--battery-save`.
-- The launcher disables FCEUX native keyboard GamePad.0 and uses the project keyboard bridge when needed
+- The launcher disables FCEUX native keyboard GamePad.0 with a valid empty
+  `dragonwarrior-bridge-only` profile and uses the project keyboard bridge for
+  gameplay. It also enables `SDL.PauseOnMainMenuAccess = 1`. The bridge emits a
+  versioned heartbeat and `suspended` state while FCEUX is backgrounded, a
+  menu/dialog owns focus, or Shift/Ctrl/Alt/Windows/Insert/Caps Lock is held;
+  after suspension it waits for all mapped game keys to be physically neutral
+  before resuming. Lua treats missing, legacy-active, suspended, and expired
+  bridge states as fail-closed and emits one neutral release if necessary.
 - FCEUX command-line ROM/Lua startup is best-effort on this machine. A failed
   readiness wait may still leave qfceux open; manually loading the ROM and
   `main.lua` remains the preferred recovery for normal live work. Use BizHawk
@@ -1353,11 +1360,15 @@ Emulator compatibility direction:
   facing tap after teleport input suppression, then neutralize input, instead
   of using an auto-step/held direction; counter stands such as Brecconary
   `(5,6)` have walkable tiles in front, so held directions can walk onto the
-  counter rather than just face it. Because BizHawk can also see
-  `Shift+Enter`/`Shift+direction` as NES Start/D-pad input, selected teleport
-  suppression should stay active until the non-modifier trigger key (`Enter` or
-  the arrow) is released; a fixed short window can leak Start and leave the
-  player in a command-menu/control-stuck-feeling state. Also reject generic NPC
+  counter rather than just face it. Because emulator keyboard state can also
+  expose `Shift+Enter`/`Shift+direction` as NES Start/D-pad input, selected
+  teleport suppression stays active until the non-modifier trigger key
+  (`Enter` or the arrow) is released, with a 90-frame stale-state escape. On
+  FCEUX, keep this logical release latch but skip immediate teleport
+  `joypad.set()` neutralization; the launcher-owned physical bridge supplies
+  chord isolation. Teleport activation itself must require a fresh
+  non-modifier edge so a new Shift press over FCEUX's stale `Down` state cannot
+  fire `Shift+Down` or re-arm an old Enter latch. Also reject generic NPC
   adjacent landings with no non-target escape route. The Brecconary Woman 3
   repro at target `(4,7)` initially chose `(5,7)`; live injected movement from
   that cell engine-blocked UP into `(5,6)`, DOWN into `(5,8)`, and RIGHT into
@@ -1366,6 +1377,10 @@ Emulator compatibility direction:
   A manual teleport retest found the apparent lost-keyboard state was actually
   a boxed-in landing at map `0x05` `(4,6)` with NPC blockers on both sides, a
   door south, and a noisy north seam.
+- Input-bridge unit tests must set `DW_KEYBOARD_BRIDGE_FILE_OVERRIDE` to a
+  private temporary path. Never let `test_debug_tools.lua` write the live
+  `dw_keyboard_input.txt` while the sidecar is running; that races synthetic
+  test buttons against gameplay and invalidates live evidence.
 - Selected-object NPC teleport also needs to keep the target in place long
   enough for the player to use TALK. A Garinham repro landed beside live
   `Woman 2`, faced the old target tile, and later TALK missed because the NPC

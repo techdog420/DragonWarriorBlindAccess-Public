@@ -11,6 +11,7 @@ local original_compat = _G.DW_EMULATOR_COMPAT
 local original_log_override = _G.DW_DEBUG_LOG_FILE_OVERRIDE
 local original_command_override = _G.DW_COMMAND_FILE_OVERRIDE
 local original_command_processing_override = _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE
+local original_keyboard_bridge_override = _G.DW_KEYBOARD_BRIDGE_FILE_OVERRIDE
 local env_counter = 0
 
 local function join_path(dir, name)
@@ -239,9 +240,14 @@ local function make_env(options)
         end
     end
 
-    local bridge_path = "dw_keyboard_input.txt"
+    local bridge_path = temp_path("test_debug_tools_keyboard_bridge_" .. tostring(env_counter) .. ".txt")
     local original_bridge = read_file(bridge_path)
-    write_file(bridge_path, options.bridge_text or "-\n")
+    _G.DW_KEYBOARD_BRIDGE_FILE_OVERRIDE = bridge_path
+    if options.bridge_missing then
+        os.remove(bridge_path)
+    else
+        write_file(bridge_path, options.bridge_text or "-\n")
+    end
 
     local debug_tools = require "debug_tools"
 
@@ -263,6 +269,9 @@ local function make_env(options)
         set_bridge = function(text)
             write_file(bridge_path, text or "-\n")
         end,
+        remove_bridge = function()
+            os.remove(bridge_path)
+        end,
         set_memory = function(address, value)
             memory_bytes[address] = value
         end,
@@ -274,7 +283,11 @@ local function make_env(options)
         restore = function()
             os.remove(command_file)
             os.remove(processing_file)
-            write_file(bridge_path, original_bridge or "")
+            if original_bridge ~= nil then
+                write_file(bridge_path, original_bridge)
+            else
+                os.remove(bridge_path)
+            end
             restore_modules(module_names)
             _G.input = original_input
             _G.joypad = original_joypad
@@ -284,6 +297,7 @@ local function make_env(options)
             _G.DW_DEBUG_LOG_FILE_OVERRIDE = original_log_override
             _G.DW_COMMAND_FILE_OVERRIDE = original_command_override
             _G.DW_COMMAND_PROCESSING_FILE_OVERRIDE = original_command_processing_override
+            _G.DW_KEYBOARD_BRIDGE_FILE_OVERRIDE = original_keyboard_bridge_override
         end,
     }
 end
@@ -364,7 +378,7 @@ function tests.fceux_stale_alt_neutral_bridge_is_ignored()
     env.restore()
 end
 
-function tests.fceux_stale_alt_return_is_ignored_without_external_bridge()
+function tests.fceux_stale_alt_return_is_ignored_with_neutral_external_bridge()
     local env = make_env({input_state = {LeftAlt = true, Return = true}, bridge_text = "-\n"})
 
     local input = env.debug_tools.tick(1, "field")
@@ -373,8 +387,46 @@ function tests.fceux_stale_alt_return_is_ignored_without_external_bridge()
     env.restore()
 end
 
+function tests.fceux_neutral_external_bridge_blocks_stale_alt_f_fallback()
+    local env = make_env({input_state = {LeftAlt = true, F = true}, bridge_text = "-\n"})
+
+    local input = env.debug_tools.tick(1, "field")
+    assert_equal(input, nil, "neutral sidecar state should override stale FCEUX Alt+F")
+
+    env.restore()
+end
+
+function tests.fceux_missing_external_bridge_blocks_stale_alt_f_fallback()
+    local env = make_env({input_state = {LeftAlt = true, F = true}, bridge_missing = true})
+
+    local input = env.debug_tools.tick(1, "field")
+    assert_equal(input, nil, "missing sidecar should fail closed instead of mapping stale FCEUX Alt+F")
+
+    env.restore()
+end
+
+function tests.fceux_missing_external_bridge_releases_active_input_once()
+    local env = make_env({
+        input_state = {},
+        bridge_text = string.format("v2:1:%d:A\n", os.time()),
+    })
+
+    local press = env.debug_tools.tick(1, "field")
+    assert_equal(press ~= nil and press.A == true, true, "live sidecar should press A")
+
+    env.remove_bridge()
+    local release = env.debug_tools.tick(2, "field")
+    assert_equal(release ~= nil and release._raw == true, true, "missing sidecar should release active input once")
+    assert_no_buttons(release)
+
+    local missing = env.debug_tools.tick(3, "field")
+    assert_equal(missing, nil, "continued missing sidecar should remain fail-closed")
+
+    env.restore()
+end
+
 function tests.fceux_external_bridge_direction_is_not_marked_as_neutral_stale()
-    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "up\n"})
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = string.format("v2:1:%d:up\n", os.time())})
 
     local input = env.debug_tools.tick(1, "field")
     assert_equal(input ~= nil, true, "bridged FCEUX direction should return raw input")
@@ -386,7 +438,7 @@ function tests.fceux_external_bridge_direction_is_not_marked_as_neutral_stale()
 end
 
 function tests.fceux_external_bridge_release_with_stale_alt_emits_neutral_raw_frame()
-    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "A\n"})
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = string.format("v2:1:%d:A\n", os.time())})
 
     local press = env.debug_tools.tick(1, "field")
     assert_equal(press ~= nil, true, "bridge press should emit raw input")
@@ -406,7 +458,7 @@ function tests.fceux_external_bridge_release_with_stale_alt_emits_neutral_raw_fr
 end
 
 function tests.fceux_external_bridge_release_after_focus_recovery_emits_neutral_raw_frame()
-    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "start\n"})
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = string.format("v2:1:%d:start\n", os.time())})
 
     local press = env.debug_tools.tick(1, "field")
     assert_equal(press ~= nil, true, "bridge start press should emit raw input")
@@ -431,6 +483,93 @@ function tests.fceux_idle_input_without_stale_alt_has_no_bridge_input()
 
     local input = env.debug_tools.tick(1, "field")
     assert_equal(input, nil, "idle FCEUX input should not synthesize bridge input")
+
+    env.restore()
+end
+
+function tests.fceux_suspended_bridge_blocks_alt_f_internal_fallback()
+    local env = make_env({input_state = {LeftAlt = true, F = true}, bridge_text = "suspended\n"})
+
+    local input = env.debug_tools.tick(1, "field")
+    assert_equal(input, nil, "menu-suspended bridge should block the internal stale-Alt F-to-A fallback")
+
+    env.restore()
+end
+
+function tests.fceux_suspended_bridge_releases_active_input_once()
+    local env = make_env({input_state = {}, bridge_text = string.format("v2:1:%d:A\n", os.time())})
+
+    local press = env.debug_tools.tick(1, "field")
+    assert_equal(press ~= nil and press.A == true, true, "active external bridge should press A")
+
+    env.set_input({LeftAlt = true, F = true})
+    env.set_bridge("suspended\n")
+    local release = env.debug_tools.tick(2, "field")
+    assert_equal(release ~= nil and release._raw == true, true, "suspension should release active bridge input once")
+    assert_no_buttons(release)
+
+    local held_suspend = env.debug_tools.tick(3, "field")
+    assert_equal(held_suspend, nil, "continued menu suspension should not repeat neutral joypad.set frames")
+
+    env.restore()
+end
+
+function tests.fceux_legacy_active_bridge_fails_closed_immediately()
+    local env = make_env({input_state = {LeftAlt = true, F = true}, bridge_text = "A\n"})
+
+    local input = env.debug_tools.tick(1, "field")
+    assert_equal(input, nil, "unleased legacy active state should not inject A")
+
+    env.restore()
+end
+
+function tests.fceux_stale_sidecar_heartbeat_releases_each_input_class()
+    local cases = {
+        {line = "A", button = "A"},
+        {line = "start", button = "start"},
+        {line = "left", button = "left"},
+    }
+
+    for _, case in ipairs(cases) do
+        local now = os.time()
+        local env = make_env({
+            input_state = {},
+            bridge_text = string.format("v2:10:%d:%s\n", now, case.line),
+        })
+
+        local press = env.debug_tools.tick(1, "field")
+        assert_equal(press ~= nil and press[case.button] == true, true,
+            "live heartbeat should carry active " .. case.line)
+
+        env.set_bridge(string.format("v2:10:%d:%s\n", now - 10, case.line))
+        local release = env.debug_tools.tick(2, "field")
+        assert_equal(release ~= nil and release._raw == true, true,
+            "expired heartbeat should release " .. case.line)
+        assert_no_buttons(release)
+
+        local expired = env.debug_tools.tick(3, "field")
+        assert_equal(expired, nil,
+            "expired " .. case.line .. " should stay fail-closed without repeated neutral frames")
+
+        env.set_bridge(string.format("v2:11:%d:%s\n", os.time(), case.line))
+        local recovered = env.debug_tools.tick(4, "field")
+        assert_equal(recovered ~= nil and recovered[case.button] == true, true,
+            "fresh heartbeat should restore " .. case.line)
+
+        env.restore()
+    end
+end
+
+function tests.fceux_bridge_remains_active_when_debug_mode_is_false()
+    local env = make_env({
+        input_state = {},
+        bridge_text = string.format("v2:1:%d:up\n", os.time()),
+        config_values = {debug_mode = "false"},
+    })
+
+    local input = env.debug_tools.tick(1, "field")
+    assert_equal(input ~= nil and input._raw == true, true, "release mode should still consume raw bridge input")
+    assert_equal(input.up, true, "release mode bridge should preserve keyboard movement")
 
     env.restore()
 end
@@ -529,7 +668,7 @@ function tests.edge_probe_input_guard_allows_active_bridge_input()
     local env = make_env({
         input_state = {LeftAlt = true},
         joy_state = {},
-        bridge_text = "up\n",
+        bridge_text = string.format("v2:1:%d:up\n", os.time()),
         memory_bytes = {[0x0047] = 0x20},
     })
 
@@ -537,6 +676,24 @@ function tests.edge_probe_input_guard_allows_active_bridge_input()
     env.restore()
 
     assert_equal(refusal, nil, "real bridge input should not be classified as idle contamination")
+end
+
+function tests.edge_probe_input_guard_rejects_expired_bridge_input()
+    local env = make_env({
+        input_state = {LeftAlt = true},
+        joy_state = {},
+        bridge_text = string.format("v2:1:%d:up\n", os.time() - 10),
+        memory_bytes = {[0x0047] = 0x20},
+    })
+
+    local refusal = env.debug_tools.edge_probe_input_refusal("probe_edge")
+    local writes = env.memory_writes
+    env.restore()
+
+    assert_equal(refusal ~= nil, true, "expired bridge direction should not excuse contaminated game input")
+    assert_equal(#writes, 1, "expired bridge contamination should clear the game input byte")
+    assert_equal(writes[1].address, 0x0047, "expired bridge cleanup should target BUTTONS_PRESSED")
+    assert_equal(writes[1].value, 0x00, "expired bridge cleanup should neutralize BUTTONS_PRESSED")
 end
 
 function tests.clear_game_input_byte_zeroes_buttons_pressed_and_logs_result()
@@ -562,14 +719,14 @@ function tests.input_bridge_runtime_off_suppresses_internal_and_external_bridge(
     local env = make_env({
         log_level = "INFO",
         input_state = {LeftAlt = true, Up = true},
-        bridge_text = "A\n",
+        bridge_text = string.format("v2:1:%d:A\n", os.time()),
     })
 
     env.write_command_file("set_input_bridge:off\n")
     local off_input = env.debug_tools.tick(60, "field")
     local still_off = env.debug_tools.tick(61, "field")
 
-    env.set_bridge("A\n")
+    env.set_bridge(string.format("v2:2:%d:A\n", os.time()))
     env.write_command_file("set_input_bridge:config\n")
     local restored = env.debug_tools.tick(120, "field")
 
@@ -591,7 +748,7 @@ function tests.input_isolation_command_clears_input_and_emits_neutral_raw_frames
     local env = make_env({
         log_level = "INFO",
         input_state = {LeftAlt = true},
-        bridge_text = "up\n",
+        bridge_text = string.format("v2:1:%d:up\n", os.time()),
         memory_bytes = base_snapshot_ram({[0x0047] = 0x80}),
     })
     env.debug_tools.register_command("__input_isolation", function(details)
@@ -602,7 +759,7 @@ function tests.input_isolation_command_clears_input_and_emits_neutral_raw_frames
     local first = env.debug_tools.tick(60, "field")
     local second = env.debug_tools.tick(61, "field")
     local third = env.debug_tools.tick(62, "field")
-    env.set_bridge("up\n")
+    env.set_bridge(string.format("v2:2:%d:up\n", os.time()))
     local restored = env.debug_tools.tick(63, "field")
     env.debug_tools.flush()
 
@@ -648,7 +805,7 @@ end
 
 function tests.fceux_stale_alt_with_real_bridge_input_does_not_warn()
     local spoken = {}
-    local env = make_env({input_state = {LeftAlt = true}, bridge_text = "up\n", tolk_outputs = spoken})
+    local env = make_env({input_state = {LeftAlt = true}, bridge_text = string.format("v2:1:%d:up\n", os.time()), tolk_outputs = spoken})
 
     for frame = 1, 180 do
         env.debug_tools.tick(frame, "field")

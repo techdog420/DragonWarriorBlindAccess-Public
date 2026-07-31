@@ -63,6 +63,10 @@ local function is_key_pressed(keys, key_name)
     return key_combo.is_pressed(keys, prev_keys, key_name)
 end
 
+local function is_teleport_key_pressed(keys, config_key)
+    return key_combo.is_trigger_pressed(keys, prev_keys, config.get(config_key))
+end
+
 local function allow_field_object_hotkeys(game_state, allow_object_hotkeys)
     if game_state ~= nil and game_state.state ~= "field" then
         return false
@@ -98,7 +102,13 @@ local OBJECT_HOTKEY_CONFIG_KEYS = {
 
 local function blocked_object_hotkey_pressed(keys)
     for _, config_key in ipairs(OBJECT_HOTKEY_CONFIG_KEYS) do
-        if config_key ~= "key_route_guidance" and is_key_pressed(keys, config.get(config_key)) then
+        local pressed = false
+        if config_key:match("^key_teleport_") then
+            pressed = is_teleport_key_pressed(keys, config_key)
+        elseif config_key ~= "key_route_guidance" then
+            pressed = is_key_pressed(keys, config.get(config_key))
+        end
+        if pressed then
             return config_key
         end
     end
@@ -413,10 +423,10 @@ local function tick_object_nav_speech()
 end
 
 local function selected_teleport_handler_opts()
-    if emulator_compat.is_fceux then
-        return {suppress_input = false}
-    end
-    return nil
+    -- FCEUX skips the dangerous immediate joypad.set() neutral pulse inside
+    -- suppress_teleport_input(), but still needs the logical trigger-release
+    -- latch so pending facing cannot run while Enter/an arrow remains held.
+    return {suppress_input = true}
 end
 
 -- ============================================================
@@ -1128,23 +1138,23 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         end
 
         if teleport_handler then
-            if is_key_pressed(keys, config.get("key_teleport_exact")) then
+            if is_teleport_key_pressed(keys, "key_teleport_exact") then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("exact", selected_teleport_handler_opts())
-            elseif is_key_pressed(keys, config.get("key_teleport_north")) then
+            elseif is_teleport_key_pressed(keys, "key_teleport_north") then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("north", selected_teleport_handler_opts())
-            elseif is_key_pressed(keys, config.get("key_teleport_south")) then
+            elseif is_teleport_key_pressed(keys, "key_teleport_south") then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("south", selected_teleport_handler_opts())
-            elseif is_key_pressed(keys, config.get("key_teleport_west")) then
+            elseif is_teleport_key_pressed(keys, "key_teleport_west") then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("west", selected_teleport_handler_opts())
-            elseif is_key_pressed(keys, config.get("key_teleport_east")) then
+            elseif is_teleport_key_pressed(keys, "key_teleport_east") then
                 clear_object_nav_speech()
                 refresh_object_browser_context({refresh_live_npcs = true})
                 teleport_handler("east", selected_teleport_handler_opts())

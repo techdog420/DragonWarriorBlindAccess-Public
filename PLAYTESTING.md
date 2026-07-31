@@ -6,6 +6,28 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- FCEUX menu and teleport input acceptance (`2026-07-31`): the launcher-backed
+  empty native keyboard profile, pause-on-menu setting, and suspended bridge
+  kept an `Alt+F`, three-Down, Escape sequence out of the ROM; Mountain Cave
+  stayed at `(0,7)` and the log contained no bridge activation in the interval.
+  Right, Left, F, D, and Enter then produced clean press/release pairs. Eleven
+  rapid selected-teleport activations did not reproduce a hard lock, although
+  stale FCEUX `Down` initially made a new Shift press attempt `Shift+Down`
+  before Enter. Teleport chords now require the non-modifier key to have a
+  fresh edge. After reload, holding Shift first and tapping Enter produced no
+  false directional activation, teleported exactly to F1 chest `(13,5)`, and
+  released Enter after 7 frames; F/D immediately opened and closed the command
+  menu. That focused pass ended neutral at `(13,5)`, with `buttons=0x00` and no
+  pending suppression, facing, or teleport guard. The user's broader Tantegel
+  pass then logged 21 successful teleports across travel targets, services, and
+  NPCs; 25 trigger releases completed in 5-16 frames, multiple held NPC targets
+  reached TALK dialogue, and there were zero release timeouts, OAM-stuck
+  signatures, or bridge-lease expirations. Fresh probe
+  `TANTEGEL_TELEPORT_VALIDATED_20260731` is neutral at World Map `(43,43)` with
+  all guards clear. The 90-frame stale-key timeout remains a bounded recovery
+  path; earlier timeout attempts recovered controls without needing Start.
+  Verification passes 240 focused Lua tests, 11 bridge-policy tests,
+  PowerShell/Lua syntax, and `git diff --check`.
 - Mountain Cave completion (`2026-07-31`): travel guidance is live-validated
   in both directions between waypoint `(18,64)` and cave `(29,57)`. Both
   interior floors are decoded, all three coordinate-matched stair pairs work

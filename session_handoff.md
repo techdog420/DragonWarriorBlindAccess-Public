@@ -4,6 +4,30 @@ Updated: 2026-07-31
 
 ## Immediate FCEUX Handoff
 
+- FCEUX menu/input isolation and selected-teleport recovery are release-gated
+  on the 2026-07-31 launcher baseline. `launch_dw.ps1` installs a valid empty
+  native keyboard profile, enables `SDL.PauseOnMainMenuAccess = 1`, and runs a
+  modifier/menu/dialog-aware bridge with a fail-closed heartbeat. A controlled
+  `Alt+F`, three-Down, Escape pass left Mountain Cave `(0,7)` unchanged with no
+  bridge `ACTIVE`/`APPLY` event; ordinary Right/Left/F/D/Enter input then
+  produced matching press/clear events. Repeated selected teleports did not
+  reproduce the control hard lock, but exposed stale FCEUX `Down` causing a
+  false `Shift+Down` attempt when Shift was newly pressed. Teleport hotkeys now
+  require a fresh non-modifier trigger edge. The post-reload acceptance chord
+  produced only exact teleport, landed on the F1 chest `(13,5)`, released Enter
+  after 7 frames, and immediately opened/closed the game command menu with F/D.
+  Initial `INPUT_FIX_FINAL` state was neutral at map `0x16` `(13,5)` with
+  `buttons=0x00`, no suppression/pending face/state guard, and the chest
+  selected. The user's broader Tantegel acceptance then logged 21 successful
+  selected teleports across travel targets, services, and NPCs; 25 trigger
+  releases completed in 5-16 frames, multiple NPC holds ended when TALK
+  dialogue opened, and there were zero release timeouts, OAM-stuck signatures,
+  or bridge-lease expirations. Fresh probe
+  `TANTEGEL_TELEPORT_VALIDATED_20260731` is neutral on World Map `(43,43)` at
+  Tantegel Castle with all guards clear. Verification passes 240 focused Lua
+  tests, 11 bridge-policy tests, PowerShell/Lua syntax, and `git diff --check`.
+  This checkpoint supersedes the older `(0,7)` current-state sentence in the
+  Mountain Cave geometry note.
 - Mountain Cave travel and both dungeon floors are complete. The bidirectional
   World Map routes connect `Western desert east road` `(18,64)` with cave
   entrance `(29,57)`; F1 entry/exit is `(0,7)`. F1 map `0x16` models its

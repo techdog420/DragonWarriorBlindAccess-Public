@@ -1128,14 +1128,33 @@ function tests.teleport_hotkeys_call_registered_handler()
     env.restore()
 end
 
-function tests.fceux_selected_teleport_hotkey_skips_pre_input_suppression()
+function tests.teleport_hotkeys_ignore_a_new_modifier_over_a_stale_trigger()
+    local env = make_env({delay = 0})
+
+    env.update({Down = true})
+    env.update({RightShift = true, Down = true})
+    assert_equal(#env.teleport_modes, 0, "new Shift must not request south teleport over stale Down")
+
+    env.update({RightShift = true, Down = true, Enter = true})
+    assert_equal(#env.teleport_modes, 1, "fresh Enter should request exact teleport despite stale Down")
+    assert_equal(env.teleport_modes[1], "exact", "exact teleport should win once Enter gets a fresh edge")
+
+    env.update({RightShift = true})
+    env.update({RightShift = true, Down = true})
+    assert_equal(#env.teleport_modes, 2, "new Down should request south teleport while Shift is held")
+    assert_equal(env.teleport_modes[2], "south", "fresh nonmodifier edge should preserve directional teleport")
+
+    env.restore()
+end
+
+function tests.fceux_selected_teleport_hotkey_arms_release_guard()
     local env = make_env({delay = 0, is_fceux = true})
 
     env.update({Shift = true, Enter = true})
 
     assert_equal(env.teleport_modes[1], "exact", "FCEUX exact teleport hotkey should still request selected-object teleport")
     assert_equal(type(env.teleport_requests[1]), "table", "FCEUX teleport hotkey should pass handler options")
-    assert_equal(env.teleport_requests[1].suppress_input, false, "FCEUX selected teleport should not run pre-teleport joypad neutralization")
+    assert_equal(env.teleport_requests[1].suppress_input, true, "FCEUX selected teleport should arm logical suppression; main skips its immediate joypad neutralization")
 
     env.restore()
 end

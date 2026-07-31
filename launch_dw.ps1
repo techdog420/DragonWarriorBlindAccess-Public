@@ -469,18 +469,67 @@ function Set-ConfigValue {
     Set-Content -LiteralPath $ConfigPath -Value $text -NoNewline
 }
 
-function Disable-FceuxNativeKeyboardGamepad {
-    param([string] $ConfigPath)
+function Get-FceuxBaseDirectory {
+    param([string] $EmulatorDir)
 
-    # qfceux/SDL can leave keyboard-backed GamePad.0 state stuck (for example
-    # native joy1=left while Windows reports no key down). Lua joypad.set()
-    # cannot clear that native state because FCEUX ORs the sources together.
-    # Disable the native keyboard gamepad and let keyboard_bridge.ps1 provide
-    # the project-owned keyboard-to-NES-pad path instead.
+    # Match qfceux GetBaseDirectory(): FCEUX_CONFIG_DIR wins, FCEUX_HOME uses
+    # a .fceux child, and Windows otherwise uses the executable directory.
+    # Relative overrides are resolved from qfceux's launcher working directory.
+    $configOverride = [Environment]::GetEnvironmentVariable("FCEUX_CONFIG_DIR")
+    if (-not [string]::IsNullOrWhiteSpace($configOverride)) {
+        $candidate = if ([System.IO.Path]::IsPathRooted($configOverride)) {
+            $configOverride
+        } else {
+            Join-Path $EmulatorDir $configOverride
+        }
+        return [System.IO.Path]::GetFullPath($candidate)
+    }
+
+    $homeOverride = [Environment]::GetEnvironmentVariable("FCEUX_HOME")
+    if (-not [string]::IsNullOrWhiteSpace($homeOverride)) {
+        $candidate = if ([System.IO.Path]::IsPathRooted($homeOverride)) {
+            Join-Path $homeOverride ".fceux"
+        } else {
+            Join-Path (Join-Path $EmulatorDir $homeOverride) ".fceux"
+        }
+        return [System.IO.Path]::GetFullPath($candidate)
+    }
+
+    return [System.IO.Path]::GetFullPath($EmulatorDir)
+}
+
+function Disable-FceuxNativeKeyboardGamepad {
+    param(
+        [string] $ConfigPath,
+        [string] $FceuxBaseDir
+    )
+
+    # qfceux 2.6.6 reads DeviceType but still initializes GamePad.0 and falls
+    # back to its hard-coded keyboard bindings. Install a valid empty keyboard
+    # profile so F/D/S/Enter/arrows cannot leak through emulator menus. Leave
+    # DeviceGUID blank: qfceux may still auto-bind a real game controller, but
+    # its no-controller fallback loads this empty keyboard profile.
+    $profileName = "dragonwarrior-bridge-only"
+    $profileDir = Join-Path $FceuxBaseDir "input\keyboard"
+    $profilePath = Join-Path $profileDir ($profileName + ".txt")
+    $profileText = "keyboard,$profileName,config:0,a:,b:,back:,start:,dpup:,dpdown:,dpleft:,dpright:,turboA:,turboB:,"
+    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    $currentProfileText = if (Test-Path -LiteralPath $profilePath -PathType Leaf) {
+        [System.IO.File]::ReadAllText($profilePath)
+    } else {
+        $null
+    }
+    if ($currentProfileText -ne $profileText) {
+        [System.IO.File]::WriteAllText($profilePath, $profileText)
+        Write-Host ("Installed FCEUX bridge-only keyboard profile: {0}" -f $profilePath)
+    } else {
+        Write-Host ("FCEUX bridge-only keyboard profile already installed: {0}" -f $profilePath)
+    }
+
     Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.DeviceGUID" -Value ""
     Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.DeviceType" -Value "None"
-    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.Profile" -Value ""
-    Write-Host "Configured FCEUX GamePad.0 native keyboard input: disabled; using project keyboard bridge."
+    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.Input.GamePad.0.Profile" -Value $profileName
+    Write-Host ("Configured FCEUX GamePad.0 native keyboard input: disabled via profile '{0}'; using project keyboard bridge." -f $profileName)
 }
 
 function Enable-FceuxHideMenu {
@@ -494,6 +543,22 @@ function Enable-FceuxHideMenu {
 
     Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.ToggleMenu" -Value "1"
     Write-Host ("Configured FCEUX Hide Menu: SDL.ToggleMenu {0} -> 1. Escape restores the menu if needed." -f $(if ($null -ne $current) { $current } else { "(missing)" }))
+}
+
+function Enable-FceuxPauseOnMenu {
+    param([string] $ConfigPath)
+
+    $current = Get-ConfigValue -ConfigPath $ConfigPath -Key "SDL.PauseOnMainMenuAccess"
+    if ($current -eq "1") {
+        Write-Host "FCEUX pause-on-menu already enabled: SDL.PauseOnMainMenuAccess = 1."
+        return
+    }
+
+    # This covers ordinary dropdown menus. The bridge policy and empty native
+    # profile remain necessary because qfceux does not pause every file/Lua
+    # dialog and its menu bar forwards key events into the SDL input queue.
+    Set-ConfigValue -ConfigPath $ConfigPath -Key "SDL.PauseOnMainMenuAccess" -Value "1"
+    Write-Host ("Configured FCEUX pause-on-menu: SDL.PauseOnMainMenuAccess {0} -> 1." -f $(if ($null -ne $current) { $current } else { "(missing)" }))
 }
 
 function Disable-FceuxAltHotkeys {
@@ -573,9 +638,10 @@ if (-not [string]::IsNullOrWhiteSpace($BatterySavePath)) {
 }
 
 $emulatorDir = Split-Path -Parent $FceuxPath
-$configPath = Join-Path $emulatorDir "fceux.cfg"
+$fceuxBaseDir = Get-FceuxBaseDirectory -EmulatorDir $emulatorDir
+$configPath = Join-Path $fceuxBaseDir "fceux.cfg"
 $romStem = [System.IO.Path]::GetFileNameWithoutExtension($RomPath)
-$saveDir = Join-Path $emulatorDir "sav"
+$saveDir = Join-Path $fceuxBaseDir "sav"
 $batterySaveTarget = Join-Path $saveDir ($romStem + ".sav")
 $commandFile = Join-Path $scriptDir "dw_commands.txt"
 $processingFile = Join-Path $scriptDir "dw_commands.processing.txt"
@@ -588,6 +654,7 @@ $launchShim = Join-Path $scriptDir "launch_dw.cmd"
 $loadStateEnabled = $StateSlot -ge 0
 $autoResumeValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.AutoResume"
 $hideMenuValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.ToggleMenu"
+$pauseOnMenuValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.PauseOnMainMenuAccess"
 $mainMenuHotkeyValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.Hotkeys.MainMenuHide"
 $fullscreenHotkeyValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.Hotkeys.FullScreen"
 
@@ -596,12 +663,14 @@ Assert-FileExists -PathValue $keyboardBridgeScript -Label "Keyboard bridge scrip
 
 Write-Host "Dragon Warrior launcher"
 Write-Host ("  Emulator: {0}" -f $FceuxPath)
+Write-Host ("  FCEUX data: {0}" -f $fceuxBaseDir)
 Write-Host ("  ROM:      {0}" -f $RomPath)
 Write-Host ("  Lua:      {0}" -f $LuaPath)
 Write-Host ("  Save:     {0}" -f $(if ($BatterySavePath) { $BatterySavePath } else { "(none)" }))
 Write-Host ("  Slot:     {0}" -f $(if ($loadStateEnabled) { $StateSlot } else { "(none)" }))
 Write-Host ("  AutoResume: {0} (old-session restore; not used for command polling)" -f $(if ($null -ne $autoResumeValue) { $autoResumeValue } else { "(unknown)" }))
 Write-Host ("  Hide menu: {0}" -f $(if ($null -ne $hideMenuValue) { $hideMenuValue } else { "(unknown)" }))
+Write-Host ("  Pause on menu: {0}" -f $(if ($null -ne $pauseOnMenuValue) { $pauseOnMenuValue } else { "(unknown)" }))
 Write-Host ("  Alt menu hotkey: {0}" -f $(if ($null -ne $mainMenuHotkeyValue -and $mainMenuHotkeyValue -ne "") { $mainMenuHotkeyValue } else { "(blank)" }))
 Write-Host ("  Alt fullscreen hotkey: {0}" -f $(if ($null -ne $fullscreenHotkeyValue -and $fullscreenHotkeyValue -ne "") { $fullscreenHotkeyValue } else { "(blank)" }))
 Write-Host "  Background input: disabled via -bginput 0"
@@ -666,6 +735,7 @@ if ($DryRun) {
     Write-Host ("  Shim args: {0}" -f ($shimPreviewArgs -join " "))
     Write-Host ("Dry run: would launch {0}" -f $FceuxPath)
     Write-Host ("  Args: {0}" -f ($previewArgs -join " "))
+    Write-Host ("Dry run: would install the FCEUX bridge-only keyboard profile under {0}" -f (Join-Path $fceuxBaseDir "input\keyboard"))
     exit 0
 }
 
@@ -696,8 +766,9 @@ if ($existingProcesses.Count -gt 0) {
     }
 }
 
-Disable-FceuxNativeKeyboardGamepad -ConfigPath $configPath
+Disable-FceuxNativeKeyboardGamepad -ConfigPath $configPath -FceuxBaseDir $fceuxBaseDir
 Enable-FceuxHideMenu -ConfigPath $configPath
+Enable-FceuxPauseOnMenu -ConfigPath $configPath
 Disable-FceuxAltHotkeys -ConfigPath $configPath
 
 $existingBridgeProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |

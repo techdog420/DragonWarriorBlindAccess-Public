@@ -135,6 +135,36 @@ function M.is_pressed(keys, prev_keys, spec)
     return M.is_down(keys, spec) and not M.is_down(prev_keys, spec)
 end
 
+-- Require the final (non-modifier) part of a configured chord to have a
+-- fresh key-down edge. This is stricter than is_pressed(), which treats a
+-- newly pressed modifier as a fresh press of the whole combo. The stricter
+-- form is useful for action chords when an emulator may retain a stale
+-- non-modifier key in input.get().
+function M.is_trigger_pressed(keys, prev_keys, spec)
+    for _, alternative in ipairs(split_alternatives(spec)) do
+        local parts = M.parse(alternative)
+        local trigger_aliases = nil
+        for part in alternative:gmatch("[^+]+") do
+            if not canonical_modifier(part) then
+                local aliases = aliases_for_part(part)
+                if #aliases > 0 then
+                    trigger_aliases = aliases
+                end
+            end
+        end
+        -- Modifier-only specs are unusual, but retaining their final part as
+        -- a fallback keeps this helper's behavior deterministic.
+        trigger_aliases = trigger_aliases or parts[#parts]
+        if trigger_aliases
+                and M.is_down_parsed(keys, parts)
+                and any_alias_down(keys, trigger_aliases)
+                and not any_alias_down(prev_keys, trigger_aliases) then
+            return true
+        end
+    end
+    return false
+end
+
 function M.add_aliases(allowed, spec)
     for _, alternative in ipairs(split_alternatives(spec)) do
         for _, aliases in ipairs(M.parse(alternative)) do

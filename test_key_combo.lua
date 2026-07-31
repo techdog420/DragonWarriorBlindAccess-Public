@@ -29,6 +29,54 @@ function tests.alternative_hotkey_spec_preserves_edge_detection()
         "held F14 alternative should not repeat")
 end
 
+function tests.trigger_edge_requires_the_nonmodifier_key_to_be_new()
+    assert_equal(
+        key_combo.is_trigger_pressed(
+            {RightShift = true, Down = true},
+            {Down = true},
+            "Shift+Down"),
+        false,
+        "new Shift must not activate a combo over a stale Down key")
+    assert_equal(
+        key_combo.is_trigger_pressed(
+            {RightShift = true, Down = true},
+            {Down = true},
+            "Down+Shift"),
+        false,
+        "modifier-last remaps must still use Down as the trigger")
+    assert_equal(
+        key_combo.is_trigger_pressed(
+            {RightShift = true, Down = true},
+            {RightShift = true},
+            "Shift+Down"),
+        true,
+        "new Down should activate a combo while Shift is held")
+    assert_equal(
+        key_combo.is_trigger_pressed(
+            {RightShift = true, Down = true},
+            {},
+            "Shift+Down"),
+        true,
+        "simultaneous Shift and Down should still activate the combo")
+end
+
+function tests.trigger_edge_supports_aliases_and_alternatives()
+    assert_equal(
+        key_combo.is_trigger_pressed(
+            {LeftShift = true, Return = true},
+            {LeftShift = true},
+            "Shift+Enter|F20"),
+        true,
+        "Return should activate the Enter trigger alias")
+    assert_equal(
+        key_combo.is_trigger_pressed(
+            {F20 = true},
+            {},
+            "Shift+Enter|F20"),
+        true,
+        "a plain alternative should use its own key edge")
+end
+
 function tests.alternative_hotkey_spec_keeps_modifier_requirements()
     assert_equal(
         key_combo.is_down({O = true}, "Shift+O|F20"),

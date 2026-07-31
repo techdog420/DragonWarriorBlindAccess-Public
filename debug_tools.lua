@@ -1,8 +1,9 @@
 -- debug_tools.lua
 -- Debugging and automation framework for Dragon Warrior Accessibility Mod.
 --
--- ALL public functions are near-zero-cost no-ops when DEBUG_MODE is false,
--- so this module is safe to leave required in release builds.
+-- Most public functions are near-zero-cost no-ops when DEBUG_MODE is false,
+-- so this module is safe to leave required in release builds. tick() remains
+-- active on FCEUX to carry the launcher-owned keyboard bridge.
 --
 -- To enable:  set debug_mode=true  in dw_access.ini
 -- To disable: set debug_mode=false in dw_access.ini  (default)
@@ -130,7 +131,7 @@ end
 local LOG_FILE    = rawget(_G, "DW_DEBUG_LOG_FILE_OVERRIDE") or (script_dir .. "dw_debug.log")
 local CMD_FILE    = rawget(_G, "DW_COMMAND_FILE_OVERRIDE") or (script_dir .. "dw_commands.txt")
 local CMD_PROCESSING_FILE = rawget(_G, "DW_COMMAND_PROCESSING_FILE_OVERRIDE") or default_processing_file(CMD_FILE)
-local KEYBOARD_BRIDGE_FILE = script_dir .. "dw_keyboard_input.txt"
+local KEYBOARD_BRIDGE_FILE = rawget(_G, "DW_KEYBOARD_BRIDGE_FILE_OVERRIDE") or (script_dir .. "dw_keyboard_input.txt")
 -- Optional legacy record of engine-blocked moves. This is disabled by default
 -- because noisy movement/probe collisions should not become persistent map
 -- evidence. Explicit sweep/export debugging can opt back in via config.
@@ -160,8 +161,11 @@ local PLAYER_STAT_TRACE_MAX = 180
 local recent_player_stat_trace = {}
 local keyboard_bridge_active = false
 local external_keyboard_bridge_active = false
+local external_keyboard_bridge_suspended = false
 local external_stale_alt_ignored_active = false
 local external_keyboard_bridge_missing_logged = false
+local external_keyboard_bridge_lease_expired = false
+local external_keyboard_bridge_legacy_rejected = false
 local keyboard_bridge_runtime_override = nil
 local input_isolation = nil
 local GAME_INPUT_RECOVERY_CHECK_FRAMES = 8
@@ -186,6 +190,7 @@ local oam_offset_watch = {
 -- to detect the rare state changes within one frame.
 local external_bridge_last_line = nil
 local external_bridge_cached_table = nil
+local EXTERNAL_KEYBOARD_BRIDGE_LEASE_SECONDS = 2
 local current_frame  = 0      -- Set each tick; used in log entry prefix
 local current_state  = "unknown"  -- Set each tick; used in log entry prefix
 
@@ -1205,6 +1210,7 @@ end
 local function clear_keyboard_bridge_activity()
     keyboard_bridge_active = false
     external_keyboard_bridge_active = false
+    external_keyboard_bridge_suspended = false
     external_stale_alt_ignored_active = false
 end
 
@@ -1561,6 +1567,8 @@ local function parse_external_keyboard_bridge()
         end
         external_bridge_last_line = nil
         external_bridge_cached_table = nil
+        external_keyboard_bridge_lease_expired = false
+        external_keyboard_bridge_legacy_rejected = false
         return nil
     end
 
@@ -1575,9 +1583,18 @@ local function parse_external_keyboard_bridge()
         return shallow_copy(external_bridge_cached_table)
     end
 
+    local heartbeat_text, heartbeat_timestamp_text, state_line = line:match("^v2:(%d+):(%d+):(.*)$")
+    if not heartbeat_text then
+        state_line = line
+    end
+
     local bridge = full_joypad_state({})
-    if line ~= "" and line ~= "-" then
-        for part in line:gmatch("[^,]+") do
+    bridge._heartbeat = heartbeat_text and tonumber(heartbeat_text) or nil
+    bridge._heartbeat_timestamp = heartbeat_timestamp_text and tonumber(heartbeat_timestamp_text) or nil
+    if state_line == "suspended" then
+        bridge._suspended = true
+    elseif state_line ~= "" and state_line ~= "-" then
+        for part in state_line:gmatch("[^,]+") do
             local button = part:match("^%s*(.-)%s*$")
             if button == "up" or button == "down" or button == "left" or button == "right"
                or button == "A" or button == "B" or button == "start" or button == "select" then
@@ -1589,6 +1606,58 @@ local function parse_external_keyboard_bridge()
     external_bridge_last_line = line
     external_bridge_cached_table = bridge
     return shallow_copy(bridge)
+end
+
+local function external_keyboard_bridge_lease_is_expired(bridge, frame)
+    local heartbeat = bridge and bridge._heartbeat
+    local heartbeat_timestamp = bridge and bridge._heartbeat_timestamp
+    if heartbeat == nil or heartbeat_timestamp == nil then
+        if not has_joy_buttons(bridge) then
+            external_keyboard_bridge_legacy_rejected = false
+            external_keyboard_bridge_lease_expired = false
+            return false, nil
+        end
+
+        -- Pre-v2 active lines have no liveness signal. Fail closed immediately
+        -- so a stranded legacy "A"/Start/direction cannot survive a Lua reload.
+        if not external_keyboard_bridge_legacy_rejected then
+            M.info(string.format(
+                "INPUT_EXTERNAL_BRIDGE_LEGACY_REJECT frame=%d bridge=%s reason=no_heartbeat",
+                frame or current_frame or 0,
+                format_joy_buttons(bridge)
+            ))
+        end
+        external_keyboard_bridge_legacy_rejected = true
+        external_keyboard_bridge_lease_expired = true
+        return true, "legacy_protocol_without_heartbeat"
+    end
+
+    external_keyboard_bridge_legacy_rejected = false
+    local observed_frame = frame or current_frame or 0
+    local age_seconds = os.time() - heartbeat_timestamp
+    if age_seconds >= -1 and age_seconds <= EXTERNAL_KEYBOARD_BRIDGE_LEASE_SECONDS then
+        if external_keyboard_bridge_lease_expired then
+            M.info(string.format(
+                "INPUT_EXTERNAL_BRIDGE_LEASE_RECOVER frame=%d heartbeat=%d age_seconds=%d",
+                observed_frame,
+                heartbeat,
+                age_seconds
+            ))
+        end
+        external_keyboard_bridge_lease_expired = false
+        return false, nil
+    end
+
+    if not external_keyboard_bridge_lease_expired then
+        M.info(string.format(
+            "INPUT_EXTERNAL_BRIDGE_LEASE_EXPIRED frame=%d heartbeat=%d age_seconds=%d",
+            observed_frame,
+            heartbeat,
+            age_seconds
+        ))
+    end
+    external_keyboard_bridge_lease_expired = true
+    return true, "sidecar_heartbeat_expired"
 end
 
 local function read_keyboard_bridge_line()
@@ -1622,8 +1691,55 @@ local function build_external_keyboard_bridge_input(frame)
     local fceux_stale = is_left_alt_pressed(keys)
     local bridge = parse_external_keyboard_bridge()
     if not bridge then
-        return nil
+        local was_active = external_keyboard_bridge_active
+        external_keyboard_bridge_active = false
+        external_keyboard_bridge_suspended = true
+        external_stale_alt_ignored_active = false
+        if was_active then
+            return neutral_raw_joypad_state(), true
+        end
+        -- The launcher disables FCEUX's native keyboard mapping. A missing
+        -- sidecar must therefore fail closed rather than revive input.get()'s
+        -- stale-Alt/menu-forwarding fallback.
+        return nil, true
     end
+
+    local lease_expired, lease_reason = external_keyboard_bridge_lease_is_expired(bridge, frame)
+    if lease_expired then
+        bridge._suspended = true
+        bridge._lease_expired = true
+        bridge._lease_reason = lease_reason
+    end
+
+    if bridge._suspended then
+        local was_active = external_keyboard_bridge_active
+        if not external_keyboard_bridge_suspended then
+            M.info(string.format(
+                "INPUT_EXTERNAL_BRIDGE_SUSPEND frame=%d keys=%s native_joy1=%s reason=%s",
+                frame or current_frame,
+                format_pressed_keys(keys),
+                format_joy_buttons(joy),
+                bridge._lease_reason or "menu_dialog_modifier_or_background"
+            ))
+        end
+        external_keyboard_bridge_active = false
+        external_keyboard_bridge_suspended = true
+        external_stale_alt_ignored_active = false
+        if was_active then
+            return neutral_raw_joypad_state(), true
+        end
+        return nil, true
+    end
+
+    if external_keyboard_bridge_suspended then
+        M.info(string.format(
+            "INPUT_EXTERNAL_BRIDGE_RESUME frame=%d keys=%s native_joy1=%s",
+            frame or current_frame,
+            format_pressed_keys(keys),
+            format_joy_buttons(joy)
+        ))
+    end
+    external_keyboard_bridge_suspended = false
 
     local bridge_active = has_joy_buttons(bridge)
     if not fceux_stale and not bridge_active then
@@ -1639,9 +1755,12 @@ local function build_external_keyboard_bridge_input(frame)
         external_keyboard_bridge_active = false
         external_stale_alt_ignored_active = false
         if was_active then
-            return neutral_raw_joypad_state()
+            return neutral_raw_joypad_state(), true
         end
-        return nil
+        -- The sidecar read succeeded, so its neutral OS-key state is
+        -- authoritative. Do not fall back to FCEUX's potentially stale or
+        -- menu-forwarded input.get() keys.
+        return nil, true
     end
 
     if fceux_stale and not bridge_active then
@@ -1670,9 +1789,9 @@ local function build_external_keyboard_bridge_input(frame)
         end
         external_stale_alt_ignored_active = true
         if was_active then
-            return neutral_raw_joypad_state()
+            return neutral_raw_joypad_state(), true
         end
-        return nil
+        return nil, true
     else
         bridge._raw = true
     end
@@ -1695,7 +1814,15 @@ local function build_external_keyboard_bridge_input(frame)
         ))
     end
     external_keyboard_bridge_active = true
-    return bridge
+    return bridge, true
+end
+
+local function build_fceux_keyboard_input(frame)
+    local external, handled = build_external_keyboard_bridge_input(frame)
+    if handled then
+        return external
+    end
+    return build_keyboard_bridge_input(frame)
 end
 
 local function log_input_status(tag)
@@ -1925,6 +2052,12 @@ function M.input_contamination_refusal(command_name, opts)
     local keys = input.get and input.get() or {}
     local joy = joypad.read and joypad.read(1) or {}
     local bridge = parse_external_keyboard_bridge() or full_joypad_state({})
+    if has_joy_buttons(bridge) then
+        local bridge_expired = external_keyboard_bridge_lease_is_expired(bridge, current_frame)
+        if bridge_expired then
+            bridge = full_joypad_state({})
+        end
+    end
     local game_buttons = safe_readbyte(addr.BUTTONS_PRESSED)
 
     if has_joy_buttons(joy) or has_joy_buttons(bridge) or game_buttons == 0 then
@@ -1973,6 +2106,9 @@ local function update_stuck_alt_watch(frame)
     if left_alt and joy_idle then
         local bridge = parse_external_keyboard_bridge()
         bridge_active = bridge and has_joy_buttons(bridge) or false
+        if bridge_active then
+            bridge_active = not external_keyboard_bridge_lease_is_expired(bridge, frame)
+        end
     end
 
     if left_alt and joy_idle and not bridge_active then
@@ -2653,12 +2789,18 @@ end
 --   local sim = debug_tools.tick(frame_count, game_state.state)
 --   if sim then joypad.set(1, sim) end
 --
--- When DEBUG_MODE is false the function returns nil immediately.
+-- When DEBUG_MODE is false, command/debug work is skipped but the FCEUX
+-- keyboard bridge remains active because the launcher disables native keys.
 function M.tick(frame, game_state_str)
-    if not M.DEBUG_MODE then return nil end
-
     current_frame = frame
     current_state = game_state_str or "unknown"
+
+    -- The FCEUX launcher disables stock keyboard mappings in favor of this
+    -- bridge. Keep player controls alive in release configurations even when
+    -- debug logging and command polling are disabled.
+    if not M.DEBUG_MODE then
+        return build_fceux_keyboard_input(frame)
+    end
 
     -- Check the command file once per second (every CMD_CHECK_FRAMES frames).
     -- Using modulo on the raw frame count keeps the interval steady regardless
@@ -2736,9 +2878,7 @@ function M.tick(frame, game_state_str)
     monitor_player_stat_integrity(stat_sample)
     push_player_stat_trace_sample(stat_sample)
     trace_teleport_tick("PRE_RETURN")
-    return inp
-        or build_external_keyboard_bridge_input(frame)
-        or build_keyboard_bridge_input(frame)
+    return inp or build_fceux_keyboard_input(frame)
 end
 
 -- ============================================================
