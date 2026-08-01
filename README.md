@@ -418,6 +418,12 @@ tools have assisted with implementation, code review, documentation, log
 analysis, and automated testing. Gameplay behavior and accessibility decisions
 are validated through human-directed testing in the emulator.
 
+## Licenses and Third-Party Notices
+
+Licenses and third-party notices are included in the `licenses` folder.
+Matching source code for bundled copyleft components is provided as the
+same-version `Corresponding-Source.zip` release asset.
+
 ## Legal Notice
 
 This is an unofficial, fan-made accessibility project. It is not affiliated
