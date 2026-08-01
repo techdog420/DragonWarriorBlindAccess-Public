@@ -1,0 +1,5 @@
+accessible-output2==0.17
+libloader==1.4.3
+platform-utils==1.6.2
+platformdirs==4.9.4
+pywin32==311

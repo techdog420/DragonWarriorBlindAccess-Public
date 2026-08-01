@@ -1,0 +1,131 @@
+Dragon Warrior Accessibility - Keyboard Commands
+=================================================
+
+These are the default keys in the game-jam release. Keep the FCEUX game
+window focused while playing. A physical game controller can also be used.
+Where two keys are listed, either one works. F13 through F20 are optional
+alternatives for programmable keyboards or remapping; the ordinary letter key
+is sufficient.
+
+Quick reference
+---------------
+
+Arrow keys: Move the hero or move through a game menu.
+F: NES A button; confirm, interact, or open the in-game command menu.
+D: NES B button; cancel or go back.
+Enter: NES Start button.
+S: NES Select button.
+
+The accessibility mod automatically reads supported dialogue, menus, battles,
+shops, status changes, and other game information. Quick taps of an arrow key
+normally finish one tile of movement. Holding an arrow continues movement.
+
+Screen-reader safety
+--------------------
+
+The keyboard-to-game bridge pauses while an FCEUX menu or dialog is open, or
+while Shift, Control, Alt, either Windows key, Insert, or Caps Lock is held.
+This prevents common NVDA and JAWS commands from moving the hero. Release the
+entire screen-reader key combination before resuming game input.
+
+Information keys
+----------------
+
+C or F17: Announce the current map name and coordinates.
+H or F19: Announce current and maximum HP and MP.
+I: Announce the hero's level.
+G or F20: Announce current gold.
+E: Announce current experience points.
+Shift+R: Announce full status, including attributes, equipment, and spells.
+Shift+T: Read all text currently shown on the game screen.
+
+Object navigator
+----------------
+
+The object navigator describes nearby NPCs, services, treasure, travel points,
+doors, and other useful targets. Object-navigation and movement-assistance
+commands are available during normal field play. They pause during battles,
+dialogue, menus, and other states where moving would be unsafe.
+
+J or F13: Select and announce the previous object.
+K or F14: Announce the currently selected object again.
+L or F15: Select and announce the next object.
+
+Q: Move to the next object category.
+Shift+J: Move to the previous object category.
+Shift+K: Return to the All category.
+Shift+L: Move to the next object category.
+
+The categories are All, NPCs, Services, Treasure, Travel, and Doors.
+
+Shift+O: Cycle the reachability view through All, Reachable, and Unreachable.
+This is combined with the current object category.
+
+Shift+V: Mark the selected object as visited for the current play session.
+
+Navigation and movement assistance
+----------------------------------
+
+O or F16: Announce a path or heading to the selected object. This does not
+move the hero.
+
+U or F18: Automatically walk toward the selected object. The mod calculates a
+fresh path, so pressing O first is optional. Normal game interruptions and
+unsafe states can pause or stop movement.
+
+R: Start guided travel to a supported selected Travel destination, or announce
+the status of the route already in progress. Guided overworld travel can use
+several verified route segments to reach the destination.
+
+Shift+F: Freeze or unfreeze moving NPCs. This can make an interior route more
+reliable when wandering NPCs repeatedly block it. Unfreeze NPCs when finished.
+
+Optional direct movement
+------------------------
+
+The following commands move directly to the selected object instead of
+walking the normal route. They are optional assistance and may skip travel,
+encounters, or other parts of ordinary play.
+
+WARNING: Teleport changes the live game state without following every normal
+movement, transition, door, hazard, encounter, or progression check. The mod
+refuses known unsafe situations, but no safeguard can cover every game state.
+Misusing teleport may leave the current session inconsistent, corrupt later
+gameplay, or produce unusable save data. Save normally before experimenting.
+If the game behaves strangely afterward, close it without saving and restart
+from a known-good save. Teleport does not modify your original ROM file.
+
+ALPHA RECOVERY: Ordinary controls may occasionally stop responding after a
+teleport. Press Start once to restore them. If Start does not work, close the
+emulator without saving and run Play Dragon Warrior.cmd again. Reloading the
+accessibility script may also restore control.
+
+Shift+Enter: Move to the selected object. NPCs use a nearby interaction tile.
+Shift+Up: Move to the tile north of the selected object.
+Shift+Down: Move to the tile south of the selected object.
+Shift+Left: Move to the tile west of the selected object.
+Shift+Right: Move to the tile east of the selected object.
+
+If a destination is not safe or available, the mod refuses the move and
+announces the reason.
+
+Advanced information
+--------------------
+
+Ctrl+N: Announce the type of tile at the hero's current position. The wording
+may be technical because this command is also useful for reporting map issues.
+
+Changing keys
+-------------
+
+Default bindings are stored in app\dw_access.ini inside the extracted player
+folder. A vertical bar separates alternatives; for example, K|F14 means that
+either K or F14 works. Close the game before editing the file, preserve the
+key=value format, and relaunch the game afterward.
+
+Supported names include A through Z, 0 through 9, F1 through F24, Space,
+Enter, Tab, Backspace, Up, Down, Left, and Right. Combinations such as
+Shift+R and Ctrl+N are supported.
+
+Avoid assigning accessibility commands to the ordinary gameplay keys: arrow
+keys, F, D, Enter, and S.

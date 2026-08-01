@@ -9,6 +9,8 @@ Lua side can distinguish "pipe opened" from "bridge initialized successfully".
 from __future__ import annotations
 
 import datetime as _dt
+import ctypes
+from ctypes import wintypes
 from pathlib import Path
 import queue
 import sys
@@ -27,6 +29,100 @@ def _write_status(status_path: Path, status: str) -> None:
 
 
 _STOP = object()
+
+
+def _running_process_names() -> set[str]:
+    """Return Windows process image names without elevated access or a console."""
+
+    if sys.platform != "win32":
+        return set()
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+    kernel32.Process32FirstW.restype = wintypes.BOOL
+    kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+    kernel32.Process32NextW.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)
+    invalid_handle = ctypes.c_void_p(-1).value
+    if snapshot == invalid_handle:
+        return set()
+
+    names = set()
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(entry)
+        if kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            while True:
+                names.add(entry.szExeFile.casefold())
+                if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                    break
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return names
+
+
+def create_speaker(
+    log,
+    process_names=None,
+    nvda_factory=None,
+    jaws_factory=None,
+    sapi_factory=None,
+):
+    """Select only release-supported speech outputs: NVDA, JAWS, or SAPI."""
+
+    if process_names is None:
+        process_names = _running_process_names()
+    normalized_names = {name.casefold() for name in process_names}
+
+    try:
+        if nvda_factory is None:
+            from accessible_output2.outputs.nvda import NVDA
+
+            nvda_factory = NVDA
+        nvda_speaker = nvda_factory()
+        if nvda_speaker.is_active():
+            log("selected_backend=NVDA reason=active")
+            return nvda_speaker
+    except Exception as exc:
+        log(f"NVDA backend unavailable: {exc}")
+
+    if "jfw.exe" in normalized_names or "jfw" in normalized_names:
+        try:
+            if jaws_factory is None:
+                from accessible_output2.outputs.jaws import Jaws
+
+                jaws_factory = Jaws
+            speaker = jaws_factory()
+            log("selected_backend=Jaws reason=jfw-process")
+            return speaker
+        except Exception as exc:
+            log(f"JAWS direct backend failed; falling back to SAPI: {exc}")
+
+    if sapi_factory is None:
+        from accessible_output2.outputs.sapi5 import SAPI5
+
+        sapi_factory = SAPI5
+    speaker = sapi_factory()
+    log("selected_backend=SAPI5 reason=fallback")
+    return speaker
 
 
 class SpeechDispatcher:
@@ -126,10 +222,8 @@ def main() -> int:
     log(f"argv={sys.argv!r}")
 
     try:
-        from accessible_output2.outputs.auto import Auto
-
         log("imported accessible_output2")
-        speaker = Auto()
+        speaker = create_speaker(log)
         log(f"speaker={speaker!r}")
         dispatcher = SpeechDispatcher(speaker, log)
         # Prime the audio pipeline without blocking stdin if the screen reader

@@ -1,10 +1,123 @@
-# Task Backlog
+# Project Roadmap and Backlog
 
-Updated: 2026-05-14
+Updated: 2026-07-31
 
-This is a lightweight backlog for useful follow-up work that should not
-interrupt the active debug loop. Keep current live state and resume steps in
-`session_handoff.md`; use this file for small future chores and tooling ideas.
+This is the durable roadmap for work that should not interrupt the active
+debug or release loop. Keep current live state and resume steps in
+`session_handoff.md`. The broad priority order is release stabilization,
+remaining map completion, systemic accessibility improvements, and then
+quality-of-life work.
+
+## Design Principles
+
+- Preserve the original information constraints, not the visual presentation.
+  Translate information into an equivalent nonvisual form without revealing
+  exact solutions by default.
+- Use progressive disclosure for exploration and secrets: clue, exploration,
+  and proximity first; optional exact guidance only as an explicit escalation.
+- Accessibility must not become blind random guessing. If the original game
+  gives a sighted player a meaningful visual cue, provide an equivalent audio
+  or text cue at the same stage.
+- Independently derive and test new behavior. External mods may suggest areas
+  to investigate, but do not copy unlicensed code, data tables, prose, or
+  binaries.
+
+## Release Follow-up
+
+- Final licensed-package acceptance: choose the jam version, build the player
+  ZIP with `README.md` and `release\Keyboard Commands.txt`, and build the
+  corresponding-source ZIP with the same
+  version. Verify their SHA-256 hashes, absence of ROM/save data and placeholder
+  text, then run separate NVDA and JAWS launch, speech, keyboard, controller,
+  save, exit, and relaunch passes. NVDA and JAWS should not be run together.
+- Non-ASCII Windows user-account test: run the final player package from an
+  actual Windows account whose profile name contains non-ASCII characters.
+  Use NVDA, install the supported ROM through the documented process, launch
+  twice, create and reload a save, and confirm the private config, speech log,
+  and keyboard bridge remain package-local. The completed non-ASCII extraction
+  folder test does not substitute for this account-level test.
+
+## Remaining Map Completion
+
+- Decode the final dungeon. Establish external map orientation first, then use
+  normal movement and live evidence to verify every floor, entrance, exit,
+  stair pairing, door, chest, hazard, directional blocker, and stateful seam.
+  Completion requires source-only navigation through the intended progression
+  and a return route where the game permits one.
+
+## Overworld Navigation
+
+- Anywhere-to-anywhere routing: replace the requirement that players understand
+  which fixed route leads toward which destination. Model the existing route
+  chains and waypoints as a connected graph so selecting any supported
+  overworld location can compose a route from the player's current position,
+  through existing waypoint corridors, to the destination. Reusing current
+  route data is preferred over replacing live-validated segments.
+- Off-network recovery: when a player manually explores or gets lost, provide a
+  player-facing command that finds a safe route back to the nearest reachable
+  waypoint-network entry and then continues toward the selected destination.
+  Recovery must not teleport, require knowledge of route names, or silently
+  cross hazards and unknown blockers.
+- Preserve object focus while routing. Internal waypoint selection must not
+  replace the player's selected destination, and route status should explain
+  the current recovery leg, next waypoint, and final destination.
+- Completion criteria: route between every supported overworld landmark from
+  arbitrary reachable world-map starts, recover after deliberate manual drift,
+  and resume safely after battles, menus, and dialogue.
+
+## Game Mechanics and Accessible Discovery
+
+- Darkness parity: add logic so navigation cannot bypass the game's darkness
+  mechanic. Object discovery, map descriptions, path previews, routing, and
+  auto-walk in dark areas should reveal or use only information available
+  within the current Torch/Radiant light radius. Announce equivalent nonvisual
+  information about the visible area, changing light radius, and expiring
+  light without exposing the full dungeon layout.
+- Design darkness handling as its own feature with deterministic and live
+  tests. Check unlit entry, Torch use, Radiant use and expiry, movement near the
+  light boundary, object browsing, route recalculation, and script reload.
+- Clue-bound treasure audit: identify every place where object navigation or
+  routing leads directly to a treasure whose location the original game expects
+  the player to infer from dialogue or environmental clues.
+- Fairy Flute first pass: consider exposing Kol's bath as the initial landmark
+  rather than exposing the exact search tile. After the player has received the
+  clue and explored near the bath, provide progressively stronger search cues;
+  keep exact tile guidance optional. Apply the same pattern to other hidden or
+  clue-bound treasures found by the audit.
+
+## Quality of Life
+
+### In-game mod configuration
+
+- Add an accessible in-game configuration surface rather than requiring manual
+  INI edits. Candidate settings include auto-step on/off, speech backend and
+  speech options, verbosity, and debug mode.
+- Settings must announce their current value, explain consequential changes,
+  persist safely, and provide a restore-defaults path. Keep developer-only or
+  unsafe diagnostics clearly separated from ordinary player settings.
+
+### Object navigator
+
+- Add selectable sort orders, beginning with distance and alphabetical order.
+  Announce the active category, pathability filter, and sort order without
+  making rapid object browsing noisy.
+- Add search and/or quick access for common services such as inns, shops,
+  healers, keys, and save points. Results must still report reachability and
+  the reason when a service cannot currently be reached.
+- Add named bookmarks for player-chosen locations such as a favorite grinding
+  spot. Define whether bookmarks are save-slot-specific or global, persist them
+  across script reloads, and integrate them with overworld/interior routing
+  without displacing the currently selected object unexpectedly.
+
+### Reliable chest state
+
+- Research game-backed chest-open state rather than relying only on the mod's
+  temporary in-memory history. Prefer decoded RAM/save flags or another
+  deterministic source that survives map changes, script reloads, and normal
+  save/reload cycles.
+- Distinguish confirmed open, confirmed closed, and unknown state. Never report
+  a temporary cached assumption as permanent truth, and scope any persisted
+  fallback by save slot and ROM revision.
 
 ## Tooling
 
@@ -24,9 +137,10 @@ interrupt the active debug loop. Keep current live state and resume steps in
 
 ## Process
 
-- Task tracking convention: if this backlog grows, decide whether to keep
-  `TASKS.md` as the simple tracker or split into focused checklists by area
-  such as map decoding, pathfinding, speech/UI, and tooling.
+- Keep `TASKS.md` as the canonical high-level roadmap. Create focused design
+  and implementation plans under `docs/plans/` only when a roadmap item becomes
+  active; link those plans back here rather than copying detailed task lists
+  into multiple files.
 
 ## Map Decoding
 

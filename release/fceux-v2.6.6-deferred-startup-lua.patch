@@ -1,0 +1,65 @@
+diff --git a/src/drivers/Qt/ConsoleWindow.cpp b/src/drivers/Qt/ConsoleWindow.cpp
+index 92c87072..96bb4734 100644
+--- a/src/drivers/Qt/ConsoleWindow.cpp
++++ b/src/drivers/Qt/ConsoleWindow.cpp
+@@ -4554,6 +4554,9 @@ void consoleWin_t::emuFrameFinish(void)
+ 	//printf("EMU Frame Finish\n");
+ 
+ 	transferVideoBuffer();
++	#ifdef _S9XLUA_H
++	fceuWrapperLoadPendingLua();
++	#endif
+ }
+ 
+ void consoleWin_t::updatePeriodic(void)
+diff --git a/src/drivers/Qt/fceuWrapper.cpp b/src/drivers/Qt/fceuWrapper.cpp
+index c907b104..7bfb1033 100644
+--- a/src/drivers/Qt/fceuWrapper.cpp
++++ b/src/drivers/Qt/fceuWrapper.cpp
+@@ -88,6 +88,21 @@ int KillFCEUXonFrame = 0;
+ 
+ bool swapDuty = 0;
+ bool turbo = false;
++
++#ifdef _S9XLUA_H
++static std::string pendingStartupLua;
++
++void fceuWrapperLoadPendingLua(void)
++{
++	if (pendingStartupLua.empty()) return;
++
++	const std::string luaScript = pendingStartupLua;
++	pendingStartupLua.clear();
++	FCEU_WRAPPER_LOCK();
++	FCEU_LoadLuaCode(luaScript.c_str());
++	FCEU_WRAPPER_UNLOCK();
++}
++#endif
+ bool pauseAfterPlayback = false;
+ bool suggestReadOnlyReplay = true;
+ bool showStatusIconOpt = true;
+@@ -1130,7 +1145,9 @@ int  fceuWrapperInit( int argc, char *argv[] )
+ //			s.assign( fullpath );
+ //		}
+ //#endif
+-		FCEU_LoadLuaCode(s.c_str());
++		// Loading a frame-advancing script here runs it before the emulator
++		// worker starts. The GUI's first frameFinished callback loads it instead.
++		pendingStartupLua = s;
+ 	}
+ #endif
+ 	
+diff --git a/src/drivers/Qt/fceuWrapper.h b/src/drivers/Qt/fceuWrapper.h
+index 350480a3..33b00995 100644
+--- a/src/drivers/Qt/fceuWrapper.h
++++ b/src/drivers/Qt/fceuWrapper.h
+@@ -47,6 +47,9 @@ int  fceuWrapperHardReset(void);
+ int  fceuWrapperTogglePause(void);
+ bool fceuWrapperGameLoaded(void);
+ void fceuWrapperRequestAppExit(void);
++#ifdef _S9XLUA_H
++void fceuWrapperLoadPendingLua(void);
++#endif
+ 
+ class  fceuCriticalSection
+ {

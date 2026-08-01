@@ -1,0 +1,72 @@
+Dragon Warrior Accessibility {{RELEASE_VERSION}} third-party notices
+====================================================================
+
+Dragon Warrior Accessibility is Copyright (c) 2026 Bill Freeman and is
+licensed under the MIT License. See "Dragon Warrior Accessibility LICENSE.txt".
+
+Bundled runtime components
+--------------------------
+
+FCEUX 2.6.6, modified build
+License: GNU General Public License, version 2 or later where stated by the
+covered source files.
+License: "FCEUX COPYING.txt"
+Source: "FCEUX SOURCE.txt" and the sibling corresponding-source release asset.
+
+Qt 5.15.2: Qt Core, GUI, Widgets, SVG, and deployed platform/image/style
+plugins
+License used for this distribution: GNU Lesser General Public License v3.
+Licenses: "Qt LGPL v3.txt" and "Qt GPL v3.txt".
+Qt-bundled third-party notices and license texts:
+"Qt 5.15.2 Third-Party License Materials.zip".
+Source: the sibling corresponding-source release asset.
+The Qt libraries are dynamically linked and may be replaced with compatible
+modified builds. Reverse engineering for debugging such modifications is not
+restricted by this distribution.
+
+Mesa llvmpipe software OpenGL renderer
+Bundled file: opengl32sw.dll.
+Licenses: MIT License and Boost Software License 1.0. See
+"Mesa llvmpipe LICENSE.txt".
+This software-rendering fallback is retained for Windows systems without
+working hardware or driver OpenGL support.
+
+SDL2 2.24.1
+License: zlib License. See "SDL2 LICENSE.txt".
+
+libarchive 3.6.2
+License: BSD-style and file-specific terms. See "libarchive COPYING.txt".
+
+Lua 5.1
+License: MIT License. See "Lua 5.1 LICENSE.txt".
+
+NVDA Controller Client 2026.1.1
+License: GNU Lesser General Public License v2.1.
+License: "NVDA Controller Client LGPL 2.1.txt".
+Source: "FCEUX SOURCE.txt" and the sibling corresponding-source release asset.
+The DLL is dynamically loaded and may be replaced with a compatible modified
+build.
+
+Python 3.14.6
+License: Python Software Foundation License Version 2 and incorporated-code
+notices. See "Python LICENSE.txt".
+
+Python speech dependencies
+Versions: see "Python Speech Dependencies.txt".
+The license files for accessible-output2, libloader, platform-utils,
+platformdirs, and pywin32 are retained under
+runtime\python\Lib\site-packages.
+
+Microsoft Direct3D shader compiler redistributable
+The Qt deployment includes d3dcompiler_47.dll, a Microsoft redistributable
+component. It is unmodified and is distributed only as part of the Windows Qt
+runtime that uses it.
+
+Game data and trademarks
+------------------------
+
+The original Dragon Warrior game, ROM, manuals, music, graphics, and other
+game assets are not included. Users must supply their own legally obtained
+ROM. Dragon Warrior, Dragon Quest, and related names and marks belong to their
+respective owners. This is an unofficial accessibility project and is not
+affiliated with or endorsed by those owners.

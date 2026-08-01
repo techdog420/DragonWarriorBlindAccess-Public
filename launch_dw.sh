@@ -294,7 +294,6 @@ if [ "$dry_run" -eq 1 ]; then
     else
         echo "  Wait:       yes"
     fi
-    echo "  Argument:   -bginput 0"
     exit 0
 fi
 

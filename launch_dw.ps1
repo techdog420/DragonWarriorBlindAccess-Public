@@ -7,7 +7,9 @@ param(
     [ValidateRange(-1, 9)]
     [int] $StateSlot = -1,
     [switch] $NoWait,
-    [switch] $DryRun
+    [switch] $PlayerReadiness,
+    [switch] $DryRun,
+    [switch] $IsolatedProcessScope
 )
 
 # FCEUX launcher. The WSL entry point `launch_dw.sh` currently defaults to
@@ -35,6 +37,20 @@ function Resolve-LauncherPath {
     }
 
     return $DefaultValue
+}
+
+function Convert-ToFceuxConfigPath {
+    param([string] $PathValue)
+
+    # GetFullPath expands Windows 8.3 aliases back to their Unicode long-path
+    # form under Windows PowerShell 5.1. Preserve an already-rooted alias so
+    # older FCEUX file APIs can open package files from a non-ASCII folder.
+    $absolutePath = if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        $PathValue
+    } else {
+        [System.IO.Path]::GetFullPath($PathValue)
+    }
+    return $absolutePath.Replace("\", "/")
 }
 
 function Assert-FileExists {
@@ -116,6 +132,53 @@ function Wait-ForDebugLog {
     } while ((Get-Date) -lt $deadline)
 
     return $false
+}
+
+function Wait-ForPlayerSpeechReady {
+    param(
+        [string] $StatusPath,
+        [string] $LogPath,
+        [datetime] $LaunchStartUtc,
+        [System.Diagnostics.Process] $Process,
+        [int] $TimeoutSeconds = 25
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            $Process.Refresh()
+            if ($Process.HasExited) {
+                throw "The packaged emulator exited before speech became ready."
+            }
+        } catch {
+            throw "The packaged emulator exited before speech became ready."
+        }
+
+        if (Test-Path -LiteralPath $StatusPath -PathType Leaf) {
+            $item = Get-Item -LiteralPath $StatusPath
+            if ($item.LastWriteTimeUtc -ge $LaunchStartUtc) {
+                $status = (Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8).Trim()
+                if ($status -eq "READY") {
+                    return $true
+                }
+                if ($status.StartsWith("ERROR:")) {
+                    throw ("The packaged speech bridge reported {0}" -f $status)
+                }
+            }
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    $logSummary = "missing"
+    if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
+        try {
+            $logSummary = (@(Get-Content -LiteralPath $LogPath -Tail 8) -join " | ")
+        } catch {
+            $logSummary = "unreadable"
+        }
+    }
+    throw ("Timed out waiting for packaged speech readiness. Status: {0}. Speech log tail: {1}" -f $StatusPath, $logSummary)
 }
 
 $script:lastReadinessProbeDiagnostics = ""
@@ -498,6 +561,32 @@ function Get-FceuxBaseDirectory {
     return [System.IO.Path]::GetFullPath($EmulatorDir)
 }
 
+function Get-TargetEmulatorProcesses {
+    param(
+        [string] $ExecutablePath,
+        [switch] $Isolated
+    )
+
+    $allProcesses = @(Get-Process -Name qfceux, fceux -ErrorAction SilentlyContinue)
+    if (-not $Isolated) {
+        return $allProcesses
+    }
+
+    $targetPath = [System.IO.Path]::GetFullPath($ExecutablePath)
+    $targetProcesses = @()
+    foreach ($process in $allProcesses) {
+        try {
+            $processPath = [System.IO.Path]::GetFullPath($process.Path)
+            if ([System.StringComparer]::OrdinalIgnoreCase.Equals($processPath, $targetPath)) {
+                $targetProcesses += $process
+            }
+        } catch {
+            Write-Warning ("Isolated process scope: leaving PID {0} untouched because its executable path could not be read." -f $process.Id)
+        }
+    }
+    return $targetProcesses
+}
+
 function Disable-FceuxNativeKeyboardGamepad {
     param(
         [string] $ConfigPath,
@@ -650,8 +739,15 @@ $keyboardBridgeFile = Join-Path $scriptDir "dw_keyboard_input.txt"
 $debugLog = Join-Path $scriptDir "dw_debug.log"
 $startupLoopDiag = Join-Path $scriptDir "startup_loop_diag.txt"
 $launchShim = Join-Path $scriptDir "launch_dw.cmd"
+$speechBridgeStatus = Join-Path $scriptDir "speech_bridge.status"
+$speechBridgeLog = Join-Path $scriptDir "speech_bridge.log"
+
+if ($NoWait -and $PlayerReadiness) {
+    throw "NoWait and PlayerReadiness cannot be used together."
+}
 
 $loadStateEnabled = $StateSlot -ge 0
+$configLuaAutoloadOnly = [Environment]::GetEnvironmentVariable("DW_LAUNCH_CONFIG_LUA_ONLY") -eq "1"
 $autoResumeValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.AutoResume"
 $hideMenuValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.ToggleMenu"
 $pauseOnMenuValue = Get-ConfigValue -ConfigPath $configPath -Key "SDL.PauseOnMainMenuAccess"
@@ -673,21 +769,26 @@ Write-Host ("  Hide menu: {0}" -f $(if ($null -ne $hideMenuValue) { $hideMenuVal
 Write-Host ("  Pause on menu: {0}" -f $(if ($null -ne $pauseOnMenuValue) { $pauseOnMenuValue } else { "(unknown)" }))
 Write-Host ("  Alt menu hotkey: {0}" -f $(if ($null -ne $mainMenuHotkeyValue -and $mainMenuHotkeyValue -ne "") { $mainMenuHotkeyValue } else { "(blank)" }))
 Write-Host ("  Alt fullscreen hotkey: {0}" -f $(if ($null -ne $fullscreenHotkeyValue -and $fullscreenHotkeyValue -ne "") { $fullscreenHotkeyValue } else { "(blank)" }))
-Write-Host "  Background input: disabled via -bginput 0"
 Write-Host ("  Wait:     {0}" -f (Format-Bool (-not $NoWait)))
+Write-Host ("  Player speech readiness: {0}" -f (Format-Bool $PlayerReadiness))
+Write-Host ("  Config Lua autoload only: {0}" -f (Format-Bool $configLuaAutoloadOnly))
 Write-Host ("  Dry run:  {0}" -f (Format-Bool $DryRun))
 
 if ($null -eq $autoResumeValue) {
     Write-Warning ("Could not read SDL.AutoResume from {0}; launcher will leave it unchanged." -f $configPath)
 }
 
-$existingProcesses = @(Get-Process -Name qfceux, fceux -ErrorAction SilentlyContinue)
+$existingProcesses = @(Get-TargetEmulatorProcesses -ExecutablePath $FceuxPath -Isolated:$IsolatedProcessScope)
 if ($existingProcesses.Count -gt 0) {
     foreach ($process in $existingProcesses) {
         Write-Host ("Found running emulator: {0} (PID {1})" -f $process.ProcessName, $process.Id)
     }
 } else {
-    Write-Host "No running emulator found."
+    if ($IsolatedProcessScope) {
+        Write-Host "No running target emulator found; unrelated FCEUX processes will remain untouched."
+    } else {
+        Write-Host "No running emulator found."
+    }
 }
 
 if ($DryRun) {
@@ -718,9 +819,8 @@ if ($DryRun) {
         $previewArgs += "--loadstate"
         $previewArgs += [string] $StateSlot
     }
-    $previewArgs += "-bginput"
-    $previewArgs += "0"
-    $previewArgs += ("--loadlua=" + $LuaPath)
+    $previewArgs += "--loadlua"
+    $previewArgs += (Quote-Argument $LuaPath)
     $previewArgs += (Quote-Argument $RomPath)
     $shimPreviewArgs = @(
         (Quote-Argument $FceuxPath),
@@ -766,13 +866,28 @@ if ($existingProcesses.Count -gt 0) {
     }
 }
 
+if ($configLuaAutoloadOnly) {
+    $normalizedLuaPath = Convert-ToFceuxConfigPath -PathValue $LuaPath
+    Set-ConfigValue -ConfigPath $configPath -Key "SDL.LuaScript" -Value $normalizedLuaPath
+    Set-ConfigValue -ConfigPath $configPath -Key "SDL.LastLoadLua" -Value $normalizedLuaPath
+    Write-Host "Refreshed FCEUX config Lua autoload after emulator shutdown."
+}
+
 Disable-FceuxNativeKeyboardGamepad -ConfigPath $configPath -FceuxBaseDir $fceuxBaseDir
 Enable-FceuxHideMenu -ConfigPath $configPath
 Enable-FceuxPauseOnMenu -ConfigPath $configPath
 Disable-FceuxAltHotkeys -ConfigPath $configPath
 
-$existingBridgeProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+$bridgeCandidates = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*keyboard_bridge.ps1*" })
+if ($IsolatedProcessScope) {
+    $existingBridgeProcesses = @($bridgeCandidates | Where-Object {
+        $null -ne $_.CommandLine -and
+        $_.CommandLine.IndexOf($keyboardBridgeScript, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    })
+} else {
+    $existingBridgeProcesses = $bridgeCandidates
+}
 foreach ($bridgeProcess in $existingBridgeProcesses) {
     Write-Host ("Stopping stale keyboard bridge PID {0}..." -f $bridgeProcess.ProcessId)
     Stop-Process -Id $bridgeProcess.ProcessId -Force -ErrorAction SilentlyContinue
@@ -787,6 +902,10 @@ if (Test-Path -LiteralPath $startupLoopDiag) {
 if (Test-Path -LiteralPath $processingFile) {
     Remove-Item -LiteralPath $processingFile -Force
     Write-Host ("Removed stale processing queue: {0}" -f $processingFile)
+}
+if ($PlayerReadiness -and (Test-Path -LiteralPath $speechBridgeStatus -PathType Leaf)) {
+    Remove-Item -LiteralPath $speechBridgeStatus -Force
+    Write-Host ("Removed stale speech readiness status: {0}" -f $speechBridgeStatus)
 }
 Write-Host ("Cleared command queue: {0}" -f $commandFile)
 Write-Host ("Cleared keyboard bridge state: {0}" -f $keyboardBridgeFile)
@@ -806,14 +925,21 @@ if ($BatterySavePath) {
 }
 
 $launchArgs = @()
-if ($loadStateEnabled) {
-    $launchArgs += "--loadstate"
-    $launchArgs += [string] $StateSlot
+if ($configLuaAutoloadOnly) {
+    $launchArgs += (Quote-Argument $RomPath)
+    if ($loadStateEnabled) {
+        $launchArgs += "--loadstate"
+        $launchArgs += [string] $StateSlot
+    }
+} else {
+    if ($loadStateEnabled) {
+        $launchArgs += "--loadstate"
+        $launchArgs += [string] $StateSlot
+    }
+    $launchArgs += "--loadlua"
+    $launchArgs += (Quote-Argument $LuaPath)
+    $launchArgs += (Quote-Argument $RomPath)
 }
-$launchArgs += "-bginput"
-$launchArgs += "0"
-$launchArgs += ("--loadlua=" + $LuaPath)
-$launchArgs += (Quote-Argument $RomPath)
 
 $shimArgs = @($FceuxPath, $RomPath, $LuaPath)
 if ($loadStateEnabled) {
@@ -824,8 +950,8 @@ $launchStartUtc = [datetime]::UtcNow
 $bridgeProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
-    "-File", $keyboardBridgeScript,
-    "-OutputPath", $keyboardBridgeFile
+    "-File", (Quote-Argument $keyboardBridgeScript),
+    "-OutputPath", (Quote-Argument $keyboardBridgeFile)
 ) -WindowStyle Hidden -PassThru
 Write-Host ("Started keyboard bridge PID {0}" -f $bridgeProcess.Id)
 & $launchShim @shimArgs
@@ -854,6 +980,23 @@ Invoke-StartupInputRecovery -Process $process -Phase "post-start" -KeyboardBridg
 if ($NoWait) {
     Write-Host "Skipping readiness wait."
     exit 0
+}
+
+if ($PlayerReadiness) {
+    try {
+        Wait-ForPlayerSpeechReady `
+            -StatusPath $speechBridgeStatus `
+            -LogPath $speechBridgeLog `
+            -LaunchStartUtc $launchStartUtc `
+            -Process $process
+        Write-Host ("Ready: packaged speech bridge reported READY at {0}" -f $speechBridgeStatus)
+        Invoke-StartupInputRecovery -Process $process -Phase "post-ready" -KeyboardBridgePath $keyboardBridgeFile
+        exit 0
+    } catch {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        Stop-Process -Id $bridgeProcess.Id -Force -ErrorAction SilentlyContinue
+        throw
+    }
 }
 
 if (-not (Wait-ForDebugLog -LogPath $debugLog -LaunchStartUtc $launchStartUtc -TimeoutSeconds 20)) {

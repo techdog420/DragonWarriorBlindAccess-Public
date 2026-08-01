@@ -254,11 +254,20 @@ Durable FCEUX facts:
 - FCEUX `SDL.AutoResume` is old-session restore. Do not force it as a polling
   fix; this repo uses explicit `--state-slot` / `--loadstate` when a launch
   should resume from a slot.
-- The FCEUX path now launches with `-bginput 0` and enables Hide Menu
-  (`SDL.ToggleMenu = 1`) as the first mitigation for Alt/menu focus problems.
-  The launcher also blanks FCEUX's Alt-based menu/fullscreen hotkeys
+- Qt FCEUX 2.6.6 rejects the Windows-only `-bginput` option; passing it makes
+  argument parsing fail and silently prevents ROM startup. The launcher must
+  omit it. It enables Hide Menu (`SDL.ToggleMenu = 1`) as the first mitigation
+  for Alt/menu focus problems and blanks FCEUX's Alt-based menu/fullscreen hotkeys
   (`SDL.Hotkeys.MainMenuHide` and `SDL.Hotkeys.FullScreen`) so Alt+Tab does
   not also activate emulator UI shortcuts.
+- When launching `keyboard_bridge.ps1` through Windows PowerShell
+  `Start-Process -ArgumentList`, embed quotes around both `-File` and
+  `-OutputPath` values. Array elements are joined into one command line, so
+  unquoted package paths containing spaces make the bridge exit immediately.
+- For config-only Lua autoload, refresh `SDL.LuaScript` and `SDL.LastLoadLua`
+  after the old qfceux process has fully exited. Refreshing before graceful
+  close lets the old process overwrite `SDL.LuaScript` with a blank value and
+  breaks the replacement launch.
 - `./recover_fceux_input.sh` is the manual recovery command for the stale-Alt
   condition. It focuses qfceux, sends LeftAlt/RightAlt/generic Alt key-up,
   taps Escape, resets `dw_keyboard_input.txt` to `-`, restarts the
@@ -2060,6 +2069,56 @@ Do not rely on assistant-local memory as the only record of important project st
   `report_upper_dialogue_state`; for shop/menu bugs also capture
   `report_merchant_state`. Useful fields are `ppu_ctrl`, `scroll_x`, `scroll_y`,
   `scroll_tiles`, `base_nt`, and the raw lower/upper/merchant decoded text.
+
+## Player Package Path Compatibility
+
+- Qt FCEUX 2.6.6 can start from a non-ASCII extraction folder but cannot
+  reliably open ROM or Lua paths containing those characters. A failed launch
+  may therefore leave a responsive empty emulator window with no title music,
+  speech log, or script-error file.
+- Keep player-facing paths and logs in their original form, but pass Windows
+  8.3 aliases for FCEUX-facing executable, ROM, Lua, and private config paths.
+  Preserve an already-rooted Lua alias while writing `SDL.LuaScript` and
+  `SDL.LastLoadLua`; Windows PowerShell 5.1 `GetFullPath` expands the alias back
+  to the incompatible Unicode long path.
+- If Windows cannot provide an ASCII compatibility alias, fail before launch
+  with an explicit instruction to move the extracted package to an ASCII-only
+  path. This fallback is preferable to opening a silent emulator shell.
+
+## Release Licensing and Runtime Scope
+
+- Original project code and documentation use the root MIT `LICENSE` under
+  Bill Freeman's name. Do not imply that MIT covers the bundled emulator,
+  language runtimes, libraries, or screen-reader client; their separate terms
+  live under `licenses` and are copied into the player package.
+- Every published player ZIP must have a same-version sibling
+  corresponding-source ZIP. It contains the patched tracked FCEUX source and
+  the pinned Qt and NVDA sources used by the binaries. The player builder must
+  continue rejecting placeholder licenses and source notices.
+- Use `release\Keyboard Commands.txt` as the packaged keyboard reference. Its
+  focused test keeps player-facing bindings synchronized with `dw_access.ini`
+  and intentionally excludes raw developer dump shortcuts.
+- Use root `README.md` as the packaged player README. Keep its ROM fingerprint
+  and unsupported-ROM opt-in, NVDA/JAWS/SAPI5 scope, teleport state/save-risk
+  warning, JoyToKey download scope, and stock-versus-packaged FCEUX wording
+  covered by `test_release_readme.py`.
+- Keep the alpha teleport recovery in both player documents: press Start once,
+  then reload the accessibility script or close without saving and relaunch if
+  controls remain unresponsive. Keep this wording covered by the focused README
+  and keyboard-guide tests until the input seam is fixed and live-reverified.
+- Compare deterministic ZIPs using the same PowerShell major/runtime. Windows
+  PowerShell 5.1 and PowerShell 7 can emit different Deflate streams for the
+  same normalized payload; the `0.1.0-alpha` release artifacts use PowerShell 7.
+- Package only dependencies that remain in the allowlist. FFmpeg is not used by
+  the accessibility release and is excluded. Retain Qt ANGLE and Mesa
+  `opengl32sw.dll` graphics fallbacks for compatibility, together with their
+  notices.
+- Speech runtime selection is explicit: active NVDA first, then an installed
+  JAWS COM API, then SAPI5. The package includes the official pinned 64-bit NVDA
+  Controller Client DLL and LGPL notice, but no Tolk or JAWS binaries.
+- The ROM and original game assets are never release inputs. The installer
+  validates a user-supplied ROM, warns on unknown hashes, and permits an
+  explicit at-own-risk override without adding that ROM to a distributable ZIP.
 
 ## Codex Memory Access
 

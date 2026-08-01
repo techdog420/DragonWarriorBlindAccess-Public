@@ -38,16 +38,15 @@ Current features include:
 - Hazard-aware pathfinding that avoids known damage and death tiles.
 - Session-based visited markers for NPCs and objects.
 - Configurable keyboard hotkeys in `dw_access.ini`.
-- Optional controller access to extra mod commands through the included
-  JoyToKey profile.
+- Optional controller access to extra mod commands through a JoyToKey example
+  available from the project repository.
 - Extensive logging and testing tools for bug reports and development.
 
 ## Requirements
 
 - Windows.
 - A legally obtained copy of the supported Dragon Warrior ROM.
-- A supported Windows screen reader or speech output, such as NVDA, JAWS, or
-  Narrator.
+- NVDA or JAWS, or an installed Windows SAPI5 voice for fallback speech.
 
 The recommended automatic installer handles the emulator, speech bridge, and
 other required setup. If you choose manual installation, you will also need one
@@ -86,12 +85,26 @@ Development and testing use:
 Dragon Warrior (USA) (Rev 1).nes
 ```
 
+The supported ROM is 81,936 bytes and has SHA-256:
+
+```text
+676B89D76CF9E83EED76C0A67F81DA906916F0BCE321CF3A9A39AC78BC9C0845
+```
+
 Including the revision is important because the mod reads the game's memory and
 ROM data at known addresses. Other regional releases, revisions, translations,
 and ROM hacks have not been validated and may not work correctly.
 
 The ROM is copyrighted material and is **not included** with this project. You
 must provide your own legally obtained copy.
+
+The automatic installer checks the ROM's size and SHA-256 before copying it.
+If the checksum does not match, the installer displays both the expected and
+actual fingerprints and warns that narration, navigation, game behavior, and
+save compatibility may be incorrect. Power users may type `I ACCEPT` to
+install that exact hacked or otherwise unsupported ROM at their own risk.
+Compatibility and support are not guaranteed. The installer never modifies
+the selected source ROM.
 
 ## Installation
 
@@ -115,6 +128,9 @@ the mod, then use `Play Dragon Warrior.cmd` whenever you want to play.
 5. When installation finishes, run **`Play Dragon Warrior.cmd`** from the
    extracted folder to start the game with the accessibility mod. Use this same
    file for future play sessions; you do not need to run the installer again.
+
+See **`Keyboard Commands.txt`** in the extracted folder for a concise shortcut
+reference designed for quick screen-reader lookup during play.
 
 Keep the extracted release files together. If the installer reports that
 `install_player.ps1` is missing, extract the complete release ZIP again. If
@@ -251,6 +267,20 @@ bypassing incomplete route data. It can skip terrain, encounters, locked
 areas, and intended progression, so manual movement or auto-walk is recommended
 for ordinary play.
 
+**Warning:** Teleport changes live game state without following every normal
+movement, transition, door, hazard, encounter, or progression check. Known
+unsafe states are refused, but no safeguard can cover every situation. Misuse
+may leave the current session inconsistent, corrupt later gameplay, or produce
+unusable save data. Save normally before experimenting. If the game behaves
+strangely afterward, close it without saving and restart from a known-good
+save. Teleport does not modify the original ROM file.
+
+**Alpha recovery note:** After teleporting, ordinary controls may occasionally
+stop responding until `Start` is pressed once. If `Start` does not restore
+control, reloading the accessibility script may help. The simplest recovery is
+to close the emulator without saving, run `Play Dragon Warrior.cmd` again, and
+restart from a known-good save.
+
 ## Controls
 
 All mod hotkeys can be changed in `dw_access.ini`. The controls below describe
@@ -312,23 +342,27 @@ problem but is not required for ordinary play.
 
 ## Optional Controller Setup
 
-The game itself can be played with a controller through FCEUX. The repository
-also includes a tested JoyToKey example under
-`project_resources/controller/joytokey/` for assigning spare modern-controller
-buttons to mod hotkeys such as object navigation, position, HP, gold, path
-preview, and auto-walk.
+The game itself can be played with a controller through FCEUX. A tested
+[JoyToKey example](https://github.com/techdog420/DragonWarriorBlindAccess-Public/tree/main/project_resources/controller/joytokey)
+is available separately from the project repository for assigning spare
+modern-controller buttons to mod hotkeys such as object navigation, position,
+HP, gold, path preview, and auto-walk. It is not bundled in the lean player
+release ZIP.
 
 JoyToKey is optional. Controller button numbers vary by model and driver, so the
-included profile should be treated as a starting point rather than a universal
-layout. See the controller folder's README for setup and safety instructions.
+linked profile should be treated as a starting point rather than a universal
+layout. See the linked controller folder's README for setup and safety
+instructions.
 
 ## Current Limitations
 
 - This is an alpha release and has not been validated from beginning to end.
 - Only `Dragon Warrior (USA) (Rev 1)` is currently supported and tested.
-- FCEUX is the main tested emulator. Its automatic ROM/Lua startup can fail, in
-  which case the ROM and `main.lua` must be loaded manually in the session
-  started by the project launcher.
+- FCEUX is the main tested emulator. Manual installations using an ordinary
+  stock FCEUX build may fail to load the ROM or Lua script automatically, in
+  which case they must be loaded manually in the session started by the project
+  launcher. The automatic player package includes the project's patched and
+  tested FCEUX runtime.
 - FCEUX can occasionally retain Alt/menu focus after switching windows. Refocus
   the emulator if game or mod keys stop responding.
 - BizHawk is functionally compatible but may produce noticeable lag and audio
