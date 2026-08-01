@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 PLAYER = REPO_ROOT / "release" / "play_player.ps1"
 CMD_ENTRY_POINT = REPO_ROOT / "release" / "Play Dragon Warrior.cmd"
 POWERSHELL = shutil.which("powershell.exe") or shutil.which("powershell")
+CMD = shutil.which("cmd.exe")
 
 
 @unittest.skipUnless(POWERSHELL, "Windows PowerShell is required")
@@ -78,6 +79,44 @@ class PlayerLaunchTests(unittest.TestCase):
             stderr=subprocess.PIPE,
             check=False,
         )
+
+    def test_cmd_entry_point_passes_valid_package_root_from_explorer_style_path(self):
+        if not CMD:
+            self.skipTest("cmd.exe is required")
+
+        package_root = self.temp_root / "Explorer package"
+        app_directory = package_root / "app"
+        app_directory.mkdir(parents=True)
+        entry_point = package_root / CMD_ENTRY_POINT.name
+        shutil.copy2(CMD_ENTRY_POINT, entry_point)
+        (app_directory / "play_player.ps1").write_text(
+            """param([string] $PackageRoot)
+try {
+    $fullPath = [System.IO.Path]::GetFullPath($PackageRoot)
+    Write-Output ("PACKAGE_ROOT=" + $fullPath)
+    exit 0
+} catch {
+    Write-Error $_
+    exit 9
+}
+""",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [CMD, "/d", "/c", "call", str(entry_point)],
+            input="\n",
+            text=True,
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn(f"PACKAGE_ROOT={package_root.resolve()}", result.stdout)
+        self.assertNotIn("Illegal characters in path", result.stderr + result.stdout)
 
     def test_validate_only_uses_package_relative_private_paths(self):
         result = self.run_player("-ValidateOnly")

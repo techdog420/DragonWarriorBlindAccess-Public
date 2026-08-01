@@ -13,9 +13,9 @@ if not exist "%INSTALL_SCRIPT%" (
 )
 
 if "%~1"=="" (
-    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_SCRIPT%" -PackageRoot "%~dp0"
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_SCRIPT%" -PackageRoot "%~dp0."
 ) else (
-    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_SCRIPT%" -PackageRoot "%~dp0" -RomPath "%~1"
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_SCRIPT%" -PackageRoot "%~dp0." -RomPath "%~1"
 )
 set "INSTALL_EXIT=%ERRORLEVEL%"
 

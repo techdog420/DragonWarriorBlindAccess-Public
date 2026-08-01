@@ -2087,6 +2087,12 @@ Do not rely on assistant-local memory as the only record of important project st
 
 ## Release Licensing and Runtime Scope
 
+- Explorer-facing batch wrappers must pass their own directory as `%~dp0.`
+  when it is the final quoted native argument value. Bare `%~dp0` ends in a
+  backslash and can make Windows deliver the closing quote as a literal `"`,
+  causing PowerShell `GetFullPath` to reject the package path. Keep actual
+  `cmd.exe` wrapper tests with spaces in the package directory; direct `.ps1`
+  tests do not cover this boundary.
 - Original project code and documentation use the root MIT `LICENSE` under
   Bill Freeman's name. Do not imply that MIT covers the bundled emulator,
   language runtimes, libraries, or screen-reader client; their separate terms

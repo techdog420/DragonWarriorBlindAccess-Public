@@ -4,6 +4,20 @@ Updated: 2026-07-31
 
 ## Release Installation Handoff
 
+- Explorer-launch hotfix (`2026-07-31`): the published `0.1.0-alpha` package
+  exposed a native batch-to-PowerShell quoting bug when the user double-clicked
+  `Install Dragon Warrior.cmd` from
+  `C:\tmp1\Dragon Warrior Accessibility 0.1.0-alpha`. Both root wrappers passed
+  `-PackageRoot "%~dp0"`; because `%~dp0` ends in a backslash, Windows could
+  deliver the closing quote as a literal character, and `GetFullPath` failed
+  with `Illegal characters in path.` Install and Play now pass `%~dp0.` so the
+  quote is unambiguous and PowerShell normalizes the final `\.`. New tests run
+  both actual `.cmd` wrappers through `cmd.exe` from a package path containing
+  spaces. The focused installer/launcher/package suite passes 31 tests. Two
+  PowerShell 7 rebuilds are byte-identical, and the real root installer passed
+  through `cmd.exe` after extraction under `C:\tmp1`: exit 0, supported ROM
+  hash preserved, and no illegal-path error. Replace the published player ZIP
+  and checksum after the hotfix is merged.
 - Release licensing and source packaging are now implemented. Root `LICENSE`
   is MIT under Bill Freeman's name, `LICENSES.md` defines its scope, and the
   player builder rejects placeholder licenses or source notices. The package
@@ -26,8 +40,8 @@ Updated: 2026-07-31
   ROM/save data or FFmpeg DLLs, one screen-reader DLL, complete notices, and no
   placeholder license text. The full local smoke suite, release unit tests, and
   `git diff --check` pass. Two final PowerShell 7 builds are byte-identical:
-  516 payload entries, 47,471,643 ZIP bytes, and SHA-256
-  `21B45856F3C46A8FB21FA1C3BF668E0F54DBA298B11BC907E39FBEF1F4FA6AD2`.
+  516 payload entries, 47,471,642 ZIP bytes, and SHA-256
+  `C3877D93EE8A66FE3C04563FB8CB7A146F07795B5D653FB719330112A1D240B7`.
 - `0.1.0-alpha` clean-package acceptance completed on `2026-07-31`. JAWS and
   NVDA were tested separately from fresh extractions with no other reader or
   qfceux process active. Both installs verified the supported ROM, selected the
