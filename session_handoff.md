@@ -16,8 +16,12 @@ Updated: 2026-07-31
   spaces. The focused installer/launcher/package suite passes 31 tests. Two
   PowerShell 7 rebuilds are byte-identical, and the real root installer passed
   through `cmd.exe` after extraction under `C:\tmp1`: exit 0, supported ROM
-  hash preserved, and no illegal-path error. Replace the published player ZIP
-  and checksum after the hotfix is merged.
+  hash preserved, and no illegal-path error. The user then manually extracted
+  and installed the candidate under `C:\tmp2`; package logs confirm the
+  supported ROM, player validation, JAWS `READY`, title narration, and no script
+  error. PR #9 merged as `133d65c`. The `v0.1.0-alpha` tag and release target
+  now point to that merge, and the public player ZIP, checksum, and hotfix notes
+  are updated. The corresponding-source asset is unchanged.
 - Release licensing and source packaging are now implemented. Root `LICENSE`
   is MIT under Bill Freeman's name, `LICENSES.md` defines its scope, and the
   player builder rejects placeholder licenses or source notices. The package
