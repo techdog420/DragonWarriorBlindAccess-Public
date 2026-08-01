@@ -64,6 +64,10 @@ class ReleaseKeyboardGuideTests(unittest.TestCase):
         self.assertIn("WARNING: Teleport changes the live game state", guide)
         self.assertIn("produce unusable save data", guide)
         self.assertIn("does not modify your original ROM file", guide)
+        self.assertIn("Press Start once to restore them", guide)
+        self.assertIn("If Start does not work", guide)
+        self.assertIn("run Play Dragon Warrior.cmd again", guide)
+        self.assertIn("Reloading the\naccessibility script may also restore control", guide)
 
 
 if __name__ == "__main__":

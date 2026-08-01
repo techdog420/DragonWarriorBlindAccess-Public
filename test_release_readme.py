@@ -32,6 +32,10 @@ class ReleaseReadmeTests(unittest.TestCase):
         self.assertIn("Teleport changes live game state", self.text)
         self.assertIn("produce\nunusable save data", self.text)
         self.assertIn("does not modify the original ROM file", self.text)
+        self.assertIn("`Start` is pressed once", self.text)
+        self.assertIn("does not restore\ncontrol", self.text)
+        self.assertIn("reloading the accessibility script may help", self.text)
+        self.assertIn("run `Play Dragon Warrior.cmd` again", self.text)
 
     def test_does_not_claim_joytokey_is_in_player_zip(self):
         self.assertIn("It is not bundled in the lean player\nrelease ZIP", self.text)

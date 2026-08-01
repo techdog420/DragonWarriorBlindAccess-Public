@@ -2102,6 +2102,13 @@ Do not rely on assistant-local memory as the only record of important project st
   and unsupported-ROM opt-in, NVDA/JAWS/SAPI5 scope, teleport state/save-risk
   warning, JoyToKey download scope, and stock-versus-packaged FCEUX wording
   covered by `test_release_readme.py`.
+- Keep the alpha teleport recovery in both player documents: press Start once,
+  then reload the accessibility script or close without saving and relaunch if
+  controls remain unresponsive. Keep this wording covered by the focused README
+  and keyboard-guide tests until the input seam is fixed and live-reverified.
+- Compare deterministic ZIPs using the same PowerShell major/runtime. Windows
+  PowerShell 5.1 and PowerShell 7 can emit different Deflate streams for the
+  same normalized payload; the `0.1.0-alpha` release artifacts use PowerShell 7.
 - Package only dependencies that remain in the allowlist. FFmpeg is not used by
   the accessibility release and is excluded. Retain Qt ANGLE and Mesa
   `opengl32sw.dll` graphics fallbacks for compatibility, together with their

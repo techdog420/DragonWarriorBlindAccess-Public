@@ -95,6 +95,11 @@ gameplay, or produce unusable save data. Save normally before experimenting.
 If the game behaves strangely afterward, close it without saving and restart
 from a known-good save. Teleport does not modify your original ROM file.
 
+ALPHA RECOVERY: Ordinary controls may occasionally stop responding after a
+teleport. Press Start once to restore them. If Start does not work, close the
+emulator without saving and run Play Dragon Warrior.cmd again. Reloading the
+accessibility script may also restore control.
+
 Shift+Enter: Move to the selected object. NPCs use a nearby interaction tile.
 Shift+Up: Move to the tile north of the selected object.
 Shift+Down: Move to the tile south of the selected object.

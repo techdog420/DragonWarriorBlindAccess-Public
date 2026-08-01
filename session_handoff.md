@@ -10,9 +10,10 @@ Updated: 2026-07-31
   includes the real FCEUX, Qt, SDL2, libarchive, Lua, NVDA Controller Client,
   Python, Python-package, ANGLE, and Mesa llvmpipe notices. The matching
   deterministic corresponding-source ZIP contains the patched tracked FCEUX
-  tree plus pinned Qt and NVDA sources; two builds produced SHA-256
-  `53243A90C3798CD0C95917B22C3A8C94824926D9A471BCEAAD85D22B20059EC7`.
-  Keep that ZIP beside the player ZIP for every published release.
+  tree plus pinned Qt and NVDA sources. Reproducibility is verified by building
+  twice and comparing hashes. Keep that ZIP beside the player ZIP for every
+  published release; record its final hash in external release metadata rather
+  than inside the source archive itself.
 - The release runtime no longer carries eight unused FFmpeg DLLs. The first
   licensed player rebuild reduced the ZIP from 106,057,083 to 47,777,459 bytes,
   a reduction of 58,279,624 bytes. Qt's ANGLE files and `opengl32sw.dll` remain
@@ -20,13 +21,25 @@ Updated: 2026-07-31
   Speech packaging now installs only the official pinned 64-bit NVDA
   Controller Client DLL; JAWS uses its installed COM API, and SAPI5 remains the
   fallback. NVDA wins if NVDA and JAWS are unexpectedly active together.
-  Re-run one final packaged NVDA launch and one packaged JAWS launch after the
-  final README is supplied; no simultaneous-reader test is
-  required. Two 689-file player builds were byte-identical at SHA-256
-  `246086C1CCEFC486EA9B78354324FC31CA0E9D14CB974EEF436882B0B5CA785A`;
-  the archive contains zero ROM/save files, zero FFmpeg files, one screen-reader
-  DLL, 17 license entries, and no placeholder license text. The full local
-  smoke suite, 37 release unit tests, and `git diff --check` pass.
+  Separate final packaged NVDA and JAWS tests are complete; simultaneous-reader
+  behavior was intentionally not tested. The final player package contains no
+  ROM/save data or FFmpeg DLLs, one screen-reader DLL, complete notices, and no
+  placeholder license text. The full local smoke suite, release unit tests, and
+  `git diff --check` pass. Two final PowerShell 7 builds are byte-identical:
+  516 payload entries, 47,471,643 ZIP bytes, and SHA-256
+  `21B45856F3C46A8FB21FA1C3BF668E0F54DBA298B11BC907E39FBEF1F4FA6AD2`.
+- `0.1.0-alpha` clean-package acceptance completed on `2026-07-31`. JAWS and
+  NVDA were tested separately from fresh extractions with no other reader or
+  qfceux process active. Both installs verified the supported ROM, selected the
+  expected speech backend, reached `READY`, narrated startup, and passed hero
+  creation, dialogue, keyboard input, controller input, object navigation,
+  autowalk, FCEUX menu pause/resume, private battery-save creation, exit,
+  relaunch, Adventure Log discovery, and hero recall. JAWS restored slot 1;
+  NVDA restored slot 2. The first JAWS teleport temporarily stopped ordinary
+  controls until Start was pressed; later teleport actions worked. The shipped
+  README and keyboard guide now describe Start, script reload, and closing
+  without saving before relaunch. Keep the underlying teleport/input seam as a
+  post-alpha follow-up.
 - A clean rebuilt player package now launches and repeat-launches end to end
   from the non-ASCII extraction path
   `C:\tmp\DWA Rebuilt 20260731 – naïve тест 日本語`. The untouched rebuilt ZIP
@@ -63,8 +76,7 @@ Updated: 2026-07-31
   `34eb7601c415b81901fd02afbd5cfdc84b5047ac` and emits a required build marker.
   The fresh verified executable SHA-256 is
   `AB8C668B6DFA87352B3911312ACFBE5BB928E36B49CB597AACD8685FDA75EEE1`.
-- The most recent internal player ZIP used temporary README and keyboard-guide
-  fixtures, so it is not the jam release artifact. The release-ready keyboard
+- The release-ready keyboard
   reference now lives at `release\Keyboard Commands.txt`; four focused tests
   keep its 26 accessibility bindings aligned with `dw_access.ini` and verify
   that developer dump shortcuts stay out of the player guide. PR #7 added the
@@ -73,9 +85,11 @@ Updated: 2026-07-31
   save-state risk, JoyToKey scope, keyboard-guide discovery, and stock FCEUX
   startup limits. Licensing, third-party
   notices, corresponding source, runtime pruning, and strict packaging checks
-  are complete. Choose the jam version, rebuild with `README.md` and the release
-  keyboard guide, publish the corresponding-source ZIP beside it, then run the final NVDA, JAWS,
-  gameplay/save/relaunch matrix. A non-ASCII Windows username remains untested.
+  are complete. The jam version is `0.1.0-alpha`; the final NVDA, JAWS,
+  gameplay/save/relaunch matrix passes, and the player was rebuilt with the
+  documented teleport recovery. Publish the corresponding-source ZIP beside
+  the player ZIP and record both hashes in release metadata. A non-ASCII
+  Windows username remains a future test.
 
 ## Immediate FCEUX Handoff
 
@@ -103,6 +117,10 @@ Updated: 2026-07-31
   tests, 11 bridge-policy tests, PowerShell/Lua syntax, and `git diff --check`.
   This checkpoint supersedes the older `(0,7)` current-state sentence in the
   Mountain Cave geometry note.
+  During final `0.1.0-alpha` package acceptance, the first selected teleport
+  temporarily stopped ordinary controls until Start was pressed; subsequent
+  teleport actions completed normally. Treat this as a known alpha recovery
+  case and post-release investigation item, not permanent map evidence.
 - Mountain Cave travel and both dungeon floors are complete. The bidirectional
   World Map routes connect `Western desert east road` `(18,64)` with cave
   entrance `(29,57)`; F1 entry/exit is `(0,7)`. F1 map `0x16` models its

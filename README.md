@@ -275,6 +275,12 @@ unusable save data. Save normally before experimenting. If the game behaves
 strangely afterward, close it without saving and restart from a known-good
 save. Teleport does not modify the original ROM file.
 
+**Alpha recovery note:** After teleporting, ordinary controls may occasionally
+stop responding until `Start` is pressed once. If `Start` does not restore
+control, reloading the accessibility script may help. The simplest recovery is
+to close the emulator without saving, run `Play Dragon Warrior.cmd` again, and
+restart from a known-good save.
+
 ## Controls
 
 All mod hotkeys can be changed in `dw_access.ini`. The controls below describe

@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final `0.1.0-alpha` package acceptance (`2026-07-31`): separate clean JAWS
+  and NVDA extractions installed the verified US Rev 1 ROM with no inherited
+  saves. Each run had only the intended screen reader active, selected the
+  correct backend, reached speech `READY`, narrated startup, and passed hero
+  creation, king dialogue, keyboard input, controller input, object navigation,
+  autowalk, and FCEUX menu pause/resume. After normal emulator exit, each
+  private package contained an 8,192-byte battery save plus the user's manual
+  `dw_release_test.sav`; relaunch exposed Continue a Quest and restored the
+  expected hero (JAWS slot 1, NVDA slot 2) with speech and controls working.
+  The first JAWS selected teleport temporarily stopped ordinary controls until
+  Start was pressed; remaining teleport tests worked. The player README and
+  keyboard guide now document Start, script reload, and close-without-saving
+  relaunch as alpha recovery. Investigate the underlying teleport/input seam
+  after release. The documentation-final player build is reproducible under
+  PowerShell 7 at 516 payload entries, 47,471,643 ZIP bytes, and SHA-256
+  `21B45856F3C46A8FB21FA1C3BF668E0F54DBA298B11BC907E39FBEF1F4FA6AD2`.
 - Release-document checkpoint (`2026-07-31`): PR #7 added the player README at
   commit `82ffbad`. The release branch corrects its unsupported-ROM opt-in,
   NVDA/JAWS/SAPI5 backend wording, teleport state/save-risk warning, JoyToKey
@@ -14,7 +30,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   controls and warns that misuse can corrupt later gameplay or save data while
   leaving the original ROM untouched. Ten documentation tests, 37 other release
   tests, and `git diff --check` pass.
-- Licensed release-runtime checkpoint (`2026-07-31`): the player package now
+- Internal licensed release-runtime checkpoint (`2026-07-31`, superseded by
+  final acceptance above): the player package now
   carries real project and third-party notices plus a same-version FCEUX/Qt/NVDA
   corresponding-source process. Eight unused FFmpeg DLLs were removed; ANGLE
   and Mesa `opengl32sw.dll` remain as documented graphics fallbacks. Speech now
@@ -24,9 +41,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   payload files, no ROM/save data or FFmpeg files, and produced the same
   SHA-256. The 47,777,459-byte ZIP is 58,279,624 bytes smaller than the earlier
   internal ZIP. The full local smoke suite, 37 release unit tests, and
-  `git diff --check` pass. Because these runtime changes followed the
-  earlier live acceptance, run separate final packaged NVDA and JAWS smoke
-  passes after the final README and release keyboard guide are installed.
+  `git diff --check` pass. The requested separate final packaged NVDA and JAWS
+  smoke passes are now complete.
 - Non-ASCII player-package acceptance (`2026-07-31`): the untouched rebuilt
   ROM-free ZIP was extracted to
   `C:\tmp\DWA Rebuilt 20260731 – naïve тест 日本語`, then setup installed the
