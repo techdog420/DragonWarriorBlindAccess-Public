@@ -20,7 +20,12 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `C3877D93EE8A66FE3C04563FB8CB7A146F07795B5D653FB719330112A1D240B7`.
   A real rebuilt root installer then passed through `cmd.exe` under `C:\tmp1`,
   copied the supported ROM with its expected hash, and exited 0 without the
-  illegal-path error.
+  illegal-path error. The user independently extracted the candidate under
+  `C:\tmp2`, completed setup from Windows Explorer, launched the emulator, and
+  confirmed the ROM and script loaded. Package evidence matched the candidate
+  wrappers/runtime, selected JAWS, reached speech `READY`, narrated the title,
+  and produced no script-error file. PR #9 merged as `133d65c`; the existing
+  `v0.1.0-alpha` prerelease tag, player ZIP, checksum, and notes were updated.
 - Final `0.1.0-alpha` package acceptance (`2026-07-31`): separate clean JAWS
   and NVDA extractions installed the verified US Rev 1 ROM with no inherited
   saves. Each run had only the intended screen reader active, selected the
