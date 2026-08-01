@@ -12,7 +12,7 @@ if not exist "%PLAYER_SCRIPT%" (
     exit /b 4
 )
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PLAYER_SCRIPT%" -PackageRoot "%~dp0"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PLAYER_SCRIPT%" -PackageRoot "%~dp0."
 set "PLAYER_EXIT=%ERRORLEVEL%"
 
 if not "%PLAYER_EXIT%"=="0" (

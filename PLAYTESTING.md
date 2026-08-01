@@ -6,6 +6,21 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Explorer installer/launcher regression (`2026-07-31`): manual download,
+  extraction to `C:\tmp1\Dragon Warrior Accessibility 0.1.0-alpha`, and
+  double-click of `Install Dragon Warrior.cmd` failed before setup with
+  `GetFullPath` reporting `Illegal characters in path.` The batch wrappers were
+  passing quoted `%~dp0`, whose required trailing backslash can escape the
+  native closing quote. Install and Play now pass `%~dp0.`; `GetFullPath`
+  normalizes the dot while preserving the complete path. Regression tests now
+  execute both real `.cmd` entry points through `cmd.exe` from a package folder
+  containing spaces. The two new tests fail with the published wrappers, pass
+  with the fix, and the full installer/launcher/package suite passes 31 tests.
+  Two PowerShell 7 package builds match at SHA-256
+  `C3877D93EE8A66FE3C04563FB8CB7A146F07795B5D653FB719330112A1D240B7`.
+  A real rebuilt root installer then passed through `cmd.exe` under `C:\tmp1`,
+  copied the supported ROM with its expected hash, and exited 0 without the
+  illegal-path error.
 - Final `0.1.0-alpha` package acceptance (`2026-07-31`): separate clean JAWS
   and NVDA extractions installed the verified US Rev 1 ROM with no inherited
   saves. Each run had only the intended screen reader active, selected the
@@ -20,8 +35,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   keyboard guide now document Start, script reload, and close-without-saving
   relaunch as alpha recovery. Investigate the underlying teleport/input seam
   after release. The documentation-final player build is reproducible under
-  PowerShell 7 at 516 payload entries, 47,471,643 ZIP bytes, and SHA-256
-  `21B45856F3C46A8FB21FA1C3BF668E0F54DBA298B11BC907E39FBEF1F4FA6AD2`.
+  PowerShell 7 at 516 payload entries, 47,471,642 ZIP bytes, and SHA-256
+  `C3877D93EE8A66FE3C04563FB8CB7A146F07795B5D653FB719330112A1D240B7`
+  after the Explorer-wrapper hotfix.
 - Release-document checkpoint (`2026-07-31`): PR #7 added the player README at
   commit `82ffbad`. The release branch corrects its unsupported-ROM opt-in,
   NVDA/JAWS/SAPI5 backend wording, teleport state/save-risk warning, JoyToKey

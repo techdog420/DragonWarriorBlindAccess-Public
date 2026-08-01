@@ -12,6 +12,7 @@ INSTALLER = REPO_ROOT / "release" / "install_player.ps1"
 ROM_MANIFEST = REPO_ROOT / "release" / "roms.json"
 CMD_ENTRY_POINT = REPO_ROOT / "release" / "Install Dragon Warrior.cmd"
 POWERSHELL = shutil.which("powershell.exe") or shutil.which("powershell")
+CMD = shutil.which("cmd.exe")
 
 
 @unittest.skipUnless(POWERSHELL, "Windows PowerShell is required")
@@ -97,9 +98,50 @@ class PlayerInstallTests(unittest.TestCase):
     def test_cmd_entry_point_is_keyboard_friendly_and_forwards_rom_path(self):
         text = CMD_ENTRY_POINT.read_text(encoding="utf-8")
         self.assertIn("-NoProfile -ExecutionPolicy Bypass", text)
+        self.assertIn('-PackageRoot "%~dp0."', text)
         self.assertIn('-RomPath "%~1"', text)
         self.assertIn("user\\install.log", text)
         self.assertIn("pause", text.lower())
+
+    def test_cmd_entry_point_passes_valid_package_root_from_explorer_style_path(self):
+        if not CMD:
+            self.skipTest("cmd.exe is required")
+
+        package_root = self.root / "Explorer package"
+        app_directory = package_root / "app"
+        app_directory.mkdir(parents=True)
+        entry_point = package_root / CMD_ENTRY_POINT.name
+        shutil.copy2(CMD_ENTRY_POINT, entry_point)
+        (app_directory / "install_player.ps1").write_text(
+            """param([string] $PackageRoot, [string] $RomPath)
+try {
+    $fullPath = [System.IO.Path]::GetFullPath($PackageRoot)
+    Write-Output ("PACKAGE_ROOT=" + $fullPath)
+    exit 0
+} catch {
+    Write-Error $_
+    exit 9
+}
+""",
+            encoding="utf-8",
+        )
+        rom_path = package_root / "source rom.nes"
+        rom_path.write_bytes(b"test")
+
+        result = subprocess.run(
+            [CMD, "/d", "/c", "call", str(entry_point), str(rom_path)],
+            input="\n",
+            text=True,
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn(f"PACKAGE_ROOT={package_root.resolve()}", result.stdout)
+        self.assertNotIn("Illegal characters in path", result.stderr + result.stdout)
 
     def test_supported_rom_is_copied_without_modifying_source(self):
         rom_path, manifest_path, rom_bytes = self.make_test_rom_and_manifest()
