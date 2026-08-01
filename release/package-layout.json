@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "rootFiles": [
+    {
+      "source": "release/Install Dragon Warrior.cmd",
+      "destination": "Install Dragon Warrior.cmd"
+    },
+    {
+      "source": "release/Play Dragon Warrior.cmd",
+      "destination": "Play Dragon Warrior.cmd"
+    }
+  ],
+  "appFiles": [
+    "addresses.lua",
+    "auto_step.lua",
+    "battle.lua",
+    "chars.lua",
+    "config.lua",
+    "debug_tools.lua",
+    "edge_flow_guard.lua",
+    "edge_verify_classifier.lua",
+    "emulator_compat.lua",
+    "encoding.lua",
+    "event_bus.lua",
+    "field_action_guard.lua",
+    "game_snapshot.lua",
+    "hotkey_filter.lua",
+    "hotkeys.lua",
+    "items.lua",
+    "key_combo.lua",
+    "main.lua",
+    "map_crawler.lua",
+    "map_reader.lua",
+    "map_survey.lua",
+    "maps.lua",
+    "memory.lua",
+    "menu.lua",
+    "merchant.lua",
+    "navigation.lua",
+    "object_commands.lua",
+    "objects.lua",
+    "overworld_routes.lua",
+    "path_debug.lua",
+    "pathfinder.lua",
+    "route_frontier_classifier.lua",
+    "route_manager.lua",
+    "scan_profiler.lua",
+    "state.lua",
+    "teleport_state.lua",
+    "text.lua",
+    "tolk.lua",
+    "walked_edge_verifier.lua",
+    "dw_access.ini",
+    "launch_dw.ps1",
+    "launch_dw.cmd",
+    "keyboard_bridge.ps1",
+    "speech_bridge.py"
+  ],
+  "releaseAppFiles": [
+    {
+      "source": "release/install_player.ps1",
+      "destination": "install_player.ps1"
+    },
+    {
+      "source": "release/play_player.ps1",
+      "destination": "play_player.ps1"
+    },
+    {
+      "source": "release/roms.json",
+      "destination": "roms.json"
+    }
+  ],
+  "fceuxRootFiles": [
+    "FCEUX-ACCESSIBILITY-BUILD.txt",
+    "qfceux.exe",
+    "archive.dll",
+    "d3dcompiler_47.dll",
+    "libEGL.dll",
+    "libGLESv2.dll",
+    "lua5.1.dll",
+    "lua51.dll",
+    "opengl32sw.dll",
+    "Qt5Core.dll",
+    "Qt5Gui.dll",
+    "Qt5Svg.dll",
+    "Qt5Widgets.dll",
+    "SDL2.dll"
+  ],
+  "fceuxDirectories": [
+    "iconengines",
+    "imageformats",
+    "platforms",
+    "styles"
+  ]
+}

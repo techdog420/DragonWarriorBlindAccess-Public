@@ -62,9 +62,18 @@ Important behavior:
 - Cross-emulator bakeoffs should use raw battery save data, not emulator
   savestates. `--battery-save PATH` accepts `.sav` or `.SaveRAM` data and seeds
   the selected emulator's save path before launch.
-- The FCEUX launcher uses `-bginput 0`, enables Hide Menu via
-  `SDL.ToggleMenu = 1`, blanks FCEUX Alt-based menu/fullscreen hotkeys, and has
-  a recovery helper for stale Alt/menu focus
+- Qt FCEUX rejects the Windows-only `-bginput` option and then silently skips
+  ROM startup. Do not pass it to `qfceux.exe`. The launcher instead enables
+  Hide Menu via `SDL.ToggleMenu = 1`, blanks FCEUX Alt-based
+  menu/fullscreen hotkeys, and has a recovery helper for stale Alt/menu focus
+- Qt FCEUX 2.6.6 also fails to open ROM/Lua paths containing non-ASCII
+  characters. The player launcher keeps user-facing paths unchanged but passes
+  Windows 8.3 aliases for FCEUX-facing executable, ROM, Lua, and config paths.
+  Preserve rooted aliases when refreshing `SDL.LuaScript` and
+  `SDL.LastLoadLua`; Windows PowerShell 5.1 `GetFullPath` expands them back to
+  the incompatible Unicode form. If Windows cannot provide an ASCII alias, the
+  player launcher must fail clearly and ask the user to move the extracted
+  folder to an ASCII-only path.
 - Preferred WSL startup path is `./launch_dw.sh`; it defaults to FCEUX for
   normal gameplay and agent-driven debugging, loads the ROM plus `main.lua`,
   and supports `--emulator bizhawk` only for the explicit automation/debug
@@ -331,6 +340,7 @@ Repo files are the source of truth:
 - Treat `session_handoff.md` as the concise current-state entry point
 - Treat `PROJECT_MEMORY.md` as the durable architecture and lessons file
 - Treat `PLAYTESTING.md` as the active gameplay/playability notes file
+- Treat `TASKS.md` as the canonical future roadmap and backlog
 - Treat `handoff_archive/` as historical evidence, not active context
 - Treat `~/.codex/memories/` and `.claude/agent-memory/` as assistant-local aids, not the source of truth for project state
 - Codex is the primary implementation/debugging agent. Claude is used mainly

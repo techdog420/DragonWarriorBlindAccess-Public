@@ -6,6 +6,51 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Release-document checkpoint (`2026-07-31`): PR #7 added the player README at
+  commit `82ffbad`. The release branch corrects its unsupported-ROM opt-in,
+  NVDA/JAWS/SAPI5 backend wording, teleport state/save-risk warning, JoyToKey
+  packaging scope, separate keyboard-guide pointer, and stock FCEUX startup
+  limitation. The standalone keyboard guide ships teleport enabled with exact
+  controls and warns that misuse can corrupt later gameplay or save data while
+  leaving the original ROM untouched. Ten documentation tests, 37 other release
+  tests, and `git diff --check` pass.
+- Licensed release-runtime checkpoint (`2026-07-31`): the player package now
+  carries real project and third-party notices plus a same-version FCEUX/Qt/NVDA
+  corresponding-source process. Eight unused FFmpeg DLLs were removed; ANGLE
+  and Mesa `opengl32sw.dll` remain as documented graphics fallbacks. Speech now
+  packages only the official pinned 64-bit NVDA Controller Client, selects
+  active NVDA explicitly, then installed JAWS, then SAPI5, and has six focused
+  backend-selection tests. Two deterministic licensed builds contained 689
+  payload files, no ROM/save data or FFmpeg files, and produced the same
+  SHA-256. The 47,777,459-byte ZIP is 58,279,624 bytes smaller than the earlier
+  internal ZIP. The full local smoke suite, 37 release unit tests, and
+  `git diff --check` pass. Because these runtime changes followed the
+  earlier live acceptance, run separate final packaged NVDA and JAWS smoke
+  passes after the final README and release keyboard guide are installed.
+- Non-ASCII player-package acceptance (`2026-07-31`): the untouched rebuilt
+  ROM-free ZIP was extracted to
+  `C:\tmp\DWA Rebuilt 20260731 – naïve тест 日本語`, then setup installed the
+  verified US Rev 1 ROM. First launch and repeat launch produced responsive
+  qfceux PIDs 38776 then 27476, selected `NVDA reason=auto`, reached speech
+  status `READY`, narrated the title, retained ASCII 8.3 aliases in
+  `SDL.LuaScript` and `SDL.LastLoadLua`, and kept an advancing package keyboard
+  heartbeat. The user manually confirmed object navigation, Enter opening the
+  title menu, `F` opening New Quest, and a quick post-restart key pass with the
+  same corrected source. This validates a non-ASCII extraction path only; a
+  non-ASCII Windows username was not tested.
+- Clean player-package input acceptance (`2026-07-31`): the rebuilt package in
+  a path containing spaces launched and repeat-launched with packaged JAWS
+  speech `READY`. After the keyboard-bridge launch paths were explicitly
+  quoted, its package-local heartbeat advanced normally. The user confirmed
+  arrow/Enter and additional keyboard inputs reached the game, physical
+  controller presses were also recognized, and FCEUX paused while its main
+  menu was open as intended. A later NVDA-only repeat launch found NVDA running
+  with no JAWS process, selected `NVDA reason=auto`, reached speech status
+  `READY`, and was manually confirmed speaking by the user. Refreshing
+  `SDL.LuaScript` and `SDL.LastLoadLua`
+  after graceful old-process shutdown preserved Lua startup on the repeat
+  launch. This earlier ASCII-path process has been superseded by the clean
+  Unicode-path acceptance above.
 - FCEUX menu and teleport input acceptance (`2026-07-31`): the launcher-backed
   empty native keyboard profile, pause-on-menu setting, and suspended bridge
   kept an `Alt+F`, three-Down, Escape sequence out of the ROM; Mountain Cave

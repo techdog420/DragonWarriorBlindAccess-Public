@@ -1,0 +1,24 @@
+Corresponding source for bundled copyleft components
+====================================================
+
+The player package includes a modified FCEUX 2.6.6 executable, Qt 5.15.2
+libraries, and the NVDA Controller Client 2026.1.1 library.
+
+Complete corresponding source is distributed at no charge as the sibling release asset:
+
+Dragon-Warrior-Accessibility-{{RELEASE_VERSION}}-Corresponding-Source.zip
+
+Obtain that asset from the same download page as the player package. It
+contains the patched FCEUX source and build instructions, the exact Qt source
+archives used by the bundled Qt libraries, and the exact NVDA source snapshot
+for the controller client. No upstream account or payment is required.
+
+FCEUX source revision:
+34eb7601c415b81901fd02afbd5cfdc84b5047ac
+
+NVDA source revision:
+5d92106f17e461dac62aa48257bbbf4183e033d0
+
+The source asset must remain available wherever this binary release is
+offered. If the player package is mirrored, mirror the corresponding-source
+asset and this notice with it.

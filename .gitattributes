@@ -5,3 +5,9 @@
 *.dll binary
 *.exe binary
 *.png binary
+*.zip binary
+
+# Unified diff files intentionally contain context markers before tabs and
+# blank context lines. Do not treat those patch-format bytes as source
+# whitespace errors.
+*.patch -whitespace

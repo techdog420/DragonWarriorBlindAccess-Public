@@ -111,6 +111,14 @@ LUA_TEST_FILES = [
 
 PYTHON_FILES = [
     "speech_bridge.py",
+    "test_player_install.py",
+    "test_player_launch.py",
+    "test_player_package.py",
+    "test_release_keyboard_guide.py",
+    "test_release_licenses.py",
+    "test_release_readme.py",
+    "test_speech_bridge.py",
+    "test_speech_runtime_package.py",
     "test_tolk.py",
     "run_tests.py",
 ]
@@ -215,7 +223,7 @@ def check_python_syntax() -> tuple[bool, str]:
 
 
 def check_shell_syntax() -> tuple[bool, str]:
-    bash = shutil_which("bash")
+    bash = get_bash_runtime()
     if not bash:
         return False, "bash not found on PATH"
     return run_command("shell syntax", [bash, "-n", *SHELL_FILES])
@@ -287,7 +295,7 @@ def check_bridge_config() -> tuple[bool, str]:
 
 
 def check_command_queue() -> tuple[bool, str]:
-    bash = shutil_which("bash")
+    bash = get_bash_runtime()
     if not bash:
         return False, "bash not found on PATH"
 
@@ -347,6 +355,14 @@ def check_command_queue() -> tuple[bool, str]:
 
 def shutil_which(name: str) -> str | None:
     return shutil.which(name)
+
+
+def get_bash_runtime() -> str | None:
+    if os.name == "nt":
+        git_bash = Path(r"C:\Program Files\Git\bin\bash.exe")
+        if git_bash.is_file():
+            return str(git_bash)
+    return shutil_which("bash")
 
 
 def main() -> int:

@@ -2,6 +2,81 @@
 
 Updated: 2026-07-31
 
+## Release Installation Handoff
+
+- Release licensing and source packaging are now implemented. Root `LICENSE`
+  is MIT under Bill Freeman's name, `LICENSES.md` defines its scope, and the
+  player builder rejects placeholder licenses or source notices. The package
+  includes the real FCEUX, Qt, SDL2, libarchive, Lua, NVDA Controller Client,
+  Python, Python-package, ANGLE, and Mesa llvmpipe notices. The matching
+  deterministic corresponding-source ZIP contains the patched tracked FCEUX
+  tree plus pinned Qt and NVDA sources; two builds produced SHA-256
+  `53243A90C3798CD0C95917B22C3A8C94824926D9A471BCEAAD85D22B20059EC7`.
+  Keep that ZIP beside the player ZIP for every published release.
+- The release runtime no longer carries eight unused FFmpeg DLLs. The first
+  licensed player rebuild reduced the ZIP from 106,057,083 to 47,777,459 bytes,
+  a reduction of 58,279,624 bytes. Qt's ANGLE files and `opengl32sw.dll` remain
+  intentionally for graphics compatibility and now have matching notices.
+  Speech packaging now installs only the official pinned 64-bit NVDA
+  Controller Client DLL; JAWS uses its installed COM API, and SAPI5 remains the
+  fallback. NVDA wins if NVDA and JAWS are unexpectedly active together.
+  Re-run one final packaged NVDA launch and one packaged JAWS launch after the
+  final README is supplied; no simultaneous-reader test is
+  required. Two 689-file player builds were byte-identical at SHA-256
+  `246086C1CCEFC486EA9B78354324FC31CA0E9D14CB974EEF436882B0B5CA785A`;
+  the archive contains zero ROM/save files, zero FFmpeg files, one screen-reader
+  DLL, 17 license entries, and no placeholder license text. The full local
+  smoke suite, 37 release unit tests, and `git diff --check` pass.
+- A clean rebuilt player package now launches and repeat-launches end to end
+  from the non-ASCII extraction path
+  `C:\tmp\DWA Rebuilt 20260731 – naïve тест 日本語`. The untouched rebuilt ZIP
+  contained zero ROMs, setup copied the supported 81,936-byte US Rev 1 ROM with
+  SHA-256 `676B89D76CF9E83EED76C0A67F81DA906916F0BCE321CF3A9A39AC78BC9C0845`,
+  and first/repeat launch produced responsive qfceux PIDs 38776 then 27476.
+  Both runs selected `NVDA reason=auto`, wrote `READY`, narrated the title, and
+  retained ASCII Lua aliases in both private config keys; the final package
+  keyboard heartbeat advanced from 102 to 105. Using the same corrected source
+  immediately before the clean rebuild, the user manually confirmed object
+  navigation, Enter opening the title menu, and `F` opening New Quest on first
+  launch, then passed a quick manual key test after repeat launch. This proves a
+  non-ASCII extraction folder, not a non-ASCII Windows username.
+- Root cause of the silent earlier launches was `-bginput 0`. That is a
+  Windows-native FCEUX option, but Qt `qfceux.exe` does not register it;
+  argument parsing returned an error and silently skipped ROM loading. All Qt
+  launch branches now omit it, and use split `--loadlua PATH` syntax where CLI
+  Lua loading is requested.
+- Three additional package-path/restart bugs are fixed. `Start-Process` now
+  embeds quotes around the keyboard-bridge script and output paths, so an
+  extracted folder containing spaces does not truncate them. The launcher also
+  refreshes `SDL.LuaScript` and `SDL.LastLoadLua` only after an old FCEUX has
+  fully exited, preventing its shutdown save from clearing the next launch's
+  autoload path. For non-ASCII paths, player-facing logs keep the original path
+  while FCEUX receives Windows 8.3 aliases for its executable, ROM, Lua, and
+  private config directory; rooted Lua aliases are preserved instead of being
+  expanded back to Unicode by Windows PowerShell 5.1. Fourteen focused launcher
+  tests cover these regressions.
+- Stock Qt FCEUX loads a configured Lua script before its emulator worker
+  starts, so a frame-advancing script deadlocks startup. The release workflow
+  carries `release\fceux-v2.6.6-deferred-startup-lua.patch`, which defers the
+  configured script until the first completed emulation frame. The
+  reproducible builder `release\build_fceux_runtime.ps1` pins upstream commit
+  `34eb7601c415b81901fd02afbd5cfdc84b5047ac` and emits a required build marker.
+  The fresh verified executable SHA-256 is
+  `AB8C668B6DFA87352B3911312ACFBE5BB928E36B49CB597AACD8685FDA75EEE1`.
+- The most recent internal player ZIP used temporary README and keyboard-guide
+  fixtures, so it is not the jam release artifact. The release-ready keyboard
+  reference now lives at `release\Keyboard Commands.txt`; four focused tests
+  keep its 26 accessibility bindings aligned with `dw_access.ini` and verify
+  that developer dump shortcuts stay out of the player guide. PR #7 added the
+  final `README.md` at commit `82ffbad`; `codex/game-jam-release` adds verified
+  release corrections for unsupported ROM opt-in, speech backends, teleport
+  save-state risk, JoyToKey scope, keyboard-guide discovery, and stock FCEUX
+  startup limits. Licensing, third-party
+  notices, corresponding source, runtime pruning, and strict packaging checks
+  are complete. Choose the jam version, rebuild with `README.md` and the release
+  keyboard guide, publish the corresponding-source ZIP beside it, then run the final NVDA, JAWS,
+  gameplay/save/relaunch matrix. A non-ASCII Windows username remains untested.
+
 ## Immediate FCEUX Handoff
 
 - FCEUX menu/input isolation and selected-teleport recovery are release-gated
