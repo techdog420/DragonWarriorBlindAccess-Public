@@ -1,9 +1,19 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-07-31
+Updated: 2026-08-03
 
 ## Release Installation Handoff
 
+- Development-launcher correction (`2026-08-03`): the local default
+  `D:\emulation\fceux\bin\qfceux.exe` crashed three consecutive launches with
+  native exception `0xc0000005` at `qfceux+0x21eeb5`, two seconds after process
+  start. The same developer launcher, ROM, and `main.lua` passed with the
+  verified patched runtime under `.tools\fceux-release-runtime-verified`:
+  qfceux remained responsive, the frame loop advanced, the exact launcher probe
+  was consumed at frame 60, and JAWS spoke the title. `launch_dw.ps1` and
+  `launch_dw.sh` now prefer that runtime when both its executable and
+  `FCEUX-ACCESSIBILITY-BUILD.txt` marker exist; explicit path/environment
+  overrides remain authoritative.
 - Explorer-launch hotfix (`2026-07-31`): the published `0.1.0-alpha` package
   exposed a native batch-to-PowerShell quoting bug when the user double-clicked
   `Install Dragon Warrior.cmd` from

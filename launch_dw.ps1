@@ -20,6 +20,20 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $PSCommandPath
 
+function Get-DefaultFceuxPath {
+    param([string] $LauncherDirectory)
+
+    $verifiedRuntimeDirectory = Join-Path $LauncherDirectory ".tools\fceux-release-runtime-verified"
+    $verifiedExecutable = Join-Path $verifiedRuntimeDirectory "qfceux.exe"
+    $verifiedMarker = Join-Path $verifiedRuntimeDirectory "FCEUX-ACCESSIBILITY-BUILD.txt"
+    if ((Test-Path -LiteralPath $verifiedExecutable -PathType Leaf) -and
+        (Test-Path -LiteralPath $verifiedMarker -PathType Leaf)) {
+        return $verifiedExecutable
+    }
+
+    return "D:\emulation\fceux\bin\qfceux.exe"
+}
+
 function Resolve-LauncherPath {
     param(
         [string] $CliValue,
@@ -710,7 +724,8 @@ function Wait-ForCommandPolling {
     return $false
 }
 
-$FceuxPath = Resolve-LauncherPath -CliValue $FceuxPath -EnvName "DW_FCEUX_PATH" -DefaultValue "D:\emulation\fceux\bin\qfceux.exe"
+$defaultFceuxPath = Get-DefaultFceuxPath -LauncherDirectory $scriptDir
+$FceuxPath = Resolve-LauncherPath -CliValue $FceuxPath -EnvName "DW_FCEUX_PATH" -DefaultValue $defaultFceuxPath
 $RomPath = Resolve-LauncherPath -CliValue $RomPath -EnvName "DW_ROM_PATH" -DefaultValue "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 $LuaPath = Resolve-LauncherPath -CliValue $LuaPath -EnvName "DW_LUA_PATH" -DefaultValue (Join-Path $scriptDir "main.lua")
 

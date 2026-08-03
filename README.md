@@ -216,10 +216,12 @@ or remap them in BizHawk before playing.
 
 #### Developer and WSL launchers
 
-From WSL, `./launch_dw.sh` defaults to FCEUX. Use
-`./launch_dw.sh --emulator bizhawk` only when you intentionally want the
-BizHawk path. These helpers are primarily for development and testing; most
-players should use the automatic installer or the Windows launchers above.
+From WSL, `./launch_dw.sh` defaults to FCEUX. When the verified patched runtime
+exists under `.tools/fceux-release-runtime-verified`, the development launcher
+selects it automatically; `--fceux-path` and `DW_FCEUX_PATH` still override the
+selection. Use `./launch_dw.sh --emulator bizhawk` only when you intentionally
+want the BizHawk path. These helpers are primarily for development and testing;
+most players should use the automatic installer or the Windows launchers above.
 
 ## Movement and Navigation
 

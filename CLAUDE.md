@@ -35,7 +35,8 @@ When Claude does make implementation changes instead of review-only notes:
 
 - **This project**: `D:\modding\dragonwarrior1\`
 - **BizHawk emulator**: `D:\emulation\bizhawk\EmuHawk.exe`
-- **FCEUX player-facing emulator**: `D:\emulation\fceux\bin\qfceux.exe`
+- **Preferred development FCEUX runtime**: `.tools\fceux-release-runtime-verified\qfceux.exe`
+- **Legacy FCEUX fallback**: `D:\emulation\fceux\bin\qfceux.exe`
 - **ROM**: `D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes`
 - **Pokemon Access reference**: `D:\games\pokemon-access\lua\`
 - **DataCrystal RAM map**: https://datacrystal.tcrf.net/wiki/Dragon_Warrior/RAM_map
@@ -74,9 +75,9 @@ Direct Windows BizHawk command-line launch is still supported when needed:
 D:\emulation\bizhawk\EmuHawk.exe --lua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 ```
 
-Direct Windows FCEUX launch:
+Direct Windows FCEUX launch with the verified patched runtime:
 ```
-D:\emulation\fceux\bin\qfceux.exe --loadlua=D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
+D:\modding\dragonwarrior1\.tools\fceux-release-runtime-verified\qfceux.exe --loadlua D:\modding\dragonwarrior1\main.lua "D:\emulation\nes\Dragon Warrior (USA) (Rev 1).nes"
 ```
 
 To reload after editing: in BizHawk, use the Lua Console reload/open-script workflow or restart through `./launch_dw.sh`. In FCEUX, use Script > Reload or close and re-open the script window.
@@ -86,8 +87,11 @@ To reload after editing: in BizHawk, use the Lua Console reload/open-script work
 - `./launch_dw.sh` is the preferred WSL entrypoint and defaults to FCEUX unless `DW_EMULATOR` overrides it.
 - FCEUX launch should show `Emulator: FCEUX` in `./launch_dw.sh --dry-run`.
 - BizHawk remains available through `./launch_dw.sh --emulator bizhawk`, `./launch_bizhawk.sh`, or `launch_bizhawk.ps1`, but use it only when the task benefits from its reload/debug tooling.
-- The current tested FCEUX player-facing baseline is `D:\emulation\fceux\bin\qfceux.exe` reporting `FCEUX 2.6.6`.
-- The FCEUX build accepts startup Lua loading via `--loadlua=<path>`. The spaced form `--loadlua <path>` did not reliably load scripts in local testing.
+- The current tested development baseline is the repository-local verified
+  FCEUX 2.6.6 runtime with the deferred-startup Lua patch. The launcher uses it
+  automatically when both the executable and build marker are present.
+- The legacy `D:\emulation\fceux\bin\qfceux.exe` fallback lacks that patch and
+  can crash while `main.lua` calls `emu.frameadvance()` during startup.
 - `SDL.AutoResume` is old-session restore, not the command-polling fix. Leave it alone and use explicit `--state-slot` / `--loadstate` when a launch slot is needed.
 - A fresh `dw_debug.log` header only proves that startup code ran. Treat the emulator as truly ready only after it consumes a queued command from `dw_commands.txt`.
 

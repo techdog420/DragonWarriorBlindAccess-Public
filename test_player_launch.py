@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -227,6 +228,70 @@ try {
         text = (REPO_ROOT / "launch_dw.ps1").read_text(encoding="utf-8")
         self.assertIn("[switch] $IsolatedProcessScope", text)
         self.assertIn("Get-TargetEmulatorProcesses", text)
+
+    def test_developer_launcher_prefers_repo_verified_fceux_runtime(self):
+        developer_root = self.temp_root / "developer checkout"
+        patched_runtime = (
+            developer_root
+            / ".tools"
+            / "fceux-release-runtime-verified"
+            / "qfceux.exe"
+        )
+        patched_runtime.parent.mkdir(parents=True)
+        patched_runtime.write_bytes(b"patched qfceux fixture\n")
+        (patched_runtime.parent / "FCEUX-ACCESSIBILITY-BUILD.txt").write_text(
+            "FCEUX 2.6.6 Dragon Warrior Accessibility runtime\n",
+            encoding="utf-8",
+        )
+
+        launcher = developer_root / "launch_dw.ps1"
+        shutil.copy2(REPO_ROOT / "launch_dw.ps1", launcher)
+        for filename in ("launch_dw.cmd", "keyboard_bridge.ps1"):
+            (developer_root / filename).write_text("test fixture\n", encoding="utf-8")
+        lua_path = developer_root / "main.lua"
+        lua_path.write_text("-- test fixture\n", encoding="utf-8")
+        rom_path = developer_root / "Dragon Warrior.nes"
+        rom_path.write_bytes(b"test fixture rom\n")
+
+        env = os.environ.copy()
+        for name in ("DW_FCEUX_PATH", "FCEUX_CONFIG_DIR", "FCEUX_HOME"):
+            env.pop(name, None)
+        result = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(launcher),
+                "-RomPath",
+                str(rom_path),
+                "-LuaPath",
+                str(lua_path),
+                "-DryRun",
+            ],
+            text=True,
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            timeout=15,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn(f"Emulator: {patched_runtime}", result.stdout)
+
+    def test_wsl_launcher_checks_for_repo_verified_fceux_runtime(self):
+        text = (REPO_ROOT / "launch_dw.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'verified_fceux_path="$script_dir/.tools/fceux-release-runtime-verified/qfceux.exe"',
+            text,
+        )
+        self.assertIn(
+            'verified_fceux_marker="$script_dir/.tools/fceux-release-runtime-verified/FCEUX-ACCESSIBILITY-BUILD.txt"',
+            text,
+        )
 
     def test_player_launcher_uses_speech_readiness_instead_of_debug_log(self):
         player_text = PLAYER.read_text(encoding="utf-8")

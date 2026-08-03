@@ -46,16 +46,20 @@ Do not:
 The project uses a command queue file and emulator polling loop.
 
 Important behavior:
-- Current default gameplay emulator path is
-  `D:\emulation\fceux\bin\qfceux.exe` 2.6.6
+- Development launchers prefer the verified patched FCEUX runtime at
+  `.tools\fceux-release-runtime-verified\qfceux.exe` when its
+  `FCEUX-ACCESSIBILITY-BUILD.txt` marker is present. The legacy fallback is
+  `D:\emulation\fceux\bin\qfceux.exe` 2.6.6; that older build can crash while
+  starting frame-advancing Lua because it lacks the deferred-startup patch.
 - Explicit BizHawk automation/debug/reload path is
   `D:\emulation\bizhawk\EmuHawk.exe`
 - If older handoff text, assistant-local memory, or Claude memory says BizHawk
   is the default runtime, treat that as superseded by the
   current repo docs.
-- FCEUX command-line ROM/Lua loading is best-effort on this build; if launch
-  readiness fails, manually load the ROM and `main.lua` in FCEUX or use BizHawk
-  for automated startup
+- FCEUX command-line ROM/Lua loading is best-effort on unpatched builds. Prefer
+  the verified runtime above; if an explicitly overridden build fails launch
+  readiness, manually load the ROM and `main.lua` or use BizHawk for automated
+  startup.
 - FCEUX `SDL.AutoResume` is old-session restore, not the command-polling fix;
   leave it untouched and use explicit `--state-slot` / `--loadstate` when a
   launch slot is needed

@@ -70,7 +70,8 @@ remain focused while `auto_walk` follows the active guided route internally.
 The mod uses a command queue file and emulator polling loop.
 
 Important details:
-- Preferred gameplay launcher: `./launch_dw.sh` (defaults to FCEUX)
+- Preferred gameplay launcher: `./launch_dw.sh` (defaults to FCEUX and prefers
+  the repository-local verified patched runtime when present)
 - Explicit BizHawk automation/debug launcher:
   `./launch_dw.sh --emulator bizhawk` or `./launch_bizhawk.sh`
 - Cross-emulator save transfer should use raw battery save data, not emulator
@@ -247,10 +248,12 @@ Durable FCEUX facts:
   after suspension it waits for all mapped game keys to be physically neutral
   before resuming. Lua treats missing, legacy-active, suspended, and expired
   bridge states as fail-closed and emits one neutral release if necessary.
-- FCEUX command-line ROM/Lua startup is best-effort on this machine. A failed
-  readiness wait may still leave qfceux open; manually loading the ROM and
-  `main.lua` remains the preferred recovery for normal live work. Use BizHawk
-  only when its automated startup/reload tooling is worth the lag.
+- Development launchers prefer
+  `.tools\fceux-release-runtime-verified\qfceux.exe` when the matching build
+  marker exists. The legacy `D:\emulation\fceux\bin\qfceux.exe` fallback lacks
+  the deferred-startup Lua patch and can crash with `0xc0000005` while starting
+  frame-advancing `main.lua`. Explicit CLI and `DW_FCEUX_PATH` overrides remain
+  supported.
 - FCEUX `SDL.AutoResume` is old-session restore. Do not force it as a polling
   fix; this repo uses explicit `--state-slot` / `--loadstate` when a launch
   should resume from a slot.

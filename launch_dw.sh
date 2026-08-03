@@ -5,7 +5,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 default_emulator="${DW_EMULATOR:-fceux}"
 default_bizhawk_path="${DW_BIZHAWK_PATH:-/mnt/d/emulation/bizhawk/EmuHawk.exe}"
-default_fceux_path="${DW_FCEUX_PATH:-/mnt/d/emulation/fceux/bin/qfceux.exe}"
+verified_fceux_path="$script_dir/.tools/fceux-release-runtime-verified/qfceux.exe"
+verified_fceux_marker="$script_dir/.tools/fceux-release-runtime-verified/FCEUX-ACCESSIBILITY-BUILD.txt"
+if [ -f "$verified_fceux_path" ] && [ -f "$verified_fceux_marker" ]; then
+    repo_default_fceux_path="$verified_fceux_path"
+else
+    repo_default_fceux_path="/mnt/d/emulation/fceux/bin/qfceux.exe"
+fi
+default_fceux_path="${DW_FCEUX_PATH:-$repo_default_fceux_path}"
 default_rom_path="${DW_ROM_PATH:-/mnt/d/emulation/nes/Dragon Warrior (USA) (Rev 1).nes}"
 default_lua_path="${DW_LUA_PATH:-$script_dir/main.lua}"
 
