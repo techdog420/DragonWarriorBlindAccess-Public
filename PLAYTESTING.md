@@ -1,11 +1,78 @@
 # Playtesting Notes
 
-Updated: 2026-07-31
+Updated: 2026-08-06
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Complete Charlock dungeon (`2026-08-06`): the full intended spine is now
+  live-proven from ground-floor entrance `(10,19)` through the hidden SEARCH
+  stair `(10,1)`, B1 `(9,0)->(8,19)`, B2 `(5,0)->(3,0)`, the B3 false-return
+  loop and true descent `(1,6)`, B4 `(0,9)->(2,2)`, B5 perimeter
+  `(9,0)->(0,0)`, B6 lower route `(0,6)->(9,6)`, and Dragonlord's Lair entry
+  `(10,29)` to boss approach `(17,24)`. The final floor needs four
+  coordinate-scoped raw-type-0 passages at `(28,13)`, `(28,14)`, `(25,16)`,
+  and `(25,21)`; the loaded source route crossed them and completed without
+  runtime blocks. TALK at `(17,24)` produced Dragonlord's opening dialogue,
+  and reloaded object browsing identifies the stationary NPC at `(16,24)` as
+  `Dragonlord`. Verification passes `79/79` map-reader and `109/109` object
+  tests, Lua syntax, and `git diff --check`. The save state is restored at
+  `(17,24)`, field clear directly before the encounter.
+- Charlock B3 main route (`2026-08-05`): STAIRS at B2 `(3,0)` entered B3
+  `(7,0)`. The first right-edge/lower route reached false return stair `(0,9)`,
+  which crossed B2 `(1,9)->(0,9)->(0,8)` and re-entered B3 at `(5,4)`. From
+  there, live movement decoded the central alcove and connected north through
+  `(6,4)->(6,3)->(6,2)`, west to `(4,2)`, north to `(4,0)`, west across the
+  hidden top boundary, and south through `(0,0)..(0,6)` to the real B4 descent
+  `(1,6)`. Clean probes establish type-0/type-8 walls and real separators
+  `(6,0)` and `(0,7)`. Source now models all proven boundary cells and all six
+  ROM-backed B3 stairs. Verification passes `75/75` map-reader and `108/108`
+  object tests, Lua syntax, and `git diff --check`. Reload at B3 `(1,6)`, then
+  verify the loaded stair object and descend to expected B4 `(0,9)`.
+- Charlock B1/B2 main route (`2026-08-04`): B1's hidden perimeter corridor is
+  live-proven from return stair `(9,0)` to main descent `(8,19)`, including the
+  real separator at `(0,7)`. STAIRS entered B2 map `0x10` at `(5,0)`. The B2
+  route crossed the eastern and lower maze, followed the live-passable west
+  edge `(0,6)..(0,3)`, and reached the real B3 descent `(3,0)`. Repeated clean
+  probes establish type-0 and type-8 as B2 walls, while the stair types and
+  live boundary route are now modeled. Stale B2 stair objects `(7,7)` and
+  `(3,3)` are replaced by main stairs `(5,0)` up and `(3,0)` down. Focused
+  verification passes `74/74` map-reader and `108/108` object tests. Reload at
+  B2 `(3,0)` before the final loaded-model and STAIRS transition check.
+- Charlock ground floor (`2026-08-04`): map `0x02` is decoded and live-proven.
+  The corrected planner follows the intended western route from entrance
+  `(10,19)` to throne `(10,3)` instead of crossing type-4 stone walls. SEARCH
+  at the throne gives the wind clue; the direct north wall at `(10,2)` remains
+  correctly blocked, and the route goes around to hidden coordinate `(10,1)`.
+  SEARCH there reveals the Secret Passage, and STAIRS enters Dragonlord B1 map
+  `0x0F` at `(9,0)`. Loaded ordinary autowalk later reached `(10,1)` from
+  `(9,1)` with no runtime blocks. B1 return STAIRS is `(9,0)`; the previous
+  `(10,1)` object coordinate said no stairs and is corrected in source.
+  Verification passes 74 map-reader and 108 object tests, Lua syntax, and
+  `git diff --check`.
+- Charlock Castle route (`2026-08-03`): live probing crossed the formed
+  Rainbow Bridge and established the island corridor from `(63,49)` through
+  its south road at `(56,64)` and west rise at `(49,57)` to the castle.
+  Stepping onto World Map `(48,48)` entered Charlock Castle map `0x02` at
+  `(10,19)`; leaving south returned to `(48,48)`. New strict outbound and
+  return routes connect the Swamp Cave south doorstep `(103,49)` with the
+  castle, including the already proven bridge-inlet detour. No runtime or
+  permanent blockers were added. Loaded `charlock_return` completed into Swamp
+  Cave, and loaded `charlock_castle` completed from `(103,49)` into Charlock at
+  `(10,19)` with arrival and route/path cleanup. Two outbound west steps,
+  `(58,55)->(57,55)` and `(50,61)->(49,61)`, exhausted cadence retries but
+  passed clean same-origin raw holds; their waypoints now use the established
+  60-frame sustained-hold window and await a focused post-reload check.
+- Rainbow Bridge route (`2026-08-03`): Travel now exposes the Rainbow Bridge
+  unlock point at `(65,49)`. The recommended staging point is Swamp Cave South
+  Entrance `(104,49)`, following the north road west and detouring around the
+  water inlet through `(70,50)` and `(67,50)`. Using the Rainbow Drop set the
+  bridge-state bit, and ordinary movement crossed bridge tile `(64,49)` from
+  both shores. The complete eastbound return entered Swamp Cave map `0x15` at
+  `(0,29)`, announced route arrival, and cleared guidance with no runtime
+  blockers. One cave-entry run needed the route executor's two bounded timing
+  retries; it recovered without player intervention or map-data changes.
 - Explorer installer/launcher regression (`2026-07-31`): manual download,
   extraction to `C:\tmp1\Dragon Warrior Accessibility 0.1.0-alpha`, and
   double-click of `Install Dragon Warrior.cmd` failed before setup with

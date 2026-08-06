@@ -272,11 +272,48 @@ local STAIRS = {
     -- The early floors below are still the best-known mappings from earlier
     -- reverse-engineering. Deeper floor IDs were mis-labeled in older builds,
     -- so we only keep the entries we can map confidently today.
-    {map = 0x0F, x = 10, y = 1, name = "Stairs Up", dest = "Charlock Castle", object_name = "North Stairs Up"},
-    {map = 0x0F, x = 7, y = 7, name = "Stairs Down", dest = "B2", object_name = "South Stairs Down"},
-    {map = 0x10, x = 7, y = 7, name = "Stairs Up", dest = "B1", object_name = "Southeast Stairs Up"},
-    {map = 0x10, x = 3, y = 3, name = "Stairs Down", dest = "B3", object_name = "Northwest Stairs Down"},
-    {map = 0x11, x = 3, y = 3, name = "Stairs Up", dest = "B2", object_name = "Stairs Up"},
+    -- Live STAIRS checks on 2026-08-04 returned to Charlock from the B1
+    -- arrival stand (9,0); the older (10,1) coordinate reported no stairs.
+    {map = 0x0F, x = 9, y = 0, name = "Stairs Up", dest = "Charlock Castle", object_name = "North Stairs Up"},
+    -- The pinned ROM stair graph places B1's main-spine descent at (8,19);
+    -- the older (7,7) entry was provisional and pointed at ordinary floor.
+    {map = 0x0F, x = 8, y = 19, name = "Stairs Down", dest = "B2", object_name = "South Stairs Down"},
+    -- Live main-spine traversal on 2026-08-04 entered B2 at (5,0), then
+    -- followed the decoded floor route to the real B3 descent at (3,0).
+    -- The older (7,7) and (3,3) entries were ordinary floor/wall placeholders.
+    {map = 0x10, x = 5, y = 0, name = "Stairs Up", dest = "B1", object_name = "North Stairs Up"},
+    {map = 0x10, x = 3, y = 0, name = "Stairs Down", dest = "B3", object_name = "North Stairs Down"},
+    -- B3 has four distinct returns to B2 and two descents to B4. The main
+    -- route entered at (7,0), traversed the false-stair loop through (0,9),
+    -- re-entered at (5,4), and reached the true descent at (1,6). The other
+    -- two coordinates come from the same pinned ROM stair graph.
+    {map = 0x11, x = 7, y = 0, name = "Stairs Up", dest = "B2", object_name = "North Stairs Up"},
+    {map = 0x11, x = 2, y = 2, name = "Stairs Up", dest = "B2", object_name = "Northwest Stairs Up"},
+    {map = 0x11, x = 5, y = 4, name = "Stairs Up", dest = "B2", object_name = "Central Stairs Up"},
+    {map = 0x11, x = 0, y = 9, name = "Stairs Up", dest = "B2", object_name = "Southwest Stairs Up"},
+    {map = 0x11, x = 1, y = 6, name = "Stairs Down", dest = "B4", object_name = "West Stairs Down"},
+    {map = 0x11, x = 7, y = 7, name = "Stairs Down", dest = "B4", object_name = "Southeast Stairs Down"},
+    -- B4 has two returns to B3 and two descents to B5. The main-spine pair
+    -- (0,9) / (2,2) was traversed live on 2026-08-06; the other coordinates
+    -- come from the same pinned ROM stair graph and were inspected live.
+    {map = 0x12, x = 0, y = 9, name = "Stairs Up", dest = "B3", object_name = "Southwest Stairs Up"},
+    {map = 0x12, x = 7, y = 7, name = "Stairs Up", dest = "B3", object_name = "Southeast Stairs Up"},
+    {map = 0x12, x = 2, y = 2, name = "Stairs Down", dest = "B5", object_name = "Northwest Stairs Down"},
+    {map = 0x12, x = 8, y = 1, name = "Stairs Down", dest = "B5", object_name = "Northeast Stairs Down"},
+    -- B5 has two returns to B4 and two descents to B6. The main perimeter
+    -- pair (9,0) / (0,0) was traversed live on 2026-08-06; the inner pair is
+    -- pinned to the ROM stair graph and remains a separately decoded branch.
+    {map = 0x13, x = 9, y = 0, name = "Stairs Up", dest = "B4", object_name = "Northeast Stairs Up"},
+    {map = 0x13, x = 4, y = 0, name = "Stairs Up", dest = "B4", object_name = "North Stairs Up"},
+    {map = 0x13, x = 0, y = 0, name = "Stairs Down", dest = "B6", object_name = "Northwest Stairs Down"},
+    {map = 0x13, x = 5, y = 5, name = "Stairs Down", dest = "B6", object_name = "Central Stairs Down"},
+    -- B6's main pair (0,6) / (9,6) was traversed live on 2026-08-06. The
+    -- upper pair is the ROM-backed false branch: (0,0) returns to B5, while
+    -- (9,0) loops back to (0,0) on this same floor.
+    {map = 0x14, x = 0, y = 6, name = "Stairs Up", dest = "B5", object_name = "West Stairs Up"},
+    {map = 0x14, x = 0, y = 0, name = "Stairs Up", dest = "B5", object_name = "Northwest Stairs Up"},
+    {map = 0x14, x = 9, y = 0, name = "Loop Stairs", dest = "B6", object_name = "Northeast Loop Stairs"},
+    {map = 0x14, x = 9, y = 6, name = "Stairs Down", dest = "Dragonlord's Lair", object_name = "East Stairs Down"},
 
     -- Swamp Cave (0x15)
     -- ROM up-stair table entry 15 00 1D at file offset 0xF486. Live checks
@@ -475,6 +512,13 @@ local OVERWORLD_LANDMARKS = {
     {dx = -14, dy =  14, name = "Mountain Cave"},
     {dx =  61, dy =   1, name = "Swamp Cave"},
     {dx =  61, dy =   6, name = "Swamp Cave South Entrance"},
+    {
+        dx = 22,
+        dy = 6,
+        name = "Rainbow Bridge unlock point",
+        id = "overworld_rainbow_bridge",
+        aliases = {"Rainbow Bridge", "Rainbow Drop", "Rainbow Drop use point"},
+    },
     {dx =  59, dy =  29, name = "Rimuldar"},
     {
         dx = 65,
@@ -1507,6 +1551,14 @@ local SERVICE_INTERACTION_OVERRIDES = {
 }
 
 local SERVICE_ROLE_OVERRIDES = {
+    -- Dragonlord's Lair uses the town/castle NPC table for the final encounter.
+    -- The boss occupies (16,24) and appears as a generic Old Man sprite in RAM;
+    -- expose his actual role without treating him as a normal service NPC.
+    [0x06] = {
+        cells = {
+            ["16,24"] = {name = "Dragonlord", infer_counter = false, service = false},
+        },
+    },
     -- User-validated Tantegel Castle MP restoration service. The interaction
     -- stand is modeled in SERVICE_INTERACTION_OVERRIDES above.
     [0x04] = {

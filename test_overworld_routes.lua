@@ -830,6 +830,276 @@ function tests.mountain_cave_return_keeps_physical_cave_selection_bound_to_activ
     routes.reset_for_tests()
 end
 
+function tests.rainbow_bridge_route_uses_bounded_westbound_segments()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("rainbow bridge", 0x01, 104, 49)
+
+    assert_equal(err, nil, "Rainbow Bridge route alias should resolve")
+    assert_equal(info.route.id, "rainbow_bridge", "route should target the Rainbow Bridge unlock stand")
+    assert_equal(info.object_id, "route_rainbow_bridge_02", "route should reuse the proven row-49 waypoint first")
+    assert_equal(
+        routes.active_route_matches_object({
+            id = "overworld_swamp_cave_south_entrance",
+            name = "Swamp Cave South Entrance",
+            x = 104,
+            y = 49,
+        }),
+        true,
+        "physical cave selection should not replace the manually started bridge route")
+
+    local first = assert(routes.plan_next_segment(0x01, 104, 49))
+    assert_equal(first.waypoint.x, 93, "first segment should reuse the validated westbound corridor")
+    assert_equal(first.waypoint.y, 49, "first segment should stay on row 49")
+    assert_equal(#first.steps, 11, "first segment should remain bounded to eleven steps")
+    assert_equal(first.steps[1], "left", "first segment should move west")
+    assert_equal(first.steps[11], "left", "first segment should remain straight west")
+
+    routes.observe_position(0x01, 93, 49)
+    routes.observe_position(0x01, 83, 49)
+    routes.observe_position(0x01, 73, 49)
+    local shore_turn = assert(routes.plan_next_segment(0x01, 73, 49))
+    assert_equal(shore_turn.waypoint.x, 70, "route should stop before the two-tile water inlet")
+    assert_equal(shore_turn.waypoint.y, 49, "shore turn should remain on the north road")
+
+    routes.observe_position(0x01, 70, 49)
+    local south = assert(routes.plan_next_segment(0x01, 70, 49))
+    assert_equal(south.waypoint.x, 70, "inlet detour should begin from the live-proven shore column")
+    assert_equal(south.waypoint.y, 50, "inlet detour should step one tile south")
+    assert_equal(south.steps[1], "down", "inlet detour should turn south before the water")
+
+    routes.observe_position(0x01, 70, 50)
+    local crossing = assert(routes.plan_next_segment(0x01, 70, 50))
+    assert_equal(crossing.waypoint.x, 67, "row-50 crossing should end at the peninsula")
+    assert_equal(crossing.waypoint.y, 50, "row-50 crossing should avoid the water on row 49")
+    assert_equal(#crossing.steps, 3, "row-50 crossing should be three west steps")
+
+    routes.observe_position(0x01, 67, 50)
+    routes.observe_position(0x01, 67, 49)
+    local arrival = routes.observe_position(0x01, 65, 49)
+
+    assert_contains(arrival.message, "Arrived at Rainbow Bridge unlock point", "route should finish on the Rainbow Drop use stand")
+    assert_equal(routes.is_active(), false, "Rainbow Bridge route should stop at the unlock stand")
+
+    routes.reset_for_tests()
+end
+
+function tests.rainbow_bridge_return_reverses_to_swamp_cave_south_entrance()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("rainbow bridge return", 0x01, 65, 49)
+
+    assert_equal(err, nil, "Rainbow Bridge return alias should resolve")
+    assert_equal(info.route.id, "rainbow_bridge_return", "return alias should use the eastbound route")
+    assert_equal(info.object_id, "route_rainbow_bridge_return_02", "return should first target the nearest east-road waypoint")
+    assert_equal(
+        routes.active_route_matches_object({
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+            x = 65,
+            y = 49,
+        }),
+        true,
+        "physical bridge selection should not replace the manually started return route")
+
+    local first = assert(routes.plan_next_segment(0x01, 65, 49))
+    assert_equal(first.waypoint.x, 67, "return should first reach the peninsula turn")
+    assert_equal(first.waypoint.y, 50, "return should cross the stateful corner without stopping on row 49")
+    assert_equal(#first.steps, 3, "return first segment should make the east-then-south turn continuously")
+    assert_equal(first.steps[1], "right", "return should move east")
+    assert_equal(first.steps[3], "down", "return should turn south without settling at (67,49)")
+    assert_equal(first.waypoint.route_hold_after_movement_start_frames, 60,
+        "return inlet should sustain the slow formed-bridge departure")
+    assert_equal(first.waypoint.route_early_twitch_timeout_frames, 60,
+        "return inlet should allow the observed late eastbound tile completion")
+    assert_equal(first.waypoint.route_reset_movement_on_turn_settle, false,
+        "return inlet should preserve movement state across the south turn")
+
+    routes.observe_position(0x01, 67, 50)
+    routes.observe_position(0x01, 70, 50)
+    routes.observe_position(0x01, 70, 49)
+    routes.observe_position(0x01, 73, 49)
+    routes.observe_position(0x01, 83, 49)
+    routes.observe_position(0x01, 93, 49)
+    local arrival = routes.observe_position(0x15, 0, 29)
+
+    assert_contains(arrival.message, "Arrived at Swamp Cave South Entrance", "return should finish when the cave entrance changes maps")
+    assert_equal(routes.is_active(), false, "Rainbow Bridge return should stop after entering Swamp Cave")
+
+    routes.reset_for_tests()
+end
+
+function tests.charlock_route_continues_across_bridge_to_live_castle_entry()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("charlock", 0x01, 103, 49)
+
+    assert_equal(err, nil, "Charlock route alias should resolve")
+    assert_equal(info.route.id, "charlock_castle", "route should target Charlock Castle")
+    assert_equal(info.object_id, "route_charlock_castle_02", "cave-exit start should head west instead of re-entering the cave")
+
+    local first = assert(routes.plan_next_segment(0x01, 103, 49))
+    assert_equal(first.waypoint.x, 93, "first Charlock segment should use the Rainbow Bridge east road")
+    assert_equal(first.waypoint.y, 49, "first Charlock segment should stay on row 49")
+    assert_equal(#first.steps, 10, "cave-exit segment should be ten west steps")
+    assert_equal(first.steps[1], "left", "Charlock route should leave the cave area westbound")
+
+    local route = routes._route_for_tests("charlock_castle")
+    local expected_island = {
+        {63, 49}, {61, 49}, {58, 50}, {58, 55},
+        {57, 55}, {57, 56}, {56, 56}, {56, 64}, {51, 64},
+        {52, 64}, {52, 63}, {50, 63}, {50, 61}, {49, 61}, {49, 57},
+        {51, 57}, {51, 49}, {48, 49}, {48, 48},
+    }
+    for index, coordinate in ipairs(expected_island) do
+        local waypoint = route.waypoints[index + 9]
+        assert_equal(waypoint.x, coordinate[1], "Charlock island waypoint " .. index .. " x")
+        assert_equal(waypoint.y, coordinate[2], "Charlock island waypoint " .. index .. " y")
+        assert_equal(waypoint.radius, 0, "Charlock island waypoint " .. index .. " should be strict")
+        if (coordinate[1] == 57 and coordinate[2] == 55)
+                or (coordinate[1] == 49 and coordinate[2] == 61) then
+            assert_equal(waypoint.route_hold_after_movement_start_frames, 60,
+                "Charlock slow-entry waypoint " .. index .. " should sustain the outbound press")
+            assert_equal(waypoint.route_early_twitch_timeout_frames, 60,
+                "Charlock slow-entry waypoint " .. index .. " should retain the late-completion window")
+        end
+    end
+
+    routes.observe_position(0x01, 93, 49)
+    routes.observe_position(0x01, 83, 49)
+    routes.observe_position(0x01, 73, 49)
+    routes.observe_position(0x01, 70, 49)
+    routes.observe_position(0x01, 70, 50)
+    routes.observe_position(0x01, 67, 50)
+    routes.observe_position(0x01, 67, 49)
+    routes.observe_position(0x01, 65, 49)
+    local crossing = assert(routes.plan_next_segment(0x01, 65, 49))
+    assert_equal(crossing.waypoint.x, 63, "Charlock route should cross to the island landing")
+    assert_equal(#crossing.steps, 2, "Rainbow Bridge crossing should be two west steps")
+    assert_equal(crossing.steps[1], "left", "Rainbow Bridge crossing should move west")
+
+    routes.observe_position(0x01, 63, 49)
+    routes.observe_position(0x01, 61, 49)
+    local inbound_turn = assert(routes.plan_next_segment(0x01, 61, 49))
+    assert_equal(inbound_turn.waypoint.x, 58, "inbound northeast turn should finish west of the stateful seam")
+    assert_equal(inbound_turn.waypoint.y, 50, "inbound northeast turn should descend before moving west")
+    assert_equal(#inbound_turn.steps, 4, "inbound northeast turn should stay continuous")
+    assert_equal(inbound_turn.steps[1], "down", "inbound northeast turn should descend first")
+    assert_equal(inbound_turn.steps[4], "left", "inbound northeast turn should finish westbound")
+
+    for _, coordinate in ipairs(expected_island) do
+        if coordinate[1] ~= 48 or coordinate[2] ~= 48 then
+            routes.observe_position(0x01, coordinate[1], coordinate[2])
+        end
+    end
+    local arrival = routes.observe_position(0x02, 10, 19)
+
+    assert_contains(arrival.message, "Arrived at Charlock Castle", "entering map 0x02 should complete the route")
+    assert_equal(routes.is_active(), false, "Charlock route should stop after entering the castle")
+
+    routes.reset_for_tests()
+end
+
+function tests.charlock_return_reverses_island_route_to_swamp_cave()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("return from charlock", 0x01, 48, 48)
+
+    assert_equal(err, nil, "Charlock return alias should resolve")
+    assert_equal(info.route.id, "charlock_return", "return alias should use the eastbound route")
+    assert_equal(info.object_id, "route_charlock_return_02", "castle exit should first step to the south approach")
+
+    local outbound = routes._route_for_tests("charlock_castle")
+    local inbound = routes._route_for_tests("charlock_return")
+    for outbound_index = 10, #outbound.waypoints do
+        local return_index = #outbound.waypoints - outbound_index + 1
+        local outbound_point = outbound.waypoints[outbound_index]
+        local return_point = inbound.waypoints[return_index]
+        assert_equal(return_point.x, outbound_point.x, "Charlock return island waypoint x should reverse outbound")
+        assert_equal(return_point.y, outbound_point.y, "Charlock return island waypoint y should reverse outbound")
+    end
+
+    local first = assert(routes.plan_next_segment(0x01, 48, 48))
+    assert_equal(first.waypoint.x, 48, "Charlock return should leave the castle on column 48")
+    assert_equal(first.waypoint.y, 49, "Charlock return should step south from the castle tile")
+    assert_equal(first.steps[1], "down", "Charlock return should initially move south")
+
+    routes.reset_for_tests()
+    routes.start("return from charlock", 0x01, 58, 50)
+    assert_equal(
+        routes.active_route_matches_object({
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+            x = 65,
+            y = 49,
+        }),
+        true,
+        "nearby Rainbow Bridge selection should not replace the active Charlock return")
+    local northeast_turn = assert(routes.plan_next_segment(0x01, 58, 50))
+    assert_equal(northeast_turn.waypoint.x, 61, "return should target the northeast shore without stopping in the trap")
+    assert_equal(northeast_turn.waypoint.y, 49, "return should finish north of the stateful seam")
+    assert_equal(#northeast_turn.steps, 4, "return northeast turn should stay in one segment")
+    assert_equal(northeast_turn.steps[1], "right", "return northeast turn should move east first")
+    assert_equal(northeast_turn.steps[4], "up", "return northeast turn should turn north without settling at (61,50)")
+
+    routes.observe_position(0x01, 61, 49)
+    routes.observe_position(0x01, 63, 49)
+    routes.observe_position(0x01, 65, 49)
+    local inlet_turn = assert(routes.plan_next_segment(0x01, 65, 49))
+    assert_equal(inlet_turn.waypoint.x, 67, "return inlet turn should finish on column 67")
+    assert_equal(inlet_turn.waypoint.y, 50, "return inlet turn should finish south of the stateful seam")
+    assert_equal(#inlet_turn.steps, 3, "return inlet turn should stay in one segment")
+    assert_equal(inlet_turn.steps[1], "right", "return inlet turn should move east first")
+    assert_equal(inlet_turn.steps[3], "down", "return inlet turn should turn south without settling at (67,49)")
+    assert_equal(inlet_turn.waypoint.route_hold_after_movement_start_frames, 60,
+        "Charlock return should sustain the slow formed-bridge departure")
+    assert_equal(inlet_turn.waypoint.route_early_twitch_timeout_frames, 60,
+        "Charlock return should allow the observed late eastbound tile completion")
+    assert_equal(inlet_turn.waypoint.route_reset_movement_on_turn_settle, false,
+        "Charlock return should preserve movement state across the south turn")
+
+    local arrival = routes.observe_position(0x15, 0, 29)
+    assert_contains(arrival.message, "Arrived at Swamp Cave South Entrance", "entering the cave should complete the Charlock return")
+    assert_equal(routes.is_active(), false, "Charlock return should stop after entering the cave")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_object_selects_charlock_return_near_castle()
+    routes.reset_for_tests()
+
+    local south = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+        x = 104,
+        y = 49,
+    }
+
+    local route_id = routes.route_id_for_object(south, 0x01, 48, 48, 0x00)
+    assert_equal(route_id, "charlock_return", "castle-side cave selection should choose the full island return")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_object_selects_rainbow_bridge_return_only_near_bridge()
+    routes.reset_for_tests()
+
+    local south = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+        x = 104,
+        y = 49,
+    }
+
+    local near_bridge = routes.route_id_for_object(south, 0x01, 65, 49, 0x00)
+    assert_equal(near_bridge, "rainbow_bridge_return", "bridge-side selection should choose the direct eastbound return")
+
+    local at_rimuldar = routes.route_id_for_object(south, 0x01, 102, 72, 0x00)
+    assert_equal(at_rimuldar, "swamp_cave_south", "Rimuldar selection should keep the established cave return")
+
+    routes.reset_for_tests()
+end
+
 function tests.northern_cave_route_steps_through_rain_shrine_approach()
     routes.reset_for_tests()
     routes.start("rain shrine", 0x01, 104, 10)

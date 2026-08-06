@@ -102,9 +102,14 @@ local function set_packed_block(rom_bytes, data_start, width, x, y, block_id)
 end
 
 local MAP_NAMES = {
+    [0x02] = "Charlock Castle",
     [0x03] = "Hauksness",
     [0x04] = "Tantegel Castle",
     [0x0C] = "Sun Shrine",
+    [0x11] = "Dragonlord B3",
+    [0x12] = "Dragonlord B4",
+    [0x13] = "Dragonlord B5",
+    [0x14] = "Dragonlord B6",
     [0x08] = "Brecconary",
     [0x0A] = "Cantlin",
     [0x0B] = "Rimuldar",
@@ -292,6 +297,531 @@ function tests.interior_decoder_keeps_odd_width_rows_byte_contiguous()
             assert_equal(env.map_reader.get_raw_block_id(map_id, x, y), expected[y][x], message .. " raw value")
         end
     end
+
+    env.restore()
+end
+
+function tests.charlock_ground_floor_uses_live_proven_walls_and_hidden_stair_passage()
+    local charlock_map_id = 0x02
+    local tantegel_map_id = 0x04
+    local charlock_base = charlock_map_id * 5
+    local tantegel_base = tantegel_map_id * 5
+    local charlock_data_start = 0x300
+    local tantegel_data_start = 0x320
+    local charlock_cpu_ptr = 0x8000 + charlock_data_start - 0x10
+    local tantegel_cpu_ptr = 0x8000 + tantegel_data_start - 0x10
+    local rom_bytes = {
+        [charlock_base] = charlock_cpu_ptr % 0x100,
+        [charlock_base + 1] = math.floor(charlock_cpu_ptr / 0x100),
+        [charlock_base + 2] = 11,
+        [charlock_base + 3] = 2,
+        [charlock_base + 4] = 0,
+        [tantegel_base] = tantegel_cpu_ptr % 0x100,
+        [tantegel_base + 1] = math.floor(tantegel_cpu_ptr / 0x100),
+        [tantegel_base + 2] = 11,
+        [tantegel_base + 3] = 2,
+        [tantegel_base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, charlock_data_start, 12, 3, 0x6)
+    fill_packed_map(rom_bytes, tantegel_data_start, 12, 3, 0x6)
+    set_packed_block(rom_bytes, charlock_data_start, 12, 1, 1, 0x4)
+    set_packed_block(rom_bytes, tantegel_data_start, 12, 1, 1, 0x4)
+    set_packed_block(rom_bytes, charlock_data_start, 12, 10, 1, 0x7)
+    set_packed_block(rom_bytes, tantegel_data_start, 12, 10, 1, 0x7)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x10},
+    })
+
+    local charlock_wall = env.map_reader.get_walkability_details(charlock_map_id, 1, 1)
+    assert_equal(charlock_wall.tile_type, 0x4, "Charlock stone wall should retain raw type 4")
+    assert_equal(charlock_wall.effective_walkable, false, "Charlock type-4 stone should use the live-proven wall rule")
+    assert_equal(charlock_wall.reason, "map_tile_type", "Charlock type-4 stone should report the map-specific rule")
+
+    local charlock_floor = env.map_reader.get_walkability_details(charlock_map_id, 1, 2)
+    assert_equal(charlock_floor.tile_type, 0x6, "Charlock red corridor should retain raw type 6")
+    assert_equal(charlock_floor.effective_walkable, true, "Charlock type-6 corridor should remain walkable")
+
+    local hidden_stair = env.map_reader.get_walkability_details(charlock_map_id, 10, 1)
+    assert_equal(hidden_stair.tile_type, 0x7, "Charlock hidden stair should retain raw type 7")
+    assert_equal(hidden_stair.effective_walkable, true, "Charlock hidden stair should use the live-proven passage")
+    assert_equal(hidden_stair.reason, "passthrough", "Charlock hidden stair should report the map-specific passthrough")
+
+    local tantegel_floor = env.map_reader.get_walkability_details(tantegel_map_id, 1, 1)
+    assert_equal(tantegel_floor.effective_walkable, true, "Charlock type-4 override should not change Tantegel")
+    assert_equal(tantegel_floor.reason, "tile_type", "Tantegel type 4 should keep the shared town rule")
+
+    local tantegel_type7 = env.map_reader.get_walkability_details(tantegel_map_id, 10, 1)
+    assert_equal(tantegel_type7.effective_walkable, false, "Charlock hidden-stair passage should not change Tantegel type 7")
+    assert_equal(tantegel_type7.reason, "tile_type", "Tantegel type 7 should keep the shared town rule")
+
+    env.restore()
+end
+
+function tests.charlock_b1_uses_live_proven_type_zero_walls_and_boundary_stair()
+    local map_id = 0x0F
+    local base = map_id * 5
+    local data_start = 0x340
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0x2)
+    set_packed_block(rom_bytes, data_start, 20, 9, 0, 0x1)
+    set_packed_block(rom_bytes, data_start, 20, 8, 0, 0x0)
+    set_packed_block(rom_bytes, data_start, 20, 0, 7, 0x0)
+    set_packed_block(rom_bytes, data_start, 20, 9, 2, 0x0)
+    set_packed_block(rom_bytes, data_start, 20, 8, 13, 0x1)
+    set_packed_block(rom_bytes, data_start, 20, 8, 19, 0x3)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    local chamber_floor = env.map_reader.get_walkability_details(map_id, 9, 1)
+    assert_equal(chamber_floor.tile_type, 0x2, "Charlock B1 entrance chamber should retain raw type 2")
+    assert_equal(chamber_floor.effective_walkable, true, "Charlock B1 type-2 chamber should remain walkable")
+
+    local chamber_wall = env.map_reader.get_walkability_details(map_id, 9, 2)
+    assert_equal(chamber_wall.tile_type, 0x0, "Charlock B1 chamber wall should retain raw type 0")
+    assert_equal(chamber_wall.effective_walkable, false, "Charlock B1 type-0 wall should use the live-proven wall rule")
+    assert_equal(chamber_wall.reason, "map_tile_type", "Charlock B1 type-0 wall should report the map-specific rule")
+
+    local return_stair = env.map_reader.get_walkability_details(map_id, 9, 0)
+    assert_equal(return_stair.tile_type, 0x1, "Charlock B1 return stair should retain raw type 1")
+    assert_equal(return_stair.effective_walkable, true, "Charlock B1 return stair should override the boundary and tile rules")
+    assert_equal(return_stair.reason, "passthrough", "Charlock B1 return stair should report the map-specific passthrough")
+
+    local hidden_top_passage = env.map_reader.get_walkability_details(map_id, 11, 0)
+    assert_equal(hidden_top_passage.tile_type, 0x2, "Charlock B1 hidden top passage should retain raw type 2")
+    assert_equal(hidden_top_passage.effective_walkable, true, "Charlock B1 hidden top passage should override the generic boundary rule")
+    assert_equal(hidden_top_passage.reason, "passthrough", "Charlock B1 hidden top passage should report the map-specific passthrough")
+
+    for x = 0, 7 do
+        local top_boundary = env.map_reader.get_walkability_details(map_id, x, 0)
+        assert_equal(top_boundary.tile_type, 0x2, "Charlock B1 west top passage should retain raw type 2 at x=" .. x)
+        assert_equal(top_boundary.effective_walkable, true, "Charlock B1 west top passage should be live-passable at x=" .. x)
+        assert_equal(top_boundary.reason, "passthrough", "Charlock B1 west top passage should report passthrough at x=" .. x)
+    end
+
+    for y = 1, 6 do
+        local upper_left_boundary = env.map_reader.get_walkability_details(map_id, 0, y)
+        assert_equal(upper_left_boundary.tile_type, 0x2, "Charlock B1 upper-left passage should retain raw type 2 at y=" .. y)
+        assert_equal(upper_left_boundary.effective_walkable, true, "Charlock B1 upper-left passage should be live-passable at y=" .. y)
+        assert_equal(upper_left_boundary.reason, "passthrough", "Charlock B1 upper-left passage should report passthrough at y=" .. y)
+    end
+
+    local left_boundary_wall = env.map_reader.get_walkability_details(map_id, 0, 7)
+    assert_equal(left_boundary_wall.tile_type, 0x0, "Charlock B1 left boundary separator should retain raw type 0")
+    assert_equal(left_boundary_wall.effective_walkable, false, "Charlock B1 left boundary separator should remain a real wall")
+
+    for y = 8, 19 do
+        local lower_left_boundary = env.map_reader.get_walkability_details(map_id, 0, y)
+        assert_equal(lower_left_boundary.tile_type, 0x2, "Charlock B1 lower-left passage should retain raw type 2 at y=" .. y)
+        assert_equal(lower_left_boundary.effective_walkable, true, "Charlock B1 lower-left passage should be live-passable at y=" .. y)
+        assert_equal(lower_left_boundary.reason, "passthrough", "Charlock B1 lower-left passage should report passthrough at y=" .. y)
+    end
+
+    local closed_top_wall = env.map_reader.get_walkability_details(map_id, 8, 0)
+    assert_equal(closed_top_wall.tile_type, 0x0, "Charlock B1 top separator should retain raw type 0")
+    assert_equal(closed_top_wall.effective_walkable, false, "Charlock B1 top separator should remain closed")
+
+    local branch_return_stair = env.map_reader.get_walkability_details(map_id, 8, 13)
+    assert_equal(branch_return_stair.tile_type, 0x1, "Charlock B1 branch return stair should retain raw type 1")
+    assert_equal(branch_return_stair.effective_walkable, true, "Charlock B1 type-1 cells should use the ROM-backed stair rule")
+    assert_equal(branch_return_stair.reason, "map_tile_type", "Charlock B1 type-1 stair should report the map-specific rule")
+
+    local main_descent = env.map_reader.get_walkability_details(map_id, 8, 19)
+    assert_equal(main_descent.tile_type, 0x3, "Charlock B1 main descent should retain raw type 3")
+    assert_equal(main_descent.effective_walkable, true, "Charlock B1 type-3 cells should use the ROM-backed stair rule")
+    assert_equal(main_descent.reason, "map_tile_type", "Charlock B1 type-3 stair should report the map-specific rule")
+
+    env.restore()
+end
+
+function tests.charlock_b2_uses_live_proven_walls_stairs_and_boundary_route()
+    local map_id = 0x10
+    local base = map_id * 5
+    local data_start = 0x340
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 9,
+        [base + 3] = 9,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0x2)
+    set_packed_block(rom_bytes, data_start, 10, 5, 0, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 3, 0, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 5, 1, 0x8)
+    set_packed_block(rom_bytes, data_start, 10, 5, 2, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 0, 2, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 3, 3, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 3, 1, 0xA)
+    set_packed_block(rom_bytes, data_start, 10, 0, 7, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 0, 8, 0x3)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    for _, point in ipairs({{5, 2}, {3, 3}}) do
+        local wall = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(wall.tile_type, 0x0, "Charlock B2 live wall should retain raw type 0")
+        assert_equal(wall.effective_walkable, false, "Charlock B2 type-0 cells should use the repeated live-proven wall rule")
+        assert_equal(wall.reason, "map_tile_type", "Charlock B2 type-0 wall should report the map-specific rule")
+    end
+
+    local boundary_wall = env.map_reader.get_walkability_details(map_id, 0, 2)
+    assert_equal(boundary_wall.tile_type, 0x0, "Charlock B2 west-edge stopping wall should retain raw type 0")
+    assert_equal(boundary_wall.effective_walkable, false, "Charlock B2 west-edge stopping wall should remain closed")
+    assert_equal(boundary_wall.reason, "engine_boundary", "Charlock B2 west-edge stopping wall should retain the boundary reason")
+
+    local type8_wall = env.map_reader.get_walkability_details(map_id, 5, 1)
+    assert_equal(type8_wall.tile_type, 0x8, "Charlock B2 solid wall should retain raw type 8")
+    assert_equal(type8_wall.effective_walkable, false, "Charlock B2 type-8 cells should use the repeated live-proven wall rule")
+    assert_equal(type8_wall.reason, "map_tile_type", "Charlock B2 type-8 wall should report the map-specific rule")
+
+    local type_a_floor = env.map_reader.get_walkability_details(map_id, 3, 1)
+    assert_equal(type_a_floor.tile_type, 0xA, "Charlock B2 upper corridor should retain raw type A")
+    assert_equal(type_a_floor.effective_walkable, true, "Charlock B2 type-A corridors should remain walkable")
+
+    for _, point in ipairs({
+        {3, 0}, {5, 0}, {6, 0},
+        {0, 3}, {0, 4}, {0, 5}, {0, 6},
+        {0, 8}, {0, 9},
+    }) do
+        local passage = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(
+            passage.effective_walkable,
+            true,
+            string.format("Charlock B2 live boundary route (%d,%d) should be walkable", point[1], point[2])
+        )
+        assert_equal(
+            passage.reason,
+            "passthrough",
+            string.format("Charlock B2 live boundary route (%d,%d) should override the generic boundary rule", point[1], point[2])
+        )
+    end
+
+    local branch_separator = env.map_reader.get_walkability_details(map_id, 0, 7)
+    assert_equal(branch_separator.tile_type, 0x0, "Charlock B2 branch separator should retain raw type 0")
+    assert_equal(branch_separator.effective_walkable, false, "Charlock B2 branch separator should remain closed")
+
+    env.restore()
+end
+
+function tests.charlock_b3_uses_live_proven_walls_stairs_and_boundary_routes()
+    local map_id = 0x11
+    local base = map_id * 5
+    local data_start = 0x340
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 9,
+        [base + 3] = 9,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0x2)
+    set_packed_block(rom_bytes, data_start, 10, 7, 0, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 2, 2, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 5, 4, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 0, 9, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 1, 6, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 7, 7, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 4, 4, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 5, 3, 0x8)
+    set_packed_block(rom_bytes, data_start, 10, 6, 3, 0xA)
+    set_packed_block(rom_bytes, data_start, 10, 6, 0, 0x8)
+    set_packed_block(rom_bytes, data_start, 10, 0, 7, 0x0)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    local type0_wall = env.map_reader.get_walkability_details(map_id, 4, 4)
+    assert_equal(type0_wall.tile_type, 0x0, "Charlock B3 solid wall should retain raw type 0")
+    assert_equal(type0_wall.effective_walkable, false, "Charlock B3 type-0 cells should use the repeated live-proven wall rule")
+    assert_equal(type0_wall.reason, "map_tile_type", "Charlock B3 type-0 wall should report the map-specific rule")
+
+    local type8_wall = env.map_reader.get_walkability_details(map_id, 5, 3)
+    assert_equal(type8_wall.tile_type, 0x8, "Charlock B3 alternate wall should retain raw type 8")
+    assert_equal(type8_wall.effective_walkable, false, "Charlock B3 type-8 cells should use the repeated live-proven wall rule")
+    assert_equal(type8_wall.reason, "map_tile_type", "Charlock B3 type-8 wall should report the map-specific rule")
+
+    local type_a_floor = env.map_reader.get_walkability_details(map_id, 6, 3)
+    assert_equal(type_a_floor.tile_type, 0xA, "Charlock B3 connector should retain raw type A")
+    assert_equal(type_a_floor.effective_walkable, true, "Charlock B3 type-A connector should remain walkable")
+
+    for _, point in ipairs({{2, 2}, {5, 4}, {1, 6}, {7, 7}}) do
+        local stair = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(stair.effective_walkable, true, "Charlock B3 ROM-backed stair cells should be walkable")
+        assert_equal(stair.reason, "map_tile_type", "Charlock B3 interior stairs should report the map-specific rule")
+    end
+
+    local boundary_route = {
+        {0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0},
+        {7, 0}, {8, 0}, {9, 0},
+        {0, 1}, {0, 2}, {0, 3}, {0, 4}, {0, 5}, {0, 6},
+        {0, 8}, {0, 9},
+    }
+    for _, point in ipairs(boundary_route) do
+        local passage = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(
+            passage.effective_walkable,
+            true,
+            string.format("Charlock B3 live boundary route (%d,%d) should be walkable", point[1], point[2])
+        )
+        assert_equal(
+            passage.reason,
+            "passthrough",
+            string.format("Charlock B3 live boundary route (%d,%d) should override the generic boundary rule", point[1], point[2])
+        )
+    end
+
+    local top_separator = env.map_reader.get_walkability_details(map_id, 6, 0)
+    assert_equal(top_separator.tile_type, 0x8, "Charlock B3 top separator should retain raw type 8")
+    assert_equal(top_separator.effective_walkable, false, "Charlock B3 top separator should remain closed")
+
+    local west_separator = env.map_reader.get_walkability_details(map_id, 0, 7)
+    assert_equal(west_separator.tile_type, 0x0, "Charlock B3 west separator should retain raw type 0")
+    assert_equal(west_separator.effective_walkable, false, "Charlock B3 west separator should remain closed")
+
+    env.restore()
+end
+
+function tests.charlock_b4_uses_live_proven_stairs_and_west_boundary_route()
+    local map_id = 0x12
+    local base = map_id * 5
+    local data_start = 0x3A0
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 9,
+        [base + 3] = 9,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0x2)
+    set_packed_block(rom_bytes, data_start, 10, 0, 8, 0xA)
+    set_packed_block(rom_bytes, data_start, 10, 0, 9, 0x9)
+    set_packed_block(rom_bytes, data_start, 10, 2, 2, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 2, 5, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 2, 9, 0x8)
+    set_packed_block(rom_bytes, data_start, 10, 7, 7, 0x9)
+    set_packed_block(rom_bytes, data_start, 10, 8, 1, 0x3)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    for _, point in ipairs({{2, 2}, {7, 7}, {8, 1}}) do
+        local stair = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(stair.effective_walkable, true, "Charlock B4 ROM-backed interior stair cells should be walkable")
+        assert_equal(stair.reason, "map_tile_type", "Charlock B4 interior stairs should report the map-specific rule")
+    end
+
+    for _, point in ipairs({{0, 8}, {0, 9}}) do
+        local passage = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(
+            passage.effective_walkable,
+            true,
+            string.format("Charlock B4 live west-boundary route (%d,%d) should be walkable", point[1], point[2])
+        )
+        assert_equal(
+            passage.reason,
+            "passthrough",
+            string.format("Charlock B4 live west-boundary route (%d,%d) should override the generic boundary rule", point[1], point[2])
+        )
+    end
+
+    local type0_wall = env.map_reader.get_walkability_details(map_id, 2, 5)
+    assert_equal(type0_wall.effective_walkable, false, "Charlock B4 type-0 cells should use the repeated live-proven wall rule")
+    assert_equal(type0_wall.reason, "map_tile_type", "Charlock B4 type-0 walls should report the map-specific rule")
+
+    local type8_wall = env.map_reader.get_walkability_details(map_id, 2, 9)
+    assert_equal(type8_wall.effective_walkable, false, "Charlock B4 type-8 cells should use the repeated live-proven wall rule")
+    assert_equal(type8_wall.reason, "map_tile_type", "Charlock B4 type-8 walls should report the map-specific rule")
+
+    env.restore()
+end
+
+function tests.charlock_b5_uses_live_proven_walls_stairs_and_main_perimeter_route()
+    local map_id = 0x13
+    local base = map_id * 5
+    local data_start = 0x400
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 9,
+        [base + 3] = 9,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0xA)
+    set_packed_block(rom_bytes, data_start, 10, 9, 0, 0x9)
+    set_packed_block(rom_bytes, data_start, 10, 4, 0, 0x9)
+    set_packed_block(rom_bytes, data_start, 10, 0, 0, 0xB)
+    set_packed_block(rom_bytes, data_start, 10, 5, 5, 0xB)
+    set_packed_block(rom_bytes, data_start, 10, 8, 0, 0x8)
+    set_packed_block(rom_bytes, data_start, 10, 2, 8, 0x8)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    for _, point in ipairs({{8, 0}, {2, 8}}) do
+        local wall = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(wall.tile_type, 0x8, "Charlock B5 solid wall should retain raw type 8")
+        assert_equal(wall.effective_walkable, false, "Charlock B5 type-8 cells should use the live-proven wall rule")
+    end
+
+    local inner_stair = env.map_reader.get_walkability_details(map_id, 5, 5)
+    assert_equal(inner_stair.tile_type, 0xB, "Charlock B5 inner descent should retain raw type B")
+    assert_equal(inner_stair.effective_walkable, true, "Charlock B5 type-B cells should use the ROM-backed stair rule")
+    assert_equal(inner_stair.reason, "map_tile_type", "Charlock B5 interior type-B stair should report the map-specific rule")
+
+    local west_boundary_route = {}
+    for y = 0, 9 do
+        west_boundary_route[#west_boundary_route + 1] = {0, y}
+    end
+    west_boundary_route[#west_boundary_route + 1] = {9, 0}
+    for _, point in ipairs(west_boundary_route) do
+        local passage = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(
+            passage.effective_walkable,
+            true,
+            string.format("Charlock B5 main perimeter route (%d,%d) should be walkable", point[1], point[2])
+        )
+        assert_equal(
+            passage.reason,
+            "passthrough",
+            string.format("Charlock B5 main perimeter route (%d,%d) should override the generic boundary rule", point[1], point[2])
+        )
+    end
+
+    env.restore()
+end
+
+function tests.charlock_b6_uses_live_proven_main_route_walls_and_stairs()
+    local map_id = 0x14
+    local base = map_id * 5
+    local data_start = 0x460
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 9,
+        [base + 3] = 9,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 10, 10, 0x2)
+    set_packed_block(rom_bytes, data_start, 10, 0, 6, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 9, 6, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 9, 5, 0x0)
+    set_packed_block(rom_bytes, data_start, 10, 8, 5, 0x2)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x20},
+    })
+
+    local wall = env.map_reader.get_walkability_details(map_id, 9, 5)
+    assert_equal(wall.tile_type, 0x0, "Charlock B6 north-of-descent wall should retain raw type 0")
+    assert_equal(wall.effective_walkable, false, "Charlock B6 type-0 cells should use the live-proven wall rule")
+    assert_equal(wall.reason, "map_tile_type", "Charlock B6 type-0 wall should report the map-specific rule")
+
+    local floor = env.map_reader.get_walkability_details(map_id, 8, 5)
+    assert_equal(floor.tile_type, 0x2, "Charlock B6 lower open area should retain raw type 2")
+    assert_equal(floor.effective_walkable, true, "Charlock B6 live-proven type-2 area should remain walkable")
+
+    local descent = env.map_reader.get_walkability_details(map_id, 9, 6)
+    assert_equal(descent.tile_type, 0x3, "Charlock B6 final descent should retain raw type 3")
+    assert_equal(descent.effective_walkable, true, "Charlock B6 type-3 cells should use the ROM-backed stair rule")
+    assert_equal(descent.reason, "map_tile_type", "Charlock B6 east-edge descent should report the map-specific rule")
+
+    local arrival = env.map_reader.get_walkability_details(map_id, 0, 6)
+    assert_equal(arrival.tile_type, 0x1, "Charlock B6 main arrival should retain raw type 1")
+    assert_equal(arrival.effective_walkable, true, "Charlock B6 main arrival should override the generic west boundary")
+    assert_equal(arrival.reason, "passthrough", "Charlock B6 main arrival should report the live passthrough")
+
+    env.restore()
+end
+
+function tests.dragonlord_lair_uses_live_proven_walls_and_final_route_passthroughs()
+    local map_id = 0x06
+    local base = map_id * 5
+    local data_start = 0x500
+    local cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = cpu_ptr % 0x100,
+        [base + 1] = math.floor(cpu_ptr / 0x100),
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x6)
+    set_packed_block(rom_bytes, data_start, 30, 15, 17, 0x4)
+    local final_route_type_zero = {
+        {28, 13},
+        {28, 14},
+        {25, 16},
+        {25, 21},
+    }
+    for _, point in ipairs(final_route_type_zero) do
+        set_packed_block(rom_bytes, data_start, 30, point[1], point[2], 0x0)
+    end
+    set_packed_block(rom_bytes, data_start, 30, 24, 16, 0x0)
+
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = {[0] = 0x10},
+    })
+
+    local wall = env.map_reader.get_walkability_details(map_id, 15, 17)
+    assert_equal(wall.tile_type, 0x4, "Dragonlord lair wall should retain raw type 4")
+    assert_equal(wall.effective_walkable, false, "Dragonlord lair type-4 cells should use the live-proven wall rule")
+    assert_equal(wall.reason, "map_tile_type", "Dragonlord lair type-4 walls should report the map-specific rule")
+
+    local corridor = env.map_reader.get_walkability_details(map_id, 16, 17)
+    assert_equal(corridor.tile_type, 0x6, "Dragonlord lair corridor should retain raw type 6")
+    assert_equal(corridor.effective_walkable, true, "Dragonlord lair type-6 corridors should remain walkable")
+
+    for _, point in ipairs(final_route_type_zero) do
+        local passage = env.map_reader.get_walkability_details(map_id, point[1], point[2])
+        assert_equal(
+            passage.tile_type,
+            0x0,
+            string.format("Dragonlord lair final-route cell (%d,%d) should retain raw type 0", point[1], point[2])
+        )
+        assert_equal(
+            passage.effective_walkable,
+            true,
+            string.format("Dragonlord lair final-route cell (%d,%d) should use the live-proven passage", point[1], point[2])
+        )
+        assert_equal(
+            passage.reason,
+            "passthrough",
+            string.format("Dragonlord lair final-route cell (%d,%d) should report the coordinate passthrough", point[1], point[2])
+        )
+    end
+
+    local unconfirmed_type_zero = env.map_reader.get_walkability_details(map_id, 24, 16)
+    assert_equal(unconfirmed_type_zero.tile_type, 0x0, "Dragonlord lair unconfirmed cell should retain raw type 0")
+    assert_equal(unconfirmed_type_zero.effective_walkable, false, "Dragonlord lair unconfirmed type-0 cells should remain blocked")
+    assert_equal(unconfirmed_type_zero.reason, "tile_type", "Dragonlord lair unconfirmed type-0 cells should keep the shared rule")
 
     env.restore()
 end

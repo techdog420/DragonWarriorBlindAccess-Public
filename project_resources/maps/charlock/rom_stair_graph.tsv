@@ -1,0 +1,23 @@
+source_map	source_floor	source_x	source_y	destination_map	destination_floor	destination_x	destination_y	role
+0x02	Ground Floor	10	1	0x0F	B1	9	0	main_hidden_search
+0x02	Ground Floor	4	14	0x0F	B1	8	13	visible_decoy_west
+0x02	Ground Floor	15	14	0x0F	B1	17	15	visible_decoy_east
+0x0F	B1	15	1	0x10	B2	8	0	branch
+0x0F	B1	13	7	0x10	B2	4	4	branch
+0x0F	B1	19	7	0x10	B2	9	8	branch
+0x0F	B1	14	9	0x10	B2	8	9	branch
+0x0F	B1	2	14	0x10	B2	0	1	branch
+0x0F	B1	2	4	0x10	B2	0	0	branch
+0x0F	B1	8	19	0x10	B2	5	0	main_spine
+0x10	B2	3	0	0x11	B3	7	0	main_spine
+0x10	B2	9	1	0x11	B3	2	2	sword_branch_network
+0x10	B2	0	8	0x11	B3	5	4	sword_branch_network
+0x10	B2	1	9	0x11	B3	0	9	sword_branch_network
+0x11	B3	1	6	0x12	B4	0	9	main_spine
+0x11	B3	7	7	0x12	B4	7	7	sword_branch_return
+0x12	B4	2	2	0x13	B5	9	0	main_spine
+0x12	B4	8	1	0x13	B5	4	0	false_inner_branch
+0x13	B5	5	5	0x14	B6	0	0	false_inner_branch
+0x13	B5	0	0	0x14	B6	0	6	main_spine
+0x14	B6	9	0	0x14	B6	0	0	same_floor_loop_trap
+0x14	B6	9	6	0x06	Dragonlord Lair B7	10	29	main_spine

@@ -490,15 +490,59 @@ function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
     assert_equal(find_by_id(env.objects, "stair_10_1").name, "Stairs Down", "Charlock Castle stairs should keep down direction without naming B1")
 
     env.objects.refresh(0x0F)
-    assert_equal(find_by_id(env.objects, "stair_10_1").name, "North Stairs Up", "Dragonlord B1 north stairs should keep position and up direction without naming Charlock Castle")
-    assert_equal(find_by_id(env.objects, "stair_7_7").name, "South Stairs Down", "Dragonlord B1 south stairs should keep position and down direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_9_0").name, "North Stairs Up", "Dragonlord B1 north stairs should use the live-proven return stand without naming Charlock Castle")
+    assert_equal(find_by_id(env.objects, "stair_10_1"), nil, "Dragonlord B1 should not expose the false north-stair coordinate")
+    assert_equal(find_by_id(env.objects, "stair_8_19").name, "South Stairs Down", "Dragonlord B1 south stairs should use the ROM-confirmed main-spine coordinate without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_7_7"), nil, "Dragonlord B1 should not expose the provisional south-stair coordinate")
 
     env.objects.refresh(0x10)
-    assert_equal(find_by_id(env.objects, "stair_7_7").name, "Southeast Stairs Up", "Dragonlord B2 southeast stairs should keep position and up direction without naming B1")
-    assert_equal(find_by_id(env.objects, "stair_3_3").name, "Northwest Stairs Down", "Dragonlord B2 northwest stairs should keep position and down direction without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_5_0").name, "North Stairs Up", "Dragonlord B2 north return stairs should use the live-proven main-spine landing without naming B1")
+    assert_equal(find_by_id(env.objects, "stair_3_0").name, "North Stairs Down", "Dragonlord B2 north descent should use the live-proven main-spine coordinate without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_7_7"), nil, "Dragonlord B2 should not expose the stale southeast up-stair placeholder")
+    assert_equal(find_by_id(env.objects, "stair_3_3"), nil, "Dragonlord B2 should not expose the stale northwest down-stair placeholder")
 
     env.objects.refresh(0x11)
-    assert_equal(find_by_id(env.objects, "stair_3_3").name, "Stairs Up", "Dragonlord B3 stairs should keep up direction without naming B2")
+    assert_equal(find_by_id(env.objects, "stair_7_0").name, "North Stairs Up", "Dragonlord B3 main arrival stair should use the ROM-backed coordinate")
+    assert_equal(find_by_id(env.objects, "stair_2_2").name, "Northwest Stairs Up", "Dragonlord B3 northwest return stair should use the ROM-backed coordinate")
+    assert_equal(find_by_id(env.objects, "stair_5_4").name, "Central Stairs Up", "Dragonlord B3 central return stair should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_0_9").name, "Southwest Stairs Up", "Dragonlord B3 southwest return stair should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_1_6").name, "West Stairs Down", "Dragonlord B3 main descent should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_7_7").name, "Southeast Stairs Down", "Dragonlord B3 sword-branch descent should use the ROM-backed coordinate")
+    assert_equal(find_by_id(env.objects, "stair_3_3"), nil, "Dragonlord B3 should not expose the stale ordinary-floor placeholder")
+
+    env.objects.refresh(0x12)
+    assert_equal(find_by_id(env.objects, "stair_0_9").name, "Southwest Stairs Up", "Dragonlord B4 main arrival stair should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_7_7").name, "Southeast Stairs Up", "Dragonlord B4 sword-branch return should use the ROM-backed coordinate")
+    assert_equal(find_by_id(env.objects, "stair_2_2").name, "Northwest Stairs Down", "Dragonlord B4 main descent should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_8_1").name, "Northeast Stairs Down", "Dragonlord B4 false-branch descent should use the ROM-backed coordinate")
+
+    env.objects.refresh(0x13)
+    assert_equal(find_by_id(env.objects, "stair_9_0").name, "Northeast Stairs Up", "Dragonlord B5 main arrival stair should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_4_0").name, "North Stairs Up", "Dragonlord B5 false-branch return should use the ROM-backed coordinate")
+    assert_equal(find_by_id(env.objects, "stair_0_0").name, "Northwest Stairs Down", "Dragonlord B5 main descent should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_5_5").name, "Central Stairs Down", "Dragonlord B5 false-branch descent should use the ROM-backed coordinate")
+
+    env.objects.refresh(0x14)
+    assert_equal(find_by_id(env.objects, "stair_0_6").name, "West Stairs Up", "Dragonlord B6 main arrival stair should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_0_0").name, "Northwest Stairs Up", "Dragonlord B6 false-branch return should use the ROM-backed coordinate")
+    assert_equal(find_by_id(env.objects, "stair_9_0").name, "Northeast Loop Stairs", "Dragonlord B6 same-floor loop stair should be labeled without a false floor direction")
+    assert_equal(find_by_id(env.objects, "stair_9_6").name, "East Stairs Down", "Dragonlord B6 final descent should use the live-proven coordinate")
+
+    env.restore()
+end
+
+function tests.dragonlord_lair_boss_npc_uses_final_encounter_label()
+    local env = make_env()
+
+    env.set_npc(0, 0xA0 + 16, 0x18, 0x00) -- Old Man sprite at (16,24)
+    env.objects.refresh(0x06)
+
+    local boss = find_by_id(env.objects, "npc_0")
+    assert_equal(boss ~= nil, true, "Dragonlord's Lair should expose the final NPC")
+    assert_equal(boss.name, "Dragonlord", "the final NPC should not keep the generic Old Man sprite label")
+    assert_equal(boss.x, 16, "Dragonlord should keep the live-confirmed X coordinate")
+    assert_equal(boss.y, 24, "Dragonlord should keep the live-confirmed Y coordinate")
+    assert_equal(boss.service, false, "Dragonlord should remain outside the Services filter")
 
     env.restore()
 end
@@ -1075,7 +1119,7 @@ function tests.inactive_overworld_route_does_not_clutter_travel_filter()
     end
 
     assert_equal(found_route_marker, false, "inactive route waypoints should stay out of the Travel list")
-    assert_equal(env.objects.get_count(), 15, "plain world-map Travel should only list major destinations")
+    assert_equal(env.objects.get_count(), 16, "plain world-map Travel should only list major destinations")
 
     env.restore()
 end
@@ -1478,6 +1522,26 @@ function tests.swamp_cave_south_entrance_is_available_as_overworld_landmark()
 
     local lookup = env.objects.find_overworld_landmark("swamp cave south")
     assert_equal(lookup.id, "overworld_swamp_cave_south_entrance", "south entrance should be findable by prefix")
+
+    env.restore()
+end
+
+function tests.rainbow_bridge_unlock_point_is_available_as_overworld_landmark()
+    local env = make_env()
+
+    env.set_position(0x01, 65, 49)
+    env.set_terrain_offset(0x00)
+    env.objects.refresh(0x01)
+    env.objects.travel_filter()
+
+    local bridge = env.objects.select_object_by_id("overworld_rainbow_bridge")
+    assert_equal(bridge ~= nil, true, "World map should expose the Rainbow Bridge unlock point")
+    assert_equal(bridge.name, "Rainbow Bridge unlock point", "Travel should identify the Rainbow Drop use stand")
+    assert_equal(bridge.x, 65, "Rainbow Bridge unlock point should use the decoded overworld X")
+    assert_equal(bridge.y, 49, "Rainbow Bridge unlock point should use the decoded overworld Y")
+
+    local lookup = assert(env.objects.find_overworld_landmark("rainbow drop"))
+    assert_equal(lookup.id, "overworld_rainbow_bridge", "Rainbow Drop lookup should resolve to the unlock point")
 
     env.restore()
 end

@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-03
+Updated: 2026-08-06
 
 ## Release Installation Handoff
 
@@ -121,6 +121,69 @@ Updated: 2026-08-03
 
 ## Immediate FCEUX Handoff
 
+- Charlock Castle and the complete main dungeon spine are decoded and
+  live-proven through Dragonlord. Ground floor `0x02` uses SEARCH at hidden
+  stair `(10,1)`; B1 `0x0F` descends at `(8,19)`; B2 `0x10` descends at
+  `(3,0)`; B3 `0x11` follows its false-return loop and then descends at `(1,6)`;
+  B4 `0x12` crosses from `(0,9)` to descent `(2,2)`; B5 `0x13` follows the east,
+  south, and west perimeter from `(9,0)` to `(0,0)`; and B6 `0x14` crosses its
+  lower component from `(0,6)` to final descent `(9,6)`. Dragonlord's Lair
+  `0x06` begins at `(10,29)`, winds around the outer corridor, crosses the four
+  live-proven raw-type-0 passages `(28,13)`, `(28,14)`, `(25,16)`, and
+  `(25,21)`, and reaches the east-side boss approach `(17,24)`. TALK there
+  produced `Welcome, Bill. I am the Dragonlord--King of Kings.`, proving the
+  final NPC at `(16,24)`; loaded object browsing now labels him `Dragonlord`.
+  Source-only navigation completed the final eight westward steps with no
+  runtime blocks. Verification passes `79/79` map-reader and `109/109` object
+  tests, Lua syntax, and `git diff --check`. Current live checkpoint is
+  Dragonlord's Lair `(17,24)`, field clear directly before dialogue after a
+  save-state restore and script reload.
+- Charlock Castle overworld geometry is live-proven on
+  `codex/charlock-rainbow-bridge-route`. From the formed bridge landing
+  `(63,49)`, ordinary movement reached the island south road `(56,64)`, west
+  rise `(49,57)`, east approach `(51,49)`, and castle coordinate `(48,48)`.
+  Entering `(48,48)` changed to Charlock map `0x02` at `(10,19)`; leaving south
+  returned to World Map `(48,48)`. `overworld_routes.lua` now defines strict
+  `charlock_castle` and exact island-reverse `charlock_return` routes, beginning
+  from the safe post-cave doorstep `(103,49)` and sharing the proven Rainbow
+  Bridge inlet detour. No blocker was promoted. Focused route tests pass
+  `153/153`. The first loaded return exposed two stateful carry hazards: a
+  one-tile stop at `(50,62)` drifted south, and settling at `(61,50)` after an
+  eastbound approach trapped all tested exits even though the inbound
+  north-to-south arrival had escaped west. Input/OAM diagnostics were clean,
+  so neither finding became map data. Source now uses the live southwest
+  recovery chain through `(50,63),(52,63),(52,64)` and crosses `(61,50)` only
+  as part of a continuous east-then-north turn. The next reload attempt found that
+  a nearby Rainbow Bridge object refresh could replace `charlock_return`
+  before the new turn ran; source now marks that bridge object compatible and
+  the loaded regression logged `active_matches=true`. The route then completed
+  `(58,50)->(61,49)`, reached bridge tile `(64,49)`, and continued through
+  `(65,49)` to `(67,49)`. Settling at `(67,49)` after an eastbound approach
+  made DOWN exhaust both retries even though the outbound south-origin turn is
+  live-proven. No blocker was added; source now crosses `(67,49)` continuously
+  from `(65,49)` to `(67,50)`. Current state is `(67,49)` with the return route
+  active and REPEL expired. Recovery staging and reload at `(65,49)` then
+  showed that the route policy correctly chooses the shorter
+  `rainbow_bridge_return` alternate there; its duplicate `(67,49)` stop now
+  has the same continuous-turn correction. Force-teleport staging then caused
+  a temporary control lock; a manual command-menu open/close restored movement,
+  so those failures were not promoted. From a naturally reacquired `(65,49)`,
+  a raw hold proved the slow eastbound edge and carried to `(67,49)`; DOWN
+  reached `(67,50)`. Both return variants now use a 60-frame sustained-hold
+  cadence marker on that turn. The loaded return continued through every east
+  road checkpoint and entered Swamp Cave `0x15` at `(0,29)`, emitting
+  `event=arrived` and clearing route/path state with no runtime blockers.
+  After reload, loaded `charlock_castle` then ran from the safe World Map
+  doorstep `(103,49)` across the bridge and corrected island chain into
+  Charlock map `0x02` at `(10,19)`, emitting `event=arrived` and clearing
+  route/path state with no runtime blockers. REPEL expiration caused one
+  player-cleared pause without losing route state. Autowalk exhausted cadence
+  retries on `(58,55)->LEFT` and `(50,61)->LEFT`, while unchanged-origin raw
+  holds moved cleanly to `(57,55)` and `(49,61)`; no blocker was promoted.
+  Those two outbound waypoints now use the established 60-frame sustained-hold
+  window. These route fixes were subsequently exercised during the complete
+  Charlock dungeon pass; the current live state is the pre-Dragonlord
+  checkpoint described above.
 - FCEUX menu/input isolation and selected-teleport recovery are release-gated
   on the 2026-07-31 launcher baseline. `launch_dw.ps1` installs a valid empty
   native keyboard profile, enables `SDL.PauseOnMainMenuAccess = 1`, and runs a
@@ -1711,21 +1774,20 @@ Updated: 2026-08-03
 
 ## Next Work
 
-1. Reload `main.lua` in FCEUX before judging source-level changes from the
-   latest Brecconary closeout, selected-teleport/input fixes, or Swamp Cave
-   route planning. Brecconary itself is complete for the current alpha town
-   pass; after reload, only spot-check the exit-tile reachable filter and Fairy
-   Water route if needed.
-2. Continue the Magic Key alpha-prep pass in the next early town, or pick the
-   next practical playability/QoL issue or the next gameplay-exposed
-   route failure instead of continuing broad Garin's Grave blocker hunting.
-3. If revisiting Garinham's inn-to-grave-stairs return, ignore old verifier
-   proof for `(19,10)` and use the current top-lane route evidence:
-   `(13,0)->(14,0)->(15,0)->(15,1)->...->(19,0)`. Current notes are in
-   `work_notes/current_investigation.md` and `PLAYTESTING.md`.
-4. If future work touches live FCEUX after source edits, manually reload
-   `main.lua` before judging live behavior.
-5. If a new dungeon/floor becomes the active target, start with external map
-   orientation, then use live movement evidence before permanent map edits.
-6. For more `sweep_walk` validation, move to a new play space and treat the
-   generated JSON as review-only until walked evidence supports a patch.
+1. Decode the Erdrick's Sword branch next. Refresh the hero, stage at B4
+   `(7,7)`, and use that stair to enter B3 `(7,7)`. Follow the connected B3/B2
+   branch network to the sword chest with normal-route arrivals and same-origin
+   probes before promoting geometry. This is the most useful next branch for a
+   hero who is not yet ready for Dragonlord.
+2. After the sword branch, decode the false inner branch beginning at B4
+   `(8,1)`, through B5 `(4,0)` and `(5,5)`, to B6 `(0,0)`. Live-prove the
+   same-floor B6 loop `(9,0)->(0,0)` rather than relying only on the ROM graph.
+3. Decode the two visible ground-floor decoy stairs `(4,14)` and `(15,14)` and
+   their remaining B1/B2 branch network. Keep each stair pairing distinct from
+   the already complete hidden main spine.
+4. Finish optional Dragonlord's Lair coverage later: the locked treasure room,
+   six chests, type-F throne enclosure cells, and safe return routing. Preserve
+   the current pre-dialogue save boundary until the hero is ready.
+5. For future live FCEUX work after source edits, manually reload `main.lua`
+   before judging behavior. Keep battle/control-lock evidence separate from
+   map geometry and use the external Charlock references only for orientation.

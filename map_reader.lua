@@ -296,6 +296,90 @@ local WALKABILITY_TABLES = {
 -- ID. Keep those differences map-scoped so live evidence from one floor does
 -- not silently change every cave.
 local MAP_TILE_WALKABILITY_OVERRIDES = {
+    -- Charlock Castle ground floor: the staged 20x20 guide map renders type-4
+    -- cells as grey stone walls and type-6 cells as the red walkable corridor.
+    -- Normal-route arrival at row 14 plus repeated same-origin raw probes on
+    -- 2026-08-04 confirmed both (8,14)->UP and (9,14)->UP blocked when entering
+    -- adjacent type-4 cells, while the surrounding type-6 corridor moved.
+    [0x02] = {
+        [4] = false,
+    },
+    -- Dragonlord's Lair: normal-route autowalk traced the winding corridor
+    -- from the final stair landing and repeatedly rejected type-4 cells while
+    -- traversing adjacent type-6 cells on 2026-08-06. A clean same-origin raw
+    -- probe from (16,17) also rejected the type-4 cell at (15,17).
+    [0x06] = {
+        [4] = false,
+    },
+    -- Dragonlord B1: normal movement from the hidden-stair landing reached
+    -- the type-2 chamber cells at (9,1), (10,1), and (11,1). Repeated route
+    -- attempts and seam retries blocked on adjacent type-0 cells at (8,1),
+    -- (12,1), and row 2 on 2026-08-04, matching the staged B1 guide map.
+    -- The floor's complete ROM grid contains exactly three type-1 cells, all
+    -- paired return stairs, and exactly seven type-3 cells, all paired B2
+    -- descents in the pinned ROM stair graph.
+    [0x0F] = {
+        [0] = false,
+        [1] = true,
+        [3] = true,
+    },
+    -- Dragonlord B2: normal-route movement repeatedly rejected type-0 walls
+    -- at (5,2), (5,6), (5,8), (6,6), (0,2), and (3,3). Type-8 cells at
+    -- (5,1) and (4,7) also held from clean same-origin probes, while type-A
+    -- cells on the upper and lower corridors moved normally. The paired ROM
+    -- stair graph identifies type 1, type 3, and the lone type 9 at (4,4) as
+    -- stair cells on this floor.
+    [0x10] = {
+        [0] = false,
+        [1] = true,
+        [3] = true,
+        [8] = false,
+        [9] = true,
+    },
+    -- Dragonlord B3: clean same-origin probes on 2026-08-05 repeatedly
+    -- rejected type-0 cells around the central alcove and type-8 cells around
+    -- its north connector. Type-2 and type-A corridors moved normally. The
+    -- pinned ROM graph and raw grid identify type 1 as the four B2 return
+    -- stairs and type 3 as the two B4 descents.
+    [0x11] = {
+        [0] = false,
+        [1] = true,
+        [3] = true,
+        [8] = false,
+    },
+    -- Dragonlord B4: the pinned ROM stair graph and live inspection identify
+    -- type 3 as the two B5 descents at (2,2) and (8,1), and type 9 as the two
+    -- B3 returns at (0,9) and (7,7). Repeated clean same-origin probes blocked
+    -- type 0 at (2,5) and type 8 at (2,9), while live normal movement traversed
+    -- the full main route between (2,2) and (0,9) on 2026-08-06.
+    [0x12] = {
+        [0] = false,
+        [3] = true,
+        [8] = false,
+        [9] = true,
+    },
+    -- Dragonlord B5: normal movement traversed the type-A main perimeter from
+    -- the B4 landing at (9,0) to the B6 descent at (0,0) on 2026-08-06.
+    -- Same-origin movement blocked on type-8 cells at (8,0) and (2,8).
+    -- The pinned ROM stair graph and raw grid identify type 9 as both B4
+    -- returns and type B as both B6 descents.
+    [0x13] = {
+        [8] = false,
+        [9] = true,
+        [11] = true,
+    },
+    -- Dragonlord B6: normal movement crossed the main lower component from
+    -- the B5 landing at (0,6) to the final descent at (9,6) on 2026-08-06.
+    -- Same-origin probes rejected type-0 cells at (0,5) and (9,5), while the
+    -- adjacent type-2 lower area moved in both directions. The pinned ROM
+    -- graph and raw grid identify type 1 as the B5 returns and type 3 as the
+    -- same-floor loop/final descents. Type 8 remains unclassified until the
+    -- separate false-loop component is reached through normal play.
+    [0x14] = {
+        [0] = false,
+        [1] = true,
+        [3] = true,
+    },
     -- Mountain Cave F1: the first normal-movement crawl and same-origin raw
     -- probes on 2026-07-29 repeatedly blocked on type-0 cells while every
     -- traversed corridor cell decoded as type 2.
@@ -340,6 +424,141 @@ end
 -- override non-walkable tile types and map-specific entrance edge cells
 -- can override the generic interior boundary rule.
 local MAP_PASSTHROUGH_CELLS = {
+    -- Map 0x02: Charlock Castle ground-floor hidden stair behind the throne.
+    -- Normal-route movement on 2026-08-04 crossed (10,1) eastbound from
+    -- (9,1), and a controlled westbound step from (11,1) stopped on it even
+    -- though its raw type 7 decodes as closed. SEARCH there revealed the
+    -- Secret Passage; STAIRS transitioned to Dragonlord B1 at (9,0).
+    [0x02] = {
+        ["10,1"] = true,
+    },
+    -- Map 0x06: the final approach crosses four isolated raw type-0 cells.
+    -- Normal-route arrival plus same-origin raw probes on 2026-08-06 moved
+    -- through (28,13), carried through (28,14), moved through (25,16), and
+    -- moved through (25,21), continuing onto modeled corridor tiles each time.
+    -- Keep this coordinate-scoped because other type-0 cells on the floor have
+    -- not been live-proven passable.
+    [0x06] = {
+        ["28,13"] = true,
+        ["28,14"] = true,
+        ["25,16"] = true,
+        ["25,21"] = true,
+    },
+    -- Map 0x0F: the ground-floor hidden stair deposits the hero on boundary
+    -- cell (9,0). Live movement stepped south from it, and STAIRS on the same
+    -- stand returned to Charlock Castle on 2026-08-04. Continued same-origin
+    -- probing decoded the hidden perimeter corridor: west along top row
+    -- (7,0)..(0,0), south through (0,6), a real wall at (0,7), then south
+    -- again from (0,8) through the bottom-left turn at (0,19). These cells
+    -- retain raw type 2 but must override the generic north/west boundary.
+    [0x0F] = {
+        ["9,0"] = true,
+        -- The hidden entrance route turns north from (11,1), then travels
+        -- east along the top row. Same-origin probes moved through all three
+        -- type-2 cells on 2026-08-04 despite the generic boundary guard.
+        ["11,0"] = true,
+        ["12,0"] = true,
+        ["13,0"] = true,
+        ["0,0"] = true,
+        ["1,0"] = true,
+        ["2,0"] = true,
+        ["3,0"] = true,
+        ["4,0"] = true,
+        ["5,0"] = true,
+        ["6,0"] = true,
+        ["7,0"] = true,
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["0,8"] = true,
+        ["0,9"] = true,
+        ["0,10"] = true,
+        ["0,11"] = true,
+        ["0,12"] = true,
+        ["0,13"] = true,
+        ["0,14"] = true,
+        ["0,15"] = true,
+        ["0,16"] = true,
+        ["0,17"] = true,
+        ["0,18"] = true,
+        ["0,19"] = true,
+    },
+    -- Map 0x10: the B1 main-spine descent deposits the hero at (5,0).
+    -- Normal movement decoded the main B2 route through north-boundary cell
+    -- (6,0), the west-edge corridor (0,6)..(0,3), and the B3 descent at
+    -- (3,0). These cells must override the generic north/west boundary rule.
+    [0x10] = {
+        ["3,0"] = true,
+        ["5,0"] = true,
+        ["6,0"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        -- The B3 false-stair route returns at (1,9), then crosses the west
+        -- boundary through (0,9) to the paired branch stair at (0,8).
+        ["0,8"] = true,
+        ["0,9"] = true,
+    },
+    -- Map 0x11: the main B2 descent arrives at (7,0). Live movement decoded
+    -- the upper/right/lower false-stair route to (0,9), while a later return
+    -- through B2 entered the central stair at (5,4) and connected to the main
+    -- B4 descent via the separate upper-left boundary route. Type-8 (6,0)
+    -- and type-0 (0,7) are real separators and intentionally omitted.
+    [0x11] = {
+        ["0,0"] = true,
+        ["1,0"] = true,
+        ["2,0"] = true,
+        ["3,0"] = true,
+        ["4,0"] = true,
+        ["5,0"] = true,
+        ["7,0"] = true,
+        ["8,0"] = true,
+        ["9,0"] = true,
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["0,8"] = true,
+        ["0,9"] = true,
+    },
+    -- Map 0x12: the B3 main-spine descent arrives at (0,9). Clean same-origin
+    -- probes on 2026-08-06 moved from (1,8) through west-boundary cell (0,8)
+    -- and then south onto the arrival stair despite the generic boundary rule.
+    [0x12] = {
+        ["0,8"] = true,
+        ["0,9"] = true,
+    },
+    -- Map 0x13: the B4 main descent arrives at north-boundary stair (9,0).
+    -- Live movement followed the east and south perimeter to (0,9), then
+    -- clean same-origin probes crossed every west-boundary cell northward to
+    -- the main B6 descent at (0,0). These cells override the generic
+    -- north/west boundary rule; the untested inner false branch stays scoped
+    -- to its ROM-backed stair objects until it is traversed live.
+    [0x13] = {
+        ["9,0"] = true,
+        ["0,0"] = true,
+        ["0,1"] = true,
+        ["0,2"] = true,
+        ["0,3"] = true,
+        ["0,4"] = true,
+        ["0,5"] = true,
+        ["0,6"] = true,
+        ["0,7"] = true,
+        ["0,8"] = true,
+        ["0,9"] = true,
+    },
+    -- Map 0x14: the B5 main-spine descent arrives on west-boundary stair
+    -- (0,6). Live movement stepped east from this stand and crossed the lower
+    -- component to the ROM-backed final descent at (9,6).
+    [0x14] = {
+        ["0,6"] = true,
+    },
     -- Map 0x03: Hauksness west entrance/exit stand.
     -- Live FCEUX entry from World Map (25,89) lands on (0,10), and moving
     -- west from that same stand returns to the world map. Override only this

@@ -39,11 +39,14 @@ quality-of-life work.
 
 ## Remaining Map Completion
 
-- Decode the final dungeon. Establish external map orientation first, then use
-  normal movement and live evidence to verify every floor, entrance, exit,
-  stair pairing, door, chest, hazard, directional blocker, and stateful seam.
-  Completion requires source-only navigation through the intended progression
-  and a return route where the game permits one.
+- Charlock's hidden entrance, seven-link main dungeon spine, and final route to
+  Dragonlord are source-only and live-verified. Complete the remaining optional
+  branches: first the B4 `(7,7)` Erdrick's Sword branch through B3/B2, then the
+  B4 `(8,1)` false inner branch and B6 same-floor loop, then the two visible
+  ground-floor decoy branches and remaining B1/B2 stair network.
+- Finish optional Dragonlord's Lair coverage: locked treasure-room door, six
+  chests, throne-enclosure cells, and safe return routing. Preserve a
+  pre-dialogue save boundary while testing the final encounter.
 
 ## Overworld Navigation
 

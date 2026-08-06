@@ -1,0 +1,118 @@
+Congratulations on the release! I found enough ROM-level information to give us both the immediate route to Charlock and a reliable blueprint for decoding the dungeon.
+
+## Rainbow Bridge to Charlock
+
+The Rainbow Drop is used at world coordinate `(65,49)`. The bridge appears immediately west at `(64,49)`, while Charlock’s entrance is `(48,48)`.
+
+I decoded this shortest route from the original world-map data:
+
+```text
+West 4
+South 1
+West 3
+South 8
+West 2
+South 6
+West 5
+North 2
+West 1
+North 1
+West 1
+North 10
+East 2
+North 2
+West 3
+North 1
+```
+
+That is 52 steps and 15 direction changes, ending at `(48,48)`. It includes 15 unavoidable swamp squares. Erdrick’s Armor makes the player immune to swamp and barrier damage and restores one HP per step. [[World-map ROM data](https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank00.asm)](https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank00.asm), [[Erdrick’s Armor details](https://guides.gamercorner.net/dw/arms/erdricks-armor)](https://guides.gamercorner.net/dw/arms/erdricks-armor)
+
+This is a static route inferred from the original ROM map, so we should still validate it through the mod’s live movement executor.
+
+## Castle entrance and secret passage
+
+Charlock’s ground floor is a deliberate trap:
+
+* Entrance: `(10,19)`
+* Throne: `(10,3)` — searching gives the wind-behind-the-throne clue
+* Real hidden stair: `(10,1)` — SEARCH here reveals it
+* Western decoy stair: `(4,14)`
+* Eastern decoy stair: `(15,14)`
+* Locked decoy doors: `(4,8)` and `(15,8)`
+
+The visible stairs lead into disconnected B1 branches. The actual dungeon route begins behind the throne. The throne area is approached through the western side of the castle. [[Charlock 1F guide](https://guides.gamercorner.net/dw/locations/charlock-castle-1f)](https://guides.gamercorner.net/dw/locations/charlock-castle-1f), [[ROM map-entry and search logic](https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank03.asm)](https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank03.asm)
+
+For accessibility, I would treat `(10,1)` as a special searchable landmark rather than merely a staircase object: before SEARCH it is ordinary floor; afterward it becomes a usable stair.
+
+## Canonical main route
+
+Coordinates below are zero-based ROM coordinates.
+
+| Player floor  | ROM map ID |  Size | Main progression                             |
+| ------------- | ---------: | ----: | -------------------------------------------- |
+| Ground floor  |     `0x02` | 20×20 | Hidden stair `(10,1)` → B1 `(9,0)`           |
+| B1            |     `0x0F` | 20×20 | Stair `(8,19)` → B2 `(5,0)`                  |
+| B2            |     `0x10` | 10×10 | Stair `(3,0)` → B3 `(7,0)`                   |
+| B3            |     `0x11` | 10×10 | Stair `(1,6)` → B4 `(0,9)`                   |
+| B4            |     `0x12` | 10×10 | Correct stair `(2,2)` → B5 `(9,0)`           |
+| B5            |     `0x13` | 10×10 | Outer-path stair `(0,0)` → B6 `(0,6)`        |
+| B6            |     `0x14` | 10×10 | Correct stair `(9,6)` → final lair `(10,29)` |
+| Final lair/B7 |     `0x06` | 30×30 | Dragonlord and optional treasure room        |
+
+These connections come directly from the disassembly’s map entry and target tables. [[Bank03 map tables](https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank03.asm)](https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank03.asm)
+
+## The B4 split and looping trap
+
+B4 is the crucial routing decision:
+
+* Arrive at B4 `(0,9)`.
+* The western/northwestern stair at `(2,2)` is the correct Dragonlord route.
+* The stair at `(7,7)` begins the optional route back upward toward Erdrick’s Sword.
+* The northeastern stair at `(8,1)` begins the false inner route.
+
+The false route continues through B5 `(5,5)` into B6 `(0,0)`. On that isolated B6 section, the stair at `(9,0)` sends the player straight back to `(0,0)` on the same floor, creating the famous infinite loop. The player must backtrack upward to escape.
+
+Erdrick’s Sword is in a chest at B2 `(5,5)`, reached through the separate upward branch rather than the main descent. [[Erdrick’s Sword walkthrough](https://guides.gamercorner.net/dw/walkthrough/erdricks-sword)](https://guides.gamercorner.net/dw/walkthrough/erdricks-sword), [[B4 guide](https://guides.gamercorner.net/dw/location-floors/charlock-castle-b4)](https://guides.gamercorner.net/dw/location-floors/charlock-castle-b4)
+
+## Final lair
+
+The final map is fully lit even though B1–B6 are dark.
+
+* Entry stair: `(10,29)`
+* Locked treasure-room door: `(17,12)`
+* Six treasure chests:
+
+  * `(11,11)`
+  * `(11,12)`
+  * `(12,12)`
+  * `(11,13)`
+  * `(12,13)`
+  * `(13,13)`
+* Contents: two Herbs, `500–755` gold, one Magic Key, Wings, and a Cursed Belt
+* The treasure room is optional; opening it consumes one key but supplies a replacement.
+* Dragonlord is reached by following the outer path west, north, east, then south across the broken ground.
+* Accepting his offer to “join” ends the run and requires a reset; refusing starts the two consecutive boss forms. [[Final-lair guide](https://guides.gamercorner.net/dw/location-floors/charlock-castle-b7)](https://guides.gamercorner.net/dw/location-floors/charlock-castle-b7)
+
+Some map sites call this “Level 8” because they count the ground floor as Level 1. GamerCorner calls it B7. For the mod, I recommend `Ground Floor`, `B1`–`B6`, and `Dragonlord’s Lair/B7`.
+
+## Important repository finding
+
+The current [[objects.lua](https://github.com/techdog420/DragonWarriorBlindAccess-Public/blob/eaac61ff9f564b3117680ef5b1523002ad5f7d24/objects.lua)](https://github.com/techdog420/DragonWarriorBlindAccess-Public/blob/eaac61ff9f564b3117680ef5b1523002ad5f7d24/objects.lua) correctly warns that the existing deeper Charlock entries are provisional. Coordinates such as the current `(7,7)` and `(3,3)` descent chain should not be treated as canonical; the ROM stair table above gives the actual graph.
+
+There also appear to be two map-numbering namespaces in the project:
+
+* ROM/map-data IDs: `0x02`, `0x0F`–`0x14`, then `0x06`
+* Older `$0045` runtime notes: `0x01`–`0x07` and `0x16`
+
+We should log live `$0045`, X, and Y after every staircase before binding floor names. The namespaces may both be legitimate at different layers, but should not be merged by assumption.
+
+My recommended next implementation order is:
+
+1. Add and test the 52-step Rainbow Bridge-to-entrance route.
+2. Decode the ground-floor western approach and hidden-stair SEARCH state.
+3. Record live map IDs while traversing the canonical main spine.
+4. Add the optional sword branch.
+5. Mark the northeastern B4 route as a trap and detect the B6 loop.
+6. Decode the final lair’s door, chests, and Dragonlord landmark.
+
+No project files were changed during this research pass.
