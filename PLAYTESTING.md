@@ -6,10 +6,35 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Charlock false branch and loop (`2026-08-06`): B4 stair `(8,1)` entered B5
+  `(4,0)`. Clean movement crossed hidden top-boundary cells `(5,0)..(7,0)`,
+  then followed the inner corridor `7 south, 5 west, 5 north, 3 east, 3 south`
+  to B5 descent `(5,5)`. That stair entered B6 `(0,0)`. Same-origin movement
+  crossed the complete hidden top row to `(9,0)`, and STAIRS there returned to
+  B6 `(0,0)`, proving the deliberate same-floor loop. Two apparent B6
+  `(3,0)->(4,0)` blocks occurred while controls were locked; after Start
+  restored control, the edge and the remainder of the row moved cleanly.
+  Source adds only the fourteen proven boundary cells; verification passes
+  `79/79` map-reader and `109/109` object tests, Lua syntax, and
+  `git diff --check`. After reloading, the source-only B6 planner produced
+  exactly `9 east` from `(0,0)` and autowalk completed at `(9,0)` with no
+  runtime blockers. STAIRS then returned to B6 `(0,0)`, validating the loaded
+  same-floor loop end to end.
+- Charlock Erdrick's Sword branch (`2026-08-06`): from B4 `(7,7)`, the live
+  route ascended through B3 `(7,7)->(2,2)`, crossed the adjacent B2 stair pair
+  `(9,1)->(9,0)->(8,0)`, and entered B1 `(15,1)`. The missed onward turn is
+  LEFT from `(19,2)` after following the top boundary `(15,0)..(19,0)`; the
+  southwest zigzag ends at B1 stair `(13,7)`, which enters the isolated B2
+  sword room at `(4,4)`. TAKE on chest `(5,5)` produced the Erdrick's Sword
+  dialogue, changed equipment byte `$00BE` to `0xFF`, and raised Attack from
+  115 to 127. The complete reverse route returned to B4 `(7,7)`. Source now
+  models only the seven newly proven boundary cells, and `79/79` focused
+  map-reader tests, Lua syntax, and `git diff --check` pass. The loaded forward
+  and reverse routes were subsequently validated without runtime blockers.
 - Complete Charlock dungeon (`2026-08-06`): the full intended spine is now
   live-proven from ground-floor entrance `(10,19)` through the hidden SEARCH
-  stair `(10,1)`, B1 `(9,0)->(8,19)`, B2 `(5,0)->(3,0)`, the B3 false-return
-  loop and true descent `(1,6)`, B4 `(0,9)->(2,2)`, B5 perimeter
+  stair `(10,1)`, B1 `(9,0)->(8,19)`, B2 `(5,0)->(3,0)`, the direct B3 route
+  `(7,0)->(1,6)`, B4 `(0,9)->(2,2)`, B5 perimeter
   `(9,0)->(0,0)`, B6 lower route `(0,6)->(9,6)`, and Dragonlord's Lair entry
   `(10,29)` to boss approach `(17,24)`. The final floor needs four
   coordinate-scoped raw-type-0 passages at `(28,13)`, `(28,14)`, `(25,16)`,
@@ -17,8 +42,35 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   runtime blocks. TALK at `(17,24)` produced Dragonlord's opening dialogue,
   and reloaded object browsing identifies the stationary NPC at `(16,24)` as
   `Dragonlord`. Verification passes `79/79` map-reader and `109/109` object
-  tests, Lua syntax, and `git diff --check`. The save state is restored at
-  `(17,24)`, field clear directly before the encounter.
+  tests, Lua syntax, and `git diff --check`. A later loaded topology audit again
+  completed the full main spine to lair entry `(10,29)` with no runtime
+  blockers. It proved that B3's false stair loop is optional, all three tested
+  B4 branch stairs share one walking component, and the B5/B6 false-loop
+  components are disconnected from their respective main-route arrivals. The
+  reverse stair then moved from lair `(10,29)` to B6 `(9,6)`. Because that
+  live-proven return stair was missing from Travel navigation, map `0x06` now
+  exposes `South Stairs Up` at `(10,29)`; all 110 object tests pass. After
+  reload and re-entry, Travel reported `South Stairs Up: here (1 of 1)` at
+  `(10,29)`, completing live verification. A follow-up door audit disproved the
+  generic raw-type-5 `Door` at that same stair and confirmed the actual locked
+  treasure-room door at `(17,12)`: OPEN from east stand `(18,12)` facing west
+  consumed one key and wrote opened-door RAM `(17,12)`. Source now exposes the
+  named `Treasure Room Door` with east and west interaction stands, and treats
+  `(17,12)` as planner-passable only while its door RAM slot is open. Verification
+  passes `80/80` map-reader and `112/112` object tests, Lua syntax, and
+  `git diff --check`. Loaded inspection reported `reason=door_open`, and normal
+  movement crossed the door in both directions. All six room chests were
+  reached: `(11,11)` Herb, `(11,12)` 680 gold, `(12,12)` Magic Key, `(11,13)`
+  Wings, `(12,13)` Cursed Belt, and `(13,13)` Herb. TAKE at `(13,13)` while
+  carrying six Herbs consumed the chest but discarded its reward, reporting
+  `Unfortunately, it is empty.` The dialogue-based tracking regression now
+  marks that case opened without requiring an inventory increase; after reload,
+  the retry logged `CHEST_OPENED_DIALOGUE ... chest_16 x=13 y=13`, and object
+  navigation reported `Chest (opened): here`. The ordinary return route then
+  crossed the open door eastward and continued from `(18,12)` to lair stair
+  `(10,29)`. Two Armored Knights and one Red Dragon interrupted combat, but
+  each resumed segment remained source-only and the final state had no runtime
+  blockers or active path.
 - Charlock B3 main route (`2026-08-05`): STAIRS at B2 `(3,0)` entered B3
   `(7,0)`. The first right-edge/lower route reached false return stair `(0,9)`,
   which crossed B2 `(1,9)->(0,9)->(0,8)` and re-entered B3 at `(5,4)`. From

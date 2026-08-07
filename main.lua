@@ -1987,6 +1987,17 @@ DW_QOL_STATE.mark_pending_talk_visit = function(event)
 end
 
 event_bus.subscribe("dialogue_new", function(event)
+    local map_id, px, py = nav.get_position()
+    local chest = objects.mark_nearby_chest_opened_from_dialogue(
+        event and event.text, px, py)
+    if chest then
+        debug_tools.info(string.format(
+            "CHEST_OPENED_DIALOGUE map=0x%02X chest_id=%s x=%d y=%d",
+            map_id,
+            tostring(chest.id),
+            chest.x,
+            chest.y))
+    end
     DW_QOL_STATE.mark_pending_talk_visit(event)
 end)
 

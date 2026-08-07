@@ -459,6 +459,16 @@ local MAP_PASSTHROUGH_CELLS = {
         ["11,0"] = true,
         ["12,0"] = true,
         ["13,0"] = true,
+        -- The Erdrick's Sword branch enters from B2 at (15,1), turns north,
+        -- and follows the east top boundary before bending southwest at
+        -- (19,2). Clean same-origin probes crossed every top-row cell in both
+        -- directions on 2026-08-06; all retain raw type 2 but are rejected by
+        -- the generic north-boundary guard without these narrow overrides.
+        ["15,0"] = true,
+        ["16,0"] = true,
+        ["17,0"] = true,
+        ["18,0"] = true,
+        ["19,0"] = true,
         ["0,0"] = true,
         ["1,0"] = true,
         ["2,0"] = true,
@@ -494,6 +504,12 @@ local MAP_PASSTHROUGH_CELLS = {
         ["3,0"] = true,
         ["5,0"] = true,
         ["6,0"] = true,
+        -- The sword branch returns from B1 on stair (8,0), crosses the hidden
+        -- north-boundary tile (9,0), and turns south onto the B3 stair (9,1).
+        -- Normal-route same-origin probes proved both boundary cells in both
+        -- directions on 2026-08-06.
+        ["8,0"] = true,
+        ["9,0"] = true,
         ["0,3"] = true,
         ["0,4"] = true,
         ["0,5"] = true,
@@ -537,11 +553,16 @@ local MAP_PASSTHROUGH_CELLS = {
     -- Map 0x13: the B4 main descent arrives at north-boundary stair (9,0).
     -- Live movement followed the east and south perimeter to (0,9), then
     -- clean same-origin probes crossed every west-boundary cell northward to
-    -- the main B6 descent at (0,0). These cells override the generic
-    -- north/west boundary rule; the untested inner false branch stays scoped
-    -- to its ROM-backed stair objects until it is traversed live.
+    -- the main B6 descent at (0,0). The false branch arrives at (4,0), crosses
+    -- the hidden top-boundary lane through (5,0)..(7,0), and follows the
+    -- ordinary inner corridor to descent (5,5). These cells override the
+    -- generic north/west boundary rule.
     [0x13] = {
         ["9,0"] = true,
+        ["4,0"] = true,
+        ["5,0"] = true,
+        ["6,0"] = true,
+        ["7,0"] = true,
         ["0,0"] = true,
         ["0,1"] = true,
         ["0,2"] = true,
@@ -555,8 +576,21 @@ local MAP_PASSTHROUGH_CELLS = {
     },
     -- Map 0x14: the B5 main-spine descent arrives on west-boundary stair
     -- (0,6). Live movement stepped east from this stand and crossed the lower
-    -- component to the ROM-backed final descent at (9,6).
+    -- component to the ROM-backed final descent at (9,6). The false branch
+    -- arrives at (0,0); clean same-origin movement crossed the complete hidden
+    -- top row to loop stair (9,0), whose STAIRS action returned to (0,0) on
+    -- this same map.
     [0x14] = {
+        ["0,0"] = true,
+        ["1,0"] = true,
+        ["2,0"] = true,
+        ["3,0"] = true,
+        ["4,0"] = true,
+        ["5,0"] = true,
+        ["6,0"] = true,
+        ["7,0"] = true,
+        ["8,0"] = true,
+        ["9,0"] = true,
         ["0,6"] = true,
     },
     -- Map 0x03: Hauksness west entrance/exit stand.
@@ -1468,10 +1502,9 @@ local MAP_PASSTHROUGH_CELLS = {
 -- ============================================================
 -- Per-Map Magic-Key Door Cell Overrides
 -- ============================================================
--- Some cells have tile type 15 (wall) in ROM but host a magic-key door
--- at runtime. parse_doors() in objects.lua looks for tile type 11, so it
--- misses these. We list them here so is_walkable() can check the game's
--- opened-door RAM ($600C/$600D) directly.
+-- Some cells host magic-key doors at runtime but cannot be inferred safely
+-- from tile type alone. We list confirmed door cells here so is_walkable()
+-- can check the game's opened-door RAM ($600C/$600D) directly.
 --
 -- Format: MAP_DOOR_CELLS[map_id]["x,y"] = {x=X, y=Y}
 -- When a cell is listed here, is_walkable() returns true ONLY if the
@@ -1498,6 +1531,13 @@ local MAP_DOOR_CELLS = {
     -- the cell becomes passable (leading to the corridor and stairs at (8,8)).
     [0x05] = {
         ["4,7"] = {x=4, y=7},
+    },
+    -- Map 0x06: Dragonlord's Lair
+    -- Live FCEUX proof on 2026-08-06: OPEN from (18,12) facing west consumed
+    -- one key and wrote opened-door RAM slot (17,12). The raw type-11 tile is
+    -- the locked entrance to the six-chest treasure room.
+    [0x06] = {
+        ["17,12"] = {x=17, y=12},
     },
     -- Map 0x07: Kol locked doors. Live FCEUX verifier proof from stand
     -- `(8,12)` facing west consumed one key and wrote opened-door RAM slot

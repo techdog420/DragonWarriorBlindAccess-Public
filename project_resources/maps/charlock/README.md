@@ -119,13 +119,28 @@ down/up stair records.
   - `(15,14)` -> B1 `(17,15)`.
   These lead into the large B1 branch network rather than the hidden main
   entrance behind the throne.
-- B4 sword/upward branch: B4 `(7,7)` returns to B3 `(7,7)`. Guide maps place
-  the Erdrick's Sword route in the connected B3/B2 branch; the exact walking
-  route still needs live decoding.
-- B4 false inner branch: B4 `(8,1)` -> B5 `(4,0)`, then B5 `(5,5)` -> B6
-  `(0,0)`.
-- B6 same-floor loop: B6 `(9,0)` sends the player back to B6 `(0,0)`.
-  Treat this as a deliberate routing trap, not a normal floor change.
+- B4 sword/upward branch: B4 `(7,7)` returns to B3 `(7,7)`. The live-proven
+  route crosses B3 to `(2,2)`, uses the adjacent B2/B1 stair pair, follows the
+  B1 east-boundary/southwest zigzag from `(15,1)` to `(13,7)`, and enters the
+  isolated B2 sword room at `(4,4)`. The chest is at `(5,5)`; taking it raised
+  the hero's Attack from 115 to 127. The complete reverse route is also proven.
+- B4 false inner branch: B4 `(8,1)` -> B5 `(4,0)`. The live-proven B5 route
+  crosses hidden top cells `(5,0)..(7,0)`, then follows the inner corridor to
+  B5 `(5,5)` -> B6 `(0,0)`.
+- B6 same-floor loop: the complete hidden top row `(0,0)..(9,0)` is
+  live-proven, and STAIRS at `(9,0)` sends the player back to B6 `(0,0)`.
+  Treat this as a deliberate routing trap, not a normal floor change. Two
+  apparent `(3,0)->(4,0)` blocks were confirmed control-lock contamination and
+  are not map evidence. After source reload, the planner and autowalk completed
+  the row as exactly `9 east` with no runtime blockers, and the stair again
+  returned to `(0,0)` on map `0x14`.
+- Loaded component audit: B3 entry `(7,0)` can reach true descent `(1,6)`
+  directly, so its false-return stair loop is optional. B4 main descent
+  `(2,2)`, false-inner stair `(8,1)`, and sword-return stair `(7,7)` are in one
+  walking component. On B5, main arrival/descent `(9,0)/(0,0)` is disconnected
+  from false-inner arrival/descent `(4,0)/(5,5)`. On B6, main
+  arrival/descent `(0,6)/(9,6)` is disconnected from loop endpoints
+  `(0,0)/(9,0)`.
 - The complete branch graph is in `rom_stair_graph.tsv`; B1 has seven separate
   stair pairs with B2, and B2 has four with B3.
 
@@ -134,13 +149,32 @@ down/up stair records.
 The main final-floor route is now live-confirmed:
 
 - Entry from B6: `(10,29)`.
+- Return stair: `(10,29)` -> B6 `(9,6)`. The reverse transition is live-proven,
+  and loaded object navigation reports `South Stairs Up: here (1 of 1)` under
+  Travel at the exact entry coordinate.
 - The route winds around the outer corridor, crosses raw-type-0 passages at
   `(28,13)`, `(28,14)`, `(25,16)`, and `(25,21)`, and reaches the east-side
   Dragonlord approach `(17,24)`.
 - Dragonlord occupies `(16,24)`. TALK from `(17,24)` produced his opening
   dialogue, and loaded object browsing identifies him as `Dragonlord`.
-- One locked central treasure room contains six chests. Gamer Corner lists two
-  Herbs, `500-755` gold, a Magic Key, Wings, and a Cursed Belt.
+- The locked treasure-room door is `(17,12)`. OPEN from `(18,12)` facing west
+  consumed one key and wrote opened-door RAM `(17,12)`. The raw type-5 tile at
+  return stair `(10,29)` is not a door. Source now names the real door and makes
+  it planner-passable only when its RAM slot is open. After reload, the tile
+  reported `reason=door_open` and ordinary movement crossed it in both
+  directions.
+- The locked central room's six live-opened chests are `(11,11)` Herb,
+  `(11,12)` 680 gold, `(12,12)` Magic Key, `(11,13)` Wings, `(12,13)` Cursed
+  Belt, and `(13,13)` Herb. If Herb inventory is already at its maximum of six,
+  TAKE still consumes the Herb chest while reporting `Unfortunately, it is
+  empty.` The item is lost. A later TAKE reports `There is nothing to take
+  here`. Object tracking now treats either definitive message as opened even
+  without an inventory increase; the loaded fix marked `(13,13)` opened.
+- The safe treasure-room return is live-proven. Ordinary autowalk from the
+  final chest `(13,13)` crossed the open door `(17,12)`, reached its outside
+  stand `(18,12)`, and followed the 25-step outer-corridor route back to lair
+  stair `(10,29)`. Two Armored Knights and one Red Dragon were combat-only
+  interruptions; every resumed segment finished with zero runtime blockers.
 - The Dragonlord offer is destructive to an unsaved run: accepting it freezes
   the game state and requires reset. Preserve a safe test/save boundary before
   dialogue validation.
@@ -148,17 +182,18 @@ The main final-floor route is now live-confirmed:
 ## Resolved Source Status
 
 The hidden ground-floor route, main spine through maps `0x0F` to `0x14`, final
-descent, and Dragonlord approach are live-proven and modeled. The stale deeper
-stair placeholders were replaced with the ROM-backed coordinates, and every
-main-spine transition was traversed in FCEUX. Optional branch stairs from the
-ROM graph remain orientation until their connected walking routes are decoded.
+descent, Dragonlord approach, Erdrick's Sword branch, B4/B5 false branch, and
+B6 same-floor loop are live-proven and modeled. The stale deeper stair
+placeholders were replaced with the ROM-backed coordinates. The final-lair
+treasure door coordinate, interaction stands, key consumption, and opened-door
+RAM state are live-proven and modeled. All six treasure-room chest coordinates,
+contents, the full-Herb loss behavior, and the safe return to `(10,29)` are
+also live-proven.
+Other optional branch stairs remain orientation until their connected walking
+routes are decoded.
 
 ## Recommended Remaining Decode Order
 
-1. Decode the B4 `(7,7)` sword branch and locate the B2 sword chest.
-2. Decode the B4 `(8,1)` false branch and live-prove the B6
-   `(9,0)->(0,0)` same-floor loop.
-3. Decode the visible ground-floor decoy stairs and remaining B1/B2 branch
+1. Decode the visible ground-floor decoy stairs and remaining B1/B2 branch
    network.
-4. Decode the final-floor treasure room, six chests, throne enclosure, and safe
-   return route.
+2. Decode the final-floor throne enclosure and any remaining optional pockets.

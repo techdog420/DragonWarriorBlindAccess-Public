@@ -53,6 +53,7 @@ local function make_env(options)
     local large_tiles = options.large_tiles or {}
     local walkable_tiles = options.walkable_tiles or {}
     local directional_blocks = options.directional_blocks or {}
+    local tile_grid = options.tile_grid
 
     _G.AND = function(a, b)
         local result = 0
@@ -116,9 +117,15 @@ local function make_env(options)
         return {
             get_tile_grid = function()
                 tile_grid_calls = tile_grid_calls + 1
-                return nil
+                return tile_grid
             end,
             get_metadata = function()
+                if tile_grid then
+                    return {
+                        width = options.map_width or 32,
+                        height = options.map_height or 32,
+                    }
+                end
                 return nil
             end,
             get_map_dimensions = function()
@@ -221,6 +228,40 @@ local function find_by_id(objects, id)
 end
 
 local tests = {}
+
+function tests.empty_take_dialogue_marks_consumed_nearby_chest_opened()
+    local env = make_env({
+        npc_count = 0,
+        rom_chest_start = 0,
+        rom_chest_end = 7,
+        rom_bytes = {
+            [0] = 0x06, [1] = 13, [2] = 13, [3] = 0x02,
+            [4] = 0x06, [5] = 12, [6] = 13, [7] = 0x02,
+        },
+    })
+
+    env.set_position(0x06, 13, 13)
+    env.objects.refresh(0x06)
+
+    assert_equal(
+        env.objects.mark_nearby_chest_opened_from_dialogue("A harmless unrelated message.", 13, 13),
+        nil,
+        "unrelated dialogue should not consume a nearby chest")
+    assert_equal(env.objects.is_chest_opened("chest_0"), false, "first chest should begin unopened")
+
+    local full_inventory_chest = env.objects.mark_nearby_chest_opened_from_dialogue(
+        "Unfortunately, it is empty.", 13, 13)
+    assert_equal(full_inventory_chest.id, "chest_0", "full-inventory empty dialogue should mark the chest underfoot")
+    assert_equal(env.objects.is_chest_opened("chest_0"), true, "full-inventory chest should be marked opened")
+
+    env.set_position(0x06, 12, 13)
+    local already_empty_chest = env.objects.mark_nearby_chest_opened_from_dialogue(
+        "There is nothing to take here, Bill.", 12, 13)
+    assert_equal(already_empty_chest.id, "chest_1", "nothing-to-take dialogue should mark the nearest chest")
+    assert_equal(env.objects.is_chest_opened("chest_1"), true, "already-empty chest should be marked opened")
+
+    env.restore()
+end
 
 function tests.garins_grave_b1_rom_chests_and_b2_stairs_are_exposed()
     local env = make_env({
@@ -384,6 +425,24 @@ function tests.hauksness_never_exposes_stale_town_npc_ram()
     env.restore()
 end
 
+function tests.charlock_never_exposes_stale_town_npc_ram()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x02, 10, 19)
+    env.set_terrain_offset(0x10)
+    env.objects.on_map_change(0x02, {previous_map_id = 0x04})
+
+    for _ = 1, 100 do
+        env.objects.check_refresh(0x02)
+    end
+
+    assert_equal(#env.objects.get_blocking_positions(), 0, "Charlock should not turn stale castle NPC RAM into blockers")
+    env.objects.next_filter()
+    assert_equal(env.objects.get_count(), 0, "Charlock NPC filter should not expose stale castle NPC RAM")
+
+    env.restore()
+end
+
 function tests.hauksness_exposes_safe_axe_knight_travel_landmark_without_treasure_hint()
     local env = make_env({npc_count = 20})
 
@@ -528,6 +587,9 @@ function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
     assert_equal(find_by_id(env.objects, "stair_9_0").name, "Northeast Loop Stairs", "Dragonlord B6 same-floor loop stair should be labeled without a false floor direction")
     assert_equal(find_by_id(env.objects, "stair_9_6").name, "East Stairs Down", "Dragonlord B6 final descent should use the live-proven coordinate")
 
+    env.objects.refresh(0x06)
+    assert_equal(find_by_id(env.objects, "stair_10_29").name, "South Stairs Up", "Dragonlord's Lair should expose the live-proven return stair under Travel")
+
     env.restore()
 end
 
@@ -543,6 +605,36 @@ function tests.dragonlord_lair_boss_npc_uses_final_encounter_label()
     assert_equal(boss.x, 16, "Dragonlord should keep the live-confirmed X coordinate")
     assert_equal(boss.y, 24, "Dragonlord should keep the live-confirmed Y coordinate")
     assert_equal(boss.service, false, "Dragonlord should remain outside the Services filter")
+
+    env.restore()
+end
+
+function tests.dragonlord_lair_uses_confirmed_treasure_door_not_type_five_stair()
+    local grid = {}
+    for y = 0, 29 do
+        grid[y] = {}
+    end
+    grid[29][10] = 5 -- Live STAIRS-command entry tile, not a locked door.
+
+    local env = make_env({
+        npc_count = 0,
+        tile_grid = grid,
+        map_width = 30,
+        map_height = 30,
+    })
+    env.set_terrain_offset(0x20) -- Reproduce the stale dungeon scan at map entry.
+    env.objects.refresh(0x06)
+
+    assert_equal(find_by_id(env.objects, "door_10_29"), nil, "Dragonlord's Lair return stair must not be duplicated as a door")
+    local door = find_by_id(env.objects, "door_17_12")
+    assert_equal(door ~= nil, true, "Dragonlord's Lair should expose the live-opened treasure-room door")
+    assert_equal(door.name, "Treasure Room Door", "Dragonlord's Lair door should identify the treasure room")
+    assert_equal(door.interaction_x, 18, "treasure-room door should route first to the live-proven east stand")
+    assert_equal(door.interaction_y, 12, "treasure-room door east stand should preserve the live Y coordinate")
+    assert_equal(door.interaction_face_dir, "west", "treasure-room door east stand should face west")
+    assert_equal(door.interaction_points[2].x, 16, "treasure-room door should retain the inside west stand")
+    assert_equal(door.interaction_points[2].y, 12, "treasure-room door inside stand should preserve the live Y coordinate")
+    assert_equal(door.interaction_points[2].face_dir, "east", "treasure-room door inside stand should face east")
 
     env.restore()
 end

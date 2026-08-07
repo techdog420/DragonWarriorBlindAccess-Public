@@ -376,6 +376,9 @@ function tests.charlock_b1_uses_live_proven_type_zero_walls_and_boundary_stair()
     set_packed_block(rom_bytes, data_start, 20, 8, 0, 0x0)
     set_packed_block(rom_bytes, data_start, 20, 0, 7, 0x0)
     set_packed_block(rom_bytes, data_start, 20, 9, 2, 0x0)
+    for x = 15, 19 do
+        set_packed_block(rom_bytes, data_start, 20, x, 0, 0x2)
+    end
     set_packed_block(rom_bytes, data_start, 20, 8, 13, 0x1)
     set_packed_block(rom_bytes, data_start, 20, 8, 19, 0x3)
 
@@ -402,6 +405,13 @@ function tests.charlock_b1_uses_live_proven_type_zero_walls_and_boundary_stair()
     assert_equal(hidden_top_passage.tile_type, 0x2, "Charlock B1 hidden top passage should retain raw type 2")
     assert_equal(hidden_top_passage.effective_walkable, true, "Charlock B1 hidden top passage should override the generic boundary rule")
     assert_equal(hidden_top_passage.reason, "passthrough", "Charlock B1 hidden top passage should report the map-specific passthrough")
+
+    for x = 15, 19 do
+        local sword_boundary = env.map_reader.get_walkability_details(map_id, x, 0)
+        assert_equal(sword_boundary.tile_type, 0x2, "Charlock B1 sword-route top passage should retain raw type 2 at x=" .. x)
+        assert_equal(sword_boundary.effective_walkable, true, "Charlock B1 sword-route top passage should be live-passable at x=" .. x)
+        assert_equal(sword_boundary.reason, "passthrough", "Charlock B1 sword-route top passage should report passthrough at x=" .. x)
+    end
 
     for x = 0, 7 do
         local top_boundary = env.map_reader.get_walkability_details(map_id, x, 0)
@@ -467,6 +477,9 @@ function tests.charlock_b2_uses_live_proven_walls_stairs_and_boundary_route()
     set_packed_block(rom_bytes, data_start, 10, 3, 1, 0xA)
     set_packed_block(rom_bytes, data_start, 10, 0, 7, 0x0)
     set_packed_block(rom_bytes, data_start, 10, 0, 8, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 8, 0, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 9, 0, 0x2)
+    set_packed_block(rom_bytes, data_start, 10, 9, 1, 0x3)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -495,7 +508,7 @@ function tests.charlock_b2_uses_live_proven_walls_stairs_and_boundary_route()
     assert_equal(type_a_floor.effective_walkable, true, "Charlock B2 type-A corridors should remain walkable")
 
     for _, point in ipairs({
-        {3, 0}, {5, 0}, {6, 0},
+        {3, 0}, {5, 0}, {6, 0}, {8, 0}, {9, 0},
         {0, 3}, {0, 4}, {0, 5}, {0, 6},
         {0, 8}, {0, 9},
     }) do
@@ -657,7 +670,7 @@ function tests.charlock_b4_uses_live_proven_stairs_and_west_boundary_route()
     env.restore()
 end
 
-function tests.charlock_b5_uses_live_proven_walls_stairs_and_main_perimeter_route()
+function tests.charlock_b5_uses_live_proven_walls_stairs_and_both_routes()
     local map_id = 0x13
     local base = map_id * 5
     local data_start = 0x400
@@ -693,29 +706,29 @@ function tests.charlock_b5_uses_live_proven_walls_stairs_and_main_perimeter_rout
     assert_equal(inner_stair.effective_walkable, true, "Charlock B5 type-B cells should use the ROM-backed stair rule")
     assert_equal(inner_stair.reason, "map_tile_type", "Charlock B5 interior type-B stair should report the map-specific rule")
 
-    local west_boundary_route = {}
+    local boundary_routes = {{4, 0}, {5, 0}, {6, 0}, {7, 0}}
     for y = 0, 9 do
-        west_boundary_route[#west_boundary_route + 1] = {0, y}
+        boundary_routes[#boundary_routes + 1] = {0, y}
     end
-    west_boundary_route[#west_boundary_route + 1] = {9, 0}
-    for _, point in ipairs(west_boundary_route) do
+    boundary_routes[#boundary_routes + 1] = {9, 0}
+    for _, point in ipairs(boundary_routes) do
         local passage = env.map_reader.get_walkability_details(map_id, point[1], point[2])
         assert_equal(
             passage.effective_walkable,
             true,
-            string.format("Charlock B5 main perimeter route (%d,%d) should be walkable", point[1], point[2])
+            string.format("Charlock B5 live boundary route (%d,%d) should be walkable", point[1], point[2])
         )
         assert_equal(
             passage.reason,
             "passthrough",
-            string.format("Charlock B5 main perimeter route (%d,%d) should override the generic boundary rule", point[1], point[2])
+            string.format("Charlock B5 live boundary route (%d,%d) should override the generic boundary rule", point[1], point[2])
         )
     end
 
     env.restore()
 end
 
-function tests.charlock_b6_uses_live_proven_main_route_walls_and_stairs()
+function tests.charlock_b6_uses_live_proven_main_route_and_false_loop()
     local map_id = 0x14
     local base = map_id * 5
     local data_start = 0x460
@@ -728,6 +741,8 @@ function tests.charlock_b6_uses_live_proven_main_route_walls_and_stairs()
         [base + 4] = 0,
     }
     fill_packed_map(rom_bytes, data_start, 10, 10, 0x2)
+    set_packed_block(rom_bytes, data_start, 10, 0, 0, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 9, 0, 0x3)
     set_packed_block(rom_bytes, data_start, 10, 0, 6, 0x1)
     set_packed_block(rom_bytes, data_start, 10, 9, 6, 0x3)
     set_packed_block(rom_bytes, data_start, 10, 9, 5, 0x0)
@@ -756,6 +771,20 @@ function tests.charlock_b6_uses_live_proven_main_route_walls_and_stairs()
     assert_equal(arrival.tile_type, 0x1, "Charlock B6 main arrival should retain raw type 1")
     assert_equal(arrival.effective_walkable, true, "Charlock B6 main arrival should override the generic west boundary")
     assert_equal(arrival.reason, "passthrough", "Charlock B6 main arrival should report the live passthrough")
+
+    for x = 0, 9 do
+        local passage = env.map_reader.get_walkability_details(map_id, x, 0)
+        assert_equal(
+            passage.effective_walkable,
+            true,
+            string.format("Charlock B6 false-loop corridor (%d,0) should be walkable", x)
+        )
+        assert_equal(
+            passage.reason,
+            "passthrough",
+            string.format("Charlock B6 false-loop corridor (%d,0) should override the generic boundary rule", x)
+        )
+    end
 
     env.restore()
 end
@@ -1224,6 +1253,46 @@ function tests.throne_room_door_opens_from_door_ram_array()
     assert_equal(details.reason, "door_open", "opened throne-room door should report door_open")
     local snapshot = env.map_reader.get_walkability_snapshot(0x05)
     assert_equal(snapshot[7][4], true, "walkability snapshot should honor opened throne-room door RAM")
+
+    env.restore()
+end
+
+function tests.dragonlord_lair_treasure_door_opens_from_door_ram_array()
+    local base = 0x06 * 5
+    local data_start = 0x120
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0xB)
+
+    local memory_bytes = {
+        [0] = 0x10,
+    }
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    local closed = env.map_reader.get_walkability_details(0x06, 17, 12)
+    assert_equal(closed.effective_walkable, false, "closed Dragonlord lair treasure door should block movement")
+    assert_equal(closed.reason, "door_closed", "closed Dragonlord lair treasure door should report door_closed")
+
+    memory_bytes[0x600C] = 17
+    memory_bytes[0x600D] = 12
+    local opened = env.map_reader.get_walkability_details(0x06, 17, 12)
+    assert_equal(opened.effective_walkable, true, "opened Dragonlord lair treasure door should become walkable")
+    assert_equal(opened.reason, "door_open", "opened Dragonlord lair treasure door should report door_open")
+    local snapshot = env.map_reader.get_walkability_snapshot(0x06)
+    assert_equal(snapshot[12][17], true, "walkability snapshot should honor opened Dragonlord lair treasure door")
 
     env.restore()
 end

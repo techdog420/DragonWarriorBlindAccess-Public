@@ -121,10 +121,37 @@ Updated: 2026-08-06
 
 ## Immediate FCEUX Handoff
 
+- The Charlock false inner branch and deliberate B6 loop are live-proven.
+  B4 `(8,1)` entered B5 `(4,0)`; hidden top-boundary cells `(5,0)..(7,0)`
+  connect to the ordinary 23-step inner corridor ending at descent `(5,5)`.
+  That stair entered B6 `(0,0)`, where the complete hidden top row leads east
+  to loop stair `(9,0)`. STAIRS there returned to B6 `(0,0)` on the same map.
+  Two apparent blocks at `(3,0)->(4,0)` occurred during a confirmed control
+  lock and are discarded; after Start recovery the edge and remaining row
+  moved cleanly. Source now adds B5 passthroughs `(4,0)..(7,0)` and B6
+  passthroughs `(0,0)..(9,0)`. Verification passes `79/79` map-reader and
+  `109/109` object tests, Lua syntax, and `git diff --check`. After reloading,
+  source-only planning produced exactly `9 east` from B6 `(0,0)`, autowalk
+  completed at `(9,0)` with no runtime blockers, and STAIRS returned to B6
+  `(0,0)`. The false branch and loaded same-floor loop are complete.
+- The Erdrick's Sword branch is complete and live-proven in both directions.
+  From B4 `(7,7)`, STAIRS entered B3 `(7,7)`; the unbranched corridor reached
+  B3 `(2,2)`, then B2 `(9,1)`. The adjacent B2 link crosses hidden boundary
+  cells `(9,0),(8,0)` into B1 `(15,1)`. B1 runs north to `(15,0)`, east across
+  `(16,0)..(19,0)`, turns southwest at `(19,2)->(18,2)`, and follows the
+  modeled zigzag to stair `(13,7)`. That stair entered the B2 sword room at
+  `(4,4)`; the chest at `(5,5)` produced `Thou hast found the Erdrick's Sword.`
+  Equipment byte `$00BE` changed to `0xFF`, and Attack rose from `0x73` (115)
+  to `0x7F` (127). The full reverse route returned the hero to B4 `(7,7)`.
+  Source now adds only the seven cleanly proven boundary passthroughs: B1
+  `(15,0)..(19,0)` and B2 `(8,0),(9,0)`. The focused suite passes `79/79`
+  map-reader tests, Lua syntax, and `git diff --check`. The loaded forward and
+  reverse routes were subsequently validated without runtime blockers.
 - Charlock Castle and the complete main dungeon spine are decoded and
   live-proven through Dragonlord. Ground floor `0x02` uses SEARCH at hidden
   stair `(10,1)`; B1 `0x0F` descends at `(8,19)`; B2 `0x10` descends at
-  `(3,0)`; B3 `0x11` follows its false-return loop and then descends at `(1,6)`;
+  `(3,0)`; B3 `0x11` can route directly from `(7,0)` to descent `(1,6)` without
+  using its optional false-return loop;
   B4 `0x12` crosses from `(0,9)` to descent `(2,2)`; B5 `0x13` follows the east,
   south, and west perimeter from `(9,0)` to `(0,0)`; and B6 `0x14` crosses its
   lower component from `(0,6)` to final descent `(9,6)`. Dragonlord's Lair
@@ -135,9 +162,37 @@ Updated: 2026-08-06
   final NPC at `(16,24)`; loaded object browsing now labels him `Dragonlord`.
   Source-only navigation completed the final eight westward steps with no
   runtime blocks. Verification passes `79/79` map-reader and `109/109` object
-  tests, Lua syntax, and `git diff --check`. Current live checkpoint is
-  Dragonlord's Lair `(17,24)`, field clear directly before dialogue after a
-  save-state restore and script reload.
+  tests, Lua syntax, and `git diff --check`. A later loaded component audit
+  confirmed B4 `(2,2)`, `(8,1)`, and `(7,7)` share one walking component;
+  B5's main and false-inner stair groups are disconnected; and B6's lower main
+  route is disconnected from the top-row loop. The main spine again completed
+  with no runtime blockers. The reverse stair at lair `(10,29)` then returned
+  to B6 `(9,6)`, revealing that Travel navigation lacked the lair-side stair.
+  `objects.lua` now exposes `South Stairs Up` at `(10,29)`; all 110 object tests,
+  Lua syntax, and `git diff --check` pass. After reload and re-entry, Travel
+  reported `South Stairs Up: here (1 of 1)` at `(10,29)`, completing live
+  verification. A follow-up audit proved the generic raw-type-5 `Door` at that
+  stair false and the real treasure-room door at `(17,12)`: OPEN from east stand
+  `(18,12)` facing west consumed one key and wrote opened-door RAM `(17,12)`.
+  Source now exposes named `Treasure Room Door` with both interaction stands and
+  gates planner access through `(17,12)` on that RAM state. The regressions failed
+  on false `door_10_29` and then on missing `door_closed` handling before the
+  respective fixes. Loaded inspection then reported `reason=door_open`, and
+  ordinary movement crossed the door both ways. All six treasure chests are
+  live-reached: `(11,11)` Herb, `(11,12)` 680 gold, `(12,12)` Magic Key,
+  `(11,13)` Wings, `(12,13)` Cursed Belt, and `(13,13)` Herb. The last chest
+  exposed an original-game capacity quirk: with six Herbs, TAKE consumes the
+  chest, loses the reward, and says `Unfortunately, it is empty.` Object state
+  now also recognizes that line and `There is nothing to take here`; the loaded
+  retry logged `CHEST_OPENED_DIALOGUE ... chest_16 x=13 y=13` and navigation
+  reported `Chest (opened): here`. All `80/80` map-reader and `112/112` object
+  tests, Lua syntax, and `git diff --check` pass. The ordinary safe-return route
+  then crossed the opened door and completed from the treasure room to lair
+  stair `(10,29)` with zero runtime blockers; two Armored Knights and one Red
+  Dragon were combat-only interruptions. Current live checkpoint is lair
+  `(10,29)` on `South Stairs Up`; STAIRS should return to B6 `(9,6)`. The
+  earlier pre-dialogue save boundary remains available for the eventual boss
+  attempt.
 - Charlock Castle overworld geometry is live-proven on
   `codex/charlock-rainbow-bridge-route`. From the formed bridge landing
   `(63,49)`, ordinary movement reached the island south road `(56,64)`, west
@@ -1774,20 +1829,13 @@ Updated: 2026-08-06
 
 ## Next Work
 
-1. Decode the Erdrick's Sword branch next. Refresh the hero, stage at B4
-   `(7,7)`, and use that stair to enter B3 `(7,7)`. Follow the connected B3/B2
-   branch network to the sword chest with normal-route arrivals and same-origin
-   probes before promoting geometry. This is the most useful next branch for a
-   hero who is not yet ready for Dragonlord.
-2. After the sword branch, decode the false inner branch beginning at B4
-   `(8,1)`, through B5 `(4,0)` and `(5,5)`, to B6 `(0,0)`. Live-prove the
-   same-floor B6 loop `(9,0)->(0,0)` rather than relying only on the ROM graph.
-3. Decode the two visible ground-floor decoy stairs `(4,14)` and `(15,14)` and
+1. Decode the two visible ground-floor decoy stairs `(4,14)` and `(15,14)` and
    their remaining B1/B2 branch network. Keep each stair pairing distinct from
    the already complete hidden main spine.
-4. Finish optional Dragonlord's Lair coverage later: the locked treasure room,
-   six chests, type-F throne enclosure cells, and safe return routing. Preserve
-   the current pre-dialogue save boundary until the hero is ready.
-5. For future live FCEUX work after source edits, manually reload `main.lua`
+2. After the pending reload, live-verify the corrected Dragonlord's Lair door
+   object and open-cell routing at `(17,12)`, then decode the six chests, type-F
+   throne enclosure cells, and safe return routing. Preserve the current
+   pre-dialogue save boundary until the hero is ready.
+3. For future live FCEUX work after source edits, manually reload `main.lua`
    before judging behavior. Keep battle/control-lock evidence separate from
    map geometry and use the external Charlock references only for orientation.

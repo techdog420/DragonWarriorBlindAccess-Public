@@ -123,13 +123,12 @@ local apply_service_interaction_override
 -- when facing a type-11 tile on Charlock B4). Type-11 is non-walkable
 -- but is not an interactive door.
 --
--- DOOR_TILE_TOWN is set to nil to disable town/castle door scanning.
--- Actual door positions must be added manually to EXTRA_DOORS below
--- once confirmed in-game (like the map 0x05 door at (4,7)).
---
--- DOOR_TILE_DUNGEON (5) is unconfirmed — left as-is but not yet tested.
-local DOOR_TILE_TOWN    = nil  -- DISABLED: type-11 is a wall, not a door
-local DOOR_TILE_DUNGEON = 5    -- unconfirmed: locked door tile in dungeon/cave maps
+-- Tile scanning is disabled for both tilesets. Actual door positions must be
+-- added to EXTRA_DOORS after live OPEN proof. The former dungeon type-5 scan
+-- was disproved in Dragonlord's Lair: type 5 at (10,29) is the return stair,
+-- while OPEN from (18,12) recorded the real type-11 door at (17,12).
+local DOOR_TILE_TOWN    = nil
+local DOOR_TILE_DUNGEON = nil
 
 -- ============================================================
 -- Door Opened Status
@@ -314,6 +313,9 @@ local STAIRS = {
     {map = 0x14, x = 0, y = 0, name = "Stairs Up", dest = "B5", object_name = "Northwest Stairs Up"},
     {map = 0x14, x = 9, y = 0, name = "Loop Stairs", dest = "B6", object_name = "Northeast Loop Stairs"},
     {map = 0x14, x = 9, y = 6, name = "Stairs Down", dest = "Dragonlord's Lair", object_name = "East Stairs Down"},
+    -- Live reverse transition on 2026-08-06 returned from the lair entry to
+    -- B6 (9,6). Expose the command-stair tile under the Travel filter.
+    {map = 0x06, x = 10, y = 29, name = "Stairs Up", dest = "B6", object_name = "South Stairs Up"},
 
     -- Swamp Cave (0x15)
     -- ROM up-stair table entry 15 00 1D at file offset 0xF486. Live checks
@@ -684,6 +686,7 @@ local function is_overworld_context()
 end
 
 local MAPS_WITHOUT_NPCS = {
+    [0x02] = true, -- Charlock Castle uses town terrain but has no NPC table.
     [0x03] = true, -- Ruins of Hauksness uses town terrain but has no NPCs.
 }
 
@@ -804,6 +807,28 @@ function M.get_nearby_chests(px, py, max_dist)
     end
     table.sort(result, function(a, b) return a.dist < b.dist end)
     return result
+end
+
+-- mark_nearby_chest_opened_from_dialogue(dialogue, px, py): Mark the nearest
+-- chest consumed when the game explicitly reports that TAKE found no reward.
+-- DW1 consumes some chest contents even when the corresponding inventory is
+-- already full, so inventory-delta detection alone misses these opens.
+function M.mark_nearby_chest_opened_from_dialogue(dialogue, px, py)
+    local normalized = tostring(dialogue or ""):lower()
+    local chest_consumed = normalized:find("unfortunately, it is empty", 1, true)
+        or normalized:find("there is nothing to take here", 1, true)
+    if not chest_consumed then
+        return nil
+    end
+
+    local nearby = M.get_nearby_chests(px, py, 1)
+    if not nearby[1] then
+        return nil
+    end
+
+    local chest = nearby[1].obj
+    M.mark_chest_opened(chest.id)
+    return chest
 end
 
 -- ============================================================
@@ -994,13 +1019,10 @@ end
 -- parse_doors(map_id): Scan the ROM tile grid for locked door tiles
 -- and return a list of door objects for the given map.
 --
--- Unlike chests (stored in a dedicated ROM table), doors ARE the tile
--- itself: a locked door is a tile of type DOOR_TILE_TOWN (11) in castle
--- maps or DOOR_TILE_DUNGEON (5) in cave maps. We find them by scanning
--- the decompressed tile grid that map_reader already builds for us.
---
--- DW1 confirmed to have actual locked doors only on map 4 (Tantegel
--- Castle) and map 9. Other maps return an empty list from this scan.
+-- Locked doors are not reliably distinguishable from ordinary walls or stairs
+-- by tile type. Both scan constants are currently nil, so verified doors come
+-- from EXTRA_DOORS. Keep this scanner fail-closed unless a tile rule is proven
+-- for an entire tileset rather than inferred from one coordinate.
 local function parse_doors(map_id)
     -- Determine the door tile type for the current terrain.
     -- TERRAIN_OFFSET at $0016 is set by the game on every map load.
@@ -1238,6 +1260,25 @@ local EXTRA_DOORS = {
     -- The ROM tile is type-15; is_walkable() in map_reader.lua checks the
     -- opened-door RAM directly for this cell.
     [0x05] = {{x=4, y=7, name="Door", type=M.TYPE_DOOR, id="door_4_7"}},
+    -- Map 0x06: Dragonlord's Lair treasure room. OPEN from the natural east
+    -- stand `(18,12)` consumed one key and wrote door RAM slot `(17,12)`.
+    -- The room-side stand is also walkable, so preserve the return approach.
+    [0x06] = {
+        {
+            x=17,
+            y=12,
+            name="Treasure Room Door",
+            type=M.TYPE_DOOR,
+            id="door_17_12",
+            interaction_x=18,
+            interaction_y=12,
+            interaction_face_dir="west",
+            interaction_points={
+                {x=18, y=12, face_dir="west"},
+                {x=16, y=12, face_dir="east"},
+            },
+        },
+    },
     -- Map 0x07: Kol locked doors. Live verifier proof opened them from the
     -- public east stands and recorded their opened-door RAM slots.
     [0x07] = {
