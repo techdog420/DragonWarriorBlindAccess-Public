@@ -6,6 +6,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Full-game ending and credits (`2026-08-09`): after returning to Tantegel and
+  completing King Lorik's ending sequence, every story page and the complete
+  staff credits were automatically narrated by the existing dialogue detector.
+  The final image is the original `The End` screen. A fresh probe found the
+  ROM's terminal state: level byte `255`, non-gameplay/title classification,
+  Tantegel's last coordinates `(10,8)` retained only as stale RAM, no active
+  menu/dialogue or mod input guard, and a healthy speech bridge. An A-button
+  state occurred while this screen remained unchanged, confirming an intended
+  ROM ending loop rather than an accessibility control lock. Minor polish
+  remains: suppress the premature `Title screen.` announcement and two
+  decorative-glyph fragments spoken after the legitimate copyright credits.
 - Dragonlord victory announcement (`2026-08-09`): after the final battle, the
   game displayed `Thou hast done well in defeating the Dragonlord.`, but JAWS
   announced nothing. The filtered and announced caches contained the complete

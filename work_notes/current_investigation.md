@@ -5598,3 +5598,23 @@ For the next live map task, start a new dated section here with:
   `(48,48)`, HP `149/149`, MP `121/121`, field state, empty dialogue, no menu or
   input guard, and speech bridge ready/available with no error. Final-victory
   speech and the postgame return transition are closed end to end.
+
+## 2026-08-09 Full-Game Ending
+
+- COMPLETE RUN VERIFIED: the hero returned to Tantegel, finished King Lorik's
+  ending sequence, and reached the original `The End` screen. Dialogue events
+  covered the full story sequence through `And thus the tale comes to an
+  end.... unless the dragons return again.` `speech_bridge.log` then recorded
+  the congratulations page and every staff-credit page through the copyright
+  line; the user confirmed that the credits were automatically read.
+- TERMINAL STATE CONFIRMED: fresh tag `GAME_END_TERMINAL` at frame `50580`
+  reported state `title`, level byte `255`, map `0x04`, stale final coordinates
+  `(10,8)`, no active menu/dialogue or mod suppression/teleport guard, and a
+  healthy JAWS bridge. The log observed an A-button state during the terminal
+  sequence without leaving `The End`, distinguishing the intended ROM ending
+  loop from the mod's recoverable control-lock cases.
+- MINOR FOLLOW-UP: the generic state transition spoke `Title screen.` before
+  the credits, then the upper-text reader spoke two decorative-glyph fragments
+  (`ghi jklm nopq rstu vwxy` and punctuation) after the real copyright line.
+  Preserve the successful credits narration while filtering those artifacts
+  and announcing `The End.` once in a future endgame-polish pass.

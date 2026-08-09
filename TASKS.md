@@ -89,6 +89,14 @@ quality-of-life work.
 
 ## Quality of Life
 
+### Endgame narration polish
+
+- Detect the credits and terminal `The End` sequence separately from the
+  ordinary title screen. Preserve the successfully narrated story and staff
+  credits, suppress the premature `Title screen.` announcement, filter the two
+  decorative-glyph fragments after the copyright line, and announce a concise
+  `The End.` once when the terminal screen settles.
+
 ### In-game mod configuration
 
 - Add an accessible in-game configuration surface rather than requiring manual

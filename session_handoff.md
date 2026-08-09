@@ -121,6 +121,16 @@ Updated: 2026-08-09
 
 ## Immediate FCEUX Handoff
 
+- A complete blind-player game run reached the original `The End` screen.
+  King Lorik's ending dialogue and the full staff credits were automatically
+  narrated. Fresh tag `GAME_END_TERMINAL` confirmed level byte `255`, the
+  expected non-gameplay/title classification, stale final Tantegel coordinates
+  `(10,8)`, no active menu/dialogue or mod input guard, and a healthy speech
+  bridge. An A-button state was observed without leaving the ending screen, so
+  this is the intended ROM terminal loop, not a mod control lock. Future
+  endgame polish may suppress the premature `Title screen.` announcement and
+  two decorative-glyph fragments after the real copyright credits; neither
+  blocked completion or the credits narration.
 - The final Dragonlord victory exposed a high-priority speech delivery bug.
   The screen and filtered dialogue cache contained `Thou hast done well in
   defeating the Dragonlord.`, and `speech_bridge.log` recorded the exact line,
