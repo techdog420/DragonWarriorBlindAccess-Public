@@ -39,14 +39,13 @@ quality-of-life work.
 
 ## Remaining Map Completion
 
-- Charlock's hidden entrance, seven-link main dungeon spine, Erdrick's Sword
-  branch, B4/B5 false branch, B6 same-floor loop, two visible ground-floor
-  decoys, and complete B1/B2 stair graph are source-only and live-verified.
-  Run a final blind-player Travel/path audit across the completed graph.
-- Finish optional Dragonlord's Lair coverage: decode the throne-enclosure cells
-  and audit any remaining pockets. The locked treasure-room door, six chests,
-  and safe return route are complete. Preserve a pre-dialogue save boundary
-  while testing the final encounter.
+- Charlock is complete. Its hidden entrance, seven-link main dungeon spine,
+  Erdrick's Sword branch, B4/B5 false branch, B6 same-floor loop, visible
+  ground-floor decoys, complete B1/B2 stair graph, locked treasure room, six
+  chests, Dragonlord encounter, Ball of Light sequence, and return routes are
+  source-only and live-verified. The post-victory sequence gives the Ball of
+  Light and moves the hero directly to World Map `(48,48)`; the decorative
+  throne enclosure is not required and no longer needs decoding.
 
 ## Overworld Navigation
 

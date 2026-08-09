@@ -6,6 +6,41 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Dragonlord victory announcement (`2026-08-09`): after the final battle, the
+  game displayed `Thou hast done well in defeating the Dragonlord.`, but JAWS
+  announced nothing. The filtered and announced caches contained the complete
+  text, the speech backend remained healthy, and `speech_bridge.log` proved the
+  line was sent as non-interrupting `speak:` output after a speech-heavy fight.
+  Terminal Dragonlord victory text now uses interrupting speech so it cannot
+  remain behind the combat backlog or be discarded by a later interrupt.
+  Ordinary enemy victories retain queued speech. The new focused regression
+  failed before the helper existed and now passes with all `44/44` battle and
+  `74/74` text tests plus Lua syntax. After manual reload on the victory page,
+  `speech_bridge.log` recorded the line as `interrupt:` and JAWS read it
+  successfully. JAWS then read the Ball of Light and both world-restoration
+  pages without omissions. The game moved to World Map `(48,48)`; a fresh
+  probe found full HP/MP, no active menu/dialogue/input guard, and a healthy
+  JAWS bridge. This fix is live-verified end to end.
+- Dragonlord YES ending (`2026-08-09`): the complete alternate-ending dialogue
+  was spoken page by page at lair `(17,24)`. The final screen was read as
+  `Thy journey is over. Take now a long, long rest. Hahahaha....` with no
+  missing rows or repetition corruption. A fresh snapshot confirmed the
+  intentional terminal state: field mode remains on map `0x06`, the raw menu
+  stays asserted, movement remains blocked, and gold, experience, keys, herbs,
+  inventory/progress bytes, and quest flags are cleared. The final 96-character
+  dialogue matched both the filtered and announced caches. Restore the
+  pre-dialogue save state or reset after this branch; answer NO to start the
+  actual Dragonlord battle.
+- Battle spell-name filtering (`2026-08-09`): a live Wizard cast displayed
+  `HURTMORE.` on its own PPU row, but the accessibility dialogue filter dropped
+  that all-uppercase row and announced `chants the spell of But that spell hath
+  been blocked.` The original game was not hiding the spell. `text.lua` now
+  preserves an uppercase row only when it follows `chants the spell of`, so
+  unrelated menu/status debris remains filtered. The regression failed with
+  the captured sentence before the fix and passed afterward (`74/74` text
+  tests). After manual reload, a Starwyvern cast logged and spoke the complete
+  `Starwyvern chants the spell of HEALMORE.`, followed separately by its
+  recovery message, completing live validation.
 - Charlock remaining B1/B2 connectors (`2026-08-09`): live movement and STAIRS
   proved the four optional pairs B1 `(14,9)` / B2 `(8,9)`, B1 `(19,7)` / B2
   `(9,8)`, B1 `(2,14)` / B2 `(0,1)`, and B1 `(2,4)` / B2 `(0,0)`. The direct

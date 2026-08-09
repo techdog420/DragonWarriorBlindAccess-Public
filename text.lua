@@ -865,6 +865,13 @@ local function is_numeric_dialogue_continuation(decoded)
     return compact:match("^%d+[%.,!%?]*$") ~= nil
 end
 
+local function is_spell_name_dialogue_continuation(decoded, previous_line)
+    local compact = compact_text(decoded)
+    local previous = compact_text(previous_line):lower()
+    return compact:match("^[A-Z]+[%.,!%?]*$") ~= nil
+        and previous:match("chant[%a]* the spell of$") ~= nil
+end
+
 local function read_dialogue_rows_for_base(scroll_tiles, start_row, base_nametable)
     start_row = start_row or 19
     local decoded_rows = {}
@@ -918,6 +925,12 @@ local function filtered_dialogue_from_rows(decoded_rows, paired_rows, context_ro
            and not fused_status_value
            and not is_fused_status_label_fragment_token(cleaned)
            and not is_status_name_fragment(i, cleaned) then
+            lines[#lines + 1] = cleaned
+        elseif #lines > 0
+           and is_spell_name_dialogue_continuation(cleaned, lines[#lines]) then
+            -- Battle spell names are rendered as standalone all-caps rows.
+            -- Preserve them only after the game's cast-introduction phrase so
+            -- ordinary uppercase status/menu residue remains filtered.
             lines[#lines + 1] = cleaned
         elseif #lines > 0
            and is_numeric_dialogue_continuation(cleaned)

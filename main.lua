@@ -4171,7 +4171,10 @@ local function check_dialogue(frame_delta, refresh_ppu)
                 end
                 if new_text ~= "" then
                     if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
-                        speak_new_dialogue(new_text, battle_dialogue_mode)
+                        local priority = battle_dialogue_mode
+                            and battle.is_terminal_victory_dialogue(new_text)
+                            and "interrupt" or nil
+                        speak_new_dialogue(new_text, battle_dialogue_mode, priority)
                         PREV.announced_dialogue = clean
                     end
                 end
@@ -4220,7 +4223,10 @@ local function check_dialogue(frame_delta, refresh_ppu)
                 end
                 if new_text ~= "" then
                     if not battle_dialogue_mode or battle.is_coherent_dialogue(new_text) then
-                        speak_new_dialogue(new_text, battle_dialogue_mode)
+                        local priority = battle_dialogue_mode
+                            and battle.is_terminal_victory_dialogue(new_text)
+                            and "interrupt" or nil
+                        speak_new_dialogue(new_text, battle_dialogue_mode, priority)
                         PREV.announced_dialogue = dialogue
                     end
                 end

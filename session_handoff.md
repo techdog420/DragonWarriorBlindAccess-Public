@@ -121,6 +121,20 @@ Updated: 2026-08-09
 
 ## Immediate FCEUX Handoff
 
+- The final Dragonlord victory exposed a high-priority speech delivery bug.
+  The screen and filtered dialogue cache contained `Thou hast done well in
+  defeating the Dragonlord.`, and `speech_bridge.log` recorded the exact line,
+  but it was sent as ordinary queued speech after a long combat sequence and
+  JAWS announced nothing before the next interrupt. `battle.lua` now identifies
+  only the terminal Dragonlord victory, and both lower-dialogue paths in
+  `main.lua` send that line with interrupt priority; ordinary victories remain
+  queued. The regression failed first, then the complete battle (`44/44`) and
+  text (`74/74`) suites and Lua syntax passed. After manual reload on the final
+  victory page, the bridge logged the line as `interrupt:` and JAWS spoke it.
+  All subsequent Ball of Light and restoration dialogue was spoken, followed
+  by the intended move to World Map `(48,48)`. A fresh loaded probe confirmed
+  field state, full HP/MP, no active menu/dialogue/input guard, and a healthy
+  JAWS bridge. The final-victory accessibility path is closed end to end.
 - Charlock's remaining B1/B2 stair network is complete and loaded. The four
   live-proven pairs are B1 `(14,9)` to B2 `(8,9)`, B1 `(19,7)` to B2
   `(9,8)`, B1 `(2,14)` to B2 `(0,1)`, and B1 `(2,4)` to B2 `(0,0)`.
@@ -1842,12 +1856,8 @@ Updated: 2026-08-09
 
 ## Next Work
 
-1. Decode the Dragonlord's Lair type-F throne enclosure cells and audit any
-   remaining optional final-floor pockets. Preserve the pre-dialogue save
-   boundary until the hero is ready for the final encounter.
-2. Run a final blind-player Travel/path audit across the completed Charlock
-   stair graph, keeping the deliberate dead ends and same-floor loop distinct
-   from the main spine.
-3. For future live FCEUX work after source edits, manually reload `main.lua`
+1. Charlock is complete; resume the highest-priority remaining gameplay-
+   accessibility or pathfinding item outside this dungeon.
+2. For future live FCEUX work after source edits, manually reload `main.lua`
    before judging behavior. Keep battle/control-lock evidence separate from
-   map geometry and use the external Charlock references only for orientation.
+   map geometry.

@@ -166,6 +166,20 @@ function tests.dialogue_filter_keeps_levelup_numeric_continuation_row()
     )
 end
 
+function tests.dialogue_filter_keeps_uppercase_spell_name_continuation()
+    clear_ppu()
+    write_visible_row(19, "Wizard chants the spell of", 0, 0)
+    write_visible_row(20, "HURTMORE.", 0, 0)
+    write_visible_row(22, "But that spell hath", 0, 0)
+    write_visible_row(23, "been blocked.", 0, 0)
+
+    assert_equal(
+        text.read_dialogue_window_filtered(0, 19, 0),
+        "Wizard chants the spell of HURTMORE. But that spell hath been blocked.",
+        "standalone uppercase spell names should remain in battle dialogue"
+    )
+end
+
 function tests.dialogue_filter_skips_wrapped_status_name_fragment()
     clear_ppu()
     write_visible_row(1, "Bill", 8, 0)

@@ -347,6 +347,19 @@ function tests.fast_action_prefix_keeps_damage_before_rewards()
     )
 end
 
+function tests.terminal_dragonlord_victory_requires_interrupting_speech()
+    assert_equal(
+        battle.is_terminal_victory_dialogue("Thou hast done well in defeating the Dragonlord."),
+        true,
+        "the final Dragonlord victory must interrupt stale queued combat speech"
+    )
+    assert_equal(
+        battle.is_terminal_victory_dialogue("Thou hast done well in defeating the Drakee."),
+        false,
+        "ordinary battle victories should retain queued speech"
+    )
+end
+
 function tests.detects_sleep_and_stopspell_flags()
     assert_equal(battle.is_hero_asleep(0x80), true, "sleep flag should be detected from combat flags")
     assert_equal(battle.is_hero_asleep(0x10), false, "stopspell bit alone should not look asleep")

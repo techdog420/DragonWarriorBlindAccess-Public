@@ -387,6 +387,11 @@ function M.is_fast_action_dialogue(text)
         or lower:find("dodg", 1, true) ~= nil
 end
 
+function M.is_terminal_victory_dialogue(text)
+    local s = tostring(text or "")
+    return s:find("Thou hast done well in defeating the Dragonlord", 1, true) ~= nil
+end
+
 function M.fast_action_prefix(text)
     local s = tostring(text or "")
     local best = ""

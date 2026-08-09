@@ -5535,9 +5535,66 @@ For the next live map task, start a new dated section here with:
   stair cells `(0,0)` and `(0,1)`; the earlier guide hypothesis requiring
   `(1,0)` was unnecessary and was not added. Regressions failed first on the
   missing object and `(0,0)` boundary rejection, then passed `113/113` object
-  tests, `81/81` map-reader tests, Lua syntax, and `git diff --check`. Current
-  After restart/reload, exact non-moving lookups resolved all four new B1 and
+  tests, `81/81` map-reader tests, Lua syntax, and `git diff --check`. After
+  restart/reload, exact non-moving lookups resolved all four new B1 and
   all four new B2 Travel names with `targets=1`. STAIRS at B1 `(2,4)` entered
   B2 `(0,0)`, and loaded inspection reported `reason=passthrough` for both
   `(0,0)` and `(0,1)`. The final baseline remained at `(0,0)` with no runtime
   or NPC blockers, no active path, and a clean input guard.
+
+## 2026-08-09 Battle Spell-Name Filtering
+
+- LIVE BUG CONFIRMED: during a Wizard battle on B1 `(0,1)`, narration twice
+  produced `Wizard chants the spell of But that spell hath been blocked.` A
+  fresh `report_upper_dialogue_state` showed the raw PPU row `HURTMORE.` between
+  `chants the spell of` and `But that spell hath`, while the filtered lower
+  dialogue omitted only that row. The original game displays the spell name;
+  this is an accessibility filter bug, not intentional concealment.
+- LOADED FIX VERIFIED: `text.lua` now preserves a standalone all-caps row
+  only when the preceding accepted dialogue ends with `chants the spell of`.
+  The focused regression failed with the exact missing-name sentence before
+  the fix, then all `74/74` text tests passed. After manual reload, a fresh
+  Starwyvern battle logged `Starwyvern chants the spell of HEALMORE.` at frame
+  `1129`, followed by `The Starwyvern hath recovered.` at frame `1221`. The
+  complete spell name reached the loaded speech path without repetition or
+  status-row contamination.
+
+## 2026-08-09 Dragonlord YES Ending
+
+- ALTERNATE ENDING ACCESSIBILITY VERIFIED: TALK at Dragonlord approach `(17,24)`
+  and YES produced the complete offer/acceptance sequence. Every page reached
+  the dialogue event log. The terminal screen's filtered, previous, and
+  announced lower-dialogue caches all matched the same 96-character text,
+  ending with `Thy journey is over. Take now a long, long rest. Hahahaha....`
+- TERMINAL STATE CONFIRMED: the game remains in field state on map `0x06` at
+  `(17,24)` but holds the raw menu state and refuses movement. Gold, experience,
+  keys, herbs, inventory/progress bytes, and quest flags were zeroed. This is
+  intentional original-game behavior and requires restoring the pre-dialogue
+  save state or resetting; it is not an accessibility input lock.
+
+## 2026-08-09 Dragonlord Victory Speech
+
+- LIVE BUG CONFIRMED: immediately after defeating the Dragonlord at lair
+  `(17,24)`, the screen displayed `Points have been reduced by 17. Thou hast
+  done well in defeating the Dragonlord.`, but JAWS announced nothing. A fresh
+  snapshot found the exact 80-character line in the filtered, previous, and
+  announced dialogue caches; speech backend status was bridge/ready/available.
+- DELIVERY EVIDENCE: `speech_bridge.log` recorded
+  `speak:Thou hast done well in defeating the Dragonlord.` at `10:38:27`.
+  Therefore detection and bridge delivery succeeded, but the terminal message
+  used ordinary queued speech after a speech-heavy fight and was not heard.
+- SOURCE FIX READY: `battle.is_terminal_victory_dialogue()` recognizes only
+  the Dragonlord terminal victory. Both stable lower-dialogue paths pass
+  interrupt priority for that message, while ordinary battle victories retain
+  queue behavior. The regression failed on the absent helper before the fix;
+  afterward battle tests pass `44/44`, text tests pass `74/74`, and all touched
+  Lua files byte-compile.
+- LOADED FIX VERIFIED: after manual script reload on the completed victory
+  page, frame `132` logged the Dragonlord line and `speech_bridge.log` recorded
+  it as `interrupt:Thou hast done well in defeating the Dragonlord.` JAWS read
+  it successfully, then read `Thou hast found the Ball of Light.` and both
+  radiance/restoration pages. Frame `1314` changed to World Map `0x01`. Fresh
+  tag `DRAGONLORD_VICTORY_RETURN` at frame `10440` confirmed World Map
+  `(48,48)`, HP `149/149`, MP `121/121`, field state, empty dialogue, no menu or
+  input guard, and speech bridge ready/available with no error. Final-victory
+  speech and the postgame return transition are closed end to end.
