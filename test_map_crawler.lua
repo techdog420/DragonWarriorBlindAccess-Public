@@ -1186,6 +1186,26 @@ function tests.stationary_npc_blocks_cell_without_geometry_candidate()
     env.restore()
 end
 
+function tests.dungeon_context_ignores_stale_town_npc_ram()
+    local env = make_env({
+        terrain = 0x20,
+        npc_bytes = {
+            [0x0051] = 10, [0x0052] = 10, [0x0053] = 2,
+            [0x0054] = 5,  [0x0055] = 4,  [0x0056] = 0,
+        },
+    })
+
+    assert_equal(env.crawler.start("max_edges=1"), true, "dungeon crawler should start")
+    assert_equal(#env.write_calls, 0, "dungeon crawl should not park stale mobile NPC RAM")
+    env.tick(true)
+    local joined = table.concat(env.logs, "\n")
+    assert_equal(env.injects[1], "up", "stale stationary NPC RAM should not suppress a dungeon probe")
+    assert_not_contains(joined, "class=stationary_npc_blocked",
+        "dungeon crawl should not classify stale town NPC RAM as a blocker")
+
+    env.restore()
+end
+
 function tests.overworld_crawl_is_refused()
     local env = make_env({overworld = true})
 

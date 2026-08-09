@@ -4382,3 +4382,1162 @@ For the next live map task, start a new dated section here with:
   blocker overlay. The exit and safe-approach landmarks, directional map
   model, NPC parking/restoration, and movement-reset corruption fix all held
   through combat interruptions.
+
+## 2026-07-26 Cantlin / Eastern Great Swamp Route Discovery
+
+- BASELINE: normal Cantlin World Map landing `(73,102)`, no active path or
+  runtime blockers.
+- SAFE PIN ACCEPTED: `(89,112)` is reachable from the south, remains on World
+  Map `0x01`, has no fixed-object conflict, held HP steady for 660 frames, and
+  passed both departure `(89,112)->(89,113)` and re-entry
+  `(89,113)->(89,112)`.
+- OUTBOUND NEW CORRIDOR: from the shared Cantlin/Hauksness anchor `(48,104)`,
+  normal movement proved `(59,104)`, `(59,105)`, `(63,105)`, `(63,106)`,
+  `(64,106)`, `(64,108)`, `(66,108)`, `(66,110)`, `(72,110)`, `(72,112)`,
+  `(74,112)`, `(74,113)`, `(89,113)`, and `(89,112)`.
+- NARROW APPROACH: `(74,112)->(75,112)` and `(75,114)->(76,114)` remained
+  blocked under raw holds. The live-proven east corridor is row 113. Guidance
+  may traverse the clue square but must not name it, target it as a waypoint,
+  issue Search, or mention the Token.
+- INDEPENDENT RETURN CORRIDOR: `(89,112)`, `(89,113)`, `(75,113)`,
+  `(73,113)`, `(73,111)`, `(71,111)`, `(71,110)`, `(65,110)`, `(65,108)`,
+  `(63,108)`, `(63,106)`, `(63,105)`, `(59,105)`, `(59,104)`, then the
+  established Cantlin return chain at `(48,104)`.
+- ARMOUR OBSERVATION: with Erdrick's Armour equipped, HP remained 100 through
+  the suspected swamp corridor before later battle damage. Keep route speech
+  equipment-neutral; do not change hazard mechanics from this observation.
+- TIMING-ONLY FAILURES: queued movement reported blocks at
+  `(68,91)->(68,92)`, `(54,95)->(54,96)`, `(52,97)->(52,98)`, and
+  `(47,104)->(48,104)`. Each same-origin raw probe moved through the claimed
+  edge; the final probe carried from `(47,104)` through `(48,104)` to
+  `(49,104)`. No runtime or permanent blocker was added.
+
+## 2026-07-26 Full-Inventory Discard Screen Speech
+
+- LIVE REPRO: searching at World Map `(83,113)` with a full inventory opened
+  the Erdrick's Token discard prompt. The screen remained active throughout
+  diagnostics.
+- FALSE MERCHANT: the detector reported `active=true`, `mode=offers`,
+  `buy_prompt=false`, five status markers, and repeatedly interrupted with
+  `Merchant. Gold 17089. Offered: ...`. The discard prompt and held-item list
+  share status rows, satisfying the shop-layout fallback without a buy prompt.
+- STUCK SELECTION: the merchant cursor reader announced `Dragon's Scale` once,
+  then stopped following Up/Down. A later snapshot had `D8=0 D9=2`; the live
+  list shows D9 order Herb, Magic Key, Fairy Flute, Dragon's Scale, Wings,
+  Stones of Sunlight, Staff of Rain, Fairy Water, Gwaelin's Love, Torch, so
+  D9=2 should announce Fairy Flute.
+- ITEM MODEL BUG: `herbs=6`, `keys=6`, and packed item bytes are
+  `45 C3 2D 18`. The game displays the separate Herb counter first, Magic Key
+  second, then each packed byte's low nibble before its high nibble.
+  `items.lua` currently omits the Herb counter, prepends Magic Key, and decodes
+  high nibble first.
+- LIVE FIX VERIFIED: after reload on the preserved screen, speech opened with
+  `D9=2 Fairy Flute`, then followed Down, Down, Up as
+  `D9=3 Dragon's Scale`, `D9=4 Wings`, `D9=3 Dragon's Scale`. No `MERCHANT`
+  event or merchant speech occurred. Source now rejects discard layouts from
+  merchant mode, owns the prompt/cursor through a dedicated reader, and uses
+  the corrected Herb, Magic Key, then low/high packed-slot order.
+
+## 2026-07-29 Mountain Cave Route and Decoding Start
+
+- STATIC ORIENTATION: Mountain Cave is World Map `(29,57)`, with interior maps
+  `0x16` and `0x17`. The closest existing route pin by traversable map distance
+  is `Western desert east road` `(18,64)`.
+- PROVISIONAL BIDIRECTIONAL SPUR:
+  - Outbound: `(18,64)->(16,64)->(16,58)->(25,58)->(25,57)->(29,57)`.
+  - Return: the exact reverse, ending at `(18,64)`.
+- LIVE CLEAN: `(18,64)->LEFT->(17,64)->LEFT->(16,64)` moved. A Ghost battle
+  began after the second edge and ended without damage. REPEL was recast;
+  baseline after combat was HP `115/115`, MP `93/97`, no active route/path,
+  and no runtime blocks.
+- LIVE CARRY / DO NOT MODEL AS BLOCKER: north probing moved
+  `(16,64)->(16,63)`, then reached `(16,62)` and carried to `(16,61)`.
+  A one-frame simulated manual tap entered the early-twitch cancellation path
+  and did not move. This is executor evidence, not World Map blocker data.
+- ROUTE SOURCE LOADED: `overworld_routes.lua` now defines `mountain_cave`
+  and `mountain_cave_return`; focused regressions cover object start,
+  `(16,61)` carry recovery, exact turns, entry completion, and reverse
+  completion. All 146 route tests, Lua syntax, and `git diff --check` pass.
+- OUTBOUND LIVE VALIDATED: loaded-source route movement stopped exactly at
+  `(16,58)`, `(25,58)`, and `(25,57)`, then entered Mountain Cave map `0x16`
+  at `(0,7)`. No runtime blocker overlay, battle, or final-turn carry occurred.
+- F1 CRAWL RUN 1: from `(1,7)`, normal movement classified 36 edges before a
+  Magician battle interrupted at `(2,2)`. The Magician ran; fresh field state
+  remained HP `115/115`, MP `93/97`, EXP `20019`, with no runtime blockers.
+- F1 TILE DECODING: every live corridor edge in the crawl landed on raw tile
+  type `2`; repeated three-attempt wall probes landed against raw tile type
+  `0`. Same-origin raw probes also blocked `(2,2)->(1,2)` and
+  `(2,2)->(3,2)`. `map_reader.lua` now applies `type 0 = blocked` only on
+  map `0x16`, and marks the live-proven world-entry landing `(0,7)` as a
+  passthrough. Floor `0x17` deliberately retains the shared dungeon rule
+  pending live evidence. All 71 map-reader tests and Lua syntax pass.
+- F1 SOURCE-ONLY RETURN: after reload, the corrected planner produced the
+  crawl-matching 11-step route `(2,2)->(0,7)`. A Ghost interrupted at `(4,4)`;
+  fresh state showed no damage or EXP change. Queued `(4,4)->DOWN` later
+  exhausted both timing retries, but a same-origin raw probe moved cleanly
+  into `(4,5)`. Treat this as executor timing evidence, not map data. The
+  remaining six-step source-only route reached `(0,7)` without blockers.
+- LIVE EXIT: moving LEFT from `(0,7)` is blocked. The user used the STAIRS
+  command on `(0,7)`, which changed to World Map `(29,57)`. `objects.lua` now
+  models the world exit at `(0,7)`, replacing stale unreachable `(0,0)`.
+- RETURN ROUTE LIVE VALIDATED: `mountain_cave_return` reached the existing pin
+  `(18,64)` and emitted `event=arrived` at index 6. The live geometry was
+  `(29,57)->(25,57)->(25,58)->(16,58)->(16,64)->(18,64)`, with no runtime
+  blockers and unchanged HP `115`, MP `93`, EXP `20019`, and level-18 stats.
+- 2026-07-30 POST-RELOAD OUTBOUND: from the restored `(18,64)` baseline, the
+  physical Mountain Cave object retained the active `mountain_cave` route.
+  All five segments completed to `(16,64)`, `(16,58)`, `(25,58)`, `(25,57)`,
+  and map `0x16` `(0,7)`. The loaded Travel exit correctly reported
+  `Exit to World Map: here`; a controlled STAIRS command returned to World Map
+  `(29,57)`. No runtime blocker was added.
+- RETURN SELECTION BUG FIXED LIVE: Travel-object refresh near the cave could
+  select physical `Mountain Cave` and replace the active return route with
+  outbound. The first compatibility patch covered `guidance_for_object()` but
+  not route manager's direct `active_route_matches_object()` check. After the
+  second fix and reload, the exact `(29,57)` reproduction logged
+  `active_route=mountain_cave_return active_matches=true` while the physical
+  cave remained selected. The return then completed every segment through
+  `(25,57)`, `(25,58)`, `(16,58)`, and `(16,64)`, and emitted
+  `event=arrived` at `(18,64)`. Fresh probe
+  `MCAVE_BIDIRECTIONAL_VALIDATED_20260730` confirms `route=none`, no path,
+  no runtime blockers, HP `115/115`, MP `93/97`, EXP `20019`, and intact
+  level-18 stats. Focused totals remain 147 route, 107 object, and 71
+  map-reader tests plus Lua syntax and `git diff --check`.
+- ROM AND LIVE STAIR PAIRS: the ROM tables identify three coordinate-matched
+  pairs, and each FCEUX STAIRS transition was verified live in both directions:
+  northwest A `(0,0)<->(0,0)`, central B `(6,5)<->(6,5)`, and southeast C
+  `(12,12)<->(12,12)`. `objects.lua` now exposes all three with distinct
+  northwest, central, and southeast labels on both floors.
+- F1 NORTHWEST / UPPER ROUTE: same-origin probes moved through the west
+  boundary `(1,3)->(0,3)->(0,2)->(0,1)->(0,0)`, then through top-row cells
+  `(1,0)..(3,0)`. The interior turn runs `(3,0)->(3,1)->...->(8,1)`, then the
+  second top strip is `(8,0)->(9,0)->(10,0)`. From `(10,0)`, the central-stair
+  route moves five south to `(10,5)`, three west to `(7,5)`, and onto B
+  `(6,5)`. Only these live-proven boundary cells were promoted as
+  `MAP_PASSTHROUGH_CELLS`.
+- F1 ONE-WAY SEAM: autowalk repeatedly failed `(8,3)->UP` into `(8,2)`, and
+  a same-origin raw probe also remained at `(8,3)`. Source now blocks only
+  `(8,2).south`; timing retries adjacent to battles elsewhere were not
+  promoted.
+- B2 NORTHWEST POCKET A: `(0,0)->(0,1)->(1,1)` and the full reverse moved.
+  Same-origin probes from `(1,1)` into raw type-0 `(2,1)` and `(1,2)` both
+  blocked, proving the pocket is isolated.
+- B2 SOUTHEAST POCKET C: the live region includes the stair `(12,12)`, north
+  corridor through `(12,11),(11,11),(10,11)`, tip `(11,10)`, south/bottom
+  loop through `(10,12),(10,13)..(13,13)`, and east edge through `(13,12)` to
+  `(13,11)`. Raw type-A `(10,13)` moved normally. From `(11,10)`, all three
+  outward raw type-0 probes into `(11,9)`, `(10,10)`, and `(12,10)` blocked,
+  proving this region is also isolated.
+- B2 TILE RULE: repeated normal-origin probes in both isolated pockets prove
+  raw type `0` is blocked on map `0x17`; type `2` and type `A` are walkable.
+  The northwest boundary cells `(0,0)` and `(0,1)` are passthroughs.
+- SOURCE / TEST CHECKPOINT: the focused tests first failed on missing
+  passthroughs and missing stair objects, then passed after the narrow source
+  changes. Current totals are `71` map-reader tests and `107` object tests;
+  `luac -p map_reader.lua objects.lua test_map_reader.lua test_objects.lua`
+  also passes.
+- CURRENT LIVE CHECKPOINT: hero is on B2 central stair B `(6,5)`, field clear,
+  no active path or runtime blockers, HP `115/115`, MP `89/97`, EXP `20069`,
+  gold `20842`, and intact level-18 stats. The current FCEUX script predates
+  the latest `map_reader.lua` / `objects.lua` edits.
+- NEXT CHECK: manually reload the FCEUX Lua script, fresh-probe B2 `(6,5)`,
+  verify the loaded three-stair object set and type-0 wall model, then decode
+  the central B2 treasure area and four chests.
+
+## 2026-07-30 Mountain Cave B2 Main-Area Decode
+
+- POST-RELOAD BASELINE: map `0x17` central stair B `(6,5)`, field clear,
+  HP `115/115`, MP `89/97`, level 18 stats intact, and no runtime blockers.
+  The loaded object registry exposes central B `(6,5)`, northwest A `(0,0)`,
+  southeast C `(12,12)`, and chests `(1,6)`, `(2,2)`, `(3,2)`, `(10,9)`.
+- TYPE-8 WALL RULE: normal autowalk plus same-origin raw probes independently
+  blocked entry into five raw type-8 cells: `(4,9)` from north and south,
+  `(5,9)` from north, south, and east, `(3,7)` from east, `(1,5)` from north,
+  and `(2,5)` from north. No probe has moved onto type 8. The published NES
+  floor map renders every type-8 cell as the same solid gray rock class.
+  A runtime-only model that fully blocks all 16 type-8 cells produces the
+  intended main region plus isolated A and C stair pockets. Source now sets
+  map `0x17` type 8 false; this edit is not yet loaded in FCEUX.
+- WESTERN BOUNDARY ROUTE: from the main area, raw probes moved
+  `(1,13)->(0,13)->(0,12)->(0,11)->(0,10)->(0,9)->(1,9)`.
+  Reverse probes later moved `(1,9)->(0,9)->(0,10)->(0,11)->(0,12)->(0,13)`.
+  Source now marks `(0,9)..(0,13)` as B2 passthrough cells; this edit is not
+  yet loaded in FCEUX.
+- SPECIAL-CHEST BRANCH: after the western boundary route re-entered at
+  `(1,9)`, autowalk moved north through `(1,8),(1,7)` and stood on chest
+  `(1,6)` without opening it.
+- SOURCE CHECKPOINT: the type-8 rule and five new boundary passthroughs have
+  focused regression assertions. All `71` map-reader tests, Lua syntax, and
+  `git diff --check` pass.
+- CURRENT LIVE CHECKPOINT: a Droll battle began immediately after the reverse
+  probe reached `(0,13)`. The Droll was defeated for `10 EXP` and `24 gold`,
+  but the victory dialogue remains open (`state=battle`, lower dialogue length
+  `101`). Position is B2 `(0,13)`, HP `115/115`, MP `87/97`, EXP `20095`,
+  gold `20895`. The attempted RIGHT probe was refused during battle and is not
+  geometry evidence.
+- NEXT CHECK: dismiss the Droll victory dialogue, fresh-probe field state at
+  `(0,13)`, move RIGHT to `(1,13)`, route through the interior to `(5,1)`,
+  then raw-probe the top boundary strip `(5,0)->(4,0)->(3,0)` and descend to
+  the two northwestern chests `(3,2)` and `(2,2)`.
+- POST-DROLL CONTINUATION: field control returned at `(0,13)` and the
+  previously refused RIGHT probe moved cleanly to `(1,13)`, completing the
+  western boundary route in both directions.
+- NORTHWESTERN CHESTS: the interior route reached `(5,1)`. Raw probes moved
+  `(5,1)->(5,0)->(4,0)->(3,0)->(3,1)->(3,2)->(2,2)`, then retraced every
+  edge to `(5,1)`. Both chest tiles are standable; neither chest was opened.
+- FULL TOP BOUNDARY: a continued raw-probe pass moved from `(5,0)` east
+  through every cell `(6,0)..(13,0)`, then south to the modeled interior
+  `(13,1)`. Source now marks the complete B2 top corridor `(3,0)..(13,0)` as
+  passthrough cells.
+- BATTLE / TIMING NOTE: a Poltergeist interrupted the first eastbound attempt
+  at `(2,13)` after an executor timing retry. After battle, a fresh same-origin
+  probe moved `(2,13)->(3,13)`. This is timing/combat evidence, not a blocker.
+- UPDATED SOURCE CHECKPOINT: map `0x17` now applies `type 0 = false` and
+  `type 8 = false`, with live-proven passthroughs `(0,0),(0,1)`,
+  `(0,9)..(0,13)`, and `(3,0)..(13,0)`. All `71` map-reader tests, Lua syntax,
+  and `git diff --check` pass.
+- CURRENT LIVE CHECKPOINT: B2 `(13,1)`, field clear, HP `115/115`, MP `87/97`,
+  EXP `20103`, gold `20910`, with the runtime-only set of 16 type-8 walls
+  still active. FCEUX has not loaded the latest source.
+- NEXT CHECK: manually reload the FCEUX Lua script, fresh-probe `(13,1)`,
+  clear map-`0x17` runtime blocks, and validate source-only routes to all four
+  chests plus central stair B. Then finish the remaining unmodeled boundary
+  cells `(0,3),(0,4)`, `(0,6),(0,7)`, and northwest-pocket `(1,0)`.
+
+## 2026-07-31 Mountain Cave B2 Completion
+
+- SOURCE-ONLY TREASURE REGION: after reload with zero runtime blockers, the
+  planner and live movement reached all four chest tiles `(1,6)`, `(2,2)`,
+  `(3,2)`, and `(10,9)`. None was deliberately opened. The route from special
+  chest `(1,6)` to central stair B initially exposed raw type-1 stair tiles as
+  non-walkable; live-verified passthroughs now cover B `(6,5)` and C `(12,12)`.
+  A loaded-source route then reached `(8,5)`, and post-battle same-origin
+  probes completed `(8,5)->(7,5)->(6,5)` with no runtime blockers.
+- WESTERN BOUNDARY POCKETS: normal-route origins plus same-origin probes moved
+  bidirectionally through `(1,4)<->(0,4)<->(0,3)` and
+  `(1,6)<->(0,6)<->(0,7)`. All four boundary cells are permanent
+  passthroughs. Battle, Repel-expiry, and executor retries during repositioning
+  were kept separate from geometry evidence.
+- NORTHWEST FINAL CELL: after normal STAIRS transitions through central B and
+  northwest A, same-origin probes moved B2 `(0,0)->(1,0)->(0,0)`. Cell `(1,0)`
+  is raw type 2 and is now a passthrough. After the final reload,
+  `inspect_tile:1,0` reported `reason=passthrough`, `base_walkable=true`, and
+  `effective_passable=true`; source-only autowalk repeated the full round trip.
+- COMPLETE STATUS: Mountain Cave F1 `0x16` and B2 `0x17` are decoded for
+  navigation, including all boundary corridors, type-0/type-8 walls, four B2
+  chests, and three distinct stair pairs. A and C are isolated B2 pockets;
+  central B connects to the treasure region. Current state is B2 stair A
+  `(0,0)`, field clear, no active path/runtime blockers, HP `115/115`, MP
+  `83/97`, EXP `20170`, gold `21036`, and intact level-18 stats.
+- VERIFICATION: `71` map-reader, `107` object, and `147` overworld-route tests
+  pass; changed Lua files parse and `git diff --check` passes.
+
+## 2026-07-31 Mountain Cave F1 Northeast Chest Correction
+
+- USER FINDING / CLEAN REPRODUCTION: teleport suggested F1 `(12,0)` could move
+  east and west toward the otherwise unreachable chest `(13,5)`. After a floor
+  transition refreshed state, the hero reached `(10,0)` by ordinary movement.
+  Same-origin raw probes then moved through `(10,0)..(13,0)` eastbound and
+  cleanly back through `(12,0)->(11,0)->(10,0)` after separating one Scorpion
+  interruption. A second eastbound pass also moved across all three seams.
+- CHEST ROUTE: from normally reached `(13,0)`, ordinary autowalk completed five
+  south to chest `(13,5)`. This confirms cells `(11,0)`, `(12,0)`, and `(13,0)`
+  are genuine passthroughs rather than teleport-tainted evidence.
+- TEST-FIRST PATCH: the Mountain Cave packed fixture now preserves the live raw
+  type-A values at `(11,0)..(13,0)` and asserts all three are passthroughs. The
+  focused map-reader suite failed at `(11,0)` before the source change and all
+  71 tests passed after the three-cell `MAP_PASSTHROUGH_CELLS[0x16]` addition.
+- POST-RELOAD VALIDATION: with no runtime blocks, all three patched cells
+  reported `reason=passthrough`, `base_walkable=true`, and
+  `effective_passable=true`. Loaded-source routing crossed from chest `(13,5)`
+  west through `(13,0)..(10,0)` and entered ordinary interior `(10,1)` after a
+  fresh post-Magician probe. The full reverse route then completed
+  `(10,1)->(10,0)->(11,0)->(12,0)->(13,0)->(13,5)` without reroute or runtime
+  blocker.
+- FINAL LIVE CHECKPOINT: tag `MCAVE_F1_CHEST_ROUTE_VALIDATED_20260731`, F1
+  `(13,5)`, field clear, no active path/runtime blockers, HP `115/115`, MP
+  `77/97`, EXP `20275`, gold `21401`, and intact level-18 stats.
+
+## 2026-07-31 Mountain Cave F1 Return-Route Barrier Correction
+
+- REPEATED ROUTE EVIDENCE: both manual returns from the northeast chest reached
+  `(8,1)`, attempted `DOWN` into `(8,2)`, and logged `blocked_only` before a
+  successful 24-step reroute. The existing source blocked only the opposite
+  `(8,3)->UP` approach.
+- NORMAL-ORIGIN PROBE: from exit `(0,7)`, ordinary routing reached `(8,1)` with
+  no teleport or runtime blocks. A same-origin `probe_edge:DOWN` remained at
+  `(8,1)` and reported `status=blocked`, `reason=raw_hold_timeout`, plus
+  `blocked_despite_open_preview` because `(8,2).north` was absent from source.
+- RUNTIME REVIEW: temporary edge `(8,2).north` made the planner choose the safe
+  detour immediately. The route reached exit `(0,7)` after separating battle
+  and input-contamination interruptions; the overlay was then cleared.
+- TEST-FIRST PROMOTION: a focused assertion for `(8,2).north` failed before the
+  source edit and all 71 map-reader tests passed after changing the permanent
+  entry to `{north = true, south = true}`. East and west remain unblocked
+  because they were not tested.
+- POST-RELOAD SOURCE VALIDATION: with zero runtime blocks, explicit inspection
+  reported `(8,1)->DOWN` as `approach_blocked=true` and
+  `effective_passable=false`. A full source-only route repositioned from exit
+  `(0,7)` to chest `(13,5)`, then returned to `(0,7)` without attempting the
+  blocked shortcut, rerouting, or adding a runtime block. Magician, Druin, and
+  Scorpion interruptions were resumed from fresh field baselines and were not
+  treated as geometry.
+- FINAL LIVE CHECKPOINT: tag `MCAVE_F1_RETURN_BLOCK_SOURCE_VALIDATED_20260731`,
+  F1 exit `(0,7)`, field clear, no active path/runtime blockers, HP `115/115`,
+  MP `75/97`, EXP `20341`, gold `21537`, and intact level-18 stats.
+
+## 2026-08-03 Rainbow Bridge Route Orientation
+
+- BRANCH: `codex/charlock-rainbow-bridge-route`, created from commit `b5af486`.
+- READ-ONLY LIVE BASELINE: fresh probe `RAINBOW_ROUTE_BASELINE` found the hero
+  on World Map `(43,43)` at Tantegel Castle, with no active overworld route,
+  local path, or runtime blocks. No movement command was issued.
+- EXTERNAL ORIENTATION ONLY: NESMaps' 120-by-120 background map and two guide
+  descriptions place the Rainbow Drop use point on the western desert tip
+  northwest of Rimuldar. Translating the map with the repo's live coordinate
+  anchor identifies the use stand as `(65,49)`, the one-tile bridge channel as
+  `(64,49)`, and the Charlock-side desert landing as `(63,49)`.
+- RECOMMENDED STAGING POINT: Swamp Cave South Entrance `(104,49)`. This is a
+  physical Travel landmark and the live-corrected endpoint shared with the
+  existing Rimuldar routes. The decoded background map shows a direct
+  westbound corridor from `(104,49)` to `(65,49)`; static shortest-path shape
+  is `LEFT 39`, with `RIGHT 39` as the tentative return. Reuse existing
+  waypoint `(93,49)` when splitting the route for bounded live validation.
+- STATIC / DO NOT PROMOTE YET: coordinates and route shape still require
+  ordinary-movement validation from a fresh `(104,49)` baseline. Do not treat
+  the background-map corridor as runtime seam proof.
+- NEXT CHECK: after the user places the hero at World Map `(104,49)`, fresh
+  probe position/state, validate westbound segments toward `(65,49)`, confirm
+  the Rainbow Drop interaction, then validate the eastbound return.
+- FRESH LIVE BASELINE: tag `RAINBOW_BRIDGE_STAGE_104_49` confirmed World Map
+  `(104,49)`, field state, no active route/path/runtime blocks, and neutral
+  controller input. The idle FCEUX `LeftAlt` latch was present but had no
+  bridge buttons and was not treated as route evidence.
+- CLEAN LIVE CYCLE 1: explicit `auto_walk:93,49` completed `(104,49)->(93,49)`
+  in 11 `LEFT` steps. Every seam reported `passable_only`; there were zero
+  retries, battles, drift events, or runtime blocks.
+- SELECTION HAZARD: bare `auto_walk` while the physical Swamp Cave South
+  landmark was selected replaced `rimuldar` with `swamp_cave_south` and
+  immediately reported arrival without moving. This was command-selection
+  behavior, not geometry evidence. The new route definitions preserve their
+  established physical-landmark bindings so target refreshes do not replace
+  an outbound or return route mid-run.
+- SOURCE READY FOR RELOAD: `objects.lua` adds the Rainbow Bridge unlock
+  landmark at `(65,49)`. `overworld_routes.lua` adds bounded outbound
+  `rainbow_bridge` waypoints `(104,49),(93,49),(83,49),(73,49),(65,49)` and
+  exact reverse `rainbow_bridge_return` waypoints. Focused tests pass:
+  `150/150` overworld-route and `108/108` object tests; changed Lua files parse
+  under the pinned LuaJIT runtime and `git diff --check` passes.
+- PRE-RELOAD LIVE CHECKPOINT: World Map `(93,49)`, route stopped, local path
+  nil, and runtime blocks none. FCEUX is still running the old source.
+- NEXT CHECK: manually reload `main.lua`, fresh-probe `(93,49)`, then select
+  and run `rainbow_bridge` through `(83,49)`, `(73,49)`, and `(65,49)` before
+  validating the Rainbow Drop interaction and eastbound return.
+- POST-RELOAD OUTBOUND: fresh tag `RAINBOW_BRIDGE_RELOAD_93_49` confirmed
+  `(93,49)`, field control, route/path/runtime blocks none, and neutral game
+  input. `start_overworld_route:rainbow_bridge` selected `(83,49)` as waypoint
+  index 3. Bare `auto_walk` retained the active bridge route even though the
+  physical Swamp Cave South object was selected.
+- CLEAN LOADED-SOURCE SEGMENTS: `(93,49)->(83,49)` and
+  `(83,49)->(73,49)` completed with all seams `passable_only`, no battle,
+  reroute, or runtime blocker. The second segment settled at `(72,49)` and
+  logged `AUTO_STEP_FINAL_CARRY_ACCEPTED`; treat that as bounded executor
+  timing, not geometry.
+- REJECTED STRAIGHT FINAL LEG: the next route reached `(70,49)` but exhausted
+  both timing retries on `LEFT` into `(69,49)`, logging `blocked_only`.
+  Correctly mapping the external 128-by-128 image canvas to the game's
+  120-by-120 coordinates showed `(68,49)` and `(69,49)` are the two water
+  cells of an inlet. This is route-shape evidence, not a hidden directional
+  blocker, and no runtime/permanent blocker was added.
+- CLEAN INLET DETOUR: normal raw probes, bounded by the surrounding water and
+  mountains, reached the unlock stand without teleporting:
+  `(70,49)->(70,51)->(69,51)->(69,50)->(67,50)->(67,49)->(65,49)`.
+  The raw south probe carried across `(70,50)` to `(70,51)`; the intended
+  shortest waypoint route is `(70,49)->(70,50)->(67,50)->(67,49)->(65,49)`.
+  Every detour probe reported `status=moved` and no runtime blocker was added.
+- WAYPOINT CONFIRMED: fresh tag `RAINBOW_BRIDGE_UNLOCK_STAND_65_49` reports
+  World Map `(65,49)`, field control, route/path/runtime blocks none, and
+  `OBJECT: Rainbow Bridge unlock point: here`. Inventory byte `C2=0xE3`
+  confirms the Rainbow Drop is still held at this checkpoint.
+- CORRECTED SOURCE READY FOR RELOAD: outbound and return routes now include
+  exact reverse inlet waypoints `(70,49),(70,50),(67,50),(67,49)` between the
+  row-49 road and `(65,49)`. Focused verification passes `150/150` route and
+  `108/108` object tests, LuaJIT syntax, and `git diff --check`.
+- NEXT CHECK: user uses the Rainbow Drop manually at `(65,49)` and closes any
+  resulting dialogue, then manually reloads `main.lua`. Fresh-probe bridge
+  state, start `rainbow_bridge_return`, and live-validate the corrected inlet
+  detour plus the full eastbound return to `(104,49)`.
+- RAINBOW DROP ACTIVATION CONFIRMED: after the user's item-use message and
+  reload, fresh tag `RAINBOW_BRIDGE_POST_DROP_RELOAD` remained at `(65,49)`.
+  Progress byte `CF` changed from `0x11` to `0x19`, setting the bridge-state
+  bit. Normal same-origin probes then crossed the new bridge in both
+  directions: `(65,49)->LEFT` traversed `(64,49)` and settled `(63,49)`;
+  `(63,49)->RIGHT` traversed `(64,49)` and settled `(65,49)`.
+- LOADED-SOURCE RETURN DETOUR: `rainbow_bridge_return` started at `(65,49)`
+  with `(67,49)` as waypoint index 2. Segments to `(67,49)` and `(67,50)`
+  completed. The queued `(67,50)->RIGHT` step stopped once, but a clean
+  same-origin raw probe moved through `(68,50)` to `(69,50)`, proving the stop
+  was executor timing; no blocker was added. Loaded-source routing then
+  completed `(69,50)->(70,50)->(70,49)->(73,49)->(83,49)->(93,49)`.
+- RETURN CAVE ENTRY: the final 11-step segment passed every row-49 seam and
+  stepping east from `(103,49)` entered Swamp Cave map `0x15` at `(0,29)`.
+  Geometry is therefore live-proven end to end. The route remained active at
+  index 9 because the new return definition did not yet declare map `0x15` as
+  its destination; it was stopped manually after fresh tag
+  `RAINBOW_BRIDGE_RETURN_CAVE_ENTRY` confirmed route/path cleanup and zero
+  runtime blockers.
+- TEST-FIRST ARRIVAL FIX: the return regression now requires entry into map
+  `0x15` to emit arrival and clear the route. It failed with a nil arrival
+  before source added `destination_maps = {0x15}`. Verification is green at
+  `150/150` route tests, `108/108` object tests, LuaJIT syntax, and
+  `git diff --check`.
+- CURRENT LIVE CHECKPOINT: Swamp Cave map `0x15` `(0,29)`, field clear, route
+  none, local path nil, runtime blocks none. FCEUX still needs a manual reload
+  for the destination-map cleanup fix.
+- NEXT CHECK: reload `main.lua`, use `STAIRS` to exit at World Map `(104,49)`,
+  move west to `(103,49)`, start `rainbow_bridge_return`, and take the final
+  east step back into map `0x15`. Confirm `event=arrived`, route none, and no
+  active path/runtime blockers.
+- FINAL DESTINATION CLEANUP VALIDATED: post-reload tag
+  `RAINBOW_RETURN_DESTINATION_RELOAD` confirmed the new source was polling.
+  From World Map `(103,49)`, `rainbow_bridge_return` started at final waypoint
+  index 9. A one-frame simulated manual tap only produced an early movement
+  twitch and did not leave `(103,49)`; it is not route evidence. The loaded
+  one-step autowalk then entered Swamp Cave `0x15` at `(0,29)` and emitted
+  `OVERWORLD_ROUTE: event=arrived route=rainbow_bridge_return`.
+- FINAL CLEAN STATE: Swamp Cave `(0,29)`, route `none`, path target `nil`, and
+  no runtime blockers. The entry used one guarded twitch re-press and both
+  bounded timing retries before succeeding; no permanent or runtime blocker
+  was added. Rainbow Bridge waypoint, activation, bidirectional crossing, and
+  both travel directions are now live-validated.
+
+## 2026-08-03 Charlock Castle Overworld Route
+
+- EXTERNAL ORIENTATION: NESMaps and guide descriptions placed Charlock Castle
+  five tiles south and five tiles east of Tantegel, matching the repo's
+  existing World Map landmark `(48,48)`. External material was used only to
+  seed the candidate; every retained turn below was exercised live.
+- LIVE ISLAND ENTRY: from the formed bridge's west landing `(63,49)`, normal
+  probes established this passable corridor:
+  `(63,49)->(61,49)->(61,50)->(58,50)->(58,55)->(57,55)->(57,56)->(56,56)->(56,64)->(51,64)->(51,62)->(50,62)->(50,61)->(49,61)->(49,57)->(51,57)->(51,49)`.
+  The final approach reaches `(48,49)` and steps north onto `(48,48)`.
+- CASTLE TRANSITION CONFIRMED: a clean raw step onto World Map `(48,48)`
+  emitted `EVENT: map change -> 0x02 (Charlock Castle)` and landed at
+  `(10,19)`. Leaving south from `(10,19)` returned to World Map `(48,48)`.
+  No runtime or permanent blocker was added during the island investigation.
+- SOURCE READY FOR RELOAD: `overworld_routes.lua` adds full
+  `charlock_castle` and `charlock_return` routes between the Swamp Cave south
+  doorstep and Charlock Castle, sharing the proven Rainbow Bridge inlet
+  detour. The route starts at `(103,49)` after cave exit so it cannot steer the
+  hero back into the cave. The island waypoints are strict and the return is
+  their exact reverse. Focused verification passes `153/153` route tests.
+- CURRENT LIVE CHECKPOINT: World Map `(48,48)` immediately outside Charlock
+  Castle. FCEUX still runs the pre-change Lua source.
+- NEXT CHECK: manually reload `main.lua`, fresh-probe `(48,48)`, start
+  `charlock_return`, and live-validate at least the island return through
+  `(63,49)`. Then return to `(103,49)` and run `charlock_castle` end to end,
+  confirming arrival on map `0x02` and route cleanup.
+- FIRST LOADED RETURN PASS: `charlock_return` loaded and completed
+  `(48,48)->(48,49)->(51,49)->(51,57)->(49,57)->(49,61)->(50,61)`.
+  The next one-step south segment reached `(50,62)` but its settle carried to
+  `(50,63)`, producing `route_drift_off_path`. Clean recovery probes established
+  `(50,63)->(52,63)->(52,64)->(51,64)`; no blocker was added.
+- STATEFUL NORTHEAST TRAP: the loaded return later reached `(61,50)` from the
+  west. Route retries and same-origin raw probes blocked north, east, and then
+  west despite the earlier inbound route entering from `(61,49)` and leaving
+  west. Input guards were clear, buttons were `0x00`, and OAM was aligned with
+  a finite sprite-clear loop. Treat `(61,50)` as a stateful arrival trap, not
+  static terrain and not a permanent map blocker.
+- SECOND SOURCE FIX READY FOR RELOAD: outbound and return no longer stop at
+  `(61,50)`; each now performs the south/west or east/north turn as one
+  continuous segment. The southwest turn now uses the live recovery chain
+  `(50,61)<->(50,63)<->(52,63)<->(52,64)<->(51,64)` instead of the unstable
+  one-tile `(50,62)` stop. Focused route tests remain green at `153/153`, Lua
+  syntax passes, and `git diff --check` passes.
+- CURRENT LIVE CHECKPOINT: guidance stopped; a force teleport extracted the
+  hero from the stateful trap to World Map `(58,50)`. This teleport is only
+  recovery/staging evidence. FCEUX still needs a manual reload for the second
+  route fix.
+- NEXT CHECK: reload `main.lua`, fresh-probe `(58,50)`, start
+  `charlock_return`, and verify one continuous four-step segment
+  `RIGHT,RIGHT,RIGHT,UP` reaches `(61,49)`, then continue to bridge landing
+  `(63,49)`.
+- POST-RELOAD BINDING FAILURE: starting `charlock_return` at `(58,50)` chose
+  the correct `(61,49)` waypoint, but bare `auto_walk` refreshed the nearer
+  Rainbow Bridge object and replaced the active route with `rainbow_bridge`.
+  That wrong route moved to `(58,49)` and canceled; this run did not exercise
+  the revised stateful turn. REPEL expired immediately afterward.
+- COMPATIBILITY FIX READY FOR RELOAD: `charlock_return` now treats
+  `overworld_rainbow_bridge` as a compatible selected object, matching its
+  existing Charlock Castle compatibility. A focused regression proves the
+  nearby bridge selection cannot replace the active return. Route tests remain
+  `153/153`; Lua syntax and `git diff --check` pass.
+- CURRENT LIVE CHECKPOINT: guidance stopped and recovery-only teleport restored
+  World Map `(58,50)`. FCEUX needs another manual reload before the continuous
+  turn can be tested. REPEL is no longer active.
+- LOADED CONTINUOUS-TURN PROOF: after the compatibility reload,
+  `charlock_return` stayed active while the selected object refreshed to
+  Rainbow Bridge (`active_matches=true`). The four-step
+  `(58,50)->RIGHT,RIGHT,RIGHT,UP->(61,49)` segment completed, then the route
+  reached bridge landing `(63,49)`, accepted expected final carry onto bridge
+  tile `(64,49)`, and continued through the unlock point `(65,49)` to
+  peninsula edge `(67,49)`.
+- STATEFUL INLET TRAP: after arriving eastbound and settling at `(67,49)`, the
+  next DOWN exhausted both bounded retries and blocked. The already proven
+  outbound route enters `(67,49)` from the south and leaves west, so this is
+  approach/state dependent rather than static terrain evidence. No blocker was
+  added. Source now makes the return cross `(67,49)` inside one continuous
+  east-then-south segment from `(65,49)` to `(67,50)`.
+- CURRENT LIVE CHECKPOINT: World Map `(67,49)` with `charlock_return` active
+  after the blocked DOWN. FCEUX needs a manual reload for the inlet-turn fix;
+  recovery staging should return to `(65,49)` before retesting the three-step
+  `RIGHT,RIGHT,DOWN` segment.
+- ROUTE-ALTERNATE RELOAD FINDING: after recovery staging and reload at
+  `(65,49)`, explicitly requesting `charlock_return` selected the intended
+  shorter `rainbow_bridge_return` alternate. That route duplicated the same
+  unsafe `(67,49)` stop, so the continuous east-then-south fix now applies to
+  both eastbound return variants. This preserves the normal near-bridge route
+  optimization while removing the known stateful stop.
+- CONTROL CONTAMINATION: the recovery-only force-teleported `(65,49)` state
+  blocked previously proven RIGHT movement, and another force restage at
+  `(61,49)` initially did the same. Subpixels changed without a coordinate
+  commit; a manual game command-menu open/close restored ordinary control.
+  These failures are timing/control contamination and must not become map
+  blockers.
+- SLOW BRIDGE-EDGE CADENCE: after normal movement reacquired `(65,49)`, the
+  three-step return segment still timed out after detecting motion on the first
+  RIGHT. A same-origin raw hold proved the edge passable and naturally carried
+  `(65,49)->(67,49)`; the next DOWN completed at `(67,50)`. Both return variants
+  now attach a 60-frame sustained-hold/early-twitch window to the continuous
+  inlet turn and preserve movement state across its south turn.
+- END-TO-END RETURN PROOF: from naturally reacquired bridge-side positions,
+  loaded `charlock_return` completed the remainder through
+  `(67,50)->(70,50)->(70,49)->(73,49)->(83,49)->(93,49)` and entered Swamp Cave
+  map `0x15` at `(0,29)`. It emitted `event=arrived`, cleared route/path state,
+  and left no runtime blockers. No battle interrupted the run.
+- CURRENT LIVE CHECKPOINT: Swamp Cave `0x15` `(0,29)`, route none, path nil,
+  no runtime blockers, neutral input. FCEUX needs a manual reload for the
+  bridge-edge cadence metadata before the outbound Charlock route is run from
+  World Map `(103,49)`.
+- END-TO-END OUTBOUND PROOF: after reload at World Map `(104,49)`, loaded
+  `charlock_castle` started from the safe doorstep `(103,49)`, retained the
+  active route while the Rainbow Bridge object remained selected, crossed the
+  formed bridge, and traversed the corrected southwest recovery chain. It
+  entered Charlock Castle map `0x02` at `(10,19)`, emitted `event=arrived`,
+  cleared route/path state, and left no runtime blockers. REPEL expiration
+  caused one player-cleared dialogue/menu pause; route state remained intact.
+- OUTBOUND TIMING EVIDENCE: autowalk stopped at `(58,55)->LEFT` and
+  `(50,61)->LEFT`, but clean unchanged-origin `probe_edge:LEFT` holds moved to
+  `(57,55)` and `(49,61)` and advanced the active route. These are cadence
+  failures, not blocked tiles. Both outbound target waypoints now use a
+  60-frame sustained-hold/early-twitch window. No runtime or permanent blocker
+  was added.
+- CURRENT LIVE CHECKPOINT: Charlock Castle map `0x02` `(10,19)`, route none,
+  path nil, no runtime blockers, and controller buttons neutral. FCEUX needs a
+  manual reload before the new outbound timing metadata can be live-checked.
+
+## 2026-08-04 Charlock Ground Floor Decode Start
+
+- FRESH BASELINE: `CHARLOCK_F1_BASELINE` and `CHARLOCK_F1_STATE` were consumed
+  live. Position was Charlock Castle map `0x02` `(10,19)`, with no runtime
+  blockers and no previous map-crawl report.
+- STATIC PLAN: `debug_pathfind_to:10,3` found an 18-step route to the throne
+  clue tile: `5 north, 1 west, 10 north, 1 east, 1 north`. With mobile NPCs
+  parked, `auto_walk:10,3` replanned to `16 north`.
+- CONTAMINATED / DO NOT PROMOTE: autowalk never committed the first tile from
+  `(10,19)`. UP, LEFT, and RIGHT all produced subpixel/twitch evidence followed
+  by timeouts; the route executor temporarily avoided `(10,18)`, `(9,19)`, and
+  `(11,19)`, but `stop_auto_walk` cleared route state and no runtime or
+  permanent blocker was added.
+- CONTROL DIAGNOSTICS: field state was neutral; menu/dialogue guards were
+  inactive; `$004E=0x50` was aligned with a finite sprite-clear loop; NPCs were
+  frozen for the direct check and restored afterward. A clean same-origin
+  `probe_edge:UP` still returned `raw_hold_timeout` even though tile type 6,
+  map decoding, and static directional data all marked `(10,18)` passable.
+- RECOVERY ATTEMPT / DO NOT PROMOTE: `reset_movement_state:CHARLOCK_F1_RECOVERY`
+  changed movement/subpixel bytes from `0x7F/0x90` to `0x00/0x00`, but a second
+  same-origin UP probe still timed out at `(10,19)`. This confirms entrance
+  control contamination, not map geometry.
+- PAUSED FOR USER: live checkpoint remains map `0x02` `(10,19)`, route none,
+  runtime blocks none, NPCs unfrozen, and controller buttons neutral at fresh
+  tag `CHARLOCK_F1_PAUSE`. Open and close the in-game command menu once (the
+  established control recovery), then reload `main.lua` because the pending
+  outbound timing metadata also needs loading. Fresh-probe before continuing
+  with a normal UP step, then start `sweep_walk` only after movement is proven.
+- POST-RELOAD RECOVERY: reload plus command-menu recovery restored ordinary
+  control. A same-origin UP hold moved `(10,19)->(10,17)`, disproving the
+  contaminated entrance blocks. `sweep_walk` run 1 then proved three north
+  edges through `(10,14)` before a Starwyvern battle interrupted the next
+  probe. Run 2 recorded 13 open edges, one timing-only unknown, and zero
+  confirmed blockers before another battle returned the crawler to `(10,19)`.
+- LIVE NPC EXPLANATION: after normal raw movement back to `(10,14)`, direct UP
+  reported `npc_blocked=true`. `report_npcs` identified mobile slot 2,
+  `Person 1`, at `(10,13)` with movement byte `0xBD`; this is not map data.
+- CLEAN MAP-TYPE PROOF / SOURCE READY FOR RELOAD: the west detour normally
+  reached `(8,14)` and then `(9,14)`. Repeated same-origin UP probes from
+  `(8,14)` and a fresh same-origin UP probe from `(9,14)` all blocked entry
+  into adjacent type-4 cells with no NPC, static directional block, or input
+  contamination. The staged 20x20 guide image renders the same type-4 cells as
+  grey stone and surrounding live-passable type-6 cells as red corridor.
+  `map_reader.lua` now applies `[0x02][4] = false` through the existing
+  map-scoped tile-walkability override. The focused regression first failed
+  `71 pass / 1 fail`, then passed all `72/72`; `luac -p map_reader.lua
+  test_map_reader.lua` and `git diff --check` are clean.
+- CURRENT LIVE CHECKPOINT: Charlock ground floor `(9,14)`, NPCs unfrozen,
+  route none. One pre-source runtime directional overlay remains at type-4
+  cell `(8,13).south`; clear it after reload, then fresh-plan to `(10,3)`.
+  Three Starwyvern battles were player-cleared during this pass.
+- LOADED GROUND-FLOOR ROUTE PROOF: after reload, `(9,13)` correctly reported
+  type 4 as `base_walkable=false` with no runtime block. The replanned western
+  route from `(9,14)` to throne `(10,3)` then completed every movement segment
+  cleanly across battle-resume cycles. Axe Knight, Wizard, Axe Knight,
+  Werewolf, and another Axe Knight encounters interrupted navigation without
+  producing geometry failures. A field HEAL at `(10,9)` was also driven and
+  verified, raising HP before the last encounters.
+- THRONE / HIDDEN STAIR PROOF: SEARCH at `(10,3)` produced `Feel the wind
+  blowing from behind the throne.` Direct `(10,3)->UP` into type-15 `(10,2)`
+  blocked with a clean `raw_hold_timeout`; the correct route goes around the
+  west side to `(9,1)`. A same-origin RIGHT probe from `(9,1)` crossed hidden
+  type-7 `(10,1)` to `(11,1)`, and a controlled LEFT step stopped on `(10,1)`.
+  SEARCH there produced `Bill discovers the Secret Passage.` STAIRS then
+  changed map `0x02` to Dragonlord B1 `0x0F`, arriving at `(9,0)`.
+- SOURCE READY FOR RELOAD: `MAP_PASSTHROUGH_CELLS[0x02]["10,1"] = true` now
+  models the live-passable hidden stair without changing type 7 globally.
+  The focused regression failed `71 pass / 1 fail` before the source entry and
+  passes in the full `72/72` map-reader suite afterward. `luac -p
+  map_reader.lua test_map_reader.lua` and `git diff --check` are clean.
+- CURRENT LIVE CHECKPOINT: Dragonlord B1 map `0x0F` `(9,0)`, field state,
+  110/115 HP and 57/97 MP. FCEUX needs a manual `main.lua` reload before
+  returning upstairs and proving the loaded ground-floor route to hidden stair
+  `(10,1)` without raw input.
+- LOADED FINAL PROOF: after reload, B1 `(9,0)` was clean. The existing B1
+  stair object at `(10,1)` routed there normally, but STAIRS produced `There
+  are no stairs here.` Returning to live arrival stand `(9,0)` and selecting
+  STAIRS changed back to Charlock map `0x02` at `(10,1)`. This proves the B1
+  return object belongs at `(9,0)`, not `(10,1)`.
+- GROUND FLOOR COMPLETE: the loaded Charlock patch reports hidden type-7
+  `(10,1)` as `base_walkable=true reason=passthrough`. From `(9,1)`, the planner
+  produced `Path: 1 east`; ordinary autowalk reached `(10,1)`, completed route
+  state, and left zero runtime blocks. A Werewolf battle began immediately
+  afterward at `(10,1)` with 115/115 HP, after the route proof was complete.
+- OBJECT SOURCE READY FOR RELOAD: Dragonlord B1 `North Stairs Up` now uses
+  live-proven `(9,0)` and the regression rejects old `(10,1)`. The test failed
+  before source, then passed all `108/108`; map tests remain `72/72`, Lua syntax
+  and `git diff --check` are clean. Reload before beginning B1 decode so the
+  corrected object coordinate is live.
+- B1 INITIAL LIVE DECODE: after reload and scoped FCEUX input recovery, STAIRS
+  changed ground map `0x02 (10,1)` to B1 map `0x0F (9,0)`. The corrected
+  `North Stairs Up` object reported `here`. Normal autowalk stepped south onto
+  type-2 `(9,1)`, then repeated route and seam retries blocked on type-0 cells
+  `(9,2)`, `(10,2)`, `(11,2)`, `(8,1)`, and `(12,1)`. Horizontal movement
+  within type-2 `(9..11,1)` succeeded. This matches the staged Mike's RPG
+  Center B1 entrance chamber. A Green Dragon encounter at `(9,1)` was cleared
+  by the user; no runtime blocks remained after stopping autowalk.
+- B1 SOURCE READY FOR RELOAD: map `0x0F` now overrides dungeon tile type 0 as
+  nonwalkable and treats live-proven boundary return stair `(9,0)` as a
+  passthrough. The pinned ROM stair graph replaces provisional B1 descent
+  `(7,7)` with the main-spine coordinate `(8,19)`. Both regressions failed
+  before source, then passed all `73/73` map-reader and `108/108` object tests;
+  Lua syntax and `git diff --check` are clean. CURRENT LIVE CHECKPOINT is B1
+  `(9,1)` after the Green Dragon battle. Reload before verifying the corrected
+  grid and continuing the entrance-chamber special-passage investigation.
+- B1 HIDDEN TOP PASSAGE FOUND: after reload, the corrected type-0 wall rule and
+  `(9,0)` return-stair passthrough were live. From `(9,1)`, clean same-origin
+  probes moved east through `(10,1)` and `(11,1)`, then north into modeled
+  boundary cell `(11,0)`. Further probes moved east through `(12,0)` and
+  `(13,0)`, then south to ordinary floor `(13,1)`. This is the missing exit
+  from the apparently isolated entrance chamber and matches the staged B1 map.
+- B1 SECOND SOURCE PATCH READY FOR RELOAD: the complete 20x20 raw grid has
+  exactly three type-1 cells, matching all ROM-listed return stairs, and seven
+  type-3 cells, matching all ROM-listed B2 descents. Map `0x0F` now treats
+  types 1 and 3 as stairs and adds only live-proven top-row passthrough cells
+  `(11,0)`, `(12,0)`, and `(13,0)`. The focused regression failed before the
+  patch, then passed all `73/73`; Lua syntax and `git diff --check` are clean.
+  CURRENT LIVE CHECKPOINT is B1 `(13,1)`, field clear. Reload, then select the
+  corrected main descent `(8,19)` and run ordinary autowalk.
+- B1 HIDDEN PERIMETER CORRIDOR PROOF: loaded-source routing reached `(7,1)`.
+  Clean same-origin probes moved north to `(7,0)`, west through every top-row
+  cell to `(0,0)`, and south through `(0,6)`. Ordinary interior routing then
+  reached `(1,9)`; a same-origin LEFT probe entered `(0,9)`, UP reached
+  `(0,8)`, and a second UP cleanly blocked against real type-0 wall `(0,7)`.
+  After a player-cleared Starwyvern battle at `(0,9)`, repeated normal-origin
+  probes moved south through every boundary cell `(0,10)..(0,19)`. DOWN from
+  `(0,19)` correctly blocked outside the 20x20 map. No runtime blocker was
+  present or added.
+- B1 MAIN DESCENT ARRIVAL: from bottom-left `(0,19)`, RIGHT reached ordinary
+  floor `(1,19)`. The loaded planner then found `7 east` to the ROM-backed
+  stair `(8,19)`, and ordinary autowalk completed all seven steps without
+  battle, drift, or blocker. The hero is now standing on B1 `(8,19)`; the
+  STAIRS command still needs a manual live transition check.
+- B1 THIRD SOURCE PATCH READY FOR RELOAD: `MAP_PASSTHROUGH_CELLS[0x0F]` now
+  contains the complete live-proven hidden perimeter cells `(0..7,0)`,
+  `(0,1..6)`, and `(0,8..19)`, while preserving real wall `(0,7)` and top wall
+  `(8,0)`. Focused assertions cover every promoted cell plus both separators.
+  Verification passes all `73/73` map-reader tests, Lua syntax, and
+  `git diff --check`. Reload at `(8,19)`, then use STAIRS and fresh-report the
+  destination map and coordinate.
+- B1 TO B2 TRANSITION CONFIRMED: STAIRS at B1 `(8,19)` entered Dragonlord B2
+  map `0x10` at `(5,0)`. The first live branch traveled east and south through
+  `(6,0),(6,1),(6,2),(7,2),(7,3),(8,3),(9,3)..(9,6),(7,6),(7,7),(6,7),(5,7)`.
+  Clean probes proved the apparent exits at `(5,1)`, `(4,7)`, `(5,6)`, and
+  `(5,8)` closed. A bounded `sweep_walk` restored its start and stopped safely
+  on battle without adding runtime blocks.
+- B2 MAIN ROUTE LIVE PROOF: after backtracking, ordinary movement continued
+  `(6,7)->(6,8)->(6,9)->(3,9)->(3,8)->(3,7)->(2,7)->(2,6)->(1,6)`. From there,
+  same-origin probes entered boundary corridor `(0,6)->(0,5)->(0,4)->(0,3)`;
+  UP into type-0 `(0,2)` cleanly blocked. The corridor then reached the main
+  B3 stair through `(1,3),(2,3),(2,2),(3,2),(3,1),(3,0)`, with type-0 `(3,3)`
+  also cleanly blocked. Other repeated walls included type-0 `(5,2),(5,6),
+  (5,8),(6,6)` and type-8 `(5,1),(4,7)`. Type-A corridor cells moved normally.
+- B2 SOURCE READY FOR RELOAD: map `0x10` now applies map-scoped type-0/type-8
+  wall rules, stair rules for types 1, 3, and ROM-paired type 9, and live
+  boundary passthroughs `(3,0),(5,0),(6,0),(0,3..6)`. `objects.lua` replaces
+  stale B2 placeholders `(7,7)` and `(3,3)` with the live main stairs `(5,0)`
+  up and `(3,0)` down. The new tests failed before source, then passed all
+  `74/74` map-reader and `108/108` object tests. CURRENT LIVE CHECKPOINT is B2
+  `(3,0)`, field clear, HP `90/130`, MP `15/103`. Reload, fresh-probe, then use
+  STAIRS to verify the expected B3 transition to map `0x11` at `(7,0)`.
+
+## 2026-08-05 Charlock B3 Main Route Decode
+
+- TRANSITIONS CONFIRMED: B2 `(3,0)` entered B3 `(7,0)`; B3 false stair `(0,9)`
+  returned to B2 `(1,9)`; B2 branch stair `(0,8)` entered B3 `(5,4)`.
+- CLEAN MAIN ROUTE: the `(5,4)` component moved through
+  `(6,4)->(6,3)->(6,2)->(5,2)->(4,2)->(4,1)->(4,0)`, west across top boundary
+  to `(0,0)`, then south through `(0,1..6)` and east to B4 stair `(1,6)`.
+- CLEAN WALLS: repeated same-origin probes rejected type-0 cells around the
+  `(7,4)/(7,5)` alcove and type-8 cells around `(6,3)`. Boundary separators
+  `(6,0)` type 8 and `(0,7)` type 0 remain closed. No runtime block was added.
+- MODEL PATCH: B2 gains branch passthroughs `(0,8),(0,9)`. B3 gains map-scoped
+  type-0/type-8 wall rules, type-1/type-3 stair rules, the proven upper-left and
+  lower-left boundary cells, and all six ROM-backed stair objects. Focused
+  tests intentionally failed before source, then passed `75/75` map-reader and
+  `108/108` object tests; Lua syntax and `git diff --check` are clean.
+- CONTAMINATED / DO NOT PROMOTE: an earlier settled B3 `(4,9)` temporarily
+  rejected previously crossed exits, and recovery teleport caused the known
+  FCEUX control lock until Start. Later normal-route movement crossed those
+  cells cleanly; do not model the temporary failures as geometry.
+- CURRENT LIVE CHECKPOINT: B3 `(1,6)`, HP `59/130`, MP `101/103`, field clear.
+  Reload `main.lua`, fresh-check the loaded model and `West Stairs Down`, then
+  use STAIRS; expected destination is B4 map `0x12` `(0,9)`.
+
+## 2026-08-06 Charlock B4 Main Route Decode
+
+- TRANSITIONS CONFIRMED: B3 `(1,6)` entered B4 `(0,9)`; B4 `(2,2)` entered B5
+  `(9,0)` and returned to B4 `(2,2)`. B4 `(7,7)` is the ROM-backed return to
+  the separate B3 sword branch.
+- CLEAN MAIN ROUTE: ordinary movement connected descent `(2,2)` through the
+  east and south corridors to `(9,2)->(9,9)->(5,9)->(5,6)->(2,6)`, then the
+  entrance-side route reached `(2,7)->(2,8)->(1,8)->(0,8)->(0,9)`.
+- CLEAN WALLS: same-origin probes blocked type-0 `(2,5)` 2/2 from `(2,6)` and
+  type-8 `(2,9)` 2/2 from `(1,9)`. The earlier loaded planner's direct cuts
+  through those cells were false.
+- MODEL PATCH READY FOR RELOAD: map `0x12` now applies type-0/type-8 wall rules,
+  type-3/type-9 stair rules, and west-boundary passthroughs `(0,8),(0,9)`.
+  `objects.lua` exposes all four ROM-backed B4 stairs at `(0,9)`, `(7,7)`,
+  `(2,2)`, and `(8,1)`. Verification passes `76/76` map-reader and `108/108`
+  object tests, Lua syntax, and `git diff --check`.
+- CONTAMINATED / DO NOT PROMOTE: all reroutes and seam results from the
+  post-teleport control lock at B4 `(2,2)` are invalid. Seam memory was cleared
+  before clean normal movement resumed; later proof moved `(2,2)->(3,2)`.
+- CURRENT LIVE CHECKPOINT: B4 `(1,9)`, field clear. Reload `main.lua`, then
+  verify the source-only route to main descent `(2,2)`.
+
+## 2026-08-06 Charlock B5 Main Route Decode
+
+- TRANSITION CONFIRMED: B4 main descent `(2,2)` entered B5 `(9,0)`.
+- CLEAN MAIN ROUTE: ordinary movement followed the east boundary south to
+  `(9,9)`, crossed the bottom corridor west to `(0,9)`, then same-origin raw
+  probes moved north through every west-boundary cell `(0,8)..(0,0)` to the
+  ROM-backed B6 descent. Battles at `(3,9)`, `(0,4)`, and `(0,3)` happened
+  after arrival on those cells and were not treated as wall evidence.
+- CLEAN WALLS: `(9,0)->LEFT` blocked on type-8 `(8,0)`. A mistaken loaded
+  reroute also cleanly blocked `(2,9)->UP` into type-8 `(2,8)` before a later
+  battle contaminated the attempted alternate at `(3,9)`.
+- MODEL PATCH READY FOR RELOAD: map `0x13` now treats type 8 as wall and types
+  9/B as stairs, and exposes the live main boundary cells `(9,0)` and
+  `(0,0..9)` as passthroughs. `objects.lua` exposes all four ROM-backed B5
+  stairs at `(9,0)`, `(4,0)`, `(0,0)`, and `(5,5)`. Focused regressions failed
+  before source, then passed `77/77` map-reader and `108/108` object tests;
+  Lua syntax and `git diff --check` are clean.
+- CURRENT LIVE CHECKPOINT: B5 `(0,0)`, field clear. Reload `main.lua`, verify
+  the loaded main route and `Northwest Stairs Down`, then use STAIRS; expected
+  destination is B6 map `0x14` `(0,6)`.
+
+## 2026-08-06 Charlock B6 Main Route Decode
+
+- TRANSITION CONFIRMED: B5 main descent `(0,0)` entered B6 `(0,6)` after the
+  B5 source reload.
+- CLEAN MAIN ROUTE: `(0,6)->RIGHT` entered the type-2 lower component, ordinary
+  autowalk crossed row 6 to `(8,6)`, and a same-origin probe moved right onto
+  the ROM-backed final descent `(9,6)`. Type-2 `(8,5)` also moved bidirectionally
+  from `(8,6)`, so the lower component is wider than only the visible row.
+- CLEAN WALLS: `(0,6)->UP` blocked on type-0 `(0,5)`, and `(9,6)->UP` blocked
+  on type-0 `(9,5)` even though the loaded generic model predicted the latter
+  open. Type 8 belongs to the separate upper false-loop component and remains
+  UNRESOLVED until reached through normal play.
+- MODEL PATCH READY FOR RELOAD: map `0x14` now treats type 0 as wall and types
+  1/3 as ROM-backed stairs, with live west-boundary passthrough `(0,6)`.
+  `objects.lua` exposes all four ROM-backed B6 stairs at `(0,6)`, `(0,0)`,
+  `(9,0)`, and `(9,6)`, including a non-directional label for the same-floor
+  loop stair. Focused regressions failed before source, then passed `78/78`
+  map-reader and `108/108` object tests; Lua syntax and `git diff --check` are
+  clean.
+- CURRENT LIVE CHECKPOINT: B6 `(9,6)`, field clear, standing on the final
+  descent. Reload `main.lua`, verify `East Stairs Down`, then use STAIRS;
+  expected destination is Dragonlord's Lair map `0x06` `(10,29)`.
+
+## 2026-08-06 Dragonlord's Lair Decode
+
+- TRANSITION CONFIRMED: B6 `(9,6)` entered Dragonlord's Lair map `0x06` at
+  `(10,29)`. The arrival initially had the known post-teleport/stair control
+  lock; Start restored normal movement before route evidence was collected.
+- CLEAN TILE RULE: ordinary coordinate autowalk traced the winding corridor
+  through type-6 cells while repeatedly rejecting adjacent type-4 cells.
+  From the naturally reached corridor end `(16,17)`, inspection showed type 6
+  behind at `(16,16)` and type 4 on the other three sides; a same-origin raw
+  probe cleanly blocked `(16,17)->LEFT` into type-4 `(15,17)`.
+- MODEL PATCH READY FOR RELOAD: map `0x06` now treats type 4 as wall while
+  preserving type 6 as walkable. The focused regression failed before source,
+  then passed all `79/79` map-reader tests; Lua syntax and `git diff --check`
+  are clean.
+- RUNTIME-ONLY CONFIRMED EDGES: the pre-patch model retained explicit blocks
+  for `(10,25)->EAST` and `(11,24)->EAST`. Both destinations are type-4 walls,
+  so clear map `0x06` runtime blocks after reload and verify the source-only
+  route instead of promoting redundant directional entries.
+- CLEAN FINAL-APPROACH PASSAGES: normal-route movement reached `(28,12)`.
+  Same-origin probes moved south through raw type-0 `(28,13)` and carried to
+  `(28,14)`, moved through raw type-0 `(25,16)` and carried to `(25,17)`, and
+  moved through raw type-0 `(25,21)` and carried to `(25,22)`. Each probe began
+  with zero runtime blocks and continued onto an already modeled corridor.
+- MODEL PATCH READY FOR RELOAD: map `0x06` now has coordinate-scoped
+  passthroughs for `(28,13)`, `(28,14)`, `(25,16)`, and `(25,21)`. Other raw
+  type-0 cells deliberately remain blocked pending live proof.
+- LOADED ROUTE VERIFIED: after reloading `main.lua`, all four raw type-0 route
+  cells reported `walkable=true reason=passthrough`. Source-only autowalk then
+  completed the eight westward steps from `(25,24)` to `(17,24)` without a
+  reroute or runtime block.
+- FINAL NPC CONFIRMED: from `(17,24)`, inspection reports the type-6 destination
+  `(16,24)` as walkable terrain occupied by one blocking NPC. Earlier object
+  survey identified the generic RAM sprite as `Old Man`; the coordinate-scoped
+  object role now labels this final-encounter NPC `Dragonlord` while keeping him
+  out of Services.
+- CURRENT LIVE CHECKPOINT: Dragonlord's Lair `(17,24)`, HP `69/130`, MP
+  `7/103`, field clear, one tile east of Dragonlord.
+- FINAL ENCOUNTER VERIFIED: the user initiated TALK from `(17,24)`, and the
+  speech bridge captured `Welcome, Bill. I am the Dragonlord--King of Kings.`
+  This confirms that the blocking NPC at `(16,24)` is Dragonlord and that the
+  decoded main route reaches the intended final encounter. No dialogue was
+  advanced by the verification probe; restoring the pre-encounter save state
+  is safe.
+- LOADED OBJECT LABEL VERIFIED: after restoring the pre-dialogue save state and
+  reloading `main.lua`, the NPC filter reported
+  `Dragonlord (stationary): 1 west` for object `(16,24)` from hero `(17,24)`.
+  The field remained clear with zero runtime blocks and zero injected buttons.
+
+## 2026-08-06 Charlock Erdrick's Sword Branch
+
+- B3 RETURN COMPONENT: normal autowalk moved from B3 `(7,7)` to stair
+  `(2,2)` without blockers; STAIRS then entered B2 `(9,1)` as predicted by
+  the ROM stair graph.
+- B2 NORTHEAST HIDDEN CORRIDOR: from the natural stair arrival at `(9,1)`, a
+  same-origin DOWN probe into raw type-0 `(9,2)` blocked. A same-origin UP
+  probe moved into boundary tile `(9,0)`, then a LEFT probe moved onto stair
+  `(8,0)`. The clean route is therefore `(9,1)->(9,0)->(8,0)`; do not promote
+  `(9,2)`.
+- B1 NORTHEAST DEAD END: B2 stair `(8,0)` entered B1 `(15,1)`. Same-origin
+  probes blocked DOWN `(15,2)`, LEFT `(14,1)`, and RIGHT `(16,1)`; only UP
+  moved to `(15,0)`. The boundary arm then ran east through
+  `(16,0)..(19,0)` and south through `(19,1)..(19,3)`. Same-origin probes at
+  `(19,3)` blocked both DOWN `(19,4)` and LEFT `(18,3)`, proving this branch
+  is a deliberate dead end. A Wizard encounter at `(19,0)` was combat-only.
+- NEXT CHECK: return through B1 stair `(15,1)` to B2 `(8,0)`, retrace through
+  `(9,0)` to B2 `(9,1)`, and test the still-untried LEFT edge `(8,1)` toward
+  the sword network. Do not promote the B1 dead-end arm as the sword route.
+- B2 `(9,1)` COMPONENT CLOSED: after returning from the B1 dead end, the
+  reverse route `(8,0)->(9,0)->(9,1)` moved cleanly. A same-origin LEFT probe
+  into `(8,1)` blocked, joining the earlier blocked DOWN `(9,2)` result. Thus
+  B2 `(9,1)` connects only north through `(9,0)` to the B1 dead end and back
+  through its B3 stair; it does not directly reach the sword chest.
+- B3 FALSE-LINK CHECK / DO NOT PROMOTE: after returning normally to B3, the
+  modeled route reached `(6,7)`. A same-origin UP probe from `(6,7)` into raw
+  type-0 `(6,6)` blocked cleanly. The earlier hypothesis that the `(7,7)` /
+  `(2,2)` component directly connects to stair `(5,4)` was wrong.
+- CORRECTED SWORD LINK: the external walkthrough says the B3 path from `(7,7)`
+  to `(2,2)` is the intended unbranched sword path. B2 then places its B1 stair
+  immediately beside the B3 stair. The missed onward route is therefore on B1
+  after stair `(15,1)`: head east, then southwest to another B2 stair. Recheck
+  side exits from the previously traversed B1 boundary arm instead of probing
+  for an interior B3 connection.
+- B1 SWORD CORRIDOR FOUND: from the natural B1 stair arrival `(15,1)`, clean
+  same-origin movement followed `(15,1)->(15,0)->(16,0)->(17,0)->(18,0)->
+  (19,0)->(19,1)->(19,2)`. SOUTH from top-row `(16,0)`, `(17,0)`, and `(18,0)`
+  blocked, as did LEFT from `(19,1)`. The previously missed LEFT edge from
+  `(19,2)` moved to `(18,2)`, opening the modeled southwest zigzag to B1 stair
+  `(13,7)`. Autowalk then reached `(13,7)` cleanly. ROM pairing predicts B2
+  `(4,4)` after STAIRS.
+- SWORD ROOM REACHED: B1 stair `(13,7)` entered B2 `(4,4)` as predicted. The
+  loaded object system identified `Chest` at `(5,5)`, and clean autowalk moved
+  `(4,4)->(4,5)->(5,5)`. The hero is standing on the chest tile, ready for the
+  player to use TAKE and verify Erdrick's Sword/equipment state.
+- ERDRICK'S SWORD VERIFIED: TAKE produced `Fortune smiles upon thee, Bill. Thou
+  hast found the Erdrick's Sword.` Equipment byte `$00BE` changed to `0xFF`,
+  and Attack rose from `0x73` (115) to `0x7F` (127), the expected +12. A return
+  autowalk to B2 stair `(4,4)` was refused because a submenu remained open;
+  clear the menu before resuming the return route.
+
+## 2026-08-06 Charlock False Branch And B6 Loop
+
+- TRANSITIONS CONFIRMED: B4 `(8,1)` entered B5 `(4,0)`; B5 `(5,5)` entered
+  B6 `(0,0)`; B6 loop stair `(9,0)` returned to B6 `(0,0)` on the same map.
+- CLEAN B5 ROUTE: same-origin probes moved east from `(4,0)` through hidden
+  top-boundary cells `(5,0)..(7,0)`. From `(7,0)`, the loaded tile model
+  planned `7 south, 5 west, 5 north, 3 east, 3 south` to `(5,5)`, and ordinary
+  autowalk traversed the full inner corridor. An Armored Knight interruption
+  at `(7,3)` and a Stoneman at the destination were combat-only.
+- CLEAN B6 LOOP CORRIDOR: same-origin movement crossed the complete hidden top
+  row `(0,0)..(9,0)`. The hero reached loop stair `(9,0)`, and normal STAIRS
+  returned to `(0,0)` without changing map `0x14`.
+- CONTAMINATED / DO NOT PROMOTE: two `(3,0)->RIGHT` raw holds timed out while
+  the user confirmed controls were locked. After Start restored control, the
+  same edge moved cleanly to `(4,0)`, followed by clean movement through every
+  remaining top-row cell. The timeouts are input-state evidence, not blockers.
+- MODEL PATCH LOADED AND VERIFIED: map `0x13` adds boundary passthroughs
+  `(4,0)..(7,0)`; map `0x14` adds `(0,0)..(9,0)`. Verification passes `79/79`
+  map-reader and `109/109` object tests, Lua syntax, and `git diff --check`.
+  After reload, source-only planning produced exactly `9 east` from B6 `(0,0)`
+  and ordinary autowalk completed at `(9,0)` with no runtime blockers. STAIRS
+  returned to B6 `(0,0)`, completing loaded validation of the loop.
+
+## 2026-08-06 Charlock Ground-Floor Phantom NPCs
+
+- FRESH BASELINE: map `0x02` at entrance `(10,19)`, field clear, HP/MP full,
+  no runtime blockers, and selected target `Stairs Down` at `(10,1)`.
+- PHANTOM NPC ROOT CAUSE: the normal planner found no path after accepting 20
+  blocking NPC RAM slots, including a full guard/merchant/townsfolk roster and
+  many coordinates outside Charlock's 20x20 bounds. The skip-NPC planner found
+  a 60-step route to `(10,1)`, isolating the failure from map geometry.
+  Charlock uses town terrain offset `0x10` but has no ordinary NPC table, the
+  same special case already handled for Hauksness map `0x03`.
+- SOURCE READY FOR RELOAD: `objects.lua` now adds Charlock map `0x02` to
+  `MAPS_WITHOUT_NPCS`. The focused regression first failed with two stale NPC
+  blockers in the compact fixture, then the full object suite passed `110/110`;
+  Lua syntax and `git diff --check` are clean. Reload `main.lua`, fresh-check
+  `npc_count=0`, then compare the loaded normal planner to `(10,1)`.
+- LOADED FIX VERIFIED: after reload at entrance `(10,19)`, the fresh blocker
+  report showed `npc_count=0` and no runtime blocks. Normal live-NPC planning
+  now found the same 60-step route to hidden stair `(10,1)` as skip-NPC mode.
+  Ordinary autowalk moved cleanly through `(10,18)`, `(10,17)`, `(10,16)`,
+  `(9,16)`, and `(8,16)` before a Wizard battle interrupted the next west
+  step. The interruption restored the harmless empty NPC-parking snapshot and
+  left no runtime blocker.
+- FULL LOADED ROUTE VERIFIED: after two player-cleared Wizard interruptions,
+  ordinary autowalk resumed from `(8,16)` and `(6,4)` and completed at hidden
+  stair `(10,1)`. Every segment used the normal live-NPC planner; the final
+  state had `npc_count=0`, no runtime blocks, and no active path.
+- VISIBLE STAIR POCKETS / EARLIER HYPOTHESIS DISPROVEN: ground-floor type-7
+  stair cells `(4,14)` and `(15,14)` are separated from the central route by
+  locked side-room doors, not unreachable walking components. West door
+  `(4,8)` was live-opened from `(4,7)` facing down: keys changed `6 -> 5`, door
+  RAM slot 0 became `(4,8)`, and a same-origin raw hold crossed normally after
+  OPEN. The west room route reached `(4,13)`; STAIRS there correctly said no
+  stairs, while a clean DOWN raw hold entered the real type-7 stair cell
+  `(4,14)`. Add the two doors and stair passthroughs only after the paired east
+  doorway/stair check. Expected west transition remains B1 `(8,13)`.
+- WEST DECOY POCKET LIVE-PROVEN: STAIRS at ground `(4,14)` entered B1
+  `(8,13)`. Loaded skip-NPC planning found no route from this arrival component
+  to B1 stairs `(2,4)`, `(2,14)`, `(13,7)`, `(17,15)`, or `(8,19)`; frontier
+  analysis reported 28 reachable cells with no bridge or hidden-bridge
+  candidate. A normal-movement frontier crawl covered 38 directed edges before
+  a Werewolf interruption and found zero passthroughs, directional candidates,
+  door frontiers, or transitions. It flagged `(8,8)` as a stationary-occupant
+  cell even though the fresh post-battle baseline had `npc_count=0`; keep that
+  occupant result diagnostic-only. Ordinary routing then returned to `(8,13)`.
+  This west branch is an intentional dead-end pocket whose only transition is
+  back to ground `(4,14)`.
+
+## 2026-08-06 Charlock Upper-Floor Loaded Component Audit
+
+- CLEAN B3 MAIN ROUTE: from natural B2 arrival B3 `(7,0)`, loaded planning
+  found the false stair `(0,9)`, branch stair `(5,4)`, and true descent `(1,6)`
+  reachable. Ordinary autowalk reached `(1,6)` directly, proving the B2/B3
+  false-return loop is optional rather than part of the required spine.
+- CLEAN B4 COMPONENT: loaded planning from B4 arrival `(0,9)` found main
+  descent `(2,2)`, false-inner stair `(8,1)`, and sword-return stair `(7,7)`
+  in the same walking component. The route to `(2,2)` completed through combat
+  interruptions. An initial `(5,7)->DOWN` retry was timing-only; after combat,
+  a same-origin probe moved cleanly to `(5,8)`.
+- CLEAN B5 SPLIT: from main arrival `(9,0)`, only main descent `(0,0)` is
+  reachable. False-inner arrival `(4,0)` and its descent `(5,5)` form a separate
+  component. The loaded perimeter route completed to `(0,0)` through several
+  player-cleared battles.
+- CONTAMINATED / DO NOT PROMOTE: B5 `(9,1)->DOWN` initially blocked and was
+  provisionally injected as a runtime edge. A known-open opposite-direction
+  probe also blocked, proving a global control lock. The provisional edge was
+  cleared; after Start recovery, ordinary movement crossed the seam normally.
+- CLEAN B6 SPLIT: from main arrival `(0,6)`, final descent `(9,6)` is reachable,
+  while false-loop endpoints `(0,0)` and `(9,0)` are not. The loaded route
+  completed across row 6 with no runtime blockers.
+- FINAL BASELINE: STAIRS at B6 `(9,6)` entered Dragonlord's Lair map `0x06` at
+  `(10,29)`. Fresh reports show `RUNTIME_BLOCKS map=0x06 none`, no active path,
+  and only the expected Dragonlord NPC blocker at `(16,24)`.
+- RETURN TRAVEL OBJECT FIX: object navigation had seven lair objects but no
+  Travel entry because `objects.lua` omitted the lair-side stair. Manual STAIRS
+  at `(10,29)` returned cleanly to B6 `(9,6)`. Source now exposes map `0x06`
+  `(10,29)` as `South Stairs Up`; the focused regression failed before source,
+  then all 110 object tests, Lua syntax, and `git diff --check` passed. After
+  reload and re-entry, Travel reported `South Stairs Up: here (1 of 1)` at
+  `(10,29)`, completing live verification.
+- TREASURE DOOR CONFIRMED / SOURCE READY FOR RELOAD: the Doors filter falsely
+  reported raw type-5 return stair `(10,29)` as a door. The staged guide instead
+  pinned `(17,12)`, where live inspection found raw type 11 with walkable
+  type-6 stands `(18,12)` and `(16,12)`. A clean 25-step natural route reached
+  east stand `(18,12)` from lair entry, and a same-origin LEFT probe proved the
+  closed cell without NPC, runtime, permanent, or directional contamination.
+  OPEN from `(18,12)` facing west consumed one key (`6 -> 5`) and wrote opened-
+  door RAM slot 0 `(17,12)`. `objects.lua` now disables the unsafe generic
+  dungeon type-5 scan and exposes only confirmed `Treasure Room Door` `(17,12)`
+  with both interaction stands. `map_reader.lua` now gates `(17,12)` on opened-
+  door RAM so the planner can cross it after OPEN. The object regression failed
+  on false `door_10_29` before its fix, and the map regression failed with
+  `reason=tile_type` before its fix; all `111/111` object and `80/80` map-reader
+  tests, Lua syntax, and `git diff --check` now pass. Current live checkpoint is
+  `(18,12)` with the door already open; reload `main.lua`, then inspect or route
+  through `(17,12)` to verify `reason=door_open` in the loaded runtime.
+- TREASURE ROOM LOADED / ALL CHESTS REACHED: after reload, `(17,12)` reported
+  `reason=door_open`; normal movement crossed from `(18,12)` through the door
+  to `(16,12)`. The six chest results are `(11,11)` Herb, `(11,12)` 680 gold,
+  `(12,12)` Magic Key, `(11,13)` Wings, `(12,13)` Cursed Belt, and `(13,13)`
+  Herb. The Cursed Belt was given up because inventory was full.
+- FULL-HERB CHEST QUIRK / FIX LIVE-VERIFIED: TAKE at `(13,13)` while Herbs were
+  `6` produced `Unfortunately, it is empty.` The chest was consumed and the
+  reward lost; after using an Herb, the retry produced `There is nothing to
+  take here` while Herbs remained `5`. Inventory-only chest tracking therefore
+  left the object falsely unopened. A focused regression failed before adding
+  definitive empty-dialogue tracking and passed afterward (`112/112` object
+  tests). After reload, the retry logged
+  `CHEST_OPENED_DIALOGUE map=0x06 chest_id=chest_16 x=13 y=13`; a fresh probe
+  reported `Chest (opened): here` at `(13,13)`.
+- TREASURE RETURN ROUTE COMPLETE: ordinary autowalk crossed east through the
+  open door from the chest room to `(18,12)`, then followed the modeled
+  25-step outer route back to `South Stairs Up` `(10,29)`. Armored Knight
+  interruptions at `(13,12)` and `(15,16)`, plus a Red Dragon at `(11,17)`,
+  were combat-only. After each fresh resume, runtime blockers remained empty;
+  final state at `(10,29)` had `target=nil` and `runtime_count=0`.
+- CHARLOCK B1 BATTLE DIALOGUE CORRUPTION: a Starwyvern encounter at B1
+  `(9,1)` alternated the complete STOPSPELL sentence with the truncated token
+  `STOPSP ` five times at seven-frame intervals (`1729478..1729506`). A live
+  `report_upper_dialogue_state` later showed the visible lower window as
+  `The Starwyvern is breathing fire. Thy Hit Points decreased by 12. Command?`
+  while `PREV.announced_dialogue` still began with the shifted fragment
+  `Points have been reduced by 28.` Treat this as the existing overlapping
+  battle-window/dialogue-cache defect, not route or passability evidence.
+
+## 2026-08-07 Charlock B1 Alternate-Branch Crawl
+
+- CLEAN EASTERN COMPONENT ROUTE: ordinary source-only movement connected the
+  east-pocket B1 arrival area through `(17,17)` to the northern/southern
+  corridor near `(2,14)`. Repeated route segments completed with no runtime
+  blocker; battles were the only interruptions.
+- CRAWL NPC CONTAMINATION / SOURCE READY FOR RELOAD: B1 terrain offset `0x20`
+  retained 20 stale town NPC RAM slots. Run 4 therefore misclassified stale
+  slot 6 at wall `(18,18)` as a stationary NPC and parked another stale mobile
+  slot. `map_crawler.lua` now mirrors object navigation's terrain gate: dungeon
+  and cave contexts neither park nor classify stale NPC RAM, while town/castle
+  terrain keeps normal NPC handling. The focused regression failed before the
+  fix and now passes with the full crawler suite (`52/52`); Lua syntax and
+  `git diff --check` are clean. Reload `main.lua`, then restart the crawl from
+  B1 `(19,16)` and verify `parked_slots=0` plus no stationary NPC at `(18,18)`.
+- LOADED CRAWLER NPC FIX VERIFIED: after reload, the B1 crawl reported
+  `parked_slots=0`. A 50-edge run reached stale-slot coordinate `(18,18)`,
+  tested it twice as the modeled type-0 wall, and ended with
+  `stationary_npc_cells=0`, zero passability/directional/transition candidates,
+  and zero restored NPC slots. The stale dungeon NPC RAM no longer affects
+  crawler geometry or parking.
+- EASTERN COMPONENT CLOSED: targeted skip-NPC topology checks from B1
+  `(18,15)` found the main return `(9,0)`, main descent `(8,19)`, and sword
+  branch `(13,7)` unreachable. Each check reported `bridge_candidates=0` and
+  `hidden_bridge_candidates=0`, confirming this is a deliberate isolated
+  decoy component rather than an unfinished passage.
+- EAST DECOY RETURN LIVE-PROVEN: STAIRS at B1 `(17,15)` returned to Charlock
+  ground `(15,14)`. Together with the earlier west return and sword-room
+  round trip, six omitted Travel objects are now proven in both directions:
+  ground `(4,14)` / B1 `(8,13)`, ground `(15,14)` / B1 `(17,15)`, and B1
+  `(13,7)` / B2 `(4,4)`.
+- STAIR OBJECTS READY FOR RELOAD: `objects.lua` now exposes those six stairs
+  with compass-based, destination-neutral spoken labels. The focused object
+  regression failed on the first missing stair before the source change, then
+  all `112/112` object tests, Lua syntax, and `git diff --check` passed. Current
+  live checkpoint is Charlock ground `(15,14)`; reload `main.lua`, then verify
+  Travel reports `East Stairs Down: here`.
+- LOADED EAST STAIR VERIFIED: fresh reload tag `CHARLOCK_STAIR_NAME` confirmed
+  the Lua loop at Charlock ground `(15,14)` with no runtime blockers. Exact
+  lookup by both `stair_15_14` and spoken name `East Stairs Down` resolved one
+  loaded object. The survey safety guard refused to start because the stair
+  pocket has only one open walking exit; no movement or blocker change occurred.
+- LOADED B1 STAIR OBJECTS VERIFIED: re-entering the east decoy placed the hero
+  at B1 `(17,15)` with no runtime blockers. Exact loaded lookups resolved one
+  object each for `East Stairs Up`, `West Stairs Up`, and
+  `Northeast Stairs Down`. The survey safety guard refused each attempt from
+  the two-exit arrival cell, so the hero remained at `(17,15)`.
+- REMAINING SWORD CONNECTORS READY FOR RELOAD: audit of the completed forward
+  and reverse sword-route evidence found three more omitted Travel entries:
+  B1 `(15,1)` / B2 `(8,0)`, plus B2 `(9,1)` returning toward B3 `(2,2)`.
+  `objects.lua` now labels them `North Stairs Down`, `Northeast Stairs Up`,
+  and `Northeast Stairs Down`. The focused regression failed on B1 `(15,1)`
+  before implementation; afterward all `112/112` object tests, Lua syntax, and
+  `git diff --check` passed. FCEUX needs another manual `main.lua` reload.
+- LOADED B1 SWORD CONNECTOR VERIFIED: fresh tag
+  `CHARLOCK_SWORD_CONNECTOR_RELOAD` confirmed B1 `(17,15)` with no runtime
+  blockers. Exact lookup of `North Stairs Down` resolved one loaded object for
+  the newly exposed B1 `(15,1)` connector. The two-exit safety guard prevented
+  survey movement, leaving the hero at the east decoy return stair.
+- CHARLOCK SIDE-DOOR MODEL GAP / READY FOR RELOAD: after returning to ground
+  `(15,14)`, door RAM still held west `(4,8)` and east `(15,8)` with four keys
+  remaining, but source-only planning could reach the inside stand `(15,9)`
+  and not the public stand `(15,7)`. Inspection identified the open east door
+  cell as raw type 11 with `walkable=false reason=tile_type`. The permanent
+  door model and Doors navigation had omitted both live-opened coordinates.
+  `map_reader.lua` now gates `(4,8)` and `(15,8)` on opened-door RAM;
+  `objects.lua` exposes `West Side Room Door` and `East Side Room Door` with
+  public and room-side interaction stands. Both regressions failed before the
+  source fix. Afterward all `81/81` map-reader and `113/113` object tests, Lua
+  syntax, and `git diff --check` passed. Reload `main.lua`, inspect `(15,8)`
+  for `reason=door_open`, then route from `(15,14)` to `(15,7)`.
+- LOADED SIDE-DOOR FIX VERIFIED: fresh tag `CHARLOCK_SIDE_DOOR_LOADED` found
+  both door RAM slots intact and no runtime blockers. East door `(15,8)` now
+  reports `walkable=true reason=door_open`; the source planner found a
+  nine-step path from stair `(15,14)` to public stand `(15,7)`. Ordinary
+  autowalk crossed the door south-to-north, completed at `(15,7)`, and left
+  `target=nil` with zero runtime blockers. The subsequent route toward hidden
+  main stair `(10,1)` was interrupted by a Wizard battle at `(18,14)`; no
+  route seam or blocker was promoted.
+- CHARLOCK GROUND `(1,5)->UP` CONTROL-LOCK CONTAMINATION / DO NOT PROMOTE:
+  autowalk plus two seam retries and an initial same-origin raw probe remained
+  at `(1,5)`, but the user then reported controls locked. A provisional failing
+  regression was removed without changing source. After Start recovery, a
+  fresh same-origin 60-frame UP probe moved through `(1,4)` and settled at
+  `(1,3)`, proving the cell passable and the earlier failures contaminated.
+- CHARLOCK B1 `(7,19)->RIGHT` CONTROL-LOCK CONTAMINATION / DO NOT PROMOTE:
+  the final autowalk step and both bounded seam retries remained at `(7,19)`
+  and logged `(8,19)` as `blocked_only`. The user then confirmed the controller
+  was locked and restored it with Start. A fresh same-origin 60-frame RIGHT
+  probe moved normally to main descent `(8,19)`, proving the earlier apparent
+  block was input contamination. No runtime or permanent blocker was added.
+- REMAINING B1/B2 CONNECTORS LIVE-PROVEN / LOADED VERIFIED: ordinary
+  B1 movement from east-decoy arrival `(17,15)` reached all four omitted
+  stairs. B1 `(14,9)` entered B2 `(8,9)`; the adjacent B2 stair `(9,8)`
+  returned to B1 `(19,7)`. B1 `(2,14)` entered B2 `(0,1)`; a direct north
+  step moved normally onto boundary stair `(0,0)`, which returned to B1
+  `(2,4)`. Battles interrupted long B1 routes, but every resume began from a
+  clean baseline and no runtime blocker was promoted. `objects.lua` now
+  exposes all eight endpoints. `map_reader.lua` adds only live-proven boundary
+  stair cells `(0,0)` and `(0,1)`; the earlier guide hypothesis requiring
+  `(1,0)` was unnecessary and was not added. Regressions failed first on the
+  missing object and `(0,0)` boundary rejection, then passed `113/113` object
+  tests, `81/81` map-reader tests, Lua syntax, and `git diff --check`. Current
+  After restart/reload, exact non-moving lookups resolved all four new B1 and
+  all four new B2 Travel names with `targets=1`. STAIRS at B1 `(2,4)` entered
+  B2 `(0,0)`, and loaded inspection reported `reason=passthrough` for both
+  `(0,0)` and `(0,1)`. The final baseline remained at `(0,0)` with no runtime
+  or NPC blockers, no active path, and a clean input guard.

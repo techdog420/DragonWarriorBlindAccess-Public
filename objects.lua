@@ -264,8 +264,12 @@ local STAIRS = {
     {map = 0x1B, x = 0, y = 4, name = "Stairs Up", dest = "B3", object_name = "West Stairs Up"},
     {map = 0x1B, x = 5, y = 4, name = "Stairs Up", dest = "B3", object_name = "East Stairs Up"},
 
-    -- Charlock Castle (0x02)
+    -- Charlock Castle (0x02). The west and east visible stairs are decoys
+    -- behind locked side-room doors; both transitions and their B1 returns
+    -- were verified live on 2026-08-07.
     {map = 0x02, x = 10, y = 1, name = "Stairs Down", dest = "B1", object_name = "Stairs Down"},
+    {map = 0x02, x = 4, y = 14, name = "Stairs Down", dest = "B1", object_name = "West Stairs Down"},
+    {map = 0x02, x = 15, y = 14, name = "Stairs Down", dest = "B1", object_name = "East Stairs Down"},
 
     -- Dragonlord dungeon (raw map IDs from Data Crystal RAM map).
     -- The early floors below are still the best-known mappings from earlier
@@ -274,6 +278,22 @@ local STAIRS = {
     -- Live STAIRS checks on 2026-08-04 returned to Charlock from the B1
     -- arrival stand (9,0); the older (10,1) coordinate reported no stairs.
     {map = 0x0F, x = 9, y = 0, name = "Stairs Up", dest = "Charlock Castle", object_name = "North Stairs Up"},
+    -- Live sword-network traversal entered from B2 at (15,1) and returned
+    -- through the same stair during the completed reverse route.
+    {map = 0x0F, x = 15, y = 1, name = "Stairs Down", dest = "B2", object_name = "North Stairs Down"},
+    -- The visible ground-floor decoys return from isolated B1 components.
+    {map = 0x0F, x = 8, y = 13, name = "Stairs Up", dest = "Charlock Castle", object_name = "West Stairs Up"},
+    {map = 0x0F, x = 17, y = 15, name = "Stairs Up", dest = "Charlock Castle", object_name = "East Stairs Up"},
+    -- The northeast branch enters the isolated B2 Erdrick's Sword room.
+    -- Both directions were traversed live on 2026-08-06.
+    {map = 0x0F, x = 13, y = 7, name = "Stairs Down", dest = "B2", object_name = "Northeast Stairs Down"},
+    -- Four more B1 stairs form two isolated B2 connector pairs. Ordinary
+    -- traversal proved every transition on 2026-08-08: (19,7)/(14,9) use
+    -- B2 (9,8)/(8,9), and (2,14)/(2,4) use B2 (0,1)/(0,0).
+    {map = 0x0F, x = 19, y = 7, name = "Stairs Down", dest = "B2", object_name = "East Stairs Down"},
+    {map = 0x0F, x = 14, y = 9, name = "Stairs Down", dest = "B2", object_name = "Central Stairs Down"},
+    {map = 0x0F, x = 2, y = 14, name = "Stairs Down", dest = "B2", object_name = "Southwest Stairs Down"},
+    {map = 0x0F, x = 2, y = 4, name = "Stairs Down", dest = "B2", object_name = "Northwest Stairs Down"},
     -- The pinned ROM stair graph places B1's main-spine descent at (8,19);
     -- the older (7,7) entry was provisional and pointed at ordinary floor.
     {map = 0x0F, x = 8, y = 19, name = "Stairs Down", dest = "B2", object_name = "South Stairs Down"},
@@ -282,6 +302,16 @@ local STAIRS = {
     -- The older (7,7) and (3,3) entries were ordinary floor/wall placeholders.
     {map = 0x10, x = 5, y = 0, name = "Stairs Up", dest = "B1", object_name = "North Stairs Up"},
     {map = 0x10, x = 3, y = 0, name = "Stairs Down", dest = "B3", object_name = "North Stairs Down"},
+    -- Adjacent live-proven connectors in the sword network: (8,0) reaches
+    -- B1 (15,1), while (9,1) reaches B3 (2,2).
+    {map = 0x10, x = 8, y = 0, name = "Stairs Up", dest = "B1", object_name = "Northeast Stairs Up"},
+    {map = 0x10, x = 9, y = 1, name = "Stairs Down", dest = "B3", object_name = "Northeast Stairs Down"},
+    {map = 0x10, x = 4, y = 4, name = "Stairs Up", dest = "B1", object_name = "Central Stairs Up"},
+    -- Isolated B1-return pairs, traversed end to end on 2026-08-08.
+    {map = 0x10, x = 9, y = 8, name = "Stairs Up", dest = "B1", object_name = "Southeast Stairs Up"},
+    {map = 0x10, x = 8, y = 9, name = "Stairs Up", dest = "B1", object_name = "South Stairs Up"},
+    {map = 0x10, x = 0, y = 1, name = "Stairs Up", dest = "B1", object_name = "West Stairs Up"},
+    {map = 0x10, x = 0, y = 0, name = "Stairs Up", dest = "B1", object_name = "Northwest Stairs Up"},
     -- B3 has four distinct returns to B2 and two descents to B4. The main
     -- route entered at (7,0), traversed the false-stair loop through (0,9),
     -- re-entered at (5,4), and reached the true descent at (1,6). The other
@@ -1249,6 +1279,39 @@ end
 -- ROM, so parse_doors() cannot find them. Cache these with other static object
 -- sources; opened status is checked live when the object is described.
 local EXTRA_DOORS = {
+    -- Map 0x02: Charlock Castle side rooms containing the two visible decoy
+    -- stairs. Both doors were opened live from their public north stands;
+    -- retain room-side stands so navigation can also route back out.
+    [0x02] = {
+        {
+            x=4,
+            y=8,
+            name="West Side Room Door",
+            type=M.TYPE_DOOR,
+            id="door_4_8",
+            interaction_x=4,
+            interaction_y=7,
+            interaction_face_dir="south",
+            interaction_points={
+                {x=4, y=7, face_dir="south"},
+                {x=4, y=9, face_dir="north"},
+            },
+        },
+        {
+            x=15,
+            y=8,
+            name="East Side Room Door",
+            type=M.TYPE_DOOR,
+            id="door_15_8",
+            interaction_x=15,
+            interaction_y=7,
+            interaction_face_dir="south",
+            interaction_points={
+                {x=15, y=7, face_dir="south"},
+                {x=15, y=9, face_dir="north"},
+            },
+        },
+    },
     -- Map 0x04: Tantegel Castle.
     -- Keep only confirmed locked-key doors here; gate access at the south
     -- entrance is modeled via exit_11_29 in EXITS.

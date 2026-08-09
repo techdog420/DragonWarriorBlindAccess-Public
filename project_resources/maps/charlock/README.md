@@ -189,11 +189,12 @@ treasure door coordinate, interaction stands, key consumption, and opened-door
 RAM state are live-proven and modeled. All six treasure-room chest coordinates,
 contents, the full-Herb loss behavior, and the safe return to `(10,29)` are
 also live-proven.
-Other optional branch stairs remain orientation until their connected walking
-routes are decoded.
+The two visible ground-floor decoys and complete optional B1/B2 stair graph are
+also live-proven. Its four pairs are B1 `(14,9)` / B2 `(8,9)`, B1 `(19,7)` /
+B2 `(9,8)`, B1 `(2,14)` / B2 `(0,1)`, and B1 `(2,4)` / B2 `(0,0)`. Direct
+movement between B2 `(0,1)` and `(0,0)` works; no `(1,0)` detour is required.
 
 ## Recommended Remaining Decode Order
 
-1. Decode the visible ground-floor decoy stairs and remaining B1/B2 branch
-   network.
-2. Decode the final-floor throne enclosure and any remaining optional pockets.
+1. Decode the final-floor throne enclosure and any remaining optional pockets.
+2. Run a final Travel/path audit over the completed stair graph.

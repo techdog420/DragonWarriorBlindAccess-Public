@@ -150,6 +150,20 @@ local function is_active_npc_slot(byte0, byte1)
     return not ((x == 0 and y == 0) or (x == PARKED_NPC_COORD and y == PARKED_NPC_COORD))
 end
 
+local MAPS_WITHOUT_NPCS = {
+    [0x02] = true, -- Charlock Castle uses town terrain but has no NPC table.
+    [0x03] = true, -- Ruins of Hauksness uses town terrain but has no NPCs.
+}
+
+local function current_context_allows_npcs(map_id)
+    if map_id ~= nil and MAPS_WITHOUT_NPCS[map_id] then
+        return false
+    end
+    -- Dungeon/cave maps leave town NPC bytes in RAM. They are not rendered
+    -- or movement-blocking on this terrain, so the crawler must ignore them.
+    return memory.readbyte(addr.TERRAIN_OFFSET) == 0x10
+end
+
 local function write_npc_bytes(slot, byte0, byte1, byte2)
     local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
     memory.writebyte(base, byte0)
@@ -162,6 +176,9 @@ local function capture_mobile_npc_parking_state(map_id)
         map_id = map_id,
         slots = {},
     }
+    if not current_context_allows_npcs(map_id) then
+        return state
+    end
     for slot = 0, addr.NPC_COUNT - 1 do
         local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
         local byte0 = memory.readbyte(base)
@@ -208,7 +225,10 @@ local function restore_npc_parking_state(state)
     return restored, true
 end
 
-local function stationary_npc_at(x, y)
+local function stationary_npc_at(map_id, x, y)
+    if not current_context_allows_npcs(map_id) then
+        return nil
+    end
     for slot = 0, addr.NPC_COUNT - 1 do
         local base = addr.NPC_DATA_START + (slot * addr.NPC_ENTRY_SIZE)
         local byte0 = memory.readbyte(base)
@@ -521,7 +541,7 @@ local function classify_blocked(edge)
     -- escape its parked slot during frameadvance and become a fresh blocker
     -- by the time the step is reported as blocked. Caching the preflight
     -- result would mask that case, so the duplicate scan is intentional.
-    local stationary = stationary_npc_at(edge.dest_x, edge.dest_y)
+    local stationary = stationary_npc_at(edge.map_id, edge.dest_x, edge.dest_y)
     if stationary then
         return "stationary_npc_blocked", {npc_slot = stationary.slot}
     end
@@ -659,7 +679,7 @@ local function maybe_prepare_probe(edge)
         return false
     end
 
-    local stationary = stationary_npc_at(edge.dest_x, edge.dest_y)
+    local stationary = stationary_npc_at(state.map_id, edge.dest_x, edge.dest_y)
     if stationary then
         record_preflight_skip(edge, "stationary_npc_blocked", {npc_slot = stationary.slot})
         return false

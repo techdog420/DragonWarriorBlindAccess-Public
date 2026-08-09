@@ -501,6 +501,12 @@ local MAP_PASSTHROUGH_CELLS = {
     -- (6,0), the west-edge corridor (0,6)..(0,3), and the B3 descent at
     -- (3,0). These cells must override the generic north/west boundary rule.
     [0x10] = {
+        -- The western isolated stair pair lands on (0,1). Ordinary movement
+        -- then stepped north directly onto stair (0,0), and STAIRS reached B1
+        -- (2,4) on 2026-08-08. Both raw type-1 cells override the generic
+        -- north/west boundary guard.
+        ["0,0"] = true,
+        ["0,1"] = true,
         ["3,0"] = true,
         ["5,0"] = true,
         ["6,0"] = true,
@@ -1510,6 +1516,13 @@ local MAP_PASSTHROUGH_CELLS = {
 -- When a cell is listed here, is_walkable() returns true ONLY if the
 -- door at (x,y) appears in the opened-door array; otherwise false.
 local MAP_DOOR_CELLS = {
+    -- Map 0x02: Charlock Castle visible decoy stair rooms. Live OPEN from
+    -- the public north stands consumed keys and recorded (4,8) and (15,8)
+    -- in opened-door RAM. Both opened cells were then crossed normally.
+    [0x02] = {
+        ["4,8"] = {x=4, y=8},
+        ["15,8"] = {x=15, y=8},
+    },
     -- Map 0x04: Tantegel Castle main hall
     -- Live FCEUX door checks on 2026-05-22 found the two real 1F
     -- magic-key doors. The old y=6 type-15 band is not a door band: OPEN

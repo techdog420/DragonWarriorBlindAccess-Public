@@ -547,16 +547,33 @@ function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
 
     env.objects.refresh(0x02)
     assert_equal(find_by_id(env.objects, "stair_10_1").name, "Stairs Down", "Charlock Castle stairs should keep down direction without naming B1")
+    assert_equal(find_by_id(env.objects, "stair_4_14").name, "West Stairs Down", "Charlock Castle west decoy stairs should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_15_14").name, "East Stairs Down", "Charlock Castle east decoy stairs should use the live-proven coordinate")
 
     env.objects.refresh(0x0F)
     assert_equal(find_by_id(env.objects, "stair_9_0").name, "North Stairs Up", "Dragonlord B1 north stairs should use the live-proven return stand without naming Charlock Castle")
     assert_equal(find_by_id(env.objects, "stair_10_1"), nil, "Dragonlord B1 should not expose the false north-stair coordinate")
+    assert_equal(find_by_id(env.objects, "stair_8_13").name, "West Stairs Up", "Dragonlord B1 west decoy return should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_17_15").name, "East Stairs Up", "Dragonlord B1 east decoy return should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_15_1").name, "North Stairs Down", "Dragonlord B1 sword-network connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_13_7").name, "Northeast Stairs Down", "Dragonlord B1 sword-branch stairs should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_19_7").name, "East Stairs Down", "Dragonlord B1 east connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_14_9").name, "Central Stairs Down", "Dragonlord B1 central connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_2_14").name, "Southwest Stairs Down", "Dragonlord B1 southwest connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_2_4").name, "Northwest Stairs Down", "Dragonlord B1 northwest connector should use the live-proven coordinate")
     assert_equal(find_by_id(env.objects, "stair_8_19").name, "South Stairs Down", "Dragonlord B1 south stairs should use the ROM-confirmed main-spine coordinate without naming B2")
     assert_equal(find_by_id(env.objects, "stair_7_7"), nil, "Dragonlord B1 should not expose the provisional south-stair coordinate")
 
     env.objects.refresh(0x10)
     assert_equal(find_by_id(env.objects, "stair_5_0").name, "North Stairs Up", "Dragonlord B2 north return stairs should use the live-proven main-spine landing without naming B1")
     assert_equal(find_by_id(env.objects, "stair_3_0").name, "North Stairs Down", "Dragonlord B2 north descent should use the live-proven main-spine coordinate without naming B3")
+    assert_equal(find_by_id(env.objects, "stair_8_0").name, "Northeast Stairs Up", "Dragonlord B2 sword-network B1 connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_9_1").name, "Northeast Stairs Down", "Dragonlord B2 sword-network B3 connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_4_4").name, "Central Stairs Up", "Dragonlord B2 sword-room return should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_9_8").name, "Southeast Stairs Up", "Dragonlord B2 southeast connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_8_9").name, "South Stairs Up", "Dragonlord B2 south connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_0_1").name, "West Stairs Up", "Dragonlord B2 west connector should use the live-proven coordinate")
+    assert_equal(find_by_id(env.objects, "stair_0_0").name, "Northwest Stairs Up", "Dragonlord B2 northwest connector should use the live-proven coordinate")
     assert_equal(find_by_id(env.objects, "stair_7_7"), nil, "Dragonlord B2 should not expose the stale southeast up-stair placeholder")
     assert_equal(find_by_id(env.objects, "stair_3_3"), nil, "Dragonlord B2 should not expose the stale northwest down-stair placeholder")
 
@@ -589,6 +606,40 @@ function tests.other_internal_dungeon_stairs_avoid_destination_spoilers()
 
     env.objects.refresh(0x06)
     assert_equal(find_by_id(env.objects, "stair_10_29").name, "South Stairs Up", "Dragonlord's Lair should expose the live-proven return stair under Travel")
+
+    env.restore()
+end
+
+function tests.charlock_castle_exposes_live_side_room_doors()
+    local env = make_env({npc_count = 0})
+
+    env.set_position(0x02, 15, 9)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x02)
+    env.objects.set_filter(env.objects.FILTER_DOOR)
+
+    local doors = env.objects.get_objects({filtered = true})
+    assert_equal(#doors, 2, "Charlock Castle should expose both live-opened side-room doors")
+    local by_id = {}
+    for _, door in ipairs(doors) do
+        by_id[door.id] = door
+    end
+
+    local west = by_id.door_4_8
+    assert_equal(west ~= nil, true, "Charlock Castle should expose the west side-room door")
+    assert_equal(west.name, "West Side Room Door", "Charlock west door should have a positional label")
+    assert_equal(#west.interaction_points, 2, "Charlock west door should support both approach sides")
+    assert_equal(west.interaction_points[1].x, 4, "Charlock west door public stand x should match live OPEN proof")
+    assert_equal(west.interaction_points[1].y, 7, "Charlock west door public stand y should match live OPEN proof")
+    assert_equal(west.interaction_points[1].face_dir, "south", "Charlock west door public stand should face south")
+
+    local east = by_id.door_15_8
+    assert_equal(east ~= nil, true, "Charlock Castle should expose the east side-room door")
+    assert_equal(east.name, "East Side Room Door", "Charlock east door should have a positional label")
+    assert_equal(#east.interaction_points, 2, "Charlock east door should support both approach sides")
+    assert_equal(east.interaction_points[2].x, 15, "Charlock east door room-side stand x should match the decoded pocket")
+    assert_equal(east.interaction_points[2].y, 9, "Charlock east door room-side stand y should match the decoded pocket")
+    assert_equal(east.interaction_points[2].face_dir, "north", "Charlock east door room-side stand should face north")
 
     env.restore()
 end

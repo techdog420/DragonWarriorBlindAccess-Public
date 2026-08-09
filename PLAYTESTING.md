@@ -1,11 +1,23 @@
 # Playtesting Notes
 
-Updated: 2026-08-06
+Updated: 2026-08-09
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Charlock remaining B1/B2 connectors (`2026-08-09`): live movement and STAIRS
+  proved the four optional pairs B1 `(14,9)` / B2 `(8,9)`, B1 `(19,7)` / B2
+  `(9,8)`, B1 `(2,14)` / B2 `(0,1)`, and B1 `(2,4)` / B2 `(0,0)`. The direct
+  north step from B2 `(0,1)` onto `(0,0)` worked; the hypothesized `(1,0)`
+  detour was not needed. Source exposes all eight Travel endpoints and models
+  only boundary passthroughs `(0,0)` and `(0,1)`. Focused verification passes
+  `113/113` object tests, `81/81` map-reader tests, Lua syntax, and
+  `git diff --check`. After restart/reload, exact loaded lookups found all four
+  B1 and all four B2 stair names. B1 `(2,4)` then descended to B2 `(0,0)`,
+  where both boundary cells reported `reason=passthrough`; runtime/NPC blocks,
+  path state, and input guard were clean. The visible ground-floor decoys and
+  remaining B1/B2 optional stair graph are complete.
 - Charlock false branch and loop (`2026-08-06`): B4 stair `(8,1)` entered B5
   `(4,0)`. Clean movement crossed hidden top-boundary cells `(5,0)..(7,0)`,
   then followed the inner corridor `7 south, 5 west, 5 north, 3 east, 3 south`

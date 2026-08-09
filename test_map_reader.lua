@@ -480,6 +480,8 @@ function tests.charlock_b2_uses_live_proven_walls_stairs_and_boundary_route()
     set_packed_block(rom_bytes, data_start, 10, 8, 0, 0x1)
     set_packed_block(rom_bytes, data_start, 10, 9, 0, 0x2)
     set_packed_block(rom_bytes, data_start, 10, 9, 1, 0x3)
+    set_packed_block(rom_bytes, data_start, 10, 0, 0, 0x1)
+    set_packed_block(rom_bytes, data_start, 10, 0, 1, 0x1)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -508,7 +510,7 @@ function tests.charlock_b2_uses_live_proven_walls_stairs_and_boundary_route()
     assert_equal(type_a_floor.effective_walkable, true, "Charlock B2 type-A corridors should remain walkable")
 
     for _, point in ipairs({
-        {3, 0}, {5, 0}, {6, 0}, {8, 0}, {9, 0},
+        {0, 0}, {0, 1}, {3, 0}, {5, 0}, {6, 0}, {8, 0}, {9, 0},
         {0, 3}, {0, 4}, {0, 5}, {0, 6},
         {0, 8}, {0, 9},
     }) do
@@ -1293,6 +1295,51 @@ function tests.dragonlord_lair_treasure_door_opens_from_door_ram_array()
     assert_equal(opened.reason, "door_open", "opened Dragonlord lair treasure door should report door_open")
     local snapshot = env.map_reader.get_walkability_snapshot(0x06)
     assert_equal(snapshot[12][17], true, "walkability snapshot should honor opened Dragonlord lair treasure door")
+
+    env.restore()
+end
+
+function tests.charlock_castle_side_room_doors_open_from_door_ram_array()
+    local base = 0x02 * 5
+    local data_start = 0x180
+    local data_cpu_ptr = 0x8000 + data_start - 0x10
+    local rom_bytes = {
+        [base] = data_cpu_ptr % 0x100,
+        [base + 1] = math.floor(data_cpu_ptr / 0x100),
+        [base + 2] = 19,
+        [base + 3] = 19,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 20, 20, 0xB)
+
+    local memory_bytes = {[0] = 0x10}
+    local env = make_env({
+        rom_bytes = rom_bytes,
+        memory_bytes = memory_bytes,
+        door_array_max = 8,
+        door_x_pos_start = 0x600C,
+        door_y_pos_start = 0x600D,
+        door_array_stride = 2,
+    })
+
+    for _, x in ipairs({4, 15}) do
+        local closed = env.map_reader.get_walkability_details(0x02, x, 8)
+        assert_equal(closed.effective_walkable, false, "closed Charlock side-room door should block movement")
+        assert_equal(closed.reason, "door_closed", "closed Charlock side-room door should report door_closed")
+    end
+
+    memory_bytes[0x600C] = 4
+    memory_bytes[0x600D] = 8
+    memory_bytes[0x600E] = 15
+    memory_bytes[0x600F] = 8
+    for _, x in ipairs({4, 15}) do
+        local opened = env.map_reader.get_walkability_details(0x02, x, 8)
+        assert_equal(opened.effective_walkable, true, "opened Charlock side-room door should become walkable")
+        assert_equal(opened.reason, "door_open", "opened Charlock side-room door should report door_open")
+    end
+    local snapshot = env.map_reader.get_walkability_snapshot(0x02)
+    assert_equal(snapshot[8][4], true, "walkability snapshot should honor opened Charlock west door")
+    assert_equal(snapshot[8][15], true, "walkability snapshot should honor opened Charlock east door")
 
     env.restore()
 end

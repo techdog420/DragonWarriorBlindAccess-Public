@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-06
+Updated: 2026-08-09
 
 ## Release Installation Handoff
 
@@ -121,6 +121,19 @@ Updated: 2026-08-06
 
 ## Immediate FCEUX Handoff
 
+- Charlock's remaining B1/B2 stair network is complete and loaded. The four
+  live-proven pairs are B1 `(14,9)` to B2 `(8,9)`, B1 `(19,7)` to B2
+  `(9,8)`, B1 `(2,14)` to B2 `(0,1)`, and B1 `(2,4)` to B2 `(0,0)`.
+  Direct movement from `(0,1)` north onto `(0,0)` worked, so the guide-based
+  `(1,0)` detour was unnecessary and was not modeled. `objects.lua` exposes
+  all eight endpoints, while `map_reader.lua` adds only the two live-proven B2
+  boundary passthroughs `(0,0)` and `(0,1)`. Regressions failed before source
+  changes and then passed `113/113` object tests, `81/81` map-reader tests, Lua
+  syntax, and `git diff --check`. After restart/reload, all four B1 and all four
+  B2 Travel names resolved uniquely. STAIRS at B1 `(2,4)` entered B2 `(0,0)`;
+  both boundary cells loaded with `reason=passthrough`, and the final state at
+  B2 `(0,0)` has no runtime/NPC blockers, active path, or input guard. This
+  closes the visible decoys and remaining B1/B2 optional connector graph.
 - The Charlock false inner branch and deliberate B6 loop are live-proven.
   B4 `(8,1)` entered B5 `(4,0)`; hidden top-boundary cells `(5,0)..(7,0)`
   connect to the ordinary 23-step inner corridor ending at descent `(5,5)`.
@@ -1829,13 +1842,12 @@ Updated: 2026-08-06
 
 ## Next Work
 
-1. Decode the two visible ground-floor decoy stairs `(4,14)` and `(15,14)` and
-   their remaining B1/B2 branch network. Keep each stair pairing distinct from
-   the already complete hidden main spine.
-2. After the pending reload, live-verify the corrected Dragonlord's Lair door
-   object and open-cell routing at `(17,12)`, then decode the six chests, type-F
-   throne enclosure cells, and safe return routing. Preserve the current
-   pre-dialogue save boundary until the hero is ready.
+1. Decode the Dragonlord's Lair type-F throne enclosure cells and audit any
+   remaining optional final-floor pockets. Preserve the pre-dialogue save
+   boundary until the hero is ready for the final encounter.
+2. Run a final blind-player Travel/path audit across the completed Charlock
+   stair graph, keeping the deliberate dead ends and same-floor loop distinct
+   from the main spine.
 3. For future live FCEUX work after source edits, manually reload `main.lua`
    before judging behavior. Keep battle/control-lock evidence separate from
    map geometry and use the external Charlock references only for orientation.
