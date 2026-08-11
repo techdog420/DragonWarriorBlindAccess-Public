@@ -54,6 +54,7 @@ local function make_env(options)
     local walkable_tiles = options.walkable_tiles or {}
     local directional_blocks = options.directional_blocks or {}
     local tile_grid = options.tile_grid
+    local memory_bytes = options.memory_bytes or {}
 
     _G.AND = function(a, b)
         local result = 0
@@ -76,6 +77,9 @@ local function make_env(options)
             end
             if address == 0x00DF then
                 return combat_flags
+            end
+            if memory_bytes[address] ~= nil then
+                return memory_bytes[address]
             end
             return npc_ram[address] or 0
         end,
@@ -102,6 +106,10 @@ local function make_env(options)
             ROM_CHEST_SIZE = 4,
             TERRAIN_OFFSET = 0x0016,
             COMBAT_FLAGS = 0x00DF,
+            CHEST_X_POS_START = 0x601C,
+            CHEST_Y_POS_START = 0x601D,
+            CHEST_ARRAY_MAX = 8,
+            CHEST_ARRAY_STRIDE = 2,
         }
     end
 
@@ -193,6 +201,9 @@ local function make_env(options)
             nav_x = x
             nav_y = y
         end,
+        set_memory = function(address, value)
+            memory_bytes[address] = value
+        end,
         get_tile_grid_calls = function()
             return tile_grid_calls
         end,
@@ -229,36 +240,73 @@ end
 
 local tests = {}
 
-function tests.empty_take_dialogue_marks_consumed_nearby_chest_opened()
+function tests.rom_chest_open_status_uses_native_treasure_ram_across_reload()
     local env = make_env({
         npc_count = 0,
         rom_chest_start = 0,
-        rom_chest_end = 7,
+        rom_chest_end = 3,
         rom_bytes = {
             [0] = 0x06, [1] = 13, [2] = 13, [3] = 0x02,
-            [4] = 0x06, [5] = 12, [6] = 13, [7] = 0x02,
         },
     })
 
     env.set_position(0x06, 13, 13)
     env.objects.refresh(0x06)
+    local chest = assert(env.objects.find_object_by_id("chest_0"))
+    assert_equal(chest.native_chest, true, "ROM-parsed chests should use the game's native pickup history")
 
     assert_equal(
-        env.objects.mark_nearby_chest_opened_from_dialogue("A harmless unrelated message.", 13, 13),
+        env.objects.record_fallback_treasure_collection_at(13, 13),
         nil,
-        "unrelated dialogue should not consume a nearby chest")
-    assert_equal(env.objects.is_chest_opened("chest_0"), false, "first chest should begin unopened")
+        "ROM chests should be excluded from fallback collection tracking")
+    assert_equal(
+        env.objects.describe_object(chest):find("(opened)", 1, true),
+        nil,
+        "fallback collection tracking should not mark a native chest opened")
 
-    local full_inventory_chest = env.objects.mark_nearby_chest_opened_from_dialogue(
-        "Unfortunately, it is empty.", 13, 13)
-    assert_equal(full_inventory_chest.id, "chest_0", "full-inventory empty dialogue should mark the chest underfoot")
-    assert_equal(env.objects.is_chest_opened("chest_0"), true, "full-inventory chest should be marked opened")
+    env.set_memory(0x601C, 13)
+    env.set_memory(0x601D, 13)
+    assert_equal(
+        env.objects.describe_object(chest):find("(opened)", 1, true) ~= nil,
+        true,
+        "native treasure RAM should mark the matching ROM chest opened")
 
-    env.set_position(0x06, 12, 13)
-    local already_empty_chest = env.objects.mark_nearby_chest_opened_from_dialogue(
-        "There is nothing to take here, Bill.", 12, 13)
-    assert_equal(already_empty_chest.id, "chest_1", "nothing-to-take dialogue should mark the nearest chest")
-    assert_equal(env.objects.is_chest_opened("chest_1"), true, "already-empty chest should be marked opened")
+    env.objects = env.reload_objects()
+    env.objects.refresh(0x06)
+    chest = assert(env.objects.find_object_by_id("chest_0"))
+    assert_equal(
+        env.objects.describe_object(chest):find("(opened)", 1, true) ~= nil,
+        true,
+        "native treasure RAM should preserve opened status across Lua reloads")
+
+    env.restore()
+end
+
+function tests.non_rom_treasure_fallback_requires_exact_coordinate()
+    local env = make_env({npc_count = 0})
+
+    env.set_position(0x07, 9, 6)
+    env.set_terrain_offset(0x10)
+    env.objects.refresh(0x07)
+    local flute = assert(env.objects.find_object_by_id("chest_kol_fairy_flute"))
+
+    assert_equal(
+        env.objects.record_fallback_treasure_collection_at(10, 6),
+        nil,
+        "adjacent inventory changes should not mark a hidden treasure collected")
+    assert_equal(
+        env.objects.describe_object(flute):find("(opened)", 1, true),
+        nil,
+        "an adjacent inventory change should leave hidden treasure closed")
+
+    assert_equal(
+        env.objects.record_fallback_treasure_collection_at(9, 6).id,
+        "chest_kol_fairy_flute",
+        "an exact-coordinate inventory change should record the hidden treasure")
+    assert_equal(
+        env.objects.describe_object(flute):find("(opened)", 1, true) ~= nil,
+        true,
+        "the hidden treasure fallback should report collected session state")
 
     env.restore()
 end

@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-09
+Updated: 2026-08-10
 
 ## Release Installation Handoff
 
@@ -217,13 +217,17 @@ Updated: 2026-08-09
   respective fixes. Loaded inspection then reported `reason=door_open`, and
   ordinary movement crossed the door both ways. All six treasure chests are
   live-reached: `(11,11)` Herb, `(11,12)` 680 gold, `(12,12)` Magic Key,
-  `(11,13)` Wings, `(12,13)` Cursed Belt, and `(13,13)` Herb. The last chest
-  exposed an original-game capacity quirk: with six Herbs, TAKE consumes the
-  chest, loses the reward, and says `Unfortunately, it is empty.` Object state
-  now also recognizes that line and `There is nothing to take here`; the loaded
-  retry logged `CHEST_OPENED_DIALOGUE ... chest_16 x=13 y=13` and navigation
-  reported `Chest (opened): here`. All `80/80` map-reader and `112/112` object
-  tests, Lua syntax, and `git diff --check` pass. The ordinary safe-return route
+  `(11,13)` Wings, `(12,13)` Cursed Belt, and `(13,13)` Herb. A fresh six-chest
+  raid exposed that successful inventory-delta tracking could still miss the
+  final Herb at `(13,13)`. ROM-backed chests now read the game's authoritative
+  eight-slot taken-treasure coordinate array at `$601C-$602B`; `GetTreasure`
+  writes that array before awarding contents, and it survives Lua reloads while
+  retaining the original game's overworld-reset behavior. Hidden SEARCH
+  treasures keep the separate fallback cache. After manual reload, fresh marker
+  `chest_ram_reload` was consumed on map `0x06` at `(13,13)`, Herbs were `4`,
+  and one complete object-list cycle logged all six exact chest coordinates as
+  `Chest (opened)`. All `114/114` object tests, the broad repository gate, Lua
+  syntax, and `git diff --check` pass. The ordinary safe-return route
   then crossed the opened door and completed from the treasure room to lair
   stair `(10,29)` with zero runtime blockers; two Armored Knights and one Red
   Dragon were combat-only interruptions. Current live checkpoint is lair

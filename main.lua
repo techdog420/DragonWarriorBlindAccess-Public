@@ -1460,7 +1460,7 @@ local K = {
 local PREV = {
     -- player stats
     hp = nil, mp = nil, level = nil,
-    -- inventory (chest detection)
+    -- inventory (non-ROM treasure fallback detection)
     gold = nil, magic_keys = nil, herbs = nil, items = nil,
     -- lower dialogue
     dialogue = "", announced_dialogue = "", stable_count = 0,
@@ -1987,17 +1987,6 @@ DW_QOL_STATE.mark_pending_talk_visit = function(event)
 end
 
 event_bus.subscribe("dialogue_new", function(event)
-    local map_id, px, py = nav.get_position()
-    local chest = objects.mark_nearby_chest_opened_from_dialogue(
-        event and event.text, px, py)
-    if chest then
-        debug_tools.info(string.format(
-            "CHEST_OPENED_DIALOGUE map=0x%02X chest_id=%s x=%d y=%d",
-            map_id,
-            tostring(chest.id),
-            chest.x,
-            chest.y))
-    end
     DW_QOL_STATE.mark_pending_talk_visit(event)
 end)
 
@@ -2160,14 +2149,13 @@ local function check_level_up()
     PREV.level = level
 end
 
--- check_chest_collection(): Detect when the player collects a chest's
--- contents and mark it as opened in the object list.
+-- check_fallback_treasure_collection(): Preserve session state for non-ROM
+-- treasures, such as hidden SEARCH rewards, that have no native chest entry.
 --
--- Detection: if gold, keys, herbs, or items increase while in field
--- state (not battle) and a chest is within 1 tile of the player,
--- that chest is marked opened. Battle rewards are excluded because
--- they happen in STATE_BATTLE, not STATE_FIELD.
-local function check_chest_collection()
+-- ROM chests are deliberately excluded: their `$601C-$602B` coordinates are
+-- authoritative. The fallback requires an inventory increase on the treasure's
+-- exact tile rather than attributing an unrelated gain to a nearby object.
+local function check_fallback_treasure_collection()
     local gold       = snapshot.gold
     local magic_keys = snapshot.keys
     local herbs      = snapshot.herbs
@@ -2190,9 +2178,11 @@ local function check_chest_collection()
 
     if gained then
         local _, px, py = nav.get_position()
-        local nearby = objects.get_nearby_chests(px, py, 1)
-        if nearby[1] then
-            objects.mark_chest_opened(nearby[1].obj.id)
+        local treasure = objects.record_fallback_treasure_collection_at(px, py)
+        if treasure then
+            debug_tools.info(string.format(
+                "FALLBACK_TREASURE_COLLECTED id=%s x=%d y=%d",
+                tostring(treasure.id), treasure.x, treasure.y))
         end
     end
 
@@ -7463,10 +7453,12 @@ while true do
                 checked_scan("objects.check_refresh", objects.check_refresh, map_id)
             end
 
-            -- Detect chest collection (only meaningful during field movement,
-            -- but safe to run any time we're not on the title screen).
+            -- Detect only non-ROM treasure collection. ROM chest state is
+            -- read directly from the game's taken-treasure RAM array.
             if game_state.state == state.STATE_FIELD then
-                checked_call("check_chest_collection", check_chest_collection)
+                checked_call(
+                    "check_fallback_treasure_collection",
+                    check_fallback_treasure_collection)
             end
         end
 

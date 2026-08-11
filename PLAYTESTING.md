@@ -1,11 +1,21 @@
 # Playtesting Notes
 
-Updated: 2026-08-09
+Updated: 2026-08-10
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Native opened-chest tracking (`2026-08-10`): a fresh Dragonlord treasure-room
+  raid opened all six chests, but the successful Herb pickup at `(13,13)` did
+  not remain labeled opened even though the two Herb chests raised the count
+  from `2` to `4`. The game itself records up to eight taken chest coordinates
+  at `$601C-$602B` before awarding contents. ROM chests now use that array as
+  authoritative state, while hidden SEARCH treasures retain their separate
+  fallback cache. The regression failed first and then passed `114/114` object
+  tests plus the broad repository gate. After manual Lua reload, fresh marker
+  `chest_ram_reload` was consumed at map `0x06` `(13,13)` and a complete
+  nine-object cycle logged all six room coordinates as `Chest (opened)`.
 - Full-game ending and credits (`2026-08-09`): after returning to Tantegel and
   completing King Lorik's ending sequence, every story page and the complete
   staff credits were automatically narrated by the existing dialogue detector.
@@ -121,10 +131,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   reached: `(11,11)` Herb, `(11,12)` 680 gold, `(12,12)` Magic Key, `(11,13)`
   Wings, `(12,13)` Cursed Belt, and `(13,13)` Herb. TAKE at `(13,13)` while
   carrying six Herbs consumed the chest but discarded its reward, reporting
-  `Unfortunately, it is empty.` The dialogue-based tracking regression now
-  marks that case opened without requiring an inventory increase; after reload,
-  the retry logged `CHEST_OPENED_DIALOGUE ... chest_16 x=13 y=13`, and object
-  navigation reported `Chest (opened): here`. The ordinary return route then
+  `Unfortunately, it is empty.` Native taken-treasure RAM now marks that case
+  opened without relying on dialogue or an inventory increase, and the state
+  survives Lua reloads. The ordinary return route then
   crossed the open door eastward and continued from `(18,12)` to lair stair
   `(10,29)`. Two Armored Knights and one Red Dragon interrupted combat, but
   each resumed segment remained source-only and the final state had no runtime

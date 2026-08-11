@@ -426,8 +426,6 @@ Longer-term goals:
 - Expand the object navigator with sortable views such as distance and
   alphabetical order, search or quick access to common services, and player
   bookmarks for places such as a favorite grinding area.
-- Make opened-chest status reliable across map changes and script reloads by
-  deriving or persisting it beyond the current temporary in-memory tracking.
 - Expand route and map coverage across the full game.
 - Reduce reliance on emergency teleport as route coverage improves.
 - Keep the reusable speech, navigation, logging, and automated-testing systems

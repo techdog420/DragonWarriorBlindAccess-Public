@@ -165,11 +165,12 @@ The main final-floor route is now live-confirmed:
   directions.
 - The locked central room's six live-opened chests are `(11,11)` Herb,
   `(11,12)` 680 gold, `(12,12)` Magic Key, `(11,13)` Wings, `(12,13)` Cursed
-  Belt, and `(13,13)` Herb. If Herb inventory is already at its maximum of six,
-  TAKE still consumes the Herb chest while reporting `Unfortunately, it is
-  empty.` The item is lost. A later TAKE reports `There is nothing to take
-  here`. Object tracking now treats either definitive message as opened even
-  without an inventory increase; the loaded fix marked `(13,13)` opened.
+  Belt, and `(13,13)` Herb. ROM chest labels now use the game's taken-treasure
+  coordinate array at `$601C-$602B`, which is written before contents are
+  awarded and survives Lua reloads. A loaded six-chest raid reported every
+  coordinate opened after reload. If Herb inventory is already at its maximum
+  of six, TAKE still consumes the Herb chest while reporting `Unfortunately,
+  it is empty.` The item is lost.
 - The safe treasure-room return is live-proven. Ordinary autowalk from the
   final chest `(13,13)` crossed the open door `(17,12)`, reached its outside
   stand `(18,12)`, and followed the 25-step outer-corridor route back to lair

@@ -602,27 +602,36 @@ local function build_overworld_landmark_object(landmark)
 end
 
 -- ============================================================
--- Chest Opened Status (Session-Level Cache)
+-- Chest Opened Status
 -- ============================================================
--- DW1 uses a password save system (no battery backup), so chest
--- opened status is only relevant within a play session — exactly
--- like the game's own behavior. We track this ourselves because
--- the RAM address for the game's chest flag bitfield isn't yet
--- documented on DataCrystal.
+-- ROM chests use the game's native taken-treasure coordinate array. This is
+-- authoritative for the current interior run and survives Lua script reloads.
+-- A narrow cache remains only for non-ROM treasure objects such as hidden
+-- SEARCH locations, which do not appear in the native chest array.
 --
--- Key: chest id string (e.g. "chest_4")
--- Value: true if the chest has been collected this session
-local opened_chests = {}
+-- Key: non-ROM treasure id string
+-- Value: true if the treasure has been collected this session
+local opened_fallback_treasures = {}
 
--- mark_chest_opened(chest_id): Record that a chest has been collected.
--- Called from main.lua when an inventory gain is detected near a chest.
-function M.mark_chest_opened(chest_id)
-    opened_chests[chest_id] = true
+local function is_native_chest_opened(x, y)
+    for i = 0, addr.CHEST_ARRAY_MAX - 1 do
+        local chest_x = memory.readbyte(
+            addr.CHEST_X_POS_START + i * addr.CHEST_ARRAY_STRIDE)
+        local chest_y = memory.readbyte(
+            addr.CHEST_Y_POS_START + i * addr.CHEST_ARRAY_STRIDE)
+        if (chest_x ~= 0 or chest_y ~= 0) and chest_x == x and chest_y == y then
+            return true
+        end
+    end
+    return false
 end
 
--- is_chest_opened(chest_id): True if chest was collected this session.
-function M.is_chest_opened(chest_id)
-    return opened_chests[chest_id] == true
+-- is_chest_opened(...): ROM chests use native RAM; other treasures use cache.
+function M.is_chest_opened(chest_id, x, y, native_chest)
+    if native_chest == true and x ~= nil and y ~= nil then
+        return is_native_chest_opened(x, y)
+    end
+    return opened_fallback_treasures[chest_id] == true
 end
 
 -- ============================================================
@@ -819,46 +828,20 @@ function M.observe_npcs(map_id)
     remember_accepted_npc_signature(map_id, read_npc_signature())
 end
 
--- get_nearby_chests(px, py, max_dist): Return chests within max_dist
--- Manhattan distance of (px, py), sorted closest first.
--- Used by main.lua to identify which chest was just collected.
--- Must be declared here (after object_list) so the closure captures
--- the local variable rather than treating it as a global.
-function M.get_nearby_chests(px, py, max_dist)
-    max_dist = max_dist or 1
-    local result = {}
+-- record_fallback_treasure_collection_at(px, py): Record session state only
+-- for a non-ROM treasure on the player's exact tile. ROM chests never pass
+-- through this inference path; their native RAM coordinates are authoritative.
+function M.record_fallback_treasure_collection_at(px, py)
     for _, obj in ipairs(object_list) do
-        if obj.type == M.TYPE_CHEST then
-            local dist = math.abs(obj.x - px) + math.abs(obj.y - py)
-            if dist <= max_dist then
-                result[#result + 1] = {obj = obj, dist = dist}
-            end
+        if obj.type == M.TYPE_CHEST
+            and obj.native_chest ~= true
+            and obj.x == px
+            and obj.y == py then
+            opened_fallback_treasures[obj.id] = true
+            return obj
         end
     end
-    table.sort(result, function(a, b) return a.dist < b.dist end)
-    return result
-end
-
--- mark_nearby_chest_opened_from_dialogue(dialogue, px, py): Mark the nearest
--- chest consumed when the game explicitly reports that TAKE found no reward.
--- DW1 consumes some chest contents even when the corresponding inventory is
--- already full, so inventory-delta detection alone misses these opens.
-function M.mark_nearby_chest_opened_from_dialogue(dialogue, px, py)
-    local normalized = tostring(dialogue or ""):lower()
-    local chest_consumed = normalized:find("unfortunately, it is empty", 1, true)
-        or normalized:find("there is nothing to take here", 1, true)
-    if not chest_consumed then
-        return nil
-    end
-
-    local nearby = M.get_nearby_chests(px, py, 1)
-    if not nearby[1] then
-        return nil
-    end
-
-    local chest = nearby[1].obj
-    M.mark_chest_opened(chest.id)
-    return chest
+    return nil
 end
 
 -- ============================================================
@@ -1035,6 +1018,7 @@ local function parse_chests(map_id)
                 name = "Chest",
                 type = M.TYPE_CHEST,
                 id = "chest_" .. i,
+                native_chest = true,
             }
         end
     end
@@ -2905,7 +2889,8 @@ function M.describe_object(obj, opts)
     local _, px, py = nav.get_position()
     local direction = M.get_direction_string(px, py, obj.x, obj.y)
     local name = obj.name
-    if obj.type == M.TYPE_CHEST and M.is_chest_opened(obj.id) then
+    if obj.type == M.TYPE_CHEST
+        and M.is_chest_opened(obj.id, obj.x, obj.y, obj.native_chest) then
         name = name .. " (opened)"
     end
     if obj.type == M.TYPE_DOOR and is_door_opened(obj.x, obj.y) then

@@ -162,6 +162,16 @@ M.DOOR_Y_POS_START  = 0x600D  -- Start of opened door Y position array
 M.DOOR_ARRAY_MAX    = 8       -- Maximum simultaneously tracked open doors
 M.DOOR_ARRAY_STRIDE = 2       -- Bytes between consecutive entries
 
+-- Taken Treasure Position Array (cartridge work RAM at $6000-$7FFF)
+-- GetTreasure writes the player's X/Y coordinate here before awarding the
+-- chest contents. The game reads the same eight interleaved coordinate pairs
+-- to replace taken chest tiles with floor, and clears them on overworld entry.
+-- Source: TrsrXPos/TrsrYPos in nmikstas/dragon-warrior-disassembly
+M.CHEST_X_POS_START  = 0x601C  -- Start of taken chest X position array
+M.CHEST_Y_POS_START  = 0x601D  -- Start of taken chest Y position array
+M.CHEST_ARRAY_MAX    = 8       -- Maximum simultaneously tracked taken chests
+M.CHEST_ARRAY_STRIDE = 2       -- Bytes between consecutive entries
+
 -- Mapper / CHR page registers in cartridge work RAM.
 -- 0x6002 selects the background CHR page (title/gameplay split).
 -- 0x6003 selects the sprite CHR page: 0x02 on field/title, 0x03 in battle.

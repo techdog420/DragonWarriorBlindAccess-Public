@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-07-15
+Updated: 2026-08-10
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -64,6 +64,18 @@ the Travel list and may request a deferred object refresh, but it should not
 automatically switch filters or select the active waypoint. If the player
 selected a landmark such as Garinham or Erdrick's Cave, that destination should
 remain focused while `auto_walk` follows the active guided route internally.
+
+## Chest State Policy
+
+- ROM-backed chest state is authoritative from the game's eight interleaved
+  taken-treasure X/Y slots at `$601C-$602B`. The TAKE routine writes the
+  player's coordinate there before awarding contents, so this covers gold,
+  keys, Herbs, ordinary inventory items, full-inventory outcomes, and Lua
+  reloads without inferring state from dialogue or inventory deltas.
+- The original game clears this array on overworld entry and when continuing a
+  game; mirror that behavior rather than persisting a stronger claim than the
+  ROM itself. Hidden SEARCH treasures are not ROM chest-table entries and keep
+  their separate fallback cache or dedicated story flags.
 
 ## Runtime Command Model
 

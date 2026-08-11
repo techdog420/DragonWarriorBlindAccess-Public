@@ -119,16 +119,6 @@ quality-of-life work.
   across script reloads, and integrate them with overworld/interior routing
   without displacing the currently selected object unexpectedly.
 
-### Reliable chest state
-
-- Research game-backed chest-open state rather than relying only on the mod's
-  temporary in-memory history. Prefer decoded RAM/save flags or another
-  deterministic source that survives map changes, script reloads, and normal
-  save/reload cycles.
-- Distinguish confirmed open, confirmed closed, and unknown state. Never report
-  a temporary cached assumption as permanent truth, and scope any persisted
-  fallback by save slot and ROM revision.
-
 ## Tooling
 
 - Player-facing auto-walk stop: add a command and hotkey to cancel the active
