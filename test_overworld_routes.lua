@@ -1000,6 +1000,139 @@ function tests.charlock_route_continues_across_bridge_to_live_castle_entry()
     routes.reset_for_tests()
 end
 
+function tests.final_progression_routes_stage_through_swamp_cave_south()
+    local targets = {
+        {
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+            x = 65,
+            y = 49,
+            route_name = "rainbow bridge",
+            staged_id = "rainbow_bridge",
+            direct_x = 104,
+            direct_y = 49,
+        },
+        {
+            id = "overworld_charlock_castle",
+            name = "Charlock Castle",
+            x = 48,
+            y = 48,
+            route_name = "charlock",
+            staged_id = "charlock_castle",
+            direct_x = 103,
+            direct_y = 49,
+        },
+    }
+    local staging_route = assert(routes._route_for_tests("swamp_cave_south"))
+
+    for _, target in ipairs(targets) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(target, 0x01, 102, 72))
+        assert_equal(info.route.id, "swamp_cave_south",
+            target.name .. " should begin on the south-cave staging route")
+        assert_equal(info.object_id, "route_swamp_cave_south_02",
+            target.name .. " staging should leave Rimuldar through the proven east doorstep")
+        assert_contains(info.message,
+            target.name .. " route starts from Swamp Cave South Entrance",
+            target.name .. " staging should explain the required intermediate route")
+        assert_contains(info.log, "staged_from=" .. target.staged_id,
+            target.name .. " staged start should be visible in logs")
+        assert_equal(routes.active_route_matches_object(target), true,
+            target.name .. " should remain bound to its active staging route")
+
+        local initial_segment = assert(routes.plan_next_segment(0x01, 102, 72))
+        assert_equal(initial_segment.waypoint.x, 103,
+            target.name .. " staging should target Rimuldar's east doorstep x")
+        assert_equal(initial_segment.waypoint.y, 72,
+            target.name .. " staging should target Rimuldar's east doorstep y")
+        assert_equal(#initial_segment.steps, 1,
+            target.name .. " staging should queue only the proven first step")
+        assert_equal(initial_segment.steps[1], "right",
+            target.name .. " staging should leave Rimuldar east")
+
+        for index = 2, #staging_route.waypoints do
+            local waypoint = staging_route.waypoints[index]
+            routes.observe_position(0x01, waypoint.x, waypoint.y)
+            if waypoint.x == 83 and waypoint.y == 54 then
+                break
+            end
+        end
+
+        assert_equal(routes.active_route_matches_object(target), true,
+            target.name .. " should not restart its direct route inside the west-pocket detour")
+        assert_equal(routes.active_route_id(), "swamp_cave_south",
+            target.name .. " should keep the south-cave route active through the detour")
+
+        local segment = assert(routes.plan_next_segment(0x01, 83, 54))
+        assert_equal(segment.waypoint.x, 86,
+            target.name .. " should continue east on the proven west-ridge route")
+        assert_equal(segment.waypoint.y, 54,
+            target.name .. " should stay on the proven west-ridge row")
+        assert_equal(segment.steps[1], "right",
+            target.name .. " should not synthesize a northbound shortcut to row 49")
+
+        routes.reset_for_tests()
+        local restarted = assert(routes.start_for_object(target, 0x01, 83, 54))
+        assert_equal(restarted.route.id, "swamp_cave_south",
+            target.name .. " should restage when restarted outside its validated corridor")
+        local restarted_segment = assert(routes.plan_next_segment(0x01, 83, 54))
+        assert_equal(restarted_segment.waypoint.x, 86,
+            target.name .. " restart should rejoin the proven west-ridge route")
+        assert_equal(restarted_segment.waypoint.y, 54,
+            target.name .. " restart should remain on the proven west-ridge row")
+        assert_equal(restarted_segment.steps[1], "right",
+            target.name .. " restart should not head north through craggy terrain")
+
+        routes.reset_for_tests()
+        local recovery = assert(routes.start_for_object(target, 0x01, 92, 57))
+        assert_equal(recovery.route.id, "swamp_cave_south_recovery",
+            target.name .. " should use the established recovery route at the blocked notch")
+        assert_equal(routes.active_route_matches_object(target), true,
+            target.name .. " should remain bound to the active notch-recovery route")
+        local recovery_segment = assert(routes.plan_next_segment(0x01, 92, 57))
+        assert_equal(recovery_segment.waypoint.x, 90,
+            target.name .. " recovery should target the safe west lane")
+        assert_equal(recovery_segment.waypoint.y, 57,
+            target.name .. " recovery should stay south of the blocked notch")
+        assert_equal(recovery_segment.steps[1], "left",
+            target.name .. " recovery should not retry the engine-blocked north edge")
+
+        routes.reset_for_tests()
+        local upper_ridge = assert(routes.start_for_object(target, 0x01, 92, 48))
+        assert_equal(upper_ridge.route.id, "swamp_cave_south",
+            target.name .. " should retain the established cave approach from the upper ridge")
+        local upper_ridge_segment = assert(routes.plan_next_segment(0x01, 92, 48))
+        assert_equal(upper_ridge_segment.waypoint.x, 100,
+            target.name .. " upper-ridge staging should target the proven east end")
+        assert_equal(upper_ridge_segment.waypoint.y, 48,
+            target.name .. " upper-ridge staging should remain on row 48")
+        assert_equal(upper_ridge_segment.steps[1], "right",
+            target.name .. " upper-ridge staging should not cut down to an unvalidated row")
+
+        local refreshed = assert(routes.guidance_for_object(target, 0x01, 92, 48))
+        assert_equal(refreshed.route.id, "swamp_cave_south",
+            target.name .. " guidance refresh should preserve the active staging route")
+        local refreshed_segment = assert(routes.plan_next_segment(0x01, 92, 48))
+        assert_equal(refreshed_segment.waypoint.x, 100,
+            target.name .. " refreshed staging should retain the proven upper-ridge target")
+        assert_equal(refreshed_segment.steps[1], "right",
+            target.name .. " refreshed staging should not switch to a nearby reverse route")
+
+        routes.reset_for_tests()
+        assert(routes.start(target.route_name, 0x01, target.direct_x, target.direct_y))
+        local recalculated = assert(routes.recalculate(0x01, 102, 72))
+        assert_equal(recalculated.route.id, "swamp_cave_south",
+            target.name .. " should restage if an active route returns to Rimuldar")
+        local recalculated_segment = assert(routes.plan_next_segment(0x01, 102, 72))
+        assert_equal(recalculated_segment.waypoint.x, 103,
+            target.name .. " recalculation should target Rimuldar's east doorstep")
+        assert_equal(recalculated_segment.steps[1], "right",
+            target.name .. " recalculation should avoid the old northbound shortcut")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.charlock_return_reverses_island_route_to_swamp_cave()
     routes.reset_for_tests()
 

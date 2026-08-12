@@ -16,6 +16,18 @@ local SWAMP_CAVE_STAGING = {
     max_y = 50,
 }
 
+local FINAL_PROGRESSION_STAGING = {
+    route_id = "swamp_cave_south",
+    -- The longest validated bridge-road segment is eleven tiles. Starts
+    -- farther from the final-progression routes must first use the established
+    -- Rimuldar-to-south-cave waypoint chain instead of synthesizing a shortcut.
+    -- Nearby off-corridor starts must stage too, and should prefer whichever
+    -- established approach/return route already contains their position.
+    max_start_distance = 11,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -541,6 +553,12 @@ local ROUTES = {
             "south island cave",
         },
         target_object_ids = {"overworld_swamp_cave_south_entrance"},
+        -- Preserve either final-progression Travel selection while this route
+        -- stages it through the proven Rimuldar-to-cave detour.
+        compatible_target_object_ids = {
+            "overworld_rainbow_bridge",
+            "overworld_charlock_castle",
+        },
         destination_maps = {0x15},
         waypoints = {
             {x = 102, y = 72, name = "Rimuldar", radius = 1},
@@ -602,6 +620,10 @@ local ROUTES = {
             "rimuldar cave notch recovery",
         },
         target_object_ids = {"overworld_swamp_cave_south_entrance"},
+        compatible_target_object_ids = {
+            "overworld_rainbow_bridge",
+            "overworld_charlock_castle",
+        },
         destination_maps = {0x15},
         waypoints = {
             {x = 92, y = 57, name = "Blocked mountain notch recovery", radius = 0},
@@ -642,6 +664,7 @@ local ROUTES = {
         -- Starting this route at the physical cave landmark must not let a
         -- Travel-object refresh replace it with the Rimuldar return route.
         compatible_target_object_ids = {"overworld_swamp_cave_south_entrance"},
+        staging = FINAL_PROGRESSION_STAGING,
         waypoints = {
             {
                 x = 104,
@@ -727,6 +750,7 @@ local ROUTES = {
             "overworld_swamp_cave_south_entrance",
             "overworld_rainbow_bridge",
         },
+        staging = FINAL_PROGRESSION_STAGING,
         waypoints = {
             {
                 x = 103,
@@ -1694,6 +1718,7 @@ if type(state) ~= "table" then
     state = {
         active_id = nil,
         next_index = nil,
+        staged_from = nil,
         warned = {},
         last_map_id = nil,
         last_x = nil,
@@ -1792,6 +1817,39 @@ local function build_axis_ordered_steps(route, point, px, py, opts)
     end
 
     return steps
+end
+
+local function position_is_on_route_corridor(route, px, py)
+    if not route or not route.waypoints or px == nil or py == nil then
+        return false
+    end
+
+    local first = route.waypoints[1]
+    if first and px == first.x and py == first.y then
+        return true
+    end
+
+    for index = 2, #route.waypoints do
+        local previous = route.waypoints[index - 1]
+        local point = route.waypoints[index]
+        local x, y = previous.x, previous.y
+        for _, step in ipairs(build_axis_ordered_steps(route, point, x, y)) do
+            if step == "up" then
+                y = y - 1
+            elseif step == "down" then
+                y = y + 1
+            elseif step == "left" then
+                x = x - 1
+            elseif step == "right" then
+                x = x + 1
+            end
+            if px == x and py == y then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 local function preview_final_carry(route, index, opts)
@@ -1912,6 +1970,22 @@ local function choose_start_route_id(id, map_id, px, py, terrain_offset)
     return choose_best_route_id(ROUTE_ALTERNATES[id] or {id}, map_id, px, py, terrain_offset)
 end
 
+local function choose_staging_route_id(staging, map_id, px, py, terrain_offset)
+    local ids = ROUTE_ALTERNATES[staging.route_id] or {staging.route_id}
+    if staging.prefer_staging_route_corridor then
+        local corridor_ids = {}
+        for _, candidate_id in ipairs(ids) do
+            if position_is_on_route_corridor(ROUTES[candidate_id], px, py) then
+                corridor_ids[#corridor_ids + 1] = candidate_id
+            end
+        end
+        if #corridor_ids > 0 then
+            ids = corridor_ids
+        end
+    end
+    return choose_best_route_id(ids, map_id, px, py, terrain_offset)
+end
+
 local function staging_start_for(id, map_id, px, py, terrain_offset)
     local route = ROUTES[id]
     local staging = route and route.staging
@@ -1936,11 +2010,14 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
     if staging.max_y and py > staging.max_y then
         close_enough = false
     end
+    if staging.require_route_corridor and not position_is_on_route_corridor(route, px, py) then
+        close_enough = false
+    end
     if close_enough then
         return nil
     end
 
-    local fallback_id = choose_start_route_id(staging.route_id, map_id, px, py, terrain_offset)
+    local fallback_id = choose_staging_route_id(staging, map_id, px, py, terrain_offset)
     if not fallback_id or fallback_id == id or not ROUTES[fallback_id] then
         return nil
     end
@@ -1997,6 +2074,7 @@ end
 local function clear_active_route()
     state.active_id = nil
     state.next_index = nil
+    state.staged_from = nil
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil
@@ -2118,6 +2196,7 @@ function M.start(route_name, map_id, px, py, opts)
     end
 
     state.active_id = id
+    state.staged_from = staging and staging.requested_route.id or nil
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil
@@ -2201,9 +2280,26 @@ function M.status(map_id, px, py, opts)
     local index = clamp_next_index(route)
     local recalculated = false
     if opts.recalculate and is_overworld(map_id, terrain_offset) and px ~= nil and py ~= nil then
-        local new_route_id = choose_start_route_id(route.id, map_id, px, py, terrain_offset)
+        local new_route_id
+        local new_staged_from = state.staged_from
+        local requested_route = new_staged_from and ROUTES[new_staged_from]
+        if requested_route and requested_route.staging then
+            new_route_id = choose_staging_route_id(
+                requested_route.staging, map_id, px, py, terrain_offset)
+        else
+            new_route_id = choose_start_route_id(route.id, map_id, px, py, terrain_offset)
+            local new_staging = staging_start_for(
+                new_route_id, map_id, px, py, terrain_offset)
+            if new_staging then
+                new_route_id = new_staging.route_id
+                new_staged_from = new_staging.requested_route.id
+            else
+                new_staged_from = nil
+            end
+        end
         if new_route_id and new_route_id ~= state.active_id then
             state.active_id = new_route_id
+            state.staged_from = new_staged_from
             state.warned = {}
             route = active_route()
             index = choose_next_index(route, map_id, px, py, terrain_offset)
@@ -2435,6 +2531,7 @@ end
 function M.reset_for_tests()
     state.active_id = nil
     state.next_index = nil
+    state.staged_from = nil
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil

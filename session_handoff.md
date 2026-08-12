@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-10
+Updated: 2026-08-12
 
 ## Release Installation Handoff
 
@@ -242,8 +242,15 @@ Updated: 2026-08-10
   returned to World Map `(48,48)`. `overworld_routes.lua` now defines strict
   `charlock_castle` and exact island-reverse `charlock_return` routes, beginning
   from the safe post-cave doorstep `(103,49)` and sharing the proven Rainbow
-  Bridge inlet detour. No blocker was promoted. Focused route tests pass
-  `153/153`. The first loaded return exposed two stateful carry hazards: a
+  Bridge inlet detour. A follow-up review found that selecting either final
+  route from Rimuldar `(102,72)` synthesized a direct northbound segment across
+  craggy terrain. Both routes now stage through the established
+  `swamp_cave_south` chain unless the player is already on their validated
+  corridor. The selected destination remains bound across autowalk refreshes
+  and recalculation; `(92,57)` uses the westbound recovery instead of retrying
+  its blocked north edge. No blocker was promoted. Focused route tests pass
+  `154/154`, and the broad runner now includes this route suite. The first
+  loaded return exposed two stateful carry hazards: a
   one-tile stop at `(50,62)` drifted south, and settling at `(61,50)` after an
   eastbound approach trapped all tested exits even though the inbound
   north-to-south arrival had escaped west. Input/OAM diagnostics were clean,

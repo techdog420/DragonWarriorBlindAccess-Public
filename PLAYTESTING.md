@@ -183,6 +183,12 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(58,55)->(57,55)` and `(50,61)->(49,61)`, exhausted cadence retries but
   passed clean same-origin raw holds; their waypoints now use the established
   60-frame sustained-hold window and await a focused post-reload check.
+  Follow-up route-start review found that selecting Charlock from Rimuldar
+  `(102,72)` could synthesize a direct northbound segment to the validated
+  doorstep. The route now stages through the established `swamp_cave_south`
+  chain unless already on the validated Charlock corridor, preserves that
+  staging across Travel refresh/recalculation, and uses the westbound recovery
+  at the blocked `(92,57)->UP` notch.
 - Rainbow Bridge route (`2026-08-03`): Travel now exposes the Rainbow Bridge
   unlock point at `(65,49)`. The recommended staging point is Swamp Cave South
   Entrance `(104,49)`, following the north road west and detouring around the
@@ -192,6 +198,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `(0,29)`, announced route arrival, and cleared guidance with no runtime
   blockers. One cave-entry run needed the route executor's two bounded timing
   retries; it recovered without player intervention or map-data changes.
+  Follow-up route-start review applies the same staging guard as Charlock:
+  Rimuldar and other off-corridor starts use `swamp_cave_south`, while the
+  validated row-49/50 bridge corridor remains directly selectable.
 - Explorer installer/launcher regression (`2026-07-31`): manual download,
   extraction to `C:\tmp1\Dragon Warrior Accessibility 0.1.0-alpha`, and
   double-click of `Install Dragon Warrior.cmd` failed before setup with
