@@ -80,6 +80,22 @@ quality-of-life work.
   `71501`, handoff to Swamp Cave at frame `84046`, and cave arrival at frame
   `89299`. The final probe confirmed map `0x15` `(0,0)`, no active path, and no
   runtime blockers. This slice is closed.
+- The third connected-route slice is implemented for `Rimuldar -> Swamp Cave
+  South Entrance -> Rainbow Bridge unlock point`. A far Rainbow Bridge request
+  follows the established `swamp_cave_south` route, hands off on entering map
+  `0x15` at `(0,29)`, waits for the player to exit with STAIRS, and then
+  continues from World Map `(104,49)`. Live validation corrected Rimuldar's
+  direct north carry, reset movement state at four diagonal turns, and routed
+  west before south around the blocked `(98,70)->(98,71)` edge. The loaded
+  itinerary completed every staging and bridge waypoint, arrived at `(65,49)`,
+  and cleared route/path state with no runtime blockers. Manual acceptance also
+  found that `(99,68)->DOWN` is passable but needs a sustained hold; the loaded
+  fix crossed it in 33 frames with zero retries and added no blocker. Focused
+  tests pass `169/169`; the broad gate passes all 33 host-runnable Lua suites
+  plus 68 Python tests. The user then completed the full outbound and return
+  itinerary. Two retryable timing stalls and two non-destructive carry drifts
+  remain optional future polish; final state at `(104,49)` had route/path nil
+  and no runtime blockers. This slice is closed.
 
 ## Remaining Map Completion
 
@@ -99,9 +115,9 @@ quality-of-life work.
   overworld location can compose a route from the player's current position,
   through existing waypoint corridors, to the destination. Reusing current
   route data is preferred over replacing live-validated segments. The opt-in
-  Northern Cave and Swamp Cave are implemented and manually live-accepted as
-  connected routes. Choose the next existing staged destination before
-  generalizing the route model further.
+  Northern Cave, Swamp Cave, and Rainbow Bridge are implemented and live-
+  accepted as connected routes. Choose the next existing staged destination
+  before generalizing the route model further.
 - Off-network recovery: when a player manually explores or gets lost, provide a
   player-facing command that finds a safe route back to the nearest reachable
   waypoint-network entry and then continues toward the selected destination.

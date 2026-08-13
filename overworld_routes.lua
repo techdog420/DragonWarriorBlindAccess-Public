@@ -569,22 +569,67 @@ local ROUTES = {
             {x = 102, y = 72, name = "Rimuldar", radius = 1},
             {x = 103, y = 72, name = "Rimuldar east doorstep", radius = 0},
             {x = 107, y = 72, name = "Rimuldar east gate lane", radius = 0, axis_order = {"horizontal", "vertical"}},
-            {x = 107, y = 71, name = "Rimuldar east bend", radius = 0},
-            {x = 108, y = 71, name = "Rimuldar east approach", radius = 0},
-            {x = 108, y = 70, name = "Rimuldar east approach upper lane", radius = 0},
+            {
+                x = 107,
+                y = 71,
+                name = "Rimuldar east bend",
+                radius = 0,
+                route_hold_after_movement_start_frames = 60,
+                route_early_twitch_timeout_frames = 60,
+            },
+            -- Live same-origin movement carries directly north from (107,71)
+            -- to (107,70); the older east detour was unnecessary and caused
+            -- the route executor to reject the clean carry as off-path drift.
             {x = 107, y = 70, name = "Rimuldar east road", radius = 0},
             {x = 106, y = 70, name = "Rimuldar east road bend", radius = 0},
             {x = 106, y = 69, name = "Rimuldar east upper road", radius = 0},
-            {x = 105, y = 68, name = "Rimuldar northeast lane", radius = 0},
+            {
+                x = 105,
+                y = 68,
+                name = "Rimuldar northeast lane",
+                radius = 0,
+                route_reset_movement_on_turn_settle = true,
+            },
             {x = 103, y = 68, name = "Rimuldar northeast bend", radius = 0, axis_order = {"horizontal", "vertical"}},
             {x = 102, y = 68, name = "Rimuldar northeast shoulder", radius = 0},
-            {x = 101, y = 67, name = "Rimuldar north ridge east lane", radius = 0},
+            {
+                x = 101,
+                y = 67,
+                name = "Rimuldar north ridge east lane",
+                radius = 0,
+                route_reset_movement_on_turn_settle = true,
+            },
             {x = 100, y = 67, name = "Rimuldar north ridge step", radius = 0, axis_order = {"horizontal", "vertical"}},
-            {x = 99, y = 68, name = "Rimuldar north ridge lane", radius = 0},
-            {x = 99, y = 69, name = "Rimuldar north approach bend", radius = 0},
+            {
+                x = 99,
+                y = 68,
+                name = "Rimuldar north ridge lane",
+                radius = 0,
+                route_reset_movement_on_turn_settle = true,
+            },
+            {
+                x = 99,
+                y = 69,
+                name = "Rimuldar north approach bend",
+                radius = 0,
+                -- Live manual validation needed a sustained Down hold after
+                -- the early movement twitch at (99,68); short route presses
+                -- exhausted their retry budget without crossing the tile.
+                route_hold_after_movement_start_frames = 60,
+                route_early_twitch_timeout_frames = 60,
+            },
             {x = 98, y = 69, name = "Rimuldar north approach west lane", radius = 0},
             {x = 98, y = 70, name = "Rimuldar north wall corner", radius = 0},
-            {x = 97, y = 71, name = "Rimuldar north wall bypass", radius = 0},
+            {
+                x = 97,
+                y = 71,
+                name = "Rimuldar north wall bypass",
+                radius = 0,
+                -- The south edge at (98,70)->(98,71) is engine-blocked.
+                -- Move west onto column 97 before turning south.
+                axis_order = {"horizontal", "vertical"},
+                route_reset_movement_on_turn_settle = true,
+            },
             {x = 97, y = 72, name = "Rimuldar north wall west end", radius = 0},
             {x = 90, y = 72, name = "Rimuldar west lake road", radius = 0},
             {x = 90, y = 71, name = "Rimuldar west lake bend", radius = 0},
@@ -659,6 +704,9 @@ local ROUTES = {
     rainbow_bridge = {
         id = "rainbow_bridge",
         title = "Rainbow Bridge unlock point",
+        -- This route shares its staging config with Charlock, but only the
+        -- smaller Rainbow Bridge itinerary is connected through the hub yet.
+        continue_after_staging = true,
         aliases = {
             "rainbow bridge",
             "rainbow bridge unlock point",
@@ -1906,7 +1954,8 @@ local function staged_destination_route()
     local route = state.staged_from and ROUTES[state.staged_from] or nil
     if route
        and route.staging
-       and route.staging.continue_after_staging == true then
+       and (route.continue_after_staging == true
+            or route.staging.continue_after_staging == true) then
         return route
     end
     return nil

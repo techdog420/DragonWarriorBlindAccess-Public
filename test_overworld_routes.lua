@@ -861,13 +861,13 @@ function tests.stopping_northern_cave_staging_clears_the_whole_itinerary()
     routes.reset_for_tests()
 end
 
-function tests.final_progression_staged_routes_do_not_handoff_before_network_expansion()
+function tests.charlock_staged_route_does_not_handoff_before_network_expansion()
     routes.reset_for_tests()
-    local info = assert(routes.start("rainbow bridge", 0x01, 102, 72))
+    local info = assert(routes.start("charlock", 0x01, 102, 72))
 
     assert_equal(info.route.id, "swamp_cave_south",
-        "far Rainbow Bridge requests should stage through the south cave route")
-    assert_contains(info.log, "staged_from=rainbow_bridge",
+        "far Charlock requests should stage through the south cave route")
+    assert_contains(info.log, "staged_from=charlock_castle",
         "the later progression destination should remain recorded during staging")
 
     local event = routes.observe_position(0x15, 0, 29)
@@ -876,6 +876,55 @@ function tests.final_progression_staged_routes_do_not_handoff_before_network_exp
         "non-opted-in progression routes should retain their existing stop at the staging destination")
     assert_equal(routes.is_active(), false,
         "connected Kol routes must not silently enable later progression handoffs")
+
+    routes.reset_for_tests()
+end
+
+function tests.rainbow_bridge_staging_status_names_current_leg_and_final_destination()
+    routes.reset_for_tests()
+    routes.start("rainbow bridge", 0x01, 102, 72)
+
+    local info = routes.status(0x01, 102, 72)
+
+    assert_contains(info.message, "Current leg to Swamp Cave South Entrance",
+        "Rainbow Bridge staging status should identify the route currently being followed")
+    assert_contains(info.message, "Final destination: Rainbow Bridge unlock point",
+        "Rainbow Bridge staging status should retain the player's requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.rainbow_bridge_staging_hands_off_at_south_cave_without_starting_movement()
+    routes.reset_for_tests()
+    routes.start("rainbow bridge", 0x01, 102, 72)
+
+    local event = routes.observe_position(0x15, 0, 29)
+
+    assert_equal(routes.active_route_id(), "rainbow_bridge",
+        "entering the south cave should activate the requested Rainbow Bridge leg")
+    assert_equal(event.status, "handoff",
+        "the Rainbow Bridge itinerary should distinguish a leg handoff from final arrival")
+    assert_contains(event.message,
+        "Reached Swamp Cave South Entrance. Continuing to Rainbow Bridge unlock point.",
+        "handoff speech should name the completed hub and final destination")
+    assert_contains(event.message, "Next: Rainbow Bridge east road",
+        "handoff speech should identify the first westbound bridge waypoint")
+    assert_contains(event.log, "event=handoff",
+        "Rainbow Bridge handoff should be explicit in structured logs")
+    assert_contains(event.log, "from_route=swamp_cave_south",
+        "Rainbow Bridge handoff logs should identify the completed leg")
+    assert_equal(event.object_id, "route_rainbow_bridge_02",
+        "route markers should refresh to the first Rainbow Bridge movement waypoint")
+    assert_equal(event.steps, nil,
+        "Rainbow Bridge handoff must wait for another player auto-walk command")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 49))
+    assert_equal(segment.waypoint.name, "Rainbow Bridge east road",
+        "the next player-triggered segment should leave the south cave toward the bridge")
+    assert_equal(#segment.steps, 11,
+        "the first Rainbow Bridge segment should preserve the validated bounded distance")
+    assert_equal(segment.steps[1], "left",
+        "the second leg should leave the south cave westbound")
 
     routes.reset_for_tests()
 end
@@ -1955,6 +2004,77 @@ function tests.swamp_cave_south_return_reverses_candidate_rimuldar_path()
     local arrival = routes.observe_position(0x01, 104, 49)
     assert_contains(arrival.message, "Arrived at Swamp Cave South Entrance", "final waypoint should complete the cave return")
     assert_equal(routes.is_active(), false, "return route should stop at the south cave entrance")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_rimuldar_exit_hardens_live_turn_cadence()
+    local east_bend = assert(find_waypoint("swamp_cave_south", "Rimuldar east bend"))
+    assert_equal(east_bend.route_hold_after_movement_start_frames, 60,
+        "the first northbound Rimuldar exit step should sustain its early movement twitch")
+    assert_equal(east_bend.route_early_twitch_timeout_frames, 60,
+        "the first northbound Rimuldar exit step should allow the observed late completion")
+
+    local north_approach_bend = assert(find_waypoint(
+        "swamp_cave_south", "Rimuldar north approach bend"))
+    assert_equal(north_approach_bend.route_hold_after_movement_start_frames, 60,
+        "the southbound north-approach step should sustain its early movement twitch")
+    assert_equal(north_approach_bend.route_early_twitch_timeout_frames, 60,
+        "the southbound north-approach step should allow the observed manual-hold cadence")
+
+    local turn_names = {
+        "Rimuldar northeast lane",
+        "Rimuldar north ridge east lane",
+        "Rimuldar north ridge lane",
+        "Rimuldar north wall bypass",
+    }
+    for _, name in ipairs(turn_names) do
+        local waypoint = assert(find_waypoint("swamp_cave_south", name))
+        assert_equal(waypoint.route_reset_movement_on_turn_settle, true,
+            name .. " should clear live directional carry before changing axes")
+    end
+
+    local wall_bypass = assert(find_waypoint("swamp_cave_south", "Rimuldar north wall bypass"))
+    assert_equal(wall_bypass.axis_order[1], "horizontal",
+        "the north wall bypass should move west before the blocked south edge")
+    assert_equal(wall_bypass.axis_order[2], "vertical",
+        "the north wall bypass should turn south only after reaching column 97")
+end
+
+function tests.swamp_cave_south_uses_passable_north_wall_bypass_order()
+    routes.reset_for_tests()
+    routes.start("rimuldar to cave", 0x01, 98, 70)
+
+    local segment = assert(routes.plan_next_segment(0x01, 98, 70))
+
+    assert_equal(segment.waypoint.name, "Rimuldar north wall bypass",
+        "the return route should retain the established north wall waypoint")
+    assert_equal(segment.steps[1], "left",
+        "the bypass should avoid the blocked down edge from 98,70")
+    assert_equal(segment.steps[2], "down",
+        "the bypass should turn south from the passable column 97")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_uses_live_direct_north_exit_from_rimuldar()
+    routes.reset_for_tests()
+    routes.start("rimuldar to cave", 0x01, 107, 72)
+
+    local segment = assert(routes.plan_next_segment(0x01, 107, 72))
+
+    assert_equal(segment.waypoint.name, "Rimuldar east bend",
+        "the return route should begin with the proven northbound exit step")
+    assert_equal(segment.steps[1], "up",
+        "the Rimuldar exit should move directly north")
+    assert_equal(segment.route_final_carry_x, 107,
+        "the live northbound carry should remain on the same column")
+    assert_equal(segment.route_final_carry_y, 70,
+        "the live northbound carry should continue directly to the east road")
+    assert_equal(find_waypoint("swamp_cave_south", "Rimuldar east approach"), nil,
+        "the return route should not retain the obsolete east detour")
+    assert_equal(find_waypoint("swamp_cave_south", "Rimuldar east approach upper lane"), nil,
+        "the return route should not retain the obsolete upper detour")
 
     routes.reset_for_tests()
 end

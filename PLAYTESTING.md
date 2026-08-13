@@ -1,11 +1,31 @@
 # Playtesting Notes
 
-Updated: 2026-08-10
+Updated: 2026-08-13
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Connected Rainbow Bridge route (`2026-08-13`): a Rainbow Bridge selection
+  from the Rimuldar side now follows `swamp_cave_south`, hands off on entering
+  Swamp Cave south at `(0,29)`, waits for STAIRS, and continues from World Map
+  `(104,49)` to the unlock point. Live testing corrected the Rimuldar direct
+  north carry, four diagonal-turn drift points, and the blocked
+  `(98,70)->DOWN` wall approach; the valid bypass moves LEFT to `(97,70)`
+  before moving DOWN. The reloaded itinerary completed every staging and
+  bridge waypoint and arrived at `(65,49)`. Final state had no active route,
+  path, or runtime blockers. Manual acceptance later exposed a slow passable
+  edge from `(99,68)` DOWN to `(99,69)`. After giving that waypoint the same
+  sustained-hold timing used by other slow overworld seams, loaded auto-walk
+  completed it in 33 frames with zero retries and advanced toward `(98,69)`;
+  no blocker was added. The user's final manual round trip reached Rainbow
+  Bridge `(65,49)` and returned through Swamp Cave to World Map `(104,49)`.
+  Two timing stalls succeeded on retry, while recoverable carries reached
+  `(90,70)` and overshot the final bridge stand to `(64,49)`. These are
+  non-destructive future-polish items; no runtime blocker was inserted. Fresh
+  final state had route none, path nil, and zero runtime/NPC blockers. Focused
+  route tests pass `169/169`; the broad gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests.
 - Native opened-chest tracking (`2026-08-10`): a fresh Dragonlord treasure-room
   raid opened all six chests, but the successful Herb pickup at `(13,13)` did
   not remain labeled opened even though the two Herb chests raised the count

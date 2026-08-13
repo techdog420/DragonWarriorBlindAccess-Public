@@ -121,6 +121,28 @@ Updated: 2026-08-13
 
 ## Immediate FCEUX Handoff
 
+- The connected Rainbow Bridge itinerary is complete and loaded. Selecting
+  Rainbow Bridge from the Rimuldar side stages through `swamp_cave_south`,
+  names the cave as the current leg and the bridge as the final destination,
+  and hands off at Swamp Cave map `0x15` `(0,29)` without starting movement.
+  Live route fallout corrected the direct north carry from `(107,72)` through
+  `(107,70)`, reset four diagonal turns, and changed the north-wall bypass to
+  LEFT then DOWN because both route execution and a same-origin raw probe
+  proved `(98,70)->DOWN` blocked while `(97,70)->DOWN` passed. After reload,
+  the full route completed from exact `(98,70)`, entered/exited the cave,
+  traversed the bridge inlet detour, and arrived at `(65,49)`. Final tag
+  `RAINBOW_CONNECTED_COMPLETE_20260813` confirmed route/path nil and no runtime
+  blockers. Manual acceptance later exposed slow passable movement from
+  `(99,68)` DOWN to `(99,69)`. The loaded sustained-hold fix completed that
+  edge in 33 frames with zero retries, advanced toward `(98,69)`, and left no
+  path or runtime blockers. Focused route tests pass `169/169`; the native
+  Windows broad gate passes all 33 host-runnable Lua suites plus 68 Python
+  tests. The final user round trip reached `(65,49)` and returned through Swamp
+  Cave to World Map `(104,49)`. Two timing stalls succeeded on retry, while
+  two off-path carries recovered without blocking completion; keep these as
+  optional route-polish work. Fresh tag `RAINBOW_MANUAL_COMPLETE_20260813`
+  confirmed route none, path nil, and no NPC or runtime blockers. No blocker
+  was promoted.
 - A complete blind-player game run reached the original `The End` screen.
   King Lorik's ending dialogue and the full staff credits were automatically
   narrated. Fresh tag `GAME_END_TERMINAL` confirmed level byte `255`, the

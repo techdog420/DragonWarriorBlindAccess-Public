@@ -1,6 +1,139 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-07-24
+Updated: 2026-08-13
+
+## 2026-08-13 Connected Rainbow Bridge Route
+
+- CLEAN PRE-RELOAD BASELINE: tag `RIMULDAR_RAINBOW_BASELINE_20260813` at
+  frame `28380` confirmed World Map `(102,72)`, path nil, runtime blocks none,
+  no active overworld route, and Rimuldar selected as the current Travel
+  object.
+- SOURCE / TESTS: `rainbow_bridge` now opts into the existing staged handoff
+  through `swamp_cave_south`; the shared Charlock staging behavior remains a
+  stop at the south cave. Regression coverage checks current/final status,
+  handoff speech and logs, no automatic movement, the bounded 11-step first
+  bridge segment, and the unchanged Charlock stop. All 166 focused route tests
+  pass; the full gate passes all 33 host-runnable Lua suites plus 68 Python
+  tests, changed Lua files byte-compile, and `git diff --check` is clean.
+- CLEAN / LOADED START: tag `RAINBOW_CONNECTED_RELOAD_20260813` at frame
+  `3420` confirmed World Map `(102,72)`, path nil, runtime blocks none, and no
+  route active. Starting Rainbow Bridge logged `route=swamp_cave_south
+  staged_from=rainbow_bridge`; speech named Swamp Cave South Entrance as the
+  current leg and Rainbow Bridge unlock point as the final destination while
+  leaving the hero stationary.
+- TIMING / DO NOT PROMOTE AS BLOCKER: the first two segments reached
+  `(107,72)`. Auto-walk then timed out moving UP, but a same-origin raw probe
+  moved through `(107,71)` and carried to `(107,70)`. This disproves a static
+  wall; no runtime or permanent blocker was added.
+- REPRODUCED TURN DRIFT: diagonal segments toward `(105,68)` and `(101,67)`
+  each completed their first UP tile, then the 16-frame turn settle carried one
+  extra tile north before LEFT and cancelled safely as `route_drift_off_path`.
+  Normal recalculation recovered the first drift and completed onward through
+  `(102,68)`.
+- SOURCE / TESTS AFTER LIVE FALLOUT: the return route now sustains the initial
+  northbound early twitch and resets movement state at the five affected
+  Rimuldar-exit turns. Charlock remains disconnected. All 167 focused route
+  tests pass; changed Lua files byte-compile and `git diff --check` is clean.
+- SECOND LOADED CHECK: tag `RAINBOW_CADENCE_RELOAD_20260813` at frame `5880`
+  confirmed the clean `(102,72)` baseline. The first two segments reached
+  `(107,72)`. Sustained hold then completed UP to `(107,71)`, proving the
+  metadata loaded, but live carry reached `(107,70)` while the old route still
+  expected its east detour and safely cancelled as off-path drift.
+- SOURCE / TESTS FINAL DIRECT EXIT: the clean carry has now been observed by
+  same-origin raw hold and by loaded route execution. `swamp_cave_south`
+  removes only the obsolete `(108,71)->(108,70)` detour and expects direct
+  north carry `(107,71)->(107,70)`. Later diagonal turns retain movement-reset
+  metadata. All 168 focused route tests and the full 33-Lua-suite / 68-Python
+  gate pass; syntax and `git diff --check` are clean.
+- THIRD LOADED CHECK: the reloaded route began at exact World Map `(107,72)`.
+  Its direct UP segment reached `(107,71)`, accepted the expected carry to
+  `(107,70)`, and completed without cancellation. Both previously failing
+  diagonal turns then completed cleanly at `(105,68)` and `(101,67)`; their
+  loaded movement-state resets prevented the former northward drift.
+- NORTH WALL SEAM LIVE-PROVEN: at `(98,70)`, route execution and a same-origin
+  60-frame raw DOWN probe both failed to enter `(98,71)`. A raw LEFT probe
+  passed through `(97,70)`, and a same-origin DOWN probe from `(97,70)` passed
+  through `(97,71)` with normal carry to `(97,72)`. This proves the bypass must
+  move west before south; no runtime blocker was added.
+- LOADED END-TO-END COMPLETE: fresh tag `RAINBOW_BYPASS_RELOAD_20260813`
+  confirmed World Map `(97,72)`, no route/path/runtime blockers, and the newly
+  loaded source. From exact origin `(98,70)`, the route planned LEFT then DOWN
+  and completed the corrected bypass at `(97,71)`. It then completed every
+  remaining `swamp_cave_south` waypoint and entered Swamp Cave map `0x15` at
+  `(0,29)`, logging `event=handoff route=rainbow_bridge ...
+  from_route=swamp_cave_south` with no movement queued. STAIRS returned to
+  World Map `(104,49)` while preserving the itinerary. The full bridge road
+  and inlet detour completed to `(65,49)`, which logged `event=arrived`.
+  Final tag `RAINBOW_CONNECTED_COMPLETE_20260813` confirmed path nil, runtime
+  blocks none, and route none. Focused route tests pass `169/169`; the native
+  Windows broad gate passes all 33 host-runnable Lua suites plus 68 Python
+  tests. No runtime or permanent blocker was added. Running that gate from
+  WSL is invalid for release tests because it gives Windows PowerShell Linux
+  `/mnt/...` paths; use native `python run_tests.py` on this host.
+- MANUAL ACCEPTANCE CADENCE FALLOUT: from `(99,68)`, two player-triggered
+  auto-walk attempts exhausted the full retry budget moving DOWN into
+  `(99,69)`. Both recorded `blocked_only`, but the user's ordinary sustained
+  Down hold then crossed the same edge after about 31 frames and advanced the
+  route. Fresh tag `RAINBOW_MANUAL_99_69_20260813` confirmed `(99,69)`, no
+  path/runtime blockers, and the correct next waypoint west to `(98,69)`.
+  This is passable cadence, not a blocker. `Rimuldar north approach bend` now
+  uses the established 60-frame sustained-hold/early-twitch window.
+- MANUAL FALLOUT LOADED / CLOSED: fresh reload tag
+  `RAINBOW_99_68_RELOAD_20260813` confirmed the new source was polling. From
+  exact `(99,68)`, Rainbow Bridge resumed `swamp_cave_south` at index `14`.
+  Auto-walk completed DOWN to `(99,69)` in `33` frames with zero timeout
+  retries and zero turn represses, recorded the seam as `passable_only`, and
+  advanced to index `15`. Final state was `(99,69)`, path nil, with no NPC or
+  runtime blockers; the next route waypoint remains west to `(98,69)`. The
+  final focused route suite passes `169/169`, and the native broad gate passes
+  all 33 host-runnable Lua suites plus 68 Python tests.
+- MANUAL ROUND TRIP ACCEPTED: the continued run reached Rainbow Bridge
+  `(65,49)` at frame `154166`, then completed `rainbow_bridge_return` into
+  Swamp Cave at frame `156934` and exited to World Map `(104,49)`. Timing
+  attempts at `(90,72)->UP` and `(67,50)->UP` failed once and then moved,
+  making both noisy/passable rather than blocker evidence. Off-path carries to
+  `(90,70)` and one tile past the bridge stand to `(64,49)` were recoverable
+  and are deferred as non-destructive polish. No `PATH_RUNTIME_BLOCK` was
+  inserted. Fresh tag `RAINBOW_MANUAL_COMPLETE_20260813` confirmed route none,
+  path nil, and zero NPC/runtime blockers.
+
+## 2026-08-13 Connected Swamp Cave Route
+
+- CLEAN / LOADED: fresh tag `SWAMP_CONNECTED_BASELINE_20260813` confirmed
+  World Map `(43,43)`, no active path, no runtime blockers, and the reloaded
+  script. Starting `swamp cave` logged `route=kol staged_from=swamp_cave`;
+  speech named `Current leg to Kol` and `Final destination: Swamp Cave` while
+  the hero remained stationary.
+- CLEAN / LOADED HANDOFF: reaching the Kol trigger produced
+  `event=handoff route=swamp_cave waypoint=Kol forest west edge index=2
+  from_route=kol`. Afterward the hero remained at `(104,10)`,
+  `PATH_STATE target=nil`, with no runtime blockers. The handoff does not start
+  movement automatically.
+- CLEAN / LOADED OBJECT-FOCUS GUARD: with stale Tantegel Castle selection,
+  bare `auto_walk` logged `follow_active=true` and started the active
+  `swamp_cave` segment toward `Kol forest west edge`; it did not replace the
+  destination with Tantegel.
+- CONTAMINATED / DO NOT PROMOTE: coarse force-seeded movement at `(96,13)`
+  timed out moving UP toward Kol, and force-seeded movement from the
+  non-walkable Kol trigger `(104,10)` timed out moving LEFT. Both origins came
+  from forced teleports and are unsuitable map or route-geometry evidence.
+  No runtime or permanent blocker was added.
+- SOURCE / TESTS: Swamp Cave staging now opts into connected handoff and names
+  canonical `swamp_cave` as its continuation so far starts cannot retain the
+  bridge-only variant. All 164 focused overworld-route tests and the full
+  repository gate pass.
+- CLEAN / COMPLETE SECOND LEG: after the user entered and exited Kol naturally,
+  tag `SWAMP_CLEAN_KOL_EXIT_20260813` confirmed World Map `(104,10)`, path nil,
+  and no runtime blockers. A fresh local Swamp Cave start then completed every
+  established waypoint through `(104,43)` and entered map `0x15` at `(0,0)`.
+  Arrival tag `SWAMP_CONNECTED_ARRIVAL_20260813` confirmed HP `149/149`, path
+  nil, runtime blocks none, and no overworld route active.
+- MANUAL ACCEPTANCE COMPLETE: the user completed the combined
+  Tantegel-to-Swamp-Cave route. Fresh structured events show the staged Kol
+  route start at frame `71501`, handoff to Swamp Cave at frame `84046`, and
+  arrival at frame `89299`. Probe `SWAMP_MANUAL_ACCEPTANCE_20260813` at frame
+  `92640` confirmed map `0x15` `(0,0)`, HP `149/149`, path nil, runtime blocks
+  none, and no active overworld route. No further check remains for this slice.
 
 ## 2026-07-24 Hauksness Interior Decode
 
