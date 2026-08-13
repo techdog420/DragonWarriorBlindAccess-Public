@@ -96,6 +96,19 @@ quality-of-life work.
   itinerary. Two retryable timing stalls and two non-destructive carry drifts
   remain optional future polish; final state at `(104,49)` had route/path nil
   and no runtime blockers. This slice is closed.
+- The fourth connected-route slice is implemented for `Rimuldar -> Swamp Cave
+  South Entrance -> Charlock Castle`. Selecting Charlock outside Rimuldar
+  follows the established `swamp_cave_south` route, hands off on entering map
+  `0x15` at `(0,29)`, waits for the player's STAIRS exit, and then continues
+  from World Map `(104,49)` without losing the final destination. Loaded
+  acceptance completed every waypoint and entered Charlock map `0x02` at
+  `(10,19)` with route/path cleared and no runtime blockers. Two route stalls
+  passed unchanged-origin raw holds, one carry drift recovered normally, and
+  no blocker was promoted. Focused tests pass `170/170`; the broad gate passes
+  all 33 host-runnable Lua suites plus 68 Python tests. The user's final manual
+  pass also reached Charlock with no blocked or canceled route events; fresh
+  state at map `0x02` `(10,19)` had route/path nil and no runtime blockers.
+  This slice is closed.
 
 ## Remaining Map Completion
 
@@ -115,9 +128,9 @@ quality-of-life work.
   overworld location can compose a route from the player's current position,
   through existing waypoint corridors, to the destination. Reusing current
   route data is preferred over replacing live-validated segments. The opt-in
-  Northern Cave, Swamp Cave, and Rainbow Bridge are implemented and live-
-  accepted as connected routes. Choose the next existing staged destination
-  before generalizing the route model further.
+  Northern Cave, Swamp Cave, Rainbow Bridge, and Charlock Castle are
+  implemented and live-accepted as connected routes. Choose the next existing
+  staged destination before generalizing the route model further.
 - Off-network recovery: when a player manually explores or gets lost, provide a
   player-facing command that finds a safe route back to the nearest reachable
   waypoint-network entry and then continues toward the selected destination.

@@ -704,8 +704,8 @@ local ROUTES = {
     rainbow_bridge = {
         id = "rainbow_bridge",
         title = "Rainbow Bridge unlock point",
-        -- This route shares its staging config with Charlock, but only the
-        -- smaller Rainbow Bridge itinerary is connected through the hub yet.
+        -- Opt in explicitly so other routes sharing the staging config are
+        -- not connected through the hub until they are independently tested.
         continue_after_staging = true,
         aliases = {
             "rainbow bridge",
@@ -791,6 +791,9 @@ local ROUTES = {
     charlock_castle = {
         id = "charlock_castle",
         title = "Charlock Castle",
+        -- Preserve Charlock as the final destination while the existing
+        -- Rimuldar route stages through the Swamp Cave south entrance.
+        continue_after_staging = true,
         aliases = {
             "charlock",
             "charlock castle",

@@ -2,6 +2,79 @@
 
 Updated: 2026-08-13
 
+## 2026-08-13 Connected Charlock Route
+
+- CLEAN PRE-RELOAD BASELINE: fresh tag
+  `CHARLOCK_CONNECTED_BASELINE_20260813` at frame `461460` confirmed World Map
+  `(104,49)`, route none, path nil, and zero NPC/runtime blockers. The hero
+  remains at the Swamp Cave South Entrance for the first loaded Charlock leg.
+- TEST-FIRST SOURCE CHANGE: the former Charlock staging-stop regression was
+  replaced with status and cave-handoff coverage. Both tests failed before the
+  source change: status omitted the final Charlock destination, and entering
+  Swamp Cave cleared the route. `charlock_castle` now independently opts into
+  the existing staging continuation, matching Rainbow Bridge without changing
+  the shared staging config. The handoff preserves Charlock Castle as the final
+  destination, queues no movement, and leaves the first player-triggered step
+  west from `(104,49)` to the safe doorstep `(103,49)`. All `170/170` focused
+  route tests, LuaJIT compilation, `git diff --check`, all 33 host-runnable Lua
+  suites, and 68 Python tests pass. Awaiting manual `main.lua` reload and loaded
+  route verification.
+- LOADED SECOND LEG COMPLETE: fresh reload tag
+  `CHARLOCK_CONNECTED_RELOAD_20260813` confirmed World Map `(104,49)`, route
+  none, path nil, and no runtime blockers. Starting Charlock first selected
+  `swamp_cave_south` at its already-satisfied final waypoint, then immediately
+  emitted `event=handoff route=charlock_castle ... from_route=swamp_cave_south`
+  without moving the hero. The hero remained at `(104,49)` until an explicit
+  `auto_walk`, which moved west to the safe doorstep `(103,49)`. Every existing
+  Charlock waypoint then completed through the bridge, inlet detour, island
+  south road, and castle approach. Both sustained-hold west edges at
+  `(58,55)` and `(50,61)` passed on their first loaded attempts. The final
+  entrance step needed one bounded timing retry, then changed to Charlock map
+  `0x02` at `(10,19)` and logged `event=arrived`. Fresh tag
+  `CHARLOCK_CONNECTED_ARRIVAL_20260813` confirmed route none, path nil, and
+  zero NPC/runtime blockers. No blocker was added. Full connected acceptance
+  from Rimuldar remains for the user-facing pass.
+- FULL ROUTE FIRST LEG COMPLETE: fresh tag
+  `CHARLOCK_FULL_RIMULDAR_BASELINE_20260813` confirmed World Map `(102,72)`,
+  route none, path nil, and no NPC/runtime blockers before selection. Starting
+  Charlock selected `swamp_cave_south` with `staged_from=charlock_castle` and
+  retained Charlock as the Travel target. Every waypoint reached the south
+  cave. The route saw two recoverable timing artifacts: auto-step initially
+  exhausted its retry budget at `(99,69)->LEFT`, but an unchanged-origin raw
+  `probe_edge:LEFT` moved through `(98,69)` and carried to `(97,69)`, proving
+  the edge passable; the route then recovered. The known `(90,72)->UP` carry
+  overshot to `(90,70)` and canceled one batch, then normal route recovery
+  rejoined the corridor. No blocked-tile data was added. The final Up from
+  `(104,50)` entered Swamp Cave map `0x15` at `(0,29)` and logged
+  `event=handoff route=charlock_castle ... from_route=swamp_cave_south`.
+  Fresh tag `CHARLOCK_FULL_SWAMP_ENTRY_20260813` confirmed the Charlock route
+  remains active at waypoint 1, with path nil and no runtime blockers. Awaiting
+  the player's manual STAIRS exit through the south entrance before validating
+  the preserved second leg from World Map `(104,49)`.
+- FULL CONNECTED ROUTE COMPLETE: after the player exited with STAIRS, fresh tag
+  `CHARLOCK_FULL_SOUTH_EXIT_20260813` confirmed World Map `(104,49)`, active
+  `charlock_castle` waypoint 1, path nil, and zero NPC/runtime blockers. The
+  first explicit auto-walk moved west to the safe doorstep `(103,49)`, then
+  every bridge, inlet, island, and castle-approach waypoint completed. A noisy
+  timing stall at `(51,64)->RIGHT` began movement but did not settle before the
+  retry budget; an unchanged-origin `probe_edge:RIGHT` moved through `(52,64)`
+  and carried to `(53,64)`, proving the edge passable, and normal route recovery
+  continued. The sustained-hold west edges `(58,55)->LEFT` and
+  `(50,61)->LEFT` completed in 30 and 28 frames respectively with zero retries.
+  The final Up from `(48,49)` entered Charlock map `0x02` at `(10,19)` and
+  logged `event=arrived`. Fresh tag
+  `CHARLOCK_FULL_CONNECTED_ARRIVAL_20260813` confirmed route none, path nil,
+  and zero NPC/runtime blockers. The complete Rimuldar-to-Charlock connected
+  itinerary is live-accepted; no blocker was added.
+- MANUAL ACCEPTANCE COMPLETE: the user's full hotkey-driven pass started the
+  staged itinerary at frame `1891`, preserved the cave handoff, completed every
+  outbound waypoint, and entered Charlock at frame `21326`. Several segments
+  used bounded cadence retries and several final-step carries advanced through
+  already-valid route cells, but the log contains no `event=blocked` or
+  `event=cancel`. Fresh tag `CHARLOCK_MANUAL_ACCEPTED_20260813` confirmed
+  Charlock map `0x02` `(10,19)`, route none, path nil, and zero NPC/runtime
+  blockers. This manual pass independently accepts the connected route.
+
 ## 2026-08-13 Connected Rainbow Bridge Route
 
 - CLEAN PRE-RELOAD BASELINE: tag `RIMULDAR_RAINBOW_BASELINE_20260813` at

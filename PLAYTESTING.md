@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Connected Charlock route (`2026-08-13`): selecting Charlock outside Rimuldar
+  at `(102,72)` now follows `swamp_cave_south`, enters Swamp Cave south at
+  `(0,29)`, waits for the player to exit with STAIRS, preserves Charlock across
+  that transition, and continues from World Map `(104,49)` to the castle.
+  Complete loaded acceptance traversed every waypoint and entered Charlock map
+  `0x02` at `(10,19)`. The final probe found route none, path nil, and zero
+  NPC/runtime blockers. Three recoverable timing artifacts occurred across the
+  full itinerary: `(99,69)->LEFT` and `(51,64)->RIGHT` exhausted auto-step
+  retries but passed unchanged-origin raw holds, while `(90,72)->UP` carried to
+  `(90,70)` and rejoined normally. The known slow edges `(58,55)->LEFT` and
+  `(50,61)->LEFT` passed in 30 and 28 frames with zero retries. No blocker was
+  added; the artifacts remain optional future route polish. The user's final
+  manual pass also completed the entire itinerary. Its log contained several
+  bounded timing retries and harmless carries, but no `event=blocked` or
+  `event=cancel`; every segment completed, the cave handoff remained intact,
+  and frame `21326` arrived in Charlock. Fresh tag
+  `CHARLOCK_MANUAL_ACCEPTED_20260813` confirmed map `0x02` `(10,19)`, route
+  none, path nil, and zero NPC/runtime blockers.
 - Connected Rainbow Bridge route (`2026-08-13`): a Rainbow Bridge selection
   from the Rimuldar side now follows `swamp_cave_south`, hands off on entering
   Swamp Cave south at `(0,29)`, waits for STAIRS, and continues from World Map

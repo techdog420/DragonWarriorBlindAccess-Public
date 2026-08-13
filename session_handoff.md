@@ -121,6 +121,23 @@ Updated: 2026-08-13
 
 ## Immediate FCEUX Handoff
 
+- The connected Charlock itinerary is complete and loaded. Selecting Charlock
+  outside Rimuldar at `(102,72)` stages through `swamp_cave_south`, enters
+  Swamp Cave map `0x15` at `(0,29)`, waits for the player's STAIRS exit, and
+  preserves `charlock_castle` for the continuation from World Map `(104,49)`.
+  The full live pass completed every bridge, inlet, island, and castle waypoint
+  and entered Charlock map `0x02` at `(10,19)`. Fresh tag
+  `CHARLOCK_FULL_CONNECTED_ARRIVAL_20260813` confirmed route none, path nil,
+  and no NPC/runtime blockers. Auto-step stalls at `(99,69)->LEFT` and
+  `(51,64)->RIGHT` passed unchanged-origin raw holds; the `(90,72)->UP` carry
+  recovered normally. No blocker was added. Focused tests pass `170/170`; the
+  broad gate passes all 33 host-runnable Lua suites plus 68 Python tests. This
+  connected-route slice is closed; retain the three non-destructive artifacts
+  for an optional route-polish pass. The user's final manual acceptance also
+  completed the entire itinerary with several bounded retries but no blocked
+  or canceled route events. Fresh tag `CHARLOCK_MANUAL_ACCEPTED_20260813`
+  confirmed Charlock map `0x02` `(10,19)`, route/path nil, and zero
+  NPC/runtime blockers.
 - The connected Rainbow Bridge itinerary is complete and loaded. Selecting
   Rainbow Bridge from the Rimuldar side stages through `swamp_cave_south`,
   names the cave as the current leg and the bridge as the final destination,

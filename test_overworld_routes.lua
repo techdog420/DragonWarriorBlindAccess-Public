@@ -861,7 +861,21 @@ function tests.stopping_northern_cave_staging_clears_the_whole_itinerary()
     routes.reset_for_tests()
 end
 
-function tests.charlock_staged_route_does_not_handoff_before_network_expansion()
+function tests.charlock_staging_status_names_current_leg_and_final_destination()
+    routes.reset_for_tests()
+    routes.start("charlock", 0x01, 102, 72)
+
+    local info = routes.status(0x01, 102, 72)
+
+    assert_contains(info.message, "Current leg to Swamp Cave South Entrance",
+        "Charlock staging status should identify the route currently being followed")
+    assert_contains(info.message, "Final destination: Charlock Castle",
+        "Charlock staging status should retain the player's requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.charlock_staging_hands_off_at_south_cave_without_starting_movement()
     routes.reset_for_tests()
     local info = assert(routes.start("charlock", 0x01, 102, 72))
 
@@ -872,10 +886,31 @@ function tests.charlock_staged_route_does_not_handoff_before_network_expansion()
 
     local event = routes.observe_position(0x15, 0, 29)
 
-    assert_contains(event.message, "Arrived at Swamp Cave South Entrance",
-        "non-opted-in progression routes should retain their existing stop at the staging destination")
-    assert_equal(routes.is_active(), false,
-        "connected Kol routes must not silently enable later progression handoffs")
+    assert_equal(routes.active_route_id(), "charlock_castle",
+        "entering the south cave should activate the requested Charlock leg")
+    assert_equal(event.status, "handoff",
+        "the Charlock itinerary should distinguish a leg handoff from final arrival")
+    assert_contains(event.message,
+        "Reached Swamp Cave South Entrance. Continuing to Charlock Castle.",
+        "handoff speech should name the completed hub and final destination")
+    assert_contains(event.message, "Next: Swamp Cave south doorstep",
+        "handoff speech should identify the first exterior Charlock waypoint")
+    assert_contains(event.log, "event=handoff",
+        "Charlock handoff should be explicit in structured logs")
+    assert_contains(event.log, "from_route=swamp_cave_south",
+        "Charlock handoff logs should identify the completed leg")
+    assert_equal(event.object_id, "route_charlock_castle_01",
+        "route markers should refresh to the first Charlock movement waypoint")
+    assert_equal(event.steps, nil,
+        "Charlock handoff must wait for another player auto-walk command")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 49))
+    assert_equal(segment.waypoint.name, "Swamp Cave south doorstep",
+        "the next player-triggered segment should leave the cave entrance toward Charlock")
+    assert_equal(#segment.steps, 1,
+        "the first Charlock segment should move to the established safe doorstep")
+    assert_equal(segment.steps[1], "left",
+        "the second leg should leave the cave entrance westbound")
 
     routes.reset_for_tests()
 end
