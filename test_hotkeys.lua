@@ -23,6 +23,7 @@ local function make_env(options)
     local outputs = {}
     local pathfind_calls = 0
     local autowalk_calls = 0
+    local stop_autowalk_calls = {}
     local freeze_calls = 0
     local visited_calls = 0
     local route_status_calls = 0
@@ -96,6 +97,7 @@ local function make_env(options)
         key_pathfind = "O|F16",
         key_route_guidance = "R",
         key_auto_walk = "U|F18",
+        key_stop_auto_walk = "Shift+U",
         key_filter = "Q",
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
@@ -377,6 +379,10 @@ local function make_env(options)
             autowalk_to_current = function()
                 autowalk_calls = autowalk_calls + 1
             end,
+            stop_auto_walk = function(reason)
+                stop_autowalk_calls[#stop_autowalk_calls + 1] = reason
+                return options.auto_walk_active ~= false
+            end,
             next_object_pathability_filter = function()
                 pathability_filter_calls = pathability_filter_calls + 1
                 return options.pathability_info or {
@@ -427,6 +433,7 @@ local function make_env(options)
         autowalk_calls = function()
             return autowalk_calls
         end,
+        stop_autowalk_calls = stop_autowalk_calls,
         freeze_calls = function()
             return freeze_calls
         end,
@@ -573,6 +580,74 @@ function tests.high_function_key_alternatives_trigger_controller_hotkeys()
 
     env.update({})
     assert_equal(env.autowalk_calls(), 1, "released F18 should use the auto-walk binding")
+
+    env.restore()
+end
+
+function tests.stop_autowalk_hotkey_bypasses_object_guard_and_interrupts_speech()
+    local env = make_env({delay = 0, auto_walk_active = true})
+
+    env.update({LeftShift = true, U = true}, {state = "battle"}, false, "Wait for battle to finish")
+
+    assert_equal(#env.stop_autowalk_calls, 1,
+        "Shift+U should invoke the shared auto-walk stop path while object controls are blocked")
+    assert_equal(env.stop_autowalk_calls[1], "player hotkey",
+        "player cancellation should identify the hotkey source")
+    assert_equal(#env.outputs, 1, "active cancellation should speak once")
+    assert_equal(env.outputs[1].message, "Auto-walk stopped",
+        "active cancellation should confirm that movement stopped")
+    assert_equal(env.outputs[1].interrupt, true,
+        "cancellation confirmation should interrupt stale route progress speech")
+    assert_equal(env.input_suppress_calls(), 0,
+        "Shift+U should not use teleport-style game-input suppression")
+
+    env.restore()
+end
+
+function tests.stop_autowalk_hotkey_cancels_deferred_start_before_u_release()
+    local env = make_env({delay = 0, auto_walk_active = false})
+
+    env.update({U = true}, {state = "field"}, true)
+    env.update({U = true, LeftShift = true}, {state = "field"}, false,
+        "Wait for movement to finish")
+    env.update({}, {state = "field"}, true)
+
+    assert_equal(#env.stop_autowalk_calls, 1,
+        "Shift+U should cancel a deferred U release even before a route starts")
+    assert_equal(env.autowalk_calls(), 0,
+        "releasing U after cancellation must not start auto-walk")
+    assert_equal(#env.outputs, 1, "deferred cancellation should speak once")
+    assert_equal(env.outputs[1].message, "Auto-walk stopped",
+        "cancelling a deferred start should use the normal stop confirmation")
+
+    env.restore()
+end
+
+function tests.stop_autowalk_shift_u_does_not_rearm_plain_u_on_release()
+    local env = make_env({delay = 0, auto_walk_active = true})
+
+    env.update({LeftShift = true, U = true}, {state = "field"}, true)
+    env.update({}, {state = "field"}, true)
+
+    assert_equal(#env.stop_autowalk_calls, 1,
+        "Shift+U should stop the active route exactly once")
+    assert_equal(env.autowalk_calls(), 0,
+        "the overlapping plain U binding must not restart auto-walk when Shift+U is released")
+
+    env.restore()
+end
+
+function tests.stop_autowalk_hotkey_reports_when_no_route_is_active()
+    local env = make_env({delay = 0, auto_walk_active = false})
+
+    env.update({LeftShift = true, U = true}, {state = "field"}, true)
+
+    assert_equal(#env.stop_autowalk_calls, 1,
+        "Shift+U should still run the safe cleanup path when idle")
+    assert_equal(env.outputs[1].message, "No auto-walk is active",
+        "idle cancellation should not claim that a route was stopped")
+    assert_equal(env.outputs[1].interrupt, false,
+        "idle status should not interrupt unrelated speech")
 
     env.restore()
 end

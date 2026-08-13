@@ -4930,6 +4930,28 @@ function M.clear_active_route_context(reason)
     clear_active_route_context(reason, true)
 end
 
+-- stop_auto_walk(reason): Cancel every layer of active movement assistance.
+-- Returns true when an auto-step route or route-manager target was active.
+function M.stop_auto_walk(reason)
+    local had_active = active_route_target ~= nil
+        or active_overworld_segment ~= nil
+        or (auto_step.is_route_active and auto_step.is_route_active())
+    local stop_reason = tostring(reason or "manual stop_auto_walk")
+
+    if not had_active then
+        debug_tools.info(string.format(
+            "AUTO_WALK: manually stopped active=false reason=%s", stop_reason))
+        return false
+    end
+
+    auto_step.cancel_active_step(true, true)
+    clear_active_route_context(stop_reason, should_refresh_objects_after_route())
+    debug_tools.info(string.format(
+        "AUTO_WALK: manually stopped active=%s reason=%s",
+        tostring(had_active), stop_reason))
+    return had_active
+end
+
 -- get_dir_to_delta(): Return the direction-to-delta table.
 -- Used by debug diagnostic functions.
 function M.get_dir_to_delta()

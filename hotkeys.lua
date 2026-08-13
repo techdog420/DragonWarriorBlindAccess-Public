@@ -280,6 +280,19 @@ local function start_deferred_auto_walk_if_released(keys, object_hotkeys_allowed
     return true
 end
 
+local function stop_auto_walk_from_hotkey()
+    local had_deferred_start = pending_auto_walk_after_key_release
+    pending_auto_walk_after_key_release = false
+    clear_object_nav_speech()
+
+    local had_active_route = route_mgr.stop_auto_walk("player hotkey")
+    if had_deferred_start or had_active_route then
+        speak_now("Auto-walk stopped")
+    else
+        speak_info("No auto-walk is active")
+    end
+end
+
 local function speak_filter(filter_name)
     refresh_object_browser_context()
     local count = objects.get_count()
@@ -439,6 +452,14 @@ end
 -- Call once per frame from the main loop.
 function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_reason)
     object_nav_speech_queued_this_frame = false
+
+    -- Cancellation is deliberately available before field/object guards. It
+    -- must remain usable while movement itself makes other object controls
+    -- unavailable, and while battle, dialogue, or a menu interrupts a route.
+    local stop_auto_walk_pressed = is_key_pressed(keys, config.get("key_stop_auto_walk"))
+    if stop_auto_walk_pressed then
+        stop_auto_walk_from_hotkey()
+    end
 
     -- Position: Read current position (map name + coordinates)
     if is_key_pressed(keys, config.get("key_position")) then
@@ -989,6 +1010,9 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         end
 
         local blocked_key = blocked_object_hotkey_pressed(keys)
+        if stop_auto_walk_pressed and blocked_key == "key_auto_walk" then
+            blocked_key = nil
+        end
         if route_status_handled and blocked_key == "key_route_guidance" then
             blocked_key = nil
         end
@@ -1115,7 +1139,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- U key (default): Auto-walk the computed path to the current object.
         -- Uses the same planning logic as O, but queues the route into auto_step
         -- so the player actually walks it on interior maps.
-        if is_key_pressed(keys, config.get("key_auto_walk")) then
+        if not stop_auto_walk_pressed and is_key_pressed(keys, config.get("key_auto_walk")) then
             clear_object_nav_speech()
             pending_auto_walk_after_key_release = true
             log_auto_walk_hotkey("AUTO_WALK_HOTKEY_DEFERRED awaiting_key_release=true")

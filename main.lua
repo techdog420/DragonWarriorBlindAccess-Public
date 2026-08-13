@@ -5390,10 +5390,8 @@ debug_tools.register_command("report_path_state", function()
 end)
 
 debug_tools.register_command("stop_auto_walk", function()
-    auto_step.cancel_active_step(true, true)
-    route_mgr.clear_active_route_context("manual stop_auto_walk")
-    debug_tools.info("AUTO_WALK: manually stopped")
-    tolk.output_interrupt("Auto-walk stopped")
+    local stopped = route_mgr.stop_auto_walk("manual stop_auto_walk")
+    tolk.output_interrupt(stopped and "Auto-walk stopped" or "No auto-walk is active")
 end)
 
 debug_tools.register_command("__input_isolation", function(details)

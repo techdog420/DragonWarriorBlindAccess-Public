@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 class RunTestsCommandQueueTests(unittest.TestCase):
     def test_check_command_queue_fails_clearly_when_bash_is_missing(self):
-        with mock.patch.object(run_tests, "shutil_which", return_value=None):
+        with mock.patch.object(run_tests, "get_bash_runtime", return_value=None):
             with mock.patch.object(run_tests.subprocess, "run") as run:
                 ok, detail = run_tests.check_command_queue()
 
@@ -48,7 +48,7 @@ class RunTestsCommandQueueTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {"PATH": caller_path}):
                 with mock.patch.object(
-                    run_tests, "shutil_which", return_value=str(resolved_bash)
+                    run_tests, "get_bash_runtime", return_value=str(resolved_bash)
                 ):
                     with mock.patch.object(
                         run_tests.subprocess, "run", side_effect=run_queue_command
@@ -64,6 +64,10 @@ class RunTestsCommandQueueTests(unittest.TestCase):
 
 class DwCommandsShTests(unittest.TestCase):
     def setUp(self):
+        self.bash = run_tests.get_bash_runtime()
+        if not self.bash:
+            self.skipTest("bash is required for dw_commands.sh tests")
+        self.bash_env = run_tests.get_bash_environment(self.bash)
         self.tmp = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp.name)
         self.script = self.tmp_path / "dw_commands.sh"
@@ -75,12 +79,13 @@ class DwCommandsShTests(unittest.TestCase):
 
     def run_script(self, *args):
         return subprocess.run(
-            [str(self.script), *args],
+            [self.bash, self.script.as_posix(), *args],
             cwd=self.tmp_path,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            env=self.bash_env,
         )
 
     def read_commands(self):
@@ -153,6 +158,25 @@ class DwCommandsShTests(unittest.TestCase):
         self.assertEqual(payload["status"], "error")
         self.assertFalse(payload["sent"])
         self.assertEqual(self.read_commands(), [])
+
+
+class RunTestsInventoryTests(unittest.TestCase):
+    def test_all_lua_test_files_are_run_or_explicitly_classified(self):
+        discovered = {path.name for path in REPO_ROOT.glob("test_*.lua")}
+        classified = (
+            set(run_tests.LUA_TEST_FILES)
+            | run_tests.LUA_TEST_HELPERS
+            | run_tests.LUA_EMULATOR_DIAGNOSTICS
+        )
+
+        self.assertEqual(discovered, classified)
+        self.assertIn("test_debug_tools.lua", run_tests.LUA_TEST_FILES)
+        self.assertIn("test_text.lua", run_tests.LUA_TEST_FILES)
+        self.assertNotIn("test_env.lua", run_tests.LUA_TEST_FILES)
+
+    def test_python_discovery_contains_only_automated_test_modules(self):
+        self.assertIn("test_tooling.py", run_tests.PYTHON_TEST_FILES)
+        self.assertNotIn("speech_smoke.py", run_tests.PYTHON_TEST_FILES)
 
 
 class PreToolGuardTests(unittest.TestCase):

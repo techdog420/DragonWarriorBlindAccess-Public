@@ -13,6 +13,7 @@ import argparse
 import importlib
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -21,110 +22,17 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent
 
-LUA_FILES = [
-    "addresses.lua",
-    "auto_step.lua",
-    "battle.lua",
-    "chars.lua",
-    "config.lua",
-    "debug_tools.lua",
-    "edge_flow_guard.lua",
-    "edge_verify_classifier.lua",
-    "emulator_compat.lua",
-    "encoding.lua",
-    "field_action_guard.lua",
-    "hotkey_filter.lua",
-    "items.lua",
-    "main.lua",
-    "map_survey.lua",
-    "map_reader.lua",
-    "maps.lua",
-    "memory.lua",
-    "merchant.lua",
-    "menu.lua",
-    "navigation.lua",
-    "object_commands.lua",
-    "objects.lua",
-    "overworld_routes.lua",
-    "path_debug.lua",
-    "pathfinder.lua",
-    "route_manager.lua",
-    "route_frontier_classifier.lua",
-    "scan_profiler.lua",
-    "state.lua",
-    "test_auto_step.lua",
-    "test_battle.lua",
-    "test_config.lua",
-    "test_edge_flow_guard.lua",
-    "test_edge_verify_classifier.lua",
-    "test_emulator_compat.lua",
-    "test_field_action_guard.lua",
-    "test_env.lua",
-    "test_game_snapshot.lua",
-    "test_key_combo.lua",
-    "test_hotkeys.lua",
-    "test_hotkey_filter.lua",
-    "test_items.lua",
-    "test_maps.lua",
-    "test_map_survey.lua",
-    "test_map_reader.lua",
-    "test_object_commands.lua",
-    "test_path_debug.lua",
-    "test_merchant.lua",
-    "test_menu.lua",
-    "test_objects.lua",
-    "test_overworld_routes.lua",
-    "test_pathfinder.lua",
-    "test_route_manager.lua",
-    "test_route_frontier_classifier.lua",
-    "test_screen.lua",
-    "test_state.lua",
-    "test_speech.lua",
-    "text.lua",
-    "tolk.lua",
-]
+LUA_FILES = sorted(path.name for path in ROOT.glob("*.lua"))
+LUA_TEST_HELPERS = {"test_env.lua"}
+LUA_EMULATOR_DIAGNOSTICS = {"test_screen.lua", "test_speech.lua"}
+LUA_TEST_FILES = sorted(
+    path.name
+    for path in ROOT.glob("test_*.lua")
+    if path.name not in LUA_TEST_HELPERS | LUA_EMULATOR_DIAGNOSTICS
+)
 
-LUA_TEST_FILES = [
-    "test_pathfinder.lua",
-    "test_auto_step.lua",
-    "test_battle.lua",
-    "test_config.lua",
-    "test_edge_flow_guard.lua",
-    "test_edge_verify_classifier.lua",
-    "test_emulator_compat.lua",
-    "test_field_action_guard.lua",
-    "test_game_snapshot.lua",
-    "test_key_combo.lua",
-    "test_hotkeys.lua",
-    "test_hotkey_filter.lua",
-    "test_items.lua",
-    "test_maps.lua",
-    "test_map_survey.lua",
-    "test_map_reader.lua",
-    "test_object_commands.lua",
-    "test_path_debug.lua",
-    "test_merchant.lua",
-    "test_menu.lua",
-    "test_objects.lua",
-    "test_overworld_routes.lua",
-    "test_route_manager.lua",
-    "test_route_frontier_classifier.lua",
-    "test_state.lua",
-]
-
-PYTHON_FILES = [
-    "speech_bridge.py",
-    "test_player_install.py",
-    "test_player_launch.py",
-    "test_player_package.py",
-    "test_release_keyboard_guide.py",
-    "test_release_licenses.py",
-    "test_release_readme.py",
-    "test_speech_bridge.py",
-    "test_speech_runtime_package.py",
-    "test_tolk.py",
-    "run_tests.py",
-]
+PYTHON_FILES = sorted(path.name for path in ROOT.glob("*.py"))
+PYTHON_TEST_FILES = sorted(path.name for path in ROOT.glob("test_*.py"))
 
 SHELL_FILES = [
     "dw_commands.sh",
@@ -191,7 +99,10 @@ def check_lua_syntax() -> tuple[bool, str]:
     luac = shutil_which("luac")
     if luac:
         cmd = [luac, "-p", *LUA_FILES]
-        return run_command("lua syntax", cmd)
+        ok, detail = run_command("lua syntax", cmd)
+        if ok:
+            return True, f"OK via {luac}"
+        return False, detail
 
     lua = get_lua_runtime()
     if not lua:
@@ -215,7 +126,9 @@ def check_lua_syntax() -> tuple[bool, str]:
                 os.unlink(tmp_path)
             except OSError:
                 pass
-        return True, "\n".join(outputs)
+        details = "\n".join(output for output in outputs if output)
+        summary = f"OK via {lua}"
+        return True, f"{details}\n{summary}".strip()
 
     return False, "luac not found on PATH"
 
@@ -242,7 +155,34 @@ def check_lua_unit_tests() -> tuple[bool, str]:
         if not ok:
             return False, f"{test_file}: {detail}"
         outputs.append(detail)
+    outputs.append(
+        f"Completed {len(LUA_TEST_FILES)} host-runnable Lua test suites via {lua}"
+    )
     return True, "\n".join(outputs)
+
+
+def check_python_unit_tests() -> tuple[bool, str]:
+    ok, detail = run_command(
+        "python unit tests",
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            str(ROOT),
+            "-p",
+            "test_*.py",
+            "-v",
+        ],
+    )
+    if not ok:
+        return False, detail
+
+    match = re.search(r"Ran (\d+) tests?", detail)
+    if not match:
+        return False, "Python unittest completed without a test-count summary"
+    return True, f"{detail}\nCompleted {match.group(1)} Python unit tests"
 
 
 def check_python_dependency() -> tuple[bool, str]:
@@ -302,23 +242,7 @@ def check_command_queue() -> tuple[bool, str]:
     if not bash:
         return False, "bash not found on PATH"
 
-    bash_dir = Path(bash).parent
-    if bash_dir.parent.name.casefold() == "usr":
-        git_root = bash_dir.parent.parent
-    else:
-        git_root = bash_dir.parent
-    helper_dir = git_root / "usr" / "bin"
-
-    path_prefixes = []
-    if helper_dir.is_dir() and helper_dir != bash_dir:
-        path_prefixes.append(str(helper_dir))
-    path_prefixes.append(str(bash_dir))
-
-    child_env = os.environ.copy()
-    original_path = child_env.get("PATH", "")
-    if original_path:
-        path_prefixes.append(original_path)
-    child_env["PATH"] = os.pathsep.join(path_prefixes)
+    child_env = get_bash_environment(bash)
 
     with tempfile.TemporaryDirectory(prefix="dw_commands_test_") as tmp:
         tmp_path = Path(tmp)
@@ -356,6 +280,29 @@ def check_command_queue() -> tuple[bool, str]:
         return False, "; ".join(detail)
 
 
+def get_bash_environment(
+    bash: str, base_env: dict[str, str] | None = None
+) -> dict[str, str]:
+    bash_dir = Path(bash).parent
+    if bash_dir.parent.name.casefold() == "usr":
+        git_root = bash_dir.parent.parent
+    else:
+        git_root = bash_dir.parent
+    helper_dir = git_root / "usr" / "bin"
+
+    path_prefixes = []
+    if helper_dir.is_dir() and helper_dir != bash_dir:
+        path_prefixes.append(str(helper_dir))
+    path_prefixes.append(str(bash_dir))
+
+    child_env = (os.environ if base_env is None else base_env).copy()
+    original_path = child_env.get("PATH", "")
+    if original_path:
+        path_prefixes.append(original_path)
+    child_env["PATH"] = os.pathsep.join(path_prefixes)
+    return child_env
+
+
 def shutil_which(name: str) -> str | None:
     return shutil.which(name)
 
@@ -382,10 +329,17 @@ def main() -> int:
         ("Lua unit tests", check_lua_unit_tests),
         ("Shell syntax", check_shell_syntax),
         ("Python syntax", check_python_syntax),
+        ("Python unit tests", check_python_unit_tests),
         ("Bridge config", check_bridge_config),
         ("Speech dependency", check_python_dependency),
         ("Command queue", check_command_queue),
     ]
+
+    print(
+        "SKIP  Lua emulator diagnostics: "
+        + ", ".join(sorted(LUA_EMULATOR_DIAGNOSTICS))
+        + " (require live FCEUX globals)"
+    )
 
     failures = 0
     for name, fn in checks:

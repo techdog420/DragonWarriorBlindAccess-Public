@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-07-31
+Updated: 2026-08-12
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -24,18 +24,34 @@ quality-of-life work.
 
 ## Release Follow-up
 
-- Final licensed-package acceptance: choose the jam version, build the player
-  ZIP with `README.md` and `release\Keyboard Commands.txt`, and build the
-  corresponding-source ZIP with the same
-  version. Verify their SHA-256 hashes, absence of ROM/save data and placeholder
-  text, then run separate NVDA and JAWS launch, speech, keyboard, controller,
-  save, exit, and relaunch passes. NVDA and JAWS should not be run together.
+- Completed baseline: the licensed `0.1.0-alpha` player and corresponding-source
+  packages passed deterministic build checks, ROM/save exclusion, separate NVDA
+  and JAWS launch/gameplay/save/relaunch acceptance, and a complete blind-player
+  run through the original `The End` screen.
+- Completed offline gate: `python run_tests.py` automatically discovers all 33
+  host-runnable Lua suites, runs all Python unit tests, syntax-checks every
+  root Lua/Python source, and explicitly skips the two live-FCEUX diagnostic
+  scripts. Keep new `test_*.lua` and `test_*.py` files inside this discovery
+  contract instead of maintaining a partial hand-written suite list.
 - Non-ASCII Windows user-account test: run the final player package from an
   actual Windows account whose profile name contains non-ASCII characters.
   Use NVDA, install the supported ROM through the documented process, launch
   twice, create and reload a save, and confirm the private config, speech log,
   and keyboard bridge remain package-local. The completed non-ASCII extraction
   folder test does not substitute for this account-level test.
+
+## Immediate Next Implementation
+
+- Player-facing auto-walk stop is implemented in source with configurable
+  default `Shift+U`. It cancels active or deferred movement before ordinary
+  battle/dialogue/menu object guards, clears queued steps and route-manager
+  context, force-releases held direction input, preserves the selected object
+  and guided Travel destination, and announces active versus idle results. Two
+  live FCEUX/JAWS cancellations stopped multi-step routes with no queued-step
+  restart, and a fresh probe confirmed no active path. Focused and broad tests
+  pass; this item is closed.
+- Begin the connected overworld travel network and off-network recovery work
+  below.
 
 ## Remaining Map Completion
 
@@ -120,13 +136,6 @@ quality-of-life work.
   without displacing the currently selected object unexpectedly.
 
 ## Tooling
-
-- Player-facing auto-walk stop: add a command and hotkey to cancel the active
-  auto-walk route immediately, clear queued route/step state, release held
-  direction input, clear route context, and speak a concise confirmation. This
-  came up when an exit route boxed itself into repeated blocked-edge reroutes;
-  players need a reliable "stop trying this route" escape hatch without waiting
-  for reroute failure limits.
 
 - Image parsing helper: consider adding Pillow support in a repo-local Python
   virtual environment, or commit a small built-in PNG sampler for indexed map

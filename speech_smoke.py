@@ -1,23 +1,24 @@
 """
-test_tolk.py
-Standalone test to verify screen reader speech works from Python.
-Run this from the command line (not from FCEUX):
+Standalone screen-reader speech smoke test.
 
-    python test_tolk.py
+Run this manually from the command line, outside FCEUX:
 
-This uses the accessible_output2 library which auto-detects your
-active screen reader (JAWS, NVDA, Narrator) and handles the
-32/64-bit DLL matching automatically.
+    python speech_smoke.py
+
+This intentionally speaks and is therefore not named ``test_*.py`` or run by
+the automated unittest discovery gate.
 """
 
 import sys
 
+
 print("Step 1: Importing accessible_output2...")
 try:
     from accessible_output2.outputs.auto import Auto
+
     print("  Import OK")
-except ImportError as e:
-    print(f"  FAILED: {e}")
+except ImportError as exc:
+    print(f"  FAILED: {exc}")
     print("  Use a project-local venv instead of the system Python.")
     print("  Example (Windows): py -m venv .venv")
     print(r"  Then: .venv\Scripts\python.exe -m pip install accessible_output2")
@@ -31,8 +32,8 @@ print("Step 3: Attempting to speak...")
 try:
     speaker.speak("Screen reader test successful. Hello from Python.")
     print("  speak() called without error")
-except Exception as e:
-    print(f"  FAILED: {e}")
+except Exception as exc:
+    print(f"  FAILED: {exc}")
     sys.exit(1)
 
 print("\nIf you heard speech, everything is working!")

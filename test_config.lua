@@ -19,6 +19,16 @@ function tests.route_turn_movement_reset_default_is_safe()
     )
 end
 
+function tests.player_auto_walk_stop_has_safe_default_binding()
+    package.loaded["config"] = nil
+    local config = require("config")
+    assert_equal(
+        config.get_default("key_stop_auto_walk"),
+        "Shift+U",
+        "player auto-walk cancellation should use the accessible Shift+U chord"
+    )
+end
+
 local passed = 0
 local failed = 0
 

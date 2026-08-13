@@ -33,6 +33,7 @@ local function make_env(options)
     local last_inject_opts = nil
     local suppress_direction_tracking_calls = 0
     local last_suppress_direction_tracking_frames = nil
+    local cancel_active_step_calls = {}
     local last_injected_dir = nil
     local pathfind_calls = 0
     local last_direct_call = nil
@@ -465,6 +466,15 @@ local function make_env(options)
                 suppress_direction_tracking_calls = suppress_direction_tracking_calls + 1
                 last_suppress_direction_tracking_frames = frames
             end,
+            cancel_active_step = function(clear_queued_route, force_release)
+                cancel_active_step_calls[#cancel_active_step_calls + 1] = {
+                    clear_queued_route = clear_queued_route,
+                    force_release = force_release,
+                }
+            end,
+            is_route_active = function()
+                return options.auto_step_route_active == true
+            end,
         }
         return stub
     end
@@ -625,6 +635,7 @@ local function make_env(options)
         last_inject_opts = function() return last_inject_opts end,
         suppress_direction_tracking_calls = function() return suppress_direction_tracking_calls end,
         last_suppress_direction_tracking_frames = function() return last_suppress_direction_tracking_frames end,
+        cancel_active_step_calls = cancel_active_step_calls,
         last_direct_call = function() return last_direct_call end,
         last_adjacent_call = function() return last_adjacent_call end,
         seam_summary = function(map_id) return route_manager.get_seam_summary(map_id) end,
@@ -737,6 +748,46 @@ local function assert_write_set(memory_writes, start_index, expected_by_address,
 end
 
 local tests = {}
+
+function tests.player_stop_clears_route_context_and_force_releases_direction()
+    local env = make_env({auto_step_route_active = true})
+
+    env.route_manager.autowalk_to_current()
+    assert_truthy(env.route_manager.get_last_pathfind_obj(),
+        "auto-walk setup should retain the selected target")
+
+    local stopped = env.route_manager.stop_auto_walk("player hotkey")
+
+    assert_equal(stopped, true, "active route cancellation should report success")
+    assert_equal(#env.cancel_active_step_calls, 1,
+        "player cancellation should cancel the active auto-step exactly once")
+    assert_equal(env.cancel_active_step_calls[1].clear_queued_route, true,
+        "player cancellation should clear queued route steps")
+    assert_equal(env.cancel_active_step_calls[1].force_release, true,
+        "player cancellation should force-release held direction input")
+    assert_equal(env.route_manager.get_last_pathfind_obj(), nil,
+        "player cancellation should clear route-manager target context")
+
+    env.restore()
+end
+
+function tests.player_stop_is_safe_noop_after_path_preview_without_active_route()
+    local env = make_env()
+
+    env.route_manager.pathfind_to_current()
+    assert_truthy(env.route_manager.get_last_pathfind_obj(),
+        "path preview should retain its target without starting auto-walk")
+
+    local stopped = env.route_manager.stop_auto_walk("player hotkey")
+
+    assert_equal(stopped, false, "path preview alone should not count as active auto-walk")
+    assert_equal(#env.cancel_active_step_calls, 0,
+        "idle cancellation should not inject a neutral controller frame")
+    assert_truthy(env.route_manager.get_last_pathfind_obj(),
+        "idle cancellation should preserve path-preview target context")
+
+    env.restore()
+end
 
 function tests.navigation_reload_rebinds_objects_module()
     local env = make_env({current_description = "Chest: 3 north (1 of 1)"})

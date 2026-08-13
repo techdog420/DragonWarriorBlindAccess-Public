@@ -73,6 +73,10 @@ U or F18: Automatically walk toward the selected object. The mod calculates a
 fresh path, so pressing O first is optional. Normal game interruptions and
 unsafe states can pause or stop movement.
 
+Shift+U: Stop active or pending auto-walk immediately. This releases held
+movement and clears the current automatic route without changing the selected
+object or guided Travel destination.
+
 R: Start guided travel to a supported selected Travel destination, or announce
 the status of the route already in progress. Guided overworld travel can use
 several verified route segments to reach the destination.

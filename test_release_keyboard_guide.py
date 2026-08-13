@@ -25,6 +25,7 @@ class ReleaseKeyboardGuideTests(unittest.TestCase):
             "key_pathfind": ("O|F16", "O or F16"),
             "key_route_guidance": ("R", "R:"),
             "key_auto_walk": ("U|F18", "U or F18"),
+            "key_stop_auto_walk": ("Shift+U", "Shift+U:"),
             "key_freeze_npcs": ("Shift+F", "Shift+F:"),
             "key_filter": ("Q", "Q:"),
             "key_filter_prev": ("Shift+J", "Shift+J:"),

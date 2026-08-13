@@ -1815,6 +1815,39 @@ Updated: 2026-08-12
 
 ## Final Tooling / Cleanup Notes
 
+- Player-facing auto-walk cancellation is implemented in source with
+  configurable default `Shift+U`. `hotkeys.lua` handles it before field and
+  object-control guards, cancels a pending `U` release, and calls the shared
+  `route_manager.stop_auto_walk("player hotkey")` path. That path clears queued
+  auto-step movement, force-releases direction input, clears target/route/NPC
+  context, and preserves the separate selected object and guided overworld
+  destination. Active or deferred cancellation interrupts with `Auto-walk
+  stopped`; idle use queues `No auto-walk is active`. The debug
+  `stop_auto_walk` command now uses the same cleanup path. `Shift+U` replaced
+  `Backspace` because JAWS intercepts Backspace; backslash was rejected after
+  it disrupted emulator audio. The chord handler also suppresses the
+  overlapping plain-`U` start action so release cannot restart a route. After
+  loading that final handler, the user live-tested two 13-step FCEUX/JAWS
+  routes from Dragonlord's Lair `(11,17)`. `Shift+U` stopped them at frames
+  2868 and 3190; the second had reached `(10,18)`, and no deferred start or
+  queued step appeared after key release. Fresh acceptance probe
+  `SHIFT_U_ACCEPTED` at frame 7680 confirmed `(10,19)`, `PATH_STATE target=nil`,
+  zero runtime blockers, and ready speech. Focused tests pass `42/42` hotkey,
+  `115/115` route-manager, `2/2` config, `10/10` hotkey-filter, and `4/4`
+  release-guide checks. The authoritative gate passes all 33 host-runnable Lua
+  suites and 68 Python tests.
+- The offline release gate is authoritative again. `run_tests.py` now
+  discovers all root Lua/Python tests instead of carrying a stale partial Lua
+  manifest, runs 33 host-runnable Lua suites plus 68 Python unit tests, syntax-
+  checks every root Lua/Python file, and explicitly skips only
+  `test_screen.lua` and `test_speech.lua` because they require live FCEUX
+  globals. Windows fallout is fixed: `test_debug_tools.lua` uses the available
+  temporary directory instead of hard-coded `/tmp`; shell tests launch through
+  resolved Git Bash with its `usr\bin` helpers on PATH; and the interactive
+  `test_tolk.py` was renamed `speech_smoke.py` so unittest discovery cannot
+  speak or exit unexpectedly. The expanded `python run_tests.py` gate passes
+  end to end. PowerShell may not resolve bare `lua`, but the runner currently
+  finds `C:\Users\developer\AppData\Local\Programs\LuaJIT\bin\luajit.exe`.
 - New non-teleport verifier helpers were added after the Garinham door/route
   fallout: use `verify_walked_edge:DIR` or `verify_walked_edge:X,Y,DIR` to
   route to an origin without teleport, then run the normal raw `probe_edge`
@@ -1877,8 +1910,7 @@ Updated: 2026-08-12
 
 ## Next Work
 
-1. Charlock is complete; resume the highest-priority remaining gameplay-
-   accessibility or pathfinding item outside this dungeon.
+1. Begin connected overworld routing and off-network recovery.
 2. For future live FCEUX work after source edits, manually reload `main.lua`
    before judging behavior. Keep battle/control-lock evidence separate from
    map geometry.

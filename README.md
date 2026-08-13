@@ -2,9 +2,9 @@
 
 > **Alpha / work in progress**
 >
-> This mod is approaching its first public release, but it has not yet been
-> validated through the entire game. Expect rough edges, incomplete route
-> coverage, and occasional troubleshooting.
+> A public alpha is available, and one complete blind-player run has reached
+> the original `The End` screen using the mod as the primary interface. Expect
+> rough edges, incomplete unrestricted routing, and occasional troubleshooting.
 
 ## Purpose
 
@@ -248,6 +248,10 @@ Select an object and press, then release, `U`. The mod calculates a path and
 moves the character toward the target. It announces progress on longer routes
 and speaks when the route completes.
 
+Press `Shift+U` to stop active or pending auto-walk immediately. This
+releases automatic movement and clears its current step/route state without
+changing the selected object or guided Travel destination.
+
 When an overworld guided route is active, auto-walk follows the current route
 segment to its next waypoint. It is not yet unrestricted whole-world
 pathfinding.
@@ -325,6 +329,7 @@ the current checked-in alpha configuration.
 - `O` or `F16`: preview a path to the selected object.
 - `R`: start or check guided route information for a selected Travel object.
 - `U` or `F18`: auto-walk to the selected object after the key is released.
+- `Shift+U`: immediately stop active or pending auto-walk.
 - `Shift+Enter`: teleport to the selected object.
 - `Shift+Arrow`: teleport to the adjacent cell on the chosen side of the
   selected object.
@@ -358,7 +363,8 @@ instructions.
 
 ## Current Limitations
 
-- This is an alpha release and has not been validated from beginning to end.
+- This is an alpha release. One complete blind-player run has reached the
+  original `The End` screen, but broader hardware and player testing remains.
 - Only `Dragon Warrior (USA) (Rev 1)` is currently supported and tested.
 - FCEUX is the main tested emulator. Manual installations using an ordinary
   stock FCEUX build may fail to load the ROM or Lua script automatically, in
@@ -388,17 +394,17 @@ instructions.
 
 ## Future Roadmap
 
-Near-term work toward the first public alpha:
+Near-term alpha stabilization:
 
 - Continue normal gameplay testing using the mod as the primary interface.
 - Improve and validate narration for shops, inns, items, spells, battles, and
   remaining menu or dialogue edge cases.
-- Decode and validate the final dungeon.
-- Finish essential map coverage for progression locations, services, stairs,
-  exits, doors, and treasure.
+- Maintain the completed Charlock and essential-map coverage as normal play
+  exposes regressions.
 - Expand guided routes and improve recovery wherever normal gameplay exposes a
   real route failure.
-- Add a convenient player-facing way to cancel an active auto-walk immediately.
+- Maintain the live-verified player-facing `Shift+U` auto-walk cancellation
+  control across ordinary routes and interruptions.
 - Validate the automatic installer on clean Windows systems and add a dedicated
   troubleshooting section.
 - Broaden testing across screen readers, controllers, Windows systems, and both
@@ -408,7 +414,7 @@ Near-term work toward the first public alpha:
 
 Longer-term goals:
 
-- Validate a complete playthrough.
+- Repeat end-to-end regression playthroughs on future release candidates.
 - Turn the existing overworld waypoint routes into a connected travel network
   that can route from any supported overworld location to any destination,
   using intermediate waypoints when needed.

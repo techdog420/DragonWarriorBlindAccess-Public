@@ -24,7 +24,11 @@ local function join_path(dir, name)
 end
 
 local function temp_path(name)
-    local dir = os.getenv("DW_TEST_TMPDIR") or os.getenv("TMPDIR") or "/tmp"
+    local dir = os.getenv("DW_TEST_TMPDIR")
+        or os.getenv("TMPDIR")
+        or os.getenv("TEMP")
+        or os.getenv("TMP")
+        or "."
     return join_path(dir, name)
 end
 

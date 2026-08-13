@@ -1446,6 +1446,22 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
+Current authoritative offline gate (`2026-08-12`):
+- Run `python run_tests.py` from the repository root on Windows.
+- The runner discovers every root `test_*.lua` suite automatically except
+  `test_env.lua`, which is a helper, and `test_screen.lua` / `test_speech.lua`,
+  which require live FCEUX globals and are reported as explicit skips.
+- It syntax-checks every root Lua and Python file, runs all 33 host-runnable
+  Lua suites through the discovered `lua` or `luajit` runtime, runs Python
+  unittest discovery, validates shell syntax, speech dependencies, and the
+  command queue, and returns nonzero on any failure.
+- `speech_smoke.py` is intentionally manual because it produces real screen-
+  reader speech; do not rename it to `test_*.py` or import it during automated
+  discovery.
+- On Windows, LuaJIT may be discoverable to Python even when PowerShell cannot
+  invoke a bare `lua` command. Let the runner resolve `lua`/`luajit`, and use
+  its reported executable path for focused manual Lua-suite runs.
+
 Historical BizHawk-default transition checkpoint, superseded by the current
 FCEUX player-facing default:
 - `a5386bc Make BizHawk the default emulator path`

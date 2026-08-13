@@ -40,6 +40,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         key_pathfind = "O",
         key_route_guidance = "R",
         key_auto_walk = "U",
+        key_stop_auto_walk = "Shift+U",
         key_filter = "Q",
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
@@ -64,6 +65,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         L = true,
         O = true,
         U = true,
+        Backspace = true,
         Q = true,
         Shift = true,
         W = true,
@@ -99,6 +101,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
     assert_equal(filtered.L, true, "next-object key should pass")
     assert_equal(filtered.O, true, "pathfind key should pass")
     assert_equal(filtered.U, true, "auto-walk key should pass")
+    assert_equal(filtered.Backspace, nil, "unconfigured Backspace should stay filtered")
     assert_equal(filtered.Q, true, "filter key should pass")
     assert_equal(filtered.K, true, "filter-all/current-object key should pass")
     assert_equal(filtered.F, true, "freeze key should pass")
