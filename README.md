@@ -237,11 +237,11 @@ direction still allows ordinary continuous movement.
 For local navigation, select an object and press `O` to hear a path preview.
 For supported overworld destinations, select a Travel object and press `R` to
 start or check a guided route. The mod announces route landmarks and directions
-while you move the character yourself. A Northern Cave route started near
-Tantegel first follows the existing route to Kol. Route status names Kol as the
-current leg and Northern Cave as the final destination. On reaching or entering
-Kol, guidance changes to the Northern Cave leg and waits for the next movement
-command.
+while you move the character yourself. Northern Cave and Swamp Cave routes
+started near Tantegel first follow the existing route to Kol. Route status names
+Kol as the current leg and preserves the selected cave as the final destination.
+On reaching or entering Kol, guidance changes to that cave's Kol-side leg and
+waits for the next movement command.
 
 Choose manual movement or route guidance when you want to explore, retain
 control, fight normal random encounters, and follow the intended game flow.

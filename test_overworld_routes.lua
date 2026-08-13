@@ -861,21 +861,21 @@ function tests.stopping_northern_cave_staging_clears_the_whole_itinerary()
     routes.reset_for_tests()
 end
 
-function tests.other_staged_routes_do_not_handoff_before_network_expansion()
+function tests.final_progression_staged_routes_do_not_handoff_before_network_expansion()
     routes.reset_for_tests()
-    routes.start("swamp cave", 0x01, 43, 43)
-    local kol = assert(routes._route_for_tests("kol"))
-    local event
+    local info = assert(routes.start("rainbow bridge", 0x01, 102, 72))
 
-    for index = 2, #kol.waypoints do
-        local waypoint = kol.waypoints[index]
-        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
-    end
+    assert_equal(info.route.id, "swamp_cave_south",
+        "far Rainbow Bridge requests should stage through the south cave route")
+    assert_contains(info.log, "staged_from=rainbow_bridge",
+        "the later progression destination should remain recorded during staging")
 
-    assert_contains(event.message, "Arrived at Kol",
-        "non-opted-in staging routes should retain their existing stop at Kol")
+    local event = routes.observe_position(0x15, 0, 29)
+
+    assert_contains(event.message, "Arrived at Swamp Cave South Entrance",
+        "non-opted-in progression routes should retain their existing stop at the staging destination")
     assert_equal(routes.is_active(), false,
-        "the first itinerary slice must not silently enable every staged route")
+        "connected Kol routes must not silently enable later progression handoffs")
 
     routes.reset_for_tests()
 end
@@ -1563,6 +1563,77 @@ function tests.swamp_cave_from_tantegel_starts_kol_staging_route()
     assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
     assert_contains(info.message, "Route to Kol", "staging should include normal route guidance")
     assert_contains(info.log, "staged_from=swamp_cave", "staged starts should be visible in logs")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_object_from_tantegel_retains_final_destination()
+    routes.reset_for_tests()
+
+    local target = {
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }
+    local info, err = routes.start_for_object(target, 0x01, 43, 43)
+
+    assert_equal(err, nil, "Swamp Cave Travel object should resolve from Tantegel")
+    assert_equal(info.route.id, "kol", "Travel-object starts should use the Kol staging route")
+    assert_equal(info.object_id, "route_kol_02", "Travel-object staging should leave Tantegel on the Kol route")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected Swamp Cave object should remain bound during the Kol leg")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_staging_status_names_current_leg_and_final_destination()
+    routes.reset_for_tests()
+    routes.start("swamp cave", 0x01, 43, 43)
+
+    local info = routes.status(0x01, 43, 43)
+
+    assert_contains(info.message, "Current leg to Kol",
+        "Swamp Cave staging status should identify the route currently being followed")
+    assert_contains(info.message, "Final destination: Swamp Cave",
+        "Swamp Cave staging status should retain the player's requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_staging_hands_off_at_kol_without_starting_movement()
+    routes.reset_for_tests()
+    routes.start("swamp cave", 0x01, 43, 43)
+    local kol = assert(routes._route_for_tests("kol"))
+    local event
+
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(routes.active_route_id(), "swamp_cave",
+        "reaching Kol should activate the requested Swamp Cave leg")
+    assert_equal(event.status, "handoff",
+        "the Swamp Cave itinerary should distinguish a leg handoff from final arrival")
+    assert_contains(event.message, "Reached Kol. Continuing to Swamp Cave.",
+        "handoff speech should name the completed hub and final destination")
+    assert_contains(event.message, "Next: Kol forest west edge",
+        "handoff speech should identify the first Swamp Cave waypoint")
+    assert_contains(event.log, "event=handoff",
+        "Swamp Cave handoff should be explicit in structured logs")
+    assert_contains(event.log, "from_route=kol",
+        "Swamp Cave handoff logs should identify the completed leg")
+    assert_equal(event.object_id, "route_swamp_cave_02",
+        "route markers should refresh to the first Swamp Cave movement waypoint")
+    assert_equal(event.steps, nil,
+        "Swamp Cave handoff must wait for another player auto-walk command")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the next player-triggered segment should leave Kol toward Swamp Cave")
+    assert_equal(segment.steps[1], "left",
+        "the second leg should use the live-validated westbound Kol exit")
 
     routes.reset_for_tests()
 end

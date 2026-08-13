@@ -66,6 +66,20 @@ quality-of-life work.
   suites plus 68 Python tests. The user also manually completed the combined
   Tantegel-to-Northern-Cave route and confirmed the system behaved as expected.
   This pilot is closed and ready to expand.
+- The second connected-route slice is implemented for `Tantegel -> Kol ->
+  Swamp Cave`. Far Swamp Cave starts preserve the final destination while
+  following the Kol leg; the Kol handoff selects the canonical full
+  `swamp_cave` route instead of its bridge-only alternate and waits for another
+  `U`. Loaded status, handoff, pause, and stale-object bare-`U` behavior pass.
+  A clean natural run from Kol traversed every established south-road,
+  x94 poison-swamp, and cave-entrance waypoint, entering Swamp Cave map `0x15`
+  at `(0,0)` with HP `149/149`, no active path, and no runtime blockers.
+  Focused tests pass `164/164`; the full gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests. The user manually completed the combined
+  Tantegel-to-Swamp-Cave route: fresh logs show the Kol route start at frame
+  `71501`, handoff to Swamp Cave at frame `84046`, and cave arrival at frame
+  `89299`. The final probe confirmed map `0x15` `(0,0)`, no active path, and no
+  runtime blockers. This slice is closed.
 
 ## Remaining Map Completion
 
@@ -84,10 +98,10 @@ quality-of-life work.
   chains and waypoints as a connected graph so selecting any supported
   overworld location can compose a route from the player's current position,
   through existing waypoint corridors, to the destination. Reusing current
-  route data is preferred over replacing live-validated segments. The initial
-  opt-in Kol-to-Northern-Cave pilot is live-verified. Next, expand the same
-  explicit handoff model to one more existing Kol-staged destination, with
-  `Tantegel -> Kol -> Swamp Cave` as the smallest follow-up slice.
+  route data is preferred over replacing live-validated segments. The opt-in
+  Northern Cave and Swamp Cave are implemented and manually live-accepted as
+  connected routes. Choose the next existing staged destination before
+  generalizing the route model further.
 - Off-network recovery: when a player manually explores or gets lost, provide a
   player-facing command that finds a safe route back to the nearest reachable
   waypoint-network entry and then continues toward the selected destination.

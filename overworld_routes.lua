@@ -10,10 +10,12 @@ local MAX_VISIBLE_ACTIVE_WAYPOINTS = 2
 
 local SWAMP_CAVE_STAGING = {
     route_id = "kol",
+    continuation_route_id = "swamp_cave",
     max_start_distance = 24,
     min_x = 84,
     min_y = 8,
     max_y = 50,
+    continue_after_staging = true,
 }
 
 local FINAL_PROGRESSION_STAGING = {
@@ -2035,8 +2037,13 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
         return nil
     end
 
+    local requested_route = route
+    if staging.continuation_route_id and ROUTES[staging.continuation_route_id] then
+        requested_route = ROUTES[staging.continuation_route_id]
+    end
+
     return {
-        requested_route = route,
+        requested_route = requested_route,
         route_id = fallback_id,
     }
 end

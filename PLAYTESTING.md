@@ -2051,6 +2051,28 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `northern_cave`, next `Rain shrine east-shore detour`, path nil, and no
   runtime blockers.
 
+- The second connected itinerary, `Tantegel -> Kol -> Swamp Cave`, is source-
+  complete and live-verified in focused parts. From Tantegel `(43,43)`, loaded
+  status reported `Current leg to Kol. Final destination: Swamp Cave`; the Kol
+  trigger emitted `event=handoff route=swamp_cave waypoint=Kol forest west
+  edge index=2 from_route=kol` and left no movement queued. Bare `U` retained
+  the active Swamp Cave route even while an unrelated Travel object remained
+  selected. After a natural Kol entry/exit cleaned the movement state, a fresh
+  local Swamp Cave start at World Map `(104,10)` traversed the full established
+  route: `(96,13)`, `(96,21)`, the x98 south-road detour, bridge lane
+  `(92,37)`, x94 poison-swamp drop, row-41 lane, and entrance doorstep
+  `(104,43)`. The final `DOWN` entered Swamp Cave map `0x15` at `(0,0)` and
+  announced arrival. Final state was HP `149/149`, path nil, runtime blockers
+  none, and no overworld route active. Two movement failures from force-seeded
+  origins were rejected as teleport contamination and did not change map or
+  route data. The user then manually completed the combined
+  Tantegel-to-Swamp-Cave route. Fresh logs confirmed the staged Kol route start
+  at frame `71501`, handoff at frame `84046`, and arrival at frame `89299`.
+  Probe `SWAMP_MANUAL_ACCEPTANCE_20260813` at frame `92640` confirmed Swamp
+  Cave map `0x15` `(0,0)`, HP `149/149`, no active path, no runtime blockers,
+  and no active overworld route. This is the final player acceptance for the
+  connected Swamp Cave route.
+
 - Rain Shrine / Northern Cave first interior pass: map `0x0D` is a 10x10
   shrine with the wise man / old man at `(4,4)` and the live bottom
   entrance/exit at `(4,9)`. Route evidence toward the old man repeatedly

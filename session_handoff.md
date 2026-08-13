@@ -1843,7 +1843,8 @@ Updated: 2026-08-13
   Regression coverage includes final-target binding, status, guidance refresh,
   exterior/interior handoff including stale terrain offset, no automatic
   movement, post-refresh bare-`U` continuation, explicit cancellation, and a
-  guard proving Swamp Cave still stops at Kol. Focused checks pass `161/161`
+  guard proving later final-progression staging still stops at its hub. Focused
+  checks pass `164/164`
   overworld-route and `116/116` route-manager tests; the authoritative gate
   passes all 33 host-runnable Lua suites and 68 Python tests, with clean Lua
   syntax and `git diff --check`. The user then manually completed the combined
@@ -1855,6 +1856,29 @@ Updated: 2026-08-13
   final checkpoint on World Map `(92,10)`: route `northern_cave`, next `Rain
   shrine east-shore detour`, path nil, no runtime blockers, and Kol still
   selected.
+- The second connected itinerary, `Tantegel -> Kol -> Swamp Cave`, now opts
+  into the same explicit handoff model. `SWAMP_CAVE_STAGING` names canonical
+  `swamp_cave` as its continuation so a far start cannot retain the shorter
+  `swamp_cave_bridge` alternate after Kol. Loaded status from Tantegel
+  `(43,43)` named Kol as the current leg and Swamp Cave as the final
+  destination. The Kol trigger emitted `event=handoff route=swamp_cave
+  waypoint=Kol forest west edge index=2 from_route=kol`, queued no movement,
+  and bare `U` followed the active route despite stale unrelated object focus.
+  After a natural Kol entry/exit, a clean local run traversed every existing
+  Swamp Cave waypoint through the x98 south-road detour, `(92,37)` bridge lane,
+  `(94,40)->(94,41)` poison-swamp drop, row-41 lane, and `(104,43)` doorstep.
+  The final step entered map `0x15` at `(0,0)` and logged `event=arrived`.
+  Fresh tag `SWAMP_CONNECTED_ARRIVAL_20260813` confirmed HP `149/149`, path
+  nil, runtime blocks none, and no overworld route active. Two force-seeded
+  movement timeouts were teleport contamination and were not promoted. The
+  focused route suite passes `164/164`; the full gate passes all 33
+  host-runnable Lua suites plus 68 Python tests. The user then manually
+  completed the full Tantegel-to-Swamp-Cave route. Fresh structured events show
+  `route=kol staged_from=swamp_cave` at frame `71501`, the Kol handoff at frame
+  `84046`, and Swamp Cave arrival at frame `89299`. Probe
+  `SWAMP_MANUAL_ACCEPTANCE_20260813` at frame `92640` confirmed map `0x15`
+  `(0,0)`, HP `149/149`, no active path, no runtime blockers, and no active
+  overworld route. This connected-route slice is closed.
 - Player-facing auto-walk cancellation is implemented in source with
   configurable default `Shift+U`. `hotkeys.lua` handles it before field and
   object-control guards, cancels a pending `U` release, and calls the shared
