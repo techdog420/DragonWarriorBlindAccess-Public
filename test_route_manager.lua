@@ -1218,6 +1218,40 @@ function tests.overworld_autowalk_to_object_switches_routes_when_destination_dif
     env.restore()
 end
 
+function tests.overworld_autowalk_to_current_preserves_active_route_after_object_refresh()
+    -- Map changes reset object selection to a nearby landmark. Bare U should
+    -- continue guidance started with R instead of treating that refresh as a
+    -- deliberate destination change.
+    local kol_obj = {id = "overworld_kol", name = "Kol", x = 104, y = 10}
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 104,
+        start_y = 10,
+        current_object = kol_obj,
+        overworld_active_route_id = "northern_cave",
+        overworld_route_for_object = "kol",
+        overworld_active_route_matches_object = false,
+        overworld_segment = {
+            route = {id = "northern_cave", title = "Northern Cave"},
+            waypoint = {name = "Kol forest west edge", x = 96, y = 13},
+            index = 2,
+            steps = {"left"},
+            message = "Auto-walk to Kol forest west edge.",
+            object_id = "route_northern_cave_02",
+        },
+    })
+
+    env.route_manager.autowalk_to_current({speak = true})
+
+    assert_equal(#env.overworld_start_calls(), 0,
+        "bare U should not replace active guidance with the refreshed Kol selection")
+    assert_equal(env.overworld_plan_calls(), 1,
+        "bare U should queue the active Northern Cave segment")
+
+    env.restore()
+end
+
 function tests.overworld_autowalk_to_object_skips_switch_when_same_destination()
     -- When the selected object's route matches the active route, no switch
     -- is needed — autowalk should just advance the active route's segment.

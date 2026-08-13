@@ -181,6 +181,8 @@ local ROUTES = {
             {x = 93, y = 35, name = "Kol south road lower bend", radius = 0},
             {x = 96, y = 35, name = "Kol south road east lane", radius = 0},
             {x = 96, y = 32, name = "Kol south road", radius = 1},
+            {x = 98, y = 32, name = "Kol south road lower east lane", radius = 0},
+            {x = 98, y = 26, name = "Kol south road east detour", radius = 0, axis_order = {"vertical", "horizontal"}},
             {x = 96, y = 21, name = "West of Kol north lane", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1},
             {x = 104, y = 10, name = "Kol", radius = 0, final = true},
@@ -209,6 +211,7 @@ local ROUTES = {
             max_start_distance = 24,
             min_x = 75,
             max_y = 21,
+            continue_after_staging = true,
         },
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},
@@ -1897,6 +1900,16 @@ local function active_route()
     return state.active_id and ROUTES[state.active_id] or nil
 end
 
+local function staged_destination_route()
+    local route = state.staged_from and ROUTES[state.staged_from] or nil
+    if route
+       and route.staging
+       and route.staging.continue_after_staging == true then
+        return route
+    end
+    return nil
+end
+
 function M.active_route_id()
     return state.active_id
 end
@@ -2048,6 +2061,25 @@ local function waypoint_status(route, index, px, py)
         direction_string(px, py, point.x, point.y))
 end
 
+local function staged_waypoint_status(route, requested_route, index, px, py)
+    local point = route and route.waypoints and route.waypoints[index] or nil
+    local prefix = string.format(
+        "Current leg to %s. Final destination: %s.",
+        tostring(route and route.title or "waypoint"),
+        tostring(requested_route and requested_route.title or "destination"))
+    if not point then
+        return prefix
+    end
+    if px == nil or py == nil then
+        return prefix .. " Next: " .. point.name
+    end
+    return string.format(
+        "%s Next: %s, %s",
+        prefix,
+        point.name,
+        direction_string(px, py, point.x, point.y))
+end
+
 local function make_log(event, route, point, index)
     return string.format(
         "event=%s route=%s waypoint=%s index=%s",
@@ -2069,6 +2101,50 @@ local function route_final_waypoint(route)
         return nil
     end
     return route.waypoints[#route.waypoints]
+end
+
+local function handoff_staged_route(completed_route, completed_point, map_id, px, py, terrain_offset)
+    local requested_route = staged_destination_route()
+    if not requested_route then
+        return nil
+    end
+
+    local anchor_x = px
+    local anchor_y = py
+    -- Map ID changes before terrain_offset settles during some town transitions.
+    -- A known destination map is authoritative, so anchor the next leg outside.
+    if is_destination_map(completed_route, map_id) or not is_overworld(map_id, terrain_offset) then
+        anchor_x = completed_point and completed_point.x or px
+        anchor_y = completed_point and completed_point.y or py
+    end
+
+    state.active_id = requested_route.id
+    state.staged_from = nil
+    state.warned = {}
+    state.last_map_id = map_id
+    state.last_x = px
+    state.last_y = py
+    state.next_index = choose_next_index(
+        requested_route, WORLD_MAP_ID, anchor_x, anchor_y, terrain_offset)
+
+    local next_point = requested_route.waypoints[state.next_index]
+    return {
+        status = "handoff",
+        route = requested_route,
+        completed_route = completed_route,
+        waypoint = next_point,
+        message = string.format(
+            "Reached %s. Continuing to %s. %s",
+            tostring(completed_point and completed_point.name
+                or completed_route and completed_route.title
+                or "staging point"),
+            tostring(requested_route.title),
+            waypoint_status(requested_route, state.next_index, anchor_x, anchor_y)),
+        log = make_log("handoff", requested_route, next_point, state.next_index)
+            .. " from_route=" .. tostring(completed_route and completed_route.id or "-"),
+        object_id = route_object_id(requested_route, state.next_index),
+        refresh = true,
+    }
 end
 
 local function clear_active_route()
@@ -2155,6 +2231,10 @@ end
 function M.active_route_matches_object(obj)
     local route = active_route()
     if object_matches_route(route, obj) then
+        return true
+    end
+
+    if object_matches_route(staged_destination_route(), obj) then
         return true
     end
 
@@ -2322,6 +2402,15 @@ function M.status(map_id, px, py, opts)
 
     local use_position = is_overworld(map_id, terrain_offset)
     local message = waypoint_status(route, index, use_position and px or nil, use_position and py or nil)
+    local requested_route = staged_destination_route()
+    if requested_route then
+        message = staged_waypoint_status(
+            route,
+            requested_route,
+            index,
+            use_position and px or nil,
+            use_position and py or nil)
+    end
     if recalculated or opts.force_recalculate_message then
         message = "Route recalculated. " .. message
     end
@@ -2417,7 +2506,10 @@ function M.guidance_for_object(obj, map_id, px, py, opts)
     local route = active_route()
     if route then
         local selected_id = M.route_id_for_object(obj, map_id, px, py, opts.terrain_offset)
-        if selected_id and not route_destinations_match(route, ROUTES[selected_id]) then
+        local requested_route = staged_destination_route()
+        if selected_id
+           and not route_destinations_match(route, ROUTES[selected_id])
+           and not route_destinations_match(requested_route, ROUTES[selected_id]) then
             return M.start(selected_id, map_id, px, py, opts)
         end
         return M.status(map_id, px, py, {
@@ -2436,7 +2528,9 @@ function M.observe_position(map_id, px, py, terrain_offset)
     end
 
     if is_destination_map(route, map_id) then
-        return finish_route(route, route_final_waypoint(route), "arrived")
+        local final = route_final_waypoint(route)
+        return handoff_staged_route(route, final, map_id, px, py, terrain_offset)
+            or finish_route(route, final, "arrived")
     end
 
     if not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
@@ -2467,7 +2561,8 @@ function M.observe_position(map_id, px, py, terrain_offset)
     end
 
     if point.final then
-        local event = finish_route(route, point, "arrived")
+        local event = handoff_staged_route(route, point, map_id, px, py, terrain_offset)
+            or finish_route(route, point, "arrived")
         if #messages > 0 then
             event.message = table.concat(messages, " ") .. " " .. event.message
         end

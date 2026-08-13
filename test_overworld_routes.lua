@@ -528,7 +528,8 @@ function tests.kol_route_uses_garinham_road_and_north_bridges()
     routes.observe_position(0x01, 96, 35)
     local south_road = routes.observe_position(0x01, 96, 32)
     assert_contains(south_road.message, "Reached Kol south road", "route should use the live x=96 south-road lane")
-    assert_contains(south_road.message, "Next: West of Kol north lane", "south road should continue north toward Kol")
+    assert_contains(south_road.message, "Next: Kol south road lower east lane",
+        "south road should detour east around the blocked x96 north seam")
 
     routes.reset_for_tests()
 end
@@ -624,8 +625,24 @@ function tests.kol_route_follows_live_south_road_jog()
     routes.start("kol", 0x01, 96, 33)
 
     local north_lane = assert(routes.plan_next_segment(0x01, 96, 33))
-    assert_equal(north_lane.waypoint.name, "West of Kol north lane", "near the live south road should skip the stale west target")
-    assert_equal(north_lane.steps[1], "up", "south-road lane should continue north")
+    assert_equal(north_lane.waypoint.name, "Kol south road lower east lane",
+        "the original Kol route should reuse the newer live-proven x98 detour")
+    assert_equal(north_lane.steps[1], "up",
+        "one tile below the road marker should first recover north")
+
+    routes.observe_position(0x01, 96, 32)
+    local east_detour = assert(routes.plan_next_segment(0x01, 96, 32))
+    assert_equal(east_detour.waypoint.name, "Kol south road lower east lane",
+        "the route should step east before the blocked x96 north seam")
+    assert_equal(east_detour.steps[1], "right",
+        "the live-proven detour should leave x96 eastbound")
+
+    routes.observe_position(0x01, 98, 32)
+    local north_detour = assert(routes.plan_next_segment(0x01, 98, 32))
+    assert_equal(north_detour.waypoint.name, "Kol south road east detour",
+        "the route should climb the proven x98 lane")
+    assert_equal(north_detour.steps[1], "up",
+        "the x98 detour should continue north")
 
     routes.reset_for_tests()
 end
@@ -699,17 +716,166 @@ end
 function tests.northern_cave_object_from_tantegel_starts_kol_staging_route()
     routes.reset_for_tests()
 
-    local info, err = routes.start_for_object({
+    local target = {
         id = "overworld_northern_cave",
         name = "Northern Cave",
         x = 81,
         y = 1,
-    }, 0x01, 43, 43)
+    }
+    local info, err = routes.start_for_object(target, 0x01, 43, 43)
 
     assert_equal(err, nil, "Northern Cave Travel object should resolve from Tantegel")
     assert_equal(info.route.id, "kol", "Travel-object starts should use the same Kol staging guard")
     assert_equal(info.object_id, "route_kol_02", "Travel-object staging should start the Kol route")
     assert_contains(info.message, "Northern Cave route starts from Kol", "Travel-object staging should explain the hub route")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected Northern Cave object should remain bound during the Kol leg")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_staging_status_names_current_leg_and_final_destination()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 43, 43)
+
+    local info = routes.status(0x01, 43, 43)
+
+    assert_contains(info.message, "Current leg to Kol",
+        "staging status should identify the route currently being followed")
+    assert_contains(info.message, "Final destination: Northern Cave",
+        "staging status should retain the player's requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_guidance_refresh_keeps_the_active_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_northern_cave",
+        name = "Northern Cave",
+        x = 81,
+        y = 1,
+    }
+    routes.start_for_object(target, 0x01, 43, 43)
+
+    local info = routes.guidance_for_object(target, 0x01, 43, 43)
+
+    assert_equal(info.route.id, "kol",
+        "re-reading guidance should keep the current Kol leg active")
+    assert_contains(info.message, "Current leg to Kol",
+        "re-reading guidance should report the active leg instead of restarting it")
+    assert_contains(info.message, "Final destination: Northern Cave",
+        "re-reading guidance should retain the requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_staging_hands_off_at_kol_without_starting_movement()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 43, 43)
+    local kol = assert(routes._route_for_tests("kol"))
+    local event
+
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(routes.active_route_id(), "northern_cave",
+        "reaching Kol should activate the requested second leg")
+    assert_equal(event.status, "handoff",
+        "the route event should distinguish a leg handoff from final arrival")
+    assert_contains(event.message, "Reached Kol. Continuing to Northern Cave.",
+        "handoff speech should name the completed hub and final destination")
+    assert_contains(event.message, "Next: Kol forest west edge",
+        "handoff speech should identify the next Northern Cave waypoint")
+    assert_contains(event.log, "event=handoff",
+        "handoff should be explicit in structured logs")
+    assert_contains(event.log, "from_route=kol",
+        "handoff logs should identify the completed leg")
+    assert_equal(event.object_id, "route_northern_cave_02",
+        "route markers should refresh to the first Northern Cave movement waypoint")
+    assert_equal(event.steps, nil,
+        "handoff must wait for another player auto-walk command instead of moving immediately")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the next player-triggered segment should leave Kol toward the cave")
+    assert_equal(segment.steps[1], "left",
+        "the second leg should use the live-validated westbound Kol exit")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_staging_hands_off_when_kol_is_entered()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 43, 43)
+
+    local event = routes.observe_position(0x07, 8, 8)
+
+    assert_equal(routes.active_route_id(), "northern_cave",
+        "entering Kol should preserve the requested Northern Cave itinerary")
+    assert_equal(event.status, "handoff",
+        "entering the staging destination should produce the same leg handoff")
+    assert_contains(event.message, "Reached Kol. Continuing to Northern Cave.",
+        "interior handoff speech should name the completed hub and final destination")
+    assert_equal(event.object_id, "route_northern_cave_02",
+        "interior handoff should keep the next exterior route marker ready")
+    assert_equal(event.steps, nil,
+        "entering Kol must not start the second leg automatically")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_interior_handoff_ignores_stale_overworld_terrain_offset()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 43, 43)
+
+    local event = routes.observe_position(0x07, 19, 23, 0x00)
+
+    assert_equal(routes.active_route_id(), "northern_cave",
+        "Kol entry should still activate the requested route during terrain-offset lag")
+    assert_equal(event.status, "handoff",
+        "the map transition should remain a staged-route handoff")
+    assert_equal(event.object_id, "route_northern_cave_02",
+        "interior coordinates must not select a distant overworld waypoint")
+    assert_contains(event.message, "Next: Kol forest west edge",
+        "handoff guidance should anchor the second leg at exterior Kol")
+
+    routes.reset_for_tests()
+end
+
+function tests.stopping_northern_cave_staging_clears_the_whole_itinerary()
+    routes.reset_for_tests()
+    routes.start("rain shrine", 0x01, 43, 43)
+
+    local event = routes.stop()
+
+    assert_contains(event.message, "Stopped overworld route",
+        "explicit route stop should acknowledge the cancellation")
+    assert_equal(routes.is_active(), false,
+        "explicit route stop should clear the current staging leg")
+    assert_equal(routes.observe_position(0x01, 104, 10), nil,
+        "a stopped itinerary must not resume or hand off when Kol is later reached")
+
+    routes.reset_for_tests()
+end
+
+function tests.other_staged_routes_do_not_handoff_before_network_expansion()
+    routes.reset_for_tests()
+    routes.start("swamp cave", 0x01, 43, 43)
+    local kol = assert(routes._route_for_tests("kol"))
+    local event
+
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_contains(event.message, "Arrived at Kol",
+        "non-opted-in staging routes should retain their existing stop at Kol")
+    assert_equal(routes.is_active(), false,
+        "the first itinerary slice must not silently enable every staged route")
 
     routes.reset_for_tests()
 end

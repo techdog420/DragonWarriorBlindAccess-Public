@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-12
+Updated: 2026-08-13
 
 ## Release Installation Handoff
 
@@ -1815,6 +1815,46 @@ Updated: 2026-08-12
 
 ## Final Tooling / Cleanup Notes
 
+- The first connected overworld itinerary is implemented in source for
+  `Tantegel -> Kol -> Northern Cave`, intentionally without enabling the other
+  staged routes yet. A Northern Cave selection from Tantegel activates the
+  existing Kol route while preserving the Northern Cave Travel target. `R`
+  reports `Current leg to Kol. Final destination: Northern Cave` plus the next
+  waypoint. Reaching exterior Kol `(104,10)` or entering map `0x07` emits a
+  structured `event=handoff route=northern_cave ... from_route=kol`, refreshes
+  the route marker to `route_northern_cave_02`, and waits for another `U`
+  instead of moving automatically. `Shift+U` still stops only current or
+  pending auto-walk while preserving guidance; explicit route stop clears the
+  complete itinerary. Live FCEUX/JAWS acceptance is complete. Starting from
+  Tantegel road `(43,43)` preserved Northern Cave while status named Kol as the
+  current leg. Entering Kol produced `event=handoff route=northern_cave
+  waypoint=Kol forest west edge index=2 from_route=kol`; the hero stayed at
+  Kol `(19,23)` for 508 frames with `PATH_STATE target=nil`. After exiting to
+  World Map `(104,10)`, a refreshed Kol selection initially caused bare `U` to
+  replace the Northern Cave route. `route_manager.lua` now distinguishes bare
+  `U`/`auto_walk`, which follows active guidance, from explicit object-target
+  calls, which may still switch destinations. The loaded fix reproduced the
+  exact conflict (`target=Kol`, `active_route=northern_cave`,
+  `follow_active=true`) and completed 11 ordinary steps to `(96,13)`. Final
+  state is route `northern_cave`, next `West of Kol forest bend` `(92,10)`,
+  path nil, and no runtime blockers. The legacy Kol route also uses the
+  live-proven `(98,32) -> (98,26)` east detour around blocked
+  `(96,28) -> UP`; the x98 north leg completed normally after reload.
+  Regression coverage includes final-target binding, status, guidance refresh,
+  exterior/interior handoff including stale terrain offset, no automatic
+  movement, post-refresh bare-`U` continuation, explicit cancellation, and a
+  guard proving Swamp Cave still stops at Kol. Focused checks pass `161/161`
+  overworld-route and `116/116` route-manager tests; the authoritative gate
+  passes all 33 host-runnable Lua suites and 68 Python tests, with clean Lua
+  syntax and `git diff --check`. The user then manually completed the combined
+  Tantegel-to-Northern-Cave route and confirmed the connected behavior worked
+  as expected. The remaining observation is separate legacy polish: some early
+  overworld routes still enter intermediate towns. Track that independently;
+  it does not block this connected-route checkpoint or the Swamp Cave slice.
+  Fresh review marker `MANUAL_COMBINED_REVIEW_20260813` confirmed the user's
+  final checkpoint on World Map `(92,10)`: route `northern_cave`, next `Rain
+  shrine east-shore detour`, path nil, no runtime blockers, and Kol still
+  selected.
 - Player-facing auto-walk cancellation is implemented in source with
   configurable default `Shift+U`. `hotkeys.lua` handles it before field and
   object-control guards, cancels a pending `U` release, and calls the shared
@@ -1910,7 +1950,15 @@ Updated: 2026-08-12
 
 ## Next Work
 
-1. Begin connected overworld routing and off-network recovery.
-2. For future live FCEUX work after source edits, manually reload `main.lua`
-   before judging behavior. Keep battle/control-lock evidence separate from
-   map geometry.
+1. Expand the verified itinerary behavior to one more existing staged route.
+   The smallest next slice is `Tantegel -> Kol -> Swamp Cave`, reusing the same
+   Kol handoff while leaving all other staged destinations disabled.
+2. Live-test that slice with the same acceptance contract: preserve the final
+   Travel target, name current and final legs, do not move automatically at
+   Kol, and make bare `U` follow the active second leg despite object refresh.
+3. Keep off-network recovery separate until a second connected route proves
+   the handoff mechanism generalizes cleanly.
+4. Circle back in a separate task to polish first-generation routes that enter
+   intermediate towns; do not mix that audit into connected-route expansion.
+5. For live FCEUX work, keep battle/control-lock evidence separate from map
+   geometry.

@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-12
+Updated: 2026-08-13
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -50,8 +50,22 @@ quality-of-life work.
   live FCEUX/JAWS cancellations stopped multi-step routes with no queued-step
   restart, and a fresh probe confirmed no active path. Focused and broad tests
   pass; this item is closed.
-- Begin the connected overworld travel network and off-network recovery work
-  below.
+- The first connected-route slice is implemented in source for `Tantegel ->
+  Kol -> Northern Cave`. Selecting Northern Cave near Tantegel keeps the final
+  Travel target focused while the current leg follows the existing Kol route.
+  Route status names both the Kol leg and Northern Cave destination; reaching
+  or entering Kol hands guidance off to the existing Northern Cave route but
+  waits for another `U` before moving. Live FCEUX/JAWS acceptance passed the
+  final-target/status behavior, the Kol transition handoff, the no-automatic-
+  movement pause, and the explicit second-leg start. Bare `U` now follows the
+  active guided route even if a map refresh selects the nearby Kol landmark;
+  explicit object-target APIs still switch destinations. The older Kol route
+  also now uses the live-proven `(98,32) -> (98,26)` detour around the blocked
+  `(96,28) -> UP` edge. Focused tests pass `161/161` overworld-route and
+  `116/116` route-manager tests; the full gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests. The user also manually completed the combined
+  Tantegel-to-Northern-Cave route and confirmed the system behaved as expected.
+  This pilot is closed and ready to expand.
 
 ## Remaining Map Completion
 
@@ -70,12 +84,19 @@ quality-of-life work.
   chains and waypoints as a connected graph so selecting any supported
   overworld location can compose a route from the player's current position,
   through existing waypoint corridors, to the destination. Reusing current
-  route data is preferred over replacing live-validated segments.
+  route data is preferred over replacing live-validated segments. The initial
+  opt-in Kol-to-Northern-Cave pilot is live-verified. Next, expand the same
+  explicit handoff model to one more existing Kol-staged destination, with
+  `Tantegel -> Kol -> Swamp Cave` as the smallest follow-up slice.
 - Off-network recovery: when a player manually explores or gets lost, provide a
   player-facing command that finds a safe route back to the nearest reachable
   waypoint-network entry and then continues toward the selected destination.
   Recovery must not teleport, require knowledge of route names, or silently
   cross hazards and unknown blockers.
+- Early-route town-entry polish: several first-generation overworld routes
+  still step onto intermediate town entrances instead of stopping outside or
+  routing around them. Audit and correct those routes in a separate focused
+  task; do not couple that legacy cleanup to connected-network expansion.
 - Preserve object focus while routing. Internal waypoint selection must not
   replace the player's selected destination, and route status should explain
   the current recovery leg, next waypoint, and final destination.

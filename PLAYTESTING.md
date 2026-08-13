@@ -1996,9 +1996,10 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   The later south-road issue was also patched from live movement: after
   `Kol southwest bridge`, the route should now go east through `(92,37)`,
   jog through `(92,36)`, `(93,36)`, `(93,35)`, and `(96,35)`, then treat
-  `(96,32)` as `Kol south road` before continuing north to `(96,21)`. This
-  avoids the stale `(90,30)` south-road pullback. After reload, the user reached
-  Kol; the fresh current-state probe reports `map=0x07(Kol) x=19 y=23`.
+  `(96,32)` as `Kol south road`. A later full-route pass proved direct north at
+  `(96,28) -> UP` genuinely blocked. The route now steps east through
+  `(98,32)`, climbs to `(98,26)`, and rejoins at `(96,21)`. After reload, the
+  x98 north segment completed normally to `(98,26)` with no runtime blockers.
 
 - Kol service decoding is staged. Local reference images and a text
   transcription are now in `project_resources/maps/kol/`: Mike's map page,
@@ -2030,6 +2031,25 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   Shrine approach from `(81,1)` back to Kol; selecting Kol or recalculating
   near the shrine should start west toward `Rain shrine entrance approach`
   instead of far south toward the old Kol chain.
+
+- The first connected itinerary, `Tantegel -> Kol -> Northern Cave`, is live-
+  accepted. Starting Northern Cave at Tantegel `(43,43)` kept Northern Cave as
+  the final destination while status named Kol as the current leg. Entering
+  Kol emitted a handoff to `Kol forest west edge` index 2 and did not start
+  movement; the hero remained at Kol `(19,23)` with no active path. Map refresh
+  selects the nearby Kol landmark on return to the World Map, so bare `U` now
+  explicitly follows the active route rather than interpreting that automatic
+  selection as a destination change. With `Kol` still selected and
+  `northern_cave` active, loaded FCEUX completed the 11-step segment from
+  `(104,10)` to `(96,13)`, announced `West of Kol forest bend` next, and ended
+  with no active path or runtime blockers. Explicit object-target actions still
+  retain their destination-switch behavior. The user subsequently completed
+  the combined Tantegel-to-Northern-Cave route manually and reported the
+  connected system behaved as expected. Some older route segments still enter
+  intermediate towns; treat that as a separate legacy-route polish task. The
+  preserved post-run review state is World Map `(92,10)`, route
+  `northern_cave`, next `Rain shrine east-shore detour`, path nil, and no
+  runtime blockers.
 
 - Rain Shrine / Northern Cave first interior pass: map `0x0D` is a 10x10
   shrine with the wise man / old man at `(4,4)` and the live bottom

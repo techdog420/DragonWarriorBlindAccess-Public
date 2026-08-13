@@ -4011,15 +4011,19 @@ function M.autowalk_to_object(obj, opts)
         local active_route_id = overworld_routes.active_route_id()
         local active_route_matches_object = active_route_id
             and overworld_routes.active_route_matches_object(obj)
+        local follow_active_route = active_route_id
+            and opts.follow_active_overworld_route == true
         trace_autowalk_boundary("overworld_route_match", string.format(
-            "target_id=%s target_route=%s active_route=%s active_matches=%s",
+            "target_id=%s target_route=%s active_route=%s active_matches=%s follow_active=%s",
             tostring(obj.id or "-"),
             tostring(target_route_id or "-"),
             tostring(active_route_id or "-"),
-            tostring(active_route_matches_object == true)))
+            tostring(active_route_matches_object == true),
+            tostring(follow_active_route == true)))
         if target_route_id
            and target_route_id ~= active_route_id
-           and not active_route_matches_object then
+           and not active_route_matches_object
+           and not follow_active_route then
             local started, start_err = overworld_routes.start(target_route_id, map_id, px, py, {
                 terrain_offset = terrain_offset,
             })
@@ -4228,6 +4232,11 @@ function M.autowalk_to_current(opts)
     if next_opts.speak == nil then
         next_opts.speak = true
     end
+    -- Bare U advances guidance already started with R. Map changes can reset
+    -- object focus to a nearby landmark; that automatic refresh must not
+    -- silently replace the active destination. Explicit object-target calls
+    -- retain their route-switching behavior.
+    next_opts.follow_active_overworld_route = true
     return M.autowalk_to_object(obj, next_opts)
 end
 

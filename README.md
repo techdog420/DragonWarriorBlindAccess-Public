@@ -237,7 +237,11 @@ direction still allows ordinary continuous movement.
 For local navigation, select an object and press `O` to hear a path preview.
 For supported overworld destinations, select a Travel object and press `R` to
 start or check a guided route. The mod announces route landmarks and directions
-while you move the character yourself.
+while you move the character yourself. A Northern Cave route started near
+Tantegel first follows the existing route to Kol. Route status names Kol as the
+current leg and Northern Cave as the final destination. On reaching or entering
+Kol, guidance changes to the Northern Cave leg and waits for the next movement
+command.
 
 Choose manual movement or route guidance when you want to explore, retain
 control, fight normal random encounters, and follow the intended game flow.
@@ -254,7 +258,8 @@ changing the selected object or guided Travel destination.
 
 When an overworld guided route is active, auto-walk follows the current route
 segment to its next waypoint. It is not yet unrestricted whole-world
-pathfinding.
+pathfinding. At a multi-leg handoff, press and release `U` again to begin the
+new leg; the mod does not start that movement automatically.
 
 Auto-walk is useful for crossing known areas, reaching shops or stairs, and
 reducing repetitive directional input. It can stop when combat, dialogue,
