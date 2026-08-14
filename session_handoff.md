@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 ## Release Installation Handoff
 
@@ -121,6 +121,24 @@ Updated: 2026-08-12
 
 ## Immediate FCEUX Handoff
 
+- Continuous overworld auto-walk is implemented on
+  `codex/continuous-overworld-autowalk`. The opt-in config
+  `overworld_auto_walk_continuous=true` chains guided waypoint segments until
+  arrival or interruption, while the checked-in default `false` preserves the
+  existing one-segment command. `auto_walk_blocker` chains overworld routes
+  independently of that setting and stops at the first blocked edge with the
+  exact `AUTO_WALK_BLOCKER_FOUND` report. Post-Dragonlord live runs completed
+  Rimuldar to Magic Temple and the full reverse route with no blockers or
+  cancellation. Loaded speech verification confirmed destination-only startup,
+  one bridge warning, no internal waypoint or segment-count chatter, and one
+  final arrival message; a short Rimuldar re-entry spoke exactly `Arrived at
+  Rimuldar`. A pre-Dragonlord `charlock_return` run then encountered a
+  Magiwyvern at World Map `(51,55)`: continuous travel cancelled with
+  `reason=can_walk_false`, emitted no competing cancellation speech, did not
+  reroute or add a blocker, and remained stopped after victory with target
+  `nil` and zero runtime blocks. Focused checks pass route manager `122/122`,
+  overworld routes `154/154`, config `3/3`, Lua bytecode compilation, and
+  `git diff --check`.
 - A complete blind-player game run reached the original `The End` screen.
   King Lorik's ending dialogue and the full staff credits were automatically
   narrated. Fresh tag `GAME_END_TERMINAL` confirmed level byte `255`, the

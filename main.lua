@@ -2195,6 +2195,7 @@ end
 -- check_map_change(): Announce when the player enters a new area.
 local function check_map_change()
     local changes = nav.check_for_changes()
+    local map_change_speech = nil
     if changes.position_changed and not changes.map_changed then
         CMD.movement_dialogue = K.MOVEMENT_DIALOGUE_HOLD
     elseif CMD.movement_dialogue > 0 then
@@ -2202,7 +2203,7 @@ local function check_map_change()
     end
 
     if changes.map_changed and changes.map_name then
-        tolk.output(changes.map_name)
+        map_change_speech = changes.map_name
         debug_tools.on_map_change(snapshot.map_id)
         objects.on_map_change(snapshot.map_id, {previous_map_id = changes.previous_map_id})
         event_bus.publish("map_changed", {map_id = snapshot.map_id})
@@ -2219,17 +2220,32 @@ local function check_map_change()
         objects.observe_npcs(snapshot.map_id)
     end
 
+    local route_event = nil
+    local route_speech = nil
     if game_state.state == state.STATE_FIELD then
-        local route_event = overworld_routes.observe_position(snapshot.map_id, snapshot.x, snapshot.y, snapshot.terrain_offset)
+        route_event = overworld_routes.observe_position(snapshot.map_id, snapshot.x, snapshot.y, snapshot.terrain_offset)
         if route_event then
             debug_tools.info("OVERWORLD_ROUTE: " .. tostring(route_event.log or route_event.message))
             if route_event.refresh and objects.request_refresh then
                 objects.request_refresh()
             end
-            if route_event.message then
-                tolk.output(route_event.message)
+            route_speech = route_event.message
+            if route_mgr.overworld_route_event_speech then
+                route_speech = route_mgr.overworld_route_event_speech(route_event)
             end
         end
+    end
+
+    if map_change_speech and route_mgr.overworld_route_map_change_speech then
+        map_change_speech = route_mgr.overworld_route_map_change_speech(
+            map_change_speech,
+            route_event)
+    end
+    if map_change_speech then
+        tolk.output(map_change_speech)
+    end
+    if route_speech then
+        tolk.output(route_speech)
     end
 end
 

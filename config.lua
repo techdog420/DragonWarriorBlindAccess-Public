@@ -100,6 +100,7 @@ local DEFAULTS_ORDERED = {
     {key = "auto_step_seam_retry_hold_after_start_frames", value = "12", comment = "; Extra frames to hold seam retry after movement starts"},
     {key = "auto_step_release_on_movement_start", value = "true", comment = "; Release injected D-pad once movement subpixel changes to reduce cell overshoot"},
     {key = "auto_walk_progress_interval", value = "6", comment = "; Speak auto-walk progress every N completed queued steps on longer routes (0 = off)"},
+    {key = "overworld_auto_walk_continuous", value = "false", comment = "; Continue through overworld route waypoints until interrupted (false keeps one waypoint per auto-walk command)"},
     {key = "auto_walk_npc_hold_frames", value = "1200", comment = "; Frames to hold a target NPC in place after auto-walk arrival (0 = off)"},
     {key = "auto_walk_face_target_frames", value = "8", comment = "; Frames to press toward an auto-walk interaction target after arrival (0 = off)"},
     {key = "auto_walk_park_mobile_npcs", value = "false", comment = "; Park mobile non-target NPCs during interior auto-walk routes (experimental; may affect emulator lag)"},

@@ -1,11 +1,27 @@
 # Playtesting Notes
 
-Updated: 2026-08-10
+Updated: 2026-08-14
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Continuous overworld auto-walk (`2026-08-14`): the new opt-in
+  `overworld_auto_walk_continuous=true` chains guided overworld waypoint
+  segments until arrival or interruption; the default remains the established
+  one-segment behavior. `auto_walk_blocker` always chains an active overworld
+  route and stops at the first failed edge with an exact report, without
+  applying map data. A post-Dragonlord Rimuldar-to-Magic Temple run and the
+  complete reverse route both succeeded without blockers or cancellation.
+  Continuous speech now announces the destination once, meaningful route
+  warnings, stops, and final arrival; internal waypoint names and misleading
+  per-segment counts are silent. A loaded short Rimuldar re-entry confirmed
+  exactly `Arrived at Rimuldar`, with no duplicate generic map announcement.
+  On a pre-Dragonlord save, a Magiwyvern encounter interrupted
+  `charlock_return` at World Map `(51,55)`. Continuous travel logged
+  `reason=can_walk_false`, yielded speech to the battle system, did not reroute
+  or add a blocker, and remained stopped after victory with no active path or
+  runtime blocks.
 - Native opened-chest tracking (`2026-08-10`): a fresh Dragonlord treasure-room
   raid opened all six chests, but the successful Herb pickup at `(13,13)` did
   not remain labeled opened even though the two Herb chests raised the count

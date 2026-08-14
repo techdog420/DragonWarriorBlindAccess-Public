@@ -2090,6 +2090,7 @@ local function finish_route(route, point, event)
         message = "Arrived at " .. tostring(point and point.name or route and route.title or "destination"),
         log = make_log(event or "arrived", route, point, index),
         refresh = true,
+        terminal = true,
     }
 end
 
@@ -2461,8 +2462,10 @@ function M.observe_position(map_id, px, py, terrain_offset)
     end
 
     local messages = {}
+    local warning_message = nil
     if point.warning and not state.warned[index] then
         messages[#messages + 1] = point.warning
+        warning_message = point.warning
         state.warned[index] = true
     end
 
@@ -2471,6 +2474,7 @@ function M.observe_position(map_id, px, py, terrain_offset)
         if #messages > 0 then
             event.message = table.concat(messages, " ") .. " " .. event.message
         end
+        event.warning_message = warning_message
         return event
     end
 
@@ -2483,6 +2487,7 @@ function M.observe_position(map_id, px, py, terrain_offset)
         route = route,
         waypoint = point,
         message = table.concat(messages, " "),
+        warning_message = warning_message,
         log = make_log("advance", route, point),
         object_id = route_object_id(route, state.next_index),
         refresh = true,

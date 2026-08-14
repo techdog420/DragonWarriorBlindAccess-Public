@@ -18,6 +18,12 @@ local function assert_contains(value, needle, message)
     end
 end
 
+local function assert_not_contains(value, needle, message)
+    if tostring(value):find(needle, 1, true) then
+        error(string.format("%s: expected %q not to contain %q", message, tostring(value), needle), 2)
+    end
+end
+
 local function find_waypoint(route_id, name)
     local route = routes._route_for_tests(route_id)
     if not route then return nil end
@@ -52,6 +58,7 @@ function tests.reaching_waypoint_advances_to_next_waypoint()
 
     assert_contains(event.message, "Reached East choke approach", "arrival should announce reached waypoint")
     assert_contains(event.message, "Next: Eastern mountain lane", "arrival should announce the next waypoint")
+    assert_equal(event.warning_message, nil, "routine waypoint should not expose warning speech")
     assert_equal(event.refresh, true, "object list should refresh after route advance")
 
     routes.reset_for_tests()
@@ -228,6 +235,9 @@ function tests.bridge_warning_is_spoken_once_when_crossing_marker()
     assert_contains(event.message, "Bridge crossing", "bridge marker should warn about danger")
     assert_contains(event.message, "Monsters may become more dangerous", "bridge warning should mention stronger monsters")
     assert_contains(event.message, "Next: Bridge lower west lane", "bridge marker should route through the detour")
+    assert_contains(event.warning_message, "Bridge crossing", "bridge event should expose warning-only speech")
+    assert_contains(event.warning_message, "Monsters may become more dangerous", "warning-only speech should preserve the safety detail")
+    assert_not_contains(event.warning_message, "Next:", "warning-only speech should omit routine waypoint guidance")
     assert_equal(repeat_event, nil, "same position should not repeat route speech")
 
     routes.reset_for_tests()

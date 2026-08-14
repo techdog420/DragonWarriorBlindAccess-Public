@@ -29,6 +29,16 @@ function tests.player_auto_walk_stop_has_safe_default_binding()
     )
 end
 
+function tests.overworld_continuous_auto_walk_is_opt_in()
+    package.loaded["config"] = nil
+    local config = require("config")
+    assert_equal(
+        config.get_default("overworld_auto_walk_continuous"),
+        "false",
+        "continuous overworld auto-walk should preserve one-segment behavior by default"
+    )
+end
+
 local passed = 0
 local failed = 0
 
