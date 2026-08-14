@@ -1,11 +1,36 @@
 # Playtesting Notes
 
-Updated: 2026-08-13
+Updated: 2026-08-14
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Connected Magic Temple route (`2026-08-14`): selecting Magic Temple at
+  Swamp Cave South `(104,49)` now stages through the established `rimuldar`
+  leg, retains Magic Temple as the final destination, and hands off on entering
+  Rimuldar map `0x0B` at `(29,14)` without starting movement. After the player
+  manually exited to World Map `(102,72)`, the preserved `magic_temple` leg
+  completed all 22 waypoints and arrived at `(108,109)`. Fresh tag
+  `MAGIC_TEMPLE_CONNECTED_ARRIVAL_20260814` confirmed route none, path nil,
+  and zero NPC/runtime blockers. Manual acceptance reproduced a legitimate
+  engine block at `(93,52)->DOWN`. The outbound route now turns west through
+  the proven reverse corridor at `(92,52)`, `(86,52)`, `(86,54)`, `(83,54)`,
+  `(83,56)`, `(85,56)`, `(85,58)`, and `(88,58)`. After reload, every new
+  waypoint completed normally and the route rejoined its original corridor at
+  `(88,71)` without a blocked, canceled, seam-retry, or runtime-block event;
+  fresh tag `MAGIC_TEMPLE_RIMULDAR_DETOUR_LOADED_20260814` confirmed the clean
+  reconnect. On the temple leg, `(110,86)->LEFT` and
+  `(102,107)->LEFT` passed normally; `(103,113)->RIGHT` failed queued timing
+  but passed a same-origin raw hold, and `(104,113)->DOWN` completed on its
+  second bounded retry. No blocker or unrelated route data was added. Focused
+  route tests pass `175/175`; the broad gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests. Final manual acceptance completed the connected
+  itinerary at `(108,109)`. Two visible Rimuldar timing stalls at
+  `(97,71)->UP` and `(107,71)->DOWN`, plus two temple stalls at
+  `(103,113)->RIGHT` and `(104,113)->DOWN`, each completed on the next route
+  activation. Fresh tag `MAGIC_TEMPLE_MANUAL_ACCEPTED_20260814` confirmed
+  route none, path nil, and zero NPC/runtime blockers.
 - Connected Charlock route (`2026-08-13`): selecting Charlock outside Rimuldar
   at `(102,72)` now follows `swamp_cave_south`, enters Swamp Cave south at
   `(0,29)`, waits for the player to exit with STAIRS, preserves Charlock across

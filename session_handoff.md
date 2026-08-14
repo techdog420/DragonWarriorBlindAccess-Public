@@ -121,6 +121,29 @@ Updated: 2026-08-13
 
 ## Immediate FCEUX Handoff
 
+- The connected Magic Temple itinerary is complete and loaded. Selecting Magic
+  Temple at Swamp Cave South `(104,49)` starts the established `rimuldar` leg,
+  hands off inside Rimuldar `0x0B` `(29,14)` without moving automatically, and
+  preserves `magic_temple` after the player exits to World Map `(102,72)`. The
+  second leg completed all 22 waypoints and arrived at Magic Temple
+  `(108,109)`. Fresh tag `MAGIC_TEMPLE_CONNECTED_ARRIVAL_20260814` confirmed
+  route none, path nil, and zero NPC/runtime blockers. Manual acceptance then
+  proved `(93,52)->DOWN` is engine-blocked. The outbound route now turns west
+  through `(92,52)`, `(86,52)`, `(86,54)`, `(83,54)`, `(83,56)`, `(85,56)`,
+  `(85,58)`, and `(88,58)`. After reload, every replacement waypoint and the
+  original 13-step continuation to `(88,71)` completed without a blocked,
+  canceled, seam-retry, or runtime-block event. Fresh tag
+  `MAGIC_TEMPLE_RIMULDAR_DETOUR_LOADED_20260814` confirmed World Map `(88,71)`,
+  path nil, zero blockers, and the next Rimuldar waypoint active. Temple edges
+  `(103,113)->RIGHT` and `(104,113)->DOWN` were
+  timing-only: the first passed a same-origin raw hold and the second completed
+  on retry. No blocker was added. Focused route tests pass `175/175`; the broad
+  gate passes all 33 host-runnable Lua suites plus 68 Python tests. The user's
+  final manual pass completed at `(108,109)`. Visible stalls at
+  `(97,71)->UP`, `(107,71)->DOWN`, `(103,113)->RIGHT`, and
+  `(104,113)->DOWN` each completed on the next route activation. Fresh tag
+  `MAGIC_TEMPLE_MANUAL_ACCEPTED_20260814` confirmed route none, path nil, and
+  zero NPC/runtime blockers. This slice is ready to publish.
 - The connected Charlock itinerary is complete and loaded. Selecting Charlock
   outside Rimuldar at `(102,72)` stages through `swamp_cave_south`, enters
   Swamp Cave map `0x15` at `(0,29)`, waits for the player's STAIRS exit, and

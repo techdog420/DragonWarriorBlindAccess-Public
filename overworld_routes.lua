@@ -30,6 +30,16 @@ local FINAL_PROGRESSION_STAGING = {
     prefer_staging_route_corridor = true,
 }
 
+local MAGIC_TEMPLE_STAGING = {
+    route_id = "rimuldar",
+    -- The longest validated segment on either leg is thirteen tiles. Starts
+    -- farther from the temple route must first follow the established
+    -- Swamp-Cave-South-to-Rimuldar corridor instead of synthesizing a shortcut.
+    max_start_distance = 13,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -401,10 +411,17 @@ local ROUTES = {
                 warning = "Guide-derived Rimuldar route. The west route is safer but still needs live validation.",
             },
             {x = 93, y = 49, name = "North Rimuldar west safer route", radius = 0, axis_order = {"horizontal", "vertical"}},
-            {x = 93, y = 56, name = "Craggy mountain west wall", radius = 0},
-            {x = 93, y = 57, name = "Craggy mountain lower west wall", radius = 0},
-            {x = 90, y = 57, name = "Safer west route north lane", radius = 0},
-            {x = 90, y = 58, name = "Safer west route bend", radius = 0},
+            -- Live route execution and same-origin raw movement both proved
+            -- (93,52)->DOWN blocked. Reuse the validated reverse corridor so
+            -- the outbound route turns west at row 52 and crosses the open
+            -- north/south seam on column 86 instead.
+            {x = 92, y = 52, name = "South cave west ridge road", radius = 0},
+            {x = 86, y = 52, name = "South island west ridge north bend", radius = 0},
+            {x = 86, y = 54, name = "South island west ridge east wall", radius = 0},
+            {x = 83, y = 54, name = "South island west ridge lane", radius = 0},
+            {x = 83, y = 56, name = "South island west ridge foot", radius = 0},
+            {x = 85, y = 56, name = "South island west pocket bend", radius = 0},
+            {x = 85, y = 58, name = "South island west pocket lower lane", radius = 0},
             {x = 88, y = 58, name = "Safer west route west edge", radius = 0},
             {
                 x = 88,
@@ -451,6 +468,7 @@ local ROUTES = {
         },
         target_object_ids = {"overworld_southern_cave"},
         destination_maps = {0x0E},
+        staging = MAGIC_TEMPLE_STAGING,
         waypoints = {
             {
                 x = 102,

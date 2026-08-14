@@ -1,6 +1,140 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-08-13
+Updated: 2026-08-14
+
+## 2026-08-13 Connected Magic Temple Route Plan
+
+- RECOMMENDED NEXT TARGET: Magic Temple, using the narrow connected itinerary
+  `Swamp Cave South Entrance -> Rimuldar -> Magic Temple`. This is preferable
+  to a Kol-to-Hauksness expansion for the next slice because both legs are
+  already live-validated, the route advances an important progression target,
+  and it avoids introducing new map geometry or a very long Kol detour.
+- ESTABLISHED ENDPOINTS: stage on World Map `(104,49)`. The existing
+  `rimuldar` route has 33 waypoints and enters Rimuldar at World Map `(102,72)`
+  / town map `0x0B` `(29,14)`. The existing `magic_temple` route has 22
+  waypoints from `(102,72)` to the temple stand `(108,109)`; STAIRS there enters
+  map `0x0E` at `(0,4)`. The longest established segment in either leg is 13
+  tiles, so a 13-tile staging threshold cleanly distinguishes the south-cave
+  start from the direct Rimuldar start.
+- CURRENT FAILURE SHAPE: a static route probe from `(104,49)` currently starts
+  `magic_temple` directly, chooses `Rimuldar east doorstep` `(103,72)`, and
+  synthesizes one unvalidated 24-step segment. With the proposed staging,
+  `(104,49)` instead starts `rimuldar` at waypoint 2, `North Rimuldar west safer
+  route` `(93,49)`, keeping every segment on the established corridor.
+- MINIMAL SOURCE DESIGN: add a Magic-Temple-only staging config pointing to
+  `rimuldar`, with `max_start_distance = 13`,
+  `prefer_staging_route_corridor = true`, and staged continuation enabled.
+  Attach it only to `magic_temple`; do not change shared staging behavior or
+  generalize the route graph in this slice. Starting at `(104,49)` should select
+  `rimuldar` waypoint 2 (`North Rimuldar west safer route`) and retain
+  `magic_temple` as the requested final destination. Starting at `(102,72)`
+  must continue to select the direct Magic Temple route unchanged.
+- TEST-FIRST COVERAGE: add focused regressions for name-based and Travel-object
+  starts at `(104,49)`, current-leg/final-destination status, active-object
+  binding during the Rimuldar leg, and the map-`0x0B` handoff. The handoff must
+  activate `magic_temple`, name `Rimuldar east doorstep` as the next waypoint,
+  queue no movement, and preserve the first explicit step RIGHT from
+  `(102,72)` to `(103,72)`. Retain the existing direct-start, exact-corridor,
+  reverse-route, and Magic Temple arrival tests.
+- SOURCE CHANGE COMPLETE: the five new regressions first failed against the
+  direct 24-step shortcut and missing Rimuldar handoff. `magic_temple` now has
+  its own 13-tile Rimuldar staging config with corridor preference and staged
+  continuation. From `(104,49)`, it selects `rimuldar` waypoint 2 at `(93,49)`
+  and retains Magic Temple as the final destination. Entering Rimuldar map
+  `0x0B` hands off to `magic_temple` waypoint 2 without queuing movement; the
+  next explicit segment is one step RIGHT from `(102,72)` to `(103,72)`. The
+  direct start at `(102,72)` remains unchanged. All `175/175` focused route
+  tests, all 33 host-runnable Lua suites, all 68 Python tests, Lua syntax, shell
+  syntax, Python syntax, the speech dependency check, the command queue check,
+  and `git diff --check` pass. Awaiting manual `main.lua` reload and live
+  validation from Swamp Cave South.
+- LOADED FIRST LEG / HANDOFF COMPLETE: fresh tag
+  `MAGIC_TEMPLE_CONNECTED_RELOAD_20260814` confirmed World Map `(104,49)`,
+  path nil, and zero NPC/runtime blockers. Starting Magic Temple emitted
+  `event=start route=rimuldar waypoint=North Rimuldar west safer route index=2
+  staged_from=magic_temple`; the first 11-step west segment completed at
+  `(93,49)`. The old Rimuldar route then reproduced its documented rough area:
+  queued movement and a same-origin 60-frame raw hold both blocked
+  `(93,52)->DOWN`, and a reversible movement-state reset did not change it.
+  Live recovery found the usable north/south opening at `x=86` and retraced the
+  already-established return corridor through `(86,54)`, `(83,54)`, `(83,56)`,
+  `(85,56)`, `(85,58)`, and `(88,58)`. Keep replacing the outbound `x=93`
+  column with that known reverse geometry for a separate route-polish task; no
+  source/map blocker was changed here. A second known executor-sensitive edge
+  at `(99,69)->UP` completed with one precise 20-frame raw input. All remaining
+  Rimuldar segments completed normally. The final LEFT from World Map
+  `(103,72)` entered Rimuldar map `0x0B` at `(29,14)` and emitted
+  `event=handoff route=magic_temple waypoint=Rimuldar east doorstep index=2
+  from_route=rimuldar`. Fresh tag `MAGIC_TEMPLE_RIMULDAR_HANDOFF_20260814`
+  confirmed active route `magic_temple`, path nil, and no runtime blockers; no
+  automatic second-leg movement occurred. Awaiting the player's manual exit
+  through `(29,13)->RIGHT` to World Map `(102,72)` before validating the
+  preserved Magic Temple leg.
+- FULL CONNECTED LOADED ACCEPTANCE: after the player manually exited Rimuldar,
+  fresh tag `MAGIC_TEMPLE_SOUTHBOUND_RESUME_20260814` confirmed World Map
+  `(102,72)`, active `magic_temple` waypoint 2, path nil, and no NPC/runtime
+  blockers. All 22 established temple waypoints then completed through the
+  south ridge, long road, bridge, mountain pocket, and final approach. The
+  historical `(110,86)->LEFT` and `(102,107)->LEFT` hotspots passed normally.
+  Queued `(103,113)->RIGHT` exhausted retries but an unchanged-origin raw hold
+  moved cleanly to `(104,113)`, proving timing-only behavior. The known
+  `(104,113)->DOWN` step completed on its second bounded retry. No blocker was
+  added. The final two UP steps emitted `event=arrived route=magic_temple` at
+  World Map `(108,109)`. Fresh tag
+  `MAGIC_TEMPLE_CONNECTED_ARRIVAL_20260814` confirmed route none, path nil,
+  and zero NPC/runtime blockers. The connected source slice is ready for the
+  user's manual acceptance; STAIRS entry to map `0x0E` remains optional and
+  was already validated by the underlying route work.
+- MANUAL-ACCEPTANCE BLOCKER PATCH READY: the user's end-to-end pass reproduced
+  the same `(93,52)->DOWN` stop. A fresh baseline confirmed World Map
+  `(93,52)`, active `rimuldar` waypoint 3, path nil, neutral game input, and
+  zero NPC/runtime blockers. The live log now has three queued-route failures
+  into `(93,53)`, while a centered same-origin probe at `(86,52)->DOWN` moved
+  successfully and settled at `(86,54)`. The outbound `rimuldar` route now
+  turns west through the already-validated reverse corridor: `(92,52)`,
+  `(86,52)`, `(86,54)`, `(83,54)`, `(83,56)`, `(85,56)`, `(85,58)`, then
+  `(88,58)`. A focused regression requires a LEFT step from `(93,52)` and the
+  full route fixtures use the replacement chain. All `175/175` focused tests
+  and the native Windows broad gate (33 Lua suites plus 68 Python tests) pass.
+  After manual reload, tag `MAGIC_TEMPLE_DETOUR_RELOAD_20260814` confirmed a
+  clean World Map baseline at `(86,54)`. Starting Magic Temple selected staged
+  `rimuldar` waypoint 6 at `(83,54)`. The loaded route then completed every
+  remaining replacement waypoint at `(83,54)`, `(83,56)`, `(85,56)`,
+  `(85,58)`, and `(88,58)`, followed by the original 13-step continuation to
+  `(88,71)`. There were no blocked, canceled, seam-retry, or runtime-block
+  events. Fresh tag `MAGIC_TEMPLE_RIMULDAR_DETOUR_LOADED_20260814` confirmed
+  World Map `(88,71)`, active `rimuldar` waypoint 12, path nil, neutral game
+  input, and zero NPC/runtime blockers. The patch is loaded and ready for the
+  user's manual continuation.
+- FINAL MANUAL ACCEPTANCE: the connected itinerary completed at Magic Temple
+  `(108,109)`. The Rimuldar leg had visible timing stalls at `(97,71)->UP` and
+  `(107,71)->DOWN`; the temple leg had stalls at `(103,113)->RIGHT` and
+  `(104,113)->DOWN`. In each case, the first route activation exhausted its
+  internal retry budget, while the player's next activation completed the
+  same segment. No other blocked or canceled route events occurred. Fresh tag
+  `MAGIC_TEMPLE_MANUAL_ACCEPTED_20260814` confirmed route none, path nil,
+  neutral game input, and zero NPC/runtime blockers. Do not promote these four
+  recoverable timing events into map blocker data. The connected Magic Temple
+  slice is ready to publish.
+- LIVE ACCEPTANCE PLAN: after reload, establish a clean baseline at World Map
+  `(104,49)`. Start Magic Temple and confirm `event=start route=rimuldar ...
+  staged_from=magic_temple`. Traverse the existing Rimuldar waypoints in short
+  checked batches. On entry to map `0x0B` `(29,14)`, require
+  `event=handoff route=magic_temple ... from_route=rimuldar`, path nil, and no
+  automatic movement. The player then exits Rimuldar to World Map `(102,72)`;
+  fresh-probe the preserved handoff before following all 22 temple waypoints to
+  `(108,109)`. Finally use STAIRS to reconfirm map `0x0E` `(0,4)` if desired.
+- WATCH ITEMS / DO NOT PROMOTE FROM ONE FAILURE: the established outbound
+  temple route has timing-only history at `(110,86)->LEFT`,
+  `(102,107)->LEFT`, and `(104,113)->DOWN`; each previously passed a same-origin
+  raw hold. The Rimuldar leg also has known bounded retries and harmless carry
+  behavior. Treat isolated failures as executor timing until unchanged-origin
+  evidence says otherwise. Do not add runtime or permanent blockers from a
+  single route stall.
+- NON-GOALS: do not polish legacy town-entry behavior in this slice. Entering
+  Rimuldar and waiting for the player to exit is the same accepted handoff
+  model used for Kol. Do not connect the return to Swamp Cave South, add an
+  arbitrary-start route graph, or modify Magic Temple interior geometry.
 
 ## 2026-08-13 Connected Charlock Route
 

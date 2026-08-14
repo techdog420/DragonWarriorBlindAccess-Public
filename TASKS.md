@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-13
+Updated: 2026-08-14
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -109,6 +109,19 @@ quality-of-life work.
   pass also reached Charlock with no blocked or canceled route events; fresh
   state at map `0x02` `(10,19)` had route/path nil and no runtime blockers.
   This slice is closed.
+- The fifth connected-route slice is implemented for `Swamp Cave South
+  Entrance -> Rimuldar -> Magic Temple`. A far Magic Temple request follows
+  the established `rimuldar` route, hands off inside Rimuldar map `0x0B` at
+  `(29,14)` without moving automatically, preserves the final destination
+  across the player's manual exit, and then follows all 22 Magic Temple
+  waypoints to `(108,109)`. Manual acceptance proved `(93,52)->DOWN` is
+  engine-blocked, so the Rimuldar leg now reuses the validated reverse corridor
+  through `(92,52)`, `(86,52)`, `(86,54)`, `(83,54)`, `(83,56)`, `(85,56)`,
+  `(85,58)`, and `(88,58)`. The loaded replacement rejoined the original route
+  without blockers. Four later timing stalls each completed on the next route
+  activation; final state had route/path nil and zero runtime blockers.
+  Focused tests pass `175/175`; the broad gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests. This slice is closed.
 
 ## Remaining Map Completion
 

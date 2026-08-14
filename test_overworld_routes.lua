@@ -1871,12 +1871,15 @@ function tests.rimuldar_candidate_route_follows_guide_west_side()
 
     local west_route = routes.observe_position(0x01, 93, 49)
     assert_contains(west_route.message, "Reached North Rimuldar west safer route", "route should confirm the initial west-side approach")
-    assert_contains(west_route.message, "Next: Craggy mountain west wall", "route should continue south along the western mountain route")
+    assert_contains(west_route.message, "Next: South cave west ridge road", "route should turn west before the blocked mountain column")
 
-    routes.observe_position(0x01, 93, 56)
-    routes.observe_position(0x01, 93, 57)
-    routes.observe_position(0x01, 90, 57)
-    routes.observe_position(0x01, 90, 58)
+    routes.observe_position(0x01, 92, 52)
+    routes.observe_position(0x01, 86, 52)
+    routes.observe_position(0x01, 86, 54)
+    routes.observe_position(0x01, 83, 54)
+    routes.observe_position(0x01, 83, 56)
+    routes.observe_position(0x01, 85, 56)
+    routes.observe_position(0x01, 85, 58)
     routes.observe_position(0x01, 88, 58)
     local lake = routes.observe_position(0x01, 88, 71)
     assert_contains(lake.message, "Rimuldar-area monsters are dangerous", "route should warn before the final Rimuldar-area push")
@@ -1926,10 +1929,13 @@ function tests.rimuldar_route_avoids_noisy_west_lake_up_step()
     routes.start("rimuldar", 0x01, 104, 49)
 
     routes.observe_position(0x01, 93, 49)
-    routes.observe_position(0x01, 93, 56)
-    routes.observe_position(0x01, 93, 57)
-    routes.observe_position(0x01, 90, 57)
-    routes.observe_position(0x01, 90, 58)
+    routes.observe_position(0x01, 92, 52)
+    routes.observe_position(0x01, 86, 52)
+    routes.observe_position(0x01, 86, 54)
+    routes.observe_position(0x01, 83, 54)
+    routes.observe_position(0x01, 83, 56)
+    routes.observe_position(0x01, 85, 56)
+    routes.observe_position(0x01, 85, 58)
     routes.observe_position(0x01, 88, 58)
     routes.observe_position(0x01, 88, 71)
 
@@ -1945,10 +1951,13 @@ function tests.rimuldar_route_avoids_north_wall_corner_block()
     routes.start("rimuldar", 0x01, 104, 49)
 
     routes.observe_position(0x01, 93, 49)
-    routes.observe_position(0x01, 93, 56)
-    routes.observe_position(0x01, 93, 57)
-    routes.observe_position(0x01, 90, 57)
-    routes.observe_position(0x01, 90, 58)
+    routes.observe_position(0x01, 92, 52)
+    routes.observe_position(0x01, 86, 52)
+    routes.observe_position(0x01, 86, 54)
+    routes.observe_position(0x01, 83, 54)
+    routes.observe_position(0x01, 83, 56)
+    routes.observe_position(0x01, 85, 56)
+    routes.observe_position(0x01, 85, 58)
     routes.observe_position(0x01, 88, 58)
     routes.observe_position(0x01, 88, 71)
     routes.observe_position(0x01, 90, 71)
@@ -1963,13 +1972,14 @@ function tests.rimuldar_route_avoids_north_wall_corner_block()
     routes.reset_for_tests()
 end
 
-function tests.rimuldar_route_avoids_craggy_notch_up_block()
+function tests.rimuldar_route_turns_west_at_confirmed_93_52_block()
     routes.reset_for_tests()
-    routes.start("rimuldar", 0x01, 93, 57)
+    routes.start("rimuldar", 0x01, 104, 49)
+    routes.observe_position(0x01, 93, 49)
 
-    local segment = assert(routes.plan_next_segment(0x01, 93, 57))
-    assert_equal(segment.waypoint.name, "Safer west route north lane", "route should skip the bad upper notch waypoint")
-    assert_equal(segment.steps[1], "left", "route should not retry north from the blocked craggy notch")
+    local segment = assert(routes.plan_next_segment(0x01, 93, 52))
+    assert_equal(segment.waypoint.name, "South cave west ridge road", "route should target the proven west detour from the blocked column")
+    assert_equal(segment.steps[1], "left", "route should not retry the confirmed blocked south edge at 93,52")
 
     routes.reset_for_tests()
 end
@@ -2157,6 +2167,116 @@ function tests.magic_temple_object_from_rimuldar_starts_candidate_route()
     local segment = assert(routes.plan_next_segment(0x01, 102, 72))
     assert_equal(segment.waypoint.name, "Rimuldar east doorstep", "first segment should target the proven doorstep")
     assert_equal(segment.steps[1], "right", "temple route should leave Rimuldar to the east")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_from_south_cave_starts_rimuldar_staging_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("magic temple", 0x01, 104, 49)
+
+    assert_equal(err, nil, "Magic Temple alias should resolve from Swamp Cave South")
+    assert_equal(info.route.id, "rimuldar", "far Magic Temple requests should stage through Rimuldar")
+    assert_equal(info.object_id, "route_rimuldar_02", "staging should start on the proven Rimuldar route")
+    assert_contains(info.message, "Magic Temple route starts from Rimuldar",
+        "staging should explain the required hub")
+    assert_contains(info.message, "Starting route to Rimuldar first",
+        "staging should say which route actually started")
+    assert_contains(info.message, "North Rimuldar west safer route",
+        "staging should include normal Rimuldar route guidance")
+    assert_contains(info.log, "staged_from=magic_temple", "staged starts should be visible in logs")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 49))
+    assert_equal(segment.waypoint.name, "North Rimuldar west safer route",
+        "the first segment should use the validated west-side Rimuldar route")
+    assert_equal(#segment.steps, 11, "the staging leg should stay within the validated segment limit")
+    assert_equal(segment.steps[1], "left", "the staging route should leave Swamp Cave South to the west")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_object_from_south_cave_retains_final_destination()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_southern_cave",
+        name = "Magic Temple",
+        x = 108,
+        y = 109,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 49)
+
+    assert_equal(err, nil, "Magic Temple Travel object should resolve from Swamp Cave South")
+    assert_equal(info.route.id, "rimuldar", "Travel-object starts should use the same Rimuldar staging guard")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected Magic Temple object should remain bound during the Rimuldar leg")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_staging_status_names_current_leg_and_final_destination()
+    routes.reset_for_tests()
+    routes.start("magic temple", 0x01, 104, 49)
+
+    local info = routes.status(0x01, 104, 49)
+
+    assert_contains(info.message, "Current leg to Rimuldar",
+        "staging status should identify the route currently being followed")
+    assert_contains(info.message, "Final destination: Magic Temple",
+        "staging status should retain the player's requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_guidance_refresh_keeps_the_active_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_southern_cave",
+        name = "Magic Temple",
+        x = 108,
+        y = 109,
+    }
+    routes.start_for_object(target, 0x01, 104, 49)
+
+    local info = routes.guidance_for_object(target, 0x01, 104, 49)
+
+    assert_equal(info.route.id, "rimuldar",
+        "re-reading guidance should keep the current Rimuldar leg active")
+    assert_contains(info.message, "Current leg to Rimuldar",
+        "re-reading guidance should report the active leg instead of restarting it")
+    assert_contains(info.message, "Final destination: Magic Temple",
+        "re-reading guidance should retain the requested destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_staging_hands_off_at_rimuldar_without_starting_movement()
+    routes.reset_for_tests()
+    routes.start("magic temple", 0x01, 104, 49)
+
+    local event = routes.observe_position(0x0B, 29, 14)
+
+    assert_equal(routes.active_route_id(), "magic_temple",
+        "entering Rimuldar should activate the requested Magic Temple leg")
+    assert_equal(event.status, "handoff",
+        "the route event should distinguish a leg handoff from final arrival")
+    assert_contains(event.message, "Reached Rimuldar. Continuing to Magic Temple.",
+        "handoff speech should name the completed hub and final destination")
+    assert_contains(event.message, "Next: Rimuldar east doorstep",
+        "handoff speech should identify the next Magic Temple waypoint")
+    assert_contains(event.log, "event=handoff", "handoff should be explicit in structured logs")
+    assert_contains(event.log, "from_route=rimuldar", "handoff logs should identify the completed leg")
+    assert_equal(event.object_id, "route_magic_temple_02",
+        "route markers should refresh to the first Magic Temple movement waypoint")
+    assert_equal(event.steps, nil,
+        "handoff must wait for another player auto-walk command instead of moving immediately")
+
+    local segment = assert(routes.plan_next_segment(0x01, 102, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar east doorstep",
+        "the next player-triggered segment should leave Rimuldar toward the temple")
+    assert_equal(#segment.steps, 1, "the first Magic Temple segment should be the one-tile doorstep step")
+    assert_equal(segment.steps[1], "right", "the second leg should leave Rimuldar to the east")
 
     routes.reset_for_tests()
 end
