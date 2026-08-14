@@ -2,6 +2,47 @@
 
 Updated: 2026-08-14
 
+## 2026-08-14 Connected Hauksness Route and Continuous Auto-Walk
+
+- TEST-FIRST FAILURE: from World Map `(43,43)`, both name and Travel-object
+  Hauksness starts selected `hauksness` directly and targeted `North Alefgard
+  east road`, synthesizing 30 north plus 2 east instead of following the Kol
+  hub. The new staging-start, object-binding, and Kol-handoff regressions failed
+  before the source patch; the on-route Garinham control remained direct.
+- MINIMAL ROUTE PATCH: `HAUKSNESS_STAGING` uses `kol`, canonical continuation
+  `hauksness`, a 24-tile maximum direct-start distance, and automatic staged
+  continuation. It is shared by the Kol-side and Cantlin-side Hauksness target
+  variants so far starts converge on one canonical destination while direct
+  Kol, Garinham, and Cantlin behavior remains covered. No established Hauksness
+  waypoint or blocker changed.
+- CONTINUOUS FEATURE INTEGRATED: the finished sibling-branch implementation was
+  transplanted without creating a commit. `config.lua` and the checked-in
+  `dw_access.ini` expose `overworld_auto_walk_continuous=false`, preserving
+  waypoint mode as the shipped default. Setting it to `true` enables continuous
+  travel for players or debugging: it automatically queues the next guided
+  waypoint, keeps warnings and terminal arrival speech, avoids routine
+  waypoint/per-segment chatter, stops on battle/menu/dialogue, and preserves
+  whole-route `auto_walk_blocker` behavior.
+- SOURCE VERIFICATION: `179/179` overworld-route, `123/123` route-manager, and
+  `3/3` config tests pass. The full native Windows gate passes every one of 33
+  host-runnable Lua suites, all 68 Python tests, Lua/Python/shell syntax, speech
+  dependency, command queue, and `git diff --check`. FCEUX needs a manual
+  `main.lua` reload before a fresh `(43,43)` live run.
+- FULL CONNECTED LIVE VERIFICATION: with continuous mode temporarily enabled,
+  from World Map `(43,43)`, selecting
+  Hauksness started `kol` at waypoint 2 with `staged_from=hauksness`. Continuous
+  auto-walk exposed only the known early-route Brecconary entry; one initial
+  `(43,43)->UP` timing retry recovered automatically. After the player exited
+  Brecconary, the Kol leg continued without another activation until map `0x07`.
+  Entry emitted `event=handoff route=hauksness ... from_route=kol` before town
+  handling, preserving the intended destination. After the player exited Kol
+  at `(104,10)`, one continuous Hauksness activation traversed every remaining
+  waypoint with zero timeout, blocker, or cancellation events and entered map
+  `0x03` from doorstep `(24,89)`. Fresh tag `HAUKSNESS_ARRIVAL_20260814`
+  confirmed Ruins of Hauksness `(0,10)`, route none, path nil, and zero
+  NPC/runtime blockers. The connected slice is live-verified; early-route town
+  entry remains a separate polish task.
+
 ## 2026-08-13 Connected Magic Temple Route Plan
 
 - RECOMMENDED NEXT TARGET: Magic Temple, using the narrow connected itinerary

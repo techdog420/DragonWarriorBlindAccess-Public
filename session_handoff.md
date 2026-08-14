@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-13
+Updated: 2026-08-14
 
 ## Release Installation Handoff
 
@@ -121,6 +121,30 @@ Updated: 2026-08-13
 
 ## Immediate FCEUX Handoff
 
+- The sixth connected itinerary is live-verified for `Tantegel -> Kol ->
+  Hauksness`. A far Hauksness selection at World Map `(43,43)` now starts the
+  established `kol` route, retains Hauksness as the final Travel destination,
+  and hands off at Kol `(104,10)` to the existing live-validated Hauksness
+  corridor. Direct starts already near Kol, Garinham, Cantlin, or the western
+  route remain unchanged. The checked-in and generated configs now expose
+  `overworld_auto_walk_continuous=false`, preserving waypoint mode as the player
+  default while allowing continuous mode as an explicit option. Continuous
+  mode queues later route waypoints until arrival
+  or interruption, speaks the destination once plus warnings and terminal
+  arrival, and leaves battle/menu/dialogue cancellation authoritative. Focused
+  tests pass `179/179` overworld routes, `123/123` route manager, and `3/3`
+  config tests; the broad gate passes all 33 host-runnable Lua suites plus 68
+  Python tests. Loaded travel with continuous mode temporarily enabled from
+  `(43,43)` started `kol` with
+  `staged_from=hauksness`; the known early route entered Brecconary and one
+  initial timing retry recovered automatically. After the manual town exits,
+  Kol entry emitted `event=handoff route=hauksness ... from_route=kol`, and one
+  continuous activation from `(104,10)` completed the remaining corridor with
+  zero timeout, blocker, or cancellation events. It entered Hauksness map
+  `0x03` from `(24,89)`. Fresh tag `HAUKSNESS_ARRIVAL_20260814` confirmed
+  Ruins of Hauksness `(0,10)`, route none, path nil, and zero NPC/runtime
+  blockers. Early-route town entry remains separate polish; this slice is
+  closed.
 - The connected Magic Temple itinerary is complete and loaded. Selecting Magic
   Temple at Swamp Cave South `(104,49)` starts the established `rimuldar` leg,
   hands off inside Rimuldar `0x0B` `(29,14)` without moving automatically, and

@@ -6,6 +6,31 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Connected Hauksness route (`2026-08-14`): selecting Hauksness at
+  Tantegel World Map `(43,43)` now stages through `kol`, keeps the Hauksness
+  Travel target bound during the first leg, and hands off at Kol `(104,10)` to
+  the established westbound Hauksness route without injecting movement during
+  the handoff. A regression first reproduced the old direct 30-north shortcut;
+  the Hauksness-specific staging guard now passes while an on-route Garinham
+  start remains direct. The existing waypoints and final transition at
+  `(25,89)` are unchanged. Continuous overworld auto-walk is integrated and
+  exposed in `dw_access.ini` as `overworld_auto_walk_continuous`; waypoint mode
+  remains the shipped default (`false`). When enabled, routine internal waypoint
+  speech and per-segment progress are suppressed while warnings and final
+  arrival remain.
+  Focused tests pass `179/179` overworld routes, `123/123` route manager, and
+  `3/3` config tests; the full repository gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests. Loaded validation with continuous mode enabled
+  from `(43,43)` started `kol`
+  with `staged_from=hauksness`, preserved the final destination, and handed off
+  to `hauksness` on entering Kol map `0x07`. The Kol leg exposed the known
+  intermediate Brecconary entry and one automatically recovered timing retry.
+  After the manual town exits, continuous Hauksness travel completed every
+  remaining waypoint with no timeout, blocker, or cancellation events and
+  entered map `0x03` from `(24,89)`. Fresh tag
+  `HAUKSNESS_ARRIVAL_20260814` confirmed Ruins of Hauksness `(0,10)`, route
+  none, path nil, and zero NPC/runtime blockers. This slice is live-verified;
+  early-route town entry remains separate polish.
 - Connected Magic Temple route (`2026-08-14`): selecting Magic Temple at
   Swamp Cave South `(104,49)` now stages through the established `rimuldar`
   leg, retains Magic Temple as the final destination, and hands off on entering

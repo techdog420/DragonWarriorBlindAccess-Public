@@ -18,6 +18,12 @@ local function assert_contains(value, needle, message)
     end
 end
 
+local function assert_not_contains(value, needle, message)
+    if tostring(value):find(needle, 1, true) then
+        error(string.format("%s: expected %q not to contain %q", message, tostring(value), needle), 2)
+    end
+end
+
 local function find_waypoint(route_id, name)
     local route = routes._route_for_tests(route_id)
     if not route then return nil end
@@ -52,6 +58,7 @@ function tests.reaching_waypoint_advances_to_next_waypoint()
 
     assert_contains(event.message, "Reached East choke approach", "arrival should announce reached waypoint")
     assert_contains(event.message, "Next: Eastern mountain lane", "arrival should announce the next waypoint")
+    assert_equal(event.warning_message, nil, "routine waypoint should not expose warning speech")
     assert_equal(event.refresh, true, "object list should refresh after route advance")
 
     routes.reset_for_tests()
@@ -228,6 +235,9 @@ function tests.bridge_warning_is_spoken_once_when_crossing_marker()
     assert_contains(event.message, "Bridge crossing", "bridge marker should warn about danger")
     assert_contains(event.message, "Monsters may become more dangerous", "bridge warning should mention stronger monsters")
     assert_contains(event.message, "Next: Bridge lower west lane", "bridge marker should route through the detour")
+    assert_contains(event.warning_message, "Bridge crossing", "bridge event should expose warning-only speech")
+    assert_contains(event.warning_message, "Monsters may become more dangerous", "warning-only speech should preserve the safety detail")
+    assert_not_contains(event.warning_message, "Next:", "warning-only speech should omit routine waypoint guidance")
     assert_equal(repeat_event, nil, "same position should not repeat route speech")
 
     routes.reset_for_tests()
@@ -2394,6 +2404,91 @@ function tests.tantegel_object_from_kol_uses_kol_return_variant()
     local segment = assert(routes.plan_next_segment(0x01, 104, 10))
     assert_equal(segment.waypoint.name, "Kol forest west edge", "first Kol return segment should target the west forest edge")
     assert_equal(segment.steps[1], "left", "Kol return should start west instead of making a long cave-road push")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_from_tantegel_starts_kol_staging_route()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("hauksness", 0x01, 43, 43)
+
+    assert_equal(err, nil, "Hauksness alias should resolve from Tantegel")
+    assert_equal(info.route.id, "kol", "far Hauksness requests should stage through Kol")
+    assert_equal(info.object_id, "route_kol_02", "staging route should leave Tantegel on the Kol route")
+    assert_contains(info.message, "Hauksness route starts from Kol", "staging should explain the required hub")
+    assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
+    assert_contains(info.log, "staged_from=hauksness", "staged starts should be visible in logs")
+
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary road", "Kol staging should use the proven Kol route")
+    assert_equal(segment.steps[1], "up", "Tantegel-to-Kol staging should leave toward Brecconary road")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_object_from_tantegel_retains_final_destination()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_hauksness",
+        name = "Hauksness",
+        x = 25,
+        y = 89,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 43, 43)
+
+    assert_equal(err, nil, "Hauksness Travel object should resolve from Tantegel")
+    assert_equal(info.route.id, "kol", "Travel-object starts should use the Kol staging route")
+    assert_equal(info.object_id, "route_kol_02", "Travel-object staging should leave Tantegel on the Kol route")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected Hauksness object should remain bound during the Kol leg")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_staging_hands_off_at_kol_without_starting_movement()
+    routes.reset_for_tests()
+    routes.start("hauksness", 0x01, 43, 43)
+    local kol = assert(routes._route_for_tests("kol"))
+    local event
+
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(routes.active_route_id(), "hauksness",
+        "reaching Kol should activate the requested Hauksness leg")
+    assert_equal(event.status, "handoff",
+        "the Hauksness itinerary should distinguish a leg handoff from final arrival")
+    assert_contains(event.message, "Reached Kol. Continuing to Hauksness.",
+        "handoff speech should name the completed hub and final destination")
+    assert_contains(event.message, "Next: Kol forest west edge",
+        "handoff speech should identify the first Hauksness waypoint")
+    assert_contains(event.log, "event=handoff", "handoff should be explicit in structured logs")
+    assert_contains(event.log, "from_route=kol", "handoff logs should identify the completed leg")
+    assert_equal(event.object_id, "route_hauksness_02",
+        "route markers should refresh to the first Hauksness movement waypoint")
+    assert_equal(event.steps, nil, "handoff must not inject movement by itself")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the next segment should leave Kol along the validated Hauksness route")
+    assert_equal(segment.steps[1], "left", "the Hauksness leg should leave Kol west")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_on_route_garinham_start_does_not_stage_to_kol()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("hauksness", 0x01, 20, 9)
+
+    assert_equal(err, nil, "Hauksness route should resolve from its Garinham corridor")
+    assert_equal(info.route.id, "hauksness", "an established western-corridor start should remain direct")
+    assert_equal(string.find(info.log, "staged_from=", 1, true), nil,
+        "an on-route start should not detour east through Kol")
 
     routes.reset_for_tests()
 end

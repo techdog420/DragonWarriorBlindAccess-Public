@@ -40,6 +40,16 @@ local MAGIC_TEMPLE_STAGING = {
     continue_after_staging = true,
 }
 
+local HAUKSNESS_STAGING = {
+    route_id = "kol",
+    continuation_route_id = "hauksness",
+    -- Far starts such as Tantegel must reach the established Kol hub before
+    -- joining the long western route. Starts already on the validated
+    -- Kol/Garinham/Hauksness corridor remain direct.
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -1022,6 +1032,7 @@ local ROUTES = {
         },
         target_object_ids = {"overworld_hauksness"},
         destination_maps = {0x03},
+        staging = HAUKSNESS_STAGING,
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
@@ -1143,6 +1154,7 @@ local ROUTES = {
         },
         target_object_ids = {"overworld_hauksness"},
         destination_maps = {0x03},
+        staging = HAUKSNESS_STAGING,
         -- Auto-selection ends before the strict Hauksness doorstep and entry.
         selection_max_index = 56,
         waypoints = {
@@ -2243,6 +2255,7 @@ local function finish_route(route, point, event)
         message = "Arrived at " .. tostring(point and point.name or route and route.title or "destination"),
         log = make_log(event or "arrived", route, point, index),
         refresh = true,
+        terminal = true,
     }
 end
 
@@ -2632,8 +2645,10 @@ function M.observe_position(map_id, px, py, terrain_offset)
     end
 
     local messages = {}
+    local warning_message = nil
     if point.warning and not state.warned[index] then
         messages[#messages + 1] = point.warning
+        warning_message = point.warning
         state.warned[index] = true
     end
 
@@ -2643,6 +2658,7 @@ function M.observe_position(map_id, px, py, terrain_offset)
         if #messages > 0 then
             event.message = table.concat(messages, " ") .. " " .. event.message
         end
+        event.warning_message = warning_message
         return event
     end
 
@@ -2655,6 +2671,7 @@ function M.observe_position(map_id, px, py, terrain_offset)
         route = route,
         waypoint = point,
         message = table.concat(messages, " "),
+        warning_message = warning_message,
         log = make_log("advance", route, point),
         object_id = route_object_id(route, state.next_index),
         refresh = true,

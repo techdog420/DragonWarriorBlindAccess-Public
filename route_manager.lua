@@ -3669,6 +3669,16 @@ local overworld_segment_target
 
 function M.autowalk_overworld_segment(opts)
     opts = opts or {}
+    local stop_on_blocker = opts.stop_on_blocker == true
+    local continuous = opts.overworld_continuous
+    if continuous == nil then
+        -- Blocker-hunt mode is explicitly a whole-route diagnostic pass on
+        -- the overworld, even when ordinary continuous travel is disabled.
+        continuous = stop_on_blocker
+            or config_bool("overworld_auto_walk_continuous", false)
+    else
+        continuous = continuous == true
+    end
     if autowalk_guard and not opts.skip_guard then
         local ok, reason = autowalk_guard(opts)
         if ok == false then
@@ -3763,13 +3773,16 @@ function M.autowalk_overworld_segment(opts)
         steps = #segment.steps,
         route_final_carry_x = segment.route_final_carry_x,
         route_final_carry_y = segment.route_final_carry_y,
+        continuous = continuous,
+        stop_on_blocker = stop_on_blocker,
     }
     set_active_route_context(overworld_segment_target(segment), #segment.steps, nil, {
         post_arrival_actions = false,
         speak = false,
+        stop_on_blocker = stop_on_blocker,
     })
     debug_tools.info(string.format(
-        "OVERWORLD_AUTO_WALK: event=start route=%s waypoint=%s index=%s steps=%d from=(%d,%d) to=(%s,%s) carry=(%s,%s)",
+        "OVERWORLD_AUTO_WALK: event=start route=%s waypoint=%s index=%s steps=%d from=(%d,%d) to=(%s,%s) carry=(%s,%s) continuous=%s stop_on_blocker=%s",
         tostring(active_overworld_segment.route_id or "-"),
         tostring(active_overworld_segment.waypoint_name or "-"),
         tostring(active_overworld_segment.index),
@@ -3779,11 +3792,24 @@ function M.autowalk_overworld_segment(opts)
         tostring(active_overworld_segment.waypoint_x),
         tostring(active_overworld_segment.waypoint_y),
         tostring(active_overworld_segment.route_final_carry_x),
-        tostring(active_overworld_segment.route_final_carry_y)))
+        tostring(active_overworld_segment.route_final_carry_y),
+        tostring(continuous),
+        tostring(stop_on_blocker)))
     segment.status = "queued"
     segment.ok = true
     if opts.speak ~= false then
-        tolk.output_interrupt("Overworld auto-walk. " .. tostring(segment.message or "Next waypoint queued"))
+        local speech_message
+        if stop_on_blocker then
+            speech_message = "Overworld blocker hunt toward "
+                .. tostring(active_overworld_segment.route_title or "the route destination")
+        elseif continuous then
+            speech_message = "Continuous overworld auto-walk to "
+                .. tostring(active_overworld_segment.route_title or "the route destination")
+        else
+            speech_message = "Overworld auto-walk. "
+                .. tostring(segment.message or "Next waypoint queued")
+        end
+        tolk.output_interrupt(speech_message)
     end
     return segment
 end
@@ -4046,6 +4072,8 @@ function M.autowalk_to_object(obj, opts)
         return M.autowalk_overworld_segment({
             speak = opts.speak,
             skip_guard = true,
+            stop_on_blocker = opts.stop_on_blocker,
+            overworld_continuous = opts.overworld_continuous,
         })
     end
     local npc_mode = route_npc_mode_from_opts(opts)
@@ -4221,7 +4249,9 @@ function M.autowalk_to_current(opts)
     if not obj then
         local map_id = nav.get_position()
         if maps.is_overworld(map_id, snapshot.terrain_offset) then
-            return M.autowalk_overworld_segment({speak = opts.speak ~= false})
+            local overworld_opts = copy_opts(opts)
+            overworld_opts.speak = opts.speak ~= false
+            return M.autowalk_overworld_segment(overworld_opts)
         end
         if opts.speak ~= false then
             tolk.output_interrupt("No object selected")
@@ -4238,6 +4268,30 @@ function M.autowalk_to_current(opts)
     -- retain their route-switching behavior.
     next_opts.follow_active_overworld_route = true
     return M.autowalk_to_object(obj, next_opts)
+end
+
+-- Return the speech payload for an overworld route-position event. Continuous
+-- travel logs every waypoint but speaks only warnings and terminal arrival;
+-- route_status remains available for progress on demand.
+function M.overworld_route_event_speech(route_event)
+    if not route_event then
+        return nil
+    end
+    if not active_overworld_segment
+       or active_overworld_segment.continuous ~= true
+       or route_event.terminal == true then
+        return route_event.message
+    end
+    return route_event.warning_message
+end
+
+-- A terminal guided-route message already names the destination, so it should
+-- replace the generic map-name announcement rather than follow it.
+function M.overworld_route_map_change_speech(map_name, route_event)
+    if route_event and route_event.terminal == true then
+        return nil
+    end
+    return map_name
 end
 
 local function reroute_after_route_drift(cancel_data, target)
@@ -4418,7 +4472,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         debug_tools.debug("route_manager: ignoring blocked step outside queued route")
         return
     end
-    if active_overworld_block then
+    if active_overworld_block and not active_route_stop_on_blocker then
         event_bus.publish("route_cancelled", {
             reason = "overworld_blocked",
             target = active_route_target,
@@ -4441,7 +4495,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         tolk.output_interrupt("Overworld auto-walk stopped. Blocked moving " .. tostring(blocked_dir) .. " toward " .. waypoint_name)
         return
     end
-    if not last_pathfind_obj then return end
+    if not last_pathfind_obj and not active_overworld_block then return end
 
     if delay_timing_retry_observation
        and start_seam_bruteforce(map_id, from_x, from_y, blocked_dir, block_data) then
@@ -4462,7 +4516,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         local dest_x, dest_y, approach = get_destination_for_dir(from_x, from_y, blocked_dir)
         local upper_dir = tostring(blocked_dir or ""):upper()
         local command = string.format("add_blocked_edge:%d,%d,%s", from_x or -1, from_y or -1, upper_dir)
-        local target = last_pathfind_obj
+        local target = active_route_target or last_pathfind_obj
         event_bus.publish("route_cancelled", {
             reason = "stop_on_blocker",
             target = target,
@@ -4661,6 +4715,10 @@ do
             local completion_actions = active_route_completion_actions
             local speak_completion = active_route_speak_completion
             local hazard_stop = active_route_hazard_stop
+            local continuous_overworld = overworld_segment
+                and overworld_segment.continuous == true
+            local stop_on_blocker = overworld_segment
+                and overworld_segment.stop_on_blocker == true
 
             if opts.publish_route_completed == true then
                 event_bus.publish("route_completed")
@@ -4675,6 +4733,39 @@ do
                     tostring(overworld_segment.waypoint_name or "-"),
                     tostring(overworld_segment.index),
                     tostring(overworld_segment.steps)))
+            end
+
+            if continuous_overworld then
+                local active_route_id = overworld_routes.active_route_id()
+                if not active_route_id then
+                    debug_tools.info(string.format(
+                        "OVERWORLD_AUTO_WALK: event=continuous_stop route=%s waypoint=%s index=%s reason=route_finished",
+                        tostring(overworld_segment.route_id or "-"),
+                        tostring(overworld_segment.waypoint_name or "-"),
+                        tostring(overworld_segment.index)))
+                    return
+                end
+
+                local next_segment = M.autowalk_overworld_segment({
+                    speak = false,
+                    overworld_continuous = true,
+                    stop_on_blocker = stop_on_blocker,
+                })
+                if next_segment and next_segment.status == "queued" then
+                    debug_tools.info(string.format(
+                        "OVERWORLD_AUTO_WALK: event=continue route=%s waypoint=%s index=%s",
+                        tostring(next_segment.route and next_segment.route.id or active_route_id),
+                        tostring(next_segment.waypoint and next_segment.waypoint.name or "-"),
+                        tostring(next_segment.index)))
+                else
+                    debug_tools.info(string.format(
+                        "OVERWORLD_AUTO_WALK: event=continuous_stop route=%s waypoint=%s index=%s reason=%s",
+                        tostring(overworld_segment.route_id or active_route_id or "-"),
+                        tostring(overworld_segment.waypoint_name or "-"),
+                        tostring(overworld_segment.index),
+                        tostring(next_segment and next_segment.status or "unavailable")))
+                end
+                return
             end
 
             if target then
@@ -4745,6 +4836,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
         active_route_completed_steps = active_route_completed_steps + 1
         local progress_interval = config_int("auto_walk_progress_interval", 6, 0, 60)
         if progress_interval > 0
+           and not (active_overworld_segment and active_overworld_segment.continuous == true)
            and active_route_total_steps > progress_interval
            and active_route_completed_steps < active_route_total_steps
            and active_route_completed_steps % progress_interval == 0 then

@@ -122,6 +122,20 @@ quality-of-life work.
   activation; final state had route/path nil and zero runtime blockers.
   Focused tests pass `175/175`; the broad gate passes all 33 host-runnable Lua
   suites plus 68 Python tests. This slice is closed.
+- The sixth connected-route slice is live-verified for `Tantegel -> Kol ->
+  Hauksness`. Far Hauksness starts now stage through the established Kol route,
+  retain the final destination, and hand off at Kol `(104,10)` to the existing
+  live-validated Hauksness chain. On-route western starts remain direct, and no
+  Hauksness waypoint geometry changed. Continuous overworld auto-walk is also
+  integrated as an opt-in setting; checked-in and generated player configs keep
+  waypoint mode as the default. Focused tests pass `179/179` overworld routes,
+  `123/123` route
+  manager, and `3/3` config tests; the broad gate passes all 33 host-runnable
+  Lua suites plus 68 Python tests. Loaded travel from Tantegel `(43,43)` handed
+  off at Kol, then completed the full Hauksness corridor and entered map `0x03`
+  with route/path state clear and zero runtime blockers. The legacy Kol leg
+  still entered Brecconary; that remains part of the separate early-route
+  town-entry polish task. This slice is closed.
 
 ## Remaining Map Completion
 
@@ -141,9 +155,9 @@ quality-of-life work.
   overworld location can compose a route from the player's current position,
   through existing waypoint corridors, to the destination. Reusing current
   route data is preferred over replacing live-validated segments. The opt-in
-  Northern Cave, Swamp Cave, Rainbow Bridge, and Charlock Castle are
-  implemented and live-accepted as connected routes. Choose the next existing
-  staged destination before generalizing the route model further.
+  Northern Cave, Swamp Cave, Rainbow Bridge, Charlock Castle, Magic Temple, and
+  Hauksness are implemented and live-accepted as connected routes. Choose the
+  next existing staged destination before generalizing the route model further.
 - Off-network recovery: when a player manually explores or gets lost, provide a
   player-facing command that finds a safe route back to the nearest reachable
   waypoint-network entry and then continues toward the selected destination.

@@ -228,12 +228,17 @@ COMMANDS (write to dw_commands.txt, one per line)
                            Alias for route_recalculate
   stop_overworld_route     Clear active overworld route guidance
   auto_walk                On the world map, if an overworld route is active,
-                           queue one segment to the next waypoint. Stops when
-                           the waypoint is reached, movement is blocked, or
-                           field movement is interrupted by battle/menu/dialogue.
+                           queue the next waypoint segment. By default it stops
+                           there; when overworld_auto_walk_continuous=true, it
+                           continues through later waypoints until arrival or
+                           interruption. Continuous travel speaks the destination
+                           once, safety warnings, stops, and final arrival, but
+                           not routine waypoint names or per-segment step counts.
                            On local maps, auto-walk to the current selected object.
-  auto_walk_blocker        Local-map blocker hunt mode. Auto-walks like auto_walk,
-                           but stops at the first blocked queued step and logs
+  auto_walk_blocker        Blocker hunt mode. On an active overworld route it
+                           continues across waypoints even when ordinary
+                           continuous travel is disabled. On any map it stops
+                           at the first blocked queued step and logs
                            AUTO_WALK_BLOCKER_FOUND plus the matching
                            add_blocked_edge:X,Y,DIR suggestion. It does not
                            apply runtime blockers automatically. Timing-suspect

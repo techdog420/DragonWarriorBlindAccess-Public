@@ -922,6 +922,256 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
     env.restore()
 end
 
+function tests.overworld_autowalk_default_stops_after_one_waypoint_segment()
+    local options = {
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        overworld_active_route_id = "garinham",
+        current_object = {
+            id = "route_garinham_14",
+            name = "Route next: Garinham east ridge",
+            type = "exit",
+            x = 16,
+            y = 6,
+        },
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up"},
+            message = "Auto-walk to Garinham east ridge.",
+            object_id = "route_garinham_14",
+        },
+    }
+    local env = make_env(options)
+
+    env.route_manager.autowalk_to_current()
+    assert_equal(env.route_manager.overworld_route_event_speech({
+        message = "Reached Garinham east ridge. Next: Garinham north lane.",
+    }), "Reached Garinham east ridge. Next: Garinham north lane.",
+        "one-segment mode should preserve routine waypoint speech")
+    options.overworld_segment = {
+        route = {id = "garinham", title = "Garinham"},
+        waypoint = {name = "Garinham north lane", x = 16, y = 5},
+        index = 15,
+        steps = {"up"},
+        message = "Auto-walk to Garinham north lane.",
+        object_id = "route_garinham_15",
+    }
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.overworld_plan_calls(), 1,
+        "default overworld auto-walk should not plan another waypoint")
+    assert_equal(env.start_route_calls(), 1,
+        "default overworld auto-walk should remain one segment per command")
+
+    env.restore()
+end
+
+function tests.overworld_autowalk_continuous_config_queues_next_waypoint()
+    local options = {
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        overworld_active_route_id = "garinham",
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+        current_object = {
+            id = "route_garinham_14",
+            name = "Route next: Garinham east ridge",
+            type = "exit",
+            x = 16,
+            y = 6,
+        },
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up"},
+            message = "Auto-walk to Garinham east ridge.",
+            object_id = "route_garinham_14",
+        },
+    }
+    local env = make_env(options)
+
+    env.route_manager.autowalk_to_current()
+    options.overworld_segment = {
+        route = {id = "garinham", title = "Garinham"},
+        waypoint = {
+            name = "Garinham north lane",
+            x = 15,
+            y = 6,
+            route_hold_after_movement_start_frames = 60,
+        },
+        index = 15,
+        steps = {"left"},
+        message = "Auto-walk to Garinham north lane.",
+        object_id = "route_garinham_15",
+    }
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.overworld_plan_calls(), 2,
+        "continuous overworld auto-walk should plan the next waypoint")
+    assert_equal(env.start_route_calls(), 2,
+        "continuous overworld auto-walk should queue the next segment")
+    assert_equal(env.last_start_route_steps()[1], "left",
+        "continuous overworld auto-walk should use the new waypoint steps")
+    assert_equal(env.last_start_route_opts().route_hold_after_movement_start_frames, 60,
+        "continuous chaining should preserve the next waypoint timing metadata")
+
+    env.restore()
+end
+
+function tests.overworld_continuous_speech_suppresses_routine_waypoints_but_keeps_warnings()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        overworld_active_route_id = "garinham",
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up"},
+            message = "Auto-walk to Garinham east ridge.",
+            object_id = "route_garinham_14",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local initial_speech = table.concat(env.outputs, "\n")
+    assert_contains(initial_speech,
+        "Continuous overworld auto-walk to Garinham",
+        "continuous mode should announce the route destination at startup")
+    assert_not_contains(initial_speech,
+        "Auto-walk to Garinham east ridge",
+        "continuous mode should not announce its first internal waypoint")
+
+    assert_equal(env.route_manager.overworld_route_event_speech({
+        message = "Reached Garinham east ridge. Next: Garinham north lane.",
+    }), nil, "continuous mode should silence routine waypoint speech")
+    assert_equal(env.route_manager.overworld_route_event_speech({
+        message = "Bridge crossing. Monsters may become more dangerous. Next: West lane.",
+        warning_message = "Bridge crossing. Monsters may become more dangerous.",
+    }), "Bridge crossing. Monsters may become more dangerous.",
+        "continuous mode should keep safety warnings without the routine waypoint suffix")
+    assert_equal(env.route_manager.overworld_route_event_speech({
+        message = "Arrived at Garinham",
+        terminal = true,
+    }), "Arrived at Garinham",
+        "continuous mode should still announce terminal arrival")
+    assert_equal(env.route_manager.overworld_route_map_change_speech("Garinham", {
+        message = "Arrived at Garinham",
+        terminal = true,
+    }), nil, "terminal route arrival should replace the redundant map-name announcement")
+    assert_equal(env.route_manager.overworld_route_map_change_speech("Garinham", nil),
+        "Garinham", "ordinary map changes should retain their map-name announcement")
+
+    env.restore()
+end
+
+function tests.overworld_blocker_mode_chains_even_when_continuous_config_is_off()
+    local options = {
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        overworld_active_route_id = "garinham",
+        config_values = {
+            overworld_auto_walk_continuous = "false",
+        },
+        current_object = {
+            id = "route_garinham_14",
+            name = "Route next: Garinham east ridge",
+            type = "exit",
+            x = 16,
+            y = 6,
+        },
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up"},
+            message = "Auto-walk to Garinham east ridge.",
+            object_id = "route_garinham_14",
+        },
+    }
+    local env = make_env(options)
+
+    env.route_manager.autowalk_to_current({
+        speak = true,
+        stop_on_blocker = true,
+    })
+    options.overworld_segment = {
+        route = {id = "garinham", title = "Garinham"},
+        waypoint = {name = "Garinham north lane", x = 16, y = 5},
+        index = 15,
+        steps = {"up"},
+        message = "Auto-walk to Garinham north lane.",
+        object_id = "route_garinham_15",
+    }
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.overworld_plan_calls(), 2,
+        "overworld blocker mode should continue hunting across waypoints")
+    assert_equal(env.start_route_calls(), 2,
+        "overworld blocker mode should queue the next segment")
+
+    env.restore()
+end
+
+function tests.overworld_continuous_mode_stops_cleanly_when_route_is_finished()
+    local options = {
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 24,
+        start_y = 89,
+        overworld_active_route_id = "hauksness",
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+        current_object = {
+            id = "route_hauksness_final",
+            name = "Route next: Hauksness",
+            type = "exit",
+            x = 25,
+            y = 89,
+        },
+        overworld_segment = {
+            route = {id = "hauksness", title = "Hauksness"},
+            waypoint = {name = "Hauksness", x = 25, y = 89, final = true},
+            index = 58,
+            steps = {"right"},
+            message = "Auto-walk to Hauksness.",
+            object_id = "route_hauksness_final",
+        },
+    }
+    local env = make_env(options)
+
+    env.route_manager.autowalk_to_current()
+    options.overworld_active_route_id = nil
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.overworld_plan_calls(), 1,
+        "finished continuous route should not ask for another segment")
+    assert_equal(env.start_route_calls(), 1,
+        "finished continuous route should not queue more movement")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "event=continuous_stop",
+        "finished continuous route should log an intentional stop")
+
+    env.restore()
+end
+
 function tests.overworld_autowalk_keeps_final_segment_strict()
     local env = make_env({
         is_overworld = true,
@@ -982,6 +1232,59 @@ function tests.overworld_blocked_segment_stops_without_reroute()
     assert_equal(env.start_route_calls(), 1, "blocked overworld segment should not queue a reroute")
     assert_equal(events[#events].payload.reason, "overworld_blocked", "blocked overworld segment should publish a stop reason")
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk stopped", "blocked segment should tell the player it stopped")
+
+    env.restore()
+end
+
+function tests.overworld_blocker_mode_reports_exact_edge_without_reroute()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        overworld_active_route_id = "garinham",
+        current_object = {
+            id = "route_garinham_14",
+            name = "Route next: Garinham east ridge",
+            type = "exit",
+            x = 16,
+            y = 6,
+        },
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge", x = 16, y = 6},
+            index = 14,
+            steps = {"up"},
+            message = "Auto-walk to Garinham east ridge.",
+            object_id = "route_garinham_14",
+        },
+    })
+
+    env.route_manager.autowalk_to_current({
+        speak = true,
+        stop_on_blocker = true,
+    })
+    env.auto_step.on_blocked(19, 7, "up", {
+        queued_route = true,
+        movement_started = false,
+    })
+
+    assert_equal(env.pathfind_calls(), 0,
+        "overworld blocker mode should not invoke interior A* rerouting")
+    assert_equal(env.start_route_calls(), 1,
+        "overworld blocker mode should stop after the first blocked edge")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_BLOCKER_FOUND map=0x01",
+        "overworld blocker mode should emit the structured blocker report")
+    assert_contains(table.concat(env.outputs, "\n"),
+        "Auto-walk stopped at blocker from 19,7 up to 19,6",
+        "overworld blocker mode should speak the exact failed edge")
+    assert_contains(table.concat(env.outputs, "\n"),
+        "add_blocked_edge:19,7,UP",
+        "overworld blocker mode should provide the matching runtime patch command")
+    local events = env.published_events()
+    assert_equal(events[#events].payload.reason, "stop_on_blocker",
+        "overworld blocker mode should publish the blocker-hunt stop reason")
 
     env.restore()
 end
@@ -1135,6 +1438,9 @@ function tests.overworld_battle_cancel_clears_without_speech_spam()
         start_map_id = 0x01,
         start_x = 19,
         start_y = 7,
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
         current_object = {id = "route_garinham_14", name = "Route next: Garinham east ridge", type = "exit", x = 16, y = 6},
         overworld_segment = {
             route = {id = "garinham", title = "Garinham"},
@@ -1151,6 +1457,10 @@ function tests.overworld_battle_cancel_clears_without_speech_spam()
     env.auto_step.on_route_cancelled({reason = "can_walk_false", current_x = 19, current_y = 7})
 
     assert_equal(env.pathfind_calls(), 0, "battle/menu cancel should not reroute an overworld segment")
+    assert_equal(env.overworld_plan_calls(), 1,
+        "battle should not plan the next waypoint in continuous mode")
+    assert_equal(env.start_route_calls(), 1,
+        "battle should not queue another movement segment in continuous mode")
     assert_equal(#env.outputs, outputs_before_cancel, "can_walk_false cancel should leave battle/menu speech in charge")
 
     env.restore()
@@ -3926,6 +4236,42 @@ function tests.autowalk_speaks_progress_on_long_routes()
         table.concat(env.outputs, "\n"),
         "Auto-walk 6 of 8 steps",
         "long queued routes should speak progress at the configured interval")
+
+    env.restore()
+end
+
+function tests.overworld_continuous_autowalk_suppresses_segment_step_progress()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 110,
+        start_y = 76,
+        overworld_active_route_id = "magic_temple",
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+        overworld_segment = {
+            route = {id = "magic_temple", title = "Magic Temple"},
+            waypoint = {name = "Southern road east wall", x = 110, y = 86},
+            index = 6,
+            steps = {"down", "down", "down", "down", "down", "down", "down", "down", "down", "down"},
+            message = "Auto-walk to Southern road east wall.",
+            object_id = "route_magic_temple_6",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    for i = 1, 6 do
+        env.auto_step.on_step_complete(110, 75 + i, "down", 110, 76 + i, {
+            queued_route = true,
+            source = "test",
+        })
+    end
+
+    assert_not_contains(
+        table.concat(env.outputs, "\n"),
+        "Auto-walk 6 of 10 steps",
+        "continuous mode should not present per-segment counts as journey progress")
 
     env.restore()
 end
