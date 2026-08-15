@@ -146,6 +146,22 @@ quality-of-life work.
   or runtime-block pollution. Focused tests pass `184/184`; the native Windows
   broad gate passes all 33 host-runnable Lua suites plus 68 Python tests. This
   slice is closed; early-route town-entry avoidance remains separate polish.
+- The eighth connected-route slice is fully live-verified for `Tantegel -> Kol
+  -> Western desert east road -> Mountain Cave`, with the existing ordered continuation list
+  also composing `Tantegel -> Kol -> connector -> Mountain Cave`. The internal
+  connector is derived from the live-validated Hauksness route prefix through
+  `(18,64)`, so it cannot drift from that shared corridor. Direct local starts
+  remain unchanged. The loaded continuous pass from World Map `(104,10)`
+  handed off at `(18,64)`, entered Mountain Cave map `0x16` at `(0,7)`, and
+  finished with route/path state clear and zero NPC/runtime blockers. The user
+  manually repeated and accepted the route; a fresh arrival probe confirmed
+  the same clean state. A complete manual Tantegel run entered Brecconary and
+  Kol, completed both staging handoffs, and entered Mountain Cave without a
+  blocker, cancellation, or exhausted retry. One initial timing retry
+  recovered. Focused tests pass `189/189`; the native Windows broad gate passes
+  all 33 host-runnable Lua suites plus 68 Python tests. This slice is closed;
+  Brecconary/Kol entry remains part of the separate early-route town-entry
+  polish task.
 
 ## Remaining Map Completion
 

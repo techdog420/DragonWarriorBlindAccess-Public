@@ -6025,3 +6025,47 @@ For the next live map task, start a new dated section here with:
   `CANTLIN_CONNECTED_ARRIVAL_20260815` reported route none, path target nil,
   and zero runtime blockers. Known early-route town entry remains separate
   polish.
+
+## 2026-08-15 Connected Mountain Cave Itinerary
+
+- OLD BEHAVIOR REPRODUCED: selecting Mountain Cave from Kol `(104,10)` or
+  Tantegel `(43,43)` started the six-waypoint local spur directly and could
+  synthesize a huge shortcut toward `(18,64)`.
+- SOURCE FIX: `mountain_cave_connector` is derived at load time from the
+  validated Hauksness route prefix from Kol through `Western desert east road`
+  `(18,64)`. Mountain Cave stages through that connector when off its local
+  corridor; the connector itself stages through Kol when needed. This yields
+  `kol -> mountain_cave_connector -> mountain_cave` from Tantegel without a
+  second manually maintained waypoint list.
+- REGRESSION COVERAGE: Kol and Tantegel starts, both handoffs, final-object
+  binding, guidance refresh, cancellation, direct local starts, exact prefix
+  identity, and protection against mutating the Hauksness midpoint all pass.
+  Focused route tests are `189/189`; the native Windows `python run_tests.py`
+  gate passes all 33 host-runnable Lua suites plus 68 Python tests. Lua syntax
+  and `git diff --check` pass.
+- LIVE VERIFIED FROM KOL: fresh tag `MCAVE_CONNECTOR_BASELINE_20260815`
+  confirmed World Map `(104,10)`, route/path nil, and zero NPC/runtime blockers.
+  Starting Mountain Cave selected `mountain_cave_connector` with
+  `staged_from=mountain_cave`. Blocker-aware continuous walking traversed the
+  shared corridor, handed off at `(18,64)`, continued through the local spur,
+  and entered Mountain Cave map `0x16` at `(0,7)`. Ordinary guarded
+  twitch/repress retries all moved on their first retry; there was no failed
+  edge, cancellation, or runtime-block injection. Fresh arrival tag
+  `MCAVE_CONNECTED_ARRIVAL_20260815` reported route none, path target nil, and
+  zero NPC/runtime blockers.
+- MANUAL ACCEPTANCE VERIFIED: the user's independent pass also entered Mountain
+  Cave map `0x16` at `(0,7)`. Fresh tag `MCAVE_MANUAL_ACCEPTANCE_20260815`
+  confirmed route none, path target nil, and zero NPC/runtime blockers. The only
+  later input diagnostic was the known benign FCEUX `LeftAlt` latch; no route or
+  map patch is warranted.
+- FULL TANTEGEL ACCEPTANCE VERIFIED: the user's manual run from `(43,43)` began
+  `kol` with `staged_from=mountain_cave`, entered and exited Brecconary, entered
+  Kol and emitted `kol -> mountain_cave_connector`, then emitted
+  `mountain_cave_connector -> mountain_cave` at `(18,64)` and entered Mountain
+  Cave map `0x16` at `(0,7)`. One timeout retry at `(43,43) -> UP` recovered;
+  the interval contained no blocker, cancellation, or exhausted retry. The hero
+  was repositioned afterward, so fresh tag
+  `MCAVE_TANTEGEL_ACCEPTANCE_AUDIT_20260815` confirmed the current World Map
+  `(43,43)` state clean rather than re-probing the earlier cave arrival: route
+  none, path target nil, and zero NPC/runtime blockers. This slice is accepted.
+  Brecconary/Kol entry remains separate early-route polish.

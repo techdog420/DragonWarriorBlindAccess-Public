@@ -1005,6 +1005,161 @@ function tests.mountain_cave_object_starts_from_western_desert_route_pin()
     routes.reset_for_tests()
 end
 
+function tests.mountain_cave_object_from_kol_starts_hauksness_prefix_connector()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+        x = 29,
+        y = 57,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 10)
+
+    assert_equal(err, nil, "Mountain Cave Travel object should resolve from Kol")
+    assert_equal(info.route.id, "mountain_cave_connector",
+        "Kol-side Mountain Cave requests should start the validated Hauksness prefix")
+    assert_equal(info.object_id, "route_mountain_cave_connector_02",
+        "the connector should leave Kol through the first Hauksness waypoint")
+    assert_contains(info.message, "Mountain Cave route starts from Western desert east road",
+        "staging speech should retain Mountain Cave as the final destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Mountain Cave should remain selected during the connector leg")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_from_tantegel_starts_kol_then_connector_itinerary()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("mountain cave", 0x01, 43, 43)
+
+    assert_equal(err, nil, "Mountain Cave alias should resolve from Tantegel")
+    assert_equal(info.route.id, "kol",
+        "far Mountain Cave requests should begin on the established Kol route")
+    assert_equal(info.object_id, "route_kol_02",
+        "the nested itinerary should leave Tantegel through the Kol route")
+    assert_contains(info.message, "Mountain Cave route starts from Kol",
+        "nested staging speech should retain Mountain Cave")
+    assert_contains(info.log, "staged_from=mountain_cave",
+        "structured logs should retain the final Mountain Cave destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_staging_hands_off_at_kol_and_western_desert_pin()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+        x = 29,
+        y = 57,
+    }
+    assert(routes.start_for_object(target, 0x01, 43, 43))
+
+    local kol_entry = assert(routes.observe_position(0x07, 19, 23))
+    assert_equal(kol_entry.status, "handoff",
+        "entering Kol should hand off to the western connector")
+    assert_equal(routes.active_route_id(), "mountain_cave_connector",
+        "Kol arrival should activate the Hauksness-prefix connector")
+    assert_contains(kol_entry.message, "Continuing toward Mountain Cave",
+        "the intermediate handoff should retain the final destination")
+    assert_contains(kol_entry.message, "Current leg to Western desert east road",
+        "the intermediate handoff should name the connector endpoint")
+    assert_equal(kol_entry.steps, nil,
+        "the Kol handoff must not inject movement")
+
+    local connector = assert(routes._route_for_tests("mountain_cave_connector"))
+    local event
+    for index = 2, #connector.waypoints do
+        local waypoint = connector.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "the western desert pin should hand off to the local cave spur")
+    assert_equal(routes.active_route_id(), "mountain_cave",
+        "the connector endpoint should activate the existing Mountain Cave route")
+    assert_contains(event.message,
+        "Reached Western desert east road. Continuing to Mountain Cave",
+        "the final handoff should name the shared route pin and cave")
+    assert_equal(event.object_id, "route_mountain_cave_02",
+        "the local cave spur should begin at its first movement waypoint")
+    assert_equal(event.steps, nil,
+        "the local-spur handoff must wait for the next auto-walk request")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Mountain Cave should remain selected after the local spur activates")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_connector_reuses_hauksness_prefix_without_mutation()
+    local hauksness = assert(routes._route_for_tests("hauksness"))
+    local connector = assert(routes._route_for_tests("mountain_cave_connector"))
+    local shared_pin_index
+    for index, waypoint in ipairs(hauksness.waypoints) do
+        if waypoint.x == 18 and waypoint.y == 64 then
+            shared_pin_index = index
+            break
+        end
+    end
+
+    assert_equal(shared_pin_index ~= nil, true,
+        "Hauksness route should contain the western desert shared pin")
+    assert_equal(#connector.waypoints, shared_pin_index,
+        "connector should end exactly at the shared pin")
+    for index = 1, shared_pin_index do
+        local source = hauksness.waypoints[index]
+        local derived = connector.waypoints[index]
+        assert_equal(derived ~= source, true,
+            "connector waypoints should be copies rather than mutable aliases")
+        assert_equal(derived.x, source.x, "connector x at waypoint " .. index)
+        assert_equal(derived.y, source.y, "connector y at waypoint " .. index)
+        assert_equal(derived.name, source.name, "connector name at waypoint " .. index)
+        assert_equal(derived.radius, source.radius, "connector radius at waypoint " .. index)
+        assert_equal(derived.axis_order, source.axis_order,
+            "connector axis order at waypoint " .. index)
+        assert_equal(derived.warning, source.warning,
+            "connector warning at waypoint " .. index)
+    end
+    assert_equal(connector.waypoints[#connector.waypoints].final, true,
+        "connector endpoint should be final")
+    assert_equal(hauksness.waypoints[shared_pin_index].final, nil,
+        "deriving the connector must not mark the Hauksness midpoint final")
+end
+
+function tests.mountain_cave_guidance_refresh_and_cancel_preserve_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+        x = 29,
+        y = 57,
+    }
+    assert(routes.start_for_object(target, 0x01, 43, 43))
+
+    local refreshed = routes.guidance_for_object(target, 0x01, 43, 43)
+    assert_equal(refreshed.route.id, "kol",
+        "guidance refresh should keep the first itinerary leg active")
+    assert_contains(refreshed.message, "Final destination: Mountain Cave",
+        "guidance refresh should retain Mountain Cave")
+
+    routes.observe_position(0x07, 19, 23)
+    refreshed = routes.guidance_for_object(target, 0x01, 104, 10)
+    assert_equal(refreshed.route.id, "mountain_cave_connector",
+        "guidance refresh should keep the connector active after Kol")
+    assert_contains(refreshed.message, "Final destination: Mountain Cave",
+        "connector guidance should retain Mountain Cave")
+
+    routes.stop()
+    assert_equal(routes.is_active(), false,
+        "stopping should clear the connector leg")
+    assert_equal(routes.active_route_matches_object(target), false,
+        "stopping should also clear the queued Mountain Cave destination")
+
+    routes.reset_for_tests()
+end
+
 function tests.mountain_cave_route_recovers_from_live_north_carry_position()
     routes.reset_for_tests()
     routes.start("mountain cave", 0x01, 16, 61)

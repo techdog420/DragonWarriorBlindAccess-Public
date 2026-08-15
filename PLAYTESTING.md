@@ -6,6 +6,29 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Connected Mountain Cave route fully live-verified (`2026-08-15`): selecting
+  Mountain Cave outside Kol now stages through an internal connector ending at the
+  live-validated `Western desert east road` pin `(18,64)`, then hands off to
+  the existing short cave spur. The connector is derived from the established
+  Hauksness waypoint prefix rather than duplicating its turns or timing
+  metadata. Selecting Mountain Cave from Tantegel `(43,43)` composes
+  `kol -> mountain_cave_connector -> mountain_cave`; starts at `(18,64)` or on
+  the local cave corridor remain direct. Both handoffs preserve Mountain Cave
+  as the selected Travel object. With continuous overworld walking enabled,
+  the loaded route handed off at `(18,64)` and continued onto the local spur
+  without another activation.
+  Focused route tests pass `189/189`; the native Windows broad gate passes all
+  33 host-runnable Lua suites plus 68 Python tests. The clean loaded pass began
+  on World Map `(104,10)`, entered Mountain Cave map `0x16` at `(0,7)`, and
+  ended with route/path state clear and zero NPC/runtime blockers. The user then
+  manually repeated and accepted the same route; fresh tag
+  `MCAVE_MANUAL_ACCEPTANCE_20260815` confirmed the same clean final state. A
+  complete manual run from Tantegel `(43,43)` then composed `kol ->
+  mountain_cave_connector -> mountain_cave`, entered Brecconary and Kol as
+  expected for the legacy early route, completed both handoffs, and arrived in
+  Mountain Cave. The log contained one recovered timeout retry at `(43,43) ->
+  UP`, with no blocker, cancellation, or exhausted retry. Early-route town
+  entry remains separate polish; this connected-route slice is accepted.
 - Connected Cantlin route live-verified (`2026-08-15`): selecting Cantlin from
   Tantegel World Map `(43,43)` now composes the existing `kol`, `hauksness`,
   and `cantlin_hauksness` routes instead of synthesizing the prior 62-step

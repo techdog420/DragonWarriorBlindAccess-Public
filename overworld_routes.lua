@@ -60,6 +60,26 @@ local CANTLIN_STAGING = {
     continue_after_staging = true,
 }
 
+local MOUNTAIN_CAVE_CONNECTOR_STAGING = {
+    route_id = "kol",
+    continuation_route_id = "mountain_cave_connector",
+    -- The connector begins on the established Kol/Hauksness corridor. Far
+    -- off-corridor starts such as Tantegel must first use the Kol route.
+    max_start_distance = 24,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local MOUNTAIN_CAVE_STAGING = {
+    route_id = "mountain_cave_connector",
+    continuation_route_id = "mountain_cave",
+    -- The longest validated local spur segment is nine tiles. Anything
+    -- farther away or off that corridor must reach its shared route pin first.
+    max_start_distance = 9,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -985,6 +1005,7 @@ local ROUTES = {
         },
         target_object_ids = {"overworld_mountain_cave"},
         destination_maps = {0x16, 0x17},
+        staging = MOUNTAIN_CAVE_STAGING,
         waypoints = {
             {
                 x = 18,
@@ -1743,6 +1764,41 @@ local ROUTES = {
             {x = 43, y = 43, name = "Tantegel Castle", radius = 0, final = true},
         },
     },
+}
+
+local function copy_waypoint(point)
+    local result = {}
+    for key, value in pairs(point or {}) do
+        result[key] = value
+    end
+    return result
+end
+
+local function copy_route_prefix(route, stop_x, stop_y)
+    local result = {}
+    for _, point in ipairs(route and route.waypoints or {}) do
+        local copied = copy_waypoint(point)
+        result[#result + 1] = copied
+        if point.x == stop_x and point.y == stop_y then
+            copied.final = true
+            return result
+        end
+    end
+    error(string.format(
+        "route %s does not contain connector pin (%s,%s)",
+        tostring(route and route.id or "-"),
+        tostring(stop_x),
+        tostring(stop_y)))
+end
+
+-- Internal staging leg: reuse the live-validated Hauksness corridor from Kol
+-- only through the Mountain Cave junction. Keeping this derived avoids a
+-- second manually maintained copy of more than sixty waypoint turns.
+ROUTES.mountain_cave_connector = {
+    id = "mountain_cave_connector",
+    title = "Western desert east road",
+    staging = MOUNTAIN_CAVE_CONNECTOR_STAGING,
+    waypoints = copy_route_prefix(ROUTES.hauksness, 18, 64),
 }
 
 -- Keep lookup deterministic, especially when several routes share a Travel target.

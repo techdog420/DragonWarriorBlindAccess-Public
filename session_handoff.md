@@ -121,6 +121,32 @@ Updated: 2026-08-15
 
 ## Immediate FCEUX Handoff
 
+- The eighth connected itinerary is fully live-verified for `Tantegel -> Kol ->
+  Western desert east road -> Mountain Cave`. Mountain Cave now stages through an internal
+  `mountain_cave_connector` whose waypoints are copied at load time from the
+  established Hauksness route only through shared pin `(18,64)`. The connector
+  then hands off without movement to the existing five-segment Mountain Cave
+  spur ending at World Map `(29,57)` / map `0x16` `(0,7)`. Far Tantegel starts
+  compose `kol -> mountain_cave_connector -> mountain_cave`; local starts at
+  `(18,64)` and `(16,61)` remain direct. Travel-object focus, guidance refresh,
+  both handoffs, cancellation, prefix identity, and source-route immutability
+  are covered. A clean loaded continuous pass from World Map `(104,10)` crossed
+  the shared Hauksness prefix, emitted the connector-to-Mountain-Cave handoff at
+  `(18,64)`, continued without another activation, and entered Mountain Cave
+  map `0x16` at `(0,7)`. Fresh tag `MCAVE_CONNECTED_ARRIVAL_20260815` reported
+  route none, path target nil, and zero NPC/runtime blockers. Focused tests pass
+  `189/189`; the native Windows broad gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests. The user then manually repeated and accepted the
+  route; fresh tag `MCAVE_MANUAL_ACCEPTANCE_20260815` independently confirmed
+  Mountain Cave `(0,7)`, route/path nil, and zero NPC/runtime blockers. The
+  user's full Tantegel-origin pass then started `kol` with
+  `staged_from=mountain_cave`, entered and exited Brecconary, entered Kol and
+  handed off to `mountain_cave_connector`, handed off again at `(18,64)`, and
+  entered Mountain Cave map `0x16` at `(0,7)`. One timeout retry at Tantegel
+  `(43,43) -> UP` recovered; no blocker, cancellation, or retry exhaustion
+  occurred. The later fresh audit at World Map `(43,43)` reported route/path
+  nil and zero blockers. This slice is accepted; early Brecconary/Kol entry is
+  separate route-polish work.
 - The seventh connected itinerary is live-verified for `Tantegel -> Kol ->
   Hauksness -> Cantlin`. Cantlin's Travel object and new plain `cantlin` alias
   now start the existing `kol` route from World Map `(43,43)`, retain Cantlin
