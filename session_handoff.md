@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-14
+Updated: 2026-08-15
 
 ## Release Installation Handoff
 
@@ -121,6 +121,23 @@ Updated: 2026-08-14
 
 ## Immediate FCEUX Handoff
 
+- The seventh connected itinerary is live-verified for `Tantegel -> Kol ->
+  Hauksness -> Cantlin`. Cantlin's Travel object and new plain `cantlin` alias
+  now start the existing `kol` route from World Map `(43,43)`, retain Cantlin
+  as the final destination, hand off to `hauksness` at Kol, then hand off to
+  `cantlin_hauksness` at Hauksness. The new ordered continuation list preserves
+  existing two-leg staging behavior, waits for another auto-walk activation at
+  each handoff, survives Travel-guidance refresh, and clears fully on cancel.
+  Direct starts at Hauksness `(25,89)` and the Eastern Great Swamp Search Area
+  `(89,112)` remain unchanged. Loaded acceptance from `(43,43)` completed the
+  Kol leg, handed off to `hauksness`, completed that corridor, handed off to
+  `cantlin_hauksness`, and entered Cantlin at `(15,0)`. Both handoffs paused for
+  manual town exits as designed. There were no blocker, cancellation, or
+  retry-exhaustion events; final tag `CANTLIN_CONNECTED_ARRIVAL_20260815`
+  reported route none, path target nil, and zero runtime blockers. Focused
+  route tests pass `184/184`; the native Windows broad gate passes all 33
+  host-runnable Lua suites plus 68 Python tests. Early Brecconary/Kol town
+  entries remain known separate polish and are not a failure of this slice.
 - The sixth connected itinerary is live-verified for `Tantegel -> Kol ->
   Hauksness`. A far Hauksness selection at World Map `(43,43)` now starts the
   established `kol` route, retains Hauksness as the final Travel destination,

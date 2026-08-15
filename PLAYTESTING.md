@@ -1,11 +1,30 @@
 # Playtesting Notes
 
-Updated: 2026-08-14
+Updated: 2026-08-15
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Connected Cantlin route live-verified (`2026-08-15`): selecting Cantlin from
+  Tantegel World Map `(43,43)` now composes the existing `kol`, `hauksness`,
+  and `cantlin_hauksness` routes instead of synthesizing the prior 62-step
+  shortcut. The route state holds an ordered continuation list, keeps the
+  Cantlin Travel object bound during both staging legs, names the current leg
+  and final destination, and pauses without injecting movement at the Kol and
+  Hauksness handoffs. Direct starts at Hauksness `(25,89)` and the Eastern
+  Great Swamp Search Area `(89,112)` remain on their local live-validated
+  Cantlin routes. Regressions cover alias and Travel-object starts, waypoint
+  and town-entry handoffs, guidance refresh, final-object binding, and cancel
+  cleanup. Live acceptance from `(43,43)` completed all three legs. The Kol
+  handoff activated `hauksness`; the Hauksness handoff activated
+  `cantlin_hauksness`; and the final leg entered Cantlin at `(15,0)`. Each
+  handoff paused for the manual town exit as designed. No blocked, canceled,
+  or retry-exhausted event occurred, and the final probe reported route none,
+  path target nil, and zero runtime blockers. The known Brecconary and Kol
+  entries remain separate early-route polish. Focused tests pass `184/184`;
+  the native Windows broad gate passes all 33 host-runnable Lua suites plus 68
+  Python tests.
 - Connected Hauksness route (`2026-08-14`): selecting Hauksness at
   Tantegel World Map `(43,43)` now stages through `kol`, keeps the Hauksness
   Travel target bound during the first leg, and hands off at Kol `(104,10)` to

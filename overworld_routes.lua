@@ -50,6 +50,16 @@ local HAUKSNESS_STAGING = {
     continue_after_staging = true,
 }
 
+local CANTLIN_STAGING = {
+    route_id = "hauksness",
+    continuation_route_id = "cantlin_hauksness",
+    -- The longest validated segment on either Cantlin approach is fourteen
+    -- tiles. Farther starts must first reach Hauksness through the established
+    -- Kol route instead of synthesizing an unverified cross-world shortcut.
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -1234,12 +1244,15 @@ local ROUTES = {
         id = "cantlin_hauksness",
         title = "Cantlin",
         aliases = {
+            "cantlin",
+            "cantlin town",
             "cantlin from hauksness",
             "hauksness to cantlin",
             "return to cantlin",
         },
         target_object_ids = {"overworld_cantlin"},
         destination_maps = {0x0A},
+        staging = CANTLIN_STAGING,
         waypoints = {
             {x = 25, y = 89, name = "Hauksness", radius = 0},
             {
@@ -1414,6 +1427,7 @@ local ROUTES = {
             "return to cantlin from great swamp",
         },
         target_object_ids = {"overworld_cantlin"},
+        staging = CANTLIN_STAGING,
         waypoints = {
             {x = 89, y = 112, name = "Eastern Great Swamp Search Area", radius = 0},
             {
@@ -1779,6 +1793,7 @@ local ROUTE_ALTERNATES = {
     rimuldar_magic_temple = {"rimuldar_magic_temple", "rimuldar"},
     hauksness = {"hauksness", "hauksness_cantlin"},
     hauksness_cantlin = {"hauksness_cantlin", "hauksness"},
+    cantlin_hauksness = {"cantlin_hauksness", "cantlin_great_swamp"},
     tantegel = {"tantegel", "tantegel_kol"},
     tantegel_kol = {"tantegel", "tantegel_kol"},
 }
@@ -1805,6 +1820,7 @@ if type(state) ~= "table" then
         active_id = nil,
         next_index = nil,
         staged_from = nil,
+        staged_route_ids = {},
         warned = {},
         last_map_id = nil,
         last_x = nil,
@@ -1814,6 +1830,9 @@ if type(state) ~= "table" then
 end
 if type(state.warned) ~= "table" then
     state.warned = {}
+end
+if type(state.staged_route_ids) ~= "table" then
+    state.staged_route_ids = {}
 end
 
 local function normalize_route_id(value)
@@ -2130,6 +2149,36 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
     }
 end
 
+local function staging_itinerary_for(id, map_id, px, py, terrain_offset)
+    local route_id = id
+    local staged_route_ids = {}
+    local seen = {}
+
+    while route_id and not seen[route_id] do
+        seen[route_id] = true
+        local staging = staging_start_for(
+            route_id, map_id, px, py, terrain_offset)
+        if not staging then
+            break
+        end
+
+        -- Each newly discovered fallback is earlier in the journey. Insert
+        -- its requested continuation at the front so handoffs remain ordered.
+        table.insert(staged_route_ids, 1, staging.requested_route.id)
+        route_id = staging.route_id
+    end
+
+    if #staged_route_ids == 0 then
+        return nil
+    end
+
+    return {
+        route_id = route_id,
+        requested_route = ROUTES[staged_route_ids[#staged_route_ids]],
+        staged_route_ids = staged_route_ids,
+    }
+end
+
 local function waypoint_status(route, index, px, py)
     if not route or not index then
         return "No overworld route active"
@@ -2193,7 +2242,9 @@ local function route_final_waypoint(route)
 end
 
 local function handoff_staged_route(completed_route, completed_point, map_id, px, py, terrain_offset)
-    local requested_route = staged_destination_route()
+    local final_route = staged_destination_route()
+    local next_route_id = state.staged_route_ids[1]
+    local requested_route = next_route_id and ROUTES[next_route_id] or final_route
     if not requested_route then
         return nil
     end
@@ -2208,7 +2259,12 @@ local function handoff_staged_route(completed_route, completed_point, map_id, px
     end
 
     state.active_id = requested_route.id
-    state.staged_from = nil
+    if next_route_id then
+        table.remove(state.staged_route_ids, 1)
+    end
+    if #state.staged_route_ids == 0 then
+        state.staged_from = nil
+    end
     state.warned = {}
     state.last_map_id = map_id
     state.last_x = px
@@ -2217,20 +2273,38 @@ local function handoff_staged_route(completed_route, completed_point, map_id, px
         requested_route, WORLD_MAP_ID, anchor_x, anchor_y, terrain_offset)
 
     local next_point = requested_route.waypoints[state.next_index]
-    return {
-        status = "handoff",
-        route = requested_route,
-        completed_route = completed_route,
-        waypoint = next_point,
+    local message
+    if final_route and requested_route.id ~= final_route.id then
+        message = string.format(
+            "Reached %s. Continuing toward %s. %s",
+            tostring(completed_point and completed_point.name
+                or completed_route and completed_route.title
+                or "staging point"),
+            tostring(final_route.title),
+            staged_waypoint_status(
+                requested_route, final_route, state.next_index, anchor_x, anchor_y))
+    else
         message = string.format(
             "Reached %s. Continuing to %s. %s",
             tostring(completed_point and completed_point.name
                 or completed_route and completed_route.title
                 or "staging point"),
             tostring(requested_route.title),
-            waypoint_status(requested_route, state.next_index, anchor_x, anchor_y)),
-        log = make_log("handoff", requested_route, next_point, state.next_index)
-            .. " from_route=" .. tostring(completed_route and completed_route.id or "-"),
+            waypoint_status(requested_route, state.next_index, anchor_x, anchor_y))
+    end
+    local log = make_log("handoff", requested_route, next_point, state.next_index)
+        .. " from_route=" .. tostring(completed_route and completed_route.id or "-")
+    if state.staged_from then
+        log = log .. " staged_from=" .. tostring(state.staged_from)
+            .. " remaining_legs=" .. tostring(#state.staged_route_ids)
+    end
+    return {
+        status = "handoff",
+        route = requested_route,
+        completed_route = completed_route,
+        waypoint = next_point,
+        message = message,
+        log = log,
         object_id = route_object_id(requested_route, state.next_index),
         refresh = true,
     }
@@ -2240,6 +2314,7 @@ local function clear_active_route()
     state.active_id = nil
     state.next_index = nil
     state.staged_from = nil
+    state.staged_route_ids = {}
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil
@@ -2351,7 +2426,7 @@ function M.start(route_name, map_id, px, py, opts)
         return nil, "Unknown overworld route"
     end
     id = choose_start_route_id(id, map_id, px, py, terrain_offset)
-    local staging = staging_start_for(id, map_id, px, py, terrain_offset)
+    local staging = staging_itinerary_for(id, map_id, px, py, terrain_offset)
     if staging then
         id = staging.route_id
     end
@@ -2367,6 +2442,7 @@ function M.start(route_name, map_id, px, py, opts)
 
     state.active_id = id
     state.staged_from = staging and staging.requested_route.id or nil
+    state.staged_route_ids = staging and staging.staged_route_ids or {}
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil
@@ -2452,24 +2528,29 @@ function M.status(map_id, px, py, opts)
     if opts.recalculate and is_overworld(map_id, terrain_offset) and px ~= nil and py ~= nil then
         local new_route_id
         local new_staged_from = state.staged_from
-        local requested_route = new_staged_from and ROUTES[new_staged_from]
+        local new_staged_route_ids = state.staged_route_ids
+        local immediate_staged_id = state.staged_route_ids[1] or new_staged_from
+        local requested_route = immediate_staged_id and ROUTES[immediate_staged_id]
         if requested_route and requested_route.staging then
             new_route_id = choose_staging_route_id(
                 requested_route.staging, map_id, px, py, terrain_offset)
         else
             new_route_id = choose_start_route_id(route.id, map_id, px, py, terrain_offset)
-            local new_staging = staging_start_for(
+            local new_staging = staging_itinerary_for(
                 new_route_id, map_id, px, py, terrain_offset)
             if new_staging then
                 new_route_id = new_staging.route_id
                 new_staged_from = new_staging.requested_route.id
+                new_staged_route_ids = new_staging.staged_route_ids
             else
                 new_staged_from = nil
+                new_staged_route_ids = {}
             end
         end
         if new_route_id and new_route_id ~= state.active_id then
             state.active_id = new_route_id
             state.staged_from = new_staged_from
+            state.staged_route_ids = new_staged_route_ids
             state.warned = {}
             route = active_route()
             index = choose_next_index(route, map_id, px, py, terrain_offset)
@@ -2721,6 +2802,7 @@ function M.reset_for_tests()
     state.active_id = nil
     state.next_index = nil
     state.staged_from = nil
+    state.staged_route_ids = {}
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil

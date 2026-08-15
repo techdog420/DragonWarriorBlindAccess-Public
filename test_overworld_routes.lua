@@ -3156,6 +3156,185 @@ function tests.cantlin_object_from_hauksness_uses_reverse_variant()
     routes.reset_for_tests()
 end
 
+function tests.cantlin_object_from_tantegel_starts_three_leg_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 43, 43)
+
+    assert_equal(err, nil, "Cantlin Travel object should resolve from Tantegel")
+    assert_equal(info.route.id, "kol",
+        "far Cantlin requests should start on the established Kol route")
+    assert_equal(info.object_id, "route_kol_02",
+        "Cantlin staging should leave Tantegel through the first Kol movement waypoint")
+    assert_contains(info.message, "Cantlin route starts from Kol",
+        "staging speech should retain Cantlin as the final destination")
+    assert_contains(info.message, "Starting route to Kol first",
+        "staging speech should identify the route that actually started")
+    assert_contains(info.log, "staged_from=cantlin_hauksness",
+        "structured logs should retain the final Cantlin route")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected Cantlin object should remain bound during the Kol leg")
+
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary road",
+        "the first Cantlin leg should reuse the validated Kol route")
+    assert_equal(segment.steps[1], "up",
+        "the staged Cantlin itinerary should leave Tantegel toward Brecconary road")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_alias_from_tantegel_starts_three_leg_itinerary()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("cantlin", 0x01, 43, 43)
+
+    assert_equal(err, nil, "plain Cantlin alias should resolve")
+    assert_equal(info.route.id, "kol",
+        "plain Cantlin alias should use the same staged itinerary as the Travel object")
+    assert_equal(info.object_id, "route_kol_02",
+        "plain Cantlin alias should start at the first Kol movement waypoint")
+
+    routes.reset_for_tests()
+    info, err = routes.start("cantlin", 0x01, 25, 89)
+    assert_equal(err, nil, "plain Cantlin alias should resolve at Hauksness")
+    assert_equal(info.route.id, "cantlin_hauksness",
+        "Hauksness-side plain alias should remain on the local validated route")
+
+    routes.reset_for_tests()
+    info, err = routes.start("cantlin", 0x01, 89, 112)
+    assert_equal(err, nil, "plain Cantlin alias should resolve at the Great Swamp")
+    assert_equal(info.route.id, "cantlin_great_swamp",
+        "Great-Swamp-side plain alias should remain on the local validated route")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_staging_hands_off_through_kol_and_hauksness()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }
+    assert(routes.start_for_object(target, 0x01, 43, 43))
+
+    local kol = assert(routes._route_for_tests("kol"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "Kol arrival should be an itinerary handoff")
+    assert_equal(routes.active_route_id(), "hauksness",
+        "Kol arrival should activate the established Hauksness leg")
+    assert_contains(event.message, "Reached Kol. Continuing toward Cantlin.",
+        "the intermediate handoff should retain the final destination")
+    assert_contains(event.message, "Current leg to Hauksness. Final destination: Cantlin.",
+        "the intermediate handoff should name both remaining legs")
+    assert_equal(event.object_id, "route_hauksness_02",
+        "the Hauksness leg should begin west of Kol")
+    assert_equal(event.steps, nil,
+        "an intermediate handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Cantlin should remain the selected Travel object during the Hauksness leg")
+
+    local hauksness = assert(routes._route_for_tests("hauksness"))
+    for index = 2, #hauksness.waypoints do
+        local waypoint = hauksness.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "Hauksness arrival should hand off to the final Cantlin leg")
+    assert_equal(routes.active_route_id(), "cantlin_hauksness",
+        "Hauksness arrival should activate the validated Cantlin route")
+    assert_contains(event.message, "Reached Hauksness. Continuing to Cantlin.",
+        "the final handoff should retain the existing two-leg wording")
+    assert_equal(event.object_id, "route_cantlin_hauksness_02",
+        "the Cantlin leg should leave Hauksness through its west doorstep")
+    assert_equal(event.steps, nil,
+        "the final handoff must wait for the next auto-walk request")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Cantlin should remain bound after its final leg becomes active")
+
+    routes.reset_for_tests()
+end
+
+function tests.cantlin_itinerary_survives_guidance_refresh_and_town_entries()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }
+    assert(routes.start_for_object(target, 0x01, 43, 43))
+
+    local refreshed = routes.guidance_for_object(target, 0x01, 43, 43)
+    assert_equal(refreshed.route.id, "kol",
+        "guidance refresh should keep the first itinerary leg active")
+    assert_contains(refreshed.message, "Current leg to Kol",
+        "refreshed guidance should identify the active Kol leg")
+    assert_contains(refreshed.message, "Final destination: Cantlin",
+        "refreshed guidance should retain Cantlin")
+
+    local kol_entry = routes.observe_position(0x07, 15, 14)
+    assert_equal(kol_entry.status, "handoff",
+        "entering Kol should hand off without requiring an overworld arrival frame")
+    assert_equal(routes.active_route_id(), "hauksness",
+        "Kol entry should activate the Hauksness leg")
+
+    refreshed = routes.guidance_for_object(target, 0x01, 104, 10)
+    assert_equal(refreshed.route.id, "hauksness",
+        "guidance refresh should keep the intermediate Hauksness leg active")
+    assert_contains(refreshed.message, "Current leg to Hauksness",
+        "intermediate guidance should identify Hauksness")
+    assert_contains(refreshed.message, "Final destination: Cantlin",
+        "intermediate guidance should still retain Cantlin")
+
+    local hauksness_entry = routes.observe_position(0x03, 0, 0)
+    assert_equal(hauksness_entry.status, "handoff",
+        "entering Hauksness should hand off to the final leg")
+    assert_equal(routes.active_route_id(), "cantlin_hauksness",
+        "Hauksness entry should activate the final Cantlin route")
+    assert_equal(hauksness_entry.object_id, "route_cantlin_hauksness_02",
+        "town-entry handoff should target the first movement waypoint toward Cantlin")
+
+    routes.reset_for_tests()
+end
+
+function tests.stopping_cantlin_itinerary_clears_remaining_legs()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_cantlin",
+        name = "Cantlin",
+        x = 73,
+        y = 102,
+    }
+    assert(routes.start_for_object(target, 0x01, 43, 43))
+
+    local stopped = routes.stop()
+
+    assert_contains(stopped.message, "Stopped overworld route",
+        "the staged itinerary should stop normally")
+    assert_equal(routes.is_active(), false,
+        "stopping should clear the active Kol leg")
+    assert_equal(routes.active_route_matches_object(target), false,
+        "stopping should also clear the queued Cantlin destination")
+
+    routes.reset_for_tests()
+end
+
 function tests.cantlin_hauksness_aliases_are_unambiguous()
     local aliases = {
         "cantlin from hauksness",

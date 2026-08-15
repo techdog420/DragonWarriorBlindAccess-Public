@@ -5999,3 +5999,29 @@ For the next live map task, start a new dated section here with:
   (`ghi jklm nopq rstu vwxy` and punctuation) after the real copyright line.
   Preserve the successful credits narration while filtering those artifacts
   and announcing `The End.` once in a future endgame-polish pass.
+
+## 2026-08-15 Connected Cantlin Itinerary
+
+- OLD BEHAVIOR REPRODUCED: selecting Cantlin from World Map `(43,43)` chose
+  `cantlin_hauksness` directly and synthesized a 62-step shortcut to waypoint
+  41. The plain `cantlin` alias did not resolve, and route state could retain
+  only one staged continuation.
+- SOURCE FIX: Cantlin routes now use a 14-tile staging threshold. Far starts
+  compose `kol -> hauksness -> cantlin_hauksness` through a bounded ordered
+  continuation list; Hauksness `(25,89)` and Great Swamp `(89,112)` starts stay
+  direct. Intermediate speech names both the current leg and Cantlin, and
+  handoffs never inject movement.
+- REGRESSION COVERAGE: Travel-object and plain-alias starts, both waypoint
+  handoffs, both town-entry handoffs, guidance refresh, object binding, local
+  route selection, and cancel cleanup pass. Focused route tests are `184/184`.
+  The native Windows `python run_tests.py` gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests; the WSL-only broad run is not authoritative for
+  Windows package tests because it passes Linux paths to PowerShell.
+- LIVE VERIFIED: from a clean World Map `(43,43)` baseline, the loaded route
+  entered Kol and emitted `kol -> hauksness`, then entered Hauksness and emitted
+  `hauksness -> cantlin_hauksness`. After each manual town exit, blocker-aware
+  continuous walking resumed without a blocker, cancellation, or exhausted
+  retry. The final leg entered Cantlin at `(15,0)`; fresh tag
+  `CANTLIN_CONNECTED_ARRIVAL_20260815` reported route none, path target nil,
+  and zero runtime blockers. Known early-route town entry remains separate
+  polish.

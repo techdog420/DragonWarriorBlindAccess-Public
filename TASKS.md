@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-14
+Updated: 2026-08-15
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -136,6 +136,16 @@ quality-of-life work.
   with route/path state clear and zero runtime blockers. The legacy Kol leg
   still entered Brecconary; that remains part of the separate early-route
   town-entry polish task. This slice is closed.
+- The seventh connected-route slice is live-verified for `Tantegel -> Kol ->
+  Hauksness -> Cantlin`. A generic ordered continuation list now supports more
+  than one staging handoff while retaining Cantlin as the selected final
+  destination. Both intermediate handoffs pause before movement, and direct
+  Hauksness-side and Great-Swamp-side Cantlin starts remain local. The loaded
+  route completed from `(43,43)` through both manual town-exit handoffs and
+  entered Cantlin at `(15,0)` with no blocker, cancellation, retry exhaustion,
+  or runtime-block pollution. Focused tests pass `184/184`; the native Windows
+  broad gate passes all 33 host-runnable Lua suites plus 68 Python tests. This
+  slice is closed; early-route town-entry avoidance remains separate polish.
 
 ## Remaining Map Completion
 
