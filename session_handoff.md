@@ -121,6 +121,44 @@ Updated: 2026-08-15
 
 ## Immediate FCEUX Handoff
 
+- Kol/Hauksness intermediate-town avoidance is live-verified. The direct `kol`
+  route replaces Brecconary entrance `(48,41)` with the live-proven west
+  doorstep `(47,41)`, then goes north before reconnecting at Bridge south bend
+  `(44,38)`. All routes that use Kol only as a hub now stage through hidden
+  `kol_staging`, copied from the direct route but ending at Kol west doorstep
+  `(103,10)`. Reaching that overworld tile hands off without entering Kol
+  `(104,10)`; direct Kol selection still enters town, and map `0x07` remains a
+  fallback handoff if the town is entered accidentally. This covers Northern
+  Cave, Swamp Cave, Hauksness/Cantlin, and Mountain Cave staging. Regressions
+  failed first on old `(48,41)` / `kol` behavior, then focused tests passed
+  `191/191`; Lua syntax, `git diff --check`, and the native Windows broad gate
+  of all 33 host-runnable Lua suites plus 68 Python tests pass. After the
+  unexpected system restart, fresh tag `KOL_STAGING_RESTART_BASELINE_20260815`
+  confirmed a clean World Map `(43,43)` baseline. The continuous Hauksness run
+  used `(47,41)` without entering Brecconary map `0x08`, emitted
+  `event=handoff route=hauksness ... from_route=kol_staging` at `(103,10)`, and
+  turned west without entering Kol map `0x07`. It completed every remaining
+  waypoint and entered Hauksness map `0x03` from `(24,89)`. Final tag
+  `KOL_HAUKSNESS_POLISH_FINAL_20260815` confirmed `(0,10)`, route none, path
+  nil, and zero NPC/runtime blockers. The user's immediate Cantlin follow-up
+  then proved the remaining Hauksness entry: frame `23131` queued the final
+  `(24,89)->RIGHT` step, frame `23159` entered map `0x03`, and only then handed
+  off to `cantlin_hauksness`. Fresh tag
+  `CANTLIN_HAUKSNESS_ENTRY_VERIFY_20260815` confirmed Hauksness `(0,10)`, active
+  Cantlin guidance, path nil, and zero runtime blockers. The source fix adds
+  hidden `hauksness_staging`, derived from the established route through
+  exterior `(24,89)`, and uses it only for the Cantlin intermediate leg.
+  Handoff there skips the already-reached doorstep and targets `(22,89)` west;
+  direct Hauksness travel still enters the ruins, and map `0x03` remains a
+  fallback handoff. Focused tests pass `191/191`, the full gate passes all 33
+  Lua suites plus 68 Python tests, and `git diff --check` passes. Loaded
+  validation reached exterior `(24,89)` at frame `15739`, handed off from
+  `hauksness_staging` without entering map `0x03`, and immediately queued two
+  LEFT steps toward `(22,89)`. It reached `(22,89)` at frame `15836` and
+  continued normally on `cantlin_hauksness`. Frame `21307` entered Cantlin map
+  `0x0A`; fresh tag `CANTLIN_TOWN_BYPASS_FINAL_20260815` confirmed `(15,0)`,
+  route none, path nil, and no runtime blockers. The follow-up is
+  live-accepted.
 - The eighth connected itinerary is fully live-verified for `Tantegel -> Kol ->
   Western desert east road -> Mountain Cave`. Mountain Cave now stages through an internal
   `mountain_cave_connector` whose waypoints are copied at load time from the

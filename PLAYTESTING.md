@@ -6,6 +6,35 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Kol and Cantlin/Hauksness intermediate-town bypasses live-verified
+  (`2026-08-15`): direct
+  Kol travel now uses the live-proven Brecconary west doorstep `(47,41)` and
+  turns north toward `(44,38)` instead of stepping east onto town entrance
+  `(48,41)`. Connected routes use a hidden `kol_staging` copy that retains the
+  same corridor but ends at Kol west doorstep `(103,10)`, handing off to the
+  requested Northern Cave, Swamp Cave, Hauksness/Cantlin, or Mountain Cave leg
+  without entering Kol `(104,10)`. Direct Kol selection still enters Kol, and
+  accidental Kol entry still performs the staged handoff. A clean continuous
+  Hauksness run from World Map `(43,43)` passed Brecconary at `(47,41)` without
+  entering map `0x08`, reached `(103,10)`, handed off from `kol_staging` to
+  `hauksness`, and turned west without entering Kol map `0x07`. It then
+  completed the established route and entered Ruins of Hauksness map `0x03`
+  from `(24,89)`. Fresh tag `KOL_HAUKSNESS_POLISH_FINAL_20260815` confirmed
+  Hauksness `(0,10)`, route none, path nil, and zero NPC/runtime blockers.
+  The user's following Cantlin run then exposed that the intermediate
+  `hauksness` leg still entered map `0x03` before handing off. Cantlin staging
+  now uses a hidden `hauksness_staging` copy that stops at exterior `(24,89)`;
+  it hands off directly to the westbound Cantlin route at `(22,89)`. Direct
+  Hauksness travel still enters the ruins, and accidental Hauksness entry
+  remains a fallback handoff. Focused route tests pass `191/191`; the native
+  Windows broad gate passes all 33 host-runnable Lua suites plus 68 Python
+  tests. The loaded follow-up reached World Map `(24,89)` at frame `15739`,
+  handed off from `hauksness_staging` without a map change, and immediately
+  routed left toward `(22,89)`. It reached `(22,89)` at frame `15836` and
+  continued normally toward Cantlin without entering the ruins. The route
+  entered Cantlin map `0x0A` at `(15,0)`; fresh tag
+  `CANTLIN_TOWN_BYPASS_FINAL_20260815` confirmed route none, path nil, and no
+  runtime blockers.
 - Connected Mountain Cave route fully live-verified (`2026-08-15`): selecting
   Mountain Cave outside Kol now stages through an internal connector ending at the
   live-validated `Western desert east road` pin `(18,64)`, then hands off to

@@ -9,7 +9,7 @@ local WORLD_MAP_ID = maps.WORLD_MAP_ID
 local MAX_VISIBLE_ACTIVE_WAYPOINTS = 2
 
 local SWAMP_CAVE_STAGING = {
-    route_id = "kol",
+    route_id = "kol_staging",
     continuation_route_id = "swamp_cave",
     max_start_distance = 24,
     min_x = 84,
@@ -41,7 +41,7 @@ local MAGIC_TEMPLE_STAGING = {
 }
 
 local HAUKSNESS_STAGING = {
-    route_id = "kol",
+    route_id = "kol_staging",
     continuation_route_id = "hauksness",
     -- Far starts such as Tantegel must reach the established Kol hub before
     -- joining the long western route. Starts already on the validated
@@ -50,8 +50,15 @@ local HAUKSNESS_STAGING = {
     continue_after_staging = true,
 }
 
+local HAUKSNESS_HUB_STAGING = {
+    route_id = "kol_staging",
+    continuation_route_id = "hauksness_staging",
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
 local CANTLIN_STAGING = {
-    route_id = "hauksness",
+    route_id = "hauksness_staging",
     continuation_route_id = "cantlin_hauksness",
     -- The longest validated segment on either Cantlin approach is fourteen
     -- tiles. Farther starts must first reach Hauksness through the established
@@ -61,7 +68,7 @@ local CANTLIN_STAGING = {
 }
 
 local MOUNTAIN_CAVE_CONNECTOR_STAGING = {
-    route_id = "kol",
+    route_id = "kol_staging",
     continuation_route_id = "mountain_cave_connector",
     -- The connector begins on the established Kol/Hauksness corridor. Far
     -- off-corridor starts such as Tantegel must first use the Kol route.
@@ -188,7 +195,7 @@ local ROUTES = {
         destination_maps = {0x07},
         waypoints = {
             {x = 43, y = 43, name = "Tantegel Castle road", radius = 1},
-            {x = 48, y = 41, name = "Brecconary road", radius = 1},
+            {x = 47, y = 41, name = "Brecconary west bypass", radius = 0},
             {
                 x = 44,
                 y = 38,
@@ -259,7 +266,7 @@ local ROUTES = {
         target_object_ids = {"overworld_northern_cave"},
         destination_maps = {0x0D},
         staging = {
-            route_id = "kol",
+            route_id = "kol_staging",
             max_start_distance = 24,
             min_x = 75,
             max_y = 21,
@@ -1791,6 +1798,32 @@ local function copy_route_prefix(route, stop_x, stop_y)
         tostring(stop_y)))
 end
 
+-- Internal hub leg: direct Kol travel still enters the town, but connected
+-- destinations hand off one tile west of its entrance. The copied Kol route
+-- also inherits the Brecconary west bypass, so neither intermediate town
+-- interrupts a longer itinerary.
+local kol_staging_waypoints = copy_route_prefix(ROUTES.kol, 104, 10)
+local kol_staging_final = kol_staging_waypoints[#kol_staging_waypoints]
+kol_staging_final.x = 103
+kol_staging_final.name = "Kol west doorstep"
+ROUTES.kol_staging = {
+    id = "kol_staging",
+    title = "Kol",
+    destination_maps = {0x07},
+    waypoints = kol_staging_waypoints,
+}
+
+-- Internal hub leg: connected Cantlin travel follows the established
+-- Hauksness corridor but hands off from the west doorstep instead of entering
+-- the ruins. Direct Hauksness travel retains the final eastward entry step.
+ROUTES.hauksness_staging = {
+    id = "hauksness_staging",
+    title = "Hauksness",
+    destination_maps = {0x03},
+    staging = HAUKSNESS_HUB_STAGING,
+    waypoints = copy_route_prefix(ROUTES.hauksness, 24, 89),
+}
+
 -- Internal staging leg: reuse the live-validated Hauksness corridor from Kol
 -- only through the Mountain Cave junction. Keeping this derived avoids a
 -- second manually maintained copy of more than sixty waypoint turns.
@@ -1854,6 +1887,14 @@ local ROUTE_ALTERNATES = {
     tantegel_kol = {"tantegel", "tantegel_kol"},
 }
 
+for _, route in pairs(ROUTES) do
+    local destination_map_lookup = {}
+    for _, map_id in ipairs(route.destination_maps or {}) do
+        destination_map_lookup[tonumber(map_id)] = true
+    end
+    route.destination_map_lookup = destination_map_lookup
+end
+
 local alias_to_id = {}
 for _, id in ipairs(ROUTE_IDS) do
     local route = ROUTES[id]
@@ -1861,11 +1902,6 @@ for _, id in ipairs(ROUTE_IDS) do
     for _, alias in ipairs(route.aliases or {}) do
         alias_to_id[alias] = id
     end
-    local destination_map_lookup = {}
-    for _, map_id in ipairs(route.destination_maps or {}) do
-        destination_map_lookup[tonumber(map_id)] = true
-    end
-    route.destination_map_lookup = destination_map_lookup
 end
 alias_to_id["safe"] = "safety"
 alias_to_id["safety"] = "safety"

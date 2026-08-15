@@ -1,6 +1,45 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-08-14
+Updated: 2026-08-15
+
+## 2026-08-15 Kol/Hauksness Intermediate-Town Bypass
+
+- SOURCE CHANGE: direct `kol` now passes Brecconary via `(47,41)` and turns
+  north before reconnecting at `(44,38)`. Connected destinations use hidden
+  `kol_staging`, which shares the corrected corridor but ends at Kol west
+  doorstep `(103,10)` instead of town entrance `(104,10)`. Direct Kol travel
+  still enters Kol, and accidental map-`0x07` entry remains a fallback handoff.
+- SOURCE VERIFICATION: the new old-route regressions failed first, then the
+  focused route suite passed `191/191`. Lua syntax, `git diff --check`, and the
+  native Windows broad gate of all 33 host-runnable Lua suites plus 68 Python
+  tests passed.
+- LIVE ACCEPTANCE: after the unexpected system restart, fresh tag
+  `KOL_STAGING_RESTART_BASELINE_20260815` confirmed World Map `(43,43)`, route
+  none, path nil, and zero NPC/runtime blockers. A continuous Hauksness run
+  passed Brecconary at `(47,41)` without entering map `0x08`. At `(103,10)` it
+  emitted `event=handoff route=hauksness ... from_route=kol_staging`, then
+  turned west without entering Kol map `0x07`. The established Hauksness leg
+  completed without blocker or exhausted-retry events and entered map `0x03`
+  from `(24,89)`. Final tag `KOL_HAUKSNESS_POLISH_FINAL_20260815` confirmed
+  Ruins of Hauksness `(0,10)`, route none, path nil, and zero NPC/runtime
+  blockers. This polish slice is accepted.
+- CANTLIN FOLLOW-UP / SOURCE FIX: the user's next Cantlin run proved the
+  ordinary Hauksness intermediate leg still entered the ruins. At frame
+  `23131`, continuous walking queued `(24,89)->RIGHT`; frame `23159` entered
+  map `0x03` and only then emitted the Cantlin handoff. Fresh tag
+  `CANTLIN_HAUKSNESS_ENTRY_VERIFY_20260815` confirmed map `0x03` `(0,10)`,
+  active `cantlin_hauksness`, path nil, and zero runtime blockers. Cantlin now
+  stages through hidden `hauksness_staging`, copied only through exterior
+  `(24,89)`, then hands off west toward `(22,89)`. Direct Hauksness travel and
+  accidental-entry fallback remain intact. The two changed regressions failed
+  first; focused tests now pass `191/191`, and the full 33-Lua-suite plus
+  68-Python-test gate passes. Loaded validation handed off on World Map
+  `(24,89)` at frame `15739` with no map change, then queued LEFT toward
+  `(22,89)` and arrived there at frame `15836`. The route continued normally
+  toward Cantlin, entered map `0x0A` at frame `21307`, and landed at `(15,0)`.
+  Fresh tag `CANTLIN_TOWN_BYPASS_FINAL_20260815` confirmed route none, path
+  nil, and no runtime blockers. The exterior handoff and final arrival are
+  live-accepted.
 
 ## 2026-08-14 Connected Hauksness Route and Continuous Auto-Walk
 
@@ -6069,3 +6108,28 @@ For the next live map task, start a new dated section here with:
   `(43,43)` state clean rather than re-probing the earlier cave arrival: route
   none, path target nil, and zero NPC/runtime blockers. This slice is accepted.
   Brecconary/Kol entry remains separate early-route polish.
+
+## 2026-08-15 Kol and Hauksness Town-Entry Polish
+
+- ROOT CAUSE: the direct `kol` route explicitly targeted Brecconary entrance
+  `(48,41)`, and every far connected destination staged through the same route
+  all the way to Kol entrance `(104,10)`. Therefore Brecconary and Kol map
+  transitions interrupted otherwise valid connected itineraries.
+- RED REGRESSIONS: the focused route suite passed its prior 189 tests and failed
+  only the two new requirements: Kol still used x48 instead of x47, and far
+  Hauksness still activated `kol` instead of a non-entry staging leg.
+- SOURCE FIX: direct Kol travel now targets live-proven Brecconary west doorstep
+  `(47,41)` and turns north to Bridge south bend `(44,38)`. Hidden
+  `kol_staging` copies that corrected route but moves only its final waypoint
+  to Kol west doorstep `(103,10)`. Northern Cave, Swamp Cave, Hauksness/Cantlin,
+  and Mountain Cave staging use the hidden route. Direct Kol travel preserves
+  final entrance `(104,10)`, while `destination_maps={0x07}` keeps accidental
+  Kol entry as a fallback itinerary handoff.
+- STATIC VERIFICATION: focused overworld-route tests pass `191/191`; WSL `luac
+  -p` passes for source and test; native Windows `python run_tests.py` passes all
+  33 host-runnable Lua suites plus 68 Python tests; `git diff --check` passes.
+- NEXT LIVE CHECK: current loaded FCEUX remains on the pre-change source at World
+  Map `(43,43)`. Reload `main.lua`, select Hauksness, and confirm the route
+  reaches `(47,41)` then turns north without entering Brecconary, later reaches
+  `(103,10)`, emits `kol_staging -> hauksness`, and continues west without
+  entering Kol. Use a fresh baseline and blocker report after reload.

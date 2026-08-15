@@ -478,7 +478,8 @@ function tests.kol_object_starts_route_from_tantegel()
     assert_equal(err, nil, "Kol Travel object should start a route")
     assert_equal(info.object_id, "route_kol_02", "route should skip the current Tantegel road anchor")
     assert_contains(info.message, "Route to Kol", "started route should name Kol")
-    assert_contains(info.message, "Brecconary road", "route should first leave Tantegel toward the western bridge road")
+    assert_contains(info.message, "Brecconary west bypass",
+        "route should first leave Tantegel without entering Brecconary")
 
     routes.reset_for_tests()
 end
@@ -499,7 +500,7 @@ function tests.kol_route_uses_garinham_road_and_north_bridges()
     routes.reset_for_tests()
     routes.start("kol", 0x01, 43, 43)
 
-    routes.observe_position(0x01, 48, 41)
+    routes.observe_position(0x01, 47, 41)
     local south_bend = routes.observe_position(0x01, 44, 38)
     assert_contains(south_bend.message, "Reached Bridge south bend", "Kol route should reuse the proven western bridge road")
     assert_contains(south_bend.message, "Next: Bridge lower west lane", "route should turn onto the lower bridge lane")
@@ -663,8 +664,9 @@ function tests.kol_route_backs_out_of_dead_east_bridge_pocket()
     local info, err = routes.start("kol", 0x01, 57, 38)
 
     assert_equal(err, nil, "Kol route should still start from the disproved east pocket")
-    assert_equal(info.object_id, "route_kol_02", "dead pocket should backtrack toward Brecconary road")
-    assert_contains(info.message, "Brecconary road", "route should not target the blocked 57,38 to 58,38 bridge edge")
+    assert_equal(info.object_id, "route_kol_03", "dead pocket should backtrack toward the bridge south bend")
+    assert_contains(info.message, "Bridge south bend",
+        "route should not target the blocked 57,38 to 58,38 bridge edge")
 
     routes.reset_for_tests()
 end
@@ -709,16 +711,16 @@ function tests.northern_cave_from_tantegel_starts_kol_staging_route()
     local info, err = routes.start("rain shrine", 0x01, 43, 43)
 
     assert_equal(err, nil, "Rain Shrine alias should resolve from Tantegel")
-    assert_equal(info.route.id, "kol", "far Northern Cave requests should stage through Kol")
-    assert_equal(info.object_id, "route_kol_02", "staging route should leave Tantegel on the Kol route")
+    assert_equal(info.route.id, "kol_staging", "far Northern Cave requests should stage outside Kol")
+    assert_equal(info.object_id, "route_kol_staging_02", "staging route should leave Tantegel on the safe Kol leg")
     assert_contains(info.message, "Northern Cave route starts from Kol", "staging should explain the required hub")
     assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
     assert_contains(info.message, "Route to Kol", "staging should include normal route guidance")
     assert_contains(info.log, "staged_from=northern_cave", "staged starts should be visible in logs")
 
     local segment = assert(routes.plan_next_segment(0x01, 43, 43))
-    assert_equal(segment.waypoint.name, "Brecconary road", "Kol staging should use the proven Kol route")
-    assert_equal(segment.steps[1], "up", "Tantegel-to-Kol staging should leave toward Brecconary road")
+    assert_equal(segment.waypoint.name, "Brecconary west bypass", "Kol staging should avoid the town entrance")
+    assert_equal(segment.steps[1], "up", "Tantegel-to-Kol staging should leave toward the west bypass")
 
     routes.reset_for_tests()
 end
@@ -735,8 +737,8 @@ function tests.northern_cave_object_from_tantegel_starts_kol_staging_route()
     local info, err = routes.start_for_object(target, 0x01, 43, 43)
 
     assert_equal(err, nil, "Northern Cave Travel object should resolve from Tantegel")
-    assert_equal(info.route.id, "kol", "Travel-object starts should use the same Kol staging guard")
-    assert_equal(info.object_id, "route_kol_02", "Travel-object staging should start the Kol route")
+    assert_equal(info.route.id, "kol_staging", "Travel-object starts should use the safe Kol staging guard")
+    assert_equal(info.object_id, "route_kol_staging_02", "Travel-object staging should start the non-entry Kol route")
     assert_contains(info.message, "Northern Cave route starts from Kol", "Travel-object staging should explain the hub route")
     assert_equal(routes.active_route_matches_object(target), true,
         "the selected Northern Cave object should remain bound during the Kol leg")
@@ -770,7 +772,7 @@ function tests.northern_cave_guidance_refresh_keeps_the_active_itinerary()
 
     local info = routes.guidance_for_object(target, 0x01, 43, 43)
 
-    assert_equal(info.route.id, "kol",
+    assert_equal(info.route.id, "kol_staging",
         "re-reading guidance should keep the current Kol leg active")
     assert_contains(info.message, "Current leg to Kol",
         "re-reading guidance should report the active leg instead of restarting it")
@@ -783,7 +785,7 @@ end
 function tests.northern_cave_staging_hands_off_at_kol_without_starting_movement()
     routes.reset_for_tests()
     routes.start("rain shrine", 0x01, 43, 43)
-    local kol = assert(routes._route_for_tests("kol"))
+    local kol = assert(routes._route_for_tests("kol_staging"))
     local event
 
     for index = 2, #kol.waypoints do
@@ -795,20 +797,20 @@ function tests.northern_cave_staging_hands_off_at_kol_without_starting_movement(
         "reaching Kol should activate the requested second leg")
     assert_equal(event.status, "handoff",
         "the route event should distinguish a leg handoff from final arrival")
-    assert_contains(event.message, "Reached Kol. Continuing to Northern Cave.",
+    assert_contains(event.message, "Reached Kol west doorstep. Continuing to Northern Cave.",
         "handoff speech should name the completed hub and final destination")
     assert_contains(event.message, "Next: Kol forest west edge",
         "handoff speech should identify the next Northern Cave waypoint")
     assert_contains(event.log, "event=handoff",
         "handoff should be explicit in structured logs")
-    assert_contains(event.log, "from_route=kol",
+    assert_contains(event.log, "from_route=kol_staging",
         "handoff logs should identify the completed leg")
     assert_equal(event.object_id, "route_northern_cave_02",
         "route markers should refresh to the first Northern Cave movement waypoint")
     assert_equal(event.steps, nil,
         "handoff must wait for another player auto-walk command instead of moving immediately")
 
-    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
     assert_equal(segment.waypoint.name, "Kol forest west edge",
         "the next player-triggered segment should leave Kol toward the cave")
     assert_equal(segment.steps[1], "left",
@@ -827,7 +829,7 @@ function tests.northern_cave_staging_hands_off_when_kol_is_entered()
         "entering Kol should preserve the requested Northern Cave itinerary")
     assert_equal(event.status, "handoff",
         "entering the staging destination should produce the same leg handoff")
-    assert_contains(event.message, "Reached Kol. Continuing to Northern Cave.",
+    assert_contains(event.message, "Reached Kol west doorstep. Continuing to Northern Cave.",
         "interior handoff speech should name the completed hub and final destination")
     assert_equal(event.object_id, "route_northern_cave_02",
         "interior handoff should keep the next exterior route marker ready")
@@ -1035,9 +1037,9 @@ function tests.mountain_cave_from_tantegel_starts_kol_then_connector_itinerary()
     local info, err = routes.start("mountain cave", 0x01, 43, 43)
 
     assert_equal(err, nil, "Mountain Cave alias should resolve from Tantegel")
-    assert_equal(info.route.id, "kol",
+    assert_equal(info.route.id, "kol_staging",
         "far Mountain Cave requests should begin on the established Kol route")
-    assert_equal(info.object_id, "route_kol_02",
+    assert_equal(info.object_id, "route_kol_staging_02",
         "the nested itinerary should leave Tantegel through the Kol route")
     assert_contains(info.message, "Mountain Cave route starts from Kol",
         "nested staging speech should retain Mountain Cave")
@@ -1139,7 +1141,7 @@ function tests.mountain_cave_guidance_refresh_and_cancel_preserve_itinerary()
     assert(routes.start_for_object(target, 0x01, 43, 43))
 
     local refreshed = routes.guidance_for_object(target, 0x01, 43, 43)
-    assert_equal(refreshed.route.id, "kol",
+    assert_equal(refreshed.route.id, "kol_staging",
         "guidance refresh should keep the first itinerary leg active")
     assert_contains(refreshed.message, "Final destination: Mountain Cave",
         "guidance refresh should retain Mountain Cave")
@@ -1806,8 +1808,8 @@ function tests.swamp_cave_from_tantegel_starts_kol_staging_route()
     local info, err = routes.start("quagmire cave", 0x01, 43, 43)
 
     assert_equal(err, nil, "Swamp Cave alias should resolve from Tantegel")
-    assert_equal(info.route.id, "kol", "far Swamp Cave requests should stage through Kol")
-    assert_equal(info.object_id, "route_kol_02", "staging route should leave Tantegel on the Kol route")
+    assert_equal(info.route.id, "kol_staging", "far Swamp Cave requests should stage outside Kol")
+    assert_equal(info.object_id, "route_kol_staging_02", "staging route should leave Tantegel on the safe Kol route")
     assert_contains(info.message, "Swamp Cave route starts from Kol", "staging should explain the required hub")
     assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
     assert_contains(info.message, "Route to Kol", "staging should include normal route guidance")
@@ -1828,8 +1830,8 @@ function tests.swamp_cave_object_from_tantegel_retains_final_destination()
     local info, err = routes.start_for_object(target, 0x01, 43, 43)
 
     assert_equal(err, nil, "Swamp Cave Travel object should resolve from Tantegel")
-    assert_equal(info.route.id, "kol", "Travel-object starts should use the Kol staging route")
-    assert_equal(info.object_id, "route_kol_02", "Travel-object staging should leave Tantegel on the Kol route")
+    assert_equal(info.route.id, "kol_staging", "Travel-object starts should use the safe Kol staging route")
+    assert_equal(info.object_id, "route_kol_staging_02", "Travel-object staging should leave Tantegel on the non-entry route")
     assert_equal(routes.active_route_matches_object(target), true,
         "the selected Swamp Cave object should remain bound during the Kol leg")
 
@@ -1853,7 +1855,7 @@ end
 function tests.swamp_cave_staging_hands_off_at_kol_without_starting_movement()
     routes.reset_for_tests()
     routes.start("swamp cave", 0x01, 43, 43)
-    local kol = assert(routes._route_for_tests("kol"))
+    local kol = assert(routes._route_for_tests("kol_staging"))
     local event
 
     for index = 2, #kol.waypoints do
@@ -1865,20 +1867,20 @@ function tests.swamp_cave_staging_hands_off_at_kol_without_starting_movement()
         "reaching Kol should activate the requested Swamp Cave leg")
     assert_equal(event.status, "handoff",
         "the Swamp Cave itinerary should distinguish a leg handoff from final arrival")
-    assert_contains(event.message, "Reached Kol. Continuing to Swamp Cave.",
+    assert_contains(event.message, "Reached Kol west doorstep. Continuing to Swamp Cave.",
         "handoff speech should name the completed hub and final destination")
     assert_contains(event.message, "Next: Kol forest west edge",
         "handoff speech should identify the first Swamp Cave waypoint")
     assert_contains(event.log, "event=handoff",
         "Swamp Cave handoff should be explicit in structured logs")
-    assert_contains(event.log, "from_route=kol",
+    assert_contains(event.log, "from_route=kol_staging",
         "Swamp Cave handoff logs should identify the completed leg")
     assert_equal(event.object_id, "route_swamp_cave_02",
         "route markers should refresh to the first Swamp Cave movement waypoint")
     assert_equal(event.steps, nil,
         "Swamp Cave handoff must wait for another player auto-walk command")
 
-    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
     assert_equal(segment.waypoint.name, "Kol forest west edge",
         "the next player-triggered segment should leave Kol toward Swamp Cave")
     assert_equal(segment.steps[1], "left",
@@ -2569,15 +2571,83 @@ function tests.hauksness_from_tantegel_starts_kol_staging_route()
     local info, err = routes.start("hauksness", 0x01, 43, 43)
 
     assert_equal(err, nil, "Hauksness alias should resolve from Tantegel")
-    assert_equal(info.route.id, "kol", "far Hauksness requests should stage through Kol")
-    assert_equal(info.object_id, "route_kol_02", "staging route should leave Tantegel on the Kol route")
+    assert_equal(info.route.id, "kol_staging", "far Hauksness requests should stage outside Kol")
+    assert_equal(info.object_id, "route_kol_staging_02", "staging route should leave Tantegel on the safe Kol route")
     assert_contains(info.message, "Hauksness route starts from Kol", "staging should explain the required hub")
     assert_contains(info.message, "Starting route to Kol first", "staging should say which route actually started")
     assert_contains(info.log, "staged_from=hauksness", "staged starts should be visible in logs")
 
     local segment = assert(routes.plan_next_segment(0x01, 43, 43))
-    assert_equal(segment.waypoint.name, "Brecconary road", "Kol staging should use the proven Kol route")
-    assert_equal(segment.steps[1], "up", "Tantegel-to-Kol staging should leave toward Brecconary road")
+    assert_equal(segment.waypoint.name, "Brecconary west bypass", "Kol staging should avoid the town entrance")
+    assert_equal(segment.steps[1], "up", "Tantegel-to-Kol staging should leave toward the west bypass")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_route_bypasses_brecconary_west_doorstep()
+    routes.reset_for_tests()
+
+    local route = assert(routes._route_for_tests("kol"))
+    local bypass = assert(route.waypoints[2])
+
+    assert_equal(bypass.x, 47,
+        "Kol route should stop west of Brecconary instead of targeting its entrance")
+    assert_equal(bypass.y, 41, "Brecconary bypass row")
+    assert_equal(bypass.name, "Brecconary west bypass",
+        "the waypoint should describe the non-entry path")
+    local final = assert(route.waypoints[#route.waypoints])
+    assert_equal(final.x, 104, "direct Kol travel should still target the town entrance")
+    assert_equal(final.y, 10, "direct Kol entrance row")
+
+    routes.start("kol", 0x01, 43, 43)
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary west bypass",
+        "direct Kol travel should use the bypass")
+    assert_equal(segment.path_length, 6,
+        "the bypass should move two north and four east without touching (48,41)")
+
+    routes.observe_position(0x01, 47, 41)
+    segment = assert(routes.plan_next_segment(0x01, 47, 41))
+    assert_equal(segment.waypoint.name, "Bridge south bend",
+        "the bypass should reconnect to the existing bridge route")
+    assert_equal(segment.steps[1], "up",
+        "the bypass should turn north instead of stepping east into Brecconary")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_staging_hands_off_outside_kol()
+    routes.reset_for_tests()
+
+    local info = assert(routes.start("hauksness", 0x01, 43, 43))
+    assert_equal(info.route.id, "kol_staging",
+        "far Hauksness travel should use the non-entry Kol staging route")
+
+    local staging = assert(routes._route_for_tests("kol_staging"))
+    local final = assert(staging.waypoints[#staging.waypoints])
+    assert_equal(final.x, 103, "Kol staging should finish west of the town entrance")
+    assert_equal(final.y, 10, "Kol west doorstep row")
+    assert_equal(final.name, "Kol west doorstep",
+        "the staging endpoint should distinguish the safe handoff from town entry")
+
+    local event
+    for index = 2, #staging.waypoints do
+        local waypoint = staging.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "the west doorstep should hand off without entering Kol")
+    assert_equal(routes.active_route_id(), "hauksness",
+        "the safe Kol handoff should activate Hauksness")
+    assert_contains(event.log, "from_route=kol_staging",
+        "the handoff log should identify the internal non-entry leg")
+
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "Hauksness should continue directly from the west doorstep")
+    assert_equal(segment.steps[1], "left",
+        "the continuation should move away from Kol instead of entering it")
 
     routes.reset_for_tests()
 end
@@ -2594,8 +2664,8 @@ function tests.hauksness_object_from_tantegel_retains_final_destination()
     local info, err = routes.start_for_object(target, 0x01, 43, 43)
 
     assert_equal(err, nil, "Hauksness Travel object should resolve from Tantegel")
-    assert_equal(info.route.id, "kol", "Travel-object starts should use the Kol staging route")
-    assert_equal(info.object_id, "route_kol_02", "Travel-object staging should leave Tantegel on the Kol route")
+    assert_equal(info.route.id, "kol_staging", "Travel-object starts should use the safe Kol staging route")
+    assert_equal(info.object_id, "route_kol_staging_02", "Travel-object staging should leave Tantegel on the non-entry route")
     assert_equal(routes.active_route_matches_object(target), true,
         "the selected Hauksness object should remain bound during the Kol leg")
 
@@ -2605,7 +2675,7 @@ end
 function tests.hauksness_staging_hands_off_at_kol_without_starting_movement()
     routes.reset_for_tests()
     routes.start("hauksness", 0x01, 43, 43)
-    local kol = assert(routes._route_for_tests("kol"))
+    local kol = assert(routes._route_for_tests("kol_staging"))
     local event
 
     for index = 2, #kol.waypoints do
@@ -2617,17 +2687,17 @@ function tests.hauksness_staging_hands_off_at_kol_without_starting_movement()
         "reaching Kol should activate the requested Hauksness leg")
     assert_equal(event.status, "handoff",
         "the Hauksness itinerary should distinguish a leg handoff from final arrival")
-    assert_contains(event.message, "Reached Kol. Continuing to Hauksness.",
+    assert_contains(event.message, "Reached Kol west doorstep. Continuing to Hauksness.",
         "handoff speech should name the completed hub and final destination")
     assert_contains(event.message, "Next: Kol forest west edge",
         "handoff speech should identify the first Hauksness waypoint")
     assert_contains(event.log, "event=handoff", "handoff should be explicit in structured logs")
-    assert_contains(event.log, "from_route=kol", "handoff logs should identify the completed leg")
+    assert_contains(event.log, "from_route=kol_staging", "handoff logs should identify the completed leg")
     assert_equal(event.object_id, "route_hauksness_02",
         "route markers should refresh to the first Hauksness movement waypoint")
     assert_equal(event.steps, nil, "handoff must not inject movement by itself")
 
-    local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
     assert_equal(segment.waypoint.name, "Kol forest west edge",
         "the next segment should leave Kol along the validated Hauksness route")
     assert_equal(segment.steps[1], "left", "the Hauksness leg should leave Kol west")
@@ -3323,9 +3393,9 @@ function tests.cantlin_object_from_tantegel_starts_three_leg_itinerary()
     local info, err = routes.start_for_object(target, 0x01, 43, 43)
 
     assert_equal(err, nil, "Cantlin Travel object should resolve from Tantegel")
-    assert_equal(info.route.id, "kol",
+    assert_equal(info.route.id, "kol_staging",
         "far Cantlin requests should start on the established Kol route")
-    assert_equal(info.object_id, "route_kol_02",
+    assert_equal(info.object_id, "route_kol_staging_02",
         "Cantlin staging should leave Tantegel through the first Kol movement waypoint")
     assert_contains(info.message, "Cantlin route starts from Kol",
         "staging speech should retain Cantlin as the final destination")
@@ -3337,10 +3407,10 @@ function tests.cantlin_object_from_tantegel_starts_three_leg_itinerary()
         "the selected Cantlin object should remain bound during the Kol leg")
 
     local segment = assert(routes.plan_next_segment(0x01, 43, 43))
-    assert_equal(segment.waypoint.name, "Brecconary road",
+    assert_equal(segment.waypoint.name, "Brecconary west bypass",
         "the first Cantlin leg should reuse the validated Kol route")
     assert_equal(segment.steps[1], "up",
-        "the staged Cantlin itinerary should leave Tantegel toward Brecconary road")
+        "the staged Cantlin itinerary should leave Tantegel toward the Brecconary bypass")
 
     routes.reset_for_tests()
 end
@@ -3351,9 +3421,9 @@ function tests.cantlin_alias_from_tantegel_starts_three_leg_itinerary()
     local info, err = routes.start("cantlin", 0x01, 43, 43)
 
     assert_equal(err, nil, "plain Cantlin alias should resolve")
-    assert_equal(info.route.id, "kol",
+    assert_equal(info.route.id, "kol_staging",
         "plain Cantlin alias should use the same staged itinerary as the Travel object")
-    assert_equal(info.object_id, "route_kol_02",
+    assert_equal(info.object_id, "route_kol_staging_02",
         "plain Cantlin alias should start at the first Kol movement waypoint")
 
     routes.reset_for_tests()
@@ -3381,7 +3451,7 @@ function tests.cantlin_staging_hands_off_through_kol_and_hauksness()
     }
     assert(routes.start_for_object(target, 0x01, 43, 43))
 
-    local kol = assert(routes._route_for_tests("kol"))
+    local kol = assert(routes._route_for_tests("kol_staging"))
     local event
     for index = 2, #kol.waypoints do
         local waypoint = kol.waypoints[index]
@@ -3390,20 +3460,25 @@ function tests.cantlin_staging_hands_off_through_kol_and_hauksness()
 
     assert_equal(event.status, "handoff",
         "Kol arrival should be an itinerary handoff")
-    assert_equal(routes.active_route_id(), "hauksness",
-        "Kol arrival should activate the established Hauksness leg")
-    assert_contains(event.message, "Reached Kol. Continuing toward Cantlin.",
+    assert_equal(routes.active_route_id(), "hauksness_staging",
+        "Kol arrival should activate the non-entry Hauksness staging leg")
+    assert_contains(event.message, "Reached Kol west doorstep. Continuing toward Cantlin.",
         "the intermediate handoff should retain the final destination")
     assert_contains(event.message, "Current leg to Hauksness. Final destination: Cantlin.",
         "the intermediate handoff should name both remaining legs")
-    assert_equal(event.object_id, "route_hauksness_02",
+    assert_equal(event.object_id, "route_hauksness_staging_02",
         "the Hauksness leg should begin west of Kol")
     assert_equal(event.steps, nil,
         "an intermediate handoff must not inject movement")
     assert_equal(routes.active_route_matches_object(target), true,
         "Cantlin should remain the selected Travel object during the Hauksness leg")
 
-    local hauksness = assert(routes._route_for_tests("hauksness"))
+    local hauksness = assert(routes._route_for_tests("hauksness_staging"))
+    local final = assert(hauksness.waypoints[#hauksness.waypoints])
+    assert_equal(final.x, 24,
+        "Cantlin staging should stop west of the Hauksness entrance")
+    assert_equal(final.y, 89,
+        "Hauksness staging should remain on the doorstep row")
     for index = 2, #hauksness.waypoints do
         local waypoint = hauksness.waypoints[index]
         event = routes.observe_position(0x01, waypoint.x, waypoint.y)
@@ -3413,10 +3488,17 @@ function tests.cantlin_staging_hands_off_through_kol_and_hauksness()
         "Hauksness arrival should hand off to the final Cantlin leg")
     assert_equal(routes.active_route_id(), "cantlin_hauksness",
         "Hauksness arrival should activate the validated Cantlin route")
-    assert_contains(event.message, "Reached Hauksness. Continuing to Cantlin.",
+    assert_contains(event.message, "Reached Hauksness doorstep west. Continuing to Cantlin.",
         "the final handoff should retain the existing two-leg wording")
-    assert_equal(event.object_id, "route_cantlin_hauksness_02",
-        "the Cantlin leg should leave Hauksness through its west doorstep")
+    assert_equal(event.object_id, "route_cantlin_hauksness_03",
+        "the Cantlin leg should advance west from the already-reached doorstep")
+    local segment = assert(routes.plan_next_segment(0x01, 24, 89))
+    assert_equal(segment.waypoint.x, 22,
+        "the post-handoff Cantlin target should be the west approach")
+    assert_equal(segment.waypoint.y, 89,
+        "the post-handoff Cantlin target should stay on the doorway row")
+    assert_equal(segment.steps[1], "left",
+        "the post-handoff Cantlin leg should move away from Hauksness")
     assert_equal(event.steps, nil,
         "the final handoff must wait for the next auto-walk request")
     assert_equal(routes.active_route_matches_object(target), true,
@@ -3436,7 +3518,7 @@ function tests.cantlin_itinerary_survives_guidance_refresh_and_town_entries()
     assert(routes.start_for_object(target, 0x01, 43, 43))
 
     local refreshed = routes.guidance_for_object(target, 0x01, 43, 43)
-    assert_equal(refreshed.route.id, "kol",
+    assert_equal(refreshed.route.id, "kol_staging",
         "guidance refresh should keep the first itinerary leg active")
     assert_contains(refreshed.message, "Current leg to Kol",
         "refreshed guidance should identify the active Kol leg")
@@ -3446,11 +3528,11 @@ function tests.cantlin_itinerary_survives_guidance_refresh_and_town_entries()
     local kol_entry = routes.observe_position(0x07, 15, 14)
     assert_equal(kol_entry.status, "handoff",
         "entering Kol should hand off without requiring an overworld arrival frame")
-    assert_equal(routes.active_route_id(), "hauksness",
-        "Kol entry should activate the Hauksness leg")
+    assert_equal(routes.active_route_id(), "hauksness_staging",
+        "Kol entry should activate the non-entry Hauksness staging leg")
 
     refreshed = routes.guidance_for_object(target, 0x01, 104, 10)
-    assert_equal(refreshed.route.id, "hauksness",
+    assert_equal(refreshed.route.id, "hauksness_staging",
         "guidance refresh should keep the intermediate Hauksness leg active")
     assert_contains(refreshed.message, "Current leg to Hauksness",
         "intermediate guidance should identify Hauksness")
@@ -3462,8 +3544,8 @@ function tests.cantlin_itinerary_survives_guidance_refresh_and_town_entries()
         "entering Hauksness should hand off to the final leg")
     assert_equal(routes.active_route_id(), "cantlin_hauksness",
         "Hauksness entry should activate the final Cantlin route")
-    assert_equal(hauksness_entry.object_id, "route_cantlin_hauksness_02",
-        "town-entry handoff should target the first movement waypoint toward Cantlin")
+    assert_equal(hauksness_entry.object_id, "route_cantlin_hauksness_03",
+        "town-entry fallback should target the west approach toward Cantlin")
 
     routes.reset_for_tests()
 end

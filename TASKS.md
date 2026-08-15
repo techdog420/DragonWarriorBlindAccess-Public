@@ -189,10 +189,26 @@ quality-of-life work.
   waypoint-network entry and then continues toward the selected destination.
   Recovery must not teleport, require knowledge of route names, or silently
   cross hazards and unknown blockers.
-- Early-route town-entry polish: several first-generation overworld routes
-  still step onto intermediate town entrances instead of stopping outside or
-  routing around them. Audit and correct those routes in a separate focused
-  task; do not couple that legacy cleanup to connected-network expansion.
+- Early-route town-entry polish is live-verified for the Kol and
+  Cantlin/Hauksness staging
+  chain. Kol now bypasses Brecconary entrance `(48,41)` through west doorstep
+  `(47,41)`, while a hidden `kol_staging` route hands connected destinations
+  off at Kol west doorstep `(103,10)` instead of entering Kol `(104,10)`.
+  Direct Kol travel still enters its requested destination, and accidental Kol
+  entry remains a fallback handoff. A clean continuous Hauksness run from
+  `(43,43)` bypassed Brecconary without entering map `0x08`, handed off at
+  `(103,10)` without entering Kol map `0x07`, and arrived in Hauksness map
+  `0x03` at `(0,10)`. Final route/path state was clear with zero runtime
+  blockers. The next Cantlin validation exposed that its ordinary Hauksness
+  intermediate leg still entered map `0x03`; Cantlin now uses hidden
+  `hauksness_staging`, which stops outside at `(24,89)` and immediately targets
+  `(22,89)` westbound. Direct Hauksness travel remains unchanged. Focused tests
+  pass `191/191`; the broad gate passes all 33 host-runnable Lua suites plus 68
+  Python tests. Loaded validation handed off on World Map `(24,89)` without a
+  map change, moved west to `(22,89)`, and continued normally toward Cantlin.
+  It arrived in Cantlin map `0x0A` at `(15,0)` with route/path state clear and
+  no runtime blockers. This polish item is closed; audit other early
+  destinations separately.
 - Preserve object focus while routing. Internal waypoint selection must not
   replace the player's selected destination, and route status should explain
   the current recovery leg, next waypoint, and final destination.
