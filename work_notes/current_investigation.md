@@ -2,6 +2,36 @@
 
 Updated: 2026-08-15
 
+## 2026-08-15 Garinham and Erdrick's Cave Brecconary Bypass
+
+- STATIC AUDIT: `garinham` and `erdrick` were the only remaining outbound
+  routes that used Brecconary entrance `(48,41)` as an intermediate waypoint.
+  Reverse `tantegel` and `tantegel_kol` already go directly from Bridge south
+  bend `(44,38)` to Tantegel, while direct `brecconary` intentionally still
+  ends at `(48,41)`.
+- SOURCE CHANGE: both affected routes now reuse the live-proven Brecconary west
+  bypass `(47,41)`, radius 0, before turning north to `(44,38)`. No later
+  Garinham, cave, bridge, warning, destination, or blocker data changed.
+- TEST-FIRST VERIFICATION: new route regressions failed against the old
+  `(48,41)` waypoints. Four drift/warning fixtures were then updated from the
+  obsolete Erdrick-route waypoint to `(47,41)`. Focused route tests pass
+  `194/194`; the full gate passes all 33 host-runnable Lua suites plus 68
+  Python tests.
+- GARINHAM LIVE PASS: fresh tag `GARINHAM_BYPASS_BASELINE_20260815`
+  confirmed World Map `(43,43)`, route/path nil, and zero NPC/runtime blockers.
+  The loaded route completed `(43,43) -> (47,41)`, then continued north to
+  `(44,38)` without entering Brecconary map `0x08`. It traversed the unchanged
+  corridor and entered Garinham map `0x09` at `(0,14)` with no blocker or
+  cancellation event. Final tag `GARINHAM_BYPASS_ARRIVAL_20260815` confirmed
+  route/path nil and zero runtime blockers. Garinham is live-verified.
+- ERDRICK LIVE PASS: fresh tag `ERDRICK_BYPASS_BASELINE_20260815` confirmed
+  World Map `(43,43)`, route/path nil, and zero NPC/runtime blockers. The route
+  completed the same `(47,41)` bypass, turned north through `(44,38)`, and did
+  not enter Brecconary map `0x08`. It entered Erdrick's Cave map `0x1C` at
+  `(0,0)`. Final tag `ERDRICK_BYPASS_ARRIVAL_20260815` confirmed route/path nil
+  and zero runtime blockers. Neither loaded route logged a blocker,
+  cancellation, or exhausted retry. This polish slice is live-accepted.
+
 ## 2026-08-15 Kol/Hauksness Intermediate-Town Bypass
 
 - SOURCE CHANGE: direct `kol` now passes Brecconary via `(47,41)` and turns

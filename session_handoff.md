@@ -121,6 +121,22 @@ Updated: 2026-08-15
 
 ## Immediate FCEUX Handoff
 
+- Garinham and Erdrick's Cave Brecconary-entry polish is live-verified. Their
+  outbound routes from Tantegel now replace
+  intermediate town entrance `(48,41)` with the already live-proven west
+  bypass `(47,41)`, radius 0, then turn north to the unchanged Bridge south
+  bend `(44,38)`. The reverse `tantegel` and `tantegel_kol` safety routes were
+  audited and already skip Brecconary; the direct `brecconary` route still
+  ends at `(48,41)` and enters map `0x08`. New regressions failed against both
+  old outbound waypoints before the source patch. Focused route tests now pass
+  `194/194`; the full gate passes all 33 host-runnable Lua suites plus 68
+  Python tests. Separate clean loaded runs from World Map `(43,43)` completed
+  `(43,43) -> (47,41)`, turned north through `(44,38)`, and never entered map
+  `0x08`. Garinham entered map `0x09` at `(0,14)`; Erdrick's Cave entered map
+  `0x1C` at `(0,0)`. Final tags `GARINHAM_BYPASS_ARRIVAL_20260815` and
+  `ERDRICK_BYPASS_ARRIVAL_20260815` each confirmed route/path nil and zero
+  runtime blockers. Neither run logged a blocker, cancellation, or exhausted
+  retry. This slice is accepted.
 - Kol/Hauksness intermediate-town avoidance is live-verified. The direct `kol`
   route replaces Brecconary entrance `(48,41)` with the live-proven west
   doorstep `(47,41)`, then goes north before reconnecting at Bridge south bend

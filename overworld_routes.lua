@@ -147,7 +147,7 @@ local ROUTES = {
         destination_maps = {0x09},
         waypoints = {
             {x = 43, y = 43, name = "Tantegel Castle road", radius = 1},
-            {x = 48, y = 41, name = "Brecconary road", radius = 1},
+            {x = 47, y = 41, name = "Brecconary west bypass", radius = 0},
             {
                 x = 44,
                 y = 38,
@@ -1655,7 +1655,7 @@ local ROUTES = {
         destination_maps = {0x1C, 0x1D},
         waypoints = {
             {x = 43, y = 43, name = "Tantegel Castle road", radius = 1},
-            {x = 48, y = 41, name = "Brecconary road", radius = 1},
+            {x = 47, y = 41, name = "Brecconary west bypass", radius = 0},
             {
                 x = 44,
                 y = 38,

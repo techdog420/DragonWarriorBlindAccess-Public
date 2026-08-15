@@ -227,7 +227,7 @@ end
 
 function tests.bridge_warning_is_spoken_once_when_crossing_marker()
     routes.reset_for_tests()
-    routes.start("erdrick", 0x01, 48, 41)
+    routes.start("erdrick", 0x01, 47, 41)
 
     local event = routes.observe_position(0x01, 44, 38)
     local repeat_event = routes.observe_position(0x01, 44, 38)
@@ -407,9 +407,76 @@ function tests.garinham_object_starts_route_from_tantegel_road()
     assert_equal(err, nil, "Garinham Travel object should start a route")
     assert_equal(info.object_id, "route_garinham_02", "route should skip the current Tantegel road anchor")
     assert_contains(info.message, "Route to Garinham", "started route should name Garinham")
-    assert_contains(info.message, "Brecconary road", "route should first guide toward the known road")
+    assert_contains(info.message, "Brecconary west bypass",
+        "route should leave Tantegel without entering Brecconary")
 
     routes.reset_for_tests()
+end
+
+function tests.garinham_route_bypasses_brecconary_west_doorstep()
+    routes.reset_for_tests()
+
+    local route = assert(routes._route_for_tests("garinham"))
+    local bypass = assert(route.waypoints[2])
+
+    assert_equal(bypass.x, 47,
+        "Garinham route should stop west of Brecconary instead of targeting its entrance")
+    assert_equal(bypass.y, 41, "Garinham Brecconary bypass row")
+    assert_equal(bypass.name, "Brecconary west bypass",
+        "Garinham should name the non-entry path")
+
+    routes.start("garinham", 0x01, 43, 43)
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary west bypass",
+        "Garinham travel should use the bypass")
+    assert_equal(segment.path_length, 6,
+        "the Garinham bypass should move two north and four east")
+
+    routes.observe_position(0x01, 47, 41)
+    segment = assert(routes.plan_next_segment(0x01, 47, 41))
+    assert_equal(segment.waypoint.name, "Bridge south bend",
+        "Garinham bypass should reconnect to the existing bridge route")
+    assert_equal(segment.steps[1], "up",
+        "Garinham bypass should turn north instead of entering Brecconary")
+
+    routes.reset_for_tests()
+end
+
+function tests.erdrick_route_bypasses_brecconary_west_doorstep()
+    routes.reset_for_tests()
+
+    local route = assert(routes._route_for_tests("erdrick"))
+    local bypass = assert(route.waypoints[2])
+
+    assert_equal(bypass.x, 47,
+        "Erdrick route should stop west of Brecconary instead of targeting its entrance")
+    assert_equal(bypass.y, 41, "Erdrick Brecconary bypass row")
+    assert_equal(bypass.name, "Brecconary west bypass",
+        "Erdrick should name the non-entry path")
+
+    routes.start("erdrick", 0x01, 43, 43)
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary west bypass",
+        "Erdrick travel should use the bypass")
+
+    routes.observe_position(0x01, 47, 41)
+    segment = assert(routes.plan_next_segment(0x01, 47, 41))
+    assert_equal(segment.waypoint.name, "Bridge south bend",
+        "Erdrick bypass should reconnect to the existing bridge route")
+    assert_equal(segment.steps[1], "up",
+        "Erdrick bypass should turn north instead of entering Brecconary")
+
+    routes.reset_for_tests()
+end
+
+function tests.direct_brecconary_route_still_targets_town_entrance()
+    local route = assert(routes._route_for_tests("brecconary"))
+    local final = assert(route.waypoints[#route.waypoints])
+
+    assert_equal(final.x, 48, "direct Brecconary travel should keep the town entrance column")
+    assert_equal(final.y, 41, "direct Brecconary travel should keep the town entrance row")
+    assert_equal(final.name, "Brecconary", "direct Brecconary travel should still name the town")
+    assert_equal(final.final, true, "direct Brecconary travel should still finish at the town")
 end
 
 function tests.garinham_corridor_points_west_to_town()
@@ -4400,7 +4467,7 @@ function tests.active_route_status_recalculates_after_drift()
         route_waypoint = true,
         x = 35,
         y = 32,
-    }, 0x01, 48, 41)
+    }, 0x01, 47, 41)
 
     assert_contains(info.message, "Route recalculated", "active route status should recover from large drift")
     assert_contains(info.message, "Bridge south bend", "recalculation should choose the best waypoint for the new position")
@@ -4419,7 +4486,7 @@ function tests.selected_same_destination_recalculates_active_route()
         name = "Erdrick's Cave",
         x = 28,
         y = 12,
-    }, 0x01, 48, 41)
+    }, 0x01, 47, 41)
 
     assert_contains(info.message, "Route recalculated. Route to Erdrick's Cave", "same destination should explicitly recalculate")
     assert_equal(info.object_id, "route_erdrick_03", "same-destination recalculation should use current position")
@@ -4478,7 +4545,7 @@ function tests.route_guidance_uses_terrain_offset_when_map_id_lags()
         name = "Erdrick's Cave",
         x = 28,
         y = 12,
-    }, 0x08, 48, 41, {terrain_offset = 0x00})
+    }, 0x08, 47, 41, {terrain_offset = 0x00})
 
     assert_contains(info.message, "Route recalculated", "route guidance should recalculate on terrain-backed overworld frames")
     assert_equal(info.object_id, "route_erdrick_03", "same-destination guidance should use current position despite lagging map_id")

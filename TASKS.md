@@ -209,6 +209,16 @@ quality-of-life work.
   It arrived in Cantlin map `0x0A` at `(15,0)` with route/path state clear and
   no runtime blockers. This polish item is closed; audit other early
   destinations separately.
+- The next early-route polish slice is live-verified for Garinham and Erdrick's
+  Cave. Both outbound routes now use Brecconary west bypass `(47,41)` instead
+  of intermediate town entrance `(48,41)`, then reconnect to the unchanged
+  bridge corridor at `(44,38)`. Direct Brecconary travel remains unchanged,
+  and the reverse Tantegel routes already avoid the town. Focused tests pass
+  `194/194`; the broad gate passes all 33 host-runnable Lua suites plus 68
+  Python tests. Separate loaded runs from World Map `(43,43)` bypassed
+  Brecconary without entering map `0x08`, then arrived in Garinham map `0x09`
+  and Erdrick's Cave map `0x1C` with clean final route/path state and zero
+  runtime blockers. This slice is closed.
 - Preserve object focus while routing. Internal waypoint selection must not
   replace the player's selected destination, and route status should explain
   the current recovery leg, next waypoint, and final destination.

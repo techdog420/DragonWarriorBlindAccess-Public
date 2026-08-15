@@ -6,6 +6,20 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Garinham and Erdrick's Cave Brecconary bypass live-verified (`2026-08-15`):
+  both routes previously targeted Brecconary entrance `(48,41)` as their first
+  intermediate waypoint from Tantegel. They now reuse the live-proven west
+  bypass `(47,41)`, radius 0, then turn north to the unchanged bridge corridor
+  at `(44,38)`. Direct Brecconary travel still ends at `(48,41)`, and the
+  reverse Tantegel routes already avoided the town. Regressions cover both
+  outbound routes, the northbound departure from the bypass, and the direct
+  Brecconary control. Focused tests pass `194/194`; the native Windows broad
+  gate passes all 33 host-runnable Lua suites plus 68 Python tests. Separate
+  clean loaded runs from World Map `(43,43)` both completed the bypass and
+  turned north through `(44,38)` without entering map `0x08`. Garinham arrived
+  on map `0x09` at `(0,14)`; Erdrick's Cave arrived on map `0x1C` at `(0,0)`.
+  Both final probes reported route/path nil and zero runtime blockers, with no
+  blocker, cancellation, or exhausted-retry event in either run.
 - Kol and Cantlin/Hauksness intermediate-town bypasses live-verified
   (`2026-08-15`): direct
   Kol travel now uses the live-proven Brecconary west doorstep `(47,41)` and
