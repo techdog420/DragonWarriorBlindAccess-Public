@@ -181,9 +181,20 @@ quality-of-life work.
   overworld location can compose a route from the player's current position,
   through existing waypoint corridors, to the destination. Reusing current
   route data is preferred over replacing live-validated segments. The opt-in
-  Northern Cave, Swamp Cave, Rainbow Bridge, Charlock Castle, Magic Temple, and
-  Hauksness are implemented and live-accepted as connected routes. Choose the
-  next existing staged destination before generalizing the route model further.
+  Northern Cave, Swamp Cave, Rimuldar, Rainbow Bridge, Charlock Castle, Magic
+  Temple, and Hauksness are implemented and live-accepted as connected routes.
+  Choose the next existing staged destination before generalizing the route
+  model further.
+- The connected Rimuldar slice is live-accepted. Far starts compose
+  `kol_staging -> swamp_cave -> rimuldar`, bridging the validated northern and
+  southern route networks through Swamp Cave rather than synthesizing an
+  unverified shortcut. A loaded run from `(43,43)` handed off outside Kol,
+  paused for cave traversal, resumed from World Map `(104,49)`, and entered
+  Rimuldar at `(29,14)` with route/path state clear and zero runtime blockers.
+  Direct nearby starts remain unchanged. Focused tests pass `199/199`, and the
+  broad gate passes all 33 host-runnable Lua suites plus 68 Python tests. The
+  nested Magic Temple path is source-covered but was not part of this live
+  acceptance.
 - Off-network recovery: when a player manually explores or gets lost, provide a
   player-facing command that finds a safe route back to the nearest reachable
   waypoint-network entry and then continues toward the selected destination.

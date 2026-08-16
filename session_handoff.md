@@ -121,6 +121,25 @@ Updated: 2026-08-15
 
 ## Immediate FCEUX Handoff
 
+- Connected Rimuldar routing is fully live-verified. Selecting Rimuldar from
+  World Map `(43,43)` composed `kol_staging -> swamp_cave -> rimuldar` instead
+  of synthesizing the prior unvalidated 51-step shortcut. The loaded route
+  handed off outside Kol at west doorstep `(103,10)` without entering town,
+  then entered Swamp Cave map `0x15` at north interior `(0,0)` and activated
+  the Rimuldar leg without injecting movement. The user autowalked a perfect
+  cave route to south stair `(0,29)` and exited at World Map `(104,49)`, where
+  the preserved route resumed through `(93,49)`. It passed the established
+  north-wall corridor, including `(99,69)->south`, and entered Rimuldar map
+  `0x0B` at `(29,14)`. Final tag `RIMULDAR_CONNECTED_ARRIVAL_20260815`
+  confirmed route none, path nil, and zero runtime blockers. No blocker,
+  cancellation, timing-retry, or exhausted-retry event occurred. Direct starts
+  at `(104,49)` remain unchanged. Focused route tests pass `199/199`; the full
+  gate passes all 33 host-runnable Lua suites plus 68 Python tests. This slice
+  is accepted. The user's complete rerun also reached Rimuldar cleanly. It
+  exposed one stale south-exit warning about live validation; that player-facing
+  speech now says, `Poison swamp ahead after leaving the cave. Watch HP while
+  crossing.` A regression covers both the useful hazard warning and removal of
+  the developer language; the focused and full gates remain green.
 - Garinham and Erdrick's Cave Brecconary-entry polish is live-verified. Their
   outbound routes from Tantegel now replace
   intermediate town entrance `(48,41)` with the already live-proven west

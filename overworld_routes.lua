@@ -18,6 +18,15 @@ local SWAMP_CAVE_STAGING = {
     continue_after_staging = true,
 }
 
+local RIMULDAR_STAGING = {
+    route_id = "swamp_cave",
+    -- The longest validated segment on the south-cave-to-Rimuldar route is
+    -- thirteen tiles. Farther starts must first reach and traverse Swamp Cave
+    -- instead of synthesizing an unverified shortcut to the southern island.
+    max_start_distance = 13,
+    continue_after_staging = true,
+}
+
 local FINAL_PROGRESSION_STAGING = {
     route_id = "swamp_cave_south",
     -- The longest validated bridge-road segment is eleven tiles. Starts
@@ -449,13 +458,14 @@ local ROUTES = {
         },
         target_object_ids = {"overworld_rimuldar"},
         destination_maps = {0x0B},
+        staging = RIMULDAR_STAGING,
         waypoints = {
             {
                 x = 104,
                 y = 49,
                 name = "Swamp Cave South Entrance",
                 radius = 1,
-                warning = "Guide-derived Rimuldar route. The west route is safer but still needs live validation.",
+                warning = "Poison swamp ahead after leaving the cave. Watch HP while crossing.",
             },
             {x = 93, y = 49, name = "North Rimuldar west safer route", radius = 0, axis_order = {"horizontal", "vertical"}},
             -- Live route execution and same-origin raw movement both proved

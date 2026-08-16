@@ -2,6 +2,62 @@
 
 Updated: 2026-08-15
 
+## 2026-08-15 Connected Rimuldar Route Implementation
+
+- CURRENT FAILURE: selecting Rimuldar from World Map `(43,43)` starts the
+  local `rimuldar` route directly at `South island west ridge lane` and
+  synthesizes one unvalidated 51-step segment (`11 south, 40 east`).
+- IMPLEMENTED ITINERARY: `kol_staging -> swamp_cave -> rimuldar`. The first two
+  legs reuse the live-verified Tantegel-to-Swamp-Cave route. Entering Swamp
+  Cave map `0x15` at north interior `(0,0)` hands off to `rimuldar` without
+  injecting movement. The player traverses the cave to south stair `(0,29)`;
+  exiting to World Map `(104,49)` resumes the existing live-verified Rimuldar
+  route and first targets `North Rimuldar west safer route` `(93,49)`.
+- MINIMAL SOURCE CHANGE: added a Rimuldar-only staging guard whose fallback is
+  `swamp_cave`, with `max_start_distance = 13` and staged continuation enabled.
+  Thirteen is the longest established Rimuldar segment. Direct and nearby
+  starts at `(104,49)` or along the existing south-cave-to-Rimuldar corridor
+  remain local and unchanged.
+- HANDOFF CONTRACT: reaching Kol west doorstep `(103,10)` activates
+  `swamp_cave`; entering map `0x15` at `(0,0)` activates `rimuldar`; neither
+  handoff queues movement. Status and Travel-object matching retain Rimuldar
+  as the final destination through both legs and while inside the cave.
+- TEST-FIRST VERIFICATION: regressions failed first against the old direct
+  Rimuldar selection. Coverage asserts alias and Travel-object starts from `(43,43)`,
+  ordered `kol_staging -> swamp_cave -> rimuldar` handoffs, current-leg/final-
+  destination speech, guidance refresh, cancellation cleanup, no automatic
+  handoff movement, the south-exit first segment of 11 LEFT steps, and the
+  unchanged direct `(104,49)` start. It also covers the expected nested effect that
+  a far Magic Temple request inherits the new Rimuldar connection without
+  claiming it live-accepted in this slice. Focused route tests pass `199/199`;
+  the full gate passes all 33 host-runnable Lua suites plus 68 Python tests.
+- LIVE ACCEPTANCE PLAN: after source tests and a manual `main.lua` reload,
+  start on a clean World Map `(43,43)`. Use continuous overworld auto-walk for
+  the exterior legs, manually traverse Swamp Cave north `(0,0)` to south
+  `(0,29)`, exit at `(104,49)`, then continue to Rimuldar map `0x0B` `(29,14)`.
+  Require clean handoff logs, preserved final destination, no unintended town
+  entry, and zero runtime blockers at final arrival.
+- LIVE ACCEPTANCE: baseline tag `RIMULDAR_CONNECTED_BASELINE_20260815`
+  confirmed World Map `(43,43)`, route none, and zero runtime blockers. The
+  route started as `kol_staging`, handed off to `swamp_cave` at Kol west
+  `(103,10)` without entering town, and entered Swamp Cave map `0x15` at
+  `(0,0)`. The handoff activated `rimuldar` with path nil and no injected cave
+  movement. The user then autowalked a perfect cave route to `(0,29)` and
+  exited at World Map `(104,49)`. Tag `RIMULDAR_SOUTH_EXIT_20260815` confirmed
+  the preserved route targeting `(93,49)`, path nil, and zero runtime blockers.
+  Continuous walking completed the established southern route, including
+  `(99,69)->south`, and entered Rimuldar map `0x0B` at `(29,14)`. Final tag
+  `RIMULDAR_CONNECTED_ARRIVAL_20260815` confirmed route none, path nil, and
+  zero runtime blockers. No blocker, cancellation, timing-retry, or
+  exhausted-retry event occurred. This slice is live-accepted.
+- ACCEPTED RERUN / SPEECH CLEANUP: the user repeated the full
+  Tantegel-to-Rimuldar itinerary and accepted its movement. The south cave exit
+  exposed the stale warning `Guide-derived Rimuldar route. The west route is
+  safer but still needs live validation.` It now warns `Poison swamp ahead
+  after leaving the cave. Watch HP while crossing.` A focused regression failed
+  against the stale warning, then passed `199/199`; the broad gate again passed
+  all 33 host-runnable Lua suites plus 68 Python tests.
+
 ## 2026-08-15 Garinham and Erdrick's Cave Brecconary Bypass
 
 - STATIC AUDIT: `garinham` and `erdrick` were the only remaining outbound

@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Connected Rimuldar route fully live-verified (`2026-08-15`): a loaded request
+  from World Map `(43,43)` composed `kol_staging -> swamp_cave -> rimuldar`
+  rather than using the unvalidated 51-step direct segment. It handed off at
+  Kol west `(103,10)` without entering town, then entered Swamp Cave map
+  `0x15` at north interior `(0,0)` and activated the Rimuldar leg without
+  moving the hero. The user autowalked a perfect cave route to south stair
+  `(0,29)` and exited at World Map `(104,49)`. The preserved route resumed
+  toward `(93,49)`, passed `(99,69)->south`, and entered Rimuldar map `0x0B`
+  at `(29,14)`. Final tag `RIMULDAR_CONNECTED_ARRIVAL_20260815` confirmed route
+  none, path nil, and zero runtime blockers. No blocker, cancellation,
+  timing-retry, or exhausted-retry event occurred. Direct starts at `(104,49)`
+  remain local. Focused tests pass `199/199`; the native Windows broad gate
+  passes all 33 host-runnable Lua suites plus 68 Python tests. A complete user
+  rerun also reached Rimuldar cleanly. The stale south-exit warning about live
+  validation was replaced with `Poison swamp ahead after leaving the cave.
+  Watch HP while crossing.` Regression coverage verifies the hazard warning and
+  prevents the developer language from returning.
 - Garinham and Erdrick's Cave Brecconary bypass live-verified (`2026-08-15`):
   both routes previously targeted Brecconary entrance `(48,41)` as their first
   intermediate waypoint from Tantegel. They now reuse the live-proven west
