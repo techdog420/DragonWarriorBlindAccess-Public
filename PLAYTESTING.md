@@ -66,6 +66,20 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   entered Cantlin map `0x0A` at `(15,0)`; fresh tag
   `CANTLIN_TOWN_BYPASS_FINAL_20260815` confirmed route none, path nil, and no
   runtime blockers.
+- Connected Eastern Great Swamp route and Cantlin bypass live-verified
+  (`2026-08-16`): far search-area travel now composes `kol_staging ->
+  hauksness_staging -> cantlin_staging -> great_swamp_cantlin`. The initial
+  loaded run completed the full itinerary to safe search-area pin `(89,112)`.
+  Passing routes now stop the shared Cantlin approach at northwest turn
+  `(68,91)` and hand directly to south notch `(68,92)`, avoiding town map
+  `0x0A` and eliminating the old descent/exit interruption. Direct Cantlin
+  travel still enters town, and accidental entry still performs the staged
+  handoff. A focused loaded rerun from Hauksness west doorstep `(24,89)`
+  completed the exterior handoff and continued normally into the Great Swamp
+  route with no retry, drift, blocker, cancellation, or map change. Final tag
+  `CANTLIN_BYPASS_FINAL_20260816` confirmed route/path nil and zero runtime
+  blockers after the deliberate stop. Focused tests pass `203/203`; the full
+  33-Lua-suite and 68-Python-test gate passes.
 - Connected Mountain Cave route fully live-verified (`2026-08-15`): selecting
   Mountain Cave outside Kol now stages through an internal connector ending at the
   live-validated `Western desert east road` pin `(18,64)`, then hands off to

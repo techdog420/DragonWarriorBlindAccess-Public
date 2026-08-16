@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-15
+Updated: 2026-08-16
 
 ## Release Installation Handoff
 
@@ -121,6 +121,23 @@ Updated: 2026-08-15
 
 ## Immediate FCEUX Handoff
 
+- Connected Eastern Great Swamp routing and Cantlin pass-through polish are
+  live-verified. Selecting the search area from World Map `(43,43)` composes
+  `kol_staging -> hauksness_staging -> cantlin_staging ->
+  great_swamp_cantlin`. Kol and Hauksness remain exterior handoffs. Hidden
+  `cantlin_staging` derives the validated Hauksness-to-Cantlin approach only
+  through northwest turn `(68,91)`, then hands directly to the Great Swamp
+  route's south notch `(68,92)` instead of entering Cantlin map `0x0A`.
+  Direct Cantlin travel still enters town, and accidental town entry remains a
+  fallback handoff. The initial loaded run completed the full connected route
+  to safe search-area pin `(89,112)` with no blocker, drift, timeout retry,
+  cancellation, or exhausted retry. After the bypass patch, a focused loaded
+  run from Hauksness west doorstep `(24,89)` traversed the normal route,
+  handed off at `(68,91)`, and continued south without a map change or route
+  anomaly. Final tag `CANTLIN_BYPASS_FINAL_20260816` confirmed World Map
+  `(57,104)`, route/path nil, and zero NPC/runtime blockers after the deliberate
+  stop. Focused route tests pass `203/203`; Lua syntax, `git diff --check`, all
+  33 host-runnable Lua suites, and all 68 Python tests pass.
 - Connected Rimuldar routing is fully live-verified. Selecting Rimuldar from
   World Map `(43,43)` composed `kol_staging -> swamp_cave -> rimuldar` instead
   of synthesizing the prior unvalidated 51-step shortcut. The loaded route

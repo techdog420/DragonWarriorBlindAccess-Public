@@ -3974,6 +3974,142 @@ function tests.entering_cantlin_stops_hauksness_variant()
     routes.reset_for_tests()
 end
 
+function tests.great_swamp_from_tantegel_starts_connected_cantlin_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_eastern_great_swamp_search_area",
+        name = "Eastern Great Swamp Search Area",
+        x = 89,
+        y = 112,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 43, 43)
+
+    assert_equal(err, nil,
+        "Great Swamp Travel object should resolve from Tantegel")
+    assert_equal(info.route.id, "kol_staging",
+        "far Great Swamp requests should start on the established Kol route")
+    assert_equal(info.object_id, "route_kol_staging_02",
+        "Great Swamp staging should leave Tantegel through the first Kol movement waypoint")
+    assert_contains(info.message,
+        "Eastern Great Swamp Search Area route starts from Kol",
+        "staging speech should retain the search area as the final destination")
+    assert_contains(info.log, "staged_from=great_swamp_cantlin",
+        "structured logs should retain the final Great Swamp route")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected search-area object should remain bound during the Kol leg")
+
+    local segment = assert(routes.plan_next_segment(0x01, 43, 43))
+    assert_equal(segment.waypoint.name, "Brecconary west bypass",
+        "the first Great Swamp leg should reuse the validated Kol route")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_connected_itinerary_hands_off_at_cantlin()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_eastern_great_swamp_search_area",
+        name = "Eastern Great Swamp Search Area",
+        x = 89,
+        y = 112,
+    }
+    assert(routes.start_for_object(target, 0x01, 43, 43))
+
+    local kol = assert(routes._route_for_tests("kol_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Kol arrival should hand off within the Great Swamp itinerary")
+    assert_equal(routes.active_route_id(), "hauksness_staging",
+        "Kol arrival should activate the non-entry Hauksness leg")
+
+    local hauksness = assert(routes._route_for_tests("hauksness_staging"))
+    for index = 2, #hauksness.waypoints do
+        local waypoint = hauksness.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Hauksness arrival should hand off within the Great Swamp itinerary")
+    assert_equal(routes.active_route_id(), "cantlin_staging",
+        "Hauksness arrival should activate the non-entry Cantlin staging leg")
+
+    local cantlin = assert(routes._route_for_tests("cantlin_staging"))
+    local final = assert(cantlin.waypoints[#cantlin.waypoints])
+    assert_equal(final.x, 68,
+        "Cantlin staging should finish at the northwest turn")
+    assert_equal(final.y, 91,
+        "Cantlin staging should stop before the town entrance")
+    assert_equal(final.name, "Cantlin northwest turn",
+        "the staging endpoint should identify the safe pass-through handoff")
+    for index = 3, #cantlin.waypoints do
+        local waypoint = cantlin.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "reaching Cantlin northwest turn should hand off to the Great Swamp leg")
+    assert_equal(routes.active_route_id(), "great_swamp_cantlin",
+        "the exterior Cantlin handoff should activate the Great Swamp destination")
+    assert_equal(event.object_id, "route_great_swamp_cantlin_04",
+        "the exterior handoff should target the southbound forest notch")
+    assert_equal(event.steps, nil,
+        "the exterior Cantlin handoff must not inject movement")
+    assert_contains(event.message,
+        "Reached Cantlin northwest turn. Continuing to Eastern Great Swamp Search Area.",
+        "the final handoff should retain the search-area destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the search-area object should remain bound after the Cantlin handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 68, 91))
+    assert_equal(segment.waypoint.x, 68,
+        "the post-Cantlin target should remain on the forest-notch column")
+    assert_equal(segment.waypoint.y, 92,
+        "the post-Cantlin target should enter the upper forest")
+    assert_equal(segment.steps[1], "down",
+        "the final Great Swamp leg should avoid the Cantlin entrance")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_cantlin_staging_preserves_accidental_entry_fallback()
+    routes.reset_for_tests()
+    assert(routes.start(
+        "great swamp search area", 0x01, 25, 89))
+
+    assert_equal(routes.active_route_id(), "cantlin_staging",
+        "Hauksness-side Great Swamp travel should use Cantlin staging")
+
+    local event = routes.observe_position(0x0A, 15, 0)
+
+    assert_equal(event.status, "handoff",
+        "accidental Cantlin entry should still hand off to the Great Swamp leg")
+    assert_equal(routes.active_route_id(), "great_swamp_cantlin",
+        "town-entry fallback should preserve the Great Swamp destination")
+    assert_equal(event.steps, nil,
+        "town-entry fallback must not inject movement inside Cantlin")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_direct_cantlin_start_stays_local()
+    routes.reset_for_tests()
+
+    local info, err = routes.start(
+        "great swamp search area", 0x01, 73, 102)
+
+    assert_equal(err, nil, "Great Swamp alias should resolve at Cantlin")
+    assert_equal(info.route.id, "great_swamp_cantlin",
+        "Cantlin starts should remain on the local live-validated route")
+    assert_equal(info.object_id, "route_great_swamp_cantlin_02",
+        "Cantlin starts should skip the current entrance anchor")
+
+    routes.reset_for_tests()
+end
+
 function tests.great_swamp_search_area_alias_and_object_start_cantlin_route()
     routes.reset_for_tests()
 

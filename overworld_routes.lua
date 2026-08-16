@@ -76,6 +76,26 @@ local CANTLIN_STAGING = {
     continue_after_staging = true,
 }
 
+local CANTLIN_BYPASS_STAGING = {
+    route_id = "hauksness_staging",
+    continuation_route_id = "cantlin_staging",
+    -- Passing routes share the validated Cantlin approach, but stop at the
+    -- northwest turn instead of continuing east and descending into town.
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
+local GREAT_SWAMP_STAGING = {
+    route_id = "cantlin_staging",
+    -- The longest live-validated segment on the local Cantlin-to-search-area
+    -- route is fifteen tiles. Off-corridor or farther starts must first use
+    -- the connected Cantlin itinerary instead of synthesizing a shortcut.
+    max_start_distance = 15,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local MOUNTAIN_CAVE_CONNECTOR_STAGING = {
     route_id = "kol_staging",
     continuation_route_id = "mountain_cave_connector",
@@ -1396,6 +1416,7 @@ local ROUTES = {
         target_object_ids = {
             "overworld_eastern_great_swamp_search_area",
         },
+        staging = GREAT_SWAMP_STAGING,
         waypoints = {
             {x = 73, y = 102, name = "Cantlin", radius = 0},
             {
@@ -1832,6 +1853,18 @@ ROUTES.hauksness_staging = {
     destination_maps = {0x03},
     staging = HAUKSNESS_HUB_STAGING,
     waypoints = copy_route_prefix(ROUTES.hauksness, 24, 89),
+}
+
+-- Internal hub leg: passing routes follow the live-validated Cantlin approach
+-- only to its northwest turn. Direct Cantlin travel retains the eastward and
+-- southward segments into town, and destination_maps preserves an accidental-
+-- entry fallback for an active connected itinerary.
+ROUTES.cantlin_staging = {
+    id = "cantlin_staging",
+    title = "Cantlin northwest turn",
+    destination_maps = {0x0A},
+    staging = CANTLIN_BYPASS_STAGING,
+    waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 68, 91),
 }
 
 -- Internal staging leg: reuse the live-validated Hauksness corridor from Kol
