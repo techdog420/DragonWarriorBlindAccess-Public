@@ -6,6 +6,19 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Hauksness-to-Tantegel selection live-verified (`2026-08-16`): a Tantegel
+  request at World Map `(25,89)` now selects the established Kol return
+  itinerary through a Hauksness-only selection anchor, rather than the generic
+  north-ridge shortcut. The normal distance guard still stages through
+  `kol_return_staging`. The loaded continuous run handed off at Kol west
+  doorstep `(103,10)` without entering town, then followed `tantegel_kol` into
+  Tantegel Castle map `0x04` at `(11,29)`. Final state had route/path nil and
+  zero runtime blockers. The log contains no blocked, failed, canceled, drift,
+  battle, runtime-block, or nonzero-timeout event. Regression coverage also
+  keeps the Mountain Cave `(29,57)` origin on its existing generic route.
+  Focused tests pass `209/209` overworld routes and `123/123` route manager;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass.
 - Great Swamp-to-Tantegel reverse backbone live-verified (`2026-08-16`): a
   Tantegel request at the Eastern Great Swamp Search Area safe pin `(89,112)`
   now composes `cantlin_return_staging -> hauksness_return_staging ->

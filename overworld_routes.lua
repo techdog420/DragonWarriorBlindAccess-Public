@@ -1784,6 +1784,11 @@ local ROUTES = {
         target_object_ids = {"overworld_tantegel_castle"},
         destination_maps = {0x04, 0x05},
         staging = TANTEGEL_RETURN_STAGING,
+        -- Route selection only: Hauksness should choose this staged return
+        -- instead of the generic safety route's distant north-ridge waypoint.
+        -- Staging still uses the real route distance and therefore begins on
+        -- kol_return_staging rather than synthesizing a direct Kol shortcut.
+        selection_anchors = {{x = 25, y = 89}},
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
@@ -2261,6 +2266,14 @@ local function route_start_score(route, map_id, px, py, terrain_offset)
     return distance(px, py, point)
 end
 
+local function route_selection_score(route, map_id, px, py, terrain_offset)
+    local score = route_start_score(route, map_id, px, py, terrain_offset)
+    for _, point in ipairs(route and route.selection_anchors or {}) do
+        score = math.min(score, distance(px, py, point))
+    end
+    return score
+end
+
 local function choose_best_route_id(ids, map_id, px, py, terrain_offset)
     local fallback = ids and ids[1]
     if not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
@@ -2270,7 +2283,8 @@ local function choose_best_route_id(ids, map_id, px, py, terrain_offset)
     local best_id = fallback
     local best_score = nil
     for _, id in ipairs(ids or {}) do
-        local score = route_start_score(ROUTES[id], map_id, px, py, terrain_offset)
+        local score = route_selection_score(
+            ROUTES[id], map_id, px, py, terrain_offset)
         if best_score == nil or score < best_score then
             best_id = id
             best_score = score

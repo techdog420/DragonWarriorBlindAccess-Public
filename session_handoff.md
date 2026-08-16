@@ -121,6 +121,19 @@ Updated: 2026-08-16
 
 ## Immediate FCEUX Handoff
 
+- Hauksness-to-Tantegel selection is corrected and live-verified. Selecting
+  Tantegel from World Map `(25,89)` now uses a Hauksness-only selection anchor
+  on `tantegel_kol`, while the unchanged distance guard stages the trip through
+  `kol_return_staging`; Mountain Cave and other origins retain their prior
+  route choice. The loaded run started `kol_return_staging` at frame `3720`,
+  handed off outside Kol at west doorstep `(103,10)` at frame `18906` without
+  entering town, and arrived in Tantegel Castle map `0x04` at frame `25818`.
+  Final audit at frame `26580` confirmed `(11,29)`, route/path nil, and zero
+  runtime blockers. No blocked, failed, canceled, drift, battle, runtime-block,
+  or nonzero-timeout event occurred. Focused route tests pass `209/209`,
+  route-manager tests pass `123/123`, Lua syntax and `git diff --check` pass,
+  and the full gate passes all 33 host-runnable Lua suites plus 68 Python tests.
+  The user's continuous-autowalk config change remains local and unstaged.
 - The connected reverse backbone from Eastern Great Swamp Search Area to
   Tantegel is implemented and live-verified. Selecting Tantegel at World Map
   `(89,112)` composes `cantlin_return_staging -> hauksness_return_staging ->

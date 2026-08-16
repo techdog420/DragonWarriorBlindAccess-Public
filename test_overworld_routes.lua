@@ -4529,6 +4529,88 @@ function tests.stopping_great_swamp_tantegel_itinerary_clears_remaining_legs()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_object_from_hauksness_starts_kol_return_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 25, 89)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start outside Hauksness")
+    assert_equal(info.route.id, "kol_return_staging",
+        "Hauksness return should begin on the proven Kol leg")
+    assert_equal(info.object_id, "route_kol_return_staging_02",
+        "Hauksness start should target the west doorstep")
+    assert_contains(info.message, "Tantegel Castle route starts from Kol",
+        "Hauksness staging speech should retain the final castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound during the Kol leg")
+
+    local segment = assert(routes.plan_next_segment(0x01, 25, 89))
+    assert_equal(segment.waypoint.name, "Hauksness doorstep west",
+        "the return should leave the ruins through the validated west doorstep")
+    assert_equal(segment.steps[1], "left",
+        "the first return step should leave Hauksness westward")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start("tantegel", 0x01, 25, 89)
+    assert_equal(alias_err, nil, "Tantegel alias should start outside Hauksness")
+    assert_equal(alias_info.route.id, "kol_return_staging",
+        "the plain alias should use the same connected return itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_tantegel_itinerary_hands_off_outside_kol()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    assert(routes.start_for_object(target, 0x01, 25, 89))
+
+    local kol = assert(routes._route_for_tests("kol_return_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "Kol west-doorstep arrival should hand off to the final castle leg")
+    assert_equal(routes.active_route_id(), "tantegel_kol",
+        "Kol handoff should activate the established Tantegel return")
+    assert_equal(event.object_id, "route_tantegel_kol_02",
+        "the final leg should leave through Kol forest west edge")
+    assert_equal(event.steps, nil,
+        "the exterior Kol handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the castle Travel object should remain bound after the handoff")
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_tantegel_selection_does_not_steal_mountain_cave_start()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("tantegel", 0x01, 29, 57)
+
+    assert_equal(err, nil, "Tantegel alias should still start at Mountain Cave")
+    assert_equal(info.route.id, "tantegel",
+        "the Hauksness-specific selection hint must not steal Mountain Cave")
+    assert_equal(info.object_id, "route_tantegel_25",
+        "Mountain Cave should retain its existing generic return target")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 
