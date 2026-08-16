@@ -4406,6 +4406,129 @@ function tests.arriving_at_cantlin_stops_great_swamp_return()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_object_from_great_swamp_starts_reverse_connected_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 89, 112)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start at the Great Swamp safe pin")
+    assert_equal(info.route.id, "cantlin_return_staging",
+        "Great Swamp return should begin on the exterior Cantlin leg")
+    assert_equal(info.object_id, "route_cantlin_return_staging_02",
+        "the first reverse target should leave the search-area safe pin")
+    assert_contains(info.message, "Tantegel Castle route starts from Cantlin northwest turn",
+        "reverse staging speech should retain the final castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound during the reverse itinerary")
+
+    local segment = assert(routes.plan_next_segment(0x01, 89, 112))
+    assert_equal(segment.waypoint.name, "Great Swamp east lane",
+        "the reverse itinerary should reuse the validated Great Swamp departure")
+    assert_equal(segment.steps[1], "down",
+        "the reverse itinerary should leave the safe pin southward")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_tantegel_itinerary_hands_off_outside_each_town()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    assert(routes.start_for_object(target, 0x01, 89, 112))
+
+    local cantlin = assert(routes._route_for_tests("cantlin_return_staging"))
+    local event
+    for index = 2, #cantlin.waypoints do
+        local waypoint = cantlin.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Cantlin northwest arrival should hand off within the reverse itinerary")
+    assert_equal(routes.active_route_id(), "hauksness_return_staging",
+        "Cantlin should hand off to the non-entry Hauksness return leg")
+    assert_equal(event.object_id, "route_hauksness_return_staging_04",
+        "Cantlin handoff should continue south of the northwest turn")
+    assert_equal(event.steps, nil,
+        "Cantlin exterior handoff must not inject movement")
+    assert_equal(cantlin.waypoints[#cantlin.waypoints].x, 68,
+        "Cantlin return staging x")
+    assert_equal(cantlin.waypoints[#cantlin.waypoints].y, 91,
+        "Cantlin return staging y")
+
+    local hauksness = assert(routes._route_for_tests("hauksness_return_staging"))
+    for index = 4, #hauksness.waypoints do
+        local waypoint = hauksness.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Hauksness doorstep arrival should hand off within the reverse itinerary")
+    assert_equal(routes.active_route_id(), "kol_return_staging",
+        "Hauksness should hand off to the non-entry Kol return leg")
+    assert_equal(event.object_id, "route_kol_return_staging_03",
+        "Hauksness handoff should continue west of the ruins")
+    assert_equal(event.steps, nil,
+        "Hauksness exterior handoff must not inject movement")
+    assert_equal(hauksness.waypoints[#hauksness.waypoints].x, 24,
+        "Hauksness return staging x")
+    assert_equal(hauksness.waypoints[#hauksness.waypoints].y, 89,
+        "Hauksness return staging y")
+
+    local kol = assert(routes._route_for_tests("kol_return_staging"))
+    for index = 3, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Kol doorstep arrival should hand off to the final castle leg")
+    assert_equal(routes.active_route_id(), "tantegel_kol",
+        "Kol should activate the established return route to Tantegel")
+    assert_equal(event.object_id, "route_tantegel_kol_02",
+        "Kol exterior handoff should depart through the forest west edge")
+    assert_equal(event.steps, nil,
+        "Kol exterior handoff must not inject movement")
+    assert_equal(kol.waypoints[#kol.waypoints].x, 103,
+        "Kol return staging should stop west of town")
+    assert_equal(kol.waypoints[#kol.waypoints].y, 10,
+        "Kol return staging y")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound after every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the final leg should bypass Kol and head toward Tantegel")
+    assert_equal(segment.steps[1], "left",
+        "the final leg should leave Kol westward")
+
+    routes.reset_for_tests()
+end
+
+function tests.stopping_great_swamp_tantegel_itinerary_clears_remaining_legs()
+    routes.reset_for_tests()
+    assert(routes.start("tantegel", 0x01, 89, 112))
+
+    local event = routes.stop()
+
+    assert_contains(event.message, "Stopped overworld route",
+        "explicit stop should acknowledge reverse-itinerary cancellation")
+    assert_equal(routes.is_active(), false,
+        "stopping should clear the active Great Swamp return leg")
+    assert_equal(routes.observe_position(0x01, 68, 91), nil,
+        "a stopped reverse itinerary must not resume at Cantlin")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_alias_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 

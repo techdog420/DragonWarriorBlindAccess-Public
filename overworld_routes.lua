@@ -96,6 +96,34 @@ local GREAT_SWAMP_STAGING = {
     continue_after_staging = true,
 }
 
+local CANTLIN_RETURN_STAGING = {
+    route_id = "cantlin_return_staging",
+    continuation_route_id = "hauksness_return_staging",
+    -- The Great Swamp safe pin is beyond the validated Cantlin-to-Hauksness
+    -- corridor. Reach Cantlin's northwest turn on the established return route
+    -- before joining that corridor, without entering town.
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
+local HAUKSNESS_RETURN_STAGING = {
+    route_id = "hauksness_return_staging",
+    continuation_route_id = "kol_return_staging",
+    -- Far southern starts must first use the established Cantlin-to-Hauksness
+    -- route. The internal leg stops at the ruins' west doorstep.
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
+local TANTEGEL_RETURN_STAGING = {
+    route_id = "kol_return_staging",
+    continuation_route_id = "tantegel_kol",
+    -- Hauksness and farther southern starts must return through the proven Kol
+    -- corridor before joining the established Kol-to-Tantegel route.
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
 local MOUNTAIN_CAVE_CONNECTOR_STAGING = {
     route_id = "kol_staging",
     continuation_route_id = "mountain_cave_connector",
@@ -1755,6 +1783,7 @@ local ROUTES = {
         aliases = {"kol to tantegel", "kol to castle", "tantegel from kol", "castle from kol", "return from kol"},
         target_object_ids = {"overworld_tantegel_castle"},
         destination_maps = {0x04, 0x05},
+        staging = TANTEGEL_RETURN_STAGING,
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
@@ -1865,6 +1894,39 @@ ROUTES.cantlin_staging = {
     destination_maps = {0x0A},
     staging = CANTLIN_BYPASS_STAGING,
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 68, 91),
+}
+
+-- Internal return leg: reuse the live-validated Great Swamp return only through
+-- Cantlin's northwest turn. Direct Cantlin travel still enters town.
+ROUTES.cantlin_return_staging = {
+    id = "cantlin_return_staging",
+    title = "Cantlin northwest turn",
+    destination_maps = {0x0A},
+    waypoints = copy_route_prefix(ROUTES.cantlin_great_swamp, 68, 91),
+}
+
+-- Internal return leg: connected northern travel passes Hauksness from the
+-- west doorstep instead of entering the ruins.
+ROUTES.hauksness_return_staging = {
+    id = "hauksness_return_staging",
+    title = "Hauksness",
+    destination_maps = {0x03},
+    staging = CANTLIN_RETURN_STAGING,
+    waypoints = copy_route_prefix(ROUTES.hauksness_cantlin, 24, 89),
+}
+
+-- Internal return leg: reuse the established Hauksness-to-Kol route, but stop
+-- one tile west of Kol so the final Tantegel leg can leave without town entry.
+local kol_return_staging_waypoints = copy_route_prefix(ROUTES.kol_hauksness, 104, 10)
+local kol_return_staging_final = kol_return_staging_waypoints[#kol_return_staging_waypoints]
+kol_return_staging_final.x = 103
+kol_return_staging_final.name = "Kol west doorstep"
+ROUTES.kol_return_staging = {
+    id = "kol_return_staging",
+    title = "Kol",
+    destination_maps = {0x07},
+    staging = HAUKSNESS_RETURN_STAGING,
+    waypoints = kol_return_staging_waypoints,
 }
 
 -- Internal staging leg: reuse the live-validated Hauksness corridor from Kol

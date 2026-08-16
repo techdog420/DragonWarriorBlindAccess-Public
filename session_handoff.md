@@ -121,6 +121,21 @@ Updated: 2026-08-16
 
 ## Immediate FCEUX Handoff
 
+- The connected reverse backbone from Eastern Great Swamp Search Area to
+  Tantegel is implemented and live-verified. Selecting Tantegel at World Map
+  `(89,112)` composes `cantlin_return_staging -> hauksness_return_staging ->
+  kol_return_staging -> tantegel_kol`. The three hidden legs are derived from
+  the existing live-validated return routes and stop outside their intermediate
+  destinations: Cantlin northwest turn `(68,91)`, Hauksness west doorstep
+  `(24,89)`, and Kol west doorstep `(103,10)`. The loaded continuous run handed
+  off at frames `8730`, `13898`, and `28570` without entering Cantlin,
+  Hauksness, or Kol, then entered Tantegel Castle map `0x04` at frame `35482`.
+  No blocked, failed, canceled, drift, battle, runtime-block, or nonzero-timeout
+  event occurred. Final audit at frame `36000` confirmed Tantegel Castle
+  `(11,29)`, route/path nil, and zero runtime blockers. Focused route tests pass
+  `206/206`, route-manager tests pass `123/123`, and the full gate passes all 33
+  host-runnable Lua suites plus 68 Python tests. The user's continuous-autowalk
+  config change remains local and unstaged.
 - Connected Eastern Great Swamp routing and Cantlin pass-through polish are
   live-verified. Selecting the search area from World Map `(43,43)` composes
   `kol_staging -> hauksness_staging -> cantlin_staging ->

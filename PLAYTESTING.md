@@ -1,11 +1,25 @@
 # Playtesting Notes
 
-Updated: 2026-08-15
+Updated: 2026-08-16
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Great Swamp-to-Tantegel reverse backbone live-verified (`2026-08-16`): a
+  Tantegel request at the Eastern Great Swamp Search Area safe pin `(89,112)`
+  now composes `cantlin_return_staging -> hauksness_return_staging ->
+  kol_return_staging -> tantegel_kol`. The internal routes reuse the established
+  return geometry while stopping outside Cantlin at `(68,91)`, Hauksness at
+  `(24,89)`, and Kol at `(103,10)`. A loaded continuous-autowalk run completed
+  all three exterior handoffs without entering the intermediate town/ruins,
+  then followed the established final leg into Tantegel Castle map `0x04`.
+  The log contains exactly three handoffs and one final arrival, with no
+  blocked, failed, canceled, drift, battle, runtime-block, or nonzero-timeout
+  event. Final position was Tantegel Castle `(11,29)`, route/path nil, and zero
+  runtime blockers. Focused tests pass `206/206` overworld routes and `123/123`
+  route manager; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
 - Connected Rimuldar route fully live-verified (`2026-08-15`): a loaded request
   from World Map `(43,43)` composed `kol_staging -> swamp_cave -> rimuldar`
   rather than using the unvalidated 51-step direct segment. It handed off at
