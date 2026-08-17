@@ -6,6 +6,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Mountain Cave-to-Tantegel connected return live-verified (`2026-08-16`): a
+  Tantegel request at World Map `(29,57)` now composes
+  `mountain_cave_return -> kol_return_staging -> tantegel_kol` instead of using
+  the generic north-ridge shortcut. The loaded continuous run exactly reversed
+  the established cave spur to Western desert east road `(18,64)`, handed off
+  outside Kol at west doorstep `(103,10)` without entering town, and entered
+  Tantegel Castle map `0x04` at `(11,29)`. Final state had route/path nil and
+  zero runtime blockers. The first west step used both configured timing
+  retries and recovered; no later retry and no blocked, failed, canceled,
+  drift, battle, or runtime-block event occurred. Focused tests pass `211/211`
+  overworld routes and `123/123` route manager; Lua syntax, `git diff --check`,
+  all 33 host-runnable Lua suites, and all 68 Python tests pass.
 - Hauksness-to-Tantegel selection live-verified (`2026-08-16`): a Tantegel
   request at World Map `(25,89)` now selects the established Kol return
   itinerary through a Hauksness-only selection anchor, rather than the generic

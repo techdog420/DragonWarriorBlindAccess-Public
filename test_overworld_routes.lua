@@ -4597,16 +4597,112 @@ function tests.hauksness_tantegel_itinerary_hands_off_outside_kol()
     routes.reset_for_tests()
 end
 
-function tests.hauksness_tantegel_selection_does_not_steal_mountain_cave_start()
+function tests.tantegel_object_from_mountain_cave_starts_connected_return()
     routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
 
-    local info, err = routes.start("tantegel", 0x01, 29, 57)
+    local info, err = routes.start_for_object(target, 0x01, 29, 57)
 
-    assert_equal(err, nil, "Tantegel alias should still start at Mountain Cave")
-    assert_equal(info.route.id, "tantegel",
-        "the Hauksness-specific selection hint must not steal Mountain Cave")
-    assert_equal(info.object_id, "route_tantegel_25",
-        "Mountain Cave should retain its existing generic return target")
+    assert_equal(err, nil,
+        "Tantegel Travel object should start outside Mountain Cave")
+    assert_equal(info.route.id, "mountain_cave_return",
+        "Mountain Cave return should begin on the proven local reverse spur")
+    assert_equal(info.object_id, "route_mountain_cave_return_02",
+        "Mountain Cave return should first target the west approach")
+    assert_contains(info.message, "Tantegel Castle route starts from Western desert east road",
+        "Mountain Cave staging speech should retain the final castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound during the cave return")
+
+    local segment = assert(routes.plan_next_segment(0x01, 29, 57))
+    assert_equal(segment.waypoint.name, "Mountain Cave west approach",
+        "the return itinerary should leave through the proven west approach")
+    assert_equal(segment.steps[1], "left",
+        "the first Mountain Cave return step should head west")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start("tantegel", 0x01, 29, 57)
+    assert_equal(alias_err, nil,
+        "Tantegel alias should start outside Mountain Cave")
+    assert_equal(alias_info.route.id, "mountain_cave_return",
+        "the plain alias should use the same connected return itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.mountain_cave_tantegel_itinerary_hands_off_to_kol_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    assert(routes.start_for_object(target, 0x01, 29, 57))
+
+    local cave_return = assert(routes._route_for_tests("mountain_cave_return"))
+    local event
+    for index = 2, #cave_return.waypoints do
+        local waypoint = cave_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "western desert pin should hand off within the Tantegel itinerary")
+    assert_equal(routes.active_route_id(), "kol_return_staging",
+        "the local reverse spur should activate the exterior Kol return")
+    assert_equal(event.steps, nil,
+        "the Mountain Cave handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the castle Travel object should remain bound after the cave handoff")
+
+    local kol = assert(routes._route_for_tests("kol_return_staging"))
+    local shared_pin_index
+    for index, waypoint in ipairs(kol.waypoints) do
+        if waypoint.x == 18 and waypoint.y == 64 then
+            shared_pin_index = index
+            break
+        end
+    end
+    assert_equal(shared_pin_index ~= nil, true,
+        "Kol return should contain the shared western desert pin")
+    assert_equal(event.object_id,
+        string.format("route_kol_return_staging_%02d", shared_pin_index + 1),
+        "the handoff should continue beyond the already-reached shared pin")
+
+    for index = shared_pin_index + 1, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Kol west doorstep should hand off to the final castle leg")
+    assert_equal(routes.active_route_id(), "tantegel_kol",
+        "the second handoff should activate the established Tantegel return")
+    assert_equal(event.object_id, "route_tantegel_kol_02",
+        "the final leg should leave through Kol forest west edge")
+    assert_equal(event.steps, nil,
+        "the exterior Kol handoff must not inject movement")
+
+    routes.reset_for_tests()
+end
+
+function tests.stopping_mountain_cave_tantegel_itinerary_clears_remaining_legs()
+    routes.reset_for_tests()
+    assert(routes.start("tantegel", 0x01, 29, 57))
+
+    local event = routes.stop()
+
+    assert_contains(event.message, "Stopped overworld route",
+        "explicit stop should acknowledge Mountain Cave return cancellation")
+    assert_equal(routes.is_active(), false,
+        "stopping should clear the active Mountain Cave return leg")
+    assert_equal(routes.observe_position(0x01, 18, 64), nil,
+        "a stopped Mountain Cave itinerary must not resume at the shared pin")
 
     routes.reset_for_tests()
 end

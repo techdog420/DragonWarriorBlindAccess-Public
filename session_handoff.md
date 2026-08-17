@@ -121,6 +121,20 @@ Updated: 2026-08-16
 
 ## Immediate FCEUX Handoff
 
+- Mountain Cave-to-Tantegel connected return is implemented and live-verified.
+  Selecting Tantegel from World Map `(29,57)` composes
+  `mountain_cave_return -> kol_return_staging -> tantegel_kol`. The first leg
+  exactly reverses the established cave spur to Western desert east road
+  `(18,64)`; frame `6002` handed off there without injecting movement. Frame
+  `16786` handed off outside Kol at west doorstep `(103,10)` without entering
+  town, and frame `23698` entered Tantegel Castle map `0x04`. Final audit at
+  frame `24420` confirmed `(11,29)`, route/path nil, and zero runtime blockers.
+  The initial `(29,57)->LEFT` step used both configured timing retries and then
+  succeeded; no later retry and no blocked, failed, canceled, drift, battle, or
+  runtime-block event occurred. Focused tests pass `211/211` overworld routes
+  and `123/123` route manager; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. The user's
+  continuous-autowalk config change remains local and unstaged.
 - Hauksness-to-Tantegel selection is corrected and live-verified. Selecting
   Tantegel from World Map `(25,89)` now uses a Hauksness-only selection anchor
   on `tantegel_kol`, while the unchanged distance guard stages the trip through

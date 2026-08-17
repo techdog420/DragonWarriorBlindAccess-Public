@@ -110,8 +110,10 @@ local HAUKSNESS_RETURN_STAGING = {
     route_id = "hauksness_return_staging",
     continuation_route_id = "kol_return_staging",
     -- Far southern starts must first use the established Cantlin-to-Hauksness
-    -- route. The internal leg stops at the ruins' west doorstep.
+    -- route. Mountain Cave starts first reverse their proven local spur to the
+    -- shared western-desert pin. The internal legs stop before entering towns.
     max_start_distance = 24,
+    require_route_corridor = true,
     continue_after_staging = true,
 }
 
@@ -1788,7 +1790,10 @@ local ROUTES = {
         -- instead of the generic safety route's distant north-ridge waypoint.
         -- Staging still uses the real route distance and therefore begins on
         -- kol_return_staging rather than synthesizing a direct Kol shortcut.
-        selection_anchors = {{x = 25, y = 89}},
+        selection_anchors = {
+            {x = 25, y = 89},
+            {x = 29, y = 57},
+        },
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1, axis_order = {"horizontal", "vertical"}},
@@ -1993,6 +1998,10 @@ local ROUTE_ALTERNATES = {
     hauksness = {"hauksness", "hauksness_cantlin"},
     hauksness_cantlin = {"hauksness_cantlin", "hauksness"},
     cantlin_hauksness = {"cantlin_hauksness", "cantlin_great_swamp"},
+    hauksness_return_staging = {
+        "hauksness_return_staging",
+        "mountain_cave_return",
+    },
     tantegel = {"tantegel", "tantegel_kol"},
     tantegel_kol = {"tantegel", "tantegel_kol"},
 }
