@@ -2291,6 +2291,16 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   near the shrine should start west toward `Rain shrine entrance approach`
   instead of far south toward the old Kol chain.
 
+- Northern Cave now has a fully connected return to Tantegel. Selecting the
+  castle near `(81,1)` follows a non-entry copy of `kol_rain_shrine`, hands off
+  at Kol west doorstep `(103,10)`, and continues on `tantegel_kol`. Two reverse
+  turns require explicit horizontal-first travel: from `(80,2)`, move west to
+  column 78 before descending to `(78,3)`; from `(76,5)`, move west to column
+  75 before the long descent. The final continuous acceptance run crossed both
+  corrected turns, bypassed Kol without a map change, and entered Tantegel
+  Castle at `(11,29)` with no retries, blockers, drift, cancellation, battle,
+  or runtime-block injection.
+
 - The first connected itinerary, `Tantegel -> Kol -> Northern Cave`, is live-
   accepted. Starting Northern Cave at Tantegel `(43,43)` kept Northern Cave as
   the final destination while status named Kol as the current leg. Entering

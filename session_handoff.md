@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-16
+Updated: 2026-08-17
 
 ## Release Installation Handoff
 
@@ -121,6 +121,24 @@ Updated: 2026-08-16
 
 ## Immediate FCEUX Handoff
 
+- Northern Cave-to-Tantegel connected return is implemented and fully live-
+  verified. Selecting Tantegel near World Map `(81,1)` composes
+  `kol_rain_shrine_staging -> tantegel_kol`; the derived shrine-return copy
+  stops outside Kol at west doorstep `(103,10)`. Initial validation found two
+  legacy reverse-route ordering defects. Normal movement plus a same-origin
+  raw hold confirmed `(80,2)->DOWN` blocked, while west to `(78,2)` then south
+  to `(78,3)` passed. A later continuous segment from `(76,5)` skipped the
+  adjacent radius-one `(75,5)` pin and tried the wrong eastern descent. The two
+  affected return waypoints now force horizontal-first travel before descending.
+  On the uninterrupted acceptance run, both corrected turns passed, frame
+  `6405` handed off outside Kol without a map change, and frame `13317` entered
+  Tantegel Castle map `0x04`. Final audit at frame `16140` confirmed Castle
+  `(11,29)`, route/path nil, and zero runtime blockers. No timing retry,
+  blocked, canceled, drift, battle, runtime-block, or Kol-entry event occurred.
+  Focused tests pass `223/223` overworld routes and `123/123` route manager;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. The user's continuous-autowalk config remains local and
+  unstaged.
 - Rimuldar-to-Tantegel connected return is fully live-verified. Selecting
   Tantegel at World Map `(102,72)` composes `swamp_cave_south ->
   kol_swamp_cave_staging -> tantegel_kol`, preserves the castle destination

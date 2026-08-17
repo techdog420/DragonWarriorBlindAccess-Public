@@ -4721,6 +4721,187 @@ function tests.stopping_mountain_cave_tantegel_itinerary_clears_remaining_legs()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_object_from_northern_cave_starts_shrine_return_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 81, 1)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start outside Northern Cave")
+    assert_equal(info.route.id, "kol_rain_shrine_staging",
+        "Northern Cave return should begin on the proven shrine route")
+    assert_equal(info.object_id, "route_kol_rain_shrine_staging_02",
+        "Northern Cave start should first target the entrance approach")
+    assert_contains(info.message,
+        "Tantegel Castle route starts from Kol",
+        "shrine staging speech should retain the final castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound during the shrine leg")
+
+    local segment = assert(routes.plan_next_segment(0x01, 81, 1))
+    assert_equal(segment.waypoint.name, "Rain shrine entrance approach",
+        "the connected return should use the established cave departure")
+    assert_equal(segment.steps[1], "left",
+        "the first Northern Cave return step should head west")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start("tantegel", 0x01, 81, 1)
+    assert_equal(alias_err, nil,
+        "Tantegel alias should start outside Northern Cave")
+    assert_equal(alias_info.route.id, "kol_rain_shrine_staging",
+        "the plain alias should use the same connected return itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_tantegel_itinerary_bypasses_kol()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    assert(routes.start_for_object(target, 0x01, 81, 1))
+
+    local kol = assert(routes._route_for_tests("kol_rain_shrine_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Kol west doorstep should hand off to the final castle leg")
+    assert_equal(routes.active_route_id(), "tantegel_kol",
+        "the Kol bypass should activate the established Tantegel return")
+    assert_equal(event.object_id, "route_tantegel_kol_02",
+        "the final leg should leave through Kol forest west edge")
+    assert_equal(event.steps, nil,
+        "the exterior Kol handoff must not inject movement")
+    assert_equal(kol.waypoints[#kol.waypoints].x, 103,
+        "the connected return must stop west of Kol")
+    assert_equal(kol.waypoints[#kol.waypoints].y, 10,
+        "the connected return should preserve Kol's entrance row")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the castle Travel object should remain bound after the Kol handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the final leg should bypass Kol and head toward Tantegel")
+    assert_equal(segment.steps[1], "left",
+        "the final leg should leave Kol westward")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_return_moves_west_before_blocked_x80_descent()
+    routes.reset_for_tests()
+    assert(routes.start("tantegel", 0x01, 81, 1))
+    routes.observe_position(0x01, 80, 1)
+
+    local segment = assert(routes.plan_next_segment(0x01, 80, 2))
+
+    assert_equal(segment.waypoint.name, "Rain shrine island approach",
+        "the return should retain the established island approach")
+    assert_equal(segment.steps[1], "left",
+        "the return should leave column 80 before descending")
+    assert_equal(segment.steps[2], "left",
+        "the return should reach column 78 before descending")
+    assert_equal(segment.steps[3], "down",
+        "the return should descend on the live-proven column 78 edge")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_return_reaches_west_coast_before_long_descent()
+    routes.reset_for_tests()
+
+    local info, err = routes.start("kol", 0x01, 76, 5)
+
+    assert_equal(err, nil,
+        "Kol return should resume at the shrine northwest coast")
+    assert_equal(info.route.id, "kol_rain_shrine",
+        "the local start should use the established shrine return")
+
+    local segment = assert(routes.plan_next_segment(
+        0x01, 76, 5, {advance_if_at_waypoint = true}))
+    assert_equal(segment.waypoint.name, "Rain shrine west coast turn",
+        "the return should retain the established west-coast turn")
+    assert_equal(segment.steps[1], "left",
+        "the return should reach column 75 before the long descent")
+    assert_equal(segment.steps[2], "down",
+        "the return should descend only after reaching the west coast")
+
+    routes.reset_for_tests()
+end
+
+function tests.northern_cave_tantegel_staging_copies_shrine_return_without_mutation()
+    local direct = assert(routes._route_for_tests("kol_rain_shrine"))
+    local staging = assert(routes._route_for_tests("kol_rain_shrine_staging"))
+
+    assert_equal(#staging.waypoints, #direct.waypoints,
+        "the non-entry staging route should retain every proven waypoint")
+    for index = 1, #direct.waypoints do
+        local source = direct.waypoints[index]
+        local derived = staging.waypoints[index]
+        assert_equal(derived ~= source, true,
+            "staging waypoints should be copies rather than mutable aliases")
+        if index < #direct.waypoints then
+            assert_equal(derived.x, source.x, "staging x at waypoint " .. index)
+            assert_equal(derived.y, source.y, "staging y at waypoint " .. index)
+            assert_equal(derived.name, source.name,
+                "staging name at waypoint " .. index)
+        end
+    end
+    assert_equal(direct.waypoints[#direct.waypoints].x, 104,
+        "deriving the bypass must not move direct Kol's entrance")
+    assert_equal(direct.waypoints[#direct.waypoints].name, "Kol",
+        "deriving the bypass must not rename direct Kol")
+end
+
+function tests.northern_cave_tantegel_variant_does_not_steal_other_origins()
+    local starts = {
+        {name = "Cantlin", x = 73, y = 102, route = "hauksness_return_staging"},
+        {name = "Great Swamp", x = 89, y = 112, route = "cantlin_return_staging"},
+        {name = "Hauksness", x = 25, y = 89, route = "kol_return_staging"},
+        {name = "Mountain Cave", x = 29, y = 57, route = "mountain_cave_return"},
+        {name = "Kol", x = 104, y = 10, route = "tantegel_kol"},
+        {name = "Rimuldar", x = 102, y = 72, route = "swamp_cave_south"},
+    }
+
+    for _, start in ipairs(starts) do
+        routes.reset_for_tests()
+        local info, err = routes.start("tantegel", 0x01, start.x, start.y)
+        assert_equal(err, nil, start.name .. " Tantegel route should still start")
+        assert_equal(info.route.id, start.route,
+            "Northern Cave variant must not steal " .. start.name)
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.stopping_northern_cave_tantegel_itinerary_clears_remaining_legs()
+    routes.reset_for_tests()
+    assert(routes.start("tantegel", 0x01, 81, 1))
+
+    local event = routes.stop()
+
+    assert_contains(event.message, "Stopped overworld route",
+        "explicit stop should acknowledge Northern Cave return cancellation")
+    assert_equal(routes.is_active(), false,
+        "stopping should clear the active shrine return leg")
+    assert_equal(routes.observe_position(0x01, 103, 10), nil,
+        "a stopped Northern Cave itinerary must not resume outside Kol")
+
+    routes.reset_for_tests()
+end
+
 function tests.tantegel_object_from_rimuldar_starts_swamp_cave_return_itinerary()
     routes.reset_for_tests()
     local target = {

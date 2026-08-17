@@ -148,6 +148,18 @@ local RIMULDAR_TANTEGEL_STAGING = {
     continue_after_staging = true,
 }
 
+local NORTHERN_CAVE_TANTEGEL_STAGING = {
+    route_id = "kol_rain_shrine_staging",
+    continuation_route_id = "tantegel_kol",
+    -- Northern Cave starts must reverse the established shrine corridor to
+    -- Kol before joining the validated Kol-to-Tantegel route. The longest
+    -- segment on that return is nine tiles, and the internal leg stops west
+    -- of Kol instead of entering town.
+    max_start_distance = 9,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local MOUNTAIN_CAVE_CONNECTOR_STAGING = {
     route_id = "kol_staging",
     continuation_route_id = "mountain_cave_connector",
@@ -392,13 +404,29 @@ local ROUTES = {
         waypoints = {
             {x = 81, y = 1, name = "Northern Cave", radius = 1},
             {x = 80, y = 1, name = "Rain shrine entrance approach", radius = 0, axis_order = {"horizontal", "vertical"}},
-            {x = 78, y = 3, name = "Rain shrine island approach", radius = 1},
+            {
+                x = 78,
+                y = 3,
+                name = "Rain shrine island approach",
+                radius = 1,
+                -- Live return evidence: (80,2)->DOWN is engine-blocked.
+                -- Reach column 78 before descending onto the island road.
+                axis_order = {"horizontal", "vertical"},
+            },
             {x = 77, y = 3, name = "Rain shrine island west lane", radius = 0},
             {x = 77, y = 4, name = "Rain shrine island lower step", radius = 0},
             {x = 76, y = 4, name = "Rain shrine northwest coast lane", radius = 0},
             {x = 76, y = 5, name = "Rain shrine northwest coast step", radius = 0},
             {x = 75, y = 5, name = "Rain shrine west coast north road", radius = 1},
-            {x = 75, y = 14, name = "Rain shrine west coast turn", radius = 0},
+            {
+                x = 75,
+                y = 14,
+                name = "Rain shrine west coast turn",
+                radius = 0,
+                -- Radius advancement can skip the adjacent (75,5) pin while
+                -- standing at (76,5). Move west before the long descent.
+                axis_order = {"horizontal", "vertical"},
+            },
             {x = 76, y = 14, name = "Rain shrine west coast lower lane", radius = 0},
             {x = 76, y = 15, name = "Rain shrine west coast south bend", radius = 0},
             {x = 79, y = 15, name = "Rain shrine west-side road", radius = 0},
@@ -1979,6 +2007,35 @@ ROUTES.kol_swamp_cave_staging = {
     waypoints = kol_swamp_cave_staging_waypoints,
 }
 
+-- Internal return leg: reuse the live-validated Northern-Cave-to-Kol route,
+-- but stop one tile west of Kol so the final Tantegel leg can leave without
+-- entering town.
+local kol_rain_shrine_staging_waypoints = copy_route_prefix(
+    ROUTES.kol_rain_shrine, 104, 10)
+local kol_rain_shrine_staging_final =
+    kol_rain_shrine_staging_waypoints[#kol_rain_shrine_staging_waypoints]
+kol_rain_shrine_staging_final.x = 103
+kol_rain_shrine_staging_final.name = "Kol west doorstep"
+ROUTES.kol_rain_shrine_staging = {
+    id = "kol_rain_shrine_staging",
+    title = "Kol",
+    destination_maps = {0x07},
+    waypoints = kol_rain_shrine_staging_waypoints,
+}
+
+-- Destination-selection variant: only a Northern Cave-origin Tantegel request
+-- chooses this route. Its staging chain follows the established shrine return,
+-- bypasses Kol, and hands off to the established castle leg.
+ROUTES.tantegel_northern_cave = {
+    id = "tantegel_northern_cave",
+    title = "Tantegel Castle",
+    target_object_ids = {"overworld_tantegel_castle"},
+    destination_maps = {0x04, 0x05},
+    staging = NORTHERN_CAVE_TANTEGEL_STAGING,
+    selection_anchors = {{x = 81, y = 1, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
+}
+
 -- Destination-selection variant: only a Rimuldar-origin Tantegel request
 -- chooses this route. Its staging chain crosses Swamp Cave, follows the
 -- non-entry Kol return, and finally hands off to the established castle leg.
@@ -2032,6 +2089,7 @@ local ROUTE_IDS = {
     "erdrick",
     "tantegel",
     "tantegel_kol",
+    "tantegel_northern_cave",
     "tantegel_rimuldar",
 }
 
@@ -2056,8 +2114,18 @@ local ROUTE_ALTERNATES = {
         "hauksness_return_staging",
         "mountain_cave_return",
     },
-    tantegel = {"tantegel", "tantegel_kol", "tantegel_rimuldar"},
-    tantegel_kol = {"tantegel", "tantegel_kol", "tantegel_rimuldar"},
+    tantegel = {
+        "tantegel",
+        "tantegel_kol",
+        "tantegel_northern_cave",
+        "tantegel_rimuldar",
+    },
+    tantegel_kol = {
+        "tantegel",
+        "tantegel_kol",
+        "tantegel_northern_cave",
+        "tantegel_rimuldar",
+    },
 }
 
 for _, route in pairs(ROUTES) do
