@@ -138,11 +138,12 @@ local KOL_SWAMP_CAVE_RETURN_STAGING = {
     continue_after_staging = true,
 }
 
-local RIMULDAR_TANTEGEL_STAGING = {
+local SWAMP_CAVE_TANTEGEL_STAGING = {
     route_id = "kol_swamp_cave_staging",
     continuation_route_id = "tantegel_kol",
-    -- The north-exit-to-Kol leg is unreachable directly from the southern
-    -- island, so stage through Swamp Cave instead of synthesizing a shortcut.
+    -- North-exit starts can join the proven cave-to-Kol return directly.
+    -- Southern-island starts nest through that leg's own Swamp Cave staging
+    -- instead of synthesizing an unreachable shortcut across the mountains.
     max_start_distance = 13,
     require_route_corridor = true,
     continue_after_staging = true,
@@ -2036,6 +2037,19 @@ ROUTES.tantegel_northern_cave = {
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
+-- Destination-selection variant: a Tantegel request at Swamp Cave's north
+-- exit follows the established non-entry Kol return before joining the
+-- established castle leg.
+ROUTES.tantegel_swamp_cave_north = {
+    id = "tantegel_swamp_cave_north",
+    title = "Tantegel Castle",
+    target_object_ids = {"overworld_tantegel_castle"},
+    destination_maps = {0x04, 0x05},
+    staging = SWAMP_CAVE_TANTEGEL_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
+}
+
 -- Destination-selection variant: only a Rimuldar-origin Tantegel request
 -- chooses this route. Its staging chain crosses Swamp Cave, follows the
 -- non-entry Kol return, and finally hands off to the established castle leg.
@@ -2044,7 +2058,7 @@ ROUTES.tantegel_rimuldar = {
     title = "Tantegel Castle",
     target_object_ids = {"overworld_tantegel_castle"},
     destination_maps = {0x04, 0x05},
-    staging = RIMULDAR_TANTEGEL_STAGING,
+    staging = SWAMP_CAVE_TANTEGEL_STAGING,
     selection_anchors = {{x = 102, y = 72, max_distance = 4}},
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
@@ -2090,6 +2104,7 @@ local ROUTE_IDS = {
     "tantegel",
     "tantegel_kol",
     "tantegel_northern_cave",
+    "tantegel_swamp_cave_north",
     "tantegel_rimuldar",
 }
 
@@ -2118,12 +2133,14 @@ local ROUTE_ALTERNATES = {
         "tantegel",
         "tantegel_kol",
         "tantegel_northern_cave",
+        "tantegel_swamp_cave_north",
         "tantegel_rimuldar",
     },
     tantegel_kol = {
         "tantegel",
         "tantegel_kol",
         "tantegel_northern_cave",
+        "tantegel_swamp_cave_north",
         "tantegel_rimuldar",
     },
 }

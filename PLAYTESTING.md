@@ -2301,6 +2301,15 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   Castle at `(11,29)` with no retries, blockers, drift, cancellation, battle,
   or runtime-block injection.
 
+- Swamp Cave's north exit now has a connected return to Tantegel. Selecting the
+  castle near `(104,44)` follows the established non-entry
+  `kol_swamp_cave_staging` return, hands off at Kol west doorstep `(103,10)`,
+  and continues on `tantegel_kol`. The loaded continuous run bypassed Kol
+  without a map change and entered Tantegel Castle at `(11,29)`. The first
+  north step used one turn-repress recovery; the remainder completed with no
+  blocked step, timeout retry, drift, cancellation, battle, or runtime-block
+  injection.
+
 - The first connected itinerary, `Tantegel -> Kol -> Northern Cave`, is live-
   accepted. Starting Northern Cave at Tantegel `(43,43)` kept Northern Cave as
   the final destination while status named Kol as the current leg. Entering

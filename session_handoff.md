@@ -121,6 +121,19 @@ Updated: 2026-08-17
 
 ## Immediate FCEUX Handoff
 
+- Swamp Cave north-exit-to-Tantegel is implemented and live-verified. Selecting
+  Tantegel near World Map `(104,44)` now composes
+  `kol_swamp_cave_staging -> tantegel_kol`, follows the established cave-to-Kol
+  return, and hands off outside Kol at west doorstep `(103,10)`. The loaded run
+  started the north-exit leg at frame `9600`, handed off without a Kol map
+  entry at frame `12433`, and entered Tantegel Castle map `0x04` at frame
+  `19345`. Final audit at frame `19680` confirmed Castle `(11,29)`, route/path
+  nil, and zero runtime blockers. The first `(104,44)->UP` step used one
+  turn-repress recovery; no blocked step, timeout retry, drift, cancellation,
+  battle, runtime-block, or Kol-entry event occurred. Focused tests pass
+  `227/227` overworld routes and `123/123` route manager; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. The user's continuous-autowalk config remains local and unstaged.
 - Northern Cave-to-Tantegel connected return is implemented and fully live-
   verified. Selecting Tantegel near World Map `(81,1)` composes
   `kol_rain_shrine_staging -> tantegel_kol`; the derived shrine-return copy
