@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rimuldar-to-Tantegel connected return fully live-verified (`2026-08-16`):
+  selecting Tantegel at World Map `(102,72)` composes `swamp_cave_south ->
+  kol_swamp_cave_staging -> tantegel_kol`. The route preserves the final
+  destination during manual Swamp Cave traversal and hands off outside Kol at
+  west doorstep `(103,10)` without entering town. The initial run exposed that
+  `kol_swamp_cave` retained the known blocked `(96,28)->UP` edge. It and its
+  derived staging copy now use the live-proven `(96,32)`, `(98,32)`, `(98,26)`,
+  `(96,21)` detour. The uninterrupted acceptance run completed both handoffs
+  and entered Tantegel Castle `(11,29)`. A lag-related stall at the north cave
+  exit `(104,44)->UP` exhausted one activation, then the identical edge passed
+  on the next activation; do not promote it as geometry. One cave-interior
+  retry also recovered. Keyboard-bridge heartbeat expirations increased near
+  the end but caused no route drift or cancellation. Final state had route/path
+  nil and zero runtime blockers. Focused tests pass `216/216` overworld routes
+  and `123/123` route manager; the full gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests.
 - Mountain Cave-to-Tantegel connected return live-verified (`2026-08-16`): a
   Tantegel request at World Map `(29,57)` now composes
   `mountain_cave_return -> kol_return_staging -> tantegel_kol` instead of using

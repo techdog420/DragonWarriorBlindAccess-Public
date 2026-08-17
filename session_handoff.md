@@ -121,6 +121,27 @@ Updated: 2026-08-16
 
 ## Immediate FCEUX Handoff
 
+- Rimuldar-to-Tantegel connected return is fully live-verified. Selecting
+  Tantegel at World Map `(102,72)` composes `swamp_cave_south ->
+  kol_swamp_cave_staging -> tantegel_kol`, preserves the castle destination
+  during manual cave traversal, and bypasses Kol at west doorstep `(103,10)`.
+  The first loaded run exposed that `kol_swamp_cave` still crossed the known
+  permanent `(96,28)->UP` block even though the main Kol route already avoided
+  it; queued movement and a clean same-origin raw hold both failed with no NPC
+  or runtime blocker. The direct return and its derived non-entry staging copy
+  now use the proven `(96,32) -> (98,32) -> (98,26) -> (96,21)` detour. On the
+  uninterrupted acceptance run, frame `40185` handed off inside Swamp Cave,
+  frame `45469` handed off outside Kol without a map change, and frame `52381`
+  entered Tantegel Castle. A lag-related cave-exit stall at `(104,44)->UP`
+  emitted `event=blocked` at frame `42119`, then the same edge succeeded on the
+  next activation at frame `42973`; it is timing evidence, not geometry. One
+  cave-interior retry also recovered. Later keyboard-bridge heartbeat lease
+  expirations slowed the emulator but caused no drift or cancellation. Final
+  audit at frame `52860` confirmed Castle `(11,29)`, route/path nil, and zero
+  runtime blockers. Focused tests pass `216/216` overworld routes and `123/123`
+  route manager; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. The user's continuous-autowalk config
+  change remains local and unstaged.
 - Mountain Cave-to-Tantegel connected return is implemented and live-verified.
   Selecting Tantegel from World Map `(29,57)` composes
   `mountain_cave_return -> kol_return_staging -> tantegel_kol`. The first leg

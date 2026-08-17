@@ -2067,6 +2067,20 @@ function tests.kol_swamp_cave_return_uses_x94_drop_and_bridge_jog()
     routes.observe_position(0x01, 93, 35)
     routes.observe_position(0x01, 96, 35)
     routes.observe_position(0x01, 96, 32)
+    local east_detour = assert(routes.plan_next_segment(0x01, 96, 32))
+    assert_equal(east_detour.waypoint.name, "Kol south road lower east lane",
+        "Swamp Cave return should leave x96 before the blocked north edge")
+    assert_equal(east_detour.steps[1], "right",
+        "Swamp Cave return should start the proven x98 detour eastbound")
+
+    routes.observe_position(0x01, 98, 32)
+    local north_detour = assert(routes.plan_next_segment(0x01, 98, 32))
+    assert_equal(north_detour.waypoint.name, "Kol south road east detour",
+        "Swamp Cave return should climb the proven x98 lane")
+    assert_equal(north_detour.steps[1], "up",
+        "Swamp Cave return x98 detour should continue north")
+
+    routes.observe_position(0x01, 98, 26)
     routes.observe_position(0x01, 96, 21)
     routes.observe_position(0x01, 96, 13)
     local arrival = routes.observe_position(0x01, 104, 10)
@@ -4703,6 +4717,161 @@ function tests.stopping_mountain_cave_tantegel_itinerary_clears_remaining_legs()
         "stopping should clear the active Mountain Cave return leg")
     assert_equal(routes.observe_position(0x01, 18, 64), nil,
         "a stopped Mountain Cave itinerary must not resume at the shared pin")
+
+    routes.reset_for_tests()
+end
+
+function tests.tantegel_object_from_rimuldar_starts_swamp_cave_return_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 102, 72)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start outside Rimuldar")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "Rimuldar return should begin on the proven south-cave route")
+    assert_equal(info.object_id, "route_swamp_cave_south_02",
+        "Rimuldar start should first target the east doorstep")
+    assert_contains(info.message,
+        "Tantegel Castle route starts from Swamp Cave South Entrance",
+        "Rimuldar staging speech should retain the final castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound during the southern leg")
+
+    local segment = assert(routes.plan_next_segment(0x01, 102, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar east doorstep",
+        "the connected return should use the established Rimuldar departure")
+    assert_equal(segment.steps[1], "right",
+        "the first Rimuldar return step should head east")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start("tantegel", 0x01, 102, 72)
+    assert_equal(alias_err, nil,
+        "Tantegel alias should start outside Rimuldar")
+    assert_equal(alias_info.route.id, "swamp_cave_south",
+        "the plain alias should use the same connected return itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_tantegel_itinerary_pauses_in_cave_then_bypasses_kol()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    assert(routes.start_for_object(target, 0x01, 102, 72))
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "south-cave entry should hand off within the Tantegel itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the north-exit-to-Kol return")
+    assert_equal(cave_handoff.object_id, "route_kol_swamp_cave_staging_01",
+        "the cave handoff should wait for the north exterior landing")
+    assert_equal(cave_handoff.steps, nil,
+        "the interior cave handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the castle Travel object should remain bound during cave traversal")
+
+    local north_exit = routes.observe_position(0x01, 104, 44)
+    assert_contains(north_exit.message, "Reached Swamp Cave",
+        "the route should resume after the player exits the north stair")
+    assert_equal(north_exit.object_id, "route_kol_swamp_cave_staging_02",
+        "north exit should advance to the poison-swamp doorstep")
+
+    local kol = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Kol west doorstep should hand off to the final castle leg")
+    assert_equal(routes.active_route_id(), "tantegel_kol",
+        "the Kol bypass should activate the established Tantegel return")
+    assert_equal(event.object_id, "route_tantegel_kol_02",
+        "the final leg should leave through Kol forest west edge")
+    assert_equal(event.steps, nil,
+        "the exterior Kol handoff must not inject movement")
+    assert_equal(kol.waypoints[#kol.waypoints].x, 103,
+        "the connected return must stop west of Kol")
+    assert_equal(kol.waypoints[#kol.waypoints].y, 10,
+        "the connected return should preserve Kol's entrance row")
+
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the final leg should bypass Kol and head toward Tantegel")
+    assert_equal(segment.steps[1], "left",
+        "the final leg should leave Kol westward")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_tantegel_staging_copies_swamp_return_without_mutation()
+    local direct = assert(routes._route_for_tests("kol_swamp_cave"))
+    local staging = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+
+    assert_equal(#staging.waypoints, #direct.waypoints,
+        "the non-entry staging route should retain every proven waypoint")
+    for index = 1, #direct.waypoints do
+        local source = direct.waypoints[index]
+        local derived = staging.waypoints[index]
+        assert_equal(derived ~= source, true,
+            "staging waypoints should be copies rather than mutable aliases")
+        if index < #direct.waypoints then
+            assert_equal(derived.x, source.x, "staging x at waypoint " .. index)
+            assert_equal(derived.y, source.y, "staging y at waypoint " .. index)
+            assert_equal(derived.name, source.name,
+                "staging name at waypoint " .. index)
+        end
+    end
+    assert_equal(direct.waypoints[#direct.waypoints].x, 104,
+        "deriving the bypass must not move direct Kol's entrance")
+    assert_equal(direct.waypoints[#direct.waypoints].name, "Kol",
+        "deriving the bypass must not rename direct Kol")
+end
+
+function tests.rimuldar_tantegel_variant_does_not_steal_other_origins()
+    local starts = {
+        {name = "Cantlin", x = 73, y = 102, route = "hauksness_return_staging"},
+        {name = "Great Swamp", x = 89, y = 112, route = "cantlin_return_staging"},
+        {name = "Hauksness", x = 25, y = 89, route = "kol_return_staging"},
+        {name = "Mountain Cave", x = 29, y = 57, route = "mountain_cave_return"},
+        {name = "Kol", x = 104, y = 10, route = "tantegel_kol"},
+    }
+
+    for _, start in ipairs(starts) do
+        routes.reset_for_tests()
+        local info, err = routes.start("tantegel", 0x01, start.x, start.y)
+        assert_equal(err, nil, start.name .. " Tantegel route should still start")
+        assert_equal(info.route.id, start.route,
+            "Rimuldar variant must not steal " .. start.name)
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.stopping_rimuldar_tantegel_itinerary_clears_remaining_legs()
+    routes.reset_for_tests()
+    assert(routes.start("tantegel", 0x01, 102, 72))
+
+    local event = routes.stop()
+
+    assert_contains(event.message, "Stopped overworld route",
+        "explicit stop should acknowledge Rimuldar return cancellation")
+    assert_equal(routes.is_active(), false,
+        "stopping should clear the active Rimuldar return leg")
+    assert_equal(routes.observe_position(0x15, 0, 29), nil,
+        "a stopped Rimuldar itinerary must not resume inside Swamp Cave")
 
     routes.reset_for_tests()
 end

@@ -126,6 +126,28 @@ local TANTEGEL_RETURN_STAGING = {
     continue_after_staging = true,
 }
 
+local KOL_SWAMP_CAVE_RETURN_STAGING = {
+    route_id = "swamp_cave_south",
+    continuation_route_id = "kol_swamp_cave_staging",
+    -- Rimuldar and the southern island must first reach Swamp Cave's south
+    -- entrance. The player crosses the cave manually, then this route resumes
+    -- from the established north-exit corridor toward Kol.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local RIMULDAR_TANTEGEL_STAGING = {
+    route_id = "kol_swamp_cave_staging",
+    continuation_route_id = "tantegel_kol",
+    -- The north-exit-to-Kol leg is unreachable directly from the southern
+    -- island, so stage through Swamp Cave instead of synthesizing a shortcut.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local MOUNTAIN_CAVE_CONNECTOR_STAGING = {
     route_id = "kol_staging",
     continuation_route_id = "mountain_cave_connector",
@@ -424,6 +446,8 @@ local ROUTES = {
             {x = 93, y = 35, name = "Kol south road lower bend", radius = 0},
             {x = 96, y = 35, name = "Kol south road east lane", radius = 0},
             {x = 96, y = 32, name = "Kol south road", radius = 1},
+            {x = 98, y = 32, name = "Kol south road lower east lane", radius = 0},
+            {x = 98, y = 26, name = "Kol south road east detour", radius = 0, axis_order = {"vertical", "horizontal"}},
             {x = 96, y = 21, name = "West of Kol north lane", radius = 1},
             {x = 96, y = 13, name = "Kol forest west edge", radius = 1},
             {x = 104, y = 10, name = "Kol", radius = 0, final = true},
@@ -1939,6 +1963,35 @@ ROUTES.kol_return_staging = {
     waypoints = kol_return_staging_waypoints,
 }
 
+-- Internal return leg: after the player crosses Swamp Cave from south to
+-- north, reuse the validated cave-to-Kol route but stop one tile west of town.
+local kol_swamp_cave_staging_waypoints = copy_route_prefix(
+    ROUTES.kol_swamp_cave, 104, 10)
+local kol_swamp_cave_staging_final =
+    kol_swamp_cave_staging_waypoints[#kol_swamp_cave_staging_waypoints]
+kol_swamp_cave_staging_final.x = 103
+kol_swamp_cave_staging_final.name = "Kol west doorstep"
+ROUTES.kol_swamp_cave_staging = {
+    id = "kol_swamp_cave_staging",
+    title = "Kol",
+    destination_maps = {0x07},
+    staging = KOL_SWAMP_CAVE_RETURN_STAGING,
+    waypoints = kol_swamp_cave_staging_waypoints,
+}
+
+-- Destination-selection variant: only a Rimuldar-origin Tantegel request
+-- chooses this route. Its staging chain crosses Swamp Cave, follows the
+-- non-entry Kol return, and finally hands off to the established castle leg.
+ROUTES.tantegel_rimuldar = {
+    id = "tantegel_rimuldar",
+    title = "Tantegel Castle",
+    target_object_ids = {"overworld_tantegel_castle"},
+    destination_maps = {0x04, 0x05},
+    staging = RIMULDAR_TANTEGEL_STAGING,
+    selection_anchors = {{x = 102, y = 72, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
+}
+
 -- Internal staging leg: reuse the live-validated Hauksness corridor from Kol
 -- only through the Mountain Cave junction. Keeping this derived avoids a
 -- second manually maintained copy of more than sixty waypoint turns.
@@ -1979,6 +2032,7 @@ local ROUTE_IDS = {
     "erdrick",
     "tantegel",
     "tantegel_kol",
+    "tantegel_rimuldar",
 }
 
 local ROUTE_ALTERNATES = {
@@ -2002,8 +2056,8 @@ local ROUTE_ALTERNATES = {
         "hauksness_return_staging",
         "mountain_cave_return",
     },
-    tantegel = {"tantegel", "tantegel_kol"},
-    tantegel_kol = {"tantegel", "tantegel_kol"},
+    tantegel = {"tantegel", "tantegel_kol", "tantegel_rimuldar"},
+    tantegel_kol = {"tantegel", "tantegel_kol", "tantegel_rimuldar"},
 }
 
 for _, route in pairs(ROUTES) do
@@ -2278,7 +2332,11 @@ end
 local function route_selection_score(route, map_id, px, py, terrain_offset)
     local score = route_start_score(route, map_id, px, py, terrain_offset)
     for _, point in ipairs(route and route.selection_anchors or {}) do
-        score = math.min(score, distance(px, py, point))
+        local anchor_distance = distance(px, py, point)
+        if point.max_distance == nil
+           or anchor_distance <= point.max_distance then
+            score = math.min(score, anchor_distance)
+        end
     end
     return score
 end
