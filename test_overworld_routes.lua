@@ -5087,6 +5087,54 @@ function tests.tantegel_object_from_swamp_cave_south_starts_cave_return_itinerar
     routes.reset_for_tests()
 end
 
+function tests.tantegel_object_from_charlock_starts_connected_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 48, 48)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start outside Charlock Castle")
+    assert_equal(info.route.id, "charlock_return",
+        "Charlock start should first use the proven island return")
+    assert_equal(info.object_id, "route_charlock_return_02",
+        "Charlock return should first step south from the castle")
+    assert_contains(info.message,
+        "Tantegel Castle route starts from Swamp Cave South Entrance",
+        "Charlock staging speech should retain the castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound on Charlock island")
+
+    local charlock_return = assert(routes._route_for_tests("charlock_return"))
+    for index = 2, #charlock_return.waypoints - 1 do
+        local point = charlock_return.waypoints[index]
+        assert(routes.observe_position(0x01, point.x, point.y))
+    end
+
+    local cave_wait = routes.observe_position(0x01, 104, 49)
+    assert_equal(cave_wait.status, "await_transition",
+        "Charlock return should wait for automatic Swamp Cave entry")
+    assert_equal(routes.active_route_id(), "charlock_return",
+        "the Charlock leg should remain active outside Swamp Cave")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "entering Swamp Cave should advance the Tantegel itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the established north-exit return")
+    assert_equal(cave_handoff.steps, nil,
+        "the cave handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound in Swamp Cave")
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_south_tantegel_itinerary_waits_for_north_exit()
     routes.reset_for_tests()
     local target = {

@@ -2,6 +2,23 @@
 
 Updated: 2026-08-17
 
+## 2026-08-17 Charlock Castle to Tantegel
+
+- CLEAN / VERIFIED: a Tantegel request at World Map `(48,48)` now starts
+  `charlock_return`, retains Tantegel as the final Travel destination, waits
+  for automatic entry into Swamp Cave map `0x15`, then continues through
+  `kol_swamp_cave_staging -> tantegel_kol`.
+- REUSED GEOMETRY ONLY: this composes the already live-validated Charlock
+  return, Swamp Cave/Kol return, and Kol-to-Tantegel legs. No waypoint or map
+  geometry changed.
+- LIVE ACCEPTANCE: frame `4740` started `charlock_return`; frame `9225`
+  entered Swamp Cave and handed off; frame `12765` exited north; frame `24193`
+  bypassed Kol; and frame `31105` entered Tantegel Castle. The first Charlock
+  south step recovered after two timing retries. The known `(104,44)->UP`
+  cave-exit seam exhausted one activation, then passed unchanged on the next;
+  do not promote it as geometry. Final frame `31500` found Castle `(11,29)`,
+  route/path nil, and zero runtime blockers.
+
 ## 2026-08-17 Swamp Cave South to Tantegel
 
 - CLEAN BASELINE: World Map `(104,49)`, route/path nil, zero NPC/runtime

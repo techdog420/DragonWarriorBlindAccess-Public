@@ -1061,6 +1061,14 @@ local ROUTES = {
     charlock_return = {
         id = "charlock_return",
         title = "Swamp Cave South Entrance",
+        -- Cave entry triggers automatically when the hero steps onto the final
+        -- tile. A connected itinerary must wait until map 0x15 is observed;
+        -- otherwise it would hand off to the north-exit route while still on
+        -- Charlock's side of the cave.
+        staged_handoff_requires_destination_map = true,
+        staged_transition_message =
+            "Swamp Cave opens automatically when you step onto this tile. " ..
+            "If already here, step off and back on, then cross to the north exit.",
         aliases = {
             "charlock return",
             "return from charlock",
@@ -2077,6 +2085,19 @@ ROUTES.tantegel_rimuldar = {
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
+-- Destination-selection variant: a Charlock-origin Tantegel request first
+-- reverses the live-validated island route. The existing nested staging then
+-- crosses Swamp Cave, bypasses Kol, and joins the established castle leg.
+ROUTES.tantegel_charlock = {
+    id = "tantegel_charlock",
+    title = "Tantegel Castle",
+    target_object_ids = {"overworld_tantegel_castle"},
+    destination_maps = {0x04, 0x05},
+    staging = SWAMP_CAVE_TANTEGEL_STAGING,
+    selection_anchors = {{x = 48, y = 48, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
+}
+
 -- Internal staging leg: reuse the live-validated Hauksness corridor from Kol
 -- only through the Mountain Cave junction. Keeping this derived avoids a
 -- second manually maintained copy of more than sixty waypoint turns.
@@ -2120,6 +2141,7 @@ local ROUTE_IDS = {
     "tantegel_northern_cave",
     "tantegel_swamp_cave_north",
     "tantegel_rimuldar",
+    "tantegel_charlock",
 }
 
 local ROUTE_ALTERNATES = {
@@ -2149,6 +2171,7 @@ local ROUTE_ALTERNATES = {
         "tantegel_northern_cave",
         "tantegel_swamp_cave_north",
         "tantegel_rimuldar",
+        "tantegel_charlock",
     },
     tantegel_kol = {
         "tantegel",
@@ -2156,6 +2179,7 @@ local ROUTE_ALTERNATES = {
         "tantegel_northern_cave",
         "tantegel_swamp_cave_north",
         "tantegel_rimuldar",
+        "tantegel_charlock",
     },
 }
 
