@@ -940,6 +940,13 @@ local ROUTES = {
     rainbow_bridge_return = {
         id = "rainbow_bridge_return",
         title = "Swamp Cave South Entrance",
+        -- Cave entry triggers automatically when the hero steps onto the final
+        -- tile. Connected itineraries must wait until map 0x15 is observed
+        -- before activating the north-exit return.
+        staged_handoff_requires_destination_map = true,
+        staged_transition_message =
+            "Swamp Cave opens automatically when you step onto this tile. " ..
+            "If already here, step off and back on, then cross to the north exit.",
         aliases = {
             "rainbow bridge return",
             "return from rainbow bridge",
@@ -2085,16 +2092,20 @@ ROUTES.tantegel_rimuldar = {
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
--- Destination-selection variant: a Charlock-origin Tantegel request first
--- reverses the live-validated island route. The existing nested staging then
--- crosses Swamp Cave, bypasses Kol, and joins the established castle leg.
+-- Destination-selection variant: a Charlock- or Rainbow-Bridge-origin
+-- Tantegel request first reverses the matching live-validated final-island
+-- route. The existing nested staging then crosses Swamp Cave, bypasses Kol,
+-- and joins the established castle leg.
 ROUTES.tantegel_charlock = {
     id = "tantegel_charlock",
     title = "Tantegel Castle",
     target_object_ids = {"overworld_tantegel_castle"},
     destination_maps = {0x04, 0x05},
     staging = SWAMP_CAVE_TANTEGEL_STAGING,
-    selection_anchors = {{x = 48, y = 48, max_distance = 4}},
+    selection_anchors = {
+        {x = 48, y = 48, max_distance = 4},
+        {x = 65, y = 49, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 

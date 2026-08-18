@@ -5135,6 +5135,51 @@ function tests.tantegel_object_from_charlock_starts_connected_return()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_object_from_rainbow_bridge_starts_connected_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 65, 49)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start at the Rainbow Bridge unlock point")
+    assert_equal(info.route.id, "rainbow_bridge_return",
+        "bridge start should first use the proven eastbound return")
+    assert_equal(info.object_id, "route_rainbow_bridge_return_02",
+        "bridge return should first target the inlet detour")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound at Rainbow Bridge")
+
+    local bridge_return = assert(routes._route_for_tests("rainbow_bridge_return"))
+    for index = 2, #bridge_return.waypoints - 1 do
+        local point = bridge_return.waypoints[index]
+        assert(routes.observe_position(0x01, point.x, point.y))
+    end
+
+    local cave_wait = routes.observe_position(0x01, 104, 49)
+    assert_equal(cave_wait.status, "await_transition",
+        "Rainbow Bridge return should wait for automatic Swamp Cave entry")
+    assert_equal(routes.active_route_id(), "rainbow_bridge_return",
+        "the bridge leg should remain active outside Swamp Cave")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "entering Swamp Cave should advance the Tantegel itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the established north-exit return")
+    assert_equal(cave_handoff.steps, nil,
+        "the cave handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the Tantegel Travel object should remain bound in Swamp Cave")
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_south_tantegel_itinerary_waits_for_north_exit()
     routes.reset_for_tests()
     local target = {

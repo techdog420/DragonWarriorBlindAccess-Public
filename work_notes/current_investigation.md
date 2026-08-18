@@ -2,6 +2,22 @@
 
 Updated: 2026-08-17
 
+## 2026-08-17 Rainbow Bridge to Tantegel
+
+- CLEAN / VERIFIED: a Tantegel request at the Rainbow Bridge unlock point
+  `(65,49)` now starts `rainbow_bridge_return`, retains Tantegel as the final
+  Travel destination, waits for automatic entry into Swamp Cave map `0x15`,
+  then continues through `kol_swamp_cave_staging -> tantegel_kol`.
+- REUSED GEOMETRY ONLY: no waypoint or map geometry changed. The connection
+  composes the live-validated eastbound bridge return with the accepted
+  Swamp Cave/Kol/Tantegel chain.
+- LIVE ACCEPTANCE: frame `4980` started `rainbow_bridge_return`; frame `7037`
+  entered Swamp Cave and handed off; frame `11410` exited north; frame `20398`
+  bypassed Kol; and frame `27310` entered Tantegel Castle. The known
+  `(104,44)->UP` cave-exit seam exhausted one activation, then passed unchanged
+  on the next; do not promote it as geometry. Final frame `27720` found Castle
+  `(11,29)`, route/path nil, and zero runtime blockers.
+
 ## 2026-08-17 Charlock Castle to Tantegel
 
 - CLEAN / VERIFIED: a Tantegel request at World Map `(48,48)` now starts

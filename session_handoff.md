@@ -121,6 +121,19 @@ Updated: 2026-08-17
 
 ## Immediate FCEUX Handoff
 
+- Rainbow Bridge-to-Tantegel is implemented and live-verified. Selecting
+  Tantegel at the Rainbow Bridge unlock point on World Map `(65,49)` composes
+  `rainbow_bridge_return -> kol_swamp_cave_staging -> tantegel_kol`, preserving
+  Tantegel through automatic Swamp Cave entry and manual cave traversal. Frame
+  `7037` handed off inside Swamp Cave, frame `11410` returned from the north
+  exit, frame `20398` bypassed Kol, and frame `27310` entered Tantegel Castle.
+  The known `(104,44)->UP` cave-exit seam exhausted one activation, then passed
+  unchanged on the next; do not promote it as geometry. Final audit at frame
+  `27720` confirmed Castle `(11,29)`, route/path nil, and zero runtime blockers.
+  Focused tests pass `231/231` overworld routes and `123/123` route manager;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. The user's continuous-autowalk config remains local and
+  unstaged.
 - Charlock Castle-to-Tantegel is implemented and live-verified. Selecting
   Tantegel at World Map `(48,48)` composes `charlock_return ->
   kol_swamp_cave_staging -> tantegel_kol`, preserving Tantegel through

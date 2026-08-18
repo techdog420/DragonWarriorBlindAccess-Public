@@ -6,6 +6,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rainbow Bridge-to-Tantegel connected return live-verified (`2026-08-17`):
+  selecting Tantegel at World Map `(65,49)` now composes
+  `rainbow_bridge_return -> kol_swamp_cave_staging -> tantegel_kol`, preserving
+  the final destination through automatic Swamp Cave entry and manual cave
+  traversal. Frame `7037` handed off inside the cave, frame `11410` returned
+  from the north exit, frame `20398` bypassed Kol, and frame `27310` entered
+  Tantegel Castle. The known cave-exit seam `(104,44)->UP` exhausted one
+  activation and passed unchanged on the next; it remains timing evidence, not
+  geometry. Final audit at frame `27720` confirmed Castle `(11,29)`, route/path
+  nil, and zero runtime blockers. Focused tests pass `231/231` overworld routes
+  and `123/123` route manager; the full gate passes all 33 host-runnable Lua
+  suites plus 68 Python tests.
 - Charlock Castle-to-Tantegel connected return live-verified (`2026-08-17`):
   selecting Tantegel at World Map `(48,48)` now composes `charlock_return ->
   kol_swamp_cave_staging -> tantegel_kol`, preserving the final destination
