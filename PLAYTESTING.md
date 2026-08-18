@@ -1,11 +1,21 @@
 # Playtesting Notes
 
-Updated: 2026-08-16
+Updated: 2026-08-17
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Swamp Cave south-exit-to-Tantegel connected return live-verified
+  (`2026-08-17`): selecting Tantegel while already on World Map `(104,49)` now
+  keeps `swamp_cave_south` active instead of prematurely handing off and trying
+  the invalid direct `(104,49)->UP` edge. The south entrance activates
+  automatically when the hero steps onto its tile; when starting on the tile,
+  step off and back on to enter. Frame `17087` handed off inside Swamp Cave to
+  `kol_swamp_cave_staging`, frame `18518` returned from the north exit, frame
+  `28989` bypassed Kol, and frame `35901` entered Tantegel Castle. Final audit
+  at frame `36180` confirmed Castle `(11,29)`, route/path nil, and zero runtime
+  blockers. Focused overworld-route tests pass `229/229`.
 - Rimuldar-to-Tantegel connected return fully live-verified (`2026-08-16`):
   selecting Tantegel at World Map `(102,72)` composes `swamp_cave_south ->
   kol_swamp_cave_staging -> tantegel_kol`. The route preserves the final

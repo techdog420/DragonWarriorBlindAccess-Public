@@ -1,6 +1,26 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-08-15
+Updated: 2026-08-17
+
+## 2026-08-17 Swamp Cave South to Tantegel
+
+- CLEAN BASELINE: World Map `(104,49)`, route/path nil, zero NPC/runtime
+  blockers, fresh loaded probe at frame `12360`.
+- LIVE FAILURE: Tantegel correctly selected `swamp_cave_south`, but standing on
+  its final automatic-entry tile immediately handed off to
+  `kol_swamp_cave_staging`.
+  Autowalk then tried the invalid direct edge `(104,49)->UP`, exhausted two
+  timing retries, and stopped. This is itinerary state, not map geometry; do
+  not promote the blocked observation.
+- CLEAN / VERIFIED: connected itineraries now keep `swamp_cave_south` active
+  at `(104,49)` and hand off only after Swamp Cave map `0x15` is observed.
+  Autowalk at the exterior tile stayed safely in place with
+  `already_at_waypoint`. Cave entry is automatic on stepping onto `(104,49)`;
+  a hero already standing there must step off and back on. Frame `17087`
+  handed off inside the cave, frame `18518` returned from the north exit,
+  frame `28989` bypassed Kol, and frame `35901` entered Tantegel Castle.
+  Final audit at frame `36180` found Castle `(11,29)`, route/path nil, and zero
+  runtime blockers.
 
 ## 2026-08-15 Connected Rimuldar Route Implementation
 

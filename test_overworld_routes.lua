@@ -5054,6 +5054,83 @@ function tests.tantegel_object_from_rimuldar_starts_swamp_cave_return_itinerary(
     routes.reset_for_tests()
 end
 
+function tests.tantegel_object_from_swamp_cave_south_starts_cave_return_itinerary()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 49)
+
+    assert_equal(err, nil,
+        "Tantegel Travel object should start outside Swamp Cave south")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "south-exit return should begin on the proven cave-entry route")
+    assert_equal(info.object_id, "route_swamp_cave_south_34",
+        "south-exit start should target the adjacent cave entrance")
+    assert_contains(info.message,
+        "Tantegel Castle route starts from Swamp Cave South Entrance",
+        "south-exit staging speech should retain the castle destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the castle Travel object should remain bound before cave traversal")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start("tantegel", 0x01, 104, 49)
+    assert_equal(alias_err, nil,
+        "Tantegel alias should start outside Swamp Cave south")
+    assert_equal(alias_info.route.id, "swamp_cave_south",
+        "the plain alias should use the same southern return itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_south_tantegel_itinerary_waits_for_north_exit()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    assert(routes.start_for_object(target, 0x01, 104, 49))
+
+    local wait_event = routes.observe_position(0x01, 104, 49)
+    assert_equal(wait_event.status, "await_transition",
+        "standing on the south entrance should wait for automatic cave entry")
+    assert_equal(routes.active_route_id(), "swamp_cave_south",
+        "the itinerary must not activate the north-exit leg before cave entry")
+    assert_contains(wait_event.message, "opens automatically",
+        "the transition wait should explain automatic cave entry")
+    assert_contains(wait_event.message, "step off and back on",
+        "the transition wait should explain how to retrigger entry")
+
+    local wait_segment = assert(routes.plan_next_segment(0x01, 104, 49, {
+        advance_if_at_waypoint = true,
+    }))
+    assert_equal(wait_segment.status, "already_at_waypoint",
+        "autowalk at the automatic-entry tile should remain safely in place")
+    assert_equal(#wait_segment.steps, 0,
+        "autowalk must not synthesize a northbound shortcut across the cave")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+
+    assert_equal(cave_handoff.status, "handoff",
+        "south-cave entry should hand off within the castle itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the north-exit-to-Kol return")
+    assert_equal(cave_handoff.object_id, "route_kol_swamp_cave_staging_01",
+        "the cave handoff should wait for the north exterior landing")
+    assert_equal(cave_handoff.steps, nil,
+        "the interior cave handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the castle Travel object should remain bound during cave traversal")
+
+    routes.reset_for_tests()
+end
+
 function tests.rimuldar_tantegel_itinerary_pauses_in_cave_then_bypasses_kol()
     routes.reset_for_tests()
     local target = {

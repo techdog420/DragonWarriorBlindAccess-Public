@@ -727,6 +727,15 @@ local ROUTES = {
     swamp_cave_south = {
         id = "swamp_cave_south",
         title = "Swamp Cave South Entrance",
+        -- Cave entry triggers when the hero steps onto this tile. Connected
+        -- itineraries must remain on this leg until the cave map is actually
+        -- observed, or autowalk will target the north exit directly from the
+        -- southern island. A route started while already on the tile requires
+        -- stepping off and back on to retrigger entry.
+        staged_handoff_requires_destination_map = true,
+        staged_transition_message =
+            "Swamp Cave opens automatically when you step onto this tile. " ..
+            "If already here, step off and back on, then cross to the north exit.",
         aliases = {
             "swamp cave south",
             "south swamp cave",
@@ -836,7 +845,8 @@ local ROUTES = {
                 name = "Swamp Cave South Entrance",
                 radius = 0,
                 final = true,
-                warning = "Return route still needs live validation from this side.",
+                warning = "Swamp Cave opens automatically when you step onto this tile. " ..
+                    "If already here, step off and back on, then cross to the north exit.",
             },
         },
     },
@@ -2050,16 +2060,20 @@ ROUTES.tantegel_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
--- Destination-selection variant: only a Rimuldar-origin Tantegel request
--- chooses this route. Its staging chain crosses Swamp Cave, follows the
--- non-entry Kol return, and finally hands off to the established castle leg.
+-- Destination-selection variant: a Rimuldar- or Swamp-Cave-south-origin
+-- Tantegel request chooses this route. Its staging chain crosses Swamp Cave,
+-- follows the non-entry Kol return, and finally hands off to the established
+-- castle leg.
 ROUTES.tantegel_rimuldar = {
     id = "tantegel_rimuldar",
     title = "Tantegel Castle",
     target_object_ids = {"overworld_tantegel_castle"},
     destination_maps = {0x04, 0x05},
     staging = SWAMP_CAVE_TANTEGEL_STAGING,
-    selection_anchors = {{x = 102, y = 72, max_distance = 4}},
+    selection_anchors = {
+        {x = 102, y = 72, max_distance = 4},
+        {x = 104, y = 49, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
@@ -3097,6 +3111,23 @@ function M.observe_position(map_id, px, py, terrain_offset)
     end
 
     if point.final then
+        if route.staged_handoff_requires_destination_map == true
+           and staged_destination_route() then
+            if #messages == 0 then
+                messages[1] = route.staged_transition_message
+                    or "Use the map transition to continue this route."
+            end
+            return {
+                status = "await_transition",
+                route = route,
+                waypoint = point,
+                message = table.concat(messages, " "),
+                warning_message = warning_message,
+                log = make_log("await_transition", route, point, index),
+                object_id = route_object_id(route, index),
+                refresh = true,
+            }
+        end
         local event = handoff_staged_route(route, point, map_id, px, py, terrain_offset)
             or finish_route(route, point, "arrived")
         if #messages > 0 then

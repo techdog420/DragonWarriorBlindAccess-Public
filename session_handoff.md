@@ -121,6 +121,18 @@ Updated: 2026-08-17
 
 ## Immediate FCEUX Handoff
 
+- Swamp Cave south-exit-to-Tantegel is implemented and live-verified. Starting
+  the Tantegel itinerary while already on World Map `(104,49)` now keeps
+  `swamp_cave_south` active until map `0x15` is actually observed, preventing
+  the old premature handoff and invalid direct `(104,49)->UP` attempt. The
+  south cave entrance activates automatically on tile entry; a hero already
+  standing there must step off and back on. Frame `17087` handed off inside
+  Swamp Cave, frame `18518` returned from the north exit, frame `28989`
+  bypassed Kol, and frame `35901` entered Tantegel Castle. Final audit at frame
+  `36180` confirmed Castle `(11,29)`, route/path nil, and zero runtime blockers.
+  Focused overworld-route tests pass `229/229`; Lua syntax and
+  `git diff --check` pass. The user's continuous-autowalk config remains local
+  and unstaged.
 - Swamp Cave north-exit-to-Tantegel is implemented and live-verified. Selecting
   Tantegel near World Map `(104,44)` now composes
   `kol_swamp_cave_staging -> tantegel_kol`, follows the established cave-to-Kol
