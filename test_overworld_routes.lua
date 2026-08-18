@@ -2580,8 +2580,10 @@ function tests.magic_temple_from_south_cave_starts_rimuldar_staging_route()
     local info, err = routes.start("magic temple", 0x01, 104, 49)
 
     assert_equal(err, nil, "Magic Temple alias should resolve from Swamp Cave South")
-    assert_equal(info.route.id, "rimuldar", "far Magic Temple requests should stage through Rimuldar")
-    assert_equal(info.object_id, "route_rimuldar_02", "staging should start on the proven Rimuldar route")
+    assert_equal(info.route.id, "rimuldar_staging",
+        "far Magic Temple requests should use the exterior Rimuldar staging route")
+    assert_equal(info.object_id, "route_rimuldar_staging_02",
+        "staging should start on the proven Rimuldar approach")
     assert_contains(info.message, "Magic Temple route starts from Rimuldar",
         "staging should explain the required hub")
     assert_contains(info.message, "Starting route to Rimuldar first",
@@ -2611,7 +2613,8 @@ function tests.magic_temple_object_from_south_cave_retains_final_destination()
     local info, err = routes.start_for_object(target, 0x01, 104, 49)
 
     assert_equal(err, nil, "Magic Temple Travel object should resolve from Swamp Cave South")
-    assert_equal(info.route.id, "rimuldar", "Travel-object starts should use the same Rimuldar staging guard")
+    assert_equal(info.route.id, "rimuldar_staging",
+        "Travel-object starts should use the exterior Rimuldar staging guard")
     assert_equal(routes.active_route_matches_object(target), true,
         "the selected Magic Temple object should remain bound during the Rimuldar leg")
 
@@ -2644,8 +2647,8 @@ function tests.magic_temple_guidance_refresh_keeps_the_active_itinerary()
 
     local info = routes.guidance_for_object(target, 0x01, 104, 49)
 
-    assert_equal(info.route.id, "rimuldar",
-        "re-reading guidance should keep the current Rimuldar leg active")
+    assert_equal(info.route.id, "rimuldar_staging",
+        "re-reading guidance should keep the exterior Rimuldar leg active")
     assert_contains(info.message, "Current leg to Rimuldar",
         "re-reading guidance should report the active leg instead of restarting it")
     assert_contains(info.message, "Final destination: Magic Temple",
@@ -2654,31 +2657,37 @@ function tests.magic_temple_guidance_refresh_keeps_the_active_itinerary()
     routes.reset_for_tests()
 end
 
-function tests.magic_temple_staging_hands_off_at_rimuldar_without_starting_movement()
+function tests.magic_temple_staging_hands_off_outside_rimuldar_without_starting_movement()
     routes.reset_for_tests()
     routes.start("magic temple", 0x01, 104, 49)
 
-    local event = routes.observe_position(0x0B, 29, 14)
+    local staging = assert(routes._route_for_tests("rimuldar_staging"))
+    for index = 2, #staging.waypoints - 1 do
+        local point = staging.waypoints[index]
+        assert(routes.observe_position(0x01, point.x, point.y))
+    end
+    local event = routes.observe_position(0x01, 103, 72)
 
     assert_equal(routes.active_route_id(), "magic_temple",
-        "entering Rimuldar should activate the requested Magic Temple leg")
+        "reaching Rimuldar's doorstep should activate the requested Magic Temple leg")
     assert_equal(event.status, "handoff",
         "the route event should distinguish a leg handoff from final arrival")
-    assert_contains(event.message, "Reached Rimuldar. Continuing to Magic Temple.",
-        "handoff speech should name the completed hub and final destination")
-    assert_contains(event.message, "Next: Rimuldar east doorstep",
+    assert_contains(event.message, "Reached Rimuldar east doorstep. Continuing to Magic Temple.",
+        "handoff speech should name the exterior hub and final destination")
+    assert_contains(event.message, "Next: Rimuldar east gate lane",
         "handoff speech should identify the next Magic Temple waypoint")
     assert_contains(event.log, "event=handoff", "handoff should be explicit in structured logs")
-    assert_contains(event.log, "from_route=rimuldar", "handoff logs should identify the completed leg")
-    assert_equal(event.object_id, "route_magic_temple_02",
+    assert_contains(event.log, "from_route=rimuldar_staging",
+        "handoff logs should identify the completed exterior leg")
+    assert_equal(event.object_id, "route_magic_temple_03",
         "route markers should refresh to the first Magic Temple movement waypoint")
     assert_equal(event.steps, nil,
         "handoff must wait for another player auto-walk command instead of moving immediately")
 
-    local segment = assert(routes.plan_next_segment(0x01, 102, 72))
-    assert_equal(segment.waypoint.name, "Rimuldar east doorstep",
-        "the next player-triggered segment should leave Rimuldar toward the temple")
-    assert_equal(#segment.steps, 1, "the first Magic Temple segment should be the one-tile doorstep step")
+    local segment = assert(routes.plan_next_segment(0x01, 103, 72))
+    assert_equal(segment.waypoint.name, "Rimuldar east gate lane",
+        "the next player-triggered segment should leave the doorstep toward the temple")
+    assert_equal(#segment.steps, 4, "the first Magic Temple segment should leave the town approach")
     assert_equal(segment.steps[1], "right", "the second leg should leave Rimuldar to the east")
 
     routes.reset_for_tests()
@@ -2765,6 +2774,29 @@ function tests.magic_temple_return_exactly_reverses_candidate_route()
         assert_equal(reverse.x, point.x, "temple reverse waypoint " .. i .. " x")
         assert_equal(reverse.y, point.y, "temple reverse waypoint " .. i .. " y")
     end
+end
+
+function tests.rimuldar_staging_variants_stop_at_east_doorstep()
+    local inbound = assert(routes._route_for_tests("rimuldar_staging"))
+    local temple_return = assert(routes._route_for_tests(
+        "rimuldar_magic_temple_staging"))
+
+    assert_equal(inbound.waypoints[#inbound.waypoints].x, 103,
+        "south-cave staging should stop east of Rimuldar")
+    assert_equal(inbound.waypoints[#inbound.waypoints].y, 72,
+        "south-cave staging should stay on Rimuldar's entrance row")
+    assert_equal(temple_return.waypoints[#temple_return.waypoints].x, 103,
+        "temple-return staging should stop east of Rimuldar")
+    assert_equal(temple_return.waypoints[#temple_return.waypoints].y, 72,
+        "temple-return staging should stay on Rimuldar's entrance row")
+
+    local direct = assert(routes._route_for_tests("rimuldar"))
+    local direct_return = assert(routes._route_for_tests(
+        "rimuldar_magic_temple"))
+    assert_equal(direct.waypoints[#direct.waypoints].x, 102,
+        "direct south-cave travel should still enter Rimuldar")
+    assert_equal(direct_return.waypoints[#direct_return.waypoints].x, 102,
+        "direct temple travel should still enter Rimuldar")
 end
 
 function tests.entering_magic_temple_stops_outbound_route()
@@ -5193,27 +5225,28 @@ function tests.tantegel_object_from_magic_temple_starts_connected_return()
 
     assert_equal(err, nil,
         "Tantegel Travel object should start outside Magic Temple")
-    assert_equal(info.route.id, "rimuldar_magic_temple",
-        "temple start should first use the proven Rimuldar return")
-    assert_equal(info.object_id, "route_rimuldar_magic_temple_02",
+    assert_equal(info.route.id, "rimuldar_magic_temple_staging",
+        "temple start should first use the exterior Rimuldar return")
+    assert_equal(info.object_id, "route_rimuldar_magic_temple_staging_02",
         "temple return should first leave the entrance pocket")
     assert_equal(routes.active_route_matches_object(target), true,
         "the Tantegel Travel object should remain bound on the temple leg")
 
-    local temple_return = assert(routes._route_for_tests("rimuldar_magic_temple"))
+    local temple_return = assert(routes._route_for_tests(
+        "rimuldar_magic_temple_staging"))
     for index = 2, #temple_return.waypoints - 1 do
         local point = temple_return.waypoints[index]
         assert(routes.observe_position(0x01, point.x, point.y))
     end
 
-    local rimuldar_handoff = routes.observe_position(0x0B, 29, 14)
+    local rimuldar_handoff = routes.observe_position(0x01, 103, 72)
     assert_equal(rimuldar_handoff.status, "handoff",
-        "entering Rimuldar should advance the Tantegel itinerary")
+        "reaching Rimuldar's doorstep should advance the Tantegel itinerary")
     assert_equal(routes.active_route_id(), "swamp_cave_south_magic_temple",
         "Rimuldar arrival should activate the established south-cave return")
     assert_equal(rimuldar_handoff.object_id,
-        "route_swamp_cave_south_magic_temple_02",
-        "the next leg should leave through Rimuldar's east doorstep")
+        "route_swamp_cave_south_magic_temple_03",
+        "the next leg should leave the doorstep through Rimuldar's east gate lane")
     assert_equal(rimuldar_handoff.steps, nil,
         "the Rimuldar handoff must not inject movement")
     assert_equal(routes.active_route_matches_object(target), true,
@@ -5221,7 +5254,7 @@ function tests.tantegel_object_from_magic_temple_starts_connected_return()
 
     local south_return = assert(
         routes._route_for_tests("swamp_cave_south_magic_temple"))
-    for index = 2, #south_return.waypoints - 1 do
+    for index = 3, #south_return.waypoints - 1 do
         local point = south_return.waypoints[index]
         assert(routes.observe_position(0x01, point.x, point.y))
     end

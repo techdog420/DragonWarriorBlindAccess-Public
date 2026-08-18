@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-17
+Updated: 2026-08-18
 
 ## Release Installation Handoff
 
@@ -121,6 +121,20 @@ Updated: 2026-08-17
 
 ## Immediate FCEUX Handoff
 
+- Rimuldar intermediate-town bypasses are implemented and live-verified in
+  both directions. Connected south-cave approaches now use `rimuldar_staging`,
+  while Magic Temple returns use `rimuldar_magic_temple_staging`; both reuse
+  the proven routes only through east doorstep `(103,72)` and hand off without
+  entering map `0x0B`. Frame `9887` proved the Magic-Temple-to-Tantegel return
+  handoff, and frame `15485` proved the opposite approach-to-Magic-Temple
+  handoff. Direct Rimuldar selections still end at town entrance `(102,72)`.
+  Each handoff completed with no blocked step, exhausted retry, map change, or
+  runtime-block injection; autowalk was then stopped deliberately. Final audit
+  at frame `16080` confirmed World Map
+  `(110,80)`, path target nil, and zero runtime blockers. Focused tests pass
+  `233/233` overworld routes and `123/123` route manager; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. The user's continuous-autowalk config remains local and unstaged.
 - Magic Temple-to-Tantegel is implemented and live-verified. Selecting
   Tantegel outside Magic Temple on World Map `(108,109)` composes
   `rimuldar_magic_temple -> swamp_cave_south_magic_temple ->
@@ -132,9 +146,9 @@ Updated: 2026-08-17
   frame `35880` confirmed Castle `(11,29)`, route/path nil, and zero runtime
   blockers. Focused tests pass `232/232` overworld routes and `123/123` route
   manager; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and
-  all 68 Python tests pass. Future polish should bypass Rimuldar rather than
-  entering town during passing routes. The user's continuous-autowalk config
-  remains local and unstaged.
+  all 68 Python tests pass. The later `2026-08-18` polish bypasses Rimuldar
+  during passing routes. The user's continuous-autowalk config remains local
+  and unstaged.
 - Rainbow Bridge-to-Tantegel is implemented and live-verified. Selecting
   Tantegel at the Rainbow Bridge unlock point on World Map `(65,49)` composes
   `rainbow_bridge_return -> kol_swamp_cave_staging -> tantegel_kol`, preserving

@@ -1,11 +1,22 @@
 # Playtesting Notes
 
-Updated: 2026-08-17
+Updated: 2026-08-18
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Rimuldar intermediate-town bypasses live-verified (`2026-08-18`): connected
+  routes in both directions now stop at east doorstep `(103,72)` and hand off
+  on the World Map instead of stepping west into town. From Magic Temple,
+  `rimuldar_magic_temple_staging` handed off to the south-cave return at frame
+  `9887`; from approach waypoint `(88,58)`, `rimuldar_staging` handed off to
+  `magic_temple` at frame `15485`. Neither run entered map `0x0B`, encountered
+  a route failure, nor injected a runtime blocker. Direct Rimuldar travel still
+  ends at town entrance `(102,72)`. Final audit at frame `16080` confirmed
+  World Map `(110,80)`, path target nil, and zero runtime blockers. Focused
+  tests pass `233/233` overworld routes and `123/123` route manager; the full
+  gate passes all 33 host-runnable Lua suites plus 68 Python tests.
 - Magic Temple-to-Tantegel connected return live-verified (`2026-08-17`):
   selecting Tantegel at World Map `(108,109)` now composes
   `rimuldar_magic_temple -> swamp_cave_south_magic_temple ->
@@ -16,8 +27,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   audit at frame `35880` confirmed Castle `(11,29)`, route/path nil, and zero
   runtime blockers. Focused tests pass `232/232` overworld routes and `123/123`
   route manager; the full gate passes all 33 host-runnable Lua suites plus 68
-  Python tests. Passing routes still enter Rimuldar; add an exterior staging
-  bypass in a separate polish task.
+  Python tests. The later `2026-08-18` polish now bypasses Rimuldar during
+  passing routes.
 - Rainbow Bridge-to-Tantegel connected return live-verified (`2026-08-17`):
   selecting Tantegel at World Map `(65,49)` now composes
   `rainbow_bridge_return -> kol_swamp_cave_staging -> tantegel_kol`, preserving

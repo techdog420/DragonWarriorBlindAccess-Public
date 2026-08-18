@@ -40,7 +40,7 @@ local FINAL_PROGRESSION_STAGING = {
 }
 
 local MAGIC_TEMPLE_STAGING = {
-    route_id = "rimuldar",
+    route_id = "rimuldar_staging",
     -- The longest validated segment on either leg is thirteen tiles. Starts
     -- farther from the temple route must first follow the established
     -- Swamp-Cave-South-to-Rimuldar corridor instead of synthesizing a shortcut.
@@ -2033,10 +2033,29 @@ ROUTES.kol_swamp_cave_staging = {
     waypoints = kol_swamp_cave_staging_waypoints,
 }
 
+-- Internal southern hub legs: connected routes reuse both live-validated
+-- Rimuldar approaches only through the east doorstep. Direct Rimuldar travel
+-- retains the final westward step that enters town.
+ROUTES.rimuldar_staging = {
+    id = "rimuldar_staging",
+    title = "Rimuldar",
+    destination_maps = {0x0B},
+    staging = RIMULDAR_STAGING,
+    waypoints = copy_route_prefix(ROUTES.rimuldar, 103, 72),
+}
+
+ROUTES.rimuldar_magic_temple_staging = {
+    id = "rimuldar_magic_temple_staging",
+    title = "Rimuldar",
+    destination_maps = {0x0B},
+    waypoints = copy_route_prefix(ROUTES.rimuldar_magic_temple, 103, 72),
+}
+
 -- Internal southern-return variant: Magic Temple starts must first reverse the
--- live-validated temple route to Rimuldar. From there this copy follows the
--- established Rimuldar-to-Swamp-Cave leg, allowing the existing nested return
--- chain to continue through the cave, around Kol, and on to Tantegel.
+-- live-validated temple route to Rimuldar's east doorstep. From there this
+-- copy follows the established Rimuldar-to-Swamp-Cave leg, allowing the
+-- existing nested return chain to continue through the cave, around Kol, and
+-- on to Tantegel without entering town.
 ROUTES.swamp_cave_south_magic_temple = {
     id = "swamp_cave_south_magic_temple",
     title = "Swamp Cave South Entrance",
@@ -2046,7 +2065,7 @@ ROUTES.swamp_cave_south_magic_temple = {
         "If already here, step off and back on, then cross to the north exit.",
     destination_maps = {0x15},
     staging = {
-        route_id = "rimuldar_magic_temple",
+        route_id = "rimuldar_magic_temple_staging",
         max_start_distance = 13,
         require_route_corridor = true,
         continue_after_staging = true,
