@@ -2,6 +2,23 @@
 
 Updated: 2026-08-17
 
+## 2026-08-17 Magic Temple to Tantegel
+
+- STATIC IMPLEMENTATION: a Tantegel request outside Magic Temple `(108,109)`
+  now composes `rimuldar_magic_temple -> swamp_cave_south_magic_temple ->
+  kol_swamp_cave_staging -> tantegel_kol`.
+- REUSED GEOMETRY ONLY: the internal southern leg copies the accepted
+  Rimuldar-to-Swamp-Cave route and retains the automatic cave-entry wait. No
+  waypoint or map geometry changed.
+- LIVE ACCEPTANCE: frame `2520` started `rimuldar_magic_temple`; frame `5969`
+  entered Rimuldar and handed off to `swamp_cave_south_magic_temple`; frame
+  `17805` entered Swamp Cave; frame `20976` exited north; frame `27311`
+  bypassed Kol; and frame `34223` entered Tantegel Castle. The known cave-exit
+  seam `(104,44)->UP` passed on the first activation. Final frame `35880` found
+  Castle `(11,29)`, route/path nil, and zero runtime blockers.
+- FUTURE POLISH: passing routes should bypass Rimuldar instead of entering town,
+  consistent with the existing Kol and Cantlin exterior staging variants.
+
 ## 2026-08-17 Rainbow Bridge to Tantegel
 
 - CLEAN / VERIFIED: a Tantegel request at the Rainbow Bridge unlock point

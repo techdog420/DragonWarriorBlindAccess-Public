@@ -6,6 +6,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Magic Temple-to-Tantegel connected return live-verified (`2026-08-17`):
+  selecting Tantegel at World Map `(108,109)` now composes
+  `rimuldar_magic_temple -> swamp_cave_south_magic_temple ->
+  kol_swamp_cave_staging -> tantegel_kol`. Frame `5969` entered Rimuldar,
+  frame `17805` entered Swamp Cave, frame `20976` returned from the north exit,
+  frame `27311` bypassed Kol, and frame `34223` entered Tantegel Castle. The
+  known cave-exit seam `(104,44)->UP` passed on the first activation. Final
+  audit at frame `35880` confirmed Castle `(11,29)`, route/path nil, and zero
+  runtime blockers. Focused tests pass `232/232` overworld routes and `123/123`
+  route manager; the full gate passes all 33 host-runnable Lua suites plus 68
+  Python tests. Passing routes still enter Rimuldar; add an exterior staging
+  bypass in a separate polish task.
 - Rainbow Bridge-to-Tantegel connected return live-verified (`2026-08-17`):
   selecting Tantegel at World Map `(65,49)` now composes
   `rainbow_bridge_return -> kol_swamp_cave_staging -> tantegel_kol`, preserving

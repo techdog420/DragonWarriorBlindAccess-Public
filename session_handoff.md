@@ -121,6 +121,20 @@ Updated: 2026-08-17
 
 ## Immediate FCEUX Handoff
 
+- Magic Temple-to-Tantegel is implemented and live-verified. Selecting
+  Tantegel outside Magic Temple on World Map `(108,109)` composes
+  `rimuldar_magic_temple -> swamp_cave_south_magic_temple ->
+  kol_swamp_cave_staging -> tantegel_kol`, preserving Tantegel through both
+  town/cave transitions. Frame `5969` entered Rimuldar, frame `17805` entered
+  Swamp Cave, frame `20976` returned from the north exit, frame `27311`
+  bypassed Kol, and frame `34223` entered Tantegel Castle. The known
+  `(104,44)->UP` cave-exit seam passed on the first activation. Final audit at
+  frame `35880` confirmed Castle `(11,29)`, route/path nil, and zero runtime
+  blockers. Focused tests pass `232/232` overworld routes and `123/123` route
+  manager; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and
+  all 68 Python tests pass. Future polish should bypass Rimuldar rather than
+  entering town during passing routes. The user's continuous-autowalk config
+  remains local and unstaged.
 - Rainbow Bridge-to-Tantegel is implemented and live-verified. Selecting
   Tantegel at the Rainbow Bridge unlock point on World Map `(65,49)` composes
   `rainbow_bridge_return -> kol_swamp_cave_staging -> tantegel_kol`, preserving

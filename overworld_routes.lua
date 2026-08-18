@@ -2033,6 +2033,28 @@ ROUTES.kol_swamp_cave_staging = {
     waypoints = kol_swamp_cave_staging_waypoints,
 }
 
+-- Internal southern-return variant: Magic Temple starts must first reverse the
+-- live-validated temple route to Rimuldar. From there this copy follows the
+-- established Rimuldar-to-Swamp-Cave leg, allowing the existing nested return
+-- chain to continue through the cave, around Kol, and on to Tantegel.
+ROUTES.swamp_cave_south_magic_temple = {
+    id = "swamp_cave_south_magic_temple",
+    title = "Swamp Cave South Entrance",
+    staged_handoff_requires_destination_map = true,
+    staged_transition_message =
+        "Swamp Cave opens automatically when you step onto this tile. " ..
+        "If already here, step off and back on, then cross to the north exit.",
+    destination_maps = {0x15},
+    staging = {
+        route_id = "rimuldar_magic_temple",
+        max_start_distance = 13,
+        require_route_corridor = true,
+        continue_after_staging = true,
+    },
+    selection_anchors = {{x = 108, y = 109, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.swamp_cave_south, 104, 49),
+}
+
 -- Internal return leg: reuse the live-validated Northern-Cave-to-Kol route,
 -- but stop one tile west of Kol so the final Tantegel leg can leave without
 -- entering town.
@@ -2109,6 +2131,19 @@ ROUTES.tantegel_charlock = {
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
+-- Destination-selection variant: a Magic-Temple-origin Tantegel request first
+-- reverses the validated temple route to Rimuldar. Nested staging then reaches
+-- Swamp Cave, bypasses Kol, and joins the established castle leg.
+ROUTES.tantegel_magic_temple = {
+    id = "tantegel_magic_temple",
+    title = "Tantegel Castle",
+    target_object_ids = {"overworld_tantegel_castle"},
+    destination_maps = {0x04, 0x05},
+    staging = SWAMP_CAVE_TANTEGEL_STAGING,
+    selection_anchors = {{x = 108, y = 109, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
+}
+
 -- Internal staging leg: reuse the live-validated Hauksness corridor from Kol
 -- only through the Mountain Cave junction. Keeping this derived avoids a
 -- second manually maintained copy of more than sixty waypoint turns.
@@ -2153,6 +2188,7 @@ local ROUTE_IDS = {
     "tantegel_swamp_cave_north",
     "tantegel_rimuldar",
     "tantegel_charlock",
+    "tantegel_magic_temple",
 }
 
 local ROUTE_ALTERNATES = {
@@ -2163,8 +2199,20 @@ local ROUTE_ALTERNATES = {
     kol_hauksness = {"kol_hauksness", "kol", "kol_rain_shrine", "kol_swamp_cave"},
     swamp_cave = {"swamp_cave_bridge", "swamp_cave"},
     swamp_cave_bridge = {"swamp_cave_bridge", "swamp_cave"},
-    swamp_cave_south = {"swamp_cave_south", "swamp_cave_south_recovery", "rainbow_bridge_return", "charlock_return"},
-    swamp_cave_south_recovery = {"swamp_cave_south", "swamp_cave_south_recovery", "rainbow_bridge_return", "charlock_return"},
+    swamp_cave_south = {
+        "swamp_cave_south",
+        "swamp_cave_south_recovery",
+        "rainbow_bridge_return",
+        "charlock_return",
+        "swamp_cave_south_magic_temple",
+    },
+    swamp_cave_south_recovery = {
+        "swamp_cave_south",
+        "swamp_cave_south_recovery",
+        "rainbow_bridge_return",
+        "charlock_return",
+        "swamp_cave_south_magic_temple",
+    },
     rainbow_bridge_return = {"rainbow_bridge_return", "charlock_return", "swamp_cave_south", "swamp_cave_south_recovery"},
     charlock_return = {"charlock_return", "rainbow_bridge_return", "swamp_cave_south", "swamp_cave_south_recovery"},
     rimuldar = {"rimuldar", "rimuldar_magic_temple"},
@@ -2183,6 +2231,7 @@ local ROUTE_ALTERNATES = {
         "tantegel_swamp_cave_north",
         "tantegel_rimuldar",
         "tantegel_charlock",
+        "tantegel_magic_temple",
     },
     tantegel_kol = {
         "tantegel",
@@ -2191,6 +2240,7 @@ local ROUTE_ALTERNATES = {
         "tantegel_swamp_cave_north",
         "tantegel_rimuldar",
         "tantegel_charlock",
+        "tantegel_magic_temple",
     },
 }
 
