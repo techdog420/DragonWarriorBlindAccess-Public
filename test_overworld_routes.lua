@@ -2833,6 +2833,131 @@ function tests.tantegel_object_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 end
 
+function tests.early_destinations_from_kol_start_bridge_junction_staging()
+    local cases = {
+        {
+            id = "overworld_garinham",
+            name = "Garinham",
+            x = 1,
+            y = 2,
+            continuation = "garinham_kol",
+        },
+        {
+            id = "overworld_erdrick_s_cave",
+            name = "Erdrick's Cave",
+            x = 28,
+            y = 12,
+            continuation = "erdrick_kol",
+        },
+        {
+            id = "overworld_brecconary",
+            name = "Brecconary",
+            x = 48,
+            y = 41,
+            continuation = "brecconary_kol",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 104, 10)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from Kol")
+        assert_equal(info.route.id, "tantegel_bridge_staging",
+            case.name .. " should first use the shared bridge-junction return")
+        assert_equal(info.object_id, "route_tantegel_bridge_staging_02",
+            case.name .. " staging should leave Kol through the forest edge")
+        assert_contains(info.message, case.name .. " route starts from Tantegel bridge junction",
+            "staging speech should retain " .. case.name)
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during staging")
+
+        local segment = assert(routes.plan_next_segment(0x01, 104, 10))
+        assert_equal(segment.waypoint.name, "Kol forest west edge",
+            case.name .. " staging should reuse the validated Kol return")
+        assert_equal(segment.steps[1], "left",
+            case.name .. " staging should leave Kol westward")
+
+        local staging = assert(
+            routes._route_for_tests("tantegel_bridge_staging"))
+        local event
+        for index = 2, #staging.waypoints do
+            local waypoint = staging.waypoints[index]
+            event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+        end
+        assert_equal(event.status, "handoff",
+            case.name .. " should hand off at the exterior bridge junction")
+        assert_equal(routes.active_route_id(), case.continuation,
+            case.name .. " should activate its Kol-origin continuation")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected after the handoff")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_garinham",
+        name = "Garinham",
+        x = 1,
+        y = 2,
+    }
+    assert(routes.start_for_object(target, 0x01, 104, 10))
+
+    local staging = assert(routes._route_for_tests("tantegel_bridge_staging"))
+    local event
+    for index = 2, #staging.waypoints do
+        local waypoint = staging.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "the bridge junction should hand off without entering Tantegel")
+    assert_equal(routes.active_route_id(), "garinham_kol",
+        "the junction should activate the Kol-origin Garinham continuation")
+    assert_equal(event.object_id, "route_garinham_kol_04",
+        "the continuation should leave the shared bridge pin northward")
+    assert_contains(event.log, "from_route=tantegel_bridge_staging",
+        "handoff logs should identify the hidden junction leg")
+    assert_equal(event.steps, nil,
+        "the exterior junction handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Garinham should remain selected after the junction handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 44, 38))
+    assert_equal(segment.waypoint.name, "Bridge lower west lane",
+        "the continuation should follow the validated Garinham corridor")
+    assert_equal(segment.steps[1], "up",
+        "the Garinham continuation should leave the junction northward")
+
+    routes.reset_for_tests()
+end
+
+function tests.kol_early_destination_variants_preserve_direct_tantegel_starts()
+    local cases = {
+        {id = "overworld_garinham", name = "Garinham", x = 1, y = 2,
+            direct_route = "garinham"},
+        {id = "overworld_erdrick_s_cave", name = "Erdrick's Cave", x = 28, y = 12,
+            direct_route = "erdrick"},
+        {id = "overworld_brecconary", name = "Brecconary", x = 48, y = 41,
+            direct_route = "brecconary"},
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 43, 43)
+        assert_equal(err, nil,
+            case.name .. " Travel should still resolve from Tantegel")
+        assert_equal(info.route.id, case.direct_route,
+            case.name .. " should retain its direct Tantegel-side route")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.hauksness_from_tantegel_starts_kol_staging_route()
     routes.reset_for_tests()
 

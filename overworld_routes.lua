@@ -181,6 +181,15 @@ local MOUNTAIN_CAVE_STAGING = {
     continue_after_staging = true,
 }
 
+local EARLY_DESTINATION_KOL_STAGING = {
+    route_id = "tantegel_bridge_staging",
+    -- Kol is far outside the early western routes. Return on the established
+    -- Kol-to-Tantegel corridor only to its shared bridge junction, then join
+    -- the selected destination route without entering Tantegel.
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -2033,6 +2042,49 @@ ROUTES.kol_swamp_cave_staging = {
     waypoints = kol_swamp_cave_staging_waypoints,
 }
 
+-- Internal eastern hub leg: reverse the validated Kol route only through the
+-- shared bridge junction. Garinham, Erdrick's Cave, and Brecconary all contain
+-- this exact pin, so connected travel can hand off without entering Tantegel.
+ROUTES.tantegel_bridge_staging = {
+    id = "tantegel_bridge_staging",
+    title = "Tantegel bridge junction",
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 44, 38),
+}
+
+-- Kol-origin destination variants preserve the selected early landmark while
+-- the hidden bridge leg returns across the established northern corridor.
+-- Direct starts keep using the canonical routes and their normal town/cave
+-- arrival behavior.
+ROUTES.garinham_kol = {
+    id = "garinham_kol",
+    title = "Garinham",
+    target_object_ids = {"overworld_garinham"},
+    destination_maps = {0x09},
+    staging = EARLY_DESTINATION_KOL_STAGING,
+    selection_anchors = {{x = 104, y = 10, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
+}
+
+ROUTES.erdrick_kol = {
+    id = "erdrick_kol",
+    title = "Erdrick's Cave",
+    target_object_ids = {"overworld_erdrick_s_cave"},
+    destination_maps = {0x1C, 0x1D},
+    staging = EARLY_DESTINATION_KOL_STAGING,
+    selection_anchors = {{x = 104, y = 10, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
+}
+
+ROUTES.brecconary_kol = {
+    id = "brecconary_kol",
+    title = "Brecconary",
+    target_object_ids = {"overworld_brecconary"},
+    destination_maps = {0x08},
+    staging = EARLY_DESTINATION_KOL_STAGING,
+    selection_anchors = {{x = 104, y = 10, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
+}
+
 -- Internal southern hub legs: connected routes reuse both live-validated
 -- Rimuldar approaches only through the east doorstep. Direct Rimuldar travel
 -- retains the final westward step that enters town.
@@ -2176,7 +2228,9 @@ ROUTES.mountain_cave_connector = {
 -- Keep lookup deterministic, especially when several routes share a Travel target.
 local ROUTE_IDS = {
     "brecconary",
+    "brecconary_kol",
     "garinham",
+    "garinham_kol",
     "kol",
     "northern_cave",
     "kol_rain_shrine",
@@ -2201,6 +2255,7 @@ local ROUTE_IDS = {
     "great_swamp_cantlin",
     "cantlin_great_swamp",
     "erdrick",
+    "erdrick_kol",
     "tantegel",
     "tantegel_kol",
     "tantegel_northern_cave",
@@ -2212,6 +2267,9 @@ local ROUTE_IDS = {
 
 local ROUTE_ALTERNATES = {
     safety = {"brecconary", "tantegel"},
+    brecconary = {"brecconary", "brecconary_kol"},
+    garinham = {"garinham", "garinham_kol"},
+    erdrick = {"erdrick", "erdrick_kol"},
     kol = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine", "kol_hauksness"},

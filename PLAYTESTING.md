@@ -6,6 +6,36 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Kol-to-Brecconary connected route live-verified (`2026-08-18`): selecting
+  Brecconary on World Map `(104,10)` chose `tantegel_bridge_staging`, bypassed
+  Kol, and activated `brecconary_kol` at frame `91194` on the segment ending at
+  bridge junction `(44,38)`. The short continuation entered Brecconary map
+  `0x08` at frame `91498`. Final audit at frame `92760` confirmed `(0,15)`,
+  route/path nil, and zero runtime blockers. No timing retry, failed or blocked
+  step, drift, cancellation, runtime-block injection, or unintended map entry
+  occurred. This completes live validation of the Kol-origin Garinham,
+  Erdrick's Cave, and Brecconary connection group.
+- Kol-to-Erdrick's-Cave connected route live-verified (`2026-08-18`):
+  selecting the cave on World Map `(104,10)` chose
+  `tantegel_bridge_staging`, bypassed Kol, and activated `erdrick_kol` at frame
+  `73427` on the segment ending at bridge junction `(44,38)`. It entered
+  Erdrick's Cave B1 map `0x1C` at frame `75155`. Final audit at frame `76620`
+  confirmed `(0,0)`, route/path nil, and zero runtime blockers. No timing retry,
+  failed or blocked step, drift, cancellation, runtime-block injection, or
+  unintended map entry occurred. Brecconary was then the only Kol-origin
+  connection still awaiting validation and is verified in the note above.
+- Kol-to-Garinham connected route live-verified (`2026-08-18`): selecting
+  Garinham on World Map `(104,10)` chose `tantegel_bridge_staging`, bypassed
+  Kol, and activated `garinham_kol` at frame `14603` on the segment ending at
+  bridge junction `(44,38)`. It then followed the established approach and
+  entered Garinham map `0x09` at frame `18075`. Final audit at frame `19080`
+  confirmed Garinham `(0,14)`, route/path nil, and zero runtime blockers. No
+  timing retry, failed or blocked step, drift, cancellation, runtime-block
+  injection, or unintended map entry occurred. The parallel Kol-origin
+  Erdrick's Cave and Brecconary connections were implemented and static-tested
+  at this point, then live-verified in the notes above. Focused tests pass
+  `236/236` overworld routes and `123/123` route manager; the full gate passes
+  all 33 host-runnable Lua suites plus 68 Python tests.
 - Rimuldar intermediate-town bypasses live-verified (`2026-08-18`): connected
   routes in both directions now stop at east doorstep `(103,72)` and hand off
   on the World Map instead of stepping west into town. From Magic Temple,

@@ -121,6 +121,21 @@ Updated: 2026-08-18
 
 ## Immediate FCEUX Handoff
 
+- Kol-origin connections to Garinham, Erdrick's Cave, and Brecconary are
+  implemented, static-tested, and live-verified. All three selections on World
+  Map `(104,10)` chose the hidden `tantegel_bridge_staging` route and bypassed
+  Kol. Garinham activated
+  `garinham_kol` at frame `14603` on the segment ending at bridge junction
+  `(44,38)`, entered map `0x09` at frame `18075`, and finished at `(0,14)`.
+  Erdrick's Cave activated `erdrick_kol` at frame `73427`, entered map `0x1C`
+  at frame `75155`, and finished at `(0,0)`. Brecconary activated
+  `brecconary_kol` at frame `91194`, entered map `0x08` at frame `91498`, and
+  finished at `(0,15)`. All final audits found route/path nil and zero runtime
+  blockers; none of the runs had a timing retry, failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended map entry. Focused
+  tests pass `236/236` overworld routes and `123/123` route manager; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - Rimuldar intermediate-town bypasses are implemented and live-verified in
   both directions. Connected south-cave approaches now use `rimuldar_staging`,
   while Magic Temple returns use `rimuldar_magic_temple_staging`; both reuse
