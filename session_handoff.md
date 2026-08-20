@@ -121,6 +121,36 @@ Updated: 2026-08-20
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-North-origin connections to Brecconary, Erdrick's Cave, and
+  Garinham are implemented, static-tested, and live-verified. Each Travel
+  object and plain route alias from World Map
+  `(104,44)` composes `kol_swamp_cave_staging ->
+  tantegel_bridge_swamp_cave_staging -> selected early destination`, replacing
+  the former 59-60-step direct opening with the proven one-step north departure
+  to `Swamp Cave doorstep`. The first hidden leg stops at Kol west doorstep
+  `(103,10)`; the second stops at bridge junction `(44,38)`, avoiding both Kol
+  and Tantegel before the established destination continuation. Selection is
+  intentionally limited to four tiles around Swamp Cave north, excluding the
+  south entrance `(104,49)` until the broader southern-island slice is
+  separately validated. The Brecconary run handed off at Kol west doorstep
+  `(103,10)` at frame `6438`, handed off at bridge junction `(44,38)` at frame
+  `13062`, and entered map `0x08` at frame `13366`. Final audit at frame `15180`
+  confirmed Brecconary `(0,15)`, route/path nil, and zero runtime blockers. No
+  timing retry, failed or blocked step, drift, cancellation, runtime-block
+  injection, or unintended map entry occurred. The Erdrick's Cave run handed
+  off at Kol west doorstep at frame `33070`, handed off at bridge junction at
+  frame `39694`, and entered B1 map `0x1C` at frame `41422`. Final audit at
+  frame `42840` confirmed `(0,0)`, route/path nil, and zero runtime or NPC
+  blockers; its interval likewise had no retry, failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended entry. The Garinham run
+  handed off at Kol west doorstep at frame `70930`, handed off at bridge
+  junction at frame `77554`, and entered map `0x09` at frame `81026`. Final
+  audit at frame `81300` confirmed `(0,14)`, route/path nil, and zero runtime
+  blockers; its interval also had no retry, failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended entry. This completes
+  live validation of the three-route group. Focused overworld-route tests pass
+  `241/241`; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
 - Northern-Cave-origin connections to Brecconary, Erdrick's Cave, and Garinham
   are implemented, static-tested, and live-verified. Selecting Brecconary on
   World Map `(81,1)` composed

@@ -200,6 +200,23 @@ local NORTHERN_CAVE_BRIDGE_STAGING = {
     continue_after_staging = true,
 }
 
+local SWAMP_CAVE_NORTH_BRIDGE_STAGING = {
+    route_id = "kol_swamp_cave_staging",
+    continuation_route_id = "tantegel_bridge_swamp_cave_staging",
+    -- Swamp Cave north already has a proven return to Kol. Reuse that route
+    -- before joining the eastern bridge corridor instead of synthesizing a
+    -- sixty-step cross-world segment.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING = {
+    route_id = "tantegel_bridge_swamp_cave_staging",
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -2062,6 +2079,17 @@ ROUTES.tantegel_bridge_staging = {
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 44, 38),
 }
 
+-- Swamp-Cave-North requests use the same bridge-junction geometry, but first
+-- return through the established cave-to-Kol corridor. Keeping this separate
+-- from the Northern Cave variant isolates the two origin-specific staging
+-- chains while preserving the shared exterior handoff at (44,38).
+ROUTES.tantegel_bridge_swamp_cave_staging = {
+    id = "tantegel_bridge_swamp_cave_staging",
+    title = "Tantegel bridge junction",
+    staging = SWAMP_CAVE_NORTH_BRIDGE_STAGING,
+    waypoints = copy_route_prefix(ROUTES.tantegel_kol, 44, 38),
+}
+
 -- Kol-origin destination variants preserve the selected early landmark while
 -- the hidden bridge leg returns across the established northern corridor.
 -- Direct starts keep using the canonical routes and their normal town/cave
@@ -2102,6 +2130,40 @@ ROUTES.brecconary_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
+    waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
+}
+
+-- Swamp-Cave-North destination variants preserve the selected early landmark
+-- while the hidden return legs bypass Kol and stop at the bridge junction.
+-- The radius deliberately excludes Swamp Cave's south entrance; broader
+-- southern-island composition remains a separate validation slice.
+ROUTES.garinham_swamp_cave_north = {
+    id = "garinham_swamp_cave_north",
+    title = "Garinham",
+    target_object_ids = {"overworld_garinham"},
+    destination_maps = {0x09},
+    staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
+}
+
+ROUTES.erdrick_swamp_cave_north = {
+    id = "erdrick_swamp_cave_north",
+    title = "Erdrick's Cave",
+    target_object_ids = {"overworld_erdrick_s_cave"},
+    destination_maps = {0x1C, 0x1D},
+    staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
+}
+
+ROUTES.brecconary_swamp_cave_north = {
+    id = "brecconary_swamp_cave_north",
+    title = "Brecconary",
+    target_object_ids = {"overworld_brecconary"},
+    destination_maps = {0x08},
+    staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -2249,8 +2311,10 @@ ROUTES.mountain_cave_connector = {
 local ROUTE_IDS = {
     "brecconary",
     "brecconary_kol",
+    "brecconary_swamp_cave_north",
     "garinham",
     "garinham_kol",
+    "garinham_swamp_cave_north",
     "kol",
     "northern_cave",
     "kol_rain_shrine",
@@ -2276,6 +2340,7 @@ local ROUTE_IDS = {
     "cantlin_great_swamp",
     "erdrick",
     "erdrick_kol",
+    "erdrick_swamp_cave_north",
     "tantegel",
     "tantegel_kol",
     "tantegel_northern_cave",
@@ -2287,9 +2352,21 @@ local ROUTE_IDS = {
 
 local ROUTE_ALTERNATES = {
     safety = {"brecconary", "tantegel"},
-    brecconary = {"brecconary", "brecconary_kol"},
-    garinham = {"garinham", "garinham_kol"},
-    erdrick = {"erdrick", "erdrick_kol"},
+    brecconary = {
+        "brecconary",
+        "brecconary_kol",
+        "brecconary_swamp_cave_north",
+    },
+    garinham = {
+        "garinham",
+        "garinham_kol",
+        "garinham_swamp_cave_north",
+    },
+    erdrick = {
+        "erdrick",
+        "erdrick_kol",
+        "erdrick_swamp_cave_north",
+    },
     kol = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine", "kol_hauksness"},
