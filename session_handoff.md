@@ -121,6 +121,36 @@ Updated: 2026-08-20
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-North connections to Northern Cave, Hauksness, and Mountain Cave
+  are implemented, static-tested, and live-verified. All three
+  selections from World Map `(104,44)` now begin on
+  `kol_swamp_cave_staging`, replacing the former synthesized 17-step opening
+  with the proven one-step north departure. At Kol west doorstep `(103,10)`,
+  Northern Cave activates `northern_cave_swamp_cave_north` and Hauksness
+  activates `hauksness_swamp_cave_north`; both copy their established routes
+  with only the Kol entry tile replaced by the exterior doorstep. Mountain
+  Cave activates `mountain_cave_swamp_cave_north_connector`, follows the
+  existing Hauksness prefix to western-desert pin `(18,64)`, then hands off to
+  `mountain_cave_swamp_cave_north` for the proven local spur. Selection is
+  limited to four tiles around the north entrance, excluding Swamp Cave south
+  `(104,49)`. Focused overworld-route tests pass `244/244`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. The Northern Cave pilot handed off at Kol west doorstep `(103,10)` at
+  frame `6317` and arrived at the exterior `(81,1)` at frame `9309`. Final
+  audit at frame `10920` confirmed route/path nil and zero NPC/runtime blockers.
+  Its complete interval had no retry, failed or blocked step, drift,
+  cancellation, map change, or runtime-block injection. The Hauksness run
+  handed off at Kol west doorstep at frame `20899` and entered map `0x03` at
+  frame `35619`. Final audit at frame `36120` confirmed `(0,10)`, route/path
+  nil, and zero NPC/runtime blockers; its interval had no retry, failed or
+  blocked step, drift, cancellation, runtime-block injection, or unintended
+  entry. The Mountain Cave run handed off at Kol west doorstep at frame
+  `48191`, handed off at western-desert pin `(18,64)` at frame `58959`, and
+  entered map `0x16` at frame `59807`. Final audit at frame `60240` confirmed
+  `(0,7)`, route/path nil, and zero NPC/runtime blockers; its interval also had
+  no retry, failed or blocked step, drift, cancellation, runtime-block
+  injection, or unintended entry. This three-route batch is complete and ready
+  for a focused commit.
 - Swamp-Cave-North-origin connections to Brecconary, Erdrick's Cave, and
   Garinham are implemented, static-tested, and live-verified. Each Travel
   object and plain route alias from World Map

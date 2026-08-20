@@ -217,6 +217,31 @@ local SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING = {
     continue_after_staging = true,
 }
 
+local SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING = {
+    route_id = "kol_swamp_cave_staging",
+    -- North-cave and western destinations share the proven return to Kol.
+    -- Starts on their established corridors remain direct.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local SWAMP_CAVE_NORTH_WESTERN_CONNECTOR_STAGING = {
+    route_id = "kol_swamp_cave_staging",
+    continuation_route_id = "mountain_cave_swamp_cave_north_connector",
+    max_start_distance = 13,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local SWAMP_CAVE_NORTH_MOUNTAIN_STAGING = {
+    route_id = "mountain_cave_swamp_cave_north_connector",
+    -- The final local spur retains the canonical nine-tile staging bound.
+    max_start_distance = 9,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -1982,6 +2007,22 @@ local function copy_route_prefix(route, stop_x, stop_y)
         tostring(stop_y)))
 end
 
+local function copy_route_with_kol_bypass(route)
+    local result = {}
+    for _, point in ipairs(route and route.waypoints or {}) do
+        result[#result + 1] = copy_waypoint(point)
+    end
+    local first = result[1]
+    if not first or first.x ~= 104 or first.y ~= 10 then
+        error(string.format(
+            "route %s does not begin at Kol (104,10)",
+            tostring(route and route.id or "-")))
+    end
+    first.x = 103
+    first.name = "Kol west doorstep"
+    return result
+end
+
 -- Internal hub leg: direct Kol travel still enters the town, but connected
 -- destinations hand off one tile west of its entrance. The copied Kol route
 -- also inherits the Brecconary west bypass, so neither intermediate town
@@ -2307,6 +2348,46 @@ ROUTES.mountain_cave_connector = {
     waypoints = copy_route_prefix(ROUTES.hauksness, 18, 64),
 }
 
+-- Swamp-Cave-North variants reuse the proven cave return and hand off at
+-- Kol's west doorstep. Direct destination routes retain their town-entry
+-- behavior, while these connected variants begin at the exterior tile.
+ROUTES.northern_cave_swamp_cave_north = {
+    id = "northern_cave_swamp_cave_north",
+    title = "Northern Cave",
+    target_object_ids = {"overworld_northern_cave"},
+    destination_maps = {0x0D},
+    staging = SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
+}
+
+ROUTES.hauksness_swamp_cave_north = {
+    id = "hauksness_swamp_cave_north",
+    title = "Hauksness",
+    target_object_ids = {"overworld_hauksness"},
+    destination_maps = {0x03},
+    staging = SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
+}
+
+ROUTES.mountain_cave_swamp_cave_north_connector = {
+    id = "mountain_cave_swamp_cave_north_connector",
+    title = "Western desert east road",
+    staging = SWAMP_CAVE_NORTH_WESTERN_CONNECTOR_STAGING,
+    waypoints = copy_route_with_kol_bypass(ROUTES.mountain_cave_connector),
+}
+
+ROUTES.mountain_cave_swamp_cave_north = {
+    id = "mountain_cave_swamp_cave_north",
+    title = "Mountain Cave",
+    target_object_ids = {"overworld_mountain_cave"},
+    destination_maps = {0x16, 0x17},
+    staging = SWAMP_CAVE_NORTH_MOUNTAIN_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
+}
+
 -- Keep lookup deterministic, especially when several routes share a Travel target.
 local ROUTE_IDS = {
     "brecconary",
@@ -2317,6 +2398,7 @@ local ROUTE_IDS = {
     "garinham_swamp_cave_north",
     "kol",
     "northern_cave",
+    "northern_cave_swamp_cave_north",
     "kol_rain_shrine",
     "kol_swamp_cave",
     "kol_hauksness",
@@ -2332,8 +2414,10 @@ local ROUTE_IDS = {
     "charlock_castle",
     "charlock_return",
     "mountain_cave",
+    "mountain_cave_swamp_cave_north",
     "mountain_cave_return",
     "hauksness",
+    "hauksness_swamp_cave_north",
     "hauksness_cantlin",
     "cantlin_hauksness",
     "great_swamp_cantlin",
@@ -2368,6 +2452,10 @@ local ROUTE_ALTERNATES = {
         "erdrick_swamp_cave_north",
     },
     kol = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
+    northern_cave = {
+        "northern_cave",
+        "northern_cave_swamp_cave_north",
+    },
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine", "kol_hauksness"},
     kol_hauksness = {"kol_hauksness", "kol", "kol_rain_shrine", "kol_swamp_cave"},
@@ -2391,7 +2479,15 @@ local ROUTE_ALTERNATES = {
     charlock_return = {"charlock_return", "rainbow_bridge_return", "swamp_cave_south", "swamp_cave_south_recovery"},
     rimuldar = {"rimuldar", "rimuldar_magic_temple"},
     rimuldar_magic_temple = {"rimuldar_magic_temple", "rimuldar"},
-    hauksness = {"hauksness", "hauksness_cantlin"},
+    mountain_cave = {
+        "mountain_cave",
+        "mountain_cave_swamp_cave_north",
+    },
+    hauksness = {
+        "hauksness",
+        "hauksness_cantlin",
+        "hauksness_swamp_cave_north",
+    },
     hauksness_cantlin = {"hauksness_cantlin", "hauksness"},
     cantlin_hauksness = {"cantlin_hauksness", "cantlin_great_swamp"},
     hauksness_return_staging = {

@@ -3169,6 +3169,188 @@ function tests.swamp_cave_north_early_variants_do_not_steal_other_origins()
     routes.reset_for_tests()
 end
 
+function tests.northwestern_destinations_from_swamp_cave_north_start_kol_return()
+    local cases = {
+        {
+            id = "overworld_northern_cave",
+            name = "Northern Cave",
+            alias = "northern cave",
+        },
+        {
+            id = "overworld_hauksness",
+            name = "Hauksness",
+            alias = "hauksness",
+        },
+        {
+            id = "overworld_mountain_cave",
+            name = "Mountain Cave",
+            alias = "mountain cave",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 104, 44)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve outside Swamp Cave north")
+        assert_equal(info.route.id, "kol_swamp_cave_staging",
+            case.name .. " should first use the proven cave-to-Kol return")
+        assert_equal(info.object_id, "route_kol_swamp_cave_staging_02",
+            case.name .. " should first target the poison-swamp doorstep")
+        assert_contains(info.message, case.name .. " route starts from Kol",
+            "cave staging speech should retain " .. case.name)
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during the Kol return")
+
+        local segment = assert(routes.plan_next_segment(0x01, 104, 44))
+        assert_equal(segment.waypoint.name, "Swamp Cave doorstep",
+            case.name .. " should reuse the validated north-exit departure")
+        assert_equal(segment.path_length, 1,
+            case.name .. " should replace the synthetic seventeen-step start")
+        assert_equal(segment.steps[1], "up",
+            case.name .. " should leave Swamp Cave northward")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 104, 44)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve outside Swamp Cave north")
+        assert_equal(alias_info.route.id, "kol_swamp_cave_staging",
+            case.name .. " alias should use the same connected itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_north_northwestern_routes_handoff_outside_kol()
+    local cases = {
+        {
+            target = {id = "overworld_northern_cave", name = "Northern Cave"},
+            route_id = "northern_cave_swamp_cave_north",
+        },
+        {
+            target = {id = "overworld_hauksness", name = "Hauksness"},
+            route_id = "hauksness_swamp_cave_north",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        assert(routes.start_for_object(case.target, 0x01, 104, 44))
+
+        local kol = assert(routes._route_for_tests(
+            "kol_swamp_cave_staging"))
+        local event
+        for index = 2, #kol.waypoints do
+            local waypoint = kol.waypoints[index]
+            event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+        end
+
+        assert_equal(event.status, "handoff",
+            case.target.name .. " should hand off outside Kol")
+        assert_equal(routes.active_route_id(), case.route_id,
+            case.target.name .. " should activate its Kol-bypass continuation")
+        assert_equal(event.object_id, "route_" .. case.route_id .. "_02",
+            case.target.name .. " should leave Kol through the forest edge")
+        assert_equal(event.steps, nil,
+            "the exterior Kol handoff must not inject movement")
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected after the handoff")
+
+        local segment = assert(routes.plan_next_segment(0x01, 103, 10))
+        assert_equal(segment.waypoint.name, "Kol forest west edge",
+            case.target.name .. " should continue on its proven route")
+        assert_equal(segment.steps[1], "left",
+            case.target.name .. " should bypass Kol westward")
+    end
+
+    routes.reset_for_tests()
+    local mountain = {
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+    }
+    assert(routes.start_for_object(mountain, 0x01, 104, 44))
+
+    local kol = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Mountain Cave should first hand off outside Kol")
+    assert_equal(routes.active_route_id(),
+        "mountain_cave_swamp_cave_north_connector",
+        "Mountain Cave should activate the western connector")
+    assert_equal(event.object_id,
+        "route_mountain_cave_swamp_cave_north_connector_02",
+        "the connector should leave Kol through the forest edge")
+
+    local connector = assert(routes._route_for_tests(
+        "mountain_cave_swamp_cave_north_connector"))
+    for index = 2, #connector.waypoints do
+        local waypoint = connector.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the western-desert pin should hand off to the cave spur")
+    assert_equal(routes.active_route_id(),
+        "mountain_cave_swamp_cave_north",
+        "the connector should activate the Mountain Cave continuation")
+    assert_equal(event.object_id,
+        "route_mountain_cave_swamp_cave_north_02",
+        "the cave continuation should leave the shared route pin westward")
+    assert_equal(event.steps, nil,
+        "the western-desert handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(mountain), true,
+        "Mountain Cave should remain selected through both handoffs")
+
+    local segment = assert(routes.plan_next_segment(0x01, 18, 64))
+    assert_equal(segment.waypoint.name, "Mountain Cave forest turn",
+        "the final continuation should reuse the proven cave spur")
+    assert_equal(segment.steps[1], "left",
+        "the cave spur should leave the shared pin westward")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_north_northwestern_variants_do_not_steal_other_origins()
+    local cases = {
+        {
+            target = {id = "overworld_northern_cave", name = "Northern Cave"},
+            kol_route = "northern_cave",
+            south_route = "kol_staging",
+        },
+        {
+            target = {id = "overworld_hauksness", name = "Hauksness"},
+            kol_route = "hauksness",
+            south_route = "hauksness",
+        },
+        {
+            target = {id = "overworld_mountain_cave", name = "Mountain Cave"},
+            kol_route = "mountain_cave_connector",
+            south_route = "kol_staging",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local kol = assert(routes.start_for_object(
+            case.target, 0x01, 104, 10))
+        assert_equal(kol.route.id, case.kol_route,
+            case.target.name .. " should retain its Kol-origin itinerary")
+
+        routes.reset_for_tests()
+        local southern = assert(routes.start_for_object(
+            case.target, 0x01, 104, 49))
+        assert_equal(southern.route.id, case.south_route,
+            case.target.name .. " south-cave travel should remain unchanged")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
     routes.reset_for_tests()
     local target = {

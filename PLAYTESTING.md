@@ -6,6 +6,47 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave-North-to-Mountain-Cave connected route live-verified
+  (`2026-08-20`). Selecting Mountain Cave at World Map `(104,44)` started
+  `kol_swamp_cave_staging` with the intended one-step north departure. Frame
+  `48191` handed off at Kol west doorstep `(103,10)` without entering town,
+  frame `58959` handed off at western-desert pin `(18,64)`, and frame `59807`
+  entered Mountain Cave map `0x16`. Final audit at frame `60240` confirmed
+  `(0,7)`, route/path nil, and zero NPC or runtime blockers. No timing retry,
+  failed or blocked step, drift, cancellation, runtime-block injection, or
+  unintended map entry occurred. This completes live validation of the
+  Swamp-Cave-North-origin Northern Cave, Hauksness, and Mountain Cave group.
+- Swamp-Cave-North-to-Hauksness connected route live-verified (`2026-08-20`).
+  Selecting Hauksness at World Map `(104,44)` started
+  `kol_swamp_cave_staging` with the intended one-step north departure. Frame
+  `20899` handed off at Kol west doorstep `(103,10)` without entering town,
+  and frame `35619` entered Ruins of Hauksness map `0x03`. Final audit at frame
+  `36120` confirmed `(0,10)`, route/path nil, and zero NPC or runtime blockers.
+  No timing retry, failed or blocked step, drift, cancellation, runtime-block
+  injection, or unintended map entry occurred. Mountain Cave is live-verified
+  above.
+- Swamp-Cave-North-to-Northern-Cave connected route live-verified
+  (`2026-08-20`). Selecting Northern Cave at World Map `(104,44)` started
+  `kol_swamp_cave_staging` with the intended one-step north departure. Frame
+  `6317` handed off at Kol west doorstep `(103,10)` without entering town, and
+  frame `9309` arrived at the Northern Cave exterior `(81,1)`. Final audit at
+  frame `10920` confirmed World Map `(81,1)`, route/path nil, and zero NPC or
+  runtime blockers. No timing retry, failed or blocked step, drift,
+  cancellation, map change, or runtime-block injection occurred. Hauksness is
+  live-verified above; Mountain Cave remains pending.
+- Swamp-Cave-North northwestern connection batch is source-complete and partly
+  live-verified (`2026-08-20`). Selecting Northern Cave, Hauksness, or
+  Mountain Cave from World Map `(104,44)` now begins with the proven one-step
+  north departure on `kol_swamp_cave_staging` and hands off at Kol west
+  doorstep `(103,10)` without entering town. Northern Cave and Hauksness then
+  reuse their established routes directly. Mountain Cave follows the existing
+  Hauksness corridor to western-desert pin `(18,64)`, then hands off to the
+  proven local cave spur. The origin-specific selection radius is four tiles,
+  so Swamp Cave south `(104,49)` and other origins retain their prior route
+  choices. Focused overworld-route tests pass `244/244`; the full gate passes
+  all 33 host-runnable Lua suites plus 68 Python tests. Northern Cave is
+  live-verified above, as are Hauksness and Mountain Cave. This batch is
+  complete.
 - Swamp-Cave-North-to-Garinham connected route live-verified (`2026-08-20`):
   selecting Garinham on World Map `(104,44)` composed
   `kol_swamp_cave_staging -> tantegel_bridge_swamp_cave_staging ->
