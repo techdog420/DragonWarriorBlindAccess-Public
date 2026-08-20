@@ -2897,6 +2897,120 @@ function tests.early_destinations_from_kol_start_bridge_junction_staging()
     routes.reset_for_tests()
 end
 
+function tests.early_destinations_from_northern_cave_start_shrine_return_staging()
+    local cases = {
+        {
+            id = "overworld_garinham",
+            name = "Garinham",
+        },
+        {
+            id = "overworld_erdrick_s_cave",
+            name = "Erdrick's Cave",
+        },
+        {
+            id = "overworld_brecconary",
+            name = "Brecconary",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 81, 1)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve outside Northern Cave")
+        assert_equal(info.route.id, "kol_rain_shrine_staging",
+            case.name .. " should first use the proven shrine return")
+        assert_equal(info.object_id, "route_kol_rain_shrine_staging_02",
+            case.name .. " should first target the shrine entrance approach")
+        assert_contains(info.message, case.name .. " route starts from Kol",
+            "shrine staging speech should retain " .. case.name)
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during the shrine return")
+
+        local segment = assert(routes.plan_next_segment(0x01, 81, 1))
+        assert_equal(segment.waypoint.name, "Rain shrine entrance approach",
+            case.name .. " should reuse the validated Northern Cave departure")
+        assert_equal(segment.steps[1], "left",
+            case.name .. " should leave Northern Cave westward")
+
+        local shrine = assert(
+            routes._route_for_tests("kol_rain_shrine_staging"))
+        local event
+        for index = 2, #shrine.waypoints do
+            local waypoint = shrine.waypoints[index]
+            event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+        end
+        assert_equal(event.status, "handoff",
+            case.name .. " should hand off outside Kol")
+        assert_equal(routes.active_route_id(), "tantegel_bridge_staging",
+            case.name .. " should next activate the bridge-junction return")
+        assert_equal(event.object_id, "route_tantegel_bridge_staging_02",
+            case.name .. " should leave Kol through the forest edge")
+        assert_contains(event.log, "from_route=kol_rain_shrine_staging",
+            "the first handoff should identify the shrine-return leg")
+        assert_equal(event.steps, nil,
+            "the exterior Kol handoff must not inject movement")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected after the Kol handoff")
+
+        segment = assert(routes.plan_next_segment(0x01, 103, 10))
+        assert_equal(segment.waypoint.name, "Kol forest west edge",
+            case.name .. " should continue on the established bridge return")
+        assert_equal(segment.steps[1], "left",
+            case.name .. " should bypass Kol westward")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.brecconary_from_northern_cave_hands_off_at_bridge_junction()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_brecconary",
+        name = "Brecconary",
+        x = 48,
+        y = 41,
+    }
+    assert(routes.start_for_object(target, 0x01, 81, 1))
+
+    local shrine = assert(routes._route_for_tests("kol_rain_shrine_staging"))
+    for index = 2, #shrine.waypoints do
+        local waypoint = shrine.waypoints[index]
+        routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(routes.active_route_id(), "tantegel_bridge_staging",
+        "the Kol bypass should activate the shared bridge-junction return")
+
+    local bridge = assert(routes._route_for_tests("tantegel_bridge_staging"))
+    local event
+    for index = 2, #bridge.waypoints do
+        local waypoint = bridge.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "the bridge junction should hand off without entering Tantegel")
+    assert_equal(routes.active_route_id(), "brecconary_kol",
+        "the junction should activate the Brecconary continuation")
+    assert_equal(event.object_id, "route_brecconary_kol_25",
+        "the continuation should target Brecconary directly")
+    assert_contains(event.log, "from_route=tantegel_bridge_staging",
+        "the second handoff should identify the bridge-junction leg")
+    assert_equal(event.steps, nil,
+        "the exterior bridge handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected after both handoffs")
+
+    local segment = assert(routes.plan_next_segment(0x01, 44, 38))
+    assert_equal(segment.waypoint.name, "Brecconary",
+        "the final continuation should target the town entrance")
+    assert_equal(segment.path_length, 7,
+        "the final Brecconary leg should remain the short proven segment")
+
+    routes.reset_for_tests()
+end
+
 function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
     routes.reset_for_tests()
     local target = {

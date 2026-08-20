@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-18
+Updated: 2026-08-20
 
 ## Release Installation Handoff
 
@@ -121,6 +121,32 @@ Updated: 2026-08-18
 
 ## Immediate FCEUX Handoff
 
+- Northern-Cave-origin connections to Brecconary, Erdrick's Cave, and Garinham
+  are implemented, static-tested, and live-verified. Selecting Brecconary on
+  World Map `(81,1)` composed
+  `kol_rain_shrine_staging -> tantegel_bridge_staging -> brecconary_kol`.
+  Frame `6648` handed off outside Kol at west doorstep `(103,10)`, frame
+  `13272` handed off at the bridge junction `(44,38)`, and frame `13576`
+  entered Brecconary map `0x08`. Final audit at frame `14700` confirmed
+  Brecconary `(0,15)`, route/path nil, and zero runtime blockers. The run had no
+  timing retry, failed or blocked step, drift, cancellation, runtime-block
+  injection, or unintended map entry. The Erdrick's Cave selection composed
+  `kol_rain_shrine_staging -> tantegel_bridge_staging -> erdrick_kol`; frame
+  `28934` handed off outside Kol at `(103,10)`, frame `35558` handed off at
+  `(44,38)`, and frame `37286` entered Erdrick's Cave B1 map `0x1C`. Final
+  audit at frame `38220` confirmed `(0,0)`, route/path nil, and zero runtime
+  blockers. Two entry retries on the first step from `(81,1)` recovered
+  automatically; no failed or blocked step, drift, cancellation, runtime-block
+  injection, or unintended map entry occurred. The Garinham selection composed
+  `kol_rain_shrine_staging -> tantegel_bridge_staging -> garinham_kol`; frame
+  `56749` handed off outside Kol at `(103,10)`, frame `63373` handed off at
+  `(44,38)`, and frame `66845` entered Garinham map `0x09`. Final audit at
+  frame `68400` confirmed `(0,14)`, route/path nil, and zero runtime blockers.
+  The Garinham run had no timing retry, failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended map entry. Focused
+  tests pass `238/238` overworld routes and `123/123` route manager; Lua
+  syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. This Northern-Cave-origin connection group is complete.
 - Kol-origin connections to Garinham, Erdrick's Cave, and Brecconary are
   implemented, static-tested, and live-verified. All three selections on World
   Map `(104,10)` chose the hidden `tantegel_bridge_staging` route and bypassed

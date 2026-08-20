@@ -190,6 +190,16 @@ local EARLY_DESTINATION_KOL_STAGING = {
     continue_after_staging = true,
 }
 
+local NORTHERN_CAVE_BRIDGE_STAGING = {
+    route_id = "kol_rain_shrine_staging",
+    continuation_route_id = "tantegel_bridge_staging",
+    -- Northern Cave is 24 steps from the nearest bridge-return waypoint, but
+    -- the proven route first returns through the shrine corridor. Kol and its
+    -- west doorstep remain within thirteen steps of the bridge leg.
+    max_start_distance = 13,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -2048,6 +2058,7 @@ ROUTES.kol_swamp_cave_staging = {
 ROUTES.tantegel_bridge_staging = {
     id = "tantegel_bridge_staging",
     title = "Tantegel bridge junction",
+    staging = NORTHERN_CAVE_BRIDGE_STAGING,
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 44, 38),
 }
 
@@ -2061,7 +2072,10 @@ ROUTES.garinham_kol = {
     target_object_ids = {"overworld_garinham"},
     destination_maps = {0x09},
     staging = EARLY_DESTINATION_KOL_STAGING,
-    selection_anchors = {{x = 104, y = 10, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 10, max_distance = 4},
+        {x = 81, y = 1, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
@@ -2071,7 +2085,10 @@ ROUTES.erdrick_kol = {
     target_object_ids = {"overworld_erdrick_s_cave"},
     destination_maps = {0x1C, 0x1D},
     staging = EARLY_DESTINATION_KOL_STAGING,
-    selection_anchors = {{x = 104, y = 10, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 10, max_distance = 4},
+        {x = 81, y = 1, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2081,7 +2098,10 @@ ROUTES.brecconary_kol = {
     target_object_ids = {"overworld_brecconary"},
     destination_maps = {0x08},
     staging = EARLY_DESTINATION_KOL_STAGING,
-    selection_anchors = {{x = 104, y = 10, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 10, max_distance = 4},
+        {x = 81, y = 1, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 

@@ -1,11 +1,47 @@
 # Playtesting Notes
 
-Updated: 2026-08-18
+Updated: 2026-08-20
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Northern-Cave-to-Garinham connected route live-verified (`2026-08-20`):
+  selecting Garinham on World Map `(81,1)` composed
+  `kol_rain_shrine_staging -> tantegel_bridge_staging -> garinham_kol` while
+  preserving the town as the selected destination. Frame `56749` handed off
+  at Kol west doorstep `(103,10)` without entering town, frame `63373` handed
+  off at bridge junction `(44,38)`, and frame `66845` entered Garinham map
+  `0x09`. Final audit at frame `68400` confirmed `(0,14)`, route/path nil, and
+  zero runtime blockers. No timing retry, failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended map entry occurred.
+  This completes live validation of the Northern-Cave-origin Brecconary,
+  Erdrick's Cave, and Garinham connection group.
+- Northern-Cave-to-Erdrick's-Cave connected route live-verified
+  (`2026-08-20`): selecting the cave on World Map `(81,1)` composed
+  `kol_rain_shrine_staging -> tantegel_bridge_staging -> erdrick_kol` while
+  preserving the cave as the selected destination. Frame `28934` handed off
+  at Kol west doorstep `(103,10)` without entering town, frame `35558` handed
+  off at bridge junction `(44,38)`, and frame `37286` entered Erdrick's Cave
+  B1 map `0x1C`. Final audit at frame `38220` confirmed `(0,0)`, route/path
+  nil, and zero runtime blockers. Two entry retries on the first step from
+  `(81,1)` recovered automatically. No failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended map entry occurred.
+  Garinham was the only parallel Northern-Cave-origin connection still awaiting
+  live validation and is verified in the note above.
+- Northern-Cave-to-Brecconary connected route live-verified (`2026-08-20`):
+  selecting Brecconary on World Map `(81,1)` composed
+  `kol_rain_shrine_staging -> tantegel_bridge_staging -> brecconary_kol` while
+  preserving the town as the selected destination. Frame `6648` handed off at
+  Kol west doorstep `(103,10)` without entering town, frame `13272` handed off
+  at bridge junction `(44,38)`, and frame `13576` entered Brecconary map
+  `0x08`. Final audit at frame `14700` confirmed `(0,15)`, route/path nil, and
+  zero runtime blockers. No timing retry, failed or blocked step, drift,
+  cancellation, runtime-block injection, or unintended map entry occurred.
+  Parallel Erdrick's Cave and Garinham connections are also live-verified in
+  the notes above. Focused tests pass `238/238` overworld routes and `123/123`
+  route manager; the full gate passes all 33 host-runnable Lua suites plus 68
+  Python tests.
 - Kol-to-Brecconary connected route live-verified (`2026-08-18`): selecting
   Brecconary on World Map `(104,10)` chose `tantegel_bridge_staging`, bypassed
   Kol, and activated `brecconary_kol` at frame `91194` on the segment ending at
