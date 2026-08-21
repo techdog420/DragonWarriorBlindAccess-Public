@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave-North to Rimuldar is source-complete and live-verified
+  (`2026-08-21`). From World Map `(104,44)`, a Rimuldar selection now reuses the
+  proven one-step north re-entry staging and waits through the manual map
+  `0x15` crossing without injecting interior movement. Emerging at `(104,49)`
+  advances the active route to the existing 11-step westbound `North Rimuldar
+  west safer route`; all later waypoints and map `0x0B` arrival behavior are
+  copied unchanged from the live-validated south-entrance route. Selection is
+  limited to one tile around `(104,44)`, so the south cave entrance, Tantegel,
+  and Magic Temple retain their established route variants. Focused route tests
+  pass `253/253`; Lua syntax and the full gate pass all 33 host-runnable Lua
+  suites plus all 68 Python tests. Loaded validation handed off into Swamp Cave
+  map `0x15` at frame `5016`, resumed at south exit `(104,49)` at frame `8815`,
+  and entered Rimuldar at frame `17670` after completing every remaining
+  waypoint. Final probe `RIMULDAR_NORTH_ARRIVAL_20260821` at frame `22680`
+  confirmed map `0x0B` position `(29,14)`, route/path nil, HP `149/149`, and
+  zero runtime blockers. There was no timing retry, blocker, drift,
+  cancellation, runtime-block injection, or script error. The final
+  off-direction cleanup was the expected town map transition from `(103,72)`.
 - Swamp-Cave-North to Swamp-Cave-South pilot is live-verified (`2026-08-21`).
   From clear World Map `(104,44)`, selecting
   `Swamp Cave South Entrance` now walks one safe `UP` step to `(104,43)` and

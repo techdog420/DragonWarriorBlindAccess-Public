@@ -2526,6 +2526,19 @@ ROUTES.swamp_cave_south_swamp_cave_north = {
     },
 }
 
+-- Destination-selection variant: Rimuldar travel from the north cave exit
+-- reuses the proven re-entry pause, waits through the manual cave crossing,
+-- then resumes the existing south-entrance-to-Rimuldar corridor unchanged.
+ROUTES.rimuldar_swamp_cave_north = {
+    id = "rimuldar_swamp_cave_north",
+    title = "Rimuldar",
+    target_object_ids = {"overworld_rimuldar"},
+    destination_maps = {0x0B},
+    staging = SWAMP_CAVE_NORTH_TO_SOUTH_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 1}},
+    waypoints = copy_route_prefix(ROUTES.rimuldar, 102, 72),
+}
+
 -- Keep lookup deterministic, especially when several routes share a Travel target.
 local ROUTE_IDS = {
     "brecconary",
@@ -2543,6 +2556,7 @@ local ROUTE_IDS = {
     "swamp_cave",
     "swamp_cave_bridge",
     "rimuldar",
+    "rimuldar_swamp_cave_north",
     "magic_temple",
     "rimuldar_magic_temple",
     "swamp_cave_south",
@@ -2619,7 +2633,11 @@ local ROUTE_ALTERNATES = {
     },
     rainbow_bridge_return = {"rainbow_bridge_return", "charlock_return", "swamp_cave_south", "swamp_cave_south_recovery"},
     charlock_return = {"charlock_return", "rainbow_bridge_return", "swamp_cave_south", "swamp_cave_south_recovery"},
-    rimuldar = {"rimuldar", "rimuldar_magic_temple"},
+    rimuldar = {
+        "rimuldar",
+        "rimuldar_swamp_cave_north",
+        "rimuldar_magic_temple",
+    },
     rimuldar_magic_temple = {"rimuldar_magic_temple", "rimuldar"},
     mountain_cave = {
         "mountain_cave",

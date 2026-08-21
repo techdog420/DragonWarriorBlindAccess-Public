@@ -3654,6 +3654,125 @@ function tests.swamp_cave_north_to_south_variant_does_not_steal_southern_starts(
     routes.reset_for_tests()
 end
 
+function tests.rimuldar_from_swamp_cave_north_starts_safe_reentry_staging()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_rimuldar",
+        name = "Rimuldar",
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 44)
+
+    assert_equal(err, nil,
+        "Rimuldar Travel should resolve outside Swamp Cave north")
+    assert_equal(info.route.id, "swamp_cave_north_entry_staging",
+        "north-exit Rimuldar travel should first prepare safe cave re-entry")
+    assert_equal(info.object_id,
+        "route_swamp_cave_north_entry_staging_01",
+        "the first target should be the north re-entry stand")
+    assert_contains(info.message,
+        "Rimuldar route starts from Swamp Cave north re-entry stand",
+        "staging speech should retain Rimuldar as the final destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Rimuldar should remain selected during re-entry staging")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 44))
+    assert_equal(segment.waypoint.name, "Swamp Cave north re-entry stand",
+        "Rimuldar should reuse the proven cave re-entry stand")
+    assert_equal(segment.path_length, 1,
+        "the re-entry stand should remain one tile north")
+    assert_equal(segment.steps[1], "up",
+        "the north entrance should be retriggered from its north doorstep")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start("rimuldar", 0x01, 104, 44)
+    assert_equal(alias_err, nil,
+        "Rimuldar alias should resolve outside Swamp Cave north")
+    assert_equal(alias_info.route.id, "swamp_cave_north_entry_staging",
+        "the alias should use the same connected itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_from_swamp_cave_north_waits_in_cave_then_resumes()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_rimuldar",
+        name = "Rimuldar",
+    }
+    assert(routes.start_for_object(target, 0x01, 104, 44))
+
+    local wait_event = routes.observe_position(0x01, 104, 43)
+    assert_equal(wait_event.status, "await_transition",
+        "the re-entry stand should wait for manual cave entry")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 0)
+    assert_equal(cave_handoff.status, "handoff",
+        "north-cave entry should activate the connected Rimuldar leg")
+    assert_equal(routes.active_route_id(),
+        "rimuldar_swamp_cave_north",
+        "the cave crossing should retain the north-origin Rimuldar route")
+    assert_equal(cave_handoff.object_id,
+        "route_rimuldar_swamp_cave_north_01",
+        "the cave handoff should wait for the south exterior landing")
+    assert_equal(cave_handoff.steps, nil,
+        "the interior handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Rimuldar should remain selected inside the cave")
+
+    assert_equal(routes.observe_position(0x15, 0, 29), nil,
+        "the route should not advance at the interior south stair")
+    local south_exit = assert(routes.observe_position(0x01, 104, 49))
+    assert_contains(south_exit.message, "Poison swamp ahead",
+        "the south exit should retain the validated Rimuldar warning")
+    assert_equal(routes.active_route_id(),
+        "rimuldar_swamp_cave_north",
+        "the connected Rimuldar leg should remain active after cave exit")
+    assert_equal(south_exit.object_id,
+        "route_rimuldar_swamp_cave_north_02",
+        "the south exit should advance to the proven westbound route")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 49))
+    assert_equal(segment.waypoint.name, "North Rimuldar west safer route",
+        "the south exit should resume the existing Rimuldar corridor")
+    assert_equal(segment.path_length, 11,
+        "the first resumed segment should preserve the bounded westbound route")
+    assert_equal(segment.steps[1], "left",
+        "the Rimuldar leg should leave the south cave westbound")
+
+    local arrival = assert(routes.observe_position(0x0B, 29, 14))
+    assert_contains(arrival.message, "Arrived at Rimuldar",
+        "the connected itinerary should finish only after entering town")
+    assert_equal(routes.is_active(), false,
+        "Rimuldar arrival should clear the complete itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_swamp_cave_north_variant_does_not_steal_other_origins()
+    local target = {
+        id = "overworld_rimuldar",
+        name = "Rimuldar",
+    }
+
+    routes.reset_for_tests()
+    local south = assert(routes.start_for_object(target, 0x01, 104, 49))
+    assert_equal(south.route.id, "rimuldar",
+        "south-entrance travel should retain the canonical Rimuldar route")
+
+    routes.reset_for_tests()
+    local tantegel = assert(routes.start_for_object(target, 0x01, 43, 43))
+    assert_equal(tantegel.route.id, "kol_staging",
+        "Tantegel travel should retain its established three-leg itinerary")
+
+    routes.reset_for_tests()
+    local temple = assert(routes.start_for_object(target, 0x01, 108, 109))
+    assert_equal(temple.route.id, "rimuldar_magic_temple",
+        "Magic Temple travel should retain its validated return route")
+
+    routes.reset_for_tests()
+end
+
 function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
     routes.reset_for_tests()
     local target = {

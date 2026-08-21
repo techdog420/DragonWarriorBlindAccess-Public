@@ -121,6 +121,26 @@ Updated: 2026-08-21
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-North to Rimuldar is source-complete and live-verified.
+  A Rimuldar selection from World Map `(104,44)` now chooses the origin-specific
+  `rimuldar_swamp_cave_north` itinerary. It first reuses
+  `swamp_cave_north_entry_staging` for the one-step north move to `(104,43)`
+  and the manual south re-entry. Entering map `0x15` activates the Rimuldar leg
+  without injecting interior movement. After the player crosses the cave,
+  World Map `(104,49)` advances guidance to the existing 11-step westbound
+  `North Rimuldar west safer route`, preserving every live-validated waypoint,
+  warning, and town-entry rule through Rimuldar map `0x0B`. Starts at the south
+  cave entrance, Tantegel, and Magic Temple retain their prior route variants.
+  Focused overworld-route tests pass `253/253`; Lua syntax, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. In the loaded acceptance run, frame
+  `5016` handed guidance into Swamp Cave map `0x15` without queuing interior
+  movement, frame `8815` resumed the Rimuldar leg at south exit `(104,49)`, and
+  continuous auto-walk completed every remaining waypoint before entering
+  Rimuldar at frame `17670`. Final probe `RIMULDAR_NORTH_ARRIVAL_20260821` at
+  frame `22680` confirmed map `0x0B` position `(29,14)`, route/path nil, HP
+  `149/149`, and zero runtime blockers. There was no timing retry, blocker,
+  drift, cancellation, runtime-block injection, or script error. The final
+  off-direction cleanup was the expected town map transition from `(103,72)`.
 - Swamp-Cave-North to Swamp-Cave-South is source-complete and live-verified.
   Selecting `Swamp Cave South Entrance` from clear World Map
   `(104,44)` now starts `swamp_cave_north_entry_staging`, walks one safe step
@@ -2533,10 +2553,10 @@ Updated: 2026-08-21
 
 ## Next Work
 
-1. Commit and push the live-verified Swamp-Cave-North to Swamp-Cave-South pilot
-   as one focused revision.
-2. Reuse the validated manual cave-transition pattern for the next southern
-   destination connection, starting with Rimuldar.
+1. Commit and push the live-verified Swamp-Cave-North to Rimuldar connection as
+   one focused revision.
+2. Audit the remaining connected-overworld route matrix and choose the next
+   small origin/destination batch with the most reusable validated geometry.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.
