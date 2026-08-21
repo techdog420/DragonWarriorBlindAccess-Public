@@ -121,6 +121,30 @@ Updated: 2026-08-21
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-North final-progression connections to Rainbow Bridge and Charlock
+  are source-complete and live-verified. Both compose through
+  `swamp_cave_north_entry_staging -> swamp_cave_south_swamp_cave_north`, then
+  hand off at World Map `(104,49)` to their existing live-validated destination
+  routes. New regressions cover both final destinations, the manual map `0x15`
+  crossing without injected interior movement, the south-exit handoff, bounded
+  first segments, and preservation after an `R` guidance refresh. The tests
+  exposed one Charlock seam: a compatibility-only cave selection was accepted,
+  but status recalculation then restaged Charlock back to `swamp_cave_south`.
+  Compatibility-only landmarks now report the active route without
+  recalculating from that landmark. In the Rainbow Bridge run, frame `9083`
+  handed off at south exit `(104,49)`, frame `13304` arrived at `(65,49)`, and
+  final probe `RAINBOW_NORTH_ARRIVAL_20260821` at frame `13860` confirmed
+  route/path nil and zero runtime blockers. In the Charlock run, frame `22331`
+  handed off at the south exit and frame `25020` proved the `R` refresh retained
+  `charlock_castle`. The first west step exhausted two timing retries and
+  stopped once at frame `25854`, but a same-origin route retry crossed it at
+  frame `30382`; the prior Rainbow run also crossed the same edge, so no map
+  blocker was promoted. Frame `34094` entered Charlock map `0x02`, and final
+  probe `CHARLOCK_NORTH_ARRIVAL_20260821` at frame `34620` confirmed `(10,19)`,
+  route/path nil, HP `149/149`, and zero runtime blockers. Neither run had route
+  drift, cancellation, runtime-block injection, or script error. Focused
+  overworld-route tests pass `259/259`; Lua syntax, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass.
 - Swamp-Cave-North to Magic Temple is source-complete and live-verified. A
   Magic Temple selection from clear World Map `(104,44)` now
   chooses the origin-specific `magic_temple_swamp_cave_north` itinerary. It
@@ -2584,12 +2608,10 @@ Updated: 2026-08-21
 
 ## Next Work
 
-1. Commit and push the live-verified Swamp-Cave-North to Magic Temple
-   connection and its route-guidance refresh regression fix as one focused
-   revision.
-2. Next connect Swamp Cave north to Rainbow Bridge, then Charlock. Both can
-   reuse the now-proven manual cave crossing and the existing south-exit final
-   progression routes.
+1. Commit and push the live-verified Swamp-Cave-North final-progression batch
+   and compatibility-only route-guidance fix as one focused revision.
+2. Audit the remaining connected-overworld matrix and select the next small
+   origin/destination group with reusable live-validated geometry.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

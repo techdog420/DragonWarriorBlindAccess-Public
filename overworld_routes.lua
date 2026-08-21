@@ -3635,8 +3635,16 @@ function M.guidance_for_object(obj, map_id, px, py, opts)
            and not route_destinations_match(requested_route, ROUTES[selected_id]) then
             return M.start(selected_id, map_id, px, py, opts)
         end
+
+        -- A compatible landmark is bound to the active itinerary only so a
+        -- Travel refresh cannot replace the player's final destination. Do not
+        -- recalculate from that landmark: an adjacent first waypoint can look
+        -- off-corridor and incorrectly restage the active route back to it.
+        local compatibility_only = M.active_route_matches_object(obj)
+            and not object_matches_route(route, obj)
+            and not object_matches_route(requested_route, obj)
         return M.status(map_id, px, py, {
-            recalculate = true,
+            recalculate = not compatibility_only,
             terrain_offset = opts.terrain_offset,
         })
     end

@@ -3960,6 +3960,132 @@ function tests.magic_temple_swamp_cave_north_variant_does_not_steal_other_origin
     routes.reset_for_tests()
 end
 
+function tests.final_progression_from_swamp_cave_north_reuses_shared_crossing()
+    local cases = {
+        {
+            target = {
+                id = "overworld_rainbow_bridge",
+                name = "Rainbow Bridge unlock point",
+            },
+            final_route_id = "rainbow_bridge",
+            exit_object_id = "route_rainbow_bridge_02",
+            first_waypoint = "Rainbow Bridge east road",
+            first_path_length = 11,
+        },
+        {
+            target = {
+                id = "overworld_charlock_castle",
+                name = "Charlock Castle",
+            },
+            final_route_id = "charlock_castle",
+            exit_object_id = "route_charlock_castle_01",
+            first_waypoint = "Swamp Cave south doorstep",
+            first_path_length = 1,
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, 104, 44)
+
+        assert_equal(err, nil,
+            case.target.name .. " should resolve outside Swamp Cave north")
+        assert_equal(info.route.id, "swamp_cave_north_entry_staging",
+            case.target.name .. " should first prepare safe cave re-entry")
+        assert_equal(info.object_id,
+            "route_swamp_cave_north_entry_staging_01",
+            "the first target should be the north re-entry stand")
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected during re-entry staging")
+
+        local wait_event = assert(routes.observe_position(0x01, 104, 43))
+        assert_equal(wait_event.status, "await_transition",
+            "the re-entry stand should wait for manual cave entry")
+
+        local cave_handoff = assert(routes.observe_position(0x15, 0, 0))
+        assert_equal(cave_handoff.status, "handoff",
+            "north-cave entry should activate the south-exit wait leg")
+        assert_equal(routes.active_route_id(),
+            "swamp_cave_south_swamp_cave_north",
+            "the manual crossing should retain the final progression itinerary")
+        assert_equal(cave_handoff.steps, nil,
+            "the interior handoff must not inject movement")
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected inside the cave")
+
+        assert_equal(routes.observe_position(0x15, 0, 29), nil,
+            "the route should not advance at the interior south stair")
+        local south_exit = assert(routes.observe_position(0x01, 104, 49))
+        assert_equal(south_exit.status, "handoff",
+            "the south exterior should hand off to the final route")
+        assert_equal(routes.active_route_id(), case.final_route_id,
+            "the cave crossing should activate " .. case.target.name)
+        assert_equal(south_exit.object_id, case.exit_object_id,
+            "the final route should select its established first segment")
+
+        local segment = assert(routes.plan_next_segment(0x01, 104, 49))
+        assert_equal(segment.waypoint.name, case.first_waypoint,
+            "the final route should reuse its established first waypoint")
+        assert_equal(segment.path_length, case.first_path_length,
+            "the final route should preserve its bounded first segment")
+        assert_equal(segment.steps[1], "left",
+            "the final route should leave Swamp Cave westbound")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.final_progression_north_itineraries_survive_south_cave_guidance_refresh()
+    local south_cave = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+        x = 104,
+        y = 49,
+    }
+    local cases = {
+        {
+            target = {
+                id = "overworld_rainbow_bridge",
+                name = "Rainbow Bridge unlock point",
+            },
+            final_route_id = "rainbow_bridge",
+        },
+        {
+            target = {
+                id = "overworld_charlock_castle",
+                name = "Charlock Castle",
+            },
+            final_route_id = "charlock_castle",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        assert(routes.start_for_object(case.target, 0x01, 104, 44))
+        routes.observe_position(0x01, 104, 43)
+        routes.observe_position(0x15, 0, 0)
+        routes.observe_position(0x01, 104, 49)
+
+        assert_equal(routes.active_route_matches_object(south_cave), true,
+            "the physical south entrance should remain compatible with " ..
+                case.target.name)
+        local info, err = routes.guidance_for_object(
+            south_cave, 0x01, 104, 49)
+
+        assert_equal(err, nil,
+            "south-entrance guidance should preserve " .. case.target.name)
+        assert_equal(routes.active_route_id(), case.final_route_id,
+            "route guidance must not replace " .. case.target.name)
+        assert_equal(info.route.id, case.final_route_id,
+            "guidance should continue reporting " .. case.target.name)
+        assert_contains(info.message, "Route to " .. case.target.name,
+            "guidance should retain the requested final destination")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
     routes.reset_for_tests()
     local target = {

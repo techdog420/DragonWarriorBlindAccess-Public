@@ -6,6 +6,27 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave-North connections to Rainbow Bridge and Charlock are
+  source-complete and live-verified (`2026-08-21`). Both reuse the one-step north
+  re-entry pause, wait through the manual map `0x15` traversal without injecting
+  movement, then hand off at World Map `(104,49)` to their unchanged final
+  routes. New regressions cover both handoffs, their bounded first westbound
+  segments, and an `R` guidance refresh at the physical south entrance. That
+  refresh exposed a Charlock-only restaging bug: compatibility-only landmarks
+  were accepted, but status recalculation could still select
+  `swamp_cave_south`. Such landmarks now report the active route without
+  recalculating from the incidental selection. Rainbow Bridge handed off at the
+  south exit at frame `9083`, arrived at `(65,49)` at frame `13304`, and ended
+  with route/path nil and zero runtime blockers at frame `13860`. Charlock
+  handed off at frame `22331`; an `R` refresh at frame `25020` retained
+  `charlock_castle`. Its first west step stopped once after two timing retries,
+  then crossed from the same origin on the next activation at frame `30382`.
+  The Rainbow run had already crossed that edge, so this was not promoted as
+  geometry. Frame `34094` entered Charlock map `0x02`, and frame `34620`
+  confirmed `(10,19)`, route/path nil, HP `149/149`, and zero runtime blockers.
+  Neither run produced drift, cancellation, runtime-block injection, or a
+  script error. Focused route tests pass `259/259`; Lua syntax and the full gate
+  pass all 33 host-runnable Lua suites plus all 68 Python tests.
 - Swamp-Cave-North to Magic Temple is source-complete and live-verified
   (`2026-08-21`). From World Map `(104,44)`, selecting Magic Temple
   now reuses the safe one-step north re-entry pause and waits through the manual
