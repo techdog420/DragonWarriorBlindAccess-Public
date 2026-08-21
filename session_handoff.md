@@ -121,6 +121,37 @@ Updated: 2026-08-21
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-North to Magic Temple is source-complete and live-verified. A
+  Magic Temple selection from clear World Map `(104,44)` now
+  chooses the origin-specific `magic_temple_swamp_cave_north` itinerary. It
+  first reuses `swamp_cave_north_entry_staging` for the one-step north move to
+  `(104,43)` and manual south re-entry. Entering map `0x15` activates hidden
+  `rimuldar_swamp_cave_north_staging` without injecting interior movement.
+  After the player emerges at `(104,49)`, that leg follows the fully validated
+  Rimuldar approach only to east doorstep `(103,72)`, bypassing town, then
+  hands off to the unchanged Magic Temple corridor through `(108,109)` and map
+  `0x0E`. Starts at Swamp Cave south, Rimuldar, and Tantegel retain their prior
+  route choices. The first live crossing exposed a route-guidance refresh seam:
+  pressing `R` while the physical south entrance remained selected replaced
+  the final itinerary with `swamp_cave_south`. Both north-origin Rimuldar legs
+  and the canonical south-exit temple staging leg now treat that physical
+  object as compatible, so guidance reports status without changing the final
+  destination. The first loaded run selected the north staging route at frame
+  `6180`; its one-step move recovered from two bounded timing retries and
+  completed at frame `6654`. Frame `8379` handed guidance into Swamp Cave map
+  `0x15` without injecting interior movement, and frame `9719` advanced it at
+  south exit `(104,49)`. Pressing `R` exposed the replacement bug at frame
+  `11761`, after which the compatibility fix was loaded. On the clean reload,
+  frame `3120` proved that the same guidance refresh reported route status
+  without replacement, frame `7189` bypassed Rimuldar at east doorstep
+  `(103,72)`, and frame `10053` reached the exterior Magic Temple stairs at
+  `(108,109)`. Taking STAIRS entered map `0x0E` at frame `13744`; final probe
+  `MAGIC_TEMPLE_ARRIVAL_20260821` at frame `18180` confirmed `(0,4)`,
+  route/path nil, HP `149/149`, and zero runtime blockers. The clean post-reload
+  route had no timing retry, blocker, drift, cancellation, runtime-block
+  injection, unintended town entry, or script error. Focused overworld-route
+  tests pass `257/257`; Lua syntax, all 33 host-runnable Lua suites, and all 68
+  Python tests pass.
 - Swamp-Cave-North to Rimuldar is source-complete and live-verified.
   A Rimuldar selection from World Map `(104,44)` now chooses the origin-specific
   `rimuldar_swamp_cave_north` itinerary. It first reuses
@@ -2553,10 +2584,12 @@ Updated: 2026-08-21
 
 ## Next Work
 
-1. Commit and push the live-verified Swamp-Cave-North to Rimuldar connection as
-   one focused revision.
-2. Audit the remaining connected-overworld route matrix and choose the next
-   small origin/destination batch with the most reusable validated geometry.
+1. Commit and push the live-verified Swamp-Cave-North to Magic Temple
+   connection and its route-guidance refresh regression fix as one focused
+   revision.
+2. Next connect Swamp Cave north to Rainbow Bridge, then Charlock. Both can
+   reuse the now-proven manual cave crossing and the existing south-exit final
+   progression routes.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

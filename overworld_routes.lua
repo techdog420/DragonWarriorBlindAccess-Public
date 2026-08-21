@@ -286,6 +286,17 @@ local SWAMP_CAVE_NORTH_TO_SOUTH_STAGING = {
     continue_after_staging = true,
 }
 
+local SWAMP_CAVE_NORTH_MAGIC_TEMPLE_STAGING = {
+    route_id = "rimuldar_swamp_cave_north_staging",
+    -- After the manual cave crossing, follow the proven Rimuldar approach only
+    -- to its east doorstep. The selected temple route then continues south
+    -- without entering town or synthesizing a shortcut across the mountains.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -2263,6 +2274,9 @@ ROUTES.brecconary_swamp_cave_north = {
 ROUTES.rimuldar_staging = {
     id = "rimuldar_staging",
     title = "Rimuldar",
+    compatible_target_object_ids = {
+        "overworld_swamp_cave_south_entrance",
+    },
     destination_maps = {0x0B},
     staging = RIMULDAR_STAGING,
     waypoints = copy_route_prefix(ROUTES.rimuldar, 103, 72),
@@ -2533,10 +2547,43 @@ ROUTES.rimuldar_swamp_cave_north = {
     id = "rimuldar_swamp_cave_north",
     title = "Rimuldar",
     target_object_ids = {"overworld_rimuldar"},
+    compatible_target_object_ids = {
+        "overworld_swamp_cave_south_entrance",
+    },
     destination_maps = {0x0B},
     staging = SWAMP_CAVE_NORTH_TO_SOUTH_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 1}},
     waypoints = copy_route_prefix(ROUTES.rimuldar, 102, 72),
+}
+
+-- Internal hub leg: the north cave exit uses the manual cave-crossing pause,
+-- then follows the live-validated Rimuldar corridor only to the east doorstep.
+-- Direct Rimuldar travel retains its final town-entry step.
+ROUTES.rimuldar_swamp_cave_north_staging = {
+    id = "rimuldar_swamp_cave_north_staging",
+    title = "Rimuldar",
+    -- After the cave transition, Travel refresh can leave the physical south
+    -- entrance selected. Keep that object bound to the active final itinerary
+    -- so pressing route guidance reports status instead of replacing it.
+    compatible_target_object_ids = {
+        "overworld_swamp_cave_south_entrance",
+    },
+    destination_maps = {0x0B},
+    staging = SWAMP_CAVE_NORTH_TO_SOUTH_STAGING,
+    waypoints = copy_route_prefix(ROUTES.rimuldar, 103, 72),
+}
+
+-- Destination-selection variant: Swamp Cave north reaches Magic Temple by
+-- crossing the cave manually, bypassing Rimuldar at its east doorstep, and
+-- reusing the established Rimuldar-to-temple corridor unchanged.
+ROUTES.magic_temple_swamp_cave_north = {
+    id = "magic_temple_swamp_cave_north",
+    title = "Magic Temple",
+    target_object_ids = {"overworld_southern_cave"},
+    destination_maps = {0x0E},
+    staging = SWAMP_CAVE_NORTH_MAGIC_TEMPLE_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 1}},
+    waypoints = copy_route_prefix(ROUTES.magic_temple, 108, 109),
 }
 
 -- Keep lookup deterministic, especially when several routes share a Travel target.
@@ -2558,6 +2605,7 @@ local ROUTE_IDS = {
     "rimuldar",
     "rimuldar_swamp_cave_north",
     "magic_temple",
+    "magic_temple_swamp_cave_north",
     "rimuldar_magic_temple",
     "swamp_cave_south",
     "swamp_cave_south_swamp_cave_north",
@@ -2637,6 +2685,10 @@ local ROUTE_ALTERNATES = {
         "rimuldar",
         "rimuldar_swamp_cave_north",
         "rimuldar_magic_temple",
+    },
+    magic_temple = {
+        "magic_temple",
+        "magic_temple_swamp_cave_north",
     },
     rimuldar_magic_temple = {"rimuldar_magic_temple", "rimuldar"},
     mountain_cave = {

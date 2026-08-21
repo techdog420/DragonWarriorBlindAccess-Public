@@ -1,11 +1,38 @@
 # Playtesting Notes
 
-Updated: 2026-08-20
+Updated: 2026-08-21
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Swamp-Cave-North to Magic Temple is source-complete and live-verified
+  (`2026-08-21`). From World Map `(104,44)`, selecting Magic Temple
+  now reuses the safe one-step north re-entry pause and waits through the manual
+  map `0x15` crossing without injecting interior movement. Emerging at
+  `(104,49)` activates the proven Rimuldar approach only through east doorstep
+  `(103,72)`, bypassing town, then hands off to the unchanged Magic Temple
+  corridor through `(108,109)` and destination map `0x0E`. Selection is limited
+  to one tile around `(104,44)`, so starts at Swamp Cave south, Rimuldar, and
+  Tantegel retain their established route choices. During the first live
+  crossing, pressing `R` at the south exit replaced the itinerary because the
+  physical cave object was selected. The two north-origin Rimuldar legs and the
+  canonical south-exit temple staging leg now bind that object as compatible,
+  preserving Magic Temple guidance even after a reload at `(104,49)`. The first
+  run selected north staging at frame `6180`; its one-step move recovered from
+  two bounded timing retries and completed at frame `6654`. Frame `8379` handed
+  off inside map `0x15` without interior movement, frame `9719` resumed at the
+  south exit, and pressing `R` exposed the replacement bug at frame `11761`.
+  After the compatibility fix and reload, frame `3120` proved the same guidance
+  refresh preserved the route, frame `7189` bypassed Rimuldar at east doorstep
+  `(103,72)`, and frame `10053` reached Magic Temple's exterior stairs at
+  `(108,109)`. STAIRS entered map `0x0E` at frame `13744`; final probe
+  `MAGIC_TEMPLE_ARRIVAL_20260821` at frame `18180` confirmed `(0,4)`,
+  route/path nil, HP `149/149`, and zero runtime blockers. The clean post-reload
+  trip had no retry, blocker, drift, cancellation, runtime-block injection,
+  unintended town entry, or script error. Focused route tests pass `257/257`;
+  Lua syntax and the full gate pass all 33 host-runnable Lua suites plus all 68
+  Python tests.
 - Swamp-Cave-North to Rimuldar is source-complete and live-verified
   (`2026-08-21`). From World Map `(104,44)`, a Rimuldar selection now reuses the
   proven one-step north re-entry staging and waits through the manual map
