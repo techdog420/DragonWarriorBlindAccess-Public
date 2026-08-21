@@ -6,6 +6,35 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Teleport transition safety guard is live-accepted (`2026-08-20`). A selected
+  World Map teleport from `(29,57)` to
+  Swamp Cave north `(104,44)` preceded a ROM lock with sustained audio while
+  Lua continued polling. `$004E` remained aligned and finite, excluding the
+  historical OAM lock. The first draft incorrectly treated `$003C/$003D ==
+  0x7F/0x90` as an unsafe sentinel; a fresh stationary baseline at `(108,109)`
+  and older successful teleport evidence proved those nonzero values can be
+  normal. The corrected guard observes map position, scroll, player sprite,
+  and movement-adjacent RAM each frame and requires the whole signature to be
+  unchanged for six frames before any coordinate write. A refusal speaks the
+  wait-and-retry message and logs stable/required frame counts plus the raw
+  bytes. After a fresh system/emulator restart, a forced debug teleport from
+  clear World Map `(108,109)` to the known-safe Swamp Cave north staging tile
+  `(104,44)` passed the stability guard at frame `16320`. All twelve legacy
+  post-teleport guard frames returned, the guard ended normally at frame
+  `16331`, and a fresh probe at frame `16920` confirmed `(104,44)`, neutral
+  input, finite/aligned `$004E`, no runtime blockers, and continued command
+  polling. A later 12-frame raw UP hold changed the overworld movement shadow
+  but did not complete a tile; do not treat that short hold as map evidence.
+  Focused tests pass `4/4`; all 33 host-runnable Lua suites and all 68 Python
+  tests pass. The user then confirmed normal movement and audio and exercised
+  player-side selected teleport successfully. The same loaded run recorded
+  successful selected teleports to Hauksness `(25,89)`, Mountain Cave
+  `(29,57)`, and Charlock `(48,48)` twice, with normal trigger release and
+  completed post-teleport guard frames. After the final Charlock teleport,
+  manual movement completed `(48,48)->(48,49)`, castle entry and exit worked,
+  and fresh frame `46080` confirmed World Map `(48,48)`, neutral input, no
+  runtime blockers, finite/aligned `$004E`, and continued command polling.
+  The interval contains no movement-stability refusal, OAM lock, or Lua error.
 - Swamp-Cave-North-to-Mountain-Cave connected route live-verified
   (`2026-08-20`). Selecting Mountain Cave at World Map `(104,44)` started
   `kol_swamp_cave_staging` with the intended one-step north departure. Frame

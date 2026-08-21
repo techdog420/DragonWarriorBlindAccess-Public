@@ -121,6 +121,37 @@ Updated: 2026-08-20
 
 ## Immediate FCEUX Handoff
 
+- Teleport now has a pre-write transition-stability guard on branch
+  `codex/teleport-safety-guard`. The triggering selected World Map teleport
+  from `(29,57)` to Swamp Cave north `(104,44)` preceded a ROM lock with
+  sustained audio while Lua remained responsive. `$004E` was aligned and
+  finite, excluding the older `$B9ED/$B9F8` OAM lock. A clean stationary live
+  baseline at `(108,109)` disproved the first draft's zero-value assumption:
+  `$003C/$003D == 0x7F/0x90` can be normal idle state. The corrected guard
+  samples position, overworld shadows, scroll, player sprite, and
+  movement-adjacent bytes each frame, and requires the entire signature to be
+  unchanged for six frames before `perform_teleport_to` writes coordinates.
+  Refusals speak "Wait for movement to finish, then try again" and log map,
+  position, stable/required frame counts, and the raw adjacent bytes. Focused
+  teleport-state tests pass `4/4`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. The settled path is
+  live-verified after a fresh restart: forced debug teleport from clear World
+  Map `(108,109)` to known-safe Swamp Cave north `(104,44)` succeeded at frame
+  `16320`; all twelve post-teleport guard frames returned and ended normally at
+  frame `16331`; fresh frame `16920` confirmed `(104,44)`, neutral input,
+  finite/aligned `$004E`, no runtime blockers, and continued command polling.
+  A 12-frame raw UP hold later changed the overworld movement shadow but was
+  too short to complete a tile, so it is not map evidence. The user then
+  confirmed normal movement and audio and reported player-side selected
+  teleport performing well. The loaded log recorded successful selected
+  teleports to Hauksness `(25,89)`, Mountain Cave `(29,57)`, and Charlock
+  `(48,48)` twice. The last trigger released after eight frames, all twelve
+  post-teleport guard frames returned, manual movement completed
+  `(48,48)->(48,49)`, and Charlock entry/exit remained functional. Fresh frame
+  `46080` confirmed World Map `(48,48)`, neutral input, no runtime blockers,
+  finite/aligned `$004E`, and continued polling. No movement-stability refusal,
+  OAM lock, or Lua error occurred in the acceptance interval. The patch is
+  ready for a focused commit and merge back into the routing branch.
 - Swamp-Cave-North connections to Northern Cave, Hauksness, and Mountain Cave
   are implemented, static-tested, and live-verified. All three
   selections from World Map `(104,44)` now begin on

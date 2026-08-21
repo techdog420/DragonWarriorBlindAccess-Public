@@ -358,7 +358,11 @@ EDGE PROBE COMMANDS
 TELEPORT (DEBUG)
 ----------------
 Writes new player coordinates directly to RAM. Same-map only. Refused during
-menus, dialogue, battle, sweeps, active auto-walk, surveys, and edge probes.
+menus, dialogue, battle, sweeps, active auto-walk, surveys, edge probes, and
+until position/scroll/sprite/movement-adjacent RAM has remained unchanged for
+six frames. A transition refusal speaks "Wait for movement to finish" and logs
+`TELEPORT_REFUSED_MOVEMENT_UNSETTLED` with the stable/required frame counts and
+current movement-adjacent bytes; wait briefly or step once, then retry.
 
   teleport_to:X,Y          Exact debug teleport; refused if target not walkable
   teleport_to:X,Y,near     Teleport to target, or to the first walkable cardinal/

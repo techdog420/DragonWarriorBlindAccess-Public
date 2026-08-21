@@ -4,6 +4,10 @@
 local addr = require "addresses"
 
 local M = {}
+local movement_observation = {
+    signature = nil,
+    stable_frames = 0,
+}
 
 local function read_byte(address)
     if not address or not memory or not memory.readbyte then
@@ -43,6 +47,64 @@ local function translate_byte(address, tile_delta)
         before = before,
         after = after,
     }
+end
+
+local function movement_signature()
+    local addresses = {
+        addr.MAP_ID,
+        addr.PLAYER_X,
+        addr.PLAYER_Y,
+        addr.MOVEMENT_STATE,
+        addr.MOVEMENT_SUBPIXEL,
+        addr.OVERWORLD_X,
+        addr.OVERWORLD_Y,
+        addr.SCROLL_X,
+        addr.SCROLL_Y,
+        addr.PLAYER_SPRITE_X,
+        addr.PLAYER_SPRITE_Y,
+    }
+    local values = {}
+    for _, address in ipairs(addresses) do
+        local value = read_byte(address)
+        if value == nil then
+            return nil
+        end
+        values[#values + 1] = string.format("%02X", value)
+    end
+    return table.concat(values, ":")
+end
+
+-- Observe field-position, scroll, sprite, and movement-adjacent RAM once per
+-- frame. The values themselves are not safe-state sentinels: live idle World
+-- Map play commonly reports 0x7F/0x90 at $003C/$003D. Safety comes from the
+-- whole transition signature remaining unchanged for several frames.
+function M.observe_movement_state()
+    local signature = movement_signature()
+    if signature == nil then
+        movement_observation.signature = nil
+        movement_observation.stable_frames = 0
+        return 0, nil
+    end
+    if signature == movement_observation.signature then
+        movement_observation.stable_frames = movement_observation.stable_frames + 1
+    else
+        movement_observation.signature = signature
+        movement_observation.stable_frames = 1
+    end
+    return movement_observation.stable_frames, signature
+end
+
+function M.is_movement_settled(required_frames)
+    required_frames = math.max(1, math.floor(tonumber(required_frames) or 6))
+    local movement_state = read_byte(addr.MOVEMENT_STATE)
+    local movement_subpixel = read_byte(addr.MOVEMENT_SUBPIXEL)
+    local settled = movement_observation.signature ~= nil
+        and movement_observation.stable_frames >= required_frames
+    return settled,
+        movement_state,
+        movement_subpixel,
+        movement_observation.stable_frames,
+        required_frames
 end
 
 function M.apply_landing(x, y, opts)

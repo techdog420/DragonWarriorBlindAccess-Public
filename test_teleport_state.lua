@@ -22,8 +22,11 @@ local function make_env(initial)
     package.loaded["addresses"] = nil
     package.preload["addresses"] = function()
         return {
+            MAP_ID = 0x0045,
             PLAYER_X = 0x003A,
             PLAYER_Y = 0x003B,
+            MOVEMENT_STATE = 0x003C,
+            MOVEMENT_SUBPIXEL = 0x003D,
             OVERWORLD_Y = 0x003E,
             OVERWORLD_X = 0x0042,
             SCROLL_X = 0x0005,
@@ -45,6 +48,9 @@ local function make_env(initial)
     return {
         bytes = bytes,
         teleport_state = require "teleport_state",
+        set_byte = function(address, value)
+            bytes[address] = value
+        end,
         restore = function()
             package.loaded["teleport_state"] = original_loaded
             package.preload["addresses"] = original_preload_addresses
@@ -55,6 +61,95 @@ local function make_env(initial)
 end
 
 local tests = {}
+
+function tests.movement_guard_accepts_stable_nonzero_field_state()
+    local env = make_env({
+        [0x0045] = 0x01,
+        [0x003A] = 108,
+        [0x003B] = 109,
+        [0x003C] = 0x7F,
+        [0x003D] = 0x90,
+        [0x003E] = 109,
+        [0x0042] = 108,
+        [0x0005] = 0x00,
+        [0x0007] = 0x00,
+        [0x0090] = 0xC0,
+        [0x0092] = 0xD0,
+    })
+
+    for _ = 1, 5 do
+        env.teleport_state.observe_movement_state()
+    end
+    local settled_before, _, _, stable_before =
+        env.teleport_state.is_movement_settled(6)
+    assert_equal(settled_before, false,
+        "teleport should wait for the full stability window")
+    assert_equal(stable_before, 5,
+        "movement guard should report the observed stable-frame count")
+
+    env.teleport_state.observe_movement_state()
+    local settled, movement_state, movement_subpixel, stable_frames =
+        env.teleport_state.is_movement_settled(6)
+
+    assert_equal(settled, true,
+        "teleport should accept a stable field state even when movement-adjacent bytes are nonzero")
+    assert_equal(movement_state, 0x7F,
+        "movement guard should report the movement-state byte")
+    assert_equal(movement_subpixel, 0x90,
+        "movement guard should report the subpixel byte")
+    assert_equal(stable_frames, 6,
+        "movement guard should retain the full stability count")
+
+    env.restore()
+end
+
+function tests.movement_guard_restarts_window_when_transition_state_changes()
+    local env = make_env({
+        [0x0045] = 0x01,
+        [0x003A] = 108,
+        [0x003B] = 109,
+        [0x003C] = 0x7F,
+        [0x003D] = 0x90,
+        [0x003E] = 109,
+        [0x0042] = 108,
+        [0x0005] = 0x00,
+        [0x0007] = 0x00,
+        [0x0090] = 0xC0,
+        [0x0092] = 0xD0,
+    })
+
+    for _ = 1, 6 do
+        env.teleport_state.observe_movement_state()
+    end
+    assert_equal(env.teleport_state.is_movement_settled(6), true,
+        "baseline should become teleport-safe after six stable frames")
+
+    env.set_byte(0x0005, 0x10)
+    env.teleport_state.observe_movement_state()
+    local settled_after_scroll, _, _, stable_after_scroll =
+        env.teleport_state.is_movement_settled(6)
+    assert_equal(settled_after_scroll, false,
+        "a changed scroll byte should mark the movement transition unsettled")
+    assert_equal(stable_after_scroll, 1,
+        "a changed transition signature should restart the stability window")
+
+    for _ = 1, 5 do
+        env.teleport_state.observe_movement_state()
+    end
+    assert_equal(env.teleport_state.is_movement_settled(6), true,
+        "unchanged state should become safe again after the complete window")
+
+    env.set_byte(0x003A, 109)
+    env.teleport_state.observe_movement_state()
+    local settled_after_tile, _, _, stable_after_tile =
+        env.teleport_state.is_movement_settled(6)
+    assert_equal(settled_after_tile, false,
+        "a changed player tile should restart the stability window")
+    assert_equal(stable_after_tile, 1,
+        "tile movement should leave only one stable observation")
+
+    env.restore()
+end
 
 function tests.apply_landing_translates_indoor_screen_state_by_tile_delta()
     local env = make_env({

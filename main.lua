@@ -5840,6 +5840,28 @@ DW_QOL_STATE.perform_teleport_to = function(tx, ty, flag, opts)
         return false, reason
     end
 
+    local movement_settled, movement_state, movement_subpixel,
+        movement_stable_frames, movement_required_frames =
+        teleport_state.is_movement_settled(6)
+    if not movement_settled then
+        debug_tools.error(string.format(
+            "TELEPORT_REFUSED_MOVEMENT_UNSETTLED map=0x%02X player=(%d,%d) stable_frames=%d required_frames=%d move=%s sub=%s",
+            snapshot.map_id or -1,
+            snapshot.player_x or -1,
+            snapshot.player_y or -1,
+            movement_stable_frames or 0,
+            movement_required_frames or 6,
+            movement_state ~= nil
+                and string.format("0x%02X", movement_state) or "unavailable",
+            movement_subpixel ~= nil
+                and string.format("0x%02X", movement_subpixel) or "unavailable"))
+        if opts.speak ~= false then
+            tolk.output_interrupt(
+                "Teleport refused. Wait for movement to finish, then try again")
+        end
+        return false, "movement unsettled"
+    end
+
     local map_id = snapshot.map_id
     local width, height = map_reader.get_map_dimensions(map_id)
     local function in_bounds(x, y)
@@ -7128,6 +7150,7 @@ while true do
     -- Read all tracked RAM values into the snapshot table.
     -- This MUST happen before any module reads from the snapshot this frame.
     checked_scan("snapshot.update", snapshot.update)
+    checked_scan("teleport_state.observe_movement_state", teleport_state.observe_movement_state)
 
     -- Get current game state before handling hotkeys so context-sensitive
     -- actions can suppress field-only handlers during battle.
