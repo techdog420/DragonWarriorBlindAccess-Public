@@ -35,6 +35,31 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   and fresh frame `46080` confirmed World Map `(48,48)`, neutral input, no
   runtime blockers, finite/aligned `$004E`, and continued command polling.
   The interval contains no movement-stability refusal, OAM lock, or Lua error.
+- Swamp-Cave-North connections to Cantlin and the Eastern Great Swamp Search
+  Area are live-verified (`2026-08-20`). Both
+  selections from World Map `(104,44)` now start with the proven one-step
+  north departure on `kol_swamp_cave_staging`. Cantlin then composes
+  `hauksness_swamp_cave_north_staging -> cantlin_swamp_cave_north`, handing
+  off at Kol west doorstep `(103,10)` and Hauksness west doorstep `(24,89)`
+  without entering either landmark. Great Swamp adds
+  `cantlin_swamp_cave_north_staging -> great_swamp_swamp_cave_north`, handing
+  off at Cantlin northwest turn `(68,91)` instead of entering town. The final
+  legs reuse the existing live-validated Hauksness-to-Cantlin and
+  Cantlin-to-Great-Swamp geometry. Selection is limited to four tiles around
+  `(104,44)`; Kol `(104,10)`, Tantegel `(43,43)`, and Swamp Cave south
+  `(104,49)` retain their prior choices. Cantlin handed off outside Kol at
+  frame `27043`, outside Hauksness at frame `41715`, and entered map `0x0A`
+  at frame `47283`. A timing-contaminated first departure recovered after a
+  clean same-origin UP probe; the resumed route interval had no retry, blocker,
+  drift, cancellation, runtime-block injection, or unintended map entry.
+  Great Swamp handed off outside Kol at frame `63556`, outside Hauksness at
+  frame `78228`, and northwest of Cantlin at frame `83236`, then arrived at
+  `(89,112)` at frame `87028` without entering any intermediate map. Its full
+  interval had no retry, blocker, drift, cancellation, runtime-block injection,
+  map change, or Lua error. Final frame `88080` confirmed route/path nil, zero
+  runtime or NPC blockers, neutral input, and finite/aligned `$004E`. Focused
+  overworld-route tests pass `247/247`; Lua syntax and the full gate pass all
+  33 host-runnable Lua suites plus all 68 Python tests.
 - Swamp-Cave-North-to-Mountain-Cave connected route live-verified
   (`2026-08-20`). Selecting Mountain Cave at World Map `(104,44)` started
   `kol_swamp_cave_staging` with the intended one-step north departure. Frame

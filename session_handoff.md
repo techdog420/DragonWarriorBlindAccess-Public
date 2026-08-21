@@ -121,8 +121,9 @@ Updated: 2026-08-20
 
 ## Immediate FCEUX Handoff
 
-- Teleport now has a pre-write transition-stability guard on branch
-  `codex/teleport-safety-guard`. The triggering selected World Map teleport
+- Teleport now has a pre-write transition-stability guard, committed as
+  `9b946df` and merged into the active routing branch. The triggering selected
+  World Map teleport
   from `(29,57)` to Swamp Cave north `(104,44)` preceded a ROM lock with
   sustained audio while Lua remained responsive. `$004E` was aligned and
   finite, excluding the older `$B9ED/$B9F8` OAM lock. A clean stationary live
@@ -150,8 +151,32 @@ Updated: 2026-08-20
   `(48,48)->(48,49)`, and Charlock entry/exit remained functional. Fresh frame
   `46080` confirmed World Map `(48,48)`, neutral input, no runtime blockers,
   finite/aligned `$004E`, and continued polling. No movement-stability refusal,
-  OAM lock, or Lua error occurred in the acceptance interval. The patch is
-  ready for a focused commit and merge back into the routing branch.
+  OAM lock, or Lua error occurred in the acceptance interval.
+- Swamp-Cave-North connections to Cantlin and the Eastern Great Swamp Search
+  Area are implemented, static-tested, and live-verified. Both
+  selections from World Map `(104,44)` begin on `kol_swamp_cave_staging` with
+  the proven one-step north departure. Cantlin then uses the non-entry
+  `hauksness_swamp_cave_north_staging` leg through Kol west doorstep
+  `(103,10)` and Hauksness west doorstep `(24,89)`, before activating
+  `cantlin_swamp_cave_north`. Great Swamp follows the same exterior route,
+  adds `cantlin_swamp_cave_north_staging` through Cantlin northwest turn
+  `(68,91)`, then activates `great_swamp_swamp_cave_north`. These variants
+  reuse established route geometry and are selected only within four tiles of
+  `(104,44)`; probes confirm Kol `(104,10)`, Tantegel `(43,43)`, and Swamp Cave
+  south `(104,49)` retain their prior route choices. Cantlin handed off at Kol
+  frame `27043`, Hauksness frame `41715`, and entered map `0x0A` at frame
+  `47283`. Its first north departure was timing-contaminated after repositioning,
+  but a clean same-origin UP probe succeeded and the resumed route interval had
+  no retry, blocker, drift, cancellation, runtime-block injection, or
+  unintended map entry. Great Swamp handed off outside Kol at frame `63556`,
+  Hauksness at frame `78228`, and Cantlin at frame `83236`, then arrived at the
+  safe search pin `(89,112)` at frame `87028` without any map change. Its full
+  interval had no retry, blocker, drift, cancellation, runtime-block injection,
+  or Lua error. Final audit at frame `88080` confirmed route/path nil, zero NPC
+  or runtime blockers, neutral input, and finite/aligned `$004E`. Focused
+  overworld-route tests pass `247/247`; Lua syntax, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. This focused two-connection batch is
+  complete and ready to commit.
 - Swamp-Cave-North connections to Northern Cave, Hauksness, and Mountain Cave
   are implemented, static-tested, and live-verified. All three
   selections from World Map `(104,44)` now begin on
@@ -2486,15 +2511,11 @@ Updated: 2026-08-20
 
 ## Next Work
 
-1. Expand the verified itinerary behavior to one more existing staged route.
-   The smallest next slice is `Tantegel -> Kol -> Swamp Cave`, reusing the same
-   Kol handoff while leaving all other staged destinations disabled.
-2. Live-test that slice with the same acceptance contract: preserve the final
-   Travel target, name current and final legs, do not move automatically at
-   Kol, and make bare `U` follow the active second leg despite object refresh.
-3. Keep off-network recovery separate until a second connected route proves
-   the handoff mechanism generalizes cleanly.
-4. Circle back in a separate task to polish first-generation routes that enter
-   intermediate towns; do not mix that audit into connected-route expansion.
-5. For live FCEUX work, keep battle/control-lock evidence separate from map
-   geometry.
+1. Commit and push the completed Swamp-Cave-North connections to Cantlin and
+   the Eastern Great Swamp Search Area as one focused routing revision.
+2. Audit the remaining origin/destination matrix and select the next smallest
+   set of missing overworld connections that can reuse proven exterior
+   staging routes.
+3. Keep combat, control-lock, drift, and timing-retry evidence separate from
+   map geometry. Do not promote a blocker unless a same-origin probe confirms
+   it.

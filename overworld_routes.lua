@@ -242,6 +242,41 @@ local SWAMP_CAVE_NORTH_MOUNTAIN_STAGING = {
     continue_after_staging = true,
 }
 
+local SWAMP_CAVE_NORTH_HAUKSNESS_HUB_STAGING = {
+    route_id = "kol_swamp_cave_staging",
+    continuation_route_id = "hauksness_swamp_cave_north_staging",
+    -- Reach Kol on the proven cave return before joining the established
+    -- western route. The continuation stops outside the Hauksness ruins.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local SWAMP_CAVE_NORTH_CANTLIN_STAGING = {
+    route_id = "hauksness_swamp_cave_north_staging",
+    -- The longest validated segment on the Hauksness-to-Cantlin route is
+    -- fourteen tiles. Starts farther away must use the connected cave route.
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
+local SWAMP_CAVE_NORTH_CANTLIN_BYPASS_STAGING = {
+    route_id = "hauksness_swamp_cave_north_staging",
+    continuation_route_id = "cantlin_swamp_cave_north_staging",
+    -- Great Swamp travel uses the same Hauksness route, then stops at
+    -- Cantlin's northwest turn instead of entering town.
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
+local SWAMP_CAVE_NORTH_GREAT_SWAMP_STAGING = {
+    route_id = "cantlin_swamp_cave_north_staging",
+    max_start_distance = 15,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -2007,10 +2042,15 @@ local function copy_route_prefix(route, stop_x, stop_y)
         tostring(stop_y)))
 end
 
-local function copy_route_with_kol_bypass(route)
-    local result = {}
-    for _, point in ipairs(route and route.waypoints or {}) do
-        result[#result + 1] = copy_waypoint(point)
+local function copy_route_with_kol_bypass(route, stop_x, stop_y)
+    local result
+    if stop_x ~= nil and stop_y ~= nil then
+        result = copy_route_prefix(route, stop_x, stop_y)
+    else
+        result = {}
+        for _, point in ipairs(route and route.waypoints or {}) do
+            result[#result + 1] = copy_waypoint(point)
+        end
     end
     local first = result[1]
     if not first or first.x ~= 104 or first.y ~= 10 then
@@ -2388,6 +2428,53 @@ ROUTES.mountain_cave_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 
+-- Internal hub leg: connected southern travel follows the existing Kol-to-
+-- Hauksness corridor, but stops at the west doorstep instead of entering the
+-- ruins. The copied route also keeps Kol's west-doorstep bypass.
+ROUTES.hauksness_swamp_cave_north_staging = {
+    id = "hauksness_swamp_cave_north_staging",
+    title = "Hauksness",
+    destination_maps = {0x03},
+    staging = SWAMP_CAVE_NORTH_HAUKSNESS_HUB_STAGING,
+    waypoints = copy_route_with_kol_bypass(ROUTES.hauksness, 24, 89),
+}
+
+-- Destination-selection variant: Swamp Cave north reaches Cantlin through
+-- the proven Kol and Hauksness corridors without entering either landmark.
+ROUTES.cantlin_swamp_cave_north = {
+    id = "cantlin_swamp_cave_north",
+    title = "Cantlin",
+    target_object_ids = {"overworld_cantlin"},
+    destination_maps = {0x0A},
+    staging = SWAMP_CAVE_NORTH_CANTLIN_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
+}
+
+-- Internal hub leg: Great Swamp travel shares the Cantlin route only to its
+-- northwest turn, preserving the existing town bypass before the final leg.
+ROUTES.cantlin_swamp_cave_north_staging = {
+    id = "cantlin_swamp_cave_north_staging",
+    title = "Cantlin northwest turn",
+    destination_maps = {0x0A},
+    staging = SWAMP_CAVE_NORTH_CANTLIN_BYPASS_STAGING,
+    waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 68, 91),
+}
+
+-- Destination-selection variant: Swamp Cave north reaches the eastern Great
+-- Swamp search pin through the same exterior Kol, Hauksness, and Cantlin
+-- handoffs, then reuses the live-validated Cantlin-to-swamp route.
+ROUTES.great_swamp_swamp_cave_north = {
+    id = "great_swamp_swamp_cave_north",
+    title = "Eastern Great Swamp Search Area",
+    target_object_ids = {
+        "overworld_eastern_great_swamp_search_area",
+    },
+    staging = SWAMP_CAVE_NORTH_GREAT_SWAMP_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
+}
+
 -- Keep lookup deterministic, especially when several routes share a Travel target.
 local ROUTE_IDS = {
     "brecconary",
@@ -2420,7 +2507,9 @@ local ROUTE_IDS = {
     "hauksness_swamp_cave_north",
     "hauksness_cantlin",
     "cantlin_hauksness",
+    "cantlin_swamp_cave_north",
     "great_swamp_cantlin",
+    "great_swamp_swamp_cave_north",
     "cantlin_great_swamp",
     "erdrick",
     "erdrick_kol",
@@ -2489,7 +2578,15 @@ local ROUTE_ALTERNATES = {
         "hauksness_swamp_cave_north",
     },
     hauksness_cantlin = {"hauksness_cantlin", "hauksness"},
-    cantlin_hauksness = {"cantlin_hauksness", "cantlin_great_swamp"},
+    cantlin_hauksness = {
+        "cantlin_hauksness",
+        "cantlin_great_swamp",
+        "cantlin_swamp_cave_north",
+    },
+    great_swamp_cantlin = {
+        "great_swamp_cantlin",
+        "great_swamp_swamp_cave_north",
+    },
     hauksness_return_staging = {
         "hauksness_return_staging",
         "mountain_cave_return",
