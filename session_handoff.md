@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-20
+Updated: 2026-08-21
 
 ## Release Installation Handoff
 
@@ -121,6 +121,28 @@ Updated: 2026-08-20
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-North to Swamp-Cave-South is source-complete and live-verified.
+  Selecting `Swamp Cave South Entrance` from clear World Map
+  `(104,44)` now starts `swamp_cave_north_entry_staging`, walks one safe step
+  north to the re-entry stand `(104,43)`, and stops with `Step south to
+  re-enter Swamp Cave, then cross to the south exit.` The south step and cave
+  crossing are intentionally manual because `(104,44)` is an automatic-entry
+  tile that must be left and re-entered. Entering map `0x15` hands guidance to
+  `swamp_cave_south_swamp_cave_north`; it injects no interior movement, remains
+  active through the crossing, and announces arrival only after the hero
+  emerges on World Map `(104,49)`. The origin-specific variant is limited to
+  one tile around `(104,44)`; starts at `(104,49)` and Rimuldar `(102,72)` keep
+  the canonical `swamp_cave_south` route. Focused route tests pass `250/250`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. In the loaded pilot, frame `6300` selected the intended
+  staging leg, frame `6970` paused at `(104,43)`, and the player's manual south
+  step entered map `0x15` at frame `9472` with the intended handoff. The route
+  remained active without queued interior movement while the player navigated
+  to `(0,29)`, then frame `15791` recorded World Map arrival at `(104,49)` and
+  cleared guidance. Final probe `SWAMP_NS_ARRIVAL_20260821` at frame `17820`
+  confirmed route/path nil, HP `149/149`, and zero runtime or NPC blockers. The
+  initial north step needed two recoverable timing retries; there was no route
+  blocker, drift, cancellation, runtime-block injection, or script error.
 - Teleport now has a pre-write transition-stability guard, committed as
   `9b946df` and merged into the active routing branch. The triggering selected
   World Map teleport
@@ -2511,11 +2533,10 @@ Updated: 2026-08-20
 
 ## Next Work
 
-1. Commit and push the completed Swamp-Cave-North connections to Cantlin and
-   the Eastern Great Swamp Search Area as one focused routing revision.
-2. Audit the remaining origin/destination matrix and select the next smallest
-   set of missing overworld connections that can reuse proven exterior
-   staging routes.
+1. Commit and push the live-verified Swamp-Cave-North to Swamp-Cave-South pilot
+   as one focused revision.
+2. Reuse the validated manual cave-transition pattern for the next southern
+   destination connection, starting with Rimuldar.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

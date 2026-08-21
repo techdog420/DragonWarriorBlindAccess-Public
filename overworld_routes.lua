@@ -277,6 +277,15 @@ local SWAMP_CAVE_NORTH_GREAT_SWAMP_STAGING = {
     continue_after_staging = true,
 }
 
+local SWAMP_CAVE_NORTH_TO_SOUTH_STAGING = {
+    route_id = "swamp_cave_north_entry_staging",
+    -- The two cave entrances are separated by impassable overworld terrain.
+    -- A north-exit start must re-enter the cave instead of synthesizing the
+    -- apparent five-tile south shortcut to the other entrance.
+    max_start_distance = 1,
+    continue_after_staging = true,
+}
+
 local ROUTES = {
     brecconary = {
         id = "brecconary",
@@ -2475,6 +2484,48 @@ ROUTES.great_swamp_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
+-- Internal cave-entry leg: when the hero is already standing on the automatic
+-- north entrance tile, first step to the safe doorstep. The player then steps
+-- south to retrigger entry and crosses the cave manually.
+ROUTES.swamp_cave_north_entry_staging = {
+    id = "swamp_cave_north_entry_staging",
+    title = "Swamp Cave north re-entry stand",
+    destination_maps = {0x15},
+    staged_handoff_requires_destination_map = true,
+    staged_transition_message =
+        "Step south to re-enter Swamp Cave, then cross to the south exit.",
+    waypoints = {
+        {
+            x = 104,
+            y = 43,
+            name = "Swamp Cave north re-entry stand",
+            radius = 0,
+            final = true,
+        },
+    },
+}
+
+-- Destination-selection variant: entering from the north pauses guidance
+-- inside Swamp Cave, then completes only after the player emerges on the
+-- southern World Map entrance. It deliberately has no destination map because
+-- map 0x15 is the traversal, not the requested exterior arrival.
+ROUTES.swamp_cave_south_swamp_cave_north = {
+    id = "swamp_cave_south_swamp_cave_north",
+    title = "Swamp Cave South Entrance",
+    target_object_ids = {"overworld_swamp_cave_south_entrance"},
+    staging = SWAMP_CAVE_NORTH_TO_SOUTH_STAGING,
+    selection_anchors = {{x = 104, y = 44, max_distance = 1}},
+    waypoints = {
+        {
+            x = 104,
+            y = 49,
+            name = "Swamp Cave South Entrance",
+            radius = 0,
+            final = true,
+        },
+    },
+}
+
 -- Keep lookup deterministic, especially when several routes share a Travel target.
 local ROUTE_IDS = {
     "brecconary",
@@ -2495,6 +2546,7 @@ local ROUTE_IDS = {
     "magic_temple",
     "rimuldar_magic_temple",
     "swamp_cave_south",
+    "swamp_cave_south_swamp_cave_north",
     "swamp_cave_south_recovery",
     "rainbow_bridge",
     "rainbow_bridge_return",
@@ -2552,6 +2604,7 @@ local ROUTE_ALTERNATES = {
     swamp_cave_bridge = {"swamp_cave_bridge", "swamp_cave"},
     swamp_cave_south = {
         "swamp_cave_south",
+        "swamp_cave_south_swamp_cave_north",
         "swamp_cave_south_recovery",
         "rainbow_bridge_return",
         "charlock_return",

@@ -3540,6 +3540,120 @@ function tests.swamp_cave_north_southern_variants_do_not_steal_other_origins()
     routes.reset_for_tests()
 end
 
+function tests.swamp_cave_south_from_north_starts_with_safe_reentry_stand()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 44)
+
+    assert_equal(err, nil,
+        "south entrance Travel should resolve outside Swamp Cave north")
+    assert_equal(info.route.id, "swamp_cave_north_entry_staging",
+        "north-exit travel should first prepare a safe cave re-entry")
+    assert_equal(info.object_id,
+        "route_swamp_cave_north_entry_staging_01",
+        "the first target should be the north re-entry stand")
+    assert_contains(info.message,
+        "Swamp Cave South Entrance route starts from Swamp Cave north re-entry stand",
+        "staging speech should retain the selected south entrance")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the south entrance should remain selected during re-entry staging")
+
+    local segment = assert(routes.plan_next_segment(0x01, 104, 44))
+    assert_equal(segment.waypoint.name, "Swamp Cave north re-entry stand",
+        "the route should step off the automatic entrance tile first")
+    assert_equal(segment.path_length, 1,
+        "the safe re-entry stand should be one tile away")
+    assert_equal(segment.steps[1], "up",
+        "the north entrance should be retriggered from its north doorstep")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "swamp cave south", 0x01, 104, 44)
+    assert_equal(alias_err, nil,
+        "south entrance alias should resolve outside Swamp Cave north")
+    assert_equal(alias_info.route.id, "swamp_cave_north_entry_staging",
+        "the alias should use the same safe re-entry itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_north_to_south_waits_for_manual_cave_crossing()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+    }
+    assert(routes.start_for_object(target, 0x01, 104, 44))
+
+    local wait_event = routes.observe_position(0x01, 104, 43)
+    assert_equal(wait_event.status, "await_transition",
+        "the north re-entry stand should wait for automatic cave entry")
+    assert_contains(wait_event.message, "Step south",
+        "transition guidance should name the required re-entry step")
+    assert_contains(wait_event.message, "cross to the south exit",
+        "transition guidance should explain the manual cave traversal")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_north_entry_staging",
+        "the staging leg should remain active outside the cave")
+
+    local wait_segment = assert(routes.plan_next_segment(0x01, 104, 43, {
+        advance_if_at_waypoint = true,
+    }))
+    assert_equal(wait_segment.status, "already_at_waypoint",
+        "autowalk should wait safely at the re-entry stand")
+    assert_equal(#wait_segment.steps, 0,
+        "autowalk must not inject the manual cave-entry step")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 0)
+    assert_equal(cave_handoff.status, "handoff",
+        "north-cave entry should activate the south-exit wait leg")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_south_swamp_cave_north",
+        "cave traversal should retain the south entrance destination")
+    assert_equal(cave_handoff.object_id,
+        "route_swamp_cave_south_swamp_cave_north_01",
+        "the cave handoff should wait for the south exterior landing")
+    assert_equal(cave_handoff.steps, nil,
+        "the interior handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the selected south entrance should remain bound inside the cave")
+
+    assert_equal(routes.observe_position(0x15, 0, 29), nil,
+        "the route should not finish merely by reaching the interior south stair")
+    local arrival = routes.observe_position(0x01, 104, 49)
+    assert_equal(arrival ~= nil, true,
+        "the route should report only after emerging at the south entrance")
+    assert_contains(arrival.message, "Arrived at Swamp Cave South Entrance",
+        "arrival speech should name the selected exterior destination")
+    assert_equal(routes.is_active(), false,
+        "south-exit arrival should clear the itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_north_to_south_variant_does_not_steal_southern_starts()
+    local target = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+    }
+
+    routes.reset_for_tests()
+    local south = assert(routes.start_for_object(target, 0x01, 104, 49))
+    assert_equal(south.route.id, "swamp_cave_south",
+        "standing at the south entrance should retain the canonical route")
+
+    routes.reset_for_tests()
+    local rimuldar = assert(routes.start_for_object(target, 0x01, 102, 72))
+    assert_equal(rimuldar.route.id, "swamp_cave_south",
+        "Rimuldar-side travel should retain its validated return route")
+
+    routes.reset_for_tests()
+end
+
 function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
     routes.reset_for_tests()
     local target = {

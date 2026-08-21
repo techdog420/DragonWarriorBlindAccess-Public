@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave-North to Swamp-Cave-South pilot is live-verified (`2026-08-21`).
+  From clear World Map `(104,44)`, selecting
+  `Swamp Cave South Entrance` now walks one safe `UP` step to `(104,43)` and
+  pauses with instructions to step south, re-enter the automatic cave trigger,
+  and cross manually. Entry into map `0x15` retains the selected destination
+  without injecting cave movement; guidance completes only after the hero
+  emerges on World Map `(104,49)`. The variant is origin-specific, so starts at
+  `(104,49)` and Rimuldar `(102,72)` retain the canonical southern route.
+  Focused route tests pass `250/250`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. Loaded validation
+  selected the new staging leg at frame `6300`, paused at `(104,43)` at frame
+  `6970`, and handed off on cave entry at frame `9472`. The player crossed the
+  cave normally; frame `15791` recorded arrival on World Map `(104,49)`, and
+  final probe `SWAMP_NS_ARRIVAL_20260821` at frame `17820` confirmed route/path
+  nil, HP `149/149`, and zero runtime or NPC blockers. The initial north step
+  recovered after two timing retries; no blocker, drift, cancellation,
+  runtime-block injection, or script error occurred.
 - Teleport transition safety guard is live-accepted (`2026-08-20`). A selected
   World Map teleport from `(29,57)` to
   Swamp Cave north `(104,44)` preceded a ROM lock with sustained audio while
