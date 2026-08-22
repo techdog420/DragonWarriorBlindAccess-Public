@@ -304,6 +304,57 @@ Updated: 2026-08-21
   no retry, failed or blocked step, drift, cancellation, runtime-block
   injection, or unintended entry. This three-route batch is complete and ready
   for a focused commit.
+- Swamp-Cave-South to Garinham is source-complete and live-verified. A
+  Garinham selection from clear World Map `(104,49)` now starts the
+  origin-specific `garinham_swamp_cave_south` itinerary, waits for automatic
+  Swamp Cave entry, and preserves the final destination through map `0x15`.
+  Emerging north composes `kol_swamp_cave_staging ->
+  tantegel_bridge_swamp_cave_staging -> garinham_swamp_cave_south`, reusing
+  only accepted geometry and bypassing both Kol and Tantegel. Frame `4629`
+  entered Swamp Cave, frame `10217` handed off at Kol west doorstep `(103,10)`,
+  frame `16841` activated the final leg at bridge junction `(44,38)`, and frame
+  `20313` entered Garinham. Final audit at frame `21360` confirmed map `0x09`
+  `(0,14)`, path target nil, and zero runtime blockers. There was no timing
+  retry, blocked step, drift, cancellation, replacement, unintended
+  intermediate map entry, runtime-block injection, or script error. Focused
+  route tests pass `262/262`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass.
+- Swamp-Cave-South to Erdrick's Cave is source-complete and live-verified. An
+  Erdrick selection from clear World Map `(104,49)` now starts the
+  origin-specific `erdrick_swamp_cave_south` itinerary, waits for automatic
+  Swamp Cave entry, and retains the final destination through map `0x15`.
+  Emerging north composes `kol_swamp_cave_staging ->
+  tantegel_bridge_swamp_cave_staging -> erdrick_swamp_cave_south`, reusing
+  only accepted geometry and bypassing both Kol and Tantegel. Frame `4449`
+  entered Swamp Cave, frame `10277` handed off at Kol west doorstep `(103,10)`,
+  frame `16901` activated the final leg at bridge junction `(44,38)`, and frame
+  `18629` entered Erdrick's Cave B1. Final audit at frame `20040` confirmed map
+  `0x1C` `(0,0)`, path target nil, and zero NPC/runtime blockers. There was no
+  timing retry, blocked step, drift, cancellation, route replacement,
+  unintended map entry, runtime-block injection, or script error. Focused
+  route tests pass `261/261`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass.
+- Swamp-Cave-South to Brecconary is source-complete and live-verified. A
+  Brecconary selection from clear World Map `(104,49)` now starts the
+  origin-specific `brecconary_swamp_cave_south` itinerary, waits for automatic
+  Swamp Cave entry, and retains Brecconary while the player crosses map `0x15`.
+  Emerging north composes `kol_swamp_cave_staging ->
+  tantegel_bridge_swamp_cave_staging -> brecconary_swamp_cave_south`, reusing
+  only previously accepted geometry and avoiding both Kol and Tantegel. An
+  `R` refresh at north exit `(104,44)` initially replaced the final destination
+  with the physical Swamp Cave object; `kol_swamp_cave_staging` now treats that
+  object as compatible, and the loaded retest reported route status without a
+  replacement at frame `86255`. The first `(104,44)->UP` activation exhausted
+  two timing retries, but an unchanged same-origin retry crossed at frame
+  `94321`; prior accepted runs identify this as the known cave-exit timing seam,
+  so no geometry was changed. Frame `96797` handed off outside Kol at west
+  doorstep `(103,10)`, frame `103421` activated the final leg at bridge junction
+  `(44,38)`, and frame `103725` entered Brecconary. Final audit at frame `105780`
+  confirmed map `0x08` `(0,15)`, path target nil, and zero runtime blockers.
+  There was no post-fix replacement, drift, cancellation, runtime-block
+  injection, unintended map entry, or script error. Focused route tests pass
+  `260/260`; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
 - Swamp-Cave-North-origin connections to Brecconary, Erdrick's Cave, and
   Garinham are implemented, static-tested, and live-verified. Each Travel
   object and plain route alias from World Map

@@ -6,6 +6,50 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave-South to Garinham is source-complete and live-verified
+  (`2026-08-21`). From World Map `(104,49)`, Garinham now remains selected
+  through automatic Swamp Cave entry and the manual map `0x15` crossing, then
+  composes the accepted north-exit Kol bypass and bridge connector into the
+  unchanged Garinham corridor. Frame `4629` entered Swamp Cave, frame `10217`
+  bypassed Kol at west doorstep `(103,10)`, frame `16841` activated the final
+  leg at bridge junction `(44,38)`, and frame `20313` entered Garinham map
+  `0x09`. Final frame `21360` confirmed `(0,14)`, path target nil, and zero
+  runtime blockers. The full route had no timing retry, blocked step, drift,
+  cancellation, replacement, unintended intermediate town entry,
+  runtime-block injection, or script error. Focused route tests pass `262/262`;
+  Lua syntax and the full gate pass all 33 host-runnable Lua suites plus all 68
+  Python tests.
+- Swamp-Cave-South to Erdrick's Cave is source-complete and live-verified
+  (`2026-08-21`). From World Map `(104,49)`, the selected destination now
+  survives automatic Swamp Cave entry and the manual map `0x15` crossing, then
+  composes the established north-exit Kol bypass and bridge connector into the
+  unchanged Erdrick corridor. Frame `4449` entered Swamp Cave and activated
+  `kol_swamp_cave_staging`; frame `10277` bypassed Kol at west doorstep
+  `(103,10)`; frame `16901` handed off at bridge junction `(44,38)`; and frame
+  `18629` entered Erdrick's Cave B1 map `0x1C`. Final frame `20040` confirmed
+  `(0,0)`, path target nil, and zero NPC/runtime blockers. The full route had
+  no timing retry, blocked step, drift, cancellation, route replacement,
+  unintended town entry, runtime-block injection, or script error. Focused
+  route tests pass `261/261`; Lua syntax and the full gate pass all 33
+  host-runnable Lua suites plus all 68 Python tests.
+- Swamp-Cave-South to Brecconary is source-complete and live-verified
+  (`2026-08-21`). A Brecconary selection from World Map `(104,49)` now waits
+  for automatic Swamp Cave entry, preserves the destination through map `0x15`,
+  then composes the established north-exit Kol bypass and bridge connector into
+  the unchanged Brecconary arrival leg. Pressing `R` at north exit `(104,44)`
+  initially replaced the itinerary with the physical Swamp Cave route; the Kol
+  staging leg now treats that Travel object as compatible, so refresh reports
+  `Current leg to Kol` while retaining Brecconary. The loaded retest confirmed
+  that status at frame `86255`. Its first `(104,44)->UP` activation exhausted
+  two timing retries, but the unchanged same-origin retry crossed at frame
+  `94321`, consistent with the known cave-exit timing seam rather than blocked
+  geometry. Frame `96797` bypassed Kol at west doorstep `(103,10)`, frame
+  `103421` handed off at bridge junction `(44,38)`, and frame `103725` entered
+  Brecconary map `0x08`. Final frame `105780` confirmed `(0,15)`, path target
+  nil, and zero runtime blockers; no route replacement after the fix, drift,
+  cancellation, runtime-block injection, or script error occurred. Focused
+  route tests pass `260/260`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass.
 - Swamp-Cave-North connections to Rainbow Bridge and Charlock are
   source-complete and live-verified (`2026-08-21`). Both reuse the one-step north
   re-entry pause, wait through the manual map `0x15` traversal without injecting

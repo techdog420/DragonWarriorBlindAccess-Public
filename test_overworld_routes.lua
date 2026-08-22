@@ -3124,12 +3124,319 @@ function tests.brecconary_from_swamp_cave_north_hands_off_at_bridge_junction()
     routes.reset_for_tests()
 end
 
-function tests.swamp_cave_north_early_variants_do_not_steal_other_origins()
+function tests.brecconary_from_swamp_cave_south_crosses_cave_then_uses_shared_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_brecconary",
+        name = "Brecconary",
+        x = 48,
+        y = 41,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 49)
+
+    assert_equal(err, nil,
+        "Brecconary Travel should start outside Swamp Cave south")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "south-exit travel should begin on the proven cave-entry route")
+    assert_equal(info.object_id, "route_swamp_cave_south_34",
+        "south-exit start should target the adjacent cave entrance")
+    assert_contains(info.message,
+        "Brecconary route starts from Swamp Cave South Entrance",
+        "south-exit staging speech should retain Brecconary")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected before cave traversal")
+
+    local wait_event = routes.observe_position(0x01, 104, 49)
+    assert_equal(wait_event.status, "await_transition",
+        "standing on the south entrance should wait for automatic cave entry")
+    assert_equal(routes.active_route_id(), "swamp_cave_south",
+        "the itinerary must not advance before map 0x15 is observed")
+
+    local wait_segment = assert(routes.plan_next_segment(0x01, 104, 49, {
+        advance_if_at_waypoint = true,
+    }))
+    assert_equal(wait_segment.status, "already_at_waypoint",
+        "autowalk should remain safely on the automatic-entry tile")
+    assert_equal(#wait_segment.steps, 0,
+        "autowalk must not synthesize movement through Swamp Cave")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "entering Swamp Cave should advance the Brecconary itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the established north-exit return")
+    assert_equal(cave_handoff.object_id, "route_kol_swamp_cave_staging_01",
+        "the cave handoff should wait for the north exterior landing")
+    assert_equal(cave_handoff.steps, nil,
+        "the cave handoff must not inject interior movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected during cave traversal")
+
+    local north_exit = routes.observe_position(0x01, 104, 44)
+    assert_equal(north_exit.object_id, "route_kol_swamp_cave_staging_02",
+        "north exit should advance to the poison-swamp doorstep")
+
+    local north_cave = {
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }
+    local refreshed = routes.guidance_for_object(
+        north_cave, 0x01, 104, 44)
+    assert_equal(refreshed.route.id, "kol_swamp_cave_staging",
+        "north-exit guidance should retain the Brecconary itinerary")
+    assert_contains(refreshed.message, "Final destination: Brecconary",
+        "north-exit guidance should still name Brecconary")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected after the cave-object refresh")
+
+    local kol = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the Kol west doorstep should hand off without entering town")
+    assert_equal(routes.active_route_id(),
+        "tantegel_bridge_swamp_cave_staging",
+        "the Kol bypass should activate the bridge-junction return")
+
+    local bridge = assert(routes._route_for_tests(
+        "tantegel_bridge_swamp_cave_staging"))
+    for index = 2, #bridge.waypoints do
+        local waypoint = bridge.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the bridge junction should hand off without entering Tantegel")
+    assert_equal(routes.active_route_id(),
+        "brecconary_swamp_cave_south",
+        "the junction should activate the south-origin continuation")
+    assert_equal(event.steps, nil,
+        "the bridge handoff must not inject exterior movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected after every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 44, 38))
+    assert_equal(segment.waypoint.name, "Brecconary",
+        "the final continuation should target the town entrance")
+    assert_equal(segment.path_length, 7,
+        "the final Brecconary leg should remain the short proven segment")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "brecconary", 0x01, 104, 49)
+    assert_equal(alias_err, nil,
+        "Brecconary alias should start outside Swamp Cave south")
+    assert_equal(alias_info.route.id, "swamp_cave_south",
+        "the alias should use the same connected itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.erdrick_from_swamp_cave_south_crosses_cave_then_uses_shared_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_erdrick_s_cave",
+        name = "Erdrick's Cave",
+        x = 28,
+        y = 12,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 49)
+
+    assert_equal(err, nil,
+        "Erdrick Travel should start outside Swamp Cave south")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "south-exit travel should begin on the proven cave-entry route")
+    assert_contains(info.message,
+        "Erdrick's Cave route starts from Swamp Cave South Entrance",
+        "south-exit staging speech should retain Erdrick's Cave")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Erdrick's Cave should remain selected before cave traversal")
+
+    local wait_event = routes.observe_position(0x01, 104, 49)
+    assert_equal(wait_event.status, "await_transition",
+        "standing on the south entrance should wait for automatic cave entry")
+    assert_equal(routes.active_route_id(), "swamp_cave_south",
+        "the itinerary must not advance before map 0x15 is observed")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "entering Swamp Cave should advance the Erdrick itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the established north-exit return")
+    assert_equal(cave_handoff.steps, nil,
+        "the cave handoff must not inject interior movement")
+
+    routes.observe_position(0x01, 104, 44)
+    local north_cave = {
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }
+    local refreshed = routes.guidance_for_object(
+        north_cave, 0x01, 104, 44)
+    assert_equal(refreshed.route.id, "kol_swamp_cave_staging",
+        "north-exit guidance should retain the Erdrick itinerary")
+    assert_contains(refreshed.message,
+        "Final destination: Erdrick's Cave",
+        "north-exit guidance should still name Erdrick's Cave")
+
+    local kol = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the Kol west doorstep should hand off without entering town")
+    assert_equal(routes.active_route_id(),
+        "tantegel_bridge_swamp_cave_staging",
+        "the Kol bypass should activate the bridge-junction return")
+
+    local bridge = assert(routes._route_for_tests(
+        "tantegel_bridge_swamp_cave_staging"))
+    for index = 2, #bridge.waypoints do
+        local waypoint = bridge.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the bridge junction should hand off without entering Tantegel")
+    assert_equal(routes.active_route_id(),
+        "erdrick_swamp_cave_south",
+        "the junction should activate the south-origin Erdrick continuation")
+    assert_equal(event.steps, nil,
+        "the bridge handoff must not inject exterior movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Erdrick's Cave should remain selected after every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 44, 38))
+    assert_equal(segment.waypoint.name, "Bridge lower west lane",
+        "the final continuation should use the established Erdrick corridor")
+    assert_equal(segment.path_length, 8,
+        "the first Erdrick segment should remain bounded")
+    assert_equal(segment.steps[1], "up",
+        "the Erdrick continuation should leave the junction northward")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "erdrick", 0x01, 104, 49)
+    assert_equal(alias_err, nil,
+        "Erdrick alias should start outside Swamp Cave south")
+    assert_equal(alias_info.route.id, "swamp_cave_south",
+        "the alias should use the same connected itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_from_swamp_cave_south_crosses_cave_then_uses_shared_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_garinham",
+        name = "Garinham",
+        x = 1,
+        y = 2,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 104, 49)
+
+    assert_equal(err, nil,
+        "Garinham Travel should start outside Swamp Cave south")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "south-exit travel should begin on the proven cave-entry route")
+    assert_contains(info.message,
+        "Garinham route starts from Swamp Cave South Entrance",
+        "south-exit staging speech should retain Garinham")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Garinham should remain selected before cave traversal")
+
+    local wait_event = routes.observe_position(0x01, 104, 49)
+    assert_equal(wait_event.status, "await_transition",
+        "standing on the south entrance should wait for automatic cave entry")
+    assert_equal(routes.active_route_id(), "swamp_cave_south",
+        "the itinerary must not advance before map 0x15 is observed")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "entering Swamp Cave should advance the Garinham itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "cave entry should activate the established north-exit return")
+    assert_equal(cave_handoff.steps, nil,
+        "the cave handoff must not inject interior movement")
+
+    routes.observe_position(0x01, 104, 44)
+    local north_cave = {
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }
+    local refreshed = routes.guidance_for_object(
+        north_cave, 0x01, 104, 44)
+    assert_equal(refreshed.route.id, "kol_swamp_cave_staging",
+        "north-exit guidance should retain the Garinham itinerary")
+    assert_contains(refreshed.message, "Final destination: Garinham",
+        "north-exit guidance should still name Garinham")
+
+    local kol = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+    local event
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the Kol west doorstep should hand off without entering town")
+    assert_equal(routes.active_route_id(),
+        "tantegel_bridge_swamp_cave_staging",
+        "the Kol bypass should activate the bridge-junction return")
+
+    local bridge = assert(routes._route_for_tests(
+        "tantegel_bridge_swamp_cave_staging"))
+    for index = 2, #bridge.waypoints do
+        local waypoint = bridge.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the bridge junction should hand off without entering Tantegel")
+    assert_equal(routes.active_route_id(),
+        "garinham_swamp_cave_south",
+        "the junction should activate the south-origin Garinham continuation")
+    assert_equal(event.steps, nil,
+        "the bridge handoff must not inject exterior movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Garinham should remain selected after every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 44, 38))
+    assert_equal(segment.waypoint.name, "Bridge lower west lane",
+        "the final continuation should use the established Garinham corridor")
+    assert_equal(segment.path_length, 8,
+        "the first Garinham segment should remain bounded")
+    assert_equal(segment.steps[1], "up",
+        "the Garinham continuation should leave the junction northward")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "garinham", 0x01, 104, 49)
+    assert_equal(alias_err, nil,
+        "Garinham alias should start outside Swamp Cave south")
+    assert_equal(alias_info.route.id, "swamp_cave_south",
+        "the alias should use the same connected itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_north_early_variants_preserve_other_origins()
     local cases = {
         {
             target = {id = "overworld_garinham", name = "Garinham"},
             kol_route = "garinham_kol",
             direct_route = "garinham",
+            south_route = "swamp_cave_south",
         },
         {
             target = {
@@ -3138,11 +3445,13 @@ function tests.swamp_cave_north_early_variants_do_not_steal_other_origins()
             },
             kol_route = "erdrick_kol",
             direct_route = "erdrick",
+            south_route = "swamp_cave_south",
         },
         {
             target = {id = "overworld_brecconary", name = "Brecconary"},
             kol_route = "brecconary_kol",
             direct_route = "brecconary",
+            south_route = "swamp_cave_south",
         },
     }
 
@@ -3162,8 +3471,8 @@ function tests.swamp_cave_north_early_variants_do_not_steal_other_origins()
         routes.reset_for_tests()
         local southern = assert(routes.start_for_object(
             case.target, 0x01, 104, 49))
-        assert_equal(southern.route.id, case.direct_route,
-            case.target.name .. " south-cave travel should remain unchanged")
+        assert_equal(southern.route.id, case.south_route,
+            case.target.name .. " should keep its intended south-cave behavior")
     end
 
     routes.reset_for_tests()

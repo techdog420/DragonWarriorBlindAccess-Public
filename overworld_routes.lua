@@ -217,6 +217,15 @@ local SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING = {
     continue_after_staging = true,
 }
 
+local SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING = {
+    route_id = "tantegel_bridge_swamp_cave_staging",
+    -- The nested bridge staging already returns through Swamp Cave and Kol.
+    -- Keep the south-origin selector separate so northern variants and the
+    -- still-unconnected southern destinations retain their current behavior.
+    max_start_distance = 24,
+    continue_after_staging = true,
+}
+
 local SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING = {
     route_id = "kol_swamp_cave_staging",
     -- North-cave and western destinations share the proven return to Kol.
@@ -2165,6 +2174,11 @@ kol_swamp_cave_staging_final.name = "Kol west doorstep"
 ROUTES.kol_swamp_cave_staging = {
     id = "kol_swamp_cave_staging",
     title = "Kol",
+    -- After the manual south-to-north crossing, Travel refresh can leave the
+    -- physical north entrance selected. Treat it as a read-only landmark so
+    -- route guidance reports the staged destination instead of replacing it
+    -- with a new route back to Swamp Cave.
+    compatible_target_object_ids = {"overworld_swamp_cave"},
     destination_maps = {0x07},
     staging = KOL_SWAMP_CAVE_RETURN_STAGING,
     waypoints = kol_swamp_cave_staging_waypoints,
@@ -2266,6 +2280,39 @@ ROUTES.brecconary_swamp_cave_north = {
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
+}
+
+-- South-entrance early destinations wait for automatic Swamp Cave entry,
+-- preserve the selected destination during the manual crossing, then reuse
+-- the existing north-exit, Kol-bypass, bridge-junction, and final legs.
+ROUTES.brecconary_swamp_cave_south = {
+    id = "brecconary_swamp_cave_south",
+    title = "Brecconary",
+    target_object_ids = {"overworld_brecconary"},
+    destination_maps = {0x08},
+    staging = SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
+}
+
+ROUTES.erdrick_swamp_cave_south = {
+    id = "erdrick_swamp_cave_south",
+    title = "Erdrick's Cave",
+    target_object_ids = {"overworld_erdrick_s_cave"},
+    destination_maps = {0x1C, 0x1D},
+    staging = SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
+}
+
+ROUTES.garinham_swamp_cave_south = {
+    id = "garinham_swamp_cave_south",
+    title = "Garinham",
+    target_object_ids = {"overworld_garinham"},
+    destination_maps = {0x09},
+    staging = SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
 -- Internal southern hub legs: connected routes reuse both live-validated
@@ -2591,9 +2638,11 @@ local ROUTE_IDS = {
     "brecconary",
     "brecconary_kol",
     "brecconary_swamp_cave_north",
+    "brecconary_swamp_cave_south",
     "garinham",
     "garinham_kol",
     "garinham_swamp_cave_north",
+    "garinham_swamp_cave_south",
     "kol",
     "northern_cave",
     "northern_cave_swamp_cave_north",
@@ -2628,6 +2677,7 @@ local ROUTE_IDS = {
     "erdrick",
     "erdrick_kol",
     "erdrick_swamp_cave_north",
+    "erdrick_swamp_cave_south",
     "tantegel",
     "tantegel_kol",
     "tantegel_northern_cave",
@@ -2643,16 +2693,19 @@ local ROUTE_ALTERNATES = {
         "brecconary",
         "brecconary_kol",
         "brecconary_swamp_cave_north",
+        "brecconary_swamp_cave_south",
     },
     garinham = {
         "garinham",
         "garinham_kol",
         "garinham_swamp_cave_north",
+        "garinham_swamp_cave_south",
     },
     erdrick = {
         "erdrick",
         "erdrick_kol",
         "erdrick_swamp_cave_north",
+        "erdrick_swamp_cave_south",
     },
     kol = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     northern_cave = {
