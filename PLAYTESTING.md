@@ -6,6 +6,25 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave-South connections to Northern Cave, Hauksness, and Mountain Cave
+  are source-complete and live-verified (`2026-08-21`). Each selection from
+  World Map `(104,49)` waits for automatic Swamp Cave entry, preserves the
+  final destination during the manual map `0x15` crossing, resumes on
+  `kol_swamp_cave_staging` at north exit `(104,44)`, and bypasses Kol at west
+  doorstep `(103,10)`. Northern Cave handed off outside Kol at frame `8191`,
+  arrived at `(81,1)` at frame `11183`, and ended with route/path nil and zero
+  blockers at frame `13680`. Hauksness handed off outside Kol at frame
+  `21498`, entered map `0x03` at frame `36218`, and ended at `(0,10)` with
+  route/path nil and zero blockers at frame `150660`. Mountain Cave handed off
+  outside Kol at frame `160089`, handed off from the shared western-desert
+  connector at frame `170857`, entered map `0x16` at frame `171705`, and ended
+  at `(0,7)` with route/path nil and zero blockers at frame `193260`. Northern
+  Cave and Mountain Cave each had one recovered timing retry on
+  `(104,44)->UP`; Hauksness had none. No run produced route drift,
+  cancellation, a blocked edge, runtime-block injection, or an unintended
+  town entry. Focused route tests pass `266/266`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - Near-destination route snapping is source-complete and live-verified
   (`2026-08-21`). The staging audit found four player-facing destinations whose
   strict corridor guard could select a distant return route even when the hero

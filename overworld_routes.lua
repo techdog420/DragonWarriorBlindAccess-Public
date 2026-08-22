@@ -2489,6 +2489,29 @@ ROUTES.hauksness_swamp_cave_north = {
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
+-- South-entrance northwestern variants first wait for automatic cave entry.
+-- The existing Kol staging route then pauses for manual traversal, resumes at
+-- the north exit, and hands off outside Kol to these proven destination legs.
+ROUTES.northern_cave_swamp_cave_south = {
+    id = "northern_cave_swamp_cave_south",
+    title = "Northern Cave",
+    target_object_ids = {"overworld_northern_cave"},
+    destination_maps = {0x0D},
+    staging = SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
+}
+
+ROUTES.hauksness_swamp_cave_south = {
+    id = "hauksness_swamp_cave_south",
+    title = "Hauksness",
+    target_object_ids = {"overworld_hauksness"},
+    destination_maps = {0x03},
+    staging = SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
+}
+
 ROUTES.mountain_cave_swamp_cave_north_connector = {
     id = "mountain_cave_swamp_cave_north_connector",
     title = "Western desert east road",
@@ -2503,6 +2526,18 @@ ROUTES.mountain_cave_swamp_cave_north = {
     destination_maps = {0x16, 0x17},
     staging = SWAMP_CAVE_NORTH_MOUNTAIN_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
+}
+
+ROUTES.mountain_cave_swamp_cave_south = {
+    id = "mountain_cave_swamp_cave_south",
+    title = "Mountain Cave",
+    target_object_ids = {"overworld_mountain_cave"},
+    destination_maps = {0x16, 0x17},
+    -- Reuse the validated Kol-to-western-desert connector after the nested
+    -- south-to-north cave crossing completes.
+    staging = SWAMP_CAVE_NORTH_MOUNTAIN_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 
@@ -2654,6 +2689,7 @@ local ROUTE_IDS = {
     "kol",
     "northern_cave",
     "northern_cave_swamp_cave_north",
+    "northern_cave_swamp_cave_south",
     "kol_rain_shrine",
     "kol_swamp_cave",
     "kol_hauksness",
@@ -2673,9 +2709,11 @@ local ROUTE_IDS = {
     "charlock_return",
     "mountain_cave",
     "mountain_cave_swamp_cave_north",
+    "mountain_cave_swamp_cave_south",
     "mountain_cave_return",
     "hauksness",
     "hauksness_swamp_cave_north",
+    "hauksness_swamp_cave_south",
     "hauksness_cantlin",
     "cantlin_hauksness",
     "cantlin_swamp_cave_north",
@@ -2719,6 +2757,7 @@ local ROUTE_ALTERNATES = {
     northern_cave = {
         "northern_cave",
         "northern_cave_swamp_cave_north",
+        "northern_cave_swamp_cave_south",
     },
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine", "kol_hauksness"},
@@ -2755,11 +2794,13 @@ local ROUTE_ALTERNATES = {
     mountain_cave = {
         "mountain_cave",
         "mountain_cave_swamp_cave_north",
+        "mountain_cave_swamp_cave_south",
     },
     hauksness = {
         "hauksness",
         "hauksness_cantlin",
         "hauksness_swamp_cave_north",
+        "hauksness_swamp_cave_south",
     },
     hauksness_cantlin = {"hauksness_cantlin", "hauksness"},
     cantlin_hauksness = {
