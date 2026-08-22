@@ -121,6 +121,23 @@ Updated: 2026-08-21
 
 ## Immediate FCEUX Handoff
 
+- Near-destination route snapping is source-complete and live-verified. A full
+  object-level staging audit found four affected destinations: Rainbow Bridge,
+  Charlock Castle, Mountain Cave, and the Eastern Great Swamp Search Area.
+  Their strict corridor guards could select a reverse or hub route when the
+  hero was already within five tiles of the destination. The affected staging
+  configurations now opt into a five-tile destination snap, allowing the
+  existing nearest-waypoint logic to start the local route while retaining all
+  distant staging behavior. The nearby but overworld-impassable Swamp Cave
+  north-to-south case remains staged through manual cave traversal. Live FCEUX
+  runs started and arrived directly at Rainbow Bridge from `(63,49)` in 2
+  steps, Charlock from `(46,48)` in 2 steps, Mountain Cave from `(25,57)` in 4
+  steps, and Great Swamp from `(87,112)` in 2 steps. No run logged
+  `staged_from`, cancellation, runtime-block injection, or a script error.
+  Final probe `near_snap_final` at frame `16740` confirmed clear World Map
+  `(62,49)`, path target nil, and zero NPC/runtime blockers. Focused route tests
+  pass `264/264`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. This focused fix is ready to commit.
 - Swamp-Cave-North final-progression connections to Rainbow Bridge and Charlock
   are source-complete and live-verified. Both compose through
   `swamp_cave_north_entry_staging -> swamp_cave_south_swamp_cave_north`, then

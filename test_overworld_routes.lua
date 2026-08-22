@@ -1056,6 +1056,107 @@ function tests.northern_cave_near_entrance_does_not_stage_to_kol()
     routes.reset_for_tests()
 end
 
+function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging()
+    local cases = {
+        {
+            target = {
+                id = "overworld_rainbow_bridge",
+                name = "Rainbow Bridge unlock point",
+                x = 65,
+                y = 49,
+            },
+            start_x = 63,
+            start_y = 49,
+            route_id = "rainbow_bridge",
+            waypoint_x = 65,
+            waypoint_y = 49,
+        },
+        {
+            target = {
+                id = "overworld_charlock_castle",
+                name = "Charlock Castle",
+                x = 48,
+                y = 48,
+            },
+            start_x = 48,
+            start_y = 53,
+            route_id = "charlock_castle",
+            waypoint_x = 48,
+            waypoint_y = 49,
+        },
+        {
+            target = {
+                id = "overworld_mountain_cave",
+                name = "Mountain Cave",
+                x = 29,
+                y = 57,
+            },
+            start_x = 29,
+            start_y = 55,
+            route_id = "mountain_cave",
+            waypoint_x = 29,
+            waypoint_y = 57,
+        },
+        {
+            target = {
+                id = "overworld_eastern_great_swamp_search_area",
+                name = "Eastern Great Swamp Search Area",
+                x = 89,
+                y = 112,
+            },
+            start_x = 87,
+            start_y = 112,
+            route_id = "great_swamp_cantlin",
+            waypoint_x = 89,
+            waypoint_y = 112,
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, case.start_x, case.start_y)
+
+        assert_equal(err, nil,
+            case.target.name .. " should start near its destination")
+        assert_equal(info.route.id, case.route_id,
+            case.target.name .. " should not backtrack through a staging route")
+        assert_not_contains(info.log, "staged_from=",
+            case.target.name .. " should use ordinary nearest-waypoint guidance")
+
+        local segment = assert(routes.plan_next_segment(
+            0x01, case.start_x, case.start_y))
+        assert_equal(segment.waypoint.x, case.waypoint_x,
+            case.target.name .. " should snap to the local waypoint x")
+        assert_equal(segment.waypoint.y, case.waypoint_y,
+            case.target.name .. " should snap to the local waypoint y")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.nearby_impassable_destination_separation_still_uses_staging()
+    routes.reset_for_tests()
+    local south_entrance = {
+        id = "overworld_swamp_cave_south_entrance",
+        name = "Swamp Cave South Entrance",
+        x = 104,
+        y = 49,
+    }
+
+    local info, err = routes.start_for_object(
+        south_entrance, 0x01, 104, 44)
+
+    assert_equal(err, nil,
+        "south cave Travel should resolve from the nearby north entrance")
+    assert_equal(info.route.id, "swamp_cave_north_entry_staging",
+        "impassable overworld separation must retain the manual cave crossing")
+    assert_contains(info.log, "staged_from=swamp_cave_south_swamp_cave_north",
+        "the south entrance should remain the final destination")
+
+    routes.reset_for_tests()
+end
+
 function tests.mountain_cave_object_starts_from_western_desert_route_pin()
     routes.reset_for_tests()
 

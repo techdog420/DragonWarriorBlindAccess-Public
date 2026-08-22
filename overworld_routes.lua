@@ -32,9 +32,15 @@ local FINAL_PROGRESSION_STAGING = {
     -- The longest validated bridge-road segment is eleven tiles. Starts
     -- farther from the final-progression routes must first use the established
     -- Rimuldar-to-south-cave waypoint chain instead of synthesizing a shortcut.
-    -- Nearby off-corridor starts must stage too, and should prefer whichever
-    -- established approach/return route already contains their position.
+    -- Off-corridor starts outside the local destination area must stage too,
+    -- and should prefer whichever established approach/return route already
+    -- contains their position.
     max_start_distance = 11,
+    -- A player already within the local destination area should join the
+    -- requested route at its nearest waypoint. Without this opt-in, the
+    -- corridor guard can select the reverse route and send the player back to
+    -- Swamp Cave before returning to the nearby destination.
+    near_destination_snap_distance = 5,
     require_route_corridor = true,
     prefer_staging_route_corridor = true,
 }
@@ -91,6 +97,7 @@ local GREAT_SWAMP_STAGING = {
     -- route is fifteen tiles. Off-corridor or farther starts must first use
     -- the connected Cantlin itinerary instead of synthesizing a shortcut.
     max_start_distance = 15,
+    near_destination_snap_distance = 5,
     require_route_corridor = true,
     prefer_staging_route_corridor = true,
     continue_after_staging = true,
@@ -177,6 +184,7 @@ local MOUNTAIN_CAVE_STAGING = {
     -- The longest validated local spur segment is nine tiles. Anything
     -- farther away or off that corridor must reach its shared route pin first.
     max_start_distance = 9,
+    near_destination_snap_distance = 5,
     require_route_corridor = true,
     continue_after_staging = true,
 }
@@ -3131,7 +3139,14 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
     if staging.max_y and py > staging.max_y then
         close_enough = false
     end
-    if staging.require_route_corridor and not position_is_on_route_corridor(route, px, py) then
+    local final = route.waypoints and route.waypoints[#route.waypoints]
+    local near_destination = final
+        and staging.near_destination_snap_distance
+        and distance(px, py, final)
+            <= staging.near_destination_snap_distance
+    if staging.require_route_corridor
+       and not near_destination
+       and not position_is_on_route_corridor(route, px, py) then
         close_enough = false
     end
     if close_enough then

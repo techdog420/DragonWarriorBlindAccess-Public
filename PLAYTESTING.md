@@ -6,6 +6,21 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Near-destination route snapping is source-complete and live-verified
+  (`2026-08-21`). The staging audit found four player-facing destinations whose
+  strict corridor guard could select a distant return route even when the hero
+  was within five tiles of the destination: Rainbow Bridge, Charlock Castle,
+  Mountain Cave, and the Eastern Great Swamp Search Area. Those staging
+  configurations now opt into local nearest-waypoint starts while preserving
+  distant corridor staging and the mandatory manual crossing between the two
+  Swamp Cave entrances. Manual FCEUX runs started and arrived directly at
+  Rainbow Bridge from `(63,49)` in 2 steps, Charlock from `(46,48)` in 2 steps,
+  Mountain Cave from `(25,57)` in 4 steps, and Great Swamp from `(87,112)` in
+  2 steps. None logged `staged_from`, cancellation, blocker injection, or a
+  script error. Final frame `16740` confirmed clear World Map `(62,49)`, path
+  target nil, and zero runtime blockers. Focused route tests pass `264/264`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass.
 - Swamp-Cave-South to Garinham is source-complete and live-verified
   (`2026-08-21`). From World Map `(104,49)`, Garinham now remains selected
   through automatic Swamp Cave entry and the manual map `0x15` crossing, then
