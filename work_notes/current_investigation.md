@@ -1,6 +1,24 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-08-17
+Updated: 2026-08-18
+
+## 2026-08-18 Rimuldar Intermediate-Town Bypass
+
+- CLEAN / VERIFIED: hidden `rimuldar_staging` and
+  `rimuldar_magic_temple_staging` legs stop at east doorstep `(103,72)`;
+  direct Rimuldar routes retain town entrance `(102,72)`.
+- RETURN CHECK: from Magic Temple `(108,109)`, frame `9887` handed off from
+  `rimuldar_magic_temple_staging` to `swamp_cave_south_magic_temple` on the
+  World Map without entering Rimuldar.
+- OUTBOUND CHECK: from accepted approach waypoint `(88,58)`, frame `15485`
+  handed off from `rimuldar_staging` to `magic_temple` on the World Map.
+- FINAL AUDIT: frame `16080` reported World Map `(110,80)`, path target nil,
+  and zero runtime blockers. Both handoffs had no map change, blocked step,
+  exhausted retry, or runtime-block injection; autowalk was stopped manually
+  after each requested bypass was proven.
+- STATIC VERIFICATION: `233/233` overworld-route tests and `123/123`
+  route-manager tests pass; the full gate passes all 33 host-runnable Lua
+  suites and 68 Python tests; `git diff --check` passes.
 
 ## 2026-08-17 Magic Temple to Tantegel
 

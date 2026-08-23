@@ -2583,15 +2583,19 @@ ROUTES.cantlin_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
--- South-entrance Cantlin travel nests through the manual cave crossing, then
--- reuses the same non-entry Kol and Hauksness handoffs as the north variant.
+-- South-island Cantlin travel first reuses the Rimuldar-to-cave return when
+-- needed, then nests through the manual cave crossing and the existing
+-- non-entry Kol and Hauksness handoffs.
 ROUTES.cantlin_swamp_cave_south = {
     id = "cantlin_swamp_cave_south",
     title = "Cantlin",
     target_object_ids = {"overworld_cantlin"},
     destination_maps = {0x0A},
     staging = SWAMP_CAVE_NORTH_CANTLIN_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
@@ -2619,8 +2623,8 @@ ROUTES.great_swamp_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
--- South-entrance Great Swamp travel adds the existing Cantlin bypass after
--- the shared cave, Kol, and Hauksness staging chain.
+-- South-island Great Swamp travel adds the Rimuldar cave return when needed,
+-- then follows the shared cave, Kol, Hauksness, and Cantlin-bypass chain.
 ROUTES.great_swamp_swamp_cave_south = {
     id = "great_swamp_swamp_cave_south",
     title = "Eastern Great Swamp Search Area",
@@ -2628,7 +2632,10 @@ ROUTES.great_swamp_swamp_cave_south = {
         "overworld_eastern_great_swamp_search_area",
     },
     staging = SWAMP_CAVE_NORTH_GREAT_SWAMP_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
