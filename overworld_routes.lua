@@ -2499,16 +2499,19 @@ ROUTES.hauksness_swamp_cave_north = {
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
--- South-entrance northwestern variants first wait for automatic cave entry.
--- The existing Kol staging route then pauses for manual traversal, resumes at
--- the north exit, and hands off outside Kol to these proven destination legs.
+-- South-island northwestern variants first reuse the proven Rimuldar-to-cave
+-- return when needed, wait for automatic cave entry, then resume at the north
+-- exit and hand off outside Kol to these proven destination legs.
 ROUTES.northern_cave_swamp_cave_south = {
     id = "northern_cave_swamp_cave_south",
     title = "Northern Cave",
     target_object_ids = {"overworld_northern_cave"},
     destination_maps = {0x0D},
     staging = SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
 
@@ -2518,7 +2521,10 @@ ROUTES.hauksness_swamp_cave_south = {
     target_object_ids = {"overworld_hauksness"},
     destination_maps = {0x03},
     staging = SWAMP_CAVE_NORTH_KOL_DESTINATION_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
@@ -2547,7 +2553,10 @@ ROUTES.mountain_cave_swamp_cave_south = {
     -- Reuse the validated Kol-to-western-desert connector after the nested
     -- south-to-north cave crossing completes.
     staging = SWAMP_CAVE_NORTH_MOUNTAIN_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 

@@ -121,6 +121,22 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Rimuldar-origin connections to Northern Cave, Hauksness, and Mountain Cave
+  are source-complete and live-verified. From World Map `(102,72)`, all three
+  reuse the proven Rimuldar-to-Swamp-Cave return, preserve the final destination
+  during manual map `0x15` traversal, resume from north exit `(104,44)`, and
+  bypass Kol at west doorstep `(103,10)`. Northern Cave handed off outside Kol
+  at frame `9322`, arrived at `(81,1)` at frame `12314`, and ended clear at
+  frame `15300`. Hauksness handed off outside Kol at frame `29669`, entered map
+  `0x03` at frame `44389`, and ended clear at `(0,10)` at frame `111540`.
+  Mountain Cave handed off outside Kol at frame `129929`, activated its final
+  spur at frame `140697`, entered map `0x16` at frame `141545`, and ended clear
+  at `(0,7)` at frame `144180`. Northern Cave and Hauksness had no timing
+  retries; Mountain Cave recovered two bounded retries on the initial
+  `(102,72)->RIGHT` step. No run logged a blocked step, cancellation, route
+  replacement, runtime-block injection, or unintended town entry. Focused
+  route tests pass `270/270`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass.
 - Rimuldar-origin connections to Brecconary, Erdrick's Cave, and Garinham are
   source-complete and live-verified. From World Map `(102,72)`, each route
   bypasses Rimuldar at its east doorstep, enters Swamp Cave south, preserves

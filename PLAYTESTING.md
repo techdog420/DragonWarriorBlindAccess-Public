@@ -6,6 +6,20 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rimuldar-origin connections to Northern Cave, Hauksness, and Mountain Cave
+  are source-complete and live-verified (`2026-08-23`). From World Map
+  `(102,72)`, all three reuse the proven Rimuldar-to-Swamp-Cave return, retain
+  the selected destination through manual map `0x15` traversal, resume from
+  north exit `(104,44)`, and bypass Kol at `(103,10)`. Northern Cave arrived at
+  World Map `(81,1)` at frame `12314`; Hauksness entered map `0x03` at frame
+  `44389` and ended at `(0,10)`; Mountain Cave entered map `0x16` at frame
+  `141545` and ended at `(0,7)`. All final audits found path target nil and
+  zero runtime blockers. Northern Cave and Hauksness had no timing retries;
+  Mountain Cave recovered two bounded retries on its first
+  `(102,72)->RIGHT` step. No run logged a blocked step, cancellation, route
+  replacement, runtime-block injection, or unintended town entry. Focused
+  route tests pass `270/270`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass.
 - Rimuldar-origin connections to Brecconary, Erdrick's Cave, and Garinham are
   source-complete and live-verified (`2026-08-23`). From World Map `(102,72)`,
   all three bypass Rimuldar, preserve the selected destination through Swamp
