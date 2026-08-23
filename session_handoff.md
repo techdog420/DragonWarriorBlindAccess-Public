@@ -121,6 +121,25 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Rimuldar-origin connections to Cantlin and the Eastern Great Swamp Search
+  Area are source-complete and live-verified. From World Map `(102,72)`, both
+  reuse the proven Rimuldar-to-Swamp-Cave return, preserve the final destination
+  during manual map `0x15` traversal, resume from north exit `(104,44)`, bypass
+  Kol at `(103,10)`, and reuse the established Hauksness approach. Cantlin
+  handed off outside Kol at frame `12501`, activated its final route at frame
+  `27173`, entered map `0x0A` at frame `32741`, and ended at `(15,0)` with path
+  target nil and zero runtime blockers. That run required manual restarts after
+  bounded timing stops on `(102,72)->RIGHT` and `(104,44)->UP`; each retry then
+  crossed the same edge, and neither was promoted as a blocker. Great Swamp
+  handed off outside Kol at frame `74259`, outside Hauksness at frame `88931`,
+  activated its final route at frame `93939`, and arrived at World Map
+  `(89,112)` at frame `97731`. It recovered one bounded timing retry on
+  `(104,44)->UP` without stopping. Neither run showed route drift,
+  runtime-block injection, unintended town entry, or a script error. The later
+  `R` press at frame `101644` created a replacement route only after Great
+  Swamp arrival and does not contaminate that acceptance. Focused route tests
+  pass `271/271`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass.
 - Rimuldar-origin connections to Northern Cave, Hauksness, and Mountain Cave
   are source-complete and live-verified. From World Map `(102,72)`, all three
   reuse the proven Rimuldar-to-Swamp-Cave return, preserve the final destination

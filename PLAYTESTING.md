@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rimuldar-origin connections to Cantlin and the Eastern Great Swamp Search
+  Area are source-complete and live-verified (`2026-08-23`). From World Map
+  `(102,72)`, both preserve the selected destination through Swamp Cave map
+  `0x15`, resume from north exit `(104,44)`, bypass Kol and Hauksness, and use
+  their established final approaches. Cantlin entered map `0x0A` at frame
+  `32741` and ended clear at `(15,0)`. It needed manual restarts after timing
+  stops on `(102,72)->RIGHT` and `(104,44)->UP`, then crossed both edges.
+  Great Swamp handed off outside Kol at frame `74259`, outside Hauksness at
+  frame `88931`, activated its final leg at frame `93939`, and arrived at
+  `(89,112)` at frame `97731`; its one timing retry at `(104,44)->UP`
+  recovered without stopping. No blocker was promoted, and neither run showed
+  route drift, runtime-block injection, unintended town entry, or a script
+  error. Pressing `R` at frame `101644` created a new route after Great Swamp
+  arrival, so it does not affect acceptance. Focused route tests pass
+  `271/271`; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
 - Rimuldar-origin connections to Northern Cave, Hauksness, and Mountain Cave
   are source-complete and live-verified (`2026-08-23`). From World Map
   `(102,72)`, all three reuse the proven Rimuldar-to-Swamp-Cave return, retain
