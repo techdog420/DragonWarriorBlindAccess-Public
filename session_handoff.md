@@ -121,6 +121,28 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Magic-Temple-origin connections to Cantlin and the Eastern Great Swamp
+  Search Area are source-complete and live-verified. From World Map
+  `(108,109)`, both began on `rimuldar_magic_temple_staging`, bypassed Rimuldar
+  at east doorstep `(103,72)`, and continued on
+  `swamp_cave_south_magic_temple`. Automatic entry into map `0x15` retained the
+  selected destination without injecting interior movement. Cantlin started at
+  frame `1923`, handed off at Rimuldar at frame `4939`, entered Swamp Cave at
+  frame `8603`, resumed from the north exit at frame `10340`, bypassed Kol at
+  frame `13730`, bypassed Hauksness at frame `28402`, and entered map `0x0A` at
+  frame `33970`. One ordinary timing retry and two north-exit cadence retries
+  recovered automatically. Great Swamp started at frame `41800`, handed off at
+  Rimuldar at frame `44821`, entered Swamp Cave at frame `48485`, resumed north
+  at frame `49732`, bypassed Kol at frame `53042`, Hauksness at frame `67714`,
+  and Cantlin at frame `72722`, then arrived at `(89,112)` at frame `76514`.
+  Continuous autowalk stopped with `reason=route_finished` at frame `76534`.
+  Great Swamp had no timing retry. Neither run logged a blocker, drift,
+  cancellation, runtime-block injection, unintended town entry, or script
+  error. No waypoint geometry changed. The regression covers Travel-object and
+  alias selection, the bounded two-step departure, both exterior southern
+  handoffs, the automatic-entry wait, and the cave handoff. Focused route tests
+  pass `279/279`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass.
 - Magic-Temple-origin connections to Kol and Swamp Cave north are
   source-complete and live-verified. From World Map `(108,109)`, both began on
   `rimuldar_magic_temple_staging`, bypassed Rimuldar at east doorstep

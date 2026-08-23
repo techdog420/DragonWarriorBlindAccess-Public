@@ -2649,9 +2649,9 @@ ROUTES.cantlin_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
--- South-island Cantlin travel first reuses the Rimuldar-to-cave return when
--- needed, then nests through the manual cave crossing and the existing
--- non-entry Kol and Hauksness handoffs.
+-- South-island Cantlin travel first reuses the Magic Temple- or
+-- Rimuldar-to-cave return when needed, then nests through the manual cave
+-- crossing and the existing non-entry Kol and Hauksness handoffs.
 ROUTES.cantlin_swamp_cave_south = {
     id = "cantlin_swamp_cave_south",
     title = "Cantlin",
@@ -2661,6 +2661,7 @@ ROUTES.cantlin_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
@@ -2701,6 +2702,7 @@ ROUTES.great_swamp_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }

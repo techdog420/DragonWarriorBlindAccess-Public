@@ -4642,6 +4642,96 @@ function tests.northern_access_from_magic_temple_uses_temple_and_cave_returns()
     routes.reset_for_tests()
 end
 
+function tests.southern_destinations_from_magic_temple_use_connected_return()
+    local cases = {
+        {
+            target = {id = "overworld_cantlin", name = "Cantlin"},
+            alias = "cantlin",
+        },
+        {
+            target = {
+                id = "overworld_eastern_great_swamp_search_area",
+                name = "Eastern Great Swamp Search Area",
+            },
+            alias = "eastern great swamp",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, 108, 109)
+
+        assert_equal(err, nil,
+            case.target.name .. " Travel should resolve outside Magic Temple")
+        assert_equal(info.route.id, "rimuldar_magic_temple_staging",
+            case.target.name .. " should first use the proven temple return")
+        assert_equal(info.object_id,
+            "route_rimuldar_magic_temple_staging_02",
+            case.target.name .. " should leave through the temple's south opening")
+        assert_contains(info.message,
+            case.target.name .. " route starts from Rimuldar",
+            "temple staging speech should retain " .. case.target.name)
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected on the temple return")
+
+        local segment = assert(routes.plan_next_segment(0x01, 108, 109))
+        assert_equal(segment.waypoint.name, "Temple inner east lane",
+            case.target.name .. " should reuse the established departure")
+        assert_equal(segment.path_length, 2,
+            case.target.name .. " should begin with the short safe segment")
+        assert_equal(segment.steps[1], "down",
+            case.target.name .. " should leave Magic Temple southward")
+
+        local temple_return = assert(routes._route_for_tests(
+            "rimuldar_magic_temple_staging"))
+        local event
+        for index = 2, #temple_return.waypoints do
+            local waypoint = temple_return.waypoints[index]
+            event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+        end
+        assert_equal(event.status, "handoff",
+            case.target.name .. " should hand off outside Rimuldar")
+        assert_equal(routes.active_route_id(),
+            "swamp_cave_south_magic_temple",
+            case.target.name .. " should activate the proven cave approach")
+        assert_equal(event.steps, nil,
+            "the Rimuldar handoff must not inject movement")
+
+        local cave_return = assert(routes._route_for_tests(
+            "swamp_cave_south_magic_temple"))
+        for index = 3, #cave_return.waypoints do
+            local waypoint = cave_return.waypoints[index]
+            event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+        end
+        assert_equal(event.status, "await_transition",
+            case.target.name .. " should wait for automatic cave entry")
+
+        local cave_handoff = routes.observe_position(0x15, 0, 29)
+        assert_equal(cave_handoff.status, "handoff",
+            "cave entry should advance the " .. case.target.name .. " route")
+        assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+            case.target.name .. " should activate the proven north return")
+        assert_equal(cave_handoff.object_id,
+            "route_kol_swamp_cave_staging_01",
+            case.target.name .. " should wait for the north exterior landing")
+        assert_equal(cave_handoff.steps, nil,
+            case.target.name .. " must not inject cave movement")
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected inside the cave")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 108, 109)
+        assert_equal(alias_err, nil,
+            case.target.name .. " alias should resolve outside Magic Temple")
+        assert_equal(alias_info.route.id, "rimuldar_magic_temple_staging",
+            case.target.name .. " alias should use the same itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.rimuldar_local_cave_variants_do_not_steal_north_exit_starts()
     routes.reset_for_tests()
 
