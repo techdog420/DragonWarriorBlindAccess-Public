@@ -121,6 +121,23 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Rimuldar-origin connections to Brecconary, Erdrick's Cave, and Garinham are
+  source-complete and live-verified. From World Map `(102,72)`, each route
+  bypasses Rimuldar at its east doorstep, enters Swamp Cave south, preserves
+  the selected final destination during manual map `0x15` traversal, and
+  resumes from north exit `(104,44)` through the established Kol and Tantegel
+  bridge staging routes. Brecconary arrived on map `0x08` at frame `54197` and
+  ended clear at `(0,15)`; Erdrick's Cave entered map `0x1C` at frame `84055`
+  and ended clear at `(0,0)`; Garinham entered map `0x09` at frame `115261`
+  and final frame `138600` confirmed `(0,14)`, path target nil, and zero
+  runtime blockers. Garinham's north-exit edge `(104,44)->UP` stopped twice
+  after bounded timing retries: the first `U` restart remained on the same
+  cell and the second crossed successfully, after which the route completed.
+  The edge remained classified noisy and was not promoted as a blocker. All
+  three destinations completed without route drift, runtime-block injection,
+  unintended town entry, or script error. Focused route tests pass `269/269`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass.
 - Swamp-Cave-South connections to Cantlin and the Eastern Great Swamp Search
   Area are source-complete and live-verified. Both retain their selected final
   destination through automatic cave entry and manual map `0x15` traversal,

@@ -3531,6 +3531,84 @@ function tests.garinham_from_swamp_cave_south_crosses_cave_then_uses_shared_retu
     routes.reset_for_tests()
 end
 
+function tests.early_destinations_from_rimuldar_start_south_cave_return()
+    local cases = {
+        {
+            target = {id = "overworld_brecconary", name = "Brecconary"},
+            alias = "brecconary",
+        },
+        {
+            target = {
+                id = "overworld_erdrick_s_cave",
+                name = "Erdrick's Cave",
+            },
+            alias = "erdrick",
+        },
+        {
+            target = {id = "overworld_garinham", name = "Garinham"},
+            alias = "garinham",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, 102, 72)
+
+        assert_equal(err, nil,
+            case.target.name .. " Travel should resolve outside Rimuldar")
+        assert_equal(info.route.id, "swamp_cave_south",
+            case.target.name .. " should first use the proven cave return")
+        assert_equal(info.object_id, "route_swamp_cave_south_02",
+            case.target.name .. " should first target Rimuldar's east doorstep")
+        assert_contains(info.message,
+            case.target.name .. " route starts from Swamp Cave South Entrance",
+            "Rimuldar staging speech should retain " .. case.target.name)
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected on the southern leg")
+
+        local segment = assert(routes.plan_next_segment(0x01, 102, 72))
+        assert_equal(segment.waypoint.name, "Rimuldar east doorstep",
+            case.target.name .. " should reuse the established town departure")
+        assert_equal(segment.path_length, 1,
+            case.target.name .. " should begin with the short safe east step")
+        assert_equal(segment.steps[1], "right",
+            case.target.name .. " should leave Rimuldar eastward")
+
+        local swamp_return = assert(routes._route_for_tests(
+            "swamp_cave_south"))
+        local event
+        for index = 2, #swamp_return.waypoints do
+            local waypoint = swamp_return.waypoints[index]
+            event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+        end
+        assert_equal(event.status, "await_transition",
+            case.target.name .. " should wait for automatic cave entry")
+        assert_equal(routes.active_route_id(), "swamp_cave_south",
+            case.target.name .. " must not advance before map 0x15")
+
+        local cave_handoff = routes.observe_position(0x15, 0, 29)
+        assert_equal(cave_handoff.status, "handoff",
+            "cave entry should advance the " .. case.target.name .. " route")
+        assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+            case.target.name .. " should resume on the proven north return")
+        assert_equal(cave_handoff.steps, nil,
+            case.target.name .. " must not inject cave movement")
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should stay selected through cave entry")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 102, 72)
+        assert_equal(alias_err, nil,
+            case.target.name .. " alias should resolve outside Rimuldar")
+        assert_equal(alias_info.route.id, "swamp_cave_south",
+            case.target.name .. " alias should use the same itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_north_early_variants_preserve_other_origins()
     local cases = {
         {

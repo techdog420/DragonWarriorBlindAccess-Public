@@ -2290,16 +2290,20 @@ ROUTES.brecconary_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
--- South-entrance early destinations wait for automatic Swamp Cave entry,
--- preserve the selected destination during the manual crossing, then reuse
--- the existing north-exit, Kol-bypass, bridge-junction, and final legs.
+-- South-island early destinations first reuse the proven Rimuldar-to-cave
+-- return when needed, wait for automatic Swamp Cave entry, preserve the
+-- selected destination during the manual crossing, then reuse the existing
+-- north-exit, Kol-bypass, bridge-junction, and final legs.
 ROUTES.brecconary_swamp_cave_south = {
     id = "brecconary_swamp_cave_south",
     title = "Brecconary",
     target_object_ids = {"overworld_brecconary"},
     destination_maps = {0x08},
     staging = SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -2309,7 +2313,10 @@ ROUTES.erdrick_swamp_cave_south = {
     target_object_ids = {"overworld_erdrick_s_cave"},
     destination_maps = {0x1C, 0x1D},
     staging = SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2319,7 +2326,10 @@ ROUTES.garinham_swamp_cave_south = {
     target_object_ids = {"overworld_garinham"},
     destination_maps = {0x09},
     staging = SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING,
-    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 

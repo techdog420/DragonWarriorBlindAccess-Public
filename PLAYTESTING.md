@@ -6,6 +6,21 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rimuldar-origin connections to Brecconary, Erdrick's Cave, and Garinham are
+  source-complete and live-verified (`2026-08-23`). From World Map `(102,72)`,
+  all three bypass Rimuldar, preserve the selected destination through Swamp
+  Cave map `0x15`, resume from north exit `(104,44)`, and reuse the established
+  Kol and Tantegel bridge staging routes. Brecconary arrived on map `0x08` and
+  ended clear at `(0,15)`; Erdrick's Cave arrived on map `0x1C` and ended clear
+  at `(0,0)`; Garinham entered map `0x09` at frame `115261`, with final frame
+  `138600` confirming `(0,14)`, path target nil, and zero runtime blockers. At
+  Garinham's north-exit restart, `(104,44)->UP` stopped twice after bounded
+  timing retries. The first `U` restart did not move the hero; the second
+  crossed the same edge, and continuous autowalk then completed normally. The
+  noisy edge was not promoted as a permanent blocker. No run showed route
+  drift, runtime-block injection, unintended town entry, or a script error.
+  Focused route tests pass `269/269`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass.
 - Swamp-Cave-South connections to Cantlin and the Eastern Great Swamp Search
   Area are source-complete and live-verified (`2026-08-23`). Both preserve the
   final destination through automatic cave entry and manual map `0x15`
