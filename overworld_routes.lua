@@ -2560,9 +2560,9 @@ ROUTES.hauksness_swamp_cave_north = {
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
--- South-island northwestern variants first reuse the proven Rimuldar-to-cave
--- return when needed, wait for automatic cave entry, then resume at the north
--- exit and hand off outside Kol to these proven destination legs.
+-- South-island northwestern variants first reuse the proven Magic Temple or
+-- Rimuldar-to-cave return when needed, wait for automatic cave entry, then
+-- resume at the north exit and hand off outside Kol to these destination legs.
 ROUTES.northern_cave_swamp_cave_south = {
     id = "northern_cave_swamp_cave_south",
     title = "Northern Cave",
@@ -2572,6 +2572,7 @@ ROUTES.northern_cave_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
@@ -2585,6 +2586,7 @@ ROUTES.hauksness_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
@@ -2617,6 +2619,7 @@ ROUTES.mountain_cave_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }

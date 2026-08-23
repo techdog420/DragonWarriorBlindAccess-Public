@@ -121,6 +121,28 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Magic-Temple-origin connections to Northern Cave, Hauksness, and Mountain
+  Cave are source-complete and live-verified. From World Map `(108,109)`, all
+  three now begin on the proven `rimuldar_magic_temple_staging` return instead
+  of incorrectly selecting `kol_staging` waypoint 26. They bypass Rimuldar at
+  east doorstep `(103,72)`, preserve the destination through manual Swamp Cave
+  map `0x15`, resume from north exit `(104,44)`, bypass Kol, and use their
+  unchanged destination legs. No waypoint geometry changed. Northern Cave
+  started at frame `822`, bypassed Rimuldar at frame `3770`, entered Swamp Cave
+  at frame `7434`, bypassed Kol at frame `11227`, and arrived at World Map
+  `(81,1)` at frame `14219` with no timing retries. Hauksness started at frame
+  `20657`, bypassed Rimuldar at frame `23665`, entered Swamp Cave at frame
+  `27329`, bypassed Kol at frame `32368`, and entered map `0x03` at `(0,10)` on
+  frame `47088`, also without a timing retry. Mountain Cave started at frame
+  `51415`, bypassed Rimuldar at frame `54419`, entered Swamp Cave at frame
+  `58083`, bypassed Kol at frame `62287`, activated its final spur at frame
+  `73055`, and entered map `0x16` at `(0,7)` on frame `73903`. It recovered one
+  bounded timing retry on `(108,109)->DOWN`, two on the first interior cave
+  step `(0,29)->RIGHT`, and one on north-exit `(104,44)->UP`; none stopped the
+  route. No run logged a blocker, drift, cancellation, runtime-block injection,
+  unintended town entry, or script error. Focused route tests pass `277/277`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. This three-route batch is ready for a focused commit.
 - Magic-Temple-origin connections to Brecconary, Erdrick's Cave, and Garinham
   are source-complete and live-verified. From World Map
   `(108,109)`, all three now begin on the proven
@@ -154,7 +176,7 @@ Updated: 2026-08-23
   injection, unintended intermediate town entry, or script error. Focused
   route tests pass `276/276`; Lua syntax,
   `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
-  pass. This three-route batch is complete and ready for a focused commit.
+  pass. This three-route batch was committed and pushed as `aee90a7`.
 - Rimuldar-origin connections to Swamp Cave north and Kol are source-complete
   and live-verified. Both start at World Map `(102,72)`, reuse the proven
   Rimuldar-to-south-cave return, preserve the selected final destination during
