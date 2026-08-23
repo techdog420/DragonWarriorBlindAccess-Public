@@ -6,6 +6,21 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Magic-Temple-origin connections to Kol and Swamp Cave north are
+  source-complete and live-verified (`2026-08-23`). From World Map `(108,109)`,
+  both began on the proven Magic Temple return, bypassed Rimuldar at `(103,72)`,
+  approached Swamp Cave south, and retained the selected destination during
+  manual map `0x15` traversal. The Swamp Cave north run started at frame `832`,
+  handed off at Rimuldar at frame `3827`, selected its north-exterior route on
+  cave entry at frame `7491`, and arrived after emerging at frame `8639`. The
+  Kol run started at frame `14249`, handed off at Rimuldar at frame `17159`,
+  selected its direct north-exit-to-Kol route on cave entry at frame `20823`,
+  and entered Kol at frame `28474`. One internal cave-step timing retry occurred
+  in each run; Kol also had two internal cadence retries on the first
+  north-exterior step. All recovered automatically, with no blocker, drift,
+  cancellation, runtime-block injection, or script error. No waypoint geometry
+  changed. Focused route tests pass `278/278`; Lua syntax, `git diff --check`,
+  all 33 host-runnable Lua suites, and all 68 Python tests pass.
 - Magic-Temple-origin connections to Northern Cave, Hauksness, and Mountain
   Cave are source-complete and live-verified (`2026-08-23`). From World Map
   `(108,109)`, all three now use the proven Magic Temple return, bypass Rimuldar
@@ -25,8 +40,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   exit `(104,44)->UP`; none stopped the route. No run logged a blocker, drift,
   cancellation, runtime-block injection, unintended town entry, or script
   error. Focused route tests pass `277/277`; Lua syntax, `git diff --check`, all
-  33 host-runnable Lua suites, and all 68 Python tests pass. This batch is ready
-  for a focused commit.
+  33 host-runnable Lua suites, and all 68 Python tests pass. This batch was
+  committed and pushed as `d986f45`.
 - Magic-Temple-origin connections to Brecconary, Erdrick's Cave, and Garinham
   are source-complete and live-verified (`2026-08-23`). The old
   selection from World Map `(108,109)` incorrectly chose raw direct routes.

@@ -121,6 +121,25 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Magic-Temple-origin connections to Kol and Swamp Cave north are
+  source-complete and live-verified. From World Map `(108,109)`, both began on
+  `rimuldar_magic_temple_staging`, bypassed Rimuldar at east doorstep
+  `(103,72)`, and continued on `swamp_cave_south_magic_temple`. Automatic entry
+  into map `0x15` retained the final destination without injecting interior
+  movement. The Swamp Cave north run started at frame `832`, handed off at
+  Rimuldar at frame `3827`, activated `swamp_cave_north_swamp_cave_south` on
+  cave entry at frame `7491`, and arrived after the north exit at frame `8639`.
+  The Kol run started at frame `14249`, handed off at Rimuldar at frame `17159`,
+  activated `kol_swamp_cave_south` on cave entry at frame `20823`, and entered
+  Kol at frame `28474`. One internal cave-step timing retry occurred in each
+  run; Kol also had two internal cadence retries on the first north-exterior
+  step. All recovered automatically, with no blocker, drift, cancellation,
+  runtime-block injection, or script error. No waypoint geometry changed. The
+  regression covers Travel-object and alias selection, the bounded two-step
+  departure, both exterior staging handoffs, the automatic-entry wait, and both
+  route-specific cave handoffs. Focused route tests pass `278/278`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - Magic-Temple-origin connections to Northern Cave, Hauksness, and Mountain
   Cave are source-complete and live-verified. From World Map `(108,109)`, all
   three now begin on the proven `rimuldar_magic_temple_staging` return instead
@@ -142,7 +161,8 @@ Updated: 2026-08-23
   route. No run logged a blocker, drift, cancellation, runtime-block injection,
   unintended town entry, or script error. Focused route tests pass `277/277`;
   Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
-  Python tests pass. This three-route batch is ready for a focused commit.
+  Python tests pass. This three-route batch was committed and pushed as
+  `d986f45`.
 - Magic-Temple-origin connections to Brecconary, Erdrick's Cave, and Garinham
   are source-complete and live-verified. From World Map
   `(108,109)`, all three now begin on the proven

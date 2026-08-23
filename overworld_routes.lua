@@ -2204,9 +2204,9 @@ ROUTES.kol_swamp_cave_staging = {
     waypoints = kol_swamp_cave_staging_waypoints,
 }
 
--- Direct south-island Kol travel differs from connected pass-through routes:
--- after the manual cave crossing it follows the canonical north-exit route all
--- the way into town instead of stopping at Kol's west doorstep.
+-- Direct south-island Kol travel, including Magic Temple starts, differs from
+-- connected pass-through routes: after the manual cave crossing it follows the
+-- canonical north-exit route all the way into town instead of stopping outside.
 ROUTES.kol_swamp_cave_south = {
     id = "kol_swamp_cave_south",
     title = "Kol",
@@ -2220,6 +2220,7 @@ ROUTES.kol_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.kol_swamp_cave, 104, 10),
 }
@@ -2238,6 +2239,7 @@ ROUTES.swamp_cave_north_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = {
         {
