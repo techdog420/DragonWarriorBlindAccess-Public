@@ -3609,6 +3609,118 @@ function tests.early_destinations_from_rimuldar_start_south_cave_return()
     routes.reset_for_tests()
 end
 
+function tests.early_destinations_from_magic_temple_start_temple_return()
+    local cases = {
+        {
+            target = {id = "overworld_brecconary", name = "Brecconary"},
+            alias = "brecconary",
+        },
+        {
+            target = {
+                id = "overworld_erdrick_s_cave",
+                name = "Erdrick's Cave",
+            },
+            alias = "erdrick",
+        },
+        {
+            target = {id = "overworld_garinham", name = "Garinham"},
+            alias = "garinham",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, 108, 109)
+
+        assert_equal(err, nil,
+            case.target.name .. " Travel should resolve outside Magic Temple")
+        assert_equal(info.route.id, "rimuldar_magic_temple_staging",
+            case.target.name .. " should first use the proven temple return")
+        assert_equal(info.object_id,
+            "route_rimuldar_magic_temple_staging_02",
+            case.target.name .. " should leave the temple through its south opening")
+        assert_contains(info.message,
+            case.target.name .. " route starts from Rimuldar",
+            "temple staging speech should retain " .. case.target.name)
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected on the temple return")
+
+        local segment = assert(routes.plan_next_segment(0x01, 108, 109))
+        assert_equal(segment.waypoint.name, "Temple inner east lane",
+            case.target.name .. " should reuse the established temple departure")
+        assert_equal(segment.path_length, 2,
+            case.target.name .. " should begin with the short safe south segment")
+        assert_equal(segment.steps[1], "down",
+            case.target.name .. " should leave Magic Temple southward")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 108, 109)
+        assert_equal(alias_err, nil,
+            case.target.name .. " alias should resolve outside Magic Temple")
+        assert_equal(alias_info.route.id, "rimuldar_magic_temple_staging",
+            case.target.name .. " alias should use the same itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.magic_temple_early_itinerary_hands_off_to_shared_cave_return()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_brecconary",
+        name = "Brecconary",
+    }
+    assert(routes.start_for_object(target, 0x01, 108, 109))
+
+    local temple_return = assert(routes._route_for_tests(
+        "rimuldar_magic_temple_staging"))
+    local event
+    for index = 2, #temple_return.waypoints do
+        local waypoint = temple_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+
+    assert_equal(event.status, "handoff",
+        "Rimuldar east doorstep should hand off without entering town")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_south_magic_temple",
+        "the temple return should activate the established cave approach")
+    assert_equal(event.object_id,
+        "route_swamp_cave_south_magic_temple_03",
+        "the cave approach should continue east from Rimuldar's doorstep")
+    assert_contains(event.message, "Final destination: Brecconary",
+        "the Rimuldar handoff should retain the selected destination")
+    assert_equal(event.steps, nil,
+        "the exterior Rimuldar handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected after the Rimuldar handoff")
+
+    local cave_return = assert(routes._route_for_tests(
+        "swamp_cave_south_magic_temple"))
+    for index = 3, #cave_return.waypoints do
+        local waypoint = cave_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "await_transition",
+        "the south entrance should wait for automatic cave entry")
+    assert_equal(routes.active_route_id(), "swamp_cave_south_magic_temple",
+        "the itinerary must not advance before map 0x15 is observed")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "cave entry should advance the Brecconary itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "the cave handoff should reuse the proven north-exit return")
+    assert_equal(cave_handoff.steps, nil,
+        "the cave handoff must not inject interior movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected through cave entry")
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_north_early_variants_preserve_other_origins()
     local cases = {
         {

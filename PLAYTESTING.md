@@ -6,6 +6,34 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Magic-Temple-origin connections to Brecconary, Erdrick's Cave, and Garinham
+  are source-complete and live-verified (`2026-08-23`). The old
+  selection from World Map `(108,109)` incorrectly chose raw direct routes.
+  Each destination now starts on the proven Magic-Temple-to-Rimuldar return,
+  bypasses Rimuldar at `(103,72)`, continues to Swamp Cave south, retains the
+  selected destination during manual map `0x15` traversal, then reuses the
+  established Kol bypass and Tantegel bridge junction before its unchanged
+  final leg. No waypoint geometry changed. The Brecconary run started at frame
+  `3262`, bypassed Rimuldar at frame `6724`, entered Swamp Cave at frame
+  `10388`, resumed north at frame `12328`, bypassed Kol at frame `15558`, and
+  entered Brecconary map `0x08` at frame `22486`. No timing retry, blocked
+  step, drift, route replacement, runtime-block injection, or script error was
+  logged. Erdrick's Cave started at frame `33516`, bypassed Rimuldar at frame
+  `36455`, entered Swamp Cave at frame `40119`, resumed north at frame `41340`,
+  bypassed Kol at frame `44074`, and entered map `0x1C` at frame `52426`.
+  Fresh frame `54060` confirmed `(0,0)`, path target nil, and zero NPC/runtime
+  blockers; it also had no retry, blocked step, drift, replacement, runtime
+  injection, or script error. Garinham started at frame `57635`, bypassed
+  Rimuldar at frame `62367`, entered Swamp Cave at frame `66031`, resumed north
+  at frame `67543`, bypassed Kol at frame `70293`, and entered map `0x09` at
+  frame `80389`. It recovered one bounded timing retry on the initial
+  `(108,109)->DOWN` step and one on the first interior cave step. Fresh frame
+  `82740` confirmed `(0,14)`, path target nil, and zero runtime blockers. No run
+  in the batch logged a blocker, drift, route replacement, runtime injection,
+  unintended intermediate town entry, or script error. Focused route tests
+  pass `276/276`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. This three-route batch is ready for a focused commit.
 - Rimuldar-origin connections to Swamp Cave north and Kol are source-complete
   and live-verified (`2026-08-23`). Both start at World Map `(102,72)`, follow
   the proven route to Swamp Cave south, retain the selected destination during

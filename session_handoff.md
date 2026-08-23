@@ -121,6 +121,40 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Magic-Temple-origin connections to Brecconary, Erdrick's Cave, and Garinham
+  are source-complete and live-verified. From World Map
+  `(108,109)`, all three now begin on the proven
+  `rimuldar_magic_temple_staging` return instead of selecting an invalid raw
+  direct route. They bypass Rimuldar at east doorstep `(103,72)`, continue on
+  `swamp_cave_south_magic_temple`, preserve the selected final destination
+  during manual map `0x15` traversal, then reuse the accepted north-exit Kol
+  bypass and Tantegel bridge-junction handoffs. No waypoint geometry changed.
+  Regressions cover Travel-object and alias selection, the bounded first
+  segment, the exterior Rimuldar handoff, the automatic cave-entry wait, and
+  the cave handoff without injected interior movement. The Brecconary run
+  started at frame `3262`, handed off outside Rimuldar at frame `6724`, entered
+  Swamp Cave at frame `10388`, resumed from its north exit at frame `12328`,
+  bypassed Kol at frame `15558`, activated its final leg at frame `22182`, and
+  entered Brecconary map `0x08` at frame `22486`. It logged no timing retry,
+  blocked step, drift, route replacement, runtime-block injection, or script
+  error. The Erdrick's Cave run started at frame `33516`, handed off outside
+  Rimuldar at frame `36455`, entered Swamp Cave at frame `40119`, resumed north
+  at frame `41340`, bypassed Kol at frame `44074`, activated its final leg at
+  frame `50698`, and entered map `0x1C` at frame `52426`. Fresh frame `54060`
+  confirmed `(0,0)`, path target nil, and zero NPC/runtime blockers. It likewise
+  had no timing retry, blocked step, drift, replacement, runtime injection, or
+  script error. The Garinham run started at frame `57635`, handed off outside
+  Rimuldar at frame `62367`, entered Swamp Cave at frame `66031`, resumed north
+  at frame `67543`, bypassed Kol at frame `70293`, activated its final leg at
+  frame `76917`, and entered map `0x09` at frame `80389`. It recovered one
+  bounded timing retry on the initial `(108,109)->DOWN` step and one on the
+  first interior cave step; both completed automatically. Fresh frame `82740`
+  confirmed `(0,14)`, path target nil, and zero runtime blockers. No run in the
+  batch logged a blocked step, drift, route replacement, runtime-block
+  injection, unintended intermediate town entry, or script error. Focused
+  route tests pass `276/276`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. This three-route batch is complete and ready for a focused commit.
 - Rimuldar-origin connections to Swamp Cave north and Kol are source-complete
   and live-verified. Both start at World Map `(102,72)`, reuse the proven
   Rimuldar-to-south-cave return, preserve the selected final destination during
@@ -2775,10 +2809,9 @@ Updated: 2026-08-23
 
 ## Next Work
 
-1. Commit and push the live-verified Swamp-Cave-North final-progression batch
-   and compatibility-only route-guidance fix as one focused revision.
-2. Audit the remaining connected-overworld matrix and select the next small
-   origin/destination group with reusable live-validated geometry.
+1. Commit and push the live-verified Magic-Temple-origin Brecconary, Erdrick's
+   Cave, and Garinham batch as one focused revision.
+2. Audit the remaining connected-overworld matrix for the next origin group.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

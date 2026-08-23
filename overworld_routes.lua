@@ -239,8 +239,9 @@ local SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING = {
 local SWAMP_CAVE_SOUTH_EARLY_DESTINATION_STAGING = {
     route_id = "tantegel_bridge_swamp_cave_staging",
     -- The nested bridge staging already returns through Swamp Cave and Kol.
-    -- Keep the south-origin selector separate so northern variants and the
-    -- still-unconnected southern destinations retain their current behavior.
+    -- Keep the southern-origin selector separate so northern variants retain
+    -- their current behavior. Magic Temple starts nest through the established
+    -- temple-to-Rimuldar return before joining this shared cave chain.
     max_start_distance = 24,
     continue_after_staging = true,
 }
@@ -2360,6 +2361,7 @@ ROUTES.brecconary_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
@@ -2373,6 +2375,7 @@ ROUTES.erdrick_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
@@ -2386,6 +2389,7 @@ ROUTES.garinham_swamp_cave_south = {
     selection_anchors = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
+        {x = 108, y = 109, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
