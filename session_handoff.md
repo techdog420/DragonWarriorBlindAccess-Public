@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-21
+Updated: 2026-08-23
 
 ## Release Installation Handoff
 
@@ -121,6 +121,22 @@ Updated: 2026-08-21
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave-South connections to Cantlin and the Eastern Great Swamp Search
+  Area are source-complete and live-verified. Both retain their selected final
+  destination through automatic cave entry and manual map `0x15` traversal,
+  resume from north exit `(104,44)`, bypass Kol at `(103,10)`, and reuse the
+  established Hauksness approach. Cantlin handed off from Hauksness staging at
+  frame `22401`, entered map `0x0A` at frame `27969`, and ended at `(15,0)`
+  with path target nil and zero runtime blockers. Great Swamp handed off to
+  Cantlin staging at frame `20363`, activated its final leg at frame `25371`,
+  and arrived at World Map `(89,112)` at frame `29163`. Final frame `69960`
+  confirmed path target nil and zero NPC/runtime blockers. Each run recovered
+  two timing retries at `(104,44)->UP`; both also accepted the same two
+  intentional continuous-walk carry steps in the western forest. Neither run
+  had a blocked edge, cancellation, runtime injection, unintended town entry,
+  or script error. Focused route tests pass `268/268`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - Swamp-Cave-South connections to Northern Cave, Hauksness, and Mountain Cave
   are source-complete and live-verified. From World Map `(104,49)`, all three
   routes wait for automatic entry, retain their selected destination during

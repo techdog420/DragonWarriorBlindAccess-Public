@@ -2564,6 +2564,18 @@ ROUTES.cantlin_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
+-- South-entrance Cantlin travel nests through the manual cave crossing, then
+-- reuses the same non-entry Kol and Hauksness handoffs as the north variant.
+ROUTES.cantlin_swamp_cave_south = {
+    id = "cantlin_swamp_cave_south",
+    title = "Cantlin",
+    target_object_ids = {"overworld_cantlin"},
+    destination_maps = {0x0A},
+    staging = SWAMP_CAVE_NORTH_CANTLIN_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
+}
+
 -- Internal hub leg: Great Swamp travel shares the Cantlin route only to its
 -- northwest turn, preserving the existing town bypass before the final leg.
 ROUTES.cantlin_swamp_cave_north_staging = {
@@ -2585,6 +2597,19 @@ ROUTES.great_swamp_swamp_cave_north = {
     },
     staging = SWAMP_CAVE_NORTH_GREAT_SWAMP_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
+}
+
+-- South-entrance Great Swamp travel adds the existing Cantlin bypass after
+-- the shared cave, Kol, and Hauksness staging chain.
+ROUTES.great_swamp_swamp_cave_south = {
+    id = "great_swamp_swamp_cave_south",
+    title = "Eastern Great Swamp Search Area",
+    target_object_ids = {
+        "overworld_eastern_great_swamp_search_area",
+    },
+    staging = SWAMP_CAVE_NORTH_GREAT_SWAMP_STAGING,
+    selection_anchors = {{x = 104, y = 49, max_distance = 4}},
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
@@ -2717,8 +2742,10 @@ local ROUTE_IDS = {
     "hauksness_cantlin",
     "cantlin_hauksness",
     "cantlin_swamp_cave_north",
+    "cantlin_swamp_cave_south",
     "great_swamp_cantlin",
     "great_swamp_swamp_cave_north",
+    "great_swamp_swamp_cave_south",
     "cantlin_great_swamp",
     "erdrick",
     "erdrick_kol",
@@ -2807,10 +2834,12 @@ local ROUTE_ALTERNATES = {
         "cantlin_hauksness",
         "cantlin_great_swamp",
         "cantlin_swamp_cave_north",
+        "cantlin_swamp_cave_south",
     },
     great_swamp_cantlin = {
         "great_swamp_cantlin",
         "great_swamp_swamp_cave_north",
+        "great_swamp_swamp_cave_south",
     },
     hauksness_return_staging = {
         "hauksness_return_staging",
