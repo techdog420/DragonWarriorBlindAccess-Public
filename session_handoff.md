@@ -121,6 +121,20 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Rimuldar-origin connections to Swamp Cave north and Kol are source-complete
+  and live-verified. Both start at World Map `(102,72)`, reuse the proven
+  Rimuldar-to-south-cave return, preserve the selected final destination during
+  manual map `0x15` traversal, and resume from north exit `(104,44)`. The
+  Swamp Cave north route handed off on cave entry at frame `4613`, completed
+  only after emerging at `(104,44)` at frame `10283`, and final frame `12300`
+  confirmed path target nil and zero runtime blockers. The Kol route handed off
+  on cave entry at frame `19197`, resumed outside the north exit at frame
+  `20256`, followed the canonical cave-to-Kol route into map `0x07` at frame
+  `23038`, and final frame `25620` confirmed `(19,23)`, path target nil, and
+  zero runtime blockers. Neither run logged a timing retry, blocker stop, route
+  replacement, runtime-block injection, or script error. Focused route tests
+  pass `274/274`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass.
 - Rimuldar-origin connections to Cantlin and the Eastern Great Swamp Search
   Area are source-complete and live-verified. From World Map `(102,72)`, both
   reuse the proven Rimuldar-to-Swamp-Cave return, preserve the final destination

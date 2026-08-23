@@ -6,6 +6,19 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rimuldar-origin connections to Swamp Cave north and Kol are source-complete
+  and live-verified (`2026-08-23`). Both start at World Map `(102,72)`, follow
+  the proven route to Swamp Cave south, retain the selected destination during
+  manual map `0x15` traversal, and resume at north exit `(104,44)`. Swamp Cave
+  north completed on emergence at frame `10283`; final frame `12300` confirmed
+  `(104,44)`, path target nil, and zero runtime blockers. Kol handed off on cave
+  entry at frame `19197`, resumed outside the north exit at frame `20256`,
+  entered map `0x07` at frame `23038`, and final frame `25620` confirmed
+  `(19,23)`, path target nil, and zero runtime blockers. Neither run logged a
+  timing retry, blocker stop, route replacement, runtime-block injection, or
+  script error. Focused route tests pass `274/274`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - Rimuldar-origin connections to Cantlin and the Eastern Great Swamp Search
   Area are source-complete and live-verified (`2026-08-23`). From World Map
   `(102,72)`, both preserve the selected destination through Swamp Cave map

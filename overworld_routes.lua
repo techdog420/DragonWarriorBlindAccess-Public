@@ -145,6 +145,17 @@ local KOL_SWAMP_CAVE_RETURN_STAGING = {
     continue_after_staging = true,
 }
 
+local SOUTH_ISLAND_NORTH_EXIT_STAGING = {
+    route_id = "swamp_cave_south",
+    -- Rimuldar and Swamp Cave's south entrance cannot reach the north-side
+    -- routes directly on the World Map. First use the proven Rimuldar return,
+    -- then wait for the player to cross map 0x15 manually.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local SWAMP_CAVE_TANTEGEL_STAGING = {
     route_id = "kol_swamp_cave_staging",
     continuation_route_id = "tantegel_kol",
@@ -2192,6 +2203,52 @@ ROUTES.kol_swamp_cave_staging = {
     waypoints = kol_swamp_cave_staging_waypoints,
 }
 
+-- Direct south-island Kol travel differs from connected pass-through routes:
+-- after the manual cave crossing it follows the canonical north-exit route all
+-- the way into town instead of stopping at Kol's west doorstep.
+ROUTES.kol_swamp_cave_south = {
+    id = "kol_swamp_cave_south",
+    title = "Kol",
+    target_object_ids = {"overworld_kol"},
+    compatible_target_object_ids = {
+        "overworld_swamp_cave_south_entrance",
+        "overworld_swamp_cave",
+    },
+    destination_maps = {0x07},
+    staging = SOUTH_ISLAND_NORTH_EXIT_STAGING,
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
+    waypoints = copy_route_prefix(ROUTES.kol_swamp_cave, 104, 10),
+}
+
+-- The north entrance is physically close to the south entrance but separated
+-- by impassable overworld terrain. Reach the south entrance normally, cross
+-- the cave manually, and complete only after emerging on the north side.
+ROUTES.swamp_cave_north_swamp_cave_south = {
+    id = "swamp_cave_north_swamp_cave_south",
+    title = "Swamp Cave North Entrance",
+    target_object_ids = {"overworld_swamp_cave"},
+    compatible_target_object_ids = {
+        "overworld_swamp_cave_south_entrance",
+    },
+    staging = SOUTH_ISLAND_NORTH_EXIT_STAGING,
+    selection_anchors = {
+        {x = 104, y = 49, max_distance = 4},
+        {x = 102, y = 72, max_distance = 4},
+    },
+    waypoints = {
+        {
+            x = 104,
+            y = 44,
+            name = "Swamp Cave North Entrance",
+            radius = 0,
+            final = true,
+        },
+    },
+}
+
 -- Internal eastern hub leg: reverse the validated Kol route only through the
 -- shared bridge junction. Garinham, Erdrick's Cave, and Brecconary all contain
 -- this exact pin, so connected travel can hand off without entering Tantegel.
@@ -2743,9 +2800,11 @@ local ROUTE_IDS = {
     "northern_cave_swamp_cave_south",
     "kol_rain_shrine",
     "kol_swamp_cave",
+    "kol_swamp_cave_south",
     "kol_hauksness",
     "swamp_cave",
     "swamp_cave_bridge",
+    "swamp_cave_north_swamp_cave_south",
     "rimuldar",
     "rimuldar_swamp_cave_north",
     "magic_temple",
@@ -2806,17 +2865,37 @@ local ROUTE_ALTERNATES = {
         "erdrick_swamp_cave_north",
         "erdrick_swamp_cave_south",
     },
-    kol = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
+    kol = {
+        "kol",
+        "kol_rain_shrine",
+        "kol_swamp_cave",
+        "kol_swamp_cave_south",
+        "kol_hauksness",
+    },
     northern_cave = {
         "northern_cave",
         "northern_cave_swamp_cave_north",
         "northern_cave_swamp_cave_south",
     },
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
-    kol_swamp_cave = {"kol_swamp_cave", "kol", "kol_rain_shrine", "kol_hauksness"},
+    kol_swamp_cave = {
+        "kol_swamp_cave",
+        "kol_swamp_cave_south",
+        "kol",
+        "kol_rain_shrine",
+        "kol_hauksness",
+    },
     kol_hauksness = {"kol_hauksness", "kol", "kol_rain_shrine", "kol_swamp_cave"},
-    swamp_cave = {"swamp_cave_bridge", "swamp_cave"},
-    swamp_cave_bridge = {"swamp_cave_bridge", "swamp_cave"},
+    swamp_cave = {
+        "swamp_cave_bridge",
+        "swamp_cave",
+        "swamp_cave_north_swamp_cave_south",
+    },
+    swamp_cave_bridge = {
+        "swamp_cave_bridge",
+        "swamp_cave",
+        "swamp_cave_north_swamp_cave_south",
+    },
     swamp_cave_south = {
         "swamp_cave_south",
         "swamp_cave_south_swamp_cave_north",

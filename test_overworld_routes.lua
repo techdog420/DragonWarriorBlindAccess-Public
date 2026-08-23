@@ -4291,6 +4291,123 @@ function tests.southern_destinations_from_rimuldar_start_south_cave_return()
     routes.reset_for_tests()
 end
 
+function tests.kol_from_rimuldar_crosses_swamp_cave_before_north_route()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 102, 72)
+
+    assert_equal(err, nil, "Kol Travel should resolve outside Rimuldar")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "Kol should first use the proven south-cave return")
+    assert_equal(info.object_id, "route_swamp_cave_south_02",
+        "Kol should first target Rimuldar's east doorstep")
+    assert_contains(info.message, "Kol route starts from Swamp Cave South Entrance",
+        "staging speech should retain Kol as the final destination")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Kol should remain selected on the southern leg")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "south-cave entry should advance the Kol itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_south",
+        "cave entry should activate the direct north-exit-to-Kol route")
+    assert_equal(cave_handoff.object_id,
+        "route_kol_swamp_cave_south_01",
+        "the Kol itinerary should wait for the north exterior landing")
+    assert_equal(cave_handoff.steps, nil,
+        "the Kol itinerary must not inject cave movement")
+
+    local north_exit = routes.observe_position(0x01, 104, 44)
+    assert_contains(north_exit.message, "Reached Swamp Cave",
+        "the Kol route should resume after the north exit")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Kol should remain selected after crossing the cave")
+
+    local arrival = routes.observe_position(0x07, 15, 14)
+    assert_contains(arrival.message, "Arrived at Kol",
+        "entering Kol should complete the connected itinerary")
+    assert_equal(routes.is_active(), false,
+        "the connected Kol route should clear on arrival")
+
+    routes.reset_for_tests()
+end
+
+function tests.swamp_cave_north_from_rimuldar_waits_for_manual_crossing()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }
+
+    local info, err = routes.start_for_object(target, 0x01, 102, 72)
+
+    assert_equal(err, nil,
+        "Swamp Cave north Travel should resolve outside Rimuldar")
+    assert_equal(info.route.id, "swamp_cave_south",
+        "north-cave travel should first use the proven south entrance route")
+    assert_equal(info.object_id, "route_swamp_cave_south_02",
+        "north-cave travel should first leave Rimuldar eastward")
+    assert_contains(info.message, "Swamp Cave North Entrance route starts from Swamp Cave South Entrance",
+        "staging speech should distinguish the requested north entrance")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the north entrance should remain selected on the southern leg")
+
+    local cave_handoff = routes.observe_position(0x15, 0, 29)
+    assert_equal(cave_handoff.status, "handoff",
+        "south-cave entry should advance the north-entrance itinerary")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_north_swamp_cave_south",
+        "the route should wait for the north exterior landing")
+    assert_equal(cave_handoff.object_id,
+        "route_swamp_cave_north_swamp_cave_south_01",
+        "the cave handoff should expose the north entrance waypoint")
+    assert_equal(cave_handoff.steps, nil,
+        "the north-entrance itinerary must not inject cave movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "the north entrance should remain selected inside the cave")
+
+    local arrival = routes.observe_position(0x01, 104, 44)
+    assert_contains(arrival.message, "Arrived at Swamp Cave North Entrance",
+        "emerging north should complete the route")
+    assert_equal(routes.is_active(), false,
+        "the north-entrance route should clear after emergence")
+
+    routes.reset_for_tests()
+end
+
+function tests.rimuldar_local_cave_variants_do_not_steal_north_exit_starts()
+    routes.reset_for_tests()
+
+    local kol = assert(routes.start_for_object({
+        id = "overworld_kol",
+        name = "Kol",
+        x = 104,
+        y = 10,
+    }, 0x01, 104, 44))
+    assert_equal(kol.route.id, "kol_swamp_cave",
+        "Kol should retain its direct north-exit route")
+
+    routes.reset_for_tests()
+    local cave = assert(routes.start_for_object({
+        id = "overworld_swamp_cave",
+        name = "Swamp Cave",
+        x = 104,
+        y = 44,
+    }, 0x01, 104, 43))
+    assert_equal(cave.route.id, "swamp_cave_bridge",
+        "nearby north-cave travel should retain its existing bridge variant")
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_south_southern_routes_handoff_outside_towns()
     local cantlin = {
         id = "overworld_cantlin",
