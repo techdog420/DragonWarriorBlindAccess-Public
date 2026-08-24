@@ -121,6 +121,39 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Eastern-mainland connections to the southern island are source-complete and
+  live-verified through the full representative three-run matrix.
+  Tantegel `(43,43)`, Brecconary `(48,41)`,
+  Erdrick's Cave `(28,12)`, Garinham `(1,2)`, and Kol `(104,10)` now reach
+  Swamp Cave south, Rainbow Bridge, and Charlock by following their proven
+  route to Kol and Swamp Cave north, waiting through manual map `0x15`
+  traversal, and resuming at `(104,49)`. Garinham no longer snaps directly to
+  `charlock_return`: a new derived staging chain reverses the existing
+  Garinham-to-Tantegel road only to bridge junction `(44,38)`, bypasses
+  Brecconary and Kol, and then reuses the canonical north-cave approach. The
+  same chain also repairs Garinham travel to Swamp Cave north, Rimuldar, and
+  Magic Temple. No waypoint geometry changed. The regression covers all 15
+  eastern-origin/final-progression pairs, the three additional Garinham
+  destinations, the Rainbow Bridge alias, bounded first segments, every
+  Garinham handoff, the cave-transition wait, no injected interior movement,
+  and final-destination retention. Focused route tests pass `282/282`; Lua
+  syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. Garinham-to-Rainbow-Bridge started on
+  `tantegel_garinham_staging` at frame `1032`, handed off at bridge junction
+  `(44,38)` at `4527`, bypassed Kol at `11199`, entered Swamp Cave and
+  activated the south-exit wait at `13759`, resumed the Rainbow Bridge leg at
+  `15025`, and arrived at `(65,49)` at `16624`. The run had no retry, route
+  stop, blocker, drift, runtime-block injection, unintended town entry, or
+  script error. Tantegel-to-Charlock started on `kol_staging` at frame `26435`,
+  bypassed Kol and activated `swamp_cave` at `33742`, entered Swamp Cave and
+  activated the south-exit wait at `36302`, resumed `charlock_castle` at
+  `37378`, and entered Charlock map `0x02` at `41409`. It likewise logged no
+  retry, route stop, blocker, drift, runtime-block injection, unintended town
+  entry, or script error. Kol-to-Swamp-Cave-south started `swamp_cave` at
+  frame `47035`, entered the north cave and activated the south-exit wait at
+  `49905`, and arrived on World Map `(104,49)` at `51055`. It also had no
+  retry, route stop, blocker, drift, runtime-block injection, unintended town
+  entry, or script error. This batch is ready to commit.
 - Final-island connections to Brecconary, Erdrick's Cave, and Garinham are
   source-complete and live-verified through the representative three-run
   matrix. At Charlock Castle `(48,48)`,

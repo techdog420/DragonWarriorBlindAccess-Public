@@ -317,6 +317,38 @@ local SWAMP_CAVE_NORTH_TO_SOUTH_STAGING = {
     continue_after_staging = true,
 }
 
+local GARINHAM_KOL_STAGING = {
+    route_id = "tantegel_garinham_staging",
+    -- Garinham first returns on the established eastern road only to the
+    -- shared bridge junction. From there the existing Kol bypass can continue
+    -- without entering Brecconary or Tantegel.
+    max_start_distance = 24,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local GARINHAM_SWAMP_CAVE_STAGING = {
+    route_id = "kol_garinham_staging",
+    -- Once the eastern return reaches the shared bridge junction, follow the
+    -- existing Kol and north-cave corridors instead of synthesizing a direct
+    -- cross-world segment from Garinham.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local MAINLAND_SWAMP_CAVE_SOUTH_STAGING = {
+    route_id = "swamp_cave",
+    continuation_route_id = "swamp_cave_south_swamp_cave_north",
+    -- The two cave entrances are close in coordinates but separated by
+    -- impassable overworld terrain. Mainland starts must reach the north
+    -- entrance and cross map 0x15 manually before continuing south.
+    max_start_distance = 1,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local SWAMP_CAVE_NORTH_MAGIC_TEMPLE_STAGING = {
     route_id = "rimuldar_swamp_cave_north_staging",
     -- After the manual cave crossing, follow the proven Rimuldar approach only
@@ -2762,6 +2794,62 @@ ROUTES.swamp_cave_south_swamp_cave_north = {
     },
 }
 
+-- Internal eastern return: Garinham already has a live-validated route toward
+-- Tantegel. Stop that route at the shared bridge junction so longer southern
+-- itineraries can turn onto the established Kol corridor without entering a
+-- town or inventing new waypoint geometry.
+ROUTES.tantegel_garinham_staging = {
+    id = "tantegel_garinham_staging",
+    title = "Tantegel bridge junction",
+    waypoints = copy_route_prefix(ROUTES.tantegel, 44, 38),
+}
+
+-- Continue from the shared bridge junction to Kol's west doorstep. This is a
+-- separate wrapper so only Garinham-origin southern travel gains the eastern
+-- staging leg; existing Kol staging behavior remains unchanged elsewhere.
+ROUTES.kol_garinham_staging = {
+    id = "kol_garinham_staging",
+    title = "Kol",
+    destination_maps = {0x07},
+    staging = GARINHAM_KOL_STAGING,
+    waypoints = copy_route_prefix(ROUTES.kol_staging, 103, 10),
+}
+
+-- Reach Swamp Cave north from Garinham through the proven bridge and Kol
+-- chain. Automatic cave entry must occur before the next staged leg becomes
+-- active, keeping auto-walk from injecting movement inside map 0x15.
+ROUTES.swamp_cave_garinham_staging = {
+    id = "swamp_cave_garinham_staging",
+    title = "Swamp Cave",
+    target_object_ids = {"overworld_swamp_cave"},
+    destination_maps = {0x15},
+    staged_handoff_requires_destination_map = true,
+    staged_transition_message =
+        "Enter Swamp Cave, then cross manually to the south exit.",
+    staging = GARINHAM_SWAMP_CAVE_STAGING,
+    selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
+}
+
+-- Mainland destination-selection variant: reach Swamp Cave north through the
+-- origin's established corridor, cross manually, and resume at the south
+-- entrance. Rainbow Bridge and Charlock staging reuse this same return.
+ROUTES.swamp_cave_south_mainland = {
+    id = "swamp_cave_south_mainland",
+    title = "Swamp Cave South Entrance",
+    target_object_ids = {"overworld_swamp_cave_south_entrance"},
+    staging = MAINLAND_SWAMP_CAVE_SOUTH_STAGING,
+    selection_anchors = {
+        {x = 43, y = 43, max_distance = 4},
+        {x = 48, y = 41, max_distance = 4},
+        {x = 28, y = 12, max_distance = 4},
+        {x = 1, y = 2, max_distance = 4},
+        {x = 104, y = 10, max_distance = 4},
+    },
+    waypoints = copy_route_prefix(
+        ROUTES.swamp_cave_south_swamp_cave_north, 104, 49),
+}
+
 -- Destination-selection variant: Rimuldar travel from the north cave exit
 -- reuses the proven re-entry pause, waits through the manual cave crossing,
 -- then resumes the existing south-entrance-to-Rimuldar corridor unchanged.
@@ -2835,6 +2923,7 @@ local ROUTE_IDS = {
     "magic_temple_swamp_cave_north",
     "rimuldar_magic_temple",
     "swamp_cave_south",
+    "swamp_cave_south_mainland",
     "swamp_cave_south_swamp_cave_north",
     "swamp_cave_south_recovery",
     "rainbow_bridge",
@@ -2913,6 +3002,7 @@ local ROUTE_ALTERNATES = {
     swamp_cave = {
         "swamp_cave_bridge",
         "swamp_cave",
+        "swamp_cave_garinham_staging",
         "swamp_cave_north_swamp_cave_south",
     },
     swamp_cave_bridge = {
@@ -2922,6 +3012,7 @@ local ROUTE_ALTERNATES = {
     },
     swamp_cave_south = {
         "swamp_cave_south",
+        "swamp_cave_south_mainland",
         "swamp_cave_south_swamp_cave_north",
         "swamp_cave_south_recovery",
         "rainbow_bridge_return",

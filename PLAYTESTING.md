@@ -6,6 +6,28 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Eastern-mainland connections to the southern island are source-complete and
+  live-verified through the full representative matrix (`2026-08-23`).
+  Tantegel, Brecconary, Erdrick's
+  Cave, Garinham, and Kol now reach Swamp Cave south, Rainbow Bridge, and
+  Charlock through their proven Kol and Swamp Cave north corridors, manual map
+  `0x15` traversal, and the existing south-side destination legs. Garinham's
+  unique repair first reverses the accepted eastern road to bridge junction
+  `(44,38)`; it no longer selects `charlock_return` or attempts a 93-step
+  synthetic opening. That chain also repairs Garinham travel to Swamp Cave
+  north, Rimuldar, and Magic Temple. No waypoint geometry changed. Focused
+  route tests pass `282/282`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. Garinham-to-Rainbow-
+  Bridge started at frame `1032`, handed off at bridge junction `(44,38)` at
+  `4527`, bypassed Kol at `11199`, entered Swamp Cave at `13759`, resumed from
+  the south exit at `15025`, and arrived at `(65,49)` at `16624`. It logged no
+  retry, route stop, blocker, drift, runtime-block injection, unintended town
+  entry, or script error. Tantegel-to-Charlock started at frame `26435`,
+  bypassed Kol at `33742`, entered Swamp Cave at `36302`, resumed from the
+  south exit at `37378`, and entered Charlock map `0x02` at `41409`, also with
+  no retry or anomaly. Kol-to-Swamp-Cave-south started at frame `47035`,
+  entered the north cave at `49905`, and arrived on World Map `(104,49)` at
+  `51055`, again with no retry or anomaly. The batch is accepted.
 - Final-island connections to Brecconary, Erdrick's Cave, and Garinham are
   source-complete and live-verified (`2026-08-23`). Charlock Castle
   `(48,48)` previously selected the nearby-looking raw mainland routes across

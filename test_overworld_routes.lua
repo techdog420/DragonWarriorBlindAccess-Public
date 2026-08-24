@@ -4851,6 +4851,187 @@ function tests.final_island_early_destinations_use_cave_return()
     routes.reset_for_tests()
 end
 
+function tests.eastern_mainland_southern_destinations_cross_swamp_cave()
+    local origins = {
+        {
+            name = "Tantegel",
+            x = 43,
+            y = 43,
+            first_route = "kol_staging",
+            first_object = "route_kol_staging_02",
+        },
+        {
+            name = "Brecconary",
+            x = 48,
+            y = 41,
+            first_route = "kol_staging",
+            first_object = "route_kol_staging_02",
+        },
+        {
+            name = "Erdrick's Cave",
+            x = 28,
+            y = 12,
+            first_route = "kol_staging",
+            first_object = "route_kol_staging_12",
+        },
+        {
+            name = "Garinham",
+            x = 1,
+            y = 2,
+            first_route = "tantegel_garinham_staging",
+            first_object = "route_tantegel_garinham_staging_02",
+        },
+        {
+            name = "Kol",
+            x = 104,
+            y = 10,
+            first_route = "swamp_cave",
+            first_object = "route_swamp_cave_02",
+        },
+    }
+    local destinations = {
+        {
+            target = {
+                id = "overworld_swamp_cave_south_entrance",
+                name = "Swamp Cave South Entrance",
+            },
+        },
+        {
+            target = {
+                id = "overworld_rainbow_bridge",
+                name = "Rainbow Bridge unlock point",
+            },
+        },
+        {
+            target = {
+                id = "overworld_charlock_castle",
+                name = "Charlock Castle",
+            },
+        },
+    }
+
+    for _, origin in ipairs(origins) do
+        for _, destination in ipairs(destinations) do
+            routes.reset_for_tests()
+            local info, err = routes.start_for_object(
+                destination.target, 0x01, origin.x, origin.y)
+
+            assert_equal(err, nil,
+                destination.target.name .. " should resolve from " ..
+                    origin.name)
+            assert_equal(info.route.id, origin.first_route,
+                destination.target.name .. " should first use the proven " ..
+                    origin.name .. " return")
+            assert_equal(info.object_id, origin.first_object,
+                origin.name .. " should begin on a bounded known segment")
+            assert_equal(routes.active_route_matches_object(
+                destination.target), true,
+                destination.target.name .. " should remain selected from " ..
+                    origin.name)
+
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, origin.x, origin.y)
+            assert_equal(segment_err, nil,
+                origin.name .. " should have a valid first segment")
+            assert(segment and segment.path_length <= 13,
+                origin.name .. " first segment should remain bounded")
+        end
+    end
+
+    local garinham_destinations = {
+        {id = "overworld_swamp_cave", name = "Swamp Cave North Entrance"},
+        {id = "overworld_rimuldar", name = "Rimuldar"},
+        {id = "overworld_southern_cave", name = "Magic Temple"},
+    }
+    for _, destination in ipairs(garinham_destinations) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            destination, 0x01, 1, 2)
+        assert_equal(err, nil,
+            destination.name .. " should resolve from Garinham")
+        assert_equal(info.route.id, "tantegel_garinham_staging",
+            destination.name ..
+                " should leave Garinham on the proven eastern route")
+        assert_equal(info.object_id,
+            "route_tantegel_garinham_staging_02",
+            destination.name .. " should target Garinham outskirts first")
+        assert_equal(routes.active_route_matches_object(destination), true,
+            destination.name .. " should remain selected from Garinham")
+    end
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "rainbow bridge", 0x01, 1, 2)
+    assert_equal(alias_err, nil,
+        "Rainbow Bridge alias should resolve from Garinham")
+    assert_equal(alias_info.route.id, "tantegel_garinham_staging",
+        "Rainbow Bridge alias should use the same eastern return")
+
+    routes.reset_for_tests()
+    local rainbow = {
+        id = "overworld_rainbow_bridge",
+        name = "Rainbow Bridge unlock point",
+    }
+    local info = assert(routes.start_for_object(rainbow, 0x01, 1, 2))
+    assert_equal(info.route.id, "tantegel_garinham_staging",
+        "Garinham-to-Rainbow should begin on the eastern return")
+
+    local eastern = assert(routes._route_for_tests(
+        "tantegel_garinham_staging"))
+    local event
+    for index = 2, #eastern.waypoints do
+        local point = eastern.waypoints[index]
+        event = routes.observe_position(0x01, point.x, point.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the eastern return should hand off at the bridge junction")
+    assert_equal(routes.active_route_id(), "kol_garinham_staging",
+        "the bridge junction should activate the Kol bypass")
+
+    local kol = assert(routes._route_for_tests("kol_garinham_staging"))
+    for index = 4, #kol.waypoints do
+        local point = kol.waypoints[index]
+        event = routes.observe_position(0x01, point.x, point.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the Kol bypass should hand off outside town")
+    assert_equal(routes.active_route_id(), "swamp_cave_garinham_staging",
+        "Kol should activate the proven north-cave approach")
+
+    local cave = assert(routes._route_for_tests(
+        "swamp_cave_garinham_staging"))
+    for index = 2, #cave.waypoints do
+        local point = cave.waypoints[index]
+        event = routes.observe_position(0x01, point.x, point.y)
+    end
+    assert_equal(event.status, "await_transition",
+        "the north-cave leg should wait for automatic entry")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_garinham_staging",
+        "the cave approach should remain active outside")
+
+    event = routes.observe_position(0x15, 0, 0)
+    assert_equal(event.status, "handoff",
+        "cave entry should advance the southern itinerary")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_south_swamp_cave_north",
+        "the cave crossing should wait for the south exterior")
+    assert_equal(event.steps, nil,
+        "the cave handoff must not inject interior movement")
+
+    event = routes.observe_position(0x01, 104, 49)
+    assert_equal(event.status, "handoff",
+        "the south exit should activate the Rainbow Bridge leg")
+    assert_equal(routes.active_route_id(), "rainbow_bridge",
+        "the original Rainbow Bridge destination should be preserved")
+    assert_equal(event.object_id, "route_rainbow_bridge_02",
+        "the final leg should leave the cave westward")
+    assert_equal(routes.active_route_matches_object(rainbow), true,
+        "Rainbow Bridge should remain selected after every handoff")
+
+    routes.reset_for_tests()
+end
+
 function tests.southern_destinations_from_magic_temple_use_connected_return()
     local cases = {
         {
