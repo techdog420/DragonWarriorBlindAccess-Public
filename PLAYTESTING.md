@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final-island connections to Brecconary, Erdrick's Cave, and Garinham are
+  source-complete and live-verified (`2026-08-23`). Charlock Castle
+  `(48,48)` previously selected the nearby-looking raw mainland routes across
+  impassable water, while Rainbow Bridge `(65,49)` selected raw 25-26-step
+  openings. The three south-island variants now recognize both anchors and
+  require a proven corridor before joining their final route. Charlock uses
+  `charlock_return`, Rainbow Bridge uses `rainbow_bridge_return`, and both
+  preserve the selected destination through automatic Swamp Cave entry and
+  manual traversal before reusing the accepted Kol and bridge-junction
+  bypasses. No waypoint geometry changed. Focused route tests pass `281/281`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. Charlock-to-Brecconary entered map `0x08` at frame
+  `16555`; Rainbow-Bridge-to-Erdrick's-Cave entered map `0x1C` at `40554`;
+  Charlock-to-Garinham arrived at frame `82491`. All three routes crossed
+  Swamp Cave, bypassed Kol, and completed without a route stop, blocker, drift,
+  unintended town entry, runtime-block injection, or script error. The first
+  two runs recovered from one `(104,44)->UP` cadence retry; the Garinham run
+  recovered after two retries at that known timing seam.
 - Final-island northern-access connections are source-complete and live-
   verified through a representative matrix (`2026-08-23`). Charlock-to-Kol
   started at frame `690`, entered Swamp Cave and activated the direct Kol

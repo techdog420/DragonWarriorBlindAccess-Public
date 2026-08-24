@@ -4746,6 +4746,111 @@ function tests.final_island_northern_access_uses_cave_return()
     routes.reset_for_tests()
 end
 
+function tests.final_island_early_destinations_use_cave_return()
+    local origins = {
+        {
+            name = "Charlock Castle",
+            x = 48,
+            y = 48,
+            return_route = "charlock_return",
+            first_object = "route_charlock_return_02",
+            first_waypoint = "Charlock Castle south approach",
+        },
+        {
+            name = "Rainbow Bridge unlock point",
+            x = 65,
+            y = 49,
+            return_route = "rainbow_bridge_return",
+            first_object = "route_rainbow_bridge_return_02",
+            first_waypoint = "Rainbow Bridge inlet southwest turn",
+        },
+    }
+    local destinations = {
+        {
+            target = {id = "overworld_brecconary", name = "Brecconary"},
+            alias = "brecconary",
+        },
+        {
+            target = {
+                id = "overworld_erdrick_s_cave",
+                name = "Erdrick's Cave",
+            },
+            alias = "erdrick",
+        },
+        {
+            target = {id = "overworld_garinham", name = "Garinham"},
+            alias = "garinham",
+        },
+    }
+
+    for _, origin in ipairs(origins) do
+        for _, destination in ipairs(destinations) do
+            routes.reset_for_tests()
+            local info, err = routes.start_for_object(
+                destination.target, 0x01, origin.x, origin.y)
+
+            assert_equal(err, nil,
+                destination.target.name .. " Travel should resolve from " ..
+                    origin.name)
+            assert_equal(info.route.id, origin.return_route,
+                destination.target.name .. " should first use the proven " ..
+                    origin.name .. " return")
+            assert_equal(info.object_id, origin.first_object,
+                origin.name .. " should begin at its next return waypoint")
+            assert_equal(routes.active_route_matches_object(
+                destination.target), true,
+                destination.target.name .. " should remain selected on " ..
+                    origin.name)
+
+            local segment = assert(routes.plan_next_segment(
+                0x01, origin.x, origin.y))
+            assert_equal(segment.waypoint.name, origin.first_waypoint,
+                origin.name .. " should use its established first segment")
+
+            local return_route = assert(routes._route_for_tests(
+                origin.return_route))
+            local event
+            for index = 2, #return_route.waypoints do
+                local waypoint = return_route.waypoints[index]
+                event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+            end
+            assert_equal(event.status, "await_transition",
+                origin.name .. " should wait for automatic cave entry")
+
+            local cave_handoff = routes.observe_position(0x15, 0, 29)
+            assert_equal(cave_handoff.status, "handoff",
+                "cave entry should advance the " ..
+                    destination.target.name .. " itinerary")
+            assert_equal(routes.active_route_id(),
+                "kol_swamp_cave_staging",
+                destination.target.name ..
+                    " should activate the proven north return")
+            assert_equal(cave_handoff.object_id,
+                "route_kol_swamp_cave_staging_01",
+                destination.target.name ..
+                    " should wait for the north exterior landing")
+            assert_equal(cave_handoff.steps, nil,
+                "the cave handoff must not inject interior movement")
+            assert_equal(routes.active_route_matches_object(
+                destination.target), true,
+                destination.target.name ..
+                    " should remain selected inside the cave")
+
+            routes.reset_for_tests()
+            local alias_info, alias_err = routes.start(
+                destination.alias, 0x01, origin.x, origin.y)
+            assert_equal(alias_err, nil,
+                destination.target.name .. " alias should resolve from " ..
+                    origin.name)
+            assert_equal(alias_info.route.id, origin.return_route,
+                destination.target.name ..
+                    " alias should use the same return itinerary")
+        end
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.southern_destinations_from_magic_temple_use_connected_return()
     local cases = {
         {

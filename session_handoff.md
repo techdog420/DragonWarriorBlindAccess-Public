@@ -121,6 +121,34 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Final-island connections to Brecconary, Erdrick's Cave, and Garinham are
+  source-complete and live-verified through the representative three-run
+  matrix. At Charlock Castle `(48,48)`,
+  all three previously selected their raw mainland routes because the route
+  scorer treated the nearby destination corridor as reachable across water;
+  Rainbow Bridge `(65,49)` likewise selected raw 25-26-step openings. The
+  south-island early-destination variants now recognize both final-island
+  anchors, and their staging requires a proven route corridor rather than
+  distance alone. Charlock therefore begins on `charlock_return`, Rainbow
+  Bridge begins on `rainbow_bridge_return`, and automatic Swamp Cave entry
+  preserves the selected destination without injecting interior movement.
+  Cave entry activates `kol_swamp_cave_staging`, followed by the accepted Kol
+  bypass, bridge junction, and unchanged destination leg. No waypoint geometry
+  changed. The regression covers all six origin/destination combinations,
+  Travel-object and alias selection, both proven opening segments, the cave
+  transition wait, and the shared north-return handoff. Focused route tests
+  pass `281/281`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. Charlock-to-Brecconary started at frame
+  `785`, entered Swamp Cave at `4806`, activated the destination leg at
+  `16251`, and entered Brecconary map `0x08` at `16555`. Rainbow-Bridge-to-
+  Erdrick's-Cave started at `25796`, entered Swamp Cave at `27571`, activated
+  the destination leg at `38826`, and entered cave map `0x1C` at `40554`.
+  Charlock-to-Garinham recalculated at `63837`, handed off on Swamp Cave entry
+  at `67978`, activated the destination leg at `79019`, and arrived at
+  Garinham at `82491`. Each run bypassed Kol and had no route stop, blocker,
+  drift, unintended town entry, runtime-block injection, or script error. The
+  first two runs recovered from one `(104,44)->UP` cadence retry; the Garinham
+  run recovered after two retries at the same known timing seam.
 - Final-island northern-access connections are source-complete and live-
   verified through the representative two-run matrix. Kol and Swamp Cave north
   now recognize both Charlock Castle `(48,48)` and Rainbow Bridge `(65,49)`.
