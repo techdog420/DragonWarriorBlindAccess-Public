@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final-island northern-access connections are source-complete and live-
+  verified through a representative matrix (`2026-08-23`). Charlock-to-Kol
+  started at frame `690`, entered Swamp Cave and activated the direct Kol
+  continuation at frame `5770`, emerged north at frame `15975`, and entered
+  Kol map `0x07` at frame `19593`. One initial retry recovered automatically.
+  The known `(104,44)->UP` timing seam exhausted two retries and stopped at
+  frame `16778`; an unchanged-origin restart crossed successfully without a
+  runtime blocker. Rainbow-Bridge-to-Swamp-Cave-north started at frame `30595`,
+  activated the north-exterior continuation on cave entry at frame `32481`,
+  and arrived at frame `34015`. Two cadence retries at `(70,50)->UP` and two
+  interior retries at `(0,29)->RIGHT` recovered automatically without a stop.
+  Together the runs exercised both origin returns and both destination
+  continuations; regressions cover all four cross-combinations. Neither run
+  logged drift, route replacement, runtime-block injection, unintended map
+  entry, or script error. No waypoint geometry changed. Focused route tests
+  pass `280/280`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass.
 - Magic-Temple-origin connections to Cantlin and the Eastern Great Swamp
   Search Area are source-complete and live-verified (`2026-08-23`). From World
   Map `(108,109)`, both used the proven Magic Temple return, bypassed Rimuldar,

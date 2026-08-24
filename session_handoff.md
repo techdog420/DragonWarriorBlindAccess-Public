@@ -121,6 +121,29 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- Final-island northern-access connections are source-complete and live-
+  verified through the representative two-run matrix. Kol and Swamp Cave north
+  now recognize both Charlock Castle `(48,48)` and Rainbow Bridge `(65,49)`.
+  Charlock starts on `charlock_return`, Rainbow Bridge starts on
+  `rainbow_bridge_return`, and automatic entry into Swamp Cave map `0x15`
+  retains the selected destination without injecting interior movement. The
+  Charlock-to-Kol run started at frame `690`, handed off to
+  `kol_swamp_cave_south` on cave entry at frame `5770`, emerged north at frame
+  `15975`, and entered Kol map `0x07` at frame `19593`. The first Charlock step
+  had one internal cadence retry. The known `(104,44)->UP` seam then exhausted
+  two retries and stopped at frame `16778`; restarting from the unchanged
+  origin crossed successfully without a runtime blocker. The Rainbow-Bridge-
+  to-Swamp-Cave-north run started at frame `30595`, handed off to
+  `swamp_cave_north_swamp_cave_south` at frame `32481`, and arrived on the north
+  exterior at frame `34015`. Two cadence retries at `(70,50)->UP` and two
+  interior retries at `(0,29)->RIGHT` recovered automatically without a stop.
+  Neither run logged drift, route replacement, runtime-block injection,
+  unintended map entry, or script error. No waypoint geometry changed. The
+  regression covers all four origin/destination pairs, Travel-object and alias
+  selection, each proven opening segment, the automatic cave-entry wait, and
+  both route-specific cave handoffs. Focused route tests pass `280/280`; Lua
+  syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass.
 - Magic-Temple-origin connections to Cantlin and the Eastern Great Swamp
   Search Area are source-complete and live-verified. From World Map
   `(108,109)`, both began on `rimuldar_magic_temple_staging`, bypassed Rimuldar
