@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-23
+Updated: 2026-08-24
 
 ## Release Installation Handoff
 
@@ -121,6 +121,48 @@ Updated: 2026-08-23
 
 ## Immediate FCEUX Handoff
 
+- The remaining 26-case southern-route batch is source-complete and accepted
+  through the full three-run representative live matrix. Northern Cave
+  `(81,1)`,
+  Hauksness `(25,89)`, Mountain Cave
+  `(29,57)`, Cantlin `(73,102)`, and the Eastern Great Swamp Search Area
+  `(89,112)` now reach Swamp Cave south, Rimuldar, Magic Temple, Rainbow
+  Bridge, and Charlock through their existing return chains to Kol, followed
+  by the accepted Swamp Cave north approach and manual map `0x15` traversal.
+  Two derived cave-approach wrappers reuse the rain-shrine return for Northern
+  Cave and the Hauksness/Kol return family for the four western origins; no
+  waypoint geometry changed. Canonical Rimuldar selection is pinned at these
+  five origins so its nearby reverse-temple variant cannot steal the route.
+  Magic Temple-to-Swamp-Cave-south now retains the selected Travel object
+  during its existing Rimuldar return. The regression covers all 25
+  origin/destination combinations, bounded first segments, destination
+  retention, complete Northern-Cave and Great-Swamp staging handoffs, cave-
+  entry waits, and zero injected interior movement. Focused route tests pass
+  `283/283`; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass. Northern Cave-to-Rainbow Bridge started at
+  frame `576`, handed off around Kol at frame `3879`, reached the Swamp Cave
+  north approach at frame `6439`, resumed from the south exit at frame `7731`,
+  arrived at Rainbow Bridge `(65,49)` at frame `9218`, and completed auto-walk
+  at frame `9238`. It logged no route stop, blocker, drift, runtime-block
+  injection, or current script error; ordinary turn represses moved normally.
+  Mountain Cave-to-Magic Temple started at frame `21645`, handed off to the
+  Kol return at `22870`, switched to the Swamp Cave approach at `33654`, and
+  retained Magic Temple at the cave wait on frame `36214`. The hero emerged
+  south at frame `48677`, handed off from the Rimuldar bypass to Magic Temple
+  at `52876`, arrived at `(108,109)` at `55740`, and completed auto-walk at
+  `55760`. Two bounded retries on the initial `(29,57)->LEFT` step recovered
+  automatically; no route stop, blocker, drift, runtime-block injection, or
+  script error followed. A later `R` press created a fresh route at frame
+  `57010`, after arrival, and does not affect acceptance. Great Swamp-to-
+  Charlock started at frame `664`, handed off through Cantlin, Hauksness, Kol,
+  and the Swamp Cave approach at frames `4370`, `9538`, `24210`, and `26770`.
+  It emerged south and activated Charlock at frame `27860`, then entered
+  Charlock map `0x02` at frame `31939`. Fresh frame `32400` confirmed `(10,19)`,
+  path target nil, and zero NPC/runtime blockers. One bounded retry at
+  `(86,113)->LEFT` recovered automatically; no stop, blocker, route
+  replacement, runtime-block injection, or script error occurred. The cave
+  and castle transition cleanup messages are expected cross-map landings, not
+  route failures. This 26-case batch is ready to commit and push.
 - Eastern-mainland connections to the southern island are source-complete and
   live-verified through the full representative three-run matrix.
   Tantegel `(43,43)`, Brecconary `(48,41)`,
@@ -2957,9 +2999,10 @@ Updated: 2026-08-23
 
 ## Next Work
 
-1. Commit and push the live-verified Magic-Temple-origin Brecconary, Erdrick's
-   Cave, and Garinham batch as one focused revision.
-2. Audit the remaining connected-overworld matrix for the next origin group.
+1. Commit and push the now-live-verified 26-case southern-route batch as one
+   focused revision.
+2. Re-audit the remaining high-risk non-southern connections for the next
+   origin group.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

@@ -741,6 +741,13 @@ local ROUTES = {
         target_object_ids = {"overworld_rimuldar"},
         destination_maps = {0x0B},
         staging = RIMULDAR_STAGING,
+        selection_anchors = {
+            {x = 81, y = 1, max_distance = 4},
+            {x = 25, y = 89, max_distance = 4},
+            {x = 29, y = 57, max_distance = 4},
+            {x = 73, y = 102, max_distance = 4},
+            {x = 89, y = 112, max_distance = 4},
+        },
         waypoints = {
             {
                 x = 104,
@@ -2470,6 +2477,7 @@ ROUTES.rimuldar_magic_temple_staging = {
 ROUTES.swamp_cave_south_magic_temple = {
     id = "swamp_cave_south_magic_temple",
     title = "Swamp Cave South Entrance",
+    target_object_ids = {"overworld_swamp_cave_south_entrance"},
     staged_handoff_requires_destination_map = true,
     staged_transition_message =
         "Swamp Cave opens automatically when you step onto this tile. " ..
@@ -2831,6 +2839,52 @@ ROUTES.swamp_cave_garinham_staging = {
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
 }
 
+-- Northern Cave starts reverse the proven rain-shrine corridor to Kol before
+-- taking the established north-cave approach. The automatic cave transition
+-- remains the handoff gate so connected southern routes never inject movement
+-- inside map 0x15.
+ROUTES.swamp_cave_northern_return_staging = {
+    id = "swamp_cave_northern_return_staging",
+    title = "Swamp Cave",
+    destination_maps = {0x15},
+    staged_handoff_requires_destination_map = true,
+    staged_transition_message =
+        "Enter Swamp Cave, then cross manually to the south exit.",
+    staging = {
+        route_id = "kol_rain_shrine_staging",
+        max_start_distance = 13,
+        require_route_corridor = true,
+        continue_after_staging = true,
+    },
+    selection_anchors = {{x = 81, y = 1, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
+}
+
+-- Western starts reuse the already validated return chain through Hauksness
+-- and Kol before joining the same cave approach. Nested staging preserves the
+-- Mountain Cave, Cantlin, and Great Swamp local returns without new geometry.
+ROUTES.swamp_cave_western_return_staging = {
+    id = "swamp_cave_western_return_staging",
+    title = "Swamp Cave",
+    destination_maps = {0x15},
+    staged_handoff_requires_destination_map = true,
+    staged_transition_message =
+        "Enter Swamp Cave, then cross manually to the south exit.",
+    staging = {
+        route_id = "kol_return_staging",
+        max_start_distance = 13,
+        require_route_corridor = true,
+        continue_after_staging = true,
+    },
+    selection_anchors = {
+        {x = 25, y = 89, max_distance = 4},
+        {x = 29, y = 57, max_distance = 4},
+        {x = 73, y = 102, max_distance = 4},
+        {x = 89, y = 112, max_distance = 4},
+    },
+    waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
+}
+
 -- Mainland destination-selection variant: reach Swamp Cave north through the
 -- origin's established corridor, cross manually, and resume at the south
 -- entrance. Rainbow Bridge and Charlock staging reuse this same return.
@@ -2845,6 +2899,11 @@ ROUTES.swamp_cave_south_mainland = {
         {x = 28, y = 12, max_distance = 4},
         {x = 1, y = 2, max_distance = 4},
         {x = 104, y = 10, max_distance = 4},
+        {x = 81, y = 1, max_distance = 4},
+        {x = 25, y = 89, max_distance = 4},
+        {x = 29, y = 57, max_distance = 4},
+        {x = 73, y = 102, max_distance = 4},
+        {x = 89, y = 112, max_distance = 4},
     },
     waypoints = copy_route_prefix(
         ROUTES.swamp_cave_south_swamp_cave_north, 104, 49),
@@ -3003,6 +3062,8 @@ local ROUTE_ALTERNATES = {
         "swamp_cave_bridge",
         "swamp_cave",
         "swamp_cave_garinham_staging",
+        "swamp_cave_northern_return_staging",
+        "swamp_cave_western_return_staging",
         "swamp_cave_north_swamp_cave_south",
     },
     swamp_cave_bridge = {

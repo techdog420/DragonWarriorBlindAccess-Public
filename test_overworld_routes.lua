@@ -5032,6 +5032,192 @@ function tests.eastern_mainland_southern_destinations_cross_swamp_cave()
     routes.reset_for_tests()
 end
 
+function tests.remaining_mainland_southern_destinations_use_connected_returns()
+    local origins = {
+        {
+            name = "Northern Cave",
+            x = 81,
+            y = 1,
+            first_route = "kol_rain_shrine_staging",
+            first_object = "route_kol_rain_shrine_staging_02",
+            max_first_segment = 2,
+        },
+        {
+            name = "Hauksness",
+            x = 25,
+            y = 89,
+            first_route = "kol_return_staging",
+            first_object = "route_kol_return_staging_02",
+            max_first_segment = 2,
+        },
+        {
+            name = "Mountain Cave",
+            x = 29,
+            y = 57,
+            first_route = "mountain_cave_return",
+            first_object = "route_mountain_cave_return_02",
+            max_first_segment = 4,
+        },
+        {
+            name = "Cantlin",
+            x = 73,
+            y = 102,
+            first_route = "hauksness_return_staging",
+            first_object = "route_hauksness_return_staging_02",
+            max_first_segment = 11,
+        },
+        {
+            name = "Eastern Great Swamp Search Area",
+            x = 89,
+            y = 112,
+            first_route = "cantlin_return_staging",
+            first_object = "route_cantlin_return_staging_02",
+            max_first_segment = 1,
+        },
+    }
+    local destinations = {
+        {
+            id = "overworld_swamp_cave_south_entrance",
+            name = "Swamp Cave South Entrance",
+        },
+        {id = "overworld_rimuldar", name = "Rimuldar"},
+        {id = "overworld_southern_cave", name = "Magic Temple"},
+        {
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+        },
+        {id = "overworld_charlock_castle", name = "Charlock Castle"},
+    }
+
+    for _, origin in ipairs(origins) do
+        for _, destination in ipairs(destinations) do
+            routes.reset_for_tests()
+            local info, err = routes.start_for_object(
+                destination, 0x01, origin.x, origin.y)
+
+            assert_equal(err, nil,
+                destination.name .. " should resolve from " .. origin.name)
+            assert_equal(info.route.id, origin.first_route,
+                destination.name .. " should first use the proven " ..
+                    origin.name .. " return")
+            assert_equal(info.object_id, origin.first_object,
+                origin.name .. " should begin on a bounded known segment")
+            assert_equal(routes.active_route_matches_object(destination), true,
+                destination.name .. " should remain selected from " ..
+                    origin.name)
+
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, origin.x, origin.y)
+            assert_equal(segment_err, nil,
+                origin.name .. " should have a valid first segment")
+            assert(segment and
+                    segment.path_length <= origin.max_first_segment,
+                origin.name .. " first segment should remain bounded")
+        end
+    end
+
+    -- Exercise the Northern Cave wrapper through the cave transition and into
+    -- the requested final-progression leg.
+    routes.reset_for_tests()
+    local rainbow = destinations[4]
+    assert(routes.start_for_object(rainbow, 0x01, 81, 1))
+    local shrine_return = assert(routes._route_for_tests(
+        "kol_rain_shrine_staging"))
+    local event
+    for index = 2, #shrine_return.waypoints do
+        local waypoint = shrine_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Northern Cave should hand off outside Kol")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_northern_return_staging",
+        "Kol should activate the northern cave-approach wrapper")
+
+    local northern_cave_approach = assert(routes._route_for_tests(
+        "swamp_cave_northern_return_staging"))
+    for index = 2, #northern_cave_approach.waypoints do
+        local waypoint = northern_cave_approach.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "await_transition",
+        "the northern wrapper should wait for automatic cave entry")
+    event = routes.observe_position(0x15, 0, 0)
+    assert_equal(event.status, "handoff",
+        "cave entry should advance the Northern Cave itinerary")
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_south_swamp_cave_north",
+        "the itinerary should wait for the south exterior landing")
+    assert_equal(event.steps, nil,
+        "the northern wrapper must not inject cave movement")
+    event = routes.observe_position(0x01, 104, 49)
+    assert_equal(event.status, "handoff",
+        "the south exit should activate the Rainbow Bridge leg")
+    assert_equal(routes.active_route_id(), "rainbow_bridge",
+        "the Northern Cave itinerary should retain Rainbow Bridge")
+    assert_equal(routes.active_route_matches_object(rainbow), true,
+        "Rainbow Bridge should remain selected after every northern handoff")
+
+    -- Exercise the deepest western chain through all three existing return
+    -- legs and into its new cave-approach wrapper.
+    routes.reset_for_tests()
+    local charlock = destinations[5]
+    assert(routes.start_for_object(charlock, 0x01, 89, 112))
+    local cantlin_return = assert(routes._route_for_tests(
+        "cantlin_return_staging"))
+    for index = 2, #cantlin_return.waypoints do
+        local waypoint = cantlin_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(routes.active_route_id(), "hauksness_return_staging",
+        "Great Swamp should hand off outside Cantlin")
+
+    local hauksness_return = assert(routes._route_for_tests(
+        "hauksness_return_staging"))
+    for index = 4, #hauksness_return.waypoints do
+        local waypoint = hauksness_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(routes.active_route_id(), "kol_return_staging",
+        "Cantlin should hand off outside Hauksness")
+
+    local kol_return = assert(routes._route_for_tests("kol_return_staging"))
+    for index = 3, #kol_return.waypoints do
+        local waypoint = kol_return.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(routes.active_route_id(),
+        "swamp_cave_western_return_staging",
+        "Hauksness should hand off outside Kol to the western cave wrapper")
+
+    local western_cave_approach = assert(routes._route_for_tests(
+        "swamp_cave_western_return_staging"))
+    for index = 2, #western_cave_approach.waypoints do
+        local waypoint = western_cave_approach.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "await_transition",
+        "the western wrapper should wait for automatic cave entry")
+    assert_equal(routes.active_route_matches_object(charlock), true,
+        "Charlock should remain selected through the western return chain")
+
+    -- A physical Travel refresh at the temple must continue reporting the
+    -- selected cave-return itinerary instead of replacing it.
+    routes.reset_for_tests()
+    local south = destinations[1]
+    local info = assert(routes.start_for_object(south, 0x01, 108, 109))
+    assert_equal(info.route.id, "rimuldar_magic_temple_staging",
+        "Magic Temple should begin on its proven Rimuldar return")
+    assert_equal(routes.active_route_matches_object(south), true,
+        "Swamp Cave south should remain selected on the temple return")
+    local guidance = assert(routes.guidance_for_object(
+        south, 0x01, 108, 109))
+    assert_equal(guidance.route.id, "rimuldar_magic_temple_staging",
+        "route guidance should not replace the temple return")
+
+    routes.reset_for_tests()
+end
+
 function tests.southern_destinations_from_magic_temple_use_connected_return()
     local cases = {
         {

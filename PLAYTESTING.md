@@ -1,11 +1,45 @@
 # Playtesting Notes
 
-Updated: 2026-08-23
+Updated: 2026-08-24
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The remaining 26-case southern-route batch is source-complete and accepted
+  through the full three-run representative live matrix (`2026-08-24`).
+  Northern Cave,
+  Hauksness, Mountain Cave,
+  Cantlin, and the Eastern Great Swamp Search Area now reach Swamp Cave south,
+  Rimuldar, Magic Temple, Rainbow Bridge, and Charlock through their proven
+  return chains to Kol and Swamp Cave north. Two derived staging wrappers wait
+  for automatic entry into map `0x15`; no cave movement is injected and no
+  waypoint geometry changed. The separate Magic Temple-to-Swamp-Cave-south
+  Travel-selection seam is also fixed. Focused route tests pass `283/283`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. Northern Cave `(81,1)` to Rainbow Bridge started at frame
+  `576`, handed off around Kol at `3879`, reached the Swamp Cave north approach
+  at `6439`, resumed from the south exit at `7731`, arrived at `(65,49)` at
+  `9218`, and completed auto-walk at `9238`. It logged no route stop, blocker,
+  drift, runtime-block injection, or current script error; ordinary turn
+  represses moved normally. Mountain Cave `(29,57)` to Magic Temple started at
+  frame `21645`, handed off to the Kol return at `22870`, switched to the
+  Swamp Cave approach at `33654`, and retained Magic Temple at the cave wait
+  on frame `36214`. The hero emerged south at `48677`, handed off from the
+  Rimuldar bypass to Magic Temple at `52876`, arrived at `(108,109)` at
+  `55740`, and completed auto-walk at `55760`. Two bounded retries on the
+  initial `(29,57)->LEFT` step recovered automatically; there was no route
+  stop, blocker, drift, runtime-block injection, or script error. A later `R`
+  press created a fresh route at frame `57010`, after arrival, and does not
+  affect acceptance. Great Swamp `(89,112)` to Charlock started at frame `664`,
+  handed off through Cantlin, Hauksness, Kol, and the Swamp Cave approach at
+  frames `4370`, `9538`, `24210`, and `26770`. It emerged south and activated
+  Charlock at `27860`, then entered Charlock map `0x02` at `31939`. Fresh frame
+  `32400` confirmed `(10,19)`, path target nil, and zero NPC/runtime blockers.
+  One bounded retry at `(86,113)->LEFT` recovered automatically; no stop,
+  blocker, route replacement, runtime-block injection, or script error
+  occurred. The cave and castle transition cleanup messages are expected
+  cross-map landings, not route failures. The batch is accepted.
 - Eastern-mainland connections to the southern island are source-complete and
   live-verified through the full representative matrix (`2026-08-23`).
   Tantegel, Brecconary, Erdrick's
