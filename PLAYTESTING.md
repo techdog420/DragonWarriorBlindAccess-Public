@@ -6,6 +6,35 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The 12-case western-to-early-mainland batch is source-complete and accepted
+  through the full three-run representative live matrix (`2026-08-24`).
+  Hauksness, Mountain Cave, Cantlin, and the Eastern Great Swamp Search Area
+  now reach Brecconary, Erdrick's
+  Cave, and Garinham through their proven nested returns to Kol, a new derived
+  bridge-junction wrapper, and the unchanged short destination legs. No
+  waypoint geometry changed. Focused route tests pass `286/286`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. Hauksness `(25,89)` to Garinham started on `kol_return_staging` at
+  frame `4681`, handed off west of Kol at `19430`, switched to the unchanged
+  Garinham leg at the bridge junction at `26054`, and entered map `0x09` at
+  `29526`. It logged no timing retry, blocker, drift, runtime-block injection,
+  or script error. Fresh frame `324480` confirmed map `0x09`, path target nil,
+  and zero runtime blockers. Mountain Cave `(29,57)` to Erdrick's Cave started
+  on `mountain_cave_return` at frame `335011`, handed off to the Kol return at
+  `335886`, switched to bridge staging west of Kol at `346670`, activated the
+  unchanged Erdrick's Cave leg at the bridge junction at `353294`, and entered
+  map `0x1C` at `355022`. It also logged no timing retry, blocker, drift,
+  runtime-block injection, or script error. Fresh frame `359280` confirmed B1
+  `(0,0)`, path target nil, and zero runtime blockers. The post-arrival route
+  cleanup is the expected map transition. Great Swamp `(89,112)` to
+  Brecconary started on `cantlin_return_staging` at frame `366069`, handed off
+  through Hauksness, Kol, and bridge staging at frames `369912`, `375080`, and
+  `389752`, activated the unchanged Brecconary leg at `396376`, and entered
+  map `0x08` at `396680`. One bounded retry on `(84,113)->LEFT` at frame
+  `366540` crossed successfully at `366585`; no blocker, drift, route stop,
+  runtime-block injection, or script error followed. The arrival cleanup at
+  `(0,15)` is the expected map transition. The user confirmed all three runs
+  completed without noticeable issues. The batch is accepted.
 - The remaining 26-case southern-route batch is source-complete and accepted
   through the full three-run representative live matrix (`2026-08-24`).
   Northern Cave,

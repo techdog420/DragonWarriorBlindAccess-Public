@@ -121,6 +121,41 @@ Updated: 2026-08-24
 
 ## Immediate FCEUX Handoff
 
+- The 12-case western-to-early-mainland batch is source-complete and accepted
+  through the full three-run representative live matrix. Hauksness `(25,89)`,
+  Mountain Cave `(29,57)`, Cantlin `(73,102)`, and the Eastern Great Swamp
+  Search Area `(89,112)` now
+  reach Brecconary, Erdrick's Cave, and Garinham through their proven nested
+  returns to Kol, followed by a new derived bridge-junction wrapper and the
+  unchanged short destination legs. No waypoint geometry changed and passing
+  routes still bypass Cantlin, Hauksness, Kol, and Tantegel. Regression
+  coverage checks all 12 object and alias selections, bounded first segments,
+  non-stealing behavior at Tantegel, Kol, Northern Cave, and Swamp Cave north,
+  and the full five-handoff Great-Swamp-to-Brecconary chain. Focused route
+  tests pass `286/286`; Lua syntax, `git diff --check`, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. Hauksness-to-Garinham started on
+  `kol_return_staging` at frame `4681`, handed off west of Kol at frame
+  `19430`, switched to the unchanged Garinham leg at the bridge junction on
+  frame `26054`, and entered Garinham map `0x09` at frame `29526`. No timing
+  retry, blocker, drift, runtime-block injection, or script error occurred.
+  Fresh frame `324480` confirmed map `0x09`, path target nil, and zero runtime
+  blockers. Mountain-Cave-to-Erdrick's-Cave started on
+  `mountain_cave_return` at frame `335011`, handed off to the Kol return at
+  `335886`, switched to bridge staging west of Kol at `346670`, activated the
+  unchanged Erdrick's Cave leg at the bridge junction at `353294`, and entered
+  map `0x1C` at `355022`. It also had no timing retry, blocker, drift,
+  runtime-block injection, or script error. Fresh frame `359280` confirmed
+  Erdrick's Cave B1 `(0,0)`, path target nil, and zero runtime blockers. The
+  post-arrival route cleanup is the expected map transition. Great-Swamp-to-
+  Brecconary started on `cantlin_return_staging` at frame `366069`, handed off
+  through Hauksness, Kol, and bridge staging at frames `369912`, `375080`, and
+  `389752`, activated the unchanged Brecconary leg at `396376`, and entered
+  map `0x08` at `396680`. One bounded retry on `(84,113)->LEFT` at frame
+  `366540` crossed successfully at `366585`; no blocker, drift, route stop,
+  runtime-block injection, or script error followed. The arrival cleanup at
+  `(0,15)` is the expected map transition. The user confirmed all three runs
+  completed without noticeable issues; this batch is ready to commit and
+  push.
 - The remaining 26-case southern-route batch is source-complete and accepted
   through the full three-run representative live matrix. Northern Cave
   `(81,1)`,
@@ -162,7 +197,7 @@ Updated: 2026-08-24
   `(86,113)->LEFT` recovered automatically; no stop, blocker, route
   replacement, runtime-block injection, or script error occurred. The cave
   and castle transition cleanup messages are expected cross-map landings, not
-  route failures. This 26-case batch is ready to commit and push.
+  route failures. This 26-case batch was committed and pushed as `ed02840`.
 - Eastern-mainland connections to the southern island are source-complete and
   live-verified through the full representative three-run matrix.
   Tantegel `(43,43)`, Brecconary `(48,41)`,
@@ -2999,10 +3034,9 @@ Updated: 2026-08-24
 
 ## Next Work
 
-1. Commit and push the now-live-verified 26-case southern-route batch as one
-   focused revision.
-2. Re-audit the remaining high-risk non-southern connections for the next
-   origin group.
+1. Commit and push the now-live-verified 12-case western-to-early-mainland
+   batch as one focused revision.
+2. Re-audit the remaining mainland landmark-to-landmark holes.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

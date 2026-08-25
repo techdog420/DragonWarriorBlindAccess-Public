@@ -6117,6 +6117,209 @@ function tests.final_progression_north_itineraries_survive_south_cave_guidance_r
     routes.reset_for_tests()
 end
 
+function tests.western_origins_reach_early_destinations_through_connected_returns()
+    local origins = {
+        {
+            name = "Hauksness",
+            x = 25,
+            y = 89,
+            first_route = "kol_return_staging",
+            first_object = "route_kol_return_staging_02",
+            max_first_segment = 2,
+        },
+        {
+            name = "Mountain Cave",
+            x = 29,
+            y = 57,
+            first_route = "mountain_cave_return",
+            first_object = "route_mountain_cave_return_02",
+            max_first_segment = 4,
+        },
+        {
+            name = "Cantlin",
+            x = 73,
+            y = 102,
+            first_route = "hauksness_return_staging",
+            first_object = "route_hauksness_return_staging_02",
+            max_first_segment = 11,
+        },
+        {
+            name = "Eastern Great Swamp Search Area",
+            x = 89,
+            y = 112,
+            first_route = "cantlin_return_staging",
+            first_object = "route_cantlin_return_staging_02",
+            max_first_segment = 1,
+        },
+    }
+    local destinations = {
+        {
+            target = {id = "overworld_brecconary", name = "Brecconary"},
+            alias = "brecconary",
+        },
+        {
+            target = {
+                id = "overworld_erdrick_s_cave",
+                name = "Erdrick's Cave",
+            },
+            alias = "erdrick",
+        },
+        {
+            target = {id = "overworld_garinham", name = "Garinham"},
+            alias = "garinham",
+        },
+    }
+
+    for _, origin in ipairs(origins) do
+        for _, destination in ipairs(destinations) do
+            routes.reset_for_tests()
+            local info, err = routes.start_for_object(
+                destination.target, 0x01, origin.x, origin.y)
+
+            assert_equal(err, nil,
+                destination.target.name .. " should resolve from " ..
+                    origin.name)
+            assert_equal(info.route.id, origin.first_route,
+                destination.target.name .. " should first use the proven " ..
+                    origin.name .. " return")
+            assert_equal(info.object_id, origin.first_object,
+                origin.name .. " should begin on a bounded known segment")
+            assert_equal(routes.active_route_matches_object(
+                destination.target), true,
+                destination.target.name .. " should remain selected from " ..
+                    origin.name)
+
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, origin.x, origin.y)
+            assert_equal(segment_err, nil,
+                origin.name .. " should have a valid first segment")
+            assert(segment and
+                    segment.path_length <= origin.max_first_segment,
+                origin.name .. " first segment should remain bounded")
+
+            routes.reset_for_tests()
+            local alias_info, alias_err = routes.start(
+                destination.alias, 0x01, origin.x, origin.y)
+            assert_equal(alias_err, nil,
+                destination.target.name .. " alias should resolve from " ..
+                    origin.name)
+            assert_equal(alias_info.route.id, origin.first_route,
+                destination.target.name ..
+                    " alias should use the same return itinerary")
+        end
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_brecconary_itinerary_hands_off_at_each_hub()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_brecconary",
+        name = "Brecconary",
+        x = 48,
+        y = 41,
+    }
+    assert(routes.start_for_object(target, 0x01, 89, 112))
+
+    local event
+    local cantlin = assert(routes._route_for_tests(
+        "cantlin_return_staging"))
+    for index = 2, #cantlin.waypoints do
+        local waypoint = cantlin.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Great Swamp should hand off outside Cantlin")
+    assert_equal(routes.active_route_id(), "hauksness_return_staging",
+        "Cantlin should activate the Hauksness return")
+
+    local hauksness = assert(routes._route_for_tests(
+        "hauksness_return_staging"))
+    for index = 4, #hauksness.waypoints do
+        local waypoint = hauksness.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Cantlin should hand off outside Hauksness")
+    assert_equal(routes.active_route_id(), "kol_return_staging",
+        "Hauksness should activate the Kol return")
+
+    local kol = assert(routes._route_for_tests("kol_return_staging"))
+    for index = 3, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Hauksness should hand off outside Kol")
+    assert_equal(routes.active_route_id(),
+        "tantegel_bridge_western_staging",
+        "Kol should activate the western bridge-junction wrapper")
+
+    local bridge = assert(routes._route_for_tests(
+        "tantegel_bridge_western_staging"))
+    for index = 2, #bridge.waypoints do
+        local waypoint = bridge.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the bridge junction should hand off without entering Tantegel")
+    assert_equal(routes.active_route_id(), "brecconary_western_return",
+        "the junction should activate the Brecconary continuation")
+    assert_equal(event.object_id,
+        "route_brecconary_western_return_25",
+        "the continuation should target Brecconary directly")
+    assert_equal(event.steps, nil,
+        "exterior handoffs must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Brecconary should remain selected after every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 44, 38))
+    assert_equal(segment.waypoint.name, "Brecconary",
+        "the final continuation should target the town entrance")
+    assert_equal(segment.path_length, 7,
+        "the final Brecconary segment should remain bounded")
+
+    routes.reset_for_tests()
+end
+
+function tests.western_early_destination_variants_do_not_steal_other_origins()
+    local target = {id = "overworld_brecconary", name = "Brecconary"}
+    local cases = {
+        {name = "Tantegel", x = 43, y = 43, expected = "brecconary"},
+        {
+            name = "Kol",
+            x = 104,
+            y = 10,
+            expected = "tantegel_bridge_staging",
+        },
+        {
+            name = "Northern Cave",
+            x = 81,
+            y = 1,
+            expected = "kol_rain_shrine_staging",
+        },
+        {
+            name = "Swamp Cave north",
+            x = 104,
+            y = 44,
+            expected = "kol_swamp_cave_staging",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            target, 0x01, case.x, case.y)
+        assert_equal(err, nil,
+            "Brecconary should still resolve from " .. case.name)
+        assert_equal(info.route.id, case.expected,
+            "western variants must not steal " .. case.name)
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.garinham_from_kol_hands_off_at_tantegel_bridge_junction()
     routes.reset_for_tests()
     local target = {
