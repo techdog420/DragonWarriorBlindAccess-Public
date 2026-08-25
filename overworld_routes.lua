@@ -218,6 +218,46 @@ local WESTERN_EARLY_DESTINATION_STAGING = {
     continue_after_staging = true,
 }
 
+local NORTHWESTERN_KOL_RETURN_STAGING = {
+    route_id = "northwestern_kol_return_staging",
+    -- Northern Cave must reverse the Rain Shrine corridor. Mountain Cave,
+    -- Hauksness, Cantlin, and Great Swamp use the nested western return. Both
+    -- families stop at Kol's west doorstep so a connected destination can
+    -- continue without entering town.
+    max_start_distance = 13,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local NORTHWESTERN_MOUNTAIN_STAGING = {
+    route_id = "mountain_cave_northwestern_connector",
+    max_start_distance = 9,
+    require_route_corridor = true,
+    continue_after_staging = true,
+}
+
+local NORTHWESTERN_CANTLIN_STAGING = {
+    route_id = "hauksness_northwestern_staging",
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
+local NORTHWESTERN_CANTLIN_BYPASS_STAGING = {
+    route_id = "hauksness_northwestern_staging",
+    continuation_route_id = "cantlin_northwestern_staging",
+    max_start_distance = 14,
+    continue_after_staging = true,
+}
+
+local NORTHWESTERN_GREAT_SWAMP_STAGING = {
+    route_id = "cantlin_northwestern_staging",
+    max_start_distance = 15,
+    require_route_corridor = true,
+    prefer_staging_route_corridor = true,
+    continue_after_staging = true,
+}
+
 local NORTHERN_CAVE_BRIDGE_STAGING = {
     route_id = "kol_rain_shrine_staging",
     continuation_route_id = "tantegel_bridge_staging",
@@ -2824,6 +2864,121 @@ ROUTES.great_swamp_swamp_cave_south = {
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
+-- Northwestern destination variants repair the remaining asymmetric return
+-- matrix. Every affected origin first reaches Kol through either the proven
+-- Rain Shrine return or the nested Mountain/Cantlin/Hauksness return. The
+-- destination legs below reuse existing geometry and retain town bypasses for
+-- intermediate handoffs.
+ROUTES.kol_northwestern_return = {
+    id = "kol_northwestern_return",
+    title = "Kol",
+    target_object_ids = {"overworld_kol"},
+    destination_maps = {0x07},
+    staging = NORTHWESTERN_KOL_RETURN_STAGING,
+    selection_anchors = {
+        {x = 29, y = 57, max_distance = 4},
+        {x = 73, y = 102, max_distance = 4},
+        {x = 89, y = 112, max_distance = 4},
+    },
+    waypoints = {
+        {x = 104, y = 10, name = "Kol", radius = 0, final = true},
+    },
+}
+
+ROUTES.northern_cave_northwestern_return = {
+    id = "northern_cave_northwestern_return",
+    title = "Northern Cave",
+    target_object_ids = {"overworld_northern_cave"},
+    destination_maps = {0x0D},
+    staging = NORTHWESTERN_KOL_RETURN_STAGING,
+    selection_anchors = {
+        {x = 29, y = 57, max_distance = 4},
+        {x = 25, y = 89, max_distance = 4},
+        {x = 73, y = 102, max_distance = 4},
+        {x = 89, y = 112, max_distance = 4},
+    },
+    waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
+}
+
+ROUTES.mountain_cave_northwestern_connector = {
+    id = "mountain_cave_northwestern_connector",
+    title = "Western desert east road",
+    staging = NORTHWESTERN_KOL_RETURN_STAGING,
+    waypoints = copy_route_with_kol_bypass(ROUTES.mountain_cave_connector),
+}
+
+ROUTES.mountain_cave_northwestern_return = {
+    id = "mountain_cave_northwestern_return",
+    title = "Mountain Cave",
+    target_object_ids = {"overworld_mountain_cave"},
+    destination_maps = {0x16, 0x17},
+    staging = NORTHWESTERN_MOUNTAIN_STAGING,
+    selection_anchors = {
+        {x = 81, y = 1, max_distance = 4},
+        {x = 25, y = 89, max_distance = 4},
+        {x = 73, y = 102, max_distance = 4},
+        {x = 89, y = 112, max_distance = 4},
+    },
+    waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
+}
+
+ROUTES.hauksness_northwestern_return = {
+    id = "hauksness_northwestern_return",
+    title = "Hauksness",
+    target_object_ids = {"overworld_hauksness"},
+    destination_maps = {0x03},
+    staging = NORTHWESTERN_KOL_RETURN_STAGING,
+    selection_anchors = {
+        {x = 81, y = 1, max_distance = 4},
+        {x = 29, y = 57, max_distance = 4},
+        {x = 89, y = 112, max_distance = 4},
+    },
+    waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
+}
+
+ROUTES.hauksness_northwestern_staging = {
+    id = "hauksness_northwestern_staging",
+    title = "Hauksness",
+    destination_maps = {0x03},
+    staging = NORTHWESTERN_KOL_RETURN_STAGING,
+    waypoints = copy_route_with_kol_bypass(ROUTES.hauksness, 24, 89),
+}
+
+ROUTES.cantlin_northwestern_return = {
+    id = "cantlin_northwestern_return",
+    title = "Cantlin",
+    target_object_ids = {"overworld_cantlin"},
+    destination_maps = {0x0A},
+    staging = NORTHWESTERN_CANTLIN_STAGING,
+    selection_anchors = {
+        {x = 81, y = 1, max_distance = 4},
+        {x = 29, y = 57, max_distance = 4},
+    },
+    waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
+}
+
+ROUTES.cantlin_northwestern_staging = {
+    id = "cantlin_northwestern_staging",
+    title = "Cantlin northwest turn",
+    destination_maps = {0x0A},
+    staging = NORTHWESTERN_CANTLIN_BYPASS_STAGING,
+    waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 68, 91),
+}
+
+ROUTES.great_swamp_northwestern_return = {
+    id = "great_swamp_northwestern_return",
+    title = "Eastern Great Swamp Search Area",
+    target_object_ids = {
+        "overworld_eastern_great_swamp_search_area",
+    },
+    staging = NORTHWESTERN_GREAT_SWAMP_STAGING,
+    selection_anchors = {
+        {x = 81, y = 1, max_distance = 4},
+        {x = 29, y = 57, max_distance = 4},
+    },
+    waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
+}
+
 -- Internal cave-entry leg: when the hero is already standing on the automatic
 -- north entrance tile, first step to the safe doorstep. The player then steps
 -- south to retrigger entry and crosses the cave manually.
@@ -3035,10 +3190,12 @@ local ROUTE_IDS = {
     "northern_cave",
     "northern_cave_swamp_cave_north",
     "northern_cave_swamp_cave_south",
+    "northern_cave_northwestern_return",
     "kol_rain_shrine",
     "kol_swamp_cave",
     "kol_swamp_cave_south",
     "kol_hauksness",
+    "kol_northwestern_return",
     "swamp_cave",
     "swamp_cave_bridge",
     "swamp_cave_north_swamp_cave_south",
@@ -3059,16 +3216,20 @@ local ROUTE_IDS = {
     "mountain_cave_swamp_cave_north",
     "mountain_cave_swamp_cave_south",
     "mountain_cave_return",
+    "mountain_cave_northwestern_return",
     "hauksness",
     "hauksness_swamp_cave_north",
     "hauksness_swamp_cave_south",
     "hauksness_cantlin",
+    "hauksness_northwestern_return",
     "cantlin_hauksness",
     "cantlin_swamp_cave_north",
     "cantlin_swamp_cave_south",
+    "cantlin_northwestern_return",
     "great_swamp_cantlin",
     "great_swamp_swamp_cave_north",
     "great_swamp_swamp_cave_south",
+    "great_swamp_northwestern_return",
     "cantlin_great_swamp",
     "erdrick",
     "erdrick_kol",
@@ -3113,11 +3274,13 @@ local ROUTE_ALTERNATES = {
         "kol_swamp_cave",
         "kol_swamp_cave_south",
         "kol_hauksness",
+        "kol_northwestern_return",
     },
     northern_cave = {
         "northern_cave",
         "northern_cave_swamp_cave_north",
         "northern_cave_swamp_cave_south",
+        "northern_cave_northwestern_return",
     },
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_swamp_cave = {
@@ -3173,12 +3336,14 @@ local ROUTE_ALTERNATES = {
         "mountain_cave",
         "mountain_cave_swamp_cave_north",
         "mountain_cave_swamp_cave_south",
+        "mountain_cave_northwestern_return",
     },
     hauksness = {
         "hauksness",
         "hauksness_cantlin",
         "hauksness_swamp_cave_north",
         "hauksness_swamp_cave_south",
+        "hauksness_northwestern_return",
     },
     hauksness_cantlin = {"hauksness_cantlin", "hauksness"},
     cantlin_hauksness = {
@@ -3186,11 +3351,17 @@ local ROUTE_ALTERNATES = {
         "cantlin_great_swamp",
         "cantlin_swamp_cave_north",
         "cantlin_swamp_cave_south",
+        "cantlin_northwestern_return",
     },
     great_swamp_cantlin = {
         "great_swamp_cantlin",
         "great_swamp_swamp_cave_north",
         "great_swamp_swamp_cave_south",
+        "great_swamp_northwestern_return",
+    },
+    northwestern_kol_return_staging = {
+        "kol_rain_shrine_staging",
+        "kol_return_staging",
     },
     hauksness_return_staging = {
         "hauksness_return_staging",

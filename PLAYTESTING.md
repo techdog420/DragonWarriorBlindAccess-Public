@@ -1,11 +1,45 @@
 # Playtesting Notes
 
-Updated: 2026-08-24
+Updated: 2026-08-25
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The 18-case northwestern return batch is source-complete and accepted through
+  the full three-run representative live matrix (`2026-08-25`). Northern Cave,
+  Mountain Cave, Hauksness, Cantlin,
+  and the Eastern Great Swamp Search Area now fill their remaining connections
+  to Kol, Northern Cave, Mountain Cave, Hauksness, Cantlin, and Great Swamp as
+  applicable. Each route first reuses its origin's proven return to Kol, then
+  follows the existing destination geometry; no waypoint geometry changed.
+  Six scoped target variants and shared staging routes cover all 18 selections
+  without stealing valid local starts. Focused route tests pass `289/289`; Lua
+  syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Great Swamp `(89,112)` to Northern Cave `(81,1)` started on
+  `cantlin_return_staging` at frame `1148`, handed off through Hauksness and
+  Kol at frames `4987`, `10155`, and `24827`, and arrived on frame `27819`.
+  One automatic first-step timing retry recovered successfully. Two
+  final-settle carry steps were explicitly accepted and continued immediately;
+  no blocker, route stop, replacement, runtime-block injection, or script
+  error occurred. Fresh frame `44400` confirmed path target nil and zero
+  runtime blockers. Northern Cave `(81,1)` to Great Swamp `(89,112)` then
+  started on `kol_rain_shrine_staging` at frame `52473`, handed off through
+  Kol, Hauksness, and Cantlin at frames `55711`, `70383`, and `75391`, and
+  arrived on frame `79183`. One automatic first-step timing retry recovered;
+  the same two final-settle carry steps were explicitly accepted. No blocker,
+  route stop, replacement, runtime-block injection, or script error occurred.
+  A later `R` press created an already-arrived route after completion and does
+  not affect acceptance. Fresh frame `93480` confirmed path target nil and zero
+  runtime blockers. Mountain Cave `(29,57)` to Cantlin `(73,102)` started on
+  `mountain_cave_return` at frame `100833`, handed off through Kol and
+  Hauksness at frames `101755`, `112539`, and `127211`, and entered map `0x0A`
+  on frame `132779`. It had no timing retry, blocker, route stop, replacement,
+  runtime-block injection, or script error. The final coordinate mismatch
+  cleanup is the expected town-map transition. Fresh frame `139140` confirmed
+  path target nil and zero runtime blockers. The user confirmed all three runs
+  completed without player-facing issues. The batch is accepted and ready to
+  commit and push.
 - The 12-case western-to-early-mainland batch is source-complete and accepted
   through the full three-run representative live matrix (`2026-08-24`).
   Hauksness, Mountain Cave, Cantlin, and the Eastern Great Swamp Search Area
@@ -34,7 +68,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   `366540` crossed successfully at `366585`; no blocker, drift, route stop,
   runtime-block injection, or script error followed. The arrival cleanup at
   `(0,15)` is the expected map transition. The user confirmed all three runs
-  completed without noticeable issues. The batch is accepted.
+  completed without noticeable issues. The batch is accepted and was committed
+  and pushed as `f49fcb7`.
 - The remaining 26-case southern-route batch is source-complete and accepted
   through the full three-run representative live matrix (`2026-08-24`).
   Northern Cave,

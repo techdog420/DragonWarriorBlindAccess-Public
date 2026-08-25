@@ -9455,6 +9455,249 @@ function tests.autowalk_advances_past_already_at_waypoint_with_opt_in()
     routes.reset_for_tests()
 end
 
+function tests.northwestern_return_holes_use_proven_origin_returns()
+    local destinations = {
+        Kol = {
+            target = {id = "overworld_kol", name = "Kol"},
+            alias = "kol",
+        },
+        NorthernCave = {
+            target = {
+                id = "overworld_northern_cave",
+                name = "Northern Cave",
+            },
+            alias = "northern cave",
+        },
+        MountainCave = {
+            target = {
+                id = "overworld_mountain_cave",
+                name = "Mountain Cave",
+            },
+            alias = "mountain cave",
+        },
+        Hauksness = {
+            target = {id = "overworld_hauksness", name = "Hauksness"},
+            alias = "hauksness",
+        },
+        Cantlin = {
+            target = {id = "overworld_cantlin", name = "Cantlin"},
+            alias = "cantlin",
+        },
+        GreatSwamp = {
+            target = {
+                id = "overworld_eastern_great_swamp_search_area",
+                name = "Eastern Great Swamp Search Area",
+            },
+            alias = "great swamp search area",
+        },
+    }
+    local origins = {
+        {
+            name = "Northern Cave",
+            x = 81,
+            y = 1,
+            first_route = "kol_rain_shrine_staging",
+            max_first_segment = 1,
+            destination_keys = {
+                "MountainCave", "Hauksness", "Cantlin", "GreatSwamp",
+            },
+        },
+        {
+            name = "Mountain Cave",
+            x = 29,
+            y = 57,
+            first_route = "mountain_cave_return",
+            max_first_segment = 4,
+            destination_keys = {
+                "Kol", "NorthernCave", "Hauksness", "Cantlin", "GreatSwamp",
+            },
+        },
+        {
+            name = "Hauksness",
+            x = 25,
+            y = 89,
+            first_route = "kol_return_staging",
+            max_first_segment = 1,
+            destination_keys = {"NorthernCave", "MountainCave"},
+        },
+        {
+            name = "Cantlin",
+            x = 73,
+            y = 102,
+            first_route = "hauksness_return_staging",
+            max_first_segment = 11,
+            destination_keys = {"Kol", "NorthernCave", "MountainCave"},
+        },
+        {
+            name = "Eastern Great Swamp Search Area",
+            x = 89,
+            y = 112,
+            first_route = "cantlin_return_staging",
+            max_first_segment = 1,
+            destination_keys = {
+                "Kol", "NorthernCave", "MountainCave", "Hauksness",
+            },
+        },
+    }
+
+    local case_count = 0
+    for _, origin in ipairs(origins) do
+        for _, destination_key in ipairs(origin.destination_keys) do
+            local destination = destinations[destination_key]
+            case_count = case_count + 1
+            routes.reset_for_tests()
+            local info, err = routes.start_for_object(
+                destination.target, 0x01, origin.x, origin.y)
+
+            assert_equal(err, nil,
+                destination.target.name .. " should resolve from " .. origin.name)
+            assert_equal(info.route.id, origin.first_route,
+                destination.target.name .. " should first use the proven " ..
+                    origin.name .. " return")
+            assert_equal(routes.active_route_matches_object(
+                destination.target), true,
+                destination.target.name .. " should remain selected from " ..
+                    origin.name)
+
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, origin.x, origin.y)
+            assert_equal(segment_err, nil,
+                origin.name .. " should have a valid first segment")
+            assert(segment and
+                    segment.path_length <= origin.max_first_segment,
+                origin.name .. " first segment should remain bounded")
+
+            routes.reset_for_tests()
+            local alias_info, alias_err = routes.start(
+                destination.alias, 0x01, origin.x, origin.y)
+            assert_equal(alias_err, nil,
+                destination.target.name .. " alias should resolve from " ..
+                    origin.name)
+            assert_equal(alias_info.route.id, origin.first_route,
+                destination.target.name ..
+                    " alias should use the same return itinerary")
+        end
+    end
+    assert_equal(case_count, 18,
+        "the northwestern return matrix should cover all 18 holes")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_to_northern_cave_hands_off_at_each_hub()
+    routes.reset_for_tests()
+    local target = {
+        id = "overworld_northern_cave",
+        name = "Northern Cave",
+    }
+    assert(routes.start_for_object(target, 0x01, 89, 112))
+
+    local event
+    local cantlin = assert(routes._route_for_tests(
+        "cantlin_return_staging"))
+    for index = 2, #cantlin.waypoints do
+        local waypoint = cantlin.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Great Swamp should hand off outside Cantlin")
+    assert_equal(routes.active_route_id(), "hauksness_return_staging",
+        "Cantlin should activate the Hauksness return")
+
+    local hauksness = assert(routes._route_for_tests(
+        "hauksness_return_staging"))
+    for index = 4, #hauksness.waypoints do
+        local waypoint = hauksness.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Cantlin should hand off outside Hauksness")
+    assert_equal(routes.active_route_id(), "kol_return_staging",
+        "Hauksness should activate the Kol return")
+
+    local kol = assert(routes._route_for_tests("kol_return_staging"))
+    for index = 3, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Hauksness should hand off outside Kol")
+    assert_equal(routes.active_route_id(),
+        "northern_cave_northwestern_return",
+        "Kol should activate the Northern Cave continuation")
+    assert_equal(event.object_id,
+        "route_northern_cave_northwestern_return_02",
+        "the continuation should leave Kol without entering town")
+    assert_equal(event.steps, nil,
+        "exterior handoffs must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Northern Cave should remain selected after every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 103, 10))
+    assert_equal(segment.waypoint.name, "Kol forest west edge",
+        "the final continuation should begin on the shrine route")
+    assert(segment.path_length <= 10,
+        "the first Northern Cave continuation segment should remain bounded")
+
+    routes.reset_for_tests()
+end
+
+function tests.northwestern_return_variants_do_not_steal_valid_local_starts()
+    local cases = {
+        {
+            target = {id = "overworld_kol", name = "Kol"},
+            x = 25,
+            y = 89,
+            expected = "kol_hauksness",
+        },
+        {
+            target = {id = "overworld_northern_cave", name = "Northern Cave"},
+            x = 104,
+            y = 10,
+            expected = "northern_cave",
+        },
+        {
+            target = {id = "overworld_mountain_cave", name = "Mountain Cave"},
+            x = 104,
+            y = 10,
+            expected = "mountain_cave_connector",
+        },
+        {
+            target = {id = "overworld_hauksness", name = "Hauksness"},
+            x = 104,
+            y = 10,
+            expected = "hauksness",
+        },
+        {
+            target = {id = "overworld_cantlin", name = "Cantlin"},
+            x = 25,
+            y = 89,
+            expected = "cantlin_hauksness",
+        },
+        {
+            target = {
+                id = "overworld_eastern_great_swamp_search_area",
+                name = "Eastern Great Swamp Search Area",
+            },
+            x = 73,
+            y = 102,
+            expected = "great_swamp_cantlin",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, case.x, case.y)
+        assert_equal(err, nil,
+            case.target.name .. " should still resolve from its valid start")
+        assert_equal(info.route.id, case.expected,
+            "northwestern return variants must not steal " .. case.target.name)
+    end
+
+    routes.reset_for_tests()
+end
+
 local failures = 0
 local total = 0
 
