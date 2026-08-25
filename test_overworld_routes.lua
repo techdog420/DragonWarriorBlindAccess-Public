@@ -1104,7 +1104,7 @@ function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging(
                 x = 89,
                 y = 112,
             },
-            start_x = 87,
+            start_x = 83,
             start_y = 112,
             route_id = "great_swamp_cantlin",
             waypoint_x = 89,

@@ -97,7 +97,10 @@ local GREAT_SWAMP_STAGING = {
     -- route is fifteen tiles. Off-corridor or farther starts must first use
     -- the connected Cantlin itinerary instead of synthesizing a shortcut.
     max_start_distance = 15,
-    near_destination_snap_distance = 5,
+    -- Live validation from (83,112) reached the search point at (89,112)
+    -- directly across six eastward cells. Keep that local swamp approach from
+    -- restaging through Kol while retaining the corridor guard beyond it.
+    near_destination_snap_distance = 6,
     require_route_corridor = true,
     prefer_staging_route_corridor = true,
     continue_after_staging = true,
