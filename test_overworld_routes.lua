@@ -10027,6 +10027,119 @@ function tests.northwestern_return_variants_do_not_steal_valid_local_starts()
     routes.reset_for_tests()
 end
 
+function tests.all_overworld_landmark_pairs_resolve_with_bounded_openings()
+    -- Keep this list aligned with objects.lua OVERWORLD_LANDMARKS. These are
+    -- the 16 player-selectable landmarks that make up the overworld route
+    -- matrix.
+    local landmarks = {
+        {
+            id = "overworld_tantegel_castle",
+            name = "Tantegel Castle",
+            x = 43,
+            y = 43,
+        },
+        {id = "overworld_brecconary", name = "Brecconary", x = 48, y = 41},
+        {
+            id = "overworld_erdrick_s_cave",
+            name = "Erdrick's Cave",
+            x = 28,
+            y = 12,
+        },
+        {id = "overworld_garinham", name = "Garinham", x = 1, y = 2},
+        {id = "overworld_kol", name = "Kol", x = 104, y = 10},
+        {
+            id = "overworld_northern_cave",
+            name = "Northern Cave",
+            x = 81,
+            y = 1,
+        },
+        {
+            id = "overworld_mountain_cave",
+            name = "Mountain Cave",
+            x = 29,
+            y = 57,
+        },
+        {
+            id = "overworld_swamp_cave",
+            name = "Swamp Cave",
+            x = 104,
+            y = 44,
+        },
+        {
+            id = "overworld_swamp_cave_south_entrance",
+            name = "Swamp Cave South Entrance",
+            x = 104,
+            y = 49,
+        },
+        {
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+            x = 65,
+            y = 49,
+        },
+        {id = "overworld_rimuldar", name = "Rimuldar", x = 102, y = 72},
+        {
+            id = "overworld_southern_cave",
+            name = "Magic Temple",
+            x = 108,
+            y = 109,
+        },
+        {id = "overworld_cantlin", name = "Cantlin", x = 73, y = 102},
+        {id = "overworld_hauksness", name = "Hauksness", x = 25, y = 89},
+        {
+            id = "overworld_eastern_great_swamp_search_area",
+            name = "Eastern Great Swamp Search Area",
+            x = 89,
+            y = 112,
+        },
+        {
+            id = "overworld_charlock_castle",
+            name = "Charlock Castle",
+            x = 48,
+            y = 48,
+        },
+    }
+
+    local checked = 0
+    for origin_index, origin in ipairs(landmarks) do
+        for target_index, target in ipairs(landmarks) do
+            if origin_index ~= target_index then
+                checked = checked + 1
+                routes.reset_for_tests()
+
+                local pair = origin.name .. " to " .. target.name
+                local info, start_err = routes.start_for_object(
+                    target, 0x01, origin.x, origin.y)
+                assert_equal(start_err, nil,
+                    pair .. " should resolve")
+                assert(info and info.route,
+                    pair .. " should select a route")
+                assert_equal(routes.active_route_matches_object(target), true,
+                    pair .. " should preserve the selected destination")
+
+                local segment, segment_err = routes.plan_next_segment(
+                    0x01, origin.x, origin.y)
+                assert_equal(segment_err, nil,
+                    pair .. " should plan its first segment")
+                -- Automatic cave-entry origins can legitimately produce a
+                -- zero-step segment while waiting for the map transition.
+                assert(segment and type(segment.path_length) == "number",
+                    pair .. " should expose a measurable first segment")
+                assert(segment.path_length >= 0,
+                    pair .. " should not report a negative first segment")
+                assert(segment.path_length <= 11,
+                    pair .. " should not synthesize a cross-world opening; " ..
+                        "got " .. tostring(segment.path_length) ..
+                        " steps on " .. tostring(info.route.id))
+            end
+        end
+    end
+
+    assert_equal(checked, 240,
+        "the 16-landmark directed matrix should cover all non-self pairs")
+    routes.reset_for_tests()
+end
+
 local failures = 0
 local total = 0
 

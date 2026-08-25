@@ -132,8 +132,9 @@ Updated: 2026-08-25
   western-desert connector and local spur. The full 16-landmark audit now has
   all 240 directed non-self pairs resolving with no first segment longer than
   11 tiles. Regressions cover all three object and alias selections, bounded
-  openings, direct Erdrick arrival, and every Garinham-to-Mountain-Cave
-  handoff. Focused route tests pass `294/294`; Lua syntax, `git diff --check`,
+  openings, direct Erdrick arrival, every Garinham-to-Mountain-Cave handoff,
+  and all 240 directed non-self landmark pairs. Focused route tests pass
+  `295/295`; Lua syntax, `git diff --check`,
   all 33 host-runnable Lua suites, and all 68 Python tests pass. Garinham-to-
   Erdrick started on `erdrick_garinham` at frame `1646` and entered Erdrick's
   Cave B1 `(0,0)` on frame `3606`. It logged no timing retry, blocker, drift,
