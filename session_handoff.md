@@ -121,6 +121,41 @@ Updated: 2026-08-25
 
 ## Immediate FCEUX Handoff
 
+- The final three landmark-origin matrix holes are source-complete and
+  live-verified (`2026-08-25`). Garinham `(1,2)` now reaches Erdrick's Cave
+  `(28,12)`, Northern Cave `(81,1)`, and Mountain Cave `(29,57)` without the
+  previous 37- or 38-step synthetic openings. Erdrick travel follows the
+  validated Garinham eastern road to the cave approach and uses the existing
+  north entry step. Northern Cave nests through the established Garinham
+  return, bridge junction, and Kol doorstep before joining the unchanged rain-
+  shrine route. Mountain Cave shares that return, then uses the existing
+  western-desert connector and local spur. The full 16-landmark audit now has
+  all 240 directed non-self pairs resolving with no first segment longer than
+  11 tiles. Regressions cover all three object and alias selections, bounded
+  openings, direct Erdrick arrival, and every Garinham-to-Mountain-Cave
+  handoff. Focused route tests pass `294/294`; Lua syntax, `git diff --check`,
+  all 33 host-runnable Lua suites, and all 68 Python tests pass. Garinham-to-
+  Erdrick started on `erdrick_garinham` at frame `1646` and entered Erdrick's
+  Cave B1 `(0,0)` on frame `3606`. It logged no timing retry, blocker, drift,
+  cancellation, replacement, runtime-block injection, or current script
+  error. The post-arrival off-direction cleanup is the expected World Map-to-
+  cave coordinate transition. Fresh frame `6780` confirmed path target nil and
+  zero NPC/runtime blockers. Garinham-to-Northern-Cave started on
+  `tantegel_garinham_staging` at frame `10946`, handed off through
+  `kol_garinham_staging` at frame `14501` and `northern_cave_garinham` at
+  frame `21173`, then arrived at Northern Cave `(81,1)` on frame `24165`. It
+  logged no timing retry, blocker, drift, cancellation, replacement,
+  runtime-block injection, or current script error. Fresh frame `277200`
+  confirmed path target nil and zero NPC/runtime blockers. Garinham-to-
+  Mountain-Cave started on `tantegel_garinham_staging` at frame `283194`,
+  handed off through `kol_garinham_staging`,
+  `mountain_cave_garinham_connector`, and `mountain_cave_garinham` at frames
+  `286622`, `293294`, and `304062`, then arrived at Mountain Cave `(29,57)` on
+  frame `304910`. It logged no timing retry, blocker, drift, cancellation,
+  replacement, runtime-block injection, or current script error. Fresh frame
+  `959280` confirmed path target nil and zero NPC/runtime blockers. The full
+  three-run live matrix is accepted, and the focused batch is ready to commit
+  and push.
 - The final-island northwestern batch is source-complete and accepted through
   its two-route representative live matrix (`2026-08-25`). Charlock Castle
   `(48,48)` and Rainbow Bridge
@@ -3105,9 +3140,11 @@ Updated: 2026-08-25
 
 ## Next Work
 
-1. Commit and push the now-live-verified 18-case northwestern return batch as
-   one focused revision.
-2. Re-audit the route matrix for any remaining overworld holes.
+1. Commit and push the accepted final landmark-origin matrix batch as one
+   focused revision.
+2. Re-audit arbitrary reachable starts for long synthetic openings, then
+   decide whether to patch any remaining weaknesses or move to the next
+   roadmap item.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

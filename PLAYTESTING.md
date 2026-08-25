@@ -6,6 +6,37 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The final three landmark-origin matrix holes are source-complete and
+  live-verified (`2026-08-25`). Garinham `(1,2)` now reaches Erdrick's Cave
+  `(28,12)`, Northern Cave `(81,1)`, and Mountain Cave `(29,57)` through
+  established route geometry instead of 37- or 38-step synthetic openings.
+  Erdrick travel follows the validated eastern road directly; the other two
+  routes nest through the existing Garinham return, bridge junction, and Kol
+  doorstep before selecting the established destination branch. The full
+  16-landmark audit now resolves all 240 directed non-self pairs, with no first
+  segment longer than 11 tiles. Focused route tests pass `294/294`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. Garinham-to-Erdrick started on `erdrick_garinham` at frame `1646` and
+  entered Erdrick's Cave B1 `(0,0)` on frame `3606`. It logged no timing retry,
+  blocker, drift, cancellation, replacement, runtime-block injection, or
+  current script error. The post-arrival off-direction cleanup is the expected
+  map transition. Fresh frame `6780` confirmed path target nil and zero
+  NPC/runtime blockers. Garinham-to-Northern-Cave started on
+  `tantegel_garinham_staging` at frame `10946`, handed off through
+  `kol_garinham_staging` at frame `14501` and `northern_cave_garinham` at
+  frame `21173`, then arrived at Northern Cave `(81,1)` on frame `24165`. It
+  logged no timing retry, blocker, drift, cancellation, replacement,
+  runtime-block injection, or current script error. Fresh frame `277200`
+  confirmed path target nil and zero NPC/runtime blockers. Garinham-to-
+  Mountain-Cave started on `tantegel_garinham_staging` at frame `283194`,
+  handed off through `kol_garinham_staging`,
+  `mountain_cave_garinham_connector`, and `mountain_cave_garinham` at frames
+  `286622`, `293294`, and `304062`, then arrived at Mountain Cave `(29,57)` on
+  frame `304910`. It logged no timing retry, blocker, drift, cancellation,
+  replacement, runtime-block injection, or current script error. Fresh frame
+  `959280` confirmed path target nil and zero NPC/runtime blockers. The full
+  three-run live matrix is accepted, and the focused batch is ready to commit
+  and push.
 - Final-island travel to the five northwestern destinations is source-complete
   and accepted through its two-route representative live matrix
   (`2026-08-25`). Charlock Castle `(48,48)` and

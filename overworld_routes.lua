@@ -379,8 +379,8 @@ local GARINHAM_KOL_STAGING = {
 local GARINHAM_SWAMP_CAVE_STAGING = {
     route_id = "kol_garinham_staging",
     -- Once the eastern return reaches the shared bridge junction, follow the
-    -- existing Kol and north-cave corridors instead of synthesizing a direct
-    -- cross-world segment from Garinham.
+    -- existing Kol-side destination corridors instead of synthesizing a
+    -- direct cross-world segment from Garinham.
     max_start_distance = 13,
     require_route_corridor = true,
     continue_after_staging = true,
@@ -3052,6 +3052,68 @@ ROUTES.kol_garinham_staging = {
     waypoints = copy_route_prefix(ROUTES.kol_staging, 103, 10),
 }
 
+-- Garinham reaches Erdrick's Cave by following the already validated eastern
+-- road only to the cave approach, then taking the single north entry step.
+-- This avoids the canonical route's apparent shortcut across open water.
+local erdrick_garinham_waypoints = copy_route_prefix(
+    ROUTES.brecconary, 28, 13)
+erdrick_garinham_waypoints[#erdrick_garinham_waypoints].final = nil
+erdrick_garinham_waypoints[#erdrick_garinham_waypoints + 1] = {
+    x = 28,
+    y = 12,
+    name = "Erdrick's Cave",
+    radius = 0,
+    final = true,
+}
+ROUTES.erdrick_garinham = {
+    id = "erdrick_garinham",
+    title = "Erdrick's Cave",
+    target_object_ids = {"overworld_erdrick_s_cave"},
+    destination_maps = {0x1C, 0x1D},
+    selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    -- Keep nearby cave starts on the canonical route while allowing starts on
+    -- the established Garinham road to select this forward corridor.
+    selection_max_index = 15,
+    waypoints = erdrick_garinham_waypoints,
+}
+
+-- Northern Cave travel first uses Garinham's established eastern return to
+-- the bridge junction and Kol doorstep, then joins the unchanged rain-shrine
+-- approach without entering Kol.
+ROUTES.northern_cave_garinham = {
+    id = "northern_cave_garinham",
+    title = "Northern Cave",
+    target_object_ids = {"overworld_northern_cave"},
+    destination_maps = {0x0D},
+    staging = GARINHAM_SWAMP_CAVE_STAGING,
+    selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
+}
+
+-- Mountain Cave shares the same nested Garinham-to-Kol return, then follows
+-- the validated western-desert connector and local cave spur.
+ROUTES.mountain_cave_garinham_connector = {
+    id = "mountain_cave_garinham_connector",
+    title = "Western desert east road",
+    staging = GARINHAM_SWAMP_CAVE_STAGING,
+    waypoints = copy_route_with_kol_bypass(ROUTES.mountain_cave_connector),
+}
+
+ROUTES.mountain_cave_garinham = {
+    id = "mountain_cave_garinham",
+    title = "Mountain Cave",
+    target_object_ids = {"overworld_mountain_cave"},
+    destination_maps = {0x16, 0x17},
+    staging = {
+        route_id = "mountain_cave_garinham_connector",
+        max_start_distance = 9,
+        require_route_corridor = true,
+        continue_after_staging = true,
+    },
+    selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
+}
+
 -- Reach Swamp Cave north from Garinham through the proven bridge and Kol
 -- chain. Automatic cave entry must occur before the next staged leg becomes
 -- active, keeping auto-walk from injecting movement inside map 0x15.
@@ -3201,6 +3263,7 @@ local ROUTE_IDS = {
     "northern_cave_swamp_cave_north",
     "northern_cave_swamp_cave_south",
     "northern_cave_northwestern_return",
+    "northern_cave_garinham",
     "kol_rain_shrine",
     "kol_swamp_cave",
     "kol_swamp_cave_south",
@@ -3227,6 +3290,7 @@ local ROUTE_IDS = {
     "mountain_cave_swamp_cave_south",
     "mountain_cave_return",
     "mountain_cave_northwestern_return",
+    "mountain_cave_garinham",
     "hauksness",
     "hauksness_swamp_cave_north",
     "hauksness_swamp_cave_south",
@@ -3242,6 +3306,7 @@ local ROUTE_IDS = {
     "great_swamp_northwestern_return",
     "cantlin_great_swamp",
     "erdrick",
+    "erdrick_garinham",
     "erdrick_kol",
     "erdrick_western_return",
     "erdrick_swamp_cave_north",
@@ -3273,6 +3338,7 @@ local ROUTE_ALTERNATES = {
     },
     erdrick = {
         "erdrick",
+        "erdrick_garinham",
         "erdrick_kol",
         "erdrick_western_return",
         "erdrick_swamp_cave_north",
@@ -3291,6 +3357,7 @@ local ROUTE_ALTERNATES = {
         "northern_cave_swamp_cave_north",
         "northern_cave_swamp_cave_south",
         "northern_cave_northwestern_return",
+        "northern_cave_garinham",
     },
     kol_rain_shrine = {"kol", "kol_rain_shrine", "kol_swamp_cave", "kol_hauksness"},
     kol_swamp_cave = {
@@ -3347,6 +3414,7 @@ local ROUTE_ALTERNATES = {
         "mountain_cave_swamp_cave_north",
         "mountain_cave_swamp_cave_south",
         "mountain_cave_northwestern_return",
+        "mountain_cave_garinham",
     },
     hauksness = {
         "hauksness",

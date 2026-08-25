@@ -5197,6 +5197,170 @@ function tests.eastern_mainland_southern_destinations_cross_swamp_cave()
     routes.reset_for_tests()
 end
 
+function tests.garinham_remaining_destinations_use_connected_routes()
+    local cases = {
+        {
+            target = {
+                id = "overworld_erdrick_s_cave",
+                name = "Erdrick's Cave",
+            },
+            alias = "erdrick",
+            first_route = "erdrick_garinham",
+            first_object = "route_erdrick_garinham_02",
+        },
+        {
+            target = {
+                id = "overworld_northern_cave",
+                name = "Northern Cave",
+            },
+            alias = "northern cave",
+            first_route = "tantegel_garinham_staging",
+            first_object = "route_tantegel_garinham_staging_02",
+        },
+        {
+            target = {
+                id = "overworld_mountain_cave",
+                name = "Mountain Cave",
+            },
+            alias = "mountain cave",
+            first_route = "tantegel_garinham_staging",
+            first_object = "route_tantegel_garinham_staging_02",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            case.target, 0x01, 1, 2)
+
+        assert_equal(err, nil,
+            case.target.name .. " should resolve from Garinham")
+        assert_equal(info.route.id, case.first_route,
+            case.target.name .. " should begin on a proven Garinham corridor")
+        assert_equal(info.object_id, case.first_object,
+            case.target.name .. " should target Garinham outskirts first")
+        assert_equal(routes.active_route_matches_object(case.target), true,
+            case.target.name .. " should remain selected from Garinham")
+
+        local segment, segment_err = routes.plan_next_segment(0x01, 1, 2)
+        assert_equal(segment_err, nil,
+            case.target.name .. " should have a valid first segment")
+        assert(segment and segment.path_length <= 6,
+            case.target.name .. " should not synthesize a cross-world opening")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 1, 2)
+        assert_equal(alias_err, nil,
+            case.target.name .. " alias should resolve from Garinham")
+        assert_equal(alias_info.route.id, case.first_route,
+            case.target.name .. " alias should use the same first route")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_to_mountain_cave_hands_off_at_each_hub()
+    local target = {
+        id = "overworld_mountain_cave",
+        name = "Mountain Cave",
+        x = 29,
+        y = 57,
+    }
+    routes.reset_for_tests()
+    assert(routes.start_for_object(target, 0x01, 1, 2))
+
+    local eastern = assert(routes._route_for_tests(
+        "tantegel_garinham_staging"))
+    local event
+    for index = 2, #eastern.waypoints do
+        local waypoint = eastern.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Garinham's eastern return should hand off at the bridge junction")
+    assert_equal(routes.active_route_id(), "kol_garinham_staging",
+        "the bridge junction should activate the Kol bypass")
+    assert_equal(event.steps, nil,
+        "the bridge handoff must not inject movement")
+
+    local kol = assert(routes._route_for_tests("kol_garinham_staging"))
+    for index = 4, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the Kol doorstep should advance the Mountain Cave itinerary")
+    assert_equal(routes.active_route_id(),
+        "mountain_cave_garinham_connector",
+        "Kol should activate the proven western-desert connector")
+    assert_equal(event.object_id,
+        "route_mountain_cave_garinham_connector_02",
+        "the connector should leave Kol through the forest edge")
+    assert_equal(event.steps, nil,
+        "the Kol handoff must not inject movement")
+
+    local connector = assert(routes._route_for_tests(
+        "mountain_cave_garinham_connector"))
+    for index = 2, #connector.waypoints do
+        local waypoint = connector.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "the western-desert pin should activate the local cave spur")
+    assert_equal(routes.active_route_id(), "mountain_cave_garinham",
+        "the connector should preserve the Garinham-origin destination leg")
+    assert_equal(event.object_id, "route_mountain_cave_garinham_02",
+        "the local spur should turn west into the forest")
+    assert_equal(event.steps, nil,
+        "the western connector handoff must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Mountain Cave should remain selected through every handoff")
+
+    local mountain = assert(routes._route_for_tests(
+        "mountain_cave_garinham"))
+    for index = 2, #mountain.waypoints do
+        local waypoint = mountain.waypoints[index]
+        local next_event = routes.observe_position(
+            0x01, waypoint.x, waypoint.y)
+        if next_event then event = next_event end
+    end
+    assert_contains(event.message, "Arrived at Mountain Cave",
+        "the nested Garinham itinerary should reach Mountain Cave")
+    assert_equal(routes.is_active(), false,
+        "Mountain Cave arrival should clear the whole itinerary")
+
+    routes.reset_for_tests()
+end
+
+function tests.garinham_to_erdrick_uses_eastern_road_and_arrives()
+    local target = {
+        id = "overworld_erdrick_s_cave",
+        name = "Erdrick's Cave",
+        x = 28,
+        y = 12,
+    }
+    routes.reset_for_tests()
+    local info = assert(routes.start_for_object(target, 0x01, 1, 2))
+    assert_equal(info.route.id, "erdrick_garinham",
+        "Garinham should select the forward eastern-road route")
+
+    local route = assert(routes._route_for_tests("erdrick_garinham"))
+    local event
+    for index = 2, #route.waypoints do
+        local waypoint = route.waypoints[index]
+        local next_event = routes.observe_position(
+            0x01, waypoint.x, waypoint.y)
+        if next_event then event = next_event end
+    end
+    assert_contains(event.message, "Arrived at Erdrick's Cave",
+        "the eastern road should finish at Erdrick's Cave")
+    assert_equal(routes.is_active(), false,
+        "Erdrick's Cave arrival should clear the route")
+
+    routes.reset_for_tests()
+end
+
 function tests.remaining_mainland_southern_destinations_use_connected_returns()
     local origins = {
         {
