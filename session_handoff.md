@@ -121,6 +121,35 @@ Updated: 2026-08-25
 
 ## Immediate FCEUX Handoff
 
+- The final-island northwestern batch is source-complete and accepted through
+  its two-route representative live matrix (`2026-08-25`). Charlock Castle
+  `(48,48)` and Rainbow Bridge
+  `(65,49)` now reach Northern Cave `(81,1)`, Mountain Cave `(29,57)`,
+  Hauksness `(25,89)`, Cantlin `(73,102)`, and the Eastern Great Swamp Search
+  Area `(89,112)`. The five existing south-origin destination variants now
+  recognize both final-island anchors, so each selection begins with the
+  proven `charlock_return` or `rainbow_bridge_return`, waits for manual Swamp
+  Cave traversal, and resumes through the already-validated Kol-side staging
+  chain. No waypoint geometry changed. Regression coverage checks all 10
+  object and alias selections plus the complete Charlock-to-Great-Swamp chain
+  through every handoff. Focused route tests pass `291/291`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. Charlock-to-Great-Swamp started on `charlock_return` at frame `1179`,
+  handed off through Swamp Cave/Kol, Hauksness, and Cantlin at frames `5171`,
+  `9080`, `23752`, and `28760`, and arrived at `(89,112)` on frame `32552`.
+  One bounded first-step timing retry at `(48,48)->DOWN` recovered
+  automatically. No blocker, drift, route cancellation, route replacement,
+  runtime-block injection, or current script error occurred. Fresh frame
+  `37140` confirmed path target nil and zero NPC/runtime blockers. The later
+  LeftAlt messages are the documented benign FCEUX focus latch. Rainbow Bridge
+  to Mountain Cave started on `rainbow_bridge_return` at frame `743`, handed
+  off through Swamp Cave/Kol and the western connector at frames `2335`,
+  `6025`, and `16793`, and arrived at `(29,57)` on frame `17641`. It logged no
+  timing retry, blocker, drift, route cancellation, route replacement,
+  runtime-block injection, or current script error. Fresh frame `29520`
+  confirmed path target nil and zero NPC/runtime blockers. The user confirmed
+  both representative routes completed without player-facing issues. The
+  batch is accepted and ready to commit and push.
 - The 18-case northwestern return batch is source-complete and accepted through
   the full three-run representative live matrix. Northern Cave `(81,1)`, Mountain
   Cave `(29,57)`, Hauksness

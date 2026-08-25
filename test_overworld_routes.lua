@@ -4851,6 +4851,171 @@ function tests.final_island_early_destinations_use_cave_return()
     routes.reset_for_tests()
 end
 
+function tests.final_island_northwestern_destinations_use_cave_return()
+    local origins = {
+        {
+            name = "Charlock Castle",
+            x = 48,
+            y = 48,
+            return_route = "charlock_return",
+            first_object = "route_charlock_return_02",
+            first_waypoint = "Charlock Castle south approach",
+        },
+        {
+            name = "Rainbow Bridge unlock point",
+            x = 65,
+            y = 49,
+            return_route = "rainbow_bridge_return",
+            first_object = "route_rainbow_bridge_return_02",
+            first_waypoint = "Rainbow Bridge inlet southwest turn",
+        },
+    }
+    local destinations = {
+        {
+            target = {id = "overworld_northern_cave", name = "Northern Cave"},
+            alias = "northern cave",
+        },
+        {
+            target = {id = "overworld_mountain_cave", name = "Mountain Cave"},
+            alias = "mountain cave",
+        },
+        {
+            target = {id = "overworld_hauksness", name = "Hauksness"},
+            alias = "hauksness",
+        },
+        {
+            target = {id = "overworld_cantlin", name = "Cantlin"},
+            alias = "cantlin",
+        },
+        {
+            target = {
+                id = "overworld_eastern_great_swamp_search_area",
+                name = "Eastern Great Swamp Search Area",
+            },
+            alias = "great swamp search area",
+        },
+    }
+    local checked = 0
+
+    for _, origin in ipairs(origins) do
+        for _, destination in ipairs(destinations) do
+            routes.reset_for_tests()
+            local info, err = routes.start_for_object(
+                destination.target, 0x01, origin.x, origin.y)
+
+            assert_equal(err, nil,
+                destination.target.name .. " Travel should resolve from " ..
+                    origin.name)
+            assert_equal(info.route.id, origin.return_route,
+                destination.target.name .. " should first use the proven " ..
+                    origin.name .. " return")
+            assert_equal(info.object_id, origin.first_object,
+                origin.name .. " should begin at its next return waypoint")
+            assert_equal(routes.active_route_matches_object(
+                destination.target), true,
+                destination.target.name .. " should remain selected on " ..
+                    origin.name)
+
+            local segment = assert(routes.plan_next_segment(
+                0x01, origin.x, origin.y))
+            assert_equal(segment.waypoint.name, origin.first_waypoint,
+                origin.name .. " should use its established first segment")
+
+            routes.reset_for_tests()
+            local alias_info, alias_err = routes.start(
+                destination.alias, 0x01, origin.x, origin.y)
+            assert_equal(alias_err, nil,
+                destination.target.name .. " alias should resolve from " ..
+                    origin.name)
+            assert_equal(alias_info.route.id, origin.return_route,
+                destination.target.name ..
+                    " alias should use the same return itinerary")
+            checked = checked + 1
+        end
+    end
+
+    assert_equal(checked, 10,
+        "the final-island northwestern batch should cover ten connections")
+    routes.reset_for_tests()
+end
+
+function tests.charlock_to_great_swamp_hands_off_through_every_hub()
+    local target = {
+        id = "overworld_eastern_great_swamp_search_area",
+        name = "Eastern Great Swamp Search Area",
+        x = 89,
+        y = 112,
+    }
+    routes.reset_for_tests()
+    local info = assert(routes.start_for_object(target, 0x01, 48, 48))
+    assert_equal(info.route.id, "charlock_return",
+        "the longest final-island route should begin with Charlock's return")
+
+    local charlock = assert(routes._route_for_tests("charlock_return"))
+    local event
+    for index = 2, #charlock.waypoints do
+        local waypoint = charlock.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "await_transition",
+        "Charlock return should wait for automatic cave entry")
+
+    event = routes.observe_position(0x15, 0, 29)
+    assert_equal(event.status, "handoff",
+        "entering Swamp Cave should advance the Great Swamp itinerary")
+    assert_equal(routes.active_route_id(), "kol_swamp_cave_staging",
+        "the cave handoff should activate the north-exit Kol return")
+    assert_equal(event.steps, nil,
+        "the cave handoff must not inject interior movement")
+
+    routes.observe_position(0x01, 104, 44)
+    local kol = assert(routes._route_for_tests("kol_swamp_cave_staging"))
+    for index = 2, #kol.waypoints do
+        local waypoint = kol.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(routes.active_route_id(),
+        "hauksness_swamp_cave_north_staging",
+        "Kol should hand off to the exterior Hauksness leg")
+
+    local hauksness = assert(routes._route_for_tests(
+        "hauksness_swamp_cave_north_staging"))
+    for index = 2, #hauksness.waypoints do
+        local waypoint = hauksness.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(routes.active_route_id(),
+        "cantlin_swamp_cave_north_staging",
+        "Hauksness should hand off to the exterior Cantlin leg")
+
+    local cantlin = assert(routes._route_for_tests(
+        "cantlin_swamp_cave_north_staging"))
+    for index = 3, #cantlin.waypoints do
+        local waypoint = cantlin.waypoints[index]
+        event = routes.observe_position(0x01, waypoint.x, waypoint.y)
+    end
+    assert_equal(event.status, "handoff",
+        "Cantlin's northwest turn should activate the final swamp leg")
+    assert_equal(routes.active_route_id(),
+        "great_swamp_swamp_cave_south",
+        "the longest itinerary should reach the Great Swamp route")
+    assert_equal(event.object_id,
+        "route_great_swamp_swamp_cave_south_04",
+        "the final leg should continue south without entering Cantlin")
+    assert_equal(event.steps, nil,
+        "exterior hub handoffs must not inject movement")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Great Swamp should remain selected through every handoff")
+
+    local segment = assert(routes.plan_next_segment(0x01, 68, 91))
+    assert_equal(segment.waypoint.name, "Upper forest south notch",
+        "the final leg should reuse the validated Cantlin bypass")
+    assert_equal(segment.steps[1], "down",
+        "the final leg should leave Cantlin southward")
+
+    routes.reset_for_tests()
+end
+
 function tests.eastern_mainland_southern_destinations_cross_swamp_cave()
     local origins = {
         {

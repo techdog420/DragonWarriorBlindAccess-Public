@@ -2719,9 +2719,9 @@ ROUTES.hauksness_swamp_cave_north = {
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
--- South-island northwestern variants first reuse the proven Magic Temple or
--- Rimuldar-to-cave return when needed, wait for automatic cave entry, then
--- resume at the north exit and hand off outside Kol to these destination legs.
+-- South- and final-island northwestern variants first reuse the proven local
+-- return to Swamp Cave south, wait for automatic cave entry, then resume at
+-- the north exit and hand off outside Kol to these destination legs.
 ROUTES.northern_cave_swamp_cave_south = {
     id = "northern_cave_swamp_cave_south",
     title = "Northern Cave",
@@ -2732,6 +2732,8 @@ ROUTES.northern_cave_swamp_cave_south = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
         {x = 108, y = 109, max_distance = 4},
+        {x = 65, y = 49, max_distance = 4},
+        {x = 48, y = 48, max_distance = 4},
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
@@ -2746,6 +2748,8 @@ ROUTES.hauksness_swamp_cave_south = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
         {x = 108, y = 109, max_distance = 4},
+        {x = 65, y = 49, max_distance = 4},
+        {x = 48, y = 48, max_distance = 4},
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
@@ -2779,6 +2783,8 @@ ROUTES.mountain_cave_swamp_cave_south = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
         {x = 108, y = 109, max_distance = 4},
+        {x = 65, y = 49, max_distance = 4},
+        {x = 48, y = 48, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
@@ -2806,9 +2812,9 @@ ROUTES.cantlin_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
--- South-island Cantlin travel first reuses the Magic Temple- or
--- Rimuldar-to-cave return when needed, then nests through the manual cave
--- crossing and the existing non-entry Kol and Hauksness handoffs.
+-- South- and final-island Cantlin travel first reuses the local cave return,
+-- then nests through the manual crossing and the existing non-entry Kol and
+-- Hauksness handoffs.
 ROUTES.cantlin_swamp_cave_south = {
     id = "cantlin_swamp_cave_south",
     title = "Cantlin",
@@ -2819,6 +2825,8 @@ ROUTES.cantlin_swamp_cave_south = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
         {x = 108, y = 109, max_distance = 4},
+        {x = 65, y = 49, max_distance = 4},
+        {x = 48, y = 48, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
@@ -2847,7 +2855,7 @@ ROUTES.great_swamp_swamp_cave_north = {
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
--- South-island Great Swamp travel adds the Rimuldar cave return when needed,
+-- South- and final-island Great Swamp travel first returns to Swamp Cave,
 -- then follows the shared cave, Kol, Hauksness, and Cantlin-bypass chain.
 ROUTES.great_swamp_swamp_cave_south = {
     id = "great_swamp_swamp_cave_south",
@@ -2860,6 +2868,8 @@ ROUTES.great_swamp_swamp_cave_south = {
         {x = 104, y = 49, max_distance = 4},
         {x = 102, y = 72, max_distance = 4},
         {x = 108, y = 109, max_distance = 4},
+        {x = 65, y = 49, max_distance = 4},
+        {x = 48, y = 48, max_distance = 4},
     },
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
