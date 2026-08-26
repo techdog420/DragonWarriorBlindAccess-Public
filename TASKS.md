@@ -197,11 +197,16 @@ quality-of-life work.
   broad gate passes all 33 host-runnable Lua suites plus 68 Python tests. The
   nested Magic Temple path is source-covered but was not part of this live
   acceptance.
-- Off-network recovery: when a player manually explores or gets lost, provide a
-  player-facing command that finds a safe route back to the nearest reachable
-  waypoint-network entry and then continues toward the selected destination.
-  Recovery must not teleport, require knowledge of route names, or silently
-  cross hazards and unknown blockers.
+- Off-network recovery: the first bounded slice is live-verified. Exact
+  membership on the proven Kol-to-Swamp-Cave corridor now lets Brecconary,
+  Erdrick's Cave, and Garinham resume through `kol_swamp_cave_staging` instead
+  of synthesizing a long opening. Brecconary passed live from `(99,42)`,
+  Erdrick's Cave was revalidated from exact waypoint `(97,42)`, and Garinham
+  passed the same loaded selection check. Continue toward a general
+  player-facing recovery command that finds a safe route back to the nearest
+  reachable waypoint-network entry and then proceeds to the selected
+  destination. Recovery must not teleport, require knowledge of route names,
+  or silently cross hazards and unknown blockers.
 - Early-route town-entry polish is live-verified for the Kol and
   Cantlin/Hauksness staging
   chain. Kol now bypasses Brecconary entrance `(48,41)` through west doorstep

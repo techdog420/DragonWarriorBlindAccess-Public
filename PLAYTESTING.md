@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The first bounded off-network recovery slice is source-complete and
+  live-verified (`2026-08-26`). A Brecconary selection from World Map
+  `(99,42)` started `kol_swamp_cave_staging` at frame `454`, preserved
+  `staged_from=brecconary_swamp_cave_north`, and targeted `Swamp Cave lower
+  swamp turn` at `(97,42)`, two steps west, rather than creating the previous
+  52-step synthetic opening. Fresh frame `6420` confirmed that route creation
+  did not move the hero: position remained `(99,42)`, path target was nil, and
+  runtime blockers were empty. Erdrick's Cave selected the same staging route
+  at frame `24501` with `staged_from=erdrick_swamp_cave_north`; after correcting
+  an overshot position, the user revalidated it from the exact waypoint
+  `(97,42)`, and frame `33254` again selected the expected staging route.
+  Garinham then selected it at frame `34251` while preserving
+  `staged_from=garinham_swamp_cave_north`. Fresh frame `38280` confirmed World
+  Map `(99,42)`, path target nil, and no runtime blockers. The current script
+  error file remains unchanged since May. All three destination variants are
+  live-accepted. Focused route tests pass `297/297`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - Route-control hotkey polish is source-complete and live-verified
   (`2026-08-26`). `Shift+R` now uses the read-only route-status path and never
   starts, replaces, or recalculates guidance; full status moved to `Shift+B`.

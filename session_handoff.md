@@ -121,6 +121,24 @@ Updated: 2026-08-26
 
 ## Immediate FCEUX Handoff
 
+- The first bounded off-network recovery slice is source-complete and
+  live-verified (`2026-08-26`). From World Map `(99,42)`, selecting Brecconary
+  now recognizes exact membership on the proven `kol_swamp_cave_staging`
+  corridor instead of synthesizing the former 52-step opening. The loaded run
+  started that staging route at frame `454`, retained
+  `staged_from=brecconary_swamp_cave_north`, and targeted `Swamp Cave lower
+  swamp turn` at `(97,42)`, two steps west. Fresh frame `6420` confirmed the
+  hero remained at `(99,42)`, with path target nil and zero runtime blockers.
+  Erdrick's Cave first passed the same route-selection check at frame `24501`,
+  retaining `staged_from=erdrick_swamp_cave_north`; the user then corrected an
+  overshot position and revalidated from the exact waypoint `(97,42)`, with
+  frame `33254` selecting the same staging route. Garinham completed the
+  three-route set at frame `34251`, retaining
+  `staged_from=garinham_swamp_cave_north`. Fresh frame `38280` confirmed World
+  Map `(99,42)`, path target nil, and zero runtime blockers; the current script
+  error file remains unchanged since May. Focused overworld route tests pass
+  `297/297`; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
 - Route-control hotkey polish is source-complete and live-verified
   (`2026-08-26`). `Shift+R` is now an always-read-only route-status command;
   it cannot create, replace, or recalculate guidance. Full hero status moved

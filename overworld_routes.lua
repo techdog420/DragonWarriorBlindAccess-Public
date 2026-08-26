@@ -2495,6 +2495,7 @@ ROUTES.garinham_swamp_cave_north = {
     destination_maps = {0x09},
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    selection_route_corridors = {"kol_swamp_cave_staging"},
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
@@ -2505,6 +2506,7 @@ ROUTES.erdrick_swamp_cave_north = {
     destination_maps = {0x1C, 0x1D},
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    selection_route_corridors = {"kol_swamp_cave_staging"},
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2515,6 +2517,7 @@ ROUTES.brecconary_swamp_cave_north = {
     destination_maps = {0x08},
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
+    selection_route_corridors = {"kol_swamp_cave_staging"},
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -3786,6 +3789,17 @@ local function route_selection_score(route, map_id, px, py, terrain_offset)
         if point.max_distance == nil
            or anchor_distance <= point.max_distance then
             score = math.min(score, anchor_distance)
+        end
+    end
+    -- Some destination variants are valid from an established approach route,
+    -- not just from a landmark-sized anchor. Exact corridor membership is
+    -- safe evidence: it reuses already-validated geometry without expanding
+    -- recovery into adjacent unverified cells.
+    for _, corridor_id in ipairs(
+        route and route.selection_route_corridors or {}) do
+        if position_is_on_route_corridor(ROUTES[corridor_id], px, py) then
+            score = 0
+            break
         end
     end
     return score
