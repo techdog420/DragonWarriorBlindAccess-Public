@@ -97,10 +97,21 @@ local GREAT_SWAMP_STAGING = {
     -- route is fifteen tiles. Off-corridor or farther starts must first use
     -- the connected Cantlin itinerary instead of synthesizing a shortcut.
     max_start_distance = 15,
-    -- Live validation from (83,112) reached the search point at (89,112)
-    -- directly across six eastward cells. Keep that local swamp approach from
-    -- restaging through Kol while retaining the corridor guard beyond it.
-    near_destination_snap_distance = 6,
+    -- Live auto-walk from (82,112) reached the search point at (89,112)
+    -- directly across seven eastward cells. Keep the general local radius at
+    -- that validated bound. Manual repositioning also crossed (81,112) in
+    -- both directions, so only the proven east-west row may extend one cell
+    -- farther and target the destination directly.
+    near_destination_snap_distance = 7,
+    near_destination_snap_regions = {
+        {
+            min_x = 81,
+            max_x = 89,
+            min_y = 112,
+            max_y = 112,
+            force_final = true,
+        },
+    },
     require_route_corridor = true,
     prefer_staging_route_corridor = true,
     continue_after_staging = true,
@@ -1819,6 +1830,10 @@ local ROUTES = {
                 name = "Eastern Great Swamp Search Area",
                 radius = 0,
                 final = true,
+                -- The normal 12-frame straightaway press committed one extra
+                -- eastward tile after reaching (89,112). The proven pre-turn
+                -- cadence releases before that carry without writing movement RAM.
+                route_final_inject_limit = 10,
                 warning = "Use Gwaelin's Love and Search to continue.",
             },
         },
@@ -3675,6 +3690,21 @@ local function active_route()
     return state.active_id and ROUTES[state.active_id] or nil
 end
 
+local function matching_near_destination_snap_region(staging, px, py)
+    if not staging or px == nil or py == nil then
+        return nil
+    end
+    for _, region in ipairs(staging.near_destination_snap_regions or {}) do
+        if (region.min_x == nil or px >= region.min_x)
+           and (region.max_x == nil or px <= region.max_x)
+           and (region.min_y == nil or py >= region.min_y)
+           and (region.max_y == nil or py <= region.max_y) then
+            return region
+        end
+    end
+    return nil
+end
+
 local function staged_destination_route()
     local route = state.staged_from and ROUTES[state.staged_from] or nil
     if route
@@ -3703,6 +3733,12 @@ end
 local function choose_next_index(route, map_id, px, py, terrain_offset)
     if not route or not is_overworld(map_id, terrain_offset) or px == nil or py == nil then
         return 1
+    end
+
+    local local_snap_region = matching_near_destination_snap_region(
+        route.staging, px, py)
+    if local_snap_region and local_snap_region.force_final == true then
+        return #route.waypoints
     end
 
     local nearest_index = 1
@@ -3739,6 +3775,12 @@ end
 
 local function route_selection_score(route, map_id, px, py, terrain_offset)
     local score = route_start_score(route, map_id, px, py, terrain_offset)
+    local local_snap_region = matching_near_destination_snap_region(
+        route and route.staging, px, py)
+    if local_snap_region then
+        score = math.min(score,
+            tonumber(local_snap_region.selection_score) or 0)
+    end
     for _, point in ipairs(route and route.selection_anchors or {}) do
         local anchor_distance = distance(px, py, point)
         if point.max_distance == nil
@@ -3817,6 +3859,10 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
         and staging.near_destination_snap_distance
         and distance(px, py, final)
             <= staging.near_destination_snap_distance
+    if not near_destination
+       and matching_near_destination_snap_region(staging, px, py) then
+        near_destination = true
+    end
     if staging.require_route_corridor
        and not near_destination
        and not position_is_on_route_corridor(route, px, py) then

@@ -1657,6 +1657,41 @@ function tests.queued_route_final_step_uses_pre_turn_limit_for_perpendicular_car
     env.restore()
 end
 
+function tests.queued_route_final_step_honors_explicit_inject_limit()
+    local env = make_env({
+        sticky_joypad_set = true,
+        config_values = {
+            auto_step_inject_limit = "12",
+        },
+    })
+    env.auto_step.start_route({"right"}, {
+        route_final_inject_limit = 10,
+    })
+
+    for _ = 1, 11 do
+        env.update(true)
+    end
+
+    assert_frame_only_direction(
+        env, 11, "right",
+        "explicit final press should retain its last owned frame")
+    env.update(true)
+    assert_frame_neutral(
+        env, 12,
+        "explicit final press should release before the normal straight limit")
+
+    for _ = 1, 7 do
+        env.update(true)
+    end
+    local retry_state = env.auto_step.get_active_step_state()
+    assert_equal(
+        retry_state and retry_state.inject_limit,
+        10,
+        "explicit final press limit should survive an ordinary turn re-press")
+
+    env.restore()
+end
+
 function tests.queued_route_final_pre_turn_repress_keeps_shorter_inject_limit()
     local env = make_env({
         sticky_joypad_set = true,

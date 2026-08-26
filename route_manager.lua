@@ -3745,6 +3745,7 @@ function M.autowalk_overworld_segment(opts)
         route_early_twitch_timeout_frames = segment.waypoint and segment.waypoint.route_early_twitch_timeout_frames,
         route_hold_after_movement_start_frames = segment.waypoint and segment.waypoint.route_hold_after_movement_start_frames,
         route_reset_movement_on_turn_settle = segment.waypoint and segment.waypoint.route_reset_movement_on_turn_settle,
+        route_final_inject_limit = segment.waypoint and segment.waypoint.route_final_inject_limit,
         route_final_carry_x = segment.route_final_carry_x,
         route_final_carry_y = segment.route_final_carry_y,
     }) then
@@ -3938,6 +3939,7 @@ queue_overworld_segment_steps = function(steps, opts)
         route_early_twitch_timeout_frames = opts.route_early_twitch_timeout_frames,
         route_hold_after_movement_start_frames = opts.route_hold_after_movement_start_frames,
         route_reset_movement_on_turn_settle = opts.route_reset_movement_on_turn_settle,
+        route_final_inject_limit = opts.route_final_inject_limit,
         route_final_carry_x = opts.route_final_carry_x,
         route_final_carry_y = opts.route_final_carry_y,
     }) then
@@ -4800,6 +4802,30 @@ do
             elseif speak_completion then
                 tolk.output_interrupt("Auto-walk complete")
             end
+        end
+
+        -- The overworld route observer sees a newly reached tile before
+        -- auto_step sees that same position change later in the frame. Stop
+        -- the queued route immediately on terminal arrival so a sticky final
+        -- direction cannot carry the hero one tile past the destination.
+        function M.on_overworld_route_event(route_event)
+            local overworld_segment = active_overworld_segment
+            if not route_event
+               or route_event.terminal ~= true
+               or not overworld_segment then
+                return false
+            end
+
+            local event_route_id = route_event.route and route_event.route.id
+            if event_route_id ~= nil
+               and overworld_segment.route_id ~= nil
+               and event_route_id ~= overworld_segment.route_id then
+                return false
+            end
+
+            auto_step.cancel_active_step(true, true)
+            finish_active_route_arrival("overworld terminal arrival observed")
+            return true
         end
 
 auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data)

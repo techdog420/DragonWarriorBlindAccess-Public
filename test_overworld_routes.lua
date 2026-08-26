@@ -1070,6 +1070,7 @@ function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging(
             route_id = "rainbow_bridge",
             waypoint_x = 65,
             waypoint_y = 49,
+            path_length = 2,
         },
         {
             target = {
@@ -1083,6 +1084,7 @@ function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging(
             route_id = "charlock_castle",
             waypoint_x = 48,
             waypoint_y = 49,
+            path_length = 4,
         },
         {
             target = {
@@ -1096,6 +1098,7 @@ function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging(
             route_id = "mountain_cave",
             waypoint_x = 29,
             waypoint_y = 57,
+            path_length = 2,
         },
         {
             target = {
@@ -1104,11 +1107,12 @@ function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging(
                 x = 89,
                 y = 112,
             },
-            start_x = 83,
+            start_x = 81,
             start_y = 112,
             route_id = "great_swamp_cantlin",
             waypoint_x = 89,
             waypoint_y = 112,
+            path_length = 8,
         },
     }
 
@@ -1130,6 +1134,12 @@ function tests.nearby_destination_starts_snap_to_local_waypoints_before_staging(
             case.target.name .. " should snap to the local waypoint x")
         assert_equal(segment.waypoint.y, case.waypoint_y,
             case.target.name .. " should snap to the local waypoint y")
+        assert_equal(segment.path_length, case.path_length,
+            case.target.name .. " should retain its bounded local opening")
+        if case.route_id == "great_swamp_cantlin" then
+            assert_equal(segment.waypoint.route_final_inject_limit, 10,
+                "Great Swamp direct approach should use its short final press")
+        end
     end
 
     routes.reset_for_tests()
@@ -1153,6 +1163,33 @@ function tests.nearby_impassable_destination_separation_still_uses_staging()
         "impassable overworld separation must retain the manual cave crossing")
     assert_contains(info.log, "staged_from=swamp_cave_south_swamp_cave_north",
         "the south entrance should remain the final destination")
+
+    routes.reset_for_tests()
+end
+
+function tests.great_swamp_row_snap_does_not_expand_into_unverified_cells()
+    local target = {
+        id = "overworld_eastern_great_swamp_search_area",
+        name = "Eastern Great Swamp Search Area",
+        x = 89,
+        y = 112,
+    }
+    local cases = {
+        {x = 80, y = 112, label = "one cell west of the proven row"},
+        {x = 81, y = 111, label = "one cell north of the proven row"},
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(
+            target, 0x01, case.x, case.y)
+
+        assert_equal(err, nil, case.label .. " should retain safe staging")
+        assert_equal(info.route.id, "kol_staging",
+            case.label .. " should not inherit the direct swamp shortcut")
+        assert_contains(info.log, "staged_from=great_swamp_cantlin",
+            case.label .. " should preserve Great Swamp as the destination")
+    end
 
     routes.reset_for_tests()
 end

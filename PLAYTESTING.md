@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Great Swamp near-destination routing and terminal stopping are source-complete
+  and live-verified (`2026-08-25`). The direct snap is now bounded to the
+  proven east-west row `(81..89,112)`; `(80,112)` and `(81,111)` still use the
+  connected Kol staging route. From `(82,112)`, auto-walk selected
+  `great_swamp_cantlin` index 38 and queued seven eastward steps. The first
+  reproduction reached `(89,112)` but the normal 12-frame final press carried
+  to `(90,112)`. Terminal arrival now force-releases queued input immediately,
+  and the Great Swamp endpoint uses a route-specific 10-frame final press that
+  remains in force across ordinary, guarded-twitch, cadence, and timeout
+  retries. This avoids the disabled movement-RAM reset path. Final acceptance
+  started at frame `3660`, used `inject_limit=10` from `(88,112)` at frame
+  `3773`, arrived at `(89,112)` at frame `3784`, and remained there through
+  fresh frame `4440`, with target nil and zero NPC/runtime blockers. No drift,
+  cancellation, blocker, or runtime-block injection occurred. Focused tests
+  pass `146/146` auto-step, `125/125` route-manager, and `296/296` overworld
+  route cases; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
 - The final three landmark-origin matrix holes are source-complete and
   live-verified (`2026-08-25`). Garinham `(1,2)` now reaches Erdrick's Cave
   `(28,12)`, Northern Cave `(81,1)`, and Mountain Cave `(29,57)` through

@@ -3139,13 +3139,29 @@ Updated: 2026-08-25
 - Sweep break-in archive:
   `handoff_archive/HANDOFF_2026-06-21_sweep_walk_break_in_scratchpad.md`
 
+## Current Overworld Route Polish
+
+- Great Swamp near-destination routing and exact terminal stopping are
+  source-complete and live-verified (`2026-08-25`). Only the proven row
+  `(81..89,112)` can snap directly to the final search point; adjacent
+  unverified starts retain connected Kol staging. A live reproduction from
+  `(82,112)` exposed deterministic eastward carry from the normal 12-frame
+  final press to `(90,112)`. Terminal route arrival now force-releases queued
+  input, and the Great Swamp endpoint uses a 10-frame final press whose limit
+  survives every retry path. The fix does not enable the movement-RAM reset
+  option that previously reproduced stat corruption. Final live acceptance
+  arrived at `(89,112)` on frame `3784` and remained there through frame
+  `4440`, with target nil, zero NPC/runtime blockers, and no drift,
+  cancellation, or blocker. Focused tests pass `146/146` auto-step,
+  `125/125` route-manager, and `296/296` overworld-route cases; all 33
+  host-runnable Lua suites and all 68 Python tests pass.
+
 ## Next Work
 
-1. Commit and push the accepted final landmark-origin matrix batch as one
-   focused revision.
-2. Re-audit arbitrary reachable starts for long synthetic openings, then
-   decide whether to patch any remaining weaknesses or move to the next
-   roadmap item.
+1. Commit and push the live-verified Great Swamp snap and terminal-stop polish
+   as one focused revision after user acceptance.
+2. Continue the arbitrary-start route-polish audit with the next major
+   synthetic opening or repeatable endpoint overshoot.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

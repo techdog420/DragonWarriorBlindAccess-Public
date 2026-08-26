@@ -2226,6 +2226,9 @@ local function check_map_change()
         route_event = overworld_routes.observe_position(snapshot.map_id, snapshot.x, snapshot.y, snapshot.terrain_offset)
         if route_event then
             debug_tools.info("OVERWORLD_ROUTE: " .. tostring(route_event.log or route_event.message))
+            if route_mgr.on_overworld_route_event then
+                route_mgr.on_overworld_route_event(route_event)
+            end
             if route_event.refresh and objects.request_refresh then
                 objects.request_refresh()
             end

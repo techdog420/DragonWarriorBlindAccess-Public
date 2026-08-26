@@ -789,6 +789,75 @@ function tests.player_stop_is_safe_noop_after_path_preview_without_active_route(
     env.restore()
 end
 
+function tests.overworld_terminal_arrival_force_releases_before_final_carry()
+    local env = make_env({
+        is_overworld = true,
+        overworld_segment = {
+            route = {
+                id = "great_swamp_cantlin",
+                title = "Eastern Great Swamp Search Area",
+            },
+            waypoint = {
+                name = "Eastern Great Swamp Search Area",
+                x = 89,
+                y = 112,
+            },
+            index = 38,
+            steps = {"right"},
+            message = "Auto-walk to Eastern Great Swamp Search Area.",
+            object_id = "route_great_swamp_cantlin_38",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    local handled = env.route_manager.on_overworld_route_event({
+        terminal = true,
+        route = {id = "great_swamp_cantlin"},
+        message = "Arrived at Eastern Great Swamp Search Area",
+    })
+
+    assert_equal(handled, true,
+        "terminal overworld arrival should stop the active segment immediately")
+    assert_equal(#env.cancel_active_step_calls, 1,
+        "terminal overworld arrival should cancel queued movement exactly once")
+    assert_equal(env.cancel_active_step_calls[1].clear_queued_route, true,
+        "terminal overworld arrival should clear the queued route")
+    assert_equal(env.cancel_active_step_calls[1].force_release, true,
+        "terminal overworld arrival should force-release the final direction")
+    assert_equal(env.route_manager.get_last_pathfind_obj(), nil,
+        "terminal overworld arrival should clear route-manager context")
+
+    env.restore()
+end
+
+function tests.overworld_nonterminal_event_does_not_stop_active_segment()
+    local env = make_env({
+        is_overworld = true,
+        overworld_segment = {
+            route = {id = "great_swamp_cantlin", title = "Great Swamp"},
+            waypoint = {name = "Great Swamp east lane", x = 89, y = 113},
+            index = 37,
+            steps = {"right"},
+            message = "Auto-walk to Great Swamp east lane.",
+            object_id = "route_great_swamp_cantlin_37",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+    local handled = env.route_manager.on_overworld_route_event({
+        terminal = false,
+        route = {id = "great_swamp_cantlin"},
+        message = "Reached Great Swamp east lane",
+    })
+
+    assert_equal(handled, false,
+        "ordinary waypoint events should leave the queued segment active")
+    assert_equal(#env.cancel_active_step_calls, 0,
+        "ordinary waypoint events should not force-release movement")
+
+    env.restore()
+end
+
 function tests.navigation_reload_rebinds_objects_module()
     local env = make_env({current_description = "Chest: 3 north (1 of 1)"})
     local replacement = {}
@@ -869,6 +938,7 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
                 route_early_twitch_timeout_frames = 90,
                 route_hold_after_movement_start_frames = 60,
                 route_reset_movement_on_turn_settle = true,
+                route_final_inject_limit = 10,
             },
             index = 14,
             steps = {"up", "left", "left", "left"},
@@ -901,6 +971,11 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
         env.last_start_route_opts().route_reset_movement_on_turn_settle,
         true,
         "overworld segment should forward waypoint-specific movement-reset timing"
+    )
+    assert_equal(
+        env.last_start_route_opts().route_final_inject_limit,
+        10,
+        "overworld segment should forward waypoint-specific final press timing"
     )
     assert_equal(
         env.last_start_route_opts().route_final_carry_x,

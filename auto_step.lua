@@ -130,6 +130,7 @@ local auto_entry_waveform = nil
 local route_early_twitch_timeout_frames_override = nil
 local route_hold_after_movement_start_frames_override = nil
 local route_reset_movement_on_turn_settle_override = nil
+local route_final_inject_limit_override = nil
 local route_final_carry_x_override = nil
 local route_final_carry_y_override = nil
 local pending_repress = nil
@@ -417,6 +418,15 @@ local function queued_route_final_step_before_perpendicular_carry(
     return directions_are_perpendicular(current_dir, carry_dir)
 end
 
+local function queued_route_final_inject_limit(step_index)
+    if route_steps ~= nil
+       and route_final_inject_limit_override ~= nil
+       and step_index == #route_steps then
+        return route_final_inject_limit_override
+    end
+    return nil
+end
+
 local function queued_route_step_before_turn(
         step_index, current_dir, start_x, start_y)
     if route_steps == nil
@@ -655,6 +665,7 @@ local function clear_route()
     route_early_twitch_timeout_frames_override = nil
     route_hold_after_movement_start_frames_override = nil
     route_reset_movement_on_turn_settle_override = nil
+    route_final_inject_limit_override = nil
     route_final_carry_x_override = nil
     route_final_carry_y_override = nil
     if pending_repress and pending_repress.entry_prime_waveform then
@@ -909,7 +920,10 @@ end
 
 local function build_route_step_opts(step_index, next_dir, start_x, start_y)
     local step_opts = {source = "queued_route"}
-    if queued_route_step_before_turn(
+    local final_inject_limit = queued_route_final_inject_limit(step_index)
+    if final_inject_limit ~= nil then
+        step_opts.inject_limit = final_inject_limit
+    elseif queued_route_step_before_turn(
             step_index, next_dir, start_x, start_y) then
         step_opts.inject_limit = get_route_pre_turn_inject_limit()
     end
@@ -996,7 +1010,11 @@ local function schedule_entry_prime_retry(reason, timeout_retries, turn_represse
     local retry_inject_limit = math.max(
         tonumber(auto_inject_limit) or 0,
         tonumber(get_inject_limit()) or INJECT_LIMIT)
-    if waveform.guarded_twitch_recovery == true
+    local final_inject_limit = queued_route_final_inject_limit(
+        waveform.step_index)
+    if final_inject_limit ~= nil then
+        retry_inject_limit = final_inject_limit
+    elseif waveform.guarded_twitch_recovery == true
        and queued_route_final_step_before_perpendicular_carry(
             waveform.step_index, auto_dir, auto_start_x, auto_start_y) then
         retry_inject_limit =
@@ -1065,7 +1083,11 @@ local function schedule_turn_repress(dir, guarded_twitch)
         local recovery_inject_limit = math.max(
             tonumber(auto_inject_limit) or 0,
             tonumber(get_inject_limit()) or INJECT_LIMIT)
-        if queued_route_final_step_before_perpendicular_carry(
+        local final_inject_limit = queued_route_final_inject_limit(
+            route_index - 1)
+        if final_inject_limit ~= nil then
+            recovery_inject_limit = final_inject_limit
+        elseif queued_route_final_step_before_perpendicular_carry(
                 route_index - 1, auto_dir, auto_start_x, auto_start_y) then
             recovery_inject_limit =
                 auto_inject_limit or get_route_pre_turn_inject_limit()
@@ -1109,13 +1131,15 @@ local function schedule_turn_repress(dir, guarded_twitch)
            "turn_repress", auto_timeout_retries, auto_turn_represses + 1) then
         return true
     end
+    local final_inject_limit = queued_route_final_inject_limit(route_index - 1)
     pending_repress = {
         dir = dir,
         timeout_retries = auto_timeout_retries,
         turn_represses = auto_turn_represses + 1,
-        inject_limit = auto_release_after_inject_limit
-            and (auto_inject_limit or get_map_crawl_inject_limit())
-            or get_turn_repress_inject_limit(),
+        inject_limit = final_inject_limit
+            or (auto_release_after_inject_limit
+                and (auto_inject_limit or get_map_crawl_inject_limit())
+                or get_turn_repress_inject_limit()),
         release_frames = get_turn_repress_release_frames(),
         start_x = auto_start_x,
         start_y = auto_start_y,
@@ -1988,7 +2012,7 @@ local function handle_active_auto_step(joy, px, py, timeout)
                     auto_frames = 1
                     auto_inject_limit = auto_release_after_inject_limit
                         and (auto_inject_limit or get_map_crawl_inject_limit())
-                        or get_inject_limit()
+                        or (auto_inject_limit or get_inject_limit())
                     auto_start_subpixel = read_movement_subpixel()
                     auto_movement_started = false
                     auto_movement_start_frame = nil
@@ -2524,7 +2548,8 @@ end
 -- opts: { settle_frames = N, settle_same_direction = true|false,
 --         start_x = X, start_y = Y,
 --         prime_before_steps = {[step_index] = frames},
---         settle_before_steps = {[step_index] = frames} }
+--         settle_before_steps = {[step_index] = frames},
+--         route_final_inject_limit = N }
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
@@ -2573,6 +2598,13 @@ function M.start_route(steps, opts)
         route_reset_movement_on_turn_settle_override = opts.route_reset_movement_on_turn_settle == true
     else
         route_reset_movement_on_turn_settle_override = nil
+    end
+    local final_inject_limit = tonumber(opts.route_final_inject_limit)
+    if final_inject_limit ~= nil then
+        route_final_inject_limit_override = math.max(
+            1, math.min(120, math.floor(final_inject_limit)))
+    else
+        route_final_inject_limit_override = nil
     end
     local raw_final_carry_x = opts.route_final_carry_x
     local raw_final_carry_y = opts.route_final_carry_y
