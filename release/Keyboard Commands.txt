@@ -36,7 +36,7 @@ H or F19: Announce current and maximum HP and MP.
 I: Announce the hero's level.
 G or F20: Announce current gold.
 E: Announce current experience points.
-Shift+R: Announce full status, including attributes, equipment, and spells.
+Shift+B: Announce full status, including attributes, equipment, and spells.
 Shift+T: Read all text currently shown on the game screen.
 
 Object navigator
@@ -73,13 +73,16 @@ U or F18: Automatically walk toward the selected object. The mod calculates a
 fresh path, so pressing O first is optional. Normal game interruptions and
 unsafe states can pause or stop movement.
 
-Shift+U: Stop active or pending auto-walk immediately. This releases held
-movement and clears the current automatic route without changing the selected
-object or guided Travel destination.
+Shift+U: Stop active or pending auto-walk and cancel guided Travel immediately.
+This releases held movement, clears the current automatic route, and removes
+the active route marker without changing the selected object.
 
 R: Start guided travel to a supported selected Travel destination, or announce
 the status of the route already in progress. Guided overworld travel can use
 several verified route segments to reach the destination.
+
+Shift+R: Announce guided route status without starting, replacing, or
+recalculating a route. After arrival, it announces that no route is active.
 
 Shift+F: Freeze or unfreeze moving NPCs. This can make an interior route more
 reliable when wandering NPCs repeatedly block it. Unfreeze NPCs when finished.

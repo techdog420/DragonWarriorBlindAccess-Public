@@ -21,6 +21,7 @@ local DEFAULT_BIZHAWK_ALLOWLIST = table.concat({
     "key_object_next",
     "key_pathfind",
     "key_route_guidance",
+    "key_route_status",
     "key_auto_walk",
     "key_stop_auto_walk",
     "key_filter",

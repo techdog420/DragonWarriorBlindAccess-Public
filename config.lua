@@ -53,7 +53,7 @@ local DEFAULTS_ORDERED = {
     {key = "key_level",         value = "Shift+I",  comment = "; Announce player level"},
     {key = "key_gold",          value = "Shift+G|F20",  comment = "; Announce gold"},
     {key = "key_experience",    value = "Shift+E",  comment = "; Announce experience points"},
-    {key = "key_stats",         value = "Shift+R",  comment = "; Announce full stat summary"},
+    {key = "key_stats",         value = "Shift+B",  comment = "; Announce full stat summary"},
     {key = "key_screen_text",   value = "Shift+T",  comment = "; Read all text on screen"},
     {comment = ""},
     {comment = "; === Object Navigation ==="},
@@ -63,8 +63,9 @@ local DEFAULTS_ORDERED = {
     {key = "key_object_next",   value = "L|F15",  comment = "; Next object in list"},
     {key = "key_pathfind",      value = "O|F16",  comment = "; Pathfind to selected object"},
     {key = "key_route_guidance", value = "R", comment = "; Start or check guided route for selected Travel object"},
+    {key = "key_route_status", value = "Shift+R", comment = "; Read guided route status without starting or changing a route"},
     {key = "key_auto_walk",     value = "U|F18",  comment = "; Auto-walk to selected object using pathfinder"},
-    {key = "key_stop_auto_walk", value = "Shift+U", comment = "; Stop active or deferred auto-walk immediately"},
+    {key = "key_stop_auto_walk", value = "Shift+U", comment = "; Stop auto-walk and cancel guided Travel state immediately"},
     {key = "key_freeze_npcs",   value = "Shift+F",  comment = "; Toggle NPC position freeze (locks NPCs in place for reliable pathfinding)"},
     {key = "key_filter",        value = "Q",  comment = "; Cycle object filter (All/NPCs/Services/Treasure/Travel/Doors)"},
     {key = "key_filter_prev",   value = "Shift+J", comment = "; Previous object filter"},
@@ -111,7 +112,7 @@ local DEFAULTS_ORDERED = {
     {key = "enable_keyboard_input_bridge", value = "true", comment = "; FCEUX only: project keyboard bridge; suspended during menus/dialogs and modifier or screen-reader chords"},
     {key = "enable_bizhawk_keyboard_hotkeys", value = "false", comment = "; BizHawk only: enable mod hotkeys from input.get() (off by default to avoid stray screen-reader/typing keys)"},
     {key = "enable_bizhawk_diagnostic_hotkeys", value = "false", comment = "; BizHawk only: enable developer diagnostic dump/cursor hotkeys while full keyboard hotkeys are off"},
-    {key = "bizhawk_keyboard_hotkey_allowlist", value = "key_position,key_hp,key_level,key_gold,key_experience,key_stats,key_screen_text,key_object_prev,key_object_current,key_object_next,key_pathfind,key_route_guidance,key_auto_walk,key_stop_auto_walk,key_filter,key_filter_prev,key_filter_all,key_filter_next,key_pathability_filter,key_mark_visited,key_teleport_exact,key_teleport_north,key_teleport_south,key_teleport_west,key_teleport_east,key_freeze_npcs,key_diag_tiles", comment = "; BizHawk only: comma-separated config key names allowed when full keyboard hotkeys are off (player-safe readouts/object keys; diagnostic flag adds developer diagnostics)"},
+    {key = "bizhawk_keyboard_hotkey_allowlist", value = "key_position,key_hp,key_level,key_gold,key_experience,key_stats,key_screen_text,key_object_prev,key_object_current,key_object_next,key_pathfind,key_route_guidance,key_route_status,key_auto_walk,key_stop_auto_walk,key_filter,key_filter_prev,key_filter_all,key_filter_next,key_pathability_filter,key_mark_visited,key_teleport_exact,key_teleport_north,key_teleport_south,key_teleport_west,key_teleport_east,key_freeze_npcs,key_diag_tiles", comment = "; BizHawk only: comma-separated config key names allowed when full keyboard hotkeys are off (player-safe readouts/object keys; diagnostic flag adds developer diagnostics)"},
     {key = "bizhawk_object_reachability_descriptions", value = "false", comment = "; BizHawk only: include reachability/path checks in object descriptions (slower; pathfind still works)"},
     {key = "bizhawk_periodic_npc_refresh", value = "false", comment = "; BizHawk only: refresh moving NPC objects in the background (off avoids periodic audio hitches)"},
     {key = "bizhawk_map_entry_prewarm_path_grid", value = "false", comment = "; BizHawk only: prebuild pathfinding tile grids on map entry (faster first route, slower transitions)"},
@@ -220,6 +221,12 @@ end
 -- added by script updates without having to delete and regenerate
 -- their config.
 local function append_missing_settings()
+    -- Shift+R used to be the full-stats default. When the dedicated read-only
+    -- route-status binding is first introduced, migrate only that exact legacy
+    -- default so existing installs do not end up with two actions on one chord.
+    local migrate_legacy_stats = settings.key_route_status == nil
+        and settings.key_stats == "Shift+R"
+
     -- Collect entries whose keys are not yet in the parsed settings
     local missing = {}
     for _, entry in ipairs(DEFAULTS_ORDERED) do
@@ -227,7 +234,7 @@ local function append_missing_settings()
             missing[#missing + 1] = entry
         end
     end
-    if #missing == 0 then return end
+    if #missing == 0 and not migrate_legacy_stats then return end
 
     -- Append the missing entries to the existing file
     local f = io.open(CONFIG_FILE, "a")
@@ -237,6 +244,11 @@ local function append_missing_settings()
     end
 
     f:write("\n; === Settings added by script update ===\n")
+    if migrate_legacy_stats then
+        f:write("; Shift+R is now read-only route status; full stats moved to Shift+B\n")
+        f:write("key_stats=" .. defaults.key_stats .. "\n")
+        settings.key_stats = defaults.key_stats
+    end
     for _, entry in ipairs(missing) do
         if entry.comment then
             f:write(entry.comment .. "\n")

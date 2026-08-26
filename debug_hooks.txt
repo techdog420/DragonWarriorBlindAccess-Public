@@ -222,6 +222,8 @@ COMMANDS (write to dw_commands.txt, one per line)
                            destination is selected, or recalculate/status the
                            active route (player hotkey: R)
   route_status             Speak the active overworld route's next waypoint
+                           without starting or changing a route (player
+                           hotkey: Shift+R)
   route_recalculate        Recalculate the active overworld route's next
                            waypoint from the current world-map position
   recalculate_overworld_route
@@ -245,8 +247,9 @@ COMMANDS (write to dw_commands.txt, one per line)
                            movement-start timeouts run the normal seam retry
                            first so passable edges are not suggested as blockers.
   auto_walk_blocker:X,Y    Same blocker-hunt mode, targeting an explicit tile.
-  stop_auto_walk           Cancel the current object auto-walk and release route
-                           state without adding movement input.
+  stop_auto_walk           Cancel the current object auto-walk and release its
+                           movement state without adding movement input. The
+                           player Shift+U hotkey also clears guided Travel state.
   ; comment line           Lines starting with ; are ignored
 
 PATHFINDING DEBUG COMMANDS

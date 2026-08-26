@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-25
+Updated: 2026-08-26
 
 ## Release Installation Handoff
 
@@ -121,6 +121,18 @@ Updated: 2026-08-25
 
 ## Immediate FCEUX Handoff
 
+- Route-control hotkey polish is source-complete and live-verified
+  (`2026-08-26`). `Shift+R` is now an always-read-only route-status command;
+  it cannot create, replace, or recalculate guidance. Full hero status moved
+  to `Shift+B`. `Shift+U` now stops active/deferred auto-walk and clears guided
+  Travel state while preserving the selected object. The loaded acceptance
+  reported active route status at frame `2291`, then logged movement stop and
+  `OVERWORLD_ROUTE: event=stop route=kol_swamp_cave_staging` together at frame
+  `2787`; the follow-up status check reported `route=none` at frame `2909`.
+  Fresh tag `SHIFT_HOTKEY_ACCEPT_20260826` at frame `7680` confirmed World Map
+  `(99,42)`, path target nil, and zero runtime blockers. The user confirmed
+  player-facing behavior. Focused tests and the full gate of all 33
+  host-runnable Lua suites plus all 68 Python tests pass.
 - The final three landmark-origin matrix holes are source-complete and
   live-verified (`2026-08-25`). Garinham `(1,2)` now reaches Erdrick's Cave
   `(28,12)`, Northern Cave `(81,1)`, and Mountain Cave `(29,57)` without the
@@ -3141,6 +3153,9 @@ Updated: 2026-08-25
 
 ## Current Overworld Route Polish
 
+- The `Shift+R` read-only status and `Shift+U` full route-cancel enhancement is
+  live-accepted. See the Immediate FCEUX Handoff for exact frames and final
+  state. This focused slice is ready to commit and push.
 - Great Swamp near-destination routing and exact terminal stopping are
   source-complete and live-verified (`2026-08-25`). Only the proven row
   `(81..89,112)` can snap directly to the final search point; adjacent
@@ -3158,8 +3173,8 @@ Updated: 2026-08-25
 
 ## Next Work
 
-1. Commit and push the live-verified Great Swamp snap and terminal-stop polish
-   as one focused revision after user acceptance.
+1. Commit and push the live-verified route-control hotkey polish as one focused
+   revision after user authorization.
 2. Continue the arbitrary-start route-polish audit with the next major
    synthetic opening or repeatable endpoint overshoot.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from

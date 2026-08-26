@@ -252,9 +252,10 @@ Select an object and press, then release, `U`. The mod calculates a path and
 moves the character toward the target. It announces progress on longer routes
 and speaks when the route completes.
 
-Press `Shift+U` to stop active or pending auto-walk immediately. This
-releases automatic movement and clears its current step/route state without
-changing the selected object or guided Travel destination.
+Press `Shift+U` to stop active or pending auto-walk and cancel guided Travel
+state immediately. This releases automatic movement, clears its current
+step/route state, and removes the active route marker without changing the
+selected object.
 
 When an overworld guided route is active, auto-walk follows the current route
 segment to its next waypoint. It is not yet unrestricted whole-world
@@ -312,7 +313,7 @@ the current checked-in alpha configuration.
 - `I`: announce level.
 - `G` or `F20`: announce gold.
 - `E`: announce experience.
-- `Shift+R`: announce the full statistics summary.
+- `Shift+B`: announce the full statistics summary.
 - `Shift+T`: read all detected text on the screen.
 
 ### Objects and map
@@ -333,8 +334,11 @@ the current checked-in alpha configuration.
 
 - `O` or `F16`: preview a path to the selected object.
 - `R`: start or check guided route information for a selected Travel object.
+- `Shift+R`: read route status without starting, replacing, or recalculating a
+  route.
 - `U` or `F18`: auto-walk to the selected object after the key is released.
-- `Shift+U`: immediately stop active or pending auto-walk.
+- `Shift+U`: immediately stop active or pending auto-walk and cancel guided
+  Travel state.
 - `Shift+Enter`: teleport to the selected object.
 - `Shift+Arrow`: teleport to the adjacent cell on the chosen side of the
   selected object.

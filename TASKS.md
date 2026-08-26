@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-15
+Updated: 2026-08-26
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -42,14 +42,16 @@ quality-of-life work.
 
 ## Immediate Next Implementation
 
-- Player-facing auto-walk stop is implemented in source with configurable
-  default `Shift+U`. It cancels active or deferred movement before ordinary
-  battle/dialogue/menu object guards, clears queued steps and route-manager
-  context, force-releases held direction input, preserves the selected object
-  and guided Travel destination, and announces active versus idle results. Two
-  live FCEUX/JAWS cancellations stopped multi-step routes with no queued-step
-  restart, and a fresh probe confirmed no active path. Focused and broad tests
-  pass; this item is closed.
+- Player-facing route controls are implemented and live-verified. Configurable
+  default `Shift+U` cancels active/deferred movement and guided Travel state
+  before ordinary battle/dialogue/menu guards, clears queued steps, releases
+  held direction input, preserves the selected object, and distinguishes
+  movement-only, guidance-only, combined, and idle results. `Shift+R` is an
+  always-read-only route-status command, so checking progress cannot create,
+  replace, or recalculate guidance; full hero status moved to `Shift+B`.
+  Loaded acceptance stopped both layers on one press, the follow-up status
+  reported no route, and a fresh probe confirmed no active path or runtime
+  blocks. Focused and broad tests pass; this item is closed.
 - The first connected-route slice is implemented in source for `Tantegel ->
   Kol -> Northern Cave`. Selecting Northern Cave near Tantegel keeps the final
   Travel target focused while the current leg follows the existing Kol route.

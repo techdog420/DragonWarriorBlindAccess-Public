@@ -29,6 +29,21 @@ function tests.player_auto_walk_stop_has_safe_default_binding()
     )
 end
 
+function tests.route_status_has_read_only_default_binding()
+    package.loaded["config"] = nil
+    local config = require("config")
+    assert_equal(
+        config.get_default("key_route_status"),
+        "Shift+R",
+        "read-only route status should use the accessible Shift+R chord"
+    )
+    assert_equal(
+        config.get_default("key_stats"),
+        "Shift+B",
+        "full stats should remain available without colliding with route status"
+    )
+end
+
 function tests.overworld_continuous_auto_walk_is_opt_in()
     package.loaded["config"] = nil
     local config = require("config")

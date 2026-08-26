@@ -286,10 +286,28 @@ local function stop_auto_walk_from_hotkey()
     clear_object_nav_speech()
 
     local had_active_route = route_mgr.stop_auto_walk("player hotkey")
-    if had_deferred_start or had_active_route then
+    local had_overworld_route = overworld_routes.is_active
+        and overworld_routes.is_active()
+        or false
+    local route_stop_info = overworld_routes.stop()
+
+    if route_stop_info then
+        if route_stop_info.refresh and objects.request_refresh then
+            objects.request_refresh()
+        end
+        if debug_tools.info then
+            debug_tools.info("OVERWORLD_ROUTE: " .. tostring(route_stop_info.log or route_stop_info.message))
+        end
+    end
+
+    if (had_deferred_start or had_active_route) and had_overworld_route then
+        speak_now("Auto-walk and route guidance stopped")
+    elseif had_deferred_start or had_active_route then
         speak_now("Auto-walk stopped")
+    elseif had_overworld_route then
+        speak_now("Route guidance stopped")
     else
-        speak_info("No auto-walk is active")
+        speak_info("No auto-walk or route guidance is active")
     end
 end
 
@@ -461,6 +479,14 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         stop_auto_walk_from_hotkey()
     end
 
+    -- Shift+R by default: report route status without ever starting,
+    -- replacing, or recalculating guidance. Keep this available through
+    -- battle/dialogue/menu guards so it is always safe to check progress.
+    local route_status_pressed = is_key_pressed(keys, config.get("key_route_status"))
+    if route_status_pressed then
+        speak_active_route_status()
+    end
+
     -- Position: Read current position (map name + coordinates)
     if is_key_pressed(keys, config.get("key_position")) then
         speak_position()
@@ -497,7 +523,7 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
     end
 
     -- Stats: Read full stats (level, HP/MP, all stats, equipment, spells)
-    if is_key_pressed(keys, config.get("key_stats")) then
+    if not route_status_pressed and is_key_pressed(keys, config.get("key_stats")) then
         speak_info(items.read_status_string())
     end
 

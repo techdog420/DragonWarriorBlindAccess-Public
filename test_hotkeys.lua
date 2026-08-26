@@ -24,6 +24,7 @@ local function make_env(options)
     local pathfind_calls = 0
     local autowalk_calls = 0
     local stop_autowalk_calls = {}
+    local stop_overworld_route_calls = 0
     local freeze_calls = 0
     local visited_calls = 0
     local route_status_calls = 0
@@ -84,7 +85,8 @@ local function make_env(options)
         key_level = "Shift+I",
         key_gold = "Shift+G|F20",
         key_experience = "Shift+E",
-        key_stats = "Shift+R",
+        key_stats = "Shift+B",
+        key_route_status = "Shift+R",
         key_screen_text = "Shift+T",
         key_diag_cursor = "Ctrl+M",
         key_diag_ppu_dump = "Ctrl+D",
@@ -316,9 +318,31 @@ local function make_env(options)
             is_active = function()
                 return options.route_active == true
             end,
+            stop = function()
+                stop_overworld_route_calls = stop_overworld_route_calls + 1
+                if options.route_active == true then
+                    return {
+                        route = {id = "erdrick"},
+                        message = "Stopped overworld route",
+                        log = "event=stop route=erdrick",
+                        refresh = true,
+                    }
+                end
+                return {
+                    message = "No overworld route active",
+                    log = "event=stop route=none",
+                    refresh = false,
+                }
+            end,
             status = function(_, _, _, opts)
                 route_status_calls = route_status_calls + 1
                 route_status_opts[#route_status_opts + 1] = opts or false
+                if options.route_active ~= true and not options.route_status_info then
+                    return {
+                        message = "No overworld route active",
+                        log = "event=status route=none",
+                    }
+                end
                 return options.route_status_info or {
                     message = "Route to Erdrick's Cave. Next: North trail marker, 12 north",
                     log = "event=status route=erdrick waypoint=North trail marker index=5",
@@ -434,6 +458,9 @@ local function make_env(options)
             return autowalk_calls
         end,
         stop_autowalk_calls = stop_autowalk_calls,
+        stop_overworld_route_calls = function()
+            return stop_overworld_route_calls
+        end,
         freeze_calls = function()
             return freeze_calls
         end,
@@ -593,6 +620,8 @@ function tests.stop_autowalk_hotkey_bypasses_object_guard_and_interrupts_speech(
         "Shift+U should invoke the shared auto-walk stop path while object controls are blocked")
     assert_equal(env.stop_autowalk_calls[1], "player hotkey",
         "player cancellation should identify the hotkey source")
+    assert_equal(env.stop_overworld_route_calls(), 1,
+        "Shift+U should also run the overworld guidance stop path")
     assert_equal(#env.outputs, 1, "active cancellation should speak once")
     assert_equal(env.outputs[1].message, "Auto-walk stopped",
         "active cancellation should confirm that movement stopped")
@@ -644,10 +673,44 @@ function tests.stop_autowalk_hotkey_reports_when_no_route_is_active()
 
     assert_equal(#env.stop_autowalk_calls, 1,
         "Shift+U should still run the safe cleanup path when idle")
-    assert_equal(env.outputs[1].message, "No auto-walk is active",
-        "idle cancellation should not claim that a route was stopped")
+    assert_equal(env.stop_overworld_route_calls(), 1,
+        "idle Shift+U should still run the safe guidance cleanup path")
+    assert_equal(env.outputs[1].message, "No auto-walk or route guidance is active",
+        "idle cancellation should not claim that movement or guidance was stopped")
     assert_equal(env.outputs[1].interrupt, false,
         "idle status should not interrupt unrelated speech")
+
+    env.restore()
+end
+
+function tests.stop_autowalk_hotkey_stops_guidance_without_active_movement()
+    local env = make_env({delay = 0, auto_walk_active = false, route_active = true})
+
+    env.update({LeftShift = true, U = true}, {state = "field"}, true)
+
+    assert_equal(#env.stop_autowalk_calls, 1,
+        "Shift+U should always run auto-walk cleanup")
+    assert_equal(env.stop_overworld_route_calls(), 1,
+        "Shift+U should clear active overworld guidance")
+    assert_equal(env.object_refresh_request_calls(), 1,
+        "stopping guidance should request a route-marker refresh")
+    assert_equal(env.outputs[1].message, "Route guidance stopped",
+        "guidance-only cancellation should name what stopped")
+    assert_equal(env.outputs[1].interrupt, true,
+        "guidance cancellation should interrupt stale progress speech")
+
+    env.restore()
+end
+
+function tests.stop_autowalk_hotkey_reports_when_movement_and_guidance_stop()
+    local env = make_env({delay = 0, auto_walk_active = true, route_active = true})
+
+    env.update({LeftShift = true, U = true}, {state = "field"}, true)
+
+    assert_equal(env.outputs[1].message, "Auto-walk and route guidance stopped",
+        "combined cancellation should confirm both layers")
+    assert_equal(env.outputs[1].interrupt, true,
+        "combined cancellation should interrupt stale progress speech")
 
     env.restore()
 end
@@ -778,28 +841,56 @@ function tests.modified_hotkeys_do_not_fire_as_bare_keys()
     env.restore()
 end
 
-function tests.shift_r_keeps_stats_without_starting_route_guidance()
-    local env = make_env({delay = 0})
+function tests.shift_r_reports_active_route_status_without_starting_or_replacing()
+    local env = make_env({delay = 0, route_active = true})
 
     env.update({Shift = true, R = true})
 
-    assert_equal(#env.outputs, 1, "Shift+R should speak stats only")
-    assert_equal(env.outputs[1].message, "status", "Shift+R should preserve the existing stats hotkey")
+    assert_equal(#env.outputs, 1, "Shift+R should speak route status only")
+    assert_equal(env.outputs[1].message,
+        "Route to Erdrick's Cave. Next: North trail marker, 12 north",
+        "Shift+R should report the active route")
     assert_equal(env.route_start_calls(), 0, "Shift+R should not also start route guidance")
-    assert_equal(env.route_status_calls(), 0, "Shift+R should not report route status")
+    assert_equal(env.route_status_calls(), 1, "Shift+R should use the read-only route-status path")
 
     env.restore()
 end
 
-function tests.blocked_shift_r_keeps_stats_without_object_guard()
+function tests.shift_r_reports_no_active_route_without_starting_one()
     local env = make_env({delay = 0})
+
+    env.update({Shift = true, R = true}, {state = "field"}, true)
+
+    assert_equal(env.outputs[1].message,
+        "No overworld route active",
+        "Shift+R should safely report arrival or idle state")
+    assert_equal(env.route_status_calls(), 1, "Shift+R should query status even when guidance is inactive")
+    assert_equal(env.route_start_calls(), 0, "Shift+R must never create a route")
+
+    env.restore()
+end
+
+function tests.blocked_shift_r_stays_read_only_without_object_guard()
+    local env = make_env({delay = 0, route_active = true})
 
     env.update({Shift = true, R = true}, nil, false)
 
-    assert_equal(#env.outputs, 1, "blocked object controls should not swallow Shift+R stats")
-    assert_equal(env.outputs[1].message, "status", "Shift+R stats should still run while object controls are blocked")
+    assert_equal(#env.outputs, 1, "blocked object controls should not swallow Shift+R route status")
+    assert_equal(env.route_status_calls(), 1, "Shift+R route status should remain available while blocked")
     assert_equal(env.input_suppress_calls(), 0, "Shift+R should not be treated as a blocked object key")
-    assert_equal(env.route_start_calls(), 0, "route guidance should not run from Shift+R")
+    assert_equal(env.route_start_calls(), 0, "route guidance should never start from Shift+R")
+
+    env.restore()
+end
+
+function tests.shift_b_preserves_full_stats_readout()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, B = true})
+
+    assert_equal(#env.outputs, 1, "Shift+B should speak the full stat summary")
+    assert_equal(env.outputs[1].message, "status", "the replacement stats binding should preserve its readout")
+    assert_equal(env.route_status_calls(), 0, "the stats key should not query route status")
 
     env.restore()
 end

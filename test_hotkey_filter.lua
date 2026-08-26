@@ -39,6 +39,7 @@ function tests.default_bizhawk_filter_allows_object_navigation_keys()
         key_object_next = "L",
         key_pathfind = "O",
         key_route_guidance = "R",
+        key_route_status = "Shift+R",
         key_auto_walk = "U",
         key_stop_auto_walk = "Shift+U",
         key_filter = "Q",
@@ -125,6 +126,7 @@ function tests.blank_allowlist_falls_back_to_player_safe_defaults()
         key_position = "Shift+W",
         key_object_next = "L",
         key_route_guidance = "R",
+        key_route_status = "Shift+R",
         key_diag_tiles = "Ctrl+N",
         key_diag_ppu_dump = "Ctrl+D",
     })

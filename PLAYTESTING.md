@@ -1,11 +1,25 @@
 # Playtesting Notes
 
-Updated: 2026-08-25
+Updated: 2026-08-26
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Route-control hotkey polish is source-complete and live-verified
+  (`2026-08-26`). `Shift+R` now uses the read-only route-status path and never
+  starts, replaces, or recalculates guidance; full status moved to `Shift+B`.
+  `Shift+U` now clears both active/deferred auto-walk and guided Travel state.
+  During the loaded acceptance run, frame `2291` reported the active
+  `kol_swamp_cave_staging` route, frame `2787` logged both
+  `AUTO_WALK: manually stopped active=true reason=player hotkey` and
+  `OVERWORLD_ROUTE: event=stop route=kol_swamp_cave_staging`, and the follow-up
+  `Shift+R` logged `event=status route=none` at frame `2909`. Fresh frame
+  `7680` confirmed World Map `(99,42)`, path target nil, and zero runtime
+  blockers. The user confirmed all player-facing speech and controls behaved
+  as expected. Focused hotkey/config/filter and release-guide tests pass; Lua
+  syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass.
 - Great Swamp near-destination routing and terminal stopping are source-complete
   and live-verified (`2026-08-25`). The direct snap is now bounded to the
   proven east-west row `(81..89,112)`; `(80,112)` and `(81,111)` still use the
