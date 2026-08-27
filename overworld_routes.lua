@@ -279,6 +279,7 @@ local NORTHERN_CAVE_BRIDGE_STAGING = {
     -- the proven route first returns through the shrine corridor. Kol and its
     -- west doorstep remain within thirteen steps of the bridge leg.
     max_start_distance = 13,
+    require_route_corridor = true,
     continue_after_staging = true,
 }
 
@@ -2415,6 +2416,7 @@ ROUTES.garinham_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
@@ -2428,6 +2430,7 @@ ROUTES.erdrick_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2441,6 +2444,7 @@ ROUTES.brecconary_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 

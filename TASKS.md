@@ -202,11 +202,16 @@ quality-of-life work.
   Erdrick's Cave, and Garinham resume through `kol_swamp_cave_staging` instead
   of synthesizing a long opening. Brecconary passed live from `(99,42)`,
   Erdrick's Cave was revalidated from exact waypoint `(97,42)`, and Garinham
-  passed the same loaded selection check. Continue toward a general
-  player-facing recovery command that finds a safe route back to the nearest
-  reachable waypoint-network entry and then proceeds to the selected
-  destination. Recovery must not teleport, require knowledge of route names,
-  or silently cross hazards and unknown blockers.
+  passed the same loaded selection check. The next bounded slice is also
+  source-complete and live-verified: exact membership on the
+  Northern-Cave-to-Kol return now gives those same three destinations a
+  three-step opening from `(92,13)` instead of 63 or 64 synthesized steps. All
+  three loaded route selections preserved their requested final destination,
+  and the final audit found no active path or runtime blockers.
+  Continue toward a general player-facing recovery command that finds a safe
+  route back to the nearest reachable waypoint-network entry and then proceeds
+  to the selected destination. Recovery must not teleport, require knowledge
+  of route names, or silently cross hazards and unknown blockers.
 - Early-route town-entry polish is live-verified for the Kol and
   Cantlin/Hauksness staging
   chain. Kol now bypasses Brecconary entrance `(48,41)` through west doorstep

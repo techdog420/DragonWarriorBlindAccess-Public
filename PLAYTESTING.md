@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Northern-Cave-to-Kol corridor recovery for Brecconary, Erdrick's Cave, and
+  Garinham is source-complete and live-verified (`2026-08-26`). Exact
+  membership on `kol_rain_shrine_staging` now selects each existing `*_kol`
+  destination variant, while the shared bridge wrapper requires its own
+  validated corridor before bypassing the shrine return. Static acceptance
+  from `(92,13)` starts `kol_rain_shrine_staging`, preserves the final Travel
+  object, and targets `West of Kol forest bend` at `(92,10)`, three steps
+  north, replacing the previous 63- or 64-step synthetic opening. Object and
+  alias starts are covered; no waypoint geometry changed. Focused route tests
+  pass `298/298`; Lua syntax, `git diff --check`, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. Loaded starts at frames `908`, `3146`,
+  and `4224` selected the expected staging route and preserved Brecconary,
+  Erdrick's Cave, and Garinham respectively; Brecconary repeated successfully
+  at frame `5047`. Each check cancelled cleanly. Fresh frame `10200` confirmed
+  clear World Map `(92,13)`, path target nil, zero runtime blockers, and no
+  current script error.
 - The first bounded off-network recovery slice is source-complete and
   live-verified (`2026-08-26`). A Brecconary selection from World Map
   `(99,42)` started `kol_swamp_cave_staging` at frame `454`, preserved

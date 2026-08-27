@@ -121,6 +121,24 @@ Updated: 2026-08-26
 
 ## Immediate FCEUX Handoff
 
+- Northern-Cave-to-Kol corridor recovery for Brecconary, Erdrick's Cave, and
+  Garinham is source-complete and live-verified (`2026-08-26`).
+  The three existing `*_kol` destination variants now recognize exact
+  membership on `kol_rain_shrine_staging`, and the shared Northern Cave bridge
+  wrapper requires its own proven corridor before skipping the shrine return.
+  From `(92,13)`, every Travel object and alias now starts
+  `kol_rain_shrine_staging`, retains the selected final destination, and
+  targets `West of Kol forest bend` at `(92,10)`, three steps north, instead
+  of synthesizing a 63- or 64-step opening. No waypoint geometry changed.
+  Loaded starts at frames `908`, `3146`, and `4224` preserved
+  `brecconary_kol`, `erdrick_kol`, and `garinham_kol` respectively while
+  selecting the expected staging route and waypoint; Brecconary was repeated
+  successfully at frame `5047`. Each route cancelled cleanly between checks.
+  Fresh frame `10200` confirmed World Map `(92,13)`, path target nil, and zero
+  runtime blockers; the script-error file remains unchanged since May.
+  Focused overworld-route tests pass `298/298`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass.
 - The first bounded off-network recovery slice is source-complete and
   live-verified (`2026-08-26`). From World Map `(99,42)`, selecting Brecconary
   now recognizes exact membership on the proven `kol_swamp_cave_staging`

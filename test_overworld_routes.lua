@@ -3251,6 +3251,56 @@ function tests.early_destinations_resume_from_swamp_cave_kol_corridor()
     routes.reset_for_tests()
 end
 
+function tests.early_destinations_resume_from_northern_cave_kol_corridor()
+    local cases = {
+        {
+            id = "overworld_garinham",
+            name = "Garinham",
+            alias = "garinham",
+        },
+        {
+            id = "overworld_erdrick_s_cave",
+            name = "Erdrick's Cave",
+            alias = "erdrick",
+        },
+        {
+            id = "overworld_brecconary",
+            name = "Brecconary",
+            alias = "brecconary",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 92, 13)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from the proven Northern Cave-to-Kol corridor")
+        assert_equal(info.route.id, "kol_rain_shrine_staging",
+            case.name .. " should resume the established shrine return instead of synthesizing a cross-world opening")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during corridor recovery")
+
+        local segment = assert(routes.plan_next_segment(0x01, 92, 13))
+        assert_equal(segment.waypoint.name, "West of Kol forest bend",
+            case.name .. " should rejoin at the next proven corridor waypoint")
+        assert_equal(segment.path_length, 3,
+            case.name .. " should replace its unsafe 63- or 64-step opening")
+        assert_equal(segment.steps[1], "up",
+            case.name .. " should continue north along the proven return corridor")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 92, 13)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve from the proven corridor")
+        assert_equal(alias_info.route.id, "kol_rain_shrine_staging",
+            case.name .. " alias should use the same recovery itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.brecconary_from_swamp_cave_north_hands_off_at_bridge_junction()
     routes.reset_for_tests()
     local target = {
