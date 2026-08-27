@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Northern-Cave-to-southern-progression corridor recovery is source-complete
+  and live-verified (`2026-08-26`). Swamp Cave South Entrance,
+  Rainbow Bridge, and Charlock now recognize exact membership on
+  `kol_rain_shrine_staging` at the mainland south-entrance and Northern
+  Cave-to-Swamp-Cave wrapper layers. Static acceptance from `(78,3)` starts
+  `kol_rain_shrine_staging`, preserves the final Travel object, and targets
+  `Rain shrine island west lane` at `(77,3)`, one step west, replacing the
+  incorrect `rainbow_bridge_return` selection and its 51-step opening. Object
+  and alias starts are covered; no waypoint geometry or cave behavior changed.
+  Focused route tests pass `299/299`; Lua syntax, `git diff --check`, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. Loaded starts at
+  frames `3998`, `6767`, and `7267` selected the expected shrine-return leg
+  while preserving Swamp Cave South, Rainbow Bridge, and Charlock
+  respectively. The first two checks cancelled cleanly. Fresh frame `11880`
+  confirmed World Map `(78,3)`, path target nil, zero runtime blockers, and no
+  current script error.
 - Northern-Cave-to-Kol corridor recovery for Brecconary, Erdrick's Cave, and
   Garinham is source-complete and live-verified (`2026-08-26`). Exact
   membership on `kol_rain_shrine_staging` now selects each existing `*_kol`

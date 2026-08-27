@@ -207,7 +207,13 @@ quality-of-life work.
   Northern-Cave-to-Kol return now gives those same three destinations a
   three-step opening from `(92,13)` instead of 63 or 64 synthesized steps. All
   three loaded route selections preserved their requested final destination,
-  and the final audit found no active path or runtime blockers.
+  and the final audit found no active path or runtime blockers. A third bounded
+  slice is source-complete and live-verified: Swamp Cave South,
+  Rainbow Bridge, and Charlock now resume from the same shrine-return corridor
+  at `(78,3)`, replacing an incorrect 51-step `rainbow_bridge_return` opening
+  with one step west on `kol_rain_shrine_staging`. All three loaded selections
+  preserved the requested final destination; the final audit found no active
+  path or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

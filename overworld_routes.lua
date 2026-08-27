@@ -3173,6 +3173,7 @@ ROUTES.swamp_cave_northern_return_staging = {
         continue_after_staging = true,
     },
     selection_anchors = {{x = 81, y = 1, max_distance = 4}},
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
 }
 
@@ -3221,6 +3222,7 @@ ROUTES.swamp_cave_south_mainland = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(
         ROUTES.swamp_cave_south_swamp_cave_north, 104, 49),
 }

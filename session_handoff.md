@@ -121,6 +121,23 @@ Updated: 2026-08-26
 
 ## Immediate FCEUX Handoff
 
+- Northern-Cave-to-southern-progression corridor recovery is source-complete
+  and live-verified (`2026-08-26`). Swamp Cave South Entrance,
+  Rainbow Bridge, and Charlock now recognize exact membership on
+  `kol_rain_shrine_staging` at both existing wrapper layers: the mainland
+  south-entrance selector and the Northern Cave-to-Swamp-Cave approach. From
+  `(78,3)`, every Travel object and alias retains its selected final
+  destination, starts `kol_rain_shrine_staging`, and targets
+  `Rain shrine island west lane` at `(77,3)`, one step west, instead of
+  selecting `rainbow_bridge_return` with a 51-step opening. No waypoint
+  geometry, cave behavior, or downstream itinerary changed. Focused route
+  tests pass `299/299`; Lua syntax, `git diff --check`, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. Loaded starts at frames `3998`,
+  `6767`, and `7267` preserved the Swamp Cave South, Rainbow Bridge, and
+  Charlock itineraries respectively while selecting the expected staging
+  route and waypoint. The first two cancelled cleanly between checks. Fresh
+  frame `11880` confirmed World Map `(78,3)`, path target nil, and zero runtime
+  blockers; the script-error file remains unchanged since May.
 - Northern-Cave-to-Kol corridor recovery for Brecconary, Erdrick's Cave, and
   Garinham is source-complete and live-verified (`2026-08-26`).
   The three existing `*_kol` destination variants now recognize exact
