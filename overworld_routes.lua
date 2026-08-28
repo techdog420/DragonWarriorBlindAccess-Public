@@ -3248,6 +3248,7 @@ ROUTES.swamp_cave_south_mainland = {
         {x = 89, y = 112, max_distance = 4},
     },
     selection_route_corridors = {
+        "kol_staging",
         "kol_rain_shrine_staging",
         "kol_swamp_cave_staging",
         "erdrick",

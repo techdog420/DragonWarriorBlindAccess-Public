@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final-progression recovery from the Tantegel-to-Kol corridor is
+  source-complete and live-verified (`2026-08-28`). Swamp Cave
+  South Entrance, Rainbow Bridge, and Charlock now recognize exact
+  `kol_staging` membership through the existing mainland cave-crossing
+  selector. Static acceptance from `(32,13)` starts `kol_staging`, preserves
+  the final Travel object, and targets `North Alefgard west road` at `(35,13)`,
+  three steps east, replacing a 51-step `charlock_return` opening. No waypoint
+  geometry, movement timing, or downstream itinerary changed. A 188-cell by
+  three-destination audit found all 564 selections resolve with no opening
+  longer than the existing validated 19-step Kol segment. Focused route tests
+  pass `310/310`; Lua syntax, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Loaded starts from `(32,13)` at frames `4119`, `5284`, and `6370`
+  selected `kol_staging` and `North Alefgard west road` while retaining Swamp
+  Cave South, Rainbow Bridge, and Charlock respectively. The user confirmed all
+  three generated correctly; the first two cancelled cleanly. Fresh frame
+  `10200` confirmed World Map `(32,13)`, path target nil, zero NPC or runtime
+  blockers, and no new script error.
 - Tantegel recovery from the Magic-Temple-to-Rimuldar corridor is
   source-complete and live-verified (`2026-08-28`). Exact
   `rimuldar_magic_temple` membership now selects the existing

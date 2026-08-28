@@ -121,6 +121,24 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Final-progression recovery from the Tantegel-to-Kol corridor is
+  source-complete and live-verified (`2026-08-28`). Swamp Cave
+  South Entrance, Rainbow Bridge, and Charlock now recognize exact
+  `kol_staging` membership through the existing mainland cave-crossing
+  selector. From `(32,13)`, each retains its final destination, starts
+  `kol_staging`, and targets `North Alefgard west road` at `(35,13)`, three
+  steps east, instead of selecting `charlock_return` with a 51-step opening.
+  No waypoint geometry, movement timing, or downstream itinerary changed. A
+  complete static sweep checked all 188 exact corridor cells against the three
+  destinations: all 564 selections resolve, and none opens with more than the
+  existing validated 19-step Kol segment. Focused route tests pass `310/310`;
+  Lua syntax, all 33 host-runnable Lua suites, and all 68 Python tests pass.
+  Loaded starts from `(32,13)` at frames `4119`, `5284`, and `6370` selected
+  `kol_staging` and `North Alefgard west road` while retaining Swamp Cave South,
+  Rainbow Bridge, and Charlock respectively. The user confirmed all three
+  generated correctly; the first two cancelled cleanly. Fresh frame `10200`
+  confirmed World Map `(32,13)`, path target nil, zero NPC or runtime blockers,
+  and no new script error.
 - Tantegel recovery from the Magic-Temple-to-Rimuldar corridor is
   source-complete and live-verified (`2026-08-28`). The existing
   `tantegel_magic_temple` itinerary now recognizes exact
@@ -3403,10 +3421,9 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified Tantegel recovery, completing the Magic
-   Temple corridor batch.
-2. Audit the remaining overworld polish queue and select the next bounded
-   player-facing route issue.
+1. Commit and push the live-verified first Tantegel-to-Kol corridor batch.
+2. Continue that corridor with its Brecconary, Erdrick's Cave, and Garinham
+   early-destination outliers.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.
