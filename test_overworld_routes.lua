@@ -4011,6 +4011,42 @@ function tests.rimuldar_return_corridor_early_destinations_keep_connected_openin
     routes.reset_for_tests()
 end
 
+function tests.rimuldar_return_corridor_northern_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_kol", name = "Kol"},
+        {id = "overworld_northern_cave", name = "Northern Cave"},
+        {id = "overworld_mountain_cave", name = "Mountain Cave"},
+    }
+
+    local checked = 0
+    for _, cell in ipairs(
+        route_corridor_cells("rimuldar_swamp_cave_north_staging")) do
+        for _, target in ipairs(targets) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Rimuldar return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Rimuldar return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Rimuldar return")
+            assert(segment and segment.path_length <= 24,
+                target.name .. " should use a connected Rimuldar return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+    assert_equal(checked, 255,
+        "the northern-destination Rimuldar audit should cover every combination")
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_approach_corner_keeps_connected_destinations()
     local cells = {
         {x = 96, y = 22},

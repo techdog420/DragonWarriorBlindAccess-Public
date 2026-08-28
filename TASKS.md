@@ -487,7 +487,19 @@ quality-of-life work.
   confirmed every route. Shift+U stopped each route and autowalk cleanly at
   frames `4663`, `5342`, and `6442`. Tagged readiness passed at frame `8760`,
   and fresh frame `9660` found no active path, NPC blockers, runtime blockers,
-  or new script error.
+  or new script error. A twenty-fourth bounded slice is source-complete and
+  live-verified: Kol, Northern Cave, and Mountain Cave now recognize
+  all 85 exact cells on the validated `rimuldar_swamp_cave_north_staging`
+  corridor. All 255 destination combinations retain the requested target, with
+  no opening over 14 steps. At `(83,55)`, all three start `swamp_cave_south`
+  toward `South island west ridge lane` at `(83,54)`, one step north, instead
+  of opening 25-48 steps. Live starts at `(83,55)` retained Kol, Northern Cave,
+  and Mountain Cave at frames `2601`, `3863`, and `4534`; Shift+U stopped each
+  route and autowalk cleanly at frames `3824`, `4334`, and `5013`. Tagged
+  readiness passed at frame `9840`, and fresh frame `10200` found no active
+  path, NPC blockers, runtime blockers, or new script error. Focused route tests
+  pass `321/321`; the full gate passes all 33 host-runnable Lua suites and all
+  68 Python tests.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

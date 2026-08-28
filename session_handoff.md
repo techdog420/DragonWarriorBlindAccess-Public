@@ -121,6 +121,24 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The second Rimuldar return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Kol, Northern Cave, and Mountain
+  Cave now recognize exact `rimuldar_swamp_cave_north_staging` corridor
+  membership through their existing southern-island variants. They reuse the
+  established Rimuldar-to-Swamp-Cave return, manual cave crossing, and northern
+  destination chains; no waypoint geometry or movement timing changed. All
+  255 combinations of 85 exact corridor cells and the three destinations
+  retain the selected target, with no opening over 14 steps. At `(83,55)`, all
+  three start `swamp_cave_south` and target `South island west ridge lane` at
+  `(83,54)`, one step north, replacing 25-48-step openings. Focused route tests
+  pass `321/321`; the full gate passes Lua syntax, all 33 host-runnable Lua
+  suites, all 68 Python tests, speech dependency, and command-queue checks.
+  Live starts from World Map `(83,55)` retained Kol, Northern Cave, and Mountain
+  Cave at frames `2601`, `3863`, and `4534`; each selected
+  `swamp_cave_south` and `South island west ridge lane`. Shift+U stopped each
+  route and autowalk cleanly at frames `3824`, `4334`, and `5013`. Tagged
+  readiness passed at frame `9840`, and fresh frame `10200` found the hero at
+  `(83,55)` with no active path, NPC blockers, or runtime blockers.
 - The first Rimuldar return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Brecconary, Erdrick's Cave, and
   Garinham now recognize exact membership on the validated

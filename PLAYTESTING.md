@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The second Rimuldar return-corridor recovery batch is live-verified
+  (`2026-08-28`). Kol, Northern Cave, and Mountain Cave now
+  recognize exact `rimuldar_swamp_cave_north_staging` corridor membership
+  through their existing southern-island variants. This reuses established
+  route geometry and timing unchanged. At `(83,55)`, all three retain the
+  selected destination, start `swamp_cave_south`, and target `South island west
+  ridge lane` at `(83,54)`, one step north, instead of opening 25-48 steps.
+  The 85-cell by three-destination regression covers all 255 combinations with
+  no opening over 14 steps. Focused route tests pass `321/321`; Lua syntax, all
+  33 host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks pass. Live starts from World Map `(83,55)` retained the
+  three requested destinations at frames `2601`, `3863`, and `4534`, while
+  opening `swamp_cave_south` toward `South island west ridge lane`. Shift+U
+  stopped each route and autowalk cleanly at frames `3824`, `4334`, and `5013`.
+  Tagged readiness passed at frame `9840`; fresh frame `10200` found no active
+  path, NPC blockers, or runtime blockers.
 - The first Rimuldar return-corridor recovery batch is live-verified
   (`2026-08-28`). Brecconary, Erdrick's Cave, and Garinham now
   recognize exact `rimuldar_swamp_cave_north_staging` corridor membership
