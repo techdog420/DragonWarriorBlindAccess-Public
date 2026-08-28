@@ -221,7 +221,19 @@ quality-of-life work.
   cells and 16 destinations; none now opens with more than 11 steps. Loaded
   starts preserved all five requested final destinations and the user confirmed
   the expected starting waypoints. The final probe found no active path or
-  runtime blockers.
+  runtime blockers. A fifth bounded slice is source-complete and live-verified:
+  Swamp Cave South, Rainbow Bridge, and Charlock now recover from
+  exact `kol_swamp_cave_staging` membership through the mainland north-entrance
+  approach instead of selecting the disconnected southern-island route. The
+  former seven-step deceptive opening at `(99,42)` now uses the proven
+  `swamp_cave_bridge` approach, and the 38-step opening at `(96,14)` is seven
+  steps to the next `swamp_cave` waypoint. Static coverage checks all 186
+  combinations of 62 corridor cells and three destinations, with no direct
+  south-island selection and no opening over 10 steps. The dedicated safe
+  re-entry behavior at `(104,44)` remains unchanged. Loaded checks confirmed
+  all three two-step-west starts from `(99,42)` plus Charlock's seven-step-south
+  start from `(96,14)`; the final probe found no active path or runtime
+  blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

@@ -6,6 +6,27 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final-progression recovery from the Swamp-Cave-to-Kol corridor is
+  source-complete and live-verified (`2026-08-27`). Swamp Cave
+  South Entrance, Rainbow Bridge, and Charlock now recognize exact membership
+  on `kol_swamp_cave_staging` through the existing mainland cave-crossing
+  selector. Static checks from `(99,42)` preserve each final destination,
+  start `swamp_cave_bridge`, and target `Swamp Cave lower swamp turn` at
+  `(97,42)`, two steps west, instead of selecting the disconnected
+  southern-island route. From `(96,14)`, each starts `swamp_cave` and targets
+  `West of Kol north lane` at `(96,21)`, seven steps south, replacing the
+  former 38-step opening. The physical north entrance retains its dedicated
+  safe re-entry route. A 62-cell by three-destination audit found no direct
+  `swamp_cave_south` selections and no opening over 10 steps. Focused route
+  tests pass `301/301`; Lua syntax, `git diff --check`, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. Loaded starts from `(99,42)` at
+  frames `533`, `1183`, and `2853` selected `swamp_cave_bridge` and the lower
+  swamp turn while retaining Swamp Cave South, Rainbow Bridge, and Charlock;
+  Charlock repeated successfully at frame `6042`. From `(96,14)`, Charlock
+  started `swamp_cave` at frame `16360` and selected `West of Kol north lane`.
+  The user accepted all four checks. Fresh frame `22980` confirmed World Map
+  `(96,14)`, path target nil, zero runtime blockers, and no current script
+  error.
 - The remaining Northern-Cave-return northwestern recovery batch is
   source-complete and live-verified (`2026-08-27`). Tantegel,
   Mountain Cave, Hauksness, Cantlin, and the Eastern Great Swamp Search Area

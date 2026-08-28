@@ -3351,6 +3351,72 @@ function tests.final_progression_destinations_resume_from_northern_cave_kol_corr
     routes.reset_for_tests()
 end
 
+function tests.final_progression_destinations_resume_from_swamp_cave_kol_corridor()
+    local cases = {
+        {
+            id = "overworld_swamp_cave_south_entrance",
+            name = "Swamp Cave South Entrance",
+            alias = "swamp cave south",
+        },
+        {
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+            alias = "rainbow bridge",
+        },
+        {
+            id = "overworld_charlock_castle",
+            name = "Charlock Castle",
+            alias = "charlock",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 99, 42)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from the proven Swamp-Cave-to-Kol corridor")
+        assert_equal(info.route.id, "swamp_cave_bridge",
+            case.name .. " should approach Swamp Cave north instead of selecting the disconnected southern route")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during corridor recovery")
+
+        local segment = assert(routes.plan_next_segment(0x01, 99, 42))
+        assert_equal(segment.waypoint.name, "Swamp Cave lower swamp turn",
+            case.name .. " should rejoin the established cave approach")
+        assert_equal(segment.path_length, 2,
+            case.name .. " should replace its deceptive direct-island opening")
+        assert_equal(segment.steps[1], "left",
+            case.name .. " should first rejoin the proven approach turn")
+
+        routes.reset_for_tests()
+        local worst_info, worst_err = routes.start_for_object(
+            case, 0x01, 96, 14)
+        assert_equal(worst_err, nil,
+            case.name .. " should resolve from the northern corridor bend")
+        assert_equal(worst_info.route.id, "swamp_cave",
+            case.name .. " should replace the former thirty-eight-step opening")
+
+        local worst_segment = assert(routes.plan_next_segment(0x01, 96, 14))
+        assert_equal(worst_segment.waypoint.name, "West of Kol north lane",
+            case.name .. " should continue south toward Swamp Cave")
+        assert_equal(worst_segment.path_length, 7,
+            case.name .. " should use the next proven corridor waypoint")
+        assert_equal(worst_segment.steps[1], "down",
+            case.name .. " should leave the north bend southward")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 99, 42)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve from the proven corridor")
+        assert_equal(alias_info.route.id, "swamp_cave_bridge",
+            case.name .. " alias should use the same recovery itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_destinations_resume_from_northern_cave_kol_corridor()
     local cases = {
         {

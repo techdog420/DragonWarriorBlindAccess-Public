@@ -121,6 +121,31 @@ Updated: 2026-08-27
 
 ## Immediate FCEUX Handoff
 
+- Final-progression recovery from the Swamp-Cave-to-Kol corridor is
+  source-complete and live-verified (`2026-08-27`). Swamp Cave
+  South Entrance, Rainbow Bridge, and Charlock now recognize exact membership
+  on `kol_swamp_cave_staging` through the existing mainland cave-crossing
+  selector. From `(99,42)`, each retains its final destination, starts
+  `swamp_cave_bridge`, and targets `Swamp Cave lower swamp turn` at `(97,42)`,
+  two steps west, instead of selecting the disconnected southern-island route.
+  From the former worst case `(96,14)`, each starts `swamp_cave` and targets
+  `West of Kol north lane` at `(96,21)`, seven steps south, replacing the
+  38-step opening. A one-tile selector exclusion around the physical north
+  entrance `(104,44)` preserves the dedicated safe re-entry route. No waypoint
+  geometry or movement timing changed. A complete static sweep checked all 62
+  corridor cells against the three destinations: all 186 selections use an
+  established north-entrance approach, none selects direct `swamp_cave_south`,
+  and none opens with more than 10 steps. Focused route tests pass `301/301`;
+  Lua syntax, `git diff --check`, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. Loaded starts from `(99,42)` at frames `533`, `1183`, and
+  `2853` selected `swamp_cave_bridge` and `Swamp Cave lower swamp turn` while
+  retaining Swamp Cave South, Rainbow Bridge, and Charlock respectively; a
+  Charlock repeat passed at frame `6042`. The checks cancelled cleanly between
+  selections. From `(96,14)`, Charlock started `swamp_cave` at frame `16360`
+  and targeted `West of Kol north lane`, matching the former worst-case
+  regression. The user accepted all four checks. Fresh frame `22980` confirmed
+  World Map `(96,14)`, path target nil, and zero runtime blockers; the
+  script-error file remains unchanged since May.
 - The remaining Northern-Cave-return northwestern recovery batch is
   source-complete and live-verified (`2026-08-27`). Tantegel,
   Mountain Cave, Hauksness, Cantlin, and the Eastern Great Swamp Search Area
@@ -3246,8 +3271,8 @@ Updated: 2026-08-27
 
 ## Next Work
 
-1. Commit and push the live-verified five-destination Northern Cave recovery
-   batch after user authorization.
+1. Commit and push the live-verified three-destination Swamp-Cave-to-Kol
+   recovery batch after user authorization.
 2. Continue the arbitrary-start route-polish audit with the next major
    synthetic opening or repeatable endpoint overshoot.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from

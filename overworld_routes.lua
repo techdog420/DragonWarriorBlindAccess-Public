@@ -3227,7 +3227,16 @@ ROUTES.swamp_cave_south_mainland = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+        "kol_swamp_cave_staging",
+    },
+    -- At the physical north entrance and its doorstep, retain the dedicated
+    -- safe re-entry variant instead of treating local cave handling as a
+    -- generic corridor recovery.
+    selection_route_corridor_exclusions = {
+        {x = 104, y = 44, max_distance = 1},
+    },
     waypoints = copy_route_prefix(
         ROUTES.swamp_cave_south_swamp_cave_north, 104, 49),
 }
@@ -3806,11 +3815,21 @@ local function route_selection_score(route, map_id, px, py, terrain_offset)
     -- not just from a landmark-sized anchor. Exact corridor membership is
     -- safe evidence: it reuses already-validated geometry without expanding
     -- recovery into adjacent unverified cells.
-    for _, corridor_id in ipairs(
-        route and route.selection_route_corridors or {}) do
-        if position_is_on_route_corridor(ROUTES[corridor_id], px, py) then
-            score = 0
+    local corridor_excluded = false
+    for _, point in ipairs(
+        route and route.selection_route_corridor_exclusions or {}) do
+        if distance(px, py, point) <= (point.max_distance or 0) then
+            corridor_excluded = true
             break
+        end
+    end
+    if not corridor_excluded then
+        for _, corridor_id in ipairs(
+            route and route.selection_route_corridors or {}) do
+            if position_is_on_route_corridor(ROUTES[corridor_id], px, py) then
+                score = 0
+                break
+            end
         end
     end
     return score
