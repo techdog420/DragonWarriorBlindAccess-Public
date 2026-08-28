@@ -3467,6 +3467,75 @@ function tests.final_progression_destinations_resume_from_erdrick_corridor()
     routes.reset_for_tests()
 end
 
+function tests.western_destinations_recover_from_erdrick_corridor()
+    local cases = {
+        {
+            id = "overworld_hauksness",
+            name = "Hauksness",
+            alias = "hauksness",
+        },
+        {
+            id = "overworld_cantlin",
+            name = "Cantlin",
+            alias = "cantlin",
+        },
+        {
+            id = "overworld_eastern_great_swamp_search_area",
+            name = "Eastern Great Swamp Search Area",
+            alias = "great swamp search area",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 44, 36)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from the proven Erdrick corridor")
+        assert_equal(info.route.id, "kol_staging",
+            case.name .. " should rejoin the western network through Kol")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during corridor recovery")
+
+        local segment = assert(routes.plan_next_segment(0x01, 44, 36))
+        assert_equal(segment.waypoint.name, "Bridge south bend",
+            case.name .. " should rejoin the established Kol approach")
+        assert_equal(segment.path_length, 2,
+            case.name .. " should replace its synthetic twenty-four-step opening")
+        assert_equal(segment.steps[1], "down",
+            case.name .. " should first return to the proven bridge bend")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 44, 36)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve from the proven corridor")
+        assert_equal(alias_info.route.id, "kol_staging",
+            case.name .. " alias should use the same recovery itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_corridor_retains_validated_long_segment()
+    routes.reset_for_tests()
+    local target = {id = "overworld_hauksness", name = "Hauksness"}
+
+    local info, err = routes.start_for_object(target, 0x01, 84, 27)
+
+    assert_equal(err, nil,
+        "Hauksness Travel should resolve on its established corridor")
+    assert_equal(info.route.id, "hauksness",
+        "a validated Hauksness segment must not backtrack through Kol")
+    local segment = assert(routes.plan_next_segment(0x01, 84, 27))
+    assert_equal(segment.waypoint.name, "North Alefgard bridge road",
+        "the established corridor should keep its forward waypoint")
+    assert_equal(segment.path_length, 19,
+        "the validated diagonal segment should retain its existing geometry")
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_destinations_resume_from_northern_cave_kol_corridor()
     local cases = {
         {

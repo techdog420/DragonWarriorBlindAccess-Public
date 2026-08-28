@@ -58,17 +58,20 @@ local MAGIC_TEMPLE_STAGING = {
 local HAUKSNESS_STAGING = {
     route_id = "kol_staging",
     continuation_route_id = "hauksness",
-    -- Far starts such as Tantegel must reach the established Kol hub before
-    -- joining the long western route. Starts already on the validated
-    -- Kol/Garinham/Hauksness corridor remain direct.
-    max_start_distance = 24,
+    -- Off-network starts with more than an eleven-step opening must reach the
+    -- established Kol hub before joining the long western route. Exact
+    -- membership on the validated route remains direct even when its next
+    -- forward marker is farther away.
+    max_start_distance = 11,
+    preserve_route_corridor = true,
     continue_after_staging = true,
 }
 
 local HAUKSNESS_HUB_STAGING = {
     route_id = "kol_staging",
     continuation_route_id = "hauksness_staging",
-    max_start_distance = 24,
+    max_start_distance = 11,
+    preserve_route_corridor = true,
     continue_after_staging = true,
 }
 
@@ -3884,7 +3887,10 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
 
     local close_enough = true
     local start_score = route_start_score(route, map_id, px, py, terrain_offset)
-    if staging.max_start_distance and start_score > staging.max_start_distance then
+    local on_route_corridor = position_is_on_route_corridor(route, px, py)
+    if staging.max_start_distance
+       and start_score > staging.max_start_distance
+       and not (staging.preserve_route_corridor and on_route_corridor) then
         close_enough = false
     end
     if staging.min_x and px < staging.min_x then
@@ -3910,7 +3916,7 @@ local function staging_start_for(id, map_id, px, py, terrain_offset)
     end
     if staging.require_route_corridor
        and not near_destination
-       and not position_is_on_route_corridor(route, px, py) then
+       and not on_route_corridor then
         close_enough = false
     end
     if close_enough then

@@ -121,6 +121,27 @@ Updated: 2026-08-27
 
 ## Immediate FCEUX Handoff
 
+- Western-destination recovery from the Erdrick corridor is source-complete
+  and live-verified (`2026-08-27`). Hauksness, Cantlin, and the
+  Eastern Great Swamp Search Area now use an eleven-step off-network staging
+  boundary before joining their shared western route. From `(44,36)`, each
+  retains its final destination, starts `kol_staging`, and targets `Bridge
+  south bend` at `(44,38)`, two steps south, instead of synthesizing a 24-step
+  opening north to `North Alefgard east road`. Exact membership on the
+  validated Hauksness route remains direct even when its next forward marker
+  is farther than eleven steps; the existing 19-step segment from `(84,27)` is
+  regression-covered. No waypoint geometry or movement timing changed. A
+  complete static sweep checked all 57 exact Erdrick-corridor cells against
+  the three destinations: all 171 selections resolve and none opens with more
+  than 11 steps. Focused route tests pass `304/304`; Lua syntax, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. Loaded starts from
+  `(44,36)` at frames `5287`, `7467`, and `8030` selected `kol_staging` and
+  `Bridge south bend` while retaining Hauksness, Cantlin, and Great Swamp
+  continuations respectively. The user confirmed all three generated as
+  expected. Each active route cancelled cleanly; an extra stop at frame `7370`
+  correctly reported no route active. Fresh frame `11640` confirmed World Map
+  `(44,36)`, path target nil, zero NPC or runtime blockers, and no new script
+  error.
 - Final-progression recovery from the Erdrick corridor is source-complete and
   live-verified (`2026-08-27`). Swamp Cave South Entrance, Rainbow
   Bridge, and Charlock now recognize exact membership on the existing
@@ -3288,10 +3309,10 @@ Updated: 2026-08-27
 
 ## Next Work
 
-1. Commit and push the live-verified three-destination Erdrick-corridor
+1. Commit and push the live-verified western-destination Erdrick-corridor
    recovery batch after user authorization.
-2. Patch the separate Erdrick-corridor batch for Hauksness, Cantlin, and the
-   Eastern Great Swamp Search Area, then live-check its worst opening.
+2. Continue the arbitrary-start route audit with the next largest synthetic
+   opening or repeatable endpoint overshoot.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

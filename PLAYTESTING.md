@@ -6,6 +6,25 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Western-destination recovery from the Erdrick corridor is source-complete
+  and live-verified (`2026-08-27`). Hauksness, Cantlin, and the
+  Eastern Great Swamp Search Area now use an eleven-step off-network staging
+  boundary before joining their shared western route. Static acceptance from
+  `(44,36)` starts `kol_staging`, preserves the final Travel object, and
+  targets `Bridge south bend` at `(44,38)`, two steps south, replacing the
+  synthetic 24-step opening north to `North Alefgard east road`. Exact
+  Hauksness-route membership remains direct beyond the new boundary, including
+  the existing 19-step forward segment from `(84,27)`. No waypoint geometry or
+  movement timing changed. A 57-cell by three-destination audit found all 171
+  selections resolve with no opening over 11 steps. Focused route tests pass
+  `304/304`; Lua syntax, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Loaded starts from `(44,36)` at frames `5287`, `7467`, and `8030`
+  selected `kol_staging` and `Bridge south bend` while retaining Hauksness,
+  Cantlin, and Great Swamp continuations respectively. The user confirmed all
+  three generated as expected. Each active route cancelled cleanly; an extra
+  stop at frame `7370` correctly reported no route active. Fresh frame `11640`
+  confirmed World Map `(44,36)`, path target nil, zero NPC or runtime blockers,
+  and no new script error.
 - Final-progression recovery from the Erdrick corridor is source-complete and
   live-verified (`2026-08-27`). Swamp Cave South Entrance, Rainbow
   Bridge, and Charlock now recognize exact `erdrick`-corridor membership

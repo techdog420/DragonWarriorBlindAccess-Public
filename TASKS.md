@@ -245,7 +245,19 @@ quality-of-life work.
   Loaded route selections from `(28,17)` retained all three final destinations
   while starting the expected route and waypoint. The user confirmed each
   generated as expected; the final probe found no active path or runtime
-  blockers.
+  blockers. A seventh bounded slice is source-complete and live-verified:
+  Hauksness, Cantlin, and Great Swamp now use an eleven-step
+  off-network staging boundary from the Erdrick corridor. From `(44,36)`, each
+  replaces a synthetic 24-step opening with two steps south on `kol_staging`.
+  Exact Hauksness-route membership remains direct even when its next validated
+  marker is farther than eleven steps. Static coverage checks all 171
+  combinations of 57 Erdrick-corridor cells and three destinations; every
+  selection resolves and none opens with more than 11 steps. Focused route
+  tests pass `304/304`; all 33 host-runnable Lua suites and all 68 Python tests
+  pass. Loaded route selections from `(44,36)` retained all three final
+  destinations while starting the expected route and waypoint. The user
+  confirmed each generated as expected; the final probe found no active path
+  or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
