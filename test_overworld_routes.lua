@@ -3686,6 +3686,61 @@ function tests.western_destinations_resume_from_magic_temple_corridor()
     routes.reset_for_tests()
 end
 
+function tests.northern_access_resumes_from_magic_temple_corridor()
+    local cases = {
+        {
+            id = "overworld_kol",
+            name = "Kol",
+            alias = "kol",
+        },
+        {
+            id = "overworld_northern_cave",
+            name = "Northern Cave",
+            alias = "northern cave",
+        },
+        {
+            id = "overworld_mountain_cave",
+            name = "Mountain Cave",
+            alias = "mountain cave",
+        },
+        {
+            id = "overworld_swamp_cave",
+            name = "Swamp Cave North Entrance",
+            alias = "swamp cave",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 107, 113)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from the Magic Temple return corridor")
+        assert_equal(info.route.id, "rimuldar_magic_temple_staging",
+            case.name .. " should first return to the Rimuldar doorstep")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during temple-corridor recovery")
+
+        local segment = assert(routes.plan_next_segment(0x01, 107, 113))
+        assert_equal(segment.waypoint.name, "Temple south approach east",
+            case.name .. " should use the established Magic Temple return")
+        assert_equal(segment.path_length, 1,
+            case.name .. " should replace its synthetic cross-world opening")
+        assert_equal(segment.steps[1], "down",
+            case.name .. " should first follow the proven return southward")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 107, 113)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve from the temple corridor")
+        assert_equal(alias_info.route.id, "rimuldar_magic_temple_staging",
+            case.name .. " alias should use the same return itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_destinations_resume_from_northern_cave_kol_corridor()
     local cases = {
         {

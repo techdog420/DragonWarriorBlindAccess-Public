@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Northern-access recovery from the Magic-Temple-to-Rimuldar corridor is
+  source-complete and awaiting live acceptance (`2026-08-28`). Kol, Northern
+  Cave, Mountain Cave, and Swamp Cave North Entrance now recognize exact
+  `rimuldar_magic_temple` membership through their existing south-island route
+  variants. Static acceptance from `(107,113)` starts
+  `rimuldar_magic_temple_staging`, preserves the final Travel object, and
+  targets `Temple south approach east` at `(107,114)`, one step south, replacing
+  rejected cross-world openings. No waypoint geometry or movement timing
+  changed. A 72-cell by four-destination audit found all 288 selections resolve
+  with no opening longer than the existing validated 13-step southern-road
+  segment. The full 1,152-combination corridor matrix now has no errors; only
+  Tantegel remains flagged for a non-failing segment over 13 steps. Focused
+  route tests pass `308/308`; Lua syntax, all 33 host-runnable Lua suites, and
+  all 68 Python tests pass. Live acceptance should reload Lua at `(107,113)`
+  and create routes to Kol, Northern Cave, Mountain Cave, and Swamp Cave. Each
+  should retain its final destination while announcing Rimuldar as the current
+  leg and `Temple south approach east`, one south, as the next waypoint.
 - Western-destination recovery from the Magic-Temple-to-Rimuldar corridor is
   source-complete and live-verified (`2026-08-28`). Hauksness,
   Cantlin, and the Eastern Great Swamp Search Area now recognize exact

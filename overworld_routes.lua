@@ -2337,6 +2337,7 @@ ROUTES.kol_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_prefix(ROUTES.kol_swamp_cave, 104, 10),
 }
 
@@ -2358,6 +2359,7 @@ ROUTES.swamp_cave_north_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = {
         {
             x = 104,
@@ -2773,6 +2775,7 @@ ROUTES.northern_cave_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
 
@@ -2825,6 +2828,7 @@ ROUTES.mountain_cave_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 

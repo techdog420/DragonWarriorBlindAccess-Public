@@ -296,7 +296,20 @@ quality-of-life work.
   Python tests pass. Loaded selections from `(107,113)` retained all three final
   destinations while starting the Rimuldar leg at `Temple south approach east`,
   one south. The user confirmed each generated correctly; the final probe found
-  no active path or runtime blockers.
+  no active path or runtime blockers. An eleventh bounded slice is
+  source-complete and awaiting live acceptance: Kol, Northern Cave, Mountain
+  Cave, and Swamp Cave North Entrance now recognize the same
+  Magic-Temple-to-Rimuldar return corridor through their existing south-island
+  variants. From `(107,113)`, each replaces a rejected cross-world opening with
+  one step south on `rimuldar_magic_temple_staging`. Static coverage checks all
+  288 combinations of 72 corridor cells and four destinations; every selection
+  resolves, and the largest segment is the existing validated 13-step
+  southern-road leg. The comprehensive 1,152-combination corridor audit now has
+  no errors; only Tantegel remains flagged for a non-failing opening over 13
+  steps. Focused route tests pass `308/308`; all 33 host-runnable Lua suites and
+  all 68 Python tests pass. Live acceptance should confirm all four selections
+  from `(107,113)` retain their final destination while starting the Rimuldar
+  leg at `Temple south approach east`, one south.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

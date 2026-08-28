@@ -121,6 +121,24 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Northern-access recovery from the Magic-Temple-to-Rimuldar corridor is
+  source-complete and awaiting live acceptance (`2026-08-28`). Kol, Northern
+  Cave, Mountain Cave, and Swamp Cave North Entrance now recognize exact
+  `rimuldar_magic_temple` membership through their existing south-island route
+  variants. From `(107,113)`, each retains its final destination, starts
+  `rimuldar_magic_temple_staging`, and targets `Temple south approach east` at
+  `(107,114)`, one step south, instead of attempting a rejected cross-world
+  opening. No waypoint geometry or movement timing changed. A complete static
+  sweep checked all 72 exact corridor cells against the four destinations: all
+  288 selections resolve, with no opening longer than the existing validated
+  13-step southern-road segment. The full 72-cell by 16-destination audit now
+  has no errors; only Tantegel remains flagged for a non-failing opening longer
+  than 13 steps. Focused route tests pass `308/308`; Lua syntax, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. For live acceptance,
+  reload Lua at `(107,113)` and create routes to Kol, Northern Cave, Mountain
+  Cave, and Swamp Cave. Each should announce Rimuldar as the current leg and
+  `Temple south approach east`, one south, as the next waypoint while
+  preserving its final destination.
 - Western-destination recovery from the Magic-Temple-to-Rimuldar corridor is
   source-complete and live-verified (`2026-08-28`). Hauksness,
   Cantlin, and the Eastern Great Swamp Search Area now recognize exact
@@ -3370,10 +3388,10 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified western-destination Magic-Temple-corridor
-   recovery batch after user authorization.
-2. Continue the Magic-Temple-corridor audit with its next coherent destination
-   family.
+1. Live-validate the Kol, Northern Cave, Mountain Cave, and Swamp Cave North
+   Entrance recoveries from Magic Temple corridor coordinate `(107,113)`.
+2. After acceptance, commit and push this northern-access batch, then finish
+   the Magic-Temple-corridor audit with Tantegel's remaining long-opening case.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.
