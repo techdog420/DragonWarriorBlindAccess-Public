@@ -384,7 +384,22 @@ quality-of-life work.
   while selecting `kol_staging` and `North ridge bend` at frames `1179`,
   `1999`, and `2376`. The user confirmed every generated route; tagged
   readiness passed at frame `6480`, and fresh frame `7260` found no active
-  path, NPC blockers, or runtime blockers.
+  path, NPC blockers, or runtime blockers. A seventeenth bounded slice is
+  source-complete and live-verified: Swamp Cave North, Swamp Cave
+  South, Rainbow Bridge, and Charlock now recognize the Garinham-exclusive
+  `x <= 24` section of `tantegel_garinham_staging`. From `(14,4)`, each starts
+  that return and targets `Garinham shoulder east step` one step east instead
+  of opening 25-88 steps on generic or disconnected routes. Shared Erdrick
+  starts remain unchanged. Static coverage checks all 328 combinations of 82
+  corridor cells and four destinations within 24 steps; the full corridor
+  audit drops from 150 failures to 21, leaving a separate
+  Kol/Northern/Mountain batch. Focused route tests pass `315/315`; all 33
+  host-runnable Lua suites and all 68 Python tests pass. Loaded starts from
+  `(14,4)` retained all four final destinations while selecting
+  `tantegel_garinham_staging` and `Garinham shoulder east step` at frames
+  `3067`, `3473`, `4530`, and `5011`. The user confirmed every generated route;
+  tagged readiness passed at frame `7380`, and fresh frame `7800` found no
+  active path, NPC blockers, or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

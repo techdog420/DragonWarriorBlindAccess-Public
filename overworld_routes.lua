@@ -3202,6 +3202,9 @@ ROUTES.swamp_cave_garinham_staging = {
         "Enter Swamp Cave, then cross manually to the south exit.",
     staging = GARINHAM_SWAMP_CAVE_STAGING,
     selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    selection_route_corridor_regions = {
+        {route_id = "tantegel_garinham_staging", max_x = 24},
+    },
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
 }
 
@@ -3290,6 +3293,7 @@ ROUTES.swamp_cave_south_mainland = {
             min_y = 21,
             max_y = 24,
         },
+        {route_id = "tantegel_garinham_staging", max_x = 24},
     },
     -- At the physical north entrance and its doorstep, retain the dedicated
     -- safe re-entry variant instead of treating local cave handling as a

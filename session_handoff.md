@@ -121,6 +121,27 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Garinham bridge-return cave access is source-complete and live-verified
+  (`2026-08-28`). Swamp Cave North, Swamp Cave South, Rainbow
+  Bridge, and Charlock now recognize exact `tantegel_garinham_staging`
+  membership only on the Garinham-exclusive section `x <= 24`. The bounded
+  selector keeps shared Erdrick-corridor starts on their existing routes. From
+  `(14,4)`, all four retain their final destination, start
+  `tantegel_garinham_staging`, and target `Garinham shoulder east step` at
+  `(15,4)`, one step east, instead of selecting generic `kol_staging` or the
+  disconnected `charlock_return` with 25-88-step openings. No waypoint geometry
+  or movement timing changed. Static coverage checks all 328 combinations of
+  82 exact corridor cells and four destinations within the established 24-step
+  bound; the full 16-destination audit falls from 150 failures to 21, leaving a
+  separate Kol/Northern/Mountain group. Focused route tests pass `315/315`;
+  Lua syntax, all 33 host-runnable Lua suites, and all 68 Python tests pass.
+  Loaded starts from `(14,4)` selected `tantegel_garinham_staging` and
+  `Garinham shoulder east step` while retaining Swamp Cave North, Swamp Cave
+  South, Rainbow Bridge, and Charlock at frames `3067`, `3473`, `4530`, and
+  `5011`; the user confirmed all four generated correctly and each test
+  cancelled cleanly. Tagged readiness passed at frame `7380`. Fresh frame
+  `7800` confirmed World Map `(14,4)`, path target nil, zero NPC blockers, zero
+  runtime blockers, and no new script error.
 - Tantegel bridge-return corner recovery is source-complete and live-verified
   (`2026-08-28`). The northbound `tantegel_bridge_staging` wrapper
   and southbound `kol_staging` route use opposite L-turn ordering between

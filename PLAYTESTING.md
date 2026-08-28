@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Garinham bridge-return cave access is source-complete and live-verified
+  (`2026-08-28`). Swamp Cave North, Swamp Cave South, Rainbow
+  Bridge, and Charlock now recognize exact `tantegel_garinham_staging`
+  membership on its Garinham-exclusive `x <= 24` section. At `(14,4)`, all four
+  start that established return and target `Garinham shoulder east step` at
+  `(15,4)`, one step east, replacing generic or disconnected 25-88-step
+  openings. The bounded region preserves shared Erdrick-corridor selection, and
+  no waypoint geometry or movement timing changed. All 328 combinations of 82
+  exact corridor cells and four destinations resolve within 24 steps. The full
+  corridor audit drops from 150 failures to 21; those remaining flags are a
+  separate Kol/Northern/Mountain batch. Focused route tests pass `315/315`;
+  Lua syntax, all 33 host-runnable Lua suites, and all 68 Python tests pass.
+  Loaded starts from World Map `(14,4)` selected
+  `tantegel_garinham_staging` and `Garinham shoulder east step` for all four
+  destinations at frames `3067`, `3473`, `4530`, and `5011`. The user confirmed
+  every generated route and each test cancelled cleanly. Tagged readiness
+  passed at frame `7380`; fresh frame `7800` confirmed path target nil and no
+  NPC or runtime blockers.
 - Tantegel bridge-return corner recovery is source-complete and live-verified
   (`2026-08-28`). The reverse bridge wrapper includes six proven
   cells omitted by the forward `kol_staging` L-turn: `(32,21)` through
