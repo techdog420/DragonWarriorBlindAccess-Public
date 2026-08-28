@@ -6,6 +6,28 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp-Cave approach-corner recovery is source-complete and live-verified
+  (`2026-08-28`). Forward `swamp_cave` geometry includes six cells
+  omitted by the reverse corridor's alternate L-turn ordering: `(96,22)`
+  through `(96,26)`, plus `(97,26)`. Brecconary, Erdrick's Cave, and Garinham
+  now select their connected north-cave return only on that bounded region;
+  Swamp Cave South Entrance, Rainbow Bridge, and Charlock select the mainland
+  cave approach there. At `(96,24)`, the first group starts
+  `tantegel_bridge_swamp_cave_staging` and the second starts `swamp_cave`; all
+  six target `West of Kol north lane` at `(96,21)`, three steps north. This
+  replaces 26-64-step synthetic openings without changing route geometry or
+  movement timing. The three 63-cell by 16-destination corridor audits now
+  have zero failures across 3,024 combinations and a maximum opening of 13.
+  The completed Kol-corridor audit also covers all 3,008 combinations of 188
+  cells and 16 destinations within its 24-step bound. Focused route tests pass
+  `313/313`; Lua syntax, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Loaded starts from World Map `(96,24)` selected the expected
+  early-return route for Brecconary, Erdrick's Cave, and Garinham at frames
+  `1370`, `4879`, and `5431`; Swamp Cave South, Rainbow Bridge, and Charlock
+  selected `swamp_cave` at frames `6518`, `7308`, and `7760`. All six targeted
+  `West of Kol north lane`, the user confirmed each generated route, and every
+  test cancelled cleanly. Fresh frame `14820` confirmed path target nil and no
+  NPC or runtime blockers.
 - Early-destination recovery from the eastern Tantegel-to-Kol corridor is
   source-complete and live-verified (`2026-08-28`). Brecconary,
   Erdrick's Cave, and Garinham now recognize exact `kol_staging` membership in

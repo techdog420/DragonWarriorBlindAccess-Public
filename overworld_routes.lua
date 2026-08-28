@@ -2521,6 +2521,9 @@ ROUTES.garinham_swamp_cave_north = {
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
     selection_route_corridors = {"kol_swamp_cave_staging"},
+    selection_route_corridor_regions = {
+        {route_id = "swamp_cave", max_x = 97, min_y = 22, max_y = 26},
+    },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
@@ -2532,6 +2535,9 @@ ROUTES.erdrick_swamp_cave_north = {
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
     selection_route_corridors = {"kol_swamp_cave_staging"},
+    selection_route_corridor_regions = {
+        {route_id = "swamp_cave", max_x = 97, min_y = 22, max_y = 26},
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2543,6 +2549,9 @@ ROUTES.brecconary_swamp_cave_north = {
     staging = SWAMP_CAVE_NORTH_EARLY_DESTINATION_STAGING,
     selection_anchors = {{x = 104, y = 44, max_distance = 4}},
     selection_route_corridors = {"kol_swamp_cave_staging"},
+    selection_route_corridor_regions = {
+        {route_id = "swamp_cave", max_x = 97, min_y = 22, max_y = 26},
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -3268,6 +3277,13 @@ ROUTES.swamp_cave_south_mainland = {
         "kol_rain_shrine_staging",
         "kol_swamp_cave_staging",
         "erdrick",
+    },
+    -- The forward Kol-to-cave route and its reverse use opposite L-turn
+    -- ordering at (96,21)-(98,26). Include only the six proven forward cells
+    -- omitted by reverse-corridor membership so connected destinations do not
+    -- fall back to a long synthetic opening there.
+    selection_route_corridor_regions = {
+        {route_id = "swamp_cave", max_x = 97, min_y = 22, max_y = 26},
     },
     -- At the physical north entrance and its doorstep, retain the dedicated
     -- safe re-entry variant instead of treating local cave handling as a

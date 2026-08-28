@@ -121,6 +121,30 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Swamp-Cave approach-corner recovery is source-complete and live-verified
+  (`2026-08-28`). The forward Kol-to-cave route and its reverse use
+  opposite L-turn ordering between `(96,21)` and `(98,26)`, leaving six proven
+  forward cells outside reverse-corridor selection: `(96,22)` through
+  `(96,26)`, plus `(97,26)`. Brecconary, Erdrick's Cave, and Garinham now
+  recognize only that bounded forward-route region through their existing
+  Swamp-Cave-north variants. Swamp Cave South Entrance, Rainbow Bridge, and
+  Charlock recognize the same region through the existing mainland cave
+  crossing. From `(96,24)`, the early destinations start
+  `tantegel_bridge_swamp_cave_staging`; the southern/final destinations start
+  `swamp_cave`. All six target `West of Kol north lane` at `(96,21)`, three
+  steps north, instead of opening with 26-64 synthetic steps. No waypoint
+  geometry or movement timing changed. Static audits of the three shared
+  63-cell approach corridors cover 3,024 combinations against all 16 Travel
+  destinations: all resolve within the established 13-step bound. A separate
+  188-cell by 16-destination audit closes all 3,008 Kol-corridor combinations
+  within its 24-step bound. Focused route tests pass `313/313`; Lua syntax, all
+  33 host-runnable Lua suites, and all 68 Python tests pass. Loaded starts from
+  `(96,24)` selected the expected early-return route at frames `1370`, `4879`,
+  and `5431`, and the expected southbound cave route at frames `6518`, `7308`,
+  and `7760`. All six targeted `West of Kol north lane`; the user confirmed
+  every generated route and cancelled each test cleanly. Fresh frame `14820`
+  confirmed World Map `(96,24)`, path target nil, zero NPC blockers, zero
+  runtime blockers, and no new script error.
 - Early-destination recovery from the eastern Tantegel-to-Kol corridor is
   source-complete and live-verified (`2026-08-28`). Brecconary,
   Erdrick's Cave, and Garinham now recognize exact `kol_staging` membership in

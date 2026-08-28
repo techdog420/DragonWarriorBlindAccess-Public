@@ -352,7 +352,25 @@ quality-of-life work.
   `5069`, and `5593` retained Brecconary, Erdrick's Cave, and Garinham while
   starting the expected bridge-junction leg. The user confirmed all three
   generated correctly; fresh frame `7740` found no active path, NPC blockers,
-  or runtime blockers.
+  or runtime blockers. The complete follow-up audit checks all 3,008
+  combinations of 188 exact Kol-corridor cells and 16 destinations; every
+  route resolves within the established 24-step bound, closing that corridor
+  for this pass. A fifteenth bounded slice is source-complete and live-verified:
+  six forward Kol-to-Swamp-Cave cells omitted by the reversed
+  route's alternate L-turn ordering now select the existing connected route.
+  From `(96,24)`, Brecconary, Erdrick's Cave, and Garinham start
+  `tantegel_bridge_swamp_cave_staging`; Swamp Cave South, Rainbow Bridge, and
+  Charlock start `swamp_cave`. All six target `West of Kol north lane` three
+  steps north, replacing 26-64-step synthetic openings. The bounded selector
+  covers only `(96,22)` through `(96,26)` plus `(97,26)`, and changes no
+  waypoint geometry or movement timing. Static audits of the three shared
+  63-cell corridors cover 3,024 combinations against all 16 destinations with
+  zero failures and a maximum opening of 13. Focused route tests pass
+  `313/313`; all 33 host-runnable Lua suites and all 68 Python tests pass.
+  Loaded starts from `(96,24)` selected the expected route and waypoint for all
+  six destinations at frames `1370`, `4879`, `5431`, `6518`, `7308`, and
+  `7760`. The user confirmed every generated route; fresh frame `14820` found
+  no active path, NPC blockers, or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
