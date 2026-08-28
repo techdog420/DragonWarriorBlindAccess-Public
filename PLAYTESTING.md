@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The third Rimuldar return-corridor recovery batch is live-verified
+  (`2026-08-28`). Hauksness, Cantlin, and the Eastern Great Swamp
+  Search Area now recognize exact `rimuldar_swamp_cave_north_staging` corridor
+  membership through their existing southern-island variants. This reuses
+  established route geometry and timing unchanged. Before the patch, each had
+  48 overlong openings; at `(83,55)`, each opened `kol_staging` at 25 steps.
+  All 255 combinations now retain the requested destination with no opening
+  over 14 steps. At `(83,55)`, all three start `swamp_cave_south` and target
+  `South island west ridge lane` at `(83,54)`, one step north. Focused route
+  tests pass `322/322`; Lua syntax, all 33 host-runnable Lua suites, all 68
+  Python tests, speech dependency, and command-queue checks pass. Loaded starts
+  retained Hauksness at frames `730` and `3571`, Cantlin at frame `5069`, and
+  Great Swamp at frame `5893`; each opened the expected nearby return. Shift+U
+  stopped the accepted runs cleanly at frames `4046`, `5456`, and `6221`.
+  Tagged readiness passed at frame `8400`; fresh frame `8700` found World Map
+  `(83,55)` with no active path, NPC blockers, runtime blockers, or new script
+  error.
 - The second Rimuldar return-corridor recovery batch is live-verified
   (`2026-08-28`). Kol, Northern Cave, and Mountain Cave now
   recognize exact `rimuldar_swamp_cave_north_staging` corridor membership

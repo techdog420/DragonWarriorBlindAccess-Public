@@ -500,6 +500,21 @@ quality-of-life work.
   path, NPC blockers, runtime blockers, or new script error. Focused route tests
   pass `321/321`; the full gate passes all 33 host-runnable Lua suites and all
   68 Python tests.
+  A twenty-fifth bounded slice is source-complete and live-verified:
+  Hauksness, Cantlin, and the Eastern Great Swamp Search Area now recognize all
+  85 exact cells on `rimuldar_swamp_cave_north_staging`. Before the patch, each
+  had 48 openings over the connected bound, beginning at `(83,55)` with a
+  25-step `kol_staging` segment. All 255 destination combinations now retain
+  the requested target with no opening over 14 steps. At `(83,55)`, all three
+  start `swamp_cave_south` toward `South island west ridge lane` at `(83,54)`,
+  one step north. Focused route tests pass `322/322`; the full gate passes all
+  33 host-runnable Lua suites and all 68 Python tests. Tantegel and Swamp Cave
+  North remain as the final isolated pair on this corridor. Loaded starts
+  retained Hauksness at frames `730` and `3571`, Cantlin at frame `5069`, and
+  Great Swamp at frame `5893`; each selected the expected nearby return.
+  Shift+U stopped the accepted runs at frames `4046`, `5456`, and `6221`.
+  Tagged readiness passed at frame `8400`; fresh frame `8700` found no active
+  path, NPC blockers, runtime blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

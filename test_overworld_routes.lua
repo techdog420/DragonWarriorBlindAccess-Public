@@ -11441,6 +11441,57 @@ function tests.all_overworld_landmark_pairs_resolve_with_bounded_openings()
     routes.reset_for_tests()
 end
 
+function tests.rimuldar_return_corridor_western_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_hauksness", name = "Hauksness"},
+        {id = "overworld_cantlin", name = "Cantlin"},
+        {
+            id = "overworld_eastern_great_swamp_search_area",
+            name = "Eastern Great Swamp Search Area",
+        },
+    }
+
+    local checked = 0
+    for _, target in ipairs(targets) do
+        for _, cell in ipairs(
+            route_corridor_cells("rimuldar_swamp_cave_north_staging")) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Rimuldar return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Rimuldar return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Rimuldar return")
+            assert(segment and segment.path_length <= 14,
+                target.name .. " should use a connected Rimuldar return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+    assert_equal(checked, 255,
+        "the western-destination Rimuldar audit should cover every combination")
+
+    for _, target in ipairs(targets) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(target, 0x01, 83, 55))
+        assert_equal(info.route.id, "swamp_cave_south",
+            target.name .. " should start on the nearby Rimuldar return")
+        local segment = assert(routes.plan_next_segment(0x01, 83, 55))
+        assert_equal(segment.waypoint.name, "South island west ridge lane",
+            target.name .. " should target the adjacent return waypoint")
+        assert_equal(segment.path_length, 1,
+            target.name .. " should open one step from the return waypoint")
+    end
+
+    routes.reset_for_tests()
+end
+
 local failures = 0
 local total = 0
 
