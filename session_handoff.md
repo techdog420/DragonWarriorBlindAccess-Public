@@ -121,6 +121,27 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The first Rimuldar return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Brecconary, Erdrick's Cave, and
+  Garinham now recognize exact membership on the validated
+  `rimuldar_swamp_cave_north_staging` corridor through their existing
+  southern-island variants. They reuse the established Swamp Cave crossing,
+  Kol bypass, bridge junction, and final routes; no waypoint geometry or
+  movement timing changed. All 255 combinations of 85 exact corridor cells and
+  the three destinations retain the selected target and open within 24 steps.
+  At `(99,49)`, all three retain their final destination while starting
+  `rainbow_bridge_return` toward `Swamp Cave South Entrance` at `(104,49)`,
+  five steps east, replacing 59-60-step synthetic openings. Focused route tests
+  pass `320/320`; the full gate passes Lua syntax, all 33 host-runnable Lua
+  suites, all 68 Python tests, speech dependency, and command-queue checks.
+  Loaded starts from World Map `(99,49)` selected `rainbow_bridge_return` and
+  `Swamp Cave South Entrance` while retaining Brecconary, Erdrick's Cave, and
+  Garinham through their distinct staged itineraries at frames `4390`, `5064`,
+  and `6167`. The user confirmed all three routes, and Shift+U stopped each
+  route and autowalk cleanly at frames `4663`, `5342`, and `6442`. Tagged
+  readiness passed at frame `8760`; fresh frame `9660` found the hero at
+  `(99,49)` with no active path, NPC blockers, runtime blockers, or new script
+  error.
 - Swamp Cave North destination retention across the northern return is
   source-complete and live-verified (`2026-08-28`). The
   `swamp_cave_northern_return_staging` wrapper now explicitly retains

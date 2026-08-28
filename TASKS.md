@@ -473,7 +473,21 @@ quality-of-life work.
   same route at frame `2110` instead of replacing it, and Shift+U stopped the
   route and autowalk cleanly at frame `2405`. The user confirmed the route.
   Tagged readiness passed at frame `7620`, and fresh frame `7920` found no
-  active path, NPC blockers, runtime blockers, or new script error.
+  active path, NPC blockers, runtime blockers, or new script error. A
+  twenty-third bounded slice is source-complete and live-verified:
+  Brecconary, Erdrick's Cave, and Garinham now recognize all 85 exact cells on
+  the validated `rimuldar_swamp_cave_north_staging` corridor. All 255
+  destination combinations retain the requested target and open within 24
+  steps. At `(99,49)`, all three start `rainbow_bridge_return` toward Swamp
+  Cave South at `(104,49)`, five steps east, instead of synthesizing 59-60-step
+  mainland openings. Focused route tests pass `320/320`; the full gate passes
+  all 33 host-runnable Lua suites and all 68 Python tests. Loaded starts from
+  `(99,49)` selected the expected cave-return leg and waypoint for Brecconary,
+  Erdrick's Cave, and Garinham at frames `4390`, `5064`, and `6167`; the user
+  confirmed every route. Shift+U stopped each route and autowalk cleanly at
+  frames `4663`, `5342`, and `6442`. Tagged readiness passed at frame `8760`,
+  and fresh frame `9660` found no active path, NPC blockers, runtime blockers,
+  or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The first Rimuldar return-corridor recovery batch is live-verified
+  (`2026-08-28`). Brecconary, Erdrick's Cave, and Garinham now
+  recognize exact `rimuldar_swamp_cave_north_staging` corridor membership
+  through their existing southern-island variants. This reuses established
+  route geometry and timing unchanged. At `(99,49)`, all three retain the
+  selected destination, start `rainbow_bridge_return`, and target Swamp Cave
+  South at `(104,49)`, five steps east, instead of opening 59-60 steps toward
+  the mainland. The 85-cell by three-destination regression covers all 255
+  combinations with no opening over 24 steps. Focused route tests pass
+  `320/320`; Lua syntax, all 33 host-runnable Lua suites, all 68 Python tests,
+  speech dependency, and command-queue checks pass. Loaded starts from World
+  Map `(99,49)` selected the expected cave-return leg and waypoint for all
+  three destinations at frames `4390`, `5064`, and `6167`; the user confirmed
+  every route. Shift+U stopped each route and autowalk cleanly at frames
+  `4663`, `5342`, and `6442`. Tagged readiness passed at frame `8760`; fresh
+  frame `9660` found no active path, NPC blockers, runtime blockers, or new
+  script error.
 - Swamp Cave North destination retention across the northern return is
   live-verified (`2026-08-28`). The
   `swamp_cave_northern_return_staging` wrapper now explicitly retains the

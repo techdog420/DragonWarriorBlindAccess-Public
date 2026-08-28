@@ -2578,7 +2578,10 @@ ROUTES.brecconary_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
-    selection_route_corridors = {"rimuldar_magic_temple"},
+    selection_route_corridors = {
+        "rimuldar_magic_temple",
+        "rimuldar_swamp_cave_north_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -2595,7 +2598,10 @@ ROUTES.erdrick_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
-    selection_route_corridors = {"rimuldar_magic_temple"},
+    selection_route_corridors = {
+        "rimuldar_magic_temple",
+        "rimuldar_swamp_cave_north_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2612,7 +2618,10 @@ ROUTES.garinham_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
-    selection_route_corridors = {"rimuldar_magic_temple"},
+    selection_route_corridors = {
+        "rimuldar_magic_temple",
+        "rimuldar_swamp_cave_north_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
