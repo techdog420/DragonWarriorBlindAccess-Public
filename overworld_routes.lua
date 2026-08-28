@@ -283,6 +283,7 @@ local NORTHERN_CAVE_BRIDGE_STAGING = {
     -- west doorstep remain within thirteen steps of the bridge leg.
     max_start_distance = 13,
     require_route_corridor = true,
+    preserve_route_corridor = true,
     continue_after_staging = true,
 }
 
@@ -2421,7 +2422,12 @@ ROUTES.garinham_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+    },
+    selection_route_corridor_regions = {
+        {route_id = "kol_staging", min_x = 47, max_y = 37},
+    },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 
@@ -2435,7 +2441,12 @@ ROUTES.erdrick_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+    },
+    selection_route_corridor_regions = {
+        {route_id = "kol_staging", min_x = 47, max_y = 37},
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2449,7 +2460,12 @@ ROUTES.brecconary_kol = {
         {x = 104, y = 10, max_distance = 4},
         {x = 81, y = 1, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+    },
+    selection_route_corridor_regions = {
+        {route_id = "kol_staging", min_x = 47, max_y = 37},
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -3849,6 +3865,20 @@ local function route_selection_score(route, map_id, px, py, terrain_offset)
         for _, corridor_id in ipairs(
             route and route.selection_route_corridors or {}) do
             if position_is_on_route_corridor(ROUTES[corridor_id], px, py) then
+                score = 0
+                break
+            end
+        end
+        for _, region in ipairs(
+            route and route.selection_route_corridor_regions or {}) do
+            local within_region =
+                (region.min_x == nil or px >= region.min_x)
+                and (region.max_x == nil or px <= region.max_x)
+                and (region.min_y == nil or py >= region.min_y)
+                and (region.max_y == nil or py <= region.max_y)
+            if within_region
+               and position_is_on_route_corridor(
+                    ROUTES[region.route_id], px, py) then
                 score = 0
                 break
             end

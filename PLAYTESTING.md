@@ -6,6 +6,25 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Early-destination recovery from the eastern Tantegel-to-Kol corridor is
+  source-complete and live-verified (`2026-08-28`). Brecconary,
+  Erdrick's Cave, and Garinham now recognize exact `kol_staging` membership in
+  the bounded region `x >= 47, y <= 37` through their existing Kol-origin
+  variants. Static acceptance from `(91,37)` starts
+  `tantegel_bridge_staging`, preserves the final Travel object, and targets
+  `Kol southwest bridge` at `(90,37)`, one step west, replacing 47- or 48-step
+  synthetic openings. Direct local starts near Tantegel, Brecconary, and
+  Erdrick's Cave remain unchanged, and exact bridge-return membership preserves
+  the known 18-step segment from `(84,26)`. No waypoint geometry, movement
+  timing, or downstream itinerary changed. A 188-cell by three-destination
+  audit found all 564 selections resolve within the existing 24-step staging
+  bound. Focused route tests pass `311/311`; Lua syntax, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. Loaded starts from `(91,37)` at
+  frames `4442`, `5069`, and `5593` selected `tantegel_bridge_staging` and `Kol
+  southwest bridge` while retaining Brecconary, Erdrick's Cave, and Garinham
+  respectively. The user confirmed all three generated correctly; the first
+  two cancelled cleanly. Fresh frame `7740` confirmed World Map `(91,37)`, path
+  target nil, zero NPC or runtime blockers, and no new script error.
 - Final-progression recovery from the Tantegel-to-Kol corridor is
   source-complete and live-verified (`2026-08-28`). Swamp Cave
   South Entrance, Rainbow Bridge, and Charlock now recognize exact

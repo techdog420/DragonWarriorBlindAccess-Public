@@ -35,6 +35,57 @@ local function find_waypoint(route_id, name)
     return nil
 end
 
+local function route_corridor_cells(route_id)
+    local route = assert(routes._route_for_tests(route_id))
+    local cells = {}
+    local seen = {}
+
+    local function add(x, y)
+        local key = x .. "," .. y
+        if not seen[key] then
+            seen[key] = true
+            cells[#cells + 1] = {x = x, y = y}
+        end
+    end
+
+    local function append_axis(axis, x, y, tx, ty)
+        if axis == "vertical" then
+            while y ~= ty do
+                y = y + (ty < y and -1 or 1)
+                add(x, y)
+            end
+        elseif axis == "horizontal" then
+            while x ~= tx do
+                x = x + (tx < x and -1 or 1)
+                add(x, y)
+            end
+        end
+        return x, y
+    end
+
+    local first = assert(route.waypoints[1])
+    local x, y = first.x, first.y
+    add(x, y)
+    for index = 2, #route.waypoints do
+        local point = route.waypoints[index]
+        for _, axis in ipairs(
+            point.axis_order or route.axis_order
+                or {"vertical", "horizontal"}) do
+            x, y = append_axis(axis, x, y, point.x, point.y)
+        end
+        if x ~= point.x then
+            x, y = append_axis(
+                "horizontal", x, y, point.x, point.y)
+        end
+        if y ~= point.y then
+            x, y = append_axis(
+                "vertical", x, y, point.x, point.y)
+        end
+    end
+
+    return cells
+end
+
 local tests = {}
 
 function tests.erdric_alias_starts_erdrick_route_from_current_progress()
@@ -3513,6 +3564,94 @@ function tests.final_progression_destinations_resume_from_kol_corridor()
         assert_equal(alias_info.route.id, "kol_staging",
             case.name .. " alias should use the same recovery itinerary")
     end
+
+    routes.reset_for_tests()
+end
+
+function tests.early_destinations_resume_from_kol_corridor()
+    local cases = {
+        {
+            id = "overworld_brecconary",
+            name = "Brecconary",
+            alias = "brecconary",
+        },
+        {
+            id = "overworld_erdrick_s_cave",
+            name = "Erdrick's Cave",
+            alias = "erdrick",
+        },
+        {
+            id = "overworld_garinham",
+            name = "Garinham",
+            alias = "garinham",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 91, 37)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from the proven Kol corridor")
+        assert_equal(info.route.id, "tantegel_bridge_staging",
+            case.name .. " should reverse the known Kol corridor instead of synthesizing a cross-world opening")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during bridge recovery")
+
+        local segment = assert(routes.plan_next_segment(0x01, 91, 37))
+        assert_equal(segment.waypoint.name, "Kol southwest bridge",
+            case.name .. " should rejoin at the next established return waypoint")
+        assert_equal(segment.path_length, 1,
+            case.name .. " should replace its forty-seven-step opening")
+        assert_equal(segment.steps[1], "left",
+            case.name .. " should reverse west on the proven corridor")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 91, 37)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve from the proven corridor")
+        assert_equal(alias_info.route.id, "tantegel_bridge_staging",
+            case.name .. " alias should use the same recovery itinerary")
+    end
+
+    routes.reset_for_tests()
+    local long_info = assert(routes.start_for_object(
+        cases[1], 0x01, 84, 26))
+    assert_equal(long_info.route.id, "tantegel_bridge_staging",
+        "exact corridor membership should preserve the established long segment")
+    local long_segment = assert(routes.plan_next_segment(0x01, 84, 26))
+    assert_equal(long_segment.waypoint.name, "North Alefgard bridge road",
+        "the long segment should retain its next validated return waypoint")
+    assert_equal(long_segment.path_length, 18,
+        "the known eighteen-step return should not fall back to another corridor")
+    assert_equal(long_segment.steps[1], "left",
+        "the established long segment should begin westward")
+
+    local checked = 0
+    for _, cell in ipairs(route_corridor_cells("kol_staging")) do
+        for _, case in ipairs(cases) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                case, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                case.name .. " should resolve at every Kol corridor cell")
+            assert_equal(routes.active_route_matches_object(case), true,
+                case.name .. " should remain selected across the Kol corridor")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                case.name .. " should plan at every Kol corridor cell")
+            assert(segment and segment.path_length <= 24,
+                case.name .. " should not exceed the established early-destination staging bound; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+    assert_equal(checked, 564,
+        "the early-destination audit should cover all corridor combinations")
 
     routes.reset_for_tests()
 end

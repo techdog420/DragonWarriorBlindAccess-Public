@@ -121,6 +121,26 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Early-destination recovery from the eastern Tantegel-to-Kol corridor is
+  source-complete and live-verified (`2026-08-28`). Brecconary,
+  Erdrick's Cave, and Garinham now recognize exact `kol_staging` membership in
+  the bounded northern/eastern region `x >= 47, y <= 37` through their existing
+  Kol-origin variants. From `(91,37)`, each retains its final destination,
+  starts `tantegel_bridge_staging`, and targets `Kol southwest bridge` at
+  `(90,37)`, one step west, instead of synthesizing a 47- or 48-step opening.
+  The bounded region preserves direct local starts around Tantegel,
+  Brecconary, and Erdrick's Cave; exact bridge-return membership also preserves
+  the established 18-step segment from `(84,26)`. No waypoint geometry,
+  movement timing, or downstream itinerary changed. A complete static sweep
+  checked all 188 exact corridor cells against the three destinations: all 564
+  selections resolve within the existing 24-step early-destination staging
+  bound. Focused route tests pass `311/311`; Lua syntax, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. Loaded starts from `(91,37)` at
+  frames `4442`, `5069`, and `5593` selected `tantegel_bridge_staging` and `Kol
+  southwest bridge` while retaining Brecconary, Erdrick's Cave, and Garinham
+  respectively. The user confirmed all three generated correctly; the first
+  two cancelled cleanly. Fresh frame `7740` confirmed World Map `(91,37)`, path
+  target nil, zero NPC or runtime blockers, and no new script error.
 - Final-progression recovery from the Tantegel-to-Kol corridor is
   source-complete and live-verified (`2026-08-28`). Swamp Cave
   South Entrance, Rainbow Bridge, and Charlock now recognize exact
@@ -3421,9 +3441,9 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified first Tantegel-to-Kol corridor batch.
-2. Continue that corridor with its Brecconary, Erdrick's Cave, and Garinham
-   early-destination outliers.
+1. Commit and push the live-verified second Tantegel-to-Kol corridor batch.
+2. Audit that corridor's remaining destinations and select the next bounded
+   recovery batch.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

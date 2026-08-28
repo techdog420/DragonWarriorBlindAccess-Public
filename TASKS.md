@@ -335,7 +335,24 @@ quality-of-life work.
   frames `4119`, `5284`, and `6370` retained Swamp Cave South, Rainbow Bridge,
   and Charlock while starting the expected Kol leg. The user confirmed all
   three generated correctly; fresh frame `10200` found no active path, NPC
-  blockers, or runtime blockers.
+  blockers, or runtime blockers. A fourteenth bounded slice is source-complete
+  and live-verified: Brecconary, Erdrick's Cave, and Garinham now
+  recognize exact membership on the northern/eastern Tantegel-to-Kol corridor
+  through their existing Kol-origin variants. The bounded region `x >= 47,
+  y <= 37` preserves direct local starts near Tantegel, Brecconary, and
+  Erdrick's Cave. From `(91,37)`, each replaces a 47- or 48-step synthetic
+  opening with one step west to `Kol southwest bridge` on
+  `tantegel_bridge_staging`, while retaining its final destination. Exact
+  bridge-return membership preserves the known 18-step segment from `(84,26)`.
+  No waypoint geometry or movement timing changed. Static coverage checks all
+  564 combinations of 188 exact corridor cells and three destinations; every
+  selection resolves within the existing 24-step early-destination staging
+  bound. Focused route tests pass `311/311`; all 33 host-runnable Lua suites and
+  all 68 Python tests pass. Loaded starts from `(91,37)` at frames `4442`,
+  `5069`, and `5593` retained Brecconary, Erdrick's Cave, and Garinham while
+  starting the expected bridge-junction leg. The user confirmed all three
+  generated correctly; fresh frame `7740` found no active path, NPC blockers,
+  or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
