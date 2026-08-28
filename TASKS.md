@@ -443,7 +443,24 @@ quality-of-life work.
   expected return and waypoint for all three destinations at frames `764`,
   `1708`, and `2227`; the user confirmed each route and cancellation. Tagged
   readiness passed at frame `4980`, and fresh frame `5280` found no active
-  path, NPC blockers, runtime blockers, or new script error.
+  path, NPC blockers, runtime blockers, or new script error. A twenty-first
+  bounded slice is source-complete and live-verified: Northern Cave,
+  Hauksness, Cantlin, and Great Swamp now recognize the exact `mountain_cave`
+  corridor through their existing northwestern-return variants. The shared
+  western Swamp Cave staging leg also retains Swamp Cave North as its active
+  destination during the nested return. No waypoint geometry or movement
+  timing changed. At `(24,58)`, those five destinations all start
+  `mountain_cave_return`, remain selected, and target `Mountain Cave south
+  approach` at `(25,58)`, one step east. The complete audit covers all 368
+  combinations of 23 exact spur cells and all 16 Travel destinations within 24
+  steps. Focused route tests pass `319/319`; all 33 host-runnable Lua suites and
+  all 68 Python tests pass. Loaded starts from World Map `(24,58)` selected the
+  expected return and waypoint for all five destinations at frames `2960`,
+  `3402`, `4661`, `5403`, and `5893`; the user confirmed every route. Shift+U
+  stopped each route and autowalk cleanly at frames `3271`, `3660`, `4909`,
+  `5667`, and `6172`. Tagged readiness passed at frame `10380`, and fresh frame
+  `10740` found no active path, NPC blockers, runtime blockers, or new script
+  error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

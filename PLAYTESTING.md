@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The final Mountain Cave spur source batch is live-verified
+  (`2026-08-28`). Northern Cave, Hauksness, Cantlin, and Great Swamp now
+  recognize exact `mountain_cave` corridor membership through their existing
+  northwestern returns. The shared western Swamp Cave staging leg also retains
+  Swamp Cave North as its active Travel destination during the nested Mountain
+  Cave return. No waypoint geometry or movement timing changed. At `(24,58)`,
+  Swamp Cave North and the four newly connected destinations all start
+  `mountain_cave_return`, retain the requested destination, and target
+  `Mountain Cave south approach` at `(25,58)`, one step east. The complete
+  23-cell by 16-destination regression now checks all 368 combinations with no
+  opening over 24 steps. Focused route tests pass `319/319`; Lua syntax, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. Loaded starts from
+  World Map `(24,58)` selected the expected return and waypoint for all five
+  destinations at frames `2960`, `3402`, `4661`, `5403`, and `5893`; the user
+  confirmed every generated route. Shift+U stopped each route and autowalk
+  cleanly at frames `3271`, `3660`, `4909`, `5667`, and `6172`. Tagged
+  readiness passed at frame `10380`; fresh frame `10740` found no active path,
+  NPC blockers, runtime blockers, or new script error.
 - Mountain Cave spur recovery for Swamp Cave South, Rainbow Bridge, and
   Charlock is source-complete and live-verified (`2026-08-28`).
   `swamp_cave_south_mainland` and its western staging leg now recognize exact

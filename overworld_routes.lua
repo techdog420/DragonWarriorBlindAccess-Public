@@ -2984,6 +2984,7 @@ ROUTES.northern_cave_northwestern_return = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
+    selection_route_corridors = {"mountain_cave"},
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
 
@@ -3021,7 +3022,10 @@ ROUTES.hauksness_northwestern_return = {
         {x = 29, y = 57, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+        "mountain_cave",
+    },
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
@@ -3043,7 +3047,10 @@ ROUTES.cantlin_northwestern_return = {
         {x = 81, y = 1, max_distance = 4},
         {x = 29, y = 57, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+        "mountain_cave",
+    },
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
@@ -3066,7 +3073,10 @@ ROUTES.great_swamp_northwestern_return = {
         {x = 81, y = 1, max_distance = 4},
         {x = 29, y = 57, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+        "mountain_cave",
+    },
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
@@ -3248,6 +3258,7 @@ ROUTES.swamp_cave_northern_return_staging = {
 ROUTES.swamp_cave_western_return_staging = {
     id = "swamp_cave_western_return_staging",
     title = "Swamp Cave",
+    target_object_ids = {"overworld_swamp_cave"},
     destination_maps = {0x15},
     staged_handoff_requires_destination_map = true,
     staged_transition_message =

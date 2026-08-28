@@ -121,6 +121,28 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The final Mountain Cave spur batch is source-complete and live-verified
+  (`2026-08-28`). Northern Cave, Hauksness, Cantlin, and Great Swamp
+  now recognize exact `mountain_cave` corridor membership through their
+  existing northwestern-return variants. The shared western Swamp Cave staging
+  leg also retains `overworld_swamp_cave` as its active destination instead of
+  losing object compatibility during the nested Mountain Cave return. No
+  waypoint geometry or movement timing changed. The complete audit now covers
+  all 368 combinations of 23 exact spur cells and all 16 Travel destinations
+  with no opening longer than 24 steps. At `(24,58)`, Swamp Cave North,
+  Northern Cave, Hauksness, Cantlin, and Great Swamp all start
+  `mountain_cave_return`, retain the selected destination, and target `Mountain
+  Cave south approach` at `(25,58)`, one step east. Focused route tests pass
+  `319/319`; Lua syntax, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Loaded starts from World Map `(24,58)` selected
+  `mountain_cave_return` and `Mountain Cave south approach` for Swamp Cave
+  North, Northern Cave, Hauksness, Cantlin, and Great Swamp at frames `2960`,
+  `3402`, `4661`, `5403`, and `5893`; the expected staging routes retained all
+  five requested destinations. The user confirmed every route, and Shift+U
+  stopped each route and autowalk cleanly at frames `3271`, `3660`, `4909`,
+  `5667`, and `6172`. Tagged readiness passed at frame `10380`; fresh frame
+  `10740` found the hero at `(24,58)` with no active path, NPC blockers,
+  runtime blockers, or new script error.
 - Mountain Cave spur recovery for the three final destinations is
   source-complete and live-verified (`2026-08-28`). Swamp Cave
   South, Rainbow Bridge, and Charlock now recognize exact `mountain_cave`
