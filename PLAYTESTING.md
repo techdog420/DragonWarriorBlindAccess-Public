@@ -1,11 +1,28 @@
 # Playtesting Notes
 
-Updated: 2026-08-26
+Updated: 2026-08-27
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The remaining Northern-Cave-return northwestern recovery batch is
+  source-complete and live-verified (`2026-08-27`). Tantegel,
+  Mountain Cave, Hauksness, Cantlin, and the Eastern Great Swamp Search Area
+  now recognize exact membership on `kol_rain_shrine_staging` through their
+  existing Northern-Cave-origin variants. Static checks from `(78,3)` preserve
+  each final Travel object, begin the shrine-return staging leg, and target
+  `Rain shrine island west lane` at `(77,3)`, one step west, replacing the
+  previous 19-step opening. Object and alias starts are covered; no waypoint
+  geometry or movement timing changed. A 65-cell by 16-destination corridor
+  audit found no first segment over 11 tiles. Focused route tests pass
+  `300/300`; Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass. Loaded starts at frames `797`, `4532`, `5711`,
+  `6928`, and `8206` selected the expected staging leg and west-lane waypoint
+  while preserving Tantegel, Mountain Cave, Hauksness, Cantlin, and Great
+  Swamp respectively. The user confirmed all five starting waypoints. Fresh
+  frame `16920` confirmed World Map `(78,3)`, path target nil, zero runtime
+  blockers, and no current script error.
 - Northern-Cave-to-southern-progression corridor recovery is source-complete
   and live-verified (`2026-08-26`). Swamp Cave South Entrance,
   Rainbow Bridge, and Charlock now recognize exact membership on

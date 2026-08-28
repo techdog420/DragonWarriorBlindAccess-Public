@@ -2648,6 +2648,7 @@ ROUTES.tantegel_northern_cave = {
     destination_maps = {0x04, 0x05},
     staging = NORTHERN_CAVE_TANTEGEL_STAGING,
     selection_anchors = {{x = 81, y = 1, max_distance = 4}},
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
@@ -2954,6 +2955,7 @@ ROUTES.mountain_cave_northwestern_return = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 
@@ -2968,6 +2970,7 @@ ROUTES.hauksness_northwestern_return = {
         {x = 29, y = 57, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
@@ -2989,6 +2992,7 @@ ROUTES.cantlin_northwestern_return = {
         {x = 81, y = 1, max_distance = 4},
         {x = 29, y = 57, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
@@ -3011,6 +3015,7 @@ ROUTES.great_swamp_northwestern_return = {
         {x = 81, y = 1, max_distance = 4},
         {x = 29, y = 57, max_distance = 4},
     },
+    selection_route_corridors = {"kol_rain_shrine_staging"},
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 

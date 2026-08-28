@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-26
+Updated: 2026-08-27
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -213,7 +213,15 @@ quality-of-life work.
   at `(78,3)`, replacing an incorrect 51-step `rainbow_bridge_return` opening
   with one step west on `kol_rain_shrine_staging`. All three loaded selections
   preserved the requested final destination; the final audit found no active
-  path or runtime blockers.
+  path or runtime blockers. A fourth bounded slice is source-complete and
+  live-verified: Tantegel, Mountain Cave, Hauksness, Cantlin, and
+  Great Swamp now select that same one-step-west shrine-return recovery from
+  `(78,3)` instead of their previous 19-step openings. Static coverage includes
+  each Travel object and alias plus all 1,040 combinations of 65 exact corridor
+  cells and 16 destinations; none now opens with more than 11 steps. Loaded
+  starts preserved all five requested final destinations and the user confirmed
+  the expected starting waypoints. The final probe found no active path or
+  runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

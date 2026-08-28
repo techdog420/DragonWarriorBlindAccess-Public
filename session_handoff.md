@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-26
+Updated: 2026-08-27
 
 ## Release Installation Handoff
 
@@ -121,6 +121,26 @@ Updated: 2026-08-26
 
 ## Immediate FCEUX Handoff
 
+- The remaining Northern-Cave-return northwestern recovery batch is
+  source-complete and live-verified (`2026-08-27`). Tantegel,
+  Mountain Cave, Hauksness, Cantlin, and the Eastern Great Swamp Search Area
+  now recognize exact membership on `kol_rain_shrine_staging` through their
+  existing Northern-Cave-origin variants. From `(78,3)`, every Travel object
+  and alias preserves its selected final destination, begins
+  `kol_rain_shrine_staging`, and targets `Rain shrine island west lane` at
+  `(77,3)`, one step west, instead of creating the previous 19-step opening.
+  No waypoint geometry, movement timing, or downstream itinerary changed. A
+  complete static sweep checked all 65 corridor cells against all 16 Travel
+  destinations: all 1,040 selections resolve, with zero first segments over
+  11 tiles. Focused route tests pass `300/300`; Lua syntax,
+  `git diff --check`, all 33 host-runnable Lua suites, and all 68 Python tests
+  pass. Loaded starts at frames `797`, `4532`, `5711`, `6928`, and `8206`
+  selected the expected staging route and waypoint while retaining Tantegel,
+  Mountain Cave, Hauksness, Cantlin, and Great Swamp respectively. The first
+  four checks cancelled cleanly between selections. The user confirmed all
+  five routes chose the expected starting waypoint. Fresh frame `16920`
+  confirmed World Map `(78,3)`, path target nil, and zero runtime blockers;
+  the script-error file remains unchanged since May.
 - Northern-Cave-to-southern-progression corridor recovery is source-complete
   and live-verified (`2026-08-26`). Swamp Cave South Entrance,
   Rainbow Bridge, and Charlock now recognize exact membership on
@@ -3226,8 +3246,8 @@ Updated: 2026-08-26
 
 ## Next Work
 
-1. Commit and push the live-verified route-control hotkey polish as one focused
-   revision after user authorization.
+1. Commit and push the live-verified five-destination Northern Cave recovery
+   batch after user authorization.
 2. Continue the arbitrary-start route-polish audit with the next major
    synthetic opening or repeatable endpoint overshoot.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
