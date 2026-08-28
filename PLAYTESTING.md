@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final-progression recovery from the Erdrick corridor is source-complete and
+  live-verified (`2026-08-27`). Swamp Cave South Entrance, Rainbow
+  Bridge, and Charlock now recognize exact `erdrick`-corridor membership
+  through the mainland cave-crossing selector. Static acceptance from
+  `(28,17)` starts `kol_staging`, preserves the final Travel object, and
+  targets `North trail marker` at `(28,20)`, three steps south, replacing the
+  incorrect `charlock_return` selection and its 51-step opening. Object and
+  alias starts are covered; no waypoint geometry or movement timing changed.
+  A 57-cell by three-destination audit found zero `charlock_return` selections
+  and no opening over 9 steps. Focused route tests pass `302/302`; Lua syntax,
+  all 33 host-runnable Lua suites, and all 68 Python tests pass. Loaded starts
+  from `(28,17)` at frames `2673`, `5044`, and `5530` selected `kol_staging`
+  and `North trail marker` while retaining Swamp Cave South, Rainbow Bridge,
+  and Charlock respectively. The user confirmed all three generated as
+  expected, and each route cancelled cleanly. Fresh frame `9900` confirmed
+  World Map `(28,17)`, path target nil, zero NPC or runtime blockers, and no
+  new script error.
 - Final-progression recovery from the Swamp-Cave-to-Kol corridor is
   source-complete and live-verified (`2026-08-27`). Swamp Cave
   South Entrance, Rainbow Bridge, and Charlock now recognize exact membership

@@ -3417,6 +3417,56 @@ function tests.final_progression_destinations_resume_from_swamp_cave_kol_corrido
     routes.reset_for_tests()
 end
 
+function tests.final_progression_destinations_resume_from_erdrick_corridor()
+    local cases = {
+        {
+            id = "overworld_swamp_cave_south_entrance",
+            name = "Swamp Cave South Entrance",
+            alias = "swamp cave south",
+        },
+        {
+            id = "overworld_rainbow_bridge",
+            name = "Rainbow Bridge unlock point",
+            alias = "rainbow bridge",
+        },
+        {
+            id = "overworld_charlock_castle",
+            name = "Charlock Castle",
+            alias = "charlock",
+        },
+    }
+
+    for _, case in ipairs(cases) do
+        routes.reset_for_tests()
+        local info, err = routes.start_for_object(case, 0x01, 28, 17)
+
+        assert_equal(err, nil,
+            case.name .. " Travel should resolve from the proven Erdrick corridor")
+        assert_equal(info.route.id, "kol_staging",
+            case.name .. " should return through the mainland network instead of selecting the final-island return")
+        assert_equal(routes.active_route_matches_object(case), true,
+            case.name .. " should remain selected during corridor recovery")
+
+        local segment = assert(routes.plan_next_segment(0x01, 28, 17))
+        assert_equal(segment.waypoint.name, "North trail marker",
+            case.name .. " should rejoin the established Kol approach")
+        assert_equal(segment.path_length, 3,
+            case.name .. " should replace its unsafe fifty-one-step opening")
+        assert_equal(segment.steps[1], "down",
+            case.name .. " should first reach the proven north trail marker")
+
+        routes.reset_for_tests()
+        local alias_info, alias_err = routes.start(
+            case.alias, 0x01, 28, 17)
+        assert_equal(alias_err, nil,
+            case.name .. " alias should resolve from the proven corridor")
+        assert_equal(alias_info.route.id, "kol_staging",
+            case.name .. " alias should use the same recovery itinerary")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_destinations_resume_from_northern_cave_kol_corridor()
     local cases = {
         {

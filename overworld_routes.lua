@@ -3230,6 +3230,7 @@ ROUTES.swamp_cave_south_mainland = {
     selection_route_corridors = {
         "kol_rain_shrine_staging",
         "kol_swamp_cave_staging",
+        "erdrick",
     },
     -- At the physical north entrance and its doorstep, retain the dedicated
     -- safe re-entry variant instead of treating local cave handling as a

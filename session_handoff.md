@@ -121,6 +121,23 @@ Updated: 2026-08-27
 
 ## Immediate FCEUX Handoff
 
+- Final-progression recovery from the Erdrick corridor is source-complete and
+  live-verified (`2026-08-27`). Swamp Cave South Entrance, Rainbow
+  Bridge, and Charlock now recognize exact membership on the existing
+  `erdrick` corridor through the mainland cave-crossing selector. From
+  `(28,17)`, each retains its final destination, starts `kol_staging`, and
+  targets `North trail marker` at `(28,20)`, three steps south, instead of
+  selecting `charlock_return` with a 51-step opening. No waypoint geometry or
+  movement timing changed. A complete static sweep checked all 57 exact
+  corridor cells against the three destinations: all 171 selections use
+  `kol_staging`, none selects `charlock_return`, and none opens with more than
+  9 steps. Focused route tests pass `302/302`; Lua syntax, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass. Loaded starts from `(28,17)` at
+  frames `2673`, `5044`, and `5530` selected `kol_staging` and `North trail
+  marker` while retaining Swamp Cave South, Rainbow Bridge, and Charlock
+  respectively. The user confirmed all three generated as expected, and each
+  route cancelled cleanly. Fresh frame `9900` confirmed World Map `(28,17)`,
+  path target nil, zero NPC or runtime blockers, and no new script error.
 - Final-progression recovery from the Swamp-Cave-to-Kol corridor is
   source-complete and live-verified (`2026-08-27`). Swamp Cave
   South Entrance, Rainbow Bridge, and Charlock now recognize exact membership
@@ -3271,10 +3288,10 @@ Updated: 2026-08-27
 
 ## Next Work
 
-1. Commit and push the live-verified three-destination Swamp-Cave-to-Kol
+1. Commit and push the live-verified three-destination Erdrick-corridor
    recovery batch after user authorization.
-2. Continue the arbitrary-start route-polish audit with the next major
-   synthetic opening or repeatable endpoint overshoot.
+2. Patch the separate Erdrick-corridor batch for Hauksness, Cantlin, and the
+   Eastern Great Swamp Search Area, then live-check its worst opening.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

@@ -233,6 +233,18 @@ quality-of-life work.
   re-entry behavior at `(104,44)` remains unchanged. Loaded checks confirmed
   all three two-step-west starts from `(99,42)` plus Charlock's seven-step-south
   start from `(96,14)`; the final probe found no active path or runtime
+  blockers. A sixth bounded slice is source-complete and live-verified: Swamp
+  Cave South, Rainbow Bridge, and Charlock now recognize
+  exact membership on the existing `erdrick` corridor and resume through
+  `kol_staging`. From `(28,17)`, this replaces the incorrect 51-step
+  `charlock_return` opening with three steps south to `North trail marker` at
+  `(28,20)`. Static coverage checks all 171 combinations of 57 corridor cells
+  and three destinations: every selection uses `kol_staging`, none uses
+  `charlock_return`, and none opens with more than 9 steps. Focused route tests
+  pass `302/302`; all 33 host-runnable Lua suites and all 68 Python tests pass.
+  Loaded route selections from `(28,17)` retained all three final destinations
+  while starting the expected route and waypoint. The user confirmed each
+  generated as expected; the final probe found no active path or runtime
   blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
