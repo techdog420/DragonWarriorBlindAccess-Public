@@ -121,6 +121,23 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Swamp Cave North destination retention across the northern return is
+  source-complete and live-verified (`2026-08-28`). The
+  `swamp_cave_northern_return_staging` wrapper now explicitly retains
+  `overworld_swamp_cave`, matching the Garinham and western cave-return
+  wrappers. This fixes 11 exact Kol/bridge cells where the route opened on the
+  correct short geometry but route-progress checks no longer recognized the
+  requested destination. Both complete Kol and Tantegel bridge corridor
+  regressions now assert destination retention across all 5,824 combinations;
+  focused route tests pass `319/319`, and the full gate passes Lua syntax, all
+  33 host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks. A loaded start from World Map `(96,13)` selected
+  `swamp_cave_northern_return_staging` and `West of Kol north lane` at frame
+  `1791`. Shift+R reported status on the same route and waypoint at frame
+  `2110` instead of replacing it; Shift+U stopped the route and autowalk
+  cleanly at frame `2405`. The user confirmed the route. Tagged readiness
+  passed at frame `7620`; fresh frame `7920` found the hero at `(96,13)` with
+  no active path, NPC blockers, runtime blockers, or new script error.
 - The final Mountain Cave spur batch is source-complete and live-verified
   (`2026-08-28`). Northern Cave, Hauksness, Cantlin, and Great Swamp
   now recognize exact `mountain_cave` corridor membership through their

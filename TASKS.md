@@ -460,7 +460,20 @@ quality-of-life work.
   stopped each route and autowalk cleanly at frames `3271`, `3660`, `4909`,
   `5667`, and `6172`. Tagged readiness passed at frame `10380`, and fresh frame
   `10740` found no active path, NPC blockers, runtime blockers, or new script
-  error.
+  error. A twenty-second bounded slice is source-complete and live-verified:
+  the Swamp Cave northern-return wrapper now retains the selected
+  Swamp Cave North destination across 11 exact Kol/bridge cells. Both complete
+  Kol and Tantegel bridge corridor regressions now assert destination retention
+  across all 5,824 combinations. At `(96,13)`, the route selects
+  `swamp_cave_northern_return_staging`, remains matched to Swamp Cave North,
+  and targets `West of Kol north lane` at `(96,21)`, eight steps south. Focused
+  route tests pass `319/319`; the full gate passes all 33 host-runnable Lua
+  suites and all 68 Python tests. A loaded start at `(96,13)` selected the
+  expected return and waypoint at frame `1791`; Shift+R reported status on the
+  same route at frame `2110` instead of replacing it, and Shift+U stopped the
+  route and autowalk cleanly at frame `2405`. The user confirmed the route.
+  Tagged readiness passed at frame `7620`, and fresh frame `7920` found no
+  active path, NPC blockers, runtime blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

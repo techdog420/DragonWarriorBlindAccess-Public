@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Swamp Cave North destination retention across the northern return is
+  live-verified (`2026-08-28`). The
+  `swamp_cave_northern_return_staging` wrapper now explicitly retains the
+  selected Swamp Cave North landmark. This fixes 11 exact Kol/bridge cells
+  where the correct short route opened but subsequent route-progress checks
+  treated the wrapper as unrelated. At `(96,13)`, the route now remains matched
+  to Swamp Cave North and targets `West of Kol north lane` at `(96,21)`, eight
+  steps south. Both complete Kol and Tantegel bridge corridor regressions now
+  assert destination retention across all 5,824 combinations. Focused route
+  tests pass `319/319`; Lua syntax, all 33 host-runnable Lua suites, all 68
+  Python tests, speech dependency, and command-queue checks pass. A loaded
+  start from World Map `(96,13)` selected the expected return and waypoint at
+  frame `1791`. Shift+R reported status on that same route at frame `2110`
+  instead of replacing it; Shift+U stopped route and autowalk cleanly at frame
+  `2405`. The user confirmed the route. Tagged readiness passed at frame
+  `7620`; fresh frame `7920` found no active path, NPC blockers, runtime
+  blockers, or new script error.
 - The final Mountain Cave spur source batch is live-verified
   (`2026-08-28`). Northern Cave, Hauksness, Cantlin, and Great Swamp now
   recognize exact `mountain_cave` corridor membership through their existing

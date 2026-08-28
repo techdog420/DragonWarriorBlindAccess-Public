@@ -3691,6 +3691,8 @@ function tests.kol_corridor_all_destinations_keep_bounded_openings()
                 target, 0x01, cell.x, cell.y)
             assert_equal(start_err, nil,
                 target.name .. " should resolve at every Kol corridor cell")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Kol corridor")
             local segment, segment_err = routes.plan_next_segment(
                 0x01, cell.x, cell.y)
             assert_equal(segment_err, nil,
@@ -3737,6 +3739,8 @@ function tests.tantegel_bridge_corridor_all_destinations_keep_bounded_openings()
                 target, 0x01, cell.x, cell.y)
             assert_equal(start_err, nil,
                 target.name .. " should resolve at every bridge-return cell")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the bridge return")
             local segment, segment_err = routes.plan_next_segment(
                 0x01, cell.x, cell.y)
             assert_equal(segment_err, nil,

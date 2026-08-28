@@ -3237,6 +3237,7 @@ ROUTES.swamp_cave_garinham_staging = {
 ROUTES.swamp_cave_northern_return_staging = {
     id = "swamp_cave_northern_return_staging",
     title = "Swamp Cave",
+    target_object_ids = {"overworld_swamp_cave"},
     destination_maps = {0x15},
     staged_handoff_requires_destination_map = true,
     staged_transition_message =
