@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The final Garinham bridge-return source batch is live-verified
+  (`2026-08-28`). Kol and Northern Cave recognize exact
+  `tantegel_garinham_staging` membership through `x <= 13`; Mountain Cave uses
+  it only through `x <= 7`. The bounded selectors reuse the established
+  `kol_hauksness`, `northern_cave_garinham`, and `mountain_cave_garinham`
+  routes without changing waypoint geometry or movement timing. At `(7,3)`,
+  Kol selects `kol_hauksness`; Northern Cave and Mountain Cave select
+  `tantegel_garinham_staging`. All three target `Garinham north coast lane` at
+  `(14,3)`, seven steps east. The complete 82-cell by 16-destination corridor
+  regression now checks 1,312 combinations with no opening over 24 steps.
+  Focused route tests pass `316/316`; Lua syntax, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. Loaded starts from World Map `(7,3)`
+  selected the expected route and waypoint for Kol, Northern Cave, and
+  Mountain Cave at frames `1147`, `3860`, and `5098`; the user confirmed all
+  three generated correctly. Tagged readiness passed at frame `23100`. Fresh
+  frame `23460` found no active autowalk path, NPC blockers, or runtime
+  blockers; the final Kol route remains selected.
 - Garinham bridge-return cave access is source-complete and live-verified
   (`2026-08-28`). Swamp Cave North, Swamp Cave South, Rainbow
   Bridge, and Charlock now recognize exact `tantegel_garinham_staging`

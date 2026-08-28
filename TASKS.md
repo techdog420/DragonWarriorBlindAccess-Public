@@ -399,7 +399,23 @@ quality-of-life work.
   `tantegel_garinham_staging` and `Garinham shoulder east step` at frames
   `3067`, `3473`, `4530`, and `5011`. The user confirmed every generated route;
   tagged readiness passed at frame `7380`, and fresh frame `7800` found no
-  active path, NPC blockers, or runtime blockers.
+  active path, NPC blockers, or runtime blockers. An eighteenth bounded slice
+  is source-complete and live-verified: Kol and Northern Cave now
+  recognize the exact Garinham bridge-return corridor through `x <= 13`, while
+  Mountain Cave recognizes it only through `x <= 7`. The selectors reuse
+  `kol_hauksness`, `northern_cave_garinham`, and `mountain_cave_garinham`
+  without changing waypoint geometry or movement timing. From `(7,3)`, all
+  three target `Garinham north coast lane` at `(14,3)`, seven steps east; Kol
+  starts `kol_hauksness`, and the other two start
+  `tantegel_garinham_staging`. The complete audit now covers all 1,312
+  combinations of 82 exact corridor cells and all 16 Travel destinations with
+  no opening longer than 24 steps. Focused route tests pass `316/316`; all 33
+  host-runnable Lua suites and all 68 Python tests pass. Loaded starts from
+  `(7,3)` selected the expected route and waypoint for Kol, Northern Cave, and
+  Mountain Cave at frames `1147`, `3860`, and `5098`; the user confirmed all
+  three generated correctly. Tagged readiness passed at frame `23100`, and
+  fresh frame `23460` found no active autowalk path, NPC blockers, or runtime
+  blockers. The final Kol route remains selected.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

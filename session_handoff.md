@@ -121,6 +121,24 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The remaining Garinham bridge-return destinations are source-complete and
+  live-verified (`2026-08-28`). Kol and Northern Cave now recognize
+  the exact `tantegel_garinham_staging` corridor through `x <= 13`; Mountain
+  Cave uses the same established return only through `x <= 7`. These bounded
+  selectors reuse `kol_hauksness`, `northern_cave_garinham`, and
+  `mountain_cave_garinham`; no waypoint geometry or movement timing changed.
+  From `(7,3)`, Kol starts `kol_hauksness`, while Northern Cave and Mountain
+  Cave start `tantegel_garinham_staging`; all three target
+  `Garinham north coast lane` at `(14,3)`, seven steps east. The complete audit
+  now covers all 1,312 combinations of 82 exact corridor cells and all 16
+  Travel destinations with no opening longer than 24 steps. Focused route
+  tests pass `316/316`; Lua syntax, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. Loaded starts from World Map `(7,3)` selected the expected
+  route and `Garinham north coast lane` for Kol, Northern Cave, and Mountain
+  Cave at frames `1147`, `3860`, and `5098`. The user confirmed all three
+  generated correctly. Tagged readiness passed at frame `23100`; fresh frame
+  `23460` confirmed World Map `(7,3)`, path target nil, zero NPC blockers, and
+  zero runtime blockers. The final Kol route remains deliberately selected.
 - Garinham bridge-return cave access is source-complete and live-verified
   (`2026-08-28`). Swamp Cave North, Swamp Cave South, Rainbow
   Bridge, and Charlock now recognize exact `tantegel_garinham_staging`

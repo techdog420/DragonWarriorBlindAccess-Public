@@ -1934,6 +1934,9 @@ local ROUTES = {
         destination_maps = {0x07},
         -- Auto-selection ends at Garinham; an active route still retains the full chain to Kol.
         selection_max_index = 54,
+        selection_route_corridor_regions = {
+            {route_id = "tantegel_garinham_staging", max_x = 13},
+        },
         waypoints = {
             {x = 25, y = 89, name = "Hauksness", radius = 1},
             {
@@ -3162,6 +3165,9 @@ ROUTES.northern_cave_garinham = {
     destination_maps = {0x0D},
     staging = GARINHAM_SWAMP_CAVE_STAGING,
     selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    selection_route_corridor_regions = {
+        {route_id = "tantegel_garinham_staging", max_x = 13},
+    },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
 
@@ -3186,6 +3192,9 @@ ROUTES.mountain_cave_garinham = {
         continue_after_staging = true,
     },
     selection_anchors = {{x = 1, y = 2, max_distance = 4}},
+    selection_route_corridor_regions = {
+        {route_id = "tantegel_garinham_staging", max_x = 7},
+    },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 
