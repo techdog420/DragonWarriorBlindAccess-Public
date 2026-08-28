@@ -284,6 +284,18 @@ quality-of-life work.
   Python tests pass. Loaded selections from `(107,113)` retained all three final
   destinations while starting the Rimuldar leg at `Temple south approach east`,
   one south. The user confirmed each generated correctly; the final probe found
+  no active path or runtime blockers. A tenth bounded slice is source-complete
+  and live-verified: Hauksness, Cantlin, and the Eastern Great Swamp
+  Search Area now recognize the same Magic-Temple-to-Rimuldar return corridor
+  through their existing south-island variants. From `(107,113)`, each replaces
+  an 89-step synthetic failure with one step south on
+  `rimuldar_magic_temple_staging`. Static coverage checks all 216 combinations
+  of 72 corridor cells and three destinations; every selection resolves, and
+  the largest segment is the existing validated 13-step southern-road leg.
+  Focused route tests pass `307/307`; all 33 host-runnable Lua suites and all 68
+  Python tests pass. Loaded selections from `(107,113)` retained all three final
+  destinations while starting the Rimuldar leg at `Temple south approach east`,
+  one south. The user confirmed each generated correctly; the final probe found
   no active path or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds

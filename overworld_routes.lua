@@ -2789,6 +2789,7 @@ ROUTES.hauksness_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
 
@@ -2866,6 +2867,7 @@ ROUTES.cantlin_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
 
@@ -2909,6 +2911,7 @@ ROUTES.great_swamp_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
 
