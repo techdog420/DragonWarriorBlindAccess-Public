@@ -272,7 +272,19 @@ quality-of-life work.
   host-runnable Lua suites and all 68 Python tests pass. Loaded selections from
   `(105,114)` retained all three final destinations while starting the expected
   route and waypoint. The user confirmed each behaved correctly; the final
-  probe found no active path or runtime blockers.
+  probe found no active path or runtime blockers. A ninth bounded slice is
+  source-complete and live-verified: Brecconary, Erdrick's Cave,
+  and Garinham now recognize the same Magic-Temple-to-Rimuldar return corridor
+  through their existing south-island variants. From `(107,113)`, each replaces
+  a synthetic 131- or 132-step failure with one step south on
+  `rimuldar_magic_temple_staging`. Static coverage checks all 216 combinations
+  of 72 corridor cells and three destinations; every selection resolves, and
+  the largest segment is the existing validated 13-step southern-road leg.
+  Focused route tests pass `306/306`; all 33 host-runnable Lua suites and all 68
+  Python tests pass. Loaded selections from `(107,113)` retained all three final
+  destinations while starting the Rimuldar leg at `Temple south approach east`,
+  one south. The user confirmed each generated correctly; the final probe found
+  no active path or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

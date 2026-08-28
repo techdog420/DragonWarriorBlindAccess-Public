@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Early-destination recovery from the Magic-Temple-to-Rimuldar corridor is
+  source-complete and live-verified (`2026-08-28`). Brecconary,
+  Erdrick's Cave, and Garinham now recognize exact `rimuldar_magic_temple`
+  membership through their existing south-island route variants. Static
+  acceptance from `(107,113)` starts `rimuldar_magic_temple_staging`, preserves
+  the final Travel object, and targets `Temple south approach east` at
+  `(107,114)`, one step south, replacing synthetic 131- or 132-step failures.
+  No waypoint geometry or movement timing changed. A 72-cell by
+  three-destination audit found all 216 selections resolve with no opening
+  longer than the existing validated 13-step southern-road segment. Focused
+  route tests pass `306/306`; Lua syntax, all 33 host-runnable Lua suites, and
+  all 68 Python tests pass. Loaded starts from `(107,113)` at frames `4882`,
+  `7989`, and `8378` selected `rimuldar_magic_temple_staging` and `Temple south
+  approach east` while retaining Brecconary, Erdrick's Cave, and Garinham
+  respectively. The user confirmed all three generated correctly, and each
+  route cancelled cleanly. Fresh frame `11760` confirmed World Map `(107,113)`,
+  path target nil, zero NPC or runtime blockers, and no new script error.
 - Final-progression recovery from the Magic-Temple-to-Rimuldar corridor is
   source-complete and live-verified (`2026-08-28`). Swamp Cave
   South Entrance, Rainbow Bridge, and Charlock now recognize exact

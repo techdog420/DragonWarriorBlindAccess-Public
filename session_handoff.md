@@ -121,6 +121,24 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Early-destination recovery from the Magic-Temple-to-Rimuldar corridor is
+  source-complete and live-verified (`2026-08-28`). Brecconary,
+  Erdrick's Cave, and Garinham now recognize exact `rimuldar_magic_temple`
+  membership through their existing south-island route variants. From
+  `(107,113)`, each retains its final destination, starts
+  `rimuldar_magic_temple_staging`, and targets `Temple south approach east` at
+  `(107,114)`, one step south, instead of failing on a synthetic 131- or
+  132-step opening. No waypoint geometry or movement timing changed. A
+  complete static sweep checked all 72 exact corridor cells against the three
+  destinations: all 216 selections resolve, with no opening longer than the
+  existing validated 13-step southern-road segment. Focused route tests pass
+  `306/306`; Lua syntax, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Loaded starts from `(107,113)` at frames `4882`, `7989`, and
+  `8378` selected `rimuldar_magic_temple_staging` and `Temple south approach
+  east` while retaining Brecconary, Erdrick's Cave, and Garinham respectively.
+  The user confirmed all three generated correctly, and each route cancelled
+  cleanly. Fresh frame `11760` confirmed World Map `(107,113)`, path target nil,
+  zero NPC or runtime blockers, and no new script error.
 - Final-progression recovery from the Magic-Temple-to-Rimuldar corridor is
   source-complete and live-verified (`2026-08-28`). Swamp Cave
   South Entrance, Rainbow Bridge, and Charlock now recognize exact membership
@@ -3333,7 +3351,7 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified final-progression Magic-Temple-corridor
+1. Commit and push the live-verified early-destination Magic-Temple-corridor
    recovery batch after user authorization.
 2. Continue the Magic-Temple-corridor audit with its next coherent destination
    family.
