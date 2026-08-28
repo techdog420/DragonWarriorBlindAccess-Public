@@ -297,19 +297,31 @@ quality-of-life work.
   destinations while starting the Rimuldar leg at `Temple south approach east`,
   one south. The user confirmed each generated correctly; the final probe found
   no active path or runtime blockers. An eleventh bounded slice is
-  source-complete and awaiting live acceptance: Kol, Northern Cave, Mountain
+  source-complete and live-verified: Kol, Northern Cave, Mountain
   Cave, and Swamp Cave North Entrance now recognize the same
   Magic-Temple-to-Rimuldar return corridor through their existing south-island
   variants. From `(107,113)`, each replaces a rejected cross-world opening with
   one step south on `rimuldar_magic_temple_staging`. Static coverage checks all
   288 combinations of 72 corridor cells and four destinations; every selection
   resolves, and the largest segment is the existing validated 13-step
-  southern-road leg. The comprehensive 1,152-combination corridor audit now has
-  no errors; only Tantegel remains flagged for a non-failing opening over 13
-  steps. Focused route tests pass `308/308`; all 33 host-runnable Lua suites and
-  all 68 Python tests pass. Live acceptance should confirm all four selections
-  from `(107,113)` retain their final destination while starting the Rimuldar
-  leg at `Temple south approach east`, one south.
+  southern-road leg. Loaded selections from `(107,113)` retained Kol, Northern
+  Cave, Mountain Cave, and Swamp Cave North Entrance while starting the
+  expected Rimuldar leg at frames `3026`, `3752`, `4822`, and `5938`; each
+  targeted `Temple south approach east`, one south, and cancelled cleanly.
+  Fresh frame `24120` confirmed World Map `(107,113)`, path target nil, and no
+  NPC or runtime blockers. A twelfth bounded slice is source-complete and
+  live-verified: Tantegel now recognizes the same return corridor
+  through its existing Magic Temple variant. From `(107,113)`, it replaces an
+  unrelated 18-step `cantlin_return_staging` opening with one step south on
+  `rimuldar_magic_temple_staging`, while preserving Tantegel Castle as the
+  final destination. No waypoint geometry or movement timing changed. The
+  comprehensive 72-cell by 16-destination audit now has zero flagged
+  selections or errors and a maximum opening of 13 steps. Focused route tests
+  pass `309/309`; all 33 host-runnable Lua suites and all 68 Python tests pass.
+  The loaded selection at `(107,113)` started the expected Rimuldar leg at
+  frame `1698`, retained `staged_from=tantegel_kol`, and targeted `Temple south
+  approach east`. The user confirmed the generated route; fresh frame `6840`
+  found no active path, NPC blockers, or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

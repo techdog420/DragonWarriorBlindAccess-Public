@@ -2723,6 +2723,7 @@ ROUTES.tantegel_magic_temple = {
     destination_maps = {0x04, 0x05},
     staging = SWAMP_CAVE_TANTEGEL_STAGING,
     selection_anchors = {{x = 108, y = 109, max_distance = 4}},
+    selection_route_corridors = {"rimuldar_magic_temple"},
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 

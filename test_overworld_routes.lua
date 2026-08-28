@@ -3741,6 +3741,41 @@ function tests.northern_access_resumes_from_magic_temple_corridor()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_resumes_from_magic_temple_corridor()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+    }
+
+    routes.reset_for_tests()
+    local info, err = routes.start_for_object(target, 0x01, 107, 113)
+
+    assert_equal(err, nil,
+        "Tantegel Travel should resolve from the Magic Temple return corridor")
+    assert_equal(info.route.id, "rimuldar_magic_temple_staging",
+        "Tantegel should first return to the Rimuldar doorstep")
+    assert_equal(routes.active_route_matches_object(target), true,
+        "Tantegel should remain selected during temple-corridor recovery")
+
+    local segment = assert(routes.plan_next_segment(0x01, 107, 113))
+    assert_equal(segment.waypoint.name, "Temple south approach east",
+        "Tantegel should use the established Magic Temple return")
+    assert_equal(segment.path_length, 1,
+        "Tantegel should replace its unrelated western opening")
+    assert_equal(segment.steps[1], "down",
+        "Tantegel should first follow the proven return southward")
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "tantegel", 0x01, 107, 113)
+    assert_equal(alias_err, nil,
+        "Tantegel alias should resolve from the temple corridor")
+    assert_equal(alias_info.route.id, "rimuldar_magic_temple_staging",
+        "Tantegel alias should use the same return itinerary")
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_destinations_resume_from_northern_cave_kol_corridor()
     local cases = {
         {
