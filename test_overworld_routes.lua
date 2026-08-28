@@ -3708,6 +3708,52 @@ function tests.kol_corridor_all_destinations_keep_bounded_openings()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_bridge_corridor_all_destinations_keep_bounded_openings()
+    local targets = {
+        {id = "overworld_tantegel_castle", name = "Tantegel Castle"},
+        {id = "overworld_brecconary", name = "Brecconary"},
+        {id = "overworld_erdrick_s_cave", name = "Erdrick's Cave"},
+        {id = "overworld_garinham", name = "Garinham"},
+        {id = "overworld_kol", name = "Kol"},
+        {id = "overworld_northern_cave", name = "Northern Cave"},
+        {id = "overworld_mountain_cave", name = "Mountain Cave"},
+        {id = "overworld_swamp_cave", name = "Swamp Cave North Entrance"},
+        {id = "overworld_swamp_cave_south_entrance", name = "Swamp Cave South Entrance"},
+        {id = "overworld_rainbow_bridge", name = "Rainbow Bridge"},
+        {id = "overworld_rimuldar", name = "Rimuldar"},
+        {id = "overworld_southern_cave", name = "Magic Temple"},
+        {id = "overworld_cantlin", name = "Cantlin"},
+        {id = "overworld_hauksness", name = "Hauksness"},
+        {id = "overworld_eastern_great_swamp_search_area", name = "Eastern Great Swamp Search Area"},
+        {id = "overworld_charlock_castle", name = "Charlock Castle"},
+    }
+
+    local checked = 0
+    for _, cell in ipairs(route_corridor_cells("tantegel_bridge_staging")) do
+        for _, target in ipairs(targets) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve at every bridge-return cell")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan at every bridge-return cell")
+            assert(segment and segment.path_length <= 24,
+                target.name .. " should remain within the proven bridge-return bound; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+    assert_equal(checked, 2816,
+        "the bridge-return matrix should cover every corridor combination")
+
+    routes.reset_for_tests()
+end
+
 function tests.swamp_cave_approach_corner_keeps_connected_destinations()
     local cells = {
         {x = 96, y = 22},

@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Tantegel bridge-return corner recovery is source-complete and live-verified
+  (`2026-08-28`). The reverse bridge wrapper includes six proven
+  cells omitted by the forward `kol_staging` L-turn: `(32,21)` through
+  `(32,24)`, plus `(33,24)` and `(34,24)`. Swamp Cave South Entrance, Rainbow
+  Bridge, and Charlock now select the existing connected mainland route from
+  those exact cells. At `(32,22)`, all three start `kol_staging` and target
+  `North ridge bend` at `(32,19)`, three steps north, replacing 38-43-step
+  openings toward Charlock. No waypoint geometry or movement timing changed.
+  The three identical 176-cell by 16-destination wrapper audits now have zero
+  failures across 8,448 combinations and a maximum opening of 24. Focused
+  route tests pass `314/314`; Lua syntax, all 33 host-runnable Lua suites, and
+  all 68 Python tests pass. Loaded starts from World Map `(32,22)` selected
+  `kol_staging` and `North ridge bend` for Swamp Cave South, Rainbow Bridge,
+  and Charlock at frames `1179`, `1999`, and `2376`. The user confirmed all
+  three generated correctly and each route cancelled cleanly. Tagged readiness
+  passed at frame `6480`; fresh frame `7260` confirmed path target nil and no
+  NPC or runtime blockers.
 - Swamp-Cave approach-corner recovery is source-complete and live-verified
   (`2026-08-28`). Forward `swamp_cave` geometry includes six cells
   omitted by the reverse corridor's alternate L-turn ordering: `(96,22)`

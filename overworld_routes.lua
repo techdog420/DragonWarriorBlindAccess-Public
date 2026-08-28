@@ -3278,12 +3278,18 @@ ROUTES.swamp_cave_south_mainland = {
         "kol_swamp_cave_staging",
         "erdrick",
     },
-    -- The forward Kol-to-cave route and its reverse use opposite L-turn
-    -- ordering at (96,21)-(98,26). Include only the six proven forward cells
-    -- omitted by reverse-corridor membership so connected destinations do not
-    -- fall back to a long synthetic opening there.
+    -- Forward and reverse wrappers can use opposite L-turn ordering. Include
+    -- only the proven interior cells omitted by reverse-corridor membership so
+    -- connected destinations do not fall back to long synthetic openings.
     selection_route_corridor_regions = {
         {route_id = "swamp_cave", max_x = 97, min_y = 22, max_y = 26},
+        {
+            route_id = "tantegel_bridge_staging",
+            min_x = 32,
+            max_x = 34,
+            min_y = 21,
+            max_y = 24,
+        },
     },
     -- At the physical north entrance and its doorstep, retain the dedicated
     -- safe re-entry variant instead of treating local cave handling as a

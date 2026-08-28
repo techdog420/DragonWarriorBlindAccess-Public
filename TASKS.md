@@ -370,7 +370,21 @@ quality-of-life work.
   Loaded starts from `(96,24)` selected the expected route and waypoint for all
   six destinations at frames `1370`, `4879`, `5431`, `6518`, `7308`, and
   `7760`. The user confirmed every generated route; fresh frame `14820` found
-  no active path, NPC blockers, or runtime blockers.
+  no active path, NPC blockers, or runtime blockers. A sixteenth bounded slice
+  is source-complete and live-verified: six cells on the Tantegel
+  bridge-return L-turn now preserve Swamp Cave South, Rainbow Bridge, or
+  Charlock while selecting `kol_staging`. From `(32,22)`, each targets `North
+  ridge bend` three steps north instead of opening 38-43 steps toward Charlock.
+  The selector is limited to `(32,21)` through `(32,24)`, plus `(33,24)` and
+  `(34,24)`; no waypoint geometry or movement timing changed. Static audits of
+  the three identical 176-cell wrappers cover 8,448 combinations against all
+  16 destinations with zero failures and a maximum opening of 24. Focused
+  route tests pass `314/314`; all 33 host-runnable Lua suites and all 68 Python
+  tests pass. Loaded starts from `(32,22)` retained all three final destinations
+  while selecting `kol_staging` and `North ridge bend` at frames `1179`,
+  `1999`, and `2376`. The user confirmed every generated route; tagged
+  readiness passed at frame `6480`, and fresh frame `7260` found no active
+  path, NPC blockers, or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

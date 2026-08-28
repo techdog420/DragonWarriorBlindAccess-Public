@@ -121,6 +121,25 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Tantegel bridge-return corner recovery is source-complete and live-verified
+  (`2026-08-28`). The northbound `tantegel_bridge_staging` wrapper
+  and southbound `kol_staging` route use opposite L-turn ordering between
+  `(32,19)` and `(35,24)`. Swamp Cave South Entrance, Rainbow Bridge, and
+  Charlock now recognize only the six proven bridge-return cells omitted by
+  southbound corridor membership: `(32,21)` through `(32,24)`, plus `(33,24)`
+  and `(34,24)`. From `(32,22)`, all three retain their final destination,
+  start `kol_staging`, and target `North ridge bend` at `(32,19)`, three steps
+  north, instead of opening 38-43 steps toward Charlock. No waypoint geometry
+  or movement timing changed. Static audits of the three identical 176-cell
+  bridge wrappers cover 8,448 combinations against all 16 Travel destinations:
+  all resolve within the established 24-step bound. Focused route tests pass
+  `314/314`; Lua syntax, all 33 host-runnable Lua suites, and all 68 Python
+  tests pass. Loaded starts from `(32,22)` selected `kol_staging` and `North
+  ridge bend` while retaining Swamp Cave South, Rainbow Bridge, and Charlock at
+  frames `1179`, `1999`, and `2376`; the user confirmed all three generated
+  correctly and each test cancelled cleanly. Tagged readiness passed at frame
+  `6480`. Fresh frame `7260` confirmed World Map `(32,22)`, path target nil,
+  zero NPC blockers, zero runtime blockers, and no new script error.
 - Swamp-Cave approach-corner recovery is source-complete and live-verified
   (`2026-08-28`). The forward Kol-to-cave route and its reverse use
   opposite L-turn ordering between `(96,21)` and `(98,26)`, leaving six proven
