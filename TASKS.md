@@ -429,7 +429,21 @@ quality-of-life work.
   for all three destinations at frames `591`, `1056`, and `1497`; the user
   confirmed each route and cancellation. Tagged readiness passed at frame
   `4560`, and fresh frame `4860` found no active path, NPC blockers, runtime
-  blockers, or new script error.
+  blockers, or new script error. A twentieth bounded slice is source-complete
+  and live-verified: Swamp Cave South, Rainbow Bridge, and Charlock
+  now recognize all 23 exact cells of the `mountain_cave` spur through
+  `swamp_cave_south_mainland` and its western staging leg. This reuses the
+  established Mountain Cave, Hauksness, Kol, and manual cave-crossing chain
+  without changing waypoint geometry or movement timing. At `(16,61)`, all
+  three start `mountain_cave_return` and target `Mountain Cave forest turn` at
+  `(16,64)`, three steps south, instead of opening 33 steps toward Charlock
+  island. Static coverage checks all 69 spur/destination combinations within
+  24 steps. Focused route tests pass `318/318`; all 33 host-runnable Lua suites
+  and all 68 Python tests pass. Loaded starts from `(16,61)` selected the
+  expected return and waypoint for all three destinations at frames `764`,
+  `1708`, and `2227`; the user confirmed each route and cancellation. Tagged
+  readiness passed at frame `4980`, and fresh frame `5280` found no active
+  path, NPC blockers, runtime blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

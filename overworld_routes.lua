@@ -3264,6 +3264,7 @@ ROUTES.swamp_cave_western_return_staging = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
+    selection_route_corridors = {"mountain_cave"},
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
 }
 
@@ -3292,6 +3293,7 @@ ROUTES.swamp_cave_south_mainland = {
         "kol_rain_shrine_staging",
         "kol_swamp_cave_staging",
         "erdrick",
+        "mountain_cave",
     },
     -- Forward and reverse wrappers can use opposite L-turn ordering. Include
     -- only the proven interior cells omitted by reverse-corridor membership so

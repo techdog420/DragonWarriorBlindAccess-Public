@@ -121,6 +121,24 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Mountain Cave spur recovery for the three final destinations is
+  source-complete and live-verified (`2026-08-28`). Swamp Cave
+  South, Rainbow Bridge, and Charlock now recognize exact `mountain_cave`
+  corridor membership through `swamp_cave_south_mainland` and its existing
+  western staging leg. This reuses `mountain_cave_return`, the established
+  Hauksness/Kol route, and the manual Swamp Cave crossing; no waypoint geometry
+  or movement timing changed. All 69 combinations of 23 exact spur cells and
+  three destinations now open within 24 steps. At `(16,61)`, all three start
+  `mountain_cave_return` and target `Mountain Cave forest turn` at `(16,64)`,
+  three steps south, instead of opening 33 steps toward Charlock island.
+  Focused route tests pass `318/318`; Lua syntax, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. Loaded starts from World Map `(16,61)`
+  selected `mountain_cave_return` and `Mountain Cave forest turn` while
+  retaining Swamp Cave South, Rainbow Bridge, and Charlock at frames `764`,
+  `1708`, and `2227`; the user confirmed all three generated correctly and
+  each route cancelled cleanly. Tagged readiness passed at frame `4980`.
+  Fresh frame `5280` confirmed path target nil, zero NPC blockers, zero runtime
+  blockers, and no new script error.
 - Mountain Cave spur recovery for the three early destinations is
   source-complete and live-verified (`2026-08-28`). Brecconary,
   Erdrick's Cave, and Garinham now recognize exact `mountain_cave` corridor
