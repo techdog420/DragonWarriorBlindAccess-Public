@@ -415,7 +415,21 @@ quality-of-life work.
   Mountain Cave at frames `1147`, `3860`, and `5098`; the user confirmed all
   three generated correctly. Tagged readiness passed at frame `23100`, and
   fresh frame `23460` found no active autowalk path, NPC blockers, or runtime
-  blockers. The final Kol route remains selected.
+  blockers. The final Kol route remains selected. A nineteenth bounded slice
+  is source-complete and live-verified: Brecconary, Erdrick's Cave,
+  and Garinham now recognize all 23 exact cells of the `mountain_cave` spur
+  through their existing western-return variants. This reuses
+  `mountain_cave_return` and the established nested return chain without
+  changing waypoint geometry or movement timing. At `(16,61)`, all three start
+  that return and target `Mountain Cave forest turn` at `(16,64)`, three steps
+  south, instead of opening 46-48 steps on generic routes. Static coverage
+  checks all 69 spur/destination combinations within 24 steps. Focused route
+  tests pass `317/317`; all 33 host-runnable Lua suites and all 68 Python tests
+  pass. Loaded starts from `(16,61)` selected the expected return and waypoint
+  for all three destinations at frames `591`, `1056`, and `1497`; the user
+  confirmed each route and cancellation. Tagged readiness passed at frame
+  `4560`, and fresh frame `4860` found no active path, NPC blockers, runtime
+  blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

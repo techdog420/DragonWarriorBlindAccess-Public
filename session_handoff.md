@@ -121,6 +121,23 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Mountain Cave spur recovery for the three early destinations is
+  source-complete and live-verified (`2026-08-28`). Brecconary,
+  Erdrick's Cave, and Garinham now recognize exact `mountain_cave` corridor
+  membership through their existing western-return variants. This reuses the
+  live-validated `mountain_cave_return` and nested Hauksness/Kol/bridge chain;
+  no waypoint geometry or movement timing changed. All 69 combinations of 23
+  exact spur cells and three destinations now open within 24 steps. At
+  `(16,61)`, all three start `mountain_cave_return` and target `Mountain Cave
+  forest turn` at `(16,64)`, three steps south, instead of opening 46-48 steps
+  on generic routes. Focused route tests pass `317/317`; Lua syntax, all 33
+  host-runnable Lua suites, and all 68 Python tests pass. Loaded starts from
+  World Map `(16,61)` selected `mountain_cave_return` and `Mountain Cave forest
+  turn` while retaining Brecconary, Erdrick's Cave, and Garinham at frames
+  `591`, `1056`, and `1497`; the user confirmed all three generated correctly
+  and each route cancelled cleanly. Tagged readiness passed at frame `4560`.
+  Fresh frame `4860` confirmed path target nil, zero NPC blockers, zero runtime
+  blockers, and no new script error.
 - The remaining Garinham bridge-return destinations are source-complete and
   live-verified (`2026-08-28`). Kol and Northern Cave now recognize
   the exact `tantegel_garinham_staging` corridor through `x <= 13`; Mountain

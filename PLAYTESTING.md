@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Mountain Cave spur recovery for Brecconary, Erdrick's Cave, and Garinham is
+  source-complete and live-verified (`2026-08-28`). Their existing
+  western-return variants now recognize exact `mountain_cave` corridor
+  membership, preserving the selected destination while reusing
+  `mountain_cave_return` and the established nested return chain. No waypoint
+  geometry or movement timing changed. At `(16,61)`, all three start
+  `mountain_cave_return` and target `Mountain Cave forest turn` at `(16,64)`,
+  three steps south, replacing generic 46-48-step openings. All 69 combinations
+  of 23 exact spur cells and three destinations resolve within 24 steps.
+  Focused route tests pass `317/317`; Lua syntax, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. Loaded starts from World Map `(16,61)`
+  selected the expected route and waypoint for all three destinations at
+  frames `591`, `1056`, and `1497`; the user confirmed every generated route
+  and each test cancelled cleanly. Tagged readiness passed at frame `4560`;
+  fresh frame `4860` found no active path, NPC blockers, runtime blockers, or
+  new script error.
 - The final Garinham bridge-return source batch is live-verified
   (`2026-08-28`). Kol and Northern Cave recognize exact
   `tantegel_garinham_staging` membership through `x <= 13`; Mountain Cave uses
