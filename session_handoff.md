@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-27
+Updated: 2026-08-28
 
 ## Release Installation Handoff
 
@@ -121,6 +121,27 @@ Updated: 2026-08-27
 
 ## Immediate FCEUX Handoff
 
+- Final-progression recovery from the Magic-Temple-to-Rimuldar corridor is
+  source-complete and live-verified (`2026-08-28`). Swamp Cave
+  South Entrance, Rainbow Bridge, and Charlock now recognize exact membership
+  on `rimuldar_magic_temple` through the existing temple-origin cave-return
+  variant. From `(105,114)`, each retains its final destination, starts
+  `rimuldar_magic_temple_staging`, and targets `Temple south approach west` at
+  `(104,114)`, one step west, instead of synthesizing a 44-step opening toward
+  `Rimuldar east gate lane`. A four-tile selector exclusion around Rimuldar
+  `(102,72)` preserves the direct local south-cave return. No waypoint geometry
+  or movement timing changed. A complete static sweep checked all 72 exact
+  corridor cells against the three destinations: all 216 selections resolve
+  through the temple return or correct local cave route, with no synthetic
+  opening longer than the existing validated 13-step southern-road segment.
+  Focused route tests pass `305/305`; Lua syntax, all 33 host-runnable Lua
+  suites, and all 68 Python tests pass. Loaded starts from `(105,114)` at
+  frames `2072`, `2591`, and `2944` selected
+  `rimuldar_magic_temple_staging` and `Temple south approach west` while
+  retaining Swamp Cave South, Rainbow Bridge, and Charlock respectively. The
+  user confirmed all three behaved correctly, and each route cancelled
+  cleanly. Fresh frame `5820` confirmed World Map `(105,114)`, path target nil,
+  zero NPC or runtime blockers, and no new script error.
 - Western-destination recovery from the Erdrick corridor is source-complete
   and live-verified (`2026-08-27`). Hauksness, Cantlin, and the
   Eastern Great Swamp Search Area now use an eleven-step off-network staging
@@ -141,7 +162,10 @@ Updated: 2026-08-27
   expected. Each active route cancelled cleanly; an extra stop at frame `7370`
   correctly reported no route active. Fresh frame `11640` confirmed World Map
   `(44,36)`, path target nil, zero NPC or runtime blockers, and no new script
-  error.
+  error. A follow-up comprehensive audit checked all 57 exact Erdrick-corridor
+  cells against all 16 Travel destinations: all 912 selections resolve, with
+  zero openings above 11 steps. The Erdrick corridor is closed for this
+  arbitrary-start pass.
 - Final-progression recovery from the Erdrick corridor is source-complete and
   live-verified (`2026-08-27`). Swamp Cave South Entrance, Rainbow
   Bridge, and Charlock now recognize exact membership on the existing
@@ -3309,10 +3333,10 @@ Updated: 2026-08-27
 
 ## Next Work
 
-1. Commit and push the live-verified western-destination Erdrick-corridor
+1. Commit and push the live-verified final-progression Magic-Temple-corridor
    recovery batch after user authorization.
-2. Continue the arbitrary-start route audit with the next largest synthetic
-   opening or repeatable endpoint overshoot.
+2. Continue the Magic-Temple-corridor audit with its next coherent destination
+   family.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

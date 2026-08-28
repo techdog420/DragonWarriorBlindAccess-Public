@@ -1,11 +1,31 @@
 # Playtesting Notes
 
-Updated: 2026-08-27
+Updated: 2026-08-28
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Final-progression recovery from the Magic-Temple-to-Rimuldar corridor is
+  source-complete and live-verified (`2026-08-28`). Swamp Cave
+  South Entrance, Rainbow Bridge, and Charlock now recognize exact
+  `rimuldar_magic_temple` membership through the temple-origin cave-return
+  variant. Static acceptance from `(105,114)` starts
+  `rimuldar_magic_temple_staging`, preserves the final Travel object, and
+  targets `Temple south approach west` at `(104,114)`, one step west, replacing
+  the synthetic 44-step opening toward `Rimuldar east gate lane`. A four-tile
+  exclusion around Rimuldar `(102,72)` preserves its direct local cave return.
+  No waypoint geometry or movement timing changed. A 72-cell by
+  three-destination audit found all 216 selections resolve through the temple
+  return or correct local cave route, with no synthetic opening longer than
+  the existing validated 13-step southern-road segment. Focused route tests
+  pass `305/305`; Lua syntax, all 33 host-runnable Lua suites, and all 68
+  Python tests pass. Loaded starts from `(105,114)` at frames `2072`, `2591`,
+  and `2944` selected `rimuldar_magic_temple_staging` and `Temple south
+  approach west` while retaining Swamp Cave South, Rainbow Bridge, and Charlock
+  respectively. The user confirmed all three behaved correctly, and each route
+  cancelled cleanly. Fresh frame `5820` confirmed World Map `(105,114)`, path
+  target nil, zero NPC or runtime blockers, and no new script error.
 - Western-destination recovery from the Erdrick corridor is source-complete
   and live-verified (`2026-08-27`). Hauksness, Cantlin, and the
   Eastern Great Swamp Search Area now use an eleven-step off-network staging
@@ -62,7 +82,9 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   started `swamp_cave` at frame `16360` and selected `West of Kol north lane`.
   The user accepted all four checks. Fresh frame `22980` confirmed World Map
   `(96,14)`, path target nil, zero runtime blockers, and no current script
-  error.
+  error. A follow-up comprehensive audit checked all 57 exact Erdrick-corridor
+  cells against all 16 Travel destinations: all 912 selections resolve, with
+  zero openings above 11 steps. The corridor is closed for this pass.
 - The remaining Northern-Cave-return northwestern recovery batch is
   source-complete and live-verified (`2026-08-27`). Tantegel,
   Mountain Cave, Hauksness, Cantlin, and the Eastern Great Swamp Search Area

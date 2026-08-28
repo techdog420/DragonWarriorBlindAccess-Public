@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-27
+Updated: 2026-08-28
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -257,7 +257,22 @@ quality-of-life work.
   pass. Loaded route selections from `(44,36)` retained all three final
   destinations while starting the expected route and waypoint. The user
   confirmed each generated as expected; the final probe found no active path
-  or runtime blockers.
+  or runtime blockers. A comprehensive follow-up checked all 912 combinations
+  of 57 exact Erdrick-corridor cells and 16 Travel destinations; every route
+  resolves and none opens with more than 11 steps, closing that corridor for
+  this pass. An eighth bounded slice is source-complete and live-verified:
+  Swamp Cave South, Rainbow Bridge, and Charlock now recognize the
+  Magic-Temple-to-Rimuldar return corridor. From `(105,114)`, each replaces a
+  synthetic 44-step opening with one step west on
+  `rimuldar_magic_temple_staging`. A four-tile Rimuldar exclusion preserves the
+  direct local cave return. Static coverage checks all 216 combinations of 72
+  corridor cells and three destinations; every selection resolves through an
+  established route, and the largest remaining segment is the validated
+  13-step southern-road leg. Focused route tests pass `305/305`; all 33
+  host-runnable Lua suites and all 68 Python tests pass. Loaded selections from
+  `(105,114)` retained all three final destinations while starting the expected
+  route and waypoint. The user confirmed each behaved correctly; the final
+  probe found no active path or runtime blockers.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

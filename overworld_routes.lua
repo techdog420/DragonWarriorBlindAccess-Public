@@ -2622,6 +2622,12 @@ ROUTES.swamp_cave_south_magic_temple = {
         continue_after_staging = true,
     },
     selection_anchors = {{x = 108, y = 109, max_distance = 4}},
+    selection_route_corridors = {"rimuldar_magic_temple"},
+    -- At Rimuldar and its east doorstep, retain the direct south-cave route
+    -- instead of wrapping it in an already-completed temple return leg.
+    selection_route_corridor_exclusions = {
+        {x = 102, y = 72, max_distance = 4},
+    },
     waypoints = copy_route_prefix(ROUTES.swamp_cave_south, 104, 49),
 }
 
