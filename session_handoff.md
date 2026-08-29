@@ -121,6 +121,25 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The second Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Kol, Northern Cave, and Mountain
+  Cave now recognize all 85 exact cells on `cantlin_return_staging` through
+  their existing northwestern-return variants. This reuses the established
+  Great Swamp-to-Cantlin return and northern destination chains; no waypoint
+  geometry or movement timing changed. Before the patch, the permanent
+  regression reproduced an 81-step Kol opening from this connected corridor.
+  All 255 combinations now retain the selected target with no opening over 14
+  steps. At `(85,113)`, all three start `cantlin_return_staging` and target the
+  nearest established `Great Swamp east lane` waypoint at `(89,113)`, four
+  steps east. Focused route tests pass `325/325`; the full gate passes Lua
+  syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks. Loaded starts retained Kol at frame
+  `2710`, Mountain Cave at frame `3979`, and Northern Cave at frame `4674`;
+  every run selected `cantlin_return_staging` and `Great Swamp east lane`.
+  Shift+R reported the same active route at frames `3010`, `4276`, and `4993`,
+  and Shift+U stopped the routes cleanly at frames `3182`, `4465`, and `5173`.
+  Fresh frame `8040` found the hero on World Map `(85,113)` with no active
+  path, NPC blockers, runtime blockers, or new script error.
 - The first Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Brecconary, Erdrick's Cave, and
   Garinham now recognize all 85 exact cells on `cantlin_return_staging` through
@@ -3697,7 +3716,7 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified first Cantlin return-corridor batch.
+1. Commit and push the live-verified second Cantlin return-corridor batch.
 2. Continue the remaining destination audit on the same corridor.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms

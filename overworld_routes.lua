@@ -3009,6 +3009,7 @@ ROUTES.kol_northwestern_return = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
+    selection_route_corridors = {"cantlin_return_staging"},
     waypoints = {
         {x = 104, y = 10, name = "Kol", radius = 0, final = true},
     },
@@ -3026,7 +3027,10 @@ ROUTES.northern_cave_northwestern_return = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
-    selection_route_corridors = {"mountain_cave"},
+    selection_route_corridors = {
+        "mountain_cave",
+        "cantlin_return_staging",
+    },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
 
@@ -3049,7 +3053,10 @@ ROUTES.mountain_cave_northwestern_return = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
-    selection_route_corridors = {"kol_rain_shrine_staging"},
+    selection_route_corridors = {
+        "kol_rain_shrine_staging",
+        "cantlin_return_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
 

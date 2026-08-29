@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The second Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Kol, Northern Cave, and Mountain
+  Cave now recognize exact `cantlin_return_staging` corridor membership through
+  their existing northwestern-return variants. Before the patch, the permanent
+  regression reproduced an 81-step Kol opening. All 255 combinations now
+  retain the requested destination with no opening over 14 steps. At
+  `(85,113)`, each starts `cantlin_return_staging` and targets the nearest
+  `Great Swamp east lane` waypoint at `(89,113)`, four steps east. Focused
+  route tests pass `325/325`; Lua syntax, all 33 host-runnable Lua suites, all
+  68 Python tests, speech dependency, and command-queue checks pass. Loaded
+  starts retained Kol at frame `2710`, Mountain Cave at frame `3979`, and
+  Northern Cave at frame `4674`; each selected the expected corridor and
+  waypoint. Shift+R preserved the active routes at frames `3010`, `4276`, and
+  `4993`; Shift+U stopped them cleanly at frames `3182`, `4465`, and `5173`.
+  Fresh frame `8040` found World Map `(85,113)` with no active path, NPC
+  blockers, runtime blockers, or new script error.
 - The first Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Brecconary, Erdrick's Cave, and
   Garinham now recognize exact `cantlin_return_staging` corridor membership

@@ -544,6 +544,21 @@ quality-of-life work.
   waypoint. Shift+U stopped the routes cleanly at frames `3976`, `4292`, and
   `4769`. Fresh frame `18900` found World Map `(85,113)` with no active path,
   NPC blockers, runtime blockers, or new script error.
+  A twenty-eighth bounded slice is source-complete and live-verified: Kol,
+  Northern Cave, and Mountain Cave now recognize all 85 exact
+  cells on `cantlin_return_staging` through their existing northwestern-return
+  variants. Before the patch, the permanent regression reproduced an 81-step
+  Kol opening from this connected corridor. All 255 destination combinations
+  now retain the requested target with no opening over 14 steps. At
+  `(85,113)`, all three start `cantlin_return_staging` toward the nearest
+  `Great Swamp east lane` waypoint at `(89,113)`, four steps east. Focused
+  route tests pass `325/325`; the full gate passes all 33 host-runnable Lua
+  suites and all 68 Python tests. Loaded starts retained Kol at frame `2710`,
+  Mountain Cave at frame `3979`, and Northern Cave at frame `4674`; all
+  selected the expected corridor and waypoint. Shift+R preserved the active
+  routes, and Shift+U stopped them cleanly at frames `3182`, `4465`, and
+  `5173`. Fresh frame `8040` found World Map `(85,113)` with no active path,
+  NPC blockers, runtime blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

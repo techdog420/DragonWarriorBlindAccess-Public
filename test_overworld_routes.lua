@@ -4143,6 +4143,53 @@ function tests.cantlin_return_corridor_early_destinations_keep_connected_opening
     routes.reset_for_tests()
 end
 
+function tests.cantlin_return_corridor_northern_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_kol", name = "Kol"},
+        {id = "overworld_northern_cave", name = "Northern Cave"},
+        {id = "overworld_mountain_cave", name = "Mountain Cave"},
+    }
+
+    local checked = 0
+    for _, target in ipairs(targets) do
+        for _, cell in ipairs(route_corridor_cells("cantlin_return_staging")) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Cantlin return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Cantlin return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Cantlin return")
+            assert(segment and segment.path_length <= 14,
+                target.name .. " should use a connected Cantlin return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+    assert_equal(checked, 255,
+        "the northern-destination Cantlin audit should cover every combination")
+
+    for _, target in ipairs(targets) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(target, 0x01, 85, 113))
+        assert_equal(info.route.id, "cantlin_return_staging",
+            target.name .. " should start on the nearby Great Swamp return")
+        local segment = assert(routes.plan_next_segment(0x01, 85, 113))
+        assert_equal(segment.waypoint.name, "Great Swamp east lane",
+            target.name .. " should snap to the nearest established return waypoint")
+        assert_equal(segment.path_length, 4,
+            target.name .. " should open four steps east on the return corridor")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.western_destinations_recover_from_erdrick_corridor()
     local cases = {
         {
