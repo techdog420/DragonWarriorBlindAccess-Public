@@ -121,6 +121,27 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The final Rimuldar return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Tantegel and Swamp Cave North now
+  recognize all 85 exact cells on `rimuldar_swamp_cave_north_staging` through
+  their existing southern-island variants. This reuses the established
+  Rimuldar return, manual cave crossing, and destination chains; no waypoint
+  geometry or movement timing changed. Before the patch, each destination had
+  48 openings over the connected 24-step bound, reaching 61 steps for Tantegel
+  and 48 for Swamp Cave North. All 170 combinations now retain the selected
+  target with no opening over 14 steps. At `(83,55)`, both start
+  `swamp_cave_south` and target `South island west ridge lane` at `(83,54)`,
+  one step north. Focused route tests pass `323/323`; the full gate passes Lua
+  syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks. This closes the source-level audit for
+  every destination on the 85-cell Rimuldar return corridor. Loaded starts
+  retained Swamp Cave North through `swamp_cave_north_swamp_cave_south` at
+  frame `2454` and Tantegel through its canonical `tantegel_kol` chain at frame
+  `3522`; both opened `swamp_cave_south` toward `South island west ridge lane`.
+  Shift+U stopped the routes cleanly at frames `3009` and `3838`. Tagged
+  readiness passed at frame `6960`, and fresh frame `7320` found the hero at
+  `(83,55)` with no active path, NPC blockers, runtime blockers, or new script
+  error. The entire 85-cell corridor is now source- and live-verified.
 - The third Rimuldar return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Hauksness, Cantlin, and the Eastern
   Great Swamp Search Area now recognize all 85 exact cells on
@@ -3657,9 +3678,9 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified third Rimuldar return-corridor batch.
-2. Patch and validate the final Tantegel and Swamp Cave North pair on this
-   corridor.
+1. Commit and push the live-verified final Rimuldar return-corridor batch.
+2. Audit the next off-network corridor and select the next bounded recovery
+   batch.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

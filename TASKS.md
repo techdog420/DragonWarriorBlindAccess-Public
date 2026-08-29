@@ -515,6 +515,20 @@ quality-of-life work.
   Shift+U stopped the accepted runs at frames `4046`, `5456`, and `6221`.
   Tagged readiness passed at frame `8400`; fresh frame `8700` found no active
   path, NPC blockers, runtime blockers, or new script error.
+  A twenty-sixth bounded slice is source-complete and live-verified:
+  Tantegel and Swamp Cave North now recognize all 85 exact cells on
+  `rimuldar_swamp_cave_north_staging`. Before the patch, each had 48 openings
+  over the connected 24-step bound, reaching 61 steps for Tantegel and 48 for
+  Swamp Cave North. All 170 combinations now retain the requested target with
+  no opening over 14 steps. At `(83,55)`, both start `swamp_cave_south` toward
+  `South island west ridge lane` at `(83,54)`, one step north. Focused route
+  tests pass `323/323`; the full gate passes all 33 host-runnable Lua suites and
+  all 68 Python tests. Loaded starts retained Swamp Cave North at frame `2454`
+  and Tantegel at frame `3522`; both selected the expected nearby return.
+  Shift+U stopped them cleanly at frames `3009` and `3838`. Tagged readiness
+  passed at frame `6960`; fresh frame `7320` found no active path, NPC blockers,
+  runtime blockers, or new script error. This closes the source and live audit
+  for every destination on the 85-cell Rimuldar return corridor.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
