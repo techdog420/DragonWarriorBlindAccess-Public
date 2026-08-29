@@ -6,6 +6,25 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The third Hauksness return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-29`). Swamp Cave North, Swamp Cave South, and Rainbow
+  Bridge now recognize all 125 exact cells on
+  `hauksness_return_staging` through their existing cave and final-progression
+  wrappers. Before the patch, each had 87 openings over the connected 24-step
+  bound. At `(73,97)`, Swamp Cave North attempted 77 steps and exceeded the
+  planner limit; Swamp Cave South and Rainbow Bridge each opened 41 steps
+  through the wrong cave return. All 375 combinations now retain the selected
+  destination with no opening over 14 steps. From `(73,96)`, all three start
+  `hauksness_return_staging` and target `Cantlin north road` at `(73,91)`, five
+  steps north. No waypoint geometry or movement timing changed. Focused route
+  tests pass `331/331`; Lua syntax, all 33 host-runnable Lua suites, all 68
+  Python tests, speech dependency, and command-queue checks pass. Loaded starts
+  retained Swamp Cave North at frame `787`, Swamp Cave South at frame `1416`,
+  and Rainbow Bridge at frame `2533`; each selected the expected corridor and
+  waypoint. Shift+R preserved the routes at frames `986`, `1648`, and `2747`;
+  Shift+U stopped them cleanly at frames `1149`, `1829`, and `2918`. Fresh
+  frame `5220` found World Map `(73,96)` with path target nil, zero NPC/runtime
+  blockers, and no new script error.
 - The second Hauksness return-corridor recovery batch is source-complete and
   live-verified (`2026-08-29`). Kol, Northern Cave, and Mountain
   Cave now recognize all 125 exact cells on `hauksness_return_staging` through

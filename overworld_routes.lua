@@ -1162,7 +1162,10 @@ local ROUTES = {
         -- Travel-object refresh replace it with the Rimuldar return route.
         compatible_target_object_ids = {"overworld_swamp_cave_south_entrance"},
         staging = FINAL_PROGRESSION_STAGING,
-        selection_route_corridors = {"cantlin_return_staging"},
+        selection_route_corridors = {
+            "hauksness_return_staging",
+            "cantlin_return_staging",
+        },
         waypoints = {
             {
                 x = 104,
@@ -3339,6 +3342,7 @@ ROUTES.swamp_cave_western_return_staging = {
     },
     selection_route_corridors = {
         "mountain_cave",
+        "hauksness_return_staging",
         "cantlin_return_staging",
     },
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
@@ -3370,6 +3374,7 @@ ROUTES.swamp_cave_south_mainland = {
         "kol_swamp_cave_staging",
         "erdrick",
         "mountain_cave",
+        "hauksness_return_staging",
         "cantlin_return_staging",
     },
     -- Forward and reverse wrappers can use opposite L-turn ordering. Include
