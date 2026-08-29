@@ -590,8 +590,23 @@ quality-of-life work.
   waypoint. Shift+R preserved the active routes, and Shift+U stopped them
   cleanly at frames `1224`, `2082`, and `3147`. Fresh frame `5280` found World
   Map `(85,113)` with no active path, NPC blockers, runtime blockers, or new
-  script error. Charlock remains as the final isolated true failure on this
-  corridor.
+  script error. At that checkpoint, Charlock remained the final isolated audit
+  item on this corridor.
+  A thirty-first bounded slice is source-complete and live-verified: the
+  preceding Rainbow Bridge corridor integration already
+  connected Charlock through their shared `FINAL_PROGRESSION_STAGING` chain,
+  so no redundant production selector was added. A dedicated regression now
+  checks all 85 exact `cantlin_return_staging` cells, retains Charlock Castle as
+  the requested final destination, and keeps every opening within 14 steps. At
+  `(85,113)`, Charlock starts `cantlin_return_staging` toward
+  `Great Swamp east lane` at `(89,113)`, four steps east. Focused route tests
+  pass `328/328`; the full gate passes all 33 host-runnable Lua suites and all
+  68 Python tests. Loaded selection at frame `71879` retained Charlock, started
+  `cantlin_return_staging`, and targeted `Great Swamp east lane`; Shift+R at
+  frame `72140` reported the same route, waypoint, and index. Fresh frame
+  `75600` found World Map `(85,113)` with path target nil, zero NPC/runtime
+  blockers, and no new script error. This closes the source and live audit for
+  every supported destination on the 85-cell Cantlin return corridor.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

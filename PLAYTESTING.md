@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Final Charlock coverage on the Cantlin return corridor is source-complete and
+  live-verified (`2026-08-28`). The accepted Rainbow Bridge
+  corridor integration already connects Charlock through their shared
+  `FINAL_PROGRESSION_STAGING` chain, so no redundant production selector was
+  added. The new regression checks all 85 exact `cantlin_return_staging` cells,
+  retains Charlock Castle as the requested final destination, and keeps every
+  opening within 14 steps. At `(85,113)`, Charlock starts
+  `cantlin_return_staging` toward `Great Swamp east lane` at `(89,113)`, four
+  steps east. Focused route tests pass `328/328`; Lua syntax, all 33
+  host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks pass. Loaded selection at frame `71879` retained
+  Charlock, started `cantlin_return_staging`, and targeted `Great Swamp east
+  lane`; Shift+R at frame `72140` reported the same route, waypoint, and index.
+  Fresh frame `75600` found World Map `(85,113)` with path target nil, zero
+  NPC/runtime blockers, and no new script error. All supported destinations on
+  this 85-cell corridor are now source- and live-verified.
 - The fourth Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Rimuldar, Magic Temple, and Rainbow
   Bridge now recognize exact `cantlin_return_staging` corridor membership

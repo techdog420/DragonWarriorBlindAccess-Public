@@ -4287,6 +4287,51 @@ function tests.cantlin_return_corridor_southern_destinations_keep_connected_open
     routes.reset_for_tests()
 end
 
+function tests.cantlin_return_corridor_charlock_keeps_connected_openings()
+    -- Rainbow Bridge and Charlock share FINAL_PROGRESSION_STAGING. Keep the
+    -- final destination covered explicitly so future selector changes cannot
+    -- disconnect Charlock while the nearer bridge destination still passes.
+    local target = {
+        id = "overworld_charlock_castle",
+        name = "Charlock Castle",
+    }
+
+    local checked = 0
+    for _, cell in ipairs(route_corridor_cells("cantlin_return_staging")) do
+        checked = checked + 1
+        routes.reset_for_tests()
+        local info, start_err = routes.start_for_object(
+            target, 0x01, cell.x, cell.y)
+        assert_equal(start_err, nil,
+            "Charlock should resolve across the Cantlin return")
+        assert_equal(routes.active_route_matches_object(target), true,
+            "Charlock should remain selected across the Cantlin return")
+        local segment, segment_err = routes.plan_next_segment(
+            0x01, cell.x, cell.y)
+        assert_equal(segment_err, nil,
+            "Charlock should plan across the Cantlin return")
+        assert(segment and segment.path_length <= 14,
+            "Charlock should use a connected Cantlin return opening; got " ..
+                tostring(segment and segment.path_length) .. " at " ..
+                cell.x .. "," .. cell.y .. " via " ..
+                tostring(info and info.route and info.route.id))
+    end
+    assert_equal(checked, 85,
+        "the Charlock Cantlin audit should cover every corridor cell")
+
+    routes.reset_for_tests()
+    local info = assert(routes.start_for_object(target, 0x01, 85, 113))
+    assert_equal(info.route.id, "cantlin_return_staging",
+        "Charlock should start on the nearby Great Swamp return")
+    local segment = assert(routes.plan_next_segment(0x01, 85, 113))
+    assert_equal(segment.waypoint.name, "Great Swamp east lane",
+        "Charlock should snap to the nearest established return waypoint")
+    assert_equal(segment.path_length, 4,
+        "Charlock should open four steps east on the return corridor")
+
+    routes.reset_for_tests()
+end
+
 function tests.western_destinations_recover_from_erdrick_corridor()
     local cases = {
         {

@@ -121,6 +121,23 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- Final Charlock coverage on the Cantlin return corridor is source-complete and
+  live-verified (`2026-08-28`). The preceding Rainbow Bridge
+  corridor patch already connected Charlock through their shared
+  `FINAL_PROGRESSION_STAGING` chain, so no redundant production selector was
+  added. A dedicated regression now checks all 85 exact
+  `cantlin_return_staging` cells, retains Charlock Castle as the requested final
+  destination, and limits every opening to 14 steps. At `(85,113)`, Charlock
+  starts `cantlin_return_staging` and targets the nearest established
+  `Great Swamp east lane` waypoint at `(89,113)`, four steps east. Focused route
+  tests pass `328/328`; the full gate passes Lua syntax, all 33 host-runnable
+  Lua suites, all 68 Python tests, speech dependency, and command-queue checks.
+  Loaded selection at frame `71879` retained Charlock, started
+  `cantlin_return_staging`, and targeted `Great Swamp east lane`; Shift+R at
+  frame `72140` reported the same route, waypoint, and index. Fresh frame
+  `75600` found World Map `(85,113)` with path target nil, zero NPC/runtime
+  blockers, and no new script error. This closes both the source and live audit
+  for every supported destination on the 85-cell Cantlin return corridor.
 - The fourth Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Rimuldar, Magic Temple, and Rainbow
   Bridge now recognize all 85 exact cells on `cantlin_return_staging` through
@@ -3759,8 +3776,9 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified fourth Cantlin return-corridor batch.
-2. Patch the final isolated Charlock corridor hole.
+1. Commit and push the focused Charlock regression and live-verification notes.
+2. Audit the next off-network corridor or remaining high-value route-polish
+   issue now that the 85-cell Cantlin return corridor is complete.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.
