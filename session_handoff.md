@@ -121,6 +121,28 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The third Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Hauksness, Swamp Cave North, and
+  Swamp Cave South now recognize all 85 exact cells on
+  `cantlin_return_staging` through their existing destination wrappers. This
+  reuses the established Great Swamp-to-Cantlin return, town bypasses, and
+  manual cave-crossing handoffs; no waypoint geometry or movement timing
+  changed. The pre-patch audit found 27 overlong Hauksness openings and 80 each
+  for the two cave destinations. At `(85,113)`, Hauksness and Swamp Cave North
+  attempted 81-step openings, while Swamp Cave South attempted 45 steps. All
+  255 combinations now retain the selected target with no opening over 14
+  steps. At `(85,113)`, all three start `cantlin_return_staging` and target the
+  nearest established `Great Swamp east lane` waypoint at `(89,113)`, four
+  steps east. Focused route tests pass `326/326`; the full gate passes Lua
+  syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks. Loaded starts retained Hauksness at
+  frame `795`, Swamp Cave North at frame `3296`, and Swamp Cave South at frame
+  `4575`; every run selected `cantlin_return_staging` and
+  `Great Swamp east lane`. Shift+R reported the same active route at frames
+  `1078`, `3674`, and `4859`, and Shift+U stopped the routes cleanly at frames
+  `1258`, `3804`, and `5109`. Fresh frame `7440` found the hero on World Map
+  `(85,113)` with no active path, NPC blockers, runtime blockers, or new script
+  error.
 - The second Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Kol, Northern Cave, and Mountain
   Cave now recognize all 85 exact cells on `cantlin_return_staging` through
@@ -3716,7 +3738,7 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified second Cantlin return-corridor batch.
+1. Commit and push the live-verified third Cantlin return-corridor batch.
 2. Continue the remaining destination audit on the same corridor.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms

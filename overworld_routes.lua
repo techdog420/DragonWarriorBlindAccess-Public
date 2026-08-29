@@ -3074,6 +3074,7 @@ ROUTES.hauksness_northwestern_return = {
     selection_route_corridors = {
         "kol_rain_shrine_staging",
         "mountain_cave",
+        "cantlin_return_staging",
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
@@ -3325,7 +3326,10 @@ ROUTES.swamp_cave_western_return_staging = {
         {x = 73, y = 102, max_distance = 4},
         {x = 89, y = 112, max_distance = 4},
     },
-    selection_route_corridors = {"mountain_cave"},
+    selection_route_corridors = {
+        "mountain_cave",
+        "cantlin_return_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
 }
 
@@ -3355,6 +3359,7 @@ ROUTES.swamp_cave_south_mainland = {
         "kol_swamp_cave_staging",
         "erdrick",
         "mountain_cave",
+        "cantlin_return_staging",
     },
     -- Forward and reverse wrappers can use opposite L-turn ordering. Include
     -- only the proven interior cells omitted by reverse-corridor membership so

@@ -559,6 +559,22 @@ quality-of-life work.
   routes, and Shift+U stopped them cleanly at frames `3182`, `4465`, and
   `5173`. Fresh frame `8040` found World Map `(85,113)` with no active path,
   NPC blockers, runtime blockers, or new script error.
+  A twenty-ninth bounded slice is source-complete and live-verified: Hauksness,
+  Swamp Cave North, and Swamp Cave South now recognize all 85 exact
+  cells on `cantlin_return_staging` through their existing destination
+  wrappers. The pre-patch audit found 27 overlong Hauksness openings and 80
+  each for the two cave destinations; at `(85,113)`, the openings were 81, 81,
+  and 45 steps respectively. All 255 destination combinations now retain the
+  requested target with no opening over 14 steps. At `(85,113)`, all three
+  start `cantlin_return_staging` toward the nearest `Great Swamp east lane`
+  waypoint at `(89,113)`, four steps east. Focused route tests pass `326/326`;
+  the full gate passes all 33 host-runnable Lua suites and all 68 Python tests.
+  Loaded starts retained Hauksness at frame `795`, Swamp Cave North at frame
+  `3296`, and Swamp Cave South at frame `4575`; all selected the expected
+  corridor and waypoint. Shift+R preserved the active routes, and Shift+U
+  stopped them cleanly at frames `1258`, `3804`, and `5109`. Fresh frame `7440`
+  found World Map `(85,113)` with no active path, NPC blockers, runtime
+  blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

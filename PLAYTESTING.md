@@ -6,6 +6,24 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The third Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Hauksness, Swamp Cave North, and
+  Swamp Cave South now recognize exact `cantlin_return_staging` corridor
+  membership through their existing destination wrappers. The pre-patch audit
+  found 27 overlong Hauksness openings and 80 each for the two cave
+  destinations. At `(85,113)`, the openings were 81, 81, and 45 steps
+  respectively. All 255 combinations now retain the requested destination with
+  no opening over 14 steps. At `(85,113)`, each starts
+  `cantlin_return_staging` and targets the nearest `Great Swamp east lane`
+  waypoint at `(89,113)`, four steps east. Focused route tests pass `326/326`;
+  Lua syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks pass. Loaded starts retained Hauksness
+  at frame `795`, Swamp Cave North at frame `3296`, and Swamp Cave South at
+  frame `4575`; each selected the expected corridor and waypoint. Shift+R
+  preserved the active routes at frames `1078`, `3674`, and `4859`; Shift+U
+  stopped them cleanly at frames `1258`, `3804`, and `5109`. Fresh frame `7440`
+  found World Map `(85,113)` with no active path, NPC blockers, runtime
+  blockers, or new script error.
 - The second Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Kol, Northern Cave, and Mountain
   Cave now recognize exact `cantlin_return_staging` corridor membership through
