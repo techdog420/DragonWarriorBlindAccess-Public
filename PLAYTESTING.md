@@ -1,11 +1,28 @@
 # Playtesting Notes
 
-Updated: 2026-08-28
+Updated: 2026-08-29
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The first Hauksness return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-29`). Brecconary, Erdrick's Cave, and
+  Garinham now recognize all 125 exact cells on `hauksness_return_staging`
+  through their existing western-return variants. Before the patch, each had
+  87 openings over the connected 24-step bound. At `(73,97)`, their direct
+  routes attempted 81, 82, and 82 steps and exceeded the planner limit. All
+  375 combinations now retain the selected destination with no opening over 14
+  steps. From `(73,96)`, each starts `hauksness_return_staging` and targets
+  `Cantlin north road` at `(73,91)`, five steps north. No waypoint geometry or
+  movement timing changed. Focused route tests pass `329/329`; Lua syntax, all
+  33 host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks pass. Loaded starts retained Brecconary at frame `2471`,
+  Erdrick's Cave at frame `3277`, and Garinham at frame `3776`; each selected
+  the expected corridor and waypoint. Shift+R preserved the active routes at
+  frames `2744`, `3478`, and `4000`; Shift+U stopped them cleanly at frames
+  `2947`, `3647`, and `4158`. Fresh frame `7260` found World Map `(73,96)` with
+  path target nil, zero NPC/runtime blockers, and no new script error.
 - Final Charlock coverage on the Cantlin return corridor is source-complete and
   live-verified (`2026-08-28`). The accepted Rainbow Bridge
   corridor integration already connects Charlock through their shared
