@@ -6,6 +6,26 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The first Kol return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-29`). Brecconary, Erdrick's Cave, and Garinham now
+  recognize the disconnected western portion of the 373-cell
+  `kol_return_staging` corridor through their existing western-return variants.
+  Before the patch, each destination had 140 openings over the connected
+  24-step bound; Brecconary reproduced a rejected 71-step opening at `(31,81)`.
+  Membership is limited to exact corridor cells with `y >= 30`, preserving the
+  already-correct Garinham-local overlap farther north. All 1,119 combinations
+  now retain the selected target with no opening over 24 steps. From `(31,81)`,
+  all three start `kol_return_staging` and target `Hauksness north ridge` at
+  `(29,82)`, two steps west and one south. No waypoint geometry or movement
+  timing changed. Focused route tests pass `334/334`; Lua syntax, all 33
+  host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks pass. Loaded starts retained Brecconary at frame `2079`,
+  Erdrick's Cave at frame `2804`, and Garinham at frame `3594`; each selected
+  the expected corridor and waypoint. Shift+R preserved the routes at frames
+  `2345`, `3017`, and `3882`; Shift+U stopped them cleanly at frames `2602`,
+  `3199`, and `4167`. Tagged readiness passed at frame `6720`, which found
+  World Map `(31,81)` with path target nil, zero NPC/runtime blockers, and no
+  new script error.
 - The final Hauksness return-corridor source audit is complete and awaiting
   live validation (`2026-08-29`). Rimuldar was the only remaining selector
   hole: 75 of the 125 exact `hauksness_return_staging` cells opened beyond the

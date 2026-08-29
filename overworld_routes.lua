@@ -2509,6 +2509,9 @@ ROUTES.brecconary_western_return = {
         "hauksness_return_staging",
         "cantlin_return_staging",
     },
+    selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 30},
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -2524,6 +2527,9 @@ ROUTES.erdrick_western_return = {
         "hauksness_return_staging",
         "cantlin_return_staging",
     },
+    selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 30},
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2538,6 +2544,9 @@ ROUTES.garinham_western_return = {
         "mountain_cave",
         "hauksness_return_staging",
         "cantlin_return_staging",
+    },
+    selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 30},
     },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
