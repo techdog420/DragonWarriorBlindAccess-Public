@@ -2495,7 +2495,10 @@ ROUTES.brecconary_western_return = {
     destination_maps = {0x08},
     staging = WESTERN_EARLY_DESTINATION_STAGING,
     selection_anchors = western_early_destination_anchors,
-    selection_route_corridors = {"mountain_cave"},
+    selection_route_corridors = {
+        "mountain_cave",
+        "cantlin_return_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
 
@@ -2506,7 +2509,10 @@ ROUTES.erdrick_western_return = {
     destination_maps = {0x1C, 0x1D},
     staging = WESTERN_EARLY_DESTINATION_STAGING,
     selection_anchors = western_early_destination_anchors,
-    selection_route_corridors = {"mountain_cave"},
+    selection_route_corridors = {
+        "mountain_cave",
+        "cantlin_return_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
 
@@ -2517,7 +2523,10 @@ ROUTES.garinham_western_return = {
     destination_maps = {0x09},
     staging = WESTERN_EARLY_DESTINATION_STAGING,
     selection_anchors = western_early_destination_anchors,
-    selection_route_corridors = {"mountain_cave"},
+    selection_route_corridors = {
+        "mountain_cave",
+        "cantlin_return_staging",
+    },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
 

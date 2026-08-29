@@ -121,6 +121,25 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The first Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Brecconary, Erdrick's Cave, and
+  Garinham now recognize all 85 exact cells on `cantlin_return_staging` through
+  their existing western-return variants. This reuses the established Great
+  Swamp-to-Cantlin return and destination chains; no waypoint geometry or
+  movement timing changed. Before the patch, each destination had 80 openings
+  over the connected 24-step bound, 240 total, and the representative
+  Brecconary start at `(85,113)` attempted a 109-step synthetic opening. All
+  255 combinations now retain the selected target with no opening over 14
+  steps. At `(85,113)`, all three start `cantlin_return_staging` and target the
+  nearest established `Great Swamp east lane` waypoint at `(89,113)`, four
+  steps east. Focused route tests pass `324/324`; the full gate passes Lua
+  syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks. Loaded starts retained Brecconary at
+  frame `1864`, Erdrick's Cave at frame `4034`, and Garinham at frame `4465`;
+  every run selected `cantlin_return_staging` and `Great Swamp east lane`.
+  Shift+U stopped the routes cleanly at frames `3976`, `4292`, and `4769`.
+  Fresh frame `18900` found the hero on World Map `(85,113)` with no active
+  path, NPC blockers, runtime blockers, or new script error.
 - The final Rimuldar return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Tantegel and Swamp Cave North now
   recognize all 85 exact cells on `rimuldar_swamp_cave_north_staging` through
@@ -3678,9 +3697,8 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified final Rimuldar return-corridor batch.
-2. Audit the next off-network corridor and select the next bounded recovery
-   batch.
+1. Commit and push the live-verified first Cantlin return-corridor batch.
+2. Continue the remaining destination audit on the same corridor.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

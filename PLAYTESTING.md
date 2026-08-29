@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The first Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Brecconary, Erdrick's Cave, and
+  Garinham now recognize exact `cantlin_return_staging` corridor membership
+  through their existing western-return variants. Before the patch, each had
+  80 openings over the connected 24-step bound, 240 total; Brecconary from
+  `(85,113)` attempted a 109-step synthetic opening. All 255 combinations now
+  retain the requested destination with no opening over 14 steps. At
+  `(85,113)`, each starts `cantlin_return_staging` and targets the nearest
+  `Great Swamp east lane` waypoint at `(89,113)`, four steps east. Focused
+  route tests pass `324/324`; Lua syntax, all 33 host-runnable Lua suites, all
+  68 Python tests, speech dependency, and command-queue checks pass. Loaded
+  starts retained Brecconary at frame `1864`, Erdrick's Cave at frame `4034`,
+  and Garinham at frame `4465`; each selected the expected corridor and
+  waypoint. Shift+U stopped them cleanly at frames `3976`, `4292`, and `4769`.
+  Fresh frame `18900` found World Map `(85,113)` with no active path, NPC
+  blockers, runtime blockers, or new script error.
 - The final Rimuldar return-corridor recovery batch is live-verified
   (`2026-08-28`). Tantegel and Swamp Cave North now recognize exact
   `rimuldar_swamp_cave_north_staging` corridor membership through their

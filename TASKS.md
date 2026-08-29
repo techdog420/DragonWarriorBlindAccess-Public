@@ -529,6 +529,21 @@ quality-of-life work.
   passed at frame `6960`; fresh frame `7320` found no active path, NPC blockers,
   runtime blockers, or new script error. This closes the source and live audit
   for every destination on the 85-cell Rimuldar return corridor.
+  A twenty-seventh bounded slice is source-complete and live-verified:
+  Brecconary, Erdrick's Cave, and Garinham now recognize all 85
+  exact cells on `cantlin_return_staging` through their existing western-return
+  variants. Before the patch, each had 80 openings over the connected 24-step
+  bound, 240 total; the representative Brecconary start at `(85,113)` attempted
+  a 109-step synthetic opening. All 255 destination combinations now retain the
+  requested target with no opening over 14 steps. At `(85,113)`, all three
+  start `cantlin_return_staging` toward the nearest `Great Swamp east lane`
+  waypoint at `(89,113)`, four steps east. Focused route tests pass `324/324`;
+  the full gate passes all 33 host-runnable Lua suites and all 68 Python tests.
+  Loaded starts retained Brecconary at frame `1864`, Erdrick's Cave at frame
+  `4034`, and Garinham at frame `4465`; all selected the expected corridor and
+  waypoint. Shift+U stopped the routes cleanly at frames `3976`, `4292`, and
+  `4769`. Fresh frame `18900` found World Map `(85,113)` with no active path,
+  NPC blockers, runtime blockers, or new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
