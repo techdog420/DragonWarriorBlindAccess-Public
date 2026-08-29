@@ -4476,6 +4476,90 @@ function tests.hauksness_return_corridor_cave_destinations_keep_connected_openin
     routes.reset_for_tests()
 end
 
+function tests.hauksness_return_corridor_southern_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_rimuldar", name = "Rimuldar"},
+        {id = "overworld_southern_cave", name = "Magic Temple"},
+        {id = "overworld_charlock_castle", name = "Charlock Castle"},
+    }
+
+    local checked = 0
+    for _, target in ipairs(targets) do
+        for _, cell in ipairs(route_corridor_cells("hauksness_return_staging")) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Hauksness return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Hauksness return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Hauksness return")
+            assert(segment and segment.path_length <= 14,
+                target.name .. " should use a connected Hauksness return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y)
+        end
+    end
+    assert_equal(checked, 375,
+        "the southern-destination Hauksness audit should cover every combination")
+
+    for _, target in ipairs(targets) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(target, 0x01, 73, 96))
+        assert_equal(info.route.id, "hauksness_return_staging",
+            target.name .. " should start on the nearby Hauksness return")
+        local segment = assert(routes.plan_next_segment(0x01, 73, 96))
+        assert_equal(segment.waypoint.name, "Cantlin north road",
+            target.name .. " should target the nearby established return waypoint")
+        assert_equal(segment.path_length, 5,
+            target.name .. " should open five steps north on the return corridor")
+    end
+
+    routes.reset_for_tests()
+end
+
+function tests.hauksness_return_corridor_remaining_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_tantegel_castle", name = "Tantegel"},
+        {id = "overworld_hauksness", name = "Hauksness"},
+        {id = "overworld_cantlin", name = "Cantlin"},
+        {
+            id = "overworld_eastern_great_swamp_search_area",
+            name = "Great Swamp",
+        },
+    }
+
+    local checked = 0
+    for _, target in ipairs(targets) do
+        for _, cell in ipairs(route_corridor_cells("hauksness_return_staging")) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local _, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Hauksness return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Hauksness return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Hauksness return")
+            assert(segment and segment.path_length <= 14,
+                target.name .. " should use a connected Hauksness return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y)
+        end
+    end
+    assert_equal(checked, 500,
+        "the remaining Hauksness audit should cover every combination")
+
+    routes.reset_for_tests()
+end
+
 function tests.western_destinations_recover_from_erdrick_corridor()
     local cases = {
         {

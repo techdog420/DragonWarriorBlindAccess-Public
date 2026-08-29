@@ -121,6 +121,22 @@ Updated: 2026-08-29
 
 ## Immediate FCEUX Handoff
 
+- The final Hauksness return-corridor source audit is complete and awaiting
+  live validation (`2026-08-29`). Rimuldar was the only remaining selector
+  hole: 75 of the 125 exact `hauksness_return_staging` cells opened beyond the
+  connected 14-step bound. Magic Temple, Charlock, Tantegel, Hauksness,
+  Cantlin, and Great Swamp were already connected through existing shared or
+  local routes. Rimuldar now recognizes the Hauksness return through its
+  existing staging chain, with no waypoint geometry or movement timing change.
+  Dedicated tests now cover all 2,000 corridor/destination combinations—125
+  cells across all 16 player-selectable landmarks—with no opening over 14
+  steps. From `(73,96)`, Rimuldar, Magic Temple, and Charlock each start
+  `hauksness_return_staging` and target `Cantlin north road` at `(73,91)`, five
+  steps north. Focused route tests pass `333/333`; the full gate passes Lua
+  syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks. Reload `main.lua` and validate those
+  three destinations from clear World Map `(73,96)`, using Shift+U between
+  selections.
 - The third Hauksness return-corridor recovery batch is source-complete and
   live-verified (`2026-08-29`). Swamp Cave North, Swamp Cave South, and Rainbow
   Bridge now recognize all 125 exact cells on
@@ -3833,8 +3849,12 @@ Updated: 2026-08-29
 
 ## Next Work
 
-1. Commit and push the live-verified third Hauksness return-corridor batch.
-2. Patch the next bounded Hauksness return-corridor destination group.
+1. Reload `main.lua` and validate Rimuldar, Magic Temple, and Charlock from
+   clear World Map `(73,96)`. Each should retain its final destination, select
+   `hauksness_return_staging`, and target `Cantlin north road` at `(73,91)`,
+   five steps north. Use Shift+U between selections.
+2. After live acceptance, commit and push this final Hauksness corridor slice,
+   then audit the next incomplete overworld corridor.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

@@ -654,6 +654,21 @@ quality-of-life work.
   and Rainbow Bridge at frame `2533`; Shift+R preserved each route and Shift+U
   stopped them cleanly. Fresh frame `5220` found World Map `(73,96)` with path
   target nil, zero NPC/runtime blockers, and no new script error.
+  A thirty-fifth bounded slice completes the Hauksness return-corridor source
+  audit and awaits live validation. Rimuldar was the only remaining selector
+  hole: 75 of the 125 exact `hauksness_return_staging` cells opened beyond the
+  connected 14-step bound. Magic Temple, Charlock, Tantegel, Hauksness,
+  Cantlin, and Great Swamp were already connected through existing shared or
+  local routes. Rimuldar now recognizes the Hauksness return through its
+  existing staging chain, with no waypoint geometry or movement timing change.
+  Dedicated tests cover all 2,000 corridor/destination combinations—125 cells
+  across all 16 landmarks—with no opening over 14 steps. From `(73,96)`,
+  Rimuldar, Magic Temple, and Charlock each start
+  `hauksness_return_staging` toward `Cantlin north road` at `(73,91)`, five
+  steps north. Focused route tests pass `333/333`; the full gate passes all 33
+  host-runnable Lua suites and all 68 Python tests. Reload `main.lua` and
+  validate those three destinations from clear World Map `(73,96)`, using
+  Shift+U between selections.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

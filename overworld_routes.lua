@@ -816,7 +816,10 @@ local ROUTES = {
             {x = 73, y = 102, max_distance = 4},
             {x = 89, y = 112, max_distance = 4},
         },
-        selection_route_corridors = {"cantlin_return_staging"},
+        selection_route_corridors = {
+            "hauksness_return_staging",
+            "cantlin_return_staging",
+        },
         waypoints = {
             {
                 x = 104,
