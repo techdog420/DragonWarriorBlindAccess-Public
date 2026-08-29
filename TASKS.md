@@ -575,6 +575,23 @@ quality-of-life work.
   stopped them cleanly at frames `1258`, `3804`, and `5109`. Fresh frame `7440`
   found World Map `(85,113)` with no active path, NPC blockers, runtime
   blockers, or new script error.
+  A thirtieth bounded slice is source-complete and live-verified: Rimuldar,
+  Magic Temple, and Rainbow Bridge now recognize all 85 exact cells
+  on `cantlin_return_staging` through their existing destination itineraries.
+  The pre-patch audit found 80 overlong openings for each destination, 240
+  total; at `(85,113)`, the openings were 18, 81, and 45 steps respectively.
+  All 255 destination combinations now retain the requested target with no
+  opening over 14 steps. At `(85,113)`, all three start
+  `cantlin_return_staging` toward the nearest `Great Swamp east lane` waypoint
+  at `(89,113)`, four steps east. Focused route tests pass `327/327`; the full
+  gate passes all 33 host-runnable Lua suites and all 68 Python tests. Loaded
+  starts retained Rimuldar at frame `790`, Rainbow Bridge at frame `1612`, and
+  Magic Temple at frame `2689`; all selected the expected corridor and
+  waypoint. Shift+R preserved the active routes, and Shift+U stopped them
+  cleanly at frames `1224`, `2082`, and `3147`. Fresh frame `5280` found World
+  Map `(85,113)` with no active path, NPC blockers, runtime blockers, or new
+  script error. Charlock remains as the final isolated true failure on this
+  corridor.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

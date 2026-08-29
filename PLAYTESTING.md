@@ -6,6 +6,23 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The fourth Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Rimuldar, Magic Temple, and Rainbow
+  Bridge now recognize exact `cantlin_return_staging` corridor membership
+  through their existing destination itineraries. The pre-patch audit found 80
+  overlong openings for each destination, 240 total. At `(85,113)`, the
+  openings were 18, 81, and 45 steps respectively. All 255 combinations now
+  retain the requested destination with no opening over 14 steps. At
+  `(85,113)`, each starts `cantlin_return_staging` and targets the nearest
+  `Great Swamp east lane` waypoint at `(89,113)`, four steps east. Focused
+  route tests pass `327/327`; Lua syntax, all 33 host-runnable Lua suites, all
+  68 Python tests, speech dependency, and command-queue checks pass. Loaded
+  starts retained Rimuldar at frame `790`, Rainbow Bridge at frame `1612`, and
+  Magic Temple at frame `2689`; each selected the expected corridor and
+  waypoint. Shift+R preserved the active routes at frames `1046`, `1882`, and
+  `2941`; Shift+U stopped them cleanly at frames `1224`, `2082`, and `3147`.
+  Fresh frame `5280` found World Map `(85,113)` with no active path, NPC
+  blockers, runtime blockers, or new script error.
 - The third Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Hauksness, Swamp Cave North, and
   Swamp Cave South now recognize exact `cantlin_return_staging` corridor

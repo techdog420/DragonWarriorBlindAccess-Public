@@ -121,6 +121,27 @@ Updated: 2026-08-28
 
 ## Immediate FCEUX Handoff
 
+- The fourth Cantlin return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-28`). Rimuldar, Magic Temple, and Rainbow
+  Bridge now recognize all 85 exact cells on `cantlin_return_staging` through
+  their existing destination itineraries. This reuses the established Great
+  Swamp-to-Cantlin return, manual cave crossing, and southern-island chains; no
+  waypoint geometry or movement timing changed. The pre-patch audit found 80
+  overlong openings for each destination, 240 total. At `(85,113)`, Rimuldar
+  opened 18 steps through the wrong local return, Magic Temple attempted an
+  81-step route, and Rainbow Bridge opened 45 steps. All 255 combinations now
+  retain the selected target with no opening over 14 steps. At `(85,113)`, all
+  three start `cantlin_return_staging` and target the nearest established
+  `Great Swamp east lane` waypoint at `(89,113)`, four steps east. Focused route
+  tests pass `327/327`; the full gate passes Lua syntax, all 33 host-runnable
+  Lua suites, all 68 Python tests, speech dependency, and command-queue checks.
+  Loaded starts retained Rimuldar at frame `790`, Rainbow Bridge at frame
+  `1612`, and Magic Temple at frame `2689`; every run selected
+  `cantlin_return_staging` and `Great Swamp east lane`. Shift+R reported the
+  same active route at frames `1046`, `1882`, and `2941`, and Shift+U stopped
+  the routes cleanly at frames `1224`, `2082`, and `3147`. Fresh frame `5280`
+  found the hero on World Map `(85,113)` with no active path, NPC blockers,
+  runtime blockers, or new script error.
 - The third Cantlin return-corridor recovery batch is source-complete and
   live-verified (`2026-08-28`). Hauksness, Swamp Cave North, and
   Swamp Cave South now recognize all 85 exact cells on
@@ -3738,8 +3759,8 @@ Updated: 2026-08-28
 
 ## Next Work
 
-1. Commit and push the live-verified third Cantlin return-corridor batch.
-2. Continue the remaining destination audit on the same corridor.
+1. Commit and push the live-verified fourth Cantlin return-corridor batch.
+2. Patch the final isolated Charlock corridor hole.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms
    it.

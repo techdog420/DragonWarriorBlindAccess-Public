@@ -816,6 +816,7 @@ local ROUTES = {
             {x = 73, y = 102, max_distance = 4},
             {x = 89, y = 112, max_distance = 4},
         },
+        selection_route_corridors = {"cantlin_return_staging"},
         waypoints = {
             {
                 x = 104,
@@ -883,6 +884,7 @@ local ROUTES = {
         target_object_ids = {"overworld_southern_cave"},
         destination_maps = {0x0E},
         staging = MAGIC_TEMPLE_STAGING,
+        selection_route_corridors = {"cantlin_return_staging"},
         waypoints = {
             {
                 x = 102,
@@ -1160,6 +1162,7 @@ local ROUTES = {
         -- Travel-object refresh replace it with the Rimuldar return route.
         compatible_target_object_ids = {"overworld_swamp_cave_south_entrance"},
         staging = FINAL_PROGRESSION_STAGING,
+        selection_route_corridors = {"cantlin_return_staging"},
         waypoints = {
             {
                 x = 104,
