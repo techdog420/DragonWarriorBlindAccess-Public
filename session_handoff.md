@@ -121,6 +121,25 @@ Updated: 2026-08-29
 
 ## Immediate FCEUX Handoff
 
+- The second Hauksness return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-29`). Kol, Northern Cave, and Mountain
+  Cave now recognize all 125 exact cells on `hauksness_return_staging` through
+  their existing northwestern-return variants. Before the patch, Kol had 59
+  openings over the connected 24-step bound; Northern Cave and Mountain Cave
+  each had 87. At `(73,97)`, Kol opened 53 steps while the two cave routes each
+  attempted 77 steps and exceeded the planner limit. All 375 combinations now
+  retain the selected destination with no opening over 14 steps. From
+  `(73,96)`, all three start `hauksness_return_staging` and target `Cantlin
+  north road` at `(73,91)`, five steps north. No waypoint geometry or movement
+  timing changed. Focused route tests pass `330/330`; the full gate passes Lua
+  syntax, all 33 host-runnable Lua suites, all 68 Python tests, speech
+  dependency, and command-queue checks. Loaded starts retained Kol at frame
+  `2037`, Northern Cave at frame `2508`, and Mountain Cave at frame `3125`;
+  each selected the expected corridor and waypoint. Shift+R preserved the
+  active routes at frames `2222`, `2764`, and `3326`; Shift+U stopped them
+  cleanly at frames `2286`, `2931`, and `3502`. Fresh frame `5520` found World
+  Map `(73,96)` with path target nil, zero NPC/runtime blockers, and no new
+  script error.
 - The first Hauksness return-corridor recovery batch is source-complete and
   live-verified (`2026-08-29`). Brecconary, Erdrick's Cave, and
   Garinham now recognize all 125 exact cells on `hauksness_return_staging`
@@ -3794,7 +3813,7 @@ Updated: 2026-08-29
 
 ## Next Work
 
-1. Commit and push the live-verified first Hauksness return-corridor batch.
+1. Commit and push the live-verified second Hauksness return-corridor batch.
 2. Patch the next bounded Hauksness return-corridor destination group.
 3. Keep combat, control-lock, drift, and timing-retry evidence separate from
    map geometry. Do not promote a blocker unless a same-origin probe confirms

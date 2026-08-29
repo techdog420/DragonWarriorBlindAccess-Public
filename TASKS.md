@@ -622,6 +622,22 @@ quality-of-life work.
   preserved each route and Shift+U stopped them cleanly. Fresh frame `7260`
   found World Map `(73,96)` with path target nil, zero NPC/runtime blockers,
   and no new script error.
+  A thirty-third bounded slice is source-complete and live-verified: Kol,
+  Northern Cave, and Mountain Cave now recognize all 125 exact cells on
+  `hauksness_return_staging` through their existing northwestern-return
+  variants. Before the patch, Kol had 59 openings over the connected 24-step
+  bound; Northern Cave and Mountain Cave each had 87. At `(73,97)`, Kol opened
+  53 steps while the two cave routes each attempted 77 steps and exceeded the
+  planner limit. All 375 combinations now retain the selected destination with
+  no opening over 14 steps. From `(73,96)`, all three start
+  `hauksness_return_staging` toward `Cantlin north road` at `(73,91)`, five
+  steps north. No waypoint geometry or movement timing changed. Focused route
+  tests pass `330/330`; the full gate passes all 33 host-runnable Lua suites and
+  all 68 Python tests. Loaded starts retained Kol at frame `2037`, Northern
+  Cave at frame `2508`, and Mountain Cave at frame `3125`; Shift+R preserved
+  each route and Shift+U stopped them cleanly. Fresh frame `5520` found World
+  Map `(73,96)` with path target nil, zero NPC/runtime blockers, and no new
+  script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
