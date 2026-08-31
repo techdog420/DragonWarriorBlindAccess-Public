@@ -6,6 +6,27 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The final known on-network corridor hole is source-complete and live-verified
+  (`2026-08-30`). A uniform audit checked all 23,296 combinations
+  across 13 selector corridors and 16 destinations. Only Great Swamp travel
+  failed: seven exact cells on `cantlin_return_staging` fell through to
+  `kol_staging` with invalid 82-93-step openings. New
+  `great_swamp_cantlin_return` reverses the established southern return suffix
+  only from `(73,113)`, `(73,111)`, `(71,111)`, `(65,109-110)`, and
+  `(63,107-108)`. The valid 15-step opening from `(74,113)` and existing local
+  routes remain unchanged. All 85 Cantlin-return cells now retain Great Swamp
+  with openings no longer than 15 steps. Representative source checks open two
+  steps east from `(73,113)`, one south from `(65,109)`, and one south from
+  `(63,107)`. Focused route tests pass `338/338`; Lua syntax, all 33
+  host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks pass. Loaded starts selected the expected recovery at
+  frames `388`, `3988`, and `7506`; Shift+R preserved each expected waypoint
+  at frames `706`, `4209`, and `7688`, and Shift+U stopped each route at frames
+  `834`, `4348`, and `7830`. A frame `6240` teleport was safely refused while
+  movement was unsettled; the subsequent third reposition completed normally.
+  Fresh frame `10380` found World Map `(63,107)` with route and path target nil,
+  zero NPC/runtime blockers, and no new script error. All known on-network
+  selector corridors are now closed.
 - The final Kol return-corridor batch is source-complete and live-verified
   (`2026-08-30`). Tantegel's 18 remaining overlong openings lay on
   the west strip from `(8,43)` through `(12,30)`; Rimuldar's 9 lie on the

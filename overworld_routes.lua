@@ -2234,6 +2234,30 @@ local function copy_route_prefix(route, stop_x, stop_y)
         tostring(stop_y)))
 end
 
+local function copy_route_reverse_from(route, start_x, start_y)
+    local result = {}
+    local copying = false
+    for index = #(route and route.waypoints or {}), 1, -1 do
+        local point = route.waypoints[index]
+        if point.x == start_x and point.y == start_y then
+            copying = true
+        end
+        if copying then
+            local copied = copy_waypoint(point)
+            copied.final = nil
+            result[#result + 1] = copied
+        end
+    end
+    if #result == 0 then
+        error(string.format(
+            "route %s does not contain reverse connector pin (%s,%s)",
+            tostring(route and route.id or "-"),
+            tostring(start_x),
+            tostring(start_y)))
+    end
+    return result
+end
+
 local function copy_route_with_kol_bypass(route, stop_x, stop_y)
     local result
     if stop_x ~= nil and stop_y ~= nil then
@@ -2300,6 +2324,73 @@ ROUTES.cantlin_return_staging = {
     title = "Cantlin northwest turn",
     destination_maps = {0x0A},
     waypoints = copy_route_prefix(ROUTES.cantlin_great_swamp, 68, 91),
+}
+
+-- Destination-selection variant: a handful of cells belong only to the
+-- validated Great-Swamp-to-Cantlin return geometry. Reverse that route's
+-- southern suffix toward the search area instead of falling through to the
+-- distant Kol staging chain. Exact corridor regions keep the ordinary
+-- Cantlin-to-swamp route authoritative everywhere it is already connected.
+local great_swamp_cantlin_return_waypoints = copy_route_reverse_from(
+    ROUTES.cantlin_return_staging, 63, 106)
+for _, point in ipairs(great_swamp_cantlin_return_waypoints) do
+    -- These two starts sit midway between reverse-route waypoints. Treat the
+    -- earlier point as reached so planning opens toward the swamp rather than
+    -- taking a harmless one-tile backtrack first.
+    if (point.x == 63 and point.y == 106)
+       or (point.x == 65 and point.y == 108) then
+        point.radius = 1
+    end
+end
+great_swamp_cantlin_return_waypoints[
+    #great_swamp_cantlin_return_waypoints] = copy_waypoint(
+        ROUTES.great_swamp_cantlin.waypoints[
+            #ROUTES.great_swamp_cantlin.waypoints])
+ROUTES.great_swamp_cantlin_return = {
+    id = "great_swamp_cantlin_return",
+    title = "Eastern Great Swamp Search Area",
+    target_object_ids = {
+        "overworld_eastern_great_swamp_search_area",
+    },
+    selection_route_corridor_regions = {
+        {
+            route_id = "cantlin_return_staging",
+            min_x = 73,
+            max_x = 73,
+            min_y = 113,
+            max_y = 113,
+        },
+        {
+            route_id = "cantlin_return_staging",
+            min_x = 73,
+            max_x = 73,
+            min_y = 111,
+            max_y = 111,
+        },
+        {
+            route_id = "cantlin_return_staging",
+            min_x = 71,
+            max_x = 71,
+            min_y = 111,
+            max_y = 111,
+        },
+        {
+            route_id = "cantlin_return_staging",
+            min_x = 65,
+            max_x = 65,
+            min_y = 109,
+            max_y = 110,
+        },
+        {
+            route_id = "cantlin_return_staging",
+            min_x = 63,
+            max_x = 63,
+            min_y = 107,
+            max_y = 108,
+        },
+    },
+    selection_require_route_corridor = true,
+    waypoints = great_swamp_cantlin_return_waypoints,
 }
 
 -- Internal return leg: connected northern travel passes Hauksness from the
@@ -3555,6 +3646,7 @@ local ROUTE_IDS = {
     "cantlin_swamp_cave_south",
     "cantlin_northwestern_return",
     "great_swamp_cantlin",
+    "great_swamp_cantlin_return",
     "great_swamp_swamp_cave_north",
     "great_swamp_swamp_cave_south",
     "great_swamp_northwestern_return",
@@ -3688,6 +3780,7 @@ local ROUTE_ALTERNATES = {
     },
     great_swamp_cantlin = {
         "great_swamp_cantlin",
+        "great_swamp_cantlin_return",
         "great_swamp_swamp_cave_north",
         "great_swamp_swamp_cave_south",
         "great_swamp_northwestern_return",
@@ -4030,6 +4123,7 @@ local function route_selection_score(route, map_id, px, py, terrain_offset)
     -- safe evidence: it reuses already-validated geometry without expanding
     -- recovery into adjacent unverified cells.
     local corridor_excluded = false
+    local selection_corridor_matched = false
     for _, point in ipairs(
         route and route.selection_route_corridor_exclusions or {}) do
         if distance(px, py, point) <= (point.max_distance or 0) then
@@ -4042,6 +4136,7 @@ local function route_selection_score(route, map_id, px, py, terrain_offset)
             route and route.selection_route_corridors or {}) do
             if position_is_on_route_corridor(ROUTES[corridor_id], px, py) then
                 score = 0
+                selection_corridor_matched = true
                 break
             end
         end
@@ -4056,9 +4151,14 @@ local function route_selection_score(route, map_id, px, py, terrain_offset)
                and position_is_on_route_corridor(
                     ROUTES[region.route_id], px, py) then
                 score = 0
+                selection_corridor_matched = true
                 break
             end
         end
+    end
+    if route and route.selection_require_route_corridor
+       and not selection_corridor_matched then
+        return math.huge
     end
     return score
 end

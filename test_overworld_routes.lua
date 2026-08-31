@@ -4332,6 +4332,86 @@ function tests.cantlin_return_corridor_charlock_keeps_connected_openings()
     routes.reset_for_tests()
 end
 
+function tests.cantlin_return_corridor_great_swamp_keeps_connected_openings()
+    local target = {
+        id = "overworld_eastern_great_swamp_search_area",
+        name = "Eastern Great Swamp Search Area",
+    }
+
+    local checked = 0
+    for _, cell in ipairs(route_corridor_cells("cantlin_return_staging")) do
+        checked = checked + 1
+        routes.reset_for_tests()
+        local info, start_err = routes.start_for_object(
+            target, 0x01, cell.x, cell.y)
+        assert_equal(start_err, nil,
+            "Great Swamp should resolve across the Cantlin return")
+        assert_equal(routes.active_route_matches_object(target), true,
+            "Great Swamp should remain selected across the Cantlin return")
+        local segment, segment_err = routes.plan_next_segment(
+            0x01, cell.x, cell.y)
+        assert_equal(segment_err, nil,
+            "Great Swamp should plan across the Cantlin return")
+        assert(segment and segment.path_length <= 15,
+            "Great Swamp should use a connected Cantlin return opening; got " ..
+                tostring(segment and segment.path_length) .. " at " ..
+                cell.x .. "," .. cell.y .. " via " ..
+                tostring(info and info.route and info.route.id))
+    end
+    assert_equal(checked, 85,
+        "the Great Swamp Cantlin audit should cover every corridor cell")
+
+    local representative_cases = {
+        {
+            x = 73,
+            y = 113,
+            waypoint = "Great Swamp middle lane",
+            path_length = 2,
+            first_step = "right",
+        },
+        {
+            x = 65,
+            y = 109,
+            waypoint = "Great Swamp north westbound road",
+            path_length = 1,
+            first_step = "down",
+        },
+        {
+            x = 63,
+            y = 107,
+            waypoint = "Southern plains east return",
+            path_length = 1,
+            first_step = "down",
+        },
+    }
+
+    for _, case in ipairs(representative_cases) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(
+            target, 0x01, case.x, case.y))
+        assert_equal(info.route.id, "great_swamp_cantlin_return",
+            "Great Swamp should reverse the established Cantlin return")
+        local segment = assert(routes.plan_next_segment(
+            0x01, case.x, case.y))
+        assert_equal(segment.waypoint.name, case.waypoint,
+            "Great Swamp recovery should choose the next return waypoint")
+        assert_equal(segment.path_length, case.path_length,
+            "Great Swamp recovery should keep a short opening")
+        assert_equal(segment.steps[1], case.first_step,
+            "Great Swamp recovery should open toward the swamp")
+    end
+
+    routes.reset_for_tests()
+    local alias_info, alias_err = routes.start(
+        "great swamp search area", 0x01, 73, 113)
+    assert_equal(alias_err, nil,
+        "Great Swamp alias should resolve from the return-only cell")
+    assert_equal(alias_info.route.id, "great_swamp_cantlin_return",
+        "Great Swamp alias should use the same exact recovery route")
+
+    routes.reset_for_tests()
+end
+
 function tests.hauksness_return_corridor_early_destinations_keep_connected_openings()
     local targets = {
         {id = "overworld_brecconary", name = "Brecconary"},

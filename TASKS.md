@@ -743,6 +743,26 @@ quality-of-life work.
   waypoint at frame `4171`, and Shift+U stopped it at frame `4333`. Fresh frame
   `8940` found World Map `(20,93)` with route and path target nil, zero
   NPC/runtime blockers, and no new script error. The Kol-return audit is closed.
+  A fortieth bounded slice closes the final known on-network corridor hole and
+  is source-complete and live-verified. A uniform audit checked all 23,296
+  combinations across 13 selector corridors and 16 destinations. Twelve
+  corridors were clean; only Great Swamp travel failed from seven exact cells
+  on `cantlin_return_staging`, falling through to `kol_staging` with invalid
+  82-93-step openings. New `great_swamp_cantlin_return` reverses the
+  established southern return suffix only from `(73,113)`, `(73,111)`,
+  `(71,111)`, `(65,109-110)`, and `(63,107-108)`. The existing valid 15-step
+  opening from `(74,113)` and all ordinary local routes remain unchanged. All
+  85 Cantlin-return cells now retain Great Swamp with openings no longer than
+  15 steps. Representative source checks open two steps east from `(73,113)`,
+  one south from `(65,109)`, and one south from `(63,107)`. Focused route tests
+  pass `338/338`; the full gate passes all 33 host-runnable Lua suites and all
+  68 Python tests. Loaded starts selected the expected recovery at frames
+  `388`, `3988`, and `7506`; Shift+R preserved each route and Shift+U stopped
+  each cleanly. A frame `6240` teleport was safely refused while movement was
+  unsettled, and the subsequent reposition completed normally. Fresh frame
+  `10380` found World Map `(63,107)` with route and path target nil, zero
+  NPC/runtime blockers, and no new script error. All known on-network selector
+  corridors are closed.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

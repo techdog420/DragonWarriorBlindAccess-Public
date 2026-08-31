@@ -121,6 +121,30 @@ Updated: 2026-08-30
 
 ## Immediate FCEUX Handoff
 
+- The final known on-network corridor hole is source-complete and live-verified
+  (`2026-08-30`). A uniform audit checked all 23,296 combinations
+  across 13 selector corridors and 16 destinations. Twelve corridors were
+  clean; only Great Swamp travel from seven exact
+  `cantlin_return_staging` cells failed, falling through to `kol_staging` with
+  invalid 82-93-step openings. New `great_swamp_cantlin_return` reverses only
+  the established southern return suffix toward the search area and is
+  ineligible outside `(73,113)`, `(73,111)`, `(71,111)`, `(65,109-110)`, and
+  `(63,107-108)`. The existing live-validated 15-step opening from `(74,113)`
+  and all ordinary Cantlin/Great Swamp routes remain unchanged. All 85
+  Cantlin-return cells now retain Great Swamp with openings no longer than 15
+  steps. Representative source checks are two steps east from `(73,113)` to
+  `Great Swamp middle lane`, one step south from `(65,109)` to
+  `Great Swamp north westbound road`, and one step south from `(63,107)` to
+  `Southern plains east return`. Focused route tests pass `338/338`; the full
+  gate passes Lua syntax, all 33 host-runnable Lua suites, all 68 Python tests,
+  speech dependency, and command-queue checks. Loaded starts selected the
+  expected recovery at frames `388`, `3988`, and `7506`; Shift+R preserved the
+  expected waypoints at frames `706`, `4209`, and `7688`, and Shift+U stopped
+  each route at frames `834`, `4348`, and `7830`. A frame `6240` teleport was
+  safely refused after only one of six required settled frames; the subsequent
+  third reposition completed normally. Fresh frame `10380` found World Map
+  `(63,107)` with route and path target nil, zero NPC/runtime blockers, and no
+  new script error. All known on-network selector corridors are now closed.
 - The final Kol return-corridor batch is source-complete and live-verified
   (`2026-08-30`). Tantegel and Rimuldar were the only remaining
   selector holes: Tantegel had 18 overlong openings on the west strip from
