@@ -3056,6 +3056,11 @@ ROUTES.northern_cave_northwestern_return = {
         "hauksness_return_staging",
         "cantlin_return_staging",
     },
+    selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 65},
+        {route_id = "kol_return_staging", max_x = 15, min_y = 30, max_y = 64},
+        {route_id = "kol_return_staging", max_x = 7, max_y = 12},
+    },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
 
@@ -3082,6 +3087,9 @@ ROUTES.mountain_cave_northwestern_return = {
         "kol_rain_shrine_staging",
         "hauksness_return_staging",
         "cantlin_return_staging",
+    },
+    selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 65},
     },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
@@ -3357,6 +3365,11 @@ ROUTES.swamp_cave_western_return_staging = {
         "hauksness_return_staging",
         "cantlin_return_staging",
     },
+    selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 65},
+        {route_id = "kol_return_staging", max_x = 15, min_y = 30, max_y = 64},
+        {route_id = "kol_return_staging", max_x = 7, max_y = 12},
+    },
     waypoints = copy_route_prefix(ROUTES.swamp_cave, 104, 44),
 }
 
@@ -3592,6 +3605,7 @@ local ROUTE_ALTERNATES = {
     swamp_cave_bridge = {
         "swamp_cave_bridge",
         "swamp_cave",
+        "swamp_cave_western_return_staging",
         "swamp_cave_north_swamp_cave_south",
     },
     swamp_cave_south = {

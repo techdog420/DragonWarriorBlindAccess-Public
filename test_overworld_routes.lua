@@ -4608,6 +4608,54 @@ function tests.kol_return_corridor_early_destinations_keep_connected_openings()
     routes.reset_for_tests()
 end
 
+function tests.kol_return_corridor_northern_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_northern_cave", name = "Northern Cave"},
+        {id = "overworld_mountain_cave", name = "Mountain Cave"},
+        {id = "overworld_swamp_cave", name = "Swamp Cave North"},
+    }
+
+    local checked = 0
+    for _, target in ipairs(targets) do
+        for _, cell in ipairs(route_corridor_cells("kol_return_staging")) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Kol return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Kol return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Kol return")
+            assert(segment and segment.path_length <= 24,
+                target.name .. " should use a connected Kol return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+
+    assert_equal(checked, 1119,
+        "the northern-destination Kol return audit should cover every combination")
+
+    for _, target in ipairs(targets) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(target, 0x01, 31, 81))
+        assert_equal(info.route.id, "kol_return_staging",
+            target.name .. " should start on the nearby Kol return")
+        local segment = assert(routes.plan_next_segment(0x01, 31, 81))
+        assert_equal(segment.waypoint.name, "Hauksness north ridge",
+            target.name .. " should target the next established return waypoint")
+        assert_equal(segment.path_length, 3,
+            target.name .. " should open two west and one south")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.western_destinations_recover_from_erdrick_corridor()
     local cases = {
         {

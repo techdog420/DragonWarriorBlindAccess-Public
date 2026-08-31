@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-28
+Updated: 2026-08-29
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -686,6 +686,24 @@ quality-of-life work.
   frame `3594`; Shift+R preserved each route and Shift+U stopped them cleanly.
   Tagged readiness at frame `6720` found World Map `(31,81)` with path target
   nil, zero NPC/runtime blockers, and no new script error.
+  A thirty-seventh bounded slice continues the Kol return-corridor recovery
+  and is source-complete and live-verified. Northern Cave, Mountain Cave, and
+  Swamp Cave North now recognize the exact disconnected portions of the
+  373-cell `kol_return_staging` corridor through their existing northwestern-
+  return variants. Before the patch, they had 155, 82, and 155 openings
+  respectively over the connected 24-step bound. Destination-specific bounds
+  cover only those holes, and the Swamp Cave bridge alias can now consider the
+  western return on the shared west strip without stealing its local bridge
+  approach. All 1,119 combinations retain the selected target with no opening
+  over 24 steps. From `(31,81)`, all three start `kol_return_staging` toward
+  `Hauksness north ridge` at `(29,82)`, two steps west and one south. No
+  waypoint geometry or movement timing changed. Focused route tests pass
+  `335/335`; the full gate passes all 33 host-runnable Lua suites and all 68
+  Python tests. Loaded starts retained Swamp Cave North at frame `2083`,
+  Northern Cave at frame `2618`, and Mountain Cave at frame `3315`; Shift+R
+  preserved each route and Shift+U stopped them cleanly. Fresh frame `6660`
+  found World Map `(31,81)` with path target nil, zero NPC/runtime blockers,
+  and no new script error.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

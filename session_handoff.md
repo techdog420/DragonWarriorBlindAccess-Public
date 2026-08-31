@@ -121,6 +121,27 @@ Updated: 2026-08-29
 
 ## Immediate FCEUX Handoff
 
+- The second Kol return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-29`). Northern Cave, Mountain Cave, and Swamp Cave
+  North now recognize the exact disconnected portions of the 373-cell
+  `kol_return_staging` corridor through their existing northwestern-return
+  variants. Before the patch, they had 155, 82, and 155 openings respectively
+  over the connected 24-step bound. Destination-specific corridor bounds cover
+  only those holes; the Swamp Cave bridge alias can now consider the western
+  return when the shared west strip is nearer. Existing Mountain Cave-local and
+  Swamp Cave Bridge-local selection regressions remain green. All 1,119
+  corridor/destination combinations retain the selected target with no opening
+  over 24 steps. From `(31,81)`, all three start `kol_return_staging` and target
+  `Hauksness north ridge` at `(29,82)`, two steps west and one south. No
+  waypoint geometry or movement timing changed. Focused route tests pass
+  `335/335`; the full gate passes Lua syntax, all 33 host-runnable Lua suites,
+  all 68 Python tests, speech dependency, and command-queue checks. Loaded
+  starts retained Swamp Cave North at frame `2083`, Northern Cave at frame
+  `2618`, and Mountain Cave at frame `3315`; each selected the expected
+  corridor and waypoint. Shift+R preserved the routes at frames `2290`, `2862`,
+  and `3513`; Shift+U stopped them cleanly at frames `2501`, `3041`, and `3720`.
+  Fresh frame `6660` found World Map `(31,81)` with path target nil, zero
+  NPC/runtime blockers, and no new script error.
 - The first Kol return-corridor recovery batch is source-complete and
   live-verified (`2026-08-29`). Brecconary, Erdrick's Cave, and Garinham now
   recognize the disconnected western portion of the 373-cell
