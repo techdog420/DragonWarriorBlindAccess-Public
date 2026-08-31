@@ -3406,6 +3406,16 @@ ROUTES.swamp_cave_south_mainland = {
     -- only the proven interior cells omitted by reverse-corridor membership so
     -- connected destinations do not fall back to long synthetic openings.
     selection_route_corridor_regions = {
+        {route_id = "kol_return_staging", min_y = 65},
+        {route_id = "kol_return_staging", max_x = 15, min_y = 30, max_y = 64},
+        {
+            route_id = "kol_return_staging",
+            min_x = 4,
+            max_x = 15,
+            min_y = 13,
+            max_y = 30,
+        },
+        {route_id = "kol_return_staging", max_x = 7, max_y = 12},
         {route_id = "swamp_cave", max_x = 97, min_y = 22, max_y = 26},
         {
             route_id = "tantegel_bridge_staging",

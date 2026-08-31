@@ -1,11 +1,34 @@
 # Playtesting Notes
 
-Updated: 2026-08-29
+Updated: 2026-08-30
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The third Kol return-corridor recovery batch is source-complete and
+  live-verified (`2026-08-30`). Swamp Cave South, Rainbow Bridge, and
+  Charlock now recognize the exact disconnected portions of the 373-cell
+  `kol_return_staging` corridor through the existing
+  `swamp_cave_south_mainland` wrapper. Before the patch, each destination had
+  186 openings over the connected 24-step bound and opened the wrong
+  `charlock_return` leg; at `(31,81)`, each attempted 37 steps. The selector
+  expansion is limited to exact Kol-return corridor cells and preserves the
+  existing local cave, bridge, and final-island routes. All 1,119 combinations
+  retain the selected target with no opening over 24 steps. From `(31,81)`, all
+  three start `kol_return_staging` and target `Hauksness north ridge` at
+  `(29,82)`, two steps west and one south. No waypoint geometry or movement
+  timing changed. Focused route tests pass `336/336`; Lua syntax, all 33
+  host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks pass. Loaded starts retained Swamp Cave South at frame
+  `1415`, Rainbow Bridge at frame `2881`, and Charlock at frame `4666`; each
+  selected the expected corridor and waypoint. Shift+R preserved the routes at
+  frames `1623`, `3089`, and `4859`; Shift+U stopped them cleanly at frames
+  `1838`, `3388`, and `5031`. Fresh frame `7140` found World Map `(31,81)` with
+  path target nil, zero NPC/runtime blockers, and no new script error. The
+  remaining Kol-return audit is small: Tantegel has 18 overlong openings and
+  Rimuldar has 9; Kol, Magic Temple, Cantlin, Hauksness, and Great Swamp are
+  already clean.
 - The second Kol return-corridor recovery batch is source-complete and
   live-verified (`2026-08-29`). Northern Cave, Mountain Cave, and Swamp Cave
   North now recognize the exact disconnected portions of the 373-cell

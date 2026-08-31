@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-29
+Updated: 2026-08-30
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -704,6 +704,26 @@ quality-of-life work.
   preserved each route and Shift+U stopped them cleanly. Fresh frame `6660`
   found World Map `(31,81)` with path target nil, zero NPC/runtime blockers,
   and no new script error.
+  A thirty-eighth bounded slice continues the Kol return-corridor recovery and
+  is source-complete and live-verified. Swamp Cave South, Rainbow Bridge, and
+  Charlock now recognize the exact disconnected portions of the 373-cell
+  `kol_return_staging` corridor through the existing
+  `swamp_cave_south_mainland` wrapper. Before the patch, each destination had
+  186 openings over the connected 24-step bound and opened the wrong
+  `charlock_return` leg; at `(31,81)`, each attempted 37 steps. The selector
+  expansion is limited to exact corridor cells and preserves local cave,
+  bridge, and final-island starts. All 1,119 combinations retain the selected
+  target with no opening over 24 steps. From `(31,81)`, all three start
+  `kol_return_staging` toward `Hauksness north ridge` at `(29,82)`, two steps
+  west and one south. No waypoint geometry or movement timing changed. Focused
+  route tests pass `336/336`; the full gate passes all 33 host-runnable Lua
+  suites and all 68 Python tests. Loaded starts retained Swamp Cave South at
+  frame `1415`, Rainbow Bridge at frame `2881`, and Charlock at frame `4666`;
+  Shift+R preserved each route and Shift+U stopped them cleanly. Fresh frame
+  `7140` found World Map `(31,81)` with path target nil, zero NPC/runtime
+  blockers, and no new script error. The remaining audit has only Tantegel's
+  18 and Rimuldar's 9 overlong openings; Kol, Magic Temple, Cantlin, Hauksness,
+  and Great Swamp are already clean.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge
