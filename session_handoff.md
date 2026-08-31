@@ -121,6 +121,27 @@ Updated: 2026-08-30
 
 ## Immediate FCEUX Handoff
 
+- The final Kol return-corridor batch is source-complete and live-verified
+  (`2026-08-30`). Tantegel and Rimuldar were the only remaining
+  selector holes: Tantegel had 18 overlong openings on the west strip from
+  `(8,43)` through `(12,30)`, while Rimuldar had 9 on the Hauksness row from
+  `(15,93)` through `(24,93)`. Each destination now recognizes only its exact
+  affected `kol_return_staging` region and reuses that established return; no
+  waypoint geometry or movement timing changed. All 746 combinations—373
+  corridor cells for each destination—retain the selected target with no
+  opening over 24 steps. From `(8,40)`, Tantegel starts
+  `kol_return_staging` toward `Western desert pass foot` in six steps, opening
+  north. From `(20,93)`, Rimuldar starts `kol_return_staging` toward
+  `Hauksness lower west drop` in four steps, opening east. Focused route tests
+  pass `337/337`; the full gate passes Lua syntax, all 33 host-runnable Lua
+  suites, all 68 Python tests, speech dependency, and command-queue checks.
+  Loaded Tantegel started the expected return at frame `676`; Shift+R preserved
+  `Western desert pass foot` at frame `957`, and Shift+U stopped the route at
+  frame `3635`. Loaded Rimuldar started the expected return at frame `3965`;
+  Shift+R preserved `Hauksness lower west drop` at frame `4171`, and Shift+U
+  stopped the route at frame `4333`. Fresh frame `8940` found World Map
+  `(20,93)` with route and path target nil, zero NPC/runtime blockers, and no
+  new script error. This closes every known Kol-return selector hole.
 - The third Kol return-corridor recovery batch is source-complete and
   live-verified (`2026-08-30`). Swamp Cave South, Rainbow Bridge, and
   Charlock now recognize the exact disconnected portions of the 373-cell

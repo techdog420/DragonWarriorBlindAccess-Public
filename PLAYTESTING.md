@@ -6,6 +6,25 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The final Kol return-corridor batch is source-complete and live-verified
+  (`2026-08-30`). Tantegel's 18 remaining overlong openings lay on
+  the west strip from `(8,43)` through `(12,30)`; Rimuldar's 9 lie on the
+  Hauksness row from `(15,93)` through `(24,93)`. Exact bounded
+  `kol_return_staging` selector regions now reconnect only those holes to the
+  established return. All 746 corridor/destination combinations retain the
+  selected target with no opening over 24 steps. Tantegel from `(8,40)` opens
+  north with six steps toward `Western desert pass foot`; Rimuldar from
+  `(20,93)` opens east with four steps toward `Hauksness lower west drop`.
+  Both begin on `kol_return_staging`. No waypoint geometry or movement timing
+  changed. Focused route tests pass `337/337`; Lua syntax, all 33 host-runnable
+  Lua suites, all 68 Python tests, speech dependency, and command-queue checks
+  pass. Loaded Tantegel started the expected return at frame `676`; Shift+R
+  preserved `Western desert pass foot` at frame `957`, and Shift+U stopped the
+  route at frame `3635`. Loaded Rimuldar started the expected return at frame
+  `3965`; Shift+R preserved `Hauksness lower west drop` at frame `4171`, and
+  Shift+U stopped the route at frame `4333`. Fresh frame `8940` found World Map
+  `(20,93)` with route and path target nil, zero NPC/runtime blockers, and no
+  new script error. This closes the known Kol-return audit.
 - The third Kol return-corridor recovery batch is source-complete and
   live-verified (`2026-08-30`). Swamp Cave South, Rainbow Bridge, and
   Charlock now recognize the exact disconnected portions of the 373-cell

@@ -820,6 +820,15 @@ local ROUTES = {
             "hauksness_return_staging",
             "cantlin_return_staging",
         },
+        selection_route_corridor_regions = {
+            {
+                route_id = "kol_return_staging",
+                min_x = 15,
+                max_x = 24,
+                min_y = 93,
+                max_y = 93,
+            },
+        },
         waypoints = {
             {
                 x = 104,
@@ -2141,6 +2150,15 @@ local ROUTES = {
         selection_anchors = {
             {x = 25, y = 89},
             {x = 29, y = 57},
+        },
+        selection_route_corridor_regions = {
+            {
+                route_id = "kol_return_staging",
+                min_x = 8,
+                max_x = 12,
+                min_y = 30,
+                max_y = 43,
+            },
         },
         waypoints = {
             {x = 104, y = 10, name = "Kol", radius = 1},

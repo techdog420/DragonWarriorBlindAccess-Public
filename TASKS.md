@@ -724,6 +724,25 @@ quality-of-life work.
   blockers, and no new script error. The remaining audit has only Tantegel's
   18 and Rimuldar's 9 overlong openings; Kol, Magic Temple, Cantlin, Hauksness,
   and Great Swamp are already clean.
+  A thirty-ninth bounded slice completes the Kol return-corridor audit and is
+  source-complete and live-verified. Tantegel's 18 remaining overlong openings
+  lay on
+  the west strip from `(8,43)` through `(12,30)`; Rimuldar's 9 lie on the
+  Hauksness row from `(15,93)` through `(24,93)`. Exact bounded
+  `kol_return_staging` selector regions reconnect only those holes to the
+  established return, with no waypoint geometry or movement timing change.
+  All 746 combinations—373 corridor cells for each destination—retain the
+  selected target with no opening over 24 steps. Tantegel from `(8,40)` starts
+  `kol_return_staging` toward `Western desert pass foot` in six steps, opening
+  north. Rimuldar from `(20,93)` starts the same return toward `Hauksness lower
+  west drop` in four steps, opening east. Focused route tests pass `337/337`;
+  the full gate passes all 33 host-runnable Lua suites and all 68 Python tests.
+  Loaded Tantegel started the expected return at frame `676`; Shift+R preserved
+  its waypoint at frame `957`, and Shift+U stopped it at frame `3635`. Loaded
+  Rimuldar started the expected return at frame `3965`; Shift+R preserved its
+  waypoint at frame `4171`, and Shift+U stopped it at frame `4333`. Fresh frame
+  `8940` found World Map `(20,93)` with route and path target nil, zero
+  NPC/runtime blockers, and no new script error. The Kol-return audit is closed.
   Continue toward a general player-facing recovery command that finds a safe
   route back to the nearest reachable waypoint-network entry and then proceeds
   to the selected destination. Recovery must not teleport, require knowledge

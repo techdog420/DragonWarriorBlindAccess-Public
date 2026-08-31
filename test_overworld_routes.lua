@@ -4704,6 +4704,76 @@ function tests.kol_return_corridor_final_destinations_keep_connected_openings()
     routes.reset_for_tests()
 end
 
+function tests.kol_return_corridor_remaining_destinations_keep_connected_openings()
+    local targets = {
+        {id = "overworld_tantegel_castle", name = "Tantegel"},
+        {id = "overworld_rimuldar", name = "Rimuldar"},
+    }
+
+    local checked = 0
+    for _, target in ipairs(targets) do
+        for _, cell in ipairs(route_corridor_cells("kol_return_staging")) do
+            checked = checked + 1
+            routes.reset_for_tests()
+            local info, start_err = routes.start_for_object(
+                target, 0x01, cell.x, cell.y)
+            assert_equal(start_err, nil,
+                target.name .. " should resolve across the Kol return")
+            assert_equal(routes.active_route_matches_object(target), true,
+                target.name .. " should remain selected across the Kol return")
+            local segment, segment_err = routes.plan_next_segment(
+                0x01, cell.x, cell.y)
+            assert_equal(segment_err, nil,
+                target.name .. " should plan across the Kol return")
+            assert(segment and segment.path_length <= 24,
+                target.name .. " should use a connected Kol return opening; got " ..
+                    tostring(segment and segment.path_length) .. " at " ..
+                    cell.x .. "," .. cell.y .. " via " ..
+                    tostring(info and info.route and info.route.id))
+        end
+    end
+
+    assert_equal(checked, 746,
+        "the remaining Kol return audit should cover every combination")
+
+    local representative_cases = {
+        {
+            target = {id = "overworld_tantegel_castle", name = "Tantegel"},
+            x = 8,
+            y = 40,
+            waypoint = "Western desert pass foot",
+            path_length = 6,
+            first_step = "up",
+        },
+        {
+            target = {id = "overworld_rimuldar", name = "Rimuldar"},
+            x = 20,
+            y = 93,
+            waypoint = "Hauksness lower west drop",
+            path_length = 4,
+            first_step = "right",
+        },
+    }
+
+    for _, case in ipairs(representative_cases) do
+        routes.reset_for_tests()
+        local info = assert(routes.start_for_object(
+            case.target, 0x01, case.x, case.y))
+        assert_equal(info.route.id, "kol_return_staging",
+            case.target.name .. " should begin on the established Kol return")
+        local segment = assert(routes.plan_next_segment(
+            0x01, case.x, case.y))
+        assert_equal(segment.waypoint.name, case.waypoint,
+            case.target.name .. " should choose the next connected waypoint")
+        assert_equal(segment.path_length, case.path_length,
+            case.target.name .. " should retain its short corridor opening")
+        assert_equal(segment.steps[1], case.first_step,
+            case.target.name .. " should open in the connected direction")
+    end
+
+    routes.reset_for_tests()
+end
+
 function tests.western_destinations_recover_from_erdrick_corridor()
     local cases = {
         {
