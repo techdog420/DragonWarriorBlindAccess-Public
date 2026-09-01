@@ -247,6 +247,12 @@ local function make_env(options)
             return path
         end
         return {
+            format_path = function(path)
+                if not path or #path == 0 then
+                    return "Already there"
+                end
+                return "Path: " .. #path .. " step(s)"
+            end,
             pathfind_to = function(_, start_x, start_y, goal_x, goal_y, blocking, opts)
                 pathfind_calls = pathfind_calls + 1
                 reroute_calls = reroute_calls + 1
@@ -491,6 +497,15 @@ local function make_env(options)
     local overworld_start_calls = {}
     package.preload["overworld_routes"] = function()
         return {
+            active_destination = function()
+                return options.overworld_active_destination
+            end,
+            network_entry_candidates = function()
+                return options.overworld_network_candidates or {}
+            end,
+            network_transition_cells = function()
+                return options.overworld_transition_cells or {}
+            end,
             plan_next_segment = function(map_id, x, y, plan_opts)
                 overworld_plan_calls = overworld_plan_calls + 1
                 overworld_plan_opts_log[#overworld_plan_opts_log + 1] = plan_opts or false
@@ -2394,6 +2409,191 @@ function tests.bizhawk_pathfind_uses_cached_object_blockers_by_default()
     assert_equal(env.route_manager.is_npc_freeze_active(), false, "show-path should not leave NPC freeze active")
     local direct = env.last_direct_call()
     assert_equal(direct.blocking["5,3"], "npc", "cached object blockers should still be passed to pathfinding")
+
+    env.restore()
+end
+
+function tests.overworld_network_entry_preview_selects_nearest_reachable_safe_entry()
+    local function path_to(start_x, start_y, goal_x, goal_y)
+        local path = {}
+        local x, y = start_x, start_y
+        while x ~= goal_x do
+            x = x + (goal_x > x and 1 or -1)
+            path[#path + 1] = {
+                x = x,
+                y = y,
+                direction = goal_x > start_x and "east" or "west",
+            }
+        end
+        while y ~= goal_y do
+            y = y + (goal_y > y and 1 or -1)
+            path[#path + 1] = {
+                x = x,
+                y = y,
+                direction = goal_y > start_y and "south" or "north",
+            }
+        end
+        return path
+    end
+
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 10,
+        start_y = 10,
+        map_width = 20,
+        map_height = 20,
+        overworld_active_destination = {
+            id = "charlock_castle",
+            title = "Charlock Castle",
+        },
+        overworld_network_candidates = {
+            {
+                x = 11, y = 10, name = "Blocked nearby entry",
+                route_id = "tantegel_charlock", route_title = "Tantegel Castle",
+                next_waypoint = {name = "Bridge road"}, opening_length = 2,
+            },
+            {
+                x = 10, y = 13, name = "Reachable network entry",
+                route_id = "tantegel_charlock", route_title = "Tantegel Castle",
+                next_waypoint = {name = "Bridge road"}, opening_length = 3,
+            },
+            {
+                x = 16, y = 10, name = "Farther network entry",
+                route_id = "charlock_return", route_title = "Charlock Castle",
+                next_waypoint = {name = "Island road"}, opening_length = 2,
+            },
+        },
+        overworld_transition_cells = {
+            {x = 9, y = 9, name = "Town entrance"},
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            if goal_x == 11 and goal_y == 10 then
+                return "No path found", nil, nil
+            end
+            local path = path_to(start_x, start_y, goal_x, goal_y)
+            return "Path", nil, path
+        end,
+    })
+
+    local result = env.route_manager.preview_overworld_network_entry()
+
+    assert_equal(result.status, "planned",
+        "preview should find a reachable network entry")
+    assert_equal(result.entry_x, 10,
+        "preview should select the nearest reachable entry X")
+    assert_equal(result.entry_y, 13,
+        "preview should select the nearest reachable entry Y")
+    assert_equal(result.path_length, 3,
+        "preview should report the decoded-safe recovery length")
+    assert_equal(result.final_destination_id, "charlock_castle",
+        "preview should preserve the active final destination")
+    assert_equal(result.rejected_unreachable, 1,
+        "preview should count the rejected nearer entry")
+    assert_equal(result.skipped_farther, 1,
+        "preview should stop once remaining lower bounds cannot win")
+    assert_equal(env.pathfind_calls(), 2,
+        "preview should not search candidates that cannot beat the best path")
+    assert_equal(env.last_direct_call().opts.allow_overworld, true,
+        "recovery search should explicitly opt into overworld A star")
+    assert_equal(env.last_direct_call().blocking["9,9"], true,
+        "recovery search should block automatic transition landmarks")
+    assert_equal(env.start_route_calls(), 0,
+        "preview must not queue movement")
+    assert_contains(result.message, "Preview only; no movement started",
+        "spoken preview should make its read-only behavior explicit")
+
+    env.restore()
+end
+
+function tests.overworld_network_entry_preview_refuses_when_no_safe_entry_exists()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 10,
+        start_y = 10,
+        overworld_active_destination = {
+            id = "charlock_castle",
+            title = "Charlock Castle",
+        },
+        overworld_network_candidates = {
+            {
+                x = 11, y = 10, name = "Isolated entry",
+                route_id = "tantegel_charlock", route_title = "Tantegel Castle",
+                next_waypoint = {name = "Bridge road"}, opening_length = 2,
+            },
+        },
+        pathfind_mode = "always_no_path",
+    })
+
+    local result = env.route_manager.preview_overworld_network_entry()
+
+    assert_equal(result.status, "no_safe_entry",
+        "preview should fail closed when no entry is safely reachable")
+    assert_equal(result.ok, false,
+        "unreachable recovery preview should not report success")
+    assert_equal(result.rejected_unreachable, 1,
+        "unreachable entry should be included in diagnostics")
+    assert_equal(env.start_route_calls(), 0,
+        "failed preview must not queue movement")
+    assert_contains(result.message, "No decoded-safe waypoint-network entry",
+        "failure should explain that no safe entry was found")
+
+    env.restore()
+end
+
+function tests.overworld_network_entry_preview_requires_active_destination()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 10,
+        start_y = 10,
+    })
+
+    local result = env.route_manager.preview_overworld_network_entry()
+
+    assert_equal(result.status, "no_active_route",
+        "preview should require a selected Travel destination")
+    assert_equal(env.pathfind_calls(), 0,
+        "missing destination should fail before pathfinding")
+    assert_contains(result.message, "Select a Travel destination first",
+        "failure should explain how to establish recovery context")
+
+    env.restore()
+end
+
+function tests.overworld_network_entry_preview_recognizes_current_network_cell()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 10,
+        start_y = 10,
+        overworld_active_destination = {
+            id = "charlock_castle",
+            title = "Charlock Castle",
+        },
+        overworld_network_candidates = {
+            {
+                x = 10, y = 10, name = "Current corridor cell",
+                route_id = "tantegel_charlock", route_title = "Tantegel Castle",
+                next_waypoint = {name = "Bridge road"}, opening_length = 2,
+            },
+        },
+        pathfind_to_fn = function()
+            return "Already there", nil, {}
+        end,
+    })
+
+    local result = env.route_manager.preview_overworld_network_entry()
+
+    assert_equal(result.status, "already_on_network",
+        "zero-step preview should identify current network membership")
+    assert_equal(result.path_length, 0,
+        "current network membership should require no recovery steps")
+    assert_contains(result.message, "Already there",
+        "preview should clearly report the zero-step recovery path")
+    assert_equal(env.start_route_calls(), 0,
+        "zero-step preview must remain read-only")
 
     env.restore()
 end

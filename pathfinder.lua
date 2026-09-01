@@ -10,7 +10,7 @@
 -- - Manhattan distance heuristic (optimal for 4-directional grids)
 -- - Grid-based neighbor lookup for O(1) adjacency checks
 -- - NPC positions can be marked as impassable (can't walk through them)
--- - Skips the overworld — too large, use direction+distance instead
+-- - Skips the overworld by default; safe recovery preview opts in explicitly
 -- - Returns path as grouped direction steps: "3 north, 2 east, 1 north"
 --
 -- Based on standard A* algorithm, adapted for DW1's tile system.
@@ -27,6 +27,11 @@ end
 local M = {}
 local runtime_block_neighbor_log = {}
 local TURN_TIEBREAK_PENALTY = 0.001
+
+local function overworld_search_allowed(map_id, opts)
+    return not maps.is_overworld(map_id)
+        or (opts and opts.allow_overworld == true)
+end
 
 local function should_log_path_steps()
     return config and config.get and config.get("pathfind_log_steps") == "true"
@@ -283,8 +288,11 @@ end
 --   On failure: nil (no path exists)
 --   On skip: nil (overworld or invalid map)
 function M.find_path(map_id, start_x, start_y, goal_x, goal_y, blocked_positions, opts)
-    -- Don't pathfind on the overworld (too large, ~120x120 tiles)
-    if maps.is_overworld(map_id) then
+    -- Ordinary object pathfinding intentionally keeps the lightweight
+    -- direction-and-distance behavior on the world map. Recovery preview is
+    -- the one explicit opt-in: it needs decoded passability, hazards, and
+    -- directional blocks to prove that a waypoint-network entry is reachable.
+    if not overworld_search_allowed(map_id, opts) then
         return nil
     end
 
@@ -671,7 +679,7 @@ function M.format_path(path)
 end
 
 function M.find_route_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
-    if maps.is_overworld(map_id) then
+    if not overworld_search_allowed(map_id, opts) then
         return nil
     end
     local blocked = build_blocked_table(npc_positions, goal_x, goal_y, false)
@@ -679,7 +687,7 @@ function M.find_route_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions
 end
 
 function M.find_route_to_adjacent(map_id, start_x, start_y, goal_x, goal_y, npc_positions, opts)
-    if maps.is_overworld(map_id) then
+    if not overworld_search_allowed(map_id, opts) then
         return nil, nil, nil, nil
     end
     if goal_is_out_of_bounds(map_id, goal_x, goal_y) then
@@ -924,8 +932,9 @@ function M.pathfind_to(map_id, start_x, start_y, goal_x, goal_y, npc_positions, 
         return "Already there", nil, {}
     end
 
-    -- For the overworld, just give direction + distance (no A*)
-    if maps.is_overworld(map_id) then
+    -- Preserve direction-only overworld previews unless a recovery caller
+    -- explicitly requests decoded A*.
+    if maps.is_overworld(map_id) and not (opts and opts.allow_overworld == true) then
         local objects = require "objects"
         local dir_str = objects.get_direction_string(start_x, start_y, goal_x, goal_y)
         return dir_str, nil, nil

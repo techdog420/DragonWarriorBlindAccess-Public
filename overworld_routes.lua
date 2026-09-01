@@ -4532,20 +4532,186 @@ function M.active_route_matches_object(obj)
     return false
 end
 
-function M.start(route_name, map_id, px, py, opts)
+local function resolve_start_preview(route_name, map_id, px, py, opts)
     opts = opts or {}
     local terrain_offset = opts.terrain_offset
     local id = normalize_route_id(route_name)
     if not id then
         return nil, "Unknown overworld route"
     end
+
     id = choose_start_route_id(id, map_id, px, py, terrain_offset)
-    local staging = staging_itinerary_for(id, map_id, px, py, terrain_offset)
+    local staging = staging_itinerary_for(
+        id, map_id, px, py, terrain_offset)
     if staging then
         id = staging.route_id
     end
 
     local route = ROUTES[id]
+    if not route then
+        return nil, "Unknown overworld route"
+    end
+    local next_index = choose_next_index(
+        route, map_id, px, py, terrain_offset)
+    local waypoint = route.waypoints[next_index]
+    local steps = waypoint and build_axis_ordered_steps(
+        route, waypoint, px, py, opts) or {}
+
+    return {
+        route = route,
+        next_index = next_index,
+        waypoint = waypoint,
+        steps = steps,
+        path_length = #steps,
+        staging = staging,
+        destination_route = staging and staging.requested_route or route,
+        staged_from = staging and staging.requested_route.id or nil,
+        staged_route_ids = staging and staging.staged_route_ids or {},
+    }
+end
+
+-- Pure route-start resolution for recovery diagnostics. Unlike start(), this
+-- never changes the active route, selected destination, waypoint index, or
+-- warning state.
+function M.preview_start(route_name, map_id, px, py, opts)
+    return resolve_start_preview(route_name, map_id, px, py, opts)
+end
+
+function M.active_destination()
+    local route = state.staged_from and ROUTES[state.staged_from]
+        or active_route()
+    if not route then
+        return nil
+    end
+    return {
+        id = route.id,
+        title = route.title,
+    }
+end
+
+local function sorted_route_ids()
+    local ids = {}
+    for id in pairs(ROUTES) do
+        ids[#ids + 1] = id
+    end
+    table.sort(ids)
+    return ids
+end
+
+local function network_transition_lookup()
+    local transitions = {}
+    for _, id in ipairs(sorted_route_ids()) do
+        for _, point in ipairs(ROUTES[id].waypoints or {}) do
+            if point.final == true then
+                transitions[point.x .. "," .. point.y] = {
+                    x = point.x,
+                    y = point.y,
+                    name = point.name,
+                }
+            end
+        end
+    end
+    return transitions
+end
+
+-- Return unique cells on established waypoint corridors that can join a
+-- connected route toward route_name. Final landmark cells are excluded because
+-- several trigger a map transition as soon as the hero steps onto them.
+function M.network_entry_candidates(route_name, map_id, opts)
+    opts = opts or {}
+    local transitions = network_transition_lookup()
+    local unique = {}
+
+    for _, source_id in ipairs(sorted_route_ids()) do
+        local source_route = ROUTES[source_id]
+        local first = source_route.waypoints and source_route.waypoints[1]
+        if first then
+            local x, y = first.x, first.y
+            local first_key = x .. "," .. y
+            if not transitions[first_key] and not unique[first_key] then
+                unique[first_key] = {x = x, y = y, name = first.name}
+            end
+            for index = 2, #source_route.waypoints do
+                local point = source_route.waypoints[index]
+                for _, step in ipairs(build_axis_ordered_steps(
+                    source_route, point, x, y)) do
+                    if step == "up" then
+                        y = y - 1
+                    elseif step == "down" then
+                        y = y + 1
+                    elseif step == "left" then
+                        x = x - 1
+                    elseif step == "right" then
+                        x = x + 1
+                    end
+                    local key = x .. "," .. y
+                    if not transitions[key] and not unique[key] then
+                        unique[key] = {x = x, y = y, name = point.name}
+                    end
+                end
+            end
+        end
+    end
+
+    local candidates = {}
+    for _, candidate in pairs(unique) do
+        local preview = resolve_start_preview(
+            route_name,
+            map_id,
+            candidate.x,
+            candidate.y,
+            opts)
+        if preview
+           and preview.route
+           and position_is_on_route_corridor(
+                preview.route, candidate.x, candidate.y) then
+            for _, point in ipairs(preview.route.waypoints or {}) do
+                if point.x == candidate.x and point.y == candidate.y then
+                    candidate.name = point.name
+                    break
+                end
+            end
+            candidate.route_id = preview.route.id
+            candidate.route_title = preview.route.title
+            candidate.next_index = preview.next_index
+            candidate.next_waypoint = preview.waypoint
+            candidate.opening_length = preview.path_length
+            candidate.final_destination = preview.destination_route
+            candidates[#candidates + 1] = candidate
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        if a.y ~= b.y then return a.y < b.y end
+        if a.x ~= b.x then return a.x < b.x end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    return candidates
+end
+
+function M.network_transition_cells()
+    local result = {}
+    for _, cell in pairs(network_transition_lookup()) do
+        result[#result + 1] = cell
+    end
+    table.sort(result, function(a, b)
+        if a.y ~= b.y then return a.y < b.y end
+        return a.x < b.x
+    end)
+    return result
+end
+
+function M.start(route_name, map_id, px, py, opts)
+    opts = opts or {}
+    local terrain_offset = opts.terrain_offset
+    local preview, preview_err = resolve_start_preview(
+        route_name, map_id, px, py, opts)
+    if not preview then
+        return nil, preview_err
+    end
+    local route = preview.route
+    local id = route.id
+    local staging = preview.staging
     local previous_id = state.active_id
     local event = "start"
     if previous_id == id then
@@ -4555,13 +4721,13 @@ function M.start(route_name, map_id, px, py, opts)
     end
 
     state.active_id = id
-    state.staged_from = staging and staging.requested_route.id or nil
-    state.staged_route_ids = staging and staging.staged_route_ids or {}
+    state.staged_from = preview.staged_from
+    state.staged_route_ids = preview.staged_route_ids
     state.warned = {}
     state.last_map_id = nil
     state.last_x = nil
     state.last_y = nil
-    state.next_index = choose_next_index(route, map_id, px, py, terrain_offset)
+    state.next_index = preview.next_index
 
     local message = waypoint_status(route, state.next_index, is_overworld(map_id, terrain_offset) and px or nil, is_overworld(map_id, terrain_offset) and py or nil)
     if event == "replace" then

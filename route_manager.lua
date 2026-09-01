@@ -3664,6 +3664,225 @@ function M.plan_path_to_coordinates(goal_x, goal_y, opts)
     return plan
 end
 
+-- Find a decoded-safe path from the current world-map position to an exact
+-- waypoint-network cell. This first recovery slice is intentionally read-only:
+-- it neither changes the selected guided destination nor queues movement.
+function M.preview_overworld_network_entry(opts)
+    opts = opts or {}
+    local function candidate_distance(px, py, candidate)
+        return math.abs(px - candidate.x) + math.abs(py - candidate.y)
+    end
+    local function log_preview(result)
+        debug_tools.info(string.format(
+            "OVERWORLD_RECOVERY_PREVIEW status=%s map=0x%02X from=(%s,%s) entry=(%s,%s) path_len=%s route=%s next=%s final=%s candidates=%d rejected_opening=%d rejected_unreachable=%d skipped_farther=%d preview_only=true",
+            tostring(result.status or "unknown"),
+            result.map_id or -1,
+            tostring(result.start_x),
+            tostring(result.start_y),
+            tostring(result.entry_x or "-"),
+            tostring(result.entry_y or "-"),
+            tostring(result.path_length or "-"),
+            tostring(result.route_id or "-"),
+            tostring(result.next_waypoint_name or "-"),
+            tostring(result.final_destination_id or "-"),
+            tonumber(result.candidate_count) or 0,
+            tonumber(result.rejected_opening) or 0,
+            tonumber(result.rejected_unreachable) or 0,
+            tonumber(result.skipped_farther) or 0))
+    end
+    refresh_navigation_modules()
+
+    local map_id, px, py = resolve_plan_origin(opts)
+    local terrain_offset = opts.terrain_offset
+    if terrain_offset == nil then
+        terrain_offset = snapshot.terrain_offset
+    end
+    if not maps.is_overworld(map_id, terrain_offset) then
+        local result = {
+            status = "not_overworld",
+            ok = false,
+            preview_only = true,
+            map_id = map_id,
+            start_x = px,
+            start_y = py,
+            candidate_count = 0,
+            rejected_opening = 0,
+            rejected_unreachable = 0,
+            skipped_farther = 0,
+            message = "Overworld recovery preview is only available on the world map",
+        }
+        log_preview(result)
+        return result
+    end
+
+    local destination = overworld_routes.active_destination()
+    if not destination then
+        local result = {
+            status = "no_active_route",
+            ok = false,
+            preview_only = true,
+            map_id = map_id,
+            start_x = px,
+            start_y = py,
+            candidate_count = 0,
+            rejected_opening = 0,
+            rejected_unreachable = 0,
+            skipped_farther = 0,
+            message = "No overworld route active. Select a Travel destination first.",
+        }
+        log_preview(result)
+        return result
+    end
+
+    local candidates = overworld_routes.network_entry_candidates(
+        destination.id, map_id, {terrain_offset = terrain_offset})
+    local safe_snapshot = map_reader.get_walkability_snapshot
+        and map_reader.get_walkability_snapshot(map_id) or nil
+    if not safe_snapshot then
+        local result = {
+            status = "walkability_unavailable",
+            ok = false,
+            preview_only = true,
+            map_id = map_id,
+            start_x = px,
+            start_y = py,
+            final_destination_id = destination.id,
+            candidate_count = #candidates,
+            rejected_opening = 0,
+            rejected_unreachable = 0,
+            skipped_farther = 0,
+            message = "Overworld recovery preview refused because decoded walkability is unavailable",
+        }
+        log_preview(result)
+        return result
+    end
+
+    table.sort(candidates, function(a, b)
+        local ad = candidate_distance(px, py, a)
+        local bd = candidate_distance(px, py, b)
+        if ad ~= bd then return ad < bd end
+        if a.y ~= b.y then return a.y < b.y end
+        if a.x ~= b.x then return a.x < b.x end
+        return tostring(a.name) < tostring(b.name)
+    end)
+
+    local planning_opts = route_planning_opts(opts, nil, "overworld_recovery_preview")
+    planning_opts.terrain_offset = terrain_offset
+    local blocking = planning_opts.blocking
+    if not blocking then
+        blocking = prepare_route_planning_blocking(map_id, planning_opts)
+    else
+        blocking = copy_blocking_table(blocking)
+    end
+    for _, cell in ipairs(overworld_routes.network_transition_cells()) do
+        if cell.x ~= px or cell.y ~= py then
+            blocking[cell_key(cell.x, cell.y)] = true
+        end
+    end
+
+    local max_opening_steps = tonumber(opts.max_opening_steps) or 24
+    local rejected_opening = 0
+    local rejected_unreachable = 0
+    local skipped_farther = 0
+    local best = nil
+
+    for index, candidate in ipairs(candidates) do
+        local lower_bound = candidate_distance(px, py, candidate)
+        if best and lower_bound > #best.path then
+            skipped_farther = skipped_farther + (#candidates - index + 1)
+            break
+        elseif (tonumber(candidate.opening_length) or math.huge)
+                > max_opening_steps then
+            rejected_opening = rejected_opening + 1
+        else
+            local result, _, path = pathfinder.pathfind_to(
+                map_id,
+                px,
+                py,
+                candidate.x,
+                candidate.y,
+                blocking,
+                {
+                    allow_overworld = true,
+                    walkability_snapshot = safe_snapshot,
+                })
+            if path then
+                if not best or #path < #best.path then
+                    best = {
+                        candidate = candidate,
+                        path = path,
+                        path_result = result,
+                    }
+                end
+            else
+                rejected_unreachable = rejected_unreachable + 1
+            end
+        end
+    end
+
+    if not best then
+        local result = {
+            status = "no_safe_entry",
+            ok = false,
+            preview_only = true,
+            map_id = map_id,
+            start_x = px,
+            start_y = py,
+            final_destination_id = destination.id,
+            final_destination_title = destination.title,
+            candidate_count = #candidates,
+            rejected_opening = rejected_opening,
+            rejected_unreachable = rejected_unreachable,
+            skipped_farther = skipped_farther,
+            message = string.format(
+                "No decoded-safe waypoint-network entry is reachable for %s",
+                tostring(destination.title)),
+        }
+        log_preview(result)
+        return result
+    end
+
+    local candidate = best.candidate
+    local next_waypoint = candidate.next_waypoint
+    local path_description = pathfinder.format_path(best.path)
+    local status = #best.path == 0 and "already_on_network" or "planned"
+    local message = string.format(
+        "Recovery preview. Final destination: %s. Safe network entry: %s at %d,%d. %s. Then current leg to %s. Next: %s. Preview only; no movement started.",
+        tostring(destination.title),
+        tostring(candidate.name or "waypoint"),
+        candidate.x,
+        candidate.y,
+        path_description,
+        tostring(candidate.route_title or "waypoint network"),
+        tostring(next_waypoint and next_waypoint.name or "route handoff"))
+    local result = {
+        status = status,
+        ok = true,
+        preview_only = true,
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        entry_x = candidate.x,
+        entry_y = candidate.y,
+        entry_name = candidate.name,
+        path = best.path,
+        path_length = #best.path,
+        path_description = path_description,
+        route_id = candidate.route_id,
+        route_title = candidate.route_title,
+        next_waypoint_name = next_waypoint and next_waypoint.name or nil,
+        final_destination_id = destination.id,
+        final_destination_title = destination.title,
+        candidate_count = #candidates,
+        rejected_opening = rejected_opening,
+        rejected_unreachable = rejected_unreachable,
+        skipped_farther = skipped_farther,
+        message = message,
+    }
+    log_preview(result)
+    return result
+end
+
 local queue_overworld_segment_steps
 local overworld_segment_target
 

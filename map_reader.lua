@@ -9,9 +9,9 @@
 -- data stores two block IDs per byte: the even linear tile index uses the
 -- high nibble and the odd linear tile index uses the low nibble.
 --
--- The overworld uses a more complex system with row-offset
--- pointers, so we skip A* pathfinding for it and only build tile grids
--- for interior maps (towns, dungeons, castles).
+-- The overworld uses a separate row-pointer plus nibble-RLE format. It is
+-- decoded here as a 120x120 grid so explicitly opted-in recovery searches can
+-- prove terrain safety. Ordinary overworld guidance remains waypoint-based.
 --
 -- Tile walkability is determined per-tileset. The game uses different
 -- tile graphics for overworld, towns, and dungeons, but the tile TYPE
@@ -32,6 +32,16 @@ local NUM_MAPS = 30
 -- ROM address where map metadata table begins.
 -- Each entry is 5 bytes: pointer_lo, pointer_hi, width_max, height_max, border_tile
 local META_START = addr.ROM_MAP_META_START  -- 0x002A
+
+local OVERWORLD_DATA_START = addr.ROM_OVERWORLD_DATA_START or 0x1D6D
+local OVERWORLD_ROW_POINTERS = addr.ROM_OVERWORLD_ROW_POINTERS or 0x2663
+local OVERWORLD_CPU_BASE = addr.ROM_OVERWORLD_CPU_BASE or 0x9D5D
+local OVERWORLD_MAP_SIZE = addr.OVERWORLD_MAP_SIZE or 120
+local OVERWORLD_META = {
+    width = OVERWORLD_MAP_SIZE,
+    height = OVERWORLD_MAP_SIZE,
+    border_tile = 0x04,
+}
 
 -- The iNES header is 16 bytes. rom.readbyte() in FCEUX reads from the
 -- file including this header, so ROM address 0x0000 = file offset 0x0000.
@@ -79,6 +89,9 @@ end
 -- get_metadata(map_id): Return the metadata for a map.
 -- Loads the cache on first call.
 function M.get_metadata(map_id)
+    if maps.is_overworld(map_id) then
+        return OVERWORLD_META
+    end
     if not meta_cache[0] then
         load_metadata()
     end
@@ -112,12 +125,44 @@ end
 --
 -- The tiles fill the grid left-to-right, top-to-bottom.
 -- Returns a 2D table: tiles[y][x] where y and x are 0-based.
--- Returns nil if map_id is invalid or is the overworld.
+-- Returns nil if map_id is invalid.
 function M.decompress_map(map_id)
-    -- Skip the overworld — it uses a different, more complex format
-    -- with row-offset pointers that we don't handle yet
     if maps.is_overworld(map_id) then
-        return nil
+        local tiles = {}
+        for y = 0, OVERWORLD_MAP_SIZE - 1 do
+            local pointer_offset = OVERWORLD_ROW_POINTERS + y * 2
+            local pointer_lo = rom.readbyte(pointer_offset)
+            local pointer_hi = rom.readbyte(pointer_offset + 1)
+            if pointer_lo == nil or pointer_hi == nil then
+                return nil
+            end
+
+            local row_pointer = pointer_lo + pointer_hi * 256
+            local encoded_offset = OVERWORLD_DATA_START
+                + (row_pointer - OVERWORLD_CPU_BASE)
+            if encoded_offset < OVERWORLD_DATA_START then
+                return nil
+            end
+
+            local row = {}
+            tiles[y] = row
+            local x = 0
+            while x < OVERWORLD_MAP_SIZE do
+                local encoded = rom.readbyte(encoded_offset)
+                if encoded == nil then
+                    return nil
+                end
+                encoded_offset = encoded_offset + 1
+                local tile_type = math.floor(encoded / 16) % 16
+                local run_length = encoded % 16 + 1
+                for _ = 1, run_length do
+                    if x >= OVERWORLD_MAP_SIZE then break end
+                    row[x] = tile_type
+                    x = x + 1
+                end
+            end
+        end
+        return tiles
     end
 
     local meta = M.get_metadata(map_id)
@@ -151,7 +196,7 @@ local grid_cache = {}
 
 -- get_tile_grid(map_id): Get the 2D tile grid for a map.
 -- Returns cached version if available, otherwise decompresses from ROM.
--- Returns nil for the overworld or invalid map IDs.
+-- Returns nil for invalid map IDs.
 function M.get_tile_grid(map_id)
     if grid_cache[map_id] then
         return grid_cache[map_id]
@@ -262,25 +307,25 @@ local WALKABLE_DUNGEON = {
 }
 
 -- Overworld tileset (terrain_offset = 0x00)
--- Not used for pathfinding (overworld is too large for A*),
--- but included for reference.
+-- Tile IDs match the ROM's overworld RLE stream. Ordinary overworld guidance
+-- does not invoke A*; the recovery preview is the explicit opt-in caller.
 local WALKABLE_OVERWORLD = {
     [0]  = true,   -- grass
     [1]  = true,   -- desert
     [2]  = true,   -- hill
     [3]  = false,  -- mountain
-    [4]  = true,   -- bridge
-    [5]  = false,  -- water
+    [4]  = false,  -- water
+    [5]  = false,  -- impassable block
     [6]  = true,   -- forest
     [7]  = true,   -- swamp
     [8]  = true,   -- town entrance
     [9]  = true,   -- cave entrance
     [10] = true,   -- castle entrance
-    [11] = true,   -- bridge variant
-    [12] = false,  -- mountain variant
-    [13] = true,   -- stairs
-    [14] = true,   -- field
-    [15] = false,  -- barrier
+    [11] = true,   -- bridge
+    [12] = true,   -- stairs
+    [13] = false,  -- unused: fail closed
+    [14] = false,  -- unused: fail closed
+    [15] = false,  -- unused: fail closed
 }
 
 -- Map from terrain_offset value to walkability table.

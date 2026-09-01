@@ -11843,6 +11843,49 @@ function tests.autowalk_advances_past_already_at_waypoint_with_opt_in()
     routes.reset_for_tests()
 end
 
+function tests.network_entry_preview_is_pure_and_excludes_transition_landmarks()
+    routes.reset_for_tests()
+    local started = assert(routes.start("charlock", 0x01, 43, 43))
+    local active_before = routes.active_route_id()
+    local next_before = routes.get_active_next_object_id()
+    local destination_before = assert(routes.active_destination())
+
+    local candidates = routes.network_entry_candidates(
+        destination_before.id, 0x01)
+    assert(#candidates > 0,
+        "active destination should expose connected network entries")
+
+    local transitions = routes.network_transition_cells()
+    local transition_lookup = {}
+    for _, cell in ipairs(transitions) do
+        transition_lookup[cell.x .. "," .. cell.y] = true
+    end
+    assert_equal(transition_lookup["43,43"], true,
+        "Tantegel should be classified as a transition landmark")
+    for _, candidate in ipairs(candidates) do
+        assert_equal(transition_lookup[candidate.x .. "," .. candidate.y], nil,
+            "network recovery entries must exclude transition landmarks")
+        assert_equal(type(candidate.opening_length), "number",
+            "network entries should expose their guided opening length")
+    end
+
+    local candidate = candidates[1]
+    local preview = assert(routes.preview_start(
+        destination_before.id, 0x01, candidate.x, candidate.y))
+    assert_equal(preview.destination_route.title, "Charlock Castle",
+        "preview should preserve the final Travel destination")
+    assert_equal(routes.active_route_id(), active_before,
+        "preview should not replace the active route")
+    assert_equal(routes.get_active_next_object_id(), next_before,
+        "preview should not change the active waypoint")
+    assert_equal(assert(routes.active_destination()).id, destination_before.id,
+        "preview should not change the active destination")
+    assert_equal(started.route ~= nil, true,
+        "route start fixture should remain valid")
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_return_holes_use_proven_origin_returns()
     local destinations = {
         Kol = {

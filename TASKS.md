@@ -763,10 +763,34 @@ quality-of-life work.
   `10380` found World Map `(63,107)` with route and path target nil, zero
   NPC/runtime blockers, and no new script error. All known on-network selector
   corridors are closed.
-  Continue toward a general player-facing recovery command that finds a safe
-  route back to the nearest reachable waypoint-network entry and then proceeds
-  to the selected destination. Recovery must not teleport, require knowledge
-  of route names, or silently cross hazards and unknown blockers.
+  The first general off-network recovery slice is source-complete and
+  live-verified in FCEUX. `preview_overworld_recovery` performs a read-only
+  decoded A* search from the hero to the nearest safely reachable cell on the
+  established waypoint network for the active Travel destination. The search
+  blocks modeled hazards, runtime/static blockers, and landmark transition
+  cells; rejects entries whose guided opening exceeds 24 steps; preserves the
+  active destination and waypoint; and never queues movement or teleports.
+  Structured `OVERWORLD_RECOVERY_PREVIEW` logging records the chosen entry,
+  recovery length, next leg, final destination, and rejected-candidate counts.
+  The first loaded attempt selected the expected Cantlin corridor but frame
+  `17880` refused with `walkability_unavailable`, exposing that the production
+  map reader still skipped map `0x01` while tests supplied a mock snapshot.
+  `map_reader.lua` now decodes the ROM's 120-entry row-pointer and nibble-RLE
+  overworld format, with water, mountains, and block tiles impassable. Focused
+  tests pass `82/82` map reader, `22/22` pathfinder, `339/339` overworld routes,
+  and `129/129` route manager; the full gate passes all 33 host-runnable Lua
+  suites and all 68 Python tests. The repeat at `(58,108)` selected entry
+  `(58,104)` with a four-step recovery and then `great_swamp_cantlin` /
+  `Southern plains west road`. The preview preserved the active
+  `cantlin_staging` route at waypoint index 35, position, nil path target, and
+  zero blocker counts; no movement or new script error occurred. A zero-step
+  follow-up at the selected entry `(58,104)` also passed: the
+  ordinary route correctly targeted the adjacent `Southern plains west road`
+  waypoint, while the preview reported `already_on_network`, entry `(58,104)`,
+  and path length 0 without changing route index 25 or queuing movement. Next,
+  connect the safe recovery path to auto-walk and then hand off to the
+  unchanged guided route. Recovery must not teleport, require knowledge of
+  route names, or silently cross hazards and unknown blockers.
 - Early-route town-entry polish is live-verified for the Kol and
   Cantlin/Hauksness staging
   chain. Kol now bypasses Brecconary entrance `(48,41)` through west doorstep

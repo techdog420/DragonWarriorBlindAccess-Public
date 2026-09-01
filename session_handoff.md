@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-30
+Updated: 2026-08-31
 
 ## Release Installation Handoff
 
@@ -121,6 +121,35 @@ Updated: 2026-08-30
 
 ## Immediate FCEUX Handoff
 
+- The first general off-network recovery slice is source-complete and
+  live-verified in FCEUX (`2026-08-31`). The new read-only command
+  `preview_overworld_recovery` uses explicit opt-in overworld A* to find the
+  nearest decoded-safe cell on an established waypoint corridor for the active
+  Travel destination. It blocks modeled hazards, static/runtime blockers, and
+  landmark transition cells; rejects guided openings over 24 steps; preserves
+  route/destination state; and never queues movement or teleports. Structured
+  `OVERWORLD_RECOVERY_PREVIEW` logging includes the chosen entry, path length,
+  next leg, final destination, and rejection counts. Loaded frame `1653` near
+  Cantlin selected `cantlin_great_swamp` / `Southern plains westbound road`,
+  but frame `17880` refused the preview with `walkability_unavailable`. The
+  production reader had intentionally skipped map `0x01` while unit tests used
+  a mock grid. It now decodes the ROM's 120 overworld row pointers and
+  nibble-RLE terrain, failing closed on water, mountains, and block tiles.
+  Focused tests pass `82/82` map reader, `22/22` pathfinder, `339/339` overworld
+  routes, and `129/129` route manager; the full Windows gate passes Lua syntax,
+  all 33 host-runnable Lua suites, all 68 Python tests, speech dependency, and
+  command-queue checks. The repeat at World Map `(58,108)` began the Great
+  Swamp destination through `cantlin_staging` at waypoint index 35. Frame
+  `9240` selected decoded-safe entry `(58,104)`, path length 4, then
+  `great_swamp_cantlin` / `Southern plains west road`, with
+  `preview_only=true`. Frame `9660` confirmed position, active route and index,
+  nil path target, and zero blocker counts were unchanged; no movement or new
+  script error occurred. A second live check at the selected entry `(58,104)`
+  correctly kept the ordinary adjacent waypoint one cell east while frame
+  `27960` reported `already_on_network`, entry `(58,104)`, and path length 0.
+  Frame `28320` confirmed position, route index 25, nil path target, and zero
+  blocker counts remained unchanged. The next slice is to queue the safe
+  recovery path, then hand off to the unchanged guided route.
 - The final known on-network corridor hole is source-complete and live-verified
   (`2026-08-30`). A uniform audit checked all 23,296 combinations
   across 13 selector corridors and 16 destinations. Twelve corridors were

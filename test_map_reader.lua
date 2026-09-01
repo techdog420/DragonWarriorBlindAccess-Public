@@ -236,6 +236,53 @@ function tests.with_cleanup_runs_cleanup_after_body_failure()
     assert_equal(string.find(tostring(err), "forced body failure", 1, true) ~= nil, true, "with_cleanup should preserve the body failure")
 end
 
+function tests.overworld_decoder_uses_row_pointers_and_nibble_rle()
+    local data_start = 0x1D6D
+    local pointer_start = 0x2663
+    local cpu_base = 0x9D5D
+    local special_row = 109
+    local rom_bytes = {}
+
+    -- Most rows share one all-grass RLE stream. Row 109 points at a second
+    -- stream containing every collision-relevant overworld terrain type.
+    for y = 0, 119 do
+        local row_offset = y == special_row and 8 or 0
+        local pointer = cpu_base + row_offset
+        rom_bytes[pointer_start + y * 2] = pointer % 256
+        rom_bytes[pointer_start + y * 2 + 1] = math.floor(pointer / 256)
+    end
+    for offset = 0, 7 do
+        rom_bytes[data_start + offset] = 0x0F
+    end
+    local special_runs = {0x0F, 0x3F, 0x4F, 0x5F, 0x6F, 0x7F, 0xBF, 0xC7}
+    for offset, encoded in ipairs(special_runs) do
+        rom_bytes[data_start + 7 + offset] = encoded
+    end
+
+    local env = make_env({rom_bytes = rom_bytes})
+    local width, height = env.map_reader.get_map_dimensions(0x01)
+    local grid = env.map_reader.get_tile_grid(0x01)
+    local snapshot = env.map_reader.get_walkability_snapshot(0x01)
+
+    assert_equal(width, 120, "overworld width should come from its dedicated format")
+    assert_equal(height, 120, "overworld height should come from its dedicated format")
+    assert_equal(grid[0][119], 0x0, "shared grass row should decode to its final cell")
+    assert_equal(grid[special_row][16], 0x3, "row pointer should select mountain run")
+    assert_equal(grid[special_row][32], 0x4, "row pointer should select water run")
+    assert_equal(grid[special_row][48], 0x5, "row pointer should select block run")
+    assert_equal(grid[special_row][96], 0xB, "row pointer should select bridge run")
+    assert_equal(grid[special_row][119], 0xC, "final short RLE run should stop at x=119")
+    assert_equal(snapshot[special_row][16], false, "mountain should be impassable")
+    assert_equal(snapshot[special_row][32], false, "water should be impassable")
+    assert_equal(snapshot[special_row][48], false, "block tile should be impassable")
+    assert_equal(snapshot[special_row][64], true, "forest should be passable")
+    assert_equal(snapshot[special_row][80], true, "swamp should remain engine-passable")
+    assert_equal(snapshot[special_row][96], true, "bridge should be passable")
+    assert_equal(snapshot[special_row][119], true, "stairs should be passable")
+
+    env.restore()
+end
+
 function tests.interior_decoder_reads_even_width_packed_nibbles()
     local map_id = 0x04
     local base = map_id * 5

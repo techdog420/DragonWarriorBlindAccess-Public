@@ -5408,6 +5408,15 @@ debug_tools.register_command("report_path_state", function()
     tolk.output_interrupt("Path state reported")
 end)
 
+debug_tools.register_command("preview_overworld_recovery", function()
+    ensure_navigation_modules_fresh()
+    local result = route_mgr.preview_overworld_network_entry({
+        terrain_offset = snapshot.terrain_offset,
+    })
+    tolk.output_interrupt(result and result.message
+        or "Overworld recovery preview unavailable")
+end)
+
 debug_tools.register_command("stop_auto_walk", function()
     local stopped = route_mgr.stop_auto_walk("manual stop_auto_walk")
     tolk.output_interrupt(stopped and "Auto-walk stopped" or "No auto-walk is active")

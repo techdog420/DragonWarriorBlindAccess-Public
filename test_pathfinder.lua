@@ -332,6 +332,49 @@ end
 
 local tests = {}
 
+function tests.overworld_astar_requires_explicit_opt_in_and_respects_safe_snapshot()
+    local env = make_stub_env()
+    env.set_grid(5, 3)
+
+    local default_path = env.pathfinder.find_path(
+        0x01, 0, 1, 4, 1, {})
+    assert_equal(default_path, nil,
+        "ordinary overworld pathfinding should remain disabled")
+
+    local snapshot = {}
+    for y = 0, 2 do
+        snapshot[y] = {}
+        for x = 0, 4 do
+            snapshot[y][x] = true
+        end
+    end
+    snapshot[1][2] = false
+
+    local result, _, path = env.pathfinder.pathfind_to(
+        0x01,
+        0,
+        1,
+        4,
+        1,
+        {},
+        {
+            allow_overworld = true,
+            walkability_snapshot = snapshot,
+        })
+
+    assert_truthy(path, "explicit overworld A* should return a path")
+    assert_equal(#path, 6,
+        "safe overworld path should detour around the blocked snapshot cell")
+    for _, step in ipairs(path) do
+        assert_truthy(not (step.x == 2 and step.y == 1),
+            "safe overworld path must not cross the blocked snapshot cell")
+    end
+    assert_contains(result, "Path:",
+        "explicit overworld A* should return grouped path guidance")
+
+    env.restore()
+end
+
 function tests.goal_blocked_reports_reason_without_search()
     local env = make_stub_env()
     env.set_grid(5, 5)

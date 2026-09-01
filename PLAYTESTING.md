@@ -1,11 +1,41 @@
 # Playtesting Notes
 
-Updated: 2026-08-30
+Updated: 2026-08-31
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The first general off-network recovery slice is source-complete and
+  live-verified in FCEUX (`2026-08-31`). `preview_overworld_recovery` is a
+  read-only diagnostic: it uses explicit opt-in overworld A* to choose the
+  nearest decoded-safe cell on an established waypoint corridor for the active
+  Travel destination. Modeled hazards, static/runtime blockers, and landmark
+  transition cells are excluded; guided openings over 24 steps are rejected.
+  The command preserves route/destination state and never moves or teleports.
+  `OVERWORLD_RECOVERY_PREVIEW` logs the entry, path length, next leg, final
+  destination, and rejection counts. The first loaded check near Cantlin
+  selected `cantlin_great_swamp` / `Southern plains westbound road` at frame
+  `1653`, but frame `17880` exposed a production-only
+  `walkability_unavailable` refusal because overworld walkability had existed
+  only in unit-test mocks. `map_reader.lua` now decodes the ROM's 120 row
+  pointers and nibble-RLE terrain grid; water, mountains, and block tiles fail
+  closed. Focused tests pass `82/82` map reader, `22/22` pathfinder, `339/339`
+  overworld routes, and `129/129` route manager; Lua syntax, all 33
+  host-runnable Lua suites, all 68 Python tests, speech dependency, and command
+  queue checks pass. After reloading at World Map `(58,108)`, the Great Swamp
+  destination began through `cantlin_staging` at waypoint index 35. At frame
+  `9240`, the preview selected decoded-safe entry `(58,104)`, path length 4,
+  then `great_swamp_cantlin` / `Southern plains west road`, with 745 candidates,
+  zero rejected openings, zero unreachable candidates, and
+  `preview_only=true`. Frame `9660` confirmed the hero remained at `(58,108)`,
+  `cantlin_staging` remained at waypoint index 35, the path target remained nil,
+  both blocker counts remained zero, and no new script error was recorded.
+  A second live check at the selected entry `(58,104)` started
+  `great_swamp_cantlin` toward the adjacent `Southern plains west road` waypoint.
+  Frame `27960` correctly reported `already_on_network`, entry `(58,104)`, and
+  path length 0; frame `28320` confirmed position, route index 25, nil path
+  target, and zero blocker counts were unchanged.
 - The final known on-network corridor hole is source-complete and live-verified
   (`2026-08-30`). A uniform audit checked all 23,296 combinations
   across 13 selector corridors and 16 destinations. Only Great Swamp travel

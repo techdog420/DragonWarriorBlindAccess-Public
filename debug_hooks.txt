@@ -228,6 +228,11 @@ COMMANDS (write to dw_commands.txt, one per line)
                            waypoint from the current world-map position
   recalculate_overworld_route
                            Alias for route_recalculate
+  preview_overworld_recovery
+                           Read-only preview of the nearest decoded-safe
+                           waypoint-network entry for the active Travel
+                           destination. Reports the recovery path and next
+                           guided leg; never queues movement or teleports.
   stop_overworld_route     Clear active overworld route guidance
   auto_walk                On the world map, if an overworld route is active,
                            queue the next waypoint segment. By default it stops

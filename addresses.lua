@@ -136,6 +136,15 @@ M.ROM_MAP_META_SIZE  = 5       -- Bytes per map entry
 -- Each map's data pointer (from metadata) gives the offset into PRG-ROM.
 M.ROM_MAP_DATA_START = 0x00C1  -- First map's tile data begins here
 
+-- Overworld map. The 120x120 world map is encoded independently from the
+-- packed interior maps: each row has a little-endian CPU pointer into an RLE
+-- stream whose bytes are TTTTLLLL (tile ID, run length minus one). These are
+-- iNES file offsets, including the 16-byte header, for rom.readbyte().
+M.ROM_OVERWORLD_DATA_START = 0x1D6D
+M.ROM_OVERWORLD_ROW_POINTERS = 0x2663
+M.ROM_OVERWORLD_CPU_BASE = 0x9D5D
+M.OVERWORLD_MAP_SIZE = 120
+
 -- Chest Data — 5 bytes per chest entry (map ID, X, Y, contents)
 -- Contains all treasure chests in the game.
 M.ROM_CHEST_START    = 0x5DDD  -- Start of chest data table
