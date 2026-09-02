@@ -502,6 +502,11 @@ local function queued_route_needs_guarded_twitch_repress()
     return route_steps ~= nil
         and auto_dir ~= nil
         and auto_step_source ~= "manual_tap"
+        -- A confirmed poison crossing must remain exactly one tile per step.
+        -- The movement engine can report an early subpixel twitch for a press
+        -- that is already committed; a guarded fresh press can then queue an
+        -- unintended second poison-swamp tile before coordinates settle.
+        and route_allowed_hazard == nil
         and auto_movement_started
         and auto_movement_start_frame ~= nil
         and auto_movement_start_frame <= get_route_early_release_grace_frames()

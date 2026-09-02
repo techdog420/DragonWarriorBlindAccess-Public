@@ -1609,6 +1609,50 @@ function tests.queued_route_final_early_twitch_uses_guarded_fresh_press()
     env.restore()
 end
 
+function tests.confirmed_poison_route_early_twitch_does_not_repress()
+    local env = make_env({
+        map_id = 0x01,
+        sticky_joypad_set = true,
+        hazard_cells = {
+            [0x01] = { ["4,1"] = "poison_swamp" },
+        },
+        config_values = {
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "10",
+            auto_step_route_turn_settle_frames = "2",
+            auto_step_inject_limit = "3",
+        },
+    })
+    env.set_position(3, 1)
+    env.auto_step.start_route({"right"}, {
+        allowed_route_hazard = "poison_swamp",
+    })
+
+    env.update(true)          -- Frame 1: confirmed poison entry press.
+    env.set_subpixel(0x20)
+    env.update(true)          -- Frame 2: early twitch from committed press.
+    env.update(true)
+    env.update(true)
+    env.update(true)          -- Generic recovery would press again here.
+
+    assert_equal(
+        #collect_direction_sequences(env, "right", 5),
+        1,
+        "confirmed poison twitch should wait instead of issuing a fresh press"
+    )
+
+    env.set_position(4, 1)
+    env.update(true)
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_cancelled",
+            "late completion of the confirmed poison step should remain on route"
+        )
+    end
+
+    env.restore()
+end
+
 function tests.guarded_twitch_repress_skips_fresh_press_after_late_completion()
     local env = make_env({
         sticky_joypad_set = true,

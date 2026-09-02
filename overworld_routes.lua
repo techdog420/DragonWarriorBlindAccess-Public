@@ -4614,11 +4614,7 @@ local function network_transition_lookup()
     return transitions
 end
 
--- Return unique cells on established waypoint corridors that can join a
--- connected route toward route_name. Final landmark cells are excluded because
--- several trigger a map transition as soon as the hero steps onto them.
-function M.network_entry_candidates(route_name, map_id, opts)
-    opts = opts or {}
+local function established_network_cells()
     local transitions = network_transition_lookup()
     local unique = {}
 
@@ -4652,6 +4648,32 @@ function M.network_entry_candidates(route_name, map_id, opts)
             end
         end
     end
+
+    return unique
+end
+
+-- Return whether a coordinate is already on any established waypoint
+-- corridor. This intentionally excludes final landmark cells because several
+-- trigger a map transition as soon as the hero steps onto them.
+function M.is_network_corridor_cell(x, y)
+    if x == nil or y == nil then
+        return false
+    end
+    if not M._network_corridor_lookup then
+        M._network_corridor_lookup = {}
+        for key in pairs(established_network_cells()) do
+            M._network_corridor_lookup[key] = true
+        end
+    end
+    return M._network_corridor_lookup[x .. "," .. y] == true
+end
+
+-- Return unique cells on established waypoint corridors that can join a
+-- connected route toward route_name. Final landmark cells are excluded because
+-- several trigger a map transition as soon as the hero steps onto them.
+function M.network_entry_candidates(route_name, map_id, opts)
+    opts = opts or {}
+    local unique = established_network_cells()
 
     local candidates = {}
     for _, candidate in pairs(unique) do

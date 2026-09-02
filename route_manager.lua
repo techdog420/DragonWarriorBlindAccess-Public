@@ -92,6 +92,7 @@ local reroute_failures = 0
 local route_drift_reroutes = 0
 local REROUTE_FAILURE_LIMIT = 3
 local ROUTE_DRIFT_REROUTE_LIMIT = 6
+M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS = 24
 
 -- NPC freeze: lock NPC positions in RAM for reliable pathfinding.
 -- When active, apply_npc_freeze() restores NPC bytes to their snapshot
@@ -3822,9 +3823,9 @@ end
 
 -- Find a decoded-safe path from the current world-map position to an exact
 -- waypoint-network cell. If poison swamp is unavoidable, retain a manual-only
--- preview with an explicit hazard warning. This first recovery slice is
--- intentionally read-only: it neither changes the selected guided destination
--- nor queues movement.
+-- preview with an explicit hazard warning. This planner remains read-only:
+-- executable recovery consumes its safe result separately without changing
+-- preview command semantics.
 function M.preview_overworld_network_entry(opts)
     opts = opts or {}
     local function candidate_distance(px, py, candidate)
@@ -4096,7 +4097,147 @@ function M.preview_overworld_network_entry(opts)
 end
 
 local queue_overworld_segment_steps
+local queue_path_steps
 local overworld_segment_target
+
+function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requested)
+    opts = opts or {}
+    local result = M.preview_overworld_network_entry({
+        terrain_offset = snapshot.terrain_offset,
+    })
+    if result.status == "already_on_network" then
+        return result
+    end
+
+    local function refuse(reason, message)
+        result.ok = false
+        result.auto_walk_allowed = false
+        result.recovery_execution = true
+        result.preview_only = false
+        result.message = message or result.message
+        debug_tools.info(string.format(
+            "OVERWORLD_RECOVERY_AUTO_WALK event=refused status=%s reason=%s map=0x%02X from=(%s,%s) entry=(%s,%s) steps=%s final=%s",
+            tostring(result.status or "unavailable"),
+            tostring(reason or "unavailable"),
+            map_id or -1,
+            tostring(px),
+            tostring(py),
+            tostring(result.entry_x or "-"),
+            tostring(result.entry_y or "-"),
+            tostring(result.path_length or "-"),
+            tostring(result.final_destination_id or "-")))
+        if opts.speak ~= false then
+            tolk.output_interrupt(result.message or "Recovery auto-walk is unavailable")
+        end
+        return result
+    end
+
+    if result.ok ~= true then
+        return refuse(result.status or "preview_failed")
+    end
+    if result.auto_walk_allowed ~= true then
+        return refuse("hazardous_recovery",
+            "Recovery auto-walk stopped. " .. tostring(result.message))
+    end
+    if not result.path or #result.path == 0 then
+        return refuse("empty_recovery_path",
+            "Recovery auto-walk stopped because no recovery steps were available")
+    end
+    if #result.path > M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS then
+        result.status = "recovery_too_long"
+        return refuse("step_limit", string.format(
+            "Recovery auto-walk stopped. The safe network entry is %d steps away; the current safety limit is %d steps.",
+            #result.path,
+            M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS))
+    end
+
+    release_target_face("new overworld recovery auto-walk")
+    release_target_npc_hold("new overworld recovery auto-walk")
+    release_npc_freeze("new overworld recovery auto-walk")
+    last_pathfind_obj = nil
+    reroute_failures = 0
+
+    if not queue_path_steps(result.path, {
+        map_id = map_id,
+        start_x = px,
+        start_y = py,
+        settle_frames = 0,
+        settle_same_direction = true,
+    }) then
+        result.status = "queue_failed"
+        return refuse("queue_failed",
+            "Recovery auto-walk could not queue the safe path")
+    end
+
+    local recovery_segment = {
+        route = {
+            id = result.route_id,
+            title = result.route_title,
+        },
+        waypoint = {
+            name = result.entry_name or "waypoint network entry",
+            x = result.entry_x,
+            y = result.entry_y,
+        },
+        object_id = string.format(
+            "overworld_recovery_entry_%s_%s",
+            tostring(result.entry_x),
+            tostring(result.entry_y)),
+    }
+    active_overworld_segment = {
+        recovery = true,
+        route_id = result.route_id,
+        route_title = result.route_title,
+        waypoint_name = recovery_segment.waypoint.name,
+        waypoint_x = result.entry_x,
+        waypoint_y = result.entry_y,
+        steps = #result.path,
+        continuous = false,
+        continuous_requested = continuous_requested == true,
+        stop_on_blocker = opts.stop_on_blocker == true,
+        final_destination_id = result.final_destination_id,
+        final_destination_title = result.final_destination_title,
+        next_waypoint_name = result.next_waypoint_name,
+    }
+    set_active_route_context(
+        overworld_segment_target(recovery_segment),
+        #result.path,
+        nil,
+        {
+            post_arrival_actions = false,
+            speak = false,
+            stop_on_blocker = opts.stop_on_blocker == true,
+        })
+
+    result.status = "recovery_queued"
+    result.ok = true
+    result.preview_only = false
+    result.recovery_execution = true
+    result.boundary_stop = true
+    result.message = string.format(
+        "Recovery auto-walk. Safe network entry: %s at %d,%d, %d steps. Final destination: %s. Auto-walk will stop at the waypoint network.",
+        tostring(result.entry_name or "waypoint"),
+        result.entry_x,
+        result.entry_y,
+        #result.path,
+        tostring(result.final_destination_title or "selected destination"))
+    debug_tools.info(string.format(
+        "OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x%02X from=(%d,%d) entry=(%d,%d) steps=%d route=%s next=%s final=%s continuous_requested=%s boundary_stop=true",
+        map_id or -1,
+        px or -1,
+        py or -1,
+        result.entry_x or -1,
+        result.entry_y or -1,
+        #result.path,
+        tostring(result.route_id or "-"),
+        tostring(result.next_waypoint_name or "-"),
+        tostring(result.final_destination_id or "-"),
+        tostring(continuous_requested == true)))
+    if opts.speak ~= false then
+        tolk.output_interrupt(result.message)
+    end
+    return result
+end
 
 function M.autowalk_overworld_segment(opts)
     opts = opts or {}
@@ -4128,6 +4269,14 @@ function M.autowalk_overworld_segment(opts)
     end
 
     local map_id, px, py = nav.get_position()
+    if overworld_routes.is_network_corridor_cell
+       and not overworld_routes.is_network_corridor_cell(px, py) then
+        local recovery = M.autowalk_overworld_recovery(
+            opts, map_id, px, py, continuous)
+        if recovery.status ~= "already_on_network" then
+            return recovery
+        end
+    end
     local segment, err = overworld_routes.plan_next_segment(map_id, px, py, {
         terrain_offset = snapshot.terrain_offset,
         advance_if_at_waypoint = true,
@@ -4258,7 +4407,7 @@ end
 
 -- queue_path_steps(path): Convert A* path to auto_step route directions.
 -- Returns true if the route was queued successfully.
-local function queue_path_steps(path, opts)
+queue_path_steps = function(path, opts)
     if not path or #path == 0 then
         return false
     end
@@ -4917,8 +5066,9 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
     if active_overworld_block and not active_route_stop_on_blocker then
+        local recovery_block = active_overworld_segment.recovery == true
         event_bus.publish("route_cancelled", {
-            reason = "overworld_blocked",
+            reason = recovery_block and "overworld_recovery_blocked" or "overworld_blocked",
             target = active_route_target,
             map_id = map_id,
             from_x = from_x,
@@ -4934,9 +5084,24 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
             tostring(from_y),
             tostring(blocked_dir),
             tostring(source)))
+        if recovery_block then
+            debug_tools.info(string.format(
+                "OVERWORLD_RECOVERY_AUTO_WALK event=blocked map=0x%02X from=(%s,%s) dir=%s entry=(%s,%s) final=%s source=%s",
+                map_id or -1,
+                tostring(from_x),
+                tostring(from_y),
+                tostring(blocked_dir),
+                tostring(active_overworld_segment.waypoint_x),
+                tostring(active_overworld_segment.waypoint_y),
+                tostring(active_overworld_segment.final_destination_id or "-"),
+                tostring(source)))
+        end
         local waypoint_name = active_overworld_segment.waypoint_name or "the next waypoint"
         clear_active_route_context("overworld auto-walk blocked", should_refresh_objects_after_route())
-        tolk.output_interrupt("Overworld auto-walk stopped. Blocked moving " .. tostring(blocked_dir) .. " toward " .. waypoint_name)
+        local prefix = recovery_block
+            and "Recovery auto-walk stopped"
+            or "Overworld auto-walk stopped"
+        tolk.output_interrupt(prefix .. ". Blocked moving " .. tostring(blocked_dir) .. " toward " .. waypoint_name)
         return
     end
     if not last_pathfind_obj and not active_overworld_block then return end
@@ -5177,6 +5342,44 @@ do
                     tostring(overworld_segment.waypoint_name or "-"),
                     tostring(overworld_segment.index),
                     tostring(overworld_segment.steps)))
+            end
+
+            if overworld_segment and overworld_segment.recovery == true then
+                local map_id, px, py = nav.get_position()
+                local handoff, handoff_err = overworld_routes.start(
+                    overworld_segment.final_destination_id,
+                    map_id,
+                    px,
+                    py,
+                    {terrain_offset = snapshot.terrain_offset})
+                local next_name = handoff and handoff.waypoint
+                    and handoff.waypoint.name
+                    or overworld_segment.next_waypoint_name
+                    or "the next guided waypoint"
+                debug_tools.info(string.format(
+                    "OVERWORLD_RECOVERY_AUTO_WALK event=complete map=0x%02X position=(%s,%s) entry=(%s,%s) final=%s handoff_route=%s next=%s continuous_requested=%s boundary_stop=true result=%s",
+                    map_id or -1,
+                    tostring(px),
+                    tostring(py),
+                    tostring(overworld_segment.waypoint_x),
+                    tostring(overworld_segment.waypoint_y),
+                    tostring(overworld_segment.final_destination_id or "-"),
+                    tostring(handoff and handoff.route and handoff.route.id or "-"),
+                    tostring(next_name),
+                    tostring(overworld_segment.continuous_requested == true),
+                    handoff and "handoff_ready" or tostring(handoff_err or "handoff_failed")))
+                if handoff then
+                    tolk.output_interrupt(string.format(
+                        "Recovery complete. Waypoint network reached at %s. Final destination: %s. Next: %s. Press auto-walk again to continue.",
+                        tostring(overworld_segment.waypoint_name or "the safe entry"),
+                        tostring(overworld_segment.final_destination_title or "selected destination"),
+                        tostring(next_name)))
+                else
+                    tolk.output_interrupt(string.format(
+                        "Recovery complete. Waypoint network reached, but route handoff failed: %s. Use route status before continuing.",
+                        tostring(handoff_err or "unknown route")))
+                end
+                return
             end
 
             if continuous_overworld then
@@ -5446,6 +5649,16 @@ auto_step.on_route_cancelled = function(cancel_data)
             tostring(cancel_data and cancel_data.current_y),
             tostring(overworld_segment.route_final_carry_x),
             tostring(overworld_segment.route_final_carry_y)))
+        if overworld_segment.recovery == true then
+            debug_tools.info(string.format(
+                "OVERWORLD_RECOVERY_AUTO_WALK event=cancel reason=%s current=(%s,%s) entry=(%s,%s) final=%s",
+                tostring(reason),
+                tostring(cancel_data and cancel_data.current_x),
+                tostring(cancel_data and cancel_data.current_y),
+                tostring(overworld_segment.waypoint_x),
+                tostring(overworld_segment.waypoint_y),
+                tostring(overworld_segment.final_destination_id or "-")))
+        end
         clear_active_route_context("overworld auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
         if M._overworld_hazard_confirmation.arm(cancel_data, overworld_segment) then
             tolk.output_interrupt(
@@ -5453,7 +5666,10 @@ auto_step.on_route_cancelled = function(cancel_data)
         else
             M._overworld_hazard_confirmation.clear("overworld route cancelled: " .. tostring(reason))
             if reason ~= "can_walk_false" then
-                tolk.output_interrupt("Overworld auto-walk cancelled. " .. tostring(message or reason))
+                local prefix = overworld_segment.recovery == true
+                    and "Recovery auto-walk cancelled. "
+                    or "Overworld auto-walk cancelled. "
+                tolk.output_interrupt(prefix .. tostring(message or reason))
             end
         end
         return

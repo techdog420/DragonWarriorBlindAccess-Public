@@ -11862,6 +11862,12 @@ function tests.network_entry_preview_is_pure_and_excludes_transition_landmarks()
     end
     assert_equal(transition_lookup["43,43"], true,
         "Tantegel should be classified as a transition landmark")
+    assert_equal(routes.is_network_corridor_cell(43, 43), false,
+        "automatic transition landmarks should not count as recovery boundaries")
+    assert_equal(routes.is_network_corridor_cell(58, 108), false,
+        "the live Cantlin recovery start should remain off-network")
+    assert_equal(routes.is_network_corridor_cell(58, 104), true,
+        "the live Cantlin recovery entry should belong to the waypoint network")
     for _, candidate in ipairs(candidates) do
         assert_equal(transition_lookup[candidate.x .. "," .. candidate.y], nil,
             "network recovery entries must exclude transition landmarks")
@@ -11870,6 +11876,8 @@ function tests.network_entry_preview_is_pure_and_excludes_transition_landmarks()
     end
 
     local candidate = candidates[1]
+    assert_equal(routes.is_network_corridor_cell(candidate.x, candidate.y), true,
+        "recovery candidates should belong to the established waypoint network")
     local preview = assert(routes.preview_start(
         destination_before.id, 0x01, candidate.x, candidate.y))
     assert_equal(preview.destination_route.title, "Charlock Castle",

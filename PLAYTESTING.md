@@ -6,6 +6,30 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- The first executable off-network recovery slice is source-complete and
+  live-verified in FCEUX (`2026-09-01`). Auto-walk now recognizes
+  whether the hero is already on an established non-transition waypoint
+  corridor. From an off-network start with an active Travel destination, it
+  reuses the decoded-safe recovery preview, queues at most 24 safe A* steps,
+  and stops at the selected network entry. It then recalculates the unchanged
+  final destination from that exact cell and asks the player to press
+  auto-walk again; continuous mode cannot silently cross this boundary.
+  Poison-swamp/manual-only previews, paths over 24 steps, queue failures, and
+  live blockers fail closed without destination handoff. Structured
+  `OVERWORLD_RECOVERY_AUTO_WALK` logs cover start, refusal, blocker,
+  cancellation, completion, and handoff. The loaded run walked four safe steps
+  north from `(58,108)` to `(58,104)`, stopped at the network boundary even
+  with continuous mode enabled, preserved the Eastern Great Swamp destination,
+  and continued only after another auto-walk press. At `(66,109)`, the first
+  confirmed poison entry safely timed out without movement; the next confirmed
+  attempt reached `(66,110)` in 22 frames without the former extra southward
+  drift. The route then completed at `(89,112)`. Fresh frame `8160` found no
+  active route, nil path target, and zero runtime/NPC blockers; no new script
+  error occurred. Confirmed poison routes now wait through an early committed
+  subpixel twitch instead of issuing the generic guarded repress. Focused tests
+  pass `151/151` auto-step, `339/339` overworld routes, and `139/139` route
+  manager; the authoritative Windows gate passes all 33 host-runnable Lua
+  suites and all 68 Python tests.
 - The guided-overworld poison-swamp override is source-complete and
   live-verified in FCEUX (`2026-09-01`). The first auto-walk stops at the exact
   swamp boundary and says to press auto-walk again; a matching second press

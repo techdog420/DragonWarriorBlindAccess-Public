@@ -787,10 +787,25 @@ quality-of-life work.
   follow-up at the selected entry `(58,104)` also passed: the
   ordinary route correctly targeted the adjacent `Southern plains west road`
   waypoint, while the preview reported `already_on_network`, entry `(58,104)`,
-  and path length 0 without changing route index 25 or queuing movement. Next,
-  connect the safe recovery path to auto-walk and then hand off to the
-  unchanged guided route. Recovery must not teleport, require knowledge of
-  route names, or silently cross hazards and unknown blockers.
+  and path length 0 without changing route index 25 or queuing movement.
+  The first executable slice is source-complete and live-verified in FCEUX.
+  Auto-walk now detects off-network starts, queues only decoded-safe recovery
+  paths up to 24 steps, stops at the network boundary even in continuous mode,
+  recalculates the unchanged final destination from the reached entry, and
+  requires a second auto-walk press before guided travel resumes. Hazardous
+  manual-only previews, over-limit paths, queue failures, and live blockers
+  fail closed without handoff. The loaded run walked the four-step `(58,108)`
+  to `(58,104)` recovery, stopped at the boundary in continuous mode, preserved
+  Great Swamp, and required another auto-walk press. A confirmed poison-entry
+  timing suspect at `(66,109)` stopped without movement; the next confirmed
+  attempt reached `(66,110)` without drift and continued to the final
+  `(89,112)` destination. Confirmed poison routes now suppress the generic
+  guarded repress after an early committed twitch. Fresh frame `8160` found
+  route none, nil path target, and zero runtime/NPC blockers. Focused tests pass
+  `151/151` auto-step, `339/339` overworld routes, and `139/139` route manager;
+  the authoritative Windows gate passes all 33 host-runnable Lua suites and all
+  68 Python tests. Recovery does not teleport, require knowledge of route names,
+  or silently cross hazards and unknown blockers.
 - Early-route town-entry polish is live-verified for the Kol and
   Cantlin/Hauksness staging
   chain. Kol now bypasses Brecconary entrance `(48,41)` through west doorstep

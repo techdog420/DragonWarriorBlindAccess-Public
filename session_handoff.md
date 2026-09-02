@@ -121,6 +121,29 @@ Updated: 2026-09-01
 
 ## Immediate FCEUX Handoff
 
+- The first executable off-network recovery slice is source-complete and
+  live-verified in FCEUX (`2026-09-01`). Auto-walk now checks the
+  established non-transition waypoint network before ordinary segment
+  planning. An off-network start reuses the decoded-safe recovery preview,
+  queues at most 24 safe A* steps, and stops at the network entry even when
+  continuous travel is configured. At arrival it recalculates the player's
+  unchanged final destination from the exact entry and requires another
+  auto-walk press before guided travel resumes. Hazardous/manual-only previews,
+  over-limit routes, queue failures, and live blockers fail closed without
+  handoff. `OVERWORLD_RECOVERY_AUTO_WALK` logs each start, refusal, blocker,
+  cancellation, completion, and handoff. The loaded run walked four safe steps
+  from World Map `(58,108)` to `(58,104)`, stopped at the network boundary
+  despite continuous mode, preserved the Eastern Great Swamp destination, and
+  resumed only after another auto-walk press. At the poison boundary, the
+  first confirmed crossing safely timed out without moving; a second confirmed
+  attempt reached `(66,110)` without the former extra southward drift and the
+  route finished at `(89,112)`. Fresh frame `8160` found no active route, nil
+  path target, and zero runtime/NPC blockers; no new script error occurred.
+  Confirmed poison routes now wait out an early committed subpixel twitch
+  instead of issuing the generic guarded repress. Focused tests pass `151/151`
+  auto-step, `339/339` overworld routes, and `139/139` route manager; the
+  authoritative Windows gate passes all 33 host-runnable Lua suites and all 68
+  Python tests.
 - The guided-overworld poison-swamp second-press override is source-complete
   and live-verified in FCEUX (`2026-09-01`). First contact stops and arms a
   ten-second confirmation bound to the exact map, boundary, direction, route,

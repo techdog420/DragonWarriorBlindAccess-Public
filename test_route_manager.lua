@@ -508,6 +508,12 @@ local function make_env(options)
             network_transition_cells = function()
                 return options.overworld_transition_cells or {}
             end,
+            is_network_corridor_cell = function(x, y)
+                if options.overworld_network_cell_fn then
+                    return options.overworld_network_cell_fn(x, y)
+                end
+                return options.overworld_on_network ~= false
+            end,
             plan_next_segment = function(map_id, x, y, plan_opts)
                 overworld_plan_calls = overworld_plan_calls + 1
                 overworld_plan_opts_log[#overworld_plan_opts_log + 1] = plan_opts or false
@@ -1018,6 +1024,201 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
         "overworld segment should not use broad same-direction carry"
     )
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk", "overworld auto-walk should be announced")
+
+    env.restore()
+end
+
+local function off_network_recovery_env(extra)
+    extra = extra or {}
+    local options = {
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 10,
+        start_y = 10,
+        map_width = 40,
+        map_height = 40,
+        overworld_on_network = false,
+        overworld_active_route_id = "cantlin_staging",
+        overworld_active_destination = {
+            id = "great_swamp_cantlin",
+            title = "Eastern Great Swamp Search Area",
+        },
+        overworld_network_candidates = {
+            {
+                x = 10,
+                y = 13,
+                name = "Safe network entry",
+                route_id = "great_swamp_cantlin",
+                route_title = "Eastern Great Swamp Search Area",
+                next_waypoint = {name = "Southern plains west road"},
+                opening_length = 2,
+            },
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            if goal_x == 10 and goal_y == 13 then
+                return "Path", nil, {
+                    {x = 10, y = 11, direction = "south"},
+                    {x = 10, y = 12, direction = "south"},
+                    {x = 10, y = 13, direction = "south"},
+                }
+            end
+            return "No path found", nil, nil
+        end,
+        overworld_start_result = {
+            route = {
+                id = "great_swamp_cantlin",
+                title = "Eastern Great Swamp Search Area",
+            },
+            waypoint = {name = "Southern plains west road"},
+            message = "Route recalculated",
+        },
+    }
+    for key, value in pairs(extra) do
+        options[key] = value
+    end
+    return make_env(options)
+end
+
+function tests.off_network_recovery_autowalk_stops_at_network_and_hands_off_destination()
+    local env = off_network_recovery_env({
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+    })
+
+    local result = env.route_manager.autowalk_to_current()
+
+    assert_equal(result.status, "recovery_queued",
+        "off-network auto-walk should queue the decoded-safe recovery path")
+    assert_equal(result.boundary_stop, true,
+        "recovery should explicitly stop at the waypoint-network boundary")
+    assert_equal(env.overworld_plan_calls(), 0,
+        "off-network recovery should not queue the ordinary axis-ordered segment")
+    assert_equal(env.start_route_calls(), 1,
+        "recovery should queue exactly one movement route")
+    assert_equal(env.last_start_route_steps()[1], "down",
+        "recovery should convert A-star south steps to controller directions")
+    assert_equal(env.last_start_route_steps()[3], "down",
+        "recovery should preserve the complete safe path")
+    assert_equal(env.last_start_route_opts().start_x, 10,
+        "recovery should bind the queued route to the live start X")
+    assert_equal(env.last_start_route_opts().start_y, 10,
+        "recovery should bind the queued route to the live start Y")
+    assert_contains(env.outputs[#env.outputs], "Auto-walk will stop at the waypoint network",
+        "startup speech should explain the safety boundary")
+
+    env.set_position(0x01, 10, 13)
+    env.auto_step.on_route_complete()
+
+    assert_equal(env.start_route_calls(), 1,
+        "continuous mode must not silently queue the first guided segment")
+    assert_equal(#env.overworld_start_calls(), 1,
+        "network arrival should recalculate the selected final destination once")
+    assert_equal(env.overworld_start_calls()[1].route_id, "great_swamp_cantlin",
+        "handoff should preserve the player's final destination")
+    assert_equal(env.overworld_start_calls()[1].x, 10,
+        "handoff should start from the reached network-entry X")
+    assert_equal(env.overworld_start_calls()[1].y, 13,
+        "handoff should start from the reached network-entry Y")
+    assert_contains(env.outputs[#env.outputs], "Press auto-walk again to continue",
+        "network arrival should require explicit authorization for the guided leg")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "OVERWORLD_RECOVERY_AUTO_WALK event=complete",
+        "network handoff should be recorded in structured logs")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "continuous_requested=true boundary_stop=true",
+        "continuous configuration should remain stopped at the recovery boundary")
+
+    env.restore()
+end
+
+function tests.off_network_recovery_autowalk_refuses_hazardous_manual_preview()
+    local env = off_network_recovery_env({
+        start_x = 10,
+        start_y = 14,
+        hazard_cells = {
+            ["10,13"] = "poison_swamp",
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y, _, path_opts)
+            local row = path_opts and path_opts.walkability_snapshot
+                and path_opts.walkability_snapshot[goal_y]
+            if not row or row[goal_x] ~= true then
+                return "No path found", nil, nil
+            end
+            return "Path", nil, {
+                {x = 10, y = 13, direction = "north"},
+            }
+        end,
+    })
+
+    local result = env.route_manager.autowalk_to_current()
+
+    assert_equal(result.status, "planned_with_hazard",
+        "hazard-only recovery should retain the warned preview status")
+    assert_equal(result.auto_walk_allowed, false,
+        "hazard-only recovery should remain ineligible for auto-walk")
+    assert_equal(env.start_route_calls(), 0,
+        "hazard-only recovery must not queue movement")
+    assert_contains(env.outputs[#env.outputs], "Recovery auto-walk stopped",
+        "player speech should explain that hazardous recovery did not begin")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "reason=hazardous_recovery",
+        "hazard refusal should be structured in the debug log")
+
+    env.restore()
+end
+
+function tests.off_network_recovery_autowalk_enforces_first_slice_step_limit()
+    local long_path = {}
+    for y = 11, 35 do
+        long_path[#long_path + 1] = {x = 10, y = y, direction = "south"}
+    end
+    local env = off_network_recovery_env({
+        map_height = 50,
+        overworld_network_candidates = {
+            {
+                x = 10,
+                y = 35,
+                name = "Distant network entry",
+                route_id = "great_swamp_cantlin",
+                route_title = "Eastern Great Swamp Search Area",
+                next_waypoint = {name = "Southern plains west road"},
+                opening_length = 2,
+            },
+        },
+        pathfind_to_fn = function()
+            return "Path", nil, long_path
+        end,
+    })
+
+    local result = env.route_manager.autowalk_to_current()
+
+    assert_equal(result.status, "recovery_too_long",
+        "the first executable slice should refuse recovery paths over 24 steps")
+    assert_equal(env.start_route_calls(), 0,
+        "over-limit recovery must not queue movement")
+    assert_contains(env.outputs[#env.outputs], "current safety limit is 24 steps",
+        "over-limit speech should state the exact safety bound")
+
+    env.restore()
+end
+
+function tests.off_network_recovery_blocker_stops_without_destination_handoff()
+    local env = off_network_recovery_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(10, 10, "down", {queued_route = true})
+
+    assert_equal(#env.overworld_start_calls(), 0,
+        "blocked recovery must not hand off before reaching the network")
+    assert_equal(env.published_events()[#env.published_events()].payload.reason,
+        "overworld_recovery_blocked",
+        "blocked recovery should publish its specific stop reason")
+    assert_contains(env.outputs[#env.outputs], "Recovery auto-walk stopped",
+        "blocked recovery should use recovery-specific player speech")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "OVERWORLD_RECOVERY_AUTO_WALK event=blocked",
+        "blocked recovery should be visible in structured logs")
 
     env.restore()
 end
