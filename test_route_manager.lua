@@ -1132,6 +1132,119 @@ function tests.off_network_recovery_autowalk_stops_at_network_and_hands_off_dest
     env.restore()
 end
 
+function tests.manual_overworld_drift_recovers_then_resumes_preserved_destination()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 19,
+        start_y = 7,
+        current_object = {
+            id = "route_garinham_14",
+            name = "Route next: Garinham east ridge",
+            type = "exit",
+            x = 16,
+            y = 6,
+        },
+        overworld_active_route_id = "garinham",
+        overworld_active_destination = {
+            id = "garinham",
+            title = "Garinham",
+        },
+        overworld_network_cell_fn = function(_, y)
+            return y == 7
+        end,
+        overworld_network_candidates = {
+            {
+                x = 19,
+                y = 7,
+                name = "Original route corridor",
+                route_id = "garinham",
+                route_title = "Garinham",
+                next_waypoint = {name = "Garinham east ridge"},
+                opening_length = 4,
+            },
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            if start_x == 19 and start_y == 9
+               and goal_x == 19 and goal_y == 7 then
+                return "Path", nil, {
+                    {x = 19, y = 8, direction = "north"},
+                    {x = 19, y = 7, direction = "north"},
+                }
+            end
+            return "No path found", nil, nil
+        end,
+        overworld_segment = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {
+                name = "Garinham east ridge",
+                x = 16,
+                y = 6,
+            },
+            index = 14,
+            steps = {"up", "left", "left", "left"},
+            message = "Auto-walk to Garinham east ridge, 1 north, 3 west. 4 step(s).",
+            object_id = "route_garinham_14",
+        },
+        overworld_start_result = {
+            route = {id = "garinham", title = "Garinham"},
+            waypoint = {name = "Garinham east ridge"},
+            message = "Route recalculated",
+        },
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+    })
+
+    local initial = env.route_manager.autowalk_to_current()
+    assert_equal(initial.status, "queued",
+        "on-network travel should begin with the ordinary guided segment")
+    assert_equal(env.overworld_plan_calls(), 1,
+        "the first auto-walk should use the ordinary waypoint planner")
+
+    env.auto_step.on_route_cancelled({
+        reason = "live_input_interrupt",
+        current_x = 19,
+        current_y = 7,
+        source = "manual_drift",
+    })
+    env.set_position(0x01, 19, 9)
+
+    local recovery = env.route_manager.autowalk_to_current()
+    assert_equal(recovery.status, "recovery_queued",
+        "the next auto-walk after manual drift should queue bounded recovery")
+    assert_equal(env.overworld_plan_calls(), 1,
+        "off-network recovery should not synthesize an ordinary waypoint opening")
+    assert_equal(env.start_route_calls(), 2,
+        "recovery should queue one new movement route after the cancelled segment")
+    assert_equal(env.last_start_route_steps()[1], "up",
+        "recovery should begin toward the selected network entry")
+    assert_equal(env.last_start_route_steps()[2], "up",
+        "recovery should include the complete two-step return")
+
+    env.set_position(0x01, 19, 7)
+    env.auto_step.on_route_complete()
+
+    assert_equal(#env.overworld_start_calls(), 1,
+        "network arrival should recalculate the preserved destination once")
+    assert_equal(env.overworld_start_calls()[1].route_id, "garinham",
+        "manual drift recovery must preserve the original final destination")
+    assert_equal(env.start_route_calls(), 2,
+        "continuous mode must stop at the recovery boundary")
+    assert_contains(env.outputs[#env.outputs], "Press auto-walk again to continue",
+        "recovery should require explicit authorization before resuming travel")
+
+    local resumed = env.route_manager.autowalk_to_current()
+    assert_equal(resumed.status, "queued",
+        "the second boundary press should resume ordinary guided travel")
+    assert_equal(env.overworld_plan_calls(), 2,
+        "resumed travel should return to the ordinary waypoint planner")
+    assert_equal(env.start_route_calls(), 3,
+        "resumed travel should queue exactly one guided segment")
+
+    env.restore()
+end
+
 function tests.off_network_recovery_autowalk_refuses_hazardous_manual_preview()
     local env = off_network_recovery_env({
         start_x = 10,

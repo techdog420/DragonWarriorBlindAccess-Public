@@ -1,6 +1,41 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-08-18
+Updated: 2026-09-02
+
+## 2026-09-02 Off-Network Drift Recovery Acceptance
+
+- CLEAN / VERIFIED: deliberate manual drift preserved the Eastern Great Swamp
+  destination. Recovery started from World Map `(58,109)`, walked five decoded-
+  safe steps to network entry `(58,104)`, stopped at the boundary in continuous
+  mode, and resumed the guided route only after another auto-walk press.
+- TIMING GAP: confirmed poison entry `(66,109)->DOWN` produced the same early
+  subpixel twitch without coordinate movement on three attempts, each stopping
+  after the 33-frame timing-suspect window. Opening and closing the command menu
+  cleared the condition; the next confirmed attempt reached `(66,110)` in 24
+  frames and the route completed at `(89,112)`.
+- DO NOT PROMOTE: `(66,110)` is noisy but proven passable. This is movement
+  timing, not overworld geometry or a permanent blocker.
+- LIVE FAILURE / DO NOT PROMOTE: the first recovery draft fired exactly once at
+  frame `1566`, but it reset normal idle bytes `0x7F/0x90` to `0x00/0x00` and
+  re-injected DOWN in that same frame. The retry twitched `0x00->0x90`, then
+  stopped at `(66,109)` after its bounded timeout. This remains timing evidence,
+  not a blocker at `(66,110)`.
+- CLEAN FOLLOW-UP: after the command menu opened and closed, a newly confirmed
+  attempt crossed `(66,109)->(66,110)` in 23 frames. The complete route then
+  reached `(89,112)` with no further player-facing failure.
+- CODED / UNIT VERIFIED: the revised recovery resets the movement bytes, holds
+  a neutral controller for at least 16 frames so the ROM can observe the reset,
+  then performs its single bounded retry. All 153 auto-step tests pass.
+- NEXT CHECK: reload `main.lua` and repeat `(66,109)->DOWN`. If the early twitch
+  recurs, it should settle and cross automatically without another auto-walk
+  press, command-menu recovery, or overshoot to `(66,111)`.
+- CLEAN LIVE SAMPLE: after reload, the first rerun crossed
+  `(66,109)->(66,110)` directly in 24 frames and arrived at Eastern Great Swamp
+  `(89,112)` at frame `1825`. A second rerun began the guided swamp leg from
+  `(66,110)` and arrived at the same destination at frame `5547`. Neither run
+  blocked, drifted, or invoked `AUTO_STEP_CONFIRMED_HAZARD_TIMING_RETRY`, so
+  normal behavior is accepted but the revised reset-and-settle branch remains
+  covered by regression rather than live activation.
 
 ## 2026-08-18 Rimuldar Intermediate-Town Bypass
 

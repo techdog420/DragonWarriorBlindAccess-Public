@@ -558,6 +558,11 @@ local function should_use_route_timing_suspect_timeout()
     return get_route_timing_suspect_timeout_frames() ~= nil
 end
 
+function M.is_confirmed_poison_route()
+    return route_steps ~= nil
+        and route_allowed_hazard == "poison_swamp"
+end
+
 -- ============================================================
 -- Helper Functions
 -- ============================================================
@@ -1166,6 +1171,45 @@ local function schedule_turn_repress(dir, guarded_twitch)
     auto_start_x = nil
     auto_start_y = nil
     return false
+end
+
+function M.schedule_confirmed_poison_timing_retry(block_retry_limit)
+    local retry = {
+        dir = auto_dir,
+        timeout_retries = auto_timeout_retries + 1,
+        turn_represses = auto_turn_represses,
+        inject_limit = auto_release_after_inject_limit
+            and (auto_inject_limit or get_map_crawl_inject_limit())
+            or (auto_inject_limit or get_inject_limit()),
+        -- Give the ROM at least one normal route-turn settling window to
+        -- observe the cleared movement bytes before injecting a fresh press.
+        release_frames = math.max(get_route_turn_settle_frames(), 16),
+        start_x = auto_start_x,
+        start_y = auto_start_y,
+        source = auto_step_source or "queued_route",
+        release_after_inject_limit = auto_release_after_inject_limit,
+        hold_after_movement_start = auto_hold_after_movement_start,
+        hold_after_movement_start_frames = auto_hold_after_movement_start_frames,
+    }
+    if not reset_movement_engine_state("confirmed_poison_timing_retry") then
+        return false
+    end
+    clear_active_attempt_state()
+    pending_repress = retry
+    route_settle_frames = 0
+    route_final_settle_active = false
+    route_settle_reset_movement_active = false
+    local map_id = nav.get_position()
+    debug_tools.info(string.format(
+        "AUTO_STEP_CONFIRMED_HAZARD_TIMING_RETRY map=0x%02X from=(%d,%d) dir=%s retry=%d/%d reset=true settle=%d",
+        map_id or -1,
+        retry.start_x or -1,
+        retry.start_y or -1,
+        tostring(retry.dir),
+        retry.timeout_retries,
+        block_retry_limit,
+        retry.release_frames))
+    return true
 end
 
 local function reset_active_step()
@@ -1976,6 +2020,15 @@ local function handle_active_auto_step(joy, px, py, timeout)
         else
             local block_retry_limit = get_active_block_retry_limit()
             local timing_suspect_timeout = should_use_route_timing_suspect_timeout()
+            local confirmed_poison_route = M.is_confirmed_poison_route()
+            local confirmed_hazard_timing_retry =
+                timing_suspect_timeout and confirmed_poison_route
+            if confirmed_poison_route then
+                -- A confirmed poison crossing may need one late retry after an
+                -- early subpixel twitch, but never the early guarded repress:
+                -- that can queue a second tile before coordinates settle.
+                block_retry_limit = math.min(block_retry_limit, 1)
+            end
             if auto_movement_started
                and route_steps == nil
                and should_hold_after_movement_start()
@@ -1997,7 +2050,9 @@ local function handle_active_auto_step(joy, px, py, timeout)
                 end
             end
             if auto_timeout_retries < block_retry_limit
-               and (not timing_suspect_timeout or auto_entry_waveform) then
+               and (not timing_suspect_timeout
+                    or auto_entry_waveform
+                    or confirmed_hazard_timing_retry) then
                 if auto_entry_waveform then
                     local retry_number = auto_timeout_retries + 1
                     local retry_from_x = auto_start_x
@@ -2023,25 +2078,37 @@ local function handle_active_auto_step(joy, px, py, timeout)
                         return true
                     end
                 else
-                    auto_timeout_retries = auto_timeout_retries + 1
-                    auto_frames = 1
-                    auto_inject_limit = auto_release_after_inject_limit
-                        and (auto_inject_limit or get_map_crawl_inject_limit())
-                        or (auto_inject_limit or get_inject_limit())
-                    auto_start_subpixel = read_movement_subpixel()
-                    auto_movement_started = false
-                    auto_movement_start_frame = nil
-                    joypad.set(1, {[auto_dir] = true})
-                    debug_tools.debug(string.format(
-                        "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d timeout=%d turn_represses=%d source=%s",
-                        auto_timeout_retries, block_retry_limit,
-                        auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
-                        auto_inject_limit or -1,
-                        effective_timeout or -1,
-                        auto_turn_represses or -1,
-                        tostring(auto_step_source)))
-                    sync_prev_held(joy)
-                    return true
+                    if confirmed_hazard_timing_retry then
+                        if M.schedule_confirmed_poison_timing_retry(
+                                block_retry_limit) then
+                            neutralize_direction(joy)
+                            sync_prev_held(joy)
+                            return true
+                        else
+                            debug_tools.error(
+                                "Confirmed poison timing retry refused because movement state could not be reset")
+                        end
+                    else
+                        auto_timeout_retries = auto_timeout_retries + 1
+                        auto_frames = 1
+                        auto_inject_limit = auto_release_after_inject_limit
+                            and (auto_inject_limit or get_map_crawl_inject_limit())
+                            or (auto_inject_limit or get_inject_limit())
+                        auto_start_subpixel = read_movement_subpixel()
+                        auto_movement_started = false
+                        auto_movement_start_frame = nil
+                        joypad.set(1, {[auto_dir] = true})
+                        debug_tools.debug(string.format(
+                            "auto_step timeout retry %d/%d from=(%d,%d) dir=%s inject_limit=%d timeout=%d turn_represses=%d source=%s",
+                            auto_timeout_retries, block_retry_limit,
+                            auto_start_x or -1, auto_start_y or -1, tostring(auto_dir),
+                            auto_inject_limit or -1,
+                            effective_timeout or -1,
+                            auto_turn_represses or -1,
+                            tostring(auto_step_source)))
+                        sync_prev_held(joy)
+                        return true
+                    end
                 end
             end
             if DEBUG then tolk.output("auto-step timeout") end

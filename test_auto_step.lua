@@ -1653,6 +1653,129 @@ function tests.confirmed_poison_route_early_twitch_does_not_repress()
     env.restore()
 end
 
+function tests.confirmed_poison_route_timing_twitch_resets_then_retries_once()
+    local env = make_env({
+        map_id = 0x01,
+        sticky_joypad_set = true,
+        hazard_cells = {
+            [0x01] = { ["4,1"] = "poison_swamp" },
+        },
+        config_values = {
+            auto_step_timeout = "30",
+            auto_step_route_block_retry_limit = "2",
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "2",
+            auto_step_route_early_twitch_timeout_frames = "6",
+            auto_step_inject_limit = "3",
+        },
+    })
+    env.set_position(3, 1)
+    env.auto_step.start_route({"right"}, {
+        allowed_route_hazard = "poison_swamp",
+    })
+
+    env.update(true)          -- Frame 1: confirmed poison entry press.
+    env.set_subpixel(0x20)
+    env.update(true)          -- Frame 2: early twitch without tile movement.
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    assert_equal(
+        #collect_direction_sequences(env, "right", 10),
+        1,
+        "confirmed poison timing recovery should settle before its bounded retry"
+    )
+    assert_equal(env.memory_writes[#env.memory_writes - 1].address, 0x003C,
+        "poison timing recovery should reset movement state before retrying")
+    assert_equal(env.memory_writes[#env.memory_writes - 1].value, 0,
+        "movement-state reset should clear the active movement byte")
+    assert_equal(env.memory_writes[#env.memory_writes].address, 0x003D,
+        "poison timing recovery should reset the movement subpixel byte")
+    assert_equal(env.memory_writes[#env.memory_writes].value, 0,
+        "movement-state reset should clear the subpixel byte")
+
+    for _ = 1, 18 do
+        env.update(true)
+    end
+    assert_equal(
+        #collect_direction_sequences(env, "right", 30),
+        2,
+        "confirmed poison timing recovery should retry after the neutral settle"
+    )
+
+    env.set_position(4, 1)
+    env.update(true)
+    for _, event in ipairs(env.published) do
+        assert_truthy(
+            event.name ~= "route_blocked" and event.name ~= "route_cancelled",
+            "the reset poison retry should complete without a false stop"
+        )
+    end
+    assert_contains(table.concat((function()
+        local messages = {}
+        for _, entry in ipairs(env.debug_messages) do
+            messages[#messages + 1] = entry.message
+        end
+        return messages
+    end)(), "\n"), "AUTO_STEP_CONFIRMED_HAZARD_TIMING_RETRY",
+        "the bounded poison retry should be visible in structured logs")
+
+    env.restore()
+end
+
+function tests.confirmed_poison_route_timing_retry_is_bounded()
+    local env = make_env({
+        map_id = 0x01,
+        sticky_joypad_set = true,
+        hazard_cells = {
+            [0x01] = { ["4,1"] = "poison_swamp" },
+        },
+        config_values = {
+            auto_step_timeout = "12",
+            auto_step_route_block_retry_limit = "2",
+            auto_step_release_on_movement_start = "true",
+            auto_step_route_early_release_grace_frames = "2",
+            auto_step_route_early_twitch_timeout_frames = "6",
+            auto_step_inject_limit = "3",
+        },
+    })
+    env.set_position(3, 1)
+    env.auto_step.start_route({"right"}, {
+        allowed_route_hazard = "poison_swamp",
+    })
+
+    env.update(true)
+    env.set_subpixel(0x20)
+    env.update(true)
+    for _ = 1, 8 do
+        env.update(true)
+    end
+
+    for _ = 1, 18 do
+        env.update(true)
+    end
+    env.set_subpixel(0x20)
+    env.update(true)
+    for _ = 1, 16 do
+        env.update(true)
+    end
+
+    assert_equal(#collect_direction_sequences(env, "right", 40), 2,
+        "a repeated poison timing failure must not trigger a second retry")
+    local blocked = false
+    for _, event in ipairs(env.published) do
+        if event.name == "route_blocked" then
+            blocked = true
+            break
+        end
+    end
+    assert_truthy(blocked,
+        "a repeated poison timing failure should stop after the bounded retry")
+
+    env.restore()
+end
+
 function tests.guarded_twitch_repress_skips_fresh_press_after_late_completion()
     local env = make_env({
         sticky_joypad_set = true,
