@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-08-10
+Updated: 2026-09-01
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -220,6 +220,23 @@ Durable tooling facts:
   `dw-debug-loop` skill should treat FCEUX as the normal gameplay launcher and
   BizHawk as the reload/profiling-friendly automation path; it should only
   trigger for live emulator/log/timing workflows, not ordinary static edits.
+
+GitHub authentication in the Windows Codex Desktop environment:
+- A restricted Codex process may fail before GitHub authentication with
+  `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS
+  (0x8009030e)`. In that same restricted context, `gh auth status` may report
+  an invalid token because the process cannot access the Windows keyring.
+- Before logging out, reauthenticating, changing the remote, or changing Git's
+  TLS configuration, retry a non-destructive
+  `git push --dry-run origin HEAD:refs/heads/TARGET` and `gh auth status`
+  through Codex's approved host credential context. If both succeed, the saved
+  GitHub credentials are healthy and no account repair is needed. Perform the
+  real push through that same host context.
+- Confirmed on 2026-08-31: the restricted dry run failed with
+  `SEC_E_NO_CREDENTIALS`, while the host-context dry run and real HTTPS push
+  succeeded. Host-context `gh auth status` found account `techdog420` logged in
+  through the keyring with repository access. `origin/main` advanced from
+  `12852d3` to `3faccba`.
 
 ## Emulator Strategy
 
