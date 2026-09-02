@@ -76,6 +76,12 @@ M.on_route_complete = nil
 -- TRANSITION: Both this callback AND event_bus "route_cancelled" fire.
 M.on_route_cancelled = nil
 
+-- Optional callback: called whenever field actions become unavailable, even
+-- if no queued route is active. Route managers can revoke dormant safety
+-- confirmations here.
+-- Signature: M.on_walkability_lost()
+M.on_walkability_lost = nil
+
 -- Optional callback: called when an injected/auto-held step completes and the
 -- player reaches a new tile. Useful for runtime seam tracking and route repair
 -- after a manual one-step brute-force retry.
@@ -148,6 +154,8 @@ local route_last_y = nil
 local post_step_release_frames = 0
 local suppress_direction_tracking_frames = 0
 local manual_hazard_confirm = nil
+local route_allowed_hazard = nil
+local route_hazard_crossing_started = false
 local step_completion_neutral_depth = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
@@ -668,6 +676,8 @@ local function clear_route()
     route_final_inject_limit_override = nil
     route_final_carry_x_override = nil
     route_final_carry_y_override = nil
+    route_allowed_hazard = nil
+    route_hazard_crossing_started = false
     if pending_repress and pending_repress.entry_prime_waveform then
         pending_repress = nil
     end
@@ -2231,6 +2241,8 @@ end
 local function hazard_label(hazard)
     if hazard == "damage" then
         return "Damage floor"
+    elseif hazard == "poison_swamp" then
+        return "Poison swamp"
     end
     return "Dangerous tile"
 end
@@ -2254,6 +2266,36 @@ end
 
 refuse_hazard_step = function(dir, px, py, source)
     local hazard = get_hazard_destination(dir, px, py)
+    if route_allowed_hazard and route_steps then
+        local map_id = nav.get_position()
+        local current_hazard = map_reader.is_hazard_cell(map_id, px, py)
+        if current_hazard == route_allowed_hazard then
+            route_hazard_crossing_started = true
+        elseif route_hazard_crossing_started then
+            debug_tools.info(string.format(
+                "AUTO_WALK_HAZARD_CONFIRM_CLEARED map=0x%02X position=(%d,%d) hazard=%s reason=safe_terrain",
+                map_id or -1,
+                px or -1,
+                py or -1,
+                tostring(route_allowed_hazard)))
+            route_allowed_hazard = nil
+            route_hazard_crossing_started = false
+        end
+        if route_allowed_hazard
+           and hazard and hazard.hazard == route_allowed_hazard then
+            debug_tools.info(string.format(
+                "AUTO_STEP_ALLOWED_HAZARD map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s source=%s",
+                hazard.map_id or -1,
+                px or -1,
+                py or -1,
+                tostring(dir),
+                hazard.x or -1,
+                hazard.y or -1,
+                tostring(hazard.hazard),
+                tostring(source)))
+            return false
+        end
+    end
     if hazard then
         local pending_entry_waveform = pending_repress
             and pending_repress.entry_prime_waveform == true
@@ -2289,7 +2331,8 @@ refuse_hazard_step = function(dir, px, py, source)
             clear_route()
             emit_route_cancelled({
                 reason = "dangerous_tile",
-                message = "Dangerous tile ahead",
+                message = hazard_label(hazard.hazard) ..
+                    " ahead. Auto-walk stopped. Continue manually if you choose to cross.",
                 current_x = px,
                 current_y = py,
                 dir = dir,
@@ -2382,6 +2425,12 @@ function M.update(can_walk)
         cooldown = 0
         post_step_release_frames = 0
         clear_route()
+        if M.on_walkability_lost then
+            local ok, err = pcall(M.on_walkability_lost)
+            if not ok then
+                debug_tools.error("on_walkability_lost error: " .. tostring(err))
+            end
+        end
         if had_route then
             emit_route_cancelled({
                 reason = "can_walk_false",
@@ -2549,7 +2598,8 @@ end
 --         start_x = X, start_y = Y,
 --         prime_before_steps = {[step_index] = frames},
 --         settle_before_steps = {[step_index] = frames},
---         route_final_inject_limit = N }
+--         route_final_inject_limit = N,
+--         allowed_route_hazard = "poison_swamp" }
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
@@ -2568,6 +2618,13 @@ function M.start_route(steps, opts)
     route_steps = {}
     for i, dir in ipairs(steps) do
         route_steps[i] = dir
+    end
+    if opts.allowed_route_hazard == "poison_swamp" then
+        route_allowed_hazard = opts.allowed_route_hazard
+        local map_id, live_x, live_y = nav.get_position()
+        route_hazard_crossing_started =
+            map_reader.is_hazard_cell(map_id, live_x, live_y)
+                == route_allowed_hazard
     end
     route_prime_before_steps = copy_prime_before_steps(
         opts.prime_before_steps, #route_steps)

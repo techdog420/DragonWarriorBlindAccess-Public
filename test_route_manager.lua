@@ -5,6 +5,7 @@ local original_preload = {}
 local original_loaded = {}
 local original_emulator_compat = _G.DW_EMULATOR_COMPAT
 local original_joypad = _G.joypad
+local original_os_clock = os.clock
 
 local function save_module(name)
     original_preload[name] = package.preload[name]
@@ -55,6 +56,7 @@ local function make_env(options)
     local current_map_id = options.start_map_id or 0x05
     local current_x = options.start_x or 5
     local current_y = options.start_y or 4
+    local clock_now = 0
     local pathability_filter = 1
     local pathability_statuses = {}
     local pathability_status_updates = 0
@@ -617,6 +619,10 @@ local function make_env(options)
         }
     end
 
+    os.clock = function()
+        return clock_now
+    end
+
     local route_manager = require "route_manager"
 
     return {
@@ -665,11 +671,15 @@ local function make_env(options)
         set_input_refusal = function(value)
             input_refusal = value
         end,
+        advance_clock = function(seconds)
+            clock_now = clock_now + seconds
+        end,
         joypad_sets = joypad_sets,
         restore = function()
             restore_modules(module_names)
             _G.DW_EMULATOR_COMPAT = original_emulator_compat
             _G.joypad = original_joypad
+            os.clock = original_os_clock
         end,
     }
 end
@@ -1008,6 +1018,178 @@ function tests.overworld_autowalk_queues_active_waypoint_segment()
         "overworld segment should not use broad same-direction carry"
     )
     assert_contains(env.outputs[#env.outputs], "Overworld auto-walk", "overworld auto-walk should be announced")
+
+    env.restore()
+end
+
+local function poison_swamp_confirmation_env()
+    return make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 5,
+        start_y = 4,
+        current_object = {
+            id = "route_swamp_1",
+            name = "Route next: Swamp crossing",
+            type = "exit",
+            x = 6,
+            y = 4,
+        },
+        overworld_active_route_id = "swamp_route",
+        overworld_active_destination = {id = "swamp_route", title = "Swamp Cave"},
+        hazard_cells = {
+            ["6,4"] = "poison_swamp",
+        },
+        overworld_segment = {
+            route = {id = "swamp_route", title = "Swamp Cave"},
+            waypoint = {name = "Swamp crossing", x = 6, y = 4},
+            index = 1,
+            steps = {"right"},
+            message = "Auto-walk to Swamp crossing, 1 east. 1 step.",
+            object_id = "route_swamp_1",
+        },
+    })
+end
+
+function tests.overworld_poison_swamp_second_autowalk_press_confirms_crossing()
+    local env = poison_swamp_confirmation_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "dangerous_tile",
+        current_x = 5,
+        current_y = 4,
+        dir = "right",
+        dest_x = 6,
+        dest_y = 4,
+        hazard = "poison_swamp",
+        source = "queued_route",
+    })
+
+    assert_contains(env.outputs[#env.outputs],
+        "Press auto-walk again to continue through this swamp",
+        "first poison-swamp refusal should explain the second-press override")
+
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.start_route_calls(), 2,
+        "second auto-walk press should queue the matching segment again")
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, "poison_swamp",
+        "confirmed segment should authorize only poison swamp")
+    assert_contains(env.outputs[#env.outputs], "Poison swamp confirmed",
+        "second auto-walk press should announce accepted risk")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "AUTO_WALK_HAZARD_CONFIRM_ACCEPTED",
+        "accepted override should be recorded in structured logs")
+
+    env.restore()
+end
+
+function tests.overworld_poison_swamp_confirmation_expires_before_second_press()
+    local env = poison_swamp_confirmation_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "dangerous_tile",
+        current_x = 5,
+        current_y = 4,
+        dir = "right",
+        dest_x = 6,
+        dest_y = 4,
+        hazard = "poison_swamp",
+    })
+    env.advance_clock(11)
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, nil,
+        "expired warning should not authorize a later swamp crossing")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "reason=confirmation expired",
+        "expired confirmation should explain why it was cleared")
+
+    env.restore()
+end
+
+function tests.overworld_poison_swamp_confirmation_is_cleared_by_player_stop()
+    local env = poison_swamp_confirmation_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "dangerous_tile",
+        current_x = 5,
+        current_y = 4,
+        dir = "right",
+        dest_x = 6,
+        dest_y = 4,
+        hazard = "poison_swamp",
+    })
+    env.route_manager.stop_auto_walk("player hotkey")
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, nil,
+        "explicit stop should revoke a pending swamp confirmation")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "reason=player hotkey",
+        "explicit stop should log confirmation cleanup")
+
+    env.restore()
+end
+
+function tests.overworld_poison_swamp_confirmation_is_cleared_when_field_actions_stop()
+    local env = poison_swamp_confirmation_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "dangerous_tile",
+        current_x = 5,
+        current_y = 4,
+        dir = "right",
+        dest_x = 6,
+        dest_y = 4,
+        hazard = "poison_swamp",
+    })
+    env.auto_step.on_walkability_lost()
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, nil,
+        "battle, dialogue, or menu interruption should revoke swamp confirmation")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "reason=field actions unavailable",
+        "field-state cleanup should be recorded in structured logs")
+
+    env.restore()
+end
+
+function tests.overworld_poison_swamp_confirmation_clears_after_safe_terrain()
+    local env = poison_swamp_confirmation_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "dangerous_tile",
+        current_x = 5,
+        current_y = 4,
+        dir = "right",
+        dest_x = 6,
+        dest_y = 4,
+        hazard = "poison_swamp",
+    })
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_step_complete(5, 4, "right", 6, 4, {
+        queued_route = true,
+        source = "auto_hold",
+    })
+    env.auto_step.on_step_complete(6, 4, "right", 7, 4, {
+        queued_route = true,
+        source = "auto_hold",
+    })
+    env.set_position(0x01, 7, 4)
+    env.route_manager.autowalk_to_current()
+
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, nil,
+        "reaching safe terrain should end the contiguous swamp authorization")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "reason=safe terrain reached",
+        "safe-terrain cleanup should be recorded in structured logs")
 
     env.restore()
 end
@@ -2538,6 +2720,66 @@ function tests.overworld_network_entry_preview_refuses_when_no_safe_entry_exists
         "failed preview must not queue movement")
     assert_contains(result.message, "No decoded-safe waypoint-network entry",
         "failure should explain that no safe entry was found")
+
+    env.restore()
+end
+
+function tests.overworld_network_entry_preview_warns_when_poison_swamp_is_required()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        start_x = 103,
+        start_y = 51,
+        map_width = 120,
+        map_height = 120,
+        hazard_cells = {
+            ["103,50"] = "poison_swamp",
+        },
+        overworld_active_destination = {
+            id = "swamp_cave_north",
+            title = "Swamp Cave North",
+        },
+        overworld_network_candidates = {
+            {
+                x = 103, y = 50, name = "Swamp Cave approach",
+                route_id = "swamp_cave", route_title = "Swamp Cave",
+                next_waypoint = {name = "Swamp Cave entrance"}, opening_length = 1,
+            },
+        },
+        pathfind_to_fn = function(_, _, goal_x, goal_y, _, path_opts)
+            local row = path_opts and path_opts.walkability_snapshot
+                and path_opts.walkability_snapshot[goal_y]
+            if not row or row[goal_x] ~= true then
+                return "No path found", nil, nil
+            end
+            return "Path", nil, {
+                {x = goal_x, y = goal_y, direction = "north"},
+            }
+        end,
+    })
+
+    local result = env.route_manager.preview_overworld_network_entry()
+
+    assert_equal(result.status, "planned_with_hazard",
+        "required poison swamp should remain available only as a warned manual preview")
+    assert_equal(result.ok, true, "manual hazardous preview should still describe the route")
+    assert_equal(result.decoded_safe, false, "hazardous recovery must not be labeled decoded-safe")
+    assert_equal(result.auto_walk_allowed, false,
+        "hazardous recovery should be explicitly ineligible for auto-walk")
+    assert_equal(result.requires_manual_hazard_crossing, true,
+        "hazardous recovery should explicitly prohibit silent auto-walk")
+    assert_equal(result.hazard_summary and result.hazard_summary.first_hazard, "poison_swamp",
+        "preview should identify poison swamp rather than a generic walkable tile")
+    assert_equal(result.hazard_summary and result.hazard_summary.first_step, 1,
+        "preview should report the immediate swamp boundary")
+    assert_contains(result.message, "Warning. No decoded-safe recovery path is available",
+        "manual recovery preview should warn when safe routing is impossible")
+    assert_contains(result.message, "Unsafe route crosses poison swamp: 1 tile, first in 1 step",
+        "warning should identify the damaging terrain and its distance")
+    assert_contains(result.message, "Continue manually to enter hazards",
+        "warning should keep hazardous crossing under player control")
+    assert_equal(env.start_route_calls(), 0,
+        "hazardous recovery preview must remain read-only")
 
     env.restore()
 end

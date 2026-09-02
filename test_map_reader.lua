@@ -276,7 +276,17 @@ function tests.overworld_decoder_uses_row_pointers_and_nibble_rle()
     assert_equal(snapshot[special_row][32], false, "water should be impassable")
     assert_equal(snapshot[special_row][48], false, "block tile should be impassable")
     assert_equal(snapshot[special_row][64], true, "forest should be passable")
-    assert_equal(snapshot[special_row][80], true, "swamp should remain engine-passable")
+    assert_equal(env.map_reader.is_hazard_cell(0x01, 80, special_row), "poison_swamp",
+        "overworld swamp should be modeled as a poison hazard")
+    local swamp_details = env.map_reader.get_walkability_details(0x01, 80, special_row)
+    assert_equal(swamp_details.hazard, "poison_swamp", "swamp details should expose the poison hazard")
+    assert_equal(swamp_details.effective_walkable, false,
+        "ordinary autonomous walkability should stop before poison swamp")
+    assert_equal(snapshot[special_row][80], false,
+        "decoded-safe snapshot should exclude poison swamp")
+    local hazard_snapshot = env.map_reader.get_walkability_snapshot(0x01, {allow_hazards = true})
+    assert_equal(hazard_snapshot[special_row][80], true,
+        "explicit hazardous-route preview should retain engine-passable swamp")
     assert_equal(snapshot[special_row][96], true, "bridge should be passable")
     assert_equal(snapshot[special_row][119], true, "stairs should be passable")
 

@@ -123,6 +123,11 @@ local active_route_stop_on_blocker = false
 local active_route_npc_mode = "live_npcs"
 local active_route_parked_slots = nil
 local active_overworld_segment = nil
+M._overworld_hazard_confirmation = {
+    current = nil,
+    pending_seconds = 10,
+    active_idle_seconds = 20,
+}
 local target_npc_hold = nil
 local target_face_input = nil
 local object_pathability_signature = nil
@@ -167,6 +172,155 @@ local apply_autowalk_npc_parking_state
 
 local function cell_key(x, y)
     return x .. "," .. y
+end
+
+function M._overworld_hazard_confirmation.clear(reason)
+    if not M._overworld_hazard_confirmation.current then
+        return false
+    end
+    local confirmation = M._overworld_hazard_confirmation.current
+    M._overworld_hazard_confirmation.current = nil
+    debug_tools.info(string.format(
+        "AUTO_WALK_HAZARD_CONFIRM_CLEARED state=%s map=0x%02X position=(%s,%s) hazard=%s reason=%s",
+        tostring(confirmation.state or "-"),
+        confirmation.map_id or -1,
+        tostring(confirmation.current_x),
+        tostring(confirmation.current_y),
+        tostring(confirmation.hazard or "-"),
+        tostring(reason or "unspecified")))
+    return true
+end
+
+function M._overworld_hazard_confirmation.destination_id()
+    local destination = overworld_routes.active_destination()
+    return destination and destination.id or nil
+end
+
+function M._overworld_hazard_confirmation.arm(cancel_data, segment)
+    if not cancel_data
+       or cancel_data.reason ~= "dangerous_tile"
+       or cancel_data.hazard ~= "poison_swamp"
+       or not segment then
+        return false
+    end
+    M._overworld_hazard_confirmation.clear("replaced by new warning")
+    M._overworld_hazard_confirmation.current = {
+        state = "pending",
+        map_id = select(1, nav.get_position()),
+        current_x = cancel_data.current_x,
+        current_y = cancel_data.current_y,
+        dir = cancel_data.dir,
+        dest_x = cancel_data.dest_x,
+        dest_y = cancel_data.dest_y,
+        hazard = cancel_data.hazard,
+        route_id = segment.route_id,
+        destination_id = M._overworld_hazard_confirmation.destination_id(),
+        clock = os.clock(),
+        entered = false,
+    }
+    debug_tools.info(string.format(
+        "AUTO_WALK_HAZARD_CONFIRM_ARMED map=0x%02X from=(%s,%s) dir=%s dest=(%s,%s) hazard=%s route=%s destination=%s expires=%ds",
+        M._overworld_hazard_confirmation.current.map_id or -1,
+        tostring(M._overworld_hazard_confirmation.current.current_x),
+        tostring(M._overworld_hazard_confirmation.current.current_y),
+        tostring(M._overworld_hazard_confirmation.current.dir),
+        tostring(M._overworld_hazard_confirmation.current.dest_x),
+        tostring(M._overworld_hazard_confirmation.current.dest_y),
+        tostring(M._overworld_hazard_confirmation.current.hazard),
+        tostring(M._overworld_hazard_confirmation.current.route_id or "-"),
+        tostring(M._overworld_hazard_confirmation.current.destination_id or "-"),
+        M._overworld_hazard_confirmation.pending_seconds))
+    return true
+end
+
+function M._overworld_hazard_confirmation.allowed_for_segment(segment, map_id, px, py)
+    local confirmation = M._overworld_hazard_confirmation.current
+    if not confirmation then
+        return nil, false
+    end
+    local now = os.clock()
+    local destination_id = M._overworld_hazard_confirmation.destination_id()
+    if confirmation.map_id ~= map_id
+       or confirmation.destination_id ~= destination_id then
+        M._overworld_hazard_confirmation.clear("route context changed")
+        return nil, false
+    end
+
+    if confirmation.state == "pending" then
+        local delta = segment and segment.steps
+            and DIR_TO_DELTA[segment.steps[1]] or nil
+        local first_x = delta and (px + delta.dx) or nil
+        local first_y = delta and (py + delta.dy) or nil
+        local route_id = segment and segment.route and segment.route.id or nil
+        if now - confirmation.clock > M._overworld_hazard_confirmation.pending_seconds then
+            M._overworld_hazard_confirmation.clear("confirmation expired")
+            return nil, false
+        end
+        if confirmation.current_x ~= px
+           or confirmation.current_y ~= py
+           or confirmation.dir ~= (segment.steps and segment.steps[1])
+           or confirmation.dest_x ~= first_x
+           or confirmation.dest_y ~= first_y
+           or confirmation.route_id ~= route_id
+           or map_reader.is_hazard_cell(map_id, first_x, first_y) ~= "poison_swamp" then
+            M._overworld_hazard_confirmation.clear("warning context no longer matches")
+            return nil, false
+        end
+        confirmation.state = "active"
+        confirmation.clock = now
+        debug_tools.info(string.format(
+            "AUTO_WALK_HAZARD_CONFIRM_ACCEPTED map=0x%02X from=(%d,%d) dir=%s dest=(%d,%d) hazard=%s route=%s destination=%s",
+            map_id or -1,
+            px or -1,
+            py or -1,
+            tostring(confirmation.dir),
+            confirmation.dest_x or -1,
+            confirmation.dest_y or -1,
+            tostring(confirmation.hazard),
+            tostring(route_id or "-"),
+            tostring(destination_id or "-")))
+        return confirmation.hazard, true
+    end
+
+    if confirmation.state ~= "active"
+       or now - confirmation.clock > M._overworld_hazard_confirmation.active_idle_seconds then
+        M._overworld_hazard_confirmation.clear("active confirmation expired")
+        return nil, false
+    end
+    local current_hazard = map_reader.is_hazard_cell(map_id, px, py)
+    if current_hazard == confirmation.hazard then
+        confirmation.entered = true
+        confirmation.current_x = px
+        confirmation.current_y = py
+        confirmation.clock = now
+        return confirmation.hazard, false
+    end
+    if confirmation.entered then
+        M._overworld_hazard_confirmation.clear("safe terrain reached")
+        return nil, false
+    end
+    return confirmation.hazard, false
+end
+
+function M._overworld_hazard_confirmation.after_step(map_id, to_x, to_y)
+    local confirmation = M._overworld_hazard_confirmation.current
+    if not confirmation or confirmation.state ~= "active" then
+        return
+    end
+    if confirmation.map_id ~= map_id
+       or confirmation.destination_id ~= M._overworld_hazard_confirmation.destination_id() then
+        M._overworld_hazard_confirmation.clear("route context changed after step")
+        return
+    end
+    local hazard = map_reader.is_hazard_cell(map_id, to_x, to_y)
+    if hazard == confirmation.hazard then
+        confirmation.entered = true
+        confirmation.current_x = to_x
+        confirmation.current_y = to_y
+        confirmation.clock = os.clock()
+    elseif confirmation.entered then
+        M._overworld_hazard_confirmation.clear("safe terrain reached")
+    end
 end
 
 -- Hot-reload the static pathing sources from disk without resetting
@@ -2362,6 +2516,8 @@ end
 local function hazard_label(hazard)
     if hazard == "damage" then
         return "damage floor"
+    elseif hazard == "poison_swamp" then
+        return "poison swamp"
     end
     return tostring(hazard or "dangerous tile")
 end
@@ -3665,8 +3821,10 @@ function M.plan_path_to_coordinates(goal_x, goal_y, opts)
 end
 
 -- Find a decoded-safe path from the current world-map position to an exact
--- waypoint-network cell. This first recovery slice is intentionally read-only:
--- it neither changes the selected guided destination nor queues movement.
+-- waypoint-network cell. If poison swamp is unavoidable, retain a manual-only
+-- preview with an explicit hazard warning. This first recovery slice is
+-- intentionally read-only: it neither changes the selected guided destination
+-- nor queues movement.
 function M.preview_overworld_network_entry(opts)
     opts = opts or {}
     local function candidate_distance(px, py, candidate)
@@ -3674,7 +3832,7 @@ function M.preview_overworld_network_entry(opts)
     end
     local function log_preview(result)
         debug_tools.info(string.format(
-            "OVERWORLD_RECOVERY_PREVIEW status=%s map=0x%02X from=(%s,%s) entry=(%s,%s) path_len=%s route=%s next=%s final=%s candidates=%d rejected_opening=%d rejected_unreachable=%d skipped_farther=%d preview_only=true",
+            "OVERWORLD_RECOVERY_PREVIEW status=%s map=0x%02X from=(%s,%s) entry=(%s,%s) path_len=%s route=%s next=%s final=%s candidates=%d rejected_opening=%d rejected_unreachable=%d skipped_farther=%d hazardous=%s hazard_tiles=%d hazard_first_step=%s rejected_safe_unreachable=%d preview_only=true",
             tostring(result.status or "unknown"),
             result.map_id or -1,
             tostring(result.start_x),
@@ -3688,7 +3846,11 @@ function M.preview_overworld_network_entry(opts)
             tonumber(result.candidate_count) or 0,
             tonumber(result.rejected_opening) or 0,
             tonumber(result.rejected_unreachable) or 0,
-            tonumber(result.skipped_farther) or 0))
+            tonumber(result.skipped_farther) or 0,
+            tostring(result.requires_manual_hazard_crossing == true),
+            tonumber(result.hazard_summary and result.hazard_summary.total) or 0,
+            tostring(result.hazard_summary and result.hazard_summary.first_step or "-"),
+            tonumber(result.rejected_safe_unreachable) or 0))
     end
     refresh_navigation_modules()
 
@@ -3781,44 +3943,79 @@ function M.preview_overworld_network_entry(opts)
     end
 
     local max_opening_steps = tonumber(opts.max_opening_steps) or 24
-    local rejected_opening = 0
-    local rejected_unreachable = 0
-    local skipped_farther = 0
-    local best = nil
-
-    for index, candidate in ipairs(candidates) do
-        local lower_bound = candidate_distance(px, py, candidate)
-        if best and lower_bound > #best.path then
-            skipped_farther = skipped_farther + (#candidates - index + 1)
-            break
-        elseif (tonumber(candidate.opening_length) or math.huge)
-                > max_opening_steps then
-            rejected_opening = rejected_opening + 1
-        else
-            local result, _, path = pathfinder.pathfind_to(
-                map_id,
-                px,
-                py,
-                candidate.x,
-                candidate.y,
-                blocking,
-                {
-                    allow_overworld = true,
-                    walkability_snapshot = safe_snapshot,
-                })
-            if path then
-                if not best or #path < #best.path then
-                    best = {
-                        candidate = candidate,
-                        path = path,
-                        path_result = result,
-                    }
-                end
+    local function search_candidates(walkability_snapshot)
+        local search = {
+            best = nil,
+            rejected_opening = 0,
+            rejected_unreachable = 0,
+            skipped_farther = 0,
+        }
+        for index, candidate in ipairs(candidates) do
+            local lower_bound = candidate_distance(px, py, candidate)
+            if search.best and lower_bound > #search.best.path then
+                search.skipped_farther = search.skipped_farther + (#candidates - index + 1)
+                break
+            elseif (tonumber(candidate.opening_length) or math.huge)
+                    > max_opening_steps then
+                search.rejected_opening = search.rejected_opening + 1
             else
-                rejected_unreachable = rejected_unreachable + 1
+                local result, _, path = pathfinder.pathfind_to(
+                    map_id,
+                    px,
+                    py,
+                    candidate.x,
+                    candidate.y,
+                    blocking,
+                    {
+                        allow_overworld = true,
+                        walkability_snapshot = walkability_snapshot,
+                    })
+                if path then
+                    if not search.best or #path < #search.best.path then
+                        search.best = {
+                            candidate = candidate,
+                            path = path,
+                            path_result = result,
+                        }
+                    end
+                else
+                    search.rejected_unreachable = search.rejected_unreachable + 1
+                end
+            end
+        end
+        return search
+    end
+
+    local safe_search = search_candidates(safe_snapshot)
+    local selected_search = safe_search
+    local best = safe_search.best
+    local hazard_summary = nil
+    local requires_manual_hazard_crossing = false
+
+    -- A few required overworld approaches cross poison swamp. Prefer every
+    -- decoded-safe alternative first, then retain a warned manual preview when
+    -- the only reachable network entry crosses modeled hazards.
+    if not best then
+        local hazard_snapshot = map_reader.get_walkability_snapshot(map_id, {
+            allow_hazards = true,
+        })
+        if hazard_snapshot then
+            local hazard_search = search_candidates(hazard_snapshot)
+            local candidate_summary = hazard_search.best
+                and analyze_path_hazards(map_id, hazard_search.best.path)
+                or nil
+            if candidate_summary then
+                selected_search = hazard_search
+                best = hazard_search.best
+                hazard_summary = candidate_summary
+                requires_manual_hazard_crossing = true
             end
         end
     end
+
+    local rejected_opening = selected_search.rejected_opening
+    local rejected_unreachable = selected_search.rejected_unreachable
+    local skipped_farther = selected_search.skipped_farther
 
     if not best then
         local result = {
@@ -3845,14 +4042,23 @@ function M.preview_overworld_network_entry(opts)
     local candidate = best.candidate
     local next_waypoint = candidate.next_waypoint
     local path_description = pathfinder.format_path(best.path)
-    local status = #best.path == 0 and "already_on_network" or "planned"
+    local status = requires_manual_hazard_crossing and "planned_with_hazard"
+        or (#best.path == 0 and "already_on_network" or "planned")
+    local entry_safety = requires_manual_hazard_crossing and "Network entry" or "Safe network entry"
+    local warning = requires_manual_hazard_crossing
+        and (" " .. build_hazard_warning(
+            hazard_summary,
+            "Warning. No decoded-safe recovery path is available."))
+        or ""
     local message = string.format(
-        "Recovery preview. Final destination: %s. Safe network entry: %s at %d,%d. %s. Then current leg to %s. Next: %s. Preview only; no movement started.",
+        "Recovery preview. Final destination: %s. %s: %s at %d,%d. %s.%s Then current leg to %s. Next: %s. Preview only; no movement started.",
         tostring(destination.title),
+        entry_safety,
         tostring(candidate.name or "waypoint"),
         candidate.x,
         candidate.y,
         path_description,
+        warning,
         tostring(candidate.route_title or "waypoint network"),
         tostring(next_waypoint and next_waypoint.name or "route handoff"))
     local result = {
@@ -3877,6 +4083,12 @@ function M.preview_overworld_network_entry(opts)
         rejected_opening = rejected_opening,
         rejected_unreachable = rejected_unreachable,
         skipped_farther = skipped_farther,
+        rejected_safe_unreachable = requires_manual_hazard_crossing
+            and safe_search.rejected_unreachable or 0,
+        hazard_summary = hazard_summary,
+        decoded_safe = not requires_manual_hazard_crossing,
+        auto_walk_allowed = not requires_manual_hazard_crossing,
+        requires_manual_hazard_crossing = requires_manual_hazard_crossing,
         message = message,
     }
     log_preview(result)
@@ -3960,6 +4172,9 @@ function M.autowalk_overworld_segment(opts)
     last_pathfind_obj = nil
     reroute_failures = 0
 
+    local allowed_route_hazard, hazard_confirmed =
+        M._overworld_hazard_confirmation.allowed_for_segment(segment, map_id, px, py)
+
     if not queue_overworld_segment_steps(segment.steps, {
         route_early_twitch_timeout_frames = segment.waypoint and segment.waypoint.route_early_twitch_timeout_frames,
         route_hold_after_movement_start_frames = segment.waypoint and segment.waypoint.route_hold_after_movement_start_frames,
@@ -3967,7 +4182,11 @@ function M.autowalk_overworld_segment(opts)
         route_final_inject_limit = segment.waypoint and segment.waypoint.route_final_inject_limit,
         route_final_carry_x = segment.route_final_carry_x,
         route_final_carry_y = segment.route_final_carry_y,
+        allowed_route_hazard = allowed_route_hazard,
     }) then
+        if hazard_confirmed then
+            M._overworld_hazard_confirmation.clear("confirmed route could not be queued")
+        end
         debug_tools.error(string.format(
             "OVERWORLD_AUTO_WALK: event=queue_failed route=%s waypoint=%s index=%s steps=%d",
             tostring(segment.route and segment.route.id or "-"),
@@ -3995,6 +4214,7 @@ function M.autowalk_overworld_segment(opts)
         route_final_carry_y = segment.route_final_carry_y,
         continuous = continuous,
         stop_on_blocker = stop_on_blocker,
+        allowed_route_hazard = allowed_route_hazard,
     }
     set_active_route_context(overworld_segment_target(segment), #segment.steps, nil, {
         post_arrival_actions = false,
@@ -4019,7 +4239,9 @@ function M.autowalk_overworld_segment(opts)
     segment.ok = true
     if opts.speak ~= false then
         local speech_message
-        if stop_on_blocker then
+        if hazard_confirmed then
+            speech_message = "Poison swamp confirmed. Auto-walk continuing through this swamp."
+        elseif stop_on_blocker then
             speech_message = "Overworld blocker hunt toward "
                 .. tostring(active_overworld_segment.route_title or "the route destination")
         elseif continuous then
@@ -4161,6 +4383,7 @@ queue_overworld_segment_steps = function(steps, opts)
         route_final_inject_limit = opts.route_final_inject_limit,
         route_final_carry_x = opts.route_final_carry_x,
         route_final_carry_y = opts.route_final_carry_y,
+        allowed_route_hazard = opts.allowed_route_hazard,
     }) then
         active_route_settle_frames = 0
         active_route_settle_same_direction = true
@@ -5058,6 +5281,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     end
 
     local map_id = nav.get_position()
+    M._overworld_hazard_confirmation.after_step(map_id, to_x, to_y)
     local step_source = step_data and step_data.source or "step_complete"
     local input_source = step_data and step_data.input_source or step_source
     observe_seam_result(
@@ -5223,11 +5447,18 @@ auto_step.on_route_cancelled = function(cancel_data)
             tostring(overworld_segment.route_final_carry_x),
             tostring(overworld_segment.route_final_carry_y)))
         clear_active_route_context("overworld auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
-        if reason ~= "can_walk_false" then
-            tolk.output_interrupt("Overworld auto-walk cancelled. " .. tostring(message or reason))
+        if M._overworld_hazard_confirmation.arm(cancel_data, overworld_segment) then
+            tolk.output_interrupt(
+                "Poison swamp ahead. Auto-walk stopped. Press auto-walk again to continue through this swamp.")
+        else
+            M._overworld_hazard_confirmation.clear("overworld route cancelled: " .. tostring(reason))
+            if reason ~= "can_walk_false" then
+                tolk.output_interrupt("Overworld auto-walk cancelled. " .. tostring(message or reason))
+            end
         end
         return
     end
+    M._overworld_hazard_confirmation.clear("non-overworld route cancelled: " .. tostring(reason))
     if reason == "route_drift_off_path"
        and reroute_after_route_drift(cancel_data, had_target) then
         return
@@ -5236,6 +5467,10 @@ auto_step.on_route_cancelled = function(cancel_data)
     if had_target and reason ~= "can_walk_false" then
         tolk.output_interrupt("Auto-walk cancelled. " .. tostring(message or reason))
     end
+end
+
+auto_step.on_walkability_lost = function()
+    M._overworld_hazard_confirmation.clear("field actions unavailable")
 end
 
 -- ============================================================
@@ -5253,6 +5488,7 @@ function M.on_map_change()
         })
     end
     runtime_blocked = {}
+    M._overworld_hazard_confirmation.clear("map change")
     clear_seam_retry_state()
     release_target_face("map change")
     release_target_npc_hold("map change")
@@ -5283,6 +5519,7 @@ function M.stop_auto_walk(reason)
         or active_overworld_segment ~= nil
         or (auto_step.is_route_active and auto_step.is_route_active())
     local stop_reason = tostring(reason or "manual stop_auto_walk")
+    M._overworld_hazard_confirmation.clear(stop_reason)
 
     if not had_active then
         debug_tools.info(string.format(

@@ -1,11 +1,48 @@
 # Playtesting Notes
 
-Updated: 2026-08-31
+Updated: 2026-09-01
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- The guided-overworld poison-swamp override is source-complete and
+  live-verified in FCEUX (`2026-09-01`). The first auto-walk stops at the exact
+  swamp boundary and says to press auto-walk again; a matching second press
+  within ten seconds authorizes only `poison_swamp` for that contiguous
+  crossing. Confirmation is bound to map, position, direction, route, and
+  final destination, and clears on safe terrain, timeout, route/map change,
+  interruption, or explicit stop. It never authorizes damage floors. In the
+  loaded Tantegel return route, frame `1800` stopped at `(102,50)` before
+  `(103,50)` and armed the warning; frame `1860` accepted the second press.
+  Turn-in-place and timeout retries at frames `1882`, `1942`, and `1987`
+  retained permission until movement was real. The hero then crossed
+  `(103,50)` and `(104,50)`, and frame `2057` cleared consent on entering Swamp
+  Cave map `0x15`; frame `2100` confirmed `(0,29)`, nil path target, and zero
+  runtime blockers. No new script error occurred. Focused suites pass `150/150`
+  auto-step and `135/135` route-manager tests; Lua syntax and the repository-wide
+  Lua gate pass. The aggregate WSL gate retains only the known 21 Windows
+  player-package failures and missing optional `accessible_output2` dependency.
+- Poison-swamp recovery safety is source-complete and live-verified in FCEUX
+  (`2026-09-01`). Overworld tile type 7 remains engine-passable for explicit
+  hazardous previews, but is classified as `poison_swamp` and excluded from
+  decoded-safe planning. Recovery preview prefers any safe entry; when swamp
+  is unavoidable, it reports `planned_with_hazard`, sets
+  `auto_walk_allowed=false`, identifies the first hazardous step and tile
+  count, and tells the player to continue manually. The user confirmed the
+  spoken warning and expected manual behavior. Independently, two queued
+  auto-walk attempts from World Map `(101,43)` toward poison swamp `(102,43)`
+  started at frames `5202` and `5383`; frames `5203` and `5384` classified the
+  destination as `poison_swamp` and canceled with `dangerous_tile` before
+  movement. Fresh frame `15840` decoded `(102,43)` as tile 7 with
+  `base_walkable=true`, `walkable=false`, `reason=hazard`, and
+  `effective_passable=false`. Frames `13800` and `16320` confirmed the hero
+  remained at `(101,43)`; frame `16260` found nil path target and zero runtime
+  or NPC blockers. No new script error occurred. Focused suites pass `82/82`
+  map reader, `135/135` route manager, and `150/150` auto-step tests, and the
+  repository-wide Lua gate passes. The aggregate WSL gate remains red only in
+  21 Windows player-package tests whose PowerShell paths are unavailable in
+  this runtime, plus the missing optional `accessible_output2` dependency.
 - The first general off-network recovery slice is source-complete and
   live-verified in FCEUX (`2026-08-31`). `preview_overworld_recovery` is a
   read-only diagnostic: it uses explicit opt-in overworld A* to choose the

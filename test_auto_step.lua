@@ -246,6 +246,12 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local function assert_contains(haystack, needle, message)
+    if not string.find(haystack, needle, 1, true) then
+        error(string.format("%s: missing %s in %s", message, needle, haystack), 2)
+    end
+end
+
 local function has_any_direction(buttons)
     return buttons and (buttons.up or buttons.down or buttons.left or buttons.right)
 end
@@ -651,6 +657,124 @@ function tests.manual_hazard_confirmation_expires()
     env.restore()
 end
 
+function tests.queued_route_poison_override_allows_only_contiguous_swamp()
+    local env = make_env({
+        map_id = 0x01,
+        hazard_cells = {
+            [0x01] = {
+                ["4,1"] = "poison_swamp",
+                ["5,1"] = "poison_swamp",
+                ["7,1"] = "poison_swamp",
+            },
+        },
+    })
+    env.set_position(3, 1)
+    env.auto_step.start_route({"right", "right", "right", "right"}, {
+        allowed_route_hazard = "poison_swamp",
+    })
+
+    env.update(true)
+    env.set_position(4, 1)
+    env.update(true)
+    for _ = 1, 6 do env.update(true) end
+
+    assert_truthy(env.auto_step.is_auto_active(),
+        "confirmed route should continue across adjacent poison-swamp tiles")
+
+    env.set_position(5, 1)
+    env.update(true)
+    for _ = 1, 6 do env.update(true) end
+    env.set_position(6, 1)
+    env.update(true)
+    for _ = 1, 8 do env.update(true) end
+
+    assert_truthy(not env.auto_step.is_route_active(),
+        "confirmed route should stop at a later swamp patch after reaching safe terrain")
+
+    local debug_output = {}
+    for _, entry in ipairs(env.debug_messages) do
+        debug_output[#debug_output + 1] = entry.message
+    end
+    assert_contains(table.concat(debug_output, "\n"),
+        "AUTO_WALK_HAZARD_CONFIRM_CLEARED",
+        "queued-route permission should log when safe terrain ends it")
+    assert_contains(table.concat(debug_output, "\n"),
+        "AUTO_STEP_REFUSED_HAZARD map=0x01 from=(6,1) dir=right dest=(7,1) hazard=poison_swamp",
+        "later swamp patch should require a fresh confirmation")
+
+    env.restore()
+end
+
+function tests.queued_route_poison_override_does_not_allow_damage_floor()
+    local env = make_env({
+        map_id = 0x01,
+        hazard_cells = {
+            [0x01] = { ["4,1"] = "damage" },
+        },
+    })
+    env.set_position(3, 1)
+    env.auto_step.start_route({"right"}, {
+        allowed_route_hazard = "poison_swamp",
+    })
+
+    env.update(true)
+
+    assert_truthy(not env.auto_step.is_route_active(),
+        "poison-swamp confirmation must not authorize another hazard type")
+    local debug_output = {}
+    for _, entry in ipairs(env.debug_messages) do
+        debug_output[#debug_output + 1] = entry.message
+    end
+    assert_contains(table.concat(debug_output, "\n"), "hazard=damage",
+        "damage floor should retain the normal queued-route hazard refusal")
+
+    env.restore()
+end
+
+function tests.queued_route_poison_override_survives_turn_repress_before_entry()
+    local env = make_env({
+        map_id = 0x01,
+        hazard_cells = {
+            [0x01] = { ["4,1"] = "poison_swamp" },
+        },
+    })
+    env.set_position(3, 1)
+    env.auto_step.start_route({"right"}, {
+        allowed_route_hazard = "poison_swamp",
+    })
+
+    for _ = 1, 24 do
+        env.update(true)
+    end
+
+    assert_truthy(env.auto_step.is_route_active(),
+        "turn-in-place retries should retain consent until the hero actually enters swamp")
+    local debug_output = {}
+    for _, entry in ipairs(env.debug_messages) do
+        debug_output[#debug_output + 1] = entry.message
+    end
+    assert_truthy(not string.find(table.concat(debug_output, "\n"),
+        "AUTO_STEP_REFUSED_HAZARD", 1, true),
+        "retrying the confirmed first swamp step should not trigger another warning")
+
+    env.restore()
+end
+
+function tests.walkability_loss_callback_runs_without_active_route()
+    local env = make_env()
+    local callback_count = 0
+    env.auto_step.on_walkability_lost = function()
+        callback_count = callback_count + 1
+    end
+
+    env.update(false)
+
+    assert_equal(callback_count, 1,
+        "battle, dialogue, or menu state should revoke dormant route confirmations")
+
+    env.restore()
+end
+
 function tests.manual_auto_step_does_not_extend_known_directional_wall()
     local env = make_env({
         map_id = 0x08,
@@ -734,12 +858,12 @@ end
 
 function tests.queued_route_cancels_before_known_hazard_destination()
     local env = make_env({
-        map_id = 0x04,
+        map_id = 0x01,
         hazard_cells = {
-            [0x04] = {["10,18"] = "damage"},
+            [0x01] = {["103,50"] = "poison_swamp"},
         },
     })
-    env.set_position(10, 19)
+    env.set_position(103, 51)
     env.auto_step.start_route({"up", "left"})
 
     env.update(true)
@@ -749,8 +873,10 @@ function tests.queued_route_cancels_before_known_hazard_destination()
         local payload = event.payload or {}
         if event.name == "route_cancelled"
            and payload.reason == "dangerous_tile"
-           and payload.dest_x == 10
-           and payload.dest_y == 18 then
+           and payload.dest_x == 103
+           and payload.dest_y == 50
+           and payload.hazard == "poison_swamp"
+           and string.find(payload.message or "", "Poison swamp ahead", 1, true) then
             saw_cancel = true
             break
         end
@@ -763,6 +889,28 @@ function tests.queued_route_cancels_before_known_hazard_destination()
             string.format("hazard-cancelled route should not inject D-pad input at frame %d", frame)
         )
     end
+
+    -- Let the forced neutral release finish before simulating the player's
+    -- deliberate manual confirmation taps.
+    env.update(true)
+    env.update(true)
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    assert_truthy(
+        env.outputs[#env.outputs] == "Poison swamp ahead. Press up again to enter.",
+        "manual movement after auto-walk stops should explain how to accept the swamp risk"
+    )
+
+    env.set_joy({up = true})
+    env.update(true)
+    env.set_joy({})
+    env.update(true)
+    assert_truthy(
+        env.auto_step.is_auto_active(),
+        "a repeated manual input should let the player enter poison swamp deliberately"
+    )
 
     env.restore()
 end

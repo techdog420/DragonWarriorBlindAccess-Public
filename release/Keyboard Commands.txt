@@ -71,7 +71,10 @@ move the hero.
 
 U or F18: Automatically walk toward the selected object. The mod calculates a
 fresh path, so pressing O first is optional. Normal game interruptions and
-unsafe states can pause or stop movement.
+unsafe states can pause or stop movement. Guided overworld auto-walk stops
+before poison swamp; press U or F18 again within ten seconds to accept only
+that contiguous swamp crossing. The confirmation clears on safe terrain or
+any route interruption.
 
 Shift+U: Stop active or pending auto-walk and cancel guided Travel immediately.
 This releases held movement, clears the current automatic route, and removes

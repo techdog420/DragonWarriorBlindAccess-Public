@@ -231,8 +231,10 @@ COMMANDS (write to dw_commands.txt, one per line)
   preview_overworld_recovery
                            Read-only preview of the nearest decoded-safe
                            waypoint-network entry for the active Travel
-                           destination. Reports the recovery path and next
-                           guided leg; never queues movement or teleports.
+                           destination. If poison swamp is unavoidable, reports
+                           a warned manual-only route instead. Reports the
+                           recovery path and next guided leg; never queues
+                           movement or teleports.
   stop_overworld_route     Clear active overworld route guidance
   auto_walk                On the world map, if an overworld route is active,
                            queue the next waypoint segment. By default it stops
@@ -241,6 +243,10 @@ COMMANDS (write to dw_commands.txt, one per line)
                            interruption. Continuous travel speaks the destination
                            once, safety warnings, stops, and final arrival, but
                            not routine waypoint names or per-segment step counts.
+                           Stops before poison swamp and arms a ten-second,
+                           route-bound confirmation. A second auto_walk from the
+                           same boundary permits only that contiguous swamp
+                           crossing; safe terrain or interruption clears it.
                            On local maps, auto-walk to the current selected object.
   auto_walk_blocker        Blocker hunt mode. On an active overworld route it
                            continues across waypoints even when ordinary

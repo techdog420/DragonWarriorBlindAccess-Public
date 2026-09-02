@@ -262,6 +262,12 @@ segment to its next waypoint. It is not yet unrestricted whole-world
 pathfinding. At a multi-leg handoff, press and release `U` again to begin the
 new leg; the mod does not start that movement automatically.
 
+Auto-walk stops before entering poison swamp and announces the danger. To
+accept that risk, press and release `U` or `F18` again within ten seconds. The
+confirmation applies only to the matching contiguous swamp crossing and is
+cleared on safe terrain, a route or map change, an interruption, or
+`Shift+U`. Other hazardous terrain is never authorized by this confirmation.
+
 Auto-walk is useful for crossing known areas, reaching shops or stairs, and
 reducing repetitive directional input. It can stop when combat, dialogue,
 menus, locked doors, moving NPCs, or an unmodeled map edge interrupt the route.
@@ -337,6 +343,8 @@ the current checked-in alpha configuration.
 - `Shift+R`: read route status without starting, replacing, or recalculating a
   route.
 - `U` or `F18`: auto-walk to the selected object after the key is released.
+  If guided overworld travel stops before poison swamp, press the same key
+  again within ten seconds to confirm only that contiguous swamp crossing.
 - `Shift+U`: immediately stop active or pending auto-walk and cancel guided
   Travel state.
 - `Shift+Enter`: teleport to the selected object.

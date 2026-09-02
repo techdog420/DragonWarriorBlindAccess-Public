@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-08-31
+Updated: 2026-09-01
 
 ## Release Installation Handoff
 
@@ -121,6 +121,39 @@ Updated: 2026-08-31
 
 ## Immediate FCEUX Handoff
 
+- The guided-overworld poison-swamp second-press override is source-complete
+  and live-verified in FCEUX (`2026-09-01`). First contact stops and arms a
+  ten-second confirmation bound to the exact map, boundary, direction, route,
+  and destination. A matching second auto-walk press permits only the
+  contiguous `poison_swamp` crossing; safe terrain, timeout, route/map change,
+  interruption, and Shift+U clear it, and damage floors remain forbidden.
+  Loaded Tantegel return evidence stopped at World Map `(102,50)` before
+  `(103,50)` at frame `1800`, accepted confirmation at frame `1860`, survived
+  the real turn/repress and timeout-retry sequence, crossed `(103,50)` and
+  `(104,50)`, and cleared consent on the frame `2057` Swamp Cave transition.
+  Frame `2100` confirmed map `0x15` `(0,29)`, nil path target, and zero runtime
+  blockers. No new script error occurred. Focused tests pass `150/150`
+  auto-step and `135/135` route-manager; Lua syntax and all host-runnable Lua
+  suites pass. The aggregate WSL gate retains the known 21 unavailable Windows
+  package failures and missing optional `accessible_output2` dependency.
+- Poison-swamp recovery safety is source-complete and live-verified in FCEUX
+  (`2026-09-01`). All overworld tile-type-7 cells classify as `poison_swamp`:
+  decoded-safe planning rejects them, while explicit hazardous snapshots retain
+  engine walkability for warned manual directions. Recovery preview prefers
+  safe entries and otherwise returns `planned_with_hazard`,
+  `auto_walk_allowed=false`, the first hazard distance, and an explicit manual
+  warning. The user confirmed the spoken warning and expected manual behavior.
+  Two auto-walk attempts from World Map `(101,43)` toward swamp `(102,43)`
+  canceled before movement at frames `5203` and `5384`. Fresh frame `15840`
+  reported tile 7, `base_walkable=true`, `walkable=false`, `reason=hazard`, and
+  `effective_passable=false`; frames `13800` and `16320` confirmed the hero
+  remained at `(101,43)`, while frame `16260` found nil path target and zero
+  runtime/NPC blockers. No new script error occurred. Focused tests pass
+  `82/82` map reader, `135/135` route manager, and `150/150` auto-step; the
+  repository-wide Lua gate passes. The aggregate WSL gate remains red only from
+  21 unavailable Windows player-package checks and the missing optional
+  `accessible_output2` dependency. Poison-swamp safety no longer blocks the
+  next recovery movement-integration slice.
 - The first general off-network recovery slice is source-complete and
   live-verified in FCEUX (`2026-08-31`). The new read-only command
   `preview_overworld_recovery` uses explicit opt-in overworld A* to find the

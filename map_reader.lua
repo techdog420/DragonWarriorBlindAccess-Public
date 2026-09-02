@@ -1980,6 +1980,28 @@ local MAP_HAZARD_CELLS = {
     },
 }
 
+local function hazard_for_cell(map_id, x, y, tile_type)
+    local hazards = MAP_HAZARD_CELLS[map_id]
+    local explicit = hazards and hazards[x .. "," .. y]
+    if explicit then
+        return explicit
+    end
+
+    -- Overworld tile type 7 is poison swamp. It is engine-walkable and is
+    -- required for a few routes, but autonomous movement must treat it as a
+    -- hazard so route previews can warn and auto-walk can stop before entry.
+    if maps.is_overworld(map_id) then
+        if tile_type == nil then
+            tile_type = M.get_tile_type(map_id, x, y)
+        end
+        if tile_type == 7 then
+            return "poison_swamp"
+        end
+    end
+
+    return false
+end
+
 -- ============================================================
 -- Per-Map Directional Block Overrides
 -- ============================================================
@@ -5407,8 +5429,7 @@ function M.is_permanently_blocked_override(map_id, x, y)
 end
 
 function M.is_hazard_cell(map_id, x, y)
-    local hazards = MAP_HAZARD_CELLS[map_id]
-    return hazards and hazards[x .. "," .. y] or false
+    return hazard_for_cell(map_id, x, y)
 end
 
 function M.get_walkability_details(map_id, x, y)
@@ -5487,7 +5508,6 @@ function M.get_walkability_snapshot(map_id, opts)
     local door_cells = MAP_DOOR_CELLS[map_id]
     local open_doors = door_cells and build_open_door_set() or nil
     local overrides = MAP_BLOCKED_CELLS[map_id]
-    local hazards = MAP_HAZARD_CELLS[map_id]
     local allow_hazards = opts.allow_hazards == true
 
     for y = 0, meta.height - 1 do
@@ -5495,6 +5515,7 @@ function M.get_walkability_snapshot(map_id, opts)
         snapshot[y] = row
         for x = 0, meta.width - 1 do
             local key = x .. "," .. y
+            local tile_type = grid[y] and grid[y][x]
             local walkable = false
             if passthroughs and passthroughs[key] then
                 walkable = true
@@ -5504,7 +5525,6 @@ function M.get_walkability_snapshot(map_id, opts)
                 local dc = door_cells[key]
                 walkable = open_doors and open_doors[dc.x .. "," .. dc.y] == true or false
             else
-                local tile_type = grid[y] and grid[y][x]
                 if tile_type ~= nil then
                     walkable = resolve_tile_walkability(map_id, tile_type, walkable_table)
                 else
@@ -5514,7 +5534,7 @@ function M.get_walkability_snapshot(map_id, opts)
             if overrides and overrides[key] then
                 walkable = false
             end
-            if hazards and hazards[key] and not allow_hazards then
+            if hazard_for_cell(map_id, x, y, tile_type) and not allow_hazards then
                 walkable = false
             end
             row[x] = walkable
