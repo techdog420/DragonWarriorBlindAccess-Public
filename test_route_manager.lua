@@ -1132,6 +1132,83 @@ function tests.off_network_recovery_autowalk_stops_at_network_and_hands_off_dest
     env.restore()
 end
 
+function tests.off_network_recovery_menu_interrupt_replans_from_current_position()
+    local path_starts = {}
+    local env = off_network_recovery_env({
+        config_values = {
+            overworld_auto_walk_continuous = "true",
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            path_starts[#path_starts + 1] = {x = start_x, y = start_y}
+            if start_x ~= 10 or goal_x ~= 10 or goal_y ~= 13
+               or start_y < 10 or start_y >= 13 then
+                return "No path found", nil, nil
+            end
+            local path = {}
+            for y = start_y + 1, goal_y do
+                path[#path + 1] = {x = 10, y = y, direction = "south"}
+            end
+            return "Path", nil, path
+        end,
+    })
+
+    local initial = env.route_manager.autowalk_to_current()
+
+    assert_equal(initial.status, "recovery_queued",
+        "off-network auto-walk should begin the full recovery path")
+    assert_equal(#env.last_start_route_steps(), 3,
+        "initial recovery should queue all three steps to the network")
+
+    env.set_position(0x01, 10, 11)
+    local output_count_before_cancel = #env.outputs
+    env.auto_step.on_route_cancelled({
+        reason = "can_walk_false",
+        current_x = 10,
+        current_y = 11,
+    })
+
+    assert_equal(#env.outputs, output_count_before_cancel,
+        "menu interruption should not add cancellation speech")
+    assert_equal(#env.overworld_start_calls(), 0,
+        "interruption before network arrival must not hand off the destination")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "OVERWORLD_RECOVERY_AUTO_WALK event=cancel reason=can_walk_false current=(10,11)",
+        "menu interruption should retain structured recovery evidence")
+
+    local resumed = env.route_manager.autowalk_to_current()
+
+    assert_equal(resumed.status, "recovery_queued",
+        "the next auto-walk press should resume recovery")
+    assert_equal(resumed.start_y, 11,
+        "resumed recovery should bind to the live interrupted row")
+    assert_equal(resumed.path_length, 2,
+        "resumed recovery should plan only the two remaining steps")
+    assert_equal(#path_starts, 2,
+        "interrupted recovery should invoke the pathfinder once per attempt")
+    assert_equal(path_starts[1].y, 10,
+        "the initial attempt should plan from the original position")
+    assert_equal(path_starts[2].y, 11,
+        "the resumed attempt should replan from the current position")
+    assert_equal(env.start_route_calls(), 2,
+        "resumption should queue exactly one replacement movement route")
+    assert_equal(#env.last_start_route_steps(), 2,
+        "the replacement route should omit the completed step")
+
+    env.set_position(0x01, 10, 13)
+    env.auto_step.on_route_complete()
+
+    assert_equal(#env.overworld_start_calls(), 1,
+        "network arrival should hand off exactly once after resumption")
+    assert_equal(env.overworld_start_calls()[1].route_id, "great_swamp_cantlin",
+        "resumed recovery must preserve the final destination")
+    assert_equal(env.start_route_calls(), 2,
+        "continuous mode must remain stopped at the network boundary")
+    assert_contains(env.outputs[#env.outputs], "Press auto-walk again to continue",
+        "resumed recovery should still require a fresh boundary authorization")
+
+    env.restore()
+end
+
 function tests.manual_overworld_drift_recovers_then_resumes_preserved_destination()
     local env = make_env({
         is_overworld = true,

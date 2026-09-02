@@ -36,6 +36,32 @@ Updated: 2026-09-02
   blocked, drifted, or invoked `AUTO_STEP_CONFIRMED_HAZARD_TIMING_RETRY`, so
   normal behavior is accepted but the revised reset-and-settle branch remains
   covered by regression rather than live activation.
+- CLEAN INTERRUPTION RECOVERY: from `(58,108)`, recovery targeted network entry
+  `(58,104)` while preserving Eastern Great Swamp. Opening the command menu
+  canceled movement at `(58,107)` with `reason=can_walk_false`. After the menu
+  closed, the next auto-walk invocation replanned exactly three north steps
+  from `(58,107)`, reached `(58,104)`, and logged `handoff_ready` with
+  `continuous_requested=true boundary_stop=true`. No runtime blocker or route
+  drift was recorded.
+- REGRESSION: `off_network_recovery_menu_interrupt_replans_from_current_position`
+  reproduces that boundary flow deterministically. It verifies silent
+  `can_walk_false` cancellation one tile into recovery, replanning from the live
+  interrupted cell with only the remaining steps, one preserved-destination
+  handoff, and no continuous auto-chain across the network boundary. Focused
+  route-manager tests pass 141/141; the native gate passes all 33 host-runnable
+  Lua suites plus 68 Python tests; `git diff --check` passes.
+- CLEAN MOUNTAIN-CAVE RECOVERY: from `(24,60)`, the first correctly timed menu
+  interruption canceled recovery at `(24,59)` with `reason=can_walk_false`.
+  The next auto-walk replanned exactly one north step, reached network entry
+  `(24,58)`, preserved Mountain Cave, and logged `handoff_ready` with the
+  continuous boundary stop. The first ordinary guided attempt from `(24,58)`
+  right to `(25,58)` exhausted two timing retries without moving; the next
+  player auto-walk invocation crossed it after one timing-suspect retry. That
+  successful traversal changed the seam classification from `blocked_only` to
+  `noisy`, so it is timing evidence and not a permanent blocker. The remaining
+  route completed and entered Mountain Cave map `0x16` at `(0,7)`. Fresh frame
+  10920 reported path target nil and zero runtime/NPC blockers; the script-error
+  file remains unchanged since May.
 
 ## 2026-08-18 Rimuldar Intermediate-Town Bypass
 
