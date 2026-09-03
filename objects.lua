@@ -20,6 +20,7 @@ local maps = require "maps"
 local nav = require "navigation"
 local map_reader = require "map_reader"
 local config = require "config"
+local darkness = require "darkness"
 local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 local overworld_routes = require "overworld_routes"
 
@@ -658,6 +659,8 @@ local selected_id = nil
 local current_filter = M.FILTER_ALL
 local current_pathability_filter = M.PATHABILITY_ALL
 local pathability_status_by_id = {}
+local visibility_context = darkness.context({terrain_offset = 0x10})
+local visibility_signature = darkness.signature(visibility_context)
 
 -- Which map we last built the object list for (to detect map changes)
 local current_map_id = nil
@@ -2108,16 +2111,24 @@ local function matches_pathability_filter(obj)
     return true
 end
 
+local function matches_visibility(obj)
+    return darkness.is_visible(visibility_context, obj and obj.x, obj and obj.y)
+end
+
 -- apply_filter(objects, filter): Return a new list containing only objects
 -- matching the current type and pathability filters.
 local function apply_filter(objects, filter)
-    if filter == M.FILTER_ALL and current_pathability_filter == M.PATHABILITY_ALL then
+    if filter == M.FILTER_ALL
+       and current_pathability_filter == M.PATHABILITY_ALL
+       and visibility_context.limited ~= true then
         return objects
     end
 
     local result = {}
     for _, obj in ipairs(objects) do
-        if matches_type_filter(obj, filter) and matches_pathability_filter(obj) then
+        if matches_visibility(obj)
+           and matches_type_filter(obj, filter)
+           and matches_pathability_filter(obj) then
             result[#result + 1] = obj
         end
     end
@@ -2154,6 +2165,30 @@ local function rebuild_filtered_list()
     else
         selected_id = nil
     end
+end
+
+-- set_visibility_context(state): Update the player-facing dungeon visibility
+-- window. This only rebuilds the filtered browser view; the complete decoded
+-- object list remains available to explicit developer diagnostics.
+function M.set_visibility_context(state)
+    local next_context = darkness.context(state)
+    local next_signature = darkness.signature(next_context)
+    visibility_context = next_context
+    if next_signature == visibility_signature then
+        return false
+    end
+    visibility_signature = next_signature
+    pathability_status_by_id = {}
+    rebuild_filtered_list()
+    return true
+end
+
+function M.get_visibility_context()
+    local copy = {}
+    for key, value in pairs(visibility_context) do
+        copy[key] = value
+    end
+    return copy
 end
 
 -- ============================================================
@@ -2477,13 +2512,16 @@ end
 
 -- get_objects(opts): Return a shallow copy of the current object list.
 -- By default returns all detected objects for the map; pass
--- opts.filtered=true to return the current filtered view instead.
+-- opts.filtered=true to return the current filtered view instead. Pass
+-- opts.visible=true to keep all object types but apply dungeon visibility.
 function M.get_objects(opts)
     opts = opts or {}
     local source = opts.filtered and filtered_list or object_list
     local result = {}
-    for i, obj in ipairs(source) do
-        result[i] = obj
+    for _, obj in ipairs(source) do
+        if opts.filtered or opts.visible ~= true or matches_visibility(obj) then
+            result[#result + 1] = obj
+        end
     end
     return result
 end

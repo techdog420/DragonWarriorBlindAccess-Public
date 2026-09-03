@@ -26,6 +26,7 @@ local function make_env(options)
     local module_names = {
         "addresses",
         "config",
+        "darkness",
         "map_reader",
         "maps",
         "navigation",
@@ -3704,6 +3705,79 @@ function tests.bizhawk_periodic_refresh_can_be_opted_in()
     local refreshed = env.objects.current_object()
     assert_equal(refreshed.x, 10, "BizHawk opt-in periodic refresh should update moving NPC x")
     assert_equal(refreshed.y, 9, "BizHawk opt-in periodic refresh should update moving NPC y")
+
+    env.restore()
+end
+
+function tests.dungeon_object_browsing_only_exposes_the_visible_square()
+    local env = make_env({npc_count = 0})
+
+    env.set_position(0x1C, 0, 0)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x1C)
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x20,
+        x = 0,
+        y = 0,
+        light_radius = 1,
+    })
+
+    local visible = env.objects.get_objects({filtered = true})
+    assert_equal(#visible, 1, "unlit Erdrick B1 should expose only the stair under the hero")
+    assert_equal(visible[1].id, "exit_0_0", "the current-tile exit should remain browsable")
+    assert_equal(
+        env.objects.find_object_by_id("stair_9_9", {filtered = true}),
+        nil,
+        "far B2 stairs should stay hidden from ordinary browsing")
+    assert_equal(
+        env.objects.find_object_by_id("stair_9_9") ~= nil,
+        true,
+        "developer-facing full object data should remain intact")
+
+    env.restore()
+end
+
+function tests.dungeon_visibility_updates_as_the_hero_moves_or_light_changes()
+    local env = make_env({npc_count = 0})
+
+    env.set_position(0x1C, 0, 0)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x1C)
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x20,
+        x = 8,
+        y = 8,
+        light_radius = 3,
+    })
+
+    assert_equal(
+        env.objects.find_object_by_id("stair_9_9", {filtered = true}) ~= nil,
+        true,
+        "a stair one tile diagonally away should be visible in a 3 by 3 light window")
+    assert_equal(
+        env.objects.find_object_by_id("exit_0_0", {filtered = true}),
+        nil,
+        "the distant entrance should remain hidden")
+
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x20,
+        x = 7,
+        y = 8,
+        light_radius = 1,
+    })
+    assert_equal(env.objects.get_count(), 0, "moving away after the light fades should hide both stairs")
+
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x10,
+        x = 7,
+        y = 8,
+        light_radius = 1,
+    })
+    assert_equal(env.objects.get_count() >= 2, true, "lit terrain should restore the complete object browser")
 
     env.restore()
 end

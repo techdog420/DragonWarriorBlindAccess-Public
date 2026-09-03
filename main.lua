@@ -82,6 +82,7 @@ _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
 for _, mod_name in ipairs({
     "addresses", "auto_step", "battle", "chars", "config",
     "debug_tools", "edge_flow_guard", "emulator_compat", "event_bus", "field_action_guard", "game_snapshot",
+    "darkness",
     "edge_verify_classifier",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
@@ -115,6 +116,7 @@ local path_debug = require "path_debug"    -- Pathfinding debug/test tools (no-o
 local map_survey = require "map_survey"    -- Autonomous map/object survey workflow
 local map_crawler = require "map_crawler"  -- Review-only frontier crawler for map decoding
 local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
+local darkness = require "darkness"         -- Dungeon light-radius visibility policy
 local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
 local teleport_state = require "teleport_state" -- RAM synchronization for debug teleports
@@ -1491,6 +1493,8 @@ local PREV = {
     joy_a_cmd = false, joy_b_status = false,
     -- row1 trace
     row1_lower_dialogue_active = false,
+    -- dungeon visibility
+    darkness_context = nil,
 }
 
 -- Startup grace period: skip all change-detection announcements for the
@@ -2196,6 +2200,8 @@ end
 local function check_map_change()
     local changes = nav.check_for_changes()
     local map_change_speech = nil
+    local light_change_speech = nil
+    local darkness_context = darkness.context(snapshot)
     if changes.position_changed and not changes.map_changed then
         CMD.movement_dialogue = K.MOVEMENT_DIALOGUE_HOLD
     elseif CMD.movement_dialogue > 0 then
@@ -2218,7 +2224,11 @@ local function check_map_change()
         y1_baseline_pending = false
     elseif game_state.state == state.STATE_FIELD then
         objects.observe_npcs(snapshot.map_id)
+        light_change_speech = darkness.change_announcement(
+            PREV.darkness_context,
+            darkness_context)
     end
+    PREV.darkness_context = darkness_context
 
     local route_event = nil
     local route_speech = nil
@@ -2244,8 +2254,27 @@ local function check_map_change()
             map_change_speech,
             route_event)
     end
+    if changes.map_changed and darkness_context.limited == true then
+        if map_change_speech then
+            map_change_speech = map_change_speech .. ". " .. darkness.describe(darkness_context)
+        else
+            -- A terminal overworld itinerary replaces the duplicate map-name
+            -- announcement, but entering a dark dungeon must still report the
+            -- newly imposed visibility limit.
+            light_change_speech = darkness.describe(darkness_context)
+        end
+    end
     if map_change_speech then
         tolk.output(map_change_speech)
+    end
+    if light_change_speech then
+        debug_tools.info(string.format(
+            "LIGHT_RADIUS_CHANGED map=0x%02X raw_radius=%d visible_half_span=%d radiant_timer=%d",
+            darkness_context.map_id or -1,
+            darkness_context.light_radius or 0,
+            darkness_context.half_span or 0,
+            darkness_context.radiant_timer or 0))
+        tolk.output(light_change_speech)
     end
     if route_speech then
         tolk.output(route_speech)
@@ -5371,6 +5400,21 @@ debug_tools.register_command("pathfind_to", function(arg)
     tolk.output_interrupt(msg)
 end)
 
+debug_tools.register_command("report_light_state", function()
+    local context = darkness.context(snapshot)
+    debug_tools.info(string.format(
+        "LIGHT_STATE map=0x%02X terrain=0x%02X position=(%d,%d) raw_radius=%d visible_half_span=%d radiant_timer=%d limited=%s",
+        context.map_id or -1,
+        context.terrain_offset or -1,
+        context.x or -1,
+        context.y or -1,
+        context.light_radius or 0,
+        context.half_span or 0,
+        context.radiant_timer or 0,
+        tostring(context.limited == true)))
+    tolk.output_interrupt(darkness.describe(context))
+end)
+
 debug_tools.register_command("pathfind_adjacent", function(arg)
     local goal_x, goal_y = parse_xy_arg(arg)
     if goal_x == nil then
@@ -7172,6 +7216,9 @@ while true do
     -- Read all tracked RAM values into the snapshot table.
     -- This MUST happen before any module reads from the snapshot this frame.
     checked_scan("snapshot.update", snapshot.update)
+    if objects.set_visibility_context then
+        checked_call("objects.set_visibility_context", objects.set_visibility_context, snapshot)
+    end
     checked_scan("teleport_state.observe_movement_state", teleport_state.observe_movement_state)
 
     -- Get current game state before handling hotkeys so context-sensitive
@@ -7227,6 +7274,7 @@ while true do
             snapshot.items[3],
             snapshot.items[4],
         }
+        PREV.darkness_context = darkness.context(snapshot)
         nav.check_for_changes()   -- Initialize map/position tracking
         menu.check_for_changes()  -- Initialize menu cursor tracking
         if game_state.state == state.STATE_FIELD then
@@ -7430,6 +7478,7 @@ while true do
                     snapshot.items[3],
                     snapshot.items[4],
                 }
+                PREV.darkness_context = darkness.context(snapshot)
                 if post_start_grace > 0 then
                     post_start_grace = post_start_grace - 1
                     checked_call("nav.check_for_changes", nav.check_for_changes)  -- Initialize map tracking silently
@@ -7437,7 +7486,13 @@ while true do
                         -- Grace period just ended. Announce the now-stable
                         -- starting location so the player knows where they are.
                         local map_name = nav.get_map_name()
-                        if map_name then tolk.output(map_name) end
+                        if map_name then
+                            local context = darkness.context(snapshot)
+                            if context.limited == true then
+                                map_name = map_name .. ". " .. darkness.describe(context)
+                            end
+                            tolk.output(map_name)
+                        end
                         -- Skip one HP/MP check so the first real frame doesn't
                         -- compare a potentially stale last-grace-frame value
                         -- against a just-updated current value.

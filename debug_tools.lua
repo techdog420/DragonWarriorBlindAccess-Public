@@ -1047,6 +1047,8 @@ local function build_snapshot()
     local flags_cf = memory.readbyte(addr.FLAGS_CF)
     local combat_flags = memory.readbyte(addr.COMBAT_FLAGS)
     local quest_flags  = memory.readbyte(addr.QUEST_FLAGS)
+    local light_radius = addr.LIGHT_RADIUS and memory.readbyte(addr.LIGHT_RADIUS) or 0
+    local radiant_timer = addr.RADIANT_TIMER and memory.readbyte(addr.RADIANT_TIMER) or 0
     local map_name = maps_m.get_name(map_id)
 
     local lines = {
@@ -1075,6 +1077,7 @@ local function build_snapshot()
         string.format("spells:    CE=0x%02X CF=0x%02X", spells, flags_cf),
         string.format("flags:     combat=0x%02X quest=0x%02X", combat_flags, quest_flags),
         string.format("terrain:   0x%02X",      terrain),
+        string.format("light:     radius=%d radiant_timer=%d", light_radius, radiant_timer),
         "----------------------",
     }
     return table.concat(lines, "\n")
