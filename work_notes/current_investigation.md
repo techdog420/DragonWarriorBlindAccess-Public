@@ -166,7 +166,7 @@ Updated: 2026-09-03
   recorded. After combat, the unchanged route crossed that same edge at frame
   `24055` and recorded destination `(48,93)` as `passable_only`. This is the
   exact race the fix targets, and it now leaves no false blocker evidence.
-- UNRESOLVED BATTLE-DIALOGUE POLISH: the Magiwyvern encounter beginning at
+- BATTLE-DIALOGUE POLISH SOURCE-COMPLETE: the Magiwyvern encounter beginning at
   frame `16333` spoke coherent-looking redraw mixtures at frames `16699`,
   `16714`, `17367`, and `17382`. Examples include `Points have been reduced by
   41. Magiwyvern chants the spell of Thou art asleep.` The proper attack,
@@ -174,16 +174,21 @@ Updated: 2026-09-03
   retained stable hero stats, no integrity warning fired, and
   `dw_script_error.log` remains unchanged since May. Treat this as battle
   window overlap/fast-dialogue filtering, not ROM, save, or route corruption.
-  Patch separately with the captured page sequence as a regression.
-- LIVE NEAR-MATCH: after reload, a Werewolf battle began at frame `4157`
-  during an active recovery step from World Map `(82,89)`. Auto-step canceled
-  one frame later with `reason=can_walk_false`; no blocked-seam observation was
-  recorded, Charlock remained the final destination, and the diagnostic grace
-  branch did not activate because the step had not timed out. Fresh frame
-  `10380` reported `(82,89)`, path target nil, zero NPC blockers, and zero
-  runtime blockers. This cleanly validates ordinary battle cancellation; exact
-  `SEAM_OBSERVATION_DEFERRED` to `SUPPRESSED` live coverage still awaits the
-  rarer timeout-plus-battle race.
+  The captured pages are now regressions: impossible `spell of Thou art`
+  splices and clipped leading damage suffixes are rejected, while clean
+  `SLEEP. Thou art asleep.` dialogue remains valid. Fast battle narration now
+  advances sentence by sentence and stops before spell/status text rather than
+  letting an earlier attack validate the whole mixed page. The focused battle
+  suite passes `47/47`; Lua syntax, `git diff --check`, all 33 host-runnable
+  Lua suites, and all 68 Python tests pass.
+- BATTLE-DIALOGUE POLISH LIVE-ACCEPTED: after reload, the Magiwyvern encounter
+  beginning at frame `8591` announced the clean combined action at frame
+  `9747`, `Bill chanted the spell of HEAL. Magiwyvern chants the spell of
+  SLEEP.` Sleep status followed at frame `9784`, then clean `Thou art asleep`,
+  `Thou art still asleep`, attacks, damage, and `Bill awakes` dialogue through
+  frame `10395`. Neither `spell of Thou art asleep` nor a dialogue event
+  beginning with the clipped `Points have been reduced` / `reduced by` forms
+  appeared. The user reported the same run as much improved.
 
 ## 2026-08-18 Rimuldar Intermediate-Town Bypass
 

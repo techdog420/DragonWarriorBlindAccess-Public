@@ -283,6 +283,38 @@ function tests.is_coherent_dialogue_rejects_split_tokens()
     )
 end
 
+function tests.is_coherent_dialogue_rejects_live_magiwyvern_spell_result_splice()
+    assert_equal(
+        battle.is_coherent_dialogue(
+            "Bill attacks! It is dodging! Magiwyvern chants the spell of Thou art asleep."
+        ),
+        false,
+        "a sleep-result redraw must not be accepted as the enemy's spell name"
+    )
+    assert_equal(
+        battle.is_coherent_dialogue("Magiwyvern chants the spell of SLEEP. Thou art asleep."),
+        true,
+        "the clean spell and result page must remain available for narration"
+    )
+end
+
+function tests.is_coherent_dialogue_rejects_live_magiwyvern_damage_suffix_redraw()
+    assert_equal(
+        battle.is_coherent_dialogue(
+            "Points have been reduced by 41. Magiwyvern chants the spell of Thou art asleep."
+        ),
+        false,
+        "a clipped prior damage suffix must not make a transitional spell page coherent"
+    )
+    assert_equal(
+        battle.is_coherent_dialogue(
+            "reduced by 41. Magiwyvern chants the spell of SLEEP. Thou art asleep."
+        ),
+        false,
+        "a redraw beginning mid-damage sentence must wait for a clean page"
+    )
+end
+
 function tests.is_coherent_dialogue_accepts_complete_sentence()
     assert_equal(
         battle.is_coherent_dialogue("The Slime attacks! Thy Hit Point decreased by 1."),
@@ -344,6 +376,23 @@ function tests.fast_action_prefix_keeps_damage_before_rewards()
         battle.fast_action_prefix("Bill attacks! The Red Slime's Hit Points have been reduced by 5. Thou hast done well in defeating the Red Slime."),
         "Bill attacks! The Red Slime's Hit Points have been reduced by 5.",
         "fast battle speech should keep completed damage before reward text"
+    )
+end
+
+function tests.fast_action_prefix_stops_before_spell_and_status_sentences()
+    assert_equal(
+        battle.fast_action_prefix(
+            "Bill attacks! It is dodging! Magiwyvern chants the spell of SLEEP. Thou art asleep."
+        ),
+        "Bill attacks! It is dodging!",
+        "fast action speech must not absorb later spell and status sentences"
+    )
+    assert_equal(
+        battle.fast_action_prefix(
+            "Bill attacks! It is dodging! Magiwyvern chants the spell of Thou art asleep."
+        ),
+        "",
+        "a complete but incoherent redraw must not repeat its valid action prefix"
     )
 end
 

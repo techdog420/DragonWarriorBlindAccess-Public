@@ -324,6 +324,19 @@ function M.is_coherent_dialogue(text)
     if not s:match("[%.!?]$") then
         return false
     end
+    -- Battle-window scrolling can briefly join the sleep-result sentence to
+    -- the spell-name slot, producing the impossible phrase "spell of Thou art
+    -- asleep." Wait for the clean SLEEP page instead of speaking that redraw.
+    if s:find("chants the spell of Thou art", 1, true) then
+        return false
+    end
+    -- A newly assembled page can also begin with the tail of the prior damage
+    -- sentence. These live forms have lost the enemy/hero subject and are
+    -- transitional redraws, not standalone battle dialogue.
+    if s:match("^Points? have been reduced by%s+%d")
+        or s:match("^reduced by%s+%d") then
+        return false
+    end
     -- Mid-word lowercase->uppercase joins like "ntsThe" are a reliable sign
     -- that we caught the page before the rows were assembled coherently.
     if s:find("%l%u") then
@@ -395,16 +408,27 @@ end
 function M.fast_action_prefix(text)
     local s = tostring(text or "")
     local best = ""
+    local sentence_start = 1
+
+    -- A page that already ends in punctuation should be fully assembled. If
+    -- that complete page still has an impossible redraw splice, suppress it
+    -- outright instead of replaying an earlier valid action sentence.
+    if s:match("[%.!?]$") and not M.is_coherent_dialogue(s) then
+        return ""
+    end
 
     for i = 1, #s do
         local ch = s:sub(i, i)
         if ch == "." or ch == "!" or ch == "?" then
-            local prefix = s:sub(1, i):match("^%s*(.-)%s*$") or ""
-            if prefix ~= ""
-                and M.is_coherent_dialogue(prefix)
-                and M.is_fast_action_dialogue(prefix) then
-                best = prefix
+            local sentence = s:sub(sentence_start, i):match("^%s*(.-)%s*$") or ""
+            if sentence ~= "" then
+                if not M.is_coherent_dialogue(sentence)
+                    or not M.is_fast_action_dialogue(sentence) then
+                    break
+                end
+                best = s:sub(1, i):match("^%s*(.-)%s*$") or ""
             end
+            sentence_start = i + 1
         end
     end
 
