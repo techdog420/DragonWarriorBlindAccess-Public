@@ -36,6 +36,7 @@ local overworld_routes = require "overworld_routes"
 local emulator_compat = rawget(_G, "DW_EMULATOR_COMPAT") or {}
 
 local M = {}
+M.darkness = require "darkness"
 
 local function trace_autowalk_boundary(label, detail)
     if not debug_tools.DEBUG_MODE then
@@ -676,7 +677,7 @@ copy_opts = function(opts)
     return next_opts
 end
 
-local function pathfinder_opts_for_plan(opts, map_id)
+local function pathfinder_opts_for_plan(opts, map_id, start_x, start_y)
     opts = opts or {}
     local path_opts = opts.pathfinder_opts or opts
     local next_opts
@@ -693,12 +694,34 @@ local function pathfinder_opts_for_plan(opts, map_id)
             allow_hazards = true,
         })
     end
+    if opts.respect_darkness == true then
+        local visibility = M.darkness.context({
+            map_id = map_id,
+            terrain_offset = snapshot.terrain_offset,
+            x = start_x ~= nil and start_x or snapshot.x,
+            y = start_y ~= nil and start_y or snapshot.y,
+            light_radius = snapshot.light_radius,
+            radiant_timer = snapshot.radiant_timer,
+        })
+        if visibility.limited == true then
+            if next_opts.walkability_snapshot == nil
+               and map_reader.get_walkability_snapshot then
+                next_opts.walkability_snapshot = map_reader.get_walkability_snapshot(map_id, {
+                    allow_hazards = opts.allow_hazards == true,
+                })
+            end
+            next_opts.walkability_snapshot = M.darkness.limit_walkability_snapshot(
+                next_opts.walkability_snapshot,
+                visibility)
+            next_opts.darkness_visibility = visibility
+        end
+    end
     return next_opts
 end
 
-local function adjacent_path_opts(opts, map_id)
+local function adjacent_path_opts(opts, map_id, start_x, start_y)
     opts = opts or {}
-    local next_opts = pathfinder_opts_for_plan(opts, map_id)
+    local next_opts = pathfinder_opts_for_plan(opts, map_id, start_x, start_y)
     if next_opts.use_adjacent_metrics ~= nil or opts.survey_safe == true then
         return next_opts
     end
@@ -2526,7 +2549,13 @@ local function try_adjacent_fallback(obj, map_id, start_x, start_y, blocking, op
     end
 
     local result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
-        map_id, start_x, start_y, obj.x, obj.y, blocking, adjacent_path_opts(opts, map_id))
+        map_id,
+        start_x,
+        start_y,
+        obj.x,
+        obj.y,
+        blocking,
+        adjacent_path_opts(opts, map_id, start_x, start_y))
     if result == "No path found" then
         return current
     end
@@ -2545,6 +2574,9 @@ end
 -- and locked-door hint for unreachable chests.
 local function build_pathfind_message(obj, result, face_dir, no_path_reason)
     local msg = obj.name .. ". " .. result
+    if result == "No path found" and no_path_reason == "limited_visibility" then
+        return obj.name .. ". No path found within the current visible area"
+    end
     if face_dir then
         if obj.type == objects.TYPE_DOOR then
             msg = msg .. ". Face " .. face_dir .. " then use Open command"
@@ -3088,6 +3120,7 @@ local function plan_object_reachability(obj, opts)
     local selected_interaction = interaction_point_for_goal(obj, goal_x, goal_y)
     local adjacent_diagnostics = nil
     local no_path_reason = nil
+    local path_opts = pathfinder_opts_for_plan(opts, map_id, px, py)
 
     if path_mode == "adjacent" then
         if dist <= 1 then
@@ -3108,7 +3141,7 @@ local function plan_object_reachability(obj, opts)
             }
         end
         path, face_dir = find_quiet_route_to_adjacent(
-            map_id, px, py, goal_x, goal_y, blocking, opts.pathfinder_opts)
+            map_id, px, py, goal_x, goal_y, blocking, path_opts)
     else
         if px == goal_x and py == goal_y then
             return {
@@ -3133,12 +3166,12 @@ local function plan_object_reachability(obj, opts)
             no_path_reason = "goal_blocked_runtime"
         else
             path = pathfinder.find_route_to(
-                map_id, px, py, goal_x, goal_y, blocking, opts.pathfinder_opts)
+                map_id, px, py, goal_x, goal_y, blocking, path_opts)
         end
 
         if not path and obj.type == objects.TYPE_CHEST and opts.allow_adjacent_fallback ~= false then
             local fallback_path, fallback_face = find_quiet_route_to_adjacent(
-                map_id, px, py, goal_x, goal_y, blocking, opts.pathfinder_opts)
+                map_id, px, py, goal_x, goal_y, blocking, path_opts)
             if fallback_path then
                 path = fallback_path
                 face_dir = fallback_face
@@ -3167,6 +3200,12 @@ local function plan_object_reachability(obj, opts)
         adjacent_diagnostics = adjacent_diagnostics,
         selected_interaction = selected_interaction,
     }
+
+    if reachability.reachable == false
+       and opts.respect_darkness == true
+       and path_opts.darkness_visibility then
+        reachability.no_path_reason = "limited_visibility"
+    end
 
     if reachability.reachable == false and not opts._skip_interaction_alternates then
         local points = object_interaction_points(obj)
@@ -3225,12 +3264,13 @@ local function runtime_block_signature(map_id)
     return table.concat(parts, ";")
 end
 
-local function object_pathability_context_signature(map_id, start_x, start_y, targets)
+local function object_pathability_context_signature(map_id, start_x, start_y, targets, visibility)
     local parts = {
         tostring(map_id),
         tostring(start_x),
         tostring(start_y),
         runtime_block_signature(map_id),
+        M.darkness.signature(visibility),
         tostring(#targets),
     }
     for _, obj in ipairs(targets) do
@@ -3291,7 +3331,7 @@ local function is_walkable_from_snapshot(map_id, x, y, walkability_snapshot, wal
     return walkable
 end
 
-local function build_pathability_reachable_set(map_id, start_x, start_y, blocking)
+local function build_pathability_reachable_set(map_id, start_x, start_y, blocking, walkability_snapshot)
     local width, height = map_reader.get_map_dimensions(map_id)
     if not width or not height then
         return nil
@@ -3304,9 +3344,10 @@ local function build_pathability_reachable_set(map_id, start_x, start_y, blockin
         return {}
     end
 
-    local walkability_snapshot = map_reader.get_walkability_snapshot
-        and map_reader.get_walkability_snapshot(map_id)
-        or nil
+    walkability_snapshot = walkability_snapshot
+        or (map_reader.get_walkability_snapshot
+            and map_reader.get_walkability_snapshot(map_id)
+            or nil)
     local walkability_cache = {}
     local directional_blocks = map_reader.get_directional_blocks
         and map_reader.get_directional_blocks(map_id)
@@ -3571,8 +3612,16 @@ function M.refresh_object_pathability_filter(opts)
         }
     end
 
-    local targets = objects.get_objects()
-    local signature = object_pathability_context_signature(map_id, start_x, start_y, targets)
+    local targets = objects.get_objects({visible = true})
+    local path_opts = pathfinder_opts_for_plan({
+        respect_darkness = true,
+    }, map_id, start_x, start_y)
+    local signature = object_pathability_context_signature(
+        map_id,
+        start_x,
+        start_y,
+        targets,
+        path_opts.darkness_visibility)
     if not opts.force and signature == object_pathability_signature then
         return {
             name = objects.get_filter_summary(),
@@ -3588,7 +3637,12 @@ function M.refresh_object_pathability_filter(opts)
     local reachable = 0
     local unreachable = 0
     local blocking = M.build_path_blocking(map_id, {skip_npcs = true})
-    local reachable_cells = build_pathability_reachable_set(map_id, start_x, start_y, blocking)
+    local reachable_cells = build_pathability_reachable_set(
+        map_id,
+        start_x,
+        start_y,
+        blocking,
+        path_opts.walkability_snapshot)
     for _, obj in ipairs(targets) do
         local is_reachable = nil
         if reachable_cells ~= nil then
@@ -3601,6 +3655,7 @@ function M.refresh_object_pathability_filter(opts)
                 blocking = blocking,
                 skip_npcs = true,
                 store_debug_path = false,
+                respect_darkness = true,
             })
             is_reachable = reachability and reachability.reachable
         end
@@ -3711,12 +3766,19 @@ function M.describe_object_with_reachability(obj, base_description, opts)
            and config.get("bizhawk_object_reachability_descriptions") ~= "true") then
         return desc
     end
-    local reachability = plan_object_reachability(obj, opts)
+    local reach_opts = copy_opts(opts)
+    if reach_opts.respect_darkness == nil then
+        reach_opts.respect_darkness = true
+    end
+    local reachability = plan_object_reachability(obj, reach_opts)
     if not base_description and reachability and reachability.selected_interaction then
         desc = objects.describe_object(
             object_with_interaction(obj, reachability.selected_interaction))
     end
     if reachability and reachability.reachable == false then
+        if reachability.no_path_reason == "limited_visibility" then
+            return desc .. ". Not reachable within the current visible area"
+        end
         return desc .. ". Not currently reachable"
     end
     return desc
@@ -3735,10 +3797,17 @@ function M.describe_current_object(opts)
         return objects.describe_current(opts)
     end
 
-    local reachability = plan_object_reachability(obj, opts)
+    local reach_opts = copy_opts(opts)
+    if reach_opts.respect_darkness == nil then
+        reach_opts.respect_darkness = true
+    end
+    local reachability = plan_object_reachability(obj, reach_opts)
     local desc_opts = add_selected_interaction_to_opts(opts, reachability and reachability.selected_interaction)
     local desc = objects.describe_current(desc_opts)
     if reachability and reachability.reachable == false then
+        if reachability.no_path_reason == "limited_visibility" then
+            return desc .. ". Not reachable within the current visible area"
+        end
         return desc .. ". Not currently reachable"
     end
     return desc
@@ -3773,7 +3842,7 @@ plan_path_to_object = function(obj, opts)
     local selected_interaction = interaction_point_for_goal(obj, goal_x, goal_y)
     if path_mode == "adjacent" then
         result, face_dir, path, adjacent_diagnostics = pathfinder.pathfind_to_adjacent(
-            map_id, px, py, goal_x, goal_y, blocking, adjacent_path_opts(opts, map_id))
+            map_id, px, py, goal_x, goal_y, blocking, adjacent_path_opts(opts, map_id, px, py))
     else
         if goal_block_reason == "npc" then
             result, face_dir, path = "No path found", nil, nil
@@ -3789,7 +3858,7 @@ plan_path_to_object = function(obj, opts)
                 goal_x,
                 goal_y,
                 blocking,
-                pathfinder_opts_for_plan(opts, map_id))
+                pathfinder_opts_for_plan(opts, map_id, px, py))
             if uses_interaction and path then
                 face_dir = get_plan_face_dir(obj, uses_interaction) or face_dir
             end
@@ -3797,6 +3866,21 @@ plan_path_to_object = function(obj, opts)
     end
     if result == "No path found" and no_path_reason == nil then
         no_path_reason = pathfinder_failure_reason(opts)
+    end
+    if result == "No path found"
+       and no_path_reason == nil
+       and opts.respect_darkness == true then
+        local visibility = M.darkness.context({
+            map_id = map_id,
+            terrain_offset = snapshot.terrain_offset,
+            x = px,
+            y = py,
+            light_radius = snapshot.light_radius,
+            radiant_timer = snapshot.radiant_timer,
+        })
+        if visibility.limited == true then
+            no_path_reason = "limited_visibility"
+        end
     end
     if result == "No path found" and no_path_reason == nil then
         no_path_reason = infer_no_path_reason(map_id, px, py, blocking, obj, path_mode, opts)
@@ -5114,7 +5198,10 @@ function M.pathfind_to_current()
         return
     end
     last_pathfind_obj = obj
-    local plan = plan_path_to_object(obj, {hazard_preview = true})
+    local plan = plan_path_to_object(obj, {
+        hazard_preview = true,
+        respect_darkness = true,
+    })
     tolk.output_interrupt(plan.message)
 end
 
@@ -5403,6 +5490,7 @@ function M.autowalk_to_current(opts)
     -- silently replace the active destination. Explicit object-target calls
     -- retain their route-switching behavior.
     next_opts.follow_active_overworld_route = true
+    next_opts.respect_darkness = true
     return M.autowalk_to_object(obj, next_opts)
 end
 

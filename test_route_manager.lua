@@ -633,6 +633,8 @@ local function make_env(options)
         return {
             keys = 0,
             terrain_offset = options.snapshot_terrain or 0x10,
+            light_radius = options.snapshot_light_radius or 0,
+            radiant_timer = options.snapshot_radiant_timer or 0,
         }
     end
 
@@ -648,6 +650,7 @@ local function make_env(options)
         publish_event = publish_event,
         auto_step = package.loaded["auto_step"],
         route_manager = route_manager,
+        snapshot = package.loaded["game_snapshot"],
         pathfind_calls = function() return pathfind_calls end,
         update_npcs_calls = function() return update_npcs_calls end,
         request_refresh_calls = function() return request_refresh_calls end,
@@ -3716,6 +3719,34 @@ function tests.object_pathability_filter_recomputes_when_position_changes()
     env.restore()
 end
 
+function tests.object_pathability_filter_recomputes_when_dungeon_light_changes()
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 1,
+        object_list = {
+            {id = "stair_1", name = "Stairs", type = "stair", x = 5, y = 4},
+        },
+    })
+
+    env.route_manager.set_object_pathability_filter("reachable")
+    local updates_after_first_pass = env.pathability_status_updates()
+
+    env.snapshot.light_radius = 3
+    local info = env.route_manager.refresh_object_pathability_filter_if_needed()
+
+    assert_equal(info.refreshed, true, "changed dungeon light should invalidate cached pathability")
+    assert_equal(
+        env.pathability_status_updates() > updates_after_first_pass,
+        true,
+        "changed light radius must recompute even when the visible object ids do not change"
+    )
+
+    env.restore()
+end
+
 function tests.object_pathability_filter_seeds_from_boundary_exit_neighbor()
     local env = make_env({
         start_map_id = 0x08,
@@ -5776,6 +5807,55 @@ function tests.autowalk_falls_back_to_adjacent_for_chest_when_direct_fails()
         "Auto-walk.",
         "fallback success should be announced as a normal autowalk"
     )
+
+    env.restore()
+end
+
+function tests.player_path_preview_masks_walkability_outside_dungeon_light()
+    local target = {id = "stair_6_4", name = "Stairs", type = "stair", x = 6, y = 4}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 3,
+    })
+
+    env.route_manager.pathfind_to_current()
+
+    local call = env.last_direct_call()
+    local walkability = call and call.opts and call.opts.walkability_snapshot
+    assert_equal(walkability ~= nil, true, "ordinary dungeon preview should receive a light-limited map")
+    assert_equal(walkability[4][4], true, "cell one tile west should remain visible")
+    assert_equal(walkability[4][5], true, "hero cell should remain visible")
+    assert_equal(walkability[4][6], true, "cell one tile east should remain visible")
+    assert_equal(walkability[4][7], false, "cell two tiles east should be hidden")
+    assert_equal(walkability[2][5], false, "cell two tiles north should be hidden")
+
+    env.restore()
+end
+
+function tests.explicit_developer_plan_remains_unrestricted_in_darkness()
+    local target = {id = "stair_6_4", name = "Stairs", type = "stair", x = 6, y = 4}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 1,
+    })
+
+    env.route_manager.plan_path_to_object(target, {})
+
+    local call = env.last_direct_call()
+    assert_equal(
+        call and call.opts and call.opts.walkability_snapshot,
+        nil,
+        "explicit developer planning should retain the full decoded map unless visibility is requested")
 
     env.restore()
 end

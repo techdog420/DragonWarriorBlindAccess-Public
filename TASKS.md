@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-08-30
+Updated: 2026-09-03
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -854,6 +854,8 @@ quality-of-life work.
 - Design darkness handling as its own feature with deterministic and live
   tests. Check unlit entry, Torch use, Radiant use and expiry, movement near the
   light boundary, object browsing, route recalculation, and script reload.
+  The active first-slice design is documented in
+  `docs/plans/2026-09-03-darkness-parity.md`.
 - Clue-bound treasure audit: identify every place where object navigation or
   routing leads directly to a treasure whose location the original game expects
   the player to infer from dialogue or environmental clues.

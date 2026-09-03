@@ -2,6 +2,32 @@
 
 Updated: 2026-09-03
 
+## 2026-09-03 Darkness Parity First Slice
+
+- SOURCE MODEL: cave/dungeon terrain offset `0x20` is visibility-limited.
+  `LIGHT_RADIUS` values `1`, `3`, `5`, and `7` are treated as visible-window
+  diameters, yielding zero through three tiles of visible half-span. This
+  interpretation needs direct FCEUX confirmation with no light, Torch, and
+  Radiant before promotion to durable project truth.
+- SOURCE-COMPLETE: `darkness.lua` centralizes the visible square, player-facing
+  light descriptions, radius-change speech, and non-mutating walkability masks.
+  Ordinary object browsing now hides modeled objects outside that square and
+  updates as the hero or radius changes. Ordinary selected-object previews and
+  reachability checks use a light-masked walkability snapshot. Explicit
+  developer coordinate planning remains unrestricted.
+- DIAGNOSTIC: `report_light_state` logs map, terrain, position, raw radius,
+  visible half-span, Radiant timer, and whether darkness limits navigation.
+  `log_state` snapshots now include the two light bytes.
+- STATIC CHECKPOINT: focused suites pass `6/6` darkness, `116/116` objects,
+  `148/148` route-manager, and `41/41` debug-tools tests. The broad native gate
+  passes all 34 host-runnable Lua suites plus 68 Python tests; Lua syntax,
+  shell syntax, command-queue, speech-dependency, and `git diff --check` checks
+  also pass. Live Erdrick's Cave acceptance remains pending.
+- NEXT CHECK: reload `main.lua` in Erdrick's Cave B1. Capture
+  `report_light_state` unlit, after Torch, and after Radiant; browse Travel and
+  Treasure after each state; then move until the radius shrinks and confirm one
+  announcement per visible-span change.
+
 ## 2026-09-02 Off-Network Drift Recovery Acceptance
 
 - CLEAN / VERIFIED: deliberate manual drift preserved the Eastern Great Swamp
