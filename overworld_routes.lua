@@ -3942,37 +3942,47 @@ local function build_axis_ordered_steps(route, point, px, py, opts)
     return steps
 end
 
-local function position_is_on_route_corridor(route, px, py)
-    if not route or not route.waypoints or px == nil or py == nil then
-        return false
+local route_corridor_lookups = {}
+
+local function route_corridor_lookup(route)
+    local route_id = route and route.id
+    if route_id and route_corridor_lookups[route_id] then
+        return route_corridor_lookups[route_id]
     end
 
-    local first = route.waypoints[1]
-    if first and px == first.x and py == first.y then
-        return true
-    end
-
-    for index = 2, #route.waypoints do
-        local previous = route.waypoints[index - 1]
-        local point = route.waypoints[index]
-        local x, y = previous.x, previous.y
-        for _, step in ipairs(build_axis_ordered_steps(route, point, x, y)) do
-            if step == "up" then
-                y = y - 1
-            elseif step == "down" then
-                y = y + 1
-            elseif step == "left" then
-                x = x - 1
-            elseif step == "right" then
-                x = x + 1
-            end
-            if px == x and py == y then
-                return true
+    local lookup = {}
+    local first = route and route.waypoints and route.waypoints[1]
+    if first then
+        local x, y = first.x, first.y
+        lookup[x .. "," .. y] = true
+        for index = 2, #route.waypoints do
+            local point = route.waypoints[index]
+            for _, step in ipairs(build_axis_ordered_steps(route, point, x, y)) do
+                if step == "up" then
+                    y = y - 1
+                elseif step == "down" then
+                    y = y + 1
+                elseif step == "left" then
+                    x = x - 1
+                elseif step == "right" then
+                    x = x + 1
+                end
+                lookup[x .. "," .. y] = true
             end
         end
     end
 
-    return false
+    if route_id then
+        route_corridor_lookups[route_id] = lookup
+    end
+    return lookup
+end
+
+local function position_is_on_route_corridor(route, px, py)
+    if not route or not route.waypoints or px == nil or py == nil then
+        return false
+    end
+    return route_corridor_lookup(route)[px .. "," .. py] == true
 end
 
 local function preview_final_carry(route, index, opts)
@@ -4615,6 +4625,9 @@ local function network_transition_lookup()
 end
 
 local function established_network_cells()
+    if M._established_network_cells then
+        return M._established_network_cells
+    end
     local transitions = network_transition_lookup()
     local unique = {}
 
@@ -4649,6 +4662,7 @@ local function established_network_cells()
         end
     end
 
+    M._established_network_cells = unique
     return unique
 end
 
@@ -4671,12 +4685,44 @@ end
 -- Return unique cells on established waypoint corridors that can join a
 -- connected route toward route_name. Final landmark cells are excluded because
 -- several trigger a map transition as soon as the hero steps onto them.
+local network_entry_candidate_cache = {}
+
+local function copy_candidate_list(candidates)
+    local result = {}
+    for index, candidate in ipairs(candidates or {}) do
+        result[index] = candidate
+    end
+    return result
+end
+
 function M.network_entry_candidates(route_name, map_id, opts)
     opts = opts or {}
+    local cacheable = true
+    for key in pairs(opts) do
+        if key ~= "terrain_offset" then
+            cacheable = false
+            break
+        end
+    end
+    local normalized_id = normalize_route_id(route_name)
+    local cache_key = normalized_id and string.format(
+        "%s:%s:%s",
+        normalized_id,
+        tostring(tonumber(map_id) or map_id),
+        tostring(opts.terrain_offset)) or nil
+    if cacheable and cache_key and network_entry_candidate_cache[cache_key] then
+        return copy_candidate_list(network_entry_candidate_cache[cache_key])
+    end
+
     local unique = established_network_cells()
 
     local candidates = {}
-    for _, candidate in pairs(unique) do
+    for _, network_cell in pairs(unique) do
+        local candidate = {
+            x = network_cell.x,
+            y = network_cell.y,
+            name = network_cell.name,
+        }
         local preview = resolve_start_preview(
             route_name,
             map_id,
@@ -4708,6 +4754,10 @@ function M.network_entry_candidates(route_name, map_id, opts)
         if a.x ~= b.x then return a.x < b.x end
         return tostring(a.name) < tostring(b.name)
     end)
+    if cacheable and cache_key then
+        network_entry_candidate_cache[cache_key] = candidates
+        return copy_candidate_list(candidates)
+    end
     return candidates
 end
 

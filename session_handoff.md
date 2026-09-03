@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-01
+Updated: 2026-09-03
 
 ## Release Installation Handoff
 
@@ -121,16 +121,31 @@ Updated: 2026-09-01
 
 ## Immediate FCEUX Handoff
 
+- Long off-network checkpoint recovery and its startup optimization are
+  source-complete and live-verified in FCEUX (`2026-09-03`). Charlock recovery
+  from World Map `(92,110)` selected established-network entry `(23,98)`, 117
+  safe steps away. The cold single-field search took 187 ms; cached candidate
+  lookup then fell from 127 ms to 0-1 ms, with total planning at 47-64 ms per
+  later authorization. Four complete 24-step checkpoints and a final nine-step
+  slice stopped for explicit reauthorization and handed off only at the real
+  boundary. Wraith and Starwyvern battles preserved the final destination;
+  the latter canceled active recovery cleanly. One player-facing timing stop
+  at `(91,105)->UP` crossed on retry and remains noisy timing evidence, not map
+  geometry. Fresh frame `22500` reported World Map `(23,98)`, path target nil,
+  and zero NPC/runtime blockers; the script-error log remains unchanged since
+  May. Focused tests pass `340/340` overworld routes and `143/143` route manager;
+  the native gate passes all 33 host-runnable Lua suites and 68 Python tests.
 - The first executable off-network recovery slice is source-complete and
   live-verified in FCEUX (`2026-09-01`). Auto-walk now checks the
   established non-transition waypoint network before ordinary segment
   planning. An off-network start reuses the decoded-safe recovery preview,
-  queues at most 24 safe A* steps, and stops at the network entry even when
-  continuous travel is configured. At arrival it recalculates the player's
-  unchanged final destination from the exact entry and requires another
-  auto-walk press before guided travel resumes. Hazardous/manual-only previews,
-  over-limit routes, queue failures, and live blockers fail closed without
-  handoff. `OVERWORLD_RECOVERY_AUTO_WALK` logs each start, refusal, blocker,
+  queues up to 24 safe A* steps per authorization, and stops at intermediate
+  safe checkpoints or the network entry even when continuous travel is
+  configured. At network arrival it recalculates the player's unchanged final
+  destination from the exact entry and requires another auto-walk press before
+  guided travel resumes. Hazardous/manual-only previews, queue failures, and
+  live blockers fail closed without handoff. `OVERWORLD_RECOVERY_AUTO_WALK`
+  logs each start, refusal, blocker,
   cancellation, completion, and handoff. The loaded run walked four safe steps
   from World Map `(58,108)` to `(58,104)`, stopped at the network boundary
   despite continuous mode, preserved the Eastern Great Swamp destination, and

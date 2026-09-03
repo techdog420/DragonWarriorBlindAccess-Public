@@ -245,14 +245,17 @@ COMMANDS (write to dw_commands.txt, one per line)
                            dw_debug.log; no route or movement state changes.
   stop_overworld_route     Clear active overworld route guidance
   auto_walk                On the world map, if an overworld route is active,
-                           an off-network start queues at most 24 decoded-safe
-                           recovery steps to the nearest usable waypoint-network
-                           cell, then stops and recalculates the selected final
-                           destination. Press auto-walk again to continue the
-                           guided route. This boundary stop also applies when
-                           continuous travel is enabled. Hazardous or longer
-                           recovery previews never start movement. When already
-                           on the network, it queues the next waypoint segment.
+                           an off-network start queues up to 24 decoded-safe
+                           recovery steps toward the nearest usable waypoint-
+                           network cell. Longer safe recoveries stop at an
+                           intermediate checkpoint and require another auto-walk
+                           press for each bounded slice. At the real network
+                           boundary it stops, recalculates the selected final
+                           destination, and again requires auto-walk to continue
+                           guided travel. These stops also apply when continuous
+                           travel is enabled. Hazardous recovery previews never
+                           start movement. When already on the network, it queues
+                           the next waypoint segment.
                            By default it stops
                            there; when overworld_auto_walk_continuous=true, it
                            continues through later waypoints until arrival or

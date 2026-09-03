@@ -1,21 +1,34 @@
 # Playtesting Notes
 
-Updated: 2026-09-01
+Updated: 2026-09-03
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Long off-network checkpoint recovery and its reduced startup cost are
+  live-verified (`2026-09-03`). From World Map `(92,110)`, Charlock recovery
+  selected network entry `(23,98)`, 117 safe steps away. The cold search took
+  187 ms; after caching the 849 destination candidates, subsequent checkpoint
+  planning took 47-64 ms and candidate lookup took only 0-1 ms. Four complete
+  24-step checkpoints and the final nine-step boundary slice each waited for
+  explicit player authorization. Wraith and Starwyvern battles preserved the
+  Charlock destination, and the latter cleanly canceled active movement. One
+  visible timing stop at `(91,105)->UP` crossed on retry and is noisy timing,
+  not a map blocker. Final frame `22500` reported World Map `(23,98)`, path
+  target nil, and zero NPC/runtime blockers. This closes the long-safe-recovery
+  execution slice without raising the 24-step safety bound.
 - The first executable off-network recovery slice is source-complete and
   live-verified in FCEUX (`2026-09-01`). Auto-walk now recognizes
   whether the hero is already on an established non-transition waypoint
   corridor. From an off-network start with an active Travel destination, it
-  reuses the decoded-safe recovery preview, queues at most 24 safe A* steps,
-  and stops at the selected network entry. It then recalculates the unchanged
-  final destination from that exact cell and asks the player to press
-  auto-walk again; continuous mode cannot silently cross this boundary.
-  Poison-swamp/manual-only previews, paths over 24 steps, queue failures, and
-  live blockers fail closed without destination handoff. Structured
+  reuses the decoded-safe recovery preview, queues up to 24 safe A* steps per
+  authorization, and stops at an intermediate checkpoint or selected network
+  entry. It then asks the player to press auto-walk again; continuous mode
+  cannot silently cross either boundary. At the network entry it recalculates
+  the unchanged final destination from that exact cell. Poison-swamp/manual-
+  only previews, queue failures, and live blockers fail closed without
+  destination handoff. Structured
   `OVERWORLD_RECOVERY_AUTO_WALK` logs cover start, refusal, blocker,
   cancellation, completion, and handoff. The loaded run walked four safe steps
   north from `(58,108)` to `(58,104)`, stopped at the network boundary even

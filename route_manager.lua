@@ -3826,12 +3826,82 @@ end
 -- preview with an explicit hazard warning. This planner remains read-only:
 -- executable recovery consumes its safe result separately without changing
 -- preview command semantics.
+function M._overworld_recovery_distance_field(
+    map_id, start_x, start_y, blocking, walkability_snapshot)
+    local width, height = map_reader.get_map_dimensions(map_id)
+    if not width or not height or not walkability_snapshot then
+        return {}, 0
+    end
+    local directional_blocks = map_reader.get_directional_blocks
+        and map_reader.get_directional_blocks(map_id) or {}
+    local distances = {[cell_key(start_x, start_y)] = 0}
+    local queue = {{x = start_x, y = start_y}}
+    local head = 1
+    local visited = 0
+
+    local function is_walkable(x, y)
+        local row = walkability_snapshot[y]
+        return row and row[x] == true
+    end
+    local function blocks_entry(x, y, approach)
+        local key = cell_key(x, y)
+        local dynamic = blocking and blocking[key]
+        if dynamic and type(dynamic) ~= "table" then
+            return true
+        end
+        if type(dynamic) == "table" and dynamic[approach] == true then
+            return true
+        end
+        local static = directional_blocks[key]
+        return type(static) == "table" and static[approach] == true
+    end
+
+    while queue[head] do
+        local cell = queue[head]
+        head = head + 1
+        visited = visited + 1
+        local current_distance = distances[cell_key(cell.x, cell.y)]
+        for _, step in ipairs(PATH_DIRECTIONS) do
+            local nx = cell.x + step.dx
+            local ny = cell.y + step.dy
+            local key = cell_key(nx, ny)
+            if nx >= 0 and nx < width and ny >= 0 and ny < height
+               and distances[key] == nil
+               and is_walkable(nx, ny)
+               and not blocks_entry(nx, ny, step.approach) then
+                distances[key] = current_distance + 1
+                queue[#queue + 1] = {x = nx, y = ny}
+            end
+        end
+    end
+    return distances, visited
+end
+
 function M.preview_overworld_network_entry(opts)
     opts = opts or {}
+    local preview_started = os.clock()
     local function candidate_distance(px, py, candidate)
         return math.abs(px - candidate.x) + math.abs(py - candidate.y)
     end
     local function log_preview(result)
+        local timing = result.search_timing
+        if timing then
+            debug_tools.info(string.format(
+                "OVERWORLD_RECOVERY_SEARCH_TIMING route=%s method=single_field candidates=%d pathfind_calls=%d safe_nodes=%d hazard_nodes=%d candidate_ms=%.3f snapshot_ms=%.3f safe_field_ms=%.3f safe_astar_ms=%.3f hazard_field_ms=%.3f hazard_astar_ms=%.3f total_ms=%.3f fallback=%s",
+                tostring(result.final_destination_id or "-"),
+                tonumber(result.candidate_count) or 0,
+                tonumber(timing.pathfind_calls) or 0,
+                tonumber(timing.safe_nodes) or 0,
+                tonumber(timing.hazard_nodes) or 0,
+                tonumber(timing.candidate_ms) or 0,
+                tonumber(timing.snapshot_ms) or 0,
+                tonumber(timing.safe_field_ms) or 0,
+                tonumber(timing.safe_astar_ms) or 0,
+                tonumber(timing.hazard_field_ms) or 0,
+                tonumber(timing.hazard_astar_ms) or 0,
+                tonumber(timing.total_ms) or 0,
+                tostring(timing.fallback == true)))
+        end
         debug_tools.info(string.format(
             "OVERWORLD_RECOVERY_PREVIEW status=%s map=0x%02X from=(%s,%s) entry=(%s,%s) path_len=%s route=%s next=%s final=%s candidates=%d rejected_opening=%d rejected_unreachable=%d skipped_farther=%d hazardous=%s hazard_tiles=%d hazard_first_step=%s rejected_safe_unreachable=%d preview_only=true",
             tostring(result.status or "unknown"),
@@ -3853,8 +3923,6 @@ function M.preview_overworld_network_entry(opts)
             tostring(result.hazard_summary and result.hazard_summary.first_step or "-"),
             tonumber(result.rejected_safe_unreachable) or 0))
     end
-    refresh_navigation_modules()
-
     local map_id, px, py = resolve_plan_origin(opts)
     local terrain_offset = opts.terrain_offset
     if terrain_offset == nil then
@@ -3897,10 +3965,14 @@ function M.preview_overworld_network_entry(opts)
         return result
     end
 
+    local candidate_started = os.clock()
     local candidates = overworld_routes.network_entry_candidates(
         destination.id, map_id, {terrain_offset = terrain_offset})
+    local candidate_ms = (os.clock() - candidate_started) * 1000
+    local snapshot_started = os.clock()
     local safe_snapshot = map_reader.get_walkability_snapshot
         and map_reader.get_walkability_snapshot(map_id) or nil
+    local snapshot_ms = (os.clock() - snapshot_started) * 1000
     if not safe_snapshot then
         local result = {
             status = "walkability_unavailable",
@@ -3944,12 +4016,13 @@ function M.preview_overworld_network_entry(opts)
     end
 
     local max_opening_steps = tonumber(opts.max_opening_steps) or 24
-    local function search_candidates(walkability_snapshot)
+    local function legacy_search_candidates(walkability_snapshot)
         local search = {
             best = nil,
             rejected_opening = 0,
             rejected_unreachable = 0,
             skipped_farther = 0,
+            pathfind_calls = 0,
         }
         for index, candidate in ipairs(candidates) do
             local lower_bound = candidate_distance(px, py, candidate)
@@ -3960,6 +4033,7 @@ function M.preview_overworld_network_entry(opts)
                     > max_opening_steps then
                 search.rejected_opening = search.rejected_opening + 1
             else
+                search.pathfind_calls = search.pathfind_calls + 1
                 local result, _, path = pathfinder.pathfind_to(
                     map_id,
                     px,
@@ -3982,6 +4056,87 @@ function M.preview_overworld_network_entry(opts)
                 else
                     search.rejected_unreachable = search.rejected_unreachable + 1
                 end
+            end
+        end
+        return search
+    end
+
+
+    local function search_candidates(walkability_snapshot)
+        local field_started = os.clock()
+        local distances, nodes = M._overworld_recovery_distance_field(
+            map_id, px, py, blocking, walkability_snapshot)
+        local field_ms = (os.clock() - field_started) * 1000
+        local search = {
+            best = nil,
+            rejected_opening = 0,
+            rejected_unreachable = 0,
+            skipped_farther = 0,
+            pathfind_calls = 0,
+            nodes = nodes,
+            field_ms = field_ms,
+            astar_ms = 0,
+            fallback = false,
+        }
+        local selected = nil
+        for index, candidate in ipairs(candidates) do
+            local lower_bound = candidate_distance(px, py, candidate)
+            if selected and lower_bound > selected.distance then
+                search.skipped_farther = search.skipped_farther
+                    + (#candidates - index + 1)
+                break
+            elseif (tonumber(candidate.opening_length) or math.huge)
+                    > max_opening_steps then
+                search.rejected_opening = search.rejected_opening + 1
+            else
+                local distance = distances[cell_key(candidate.x, candidate.y)]
+                if distance == nil then
+                    search.rejected_unreachable = search.rejected_unreachable + 1
+                elseif not selected or distance < selected.distance then
+                    selected = {candidate = candidate, distance = distance}
+                end
+            end
+        end
+
+        if selected then
+            local astar_started = os.clock()
+            search.pathfind_calls = 1
+            local result, _, path = pathfinder.pathfind_to(
+                map_id,
+                px,
+                py,
+                selected.candidate.x,
+                selected.candidate.y,
+                blocking,
+                {
+                    allow_overworld = true,
+                    walkability_snapshot = walkability_snapshot,
+                })
+            search.astar_ms = (os.clock() - astar_started) * 1000
+            if path and #path == selected.distance then
+                search.best = {
+                    candidate = selected.candidate,
+                    path = path,
+                    path_result = result,
+                }
+            else
+                -- Fail safely if the lightweight field ever disagrees with
+                -- A*. The legacy search is slower, but preserves behavior for
+                -- an unexpected pathfinding rule until it can be diagnosed.
+                local legacy = legacy_search_candidates(walkability_snapshot)
+                legacy.nodes = nodes
+                legacy.field_ms = field_ms
+                legacy.astar_ms = search.astar_ms
+                legacy.pathfind_calls = legacy.pathfind_calls + 1
+                legacy.fallback = true
+                debug_tools.info(string.format(
+                    "OVERWORLD_RECOVERY_SEARCH_FALLBACK route=%s selected=(%d,%d) field_distance=%s astar_distance=%s",
+                    tostring(destination.id),
+                    selected.candidate.x,
+                    selected.candidate.y,
+                    tostring(selected.distance),
+                    tostring(path and #path or "unreachable")))
+                return legacy
             end
         end
         return search
@@ -4014,6 +4169,25 @@ function M.preview_overworld_network_entry(opts)
         end
     end
 
+    local search_timing = {
+        candidate_ms = candidate_ms,
+        snapshot_ms = snapshot_ms,
+        safe_nodes = safe_search.nodes or 0,
+        hazard_nodes = selected_search ~= safe_search
+            and (selected_search.nodes or 0) or 0,
+        safe_field_ms = safe_search.field_ms or 0,
+        safe_astar_ms = safe_search.astar_ms or 0,
+        hazard_field_ms = selected_search ~= safe_search
+            and (selected_search.field_ms or 0) or 0,
+        hazard_astar_ms = selected_search ~= safe_search
+            and (selected_search.astar_ms or 0) or 0,
+        pathfind_calls = (safe_search.pathfind_calls or 0)
+            + (selected_search ~= safe_search and selected_search.pathfind_calls or 0),
+        fallback = safe_search.fallback == true
+            or selected_search.fallback == true,
+        total_ms = (os.clock() - preview_started) * 1000,
+    }
+
     local rejected_opening = selected_search.rejected_opening
     local rejected_unreachable = selected_search.rejected_unreachable
     local skipped_farther = selected_search.skipped_farther
@@ -4032,6 +4206,7 @@ function M.preview_overworld_network_entry(opts)
             rejected_opening = rejected_opening,
             rejected_unreachable = rejected_unreachable,
             skipped_farther = skipped_farther,
+            search_timing = search_timing,
             message = string.format(
                 "No decoded-safe waypoint-network entry is reachable for %s",
                 tostring(destination.title)),
@@ -4090,6 +4265,7 @@ function M.preview_overworld_network_entry(opts)
         decoded_safe = not requires_manual_hazard_crossing,
         auto_walk_allowed = not requires_manual_hazard_crossing,
         requires_manual_hazard_crossing = requires_manual_hazard_crossing,
+        search_timing = search_timing,
         message = message,
     }
     log_preview(result)
@@ -4103,7 +4279,6 @@ end
 -- full 120x120 map costs two breadth-first passes instead of one A* per cell.
 function M.audit_overworld_recovery_coverage(route_name, opts)
     opts = opts or {}
-    refresh_navigation_modules()
 
     local destination = route_name
     if destination == nil or destination == "" then
@@ -4399,12 +4574,18 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
         return refuse("empty_recovery_path",
             "Recovery auto-walk stopped because no recovery steps were available")
     end
-    if #result.path > M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS then
-        result.status = "recovery_too_long"
-        return refuse("step_limit", string.format(
-            "Recovery auto-walk stopped. The safe network entry is %d steps away; the current safety limit is %d steps.",
-            #result.path,
-            M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS))
+    local full_path = result.path
+    local full_path_length = #full_path
+    local checkpoint_stop = full_path_length
+        > M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS
+    if checkpoint_stop then
+        local path_slice = {}
+        for index = 1, M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS do
+            path_slice[index] = full_path[index]
+        end
+        result.path = path_slice
+        result.path_length = #path_slice
+        result.network_entry_path_length = full_path_length
     end
 
     release_target_face("new overworld recovery auto-walk")
@@ -4425,15 +4606,17 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
             "Recovery auto-walk could not queue the safe path")
     end
 
+    local recovery_target = result.path[#result.path]
     local recovery_segment = {
         route = {
             id = result.route_id,
             title = result.route_title,
         },
         waypoint = {
-            name = result.entry_name or "waypoint network entry",
-            x = result.entry_x,
-            y = result.entry_y,
+            name = checkpoint_stop and "safe recovery checkpoint"
+                or (result.entry_name or "waypoint network entry"),
+            x = recovery_target.x,
+            y = recovery_target.y,
         },
         object_id = string.format(
             "overworld_recovery_entry_%s_%s",
@@ -4447,6 +4630,10 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
         waypoint_name = recovery_segment.waypoint.name,
         waypoint_x = result.entry_x,
         waypoint_y = result.entry_y,
+        target_x = recovery_target.x,
+        target_y = recovery_target.y,
+        recovery_checkpoint = checkpoint_stop,
+        remaining_steps = full_path_length - #result.path,
         steps = #result.path,
         continuous = false,
         continuous_requested = continuous_requested == true,
@@ -4469,26 +4656,42 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
     result.ok = true
     result.preview_only = false
     result.recovery_execution = true
-    result.boundary_stop = true
-    result.message = string.format(
-        "Recovery auto-walk. Safe network entry: %s at %d,%d, %d steps. Final destination: %s. Auto-walk will stop at the waypoint network.",
-        tostring(result.entry_name or "waypoint"),
-        result.entry_x,
-        result.entry_y,
-        #result.path,
-        tostring(result.final_destination_title or "selected destination"))
+    result.boundary_stop = not checkpoint_stop
+    result.checkpoint_stop = checkpoint_stop
+    if checkpoint_stop then
+        result.message = string.format(
+            "Recovery auto-walk. Safe checkpoint at %d,%d, %d steps. The waypoint network is %d safe steps away. Final destination: %s. Auto-walk will stop at the checkpoint; press it again to continue recovery.",
+            recovery_target.x,
+            recovery_target.y,
+            #result.path,
+            full_path_length,
+            tostring(result.final_destination_title or "selected destination"))
+    else
+        result.message = string.format(
+            "Recovery auto-walk. Safe network entry: %s at %d,%d, %d steps. Final destination: %s. Auto-walk will stop at the waypoint network.",
+            tostring(result.entry_name or "waypoint"),
+            result.entry_x,
+            result.entry_y,
+            #result.path,
+            tostring(result.final_destination_title or "selected destination"))
+    end
     debug_tools.info(string.format(
-        "OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x%02X from=(%d,%d) entry=(%d,%d) steps=%d route=%s next=%s final=%s continuous_requested=%s boundary_stop=true",
+        "OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x%02X from=(%d,%d) target=(%d,%d) entry=(%d,%d) steps=%d full_steps=%d route=%s next=%s final=%s continuous_requested=%s checkpoint_stop=%s boundary_stop=%s",
         map_id or -1,
         px or -1,
         py or -1,
+        recovery_target.x or -1,
+        recovery_target.y or -1,
         result.entry_x or -1,
         result.entry_y or -1,
         #result.path,
+        full_path_length,
         tostring(result.route_id or "-"),
         tostring(result.next_waypoint_name or "-"),
         tostring(result.final_destination_id or "-"),
-        tostring(continuous_requested == true)))
+        tostring(continuous_requested == true),
+        tostring(checkpoint_stop),
+        tostring(not checkpoint_stop)))
     if opts.speak ~= false then
         tolk.output_interrupt(result.message)
     end
@@ -5602,6 +5805,27 @@ do
 
             if overworld_segment and overworld_segment.recovery == true then
                 local map_id, px, py = nav.get_position()
+                if overworld_segment.recovery_checkpoint == true then
+                    debug_tools.info(string.format(
+                        "OVERWORLD_RECOVERY_AUTO_WALK event=checkpoint_complete map=0x%02X position=(%s,%s) target=(%s,%s) entry=(%s,%s) steps=%s remaining_steps=%s final=%s continuous_requested=%s checkpoint_stop=true boundary_stop=false",
+                        map_id or -1,
+                        tostring(px),
+                        tostring(py),
+                        tostring(overworld_segment.target_x),
+                        tostring(overworld_segment.target_y),
+                        tostring(overworld_segment.waypoint_x),
+                        tostring(overworld_segment.waypoint_y),
+                        tostring(overworld_segment.steps),
+                        tostring(overworld_segment.remaining_steps),
+                        tostring(overworld_segment.final_destination_id or "-"),
+                        tostring(overworld_segment.continuous_requested == true)))
+                    tolk.output_interrupt(string.format(
+                        "Recovery checkpoint reached. The waypoint network remains about %s safe steps away. Final destination: %s. Press auto-walk again to continue recovery.",
+                        tostring(overworld_segment.remaining_steps or "several"),
+                        tostring(overworld_segment.final_destination_title
+                            or "selected destination")))
+                    return
+                end
                 local handoff, handoff_err = overworld_routes.start(
                     overworld_segment.final_destination_id,
                     map_id,

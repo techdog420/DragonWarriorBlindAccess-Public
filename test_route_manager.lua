@@ -1215,6 +1215,8 @@ function tests.manual_overworld_drift_recovers_then_resumes_preserved_destinatio
         start_map_id = 0x01,
         start_x = 19,
         start_y = 7,
+        map_width = 40,
+        map_height = 20,
         current_object = {
             id = "route_garinham_14",
             name = "Route next: Garinham east ridge",
@@ -1358,11 +1360,7 @@ function tests.off_network_recovery_autowalk_refuses_hazardous_manual_preview()
     env.restore()
 end
 
-function tests.off_network_recovery_autowalk_enforces_first_slice_step_limit()
-    local long_path = {}
-    for y = 11, 35 do
-        long_path[#long_path + 1] = {x = 10, y = y, direction = "south"}
-    end
+function tests.off_network_recovery_autowalk_uses_reauthorizable_safe_checkpoints()
     local env = off_network_recovery_env({
         map_height = 50,
         overworld_network_candidates = {
@@ -1376,19 +1374,54 @@ function tests.off_network_recovery_autowalk_enforces_first_slice_step_limit()
                 opening_length = 2,
             },
         },
-        pathfind_to_fn = function()
+        pathfind_to_fn = function(_, start_y)
+            local long_path = {}
+            for y = start_y + 1, 35 do
+                long_path[#long_path + 1] = {
+                    x = 10, y = y, direction = "south",
+                }
+            end
             return "Path", nil, long_path
         end,
     })
 
     local result = env.route_manager.autowalk_to_current()
 
-    assert_equal(result.status, "recovery_too_long",
-        "the first executable slice should refuse recovery paths over 24 steps")
-    assert_equal(env.start_route_calls(), 0,
-        "over-limit recovery must not queue movement")
-    assert_contains(env.outputs[#env.outputs], "current safety limit is 24 steps",
-        "over-limit speech should state the exact safety bound")
+    assert_equal(result.status, "recovery_queued",
+        "an over-limit safe recovery should queue one bounded checkpoint")
+    assert_equal(result.checkpoint_stop, true,
+        "the first slice should be marked as a checkpoint stop")
+    assert_equal(result.boundary_stop, false,
+        "a checkpoint must not be mislabeled as the waypoint-network boundary")
+    assert_equal(result.network_entry_path_length, 25,
+        "checkpoint diagnostics should retain the full safe distance")
+    assert_equal(#env.last_start_route_steps(), 24,
+        "the first checkpoint must preserve the 24-step safety bound")
+    assert_contains(env.outputs[#env.outputs], "press it again to continue recovery",
+        "checkpoint startup speech should explain the next authorization")
+
+    env.set_position(0x01, 10, 34)
+    env.auto_step.on_route_complete()
+
+    assert_equal(#env.overworld_start_calls(), 0,
+        "checkpoint arrival must not perform a premature network handoff")
+    assert_contains(env.outputs[#env.outputs], "Recovery checkpoint reached",
+        "checkpoint completion should be announced distinctly")
+
+    local final_slice = env.route_manager.autowalk_to_current()
+    assert_equal(final_slice.status, "recovery_queued",
+        "a second authorization should queue the remaining safe recovery")
+    assert_equal(final_slice.checkpoint_stop, false,
+        "the final slice should target the actual network boundary")
+    assert_equal(final_slice.boundary_stop, true,
+        "the final slice should retain the explicit network boundary stop")
+    assert_equal(#env.last_start_route_steps(), 1,
+        "the second slice should contain only the remaining step")
+
+    env.set_position(0x01, 10, 35)
+    env.auto_step.on_route_complete()
+    assert_equal(#env.overworld_start_calls(), 1,
+        "only actual network arrival should hand off the destination")
 
     env.restore()
 end
@@ -3016,6 +3049,9 @@ function tests.overworld_network_entry_preview_selects_nearest_reachable_safe_en
         start_y = 10,
         map_width = 20,
         map_height = 20,
+        non_walkable_cells = {
+            ["11,10"] = true,
+        },
         overworld_active_destination = {
             id = "charlock_castle",
             title = "Charlock Castle",
@@ -3065,8 +3101,12 @@ function tests.overworld_network_entry_preview_selects_nearest_reachable_safe_en
         "preview should count the rejected nearer entry")
     assert_equal(result.skipped_farther, 1,
         "preview should stop once remaining lower bounds cannot win")
-    assert_equal(env.pathfind_calls(), 2,
-        "preview should not search candidates that cannot beat the best path")
+    assert_equal(env.pathfind_calls(), 1,
+        "the distance field should need only one final A-star path")
+    assert_equal(result.search_timing and result.search_timing.fallback, false,
+        "matching distance-field and A-star results should avoid legacy fallback")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "method=single_field", "preview should log the optimized search method")
     assert_equal(env.last_direct_call().opts.allow_overworld, true,
         "recovery search should explicitly opt into overworld A star")
     assert_equal(env.last_direct_call().blocking["9,9"], true,
@@ -3085,6 +3125,8 @@ function tests.overworld_network_entry_preview_refuses_when_no_safe_entry_exists
         start_map_id = 0x01,
         start_x = 10,
         start_y = 10,
+        map_width = 20,
+        map_height = 20,
         overworld_active_destination = {
             id = "charlock_castle",
             title = "Charlock Castle",
@@ -3107,10 +3149,15 @@ function tests.overworld_network_entry_preview_refuses_when_no_safe_entry_exists
         "unreachable recovery preview should not report success")
     assert_equal(result.rejected_unreachable, 1,
         "unreachable entry should be included in diagnostics")
+    assert_equal(result.search_timing and result.search_timing.fallback, true,
+        "distance-field disagreement should fail safe through legacy A-star search")
     assert_equal(env.start_route_calls(), 0,
         "failed preview must not queue movement")
     assert_contains(result.message, "No decoded-safe waypoint-network entry",
         "failure should explain that no safe entry was found")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "OVERWORLD_RECOVERY_SEARCH_FALLBACK",
+        "distance-field disagreement should be explicit in the debug log")
 
     env.restore()
 end

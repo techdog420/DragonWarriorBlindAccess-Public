@@ -11894,6 +11894,27 @@ function tests.network_entry_preview_is_pure_and_excludes_transition_landmarks()
     routes.reset_for_tests()
 end
 
+function tests.network_entry_candidate_cache_returns_a_fresh_array()
+    routes.reset_for_tests()
+
+    local first = routes.network_entry_candidates(
+        "charlock_castle", 0x01, {terrain_offset = 0x10})
+    local original_count = #first
+    assert(original_count > 1,
+        "cache isolation fixture should expose multiple network entries")
+
+    table.remove(first, 1)
+    local second = routes.network_entry_candidates(
+        "charlock_castle", 0x01, {terrain_offset = 0x10})
+
+    assert_equal(#second, original_count,
+        "sorting or editing one candidate array must not corrupt cached results")
+    assert_equal(type(second[1]), "table",
+        "a cached lookup should still return its first candidate")
+
+    routes.reset_for_tests()
+end
+
 function tests.northwestern_return_holes_use_proven_origin_returns()
     local destinations = {
         Kol = {

@@ -1,6 +1,6 @@
 # Current Investigation Scratchpad
 
-Updated: 2026-09-02
+Updated: 2026-09-03
 
 ## 2026-09-02 Off-Network Drift Recovery Acceptance
 
@@ -105,6 +105,51 @@ Updated: 2026-09-02
   the existing stop-and-reconfirm boundary at each slice. Keep the 276 hazard-
   required cells manual-only, and inspect the nine transition-pocket cells as
   a separate geometry audit rather than folding them into checkpoint work.
+- CHECKPOINT / SEARCH OPTIMIZATION SOURCE-COMPLETE: safe recovery paths longer
+  than 24 steps now queue only the first 24-step slice, stop at a named safe
+  checkpoint, and require another auto-walk press. Intermediate checkpoints do
+  not falsely start the destination route; only the actual waypoint-network
+  boundary performs the existing explicit handoff. Hazard-required recovery
+  remains manual-only.
+- STARTUP-LAG REDUCTION: recovery now builds one forward decoded-safe distance
+  field from the hero, selects the same nearest eligible entry, and runs A-star
+  once to preserve its turn/path tie behavior. If the field and A-star ever
+  disagree, it logs `OVERWORLD_RECOVERY_SEARCH_FALLBACK` and repeats the exact
+  legacy search. Established corridor membership and destination candidate
+  lists are cached; callers receive a fresh candidate array, and repeated
+  checkpoint presses retain current runtime-block safety by rebuilding the
+  distance field each time. Offline candidate construction dropped from about
+  478-1157 ms to 132-191 ms on a cold lookup and approximately 0 ms when
+  repeated from cache.
+- STATIC VERIFICATION: Lua syntax and `git diff --check` pass. Focused suites
+  pass `340/340` overworld-route tests and `143/143` route-manager tests. The
+  native `python -u run_tests.py` gate passes all 33 host-runnable Lua suites,
+  all 68 Python tests, speech dependency, and command-queue checks.
+- LIVE ACCEPTANCE COMPLETE: after reload, Charlock recovery from World Map
+  `(92,110)` selected network entry `(23,98)` at the audited distance of 117
+  steps. The cold search took 187 ms, including 127 ms to build 849 destination
+  candidates. Every later authorization reused that cache: candidate lookup
+  took 0-1 ms and total planning took 47-64 ms. Every search used one final
+  A-star call and `fallback=false`.
+- CHECKPOINT PROOF: after two partial attempts were interrupted, four complete
+  24-step checkpoints ended at `(82,84)`, `(63,81)`, `(48,90)`, and `(32,98)`.
+  The final nine-step authorization reached the real network boundary
+  `(23,98)` and only then handed Charlock to `hauksness_return_staging` toward
+  `Hauksness western corridor`. Continuous mode did not cross any checkpoint
+  or the network boundary without another press.
+- INTERRUPTION / TIMING EVIDENCE: a Wraith battle began two frames after a
+  timeout at `(91,110)->LEFT`, so the pre-battle field frame logged a diagnostic
+  blocked seam; it added no runtime block. A Starwyvern battle canceled active
+  recovery at `(89,101)` with `reason=can_walk_false`. Charlock remained the
+  final destination across both. The one player-facing timing stop at
+  `(91,105)->UP` crossed on the next authorization and changed its seam record
+  from `blocked_only` to `noisy`; do not promote it as map geometry. Internal
+  bounded retries at `(63,81)->DOWN` and `(32,98)->LEFT` also recovered without
+  manual movement.
+- FINAL BASELINE: fresh probe `CHECKPOINT_RECOVERY_ACCEPTANCE` was consumed at
+  frame 22140. Frame 22500 reported World Map `(23,98)`, path target nil, zero
+  NPC blockers, zero runtime blockers, and no new script error. Long safe
+  checkpoint recovery and its startup-lag optimization are accepted live.
 
 ## 2026-08-18 Rimuldar Intermediate-Town Bypass
 
