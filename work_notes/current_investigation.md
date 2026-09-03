@@ -62,6 +62,49 @@ Updated: 2026-09-02
   route completed and entered Mountain Cave map `0x16` at `(0,7)`. Fresh frame
   10920 reported path target nil and zero runtime/NPC blockers; the script-error
   file remains unchanged since May.
+- BATTLE NEAR-MATCH / PARTIAL ACCEPTANCE: Swamp Cave recovery began at
+  `(95,38)` and reached intended entry `(95,35)`, but final settle carried one
+  extra tile to `(95,34)` and canceled with `route_drift_off_path`. The next
+  auto-walk replanned one east step to entry `(96,34)`, preserved
+  `swamp_cave_bridge`, and logged `handoff_ready`. A battle began 32 frames
+  after that recovery completion, while movement was already stopped at the
+  network boundary; it therefore did not exercise battle cancellation during
+  active recovery. After combat, auto-walk correctly continued the preserved
+  Swamp Cave route from `(96,34)`. Fresh frame 559860 found the hero at
+  `(94,40)` with path target nil and zero runtime/NPC blockers. This validates
+  post-boundary battle preservation, but the narrower active-recovery battle
+  interruption remains untested.
+- COVERAGE AUDIT READY: added a read-only destination-specific whole-overworld
+  audit that classifies decoded cells as established network, safe recovery
+  within the 24-step execution limit, safe recovery beyond the limit,
+  hazard-required, unreachable, transition, or non-walkable. It uses reverse
+  multi-source traversal from every eligible entry and emits structured counts
+  plus representative coordinates without changing route or movement state.
+  Two focused regressions pass 143/143 route-manager tests, including the
+  24-step split and a poison-separated region. Lua syntax, `git diff --check`,
+  and the native full gate pass all 33 host-runnable Lua suites plus 68 Python
+  tests. Live ROM-backed counts still require reloading `main.lua`, then running
+  `audit_overworld_recovery:ROUTE_ID` for the 16 canonical destinations.
+- LIVE COVERAGE RESULT: all 16 canonical destinations completed at frame groups
+  3720, 6780, 7440, and 7980. Every candidate passed the route-opening limit
+  (`rejected_opening=0`); destination sets contain 714-849 eligible entries.
+  The common map partition is 975 network cells, 23 transition cells, and 5530
+  non-walkable cells. Depending on destination, 7127-7189 off-network cells are
+  safely recoverable within 24 steps and 398-460 are safe but over the limit.
+  All destinations share 276 hazard-required cells and 9 unreachable cells.
+  Worst safe recovery distance is 117, represented at `(92,110)`, `(91,111)`,
+  and `(90,112)`; nearby distance-116 examples are `(85,108)` and `(93,108)`.
+  Cantlin and Great Swamp are the largest over-limit sets at 460; Tantegel and
+  Brecconary are smallest at 398. Representative unreachable cells cluster by
+  automatic entrances: `(105,43)`, `(105,44)`, and `(101,71)` through
+  `(103,71)`. Treat these as a focused transition-pocket review before changing
+  map or route data. Post-audit frame 10800 remained World Map `(94,40)` with
+  path target nil and zero runtime/NPC blockers.
+- RECOMMENDATION: implement bounded recovery checkpoints for the 398-460
+  decoded-safe over-limit cells rather than raising the 24-step cap. Preserve
+  the existing stop-and-reconfirm boundary at each slice. Keep the 276 hazard-
+  required cells manual-only, and inspect the nine transition-pocket cells as
+  a separate geometry audit rather than folding them into checkpoint work.
 
 ## 2026-08-18 Rimuldar Intermediate-Town Bypass
 

@@ -3231,6 +3231,84 @@ function tests.overworld_network_entry_preview_recognizes_current_network_cell()
     env.restore()
 end
 
+function tests.overworld_recovery_coverage_audit_separates_near_and_over_limit_cells()
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        map_width = 5,
+        map_height = 1,
+        overworld_network_candidates = {
+            {x = 0, y = 0, opening_length = 1},
+        },
+        overworld_transition_cells = {},
+        overworld_network_cell_fn = function(x, y)
+            return x == 0 and y == 0
+        end,
+    })
+
+    local result = env.route_manager.audit_overworld_recovery_coverage(
+        "charlock_castle", {map_id = 0x01, max_recovery_steps = 2})
+
+    assert_equal(result.status, "complete", "coverage audit should complete")
+    assert_equal(result.counts.network, 1, "entry corridor should count as network")
+    assert_equal(result.counts.safe_within_limit, 2,
+        "two off-network cells should be within the two-step limit")
+    assert_equal(result.counts.safe_over_limit, 2,
+        "two off-network cells should exceed the two-step limit")
+    assert_equal(result.max_safe_distance, 4,
+        "audit should report the farthest decoded-safe recovery distance")
+    assert_equal(result.samples.safe_over_limit[1].x, 4,
+        "over-limit samples should start with the farthest coordinate")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "safe_over_limit=2", "structured audit log should include the gap count")
+    assert_equal(env.start_route_calls(), 0, "coverage audit must not queue movement")
+
+    env.restore()
+end
+
+function tests.overworld_recovery_coverage_audit_identifies_hazard_only_region()
+    local walls = {}
+    for x = 0, 4 do
+        walls[x .. ",0"] = true
+        walls[x .. ",2"] = true
+    end
+    local env = make_env({
+        is_overworld = true,
+        start_map_id = 0x01,
+        map_width = 5,
+        map_height = 3,
+        non_walkable_cells = walls,
+        hazard_cells = { ["2,1"] = "poison_swamp" },
+        overworld_network_candidates = {
+            {x = 0, y = 1, opening_length = 1},
+        },
+        overworld_transition_cells = {},
+        overworld_network_cell_fn = function(x, y)
+            return x == 0 and y == 1
+        end,
+    })
+
+    local result = env.route_manager.audit_overworld_recovery_coverage(
+        "magic_temple", {map_id = 0x01, max_recovery_steps = 2})
+
+    assert_equal(result.counts.network, 1, "entry corridor should count as network")
+    assert_equal(result.counts.safe_within_limit, 1,
+        "safe recovery should stop before poison swamp")
+    assert_equal(result.counts.hazard_required, 3,
+        "swamp and the region beyond it should require hazardous recovery")
+    assert_equal(result.counts.nonwalkable, 10,
+        "wall rows should remain outside recovery coverage")
+    assert_equal(result.counts.unreachable, 0,
+        "hazard-connected cells should not be mislabeled unreachable")
+    assert_equal(result.samples.hazard_required[1].x, 4,
+        "hazard-only samples should start with the farthest coordinate")
+    assert_equal(#result.samples.unreachable, 0,
+        "unreachable diagnostics should remain empty when every cell is classified")
+    assert_equal(env.start_route_calls(), 0, "coverage audit must remain read-only")
+
+    env.restore()
+end
+
 function tests.pathfind_reports_unsafe_hazard_route_when_safe_route_is_blocked()
     local env = make_env({
         pathfind_mode = "hazard_only",

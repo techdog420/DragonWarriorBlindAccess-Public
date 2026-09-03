@@ -235,6 +235,14 @@ COMMANDS (write to dw_commands.txt, one per line)
                            a warned manual-only route instead. Reports the
                            recovery path and next guided leg; never queues
                            movement or teleports.
+  audit_overworld_recovery:ROUTE_ID
+                           Read-only whole-map coverage audit for one Travel
+                           destination. Classifies every overworld cell as
+                           network, safe recovery within 24 steps, safe but
+                           beyond the limit, hazard-required, unreachable,
+                           transition, or non-walkable. Structured counts and
+                           representative coordinates are written to
+                           dw_debug.log; no route or movement state changes.
   stop_overworld_route     Clear active overworld route guidance
   auto_walk                On the world map, if an overworld route is active,
                            an off-network start queues at most 24 decoded-safe

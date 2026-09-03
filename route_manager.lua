@@ -4096,6 +4096,262 @@ function M.preview_overworld_network_entry(opts)
     return result
 end
 
+-- Audit decoded overworld recovery coverage for one Travel destination. This
+-- is deliberately read-only and ignores transient NPC/runtime blockers: it
+-- measures the stable map geometry that the recovery planner can rely on.
+-- Distances are computed backwards from all eligible network entries so a
+-- full 120x120 map costs two breadth-first passes instead of one A* per cell.
+function M.audit_overworld_recovery_coverage(route_name, opts)
+    opts = opts or {}
+    refresh_navigation_modules()
+
+    local destination = route_name
+    if destination == nil or destination == "" then
+        local active = overworld_routes.active_destination()
+        destination = active and active.id or nil
+    end
+    if destination == nil then
+        local result = {
+            status = "no_destination",
+            ok = false,
+            message = "Recovery coverage audit needs a Travel destination",
+        }
+        debug_tools.info("OVERWORLD_RECOVERY_AUDIT status=no_destination")
+        return result
+    end
+
+    local map_id = tonumber(opts.map_id)
+    if map_id == nil then
+        map_id = select(1, resolve_plan_origin(opts))
+    end
+    local terrain_offset = opts.terrain_offset
+    if terrain_offset == nil then
+        terrain_offset = snapshot.terrain_offset
+    end
+    if not maps.is_overworld(map_id, terrain_offset) then
+        local result = {
+            status = "not_overworld",
+            ok = false,
+            route_id = destination,
+            map_id = map_id,
+            message = "Recovery coverage audit is only available for the world map",
+        }
+        debug_tools.info(string.format(
+            "OVERWORLD_RECOVERY_AUDIT status=not_overworld route=%s map=0x%02X",
+            tostring(destination), map_id or -1))
+        return result
+    end
+
+    local width, height = map_reader.get_map_dimensions(map_id)
+    local safe_snapshot = map_reader.get_walkability_snapshot
+        and map_reader.get_walkability_snapshot(map_id) or nil
+    local hazard_snapshot = map_reader.get_walkability_snapshot
+        and map_reader.get_walkability_snapshot(map_id, {allow_hazards = true}) or nil
+    if not width or not height or not safe_snapshot or not hazard_snapshot then
+        local result = {
+            status = "walkability_unavailable",
+            ok = false,
+            route_id = destination,
+            map_id = map_id,
+            message = "Recovery coverage audit refused because decoded walkability is unavailable",
+        }
+        debug_tools.info(string.format(
+            "OVERWORLD_RECOVERY_AUDIT status=walkability_unavailable route=%s map=0x%02X",
+            tostring(destination), map_id or -1))
+        return result
+    end
+
+    local candidates = overworld_routes.network_entry_candidates(
+        destination, map_id, {terrain_offset = terrain_offset})
+    local max_opening_steps = tonumber(opts.max_opening_steps) or 24
+    local max_recovery_steps = tonumber(opts.max_recovery_steps)
+        or M.OVERWORLD_RECOVERY_AUTO_WALK_MAX_STEPS
+    local eligible = {}
+    local rejected_opening = 0
+    for _, candidate in ipairs(candidates) do
+        if (tonumber(candidate.opening_length) or math.huge) <= max_opening_steps then
+            eligible[#eligible + 1] = candidate
+        else
+            rejected_opening = rejected_opening + 1
+        end
+    end
+
+    local transition_lookup = {}
+    for _, cell in ipairs(overworld_routes.network_transition_cells()) do
+        transition_lookup[cell_key(cell.x, cell.y)] = true
+    end
+    local directional_blocks = map_reader.get_directional_blocks
+        and map_reader.get_directional_blocks(map_id) or {}
+
+    local function snapshot_walkable(walkability, x, y)
+        local row = walkability[y]
+        return row and row[x] == true
+    end
+
+    -- Reverse traversal preserves directional entry restrictions: when the
+    -- search visits predecessor P from cell C, it verifies that P may enter C.
+    local function distances_to_entries(walkability)
+        local distances = {}
+        local queue = {}
+        local seeded = 0
+        for _, candidate in ipairs(eligible) do
+            local key = cell_key(candidate.x, candidate.y)
+            if not transition_lookup[key]
+               and snapshot_walkable(walkability, candidate.x, candidate.y)
+               and distances[key] == nil then
+                distances[key] = 0
+                queue[#queue + 1] = {x = candidate.x, y = candidate.y}
+                seeded = seeded + 1
+            end
+        end
+
+        local head = 1
+        while queue[head] do
+            local cell = queue[head]
+            head = head + 1
+            local current_key = cell_key(cell.x, cell.y)
+            local current_distance = distances[current_key]
+            local current_blocks = directional_blocks[current_key]
+            for _, step in ipairs(PATH_DIRECTIONS) do
+                local px = cell.x - step.dx
+                local py = cell.y - step.dy
+                local predecessor_key = cell_key(px, py)
+                if px >= 0 and px < width and py >= 0 and py < height
+                   and distances[predecessor_key] == nil
+                   and not transition_lookup[predecessor_key]
+                   and snapshot_walkable(walkability, px, py)
+                   and not (current_blocks and current_blocks[step.approach] == true) then
+                    distances[predecessor_key] = current_distance + 1
+                    queue[#queue + 1] = {x = px, y = py}
+                end
+            end
+        end
+        return distances, seeded
+    end
+
+    local safe_distances, safe_entry_count = distances_to_entries(safe_snapshot)
+    local hazard_distances, hazard_entry_count = distances_to_entries(hazard_snapshot)
+    local counts = {
+        network = 0,
+        safe_within_limit = 0,
+        safe_over_limit = 0,
+        hazard_required = 0,
+        unreachable = 0,
+        transition = 0,
+        nonwalkable = 0,
+    }
+    local samples = {
+        safe_over_limit = {},
+        hazard_required = {},
+        unreachable = {},
+    }
+    local max_safe_distance = 0
+
+    for y = 0, height - 1 do
+        for x = 0, width - 1 do
+            local key = cell_key(x, y)
+            if transition_lookup[key] then
+                counts.transition = counts.transition + 1
+            elseif not snapshot_walkable(hazard_snapshot, x, y) then
+                counts.nonwalkable = counts.nonwalkable + 1
+            elseif overworld_routes.is_network_corridor_cell(x, y) then
+                counts.network = counts.network + 1
+            else
+                local safe_distance = safe_distances[key]
+                local hazard_distance = hazard_distances[key]
+                if safe_distance ~= nil then
+                    if safe_distance > max_safe_distance then
+                        max_safe_distance = safe_distance
+                    end
+                    if safe_distance <= max_recovery_steps then
+                        counts.safe_within_limit = counts.safe_within_limit + 1
+                    else
+                        counts.safe_over_limit = counts.safe_over_limit + 1
+                        samples.safe_over_limit[#samples.safe_over_limit + 1] = {
+                            x = x, y = y, distance = safe_distance,
+                        }
+                    end
+                elseif hazard_distance ~= nil then
+                    counts.hazard_required = counts.hazard_required + 1
+                    samples.hazard_required[#samples.hazard_required + 1] = {
+                        x = x, y = y, distance = hazard_distance,
+                    }
+                else
+                    counts.unreachable = counts.unreachable + 1
+                    samples.unreachable[#samples.unreachable + 1] = {x = x, y = y}
+                end
+            end
+        end
+    end
+
+    local function sort_distance_samples(items)
+        table.sort(items, function(a, b)
+            if a.distance ~= b.distance then return a.distance > b.distance end
+            if a.y ~= b.y then return a.y < b.y end
+            return a.x < b.x
+        end)
+    end
+    sort_distance_samples(samples.safe_over_limit)
+    sort_distance_samples(samples.hazard_required)
+    table.sort(samples.unreachable, function(a, b)
+        if a.y ~= b.y then return a.y < b.y end
+        return a.x < b.x
+    end)
+
+    local sample_limit = math.max(0, math.floor(tonumber(opts.sample_limit) or 5))
+    local unreachable_sample_limit = math.max(sample_limit,
+        math.floor(tonumber(opts.unreachable_sample_limit) or 12))
+    for category, items in pairs(samples) do
+        local category_limit = category == "unreachable"
+            and unreachable_sample_limit or sample_limit
+        while #items > category_limit do
+            table.remove(items)
+        end
+    end
+
+    local status = #eligible == 0 and "no_eligible_entries" or "complete"
+    local result = {
+        status = status,
+        ok = status == "complete",
+        route_id = destination,
+        map_id = map_id,
+        width = width,
+        height = height,
+        candidate_count = #candidates,
+        eligible_candidate_count = #eligible,
+        safe_entry_count = safe_entry_count,
+        hazard_entry_count = hazard_entry_count,
+        rejected_opening = rejected_opening,
+        max_opening_steps = max_opening_steps,
+        max_recovery_steps = max_recovery_steps,
+        max_safe_distance = max_safe_distance,
+        counts = counts,
+        samples = samples,
+    }
+    result.message = string.format(
+        "Recovery audit for %s. Network %d. Safe within %d steps %d. Safe beyond limit %d. Hazard required %d. Unreachable %d. Maximum safe distance %d.",
+        tostring(destination), counts.network, max_recovery_steps,
+        counts.safe_within_limit, counts.safe_over_limit,
+        counts.hazard_required, counts.unreachable, max_safe_distance)
+
+    debug_tools.info(string.format(
+        "OVERWORLD_RECOVERY_AUDIT status=%s route=%s map=0x%02X size=%dx%d candidates=%d eligible=%d rejected_opening=%d safe_entries=%d hazard_entries=%d network=%d safe_within_limit=%d safe_over_limit=%d hazard_required=%d unreachable=%d transition=%d nonwalkable=%d max_safe_distance=%d recovery_limit=%d",
+        status, tostring(destination), map_id, width, height, #candidates,
+        #eligible, rejected_opening, safe_entry_count, hazard_entry_count,
+        counts.network, counts.safe_within_limit, counts.safe_over_limit,
+        counts.hazard_required, counts.unreachable, counts.transition,
+        counts.nonwalkable, max_safe_distance, max_recovery_steps))
+    for category, items in pairs(samples) do
+        for _, sample in ipairs(items) do
+            debug_tools.info(string.format(
+                "OVERWORLD_RECOVERY_AUDIT_SAMPLE route=%s category=%s x=%d y=%d distance=%s",
+                tostring(destination), category, sample.x, sample.y,
+                tostring(sample.distance or "-")))
+        end
+    end
+    return result
+end
+
 local queue_overworld_segment_steps
 local queue_path_steps
 local overworld_segment_target
