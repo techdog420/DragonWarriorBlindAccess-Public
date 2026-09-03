@@ -7710,6 +7710,7 @@ while true do
         end
     end
     trace_teleport_loop("PRE_EDGE_TICKS")
+    checked_scan("route_manager.tick_diagnostics", route_mgr.tick_diagnostics)
     local seeded_edge_probe_active_this_frame = checked_call("tick_seeded_edge_probe", tick_seeded_edge_probe) == true
     local edge_probe_active_this_frame = checked_call("tick_edge_probe", tick_edge_probe) == true
     local edge_verify_active_this_frame = checked_call("tick_edge_verify", tick_edge_verify) == true

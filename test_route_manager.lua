@@ -23,8 +23,12 @@ local function make_env(options)
     options = options or {}
     local outputs = {}
     local published_events = {}
+    local event_subscribers = {}
     local function publish_event(name, payload)
         published_events[#published_events + 1] = {name = name, payload = payload}
+        for _, handler in ipairs(event_subscribers[name] or {}) do
+            handler(payload)
+        end
     end
     local start_route_calls = 0
     local last_start_route_steps = nil
@@ -607,6 +611,13 @@ local function make_env(options)
     package.preload["event_bus"] = function()
         return {
             publish = publish_event,
+            subscribe = function(name, handler)
+                if not event_subscribers[name] then
+                    event_subscribers[name] = {}
+                end
+                event_subscribers[name][#event_subscribers[name] + 1] = handler
+                return #event_subscribers[name]
+            end,
         }
     end
 
@@ -1442,6 +1453,60 @@ function tests.off_network_recovery_blocker_stops_without_destination_handoff()
     assert_contains(table.concat(env.debug_infos(), "\n"),
         "OVERWORLD_RECOVERY_AUTO_WALK event=blocked",
         "blocked recovery should be visible in structured logs")
+
+    env.restore()
+end
+
+function tests.overworld_timing_timeout_diagnostic_is_suppressed_when_battle_appears()
+    local env = off_network_recovery_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(10, 10, "down", {
+        queued_route = true,
+        movement_started = true,
+        timing_suspect = true,
+    })
+
+    assert_equal(#env.seam_entries(0x01), 0,
+        "timing-suspect overworld timeout should defer seam evidence during battle-onset grace")
+    assert_equal(env.published_events()[#env.published_events()].payload.reason,
+        "overworld_recovery_blocked",
+        "diagnostic grace must not delay the player-facing route stop")
+
+    env.publish_event("battle_started")
+
+    assert_equal(#env.seam_entries(0x01), 0,
+        "battle onset should discard the deferred blocked-seam observation")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "SEAM_OBSERVATION_SUPPRESSED reason=battle_started",
+        "battle suppression should be explicit in diagnostics")
+
+    env.restore()
+end
+
+function tests.overworld_timing_timeout_diagnostic_is_released_without_battle()
+    local env = off_network_recovery_env()
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_blocked(10, 10, "down", {
+        queued_route = true,
+        movement_started = true,
+        timing_suspect = true,
+    })
+
+    for _ = 1, env.route_manager.BATTLE_ONSET_DIAGNOSTIC_GRACE_FRAMES - 1 do
+        env.route_manager.tick_diagnostics()
+    end
+    assert_equal(#env.seam_entries(0x01), 0,
+        "blocked-seam evidence should remain deferred through the grace window")
+
+    env.route_manager.tick_diagnostics()
+
+    assert_equal(#env.seam_entries(0x01), 1,
+        "a timeout without battle onset should still become blocked-seam evidence")
+    assert_contains(table.concat(env.debug_infos(), "\n"),
+        "SEAM_OBSERVATION_RELEASED reason=battle_grace_elapsed",
+        "released seam evidence should retain a diagnostic explanation")
 
     env.restore()
 end

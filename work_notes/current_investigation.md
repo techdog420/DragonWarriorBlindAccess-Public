@@ -150,6 +150,40 @@ Updated: 2026-09-03
   frame 22140. Frame 22500 reported World Map `(23,98)`, path target nil, zero
   NPC blockers, zero runtime blockers, and no new script error. Long safe
   checkpoint recovery and its startup-lag optimization are accepted live.
+- DIAGNOSTIC FIX SOURCE-COMPLETE: timing-suspect ordinary overworld timeouts
+  now defer only their blocked-seam observation for three frames. Route
+  stopping remains immediate. If `battle_started` arrives during that window,
+  the pending observation is discarded with
+  `SEAM_OBSERVATION_SUPPRESSED reason=battle_started`; otherwise it is recorded
+  normally with `SEAM_OBSERVATION_RELEASED reason=battle_grace_elapsed`.
+  Regressions cover both branches and confirm that recovery cancellation is
+  not delayed. Lua syntax, `git diff --check`, all 33 host-runnable Lua suites,
+  and all 68 Python tests pass.
+- DIAGNOSTIC FIX LIVE-ACCEPTED: at frame `23075`, recovery timed out on World
+  Map `(48,92)->DOWN` and logged `SEAM_OBSERVATION_DEFERRED`. A Werewolf battle
+  appeared exactly two frames later; frame `23077` logged
+  `SEAM_OBSERVATION_SUPPRESSED reason=battle_started`, with no blocked seam
+  recorded. After combat, the unchanged route crossed that same edge at frame
+  `24055` and recorded destination `(48,93)` as `passable_only`. This is the
+  exact race the fix targets, and it now leaves no false blocker evidence.
+- UNRESOLVED BATTLE-DIALOGUE POLISH: the Magiwyvern encounter beginning at
+  frame `16333` spoke coherent-looking redraw mixtures at frames `16699`,
+  `16714`, `17367`, and `17382`. Examples include `Points have been reduced by
+  41. Magiwyvern chants the spell of Thou art asleep.` The proper attack,
+  `SLEEP`, and sleep-status lines had already been announced. Battle snapshots
+  retained stable hero stats, no integrity warning fired, and
+  `dw_script_error.log` remains unchanged since May. Treat this as battle
+  window overlap/fast-dialogue filtering, not ROM, save, or route corruption.
+  Patch separately with the captured page sequence as a regression.
+- LIVE NEAR-MATCH: after reload, a Werewolf battle began at frame `4157`
+  during an active recovery step from World Map `(82,89)`. Auto-step canceled
+  one frame later with `reason=can_walk_false`; no blocked-seam observation was
+  recorded, Charlock remained the final destination, and the diagnostic grace
+  branch did not activate because the step had not timed out. Fresh frame
+  `10380` reported `(82,89)`, path target nil, zero NPC blockers, and zero
+  runtime blockers. This cleanly validates ordinary battle cancellation; exact
+  `SEAM_OBSERVATION_DEFERRED` to `SUPPRESSED` live coverage still awaits the
+  rarer timeout-plus-battle race.
 
 ## 2026-08-18 Rimuldar Intermediate-Town Bypass
 

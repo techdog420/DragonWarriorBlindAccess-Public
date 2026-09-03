@@ -129,6 +129,8 @@ M._overworld_hazard_confirmation = {
     pending_seconds = 10,
     active_idle_seconds = 20,
 }
+M.BATTLE_ONSET_DIAGNOSTIC_GRACE_FRAMES = 3
+M._pending_overworld_timeout_observation = nil
 local target_npc_hold = nil
 local target_face_input = nil
 local object_pathability_signature = nil
@@ -1006,6 +1008,88 @@ local function observe_seam_result(map_id, from_x, from_y, dir, result, source)
             tostring(new_class)))
     end
     return entry, new_class
+end
+
+function M._release_pending_overworld_timeout_observation(reason)
+    local pending = M._pending_overworld_timeout_observation
+    if not pending then
+        return false
+    end
+    M._pending_overworld_timeout_observation = nil
+    debug_tools.info(string.format(
+        "SEAM_OBSERVATION_RELEASED reason=%s map=0x%02X from=(%d,%d) dir=%s source=%s",
+        tostring(reason or "unknown"),
+        pending.map_id or -1,
+        pending.from_x or -1,
+        pending.from_y or -1,
+        tostring(pending.dir),
+        tostring(pending.source or "-")))
+    observe_seam_result(
+        pending.map_id,
+        pending.from_x,
+        pending.from_y,
+        pending.dir,
+        "blocked",
+        pending.source)
+    return true
+end
+
+function M._suppress_pending_overworld_timeout_observation(reason)
+    local pending = M._pending_overworld_timeout_observation
+    if not pending then
+        return false
+    end
+    M._pending_overworld_timeout_observation = nil
+    debug_tools.info(string.format(
+        "SEAM_OBSERVATION_SUPPRESSED reason=%s map=0x%02X from=(%d,%d) dir=%s source=%s",
+        tostring(reason or "unknown"),
+        pending.map_id or -1,
+        pending.from_x or -1,
+        pending.from_y or -1,
+        tostring(pending.dir),
+        tostring(pending.source or "-")))
+    return true
+end
+
+function M._defer_overworld_timeout_observation(map_id, from_x, from_y, dir, source)
+    if M._pending_overworld_timeout_observation then
+        M._release_pending_overworld_timeout_observation("replaced_by_new_timeout")
+    end
+    M._pending_overworld_timeout_observation = {
+        map_id = map_id,
+        from_x = from_x,
+        from_y = from_y,
+        dir = dir,
+        source = source,
+        frames_remaining = M.BATTLE_ONSET_DIAGNOSTIC_GRACE_FRAMES,
+    }
+    debug_tools.info(string.format(
+        "SEAM_OBSERVATION_DEFERRED reason=battle_onset_grace frames=%d map=0x%02X from=(%d,%d) dir=%s source=%s",
+        M.BATTLE_ONSET_DIAGNOSTIC_GRACE_FRAMES,
+        map_id or -1,
+        from_x or -1,
+        from_y or -1,
+        tostring(dir),
+        tostring(source or "-")))
+end
+
+function M.tick_diagnostics()
+    local pending = M._pending_overworld_timeout_observation
+    if not pending then
+        return false
+    end
+    pending.frames_remaining = pending.frames_remaining - 1
+    if pending.frames_remaining <= 0 then
+        M._release_pending_overworld_timeout_observation("battle_grace_elapsed")
+        return true
+    end
+    return false
+end
+
+if event_bus.subscribe then
+    event_bus.subscribe("battle_started", function()
+        M._suppress_pending_overworld_timeout_observation("battle_started")
+    end)
 end
 
 local function collect_seam_entries(map_id)
@@ -5491,6 +5575,11 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         and not is_seam_retry_block
         and not is_npc_block
         and not active_overworld_block
+    local defer_battle_onset_observation = is_suspect_route_timeout(block_data)
+        and active_overworld_block
+        and not active_route_stop_on_blocker
+        and not is_seam_retry_block
+        and not is_npc_block
     local seam_class = nil
     local function record_blocked_observation()
         if seam_class ~= nil then
@@ -5499,7 +5588,7 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         local _, observed_class = observe_seam_result(map_id, from_x, from_y, blocked_dir, "blocked", source)
         seam_class = observed_class
     end
-    if not delay_timing_retry_observation then
+    if not delay_timing_retry_observation and not defer_battle_onset_observation then
         record_blocked_observation()
     end
     if is_npc_block then
@@ -5525,6 +5614,9 @@ auto_step.on_blocked = function(from_x, from_y, blocked_dir, block_data)
         return
     end
     if active_overworld_block and not active_route_stop_on_blocker then
+        if defer_battle_onset_observation then
+            M._defer_overworld_timeout_observation(map_id, from_x, from_y, blocked_dir, source)
+        end
         local recovery_block = active_overworld_segment.recovery == true
         event_bus.publish("route_cancelled", {
             reason = recovery_block and "overworld_recovery_blocked" or "overworld_blocked",
@@ -6184,6 +6276,7 @@ function M.on_map_change()
         })
     end
     runtime_blocked = {}
+    M._suppress_pending_overworld_timeout_observation("map_changed")
     M._overworld_hazard_confirmation.clear("map change")
     clear_seam_retry_state()
     release_target_face("map change")
