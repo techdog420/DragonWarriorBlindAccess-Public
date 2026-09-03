@@ -6456,3 +6456,29 @@ For the next live map task, start a new dated section here with:
   reaches `(47,41)` then turns north without entering Brecconary, later reaches
   `(103,10)`, emits `kol_staging -> hauksness`, and continues west without
   entering Kol. Use a fresh baseline and blocker report after reload.
+
+## 2026-09-03 Off-Network Transition-Pocket Audit
+
+- Fresh `audit_overworld_recovery:charlock_castle` reported nine unreachable
+  cells: Swamp Cave north `(105,43)`, `(105,44)` and the seven-cell Rimuldar
+  entrance ring `(101..103,71)`, `(101,72)`, `(101..103,73)`.
+- Live `inspect_tile` and `inspect_move` evidence showed valid exits through
+  Swamp Cave's poison re-entry stand `(104,43)` and Rimuldar's grass east
+  doorstep `(103,72)`. The former pocket should be `hazard_required`; the
+  latter should be decoded-safe recovery. Neither exit is an automatic map
+  transition.
+- Root cause: internal staging routes set `final=true` on these ordinary
+  exterior endpoints, and `network_transition_lookup()` classified every
+  final waypoint as a transition. Added `recovery_network_endpoint=true` to
+  both endpoint families and excluded marked finals from the transition set.
+- STATIC VERIFIED: all 340 focused overworld-route tests pass; actual entrances
+  `(104,44)` and `(102,72)` remain transitions; both staging endpoints are
+  network cells. Native `python run_tests.py` passes 33 host-runnable Lua
+  suites and 68 Python tests; `git diff --check` passes.
+- LIVE VERIFIED: after manually reloading `main.lua`, fresh frame `4260`
+  reported `unreachable=0`, `safe_within_limit=7178` (up seven),
+  `hazard_required=278` (up two), `network=977` (up two), and
+  `transition=21` (down two). `safe_over_limit=416` and
+  `nonwalkable=5530` were unchanged. Fresh frame `7500` confirmed World Map
+  `(23,98)`, nil path target, and zero NPC/runtime blockers after the read-only
+  audit. All nine false pockets are closed without changing terrain data.

@@ -877,7 +877,13 @@ local ROUTES = {
             {x = 108, y = 71, name = "Rimuldar east approach", radius = 0},
             {x = 107, y = 71, name = "Rimuldar east bend", radius = 0},
             {x = 107, y = 72, name = "Rimuldar east gate lane", radius = 0},
-            {x = 103, y = 72, name = "Rimuldar east doorstep", radius = 0},
+            {
+                x = 103,
+                y = 72,
+                name = "Rimuldar east doorstep",
+                radius = 0,
+                recovery_network_endpoint = true,
+            },
             {x = 102, y = 72, name = "Rimuldar", radius = 0, final = true},
         },
     },
@@ -905,7 +911,14 @@ local ROUTES = {
                 radius = 1,
                 warning = "Guide and map-derived Magic Temple route. Strong monsters remain south of Rimuldar; keep HP high.",
             },
-            {x = 103, y = 72, name = "Rimuldar east doorstep", radius = 0, axis_order = {"horizontal", "vertical"}},
+            {
+                x = 103,
+                y = 72,
+                name = "Rimuldar east doorstep",
+                radius = 0,
+                axis_order = {"horizontal", "vertical"},
+                recovery_network_endpoint = true,
+            },
             {x = 107, y = 72, name = "Rimuldar east gate lane", radius = 0, axis_order = {"horizontal", "vertical"}},
             {x = 107, y = 76, name = "Rimuldar south ridge upper turn", radius = 0},
             {x = 110, y = 76, name = "Rimuldar south ridge east lane", radius = 0, axis_order = {"horizontal", "vertical"}},
@@ -988,7 +1001,14 @@ local ROUTES = {
             {x = 110, y = 76, name = "Rimuldar south ridge east lane", radius = 0},
             {x = 107, y = 76, name = "Rimuldar south ridge upper turn", radius = 0, axis_order = {"horizontal", "vertical"}},
             {x = 107, y = 72, name = "Rimuldar east gate lane", radius = 0},
-            {x = 103, y = 72, name = "Rimuldar east doorstep", radius = 0, axis_order = {"horizontal", "vertical"}},
+            {
+                x = 103,
+                y = 72,
+                name = "Rimuldar east doorstep",
+                radius = 0,
+                axis_order = {"horizontal", "vertical"},
+                recovery_network_endpoint = true,
+            },
             {x = 102, y = 72, name = "Rimuldar", radius = 0, final = true, axis_order = {"horizontal", "vertical"}},
         },
     },
@@ -3290,6 +3310,7 @@ ROUTES.swamp_cave_north_entry_staging = {
             name = "Swamp Cave north re-entry stand",
             radius = 0,
             final = true,
+            recovery_network_endpoint = true,
         },
     },
 }
@@ -4612,7 +4633,13 @@ local function network_transition_lookup()
     local transitions = {}
     for _, id in ipairs(sorted_route_ids()) do
         for _, point in ipairs(ROUTES[id].waypoints or {}) do
-            if point.final == true then
+            -- Some internal staging routes deliberately end on an ordinary
+            -- exterior corridor cell so a connected route can hand off
+            -- without entering a landmark. Keep those cells available to
+            -- off-network recovery even though copy_route_prefix marks them
+            -- final for the staging leg.
+            if point.final == true
+               and point.recovery_network_endpoint ~= true then
                 transitions[point.x .. "," .. point.y] = {
                     x = point.x,
                     y = point.y,

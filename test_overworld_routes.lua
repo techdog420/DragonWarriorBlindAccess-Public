@@ -11862,8 +11862,20 @@ function tests.network_entry_preview_is_pure_and_excludes_transition_landmarks()
     end
     assert_equal(transition_lookup["43,43"], true,
         "Tantegel should be classified as a transition landmark")
+    assert_equal(transition_lookup["104,44"], true,
+        "Swamp Cave's automatic entrance should remain a transition landmark")
+    assert_equal(transition_lookup["102,72"], true,
+        "Rimuldar's automatic entrance should remain a transition landmark")
+    assert_equal(transition_lookup["104,43"], nil,
+        "Swamp Cave's re-entry stand should remain an ordinary recovery endpoint")
+    assert_equal(transition_lookup["103,72"], nil,
+        "Rimuldar's east doorstep should remain an ordinary recovery endpoint")
     assert_equal(routes.is_network_corridor_cell(43, 43), false,
         "automatic transition landmarks should not count as recovery boundaries")
+    assert_equal(routes.is_network_corridor_cell(104, 43), true,
+        "Swamp Cave's re-entry stand should belong to the recovery network")
+    assert_equal(routes.is_network_corridor_cell(103, 72), true,
+        "Rimuldar's east doorstep should belong to the recovery network")
     assert_equal(routes.is_network_corridor_cell(58, 108), false,
         "the live Cantlin recovery start should remain off-network")
     assert_equal(routes.is_network_corridor_cell(58, 104), true,
