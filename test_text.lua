@@ -1036,6 +1036,22 @@ function tests.low_row_dialogue_cleaner_keeps_key_item_token()
     )
 end
 
+function tests.low_row_dialogue_cleaner_preserves_radiant_spell_name()
+    assert_equal(
+        text.clean_low_row_dialogue("Bill chanted the spell of RADIANT."),
+        "Bill chanted the spell of RADIANT.",
+        "low-row cleaner should not remove an internal A-L run from a real uppercase word"
+    )
+end
+
+function tests.low_row_dialogue_cleaner_still_strips_standalone_map_noise()
+    assert_equal(
+        text.clean_low_row_dialogue("ABCDEF Bill searched all about."),
+        "Bill searched all about.",
+        "low-row cleaner should still remove standalone A-L-only map tile noise"
+    )
+end
+
 function tests.extract_new_dialogue_strips_yesno_tail_prefix()
     local old = "'Before reaching thy next level of experience thou must gain 7 Points."
     local new = "experience thou must gain 7 Points. 'Will thou tell me now of thy deeds so they won't be forgotten?'"

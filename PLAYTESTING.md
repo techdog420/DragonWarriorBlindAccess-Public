@@ -6,6 +6,16 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Darkness-parity first-slice acceptance completed in Erdrick's Cave B1 on
+  `2026-09-04`. Unlit, Torch, and Radiant states matched raw radii `1`, `3`,
+  and `7`; ordinary object browsing and path previews stayed inside the moving
+  visible square. Radiant shrank exactly once at each meaningful boundary:
+  frame `198101` changed `7` to `5`, frame `209831` changed `5` to `3`, and
+  frame `274265` changed `3` to `1`. At B1 `(1,0)` with half-span zero,
+  `current_object` correctly hid the adjacent entrance at `(0,0)`. The player
+  heard the light-change messages and observed each reduction. Held movement
+  can interrupt those warnings in JAWS; reliable warning delivery remains a
+  separate speech-polish follow-up.
 - Long off-network checkpoint recovery and its reduced startup cost are
   live-verified (`2026-09-03`). From World Map `(92,110)`, Charlock recovery
   selected network entry `(23,98)`, 117 safe steps away. The cold search took

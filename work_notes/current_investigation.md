@@ -4,6 +4,102 @@ Updated: 2026-09-03
 
 ## 2026-09-03 Darkness Parity First Slice
 
+- LIVE UNLIT ACCEPTANCE (`2026-09-04`): entering Erdrick's Cave B1 produced
+  exactly one `LIGHT_RADIUS_CHANGED` event at frame `2470`. A fresh
+  `report_light_state` at frame `36180` confirmed map `0x1C`, terrain `0x20`,
+  position `(0,0)`, raw radius `1`, visible half-span `0`, Radiant timer `0`,
+  and `limited=true`. Ordinary `current_object` and `next_object` checks at
+  frames `37680` and `38040` both exposed only `Exit to World Map: here (1 of
+  1)`; distant decoded stairs did not leak into the player-facing browser.
+- LIVE TORCH ACCEPTANCE (`2026-09-04`): using a Torch at B1 `(0,0)` produced
+  exactly one `LIGHT_RADIUS_CHANGED` event at frame `77591`, changing the raw
+  radius from `1` to `3` and the visible half-span from `0` to `1`, with
+  Radiant timer still `0`. A fresh report at frame `81480` confirmed the same
+  state. `current_object` and `next_object` at frames `82020` and `82440`
+  continued to expose only the entrance `(1 of 1)`, which is correct because
+  no other modeled B1 object lies in the expanded 3-by-3 window; the distant
+  stair remained hidden.
+- LIVE RADIANT ACCEPTANCE / TTS BUG (`2026-09-04`): the cast dialogue was
+  decoded as `Bill chanted the spell of R NT.` at frame `86560`. Radius then
+  expanded in two legitimate steps: raw `5` / half-span `2` / timer `80` at
+  frame `86601`, followed by raw `7` / half-span `3` / timer `80` at frame
+  `86609`. A stabilized report at frame `93360` confirmed map `0x1C`, position
+  `(0,0)`, raw radius `7`, half-span `3`, timer `80`, and `limited=true`.
+  Object checks at frames `93660` and `94020` still exposed only the entrance,
+  correctly hiding the stair at `(9,9)` outside the seven-by-seven window.
+- FIRST FIX INSUFFICIENT / ROOT CAUSE: a clean script restart at `11:32:09`
+  still spoke and logged `Bill chanted the spell of R NT.` at frame `482`.
+  The filtered reader had preserved `RADIANT`; because the hero was at `y=0`,
+  the later low-row cleaner then treated internal `ADIA` as standalone A-L map
+  noise and removed it. The earlier phrase-level repair ran before that cleaner
+  and could not survive the later transformation.
+- CODED / UNIT VERIFIED: `text.clean_low_row_dialogue` now removes A-L-only map
+  noise only at complete uppercase-word boundaries. It preserves `RADIANT`
+  while retaining the original standalone-noise removal. The symptom-level
+  phrase repair was removed. The focused dialogue suite passes `76/76`; Lua
+  syntax and `git diff --check` pass. The native gate passes all 34
+  host-runnable Lua suites and 68 Python tests after the corrected patch,
+  including speech dependency and command-queue checks.
+- LIVE NEXT CHECK: walk toward the B1 stair at `(9,9)` and check ordinary
+  object browsing before and after it enters the current three-tile visible
+  square. Continue normal movement long enough to observe Radiant shrinkage and
+  verify one announcement at each meaningful radius change.
+- LIVE CORRECTED ACCEPTANCE (`2026-09-04`): after a clean script reload and
+  unlit entrance-state restore, frame `832` logged and spoke the complete
+  sentence `Bill chanted the spell of RADIANT.` with no `R NT` occurrence.
+  Frames `873`, `881`, and `889` then expanded raw light radius `3`, `5`, and
+  `7` with half-spans `1`, `2`, and `3`; each carried Radiant timer `80`. A
+  fresh report at frame `4560` confirmed B1 `(0,0)`, raw radius `7`, half-span
+  `3`, timer `80`, and `limited=true`. The script-error log remains unchanged
+  since May. The low-row word-boundary fix is live-accepted.
+- LIVE MOVING-WINDOW ACCEPTANCE (`2026-09-04`): after manual exploration from
+  `(0,0)`, the decoded stair at `(9,9)` became selectable once it entered the
+  three-tile square. Route-preview traces at frames `151611` and `151793`
+  targeted `stair_9_9` from `(7,9)` and `(7,8)` without exposing it earlier.
+  A fresh report at frame `157260` confirmed B1 `(7,8)`, raw radius `7`,
+  half-span `3`, and Radiant timer `61`. `current_object` at frame `157620`
+  reported `Stairs Down: 1 south, 2 east (1 of 1)`; the old entrance at `(0,0)`
+  was now outside the window and correctly absent. Proximity-based reveal and
+  moving object-window updates are live-accepted.
+- LIVE SHRINK-BOUNDARY SETUP (`2026-09-04`): one successful step from `(7,8)`
+  to `(7,9)` reduced the Radiant timer from `61` to `60`, while the raw light
+  radius remained `7` and the visible half-span remained `3`. No shrink speech
+  was expected for that step because the visible radius did not change. A
+  second successful step to `(6,9)` reduced the timer to `59` with radius `7`
+  and half-span `3` still unchanged; no new `LIGHT_RADIUS_CHANGED` event was
+  logged. The timer is the remaining count for the current light phase, so the
+  first shrink should occur only after the remaining 59 successful steps, not
+  at the transition from timer 60 to 59.
+  After further manual wandering, a fresh report at B1 `(4,0)` found timer
+  `14`, raw radius `7`, and half-span `3`; the countdown correctly remained
+  silent because no radius change had occurred. Fourteen successful movements
+  remain before the expected first shrink.
+- LIVE FIRST RADIANT SHRINK ACCEPTANCE (`2026-09-04`): frame `198101` logged
+  exactly one `LIGHT_RADIUS_CHANGED` event from raw radius `7` / half-span `3`
+  to raw radius `5` / half-span `2`, with the next phase timer reset to `60`.
+  The user heard the light-dims announcement and observed the visible radius
+  shrink. A fresh report at B1 `(3,1)` found radius `5`, half-span `2`, and
+  timer `58`, confirming two successful movements after the transition.
+- LIVE SECOND SHRINK / FADE ACCEPTANCE (`2026-09-04`): frame `209831` logged
+  exactly one change from raw radius `5` / half-span `2` to radius `3` /
+  half-span `1`, resetting the phase timer to `60`. Frame `274265` then logged
+  exactly one change to raw radius `1` / half-span `0`, again with timer `60`.
+  The user observed both visible-window reductions and heard at least part of
+  each announcement. A fresh report at B1 `(1,0)` found radius `1`, half-span
+  `0`, and timer `53`; `current_object` returned `No objects found`, correctly
+  hiding the adjacent entrance at `(0,0)`. The remaining timer phase has no
+  additional visible-radius change and does not need countdown speech.
+- FOLLOW-UP / SPEECH POLISH: held directional input can interrupt important
+  light-dimming and fade announcements in JAWS. Address reliable warning
+  delivery after the darkness slice rather than expanding this focused patch.
+- LIVE SECOND RADIANT SHRINK ACCEPTANCE (`2026-09-04`): frame `209831` logged
+  exactly one `LIGHT_RADIUS_CHANGED` event from raw radius `5` / half-span `2`
+  to raw radius `3` / half-span `1`, with the final phase timer reset to `60`.
+  The user heard part of the light-dims announcement before held-arrow speech
+  interrupted it and independently observed the smaller window. A fresh report
+  at B1 `(1,1)` found radius `3`, half-span `1`, and timer `56`.
+  `current_object` exposed only the entrance at `(0,0)`, exactly one north and
+  one west, matching the one-tile visibility window.
 - SOURCE MODEL: cave/dungeon terrain offset `0x20` is visibility-limited.
   `LIGHT_RADIUS` values `1`, `3`, `5`, and `7` are treated as visible-window
   diameters, yielding zero through three tiles of visible half-span. This

@@ -856,6 +856,11 @@ quality-of-life work.
   light boundary, object browsing, route recalculation, and script reload.
   The active first-slice design is documented in
   `docs/plans/2026-09-03-darkness-parity.md`.
+- The first darkness slice is source-complete and live-verified in Erdrick's
+  Cave B1. Unlit, Torch, Radiant expansion, moving visibility, object masking,
+  and every meaningful shrink boundary passed. Retain the deferred map-
+  description and progressive-discovery work as later slices. Separately,
+  prevent held movement from cutting off important light warnings.
 - Clue-bound treasure audit: identify every place where object navigation or
   routing leads directly to a treasure whose location the original game expects
   the player to infer from dialogue or environmental clues.

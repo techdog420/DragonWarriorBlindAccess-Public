@@ -223,7 +223,7 @@ function M.clean_low_row_dialogue(dialogue)
     for _, token in ipairs(LOW_ROW_UI_TOKENS) do
         clean = clean:gsub("%f[%u]" .. token .. "%f[^%u]", " ")
     end
-    clean = clean:gsub("[%s]*[A-L][A-L][A-L]+[%s]*", " ")
+    clean = clean:gsub("[%s]*%f[%u][A-L][A-L][A-L]+%f[^%u][%s]*", " ")
     clean = clean:gsub("%s+", " ")
     return clean:match("^%s*(.-)%s*$") or ""
 end
