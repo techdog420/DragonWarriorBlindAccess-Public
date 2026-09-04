@@ -1,6 +1,6 @@
 # Darkness Parity Design
 
-Status: active on `codex/darkness-parity`
+Status: first slice source-complete and live-verified on `codex/darkness-parity`
 
 ## Goal
 
@@ -19,9 +19,8 @@ path previews, but it must also not reduce exploration to unexplained guessing.
 - `RADIANT_TIMER` at RAM `0x00DA` distinguishes Radiant light from ordinary
   Torch light and supports later expiry diagnostics.
 
-These interpretations are covered deterministically in source but remain a
-live-acceptance item until observed in FCEUX during unlit, Torch, and Radiant
-states.
+These interpretations are covered deterministically and are now confirmed in
+FCEUX during unlit, Torch, Radiant, moving-window, shrink, and fade states.
 
 ## First slice
 
@@ -61,3 +60,18 @@ Use Erdrick's Cave B1 as the initial live test bed.
 6. Confirm an ordinary path preview cannot route outside the visible square.
 7. Confirm explicit debug path and map-survey commands remain available for
    development work.
+
+## Live acceptance result
+
+Erdrick's Cave B1 passed the first-slice matrix on `2026-09-04`. Unlit entry
+reported raw radius `1`; Torch expanded it to `3`; Radiant expanded through
+`5` to `7`. Manual movement then produced exactly one structured event for
+each meaningful shrink: `7` to `5` at frame `198101`, `5` to `3` at frame
+`209831`, and `3` to `1` at frame `274265`. Object browsing followed the
+moving square and hid the adjacent entrance once the half-span reached zero.
+The corrected Radiant cast dialogue was also accepted live.
+
+Held directional input can interrupt light-change speech at the screen-reader
+level. Reliable post-input delivery for important warnings is a separate
+speech-polish follow-up; the structured events and visibility behavior are
+correct.

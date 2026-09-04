@@ -121,6 +121,16 @@ Updated: 2026-09-03
 
 ## Immediate FCEUX Handoff
 
+- Darkness-parity first-slice acceptance completed in Erdrick's Cave B1 on
+  `2026-09-04`. Unlit entry, Torch, Radiant expansion, moving-window object
+  discovery, three shrink boundaries, and final current-tile-only masking all
+  matched the source model. Structured events recorded `7` to `5` at frame
+  `198101`, `5` to `3` at frame `209831`, and `3` to `1` at frame `274265`;
+  object browsing at `(1,0)` correctly hid the adjacent entrance. The Radiant
+  dialogue corruption fix is also accepted live. Held directional input can
+  interrupt light warnings in JAWS; handle reliable warning delivery as a
+  separate speech-polish follow-up. The branch remains
+  `codex/darkness-parity` with draft PR #12.
 - Long off-network checkpoint recovery and its startup optimization are
   source-complete and live-verified in FCEUX (`2026-09-03`). Charlock recovery
   from World Map `(92,110)` selected established-network entry `(23,98)`, 117
