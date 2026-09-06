@@ -2425,7 +2425,7 @@ refuse_hazard_step = function(dir, px, py, source)
                 hazard = hazard.hazard,
                 source = source,
             })
-            tolk.output_interrupt("Dangerous tile ahead")
+            tolk.output_warning("Dangerous tile ahead")
         elseif source == "manual_tap" or source == "inject_step" then
             if source == "manual_tap" then
                 manual_hazard_confirm = {
@@ -2437,9 +2437,9 @@ refuse_hazard_step = function(dir, px, py, source)
                     dest_y = hazard.y,
                     clock = os.clock(),
                 }
-                tolk.output_interrupt(hazard_label(hazard.hazard) .. " ahead. Press " .. tostring(dir) .. " again to enter.")
+                tolk.output_warning(hazard_label(hazard.hazard) .. " ahead. Press " .. tostring(dir) .. " again to enter.")
             else
-                tolk.output_interrupt("Dangerous tile ahead")
+                tolk.output_warning("Dangerous tile ahead")
             end
         end
         return true

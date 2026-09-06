@@ -50,6 +50,7 @@
     "text.lua",
     "tolk.lua",
     "walked_edge_verifier.lua",
+    "warning_delivery.lua",
     "dw_access.ini",
     "launch_dw.ps1",
     "launch_dw.cmd",

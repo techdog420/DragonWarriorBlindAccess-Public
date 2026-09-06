@@ -1,11 +1,41 @@
 # Playtesting Notes
 
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Deferred warning delivery is source-complete and accepted with both JAWS and
+  NVDA on `codex/deferred-warning-delivery`.
+  Important light, hazard, dangerous-tile, unsafe-route, and overworld-route
+  warnings queue while keyboard/controller input is active, then speak after
+  12 neutral frames by default. Multiple pending warnings retain FIFO order and
+  separate message records. Modifier-only state, including FCEUX's stale Alt
+  latch, and synthetic auto-walk input do not delay delivery. Structured
+  `SPEECH_WARNING_QUEUED` and `SPEECH_WARNING_DELIVERED` events expose queue
+  behavior, while `speech_status` reports pending count, input state, and idle
+  progress. The central delivery observer is reserved for the planned past-
+  speech review feature. A fresh reload probe passed at frame `6780`; the JAWS
+  bridge reported ready with an idle `12/12` queue. Radiant then generated
+  separate radius-five and radius-seven warnings at frames `18614` and `18622`
+  while repeated keyboard input remained active. Neither was sent until frame
+  `18880`, after 12 neutral frames; the bridge interrupted for the first and
+  queued the second, and the user heard the light-expansion messages after the
+  second `F` release without interruption. Holding `F` did reopen the command
+  menu and execute its first option, so that key is disruptive even though it
+  proved the queue. The first NVDA baseline exposed FCEUX's modifier name
+  `LeftWindows`, which initially left the queue active at `0/12`; the modifier
+  filter now ignores `Windows`, `LeftWindows`, and `RightWindows`, and a fresh
+  reload restored `input_active=false` and `12/12` despite the latch. In the
+  final held-`X` test, three Radiant expansion warnings queued with
+  `deferred=true` at frames `15155`, `15163`, and `15171`, then all delivered
+  FIFO at frame `15485` after `12/12` neutral frames. NVDA received one
+  interrupting command followed by two queued commands, and the user heard the
+  expected results after releasing `X`. No new script error occurred. Focused suites pass 7
+  warning-queue, 153 auto-step, 148 route-manager, and 5 player-package tests;
+  the authoritative Windows gate passes 35 host-runnable Lua suites and 68
+  Python tests.
 - Darkness-parity first-slice acceptance completed in Erdrick's Cave B1 on
   `2026-09-04`. Unlit, Torch, and Radiant states matched raw radii `1`, `3`,
   and `7`; ordinary object browsing and path previews stayed inside the moving
@@ -14,8 +44,8 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   frame `274265` changed `3` to `1`. At B1 `(1,0)` with half-span zero,
   `current_object` correctly hid the adjacent entrance at `(0,0)`. The player
   heard the light-change messages and observed each reduction. Held movement
-  can interrupt those warnings in JAWS; reliable warning delivery remains a
-  separate speech-polish follow-up.
+  can interrupt those warnings in JAWS; deferred delivery is now implemented
+  on its own branch and has live JAWS and NVDA acceptance.
 - Long off-network checkpoint recovery and its reduced startup cost are
   live-verified (`2026-09-03`). From World Map `(92,110)`, Charlock recovery
   selected network entry `(23,98)`, 117 safe steps away. The cold search took

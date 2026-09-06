@@ -124,6 +124,7 @@ local DEFAULTS_ORDERED = {
     {comment = "; (yesno_dismiss_frames setting removed — prompt now uses label-presence detection)"},
     {key = "speech_python_cmd", value = "python", comment = "; Python executable for speech_bridge.py (set to .venv\\Scripts\\python.exe to use a local venv)"},
     {key = "speech_debounce_ms", value = "1000", comment = "; Suppress duplicate queued speech within this many milliseconds (0 to disable)"},
+    {key = "warning_idle_frames", value = "12", comment = "; Neutral keyboard/controller frames before queued warnings speak (12 is about 0.2 seconds)"},
     {comment = ""},
     {comment = "; === Debug / Automation ==="},
     {key = "debug_mode",        value = "false", comment = "; Set true to enable dw_debug.log and dw_commands.txt processing"},
