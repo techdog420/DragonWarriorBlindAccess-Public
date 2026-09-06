@@ -12,6 +12,8 @@ class ReleaseKeyboardGuideTests(unittest.TestCase):
         config = CONFIG.read_text(encoding="utf-8")
         guide = GUIDE.read_text(encoding="utf-8")
         expected = {
+            "key_mod_settings": ("Shift+F11", "Shift+F11:"),
+            "key_mod_help": ("Shift+F12", "Shift+F12:"),
             "key_position": ("C|F17", "C or F17"),
             "key_hp": ("H|F19", "H or F19"),
             "key_level": ("I", "I:"),

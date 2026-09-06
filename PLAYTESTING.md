@@ -6,6 +6,31 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Grouped Mod Settings is source-complete on `codex/in-game-mod-settings`;
+  core FCEUX/reader acceptance passed. Shift+F11 opens during normal field
+  play; Shift+F12 explains the option and controls. Opening announces
+  Control+Enter to save and Escape to discard. Movement, Navigation,
+  Announcements, and Defaults groups expose five existing gameplay settings.
+  Editing/default restoration is staged, save failures retain pending edits,
+  and config replacement preserves other settings/comments with backup and
+  rollback. Menu capture stops active movement, retains the selected object,
+  suppresses gameplay hotkeys/pad input, and waits for input release on exit.
+  All 37 Lua suites and 68 Python tests pass, including seven menu tests and
+  four persistence tests with injected failures. The player accepted group
+  browsing and help, accepted a 6-to-12-step edit then discarded it, and
+  verified reopening still showed 6. The file hash was unchanged. A second
+  edit saved successfully at frame 5755; the player confirmed the requested
+  reload/persistence check. The backup exactly matches the pre-test file and
+  the saved file differs only in `auto_walk_progress_interval=12`. Fresh frame
+  7440 found Kol `(9,3)`, no active path/runtime blockers, and speech ready
+  without errors or pending warnings. Defaults, injected save failures, and
+  held-input release have deterministic coverage. The player also confirmed
+  controller input neither reaches the game nor operates this keyboard-only
+  menu. Two live auto-walk interruptions logged `active=true` with reason
+  `mod settings opened` at frames 32415 and 34181; parked NPCs were restored
+  in both cases. The menu closed normally afterward. A fresh frame-42420
+  check found no active path and speech ready without errors or warnings.
+
 - Kol's clue-bound treasure first pass is live-verified (`2026-09-06`).
   Travel now identifies `Bath` at `(9,2)` and routes to its south edge `(9,3)`,
   facing north. Treasure reports no objects; the former exact SEARCH marker

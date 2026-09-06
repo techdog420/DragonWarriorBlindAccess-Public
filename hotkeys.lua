@@ -1259,4 +1259,12 @@ function M._pending_object_nav_speech_for_tests()
     return pending_object_nav_speech, pending_object_nav_frames
 end
 
+-- Keep held menu keys from becoming fresh gameplay hotkeys after closing.
+function M.capture_settings_input(keys)
+    pending_auto_walk_after_key_release = false
+    clear_object_nav_speech()
+    prev_keys = {}
+    for key, value in pairs(keys or {}) do prev_keys[key] = value end
+end
+
 return M

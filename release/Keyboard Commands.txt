@@ -28,6 +28,32 @@ while Shift, Control, Alt, either Windows key, Insert, or Caps Lock is held.
 This prevents common NVDA and JAWS commands from moving the hero. Release the
 entire screen-reader key combination before resuming game input.
 
+Mod Settings
+------------
+
+Shift+F11: Open the spoken Mod Settings menu during normal field play.
+Shift+F12: Explain the current setting and menu controls. Outside the menu,
+this gives settings help; a full gameplay key reference is planned.
+
+Left/Right: Switch groups (Movement, Navigation, Announcements, Defaults).
+Up/Down: Select an option in the current group.
+Enter: Edit the selected option. While editing, arrows change its value,
+Enter accepts the edit, and Escape cancels that edit.
+Control+Enter: Save accepted changes and close. Finish or cancel any active
+edit first. A save failure keeps the menu open with your changes pending.
+Escape from the main settings list: Discard changes and close.
+
+Opening announces the save and discard controls. The menu offers automatic
+tile stepping, continuous overworld travel, dungeon navigation mode, object
+browsing speech delay, and auto-walk progress announcements. Defaults can
+restore one group or all menu settings after confirmation; these changes also
+need Control+Enter to save. Other INI settings and hotkeys are preserved.
+
+Opening stops active movement while retaining the selected destination.
+Settings controls do not operate the game. Release held keys and controller
+buttons after closing before resuming play. The emulator continues running;
+this is an input-capturing spoken menu, not an emulator pause.
+
 Information keys
 ----------------
 

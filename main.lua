@@ -88,7 +88,7 @@ for _, mod_name in ipairs({
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
-    "warning_delivery",
+    "warning_delivery", "settings_menu",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -7236,6 +7236,8 @@ local function trace_teleport_loop(label)
     end
 end
 
+DW_QOL_STATE.settings_menu = require "settings_menu"
+
 while true do
     trace_startup_loop("loop_top")
     row1_trace_frame = frame_count
@@ -7270,6 +7272,21 @@ while true do
     -- No explicit PPU flush needed: frameadvance() already cleared the cache
     -- at the start of this tick (PPU_CACHE_HOLD_FRAMES=1).
 
+    local settings_guard = _G.DW_FIELD_ACTION_GUARD_STATE("mod_settings")
+    settings_guard.route_active = false -- Opening cancels movement below.
+    local settings_captured = DW_QOL_STATE.settings_menu.update(
+        raw_keys, current_joy,
+        package.loaded["field_action_guard"].reason("object_controls", settings_guard),
+        function()
+            route_mgr.stop_auto_walk("mod settings opened")
+            auto_step.cancel_active_step(true, true)
+            hotkeys.capture_settings_input(raw_keys)
+        end)
+    if settings_captured then
+        hotkeys.capture_settings_input(raw_keys)
+        auto_step.suppress_direction_tracking(8)
+    end
+    if not settings_captured then
     -- Process on-demand hotkeys (player-initiated).
     -- hotkeys.update() also saves prev_keys internally for key-down detection.
     -- Do not include current live joypad input in this allowance: BizHawk maps
@@ -7656,6 +7673,8 @@ while true do
         end
     end
 
+    end -- ordinary hotkeys and narration are suspended while settings captures input
+
     -- Increment frame counter monotonically so debug log frame prefixes stay
     -- ordered across long sessions. Lua numbers can represent this safely.
     frame_count = frame_count + 1
@@ -7666,6 +7685,8 @@ while true do
     -- Debug tools: process command file, flush logs, apply simulated input.
     -- All of this is a no-op when debug_mode=false in dw_access.ini.
     local sim_input = checked_scan("debug_tools.tick", debug_tools.tick, frame_count, game_state.state)
+
+    if not settings_captured then
     trace_teleport_loop("POST_DEBUG_TICK")
     checked_scan("path_debug.tick", path_debug.tick)  -- Drive validation state machine (no-op when debug_mode=false)
     trace_teleport_loop("POST_PATH_DEBUG_TICK")
@@ -7829,6 +7850,12 @@ while true do
     if tolk.flush_warnings then
         checked_call("tolk.flush_warnings", tolk.flush_warnings)
     end
+
+    else
+        -- Explicit false values override both native controller and bridge input.
+        joypad.set(1, {up=false, down=false, left=false, right=false,
+            A=false, B=false, start=false, select=false})
+    end -- settings input capture
 
     -- Advance the emulator by one frame. This is required —
     -- without it, the emulator hangs.

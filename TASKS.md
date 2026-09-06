@@ -911,9 +911,22 @@ quality-of-life work.
 
 ### In-game mod configuration
 
-- Add an accessible in-game configuration surface rather than requiring manual
-  INI edits. Candidate settings include auto-step on/off, speech backend and
-  speech options, verbosity, and debug mode.
+- The first grouped spoken configuration menu is implemented on
+  `codex/in-game-mod-settings`; core live acceptance passed. Shift+F11 opens,
+  Shift+F12 explains, Left/Right switches groups, Up/Down selects, Enter edits,
+  Control+Enter saves, and Escape discards. Initial options cover auto-step,
+  continuous travel, darkness mode, browsing speech delay, and route progress.
+  Defaults can restore one group or all exposed settings. All 37 Lua suites
+  and 68 Python tests pass. The player accepted browsing/help, edit/discard,
+  and save/reload persistence. The saved file changes only the selected value;
+  the backup preserves the original. Controller isolation and active-route
+  interruption also passed live: controller presses do not operate the game
+  or the keyboard-only settings menu, and opening settings stopped two active
+  auto-walks with parked NPCs restored. This first implementation is closed.
+- Future settings: low-health announcements and percentage threshold, travel
+  warning narration, and a Speech group/submenu. Add them as the underlying
+  behavior becomes available; muting narration must not disable movement
+  safeguards. A full gameplay key-reference screen remains separate.
 - Settings must announce their current value, explain consequential changes,
   persist safely, and provide a restore-defaults path. Keep developer-only or
   unsafe diagnostics clearly separated from ordinary player settings.

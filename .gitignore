@@ -40,3 +40,7 @@ prompt*.txt
 survey*.sh
 probe_*.sh
 2026-*.png
+
+# Local Mod Settings save transaction files
+dw_access.ini.bak
+dw_access.ini.tmp

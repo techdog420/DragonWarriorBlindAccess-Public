@@ -160,6 +160,7 @@ class PlayerPackageTests(unittest.TestCase):
         layout = json.loads(LAYOUT_PATH.read_text(encoding="utf-8"))
         self.assertEqual(layout["schemaVersion"], 1)
         self.assertIn("main.lua", layout["appFiles"])
+        self.assertIn("settings_menu.lua", layout["appFiles"])
         self.assertIn("speech_bridge.py", layout["appFiles"])
         self.assertIn("qfceux.exe", layout["fceuxRootFiles"])
         self.assertIn("FCEUX-ACCESSIBILITY-BUILD.txt", layout["fceuxRootFiles"])

@@ -16,6 +16,7 @@
     "battle.lua",
     "chars.lua",
     "config.lua",
+    "settings_menu.lua",
     "debug_tools.lua",
     "edge_flow_guard.lua",
     "edge_verify_classifier.lua",

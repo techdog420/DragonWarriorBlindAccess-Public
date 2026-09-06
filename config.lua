@@ -35,6 +35,8 @@ local CONFIG_FILE = script_dir .. "dw_access.ini"
 -- generated file has nice section headers and comments.
 
 local DEFAULTS_ORDERED = {
+    {key = "key_mod_settings", value = "Shift+F11", comment = "; Open Mod Settings"},
+    {key = "key_mod_help", value = "Shift+F12", comment = "; Explain Mod Settings controls and the selected option"},
     -- Section: Information hotkeys
     {comment = "; Dragon Warrior Accessibility Mod Configuration"},
     {comment = "; Edit hotkey assignments below. Keys are normalized by the emulator adapter:"},
@@ -175,7 +177,7 @@ local function parse_config(text)
             local key, value = trimmed:match("^([^=]+)=(.*)$")
             if key and value then
                 key = key:match("^%s*(.-)%s*$")     -- trim key
-                value = value:match("^%s*(.-)%s*$")  -- trim value
+                value = value:gsub("%s+;.*$", ""):match("^%s*(.-)%s*$")  -- trim value and inline comment
                 if key ~= "" then
                     result[key] = value
                 end
@@ -305,6 +307,65 @@ end
 -- ignoring any config file override. Useful for reset functionality.
 function M.get_default(setting_name)
     return defaults[setting_name]
+end
+
+-- Save only requested keys, preserving unrelated lines and inline comments.
+-- A backup remains beside the config; failed replacement restores the original.
+function M.save_changes(changes)
+    for key, value in pairs(changes) do
+        if defaults[key] == nil or type(value) ~= "string" or value:find("[\r\n;]") then
+            return nil, "Invalid setting: " .. tostring(key)
+        end
+    end
+    if next(changes) == nil then return true end
+    local f, err = io.open(CONFIG_FILE, "rb")
+    if not f then return nil, err end
+    local original = f:read("*all")
+    f:close()
+    if not original then return nil, "Could not read configuration" end
+    local newline = original:find("\r\n", 1, true) and "\r\n" or "\n"
+    local seen = {}
+    local updated = original:gsub("([^\r\n]+)", function(line)
+        local prefix, key, space, rest = line:match("^(%s*)([%w_]+)(%s*=%s*)(.*)$")
+        if key and changes[key] ~= nil then
+            seen[key] = true
+            local suffix = rest:match("(%s*;.*)$") or rest:match("(%s*)$") or ""
+            return prefix .. key .. space .. changes[key] .. suffix
+        end
+        return line
+    end)
+    for _, entry in ipairs(DEFAULTS_ORDERED) do
+        if entry.key and changes[entry.key] ~= nil and not seen[entry.key] then
+            if updated ~= "" and updated:sub(-1) ~= "\n" then updated = updated .. newline end
+            updated = updated .. entry.key .. "=" .. changes[entry.key] .. newline
+        end
+    end
+    local temporary, backup = CONFIG_FILE .. ".tmp", CONFIG_FILE .. ".bak"
+    f, err = io.open(temporary, "wb")
+    if not f then return nil, err end
+    local wrote, write_err = f:write(updated)
+    local closed, close_err = f:close()
+    if not wrote or not closed then
+        os.remove(temporary)
+        return nil, write_err or close_err or "Could not write configuration"
+    end
+    local old_backup = io.open(backup, "rb")
+    if old_backup then
+        old_backup:close()
+        local removed, remove_err = os.remove(backup)
+        if not removed then os.remove(temporary); return nil, remove_err end
+    end
+    local moved, move_err = os.rename(CONFIG_FILE, backup)
+    if not moved then os.remove(temporary); return nil, move_err end
+    local replaced, replace_err = os.rename(temporary, CONFIG_FILE)
+    if not replaced then
+        local restored, restore_err = os.rename(backup, CONFIG_FILE)
+        os.remove(temporary)
+        return nil, tostring(replace_err) .. (restored and "" or
+            "; Original remains in " .. backup .. ": " .. tostring(restore_err))
+    end
+    for key, value in pairs(changes) do settings[key] = value end
+    return true
 end
 
 -- ============================================================

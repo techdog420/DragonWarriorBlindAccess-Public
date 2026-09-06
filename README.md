@@ -37,6 +37,8 @@ Current features include:
   that is not yet usable.
 - Hazard-aware pathfinding that avoids known damage and death tiles.
 - Session-based visited markers for NPCs and objects.
+- A grouped spoken Mod Settings menu (Shift+F11), with contextual help
+  (Shift+F12), staged changes, and Control+Enter to save.
 - Configurable keyboard hotkeys in `dw_access.ini`.
 - Optional controller access to extra mod commands through a JoyToKey example
   available from the project repository.
