@@ -59,8 +59,8 @@ function tests.darkness_navigation_has_accessible_defaults()
     local config = require("config")
     assert_equal(
         config.get_default("darkness_navigation_limits"),
-        "true",
-        "darkness parity should remain enabled by default"
+        "balanced",
+        "balanced darkness navigation should be the accessible default"
     )
     assert_equal(
         config.get_default("key_visible_area"),

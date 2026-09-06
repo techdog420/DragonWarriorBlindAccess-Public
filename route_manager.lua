@@ -5111,7 +5111,7 @@ M._darkness_route_step_guard = function(step_data)
         hidden_part = "target"
     end
     debug_tools.info(string.format(
-        "DARKNESS_AUTO_WALK_STOP map=0x%02X player=(%d,%d) next=(%s,%s) first_hidden=(%s,%s) target=(%s,%s) radius=%d half_span=%d hidden=%s",
+        "DARKNESS_AUTO_WALK_STOP map=0x%02X player=(%d,%d) next=(%s,%s) first_hidden=(%s,%s) target=(%s,%s) radius=%d half_span=%d mode=%s hidden=%s",
         map_id or -1,
         px or -1,
         py or -1,
@@ -5123,10 +5123,15 @@ M._darkness_route_step_guard = function(step_data)
         tostring(target and target.y),
         visibility.light_radius or 0,
         visibility.half_span or 0,
+        tostring(visibility.navigation_mode),
         hidden_part))
+    local message = "The remaining route is outside the current light"
+    if visibility.navigation_mode == "balanced" and visibility.half_span == 0 then
+        message = "The light has gone out. Navigation is unavailable until you use a Torch or cast Radiant"
+    end
     return false, {
         reason = "darkness_visibility_boundary",
-        message = "The remaining route is outside the current light",
+        message = message,
         map_id = map_id,
         current_x = px,
         current_y = py,
@@ -6469,9 +6474,12 @@ auto_step.on_route_cancelled = function(cancel_data)
     clear_active_route_context("auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
     if had_target and reason ~= "can_walk_false" then
         if reason == "darkness_visibility_boundary" then
-            tolk.output_warning(
-                "Auto-walk stopped. The remaining route is outside the current light. " ..
-                "Move manually, increase the light, or choose another visible destination.")
+            local warning = message
+            if not warning then
+                warning = "The remaining route is outside the current light. " ..
+                    "Move manually, increase the light, or choose another visible destination."
+            end
+            tolk.output_warning("Auto-walk stopped. " .. warning)
         elseif reason == "dangerous_tile" then
             tolk.output_warning("Auto-walk cancelled. " .. tostring(message or reason))
         else

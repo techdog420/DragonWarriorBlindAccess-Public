@@ -40,7 +40,13 @@ function tests.non_dungeon_context_is_unrestricted()
 end
 
 function tests.dungeon_visibility_uses_the_square_shown_by_the_game()
-    local context = darkness.context({terrain_offset = 0x20, x = 5, y = 5, light_radius = 3})
+    local context = darkness.context({
+        terrain_offset = 0x20,
+        x = 5,
+        y = 5,
+        light_radius = 3,
+        navigation_mode = "authentic",
+    })
     assert_equal(darkness.is_visible(context, 4, 4), true, "diagonal corner inside the 3 by 3 square should be visible")
     assert_equal(darkness.is_visible(context, 6, 6), true, "opposite diagonal corner should be visible")
     assert_equal(darkness.is_visible(context, 7, 5), false, "cell beyond the visible half-span should be hidden")
@@ -56,10 +62,10 @@ function tests.description_distinguishes_darkness_and_radiant_light()
 end
 
 function tests.announcements_ignore_timer_ticks_but_report_radius_changes()
-    local wide = darkness.context({terrain_offset = 0x20, light_radius = 7, radiant_timer = 30})
-    local timer_tick = darkness.context({terrain_offset = 0x20, light_radius = 7, radiant_timer = 29})
-    local dimmer = darkness.context({terrain_offset = 0x20, light_radius = 5, radiant_timer = 20})
-    local dark = darkness.context({terrain_offset = 0x20, light_radius = 1, radiant_timer = 0})
+    local wide = darkness.context({terrain_offset = 0x20, light_radius = 7, radiant_timer = 30, navigation_mode = "authentic"})
+    local timer_tick = darkness.context({terrain_offset = 0x20, light_radius = 7, radiant_timer = 29, navigation_mode = "authentic"})
+    local dimmer = darkness.context({terrain_offset = 0x20, light_radius = 5, radiant_timer = 20, navigation_mode = "authentic"})
+    local dark = darkness.context({terrain_offset = 0x20, light_radius = 1, radiant_timer = 0, navigation_mode = "authentic"})
     assert_equal(darkness.change_announcement(wide, timer_tick), nil, "timer-only changes should stay quiet")
     assert_equal(
         darkness.change_announcement(wide, dimmer),
@@ -77,12 +83,69 @@ function tests.walkability_mask_hides_cells_outside_the_visible_square()
         [5] = {[4] = true, [5] = true, [6] = false, [7] = true},
         [6] = {[4] = true, [5] = true, [6] = true, [7] = true},
     }
-    local context = darkness.context({terrain_offset = 0x20, x = 5, y = 5, light_radius = 3})
+    local context = darkness.context({
+        terrain_offset = 0x20,
+        x = 5,
+        y = 5,
+        light_radius = 3,
+        navigation_mode = "authentic",
+    })
     local masked = darkness.limit_walkability_snapshot(source, context)
     assert_equal(masked[4][4], true, "visible walkable corner should remain walkable")
     assert_equal(masked[5][6], false, "visible wall should remain blocked")
     assert_equal(masked[5][7], false, "walkable cell outside the light should be masked")
     assert_equal(source[5][7], true, "masking must not mutate decoded map data")
+end
+
+function tests.balanced_mode_is_unrestricted_while_lit_and_cuts_off_when_dark()
+    local lit = darkness.context({
+        terrain_offset = 0x20,
+        x = 5,
+        y = 5,
+        light_radius = 3,
+        navigation_mode = "balanced",
+    })
+    local dark = darkness.context({
+        terrain_offset = 0x20,
+        x = 5,
+        y = 5,
+        light_radius = 1,
+        navigation_mode = "balanced",
+    })
+    assert_equal(lit.navigation_limited, false, "balanced navigation should be unrestricted while lit")
+    assert_equal(dark.navigation_limited, true, "balanced navigation should stop beyond the hero when unlit")
+    assert_equal(darkness.is_visible(lit, 30, 30), true, "lit balanced mode should expose decoded navigation")
+    assert_equal(darkness.is_visible(dark, 6, 5), false, "unlit balanced mode should hide adjacent cells")
+end
+
+function tests.legacy_boolean_modes_keep_their_original_meaning()
+    local authentic = darkness.context({
+        terrain_offset = 0x20,
+        light_radius = 3,
+        navigation_limits_enabled = true,
+    })
+    local unrestricted = darkness.context({
+        terrain_offset = 0x20,
+        light_radius = 1,
+        navigation_limits_enabled = false,
+    })
+    assert_equal(authentic.navigation_mode, "authentic", "legacy true should select authentic mode")
+    assert_equal(authentic.navigation_limited, true, "legacy true should retain strict light limits")
+    assert_equal(unrestricted.navigation_mode, "unrestricted", "legacy false should select unrestricted mode")
+    assert_equal(unrestricted.navigation_limited, false, "legacy false should retain unrestricted navigation")
+end
+
+function tests.balanced_mode_announces_navigation_loss_and_restoration()
+    local dark = darkness.context({terrain_offset = 0x20, light_radius = 1, navigation_mode = "balanced"})
+    local lit = darkness.context({terrain_offset = 0x20, light_radius = 3, navigation_mode = "balanced"})
+    assert_contains(
+        darkness.change_announcement(lit, dark),
+        "Navigation beyond the current tile is unavailable",
+        "balanced mode should announce its hard cutoff")
+    assert_contains(
+        darkness.change_announcement(dark, lit),
+        "Navigation assistance is restored while the light lasts",
+        "balanced mode should announce restored assistance")
 end
 
 function tests.navigation_limit_can_be_disabled_without_changing_physical_light()
@@ -161,6 +224,32 @@ function tests.visible_area_report_stays_light_bounded_when_navigation_is_unrest
     })
     assert_contains(report, "Navigation assistance is unrestricted by darkness", "opt-out state should be explicit")
     assert_not_contains(report, "Hidden stairs", "the local report should never become a full-map reveal")
+end
+
+function tests.visible_area_report_explains_balanced_navigation_state()
+    local lit = darkness.context({
+        terrain_offset = 0x20,
+        x = 2,
+        y = 2,
+        light_radius = 3,
+        navigation_mode = "balanced",
+    })
+    local dark = darkness.context({
+        terrain_offset = 0x20,
+        x = 2,
+        y = 2,
+        light_radius = 1,
+        navigation_mode = "balanced",
+    })
+    local walkability = {[2] = {[2] = true}}
+    assert_contains(
+        darkness.describe_visible_area(lit, walkability, {}),
+        "remains available while the light lasts",
+        "lit report should explain balanced assistance")
+    assert_contains(
+        darkness.describe_visible_area(dark, walkability, {}),
+        "unavailable beyond the current tile until light is restored",
+        "unlit report should explain the balanced cutoff")
 end
 
 local failures = 0

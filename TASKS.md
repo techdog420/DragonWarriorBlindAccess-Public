@@ -859,8 +859,8 @@ quality-of-life work.
 - The first darkness slice is source-complete and live-verified in Erdrick's
   Cave B1. Unlit, Torch, Radiant expansion, moving visibility, object masking,
   and every meaningful shrink boundary passed. A light-bounded local layout
-  report (`Shift+N` or `F21`, plus `visible_area`) and the default-on
-  `darkness_navigation_limits` difficulty/debug flag are live-verified in
+  report (`Shift+N` or `F21`, plus `visible_area`) and the original strict and
+  unrestricted `darkness_navigation_limits` behaviors are live-verified in
   Radiant, unlit, moving-window, and unrestricted-navigation states. Dynamic
   darkness-aware auto-walk is now source-complete: every queued interior step
   rechecks the next cell, selected destination, and complete remaining route
@@ -869,6 +869,18 @@ quality-of-life work.
   Erdrick's Cave B1: a visible stair approach completed normally, while a
   17-step route to the hidden entrance stopped before step two immediately
   after restrictions were re-enabled.
+  A balanced intermediate mode is now source-complete as the shipped default:
+  navigation remains unrestricted while Torch or Radiant exposes neighboring
+  tiles, then remote browsing/planning and active auto-walk cut off when the
+  light expires. `authentic` keeps the strict behavior and `unrestricted` keeps
+  full assistance; legacy `true`/`false` values remain compatible. Live
+  lit routing is verified in both directions on Erdrick B1. That pass promoted
+  `(6,3).west` only after nine normal failures plus nine same-origin seam
+  failures; three post-reload 17-step routes then completed without reroutes or
+  runtime blocks. The natural cutoff is also live-verified: Radiant reached raw
+  radius `1` during an active route, autowalk stopped at `(7,7)` before hidden
+  `(8,7)`, and the full recovery warning was delivered. Final state had no
+  active path, blockers, or pending speech. This darkness slice is closed.
   Retain progressive-discovery work as a later slice. Deferred warning
   delivery is source-complete on `codex/deferred-warning-delivery`: important
   warnings wait for a short keyboard/controller-neutral window, retain separate

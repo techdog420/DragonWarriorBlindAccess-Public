@@ -3766,6 +3766,42 @@ function tests.dungeon_object_browsing_can_be_unrestricted_by_config()
     env.restore()
 end
 
+function tests.balanced_dungeon_browsing_is_open_while_lit_and_closes_when_dark()
+    local env = make_env({
+        npc_count = 0,
+        darkness_navigation_limits = "balanced",
+    })
+
+    env.set_position(0x1C, 0, 0)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x1C)
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x20,
+        x = 0,
+        y = 0,
+        light_radius = 3,
+    })
+    assert_equal(
+        env.objects.find_object_by_id("stair_9_9", {filtered = true}) ~= nil,
+        true,
+        "balanced mode should expose decoded dungeon objects while lit")
+
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x20,
+        x = 0,
+        y = 0,
+        light_radius = 1,
+    })
+    assert_equal(
+        env.objects.find_object_by_id("stair_9_9", {filtered = true}),
+        nil,
+        "balanced mode should hide remote dungeon objects after light expires")
+
+    env.restore()
+end
+
 function tests.dungeon_visibility_updates_as_the_hero_moves_or_light_changes()
     local env = make_env({npc_count = 0})
 
