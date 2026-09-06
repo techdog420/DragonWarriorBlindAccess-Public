@@ -121,6 +121,22 @@ Updated: 2026-09-06
 
 ## Immediate FCEUX Handoff
 
+- Dynamic darkness-aware auto-walk is source-complete and live-accepted.
+  Ordinary dungeon routes now recheck the next cell, destination,
+  and full queued remainder against the current light before each injected
+  direction. If any part is hidden, movement stops first and an accessible
+  warning explains how to continue; logs use `DARKNESS_AUTO_WALK_STOP` and
+  `AUTO_STEP_ROUTE_GUARD_STOP`. Drift, blocker, and seam reroutes retain the
+  live darkness mask. The config opt-out remains unrestricted and can be
+  re-enabled during a route. Live testing on `2026-09-06` passed both halves:
+  a visible stair approach from B1 `(9,7)` completed normally; after a 17-step
+  entrance route was queued unrestricted, re-enabling the default at `(9,8)`
+  allowed only its already-committed first step and stopped before step two,
+  identifying hidden tail cell `(6,5)`; the player confirmed hearing the full
+  stop warning. Final probe
+  `DARKNESS_AUTOWALK_STOPPED_20260906` found no active path, runtime blocker,
+  pending warning, or script error. The authoritative Windows gate passes 35
+  host-runnable Lua suites and 68 Python tests.
 - Darkness local-navigation assistance is source-complete and live-accepted on
   `codex/darkness-parity`. `Shift+N` or `F21`
   reports cardinal paths to the first blocker or light boundary, up to two

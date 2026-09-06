@@ -1,6 +1,7 @@
 # Darkness Parity Design
 
-Status: first slice and local-report/config-opt-out slice live-verified on `codex/darkness-parity`
+Status: first slice, local-report/config-opt-out slice, and dynamic auto-walk
+slice live-verified on `codex/darkness-parity`
 
 ## Goal
 
@@ -38,11 +39,23 @@ FCEUX during unlit, Torch, Radiant, moving-window, shrink, and fade states.
 
 ## Deferred slices
 
-- Dynamic darkness-aware auto-walk that moves only through currently visible
-  information, stops or replans as the visible square moves, and never uses a
-  decoded route hidden beyond the current light.
 - Progressive discovery for clue-bound hidden treasure. This is related to
   information parity but remains separate from dungeon darkness.
+
+## Dynamic auto-walk slice
+
+1. Ordinary dungeon auto-walk installs a live step guard. Before each direction
+   is injected, the guard checks the next cell, the selected destination, and
+   every cell remaining in the queued path against the current light square.
+2. If movement or a light-radius reduction hides any part of that route,
+   auto-walk stops before the next input and announces that the remaining route
+   is outside the current light. The player can move manually, increase the
+   light, or choose another visible destination.
+3. Drift, blocker, and seam-retry replanning retain the original darkness
+   policy and rebuild against the current light-limited walkability snapshot.
+4. `darkness_navigation_limits=false` remains a true unrestricted mode. The
+   guard stays attached so a live config reload back to `true` takes effect on
+   the next queued step.
 
 ## Local report and difficulty opt-out slice
 
@@ -74,6 +87,14 @@ Use Erdrick's Cave B1 as the initial live test bed.
 6. Confirm an ordinary path preview cannot route outside the visible square.
 7. Confirm explicit debug path and map-survey commands remain available for
    development work.
+8. With Torch or Radiant active, auto-walk to an object whose complete route is
+   inside the current light and confirm normal arrival.
+9. Start a route shortly before a meaningful Radiant shrink. Confirm auto-walk
+   stops before the next input if the destination or queued remainder falls
+   outside the smaller light square, and verify `DARKNESS_AUTO_WALK_STOP` plus
+   `AUTO_STEP_ROUTE_GUARD_STOP` in `dw_debug.log`.
+10. Repeat with `darkness_navigation_limits=false`; the same route should remain
+    unrestricted.
 
 ## Live acceptance result
 
@@ -98,3 +119,16 @@ the same report remained physically light-bounded and explicitly disclosed
 unrestricted assistance; object browsing and auto-walk then selected the
 distant B1 down stairs and completed the decoded route to `(9,8)`. The default
 was restored to `true` and confirmed live after the test.
+
+The dynamic auto-walk slice passed live acceptance on `2026-09-06`. A normal
+light-bounded route from B1 `(9,7)` walked one step south to the Stairs Down
+approach at `(9,8)` and completed normally. For the hidden-remainder case, an
+unrestricted 17-step route from `(9,8)` to the entrance was queued, then the
+default restriction was reloaded while its first step was already committed.
+The hero completed only that authorized step to `(9,7)`. Before injecting step
+two, the guard identified the first hidden queued cell at `(6,5)`, logged
+`DARKNESS_AUTO_WALK_STOP` and `AUTO_STEP_ROUTE_GUARD_STOP`, cleared the route,
+and delivered the complete visible-boundary warning, which the player confirmed
+hearing. A fresh post-check found no active path, runtime blocker, pending
+warning, or script error. The tracked
+config remains `darkness_navigation_limits=true`.
