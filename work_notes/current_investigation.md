@@ -4,6 +4,24 @@ Updated: 2026-09-03
 
 ## 2026-09-03 Darkness Parity First Slice
 
+- LIVE DYNAMIC AUTO-WALK PERMITTED ROUTE (`2026-09-06`): after the new source
+  was reloaded, the player started at Erdrick's Cave B1 `(9,7)`, selected the
+  visible Stairs Down at `(9,9)`, and auto-walk planned the one-step approach
+  south to `(9,8)`. The executor injected only south, completed the step at
+  frame `1767`, and finished/faced south at frame `1786` without a darkness
+  stop, route cancellation, or runtime block. Fresh probe
+  `DARKNESS_AUTOWALK_ALLOWED_20260906` at frame `5880` confirmed `(9,8)`, raw
+  Radiant radius `7`, half-span `3`, timer `16`, `navigation_limited=true`, nil
+  path target, and zero runtime blockers. HIDDEN-REMAINDER ACCEPTANCE: the
+  running config was then staged unrestricted while the tracked file remained
+  at its default `true`. A watcher detected a newly queued 17-step Exit route
+  at frame `36511` and reloaded the restriction at frame `36540`, while the
+  first north step was already committed. That step completed at `(9,7)`;
+  before step two, frame `36569` identified hidden queued cell `(6,5)`, logged
+  both darkness guard events, cleared the route, and delivered the full warning,
+  which the player confirmed hearing. Final probe
+  `DARKNESS_AUTOWALK_STOPPED_20260906` reported nil path, zero
+  runtime blockers, no pending warnings, and `navigation_limited=true`.
 - LIVE UNLIT ACCEPTANCE (`2026-09-04`): entering Erdrick's Cave B1 produced
   exactly one `LIGHT_RADIUS_CHANGED` event at frame `2470`. A fresh
   `report_light_state` at frame `36180` confirmed map `0x1C`, terrain `0x20`,

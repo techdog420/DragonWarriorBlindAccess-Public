@@ -1,11 +1,26 @@
 # Playtesting Notes
 
-Updated: 2026-09-04
+Updated: 2026-09-06
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
 
+- Dynamic darkness-aware auto-walk passed live FCEUX acceptance on `2026-09-06`.
+  Ordinary dungeon routes now validate the next
+  cell, selected destination, and entire queued remainder against the current
+  light before each direction is injected. A hidden remainder stops with an
+  accessible warning and structured `DARKNESS_AUTO_WALK_STOP` and
+  `AUTO_STEP_ROUTE_GUARD_STOP` evidence. Drift and seam reroutes preserve the
+  darkness mask; `darkness_navigation_limits=false` remains unrestricted.
+  A visible one-step stair approach from B1 `(9,7)` completed normally. During
+  a 17-step route from `(9,8)` to the hidden entrance, restrictions were
+  re-enabled while step one was committed. The hero finished only that step to
+  `(9,7)`; before step two, the guard found the hidden tail at `(6,5)`, stopped,
+  and delivered the full warning, which the player confirmed hearing. The final
+  probe found no active path, runtime
+  blocker, pending warning, or script error. The default restriction is restored.
+  The authoritative gate passes 35 host-runnable Lua suites and 68 Python tests.
 - Darkness local-report and difficulty-opt-out acceptance passed in Erdrick's
   Cave B1 on `2026-09-06`. With Radiant at `(0,0)`, `Shift+N` reported the
   three-tile light boundary, local blockers, visible topology, and the entrance

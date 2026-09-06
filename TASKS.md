@@ -861,9 +861,15 @@ quality-of-life work.
   and every meaningful shrink boundary passed. A light-bounded local layout
   report (`Shift+N` or `F21`, plus `visible_area`) and the default-on
   `darkness_navigation_limits` difficulty/debug flag are live-verified in
-  Radiant, unlit, moving-window, and unrestricted-navigation states. Retain
-  dynamic darkness-aware auto-walk and
-  progressive-discovery work as later slices. Deferred warning
+  Radiant, unlit, moving-window, and unrestricted-navigation states. Dynamic
+  darkness-aware auto-walk is now source-complete: every queued interior step
+  rechecks the next cell, selected destination, and complete remaining route
+  against the live light square; hidden route tails stop before input, while
+  drift/blocker retries retain the darkness policy. Live acceptance passed in
+  Erdrick's Cave B1: a visible stair approach completed normally, while a
+  17-step route to the hidden entrance stopped before step two immediately
+  after restrictions were re-enabled.
+  Retain progressive-discovery work as a later slice. Deferred warning
   delivery is source-complete on `codex/deferred-warning-delivery`: important
   warnings wait for a short keyboard/controller-neutral window, retain separate
   FIFO message records for future speech history, and passed live held-key

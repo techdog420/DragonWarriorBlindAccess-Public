@@ -124,6 +124,7 @@ local active_route_hazard_stop = nil
 local active_route_stop_on_blocker = false
 local active_route_npc_mode = "live_npcs"
 local active_route_parked_slots = nil
+M._active_route_respect_darkness = false
 local active_overworld_segment = nil
 M._overworld_hazard_confirmation = {
     current = nil,
@@ -518,6 +519,9 @@ end
 
 local function active_route_planning_opts(opts, context)
     local next_opts = route_planning_opts(opts, active_route_npc_mode or "live_npcs", context)
+    if next_opts.respect_darkness == nil then
+        next_opts.respect_darkness = M._active_route_respect_darkness
+    end
     if active_route_parked_slots ~= nil then
         next_opts.planning_parked_slots = active_route_parked_slots
     end
@@ -2300,6 +2304,7 @@ local function clear_active_route_context(reason, refresh_objects)
     active_route_stop_on_blocker = false
     active_route_npc_mode = "live_npcs"
     active_route_parked_slots = nil
+    M._active_route_respect_darkness = false
     active_overworld_segment = nil
     active_route_temp_blocks = nil
     release_target_face(reason or "route context cleared")
@@ -2379,6 +2384,7 @@ local function set_active_route_context(target, path_len, face_dir, opts)
     active_route_stop_on_blocker = opts.stop_on_blocker == true
     active_route_npc_mode = route_npc_mode_from_opts(opts)
     active_route_parked_slots = opts.planning_parked_slots
+    M._active_route_respect_darkness = opts.respect_darkness == true
     active_route_temp_blocks = {}
 end
 
@@ -5060,6 +5066,79 @@ end
 
 -- queue_path_steps(path): Convert A* path to auto_step route directions.
 -- Returns true if the route was queued successfully.
+M._darkness_route_step_guard = function(step_data)
+    local map_id, px, py = nav.get_position()
+    px = px ~= nil and px or step_data.current_x
+    py = py ~= nil and py or step_data.current_y
+    local visibility = M.darkness.context({
+        map_id = map_id,
+        terrain_offset = snapshot.terrain_offset,
+        x = px,
+        y = py,
+        light_radius = snapshot.light_radius,
+        radiant_timer = snapshot.radiant_timer,
+    })
+    if visibility.navigation_limited ~= true then
+        return true
+    end
+
+    local next_visible = M.darkness.is_visible(
+        visibility, step_data.to_x, step_data.to_y)
+    local route_visible = true
+    local first_hidden_step = nil
+    for _, route_step in ipairs(step_data.remaining_path or {}) do
+        if not M.darkness.is_visible(visibility, route_step.x, route_step.y) then
+            route_visible = false
+            first_hidden_step = route_step
+            break
+        end
+    end
+    local target = active_route_target
+    local target_visible = target == nil
+        or target.x == nil
+        or target.y == nil
+        or M.darkness.is_visible(visibility, target.x, target.y)
+    if next_visible and route_visible and target_visible then
+        return true
+    end
+
+    local hidden_part
+    if not next_visible then
+        hidden_part = "next_step"
+    elseif not route_visible then
+        hidden_part = "remaining_route"
+    else
+        hidden_part = "target"
+    end
+    debug_tools.info(string.format(
+        "DARKNESS_AUTO_WALK_STOP map=0x%02X player=(%d,%d) next=(%s,%s) first_hidden=(%s,%s) target=(%s,%s) radius=%d half_span=%d hidden=%s",
+        map_id or -1,
+        px or -1,
+        py or -1,
+        tostring(step_data.to_x),
+        tostring(step_data.to_y),
+        tostring(first_hidden_step and first_hidden_step.x),
+        tostring(first_hidden_step and first_hidden_step.y),
+        tostring(target and target.x),
+        tostring(target and target.y),
+        visibility.light_radius or 0,
+        visibility.half_span or 0,
+        hidden_part))
+    return false, {
+        reason = "darkness_visibility_boundary",
+        message = "The remaining route is outside the current light",
+        map_id = map_id,
+        current_x = px,
+        current_y = py,
+        to_x = step_data.to_x,
+        to_y = step_data.to_y,
+        target = target,
+        hidden = hidden_part,
+        light_radius = visibility.light_radius,
+        light_half_span = visibility.half_span,
+    }
+end
+
 queue_path_steps = function(path, opts)
     if not path or #path == 0 then
         return false
@@ -5148,6 +5227,10 @@ queue_path_steps = function(path, opts)
         tostring(start_y),
         settle_frames,
         tostring(settle_same_direction)))
+    local respect_darkness = opts.respect_darkness
+    if respect_darkness == nil then
+        respect_darkness = M._active_route_respect_darkness
+    end
     if auto_step.start_route(steps, {
         settle_frames = settle_frames,
         settle_same_direction = settle_same_direction,
@@ -5156,6 +5239,7 @@ queue_path_steps = function(path, opts)
         start_y = start_y,
         settle_before_steps = settle_before_steps,
         prime_before_steps = prime_before_steps,
+        step_guard = respect_darkness == true and M._darkness_route_step_guard or nil,
     }) then
         trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
             "result=true steps=%d",
@@ -5455,6 +5539,7 @@ function M.autowalk_to_object(obj, opts)
         map_id = plan.map_id,
         settle_frames = settle_frames,
         settle_same_direction = settle_same_direction,
+        respect_darkness = opts.respect_darkness == true,
     }) then
         active_route_settle_frames = 0
         active_route_settle_same_direction = true
@@ -6383,7 +6468,11 @@ auto_step.on_route_cancelled = function(cancel_data)
     end
     clear_active_route_context("auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
     if had_target and reason ~= "can_walk_false" then
-        if reason == "dangerous_tile" then
+        if reason == "darkness_visibility_boundary" then
+            tolk.output_warning(
+                "Auto-walk stopped. The remaining route is outside the current light. " ..
+                "Move manually, increase the light, or choose another visible destination.")
+        elseif reason == "dangerous_tile" then
             tolk.output_warning("Auto-walk cancelled. " .. tostring(message or reason))
         else
             tolk.output_interrupt("Auto-walk cancelled. " .. tostring(message or reason))

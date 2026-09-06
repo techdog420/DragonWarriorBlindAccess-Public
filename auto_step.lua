@@ -156,6 +156,7 @@ local suppress_direction_tracking_frames = 0
 local manual_hazard_confirm = nil
 local route_allowed_hazard = nil
 local route_hazard_crossing_started = false
+local route_step_guard = nil
 local step_completion_neutral_depth = 0
 
 -- Cooldown: after a successful auto-step, wait a few frames before
@@ -688,6 +689,7 @@ local function clear_route()
     route_final_carry_y_override = nil
     route_allowed_hazard = nil
     route_hazard_crossing_started = false
+    route_step_guard = nil
     if pending_repress and pending_repress.entry_prime_waveform then
         pending_repress = nil
     end
@@ -1084,6 +1086,55 @@ local function begin_next_route_step(px, py)
     local next_dir = route_steps and route_steps[step_index]
     if not next_dir then
         return false, "route_end", nil
+    end
+    if route_step_guard then
+        local dx, dy = direction_delta(next_dir)
+        local remaining_path = {}
+        local route_x = px
+        local route_y = py
+        for index = step_index, #route_steps do
+            local route_dir = route_steps[index]
+            local route_dx, route_dy = direction_delta(route_dir)
+            route_x = route_x ~= nil and route_x + route_dx or nil
+            route_y = route_y ~= nil and route_y + route_dy or nil
+            remaining_path[#remaining_path + 1] = {
+                x = route_x,
+                y = route_y,
+                dir = route_dir,
+                step_index = index,
+            }
+        end
+        local step_data = {
+            current_x = px,
+            current_y = py,
+            dir = next_dir,
+            to_x = px ~= nil and px + dx or nil,
+            to_y = py ~= nil and py + dy or nil,
+            step_index = step_index,
+            remaining_steps = route_steps and (#route_steps - step_index + 1) or 0,
+            remaining_path = remaining_path,
+        }
+        local ok, allowed, cancel_data = pcall(route_step_guard, step_data)
+        if not ok then
+            debug_tools.error("route step guard error: " .. tostring(allowed))
+            cancel_data = {
+                reason = "route_step_guard_error",
+                message = "A route safety check failed",
+            }
+            allowed = false
+        end
+        if allowed == false then
+            cancel_data = type(cancel_data) == "table" and cancel_data or {}
+            cancel_data.reason = cancel_data.reason or "route_step_guard_refused"
+            cancel_data.message = cancel_data.message or "The next route step is no longer safe"
+            cancel_data.current_x = cancel_data.current_x or px
+            cancel_data.current_y = cancel_data.current_y or py
+            cancel_data.dir = cancel_data.dir or next_dir
+            cancel_data.to_x = cancel_data.to_x or step_data.to_x
+            cancel_data.to_y = cancel_data.to_y or step_data.to_y
+            cancel_data.step_index = cancel_data.step_index or step_index
+            return false, "route_step_guard_refused", next_dir, cancel_data
+        end
     end
     if refuse_hazard_step(next_dir, px, py, "queued_route") then
         return false, "hazard_refused", next_dir
@@ -2264,11 +2315,25 @@ local function handle_route_progress(joy, px, py)
         end
         local next_dir = route_steps[route_index]
         if next_dir then
-            local started, reason = begin_next_route_step(px, py)
-            if started or reason == "hazard_refused" then
+            local started, reason, _, cancel_data = begin_next_route_step(px, py)
+            if started or reason == "hazard_refused" or reason == "route_step_guard_refused" then
                 if reason == "hazard_refused" then
                     neutralize_direction(joy)
                     start_post_step_release(true)
+                elseif reason == "route_step_guard_refused" then
+                    debug_tools.info(string.format(
+                        "AUTO_STEP_ROUTE_GUARD_STOP reason=%s current=(%s,%s) dest=(%s,%s) dir=%s step=%s",
+                        tostring(cancel_data and cancel_data.reason or "route_step_guard_refused"),
+                        tostring(cancel_data and cancel_data.current_x),
+                        tostring(cancel_data and cancel_data.current_y),
+                        tostring(cancel_data and cancel_data.to_x),
+                        tostring(cancel_data and cancel_data.to_y),
+                        tostring(cancel_data and cancel_data.dir),
+                        tostring(cancel_data and cancel_data.step_index)))
+                    clear_route()
+                    neutralize_direction(joy)
+                    start_post_step_release(true)
+                    emit_route_cancelled(cancel_data)
                 end
                 sync_prev_held(joy)
                 return true
@@ -2671,7 +2736,8 @@ end
 --         prime_before_steps = {[step_index] = frames},
 --         settle_before_steps = {[step_index] = frames},
 --         route_final_inject_limit = N,
---         allowed_route_hazard = "poison_swamp" }
+--         allowed_route_hazard = "poison_swamp",
+--         step_guard = function(step_data) return allowed, cancel_data end }
 -- Note: opts.autonomous was removed; live input always cancels a queued step.
 function M.start_route(steps, opts)
     opts = opts or {}
@@ -2691,6 +2757,7 @@ function M.start_route(steps, opts)
     for i, dir in ipairs(steps) do
         route_steps[i] = dir
     end
+    route_step_guard = type(opts.step_guard) == "function" and opts.step_guard or nil
     if opts.allowed_route_hazard == "poison_swamp" then
         route_allowed_hazard = opts.allowed_route_hazard
         local map_id, live_x, live_y = nav.get_position()

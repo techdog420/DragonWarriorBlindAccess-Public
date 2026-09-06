@@ -5878,6 +5878,145 @@ function tests.player_can_disable_darkness_navigation_limits()
     env.restore()
 end
 
+function tests.autowalk_rechecks_darkness_before_each_queued_step()
+    local target = {id = "stair_6_4", name = "Stairs", type = "stair", x = 6, y = 4}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 3,
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local route_opts = env.last_start_route_opts()
+    assert_equal(type(route_opts and route_opts.step_guard), "function",
+        "ordinary dungeon auto-walk should install a live darkness guard")
+    local allowed = route_opts.step_guard({
+        current_x = 5,
+        current_y = 4,
+        to_x = 5,
+        to_y = 3,
+        dir = "up",
+        step_index = 1,
+        remaining_path = {
+            {x = 5, y = 3, dir = "up", step_index = 1},
+        },
+    })
+    assert_equal(allowed, true, "a step and target inside the current light should remain allowed")
+
+    local tail_allowed, tail_cancel = route_opts.step_guard({
+        current_x = 5,
+        current_y = 4,
+        to_x = 5,
+        to_y = 3,
+        dir = "up",
+        step_index = 1,
+        remaining_path = {
+            {x = 5, y = 3, dir = "up", step_index = 1},
+            {x = 5, y = 2, dir = "up", step_index = 2},
+        },
+    })
+    assert_equal(tail_allowed, false,
+        "auto-walk should not retain a decoded route tail beyond current light")
+    assert_equal(tail_cancel.hidden, "remaining_route",
+        "the cancellation should identify a hidden queued route tail")
+
+    env.snapshot.light_radius = 1
+    local still_allowed, cancel_data = route_opts.step_guard({
+        current_x = 5,
+        current_y = 4,
+        to_x = 5,
+        to_y = 3,
+        dir = "up",
+        step_index = 1,
+        remaining_path = {
+            {x = 5, y = 3, dir = "up", step_index = 1},
+        },
+    })
+    assert_equal(still_allowed, false, "auto-walk should stop when the route leaves current light")
+    assert_equal(cancel_data.reason, "darkness_visibility_boundary",
+        "darkness stop should have a structured cancellation reason")
+    assert_equal(cancel_data.hidden, "next_step",
+        "the cancellation should identify the immediately hidden step")
+
+    env.auto_step.on_route_cancelled(cancel_data)
+    assert_contains(table.concat(env.warning_outputs, "\n"),
+        "remaining route is outside the current light",
+        "the player should hear why auto-walk stopped")
+
+    env.restore()
+end
+
+function tests.darkness_autowalk_guard_allows_configured_unrestricted_navigation()
+    local target = {id = "stair_7_4", name = "Stairs", type = "stair", x = 7, y = 4}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 1,
+        config_values = {
+            darkness_navigation_limits = "false",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local route_opts = env.last_start_route_opts()
+    assert_equal(type(route_opts and route_opts.step_guard), "function",
+        "the live guard should remain installed so config reloads apply during a route")
+    local allowed = route_opts.step_guard({
+        current_x = 5,
+        current_y = 4,
+        to_x = 5,
+        to_y = 3,
+        dir = "up",
+        step_index = 1,
+        remaining_path = {
+            {x = 5, y = 3, dir = "up", step_index = 1},
+        },
+    })
+    assert_equal(allowed, true,
+        "the darkness opt-out should keep queued auto-walk unrestricted")
+
+    env.restore()
+end
+
+function tests.darkness_policy_is_preserved_for_drift_reroutes()
+    local target = {id = "stair_5_3", name = "Stairs", type = "stair", x = 5, y = 3}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 3,
+    })
+
+    env.route_manager.autowalk_to_current()
+    env.auto_step.on_route_cancelled({
+        reason = "route_drift_off_path",
+        current_x = 5,
+        current_y = 4,
+        source = "test",
+    })
+
+    local call = env.last_direct_call()
+    assert_equal(call and call.opts and call.opts.darkness_visibility ~= nil, true,
+        "drift reroute planning should retain the active darkness mask")
+    assert_equal(type(env.last_start_route_opts().step_guard), "function",
+        "drift reroute execution should retain the live darkness guard")
+
+    env.restore()
+end
+
 function tests.visible_area_report_uses_physical_light_even_when_navigation_is_unrestricted()
     local env = make_env({
         start_map_id = 0x1C,

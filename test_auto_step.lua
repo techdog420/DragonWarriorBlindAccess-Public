@@ -5533,6 +5533,58 @@ function tests.suppressed_direction_press_does_not_start_auto_step()
     env.restore()
 end
 
+function tests.queued_route_step_guard_stops_before_direction_injection()
+    local env = make_env()
+    local observed_step = nil
+    env.auto_step.start_route({"right"}, {
+        start_x = 3,
+        start_y = 1,
+        step_guard = function(step_data)
+            observed_step = step_data
+            return false, {
+                reason = "darkness_visibility_boundary",
+                message = "The remaining route is outside the current light",
+            }
+        end,
+    })
+
+    env.update(true)
+
+    assert_truthy(observed_step ~= nil, "queued route should consult its step guard")
+    assert_equal(observed_step.current_x, 3, "step guard should receive the live start x")
+    assert_equal(observed_step.current_y, 1, "step guard should receive the live start y")
+    assert_equal(observed_step.to_x, 4, "step guard should receive the destination x")
+    assert_equal(observed_step.to_y, 1, "step guard should receive the destination y")
+    assert_equal(observed_step.dir, "right", "step guard should receive the queued direction")
+    assert_equal(#observed_step.remaining_path, 1,
+        "step guard should receive the entire queued remainder")
+    assert_equal(observed_step.remaining_path[1].x, 4,
+        "remaining route should include the first destination x")
+    assert_equal(observed_step.remaining_path[1].y, 1,
+        "remaining route should include the first destination y")
+    assert_truthy(not env.auto_step.is_route_active(), "refused route should be cleared")
+
+    for _, call in ipairs(env.injected_calls) do
+        assert_truthy(
+            not (call.buttons and call.buttons.right),
+            "refused route must stop before injecting its direction")
+    end
+
+    local cancelled = nil
+    for _, event in ipairs(env.published) do
+        if event.name == "route_cancelled" then
+            cancelled = event.payload
+        end
+    end
+    assert_truthy(cancelled ~= nil, "step guard refusal should publish route cancellation")
+    assert_equal(cancelled.reason, "darkness_visibility_boundary",
+        "step guard should preserve its cancellation reason")
+    assert_equal(cancelled.to_x, 4, "cancellation should identify the refused destination x")
+    assert_equal(cancelled.to_y, 1, "cancellation should identify the refused destination y")
+
+    env.restore()
+end
+
 local failures = 0
 local total = 0
 
