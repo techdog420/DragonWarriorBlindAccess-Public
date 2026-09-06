@@ -29,6 +29,7 @@ local function make_env(opts)
     local published = {}
     local recorded_blocks = {}
     local outputs = {}
+    local warning_outputs = {}
     local live_joy = {}
     local sticky_joy = {}
     local movement_state = opts.movement_state or 0x10
@@ -132,11 +133,17 @@ local function make_env(opts)
     end
 
     package.preload["tolk"] = function()
+        local function record_output(message)
+            outputs[#outputs + 1] = message
+        end
+        local function record_warning(message)
+            warning_outputs[#warning_outputs + 1] = message
+            record_output(message)
+        end
         return {
             output = function() end,
-            output_interrupt = function(message)
-                outputs[#outputs + 1] = message
-            end,
+            output_interrupt = record_output,
+            output_warning = record_warning,
         }
     end
 
@@ -205,6 +212,7 @@ local function make_env(opts)
         recorded_blocks = recorded_blocks,
         debug_messages = debug_messages,
         outputs = outputs,
+        warning_outputs = warning_outputs,
         memory_writes = memory_writes,
         set_position = function(x, y)
             px, py = x, y
@@ -610,6 +618,11 @@ function tests.manual_auto_step_allows_confirmed_known_hazard_destination()
     assert_truthy(
         env.outputs[1] == "Damage floor ahead. Press up again to enter.",
         "first manual hazard tap should give an explicit confirmation instruction"
+    )
+    assert_equal(
+        env.warning_outputs[1],
+        env.outputs[1],
+        "manual hazard confirmation should use deferred warning speech"
     )
 
     env.set_joy({up = true})

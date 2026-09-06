@@ -20,6 +20,7 @@
 --   - speech_bridge.py in the same directory as this script
 
 local config = require "config"
+local warning_delivery = require "warning_delivery"
 
 -- ============================================================
 -- Determine script directory
@@ -281,9 +282,13 @@ end
 local debounce_secs = 1.0
 local last_queued_text = ""
 local last_queued_time = -10000.0  -- far in the past so first call always fires
+local warning_queue = warning_delivery.new({neutral_frames = 12})
+local warning_event_handler = nil
+local delivery_observer = nil
 
 local function reload_config()
     debounce_secs = (tonumber(config.get("speech_debounce_ms")) or 1000) / 1000.0
+    warning_queue:set_neutral_frames(tonumber(config.get("warning_idle_frames")) or 12)
 end
 
 reload_config()
@@ -291,6 +296,50 @@ reload_config()
 -- ============================================================
 -- Public API
 -- ============================================================
+
+local function report_warning_event(action, record, state, deferred)
+    if not warning_event_handler then
+        return
+    end
+    pcall(warning_event_handler, {
+        action = action,
+        id = record and record.id or nil,
+        text = record and record.text or nil,
+        deferred = deferred == true,
+        pending_count = state and state.pending_count or 0,
+        neutral_frames = state and state.neutral_frames or 0,
+        neutral_frames_required = state and state.neutral_frames_required or 0,
+    })
+end
+
+local function deliver(text, interrupt, metadata)
+    local sent = false
+    if backend == "ffi" then
+        sent = send_ffi(text, interrupt)
+    elseif backend == "bridge" then
+        local command = interrupt and "interrupt:" or "speak:"
+        sent = send_bridge(command .. text)
+        if not sent then
+            notify_fallback(text)
+            sent = true
+        end
+    else
+        notify_fallback(text)
+        sent = true
+    end
+
+    if sent and delivery_observer then
+        local event = {
+            text = text,
+            interrupt = interrupt == true,
+            kind = metadata and metadata.kind or "speech",
+            id = metadata and metadata.id or nil,
+            deferred = metadata and metadata.deferred == true or false,
+        }
+        pcall(delivery_observer, event)
+    end
+    return sent
+end
 
 -- output(text): Speak text through the screen reader.
 -- Does NOT interrupt speech already playing — new text is queued.
@@ -304,30 +353,63 @@ local function output(text)
         last_queued_text = text
         last_queued_time = now
     end
-    if backend == "ffi" then
-        send_ffi(text, false)
-    elseif backend == "bridge" then
-        if not send_bridge("speak:" .. text) then
-            notify_fallback(text)
-        end
-    else
-        notify_fallback(text)
-    end
+    deliver(text, false, {kind = "speech"})
 end
 
 -- output_interrupt(text): Speak text, immediately cutting off
 -- whatever the screen reader is currently saying.
 -- Use this for urgent info (HP changes, position updates).
 local function output_interrupt(text)
-    if backend == "ffi" then
-        send_ffi(text, true)
-    elseif backend == "bridge" then
-        if not send_bridge("interrupt:" .. text) then
-            notify_fallback(text)
-        end
-    else
-        notify_fallback(text)
+    deliver(text, true, {kind = "speech"})
+end
+
+-- output_warning(text): Preserve an important message until keyboard/controller
+-- input has been neutral for warning_idle_frames.  Warnings are separate FIFO
+-- records so later speech-history support can retain their original boundaries.
+local function output_warning(text, interrupt)
+    local record = warning_queue:submit(text, {
+        interrupt = interrupt ~= false,
+        kind = "warning",
+    })
+    if record then
+        report_warning_event(
+            "queued",
+            record,
+            warning_queue:get_state(),
+            record.deferred == true)
     end
+    return record
+end
+
+-- Called once near the start of each emulator frame, before speech-producing
+-- checks.  Synthetic auto-walk input should be excluded by the caller.
+local function update_warning_input(active)
+    warning_queue:observe_input(active == true)
+end
+
+-- Called near the end of each emulator frame so released warnings are the last
+-- speech submitted that frame.  Only the first record interrupts; later records
+-- queue behind it so one deferred warning cannot erase another.
+local function flush_warnings()
+    local ready = warning_queue:take_ready()
+    if not ready then
+        return 0
+    end
+
+    for index, record in ipairs(ready) do
+        local effective_interrupt = index == 1 and record.interrupt == true
+        deliver(record.text, effective_interrupt, {
+            kind = record.kind,
+            id = record.id,
+            deferred = record.deferred == true,
+        })
+        report_warning_event(
+            "delivered",
+            record,
+            warning_queue:get_state(),
+            record.deferred == true)
+    end
+    return #ready
 end
 
 -- silence(): Stop all speech immediately, without saying anything new.
@@ -345,8 +427,22 @@ end
 return {
     output = output,
     output_interrupt = output_interrupt,
+    output_warning = output_warning,
+    update_warning_input = update_warning_input,
+    flush_warnings = flush_warnings,
     silence = silence,
     reload_config = reload_config,
+    set_warning_event_handler = function(handler)
+        warning_event_handler = type(handler) == "function" and handler or nil
+    end,
+    -- Future speech-history support can subscribe here.  The observer runs only
+    -- after a message is actually handed to a backend, including deferred warnings.
+    set_delivery_observer = function(observer)
+        delivery_observer = type(observer) == "function" and observer or nil
+    end,
+    get_warning_state = function()
+        return warning_queue:get_state()
+    end,
     -- Introspection API for debug commands
     is_available = function()
         return backend ~= "none"

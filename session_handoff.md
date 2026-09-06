@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 ## Release Installation Handoff
 
@@ -121,6 +121,36 @@ Updated: 2026-09-03
 
 ## Immediate FCEUX Handoff
 
+- Deferred warning delivery is source-complete and accepted with both JAWS and
+  NVDA on `codex/deferred-warning-delivery`.
+  Dungeon-light changes, dangerous-tile confirmations, hazard-boundary stops,
+  unsafe-route previews, and overworld route warnings now remain in a FIFO
+  queue while a non-modifier keyboard key or manual controller input is held.
+  Delivery begins after `warning_idle_frames=12` neutral frames (about 0.2
+  seconds). Auto-walk's synthetic input and FCEUX's benign modifier-only/stale
+  Alt state do not hold the queue. Each warning retains its own record, and
+  `tolk.set_delivery_observer(...)` provides the seam for a future review-past-
+  speech feature. The authoritative Windows gate passes 35 host-runnable Lua
+  suites and 68 Python tests; package-layout coverage and five focused package
+  tests also pass. Live reload was confirmed by probe at frame `6780`, with the
+  JAWS bridge ready and the idle queue at `12/12`. During the held-key Radiant
+  test, radius-five and radius-seven warnings queued separately at frames
+  `18614` and `18622`, remained silent while input was active, then delivered
+  FIFO at frame `18880` after `12/12` neutral frames. The user heard both light-
+  expansion messages only after releasing the repeated `F` input. The first
+  bridge command interrupted stale speech and the second queued behind it. The
+  first NVDA reload exposed FCEUX reporting a modifier-only latch as
+  `LeftWindows`; adding `Windows`, `LeftWindows`, and `RightWindows` aliases to
+  the ignored modifier set restored the idle queue from `0/12` to `12/12` while
+  leaving non-modifier chords detectable. After reloading that correction, the
+  held-`X` Radiant test queued three expansion records at frames `15155`,
+  `15163`, and `15171`; all had `deferred=true` and remained silent until frame
+  `15485`, after `12/12` neutral frames. NVDA received one interrupting command
+  followed by two queued commands, and the user heard the expected results
+  after releasing `X`. No new script error was recorded. Holding `F` during
+  the earlier JAWS test also reopened the command menu and
+  executed its first option, so use an ordinary movement-held expiry warning or
+  a less disruptive key for later regression testing.
 - Darkness-parity first-slice acceptance completed in Erdrick's Cave B1 on
   `2026-09-04`. Unlit entry, Torch, Radiant expansion, moving-window object
   discovery, three shrink boundaries, and final current-tile-only masking all
@@ -128,8 +158,8 @@ Updated: 2026-09-03
   `198101`, `5` to `3` at frame `209831`, and `3` to `1` at frame `274265`;
   object browsing at `(1,0)` correctly hid the adjacent entrance. The Radiant
   dialogue corruption fix is also accepted live. Held directional input can
-  interrupt light warnings in JAWS; handle reliable warning delivery as a
-  separate speech-polish follow-up. The branch remains
+  interrupt light warnings in JAWS; the deferred-warning branch above now has
+  live JAWS and NVDA acceptance. The darkness branch remains
   `codex/darkness-parity` with draft PR #12.
 - Long off-network checkpoint recovery and its startup optimization are
   source-complete and live-verified in FCEUX (`2026-09-03`). Charlock recovery

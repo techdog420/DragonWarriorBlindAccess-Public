@@ -88,6 +88,7 @@ for _, mod_name in ipairs({
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
+    "warning_delivery",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -117,6 +118,7 @@ local map_survey = require "map_survey"    -- Autonomous map/object survey workf
 local map_crawler = require "map_crawler"  -- Review-only frontier crawler for map decoding
 local snapshot = require "game_snapshot"   -- Centralized per-frame RAM reads
 local darkness = require "darkness"         -- Dungeon light-radius visibility policy
+local warning_delivery = require "warning_delivery" -- Manual-input idle detection for warning speech
 local event_bus = require "event_bus"      -- Pub/sub event system for module decoupling
 local route_mgr = require "route_manager" -- Pathfinding coordination, NPC freeze, runtime blocks
 local teleport_state = require "teleport_state" -- RAM synchronization for debug teleports
@@ -128,6 +130,20 @@ require "edge_verify_classifier" -- Shared edge verify result classification
 local key_combo = require "key_combo"      -- Configurable key-combo helpers
 local overworld_routes = require "overworld_routes" -- Manual route guidance for the world map
 require "walked_edge_verifier" -- Non-teleport walked probe/door verifier
+
+if tolk.set_warning_event_handler then
+    tolk.set_warning_event_handler(function(event)
+        debug_tools.info(string.format(
+            "SPEECH_WARNING_%s id=%s deferred=%s pending=%d neutral=%d/%d text=%q",
+            string.upper(tostring(event.action or "event")),
+            tostring(event.id or "-"),
+            tostring(event.deferred == true),
+            tonumber(event.pending_count) or 0,
+            tonumber(event.neutral_frames) or 0,
+            tonumber(event.neutral_frames_required) or 0,
+            tostring(event.text or "")))
+    end)
+end
 
 -- Direction constants (kept here for debug diagnostic functions).
 local DIR_TO_DELTA = route_mgr.get_dir_to_delta()
@@ -2274,10 +2290,14 @@ local function check_map_change()
             darkness_context.light_radius or 0,
             darkness_context.half_span or 0,
             darkness_context.radiant_timer or 0))
-        tolk.output(light_change_speech)
+        tolk.output_warning(light_change_speech)
     end
     if route_speech then
-        tolk.output(route_speech)
+        if route_event and route_event.warning_message then
+            tolk.output_warning(route_speech)
+        else
+            tolk.output(route_speech)
+        end
     end
 end
 
@@ -4592,9 +4612,14 @@ debug_tools.register_command("speech_status", function()
     local ready = tolk.is_ready and tolk.is_ready()
     local available = tolk.is_available and tolk.is_available()
     local err = tolk.get_last_error and tolk.get_last_error() or "none"
+    local warning_state = tolk.get_warning_state and tolk.get_warning_state() or {}
     local status = string.format(
-        "Speech status. backend=%s. ready=%s. available=%s. error=%s",
-        tostring(backend), tostring(ready), tostring(available), tostring(err))
+        "Speech status. backend=%s. ready=%s. available=%s. error=%s. warning_pending=%d. warning_input_active=%s. warning_neutral=%d/%d",
+        tostring(backend), tostring(ready), tostring(available), tostring(err),
+        tonumber(warning_state.pending_count) or 0,
+        tostring(warning_state.input_active == true),
+        tonumber(warning_state.neutral_frames) or 0,
+        tonumber(warning_state.neutral_frames_required) or 0)
     debug_tools.info(status)
     tolk.output_interrupt(status)
 end)
@@ -7227,12 +7252,19 @@ while true do
     in_gameplay = (game_state.state ~= state.STATE_TITLE)
 
     -- Read keyboard state for hotkeys
-    local keys = checked_scan("input.get", input.get)
+    local raw_keys = checked_scan("input.get", input.get)
+    local keys = raw_keys
     if emulator_compat.is_bizhawk then
         keys = hotkey_filter.filter_bizhawk_keys(keys, config)
     end
     current_joy = checked_scan("joypad.read", joypad.read, 1)
     current_joy_any = joypad_has_input(current_joy)
+    if tolk.update_warning_input then
+        checked_call(
+            "tolk.update_warning_input",
+            tolk.update_warning_input,
+            warning_delivery.keyboard_has_input(raw_keys) or has_blocking_live_input())
+    end
     -- No explicit PPU flush needed: frameadvance() already cleared the cache
     -- at the start of this tick (PPU_CACHE_HOLD_FRAMES=1).
 
@@ -7790,6 +7822,10 @@ while true do
         trace_teleport_loop("PRE_AUTO_STEP_UPDATE")
         checked_scan("auto_step.update", auto_step.update, can_walk)
         trace_teleport_loop("POST_AUTO_STEP_UPDATE")
+    end
+
+    if tolk.flush_warnings then
+        checked_call("tolk.flush_warnings", tolk.flush_warnings)
     end
 
     -- Advance the emulator by one frame. This is required —

@@ -22,6 +22,7 @@ end
 local function make_env(options)
     options = options or {}
     local outputs = {}
+    local warning_outputs = {}
     local published_events = {}
     local event_subscribers = {}
     local function publish_event(name, payload)
@@ -492,10 +493,16 @@ local function make_env(options)
     end
 
     package.preload["tolk"] = function()
+        local function record_output(msg)
+            outputs[#outputs + 1] = msg
+        end
+        local function record_warning(msg)
+            warning_outputs[#warning_outputs + 1] = msg
+            record_output(msg)
+        end
         return {
-            output_interrupt = function(msg)
-                outputs[#outputs + 1] = msg
-            end,
+            output_interrupt = record_output,
+            output_warning = record_warning,
         }
     end
 
@@ -646,6 +653,7 @@ local function make_env(options)
 
     return {
         outputs = outputs,
+        warning_outputs = warning_outputs,
         published_events = function() return published_events end,
         publish_event = publish_event,
         auto_step = package.loaded["auto_step"],
@@ -3442,6 +3450,7 @@ function tests.pathfind_reports_unsafe_hazard_route_when_safe_route_is_blocked()
     assert_contains(output, "No safe route", "path preview should explain that only an unsafe route exists")
     assert_contains(output, "Unsafe route crosses damage floor: 2 tiles, first in 1 step", "hazards should be summarized as one compact cluster")
     assert_not_contains(output, "Shrine Stairs. No path found", "path preview should no longer collapse to an error-only message")
+    assert_equal(#env.warning_outputs, 1, "unsafe path preview should use deferred warning speech")
 
     env.restore()
 end
@@ -3462,6 +3471,7 @@ function tests.autowalk_stops_before_immediate_hazard()
     assert_equal(plan.status, "hazard_boundary", "autowalk should stop immediately when the first step is hazardous")
     assert_equal(env.start_route_calls(), 0, "autowalk should not queue any steps when already at the hazard boundary")
     assert_contains(table.concat(env.outputs, "\n"), "Hazard ahead.", "autowalk should warn when the hazard is immediate")
+    assert_equal(#env.warning_outputs, 1, "immediate hazard boundary should use deferred warning speech")
 
     env.restore()
 end
