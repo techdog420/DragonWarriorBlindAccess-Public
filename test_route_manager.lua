@@ -69,6 +69,7 @@ local function make_env(options)
         "addresses",
         "auto_step",
         "config",
+        "darkness",
         "debug_tools",
         "event_bus",
         "game_snapshot",
@@ -5843,6 +5844,62 @@ function tests.player_path_preview_masks_walkability_outside_dungeon_light()
     assert_equal(walkability[4][6], true, "cell one tile east should remain visible")
     assert_equal(walkability[4][7], false, "cell two tiles east should be hidden")
     assert_equal(walkability[2][5], false, "cell two tiles north should be hidden")
+
+    env.restore()
+end
+
+function tests.player_can_disable_darkness_navigation_limits()
+    local target = {id = "stair_7_4", name = "Stairs", type = "stair", x = 7, y = 4}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 1,
+        config_values = {
+            darkness_navigation_limits = "false",
+        },
+    })
+
+    env.route_manager.pathfind_to_current()
+
+    local call = env.last_direct_call()
+    assert_equal(
+        call and call.opts and call.opts.walkability_snapshot,
+        nil,
+        "the opt-out should restore full decoded path planning")
+    assert_equal(
+        call and call.opts and call.opts.darkness_visibility,
+        nil,
+        "the opt-out should not label failures as limited visibility")
+
+    env.restore()
+end
+
+function tests.visible_area_report_uses_physical_light_even_when_navigation_is_unrestricted()
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 3,
+        config_values = {
+            darkness_navigation_limits = "false",
+        },
+        object_list = {
+            {id = "stair_visible", name = "Visible stairs", type = "stair", x = 6, y = 4},
+            {id = "chest_hidden", name = "Hidden chest", type = "chest", x = 7, y = 4},
+        },
+    })
+
+    local report = env.route_manager.describe_visible_area()
+
+    assert_contains(report, "Navigation assistance is unrestricted by darkness",
+        "the report should disclose the opt-out")
+    assert_contains(report, "Visible stairs", "the report should include an object inside the light")
+    assert_not_contains(report, "Hidden chest", "the report must not reveal an object outside the light")
 
     env.restore()
 end

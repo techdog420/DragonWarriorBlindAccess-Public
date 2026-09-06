@@ -109,6 +109,10 @@ local function make_env(opts)
 
     package.preload["route_manager"] = function()
         return {
+            describe_visible_area = function()
+                sequence[#sequence + 1] = "describe_visible_area"
+                return "Torchlight. North blocked"
+            end,
             describe_current_object = function()
                 sequence[#sequence + 1] = "describe_current_object"
                 return "fresh object"
@@ -176,6 +180,20 @@ function tests.current_object_refreshes_object_cache_for_current_map_before_desc
     assert_equal(env.sequence[1], "check_refresh:0x09", "current_object should refresh object cache for the live map before describing")
     assert_equal(env.sequence[2], "describe_current_object", "current_object should describe only after refresh")
     assert_equal(env.spoken[1], "fresh object", "current_object should speak the refreshed object description")
+
+    env.restore()
+end
+
+function tests.visible_area_command_refreshes_and_speaks_local_report()
+    local env = make_env()
+
+    assert_equal(type(env.commands.visible_area), "function", "visible_area command should be registered")
+    env.commands.visible_area()
+
+    assert_equal(env.sequence[1], "check_refresh:0x09", "visible_area should refresh the live map first")
+    assert_equal(env.sequence[2], "describe_visible_area", "visible_area should report after refresh")
+    assert_equal(env.spoken[1], "Torchlight. North blocked", "visible_area should speak the report")
+    assert_equal(env.logs[1], "VISIBLE_AREA: Torchlight. North blocked", "visible_area should log structured evidence")
 
     env.restore()
 end
