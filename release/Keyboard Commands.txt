@@ -3,7 +3,7 @@ Dragon Warrior Accessibility - Keyboard Commands
 
 These are the default keys in the game-jam release. Keep the FCEUX game
 window focused while playing. A physical game controller can also be used.
-Where two keys are listed, either one works. F13 through F20 are optional
+Where two keys are listed, either one works. F13 through F21 are optional
 alternatives for programmable keyboards or remapping; the ordinary letter key
 is sufficient.
 
@@ -38,6 +38,9 @@ G or F20: Announce current gold.
 E: Announce current experience points.
 Shift+B: Announce full status, including attributes, equipment, and spells.
 Shift+T: Read all text currently shown on the game screen.
+Shift+N or F21: In a dark dungeon, describe visible walls and paths in the
+four directions, nearby visible branches or turns, and visible objects. This
+report never reveals cells beyond the current Torch or Radiant light.
 
 Object navigator
 ----------------
@@ -139,3 +142,13 @@ Shift+R and Ctrl+N are supported.
 
 Avoid assigning accessibility commands to the ordinary gameplay keys: arrow
 keys, F, D, Enter, and S.
+
+Dungeon darkness difficulty
+---------------------------
+
+The default darkness_navigation_limits=true setting preserves the original
+game's darkness challenge: object browsing, pathfinding, and auto-walk use
+only the currently lit area. Set darkness_navigation_limits=false if that
+restriction is too difficult or when debugging. The game's light still grows
+and fades normally, light announcements remain active, and Shift+N or F21
+continues to describe only what is inside the current light.

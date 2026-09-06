@@ -1,6 +1,6 @@
 # Darkness Parity Design
 
-Status: first slice source-complete and live-verified on `codex/darkness-parity`
+Status: first slice and local-report/config-opt-out slice live-verified on `codex/darkness-parity`
 
 ## Goal
 
@@ -41,10 +41,24 @@ FCEUX during unlit, Torch, Radiant, moving-window, shrink, and fade states.
 - Dynamic darkness-aware auto-walk that moves only through currently visible
   information, stops or replans as the visible square moves, and never uses a
   decoded route hidden beyond the current light.
-- Full map-description and nearby-tile narration constrained by the same
-  visibility policy.
 - Progressive discovery for clue-bound hidden treasure. This is related to
   information parity but remains separate from dungeon darkness.
+
+## Local report and difficulty opt-out slice
+
+1. `Shift+N` or `F21` gives an on-demand local report. It describes the four
+   cardinal paths to either a blocker or the edge of the light, up to two
+   fully visible nearby branches or turns, and up to four objects whose cells
+   are physically inside the current light square.
+2. The report never uses decoded information beyond the physical light square,
+   including when the navigation restriction is disabled.
+3. `darkness_navigation_limits=true` remains the default. Setting it to
+   `false` restores unrestricted decoded object browsing, path previews, and
+   auto-walk planning for players who find darkness too difficult and for
+   debugging. The game's light, light-state announcements, and local report
+   remain unchanged.
+4. The `visible_area` debug command speaks the same report and logs it under a
+   `VISIBLE_AREA` prefix for repeatable live validation.
 
 ## Acceptance
 
@@ -71,7 +85,16 @@ each meaningful shrink: `7` to `5` at frame `198101`, `5` to `3` at frame
 moving square and hid the adjacent entrance once the half-span reached zero.
 The corrected Radiant cast dialogue was also accepted live.
 
-Held directional input can interrupt light-change speech at the screen-reader
-level. Reliable post-input delivery for important warnings is a separate
-speech-polish follow-up; the structured events and visibility behavior are
-correct.
+Important light-change warnings now wait for a short input-idle window so held
+directional input does not discard them.
+
+The local-report and config-opt-out slice passed live acceptance on
+`2026-09-06`. At B1 `(0,0)`, Radiant reported the three-tile light boundary,
+local blockers, a turn, a branch, and the entrance on the current tile. After
+moving to `(1,0)`, it recomputed the paths and reported the entrance one tile
+west. Reloading the unlit entrance state produced only the current tile and
+entrance, with no neighboring terrain. With `darkness_navigation_limits=false`,
+the same report remained physically light-bounded and explicitly disclosed
+unrestricted assistance; object browsing and auto-walk then selected the
+distant B1 down stairs and completed the decoded route to `(9,8)`. The default
+was restored to `true` and confirmed live after the test.

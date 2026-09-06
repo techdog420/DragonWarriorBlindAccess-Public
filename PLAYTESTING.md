@@ -6,6 +6,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Darkness local-report and difficulty-opt-out acceptance passed in Erdrick's
+  Cave B1 on `2026-09-06`. With Radiant at `(0,0)`, `Shift+N` reported the
+  three-tile light boundary, local blockers, visible topology, and the entrance
+  under the hero. At `(1,0)`, it recomputed the layout and moved the entrance
+  description to one tile west. The unlit entrance report exposed only the
+  current tile and entrance. After `darkness_navigation_limits=false` plus
+  `reload_config`, the report remained light-bounded and disclosed the opt-out,
+  while object browsing and auto-walk selected the distant B1 down stairs and
+  reached `(9,8)`. One timing-sensitive `(5,3)->RIGHT` attempt recovered through
+  the existing retry/reroute path; final `PATH_STATE` was nil with zero runtime
+  and NPC blockers. The default was restored to `true` and confirmed live.
 - Deferred warning delivery is source-complete and accepted with both JAWS and
   NVDA on `codex/deferred-warning-delivery`.
   Important light, hazard, dangerous-tile, unsafe-route, and overworld-route

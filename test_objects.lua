@@ -176,6 +176,9 @@ local function make_env(options)
                 if key == "bizhawk_map_entry_prewarm_path_grid" then
                     return options.bizhawk_map_entry_prewarm_path_grid or "false"
                 end
+                if key == "darkness_navigation_limits" then
+                    return options.darkness_navigation_limits or "true"
+                end
                 return nil
             end,
         }
@@ -3734,6 +3737,31 @@ function tests.dungeon_object_browsing_only_exposes_the_visible_square()
         env.objects.find_object_by_id("stair_9_9") ~= nil,
         true,
         "developer-facing full object data should remain intact")
+
+    env.restore()
+end
+
+function tests.dungeon_object_browsing_can_be_unrestricted_by_config()
+    local env = make_env({
+        npc_count = 0,
+        darkness_navigation_limits = "false",
+    })
+
+    env.set_position(0x1C, 0, 0)
+    env.set_terrain_offset(0x20)
+    env.objects.refresh(0x1C)
+    env.objects.set_visibility_context({
+        map_id = 0x1C,
+        terrain_offset = 0x20,
+        x = 0,
+        y = 0,
+        light_radius = 1,
+    })
+
+    assert_equal(
+        env.objects.find_object_by_id("stair_9_9", {filtered = true}) ~= nil,
+        true,
+        "config opt-out should restore full decoded object browsing")
 
     env.restore()
 end

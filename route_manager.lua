@@ -703,7 +703,7 @@ local function pathfinder_opts_for_plan(opts, map_id, start_x, start_y)
             light_radius = snapshot.light_radius,
             radiant_timer = snapshot.radiant_timer,
         })
-        if visibility.limited == true then
+        if visibility.navigation_limited == true then
             if next_opts.walkability_snapshot == nil
                and map_reader.get_walkability_snapshot then
                 next_opts.walkability_snapshot = map_reader.get_walkability_snapshot(map_id, {
@@ -3754,6 +3754,28 @@ function M.object_reachability(obj, opts)
     return plan_object_reachability(obj, opts)
 end
 
+-- Describe only the dungeon terrain and objects inside the game's current
+-- light square. The darkness module deliberately uses physical visibility for
+-- this report even when the player has disabled navigation-side restrictions.
+function M.describe_visible_area()
+    local map_id, x, y = nav.get_position()
+    local visibility = M.darkness.context({
+        map_id = map_id,
+        terrain_offset = snapshot.terrain_offset,
+        x = x,
+        y = y,
+        light_radius = snapshot.light_radius,
+        radiant_timer = snapshot.radiant_timer,
+    })
+    local walkability = map_reader.get_walkability_snapshot
+        and map_reader.get_walkability_snapshot(map_id, {allow_hazards = true})
+        or nil
+    return M.darkness.describe_visible_area(
+        visibility,
+        walkability,
+        objects.get_objects())
+end
+
 function M.describe_object_with_reachability(obj, base_description, opts)
     opts = opts or {}
     if not obj then
@@ -3878,7 +3900,7 @@ plan_path_to_object = function(obj, opts)
             light_radius = snapshot.light_radius,
             radiant_timer = snapshot.radiant_timer,
         })
-        if visibility.limited == true then
+        if visibility.navigation_limited == true then
             no_path_reason = "limited_visibility"
         end
     end

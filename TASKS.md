@@ -858,8 +858,12 @@ quality-of-life work.
   `docs/plans/2026-09-03-darkness-parity.md`.
 - The first darkness slice is source-complete and live-verified in Erdrick's
   Cave B1. Unlit, Torch, Radiant expansion, moving visibility, object masking,
-  and every meaningful shrink boundary passed. Retain the deferred map-
-  description and progressive-discovery work as later slices. Deferred warning
+  and every meaningful shrink boundary passed. A light-bounded local layout
+  report (`Shift+N` or `F21`, plus `visible_area`) and the default-on
+  `darkness_navigation_limits` difficulty/debug flag are live-verified in
+  Radiant, unlit, moving-window, and unrestricted-navigation states. Retain
+  dynamic darkness-aware auto-walk and
+  progressive-discovery work as later slices. Deferred warning
   delivery is source-complete on `codex/deferred-warning-delivery`: important
   warnings wait for a short keyboard/controller-neutral window, retain separate
   FIFO message records for future speech history, and passed live held-key

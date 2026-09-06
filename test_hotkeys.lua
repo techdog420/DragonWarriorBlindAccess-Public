@@ -44,6 +44,7 @@ local function make_env(options)
     local live_npc_refresh_calls = 0
     local filter_name = options.filter_name or "NPCs"
     local all_filter_calls = 0
+    local visible_area_calls = 0
     local debug_errors = {}
     local input_suppress_calls = 0
     local auto_step_suppress_calls = {}
@@ -88,6 +89,7 @@ local function make_env(options)
         key_stats = "Shift+B",
         key_route_status = "Shift+R",
         key_screen_text = "Shift+T",
+        key_visible_area = "Shift+N|F21",
         key_diag_cursor = "Ctrl+M",
         key_diag_ppu_dump = "Ctrl+D",
         key_diag_title = "Ctrl+Y",
@@ -390,6 +392,11 @@ local function make_env(options)
 
     package.preload["route_manager"] = function()
         return {
+            describe_visible_area = function()
+                visible_area_calls = visible_area_calls + 1
+                return options.visible_area_report
+                    or "Torchlight. Local paths: north blocked. No objects are visible"
+            end,
             describe_current_object = function(opts)
                 describe_calls[#describe_calls + 1] = opts or {}
                 return "Object " .. selected
@@ -472,6 +479,9 @@ local function make_env(options)
         end,
         route_start_calls = function()
             return route_start_calls
+        end,
+        visible_area_calls = function()
+            return visible_area_calls
         end,
         route_status_opts = route_status_opts,
         route_guidance_opts = route_guidance_opts,
@@ -837,6 +847,32 @@ function tests.modified_hotkeys_do_not_fire_as_bare_keys()
     env.update({})
     env.update({Shift = true, F = true})
     assert_equal(env.freeze_calls(), 1, "Shift+F should toggle NPC freeze")
+
+    env.restore()
+end
+
+function tests.shift_n_speaks_the_local_visible_area_during_field_play()
+    local expected = "Torchlight. Local paths: north blocked. Visible objects: Stairs, 1 tile east"
+    local env = make_env({delay = 0, visible_area_report = expected})
+
+    env.update({Shift = true, N = true}, {state = "field"}, false)
+
+    assert_equal(env.visible_area_calls(), 1, "Shift+N should request one local visible-area report")
+    assert_equal(#env.outputs, 1, "Shift+N should speak one report")
+    assert_equal(env.outputs[1].message, expected, "Shift+N should speak the report unchanged")
+    assert_equal(env.outputs[1].interrupt, false, "the read-only report should not interrupt protected speech")
+
+    env.restore()
+end
+
+function tests.visible_area_hotkey_refuses_non_field_states()
+    local env = make_env({delay = 0})
+
+    env.update({Shift = true, N = true}, {state = "battle"}, false)
+
+    assert_equal(env.visible_area_calls(), 0, "battle state should not inspect field map data")
+    assert_equal(env.outputs[1].message, "Visible area is unavailable outside field play",
+        "the hotkey should explain why the report is unavailable")
 
     env.restore()
 end

@@ -54,6 +54,21 @@ function tests.overworld_continuous_auto_walk_is_opt_in()
     )
 end
 
+function tests.darkness_navigation_has_accessible_defaults()
+    package.loaded["config"] = nil
+    local config = require("config")
+    assert_equal(
+        config.get_default("darkness_navigation_limits"),
+        "true",
+        "darkness parity should remain enabled by default"
+    )
+    assert_equal(
+        config.get_default("key_visible_area"),
+        "Shift+N|F21",
+        "the local visible-area report should have a player-safe binding"
+    )
+end
+
 local passed = 0
 local failed = 0
 

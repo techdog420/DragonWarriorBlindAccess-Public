@@ -258,6 +258,13 @@ function M.register()
         M.refresh_after_module_reload()
     end
 
+    debug_tools.register_command("visible_area", function()
+        refresh_object_cache_for_current_map()
+        local message = route_mgr.describe_visible_area()
+        debug_tools.info("VISIBLE_AREA: " .. tostring(message))
+        tolk.output_interrupt(message)
+    end)
+
     debug_tools.register_command("next_object", function()
         refresh_object_browser_context()
         local obj = objects.next_object()

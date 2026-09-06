@@ -5428,7 +5428,7 @@ end)
 debug_tools.register_command("report_light_state", function()
     local context = darkness.context(snapshot)
     debug_tools.info(string.format(
-        "LIGHT_STATE map=0x%02X terrain=0x%02X position=(%d,%d) raw_radius=%d visible_half_span=%d radiant_timer=%d limited=%s",
+        "LIGHT_STATE map=0x%02X terrain=0x%02X position=(%d,%d) raw_radius=%d visible_half_span=%d radiant_timer=%d limited=%s navigation_limited=%s",
         context.map_id or -1,
         context.terrain_offset or -1,
         context.x or -1,
@@ -5436,7 +5436,8 @@ debug_tools.register_command("report_light_state", function()
         context.light_radius or 0,
         context.half_span or 0,
         context.radiant_timer or 0,
-        tostring(context.limited == true)))
+        tostring(context.limited == true),
+        tostring(context.navigation_limited == true)))
     tolk.output_interrupt(darkness.describe(context))
 end)
 

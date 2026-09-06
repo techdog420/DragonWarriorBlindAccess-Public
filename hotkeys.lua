@@ -492,6 +492,29 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         speak_position()
     end
 
+    -- Visible-area report: describe only the terrain and objects inside the
+    -- game's current dungeon light. Keep it read-only and available even when
+    -- movement/object controls are temporarily gated.
+    if is_key_pressed(keys, config.get("key_visible_area")) then
+        if game_state ~= nil and game_state.state ~= "field" then
+            speak_info("Visible area is unavailable outside field play")
+        else
+            local map_id = select(1, nav.get_position())
+            if objects.check_refresh then
+                objects.check_refresh(map_id)
+            end
+            local ok, message = pcall(route_mgr.describe_visible_area)
+            if ok and message and message ~= "" then
+                speak_info(message)
+            else
+                if debug_tools.error then
+                    debug_tools.error("visible-area hotkey failed: " .. tostring(message))
+                end
+                speak_info("Visible area unavailable")
+            end
+        end
+    end
+
     -- HP/MP: Read current HP and MP
     if is_key_pressed(keys, config.get("key_hp")) then
         local hp = memory.readbyte(addr.CURRENT_HP)
