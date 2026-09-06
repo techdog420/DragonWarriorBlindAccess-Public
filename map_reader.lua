@@ -5212,7 +5212,10 @@ local MAP_DIRECTIONAL_BLOCKS = {
     -- that have not failed. Later same-day route evidence showed the newest
     -- single-probe additions were noisy. The 2026-05-08/09 probe_edge_verify
     -- pass then reconfirmed the listed start-choke/east-column approaches with
-    -- 5/5 blocked attempts each; mixed verifier results remain unmodeled.
+    -- 5/5 blocked attempts each; mixed verifier results remain unmodeled. On
+    -- 2026-09-06, repeated normal stair routes independently failed all nine
+    -- entries into (6,3) from the west, and every same-origin seam retry also
+    -- failed before a clean alternate route completed.
     [0x1C] = {
         ["2,1"] = {west = true, south = true, east = true}, -- west/south/east approaches blocked 5/5
         ["2,3"] = {west = true, north = true}, -- west/north approaches blocked 5/5
@@ -5228,7 +5231,7 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["7,2"] = {west = true, north = true},  -- west/north approaches blocked 5/5
         ["8,2"] = {south = true, east = true}, -- south/east approaches blocked 5/5
         ["7,3"] = {south = true, east = true}, -- south/east approaches blocked 5/5
-        ["6,3"] = {north = true}, -- (6,2)->DOWN blocked
+        ["6,3"] = {north = true, west = true}, -- north blocked; west failed 9/9 normal routes plus seam retries
         ["6,4"] = {west = true, south = true, east = true}, -- west/south/east approaches blocked 5/5
         ["6,6"] = {west = true, north = true, east = true}, -- west/north/east approaches blocked 5/5
         ["6,7"] = {east = true}, -- (7,7)->LEFT blocked 5/5 by probe_edge_verify

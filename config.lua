@@ -58,7 +58,7 @@ local DEFAULTS_ORDERED = {
     {key = "key_visible_area",  value = "Shift+N|F21", comment = "; Describe dungeon walls, paths, and objects inside the current light"},
     {comment = ""},
     {comment = "; === Dungeon Darkness ==="},
-    {key = "darkness_navigation_limits", value = "true", comment = "; Limit object browsing, pathfinding, and auto-walk to the current light (false = unrestricted assistance)"},
+    {key = "darkness_navigation_limits", value = "balanced", comment = "; Dungeon navigation mode: balanced (full assistance while lit), authentic (current light only), or unrestricted. Legacy true/false mean authentic/unrestricted."},
     {comment = ""},
     {comment = "; === Object Navigation ==="},
     {comment = "; Cycle through nearby objects (NPCs, stairs, chests, exits)"},

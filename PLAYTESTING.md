@@ -6,6 +6,26 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Balanced dungeon navigation is source-complete and live-accepted.
+  `darkness_navigation_limits=balanced` is now the shipped default: object
+  browsing, path previews, and auto-walk use the full decoded dungeon while
+  Torch or Radiant exposes neighboring tiles, then cut off when the light falls
+  to raw radius `1`. An active route stops before its next hidden step and asks
+  the player to use a Torch or cast Radiant. `authentic` retains strict
+  light-square play, `unrestricted` retains full assistance, and legacy
+  `true`/`false` values retain their former meanings. Physical local reports
+  remain light-bounded in every mode. Deterministic regressions and the full
+  gate pass. Lit route navigation is live-verified in both directions between
+  the B1 entrance and down stairs. That testing exposed a real west-approach
+  blocker at `(6,3)`: nine normal attempts and nine same-origin seam retries
+  failed before rerouting. After `(6,3).west` was added to the permanent map,
+  three fresh 17-step routes completed with no timing retry, reroute, temporary
+  block, or runtime block. For the final expiry case, Radiant naturally fell
+  to raw radius `1` at frame `33874` during an active route. Autowalk completed
+  its already-committed step, then stopped at `(7,7)` before the hidden step to
+  `(8,7)` at frame `33910`; the Torch/Radiant recovery warning was delivered
+  completely. The post-check found path target nil, zero NPC/runtime blockers,
+  no pending warning, and balanced navigation limited as expected.
 - Dynamic darkness-aware auto-walk passed live FCEUX acceptance on `2026-09-06`.
   Ordinary dungeon routes now validate the next
   cell, selected destination, and entire queued remainder against the current

@@ -2272,12 +2272,12 @@ local function check_map_change()
     end
     if changes.map_changed and darkness_context.limited == true then
         if map_change_speech then
-            map_change_speech = map_change_speech .. ". " .. darkness.describe(darkness_context)
+            map_change_speech = map_change_speech .. ". " .. darkness.describe_with_navigation(darkness_context)
         else
             -- A terminal overworld itinerary replaces the duplicate map-name
             -- announcement, but entering a dark dungeon must still report the
             -- newly imposed visibility limit.
-            light_change_speech = darkness.describe(darkness_context)
+            light_change_speech = darkness.describe_with_navigation(darkness_context)
         end
     end
     if map_change_speech then
@@ -5428,7 +5428,7 @@ end)
 debug_tools.register_command("report_light_state", function()
     local context = darkness.context(snapshot)
     debug_tools.info(string.format(
-        "LIGHT_STATE map=0x%02X terrain=0x%02X position=(%d,%d) raw_radius=%d visible_half_span=%d radiant_timer=%d limited=%s navigation_limited=%s",
+        "LIGHT_STATE map=0x%02X terrain=0x%02X position=(%d,%d) raw_radius=%d visible_half_span=%d radiant_timer=%d limited=%s navigation_mode=%s navigation_limited=%s",
         context.map_id or -1,
         context.terrain_offset or -1,
         context.x or -1,
@@ -5437,8 +5437,9 @@ debug_tools.register_command("report_light_state", function()
         context.half_span or 0,
         context.radiant_timer or 0,
         tostring(context.limited == true),
+        tostring(context.navigation_mode),
         tostring(context.navigation_limited == true)))
-    tolk.output_interrupt(darkness.describe(context))
+    tolk.output_interrupt(darkness.describe_with_navigation(context))
 end)
 
 debug_tools.register_command("pathfind_adjacent", function(arg)
@@ -7522,7 +7523,7 @@ while true do
                         if map_name then
                             local context = darkness.context(snapshot)
                             if context.limited == true then
-                                map_name = map_name .. ". " .. darkness.describe(context)
+                                map_name = map_name .. ". " .. darkness.describe_with_navigation(context)
                             end
                             tolk.output(map_name)
                         end

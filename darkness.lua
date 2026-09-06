@@ -3,8 +3,8 @@
 --
 -- The game stores the visible window width as an odd byte value (1, 3, 5, 7).
 -- Convert that width to the number of tiles visible from the hero in each
--- direction, then use the same square for speech, object browsing, and path
--- previews.
+-- direction. Physical reports always use that square; player navigation uses
+-- the configured balanced, authentic, or unrestricted assistance policy.
 
 local config = require "config"
 
@@ -16,19 +16,28 @@ local function number_or_zero(value)
     return tonumber(value) or 0
 end
 
-local function configured_navigation_limits(state)
-    local value = state and state.navigation_limits_enabled
+local function configured_navigation_mode(state)
+    local value = state and state.navigation_mode
+    if value == nil and state then
+        value = state.navigation_limits_enabled
+    end
     if value == nil then
         value = config.get("darkness_navigation_limits")
     end
-    if value == nil then
-        return true
-    end
     if type(value) == "boolean" then
-        return value
+        return value and "authentic" or "unrestricted"
     end
-    value = tostring(value):lower()
-    return value ~= "false" and value ~= "0" and value ~= "off" and value ~= "no"
+
+    value = tostring(value or "balanced"):lower()
+    if value == "true" or value == "1" or value == "on" or value == "yes"
+       or value == "authentic" or value == "strict" then
+        return "authentic"
+    end
+    if value == "false" or value == "0" or value == "off" or value == "no"
+       or value == "unrestricted" then
+        return "unrestricted"
+    end
+    return "balanced"
 end
 
 function M.visible_half_span(light_radius)
@@ -40,18 +49,23 @@ function M.context(state)
     state = state or {}
     local terrain_offset = number_or_zero(state.terrain_offset)
     local limited = terrain_offset == M.DUNGEON_TERRAIN_OFFSET
-    local navigation_limits_enabled = configured_navigation_limits(state)
     local light_radius = math.max(0, math.floor(number_or_zero(state.light_radius)))
+    local half_span = M.visible_half_span(light_radius)
+    local navigation_mode = configured_navigation_mode(state)
+    local navigation_limited = limited and (
+        navigation_mode == "authentic"
+        or (navigation_mode == "balanced" and half_span == 0))
     return {
         limited = limited,
-        navigation_limits_enabled = navigation_limits_enabled,
-        navigation_limited = limited and navigation_limits_enabled,
+        navigation_mode = navigation_mode,
+        navigation_limits_enabled = navigation_mode ~= "unrestricted",
+        navigation_limited = navigation_limited,
         terrain_offset = terrain_offset,
         map_id = state.map_id,
         x = number_or_zero(state.x or state.player_x),
         y = number_or_zero(state.y or state.player_y),
         light_radius = light_radius,
-        half_span = M.visible_half_span(light_radius),
+        half_span = half_span,
         radiant_timer = math.max(0, math.floor(number_or_zero(state.radiant_timer))),
     }
 end
@@ -114,6 +128,35 @@ function M.describe(context)
     return prefix .. ". " .. half_span .. " tiles are visible in every direction"
 end
 
+function M.navigation_description(context)
+    context = context or {}
+    if context.limited ~= true then
+        return nil
+    end
+    if context.navigation_mode == "unrestricted" then
+        return "Navigation assistance is unrestricted by darkness"
+    end
+    if context.navigation_mode == "balanced" then
+        if context.navigation_limited == true then
+            return "Balanced navigation is unavailable beyond the current tile until light is restored"
+        end
+        return "Balanced navigation assistance remains available while the light lasts"
+    end
+    if context.navigation_mode == "authentic" then
+        return "Authentic navigation is limited to the current light"
+    end
+    return nil
+end
+
+function M.describe_with_navigation(context)
+    local description = M.describe(context)
+    local navigation = M.navigation_description(context)
+    if navigation then
+        return description .. ". " .. navigation
+    end
+    return description
+end
+
 function M.change_announcement(previous, current)
     current = current or {}
     if current.limited ~= true then
@@ -128,10 +171,18 @@ function M.change_announcement(previous, current)
         return nil
     end
     if new_span > old_span then
-        return "The light expands. " .. M.describe(current)
+        local message = "The light expands. " .. M.describe(current)
+        if current.navigation_mode == "balanced" and old_span == 0 then
+            message = message .. ". Navigation assistance is restored while the light lasts"
+        end
+        return message
     end
     if new_span == 0 then
-        return "The light fades. Only the current tile is visible"
+        local message = "The light fades. Only the current tile is visible"
+        if current.navigation_mode == "balanced" then
+            message = message .. ". Navigation beyond the current tile is unavailable until light is restored"
+        end
+        return message
     end
     return "The light dims. " .. M.describe(current)
 end
@@ -303,8 +354,9 @@ function M.describe_visible_area(context, walkability, objects)
     end
 
     local parts = {M.describe(context)}
-    if context.navigation_limits_enabled == false then
-        parts[#parts + 1] = "Navigation assistance is unrestricted by darkness"
+    local navigation = M.navigation_description(context)
+    if navigation then
+        parts[#parts + 1] = navigation
     end
 
     local half_span = math.max(0, number_or_zero(context.half_span))

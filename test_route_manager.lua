@@ -5832,6 +5832,9 @@ function tests.player_path_preview_masks_walkability_outside_dungeon_light()
         object_list = {target},
         snapshot_terrain = 0x20,
         snapshot_light_radius = 3,
+        config_values = {
+            darkness_navigation_limits = "authentic",
+        },
     })
 
     env.route_manager.pathfind_to_current()
@@ -5888,6 +5891,9 @@ function tests.autowalk_rechecks_darkness_before_each_queued_step()
         object_list = {target},
         snapshot_terrain = 0x20,
         snapshot_light_radius = 3,
+        config_values = {
+            darkness_navigation_limits = "authentic",
+        },
     })
 
     env.route_manager.autowalk_to_current()
@@ -5988,6 +5994,56 @@ function tests.darkness_autowalk_guard_allows_configured_unrestricted_navigation
     env.restore()
 end
 
+function tests.balanced_autowalk_runs_while_lit_then_stops_when_light_expires()
+    local target = {id = "stair_7_4", name = "Stairs", type = "stair", x = 7, y = 4}
+    local env = make_env({
+        start_map_id = 0x1C,
+        start_x = 5,
+        start_y = 4,
+        current_object = target,
+        object_list = {target},
+        snapshot_terrain = 0x20,
+        snapshot_light_radius = 3,
+        config_values = {
+            darkness_navigation_limits = "balanced",
+        },
+    })
+
+    env.route_manager.autowalk_to_current()
+
+    local call = env.last_direct_call()
+    assert_equal(call and call.opts and call.opts.walkability_snapshot, nil,
+        "balanced mode should plan against the full decoded dungeon while lit")
+    local route_opts = env.last_start_route_opts()
+    local step = {
+        current_x = 5,
+        current_y = 4,
+        to_x = 6,
+        to_y = 4,
+        dir = "right",
+        step_index = 1,
+        remaining_path = {
+            {x = 6, y = 4, dir = "right", step_index = 1},
+            {x = 7, y = 4, dir = "right", step_index = 2},
+        },
+    }
+    assert_equal(route_opts.step_guard(step), true,
+        "balanced mode should allow the complete route while light is present")
+
+    env.snapshot.light_radius = 1
+    local allowed, cancel_data = route_opts.step_guard(step)
+    assert_equal(allowed, false, "balanced auto-walk should stop when light expires")
+    assert_equal(cancel_data.reason, "darkness_visibility_boundary",
+        "balanced cutoff should use the normal structured darkness reason")
+    assert_contains(cancel_data.message, "use a Torch or cast Radiant",
+        "balanced cutoff should explain how to restore navigation")
+    env.auto_step.on_route_cancelled(cancel_data)
+    assert_contains(table.concat(env.warning_outputs, "\n"), "use a Torch or cast Radiant",
+        "the balanced recovery explanation should reach player-facing warning speech")
+
+    env.restore()
+end
+
 function tests.darkness_policy_is_preserved_for_drift_reroutes()
     local target = {id = "stair_5_3", name = "Stairs", type = "stair", x = 5, y = 3}
     local env = make_env({
@@ -5998,6 +6054,9 @@ function tests.darkness_policy_is_preserved_for_drift_reroutes()
         object_list = {target},
         snapshot_terrain = 0x20,
         snapshot_light_radius = 3,
+        config_values = {
+            darkness_navigation_limits = "authentic",
+        },
     })
 
     env.route_manager.autowalk_to_current()

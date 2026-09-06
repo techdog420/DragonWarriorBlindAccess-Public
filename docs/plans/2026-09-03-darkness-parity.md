@@ -53,9 +53,8 @@ FCEUX during unlit, Torch, Radiant, moving-window, shrink, and fade states.
    light, or choose another visible destination.
 3. Drift, blocker, and seam-retry replanning retain the original darkness
    policy and rebuild against the current light-limited walkability snapshot.
-4. `darkness_navigation_limits=false` remains a true unrestricted mode. The
-   guard stays attached so a live config reload back to `true` takes effect on
-   the next queued step.
+4. The guard stays attached in every mode so a live config reload or a light
+   expiry takes effect before the next queued step.
 
 ## Local report and difficulty opt-out slice
 
@@ -65,13 +64,26 @@ FCEUX during unlit, Torch, Radiant, moving-window, shrink, and fade states.
    are physically inside the current light square.
 2. The report never uses decoded information beyond the physical light square,
    including when the navigation restriction is disabled.
-3. `darkness_navigation_limits=true` remains the default. Setting it to
-   `false` restores unrestricted decoded object browsing, path previews, and
-   auto-walk planning for players who find darkness too difficult and for
-   debugging. The game's light, light-state announcements, and local report
-   remain unchanged.
+3. `darkness_navigation_limits` accepts `balanced`, `authentic`, or
+   `unrestricted`. Legacy `true` and `false` retain their authentic and
+   unrestricted meanings. The game's light and local report remain unchanged
+   in every mode.
 4. The `visible_area` debug command speaks the same report and logs it under a
    `VISIBLE_AREA` prefix for repeatable live validation.
+
+## Balanced default slice
+
+1. `balanced` is the shipped default. While Torch or Radiant exposes at least
+   one neighboring tile, decoded object browsing, path previews, and auto-walk
+   remain fully available.
+2. When the light reaches the unlit one-tile window, remote object browsing and
+   new paths are cut off. An active auto-walk stops before its next hidden step
+   and explains that a Torch or Radiant restores navigation.
+3. `authentic` preserves the original strict light-square behavior for players
+   seeking information parity or greater challenge. `unrestricted` remains the
+   debugging and lower-difficulty option.
+4. Physical light descriptions and `visible_area` remain bounded to the real
+   light square in all three modes.
 
 ## Acceptance
 
@@ -93,8 +105,13 @@ Use Erdrick's Cave B1 as the initial live test bed.
    stops before the next input if the destination or queued remainder falls
    outside the smaller light square, and verify `DARKNESS_AUTO_WALK_STOP` plus
    `AUTO_STEP_ROUTE_GUARD_STOP` in `dw_debug.log`.
-10. Repeat with `darkness_navigation_limits=false`; the same route should remain
-    unrestricted.
+10. Repeat with `darkness_navigation_limits=unrestricted`; the same route should
+    remain unrestricted.
+11. In `balanced`, confirm a distant object and route are available while lit,
+    then let the light expire during auto-walk. Confirm movement stops before
+    the next hidden step and the Torch/Radiant recovery warning is audible.
+12. In `authentic`, confirm browsing and planning remain limited to the current
+    light square.
 
 ## Live acceptance result
 
@@ -131,4 +148,23 @@ two, the guard identified the first hidden queued cell at `(6,5)`, logged
 and delivered the complete visible-boundary warning, which the player confirmed
 hearing. A fresh post-check found no active path, runtime blocker, pending
 warning, or script error. The tracked
-config remains `darkness_navigation_limits=true`.
+config was restored to the then-current strict default after that acceptance.
+
+The balanced-default slice is source-complete and live-accepted on
+`2026-09-06`. Deterministic coverage confirms full decoded navigation while lit,
+an immediate object-browser and auto-walk cutoff at raw radius `1`, an explicit
+Torch/Radiant recovery warning, legacy boolean compatibility, and physically
+light-bounded local reports in every mode. The authoritative gate passes 35
+host-runnable Lua suites and 68 Python tests.
+
+Lit B1 routing is live-accepted in both directions between the entrance and
+down stairs. The first passes repeatedly failed entering `(6,3)` from the west:
+nine normal route attempts and all nine same-origin seam retries failed before
+the planner used an alternate route. After promoting `(6,3).west` to the
+permanent directional model, three fresh 17-step routes completed with no
+timing retry, reroute, temporary block, or runtime block. During the final
+expiry test, Radiant reached raw radius `1` at frame `33874`. The route guard
+completed only the direction already committed, then stopped at `(7,7)` before
+hidden `(8,7)` at frame `33910`. The complete Torch/Radiant recovery warning
+was delivered. The final probe found no active path, runtime/NPC blocker, or
+pending warning, with balanced navigation limited as expected.

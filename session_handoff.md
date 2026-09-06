@@ -137,16 +137,35 @@ Updated: 2026-09-06
   `DARKNESS_AUTOWALK_STOPPED_20260906` found no active path, runtime blocker,
   pending warning, or script error. The authoritative Windows gate passes 35
   host-runnable Lua suites and 68 Python tests.
+- Balanced dungeon navigation is source-complete and live-accepted on
+  `codex/darkness-parity`. The shipped
+  `darkness_navigation_limits=balanced` mode provides full decoded navigation
+  while Torch or Radiant exposes neighboring tiles, then hides remote objects,
+  refuses new remote paths, and stops active auto-walk before the next hidden
+  step when the light reaches raw radius `1`. The cutoff warning explains that
+  a Torch or Radiant restores navigation. `authentic` preserves the prior
+  strict light-square behavior; `unrestricted` preserves full assistance;
+  legacy `true`/`false` values remain compatible. The local report stays
+  physically light-bounded. Focused regressions and the authoritative gate
+  pass. Lit B1 entrance/down-stairs routing is live-verified in both directions.
+  It exposed a repeatable west-approach blocker at `(6,3)`; nine normal route
+  attempts and nine same-origin seam retries failed. After promoting
+  `(6,3).west`, three fresh 17-step routes completed without a retry, reroute,
+  temporary block, or runtime block. Radiant then naturally reached raw radius
+  `1` at frame `33874` during autowalk. The guard finished only the committed
+  step and stopped at `(7,7)` before hidden `(8,7)` at frame `33910`; the full
+  Torch/Radiant recovery warning was delivered. Probe
+  `BALANCED_EXPIRY_ACCEPTED_20260906` found path target nil, zero NPC/runtime
+  blockers, no pending warning, and balanced navigation limited.
 - Darkness local-navigation assistance is source-complete and live-accepted on
   `codex/darkness-parity`. `Shift+N` or `F21`
   reports cardinal paths to the first blocker or light boundary, up to two
   fully visible nearby branches/turns, and up to four physically visible
   objects; the equivalent command is `visible_area`. The report remains
-  bounded to the actual light square under every setting. The default-on
-  `darkness_navigation_limits` config flag controls only accessibility-side
-  object browsing, path previews, and auto-walk planning; `false` restores
-  unrestricted decoded assistance without changing the game's light or its
-  announcements. Radiant reports at B1 `(0,0)` and `(1,0)` tracked the moving
+  bounded to the actual light square under every setting. The
+  `darkness_navigation_limits` setting controls only accessibility-side object
+  browsing, path previews, and auto-walk planning. Radiant reports at B1
+  `(0,0)` and `(1,0)` tracked the moving
   light and entrance; the unlit report exposed only the current tile. With the
   flag temporarily false, browsing and auto-walk reached the distant down
   stairs at `(9,8)`, while the report stayed light-bounded. The default was
