@@ -6,6 +6,16 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Kol's clue-bound treasure first pass is live-verified (`2026-09-06`).
+  Travel now identifies `Bath` at `(9,2)` and routes to its south edge `(9,3)`,
+  facing north. Treasure reports no objects; the former exact SEARCH marker
+  is gone. From `(9,6)`, auto-walk completed three north steps with no retry,
+  then faced the bath. At the edge, object narration distinguishes the bath
+  one tile north from the current standing tile. The Great Swamp search-area
+  destination and Hauksness encounter approach already avoid exposing their
+  buried reward tiles as treasure. Clue tracking and optional stronger hints
+  remain future work. All 35 Lua suites and 68 Python tests pass; audible
+  wording acceptance remains for the player to judge.
 - Balanced dungeon navigation is source-complete and live-accepted.
   `darkness_navigation_limits=balanced` is now the shipped default: object
   browsing, path previews, and auto-walk use the full decoded dungeon while

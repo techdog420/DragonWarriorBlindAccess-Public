@@ -886,14 +886,18 @@ quality-of-life work.
   warnings wait for a short keyboard/controller-neutral window, retain separate
   FIFO message records for future speech history, and passed live held-key
   acceptance with both JAWS and NVDA.
-- Clue-bound treasure audit: identify every place where object navigation or
-  routing leads directly to a treasure whose location the original game expects
-  the player to infer from dialogue or environmental clues.
-- Fairy Flute first pass: consider exposing Kol's bath as the initial landmark
-  rather than exposing the exact search tile. After the player has received the
-  clue and explored near the bath, provide progressively stronger search cues;
-  keep exact tile guidance optional. Apply the same pattern to other hidden or
-  clue-bound treasures found by the audit.
+- Clue-bound treasure first pass is complete (`2026-09-06`). Kol exposes
+  `Bath` under Travel at the water tile `(9,2)`, with an approach at `(9,3)`
+  facing north. The exact Fairy Flute SEARCH object is removed, including from
+  unfiltered lookup and Treasure. Live auto-walk reached the bath edge from
+  `(9,6)` without retries or runtime blockers. The buried-reward audit also
+  checked Erdrick's Armor (already absent; only the Axe Knight approach is
+  exposed) and Erdrick's Token (the existing Great Swamp destination stops
+  away from the hidden tile). Visible ROM chests retain ordinary navigation.
+  All 35 host-runnable Lua suites and 68 Python tests pass.
+- Later progressive-discovery work: track received clues and offer optional
+  stronger search cues. The completed first pass does not automatically reveal
+  treasure through proximity, clue receipt, or an invented environmental hint.
 
 ## Quality of Life
 

@@ -286,32 +286,18 @@ function tests.rom_chest_open_status_uses_native_treasure_ram_across_reload()
     env.restore()
 end
 
-function tests.non_rom_treasure_fallback_requires_exact_coordinate()
+function tests.kol_search_collection_does_not_mark_bath_opened()
     local env = make_env({npc_count = 0})
-
     env.set_position(0x07, 9, 6)
     env.set_terrain_offset(0x10)
     env.objects.refresh(0x07)
-    local flute = assert(env.objects.find_object_by_id("chest_kol_fairy_flute"))
-
-    assert_equal(
-        env.objects.record_fallback_treasure_collection_at(10, 6),
-        nil,
-        "adjacent inventory changes should not mark a hidden treasure collected")
-    assert_equal(
-        env.objects.describe_object(flute):find("(opened)", 1, true),
-        nil,
-        "an adjacent inventory change should leave hidden treasure closed")
-
-    assert_equal(
-        env.objects.record_fallback_treasure_collection_at(9, 6).id,
-        "chest_kol_fairy_flute",
-        "an exact-coordinate inventory change should record the hidden treasure")
-    assert_equal(
-        env.objects.describe_object(flute):find("(opened)", 1, true) ~= nil,
-        true,
-        "the hidden treasure fallback should report collected session state")
-
+    local bath = assert(env.objects.find_object_by_id("landmark_kol_bath"))
+    for _, point in ipairs({{9, 6}, {9, 2}, {9, 3}}) do
+        assert_equal(env.objects.record_fallback_treasure_collection_at(point[1], point[2]),
+            nil, "SEARCH collection must not treat the bath or its approach as treasure")
+    end
+    assert_equal(env.objects.describe_object(bath):find("(opened)", 1, true),
+        nil, "Bath must remain a landmark after inventory changes")
     env.restore()
 end
 
@@ -2837,32 +2823,37 @@ function tests.kol_confirmed_services_and_dialogue_merchant_filtering()
     env.restore()
 end
 
-function tests.kol_hidden_fairy_flute_search_tile_is_treasure()
+function tests.kol_exposes_bath_without_hidden_search_tile()
     local env = make_env({npc_count = 0})
-
-    env.set_position(0x07, 1, 22)
     env.set_terrain_offset(0x10)
-    env.objects.refresh(0x07)
-
-    local flute = env.objects.find_object_by_id("chest_kol_fairy_flute")
-    assert_equal(flute ~= nil, true, "Kol should expose the hidden Fairy Flute search tile")
-    assert_equal(flute.name, "Disturbed Earth Near Bath", "hidden Kol treasure should hint at the search spot without naming the reward")
-    assert_equal(flute.type, env.objects.TYPE_CHEST, "hidden Kol treasure should appear under Treasure")
-    assert_equal(flute.x, 9, "Fairy Flute search tile X should be four steps south of the bath")
-    assert_equal(flute.y, 6, "Fairy Flute search tile Y should be four steps south of the bath")
-
-    env.objects.next_filter() -- NPCs
-    env.objects.next_filter() -- Services
-    env.objects.next_filter() -- Treasure
-    local found = false
-    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
-        if obj.id == "chest_kol_fairy_flute" then
-            found = true
-            break
+    -- Neither proximity to the bath nor standing on the answer reveals it.
+    for _, point in ipairs({{1, 22}, {9, 3}, {9, 6}}) do
+        env.set_position(0x07, point[1], point[2])
+        env.objects.refresh(0x07)
+        assert_equal(env.objects.find_object_by_id("chest_kol_fairy_flute"), nil,
+            "The hidden SEARCH tile must not be available even to unfiltered lookup")
+        for _, obj in ipairs(env.objects.get_objects()) do
+            assert_equal(obj.x == 9 and obj.y == 6, false,
+                "No replacement object should expose the hidden search coordinates")
         end
     end
-    assert_equal(found, true, "Treasure filter should include the Kol Fairy Flute search tile")
-
+    local bath = assert(env.objects.find_object_by_id("landmark_kol_bath"))
+    assert_equal(bath.name, "Bath", "Use the visible landmark name")
+    assert_equal(bath.x, 9, "Bath X")
+    assert_equal(bath.y, 2, "Bath Y must identify the water, not the search tile")
+    assert_equal(bath.interaction_x, 9, "Approach X")
+    assert_equal(bath.interaction_y, 3, "Approach must stop south of impassable water")
+    assert_equal(bath.interaction_face_dir, "north", "Face the bath on arrival")
+    env.set_position(0x07, 9, 3)
+    assert_equal(env.objects.describe_object(bath), "Bath: 1 north, bath edge here",
+        "Arrival description must distinguish the actual bath from the standing tile")
+    for _, filter in ipairs({env.objects.FILTER_ALL, env.objects.FILTER_TRAVEL}) do
+        env.objects.set_filter(filter)
+        assert_equal(env.objects.find_object_by_id(bath.id, {filtered = true}) ~= nil,
+            true, "Bath should be available in All and Travel")
+    end
+    env.objects.set_filter(env.objects.FILTER_TREASURE)
+    assert_equal(env.objects.get_count(), 0, "Kol must not expose the buried reward as Treasure")
     env.restore()
 end
 

@@ -1507,18 +1507,24 @@ local EXTRA_DOORS = {
     },
 }
 
-local EXTRA_TREASURES = {
-    -- Kol: guides place the Fairy Flute four steps south of the bath. Mike's
-    -- map image has one bath/water tile at (9,2), and live inspection proved
-    -- the four-south search tile (9,6) is walkable.
-    [0x07] = {
-        {x=9, y=6, name="Disturbed Earth Near Bath", type=M.TYPE_CHEST, id="chest_kol_fairy_flute"},
-    },
-}
-
 -- Static local-map landmarks that belong under Travel but are not exits,
 -- stairs, NPCs, or treasure objects.
 local EXTRA_LANDMARKS = {
+    -- Kol: expose the visible bath, not the clue-derived SEARCH tile.
+    -- The water at (9,2) is impassable; approach its walkable south edge.
+    [0x07] = {
+        {
+            x = 9,
+            y = 2,
+            name = "Bath",
+            type = M.TYPE_EXIT,
+            id = "landmark_kol_bath",
+            interaction_x = 9,
+            interaction_y = 3,
+            interaction_face_dir = "north",
+            interaction_label = "bath edge",
+        },
+    },
     -- Hauksness fixed encounter. Route to the safe west stand and leave the
     -- final east step under player control. The buried reward intentionally
     -- remains absent from player-facing object data.
@@ -1996,10 +2002,6 @@ local function get_static_objects(map_id)
     append_objects(objects, parse_doors(map_id))
 
     local extra = EXTRA_DOORS[map_id]
-    if extra then
-        append_objects(objects, extra)
-    end
-    extra = EXTRA_TREASURES[map_id]
     if extra then
         append_objects(objects, extra)
     end
