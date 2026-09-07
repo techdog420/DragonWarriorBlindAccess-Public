@@ -17,6 +17,7 @@ local function env()
     setfenv(chunk, setmetatable({require=function(name)
         if name == "config" then return cfg end
         if name == "key_combo" then return combo end
+        if name == "key_reference" then return require("key_reference") end
         if name == "tolk" then return {output_interrupt=function(s) e.messages[#e.messages+1]=s end} end
         error(name)
     end, package={loaded={}}}, {__index=_G}))
@@ -75,13 +76,32 @@ end
 function tests.refusal_and_help_do_not_change_game_or_settings()
     local e=env();e.update({Shift=true,F11=true},{},"Close the command menu first")
     assert(e.stopped==0 and not e.menu.is_open() and e.last():find("unavailable",1,true))
-    e.update({});e.tap({Shift=true,F12=true});assert(#e.saved==0 and e.stopped==0)
+    e.update({});e.tap({Shift=true,F12=true});assert(#e.saved==0 and e.stopped==1 and e.menu.is_open())
 end
 function tests.held_keys_do_not_repeat_and_help_keeps_edit()
     local e=env();e.open();e.tap({Enter=true});e.tap({Left=true})
     e.update({Left=true});e.tap({Shift=true,F12=true});assert(e.menu.is_open())
     e.tap({Ctrl=true,Enter=true});assert(#e.saved==0)
     e.tap({Enter=true});e.tap({Ctrl=true,Enter=true});assert(e.saved[1].enable_auto_step=="false")
+end
+function tests.reference_uses_shared_capture_and_never_edits_or_saves()
+    local e=env(); e.tap({Shift=true,F12=true})
+    assert(e.menu.is_open() and e.last():find("Key Reference",1,true))
+    e.tap({Right=true}); assert(e.last():find("Information",1,true))
+    e.tap({Enter=true}); assert(e.last():find("coordinates",1,true))
+    e.tap({Ctrl=true,Enter=true}); assert(#e.saved==0 and e.menu.is_open())
+    e.tap({Shift=true,F11=true}); assert(e.last():find("coordinates",1,true))
+    e.tap({U=true}); assert(#e.saved==0)
+    e.tap({Escape=true}); assert(not e.menu.is_open())
+    assert(e.update({}, {up=true}) and e.menu.is_capturing())
+    e.update({}); assert(not e.menu.is_capturing())
+end
+function tests.settings_contextual_help_preserves_pending_edits()
+    local e=env();e.open();e.tap({Enter=true});e.tap({Left=true});e.tap({Enter=true})
+    e.tap({Shift=true,F12=true})
+    assert(e.last():find("On completes one tile",1,true) and e.menu.is_open())
+    assert(not e.last():find("Key Reference.",1,true))
+    e.tap({Ctrl=true,Enter=true});assert(e.saved[1].enable_auto_step=="false")
 end
 local count=0
 for name,test in pairs(tests) do test();count=count+1;print("PASS "..name) end

@@ -36,7 +36,7 @@ local CONFIG_FILE = script_dir .. "dw_access.ini"
 
 local DEFAULTS_ORDERED = {
     {key = "key_mod_settings", value = "Shift+F11", comment = "; Open Mod Settings"},
-    {key = "key_mod_help", value = "Shift+F12", comment = "; Explain Mod Settings controls and the selected option"},
+    {key = "key_mod_help", value = "Shift+F12", comment = "; Open Key Reference, or explain the selected option inside Mod Settings"},
     -- Section: Information hotkeys
     {comment = "; Dragon Warrior Accessibility Mod Configuration"},
     {comment = "; Edit hotkey assignments below. Keys are normalized by the emulator adapter:"},

@@ -161,6 +161,7 @@ class PlayerPackageTests(unittest.TestCase):
         self.assertEqual(layout["schemaVersion"], 1)
         self.assertIn("main.lua", layout["appFiles"])
         self.assertIn("settings_menu.lua", layout["appFiles"])
+        self.assertIn("key_reference.lua", layout["appFiles"])
         self.assertIn("speech_bridge.py", layout["appFiles"])
         self.assertIn("qfceux.exe", layout["fceuxRootFiles"])
         self.assertIn("FCEUX-ACCESSIBILITY-BUILD.txt", layout["fceuxRootFiles"])

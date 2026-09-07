@@ -88,7 +88,7 @@ for _, mod_name in ipairs({
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
-    "warning_delivery", "settings_menu",
+    "warning_delivery", "settings_menu", "key_reference",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -7277,8 +7277,8 @@ while true do
     local settings_captured = DW_QOL_STATE.settings_menu.update(
         raw_keys, current_joy,
         package.loaded["field_action_guard"].reason("object_controls", settings_guard),
-        function()
-            route_mgr.stop_auto_walk("mod settings opened")
+        function(reason)
+            route_mgr.stop_auto_walk(reason)
             auto_step.cancel_active_step(true, true)
             hotkeys.capture_settings_input(raw_keys)
         end)

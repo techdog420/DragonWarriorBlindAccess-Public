@@ -926,7 +926,15 @@ quality-of-life work.
 - Future settings: low-health announcements and percentage threshold, travel
   warning narration, and a Speech group/submenu. Add them as the underlying
   behavior becomes available; muting narration must not disable movement
-  safeguards. A full gameplay key-reference screen remains separate.
+  safeguards.
+- The grouped Key Reference is source-complete on `codex/key-reference-screen`;
+  live acceptance passed. Shift+F12 opens it outside Mod Settings and still
+  gives contextual help inside settings. Groups cover Gameplay, Information,
+  Object Navigation, Travel, Optional Movement, and Mod Settings. Enter only
+  explains; bindings come from the loaded config, and the shared menu capture
+  stops auto-walk and prevents input from reaching the game. All 38 Lua
+  suites and 68 Python tests pass. The player also confirmed normal game
+  controls and script hotkeys resume after closing. This slice is closed.
 - Settings must announce their current value, explain consequential changes,
   persist safely, and provide a restore-defaults path. Keep developer-only or
   unsafe diagnostics clearly separated from ordinary player settings.

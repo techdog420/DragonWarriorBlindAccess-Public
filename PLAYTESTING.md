@@ -6,6 +6,22 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Key Reference is source-complete on `codex/key-reference-screen`; live
+  acceptance passed. Shift+F12 outside Mod Settings opens a read-only
+  grouped reference; inside settings it retains contextual help and pending
+  edits. Arrow navigation matches settings, Enter explains without running
+  the command, and Escape closes. Six groups expose all player-facing mod
+  hotkeys with live configured bindings, plus documented gameplay defaults.
+  The existing settings input-capture/release path is shared. All 38 Lua
+  suites and 68 Python tests pass, including five reference-model tests and
+  nine menu tests. The player accepted opening and navigation. Logs show all
+  six groups, remembered per-group selections, configured alternatives such
+  as `C or F17`, and explanations for Experience and NES Select without
+  executing gameplay commands. Fresh frame 11640 found Kol `(17,3)`, no
+  active path/runtime blockers, and speech ready without errors or pending
+  warnings. The player then confirmed Escape closes the screen and both
+  ordinary game controls and script hotkeys resume. This slice is complete.
+
 - Grouped Mod Settings is source-complete on `codex/in-game-mod-settings`;
   core FCEUX/reader acceptance passed. Shift+F11 opens during normal field
   play; Shift+F12 explains the option and controls. Opening announces

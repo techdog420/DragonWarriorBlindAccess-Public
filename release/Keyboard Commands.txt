@@ -32,8 +32,8 @@ Mod Settings
 ------------
 
 Shift+F11: Open the spoken Mod Settings menu during normal field play.
-Shift+F12: Explain the current setting and menu controls. Outside the menu,
-this gives settings help; a full gameplay key reference is planned.
+Shift+F12: Open Key Reference. Inside Mod Settings, explain the current
+setting and controls without losing pending edits.
 
 Left/Right: Switch groups (Movement, Navigation, Announcements, Defaults).
 Up/Down: Select an option in the current group.
@@ -53,6 +53,22 @@ Opening stops active movement while retaining the selected destination.
 Settings controls do not operate the game. Release held keys and controller
 buttons after closing before resuming play. The emulator continues running;
 this is an input-capturing spoken menu, not an emulator pause.
+
+Key Reference
+-------------
+
+Shift+F12 opens a spoken, read-only command reference during normal field
+play. Left/Right switches groups: Gameplay, Information, Object Navigation,
+Travel, Optional Movement, and Mod Settings. Up/Down selects a command.
+Enter explains it without executing it. Shift+F12 repeats reference controls
+and the explanation. Escape closes; release held controls before resuming.
+
+Each mod command reports its current configured binding, including alternate
+keys. Basic Gameplay entries describe the fixed FCEUX keyboard bridge or the
+default BizHawk controls; custom emulator mappings are managed by the emulator.
+Browsing retains the last selected command in each group. Opening stops active
+auto-walk and captures keyboard/controller input, just like Mod Settings.
+Controller buttons cannot operate the reference. It does not change settings.
 
 Information keys
 ----------------

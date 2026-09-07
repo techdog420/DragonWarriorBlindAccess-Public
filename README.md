@@ -39,6 +39,8 @@ Current features include:
 - Session-based visited markers for NPCs and objects.
 - A grouped spoken Mod Settings menu (Shift+F11), with contextual help
   (Shift+F12), staged changes, and Control+Enter to save.
+- A spoken Key Reference (Shift+F12 outside settings), grouped by purpose and
+  reporting currently configured mod bindings.
 - Configurable keyboard hotkeys in `dw_access.ini`.
 - Optional controller access to extra mod commands through a JoyToKey example
   available from the project repository.

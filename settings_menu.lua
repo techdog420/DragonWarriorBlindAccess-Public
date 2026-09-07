@@ -3,6 +3,8 @@ local config = require "config"
 local combo = require "key_combo"
 local tolk = require "tolk"
 local M = {}
+local reference = require("key_reference").new(config)
+local reference_open = false
 local function option(key, name, values, labels, help)
     return {key=key, name=name, values=values, labels=labels, help=help}
 end
@@ -33,7 +35,7 @@ local help_controls = "Left and right switch groups. Up and down select options.
 local function say(message)
     tolk.output_interrupt(message)
     local debug_tools = package.loaded["debug_tools"]
-    if debug_tools and debug_tools.info then debug_tools.info("MOD_SETTINGS: " .. message) end
+    if debug_tools and debug_tools.info then debug_tools.info((reference_open and "KEY_REFERENCE: " or "MOD_SETTINGS: ") .. message) end
 end
 local function selected()
     local group = groups[group_index]
@@ -85,6 +87,7 @@ end
 local function close(message)
     opened, editing, releasing = false, false, true
     say(message)
+    reference_open = false
 end
 function M.update(keys, joy, unavailable_reason, on_open)
     keys, joy = keys or {}, joy or {}
@@ -105,13 +108,31 @@ function M.update(keys, joy, unavailable_reason, on_open)
                 releasing = true
                 say("Settings unavailable. " .. unavailable_reason)
             else
-                if on_open then on_open() end
+                if on_open then on_open("mod settings opened") end
                 M.open()
             end
         elseif pressed(config.get("key_mod_help")) then
-            captured, releasing = true, true
-            say("Mod Settings: " .. tostring(config.get("key_mod_settings")) .. ". " .. help_controls ..
-                " A full gameplay key reference is planned.")
+            captured = true
+            if unavailable_reason then
+                releasing = true
+                say("Key Reference unavailable. " .. unavailable_reason)
+            else
+                if on_open then on_open("key reference opened") end
+                opened, reference_open = true, true
+                say(reference.opening())
+            end
+        end
+    elseif reference_open then
+        if pressed("Escape|Esc") then close("Key Reference closed. Returning to game.")
+        elseif pressed(config.get("key_mod_help")) then
+            say(reference.controls() .. " " .. reference.help())
+        elseif pressed("enter") then say(reference.help())
+        else
+            local group_delta = (pressed("right") and 1) or (pressed("left") and -1) or 0
+            local item_delta = (pressed("down") and 1) or (pressed("up") and -1) or 0
+            if group_delta ~= 0 or item_delta ~= 0 then
+                say(reference.move(group_delta, item_delta))
+            end
         end
     elseif pressed(config.get("key_mod_help")) then
         local item = selected()
