@@ -8,6 +8,11 @@ local reference_open = false
 local function option(key, name, values, labels, help)
     return {key=key, name=name, values=values, labels=labels, help=help}
 end
+local health_thresholds, health_labels = {}, {}
+for percent = 5, 100, 5 do
+    health_thresholds[#health_thresholds + 1] = tostring(percent)
+    health_labels[#health_labels + 1] = tostring(percent) .. " percent"
+end
 local groups = {
     {name="Movement", options={
         option("enable_auto_step", "Automatic tile stepping", {"false", "true"}, {"Off", "On"},
@@ -23,7 +28,11 @@ local groups = {
     {name="Announcements", options={
         option("auto_walk_progress_interval", "Auto-walk progress", {"0", "3", "6", "12"},
             {"Off", "Every 3 steps", "Every 6 steps", "Every 12 steps"},
-            "Announces progress during longer auto-walk routes.")}},
+            "Announces progress during longer auto-walk routes."),
+        option("low_health_warning", "Low-health warning", {"false", "true"}, {"Off", "On"},
+            "Announces current and maximum HP once when health reaches or falls below the threshold, including when loading with low health. Healing above the threshold rearms it. Held input delays speech."),
+        option("low_health_threshold_percent", "Low-health threshold", health_thresholds, health_labels,
+            "Percentage of maximum HP at or below which the low-health warning fires. Choose 5 to 100 percent in steps of 5. The default is 25 percent. This has no effect while the warning is off.")}},
     {name="Defaults", options={
         {name="Restore one group", action="group", help="Choose a group to restore. Changes remain pending until Control+Enter saves."},
         {name="Restore all menu settings", action="all", help="Restores only settings offered by this menu. Hotkeys and other configuration entries are preserved."}}},

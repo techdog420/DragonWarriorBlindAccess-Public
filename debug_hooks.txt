@@ -131,7 +131,9 @@ COMMANDS (write to dw_commands.txt, one per line)
   launcher_probe:TAG       Same, but include TAG so launchers can wait for an exact line
   input_status[:TAG]       Log current input.get(), joypad.read(1), bridge-file
                            state, game-side $0047 byte, LeftAlt status, and
-                           effective bridge override.
+                           effective bridge override. v3 bridge records also
+                           include physical keyboard activity (0 idle, 1 active)
+                           for warning timing, even when game input is suspended.
   ./recover_fceux_input.sh Reset FCEUX stuck-Alt/menu focus from WSL, reset
                            dw_keyboard_input.txt to "-", restart the keyboard
                            bridge sidecar if missing, and queue

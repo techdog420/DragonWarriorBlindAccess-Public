@@ -564,6 +564,22 @@ function tests.fceux_stale_sidecar_heartbeat_releases_each_input_class()
     end
 end
 
+function tests.physical_warning_activity_requires_fresh_v3_snapshot()
+    local now = os.time()
+    local env = make_env({input_state={LeftAlt=true, Space=true}, bridge_text=string.format("v3:1:%d:0:suspended\n",now)})
+    assert_equal(env.debug_tools.get_external_keyboard_activity(), false, "released physical keys override stale Space")
+    env.set_bridge(string.format("v3:2:%d:1:suspended\n",now))
+    assert_equal(env.debug_tools.get_external_keyboard_activity(), true, "held keys count even while movement is suspended")
+    env.set_bridge(string.format("v3:3:%d:0:-\n",now-10))
+    assert_equal(env.debug_tools.get_external_keyboard_activity(), nil, "expired snapshot cannot assert idle")
+    env.set_bridge(string.format("v2:4:%d:-\n",now))
+    assert_equal(env.debug_tools.get_external_keyboard_activity(), nil, "v2 keeps legacy keyboard fallback")
+    env.set_bridge(string.format("v3:5:%d:1:up\n",now))
+    local movement = env.debug_tools.tick(1, "field")
+    assert_equal(movement ~= nil and movement.up, true, "v3 retains normal bridge movement")
+    env.restore()
+end
+
 function tests.fceux_bridge_remains_active_when_debug_mode_is_false()
     local env = make_env({
         input_state = {},

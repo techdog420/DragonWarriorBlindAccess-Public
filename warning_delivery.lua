@@ -28,7 +28,8 @@ local MODIFIER_ONLY_KEYS = {
     rightwindows = true,
 }
 
-function M.keyboard_has_input(keys)
+function M.keyboard_has_input(keys, physical_activity)
+    if type(physical_activity) == "boolean" then return physical_activity end
     for name, pressed in pairs(keys or {}) do
         if pressed == true then
             local normalized = tostring(name):lower():gsub("[%s_%-]", "")
@@ -93,6 +94,27 @@ function M.new(opts)
         self.next_id = self.next_id + 1
         self.pending[#self.pending + 1] = record
         return record
+    end
+
+    -- Address only the caller's pending warning; unrelated FIFO records survive.
+    function state:cancel(id)
+        for index, record in ipairs(self.pending) do
+            if record.id == id then
+                table.remove(self.pending, index)
+                return record
+            end
+        end
+        return nil
+    end
+
+    function state:update(id, text)
+        for _, record in ipairs(self.pending) do
+            if record.id == id then
+                record.text = tostring(text)
+                return record
+            end
+        end
+        return nil
     end
 
     function state:take_ready()

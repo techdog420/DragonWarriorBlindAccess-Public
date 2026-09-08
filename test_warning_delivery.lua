@@ -101,6 +101,27 @@ function tests.reconfigured_delay_preserves_pending_warning()
     assert_equal(#queue:take_ready(), 1, "shorter configured delay should take effect")
 end
 
+function tests.pending_updates_and_cancellation_preserve_fifo_and_delivered_records()
+    local queue = warning_delivery.new({neutral_frames=0})
+    local first = queue:submit("First")
+    local health = queue:submit("Old HP")
+    local last = queue:submit("Last")
+    assert(queue:update(health.id, "Current HP"))
+    assert_equal(queue:cancel(first.id).id, first.id, "cancel only the requested record")
+    local ready = queue:take_ready()
+    assert_equal(#ready, 2, "other records survive cancellation")
+    assert_equal(ready[1].text, "Current HP", "updated warning keeps its FIFO position")
+    assert_equal(ready[2].id, last.id, "following warning stays behind updated warning")
+    assert_equal(queue:update(health.id, "Too late"), nil, "delivered warning cannot be changed")
+    assert_equal(queue:cancel(health.id), nil, "delivered warning cannot be cancelled")
+end
+
+function tests.physical_activity_overrides_stale_keys_without_bypassing_real_holds()
+    assert_equal(warning_delivery.keyboard_has_input({Space=true}, false), false, "released physical Space")
+    assert_equal(warning_delivery.keyboard_has_input({}, true), true, "physical hold while emulator reports no keys")
+    assert_equal(warning_delivery.keyboard_has_input({Space=true}, nil), true, "older bridge retains fallback")
+end
+
 local failures = 0
 local total = 0
 for name, fn in pairs(tests) do

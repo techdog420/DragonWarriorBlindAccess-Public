@@ -1586,12 +1586,17 @@ local function parse_external_keyboard_bridge()
         return shallow_copy(external_bridge_cached_table)
     end
 
-    local heartbeat_text, heartbeat_timestamp_text, state_line = line:match("^v2:(%d+):(%d+):(.*)$")
+    local heartbeat_text, heartbeat_timestamp_text, activity_text, state_line =
+        line:match("^v3:(%d+):(%d+):([01]):(.*)$")
+    if not heartbeat_text then
+        heartbeat_text, heartbeat_timestamp_text, state_line = line:match("^v2:(%d+):(%d+):(.*)$")
+    end
     if not heartbeat_text then
         state_line = line
     end
 
     local bridge = full_joypad_state({})
+    if activity_text then bridge._keyboard_activity = activity_text == "1" end
     bridge._heartbeat = heartbeat_text and tonumber(heartbeat_text) or nil
     bridge._heartbeat_timestamp = heartbeat_timestamp_text and tonumber(heartbeat_timestamp_text) or nil
     if state_line == "suspended" then
@@ -1661,6 +1666,16 @@ local function external_keyboard_bridge_lease_is_expired(bridge, frame)
     end
     external_keyboard_bridge_lease_expired = true
     return true, "sidecar_heartbeat_expired"
+end
+
+-- Only a fresh v3 physical snapshot may override stale emulator keyboard keys.
+-- v2, missing/expired bridges, and other emulators retain the original fallback.
+function M.get_external_keyboard_activity()
+    if not emulator_compat.is_fceux or not keyboard_bridge_enabled() then return nil end
+    local bridge = parse_external_keyboard_bridge()
+    if not bridge or bridge._keyboard_activity == nil then return nil end
+    if external_keyboard_bridge_lease_is_expired(bridge, current_frame) then return nil end
+    return bridge._keyboard_activity
 end
 
 local function read_keyboard_bridge_line()

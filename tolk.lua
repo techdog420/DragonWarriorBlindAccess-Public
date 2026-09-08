@@ -428,6 +428,16 @@ return {
     output = output,
     output_interrupt = output_interrupt,
     output_warning = output_warning,
+    cancel_warning = function(id)
+        local record = warning_queue:cancel(id)
+        if record then report_warning_event("cancelled", record, warning_queue:get_state(), record.deferred) end
+        return record ~= nil
+    end,
+    update_warning = function(id, text)
+        local record = warning_queue:update(id, text)
+        if record then report_warning_event("updated", record, warning_queue:get_state(), record.deferred) end
+        return record ~= nil
+    end,
     update_warning_input = update_warning_input,
     flush_warnings = flush_warnings,
     silence = silence,

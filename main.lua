@@ -88,7 +88,7 @@ for _, mod_name in ipairs({
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
-    "warning_delivery", "settings_menu", "key_reference",
+    "warning_delivery", "settings_menu", "key_reference", "low_health",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -7237,6 +7237,8 @@ local function trace_teleport_loop(label)
 end
 
 DW_QOL_STATE.settings_menu = require "settings_menu"
+if DW_QOL_STATE.low_health then DW_QOL_STATE.low_health.reset() end
+DW_QOL_STATE.low_health = require("low_health").new(tolk, debug_tools.info)
 
 while true do
     trace_startup_loop("loop_top")
@@ -7267,7 +7269,8 @@ while true do
         checked_call(
             "tolk.update_warning_input",
             tolk.update_warning_input,
-            warning_delivery.keyboard_has_input(raw_keys) or has_blocking_live_input())
+            warning_delivery.keyboard_has_input(raw_keys, debug_tools.get_external_keyboard_activity())
+                or has_blocking_live_input())
     end
     -- No explicit PPU flush needed: frameadvance() already cleared the cache
     -- at the start of this tick (PPU_CACHE_HOLD_FRAMES=1).
@@ -7847,6 +7850,12 @@ while true do
         trace_teleport_loop("POST_AUTO_STEP_UPDATE")
     end
 
+    -- Run independently of generic HP delta narration, including battle/grace.
+    -- Update/cancel pending health speech before the shared warning queue flushes.
+    checked_call("low_health.update", DW_QOL_STATE.low_health.update,
+        snapshot, startup_counter >= K.STARTUP_FRAMES
+            and (game_state.state == state.STATE_FIELD or game_state.state == state.STATE_BATTLE),
+        config.get("low_health_warning"), config.get("low_health_threshold_percent"))
     if tolk.flush_warnings then
         checked_call("tolk.flush_warnings", tolk.flush_warnings)
     end

@@ -1,10 +1,59 @@
 # Playtesting Notes
 
-Updated: 2026-09-06
+Updated: 2026-09-08
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Low-health warnings are source-complete on `codex/low-health-warnings`;
+  live threshold-triggered speech acceptance passed. Announcements adds On/Off and a
+  percentage threshold, default On at 25 percent. The warning states current
+  and maximum HP once per low-health episode, including entry/loading low.
+  Healing strictly above the threshold rearms it. Battle and field detection
+  run before deferred warning flush, independently of generic HP narration.
+  Queued warnings refresh their HP wording and cancel on recovery, death,
+  disable, or leaving valid gameplay; unrelated warnings retain FIFO order.
+  All 39 Lua suites and 68 Python tests pass, including 10 low-health, 9
+  warning-delivery, and 10 settings-menu tests. At temporary threshold 100,
+  frame 8929 queued one warning for HP 149/149, deferred at 2/12 neutral
+  frames. Frame 8939 delivered it at 12/12; the player heard the full warning
+  intact and confirmed no idle repetition. Restoring 25 percent rearmed at
+  frame 10837. Final frame 13860 found Erdrick's Cave B1 `(0,0)`, no active
+  path/runtime blockers, and speech ready with no pending warning or error.
+  A subsequent Dragonlord-area combat test used threshold 75 percent. Three
+  battle warnings were queued and delivered exactly once per episode: frame
+  140198 at 108/149 HP, frame 142551 at 102/149, and frame 148574 at 103/149.
+  Between them, `LOW_HEALTH_REARM reason=above_threshold` occurred at frames
+  140965 and 148096, confirming the player's healing/retrigger test. The
+  final probe at frame 156900 found Dragonlord's Lair `(17,25)`, HP 63/149,
+  speech ready, no speech error, and no pending warning. Core combat and
+  healing/retrigger acceptance passed.
+  Sustained held-movement acceptance also passed in the eastern swamp search
+  area, using a pre-Erdrick's Armour save with Repel active. The final logged
+  episode used threshold 80 percent: frame 24027 queued HP 67/86 at 0/12
+  neutral frames, refreshed HP while movement continued, and frame 24274
+  delivered HP 52/86 at 12/12 neutral frames. The player confirmed speech
+  after releasing movement. Fresh frame 31200 confirmed speech ready, no
+  error, no pending warning, and input inactive. Current saved threshold is
+  80 percent; all planned live acceptance checks are complete.
+
+- The low-health Off/On live check found a warning-delivery input bug.
+  Disabling correctly rearmed at frame 169332; re-enabling queued warning 5
+  for HP 32/149 at frame 170080, but it stayed at 0/12 neutral frames.
+  `input_status` showed stale `LeftAlt+Space` with no pad input, while Windows
+  GetAsyncKeyState confirmed both keys released. The fix adds a v3 physical
+  keyboard-activity bit to the existing leased keyboard bridge, independent
+  of game-input suppression. Warning delivery uses it only while fresh;
+  older/missing/expired bridges retain raw-key fallback and physical pad
+  input is still checked separately. Keyboard-helper policy checks and the
+  full 39-Lua/68-Python gate pass. The helper was restarted and publishes
+  `v3:...:0:suspended`. Post-reload live acceptance passed: frame 120 delivered
+  the initial warning at HP 32/149, confirming reload while already low.
+  Disabling rearmed at frame 6924; re-enabling queued HP 23/149 at frame
+  7884 and delivered at frame 7896 after 12 neutral frames. The player heard
+  the alert. Frame 10680 confirmed speech ready, no error, no pending warning,
+  and input inactive. Off/On acceptance is complete.
 
 - Key Reference is source-complete on `codex/key-reference-screen`; live
   acceptance passed. Shift+F12 outside Mod Settings opens a read-only

@@ -42,6 +42,19 @@ public static class KeyboardBridgeState {
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 
+    public static bool IsWarningActivityKey(int key) {
+        return key >= 8 && key <= 254 && key != 16 && key != 17 && key != 18
+            && key != 91 && key != 92 && !(key >= 160 && key <= 165);
+    }
+
+    public static bool HasWarningKeyboardActivity() {
+        for (int key = 8; key <= 254; key++) {
+            if (IsWarningActivityKey(key) && (GetAsyncKeyState(key) & 0x8000) != 0)
+                return true;
+        }
+        return false;
+    }
+
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
@@ -186,6 +199,12 @@ function Test-EmulatorGameplayInput {
 }
 
 if ($PolicySelfTest) {
+    foreach ($key in @(16,17,18,91,92,160,161,162,163,164,165)) {
+        if ([KeyboardBridgeState]::IsWarningActivityKey($key)) { throw "Modifier counted as activity: $key" }
+    }
+    foreach ($key in @(13,32,38,70,112,45,20)) {
+        if (-not [KeyboardBridgeState]::IsWarningActivityKey($key)) { throw "Keyboard activity ignored: $key" }
+    }
     $cases = @(
         @{Name="gameplay"; Emulator=$true; Owned=$false; Flags=0; Modifier=$false; Expected=$true},
         @{Name="other_process"; Emulator=$false; Owned=$false; Flags=0; Modifier=$false; Expected=$false},
@@ -261,14 +280,18 @@ try {
             "-"
         }
 
-        # The v2 heartbeat gives Lua a fail-closed lease. If this process dies
+        # v3 adds physical keyboard activity for warning delivery, independently
+        # of movement suppression. FCEUX input.get() can retain released keys.
+        $keyboardActivity = [int][KeyboardBridgeState]::HasWarningKeyboardActivity()
+        $publishedState = "{0}:{1}" -f $keyboardActivity, $line
+        # The heartbeat gives Lua a fail-closed lease. If this process dies
         # while a button is present, Lua releases it instead of trusting the
         # last non-neutral file contents forever.
-        if ($line -ne $lastLine -or $heartbeatTimer.ElapsedMilliseconds -ge $HeartbeatMilliseconds) {
+        if ($publishedState -ne $lastLine -or $heartbeatTimer.ElapsedMilliseconds -ge $HeartbeatMilliseconds) {
             $heartbeatCounter += 1
             $heartbeatTimestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            Write-State -Line ("v2:{0}:{1}:{2}" -f $heartbeatCounter, $heartbeatTimestamp, $line)
-            $lastLine = $line
+            Write-State -Line ("v3:{0}:{1}:{2}" -f $heartbeatCounter, $heartbeatTimestamp, $publishedState)
+            $lastLine = $publishedState
             $heartbeatTimer.Restart()
         }
 

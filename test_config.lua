@@ -69,6 +69,12 @@ function tests.darkness_navigation_has_accessible_defaults()
     )
 end
 
+function tests.low_health_defaults_are_enabled_at_twenty_five_percent()
+    local config = require "config"
+    assert_equal(config.get_default("low_health_warning"), "true", "health warnings default on")
+    assert_equal(config.get_default("low_health_threshold_percent"), "25", "threshold default")
+end
+
 local passed = 0
 local failed = 0
 

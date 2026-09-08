@@ -23,6 +23,8 @@ Current features include:
 - Screen-reader narration for title and save screens, name entry, dialogue,
   Yes/No prompts, command menus, shops, inns, item and spell menus, battles,
   status changes, and other gameplay text.
+- Configurable low-health warnings, with a default threshold of 25 percent and
+  deferred delivery while input is held.
 - Spoken map names, coordinates, HP and MP, level, gold, experience, statistics,
   and visible screen text.
 - An object browser for nearby NPCs, services, treasure, doors, stairs, exits,

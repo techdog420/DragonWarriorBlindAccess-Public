@@ -45,9 +45,17 @@ Escape from the main settings list: Discard changes and close.
 
 Opening announces the save and discard controls. The menu offers automatic
 tile stepping, continuous overworld travel, dungeon navigation mode, object
-browsing speech delay, and auto-walk progress announcements. Defaults can
+browsing speech delay, auto-walk progress, and low-health warnings. Defaults can
 restore one group or all menu settings after confirmation; these changes also
 need Control+Enter to save. Other INI settings and hotkeys are preserved.
+
+Announcements includes Low-health warning (On by default) and Low-health
+threshold (25 percent by default). The threshold menu offers 5 through 100
+percent in steps of 5. The warning says current and maximum HP once when
+living health reaches or falls below that percentage, including loading or
+enabling warnings while already low. Healing above the threshold rearms it.
+Held input delays delivery. Further damage updates a pending warning; healing
+above the threshold, death, or disabling warnings cancels it before delivery.
 
 Opening stops active movement while retaining the selected destination.
 Settings controls do not operate the game. Release held keys and controller

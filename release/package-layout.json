@@ -53,6 +53,7 @@
     "tolk.lua",
     "walked_edge_verifier.lua",
     "warning_delivery.lua",
+    "low_health.lua",
     "dw_access.ini",
     "launch_dw.ps1",
     "launch_dw.cmd",

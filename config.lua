@@ -130,6 +130,8 @@ local DEFAULTS_ORDERED = {
     {comment = "; (yesno_dismiss_frames setting removed — prompt now uses label-presence detection)"},
     {key = "speech_python_cmd", value = "python", comment = "; Python executable for speech_bridge.py (set to .venv\\Scripts\\python.exe to use a local venv)"},
     {key = "speech_debounce_ms", value = "1000", comment = "; Suppress duplicate queued speech within this many milliseconds (0 to disable)"},
+    {key = "low_health_warning", value = "true", comment = "; Announce once when living HP reaches the low-health threshold; healing above it rearms the warning"},
+    {key = "low_health_threshold_percent", value = "25", comment = "; Low-health threshold as a percentage of maximum HP (1-100)"},
     {key = "warning_idle_frames", value = "12", comment = "; Neutral keyboard/controller frames before queued warnings speak (12 is about 0.2 seconds)"},
     {comment = ""},
     {comment = "; === Debug / Automation ==="},

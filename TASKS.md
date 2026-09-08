@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-09-03
+Updated: 2026-09-08
 
 This is the durable roadmap for work that should not interrupt the active
 debug or release loop. Keep current live state and resume steps in
@@ -923,8 +923,28 @@ quality-of-life work.
   interruption also passed live: controller presses do not operate the game
   or the keyboard-only settings menu, and opening settings stopped two active
   auto-walks with parked NPCs restored. This first implementation is closed.
-- Future settings: low-health announcements and percentage threshold, travel
-  warning narration, and a Speech group/submenu. Add them as the underlying
+- Low-health warnings are source-complete on `codex/low-health-warnings`;
+  threshold-triggered live speech acceptance passed. Announcements exposes an enabled-by-default
+  toggle and a 25-percent default threshold (menu range 5-100 in steps of 5).
+  The detector observes battle and field HP independently of generic damage
+  narration, warns once at/below the threshold, and rearms above it. Loading
+  alive with low HP also warns once. Pending warnings update to current HP
+  and cancel on recovery/death/disable, preserving other warning records.
+  All 39 Lua suites and 68 Python tests pass. The player heard one complete
+  deferred warning at temporary threshold 100 percent; restoring 25 percent
+  rearmed the detector. Combat/healing acceptance also passed at a 75-percent
+  threshold: three delivered battle warnings were separated by two confirmed
+  above-threshold rearm events. Sustained held-movement speech also passed
+  live in the eastern swamp: the warning refreshed pending HP and delivered
+  after release at 12 neutral frames. Off/On testing
+  exposed stale FCEUX Space blocking speech despite physical release. The
+  source fix uses fresh v3 keyboard-bridge activity for warning timing and
+  retains legacy fallback/controller checks. All gates pass. Post-fix live
+  Off/On and reload-while-low acceptance passed: the player heard the alert,
+  logs confirmed delivery after 12 neutral frames, and no warning remained
+  pending. Core low-health functionality is live-accepted.
+- Future settings: travel warning narration and a Speech group/submenu.
+  Add them as the underlying
   behavior becomes available; muting narration must not disable movement
   safeguards.
 - The grouped Key Reference is source-complete on `codex/key-reference-screen`;
