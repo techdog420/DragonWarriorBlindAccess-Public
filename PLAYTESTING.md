@@ -6,6 +6,72 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Re-enabling Travel warnings exposed retained speech-module config state:
+  the menu saved On at frame 22176, and Radiant expansion/shrink events logged
+  at frames 24752/24760/24768/30953, but no travel speech queued. The helper
+  was fresh and speech input neutral with zero pending warnings. `tolk.lua`
+  retained the previous config instance across main.lua module reloads. It now
+  resolves the current config for warning synchronization and config reload.
+  A sandboxed real-speech-wrapper regression checks replacing Off with On and
+  back to Off while preserving required prompts. Loading this wrapper change
+  requires restarting the emulator once. Post-restart Radiant acceptance passed:
+  dimming queued at frame 3410 and delivered after release at 3977; expansion
+  to two and three visible tiles delivered at frames 4407 and 4415. The player
+  confirmed normal announcements with Travel warnings On. Frame 6360 showed
+  speech ready, no error, input inactive, and no pending warnings. The full
+  gate passes 39 Lua suites and 68 Python tests.
+
+- Recovery execution passed live from `(85,112)` to network entry `(85,113)`,
+  followed by search-area arrival speech in the bridge log. The first-press
+  prompt was queued but not delivered: the keyboard helper had exited, its
+  heartbeat was already 655 seconds old at Lua startup, and stale FCEUX Space
+  held warning delivery at 0/12 neutral frames. Restarting the absent helper
+  as hidden PID 18072 restored its lease at frame 8077; all three pending
+  warnings delivered at frame 8089. Frame 8400 confirmed input inactive and
+  no pending warnings. Cause of helper exit is unknown; the fresh retest passed. Prompts delivered at frame 11870 after 12 neutral
+  frames, confirmation was accepted at 12016 and spoken at 12028, recovery
+  completed at 12134, and search-area arrival occurred at 12528. The player
+  accepted the behavior with Travel warnings Off. Fresh frame 15720 confirmed
+  `(89,112)`, no active path/runtime blockers, and speech ready without pending
+  warnings or errors. No Lua source change needed.
+
+- Poison-swamp off-network recovery now uses the existing second-press
+  authorization, addressing short return attempts from `(87,112)` to the
+  Great Swamp route at `(87,113)`. The first attempt stops at unconfirmed
+  swamp; a matching second press authorizes that contiguous crossing only.
+  Other hazard types remain refused. Recovery still stops at network entry
+  or its bounded checkpoint. Live acceptance awaits Lua reload; automated
+  coverage includes alerts On/Off and preserves the shared expiry/context
+  checks. No route geometry or permanent blocker data changed.
+
+- Long-route Travel warnings Off testing reached Eastern Great Swamp Search
+  Area `(89,112)` at frame 27401. The bridge received required swamp stop and
+  accepted-crossing prompts, including the boundary at `(66,109)`, while the
+  player reported no optional warnings. Arrival speech was missing because
+  the final Search hint and arrival shared a warning-bearing event. Source now
+  retains arrival/handoff/waypoint feedback separately from optional warnings;
+  muted events use ordinary speech for the retained feedback. Fresh frame
+  31500 confirmed no active path, runtime blockers, speech error, or pending
+  warnings. Audible arrival retest awaits Lua reload.
+
+- Travel-warning testing exposed a Kol departure regression. At World Map
+  `(104,10)`, auto-walk treated the town-exit tile as off-network because
+  recovery deliberately excludes map-transition tiles from its targets.
+  Frames 9959/10175 refused a 51-step hazardous recovery toward `(104,43)`;
+  fresh frame 14280 confirmed no active path or runtime blockers. The source
+  fix allows established guided departures from landmark tiles while keeping
+  those tiles excluded as recovery targets. A clean Swamp Cave route start
+  from Kol plans 11 steps to the Kol forest west edge. Regression and full
+  39-Lua/68-Python gates pass. Post-reload live departure passed: frame 1414
+  completed the 11-step opening, and frame 5680 recorded Swamp Cave arrival.
+  With Travel warnings Off, hazard stops still armed at `(94,40)` and explicit
+  confirmation was accepted at frame 4989. No warning queued/delivered events
+  appeared in this session, matching the player's report of suppressed speech.
+  Fresh frame 8520 confirmed Swamp Cave `(0,0)`, no active path/runtime blocks,
+  speech ready with no error, and no pending warnings. Hazardous recovery
+  refusal speech now also respects Travel warnings. Live re-enable remains
+  to be checked.
+
 - Low-health warnings are source-complete on `codex/low-health-warnings`;
   live threshold-triggered speech acceptance passed. Announcements adds On/Off and a
   percentage threshold, default On at 25 percent. The warning states current

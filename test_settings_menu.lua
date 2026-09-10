@@ -4,7 +4,7 @@ local function env()
     local values = {key_mod_settings="Shift+F11", key_mod_help="Shift+F12",
         enable_auto_step="true", overworld_auto_walk_continuous="false",
         darkness_navigation_limits="balanced", object_nav_speech_coalesce_frames="18",
-        auto_walk_progress_interval="6", low_health_warning="true", low_health_threshold_percent="25"}
+        auto_walk_progress_interval="6", travel_warnings="true", low_health_warning="true", low_health_threshold_percent="25"}
     local e = {messages={}, saved={}, stopped=0}
     local cfg = {get=function(k) return values[k] end,
         get_default=function(k) return values[k] end,

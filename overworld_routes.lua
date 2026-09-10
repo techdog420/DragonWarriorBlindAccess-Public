@@ -5133,6 +5133,8 @@ function M.observe_position(map_id, px, py, terrain_offset)
                 waypoint = point,
                 message = table.concat(messages, " "),
                 warning_message = warning_message,
+                message_without_warning = route.staged_transition_message
+                    or "Use the map transition to continue this route.",
                 log = make_log("await_transition", route, point, index),
                 object_id = route_object_id(route, index),
                 refresh = true,
@@ -5140,6 +5142,7 @@ function M.observe_position(map_id, px, py, terrain_offset)
         end
         local event = handoff_staged_route(route, point, map_id, px, py, terrain_offset)
             or finish_route(route, point, "arrived")
+        event.message_without_warning = event.message
         if #messages > 0 then
             event.message = table.concat(messages, " ") .. " " .. event.message
         end
@@ -5157,6 +5160,7 @@ function M.observe_position(map_id, px, py, terrain_offset)
         waypoint = point,
         message = table.concat(messages, " "),
         warning_message = warning_message,
+        message_without_warning = messages[#messages],
         log = make_log("advance", route, point),
         object_id = route_object_id(route, state.next_index),
         refresh = true,

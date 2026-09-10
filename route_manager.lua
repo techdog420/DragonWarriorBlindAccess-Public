@@ -4754,7 +4754,15 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
             tostring(result.path_length or "-"),
             tostring(result.final_destination_id or "-")))
         if opts.speak ~= false then
-            tolk.output_interrupt(result.message or "Recovery auto-walk is unavailable")
+            if reason == "hazardous_recovery" then
+                -- A refused action needs feedback even when hazard narration
+                -- is muted. Keep the detailed preview optional.
+                local explanation = config_bool("travel_warnings", true) and result.message
+                    or "Recovery auto-walk stopped. Rejoining the route requires crossing hazardous terrain. Move manually onto the route, then try auto-walk again."
+                tolk.output_warning(explanation)
+            else
+                tolk.output_interrupt(result.message or "Recovery auto-walk is unavailable")
+            end
         end
         return result
     end
@@ -4762,7 +4770,19 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
     if result.ok ~= true then
         return refuse(result.status or "preview_failed")
     end
-    if result.auto_walk_allowed ~= true then
+    -- Recovery may approach poison swamp using the same per-step stop and
+    -- second-press authorization as guided travel. Other hazards remain refused.
+    local swamp_recovery = result.requires_manual_hazard_crossing == true
+    if swamp_recovery then
+        for _, step in ipairs(result.path or {}) do
+            local hazard = map_reader.is_hazard_cell(map_id, step.x, step.y)
+            if hazard and hazard ~= "poison_swamp" then
+                swamp_recovery = false
+                break
+            end
+        end
+    end
+    if result.auto_walk_allowed ~= true and not swamp_recovery then
         return refuse("hazardous_recovery",
             "Recovery auto-walk stopped. " .. tostring(result.message))
     end
@@ -4790,7 +4810,14 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
     last_pathfind_obj = nil
     reroute_failures = 0
 
+    local first_step = result.path[1]
+    local allowed_route_hazard, hazard_confirmed =
+        M._overworld_hazard_confirmation.allowed_for_segment({
+            route = {id = result.route_id},
+            steps = {DIR_NAME_TO_KEY[first_step.direction]},
+        }, map_id, px, py)
     if not queue_path_steps(result.path, {
+        allowed_route_hazard = allowed_route_hazard,
         map_id = map_id,
         start_x = px,
         start_y = py,
@@ -4799,7 +4826,7 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
     }) then
         result.status = "queue_failed"
         return refuse("queue_failed",
-            "Recovery auto-walk could not queue the safe path")
+            "Recovery auto-walk could not queue the path")
     end
 
     local recovery_target = result.path[#result.path]
@@ -4809,7 +4836,7 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
             title = result.route_title,
         },
         waypoint = {
-            name = checkpoint_stop and "safe recovery checkpoint"
+            name = checkpoint_stop and "recovery checkpoint"
                 or (result.entry_name or "waypoint network entry"),
             x = recovery_target.x,
             y = recovery_target.y,
@@ -4821,6 +4848,7 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
     }
     active_overworld_segment = {
         recovery = true,
+        allowed_route_hazard = allowed_route_hazard,
         route_id = result.route_id,
         route_title = result.route_title,
         waypoint_name = recovery_segment.waypoint.name,
@@ -4848,6 +4876,7 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
             stop_on_blocker = opts.stop_on_blocker == true,
         })
 
+    result.auto_walk_allowed = true
     result.status = "recovery_queued"
     result.ok = true
     result.preview_only = false
@@ -4856,7 +4885,7 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
     result.checkpoint_stop = checkpoint_stop
     if checkpoint_stop then
         result.message = string.format(
-            "Recovery auto-walk. Safe checkpoint at %d,%d, %d steps. The waypoint network is %d safe steps away. Final destination: %s. Auto-walk will stop at the checkpoint; press it again to continue recovery.",
+            "Recovery auto-walk. Checkpoint at %d,%d, %d steps. The waypoint network is %d steps away. Final destination: %s. Auto-walk will stop at the checkpoint; press it again to continue recovery.",
             recovery_target.x,
             recovery_target.y,
             #result.path,
@@ -4864,7 +4893,7 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
             tostring(result.final_destination_title or "selected destination"))
     else
         result.message = string.format(
-            "Recovery auto-walk. Safe network entry: %s at %d,%d, %d steps. Final destination: %s. Auto-walk will stop at the waypoint network.",
+            "Recovery auto-walk. Network entry: %s at %d,%d, %d steps. Final destination: %s. Auto-walk will stop at the waypoint network.",
             tostring(result.entry_name or "waypoint"),
             result.entry_x,
             result.entry_y,
@@ -4889,8 +4918,12 @@ function M.autowalk_overworld_recovery(opts, map_id, px, py, continuous_requeste
         tostring(checkpoint_stop),
         tostring(not checkpoint_stop)))
     if opts.speak ~= false then
-        if result.status == "planned_with_hazard" then
-            tolk.output_warning(result.message)
+        if hazard_confirmed then
+            tolk.output_warning("Poison swamp confirmed. Recovery auto-walk continuing through this swamp.")
+        elseif swamp_recovery then
+            tolk.output_warning("Recovery auto-walk. Movement will stop before unconfirmed poison swamp; press auto-walk again at the stop to confirm crossing.")
+        elseif result.status == "planned_with_hazard" then
+            tolk.output_travel_warning(result.message)
         else
             tolk.output_interrupt(result.message)
         end
@@ -4928,7 +4961,18 @@ function M.autowalk_overworld_segment(opts)
     end
 
     local map_id, px, py = nav.get_position()
+    -- Landmark tiles are excluded from recovery targets to avoid accidental
+    -- map entry. Standing on one after leaving town is nevertheless a valid
+    -- departure for the established guided route, not an off-network start.
+    local landmark_departure = false
+    for _, cell in ipairs(overworld_routes.network_transition_cells()) do
+        if cell.x == px and cell.y == py then
+            landmark_departure = true
+            break
+        end
+    end
     if overworld_routes.is_network_corridor_cell
+       and not landmark_departure
        and not overworld_routes.is_network_corridor_cell(px, py) then
         local recovery = M.autowalk_overworld_recovery(
             opts, map_id, px, py, continuous)
@@ -5245,6 +5289,7 @@ queue_path_steps = function(path, opts)
         settle_before_steps = settle_before_steps,
         prime_before_steps = prime_before_steps,
         step_guard = respect_darkness == true and M._darkness_route_step_guard or nil,
+        allowed_route_hazard = opts.allowed_route_hazard,
     }) then
         trace_autowalk_boundary("queue_path_steps_after_start_route", string.format(
             "result=true steps=%d",
@@ -5318,7 +5363,7 @@ function M.pathfind_to_current()
         respect_darkness = true,
     })
     if plan.unsafe_hazard_summary then
-        tolk.output_warning(plan.message)
+        tolk.output_travel_warning(plan.message)
     else
         tolk.output_interrupt(plan.message)
     end
@@ -5472,7 +5517,7 @@ function M.autowalk_to_object(obj, opts)
         debug_tools.info("AUTO_WALK: no path for " .. obj.name)
         if opts.speak ~= false then
             if plan.unsafe_hazard_summary or plan.hazard_stop then
-                tolk.output_warning(plan.message)
+                tolk.output_travel_warning(plan.message)
             else
                 tolk.output_interrupt(plan.message)
             end
@@ -5487,7 +5532,7 @@ function M.autowalk_to_object(obj, opts)
             plan.status = "hazard_boundary"
             plan.message = build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead.")
             if opts.speak ~= false then
-                tolk.output_warning(plan.message)
+                tolk.output_travel_warning(plan.message)
             end
             return plan
         end
@@ -5580,7 +5625,7 @@ function M.autowalk_to_object(obj, opts)
             "target=%s",
             tostring(obj.name)))
         if plan.hazard_stop or plan.unsafe_hazard_summary then
-            tolk.output_warning("Auto-walk. " .. plan.message)
+            tolk.output_travel_warning("Auto-walk. " .. plan.message)
         else
             tolk.output_interrupt("Auto-walk. " .. plan.message)
         end
@@ -5629,12 +5674,19 @@ function M.overworld_route_event_speech(route_event)
     if not route_event then
         return nil
     end
+    local warnings_enabled = config_bool("travel_warnings", true)
     if not active_overworld_segment
        or active_overworld_segment.continuous ~= true
        or route_event.terminal == true then
-        return route_event.message
+        if route_event.warning_message and not warnings_enabled then
+            return route_event.message_without_warning, false
+        end
+        return route_event.message, route_event.warning_message ~= nil
     end
-    return route_event.warning_message
+    if warnings_enabled then
+        return route_event.warning_message, route_event.warning_message ~= nil
+    end
+    return nil, false
 end
 
 -- A terminal guided-route message already names the destination, so it should
@@ -5705,7 +5757,7 @@ local function reroute_after_route_drift(cancel_data, target)
     if not plan.path or #plan.path == 0 then
         if plan.hazard_stop then
             clear_active_route_context("route drift hazard boundary", should_refresh_objects_after_route())
-            tolk.output_warning(build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
+            tolk.output_travel_warning(build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
             return true
         end
         event_bus.publish("route_completed")
@@ -6128,7 +6180,7 @@ do
                         tostring(overworld_segment.final_destination_id or "-"),
                         tostring(overworld_segment.continuous_requested == true)))
                     tolk.output_interrupt(string.format(
-                        "Recovery checkpoint reached. The waypoint network remains about %s safe steps away. Final destination: %s. Press auto-walk again to continue recovery.",
+                        "Recovery checkpoint reached. The waypoint network remains about %s steps away. Final destination: %s. Press auto-walk again to continue recovery.",
                         tostring(overworld_segment.remaining_steps or "several"),
                         tostring(overworld_segment.final_destination_title
                             or "selected destination")))
@@ -6211,7 +6263,7 @@ do
                     end
                     msg = msg .. ". " .. build_hazard_warning(hazard_stop.summary)
                     if speak_completion then
-                        tolk.output_warning(msg)
+                        tolk.output_travel_warning(msg)
                     end
                     return
                 end
@@ -6386,7 +6438,7 @@ auto_step.on_step_complete = function(from_x, from_y, dir, to_x, to_y, step_data
     if not plan.path or #plan.path == 0 then
         if plan.hazard_stop then
             clear_active_route_context("seam brute force hazard boundary", should_refresh_objects_after_route())
-            tolk.output_warning("Seam crossed. " .. build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
+            tolk.output_travel_warning("Seam crossed. " .. build_hazard_warning(plan.hazard_stop.summary, "Hazard ahead."))
             return
         end
         finish_active_route_arrival("seam brute force reached destination", {
@@ -6449,6 +6501,8 @@ auto_step.on_route_cancelled = function(cancel_data)
         end
         clear_active_route_context("overworld auto_step route cancelled: " .. tostring(reason), should_refresh_objects_after_route())
         if M._overworld_hazard_confirmation.arm(cancel_data, overworld_segment) then
+            -- Required confirmation feedback remains audible when optional
+            -- travel narration is muted; it still waits for input release.
             tolk.output_warning(
                 "Poison swamp ahead. Auto-walk stopped. Press auto-walk again to continue through this swamp.")
         else
@@ -6458,7 +6512,7 @@ auto_step.on_route_cancelled = function(cancel_data)
                     and "Recovery auto-walk cancelled. "
                     or "Overworld auto-walk cancelled. "
                 if reason == "dangerous_tile" then
-                    tolk.output_warning(prefix .. tostring(message or reason))
+                    tolk.output_travel_warning(prefix .. tostring(message or reason))
                 else
                     tolk.output_interrupt(prefix .. tostring(message or reason))
                 end
@@ -6479,9 +6533,9 @@ auto_step.on_route_cancelled = function(cancel_data)
                 warning = "The remaining route is outside the current light. " ..
                     "Move manually, increase the light, or choose another visible destination."
             end
-            tolk.output_warning("Auto-walk stopped. " .. warning)
+            tolk.output_travel_warning("Auto-walk stopped. " .. warning)
         elseif reason == "dangerous_tile" then
-            tolk.output_warning("Auto-walk cancelled. " .. tostring(message or reason))
+            tolk.output_travel_warning("Auto-walk cancelled. " .. tostring(message or reason))
         else
             tolk.output_interrupt("Auto-walk cancelled. " .. tostring(message or reason))
         end

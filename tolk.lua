@@ -287,6 +287,7 @@ local warning_event_handler = nil
 local delivery_observer = nil
 
 local function reload_config()
+    config = require "config" -- main.lua may replace config while retaining this bridge
     debounce_secs = (tonumber(config.get("speech_debounce_ms")) or 1000) / 1000.0
     warning_queue:set_neutral_frames(tonumber(config.get("warning_idle_frames")) or 12)
 end
@@ -366,10 +367,19 @@ end
 -- output_warning(text): Preserve an important message until keyboard/controller
 -- input has been neutral for warning_idle_frames.  Warnings are separate FIFO
 -- records so later speech-history support can retain their original boundaries.
-local function output_warning(text, interrupt)
+local function sync_travel_warnings()
+    config = require "config" -- follow the current menu/config instance after Lua reload
+    local cancelled = warning_queue:set_kind_enabled("travel", config.get("travel_warnings") == "true")
+    for _, record in ipairs(cancelled) do
+        report_warning_event("cancelled", record, warning_queue:get_state(), record.deferred)
+    end
+end
+
+local function output_warning(text, interrupt, kind)
+    sync_travel_warnings()
     local record = warning_queue:submit(text, {
         interrupt = interrupt ~= false,
-        kind = "warning",
+        kind = kind or "warning",
     })
     if record then
         report_warning_event(
@@ -384,6 +394,7 @@ end
 -- Called once near the start of each emulator frame, before speech-producing
 -- checks.  Synthetic auto-walk input should be excluded by the caller.
 local function update_warning_input(active)
+    sync_travel_warnings()
     warning_queue:observe_input(active == true)
 end
 
@@ -391,6 +402,7 @@ end
 -- speech submitted that frame.  Only the first record interrupts; later records
 -- queue behind it so one deferred warning cannot erase another.
 local function flush_warnings()
+    sync_travel_warnings()
     local ready = warning_queue:take_ready()
     if not ready then
         return 0
@@ -428,6 +440,9 @@ return {
     output = output,
     output_interrupt = output_interrupt,
     output_warning = output_warning,
+    output_travel_warning = function(text, interrupt)
+        return output_warning(text, interrupt, "travel")
+    end,
     cancel_warning = function(id)
         local record = warning_queue:cancel(id)
         if record then report_warning_event("cancelled", record, warning_queue:get_state(), record.deferred) end

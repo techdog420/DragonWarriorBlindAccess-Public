@@ -59,6 +59,7 @@ function M.new(opts)
         input_active = false,
         pending = {},
         next_id = 1,
+        disabled_kinds = {},
     }
 
     function state:set_neutral_frames(value)
@@ -83,6 +84,7 @@ function M.new(opts)
         end
 
         metadata = metadata or {}
+        if self.disabled_kinds[metadata.kind or "warning"] then return nil end
         local record = {
             id = self.next_id,
             text = tostring(text),
@@ -115,6 +117,20 @@ function M.new(opts)
             end
         end
         return nil
+    end
+
+    -- Cancel only the muted category; preserve other records and FIFO order.
+    function state:set_kind_enabled(kind, enabled)
+        self.disabled_kinds[kind] = not enabled
+        local cancelled = {}
+        if not enabled then
+            for index = #self.pending, 1, -1 do
+                if self.pending[index].kind == kind then
+                    table.insert(cancelled, 1, table.remove(self.pending, index))
+                end
+            end
+        end
+        return cancelled
     end
 
     function state:take_ready()

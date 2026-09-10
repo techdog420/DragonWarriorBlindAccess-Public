@@ -12381,6 +12381,17 @@ function tests.rimuldar_return_corridor_final_destinations_keep_connected_openin
     routes.reset_for_tests()
 end
 
+function tests.great_swamp_arrival_separates_optional_search_hint()
+    routes.stop()
+    assert(routes.start("great_swamp_cantlin", 0x01, 88, 112))
+    local event = assert(routes.observe_position(0x01, 89, 112))
+    assert_equal(event.terminal, true, "search area arrival is terminal")
+    assert_equal(event.message_without_warning, "Arrived at Eastern Great Swamp Search Area",
+        "arrival is retained separately from optional warning")
+    assert_contains(event.warning_message, "Search", "search hint remains optional warning")
+    routes.stop()
+end
+
 local failures = 0
 local total = 0
 

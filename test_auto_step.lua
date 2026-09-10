@@ -144,6 +144,7 @@ local function make_env(opts)
             output = function() end,
             output_interrupt = record_output,
             output_warning = record_warning,
+            output_travel_warning = record_warning,
         }
     end
 

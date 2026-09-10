@@ -2248,6 +2248,7 @@ local function check_map_change()
 
     local route_event = nil
     local route_speech = nil
+    local route_speech_is_warning = false
     if game_state.state == state.STATE_FIELD then
         route_event = overworld_routes.observe_position(snapshot.map_id, snapshot.x, snapshot.y, snapshot.terrain_offset)
         if route_event then
@@ -2260,7 +2261,7 @@ local function check_map_change()
             end
             route_speech = route_event.message
             if route_mgr.overworld_route_event_speech then
-                route_speech = route_mgr.overworld_route_event_speech(route_event)
+                route_speech, route_speech_is_warning = route_mgr.overworld_route_event_speech(route_event)
             end
         end
     end
@@ -2270,7 +2271,8 @@ local function check_map_change()
             map_change_speech,
             route_event)
     end
-    if changes.map_changed and darkness_context.limited == true then
+    if changes.map_changed and darkness_context.limited == true
+       and config.get("travel_warnings") == "true" then
         if map_change_speech then
             map_change_speech = map_change_speech .. ". " .. darkness.describe_with_navigation(darkness_context)
         else
@@ -2290,11 +2292,11 @@ local function check_map_change()
             darkness_context.light_radius or 0,
             darkness_context.half_span or 0,
             darkness_context.radiant_timer or 0))
-        tolk.output_warning(light_change_speech)
+        tolk.output_travel_warning(light_change_speech)
     end
     if route_speech then
-        if route_event and route_event.warning_message then
-            tolk.output_warning(route_speech)
+        if route_speech_is_warning then
+            tolk.output_travel_warning(route_speech)
         else
             tolk.output(route_speech)
         end

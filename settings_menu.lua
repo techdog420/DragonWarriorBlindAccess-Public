@@ -32,7 +32,9 @@ local groups = {
         option("low_health_warning", "Low-health warning", {"false", "true"}, {"Off", "On"},
             "Announces current and maximum HP once when health reaches or falls below the threshold, including when loading with low health. Healing above the threshold rearms it. Held input delays speech."),
         option("low_health_threshold_percent", "Low-health threshold", health_thresholds, health_labels,
-            "Percentage of maximum HP at or below which the low-health warning fires. Choose 5 to 100 percent in steps of 5. The default is 25 percent. This has no effect while the warning is off.")}},
+            "Percentage of maximum HP at or below which the low-health warning fires. Choose 5 to 100 percent in steps of 5. The default is 25 percent. This has no effect while the warning is off."),
+        option("travel_warnings", "Travel warnings", {"false", "true"}, {"Off", "On"},
+            "Announces dangerous tiles, unsafe routes, light changes, and hazard or darkness stops. Off cancels pending travel warnings. Auto-walk crossing confirmations and recovery refusal messages remain audible. Movement safeguards still apply. Low-health warnings have their own setting. The default is On.")}},
     {name="Defaults", options={
         {name="Restore one group", action="group", help="Choose a group to restore. Changes remain pending until Control+Enter saves."},
         {name="Restore all menu settings", action="all", help="Restores only settings offered by this menu. Hotkeys and other configuration entries are preserved."}}},

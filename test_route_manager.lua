@@ -23,6 +23,7 @@ local function make_env(options)
     options = options or {}
     local outputs = {}
     local warning_outputs = {}
+    local travel_warning_outputs = {}
     local published_events = {}
     local event_subscribers = {}
     local function publish_event(name, payload)
@@ -504,6 +505,10 @@ local function make_env(options)
         return {
             output_interrupt = record_output,
             output_warning = record_warning,
+            output_travel_warning = function(msg)
+                travel_warning_outputs[#travel_warning_outputs + 1] = msg
+                record_warning(msg)
+            end,
         }
     end
 
@@ -655,6 +660,7 @@ local function make_env(options)
     return {
         outputs = outputs,
         warning_outputs = warning_outputs,
+        travel_warning_outputs = travel_warning_outputs,
         published_events = function() return published_events end,
         publish_event = publish_event,
         auto_step = package.loaded["auto_step"],
@@ -973,6 +979,26 @@ function tests.autowalk_guard_receives_route_options()
     assert_equal(received_opts.survey_safe, true, "guard should see survey-safe internal route starts")
     assert_equal(env.start_route_calls(), 1, "allowed guarded autowalk should queue route steps")
 
+    env.restore()
+end
+
+function tests.kol_departure_uses_guided_route_without_off_network_recovery()
+    local env = make_env({
+        is_overworld = true, start_map_id = 0x01, start_x = 104, start_y = 10,
+        overworld_on_network = false,
+        overworld_transition_cells = {{x=104, y=10}},
+        overworld_segment = {
+            route = {id="swamp_cave", title="Swamp Cave"},
+            waypoint = {name="Kol forest west edge", x=96, y=13},
+            index=2, steps={"down","down","down","left","left","left","left","left","left","left","left"},
+            message="Auto-walk to Kol forest west edge", object_id="route_swamp_cave_2",
+        },
+    })
+    local plan = env.route_manager.autowalk_overworld_segment()
+    assert_equal(plan.status, "queued", "town exit must use established departure")
+    assert_equal(env.overworld_plan_calls(), 1, "guided planner used")
+    assert_equal(env.pathfind_calls(), 0, "no off-network recovery search")
+    assert_equal(env.start_route_calls(), 1, "departure movement queued")
     env.restore()
 end
 
@@ -1348,11 +1374,13 @@ function tests.manual_overworld_drift_recovers_then_resumes_preserved_destinatio
 end
 
 function tests.off_network_recovery_autowalk_refuses_hazardous_manual_preview()
+    for _, enabled in ipairs({"true", "false"}) do
     local env = off_network_recovery_env({
+        config_values = {travel_warnings=enabled},
         start_x = 10,
         start_y = 14,
         hazard_cells = {
-            ["10,13"] = "poison_swamp",
+            ["10,13"] = "damage",
         },
         pathfind_to_fn = function(start_x, start_y, goal_x, goal_y, _, path_opts)
             local row = path_opts and path_opts.walkability_snapshot
@@ -1379,8 +1407,49 @@ function tests.off_network_recovery_autowalk_refuses_hazardous_manual_preview()
     assert_contains(table.concat(env.debug_infos(), "\n"),
         "reason=hazardous_recovery",
         "hazard refusal should be structured in the debug log")
-
+    assert_equal(#env.travel_warning_outputs, 0, "refusal must bypass optional warning category")
+    assert_equal(#env.warning_outputs, 1, "refusal waits for input release")
+    if enabled == "false" then
+        assert_contains(env.outputs[#env.outputs], "Move manually onto the route",
+            "muted refusal gives a next action")
+    end
     env.restore()
+    end
+end
+
+function tests.swamp_recovery_uses_second_press_with_alerts_on_and_off()
+    for _, enabled in ipairs({"true", "false"}) do
+    local env = off_network_recovery_env({
+        config_values = {travel_warnings=enabled},
+        start_x = 10,
+        start_y = 14,
+        hazard_cells = {
+            ["10,13"] = "poison_swamp",
+        },
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y, _, path_opts)
+            local row = path_opts and path_opts.walkability_snapshot
+                and path_opts.walkability_snapshot[goal_y]
+            if not row or row[goal_x] ~= true then
+                return "No path found", nil, nil
+            end
+            return "Path", nil, {
+                {x = 10, y = 13, direction = "north"},
+            }
+        end,
+    })
+
+    local first = env.route_manager.autowalk_to_current()
+    assert_equal(first.status, "recovery_queued", "swamp approach can queue")
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, nil, "first press does not authorize swamp")
+    env.auto_step.on_route_cancelled({reason="dangerous_tile", current_x=10,
+        current_y=14, dir="up", dest_x=10, dest_y=13, hazard="poison_swamp"})
+    assert_contains(env.outputs[#env.outputs], "Press auto-walk again", "required prompt remains audible")
+    local second = env.route_manager.autowalk_to_current()
+    assert_equal(second.status, "recovery_queued", "confirmed recovery queued")
+    assert_equal(env.last_start_route_opts().allowed_route_hazard, "poison_swamp", "confirmation authorizes swamp only")
+    assert_contains(env.outputs[#env.outputs], "Poison swamp confirmed", "confirmation feedback")
+    env.restore()
+    end
 end
 
 function tests.off_network_recovery_autowalk_uses_reauthorizable_safe_checkpoints()
@@ -1570,6 +1639,9 @@ function tests.overworld_poison_swamp_second_autowalk_press_confirms_crossing()
     assert_contains(env.outputs[#env.outputs],
         "Press auto-walk again to continue through this swamp",
         "first poison-swamp refusal should explain the second-press override")
+    assert_equal(#env.warning_outputs, 1, "confirmation still uses deferred speech")
+    assert_equal(#env.travel_warning_outputs, 0,
+        "required confirmation must bypass optional travel warning category")
 
     env.route_manager.autowalk_to_current()
 
@@ -1796,6 +1868,18 @@ function tests.overworld_autowalk_continuous_config_queues_next_waypoint()
     assert_equal(env.last_start_route_opts().route_hold_after_movement_start_frames, 60,
         "continuous chaining should preserve the next waypoint timing metadata")
 
+    env.restore()
+end
+
+function tests.muted_travel_warning_preserves_arrival_feedback()
+    local env = make_env({config_values={travel_warnings="false"}})
+    local text, warning = env.route_manager.overworld_route_event_speech({
+        message="Use Search. Arrived at Eastern Great Swamp Search Area",
+        message_without_warning="Arrived at Eastern Great Swamp Search Area",
+        warning_message="Use Search.", terminal=true,
+    })
+    assert_equal(text, "Arrived at Eastern Great Swamp Search Area", "arrival survives muted hint")
+    assert_equal(warning, false, "arrival must use ordinary speech")
     env.restore()
 end
 
@@ -2337,7 +2421,7 @@ end
 
 function tests.overworld_autowalk_to_object_skips_switch_when_same_destination()
     -- When the selected object's route matches the active route, no switch
-    -- is needed — autowalk should just advance the active route's segment.
+    -- is needed â€” autowalk should just advance the active route's segment.
     local env = make_env({
         is_overworld = true,
         start_map_id = 0x01,

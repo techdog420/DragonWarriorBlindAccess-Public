@@ -943,7 +943,19 @@ quality-of-life work.
   Off/On and reload-while-low acceptance passed: the player heard the alert,
   logs confirmed delivery after 12 neutral frames, and no warning remained
   pending. Core low-health functionality is live-accepted.
-- Future settings: travel warning narration and a Speech group/submenu.
+- Travel warnings has a saved, default-On toggle under Announcements on
+  `codex/travel-warning-setting`. It now controls dangerous-tile prompts,
+  hazard route warnings, light changes, and
+  hazard/darkness auto-walk stops. Disabling cancels pending travel records
+  without cancelling low-health warnings or weakening movement safeguards.
+  Required auto-walk swamp confirmation prompts remain audible when muted.
+  Menu/save and runtime mute acceptance passed on the Kol-to-Swamp-Cave route;
+  hazard confirmation still applied and no warnings were queued or delivered.
+  Live re-enable acceptance passed with Radiant expansion and dimming after
+  fixing the retained speech-module config reference across Lua reloads.
+  All 39 Lua suites and 68 Python tests pass. See
+  `docs/travel-warnings.md` for the audited message scope.
+- Future settings: a Speech group/submenu.
   Add them as the underlying
   behavior becomes available; muting narration must not disable movement
   safeguards.

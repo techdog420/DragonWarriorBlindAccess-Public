@@ -122,6 +122,56 @@ function tests.physical_activity_overrides_stale_keys_without_bypassing_real_hol
     assert_equal(warning_delivery.keyboard_has_input({Space=true}, nil), true, "older bridge retains fallback")
 end
 
+function tests.muting_travel_cancels_pending_without_muting_health()
+    local q = warning_delivery.new({neutral_frames = 2})
+    q:observe_input(true)
+    local travel = q:submit("Swamp ahead", {kind="travel"})
+    local health = q:submit("Low health")
+    q:submit("Light expired", {kind="travel"})
+    local cancelled = q:set_kind_enabled("travel", false)
+    assert_equal(#cancelled, 2, "all pending travel cancelled")
+    assert_equal(cancelled[1].id, travel.id, "cancellation preserves order")
+    assert_equal(q:submit("Hazard ahead", {kind="travel"}), nil, "muted travel is not queued")
+    q:observe_input(false); q:observe_input(false)
+    local ready = q:take_ready()
+    assert_equal(#ready, 1, "health retained")
+    assert_equal(ready[1].id, health.id, "health identity retained")
+    q:set_kind_enabled("travel", true)
+    assert_equal(q:take_ready(), nil, "old travel does not replay")
+    assert(q:submit("New hazard", {kind="travel"}))
+    assert_equal(#q:take_ready(), 1, "new travel allowed after enabling")
+end
+
+function tests.retained_speech_bridge_uses_reloaded_config_instance()
+    local current = {get=function(key) if key=="travel_warnings" then return "false" end return nil end}
+    local sent = {}
+    local lib = {Tolk_Load=function() end, Tolk_Output=function(text) sent[#sent+1]=text end}
+    local sandbox = setmetatable({
+        io={open=function() return nil end, popen=function() return nil end},
+        print=function() end,
+        require=function(name)
+            if name=="config" then return current end
+            if name=="ffi" then return {cdef=function() end, load=function() return lib end} end
+            if name=="encoding" then return {to_utf16=function(text) return text end} end
+            return require(name)
+        end,
+    }, {__index=_G})
+    local chunk = assert(loadfile("tolk.lua"))
+    setfenv(chunk, sandbox)
+    local speech = chunk()
+    assert_equal(speech.output_travel_warning("muted"), nil, "initial Off")
+    current = {get=function(key) if key=="travel_warnings" then return "true" end return nil end}
+    assert(speech.output_travel_warning("Light expands"))
+    speech.flush_warnings()
+    assert_equal(sent[1], "Light expands", "new On instance takes effect without restarting bridge")
+    speech.output_travel_warning("pending travel")
+    speech.output_warning("required confirmation")
+    current = {get=function(key) if key=="travel_warnings" then return "false" end return nil end}
+    speech.flush_warnings()
+    assert_equal(#sent, 2, "only required speech survives new Off instance")
+    assert_equal(sent[2], "required confirmation", "required prompt retained")
+end
+
 local failures = 0
 local total = 0
 for name, fn in pairs(tests) do
