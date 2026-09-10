@@ -1828,6 +1828,36 @@ function tests.find_overworld_landmark_rejects_ambiguous_prefixes()
     env.restore()
 end
 
+function tests.services_shortcut_preserves_sort_reachability_and_repeated_selection()
+    local env = make_env({npc_count = 3, object_sort_order = "alphabetical"})
+    env.set_position(0x07, 12, 21)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0x65, 0x14, 0) -- dialogue-only merchant
+    env.set_npc(1, 0x73, 0x04, 0) -- Inn
+    env.set_npc(2, 0x76, 0x0C, 0) -- Weapons Merchant
+    env.objects.refresh(0x07)
+    assert_equal(env.objects.services_filter(), "Services", "shortcut selects services directly")
+    assert_equal(env.objects.get_count(), 2, "both merchants available")
+    env.objects.next_object()
+    local selected = env.objects.current_object().id
+    env.objects.services_filter()
+    assert_equal(env.objects.current_object().id, selected, "reopening retains selection")
+    env.objects.set_pathability_statuses({npc_1 = true, npc_2 = false})
+    env.objects.set_pathability_filter(env.objects.PATHABILITY_REACHABLE)
+    env.objects.all_filter()
+    env.objects.services_filter()
+    assert_equal(env.objects.get_filter_summary(), "Services, reachable", "shortcut retains reachability view")
+    assert_equal(env.objects.get_count(), 1, "unreachable service remains filtered out")
+    assert_equal(env.objects.current_object().id, "npc_1", "reachable service selected")
+    assert_equal(env.objects.get_sort_order(), "alphabetical", "shortcut retains sorting")
+    env.set_position(0x01, 104, 10)
+    env.set_terrain_offset(0)
+    env.objects.refresh(0x01)
+    env.objects.services_filter()
+    assert_equal(env.objects.get_count(), 0, "overworld does not invent town services")
+    env.restore()
+end
+
 function tests.service_filter_lists_merchant_npcs()
     local env = make_env()
 

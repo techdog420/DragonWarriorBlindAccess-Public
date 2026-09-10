@@ -1,6 +1,23 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-06
+Updated: 2026-09-10
+
+## Current implementation
+
+- Object sorting and its Shift+Q shortcut are player-validated, merged, and pushed
+  to main at `fed84fb`.
+- `codex/quick-services` adds Shift+P for direct access to current-map Services.
+  It retains sorting and reachability filters; J/K/L browse and U approaches.
+  Opening does not start movement. Reopening retains the selected service.
+  Service descriptions include reachability and known blockers. Key Reference,
+  keyboard docs, and `quick_services` debug command are updated.
+- All 39 Lua suites and 68 Python tests pass; `git diff --check` is clean.
+- Changes remain uncommitted. Player accepted quick-services behavior on
+  2026-09-10; log confirms repeated Services selection and reachability feedback.
+- Next recommended work: Kol service-route polishing. Tool Merchant auto-walk
+  detoured around failed approaches and was stopped before arrival. Fresh probe
+  frame21240 confirms Kol (8,3), no active path or runtime blocks. See latest
+  `PLAYTESTING.md` and `work_notes/current_investigation.md` for evidence.
 
 ## Release Installation Handoff
 

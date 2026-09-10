@@ -103,6 +103,7 @@ local function make_env(options)
         key_auto_walk = "U|F18",
         key_stop_auto_walk = "Shift+U",
         key_filter = "Q",
+        key_services = "Shift+P",
         key_object_sort = "Shift+Q",
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
@@ -260,6 +261,7 @@ local function make_env(options)
             cycle_sort_order = function()
                 return true, "Object sort: Alphabetical."
             end,
+            get_filter_name = function() return filter_name end,
             next_filter = function()
                 return filter_name
             end,
@@ -419,6 +421,7 @@ local function make_env(options)
                 stop_autowalk_calls[#stop_autowalk_calls + 1] = reason
                 return options.auto_walk_active ~= false
             end,
+            open_services = function() return "Services. Inn. Reachable" end,
             next_object_pathability_filter = function()
                 pathability_filter_calls = pathability_filter_calls + 1
                 return options.pathability_info or {
@@ -1134,6 +1137,18 @@ function tests.position_hotkey_reports_unavailable_instead_of_crashing()
     env.restore()
 end
 
+function tests.services_browsing_requests_reachability_and_blocker_details()
+    local env = make_env({delay = 0, filter_name = "Services"})
+    for _, key in ipairs({"J", "K", "L", "Q"}) do
+        env.update({})
+        env.update({[key] = true})
+        local opts = env.describe_calls[#env.describe_calls]
+        assert_equal(opts.include_reachability, true, "service selection checks reachability")
+        assert_equal(opts.include_service_details, true, "service selection explains blockers")
+    end
+    env.restore()
+end
+
 function tests.object_navigation_hotkeys_request_brief_descriptions()
     local env = make_env({delay = 0})
 
@@ -1373,6 +1388,16 @@ function tests.shift_q_switches_sort_once_without_cycling_category()
     assert_equal(env.outputs[1].message, "Object sort: Alphabetical.", "sort feedback")
     env.update({Shift=true,Q=true})
     assert_equal(#env.outputs, 1, "held shortcut does not repeat")
+    env.restore()
+end
+
+function tests.shift_p_opens_services_once_without_other_actions()
+    local env=make_env({delay=0})
+    env.update({Shift=true,P=true})
+    assert_equal(#env.outputs,1,"one services announcement")
+    assert_equal(env.outputs[1].message,"Services. Inn. Reachable","services feedback")
+    env.update({Shift=true,P=true})
+    assert_equal(#env.outputs,1,"held shortcut does not repeat")
     env.restore()
 end
 

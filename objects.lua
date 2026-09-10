@@ -2458,6 +2458,12 @@ function M.set_filter(filter)
     return FILTER_NAMES[current_filter]
 end
 
+function M.services_filter()
+    -- Reopening Services should repeat the current selection, not jump away.
+    if current_filter == M.FILTER_SERVICE then return FILTER_NAMES[current_filter] end
+    return M.set_filter(M.FILTER_SERVICE)
+end
+
 function M.travel_filter()
     return M.set_filter(M.FILTER_TRAVEL)
 end

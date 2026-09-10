@@ -2620,6 +2620,13 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
         msg = msg .. ". Target is outside this map"
         return msg
     end
+    if obj.service and result == "No path found" then
+        if no_path_reason == "goal_blocked_npc" then
+            return msg .. ". Service interaction spot is occupied by an NPC. Wait for them to move and try again"
+        elseif no_path_reason == "goal_blocked_runtime" then
+            return msg .. ". Service interaction spot is temporarily blocked by a runtime collision mark"
+        end
+    end
     if obj.type == objects.TYPE_CHEST and result == "No path found" then
         if no_path_reason == "goal_blocked_npc" then
             msg = msg .. ". Chest tile is currently occupied by an NPC. Wait for it to move before auto-walking"
@@ -3235,6 +3242,15 @@ local function plan_object_reachability(obj, opts)
         end
     end
 
+    -- Only selected service descriptions need the additional blocker diagnosis.
+    -- Bulk reachability filtering stays on the existing lightweight path.
+    if reachability.reachable == false and not reachability.no_path_reason
+       and opts.include_service_details and not opts._skip_interaction_alternates then
+        local reason_opts = copy_opts(opts)
+        reason_opts.pathfinder_opts = path_opts
+        reachability.no_path_reason = infer_no_path_reason(
+            map_id, px, py, blocking, obj, path_mode, reason_opts)
+    end
     return reachability
 end
 
@@ -3807,9 +3823,38 @@ function M.describe_object_with_reachability(obj, base_description, opts)
         if reachability.no_path_reason == "limited_visibility" then
             return desc .. ". Not reachable within the current visible area"
         end
+        if opts.include_service_details then
+            return desc .. ". " .. build_pathfind_message(obj, "No path found", nil, reachability.no_path_reason)
+        end
         return desc .. ". Not currently reachable"
     end
+    if opts.include_service_details and reachability and reachability.reachable == true then
+        return desc .. ". Reachable"
+    end
     return desc
+end
+
+function M.open_services()
+    local map_id = select(1, nav.get_position())
+    objects.check_refresh(map_id)
+    if objects.needs_refresh(map_id) then
+        return "Services are still loading. Try again in a moment."
+    end
+    objects.update_npcs()
+    objects.services_filter()
+    M.refresh_object_pathability_filter_if_needed()
+    local label = objects.get_filter_summary() .. ", sorted by " .. objects.get_sort_name()
+    if objects.get_count() == 0 then
+        if objects.is_pathability_filter_active() then
+            return label .. ". No services match this reachability view. Use the reachability filter to check other services."
+        end
+        return label .. ". No services available on this map."
+    end
+    return label .. ". " .. M.describe_current_object({
+        include_reachability = true,
+        include_service_details = true,
+        include_debug_coords = false,
+    }) .. ". Browse with previous and next object; use auto-walk to approach."
 end
 
 function M.describe_current_object(opts)
@@ -3836,7 +3881,13 @@ function M.describe_current_object(opts)
         if reachability.no_path_reason == "limited_visibility" then
             return desc .. ". Not reachable within the current visible area"
         end
+        if opts.include_service_details then
+            return desc .. ". " .. build_pathfind_message(obj, "No path found", nil, reachability.no_path_reason)
+        end
         return desc .. ". Not currently reachable"
+    end
+    if opts.include_service_details and reachability and reachability.reachable == true then
+        return desc .. ". Reachable"
     end
     return desc
 end

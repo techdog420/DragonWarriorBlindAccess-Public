@@ -1,5 +1,25 @@
 # Current Investigation Scratchpad
 
+
+## 2026-09-10 Kol service-route polishing candidates
+
+- KOL-SERVICE-01 (medium): player-initiated Tool Merchant walk failed to finish.
+  Fresh log started 09:37:17. Shift+P announced Services/Distance and Tool Merchant
+  1 of 3 at frames 979, 2119, 12124. User confirms quick-services behavior.
+- At frame 12300, U planned 9 steps from (19,23) to interaction stand (12,21).
+  Failed west approaches: (17,23)->(16,23) frame 12818,
+  (11,17)->(10,17) frame 13569, (8,14)->(7,14) frame 14300.
+  Each received a temporary route block and reroute; remaining route grew to
+  39 steps. These are single-run candidates, not permanent map proof.
+- Separate NPC obstruction at (8,12), approached north from (8,13), frame14628.
+  Later drift from (9,3) to (8,3) caused a reroute at frame15327. Southward
+  entry from (8,3) then retried; player stopped at frame15497 before arrival.
+- Fresh read-only launcher_probe:quick_services_verified frame21240 confirms
+  Kol (8,3), PATH_STATE target=nil, runtime_count=0. No new script error file.
+- Next: reproduce the Tool Merchant route using ordinary walking, distinguish
+  timing/NPC effects from directional geometry, verify service approach and
+  return paths. Do not promote these cells without repeated clean evidence.
+
 Updated: 2026-09-03
 
 ## 2026-09-03 Darkness Parity First Slice

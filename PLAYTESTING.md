@@ -6,6 +6,20 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Quick-services slice (`codex/quick-services`): Shift+P opens the existing
+  current-map Services category, preserving sorting and reachability. Reopening
+  preserves selection. J/K/L descriptions include reachability and known blockers;
+  U retains existing route/interaction behavior. No automatic movement on open.
+  Player confirmed quick-services behavior on 2026-09-10. Log frames 979,
+  2119, and 12124 show Services/Distance with Tool Merchant selected (1 of 3)
+  and Reachable narration. Kol auto-walk needs a separate polishing pass:
+  a 9-step Tool Merchant plan hit three failed west approaches and an NPC,
+  detoured, then was manually stopped at frame15497 without arrival.
+  Fresh probe frame21240 confirms Kol (8,3), no active path or runtime blocks.
+  Detailed candidates are in work_notes/current_investigation.md.
+  Sorting commits through `fed84fb` are now merged and pushed to main.
+  Automated gate passes all 39 Lua suites and 68 Python tests; diff check is clean.
+
 - Object-sort shortcut is source-complete on `codex/object-sort-hotkey`, based
   on pushed sorting commit `d75c5e7`. Shift+Q switches and immediately saves
   Distance/Alphabetical through the same preference as Mod Settings. It

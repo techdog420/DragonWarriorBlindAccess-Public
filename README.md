@@ -335,6 +335,10 @@ the current checked-in alpha configuration.
 - `L` or `F15`: next object.
 - `Q`: cycle object categories: All, NPCs, Services, Treasure, Travel, and
   Doors.
+- `Shift+P`: jump directly to Services on the current map. Keeps sorting and
+  reachability filters; use J/K/L to browse and U to approach the selection.
+  Services announce reachability and known blockers. Opening does not move the hero.
+- `Shift+Q`: switch Distance/Alphabetical sorting and save immediately.
 - `Shift+J`: previous object category.
 - `Shift+K`: return the object category to All.
 - `Shift+L`: next object category.

@@ -988,9 +988,22 @@ quality-of-life work.
   failure regressions pass. Live shortcut, persistence, and menu synchronization
   acceptance passed in both sort modes. All 39 Lua suites and 68 Python tests
   pass. This slice is complete.
-- Add search and/or quick access for common services such as inns, shops,
-  healers, keys, and save points. Results must still report reachability and
-  the reason when a service cannot currently be reached.
+- Sorting and its Shift+Q shortcut are merged and pushed to `main` at `fed84fb`.
+- First quick-services slice is implemented on `codex/quick-services`;
+  player acceptance passed on 2026-09-10. Shift+P jumps directly to the current map's existing Services
+  category, retaining sorting and reachability filters. J/K/L browse, U approaches;
+  opening never starts movement. Reopening retains the selected service. Service
+  descriptions report reachability and known blockers, with distinct feedback
+  for an empty map, a filtered-empty list, and a map still loading.
+  Key Reference and the `quick_services` debug command expose the same action.
+- Prioritize a Kol service-route polishing pass next. The 2026-09-10 Tool
+  Merchant walk from (19,23) to stand (12,21) hit repeated reroutes and did not
+  arrive before the player stopped it. Reproduce the failed west approaches
+  at (16,23), (10,17), and (7,14), distinguish geometry from timing/NPC state,
+  and verify approach/return routes for all three services. Single-run evidence
+  is recorded in `work_notes/current_investigation.md`; no map data promoted.
+- Consider service-type search or cross-town service lookup after the current-map
+  shortcut is playtested; reuse verified service roles and interaction stands.
 - Add named bookmarks for player-chosen locations such as a favorite grinding
   spot. Define whether bookmarks are save-slot-specific or global, persist them
   across script reloads, and integrate them with overworld/interior routing

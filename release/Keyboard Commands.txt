@@ -117,6 +117,14 @@ J or F13: Select and announce the previous object.
 K or F14: Announce the currently selected object again.
 L or F15: Select and announce the next object.
 
+Shift+P: Jump directly to Services on the current map. This keeps the current
+sort order and reachability filter. Use J/K/L to browse, then U to approach.
+Opening does not start movement. Reopening keeps your selected service.
+Services report reachability and known blockers such as a closed door. If no
+services match the reachability view, use Shift+O to change it. Shift+K returns
+to All object categories. On the overworld, this does not select a service in
+another town. The shortcut can be rebound with key_services in dw_access.ini.
+
 Q: Move to the next object category.
 Shift+Q: Switch Distance/Alphabetical sorting and save immediately. Selection
 and filters are preserved. A failed save leaves the existing order unchanged.

@@ -109,6 +109,10 @@ local function make_env(opts)
 
     package.preload["route_manager"] = function()
         return {
+            open_services = function()
+                sequence[#sequence + 1] = "open_services"
+                return "Services. Inn. Reachable"
+            end,
             describe_visible_area = function()
                 sequence[#sequence + 1] = "describe_visible_area"
                 return "Torchlight. North blocked"
@@ -158,6 +162,15 @@ local function make_env(opts)
 end
 
 local tests = {}
+function tests.quick_services_uses_shared_browser_without_auto_walk()
+    local env = make_env()
+    env.commands.quick_services()
+    assert_equal(env.sequence[1], "open_services", "command uses shared service selection")
+    assert_equal(env.spoken[1], "Services. Inn. Reachable", "command speaks result")
+    assert_equal(env.last_autowalk_opts(), nil, "command never auto-walks")
+    env.restore()
+end
+
 function tests.navigation_module_reload_primes_objects_for_same_frame_filter_navigation()
     local env = make_env({needs_refresh = true})
 

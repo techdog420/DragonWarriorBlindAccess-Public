@@ -81,6 +81,7 @@ end
 
 local OBJECT_HOTKEY_CONFIG_KEYS = {
     "key_freeze_npcs",
+    "key_services",
     "key_object_sort",
     "key_filter_prev",
     "key_filter_all",
@@ -318,7 +319,8 @@ local function speak_filter(filter_name)
     local label = objects.get_filter_summary and objects.get_filter_summary() or filter_name
     if count > 0 then
         speak_now(label .. ". " .. route_mgr.describe_current_object({
-            include_reachability = false,
+            include_reachability = objects.get_filter_name() == "Services",
+            include_service_details = objects.get_filter_name() == "Services",
             include_debug_coords = false,
         }))
     else
@@ -337,7 +339,8 @@ local function speak_pathability_filter(info)
     local count = info.count or objects.get_count()
     if count > 0 then
         speak_now(label .. ". " .. route_mgr.describe_current_object({
-            include_reachability = false,
+            include_reachability = objects.get_filter_name() == "Services",
+            include_service_details = objects.get_filter_name() == "Services",
             include_debug_coords = false,
         }))
     else
@@ -1100,6 +1103,15 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- hear direction + distance information for each one.
         -- Follows the J/K/L convention from pokemon-access and FF mods.
 
+        if is_key_pressed(keys, config.get("key_services")) then
+            clear_object_nav_speech()
+            local message = route_mgr.open_services()
+            speak_now(message)
+            debug_tools.info("QUICK_SERVICES: " .. message)
+            prev_keys = keys
+            return
+        end
+
         if is_key_pressed(keys, config.get("key_object_sort")) then
             clear_object_nav_speech()
             local _, message = objects.cycle_sort_order()
@@ -1135,7 +1147,8 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
             local obj = objects.next_object()
             if obj then
                 queue_object_nav_speech(route_mgr.describe_current_object({
-                    include_reachability = false,
+                    include_reachability = objects.get_filter_name() == "Services",
+                    include_service_details = objects.get_filter_name() == "Services",
                     include_debug_coords = false,
                 }))
             else
@@ -1149,7 +1162,8 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
             local obj = objects.prev_object()
             if obj then
                 queue_object_nav_speech(route_mgr.describe_current_object({
-                    include_reachability = false,
+                    include_reachability = objects.get_filter_name() == "Services",
+                    include_service_details = objects.get_filter_name() == "Services",
                     include_debug_coords = false,
                 }))
             else
@@ -1161,7 +1175,8 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         if not filter_nav_handled and is_key_pressed(keys, config.get("key_object_current")) then
             refresh_object_browser_context()
             speak_now(route_mgr.describe_current_object({
-                include_reachability = false,
+                include_reachability = objects.get_filter_name() == "Services",
+                include_service_details = objects.get_filter_name() == "Services",
                 include_debug_coords = false,
             }))
         end

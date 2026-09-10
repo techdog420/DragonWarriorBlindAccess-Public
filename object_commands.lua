@@ -299,6 +299,12 @@ function M.register()
         tolk.output_interrupt(desc)
     end)
 
+    debug_tools.register_command("quick_services", function()
+        local message = route_mgr.open_services()
+        debug_tools.info("QUICK_SERVICES: " .. message)
+        tolk.output_interrupt(message)
+    end)
+
     debug_tools.register_command("cycle_object_sort", function()
         refresh_object_browser_context()
         local _, message = objects.cycle_sort_order()

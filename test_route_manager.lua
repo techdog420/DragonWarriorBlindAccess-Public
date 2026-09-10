@@ -63,6 +63,7 @@ local function make_env(options)
     local current_x = options.start_x or 5
     local current_y = options.start_y or 4
     local clock_now = 0
+    local category_name = "All"
     local pathability_filter = 1
     local pathability_statuses = {}
     local pathability_status_updates = 0
@@ -158,6 +159,10 @@ local function make_env(options)
             return positions
         end
         return {
+            check_refresh = function() end,
+            needs_refresh = function() return options.services_loading == true end,
+            services_filter = function() category_name = "Services" end,
+            get_sort_name = function() return "Alphabetical" end,
             TYPE_CHEST = "chest",
             TYPE_NPC = "npc",
             TYPE_DOOR = "door",
@@ -219,9 +224,9 @@ local function make_env(options)
             end,
             get_filter_summary = function()
                 if pathability_filter == 1 then
-                    return "All"
+                    return category_name
                 end
-                return "All, " .. pathability_names[pathability_filter]:lower()
+                return category_name .. ", " .. pathability_names[pathability_filter]:lower()
             end,
             get_count = function()
                 return options.object_count or #object_list
@@ -5756,6 +5761,53 @@ function tests.autowalk_immediate_no_path_releases_npc_freeze()
         "immediate no-path should be announced"
     )
 
+    env.restore()
+end
+
+function tests.quick_services_reports_reachability_without_starting_movement()
+    local env = make_env({current_object = {id = "npc_0", name = "Inn", type = "npc", x = 8, y = 8}})
+    local message = env.route_manager.open_services()
+    assert_contains(message, "Services, sorted by Alphabetical", "shortcut labels view")
+    assert_contains(message, "Inn", "shortcut describes selected service")
+    assert_contains(message, ". Reachable", "shortcut reports successful route check")
+    assert_equal(env.start_route_calls(), 0, "shortcut never starts movement")
+    assert_equal(#env.overworld_start_calls(), 0, "shortcut never starts world travel")
+    env.restore()
+end
+
+function tests.quick_services_explains_closed_door_without_starting_movement()
+    local env = make_env({
+        pathfind_mode = "always_no_path",
+        current_object = {id = "npc_0", name = "Inn", type = "npc", x = 8, y = 8},
+        closed_door_cells = {["5,3"] = true},
+    })
+    local message = env.route_manager.open_services()
+    assert_contains(message, "Route is blocked by a closed door", "service describes known blocker")
+    assert_equal(env.start_route_calls(), 0, "blocked service never starts movement")
+    env.restore()
+end
+
+function tests.quick_services_explains_occupied_interaction_spot()
+    local env = make_env({
+        current_object = {id = "npc_0", name = "Inn", type = "npc", service = true,
+            x = 8, y = 8, interaction_x = 8, interaction_y = 7},
+        blocking_positions = {{id = "npc_1", name = "Guard", x = 8, y = 7}},
+    })
+    assert_contains(env.route_manager.open_services(), "Service interaction spot is occupied by an NPC",
+        "occupied service stand explains the blocker")
+    assert_equal(env.start_route_calls(), 0, "occupied stand never starts movement")
+    env.restore()
+end
+
+function tests.quick_services_distinguishes_empty_filtered_and_loading_lists()
+    local env = make_env({object_count = 0, object_list = {}})
+    assert_contains(env.route_manager.open_services(), "No services available on this map", "empty map explained")
+    env.route_manager.set_object_pathability_filter(2)
+    assert_contains(env.route_manager.open_services(), "No services match this reachability view", "filtered list explained")
+    env.restore()
+    env = make_env({services_loading = true})
+    assert_contains(env.route_manager.open_services(), "still loading", "stale objects not announced")
+    assert_equal(env.pathfind_calls(), 0, "loading list does not plan against stale objects")
     env.restore()
 end
 
