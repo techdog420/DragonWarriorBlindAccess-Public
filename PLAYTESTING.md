@@ -6,6 +6,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Object-sort shortcut is source-complete on `codex/object-sort-hotkey`, based
+  on pushed sorting commit `d75c5e7`. Shift+Q switches and immediately saves
+  Distance/Alphabetical through the same preference as Mod Settings. It
+  preserves selection/filters, announces only the mode, and reports failed
+  saves without changing order. `cycle_object_sort` exposes the same action
+  for command tests. Live shortcut/menu synchronization acceptance passed:
+  frame 2839 switched to Alphabetical and the menu reported it at 3103;
+  frame 3390 restored Distance and the menu reported it at 3453. The player
+  confirmed persistence, and the saved INI contains `object_sort_order=distance`.
+  All 39 Lua suites and 68 Python tests pass. This slice is ready to commit.
+
 - Object sorting is source-complete on `codex/object-sort-order`, following
   merge/push of travel warnings at `527e12c` to main. Navigation adds Sort
   objects: Distance (default) or Alphabetical. Save announces a changed mode

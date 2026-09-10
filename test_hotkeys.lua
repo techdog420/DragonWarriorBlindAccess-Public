@@ -103,6 +103,7 @@ local function make_env(options)
         key_auto_walk = "U|F18",
         key_stop_auto_walk = "Shift+U",
         key_filter = "Q",
+        key_object_sort = "Shift+Q",
         key_filter_prev = "Shift+J",
         key_filter_all = "Shift+K",
         key_filter_next = "Shift+L",
@@ -147,6 +148,7 @@ local function make_env(options)
     package.preload["debug_tools"] = function()
         return {
             debug = function() end,
+            info = function() end,
             error = function(message)
                 debug_errors[#debug_errors + 1] = message
             end,
@@ -254,6 +256,9 @@ local function make_env(options)
             prev_object = function()
                 selected = selected + 1
                 return {name = "Object " .. selected}
+            end,
+            cycle_sort_order = function()
+                return true, "Object sort: Alphabetical."
             end,
             next_filter = function()
                 return filter_name
@@ -1358,6 +1363,16 @@ function tests.fceux_selected_teleport_hotkey_arms_release_guard()
     assert_equal(type(env.teleport_requests[1]), "table", "FCEUX teleport hotkey should pass handler options")
     assert_equal(env.teleport_requests[1].suppress_input, true, "FCEUX selected teleport should arm logical suppression; main skips its immediate joypad neutralization")
 
+    env.restore()
+end
+
+function tests.shift_q_switches_sort_once_without_cycling_category()
+    local env=make_env({delay=0})
+    env.update({Shift=true,Q=true})
+    assert_equal(#env.outputs, 1, "one sort announcement and no category announcement")
+    assert_equal(env.outputs[1].message, "Object sort: Alphabetical.", "sort feedback")
+    env.update({Shift=true,Q=true})
+    assert_equal(#env.outputs, 1, "held shortcut does not repeat")
     env.restore()
 end
 

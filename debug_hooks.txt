@@ -608,3 +608,6 @@ Reload / restart protocol:
 
 Export safety note:
   Treat aggregate map/block exports as review material unless the command name or surrounding log evidence identifies confirmed candidates. Prefer report_candidate_suggestions or export_directional_candidates for survey-derived directional door/wall findings.
+
+cycle_object_sort: Switch Distance/Alphabetical object sorting, save immediately,
+preserve selection and filters, and announce the resulting order or save error.

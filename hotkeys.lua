@@ -81,6 +81,7 @@ end
 
 local OBJECT_HOTKEY_CONFIG_KEYS = {
     "key_freeze_npcs",
+    "key_object_sort",
     "key_filter_prev",
     "key_filter_all",
     "key_filter_next",
@@ -1098,6 +1099,15 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
         -- Cycle through map objects (NPCs, stairs, chests, exits) and
         -- hear direction + distance information for each one.
         -- Follows the J/K/L convention from pokemon-access and FF mods.
+
+        if is_key_pressed(keys, config.get("key_object_sort")) then
+            clear_object_nav_speech()
+            local _, message = objects.cycle_sort_order()
+            speak_now(message)
+            debug_tools.info("OBJECT_SORT: " .. message)
+            prev_keys = keys
+            return
+        end
 
         local filter_nav_handled = false
 

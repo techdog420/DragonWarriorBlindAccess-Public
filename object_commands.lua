@@ -299,6 +299,13 @@ function M.register()
         tolk.output_interrupt(desc)
     end)
 
+    debug_tools.register_command("cycle_object_sort", function()
+        refresh_object_browser_context()
+        local _, message = objects.cycle_sort_order()
+        debug_tools.info("OBJECT_SORT: " .. message)
+        tolk.output_interrupt(message)
+    end)
+
     debug_tools.register_command("next_filter", function()
         objects.next_filter()
         speak_filter(objects.get_filter_name())

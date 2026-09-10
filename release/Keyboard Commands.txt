@@ -118,6 +118,8 @@ K or F14: Announce the currently selected object again.
 L or F15: Select and announce the next object.
 
 Q: Move to the next object category.
+Shift+Q: Switch Distance/Alphabetical sorting and save immediately. Selection
+and filters are preserved. A failed save leaves the existing order unchanged.
 Shift+J: Move to the previous object category.
 Shift+K: Return to the All category.
 Shift+L: Move to the next object category.

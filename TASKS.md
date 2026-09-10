@@ -981,6 +981,13 @@ quality-of-life work.
   filtering. Live sorting acceptance passed in Kol and on the overworld;
   Alphabetical and Distance saves were confirmed in the log. All 39 Lua
   suites and 68 Python tests pass. This first slice is complete.
+- Sort shortcut is source-complete on `codex/object-sort-hotkey`: configurable
+  Shift+Q switches Distance/Alphabetical and saves the shared preference.
+  Selection and filters remain intact; failures preserve the existing order
+  and report the save error. Key Reference includes it. Held-key and save
+  failure regressions pass. Live shortcut, persistence, and menu synchronization
+  acceptance passed in both sort modes. All 39 Lua suites and 68 Python tests
+  pass. This slice is complete.
 - Add search and/or quick access for common services such as inns, shops,
   healers, keys, and save points. Results must still report reachability and
   the reason when a service cannot currently be reached.

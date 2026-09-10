@@ -169,6 +169,11 @@ local function make_env(options)
 
     package.preload["config"] = function()
         return {
+            save_changes = function(changes)
+                if options.save_error then return nil, options.save_error end
+                options.object_sort_order=changes.object_sort_order
+                return true
+            end,
             get = function(key)
                 if key == "bizhawk_periodic_npc_refresh" then
                     return options.bizhawk_periodic_npc_refresh or "false"
@@ -3835,6 +3840,25 @@ function tests.dungeon_visibility_updates_as_the_hero_moves_or_light_changes()
     })
     assert_equal(env.objects.get_count() >= 2, true, "lit terrain should restore the complete object browser")
 
+    env.restore()
+end
+
+function tests.sort_shortcut_saves_and_preserves_selection_or_reports_failure()
+    local opts={object_sort_order="distance"}
+    local env=make_env(opts)
+    env.set_position(0x01,104,10);env.set_terrain_offset(0)
+    env.objects.refresh(0x01)
+    local selected=env.objects.current_object().id
+    assert(env.objects.cycle_sort_order())
+    assert_equal(opts.object_sort_order, "alphabetical", "shortcut saves preference")
+    assert_equal(env.objects.current_object().id, selected, "shortcut retains selection")
+    assert(env.objects.cycle_sort_order())
+    assert_equal(opts.object_sort_order, "distance", "second press saves distance")
+    opts.save_error="disk full"
+    local ok,message=env.objects.cycle_sort_order()
+    assert_equal(ok,nil,"save failure reported")
+    assert_equal(opts.object_sort_order,"distance","failed save preserves order")
+    assert(message:find("disk full",1,true),"failure explains cause")
     env.restore()
 end
 

@@ -25,6 +25,7 @@ local groups = {
         command("key_object_prev", "Previous object", "Select and describe the previous object in the current category and reachability view."),
         command("key_object_current", "Current object", "Repeat the selected object's description."),
         command("key_object_next", "Next object", "Select and describe the next object in the current category and reachability view."),
+        command("key_object_sort", "Switch object sorting", "Switch between Distance and Alphabetical, save immediately, and preserve the selected object and filters. This uses the same preference as Mod Settings."),
         command("key_filter", "Cycle category", "Cycle All, NPCs, Services, Treasure, Travel, and Doors."),
         command("key_filter_prev", "Previous category", "Move to the previous object category."),
         command("key_filter_all", "All categories", "Return to the All object category."),

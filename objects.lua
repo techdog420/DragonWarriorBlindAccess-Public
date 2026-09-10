@@ -2281,6 +2281,21 @@ function M.request_refresh()
     refresh_pending = true
 end
 
+-- Persist before applying so a failed save leaves the current order intact.
+function M.cycle_sort_order()
+    local next_order = M.get_sort_order() == "distance" and "alphabetical" or "distance"
+    local ok, err = config.save_changes({object_sort_order=next_order})
+    if not ok then
+        return nil, "Object sort unchanged. Could not save setting: " .. tostring(err)
+    end
+    if current_map_id ~= nil then
+        local _, px, py = nav.get_position()
+        sort_objects(object_list, px, py)
+        rebuild_filtered_list()
+    end
+    return true, "Object sort: " .. M.get_sort_name() .. "."
+end
+
 function M.needs_refresh(map_id)
     local terrain_offset = get_terrain_offset()
     local object_state_flags = get_object_state_flags()
