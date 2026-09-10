@@ -13,7 +13,7 @@
 --   - Exits: hard-coded per map (the tile that returns to the parent map)
 --
 -- Modeled after the pokemon-access project's object navigation pattern:
--- a flat list of all objects, sorted by distance, with filter cycling.
+-- a flat list of all objects, sorted by distance or name, with filter cycling.
 
 local addr = require "addresses"
 local maps = require "maps"
@@ -2038,7 +2038,29 @@ end
 
 -- build_object_list(map_id): Assemble the full object list for a map.
 -- Combines NPCs, stairs, chests, and exits into a single flat list
--- sorted by distance from the player (closest first).
+-- sorted by the configured distance or alphabetical order.
+local applied_sort_order = nil
+function M.get_sort_order()
+    return config.get("object_sort_order") == "alphabetical" and "alphabetical" or "distance"
+end
+function M.get_sort_name()
+    return M.get_sort_order() == "alphabetical" and "Alphabetical" or "Distance"
+end
+local function sort_objects(list, px, py)
+    local order = M.get_sort_order()
+    table.sort(list, function(a, b)
+        if order == "alphabetical" then
+            local an, bn = tostring(a.name or ""):lower(), tostring(b.name or ""):lower()
+            if an ~= bn then return an < bn end
+        else
+            local da, db = get_distance(px, py, a.x, a.y), get_distance(px, py, b.x, b.y)
+            if da ~= db then return da < db end
+        end
+        return a.id < b.id
+    end)
+    applied_sort_order = order
+end
+
 local function build_object_list(map_id, opts)
     opts = opts or {}
     local _, px, py = nav.get_position()
@@ -2047,14 +2069,7 @@ local function build_object_list(map_id, opts)
     -- entirely. Populate the list from a dedicated landmark table instead.
     if is_overworld_context() then
         local landmarks = get_overworld_landmarks()
-        table.sort(landmarks, function(a, b)
-            local da = get_distance(px, py, a.x, a.y)
-            local db = get_distance(px, py, b.x, b.y)
-            if da == db then
-                return a.id < b.id
-            end
-            return da < db
-        end)
+        sort_objects(landmarks, px, py)
         return landmarks
     end
 
@@ -2068,16 +2083,7 @@ local function build_object_list(map_id, opts)
     append_objects(objects, get_special_npcs(map_id))
     append_objects(objects, get_static_objects(map_id))
 
-    -- Sort by distance from player (closest first)
-    table.sort(objects, function(a, b)
-        local da = get_distance(px, py, a.x, a.y)
-        local db = get_distance(px, py, b.x, b.y)
-        -- Stable sort tie-breaker: use object ID string
-        if da == db then
-            return a.id < b.id
-        end
-        return da < db
-    end)
+    sort_objects(objects, px, py)
 
     return objects
 end
@@ -2279,6 +2285,7 @@ function M.needs_refresh(map_id)
     local terrain_offset = get_terrain_offset()
     local object_state_flags = get_object_state_flags()
     return refresh_pending
+        or applied_sort_order ~= M.get_sort_order()
         or map_entry_npc_refresh_checks > 0
         or map_id ~= current_map_id
         or terrain_offset ~= current_terrain_offset
@@ -2297,6 +2304,12 @@ function M.check_refresh(map_id)
        or object_state_flags ~= current_object_state_flags then
         M.on_map_change(map_id, {previous_map_id = current_map_id})
         return
+    end
+
+    if applied_sort_order ~= M.get_sort_order() then
+        local _, px, py = nav.get_position()
+        sort_objects(object_list, px, py)
+        rebuild_filtered_list()
     end
 
     -- Deferred rebuild requested by request_refresh()

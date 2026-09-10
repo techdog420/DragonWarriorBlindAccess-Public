@@ -1,10 +1,22 @@
 # Playtesting Notes
 
-Updated: 2026-09-08
+Updated: 2026-09-10
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Object sorting is source-complete on `codex/object-sort-order`, following
+  merge/push of travel warnings at `527e12c` to main. Navigation adds Sort
+  objects: Distance (default) or Alphabetical. Save announces a changed mode
+  once; category/reachability announcements include it without adding it to
+  every browsed object. Selection remains attached to the same object ID
+  through sorting and ordinary refresh. Tests cover both map contexts,
+  reachability preservation, movement refresh, and staged menu save. The player
+  validated expected sorting behavior in interior Kol and on the overworld.
+  Frame 2114 logged saving Alphabetical; frame 4660 logged restoring Distance,
+  matching the current saved config. Live sorting acceptance passed. The latest
+  automated gate passed all 39 Lua suites and 68 Python tests.
 
 - Re-enabling Travel warnings exposed retained speech-module config state:
   the menu saved On at frame 22176, and Radiant expansion/shrink events logged

@@ -49,6 +49,12 @@ browsing speech delay, auto-walk progress, and low-health warnings. Defaults can
 restore one group or all menu settings after confirmation; these changes also
 need Control+Enter to save. Other INI settings and hotkeys are preserved.
 
+Navigation includes Sort objects: Distance (default) or Alphabetical. Distance
+uses tile distance, not walking-route length. Alphabetical ignores letter case.
+Saving a sort change keeps the selected object and announces the new order.
+Category and reachability announcements include the sort mode; ordinary object
+browsing does not repeat it. Filters and darkness restrictions still apply.
+
 Announcements also includes Travel warnings (On by default). This controls
 hazardous-tile prompts, unsafe-route warnings, light
 changes, and hazard/darkness auto-walk stop warnings. Turning it Off cancels

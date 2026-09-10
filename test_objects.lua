@@ -176,6 +176,7 @@ local function make_env(options)
                 if key == "bizhawk_map_entry_prewarm_path_grid" then
                     return options.bizhawk_map_entry_prewarm_path_grid or "false"
                 end
+                if key == "object_sort_order" then return options.object_sort_order end
                 if key == "darkness_navigation_limits" then
                     return options.darkness_navigation_limits or "true"
                 end
@@ -3834,6 +3835,57 @@ function tests.dungeon_visibility_updates_as_the_hero_moves_or_light_changes()
     })
     assert_equal(env.objects.get_count() >= 2, true, "lit terrain should restore the complete object browser")
 
+    env.restore()
+end
+
+function tests.interior_sort_preserves_reachability_filter_and_selection()
+    local opts={object_sort_order="distance"}
+    local env=make_env(opts)
+    env.set_position(0x08, 1, 15); env.set_terrain_offset(0x10)
+    env.objects.refresh(0x08)
+    env.objects.set_pathability_statuses({npc_0=true, exit_0_15=false})
+    env.objects.set_pathability_filter(env.objects.PATHABILITY_REACHABLE)
+    local selected=env.objects.current_object().id
+    opts.object_sort_order="alphabetical"
+    env.objects.check_refresh(0x08)
+    assert_equal(env.objects.get_filter_summary(), "All, reachable", "sort preserves reachability mode")
+    assert_equal(env.objects.get_count(), 1, "sort preserves reachability results")
+    assert_equal(env.objects.current_object().id, selected, "sort preserves filtered selection")
+    env.objects.set_pathability_filter(env.objects.PATHABILITY_ALL)
+    local list=env.objects.get_objects()
+    for i=2,#list do
+        local a,b=list[i-1],list[i]
+        assert(a.name:lower() <= b.name:lower(), "interior names alphabetical")
+        if a.name:lower()==b.name:lower() then assert(a.id<b.id, "duplicate names ordered by ID") end
+    end
+    env.restore()
+end
+
+function tests.sort_order_changes_preserve_selection_and_survive_refresh()
+    local opts = {object_sort_order="distance"}
+    local env = make_env(opts)
+    env.set_position(0x01, 104, 10)
+    env.set_terrain_offset(0)
+    env.objects.refresh(0x01)
+    local selected = env.objects.current_object().id
+    opts.object_sort_order = "alphabetical"
+    env.objects.check_refresh(0x01)
+    assert_equal(env.objects.current_object().id, selected, "sorting preserves selection")
+    local list = env.objects.get_objects()
+    for i=2,#list do
+        assert(list[i-1].name:lower() <= list[i].name:lower(), "alphabetical landmark order")
+    end
+    env.set_position(0x01, 50, 50)
+    env.objects.update_npcs()
+    assert_equal(env.objects.current_object().id, selected, "movement refresh preserves selection")
+    opts.object_sort_order = "distance"
+    env.objects.check_refresh(0x01)
+    assert_equal(env.objects.current_object().id, selected, "distance restore preserves selection")
+    list = env.objects.get_objects()
+    for i=2,#list do
+        local a,b=list[i-1],list[i]
+        assert(math.abs(a.x-50)+math.abs(a.y-50) <= math.abs(b.x-50)+math.abs(b.y-50), "nearest first")
+    end
     env.restore()
 end
 

@@ -58,6 +58,7 @@ local function speak_filter(prefix, opts)
     refresh_object_browser_context()
     local count = objects.get_count()
     local label = objects.get_filter_summary and objects.get_filter_summary() or prefix
+    if objects.get_sort_name then label = label .. ", sorted by " .. objects.get_sort_name() end
     if count > 0 then
         local desc = label .. ". " .. route_mgr.describe_current_object(opts)
         debug_tools.info("FILTER: " .. desc)
@@ -75,6 +76,7 @@ local function speak_pathability_result(info)
         count = objects.get_count(),
     }
 
+    if objects.get_sort_name then info.name = info.name .. ", sorted by " .. objects.get_sort_name() end
     if info.unavailable then
         local msg = "Reachability filter unavailable here. " .. info.name
         debug_tools.info("PATHABILITY_FILTER: " .. msg)

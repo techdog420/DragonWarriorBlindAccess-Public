@@ -4,7 +4,7 @@ local function env()
     local values = {key_mod_settings="Shift+F11", key_mod_help="Shift+F12",
         enable_auto_step="true", overworld_auto_walk_continuous="false",
         darkness_navigation_limits="balanced", object_nav_speech_coalesce_frames="18",
-        auto_walk_progress_interval="6", travel_warnings="true", low_health_warning="true", low_health_threshold_percent="25"}
+        auto_walk_progress_interval="6", object_sort_order="distance", travel_warnings="true", low_health_warning="true", low_health_threshold_percent="25"}
     local e = {messages={}, saved={}, stopped=0}
     local cfg = {get=function(k) return values[k] end,
         get_default=function(k) return values[k] end,
@@ -112,6 +112,15 @@ function tests.low_health_options_are_staged_and_saved()
     assert(#e.saved==0)
     e.tap({Ctrl=true,Enter=true})
     assert(e.saved[1].low_health_warning=="false" and e.saved[1].low_health_threshold_percent=="30")
+end
+function tests.sort_option_is_staged_and_announced_on_save()
+    local e=env();e.open();e.tap({Right=true});e.tap({Down=true});e.tap({Down=true})
+    assert(e.last():find("Sort objects: Distance",1,true))
+    e.tap({Enter=true});e.tap({Right=true});e.tap({Enter=true})
+    assert(#e.saved==0)
+    e.tap({Ctrl=true,Enter=true})
+    assert(e.saved[1].object_sort_order=="alphabetical")
+    assert(e.last():find("Object sort: Alphabetical",1,true))
 end
 local count=0
 for name,test in pairs(tests) do test();count=count+1;print("PASS "..name) end

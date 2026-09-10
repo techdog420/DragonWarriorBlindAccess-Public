@@ -24,7 +24,9 @@ local groups = {
             {"Balanced", "Authentic", "Unrestricted"},
             "Balanced allows full navigation while lit. Authentic limits navigation to the current light. Unrestricted allows full navigation even without light."),
         option("object_nav_speech_coalesce_frames", "Object browsing speech delay", {"0", "12", "18"},
-            {"Immediate", "Short", "Medium"}, "Waits briefly before speaking rapidly browsed objects. Short is about 0.2 seconds; medium is about 0.3 seconds.")}},
+            {"Immediate", "Short", "Medium"}, "Waits briefly before speaking rapidly browsed objects. Short is about 0.2 seconds; medium is about 0.3 seconds."),
+        option("object_sort_order", "Sort objects", {"distance", "alphabetical"},
+            {"Distance", "Alphabetical"}, "Distance lists nearest objects first using tile distance, not walking-route length. Alphabetical lists objects by name. Changing order keeps your selected object. The default is Distance.")}},
     {name="Announcements", options={
         option("auto_walk_progress_interval", "Auto-walk progress", {"0", "3", "6", "12"},
             {"Off", "Every 3 steps", "Every 6 steps", "Every 12 steps"},
@@ -157,7 +159,10 @@ function M.update(keys, joy, unavailable_reason, on_open)
                 if value ~= normalize(key, original[key]) then changes[key] = value end
             end
             local ok, err = config.save_changes(changes)
-            if ok then close("Settings saved. Returning to game.")
+            if ok then
+                local sort_notice = changes.object_sort_order and ("Object sort: " ..
+                    (changes.object_sort_order == "alphabetical" and "Alphabetical" or "Distance") .. ". ") or ""
+                close("Settings saved. " .. sort_notice .. "Returning to game.")
             else say("Settings could not be saved: " .. tostring(err) .. ". Your changes are still pending.") end
         end
     elseif pressed("Escape|Esc") then

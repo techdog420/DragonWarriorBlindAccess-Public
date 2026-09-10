@@ -84,6 +84,7 @@ local DEFAULTS_ORDERED = {
     {key = "key_teleport_south", value = "Shift+Down", comment = "; Teleport to the cell south of the selected object"},
     {key = "key_teleport_west", value = "Shift+Left", comment = "; Teleport to the cell west of the selected object"},
     {key = "key_teleport_east", value = "Shift+Right", comment = "; Teleport to the cell east of the selected object"},
+    {key = "object_sort_order", value = "distance", comment = "; Object browser order: distance (nearest first) or alphabetical"},
     {key = "object_nav_speech_coalesce_frames", value = "18", comment = "; Wait this many frames before speaking rapid previous/next object taps (0 = immediate)"},
     {comment = ""},
     {comment = "; === Movement ==="},

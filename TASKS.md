@@ -973,9 +973,14 @@ quality-of-life work.
 
 ### Object navigator
 
-- Add selectable sort orders, beginning with distance and alphabetical order.
-  Announce the active category, pathability filter, and sort order without
-  making rapid object browsing noisy.
+- First object-sorting slice is source-complete on `codex/object-sort-order`.
+  Navigation offers Distance (default, Manhattan tile distance) and
+  Alphabetical (case-insensitive name, stable ID ties). Saving announces the
+  new sort mode once; category/reachability announcements include the mode.
+  Re-sorting and ordinary object refresh retain selection by ID and preserve
+  filtering. Live sorting acceptance passed in Kol and on the overworld;
+  Alphabetical and Distance saves were confirmed in the log. All 39 Lua
+  suites and 68 Python tests pass. This first slice is complete.
 - Add search and/or quick access for common services such as inns, shops,
   healers, keys, and save points. Results must still report reachability and
   the reason when a service cannot currently be reached.
