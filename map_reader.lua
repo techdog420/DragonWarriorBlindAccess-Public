@@ -806,6 +806,14 @@ local MAP_PASSTHROUGH_CELLS = {
         -- (18,22). Keep it explicitly walkable so the model matches the
         -- engine-passable corridor.
         ["17,22"] = true,
+        -- Tool-shop bridge-to-doorway grass. On 2026-09-10, normal movement
+        -- from the town entrance reached (18,22); raw probes crossed east
+        -- through (19..22,22), then south through (22,23) into the public
+        -- shop. Repeated east/west crossings and the normal return route
+        -- confirmed the connection. These four type-0 cells were missing.
+        -- Keep the fix local: other type-0 tiles also represent boundaries.
+        ["19,22"] = true, ["20,22"] = true,
+        ["21,22"] = true, ["22,22"] = true,
         -- Inn west-room escape throat. After the Magic Key door correction,
         -- live movement from the opened door cell (5,23) carried west through
         -- (4,23) into this type-0 false wall at (3,23). A later same-origin
@@ -3386,9 +3394,14 @@ local MAP_DIRECTIONAL_BLOCKS = {
         ["21,25"] = {east = true},
         -- The next Merchant 4 route candidate tried (23,22)->DOWN into
         -- (23,23). The user manually verified the engine blocks this seam,
-        -- matching repeated live manual blocks on map 0x08. Keep it
-        -- directional so other approaches to (23,23) can be checked later.
-        ["23,23"] = {north = true},
+        -- matching repeated live manual blocks on map 0x08. The 2026-09-10
+        -- normal return route and same-origin raw UP probe from (23,24)
+        -- also confirmed the south approach blocked with no NPC present.
+        ["23,23"] = {north = true, south = true},
+        -- Tool-shop west wall: the same return rerouted (22,24)->LEFT,
+        -- exhausted retries, and a normally reached raw LEFT probe confirmed
+        -- the block on 2026-09-10. Leave through doorway (22,23) instead.
+        ["21,24"] = {east = true},
         -- A later validation-only failure at (25,22)->DOWN was manually
         -- disproved: the user crossed from (25,22) into (25,23) repeatedly.
         -- Keep (25,23).north open unless new manual evidence says otherwise.

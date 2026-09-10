@@ -6261,6 +6261,72 @@ function tests.explicit_developer_plan_remains_unrestricted_in_darkness()
     env.restore()
 end
 
+function tests.town_audit_exit_anchor_checks_the_interior_approach()
+    local inn = {id="npc_0", name="Inn", type="npc", service=true,
+        x=5,y=5,interaction_x=5,interaction_y=6,interaction_face_dir="north"}
+    local exit = {id="exit_0_15",name="Exit",type="exit",x=0,y=15}
+    local env = make_env({start_map_id=8,start_x=0,start_y=15,map_width=30,map_height=30,
+        current_object=inn,object_list={inn,exit},
+        non_walkable_cells={["0,14"]=true,["0,15"]=true,["0,16"]=true}})
+    local audit=require "town_audit"
+    local old_save,old_guard=audit.save_report,_G.DW_FIELD_ACTION_UNAVAILABLE_REASON
+    local report
+    local ok,err=pcall(function()
+        local a=package.loaded.addresses
+        a.DOOR_ARRAY_MAX=2;a.DOOR_ARRAY_STRIDE=2;a.DOOR_X_POS_START=1000;a.DOOR_Y_POS_START=1001
+        package.loaded.maps.get_name=function() return "Brecconary" end
+        local reader=package.loaded.map_reader
+        reader.get_tile_grid=function() return {} end
+        package.loaded.pathfinder.find_route_to=function(_,sx,sy,gx,gy)
+            if gx<0 or gy<0 or gx>=30 or gy>=30 or not reader.is_walkable(8,gx,gy) then return nil end
+            return {{x=gx,y=gy}}
+        end
+        audit.save_report=function(r) report=r;return {json="test.json",text="test.txt"} end
+        _G.DW_FIELD_ACTION_UNAVAILABLE_REASON=function() return nil end
+        assert(audit.start("services"));audit.tick(true)
+        assert_equal(report.return_mode,"adjacent","exit anchor detected even in service-only scope")
+        assert_equal(report.counts.return_concerns,0,"exit boundary must not create false return failures")
+        assert_equal(report.rows[1].return_route.with_npcs_destination.x,1,"return ends inside town")
+        assert_equal(report.rows[1].return_route.with_npcs_destination.y,15,"return uses entrance approach")
+        assert_equal(env.start_route_calls(),0,"audit does not walk into an exit")
+    end)
+    audit.save_report=old_save;_G.DW_FIELD_ACTION_UNAVAILABLE_REASON=old_guard
+    env.restore();assert(ok,err)
+end
+
+function tests.town_audit_runtime_uses_counter_stands_and_never_moves()
+    local inn = {id="npc_0", name="Inn", type="npc", service=true,
+        x=5,y=5,interaction_x=5,interaction_y=3,interaction_face_dir="south"}
+    local env = make_env({start_map_id=8,current_object=inn,
+        blocking_positions={{id="npc_1",x=5,y=3}}})
+    local audit = require "town_audit"
+    local old_save, old_guard = audit.save_report, _G.DW_FIELD_ACTION_UNAVAILABLE_REASON
+    local report
+    local ok, err = pcall(function()
+        local a=package.loaded.addresses
+        a.DOOR_ARRAY_MAX=2; a.DOOR_ARRAY_STRIDE=2
+        a.DOOR_X_POS_START=1000; a.DOOR_Y_POS_START=1001
+        package.loaded.maps.get_name=function() return "Brecconary" end
+        local reader=package.loaded.map_reader
+        reader.get_tile_grid=function() return {} end
+        audit.save_report=function(r) report=r; return {json="test.json",text="test.txt"} end
+        _G.DW_FIELD_ACTION_UNAVAILABLE_REASON=function() return nil end
+        assert(audit.start("all"))
+        audit.tick(true)
+        assert_equal(report.status,"complete","runtime audit completes")
+        assert_equal(report.rows[1].classification,"npc_obstructed","real planner separates occupied counter from map failure")
+        assert_equal(report.rows[1].without_npcs.goal_y,3,"public interaction stand used")
+        assert_equal(env.start_route_calls(),0,"audit never queues movement")
+        assert_equal(env.inject_step_calls(),0,"audit never injects movement")
+        assert_equal(package.loaded.objects.current_object(),inn,"selection remains intact")
+        assert_equal(#env.memory_writes,0,"audit never parks NPCs or edits RAM")
+    end)
+    audit.save_report=old_save
+    _G.DW_FIELD_ACTION_UNAVAILABLE_REASON=old_guard
+    env.restore()
+    assert(ok,err)
+end
+
 local failures = 0
 local total = 0
 

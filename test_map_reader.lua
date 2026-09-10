@@ -179,6 +179,10 @@ local function assert_garins_grave_b4_dir(env, cell, approach, message)
     assert_directional_block(env, 0x1B, cell, approach, message)
 end
 
+local function assert_brecconary_dir(env, cell, approach, message)
+    assert_directional_block(env, 0x08, cell, approach, message)
+end
+
 local function assert_not_brecconary_dir(env, cell, message)
     assert_no_directional_entry(env, 0x08, cell, message)
 end
@@ -4405,6 +4409,46 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     assert_equal(snapshot[26][27], true, "walkability snapshot should include the Merchant 4 east-side false-wall cell")
     assert_equal(snapshot[19][10], false, "walkability snapshot should preserve unconfirmed Brecconary wall cells")
 
+    env.restore()
+end
+
+function tests.brecconary_tool_shop_bridge_grass_connects_the_public_approach()
+    local base = 8 * 5
+    local data_start = 0x1010
+    local rom_bytes = {
+        [base] = 0x00,
+        [base + 1] = 0x90,
+        [base + 2] = 29,
+        [base + 3] = 29,
+        [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x0)
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local snapshot = env.map_reader.get_walkability_snapshot(0x08)
+    local dirs = env.map_reader.get_directional_blocks(0x08)
+    for x = 19, 22 do
+        local label = string.format("Brecconary bridge grass (%d,22)", x)
+        local details = env.map_reader.get_walkability_details(0x08, x, 22)
+        assert_equal(details.tile_type, 0, label .. " should exercise the raw type-0 classification")
+        assert_equal(details.effective_walkable, true, label .. " should connect the bridge to the public shop entrance")
+        assert_equal(snapshot[22][x], true, label .. " should be available to route planning")
+        local edge = dirs[x .. ",22"] or {}
+        assert_equal(edge.west or false, false, label .. " should allow the walked outward approach")
+        assert_equal(edge.east or false, false, label .. " should allow the return approach")
+    end
+    assert_equal(snapshot[21][19], false, "unverified grass outside the tool-shop strip should retain its current classification")
+    assert_equal(snapshot[23][18], false, "the shortcut south of the bridge must remain closed")
+    assert_equal(dirs["24,25"].west, true, "the tool-shop counter must remain blocked from the public stand")
+    env.restore()
+end
+
+function tests.brecconary_tool_shop_return_uses_the_doorway()
+    local env = make_env()
+    assert_brecconary_dir(env, "23,23", "south", "tool-shop north wall should block leaving from (23,24)")
+    assert_brecconary_dir(env, "21,24", "east", "tool-shop west wall should block leaving from (22,24)")
+    local doorway = env.map_reader.get_directional_blocks(0x08)["22,23"] or {}
+    assert_equal(doorway.south or false, false, "the public tool-shop doorway must allow the walked return north")
+    assert_no_directional_entry(env, 0x09, "23,23", "Brecconary's north wall must not be added to neighboring Garinham")
     env.restore()
 end
 

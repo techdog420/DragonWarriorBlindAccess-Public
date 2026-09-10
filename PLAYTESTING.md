@@ -6,6 +6,51 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Brecconary Tool Merchant access fixed on `codex/town-audit` (2026-09-10).
+  Four missing grass cells (19..22,22) disconnected the public doorway from the
+  bridge. Return testing also proved two missing wall approaches: (23,23).south
+  and (21,24).east. Both were confirmed by route failures and raw probes from
+  normally reached origins; only these six map08 entries changed.
+  Services selected Tool Merchant, walked 32 steps from (1,15) to (23,25),
+  faced east, and TALK opened Merchant Buy/Sell, frame57486. No purchase made.
+  After wall corrections, the 32-step return reached (1,15), frame72884, with
+  no blocked steps or reroutes; two timing retries recovered automatically.
+  Acceptance ran with NPC parking off; the original INI was restored byte-for-byte.
+  All 41 Lua suites / 68 Python tests pass, including 84 map-reader tests.
+  Player acceptance passed afterward: user confirmed arriving and speaking to
+  Tool Merchant. Log frame84036 reached (23,25), frame84055 faced east,
+  frame84304 opened Merchant Buy/Sell, and frames84425/84463 narrated Herb/Torch.
+  Frame84594 automatically marked npc_18 visited. This player run used the
+  restored NPC-parking setting. The earlier agent run covers the return route.
+  Updated audit `town_audit_08_20260910T163517Z_001` has 20 modeled reachable,
+  1 NPC-obstructed (Person 1), 2 model-blocked (Person 2, Woman 2), and the
+  Curse Remover's existing NPC-obstructed return. Tool Merchant and Person 5
+  now have outward/return plans. Snapshot NPC positions changed; only Tool
+  Merchant's live interaction/round trip was validated in this pass.
+  Evidence and the broader shared-tile-classification concern are recorded in
+  `work_notes/current_investigation.md` and `work_notes/town_polish_strategy.md`.
+
+- Town audit (`codex/town-audit`) passed its first live Brecconary run on
+  2026-09-10 after the entrance-return correction. Hero at (0,15), Exit to World
+  Map selected. The first report incorrectly flagged 19 returns because that
+  exit tile is not a walkable destination. The audit now checks the in-town
+  approach to a starting exit/stair and labels transitions untested. A focused
+  regression covers a service-only audit from an exit anchor.
+  Corrected report: `town_audit_08_20260910T161525Z_001.json` and `.txt`,
+  completed frame2122: 23 targets, 19 modeled reachable, 4 model blocked, zero
+  outward NPC-only obstructions, 1 NPC-obstructed return (Curse Remover).
+  Blocked targets: Tool Merchant npc_18 at (25,25), public stand (23,25);
+  Person 5 npc_17 at (20,23); Person 1 npc_3 at (20,26); Woman 2 npc_7 at (12,28).
+  The other four services have outward routes. Return plans end at (1,15);
+  Curse Remover's return works only when ignoring the captured NPCs.
+  Post-probe frame3000 confirms hero (0,15), Exit selection unchanged, nil
+  active path, zero runtime blockers, and no new script error. Snapshot NPC
+  positions differ between runs; modeled reachability is not live route proof.
+  Shared frontier candidates are review-only, with no confirmed single-edge
+  bridge to Tool Merchant. No map data or live routes changed.
+  All 41 Lua suites and 68 Python tests pass after the correction.
+  `report_town_audit` repeats status; `stop_town_audit` saves partial work.
+
 - Quick-services slice (`codex/quick-services`): Shift+P opens the existing
   current-map Services category, preserving sorting and reachability. Reopening
   preserves selection. J/K/L descriptions include reachability and known blockers;

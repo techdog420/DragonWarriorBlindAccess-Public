@@ -422,6 +422,25 @@ MAP SURVEY COMMANDS
 Automated adjacency survey: auto-walks to every object on the map to probe
 directional passability. Freeze NPCs first for clean results.
 
+  audit_town               Read-only town/Tantegel route audit from current tile.
+                           Captures all visible object types, ignoring browser
+                           category/reachability filters. Services are listed first.
+                           One target per frame; stand still until finish.
+                           Compares routes with/without captured NPC positions,
+                           checks modeled return from the selected approach spot,
+                           and groups top rejected frontier edges for map failures.
+                           Never moves, parks NPCs, changes selection, or edits maps.
+  audit_town:services      Same audit, services only.
+  report_town_audit        Report progress or last result in this script session.
+  stop_town_audit          Stop and save the partial report.
+                           Outputs town_audit_MM_TIMESTAMP_NNN.json and .txt.
+                           Reports are separate snapshots, retained across reloads;
+                           no earlier result is silently treated as current proof.
+                           Map/position/door/control changes abort and save partial
+                           results. NPC movement after capture does not change the
+                           snapshot. Starting on an exit/stair checks return to
+                           its in-town approach; map transitions remain untested.
+                           A modeled route is not live arrival or TALK proof.
   report_survey_start      Preflight: reports reachable area, open exits, and whether
                            the current start is isolated. Does not launch a survey.
   report_survey_start:retry_failed  Same preflight using the failed-target set.

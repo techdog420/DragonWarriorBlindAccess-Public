@@ -996,6 +996,21 @@ quality-of-life work.
   descriptions report reachability and known blockers, with distinct feedback
   for an empty map, a filtered-empty list, and a map still loading.
   Key Reference and the `quick_services` debug command expose the same action.
+- Town audit first slice is source-complete on `codex/town-audit`; live
+  Brecconary audit acceptance passed after the exit-anchor return fix. `audit_town` captures all visible object types from the
+  hero's current tile; `audit_town:services` narrows the scope. Reports compare
+  modeled routes with/without captured NPCs, flag return-route concerns, and
+  group shared rejected edges using the existing frontier analyzer. Timestamped
+  JSON/text snapshots persist across reloads without carrying forward stale
+  validation. Actual arrival, TALK, and return remain explicitly untested.
+  Brecconary snapshot 20260910T161525Z has 4 model-blocked targets: Tool Merchant,
+  Person 1, Person 5, Woman 2; Curse Remover has an NPC-obstructed return.
+  Tool Merchant follow-up is live-verified: four grass passthroughs and two
+  wall approaches restore public counter access and return. Updated snapshot
+  20260910T163517Z has 20 modeled reachable, 1 NPC-obstructed, 2 model-blocked
+  (Person 2, Woman 2), and the existing Curse Remover return concern.
+  Next: investigate shared town tile classification/context before more
+  coordinate patches; raw0 grass and raw4 walls disagree with the generic model.
 - Prioritize a Kol service-route polishing pass next. The 2026-09-10 Tool
   Merchant walk from (19,23) to stand (12,21) hit repeated reroutes and did not
   arrive before the player stopped it. Reproduce the failed west approaches

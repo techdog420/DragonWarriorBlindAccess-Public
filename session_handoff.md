@@ -4,20 +4,39 @@ Updated: 2026-09-10
 
 ## Current implementation
 
-- Object sorting and its Shift+Q shortcut are player-validated, merged, and pushed
-  to main at `fed84fb`.
-- `codex/quick-services` adds Shift+P for direct access to current-map Services.
-  It retains sorting and reachability filters; J/K/L browse and U approaches.
-  Opening does not start movement. Reopening retains the selected service.
-  Service descriptions include reachability and known blockers. Key Reference,
-  keyboard docs, and `quick_services` debug command are updated.
-- All 39 Lua suites and 68 Python tests pass; `git diff --check` is clean.
-- Changes remain uncommitted. Player accepted quick-services behavior on
-  2026-09-10; log confirms repeated Services selection and reachability feedback.
-- Next recommended work: Kol service-route polishing. Tool Merchant auto-walk
-  detoured around failed approaches and was stopped before arrival. Fresh probe
-  frame21240 confirms Kol (8,3), no active path or runtime blocks. See latest
-  `PLAYTESTING.md` and `work_notes/current_investigation.md` for evidence.
+- Quick-services was committed/pushed as `fb3b13b` on `codex/quick-services`.
+  It remains ahead of main; the town audit starts from that committed work.
+- `codex/town-audit` adds `audit_town`, `audit_town:services`,
+  `report_town_audit`, and `stop_town_audit`. Read-only planning captures current
+  position, map/door/NPC conditions, and all visible targets without changing
+  browser filters. It checks outward/return routes, groups failed map frontiers,
+  and saves unique JSON/text snapshots. All live access stays marked untested.
+- The existing debug frontier calculation is shared through `route_frontier.lua`.
+  Audit work processes one target per frame and aborts on changed field context.
+- Automated verification passes 41 Lua suites and 68 Python tests, plus JSON
+  parsing and diff checks.
+- Live Brecconary audit passed after correcting return checks from an exit tile.
+  Starting exit (0,15) now checks return to the in-town approach at (1,15).
+  Corrected snapshot `town_audit_08_20260910T161525Z_001`: 23 targets, 19 modeled
+  reachable, 4 blocked (Tool Merchant, Person 1, Person 5, Woman 2), and 1
+  NPC-obstructed return (Curse Remover). This baseline predates the map fix below.
+- Tool Merchant route fix is implemented and live-verified: four missing grass
+  passthroughs at (19..22,22), plus blocked wall approaches (23,23).south and
+  (21,24).east. Normal entrance-to-counter movement reached (23,25), faced east,
+  and TALK opened the shop. Final 32-step return reached (1,15), frame72884,
+  without blocked steps or reroutes; two ordinary timing retries recovered.
+  NPC parking was off for acceptance and the original INI was restored exactly.
+  All 41 Lua suites / 68 Python tests pass, including 84 map-reader tests.
+  Player confirmed arrival and TALK afterward: frame84036 reached the counter,
+  frame84304 opened the shop, and frame84594 marked Tool Merchant visited.
+  Tool Merchant player acceptance is complete; changes remain uncommitted.
+- Updated audit town_audit_08_20260910T163517Z_001: 20 modeled reachable,
+  1 NPC-obstructed (Person 1), 2 model-blocked (Person 2, Woman 2), and the
+  existing Curse Remover NPC-obstructed return. Tool Merchant and Person 5
+  have both outward and return plans. Moving NPC positions differ from baseline.
+  Fresh frame73620: hero (1,15), nil path, zero runtime blocks, clear field.
+  Next investigation: shared town tile classification versus context before
+  accumulating more coordinate exceptions; grass raw0 and wall raw4 are suspects.
 
 ## Release Installation Handoff
 

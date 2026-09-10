@@ -89,6 +89,7 @@ for _, mod_name in ipairs({
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
     "warning_delivery", "settings_menu", "key_reference", "low_health",
+    "town_audit", "route_frontier",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -6410,51 +6411,6 @@ debug_tools.register_command("debug_pathfind_to_skip_npcs_allow_hazards", functi
     })
 end)
 
-local ROUTE_FRONTIER_DIRECTIONS = {
-    {name = "right", dx = 1, dy = 0, approach = "west"},
-    {name = "left",  dx = -1, dy = 0, approach = "east"},
-    {name = "down",  dx = 0, dy = 1, approach = "north"},
-    {name = "up",    dx = 0, dy = -1, approach = "south"},
-}
-
-local function route_frontier_block_reason(map_id, blocking, directional_blocks, x, y, approach)
-    local key = x .. "," .. y
-    local dynamic = blocking and blocking[key]
-
-    if dynamic and type(dynamic) ~= "table" then
-        return dynamic == "runtime" and "blocked_runtime" or "blocked_npc"
-    end
-
-    local runtime = route_mgr.is_cell_runtime_blocked and route_mgr.is_cell_runtime_blocked(map_id, x, y)
-    if type(runtime) == "table" and runtime[approach] == true then
-        return "blocked_runtime"
-    end
-
-    local static = directional_blocks and directional_blocks[key]
-    if static and static[approach] == true then
-        return "blocked_directional"
-    end
-    if type(dynamic) == "table" and dynamic[approach] == true then
-        return "blocked_dynamic"
-    end
-    return nil
-end
-
-local function route_frontier_reason_rank(reason)
-    if reason == "blocked_runtime" then return 0 end
-    if reason == "blocked_directional" then return 1 end
-    if reason == "blocked_dynamic" then return 2 end
-    if reason == "not_walkable" then return 3 end
-    if reason == "blocked_npc" then return 4 end
-    return 5
-end
-
-local function route_frontier_bridge_rank(frontier)
-    if frontier.hidden_bridge_to_target then return 0 end
-    if frontier.bridge_to_target then return 1 end
-    return 2
-end
-
 local function run_debug_route_frontier(arg, params)
     params = params or {}
     local command_name = params.command_name or "debug_route_frontier"
@@ -6496,207 +6452,12 @@ local function run_debug_route_frontier(arg, params)
     end
 
     local blocking = route_mgr.build_path_blocking(map_id, params.skip_npcs and {skip_npcs = true} or nil)
-    local directional_blocks = map_reader.get_directional_blocks(map_id)
-    local frontier_classifier = package.loaded.route_frontier_classifier or require "route_frontier_classifier"
 
-    local function key(x, y)
-        return x .. "," .. y
-    end
-
-    local function is_walkable_snapshot(x, y)
-        local row = walkability[y]
-        return row and row[x] == true
-    end
-
-    local reachable = {}
-    local queue = {}
-    local start_key = key(start_x, start_y)
-    reachable[start_key] = true
-    queue[#queue + 1] = {x = start_x, y = start_y, dist = 0}
-
-    local head = 1
-    while queue[head] do
-        local cell = queue[head]
-        head = head + 1
-        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
-            local nx = cell.x + step.dx
-            local ny = cell.y + step.dy
-            if nx >= 0 and nx < width and ny >= 0 and ny < height
-               and is_walkable_snapshot(nx, ny)
-               and not route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach) then
-                local neighbor_key = key(nx, ny)
-                if not reachable[neighbor_key] then
-                    reachable[neighbor_key] = true
-                    queue[#queue + 1] = {x = nx, y = ny, dist = cell.dist + 1}
-                end
-            end
-        end
-    end
-
-    local target_side = {}
-    local target_queue = {}
-    if goal_x >= 0 and goal_x < width and goal_y >= 0 and goal_y < height
-       and is_walkable_snapshot(goal_x, goal_y) then
-        target_side[key(goal_x, goal_y)] = {dist = 0}
-        target_queue[#target_queue + 1] = {x = goal_x, y = goal_y, dist = 0}
-    end
-
-    -- Reverse reachability: a cell is on the target side if it can move,
-    -- using the same directional/NPC/runtime rules, to a cell that can reach
-    -- the target. This is more useful than plain Manhattan distance on maps
-    -- with one-way-looking engine walls.
-    local target_head = 1
-    while target_queue[target_head] do
-        local cell = target_queue[target_head]
-        target_head = target_head + 1
-        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
-            local px = cell.x - step.dx
-            local py = cell.y - step.dy
-            if px >= 0 and px < width and py >= 0 and py < height
-               and is_walkable_snapshot(px, py)
-               and not route_frontier_block_reason(map_id, blocking, directional_blocks, cell.x, cell.y, step.approach) then
-                local predecessor_key = key(px, py)
-                if not target_side[predecessor_key] then
-                    target_side[predecessor_key] = {dist = cell.dist + 1}
-                    target_queue[#target_queue + 1] = {x = px, y = py, dist = cell.dist + 1}
-                end
-            end
-        end
-    end
-
-    local function walkability_detail_for_cell(x, y)
-        if not map_reader.get_walkability_details then
-            return nil
-        end
-        return map_reader.get_walkability_details(map_id, x, y)
-    end
-
-    local function is_hidden_wall_candidate(details)
-        if not details then
-            return false
-        end
-        if details.effective_walkable == true then
-            return false
-        end
-        if details.permanent_blocked == true or details.hazard == true then
-            return false
-        end
-        return details.reason == "tile_type"
-            or details.reason == "wall"
-            or details.reason == "not_walkable"
-    end
-
-    local function find_one_cell_hidden_bridge(x, y, details)
-        if not is_hidden_wall_candidate(details) then
-            return nil
-        end
-        local best
-        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
-            local nx = x + step.dx
-            local ny = y + step.dy
-            if nx >= 0 and nx < width and ny >= 0 and ny < height
-               and is_walkable_snapshot(nx, ny)
-               and not reachable[key(nx, ny)] then
-                local target_side_entry = target_side[key(nx, ny)]
-                if target_side_entry
-                   and not route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach) then
-                    local candidate = {
-                        exit_dir = step.name,
-                        exit_x = nx,
-                        exit_y = ny,
-                        target_side_distance = target_side_entry.dist + 1,
-                    }
-                    if not best
-                       or candidate.target_side_distance < best.target_side_distance
-                       or (candidate.target_side_distance == best.target_side_distance
-                           and candidate.exit_dir < best.exit_dir) then
-                        best = candidate
-                    end
-                end
-            end
-        end
-        return best
-    end
-
-    local frontiers = {}
-    local bridge_candidate_count = 0
-    local hidden_bridge_candidate_count = 0
-    for _, cell in ipairs(queue) do
-        for _, step in ipairs(ROUTE_FRONTIER_DIRECTIONS) do
-            local nx = cell.x + step.dx
-            local ny = cell.y + step.dy
-            if nx >= 0 and nx < width and ny >= 0 and ny < height
-               and not reachable[key(nx, ny)] then
-                local dest_walkable = is_walkable_snapshot(nx, ny)
-                local blocked_reason = route_frontier_block_reason(map_id, blocking, directional_blocks, nx, ny, step.approach)
-                local details = walkability_detail_for_cell(nx, ny)
-                local classified = frontier_classifier.classify_candidate({
-                    is_walkable = dest_walkable,
-                    blocked_reason = blocked_reason,
-                })
-                local reason = classified.reason
-                local target_side_entry = dest_walkable and target_side[key(nx, ny)] or nil
-                local hidden_bridge = nil
-                local bridge_to_target = target_side_entry ~= nil
-                if not bridge_to_target and classified.allow_hidden_bridge then
-                    hidden_bridge = find_one_cell_hidden_bridge(nx, ny, details)
-                    if hidden_bridge then
-                        bridge_to_target = true
-                        target_side_entry = {
-                            dist = hidden_bridge.target_side_distance,
-                        }
-                        hidden_bridge_candidate_count = hidden_bridge_candidate_count + 1
-                    end
-                end
-                if bridge_to_target then
-                    bridge_candidate_count = bridge_candidate_count + 1
-                end
-                frontiers[#frontiers + 1] = {
-                    from_x = cell.x,
-                    from_y = cell.y,
-                    dir = step.name,
-                    dest_x = nx,
-                    dest_y = ny,
-                    approach = step.approach,
-                    reason = reason,
-                    bridge_to_target = bridge_to_target,
-                    hidden_bridge_to_target = hidden_bridge ~= nil,
-                    hidden_exit_dir = hidden_bridge and hidden_bridge.exit_dir or nil,
-                    hidden_exit_x = hidden_bridge and hidden_bridge.exit_x or nil,
-                    hidden_exit_y = hidden_bridge and hidden_bridge.exit_y or nil,
-                    target_side_distance = target_side_entry and target_side_entry.dist or nil,
-                    target_distance = math.abs(nx - goal_x) + math.abs(ny - goal_y),
-                    start_distance = cell.dist,
-                    tile_type = details and details.tile_type or nil,
-                    walk_reason = details and details.reason or nil,
-                }
-            end
-        end
-    end
-
-    table.sort(frontiers, function(a, b)
-        local ab = route_frontier_bridge_rank(a)
-        local bb = route_frontier_bridge_rank(b)
-        if ab ~= bb then return ab < bb end
-        local ar = route_frontier_reason_rank(a.reason)
-        local br = route_frontier_reason_rank(b.reason)
-        if ar ~= br then return ar < br end
-        if a.bridge_to_target and b.bridge_to_target then
-            local at = a.target_side_distance or 9999
-            local bt = b.target_side_distance or 9999
-            if at ~= bt then return at < bt end
-        end
-        if a.target_distance ~= b.target_distance then
-            return a.target_distance < b.target_distance
-        end
-        if a.start_distance ~= b.start_distance then
-            return a.start_distance < b.start_distance
-        end
-        if a.dest_y ~= b.dest_y then return a.dest_y > b.dest_y end
-        return a.dest_x > b.dest_x
-    end)
-
-    local target_reachable = reachable[key(goal_x, goal_y)] == true
+    local result = require("route_frontier").analyze({map_id = map_id,
+        start_x = start_x, start_y = start_y, goal_x = goal_x, goal_y = goal_y,
+        walkability = walkability, blocking = blocking,
+        map_reader = map_reader, route_manager = route_mgr})
+    local frontiers, target_reachable = result.frontiers, result.target_reachable
     debug_tools.info(string.format(
         "ROUTE_FRONTIER map=0x%02X start=(%d,%d) goal=(%d,%d) allow_hazards=%s skip_npcs=%s reachable=%d target_reachable=%s target_side=%d candidates=%d bridge_candidates=%d hidden_bridge_candidates=%d",
         map_id,
@@ -6706,13 +6467,13 @@ local function run_debug_route_frontier(arg, params)
         goal_y,
         tostring(params.allow_hazards == true),
         tostring(params.skip_npcs == true),
-        #queue,
+        result.reachable_count,
         tostring(target_reachable),
-        #target_queue,
+        result.target_side_count,
         #frontiers,
-        bridge_candidate_count,
-        hidden_bridge_candidate_count))
-    limit = math.max(1, math.min(limit or 24, #frontiers))
+        result.bridge_count,
+        result.hidden_bridge_count))
+    limit = math.min(math.max(1, limit or 24), #frontiers)
     for i = 1, limit do
         local f = frontiers[i]
         debug_tools.info(string.format(
@@ -6736,7 +6497,7 @@ local function run_debug_route_frontier(arg, params)
     end
     tolk.output_interrupt(string.format(
         "Route frontier logged. Reachable %d. Target reachable %s.",
-        #queue,
+        result.reachable_count,
         tostring(target_reachable)))
 end
 
@@ -6883,6 +6644,21 @@ end)
 debug_tools.register_command("dump_path_grid", function()
     path_debug.dump_path_grid()
     tolk.output_interrupt("Path grid dumped")
+end)
+
+debug_tools.register_command("audit_town", function(arg)
+    ensure_navigation_modules_fresh()
+    local ok, message = require("town_audit").start(arg)
+    if not ok then debug_tools.error("TOWN_AUDIT_REFUSED: " .. tostring(message)) end
+    tolk.output_interrupt(message)
+end)
+
+debug_tools.register_command("report_town_audit", function()
+    tolk.output_interrupt(require("town_audit").report())
+end)
+
+debug_tools.register_command("stop_town_audit", function()
+    tolk.output_interrupt(require("town_audit").stop())
 end)
 
 debug_tools.register_command("survey_map", function(arg)
@@ -7833,6 +7609,7 @@ while true do
         return DW_QOL_STATE.walked_verify:tick()
     end) == true
     trace_teleport_loop("POST_EDGE_TICKS")
+    checked_scan("town_audit.tick", require("town_audit").tick, can_walk)
     checked_scan("map_survey.tick", map_survey.tick, can_walk)
     trace_teleport_loop("POST_MAP_SURVEY_TICK")
     checked_scan("map_crawler.tick", map_crawler.tick, can_walk, game_state.state)

@@ -6681,3 +6681,71 @@ For the next live map task, start a new dated section here with:
   `nonwalkable=5530` were unchanged. Fresh frame `7500` confirmed World Map
   `(23,98)`, nil path target, and zero NPC/runtime blockers after the read-only
   audit. All nine false pockets are closed without changing terrain data.
+
+
+## 2026-09-10 Brecconary Tool Merchant public route
+
+- Baseline frame14580: normal entrance (0,15), map08, keys6, all door slots
+  closed, no runtime blockers, no menu/dialogue/movement guard. Tool Merchant
+  npc_18 stands at (25,25), public TALK stand (23,25) facing east.
+- Cycle 1: skip-NPC plan to (23,25) failed (449 visited, frame16800).
+  Local reference project_resources/maps/brecconary/mikesrpgcenter_brecconary.png
+  shows bridge (18,22), grass east to the shop doorway at (22,23).
+  Ordinary auto-walk reached bridge (18,22), frame19891.
+- Cycle 2: raw probes from normal arrivals proved false modeled walls:
+  frame21877 (18,22)->RIGHT crossed (19,22), settled (20,22);
+  frame29191 (20,22)->LEFT crossed (19,22), settled (18,22);
+  frame29912 repeated east crossing to (20,22);
+  frame30745 (20,22)->RIGHT crossed (21,22), settled (22,22);
+  frame31418 (22,22)->DOWN crossed (22,23), settled (22,24).
+  No teleport/reset-backed passability evidence was used. Grass cells
+  (19..22,22) are raw type0 and currently rejected by the shared tile model.
+- Cycle 3: ordinary auto-walk reached (23,25), facing east, frame34411.
+  TALK opened MERCHANT_ACTION: Merchant. Buy. at frame37806. B cancelled;
+  goodbye appeared frame38776; nothing was purchased. Public target is correct.
+  Return auto-walk reached (22,24), frame40894; raw UP reached (22,23),
+  frame41426; another UP crossed (22,22) and carried to (22,21), frame41853.
+- Narrow source patch: four map08 passthroughs (19..22,22). New regression
+  fails before this patch and passes afterward; all 83 map-reader tests pass.
+  Counter (24,25).west stays blocked; no shared tile-type rule changed.
+  Debug refresh frame46560 loaded the patch and found 5 steps from (22,21)
+  to (18,22). Full route validation/audit comparison still pending.
+- Broader candidate: the local visual map's grass appears as raw0 and building
+  walls as raw4, while shared WALKABLE_TOWN treats those as blocked/open.
+  Several old overrides may mask a shared classification issue. Investigate
+  tileset/context and controls separately before any global reclassification.
+
+- Automated gate after patch: 41 host Lua suites and 68 Python tests pass;
+  .test_tmp/tool_merchant_gate.log. Gate tests truncate dw_debug.log, so earlier
+  raw-probe evidence above is retained from tool output rather than that file.
+- Normal-NPC acceptance (parking temporarily off; original INI backed up in
+  .test_tmp/tool_merchant_original.ini): bridge-to-entrance finished (1,15),
+  frame53518. Services selected npc_18 and planned 32 steps, frame55320:
+  14 east, 7 south, 7 east, 3 south, 1 east. Arrived (23,25), frame56279,
+  auto-faced east frame56298. Fresh frame56940: nil target, zero runtime blocks.
+  TALK opened Merchant. Buy. again, frame57486; cancelled without purchase.
+
+- Return exposed two missing wall approaches before recovering to (1,15),
+  frame61996: (23,24)->UP into (23,23) failed queued retries and the extra
+  seam retry, frames60123/60279; (22,24)->LEFT into (21,24) likewise failed,
+  frames60662/60818. Both raw4 tiles were incorrectly open in these directions.
+- Reached the merchant again normally, frame64259. Walked to each origin:
+  frame65399 raw UP from (23,24) blocked at (23,23), NPC false, no runtime block;
+  frame66059 raw LEFT from (22,24) blocked at (21,24), NPC false, no runtime block.
+  Promoted only (23,23).south and (21,24).east, map08. Doorway remains open.
+  Full pre-patch evidence saved in .test_tmp/tool_merchant_wall_proofs.log.
+
+- Final verification after both wall patches: gate passes 41 Lua suites and
+  68 Python tests (.test_tmp/tool_merchant_final_gate.log); map-reader suite84.
+  Debug module refresh frame70740 loaded the corrected data. Normal return
+  from (23,25) to (1,15), frames71640..72884: 32 steps, no blocked steps,
+  no reroutes, two recovered timing retries. Fresh frame73620 confirms nil
+  target, zero runtime blocks, all menu/dialogue/guard state clear.
+- Updated audit frame73762, town_audit_08_20260910T163517Z_001: 20 modeled
+  reachable, 1 NPC-obstructed (Person1 at24,28), 2 model-blocked (Person2 at3,1;
+  Woman2 at12,28). Curse Remover return remains NPC-obstructed. Tool Merchant
+  and Person5 at20,23 have outward/return plans; Person5 interaction untested.
+  NPC positions differ from baseline, so counts are not a controlled comparison.
+- Restored auto_walk_park_mobile_npcs=true; INI matches the saved pre-test bytes
+  exactly. reload_config consumed frame75660. No purchase, key use, teleport,
+  permanent player-state write, or global tile classification change.
