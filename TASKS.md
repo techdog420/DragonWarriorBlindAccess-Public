@@ -1009,8 +1009,20 @@ quality-of-life work.
   wall approaches restore public counter access and return. Updated snapshot
   20260910T163517Z has 20 modeled reachable, 1 NPC-obstructed, 2 model-blocked
   (Person 2, Woman 2), and the existing Curse Remover return concern.
-  Next: investigate shared town tile classification/context before more
-  coordinate patches; raw0 grass and raw4 walls disagree with the generic model.
+  Woman2 follow-up found two shared causes: NPC mobility incorrectly used byte2
+  (a pixel offset), and base town tile meanings disagreed with the game's table.
+  September11 corrected NPC classification across browsing/routing/parking and
+  added the source-backed Brecconary terrain pilot. Full automated gate passed.
+  September15 live checks passed for southern grass, Tool Merchant round trip/
+  TALK, and Woman2 ordinary auto-walk/TALK/return. After the user opened both
+  doors, audits195118Z/195938Z found23/23 modeled reachable and no return concerns;
+  movement to the fairy-water counter and inn west room passed live.
+  SURVEY-DRIFT-RETRY-01 is fixed: survey waits for the recovery decision and
+  retains the attempt while correction runs. Three regressions reproduced the
+  race before the fix and pass afterward; full41 Lua suites /68 Python tests
+  pass. Live Woman2, Fairy Water Merchant, and Guard4 surveys pass, although the
+  exact drift event has not recurred. Wider focused town surveys can resume.
+  Evidence: work_notes/town_decoder_findings.md.
 - Prioritize a Kol service-route polishing pass next. The 2026-09-10 Tool
   Merchant walk from (19,23) to stand (12,21) hit repeated reroutes and did not
   arrive before the player stopped it. Reproduce the failed west approaches

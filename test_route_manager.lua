@@ -4855,9 +4855,9 @@ function tests.autowalk_parks_mobile_non_target_npcs_when_enabled()
             auto_walk_npc_hold_frames = "0",
         },
         memory_values = {
-            [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x12, -- mobile non-target
-            [3] = 0x80 + 5,  [4] = 0x60 + 5,  [5] = 0x00, -- stationary
-            [6] = 0x80 + 6,  [7] = 0x60 + 1,  [8] = 0x12, -- selected target
+            [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x00, -- idle mobile non-target
+            [30] = 0x80 + 5, [31] = 0x60 + 5, [32] = 0x12, -- static slot 10, nonzero pixel offset
+            [6] = 0x80 + 6,  [7] = 0x60 + 1,  [8] = 0x00, -- idle selected mobile target
         },
     })
 
@@ -5006,7 +5006,7 @@ function tests.parked_autowalk_reactively_parks_new_mobile_npc_blocker()
     env.route_manager.autowalk_to_current()
     env.memory_values[0] = 0x80 + 5
     env.memory_values[1] = 0x60 + 3
-    env.memory_values[2] = 0x12
+    env.memory_values[2] = 0x00
     env.auto_step.on_blocked(5, 4, "up")
 
     local direct = env.last_direct_call()
@@ -5124,9 +5124,9 @@ function tests.parked_autowalk_stationary_npc_reroute_uses_cautious_message()
     })
 
     env.route_manager.autowalk_to_current()
-    env.memory_values[0] = 0x80 + 5
-    env.memory_values[1] = 0x60 + 3
-    env.memory_values[2] = 0x00
+    env.memory_values[30] = 0x80 + 5
+    env.memory_values[31] = 0x60 + 3
+    env.memory_values[32] = 0x12
     env.auto_step.on_blocked(5, 4, "up")
 
     local output = table.concat(env.outputs, "\n")
@@ -5189,9 +5189,9 @@ function tests.parked_autowalk_still_respects_stationary_npc_blocker()
             auto_walk_park_mobile_npcs = "true",
         },
         memory_values = {
-            [0] = 0x80 + 5,
-            [1] = 0x60 + 2,
-            [2] = 0x00,
+            [30] = 0x80 + 5,
+            [31] = 0x60 + 2,
+            [32] = 0x12,
         },
     })
 
@@ -5388,7 +5388,7 @@ function tests.manual_park_npcs_command_parks_all_npcs_and_restores()
     local env = make_env({
         memory_values = {
             [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x12, -- mobile
-            [3] = 0x80 + 5,  [4] = 0x60 + 5,  [5] = 0x00, -- stationary
+            [30] = 0x80 + 5, [31] = 0x60 + 5, [32] = 0x12, -- static slot 10, nonzero pixel offset
         },
     })
 
@@ -5410,8 +5410,8 @@ function tests.manual_park_npcs_command_parks_all_npcs_and_restores()
     assert_write_set(env.memory_writes, 5, {
         [0] = 0x80 + 4,
         [1] = 0x60 + 4,
-        [3] = 0x80 + 5,
-        [4] = 0x60 + 5,
+        [30] = 0x80 + 5,
+        [31] = 0x60 + 5,
     }, "manual restore should put both NPCs back")
     assert_contains(table.concat(env.outputs, "\n"), "Parked NPCs restored.", "manual restore should announce success")
 
@@ -5422,7 +5422,7 @@ function tests.manual_park_npcs_mobile_mode_skips_stationary_slots()
     local env = make_env({
         memory_values = {
             [0] = 0x80 + 4,  [1] = 0x60 + 4,  [2] = 0x12, -- mobile
-            [3] = 0x80 + 5,  [4] = 0x60 + 5,  [5] = 0x00, -- stationary
+            [30] = 0x80 + 5, [31] = 0x60 + 5, [32] = 0x12, -- static slot 10, nonzero pixel offset
         },
     })
 

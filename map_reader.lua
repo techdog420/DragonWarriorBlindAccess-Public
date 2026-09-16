@@ -341,6 +341,29 @@ local WALKABILITY_TABLES = {
 -- ID. Keep those differences map-scoped so live evidence from one floor does
 -- not silently change every cave.
 local MAP_TILE_WALKABILITY_OVERRIDES = {
+    -- Brecconary pilot: Bank00 town conversion table ($9A00) and
+    -- CheckCollision ($B1CC): converted blocks >= BLK_LRG_TILE block movement.
+    -- Normal walking/probes on 2026-09-10 confirmed grass at (14,22)/(13,28)
+    -- and blocked stone at (9,19). Keep existing per-cell/door overrides.
+    -- Other towns and dungeon tables retain their validated behavior for now.
+    [0x08] = {
+        [0] = true,   -- grass
+        [1] = true,   -- sand
+        [2] = false,  -- water
+        [3] = true,   -- chest
+        [4] = false,  -- stone
+        [5] = true,   -- stairs up
+        [6] = true,   -- brick
+        [7] = true,   -- stairs down
+        [8] = true,   -- trees
+        [9] = true,   -- swamp (hazard)
+        [10] = true,  -- force field (hazard)
+        [11] = false, -- closed door (opened doors handled separately)
+        [12] = false, -- weapon-shop sign
+        [13] = false, -- inn sign
+        [14] = true,  -- bridge
+        [15] = false, -- large tile / counter
+    },
     -- Charlock Castle ground floor: the staged 20x20 guide map renders type-4
     -- cells as grey stone walls and type-6 cells as the red walkable corridor.
     -- Normal-route arrival at row 14 plus repeated same-origin raw probes on
@@ -1993,6 +2016,13 @@ local function hazard_for_cell(map_id, x, y, tile_type)
     local explicit = hazards and hazards[x .. "," .. y]
     if explicit then
         return explicit
+    end
+
+    -- Match the Brecconary town-table pilot without reclassifying other maps.
+    if map_id == 0x08 then
+        if tile_type == nil then tile_type = M.get_tile_type(map_id, x, y) end
+        if tile_type == 9 then return "poison_swamp" end
+        if tile_type == 10 then return "damage" end
     end
 
     -- Overworld tile type 7 is poison swamp. It is engine-walkable and is

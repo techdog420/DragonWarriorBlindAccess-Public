@@ -2383,6 +2383,14 @@ local function on_route_cancelled(data)
         return
     end
     local attempt = survey_state.active_attempt
+    if data and data.reason == "route_drift_off_path" then
+        -- auto_step publishes this before route_manager attempts synchronous
+        -- drift recovery. Keep this attempt until tick sees the final decision;
+        -- an immediate retry would race the manager's corrective walk.
+        attempt.pending_route_drift = true
+        return
+    end
+    attempt.pending_route_drift = nil
     attempt.success = false
     attempt.reason = data and data.reason or "route_cancelled"
     finalize_attempt(attempt)
@@ -2905,6 +2913,24 @@ function M.tick(can_walk)
 
     if not resume_from_pause_if_ready(can_walk) then
         return
+    end
+
+    local attempt = survey_state.active_attempt
+    if attempt and attempt.pending_route_drift then
+        attempt.pending_route_drift = nil
+        if auto_step.is_route_active() then
+            attempt.grace_frame = nil
+            debug_tools.info(string.format(
+                "SURVEY_DRIFT_RECOVERY run=%d map=0x%02X target_id=%s action=continue_attempt",
+                survey_state.run_id, survey_state.map_id, tostring(attempt.target.id)))
+        else
+            -- No corrective route or terminal event followed the notification.
+            -- Use the existing bounded survey retry from the live position.
+            attempt.success = false
+            attempt.reason = "route_drift_off_path"
+            finalize_attempt(attempt)
+            if not survey_state then return end
+        end
     end
 
     if survey_state.active_attempt then

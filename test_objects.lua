@@ -82,7 +82,7 @@ local function make_env(options)
             if memory_bytes[address] ~= nil then
                 return memory_bytes[address]
             end
-            return npc_ram[address] or 0
+            return npc_ram[address - (options.npc_data_start or 0)] or 0
         end,
     }
 
@@ -100,7 +100,7 @@ local function make_env(options)
     package.preload["addresses"] = function()
         return {
             NPC_COUNT = options.npc_count or 1,
-            NPC_DATA_START = 0,
+            NPC_DATA_START = options.npc_data_start or 0,
             NPC_ENTRY_SIZE = 3,
             ROM_CHEST_START = options.rom_chest_start or 0,
             ROM_CHEST_END = options.rom_chest_end or -1,
@@ -249,6 +249,47 @@ local function find_by_id(objects, id)
 end
 
 local tests = {}
+
+function tests.npc_mobility_uses_slots_for_cached_live_and_blocker_objects()
+    local env = make_env({npc_count = 20, npc_data_start = 0x51})
+    env.set_position(0x08, 1, 15)
+    env.set_terrain_offset(0x10)
+    env.set_npc(0, 0, 0, 0)
+    for _, slot in ipairs({7, 9, 10, 19}) do
+        env.set_npc(slot, 0xC0 + 12, 28, 0)
+    end
+    env.objects.refresh(0x08)
+    for _, slot in ipairs({7, 9, 10, 19}) do
+        local obj = env.objects.find_object_by_id("npc_" .. slot)
+        local expected = slot < 10 and "mobile" or "stationary"
+        local spoken = slot < 10 and "roaming" or "stationary"
+        assert_equal(obj.mobility, expected, "idle NPC mobility must come from slot " .. slot)
+        assert_equal(env.objects.describe_object(obj, {include_npc_movement_status = true}):find(spoken, 1, true) ~= nil,
+            true, "cached description should use slot mobility")
+        env.objects.select_object_by_id(obj.id)
+        -- Same NPC changes position and gains a nonzero pixel offset.
+        env.set_npc(slot, 0xC0 + 13, 27, 0x21)
+        assert_equal(env.objects.describe_current():find(spoken, 1, true) ~= nil,
+            true, "live offset changes must not change mobility")
+    end
+    env.objects.refresh(0x08)
+    for _, npc in ipairs(env.objects.get_blocking_positions()) do
+        assert_equal(npc.mobility, npc.slot < 10 and "mobile" or "stationary",
+            "path blockers should retain mobility")
+        assert_equal(npc.movement, 0x21, "raw offset remains available for diagnostics")
+    end
+    env.restore()
+end
+
+function tests.npc_mobility_rejects_invalid_slots_without_reading_pixel_offset()
+    local mobility = require "npc_mobility"
+    assert_equal(mobility.of({movement = 0}), "unknown", "zero offset alone cannot establish mobility")
+    assert_equal(mobility.of({slot = 20, movement = 1}), "unknown", "out-of-range slots are unknown")
+    assert_equal(mobility.of({slot = -1}), "unknown", "negative slots are unknown")
+    assert_equal(mobility.of({slot = 9.5}), "unknown", "fractional slots are unknown")
+    assert_equal(mobility.of({slot = 39, id = "npc_7"}), "mobile", "valid stable ID can recover a bad slot")
+end
+
 
 function tests.rom_chest_open_status_uses_native_treasure_ram_across_reload()
     local env = make_env({
@@ -1874,7 +1915,7 @@ function tests.service_filter_lists_merchant_npcs()
     assert_equal(obj.name, "Merchant", "merchant sprite should keep its service-facing label")
     assert_equal(obj.service, true, "merchant NPCs should be marked as services")
     assert_equal(obj.direction, 2, "NPC parser should expose facing bits for diagnostics")
-    assert_equal(obj.movement, 0xFC, "NPC parser should expose movement byte for route diagnostics")
+    assert_equal(obj.movement, 0xFC, "NPC parser should preserve raw pixel offset for route diagnostics")
 
     env.restore()
 end
@@ -1979,7 +2020,7 @@ function tests.current_object_description_reads_live_npc_slot_without_full_refre
     env.objects.refresh(0x04)
     env.objects.next_filter()
 
-    env.set_npc(0, 0x2A, 0x08, 0x60) -- x=10, y=8 with a roaming movement byte
+    env.set_npc(0, 0x2A, 0x08, 0x60) -- x=10, y=8 with a nonzero within-tile offset
     assert_equal(env.objects.current_object().x, 5, "object list should stay stale before a refresh")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
@@ -1987,7 +2028,7 @@ function tests.current_object_description_reads_live_npc_slot_without_full_refre
         "current-object speech should use the selected NPC slot's live position and movement status")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false, use_live_npc = false}),
-        "Guard (stationary): 2 north, 5 west (1 of 1)",
+        "Guard (roaming): 2 north, 5 west (1 of 1)",
         "tests and debug callers can still opt into cached object-list coordinates and movement status")
 
     env.restore()
@@ -2182,7 +2223,7 @@ function tests.visited_flags_are_map_scoped_and_clearable()
     assert_equal(env.objects.is_visited(obj), true, "marked object should be visited on the current map")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (stationary, visited): 2 south (1 of 1)",
+        "Guard (roaming, visited): 2 south (1 of 1)",
         "visited object descriptions should include the visited flag")
 
     env.set_position(0x09, 5, 5)
@@ -2217,7 +2258,7 @@ function tests.visited_flags_survive_objects_module_reload()
     env.objects.next_filter()
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (stationary, visited): 2 south (1 of 1)",
+        "Guard (roaming, visited): 2 south (1 of 1)",
         "reloaded object descriptions should keep the visited flag")
 
     assert_equal(env.objects.clear_visited("all"), 1, "clear_visited all should clear the reload-persistent visit")
@@ -2244,18 +2285,19 @@ function tests.talk_visit_marker_uses_live_npc_ram_when_object_list_position_is_
     assert_equal(env.objects.is_visited(obj, 0x04), true, "visited flag should apply to the cached object with the same NPC slot id")
     assert_equal(
         env.objects.describe_current({include_debug_coords = false}),
-        "Guard (stationary, visited): 1 north (1 of 1)",
+        "Guard (roaming, visited): 1 north (1 of 1)",
         "visited object speech should use the live selected NPC slot")
 
     env.restore()
 end
 
 function tests.brecconary_counter_service_marks_selected_merchant_visited()
-    local env = make_env()
+    local env = make_env({npc_count = 20, npc_data_start = 0x51})
 
     env.set_position(0x08, 5, 6)
     env.set_terrain_offset(0x10)
-    env.set_npc(0, 0x60 + 5, 0x04, 0x00) -- Merchant at (5,4)
+    env.set_npc(0, 0, 0, 0)
+    env.set_npc(10, 0x60 + 5, 0x04, 0x00) -- Merchant at (5,4)
     env.objects.refresh(0x08)
 
     local obj = env.objects.current_object()
@@ -2269,7 +2311,7 @@ function tests.brecconary_counter_service_marks_selected_merchant_visited()
         "merchant description should name the usable counter square")
 
     local marked = env.objects.mark_adjacent_npc_visited(0x08, 5, 6)
-    assert_equal(marked.id, "npc_0", "counter interaction should mark the selected merchant visited")
+    assert_equal(marked.id, "npc_10", "counter interaction should mark the selected merchant visited")
     assert_equal(env.objects.is_visited(obj, 0x08), true, "counter interaction visit should persist on the merchant")
 
     env.restore()
@@ -2466,7 +2508,7 @@ function tests.cantlin_magic_key_merchant_uses_verified_south_counter_stand()
     assert_equal(key_merchant ~= nil, true, "Cantlin stable Old Man 2 slot should be present")
     assert_equal(key_merchant.name, "Magic Key Merchant", "Cantlin Old Man 2 should use the confirmed key-shop label")
     assert_equal(key_merchant.service, true, "Cantlin Magic Key Merchant should appear in Services")
-    assert_equal(key_merchant.movement, 0x00, "Cantlin Magic Key Merchant should be classified as stationary")
+    assert_equal(key_merchant.mobility, "stationary", "Cantlin Magic Key Merchant should be classified by its static slot")
     assert_equal(key_merchant.x, 27, "Cantlin Magic Key Merchant NPC X should match live NPC RAM")
     assert_equal(key_merchant.y, 6, "Cantlin Magic Key Merchant NPC Y should match live NPC RAM")
     assert_equal(key_merchant.interaction_x, 27, "Cantlin Magic Key Merchant should use the public south counter stand X")

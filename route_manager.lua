@@ -20,6 +20,7 @@
 --   route_manager.toggle_npc_freeze()
 
 local addr       = require "addresses"
+local npc_mobility = require "npc_mobility"
 local maps       = require "maps"
 local nav        = require "navigation"
 local objects    = require "objects"
@@ -802,31 +803,16 @@ local function npc_slot_from_id(id)
     return valid_npc_slot(slot)
 end
 
-local function normalize_npc_movement(value)
-    if value == nil then
-        return nil
-    end
-    return tonumber(value)
-end
-
 local function is_mobile_npc_blocker(npc)
-    local movement = normalize_npc_movement(npc and npc.movement)
-    return movement ~= nil and movement ~= 0
+    return npc_mobility.of(npc) == "mobile"
 end
 
 local function npc_blocker_kind(npc)
-    local movement = normalize_npc_movement(npc and npc.movement)
-    if movement == nil then
-        return "unknown"
-    end
-    if movement == 0 then
-        return "stationary"
-    end
-    return "mobile"
+    return npc_mobility.of(npc)
 end
 
 local function format_npc_movement(value)
-    local movement = normalize_npc_movement(value)
+    local movement = tonumber(value)
     if movement == nil then
         return "-"
     end
@@ -907,6 +893,7 @@ local function is_destination_occupied_by_npc(map_id, from_x, from_y, blocked_di
                 name = npc.name,
                 slot = slot,
                 movement = npc.movement,
+                mobility = npc_mobility.of(npc),
                 service = npc.service,
                 kind = npc_blocker_kind(npc),
                 parked = is_npc_slot_parked(slot),
@@ -1484,7 +1471,7 @@ end
 -- and save them into frozen_npc_snapshot. Called when freeze is activated.
 -- Byte 0: sprite type (bits 7-5) + X position (bits 4-0).
 -- Byte 1: animation frame (bit 7) + direction (bits 6-5) + Y position (bits 4-0).
--- Byte 2: movement behavior code.
+-- Byte 2: within-tile pixel offset; preserve it exactly when parking/restoring.
 local function capture_npc_snapshot()
     frozen_npc_snapshot = {}
     for i = 0, addr.NPC_COUNT - 1 do
@@ -1662,7 +1649,7 @@ local function start_autowalk_npc_parking(target, opts)
             local byte1 = memory.readbyte(base + 1)
             local byte2 = memory.readbyte(base + 2)
             if is_active_npc_slot(byte0, byte1)
-               and (opts.park_stationary_npcs == true or tonumber(byte2) ~= 0) then
+               and (opts.park_stationary_npcs == true or npc_mobility.for_slot(slot) == "mobile") then
                 local x, y = decode_npc_coords(byte0, byte1)
                 state.slots[slot] = {
                     byte0 = byte0,
@@ -1724,7 +1711,7 @@ local function add_live_npc_to_autowalk_parking(map_id, npc, reason)
     if not is_active_npc_slot(byte0, byte1) then
         return false, "inactive_slot"
     end
-    if tonumber(byte2) == 0 then
+    if npc_mobility.for_slot(slot) ~= "mobile" then
         return false, "stationary"
     end
 
@@ -3008,7 +2995,7 @@ local function find_stationary_npc_on_path(path)
     local stationary_by_cell = {}
     for _, obj in ipairs(objects.get_objects()) do
         if obj.type == objects.TYPE_NPC
-        and tonumber(obj.movement) == 0
+        and npc_mobility.of(obj) == "stationary"
         and obj.x ~= nil
         and obj.y ~= nil then
             stationary_by_cell[cell_key(obj.x, obj.y)] = obj

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -170,6 +171,17 @@ class PlayerPackageTests(unittest.TestCase):
         self.assertFalse(any(Path(path).name.startswith("sw") for path in layout["fceuxRootFiles"]))
         self.assertNotIn("postproc-56.dll", layout["fceuxRootFiles"])
         self.assertFalse(any(Path(path).name.startswith("test_") for path in layout["appFiles"]))
+        # A source-only change must not leave a required Lua module out of the ZIP.
+        app_files = set(layout["appFiles"])
+        for name in sorted(app_files):
+            if not name.endswith(".lua"):
+                continue
+            source = (REPO_ROOT / name).read_text(encoding="utf-8")
+            for module in re.findall(r"require\s*\(?\s*['\"]([\w_]+)['\"]", source):
+                dependency = module + ".lua"
+                if (REPO_ROOT / dependency).is_file():
+                    with self.subTest(source=name, dependency=dependency):
+                        self.assertIn(dependency, app_files)
 
     def test_fixture_build_is_clean_manifested_and_reproducible(self):
         first, first_directory, first_zip = self.run_builder("build-one")

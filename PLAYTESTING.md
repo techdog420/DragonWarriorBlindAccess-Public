@@ -1,10 +1,34 @@
 # Playtesting Notes
 
-Updated: 2026-09-10
+Updated: 2026-09-15
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Brecconary decoder corrections passed agent-driven live checks (2026-09-15).
+  Southern grass(13,28) is reachable with a normal return to the entrance.
+  Tool Merchant still works:32 steps each way from(1,15), east-facing counter
+  arrival and TALK opened Buy/Sell. Woman2 ordinary auto-walk reached her,
+  faced north, and TALK delivered her dialogue/marked her visited. Roaming-NPC
+  parking/restoration used ten slots, or nine with Woman2 exempt as the target.
+  Final hero(1,15), clear field, nil path, zero runtime blockers, bridge ready.
+  No purchase/key use/config change. Initial audit21/23 reachable; final20/23
+  plus a changing Curse Remover NPC obstruction. Two remaining model-blocked
+  targets were behind closed doors. Subsequent open-door checks are below.
+- Survey retry timing fixed (2026-09-15): a raw drift cancellation now waits for
+  auto-walk recovery's decision, retaining the current survey attempt while
+  correction runs. Three red/green regressions cover recovery, same-frame
+  completion, and terminal failure; all56 survey tests /41 Lua suites /68 Python
+  tests pass. Live Woman2, Fairy Water Merchant, and Guard4 surveys passed with
+  zero reported blocked events. The exact race did not recur live.
+- After the user opened both Brecconary doors, audit195118Z found23/23 modeled
+  reachable and zero return concerns. Actual walks verified the fairy-water
+  counter and the inn west room through their opened doors. These checks verify
+  movement; no new shop interaction/TALK acceptance is claimed. Final entrance
+  audit195938Z also finds23/23 reachable with no return concerns. Hero is back
+  at(1,15), frame45420, clear field, nil path, zero runtime blocks, bridge ready.
+  Detailed evidence: work_notes/town_decoder_findings.md.
 
 - Brecconary Tool Merchant access fixed on `codex/town-audit` (2026-09-10).
   Four missing grass cells (19..22,22) disconnected the public doorway from the

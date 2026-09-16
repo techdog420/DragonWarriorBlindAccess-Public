@@ -472,26 +472,26 @@ local tests = {}
 function tests.mobile_npcs_are_parked_and_restored_while_stationary_npcs_stay()
     local env = make_env({
         npc_bytes = {
-            [0x0051] = 10, [0x0052] = 10, [0x0053] = 2,
-            [0x0054] = 7,  [0x0055] = 5,  [0x0056] = 0,
+            [0x006C] = 10, [0x006D] = 10, [0x006E] = 0,
+            [0x006F] = 7,  [0x0070] = 5,  [0x0071] = 2,
         },
     })
 
     assert_equal(env.crawler.start("max_edges=1"), true, "crawler should start")
-    local mob0, mob1, mob2 = env.read_npc_slot(0)
-    local stat0, stat1, stat2 = env.read_npc_slot(1)
-    assert_equal(mob0 % 32, 31, "mobile NPC x should be parked")
-    assert_equal(mob1 % 32, 31, "mobile NPC y should be parked")
-    assert_equal(mob2, 2, "mobile movement byte should be preserved")
+    local mob0, mob1, mob2 = env.read_npc_slot(9)
+    local stat0, stat1, stat2 = env.read_npc_slot(10)
+    assert_equal(mob0 % 32, 0, "mobile NPC x should be parked")
+    assert_equal(mob1 % 32, 0, "mobile NPC y should be parked")
+    assert_equal(mob2, 0, "mobile pixel offset should be preserved")
     assert_equal(stat0, 7, "stationary NPC x byte should stay in place")
     assert_equal(stat1, 5, "stationary NPC y byte should stay in place")
-    assert_equal(stat2, 0, "stationary NPC movement byte should stay zero")
+    assert_equal(stat2, 2, "static NPC offset should remain unchanged")
 
     env.crawler.stop()
-    mob0, mob1, mob2 = env.read_npc_slot(0)
+    mob0, mob1, mob2 = env.read_npc_slot(9)
     assert_equal(mob0, 10, "mobile NPC x should restore")
     assert_equal(mob1, 10, "mobile NPC y should restore")
-    assert_equal(mob2, 2, "mobile movement byte should restore")
+    assert_equal(mob2, 0, "mobile pixel offset should restore")
 
     env.restore()
 end
@@ -513,7 +513,7 @@ function tests.abort_on_low_hp_restores_parked_npcs()
     assert_equal(env.cancellations[1].force_release, true, "low HP abort should force input release")
     assert_equal(b0, 10, "low HP abort should restore mobile NPC x")
     assert_equal(b1, 10, "low HP abort should restore mobile NPC y")
-    assert_equal(b2, 2, "low HP abort should restore mobile NPC movement")
+    assert_equal(b2, 2, "low HP abort should restore mobile NPC offset")
     assert_equal(env.crawler.is_active(), false, "crawler should stop after low HP abort")
 
     env.restore()
@@ -553,9 +553,9 @@ function tests.manual_stop_waits_for_committed_step_to_settle()
     assert_equal(env.crawler.is_active(), true, "crawler should remain active while the committed step settles")
     assert_equal(#env.cancellations, 1, "manual stop should cancel auto_step")
     local parked0, parked1, parked2 = env.read_npc_slot(0)
-    assert_equal(parked0 % 32, 31, "mobile NPC x should stay parked until stop settling completes")
-    assert_equal(parked1 % 32, 31, "mobile NPC y should stay parked until stop settling completes")
-    assert_equal(parked2, 2, "mobile NPC movement byte should stay preserved while settling")
+    assert_equal(parked0 % 32, 0, "mobile NPC x should stay parked until stop settling completes")
+    assert_equal(parked1 % 32, 0, "mobile NPC y should stay parked until stop settling completes")
+    assert_equal(parked2, 2, "mobile NPC pixel offset should stay preserved while settling")
 
     env.tick(true)
     assert_equal(env.crawler.is_active(), true, "crawler should still wait while the player remains on the stop origin tile")
@@ -566,7 +566,7 @@ function tests.manual_stop_waits_for_committed_step_to_settle()
     local b0, b1, b2 = env.read_npc_slot(0)
     assert_equal(b0, 10, "mobile NPC x should restore after stop settling finishes")
     assert_equal(b1, 10, "mobile NPC y should restore after stop settling finishes")
-    assert_equal(b2, 2, "mobile NPC movement byte should restore after stop settling finishes")
+    assert_equal(b2, 2, "mobile NPC pixel offset should restore after stop settling finishes")
 
     local joined = table.concat(env.logs, "\n")
     assert_contains(joined, "MAP_CRAWL_STOP_WAIT", "manual stop should log the deferred settle state")
@@ -1171,7 +1171,7 @@ end
 function tests.stationary_npc_blocks_cell_without_geometry_candidate()
     local env = make_env({
         npc_bytes = {
-            [0x0051] = 5, [0x0052] = 4, [0x0053] = 0,
+            [0x006F] = 5, [0x0070] = 4, [0x0071] = 0,
         },
     })
 
@@ -1191,7 +1191,7 @@ function tests.dungeon_context_ignores_stale_town_npc_ram()
         terrain = 0x20,
         npc_bytes = {
             [0x0051] = 10, [0x0052] = 10, [0x0053] = 2,
-            [0x0054] = 5,  [0x0055] = 4,  [0x0056] = 0,
+            [0x006F] = 5,  [0x0070] = 4,  [0x0071] = 0,
         },
     })
 
@@ -1915,7 +1915,7 @@ function tests.walk_sweep_json_groups_single_edge_results_by_conservative_taxono
 
     local dynamic_env = make_env({
         npc_bytes = {
-            [0x0051] = 5, [0x0052] = 4, [0x0053] = 0,
+            [0x006F] = 5, [0x0070] = 4, [0x0071] = 0,
         },
     })
     assert_equal(dynamic_env.crawler.start_walk_sweep("attempts=1,max_edges=1,park_mobile_npcs=false"),

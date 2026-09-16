@@ -16,6 +16,7 @@
 -- a flat list of all objects, sorted by distance or name, with filter cycling.
 
 local addr = require "addresses"
+local npc_mobility = require "npc_mobility"
 local maps = require "maps"
 local nav = require "navigation"
 local map_reader = require "map_reader"
@@ -880,7 +881,7 @@ end
 -- NPC objects. Each NPC entry in RAM is 3 bytes starting at 0x0051:
 --   Byte 0: bits 7-5 = sprite type (0-7), bits 4-0 = X position
 --   Byte 1: bit 7 = frame, bits 6-5 = direction, bits 4-0 = Y position
---   Byte 2: movement behavior
+--   Byte 2: within-tile pixel offset (not mobility)
 --
 -- We filter out inactive entries by checking for coordinates that
 -- are clearly invalid (both zero, or both 31 which seems to mark
@@ -974,7 +975,9 @@ local function parse_npcs(map_id)
             base_name = base_name,
             service = is_service,
             direction = entry.direction,
-            movement = entry.movement,
+            movement = entry.movement, -- Raw byte 2 retained for diagnostics.
+            slot = entry.slot,
+            mobility = npc_mobility.for_slot(entry.slot),
             blocks_movement = npc_blocks_movement(map_id, entry.x, entry.y),
             id = "npc_" .. entry.slot,  -- Stable ID survives list reordering
         }
@@ -2731,6 +2734,7 @@ function M.get_blocking_positions()
                 name = obj.name,
                 slot = slot,
                 movement = obj.movement,
+                mobility = npc_mobility.of(obj),
                 service = obj.service,
                 type = obj.type,
             }
@@ -2788,6 +2792,8 @@ local function live_npc_object(obj, map_id)
     live.sprite_type = AND(byte0, 0xE0) / 32
     live.direction = math.floor(byte1 / 0x20) % 4
     live.movement = byte2
+    live.slot = slot
+    live.mobility = npc_mobility.for_slot(slot)
     live.service = live.sprite_type == 3
     return apply_service_interaction_override(live, map_id)
 end
@@ -2945,14 +2951,10 @@ local function apply_description_interaction_override(obj, opts)
 end
 
 local function npc_movement_status(obj)
-    local movement = tonumber(obj and obj.movement)
-    if movement == nil then
-        return "movement unknown"
-    end
-    if movement == 0 then
-        return "stationary"
-    end
-    return "roaming"
+    local mobility = npc_mobility.of(obj)
+    if mobility == "mobile" then return "roaming" end
+    if mobility == "stationary" then return "stationary" end
+    return "movement unknown"
 end
 
 function M.describe_object(obj, opts)

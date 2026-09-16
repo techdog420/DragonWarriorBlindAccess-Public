@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-10
+Updated: 2026-09-15
 
 ## Current implementation
 
@@ -29,14 +29,56 @@ Updated: 2026-09-10
   All 41 Lua suites / 68 Python tests pass, including 84 map-reader tests.
   Player confirmed arrival and TALK afterward: frame84036 reached the counter,
   frame84304 opened the shop, and frame84594 marked Tool Merchant visited.
-  Tool Merchant player acceptance is complete; changes remain uncommitted.
+  Tool Merchant player acceptance is complete. Commit6deef92 includes the audit
+  and merchant fix; local HEAD and the GitHub branch were independently verified.
 - Updated audit town_audit_08_20260910T163517Z_001: 20 modeled reachable,
   1 NPC-obstructed (Person 1), 2 model-blocked (Person 2, Woman 2), and the
   existing Curse Remover NPC-obstructed return. Tool Merchant and Person 5
   have both outward and return plans. Moving NPC positions differ from baseline.
   Fresh frame73620: hero (1,15), nil path, zero runtime blocks, clear field.
-  Next investigation: shared town tile classification versus context before
-  accumulating more coordinate exceptions; grass raw0 and wall raw4 are suspects.
+- Woman2 investigation confirmed two shared decoding errors, documented in
+  work_notes/town_decoder_findings.md. NPC byte2 is within-tile offset, not
+  mobility; slot7 roamed across three observed positions while it remained0.
+  Game code reserves slots0..9 for mobile NPCs,10..19 for static NPCs. Previous
+  labeling/route and crawler parking used the wrong byte. Town raw0 is grass,
+  raw4 stone; live probes confirm these contradict the base walkability table.
+  Implemented September11: shared npc_mobility.lua now uses slot ranges across
+  descriptions, blockers, route parking, and crawler parking. Brecconary has
+  the source-backed town collision table, with raw9/A hazards; all existing
+  per-cell/door overrides and other maps retain their behavior. Crawler parking
+  uses ROM-inactive(0,0), matching route parking. Full gate passes41 Lua suites
+  and68 Python tests; final package dependency/list checks pass5 package tests.
+  Same-grid offline comparison opens the southern grass round trip while the
+  tool counter remains32 steps each way. Fresh frame153120 confirms hero(1,15)
+  and clear field/runtime none. Subsequent audit timed out without consumption.
+  Reload and live checks passed September15: southern grass(13,28) round trip,
+  tool-counter round trip/TALK, and ordinary Woman2 approach/TALK/return.
+  Updated mobility logs and parking/restoration matched expected slot ranges.
+- SURVEY-DRIFT-RETRY-01 is fixed in map_survey.lua: defer raw drift
+  cancellation until route_manager's synchronous recovery decision is known.
+  Retain the original attempt while correction runs; immediate completion or
+  terminal failure wins, and unrecovered drift keeps the existing bounded retry.
+  Three regressions failed before the fix and pass afterward; all56 survey tests
+  and the full41 Lua suites /68 Python tests pass. Live Woman2, Fairy Water
+  Merchant, and Guard4 surveys all completed successfully. The exact drift event
+  did not recur in these live runs; its corrected behavior is regression-tested.
+- The user opened both doors, slots(5,23)/(21,6), leaving4 keys. Open-door audits
+  195118Z from(21,7) and195938Z from(1,15) each find23/23 modeled reachable,
+  zero NPC obstructions, zero model blockers, and zero return concerns. Earlier
+  closed-door audits had two gated targets and changing NPC-only obstructions.
+  Ordinary walking verified both opened doorways inward/outward, the fairy-water
+  counter(22,4), and inn west room(3,22). No new TALK/purchase check was performed.
+- Latest hero state: Brecconary(1,15), frame45420 in the fresh retest session,
+  nil path, zero runtime blockers, clear field/input guards, bridge ready without
+  errors; all survey freeze and route parking released. Config unchanged.
+  Final audit: town_audit_08_20260915T195938Z_001.json/.txt.
+  Detailed evidence: work_notes/town_decoder_findings.md; live capture:
+  .test_tmp/brecconary_survey_fix_live_20260915.log.
+- Next: Kol service-route audit/polishing, using the read-only audit to group
+  findings and focused surveys to verify actual approaches and returns. Start
+  surveys from a tile with at least three exits; the counter at(22,4) correctly
+  refuses a survey start with low_exit_count. The existing idle audit_town hook
+  refreshed map_survey for this focused fix; no extra manual reload was needed.
 
 ## Release Installation Handoff
 

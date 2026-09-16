@@ -284,7 +284,7 @@ local function runtime_deps()
     end
     local function sources()
         local out = {}
-        for _, name in ipairs({"map_reader.lua", "objects.lua", "route_manager.lua", "pathfinder.lua", "route_frontier.lua"}) do
+        for _, name in ipairs({"map_reader.lua", "objects.lua", "route_manager.lua", "pathfinder.lua", "route_frontier.lua", "npc_mobility.lua"}) do
             local f = io.open(script_dir .. name, "rb")
             if f then out[name] = fingerprint(f:read("*a")); f:close() end
         end

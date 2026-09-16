@@ -89,7 +89,7 @@ for _, mod_name in ipairs({
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
     "warning_delivery", "settings_menu", "key_reference", "low_health",
-    "town_audit", "route_frontier",
+    "town_audit", "route_frontier", "npc_mobility",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -99,6 +99,7 @@ local scan_profiler = require "scan_profiler" -- BizHawk scan throttling/profili
 
 local tolk = require "tolk"         -- Speech output (Python bridge to screen reader)
 local addr = require "addresses"    -- RAM address constants
+local npc_mobility = require "npc_mobility"
 local battle = require "battle"     -- Battle command menu helpers
 local chars = require "chars"       -- Text encoding table
 local text = require "text"         -- Screen buffer reading
@@ -4744,10 +4745,10 @@ debug_tools.register_command("report_npcs", function()
             local direction = math.floor(byte1 / 0x20) % 4
             local obj = objects.find_object_by_id("npc_" .. slot)
             debug_tools.info(string.format(
-                "NPC_SLOT map=0x%02X slot=%d id=npc_%d name=%s x=%d y=%d sprite=%d dir=%d move=0x%02X service=%s raw=%02X,%02X,%02X",
+                "NPC_SLOT map=0x%02X slot=%d id=npc_%d name=%s x=%d y=%d sprite=%d dir=%d pixel_offset=0x%02X mobility=%s service=%s raw=%02X,%02X,%02X",
                 map_id, slot, slot,
                 obj and tostring(obj.name) or "unknown",
-                x, y, sprite_type, direction, byte2,
+                x, y, sprite_type, direction, byte2, npc_mobility.for_slot(slot),
                 tostring(obj and obj.service == true or false),
                 byte0, byte1, byte2))
         end

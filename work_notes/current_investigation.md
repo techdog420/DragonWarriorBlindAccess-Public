@@ -1,5 +1,42 @@
 # Current Investigation Scratchpad
 
+## 2026-09-15 Survey recovery fix and open-door retest
+
+- FIXED SURVEY-DRIFT-RETRY-01: defer the survey's raw drift decision until
+  route_manager has attempted synchronous recovery. Preserve the active attempt
+  during correction; retain immediate completion, terminal failure, and bounded
+  retry behavior. Three red/green regressions,56 survey tests,41 Lua suites,
+  and68 Python tests pass. Exact drift did not recur in the live retest.
+- User opened doors(5,23)/(21,6), keys4. Idle audit_town refreshed map_survey,
+  so no extra manual reload was needed. Live target surveys passed: Woman2
+  result18802; Fairy Water Merchant20565; Guard4 33958. Freeze released each time.
+- Counter(22,4) correctly refused the next survey start with low_exit_count;
+  restart from street(21,7) passed. Temporary timing retry at(8,21) west cleared
+  after crossing; no geometry change or runtime blocker promotion.
+- Guard4 had wandered out, so additionally walked into the inn west room(3,22)
+  and back through open door(5,23);21 steps each way, completed39353/42199.
+  Fairy-water doorway(21,6) also passed both ways.
+- Final audit195938Z from entrance(1,15):23/23 modeled reachable, zero NPC-only
+  obstructions, model blockers, or return concerns. Fresh frame45420:hero(1,15),
+  nil path, runtime none, clear field/guards, speech ready/error none, keys4.
+- Evidence: work_notes/town_decoder_findings.md; local raw capture
+  .test_tmp/brecconary_survey_fix_live_20260915.log; gate
+  .test_tmp/survey_retry_gate.log. No config change, teleport, purchase, or
+  agent key use. Next recommended map: Kol service routes.
+
+## 2026-09-15 Brecconary decoder validation
+
+- PASSED: southern grass normal round trip; tool merchant counter/TALK/return;
+  Woman2 ordinary auto-walk/TALK/return; corrected NPC mobility and parking.
+- Final frame56460: hero(1,15), nil path, runtime none, clear field, bridge ready.
+  Source/config unchanged; no purchase, key use, teleport, or remaining freeze.
+- Audit184226Z:21/23 reachable, no return concerns. Audit185118Z:20 reachable,
+  Curse Remover NPC-obstructed outward/return, same two closed-door targets.
+  NPC-layout variation is distinct from geometry changes or live acceptance.
+- SURVEY-DRIFT-RETRY-01 was reproduced at41023..41106 in the earlier session;
+  the subsequent fix and open-door retest below supersede its unresolved status.
+- Detailed evidence/repro: work_notes/town_decoder_findings.md. Raw local capture:
+  .test_tmp/brecconary_live_20260915.log. No geometry candidates to promote.
 
 ## 2026-09-10 Kol service-route polishing candidates
 
@@ -6749,3 +6786,45 @@ For the next live map task, start a new dated section here with:
 - Restored auto_walk_park_mobile_npcs=true; INI matches the saved pre-test bytes
   exactly. reload_config consumed frame75660. No purchase, key use, teleport,
   permanent player-state write, or global tile classification change.
+
+
+## 2026-09-10 Woman 2 audit follow-up
+
+- Verified local HEAD and live GitHub refs/heads/codex/town-audit both equal
+  6deef9272d630ac18dd9068a9a91ce25c0c14cae; working tree initially clean.
+  This includes the audit and player-accepted Tool Merchant fixes.
+- Target: stationary Woman 2 npc_7 at (12,28). Audit snapshot163517Z marks
+  every normal adjacent stand unavailable. Highest candidate is grass (13,28)
+  south of reachable (13,27), raw0 modeled blocked. Local Brecconary reference
+  supports a grass approach; this is orientation, not movement proof.
+- Fresh frame960: map08, hero23,25, keys6, doors closed, runtime none.
+  A player-started exit route and command-menu inputs overlapped this baseline;
+  exclude those early route failures from permanent map evidence. Frame3480
+  showed nil route and command menu open; closed with B, frame4140.
+- Frame4920 clear-field planning: skip-NPC adjacent route to12,28 fails;
+  route to13,27 exists (40steps from23,25). Started stop-on-first-blocker walk
+  frame5580, using the current configured NPC-parking behavior.
+
+- Cycle1 first failure: from9,18 DOWN into9,19, frame7055 stop-on-blocker
+  (NPC false, timing_suspect false). Raw DOWN frame8819 also blocked with
+  tile4/base walkable true/NPC false. Added runtime edge9,19.north only.
+  Planner then proposes entering the same roof from its west, so do not
+  chase wall detours. The reference has a grass connection from15,22 west
+  across14,22 to the modeled tree column13,22..27. Check that normal approach.
+
+- Cycle2 grass connection: raw LEFT15,22->14,22->13,22 passed frame13655;
+  reverse RIGHT passed frame14906; repeat LEFT frame15145. Normal five-step
+  walk reached13,27 frame15468; raw DOWN reached13,28 frame16233.
+- Cycle3 TALK revealed the target was no longer there: raw LEFT8 entered12,28,
+  then TALK reported no one. Same-session NPC records prove Woman2/slot7 moves
+  while movement remains0: audit20062 at11,16; report22620 at9,11 rawC9,AB,00;
+  report25260 at13,9 rawCD,A9,00. Byte2 is a pixel offset, not mobility.
+  Disassembly confirms slots0..9 mobile,10..19 static. No label/code fix yet.
+- Returned along the same grass/tree passage (UP25166 to13,26, normal walk to
+  13,22, RIGHT27997 to15,22), then normally to1,15 frame37248. Runtime diagnostic
+  blocker cleared; frame42240 clear field/runtime none. No config/source edits.
+- Full findings and the source-backed correction plan are in
+  work_notes/town_decoder_findings.md. Audit165251Z atframe42382 has22 reachable,
+  one model-blocked, two return concerns; Woman2 at20,7 is reachable. Count
+  improvement is NPC-layout variation, not a fix. Prioritize shared NPC mobility
+  correction, then a Brecconary pilot of the base town tile table.

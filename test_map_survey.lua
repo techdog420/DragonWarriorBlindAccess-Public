@@ -36,6 +36,7 @@ local function make_env(options)
     local route_active = false
     local runtime_count = options.runtime_count or 0
     local clear_route_context_calls = 0
+    local autowalk_calls = 0
     local plan_call_count = 0
     local plan_calls = {}
     local nav_map_id = options.map_id or 0x08
@@ -260,6 +261,7 @@ local function make_env(options)
         local clear_calls = 0
         return {
             autowalk_to_object = function(target, opts)
+                autowalk_calls = autowalk_calls + 1
                 if options.autowalk_fn then
                     local spec = options.autowalk_fn({
                         target = target,
@@ -378,6 +380,7 @@ local function make_env(options)
         clear_route_context_calls = function()
             return package.loaded["route_manager"] and clear_route_context_calls or 0
         end,
+        autowalk_calls = function() return autowalk_calls end,
         plan_call_count = function()
             return plan_call_count
         end,
@@ -2948,6 +2951,69 @@ function tests.reorder_skips_candidates_that_still_qualify_for_continuation_trap
         "SURVEY_ATTEMPT run=1 map=0x08 idx=3/9 retry=1 target_id=npc_b",
         "the safe retry should run immediately after it is promoted")
 
+    env.restore()
+end
+
+function tests.route_drift_recovery_keeps_the_original_survey_attempt()
+    local env = make_env()
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.set_position(0x08, 5, 3)
+    -- auto_step publishes cancellation BEFORE calling route_manager, which
+    -- starts its corrective route synchronously on this same frame.
+    env.publish("route_cancelled", {reason = "route_drift_off_path"})
+    assert_not_contains(table.concat(env.logs, "\n"), "SURVEY_REQUEUE",
+        "survey must wait for the route manager's recovery decision")
+    env.set_route_active(true)
+    env.survey.tick(true)
+    env.survey.tick(true)
+    assert_equal(env.autowalk_calls(), 1, "survey must not compete with the corrective walk")
+    assert_equal(env.clear_route_context_calls(), 0, "recovery must retain its route context")
+    assert_equal(env.survey.is_active(), true, "survey must wait for actual arrival")
+    assert_not_contains(table.concat(env.logs, "\n"), "SURVEY_RESULT",
+        "an active correction is not a failed survey result")
+    env.set_position(0x08, 7, 5)
+    env.publish("route_completed")
+    env.survey.tick(true)
+    local run = env.survey.get_last_run(0x08)
+    assert_equal(run.summary.successes, 1, "completed drift recovery should succeed")
+    assert_equal(run.summary.failures, 0, "recovery should not leave a false failure")
+    assert_equal(run.results[1].start_x, 5, "retain the original attempt start X")
+    assert_equal(run.results[1].start_y, 5, "retain the original attempt start Y")
+    assert_contains(table.concat(env.logs, "\n"), "SURVEY_DRIFT_RECOVERY",
+        "continued recovery should have a structured log")
+    env.restore()
+end
+
+function tests.route_drift_completion_in_the_same_frame_finishes_once()
+    local env = make_env()
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_cancelled", {reason = "route_drift_off_path"})
+    -- Recovery can find that the player is already at a usable approach.
+    env.set_position(0x08, 7, 5)
+    env.publish("route_completed")
+    env.survey.tick(true)
+    local run = env.survey.get_last_run(0x08)
+    assert_equal(run ~= nil, true, "same-frame completion should finish the survey")
+    assert_equal(run.summary.successes, 1, "zero-step recovery should count as arrival")
+    assert_equal(run.summary.failures, 0, "raw drift notification is not a failure")
+    assert_equal(env.autowalk_calls(), 1, "same-frame completion must not queue a retry")
+    env.restore()
+end
+
+function tests.route_drift_terminal_failure_supersedes_the_raw_cancellation()
+    local env = make_env()
+    env.survey.start_target_survey("chest_1")
+    env.survey.tick(true)
+    env.publish("route_cancelled", {reason = "route_drift_off_path"})
+    env.publish("route_cancelled", {reason = "route_drift_reroute_limit"})
+    env.survey.tick(true)
+    local run = env.survey.get_last_run(0x08)
+    assert_equal(run ~= nil, true, "terminal recovery failure should finish the attempt")
+    assert_equal(run.summary.failures, 1, "terminal recovery failure must be recorded")
+    assert_equal(run.results[1].reason, "route_drift_reroute_limit", "retain the actual terminal reason")
+    assert_equal(env.autowalk_calls(), 1, "do not bypass the route-manager retry limit")
     env.restore()
 end
 

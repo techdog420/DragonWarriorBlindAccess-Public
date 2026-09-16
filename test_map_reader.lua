@@ -4357,6 +4357,7 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
         [base + 4] = 0,
     }
     fill_packed_map(rom_bytes, data_start, 30, 30, 0x0)
+    set_packed_block(rom_bytes, data_start, 30, 3, 6, 4) -- actual stone cap
     local env = make_env({
         rom_bytes = rom_bytes,
         memory_bytes = {
@@ -4388,7 +4389,7 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     assert_equal(env.map_reader.is_walkable(0x08, 23, 26), true, "(23,26) should be walkable via the Merchant 4 public-side false-wall passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 27, 26), true, "(27,26) should be walkable via the Merchant 4 east-side false-wall passthrough")
     assert_equal(env.map_reader.is_walkable(0x08, 24, 12), true, "(24,12) should be walkable via the Curse Remover public-approach passthrough")
-    assert_equal(env.map_reader.is_walkable(0x08, 10, 19), false, "(10,19) should remain non-walkable until confirmed")
+    assert_equal(env.map_reader.is_walkable(0x08, 10, 19), true, "(10,19) is grass under the Brecconary terrain pilot")
     local snapshot = env.map_reader.get_walkability_snapshot(0x08)
     assert_equal(snapshot[18][9], true, "walkability snapshot should honor Brecconary passthrough cells")
     assert_equal(snapshot[7][3], true, "walkability snapshot should include the west-wing north throat")
@@ -4407,7 +4408,7 @@ function tests.brecconary_passthrough_corridor_overrides_false_wall_tiles()
     assert_equal(snapshot[25][17], true, "walkability snapshot should include the Merchant 4 lower-west bridge")
     assert_equal(snapshot[26][23], true, "walkability snapshot should include the Merchant 4 public-side false-wall cell")
     assert_equal(snapshot[26][27], true, "walkability snapshot should include the Merchant 4 east-side false-wall cell")
-    assert_equal(snapshot[19][10], false, "walkability snapshot should preserve unconfirmed Brecconary wall cells")
+    assert_equal(snapshot[19][10], true, "walkability snapshot should classify raw grass consistently")
 
     env.restore()
 end
@@ -4423,6 +4424,8 @@ function tests.brecconary_tool_shop_bridge_grass_connects_the_public_approach()
         [base + 4] = 0,
     }
     fill_packed_map(rom_bytes, data_start, 30, 30, 0x0)
+    set_packed_block(rom_bytes, data_start, 30, 19, 21, 2) -- water north of the bridge
+    set_packed_block(rom_bytes, data_start, 30, 18, 23, 2) -- water south of the bridge
     local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
     local snapshot = env.map_reader.get_walkability_snapshot(0x08)
     local dirs = env.map_reader.get_directional_blocks(0x08)
@@ -4436,7 +4439,7 @@ function tests.brecconary_tool_shop_bridge_grass_connects_the_public_approach()
         assert_equal(edge.west or false, false, label .. " should allow the walked outward approach")
         assert_equal(edge.east or false, false, label .. " should allow the return approach")
     end
-    assert_equal(snapshot[21][19], false, "unverified grass outside the tool-shop strip should retain its current classification")
+    assert_equal(snapshot[21][19], false, "water north of the bridge must remain blocked")
     assert_equal(snapshot[23][18], false, "the shortcut south of the bridge must remain closed")
     assert_equal(dirs["24,25"].west, true, "the tool-shop counter must remain blocked from the public stand")
     env.restore()
@@ -6357,6 +6360,49 @@ function tests.erdricks_cave_b2_chest_route_seams_are_directional()
     assert_equal(dirs["7,9"].west, nil, "Erdrick B2 (7,9) should keep unconfirmed approaches open")
     assert_equal(dirs["7,5"], nil, "Erdrick B2 route evidence should not globally block the origin cell (7,5)")
 
+    env.restore()
+end
+
+function tests.brecconary_terrain_pilot_decodes_collision_and_hazards()
+    local data_start = 0x1010
+    local base = 8 * 5
+    local rom_bytes = {[base] = 0, [base+1] = 0x90, [base+2] = 29, [base+3] = 29, [base+4] = 0}
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0)
+    -- Open, override-free row near the entrance exercises every raw town tile.
+    for tile = 0, 15 do set_packed_block(rom_bytes, data_start, 30, tile+1, 15, tile) end
+    set_packed_block(rom_bytes, data_start, 30, 9, 19, 4) -- live-probed stone
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local safe = env.map_reader.get_walkability_snapshot(0x08)
+    local hazardous = env.map_reader.get_walkability_snapshot(0x08, {allow_hazards = true})
+    local impassable = {[2]=true, [4]=true, [11]=true, [12]=true, [13]=true, [15]=true}
+    for tile = 0, 15 do
+        assert_equal(hazardous[15][tile+1], not impassable[tile], "town collision for tile " .. tile)
+        assert_equal(safe[15][tile+1], not impassable[tile] and tile ~= 9 and tile ~= 10,
+            "safe routing for tile " .. tile)
+    end
+    assert_equal(env.map_reader.is_hazard_cell(0x08, 10, 15), "poison_swamp", "town swamp should warn")
+    assert_equal(env.map_reader.is_hazard_cell(0x08, 11, 15), "damage", "force field should warn")
+    assert_equal(safe[19][9], false, "normally probed stone must no longer attract routes")
+    assert_equal(safe[28][13], true, "Woman 2's previously stranded grass position should have an escape")
+    assert_equal(safe[22][14], true, "normally walked grass connector should be modeled")
+    assert_equal(safe[15][0], false, "west exit remains an engine boundary")
+    assert_equal(safe[0][1], false, "north boundary remains blocked")
+    env.restore()
+end
+
+function tests.brecconary_terrain_pilot_does_not_change_neighboring_towns_or_dungeons()
+    local data_start = 0x1010
+    local rom_bytes = {}
+    for _, map_id in ipairs({0x08, 0x09, 0x12}) do
+        local base = map_id * 5
+        rom_bytes[base], rom_bytes[base+1] = 0, 0x90
+        rom_bytes[base+2], rom_bytes[base+3], rom_bytes[base+4] = 29, 29, 0
+    end
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0)
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    assert_equal(env.map_reader.is_walkable(0x08, 14, 22), true, "Brecconary grass should use the pilot")
+    assert_equal(env.map_reader.is_walkable(0x09, 14, 22), false, "Garinham retains the existing town model")
+    assert_equal(env.map_reader.is_walkable(0x12, 14, 22), false, "Charlock B4 type-zero stone remains blocked")
     env.restore()
 end
 

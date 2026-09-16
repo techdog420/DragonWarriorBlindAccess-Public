@@ -6,6 +6,7 @@
 -- intentionally does not write map_reader.lua, runtime blockers, or dw_blocks.log.
 
 local addr        = require "addresses"
+local npc_mobility = require "npc_mobility"
 local auto_step   = require "auto_step"
 local debug_tools = require "debug_tools"
 local event_bus   = require "event_bus"
@@ -18,7 +19,8 @@ local tolk        = require "tolk"
 local M = {}
 
 local LOW_HP_ABORT_THRESHOLD = 8
-local PARKED_NPC_COORD = 31
+-- (0,0) disables the ROM slot; (31,31) can leave the sprite update active.
+local PARKED_NPC_COORD = 0
 local DEFAULT_ATTEMPTS = 3
 local DEFAULT_MAX_EDGES = 200
 local MAX_ATTEMPTS = 15
@@ -147,7 +149,7 @@ end
 local function is_active_npc_slot(byte0, byte1)
     local x = bit_and(byte0, 0x1F)
     local y = bit_and(byte1, 0x1F)
-    return not ((x == 0 and y == 0) or (x == PARKED_NPC_COORD and y == PARKED_NPC_COORD))
+    return not ((x == 0 and y == 0) or (x == 31 and y == 31))
 end
 
 local MAPS_WITHOUT_NPCS = {
@@ -184,7 +186,7 @@ local function capture_mobile_npc_parking_state(map_id)
         local byte0 = memory.readbyte(base)
         local byte1 = memory.readbyte(base + 1)
         local byte2 = memory.readbyte(base + 2)
-        if is_active_npc_slot(byte0, byte1) and tonumber(byte2) ~= 0 then
+        if is_active_npc_slot(byte0, byte1) and npc_mobility.for_slot(slot) == "mobile" then
             state.slots[slot] = {
                 byte0 = byte0,
                 byte1 = byte1,
@@ -234,7 +236,7 @@ local function stationary_npc_at(map_id, x, y)
         local byte0 = memory.readbyte(base)
         local byte1 = memory.readbyte(base + 1)
         local byte2 = memory.readbyte(base + 2)
-        if is_active_npc_slot(byte0, byte1) and tonumber(byte2) == 0 then
+        if is_active_npc_slot(byte0, byte1) and npc_mobility.for_slot(slot) == "stationary" then
             local nx = bit_and(byte0, 0x1F)
             local ny = bit_and(byte1, 0x1F)
             if nx == x and ny == y then
