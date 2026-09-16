@@ -269,6 +269,10 @@ of their pixel offsets. INI and source files were unchanged during this pass.
   setting. Worktree was clean before recording this acceptance.
 - Previous full gate remains41 Lua suites /68 Python tests passing; publication
   diff check passes. No new source edits or redundant live-disrupting test run.
-- GitHub main remains fed84fb8e8a910cc1b298c4800a9cf146d71dc01; this branch is not
-  merged. Next recommendation: Kol audit, Tool Merchant failure investigation,
-  focused service approach/TALK/return checks, then remaining NPC coverage.
+- At initial verification GitHub main was still fed84fb. On the user's merge
+  request, committed acceptance notes as a355859 and fast-forwarded local main
+  from fed84fb to a355859 without conflicts. Source content matches the tested
+  b559642; subsequent changes are documentation only.
+- Next: publish main, then use codex/kol-town-polish for the Kol audit, Tool
+  Merchant failure investigation, focused service approach/TALK/return checks,
+  and remaining NPC coverage. User is relocating the hero; no agent movement.

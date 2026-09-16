@@ -8,13 +8,14 @@ Updated: 2026-09-15
   manually visited every NPC, with a couple of drifts but no reroutes. Commit
   b559642 (Correct NPC mobility handling and Brecconary navigation) contains the
   decoder, mobility, survey fix, regression tests, and supporting documentation.
-  Local HEAD and GitHub refs/heads/codex/town-audit independently match
-  b5596427c5c6659b5d63c7d835b90bcbc673d6b1; the worktree was clean at verification.
-  These acceptance-note updates came afterward. GitHub main remains fed84fb;
-  the town-audit branch has not been merged. Kol is the recommended next town.
+  GitHub verification confirmed b559642 before integration. Acceptance notes
+  were committed as a355859, then main fast-forwarded from fed84fb to a355859
+  without conflicts on2026-09-15. Code remains identical to the tested b559642;
+  only acceptance/integration documentation changed afterward. Kol is next,
+  using a separate codex/kol-town-polish branch after main is published.
 
-- Quick-services was committed/pushed as `fb3b13b` on `codex/quick-services`.
-  It remains ahead of main; the town audit starts from that committed work.
+- Quick-services (`fb3b13b`), the town audit (`6deef92`), and the accepted
+  Brecconary fixes (`b559642`) are now included in main.
 - `codex/town-audit` adds `audit_town`, `audit_town:services`,
   `report_town_audit`, and `stop_town_audit`. Read-only planning captures current
   position, map/door/NPC conditions, and all visible targets without changing
