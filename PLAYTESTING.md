@@ -6,6 +6,12 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Brecconary town cleanup is complete (player acceptance, 2026-09-15): the user
+  manually visited every NPC and reported a couple of drifts but no reroutes.
+  This closes the town pass after the agent's23/23 open-door audit and live
+  approach/return checks; it does not claim every dialogue was retested or that
+  the survey-specific drift race occurred during manual play.
+
 - Brecconary decoder corrections passed agent-driven live checks (2026-09-15).
   Southern grass(13,28) is reachable with a normal return to the entrance.
   Tool Merchant still works:32 steps each way from(1,15), east-facing counter

@@ -256,3 +256,19 @@ of their pixel offsets. INI and source files were unchanged during this pass.
   `.test_tmp/brecconary_survey_fix_live_20260915.log`.
 - No permanent map, config, or route-manager changes were needed for this survey
   fix. Next recommended audit/polish map remains Kol's service routes.
+
+## Player acceptance and publication (2026-09-15)
+
+- User manually visited every NPC and reported a couple of drifts with no
+  reroutes; user considers the Brecconary town pass complete. This is player
+  arrival acceptance, not a claim of new dialogue coverage or survey-race
+  reproduction. No additional live commands were needed for publication checks.
+- Local HEAD, origin/codex/town-audit, and an independent GitHub branch query all
+  match b5596427c5c6659b5d63c7d835b90bcbc673d6b1. Commit includes the decoder,
+  mobility, survey correction, tests, docs, and the user's alphabetical sorting
+  setting. Worktree was clean before recording this acceptance.
+- Previous full gate remains41 Lua suites /68 Python tests passing; publication
+  diff check passes. No new source edits or redundant live-disrupting test run.
+- GitHub main remains fed84fb8e8a910cc1b298c4800a9cf146d71dc01; this branch is not
+  merged. Next recommendation: Kol audit, Tool Merchant failure investigation,
+  focused service approach/TALK/return checks, then remaining NPC coverage.

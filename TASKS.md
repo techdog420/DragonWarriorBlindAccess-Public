@@ -1022,6 +1022,9 @@ quality-of-life work.
   race before the fix and pass afterward; full41 Lua suites /68 Python tests
   pass. Live Woman2, Fairy Water Merchant, and Guard4 surveys pass, although the
   exact drift event has not recurred. Wider focused town surveys can resume.
+  Player acceptance on September15 closes the Brecconary town pass: every NPC
+  was manually visited, with a couple of drifts and no reroutes. Changes were
+  committed/pushed as b559642 on codex/town-audit; remote verification passed.
   Evidence: work_notes/town_decoder_findings.md.
 - Prioritize a Kol service-route polishing pass next. The 2026-09-10 Tool
   Merchant walk from (19,23) to stand (12,21) hit repeated reroutes and did not
@@ -1054,9 +1057,7 @@ quality-of-life work.
 
 ## Map Decoding
 
-- Brecconary Merchant 4 optional follow-up: the current evidence says the
-  southeast tool-shop pocket is isolated/locked from the public waypoint graph,
-  not explained by either known Brecconary door. If gameplay later suggests the
-  tool shop should be reachable, add a small debug helper to test TALK from a
-  chosen coordinate/facing, then re-check possible customer stands around
-  `(25,27)` before changing more map data.
+- Brecconary tool-shop follow-up is closed. Missing grass passthroughs and
+  wall-approach corrections restored the public counter at(23,25); ordinary
+  approach, TALK, and return passed, followed by full-town player acceptance
+  on2026-09-15. The earlier isolated/locked-pocket hypothesis is superseded.

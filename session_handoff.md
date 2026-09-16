@@ -4,6 +4,15 @@ Updated: 2026-09-15
 
 ## Current implementation
 
+- Brecconary cleanup is player-accepted and complete (2026-09-15): the user
+  manually visited every NPC, with a couple of drifts but no reroutes. Commit
+  b559642 (Correct NPC mobility handling and Brecconary navigation) contains the
+  decoder, mobility, survey fix, regression tests, and supporting documentation.
+  Local HEAD and GitHub refs/heads/codex/town-audit independently match
+  b5596427c5c6659b5d63c7d835b90bcbc673d6b1; the worktree was clean at verification.
+  These acceptance-note updates came afterward. GitHub main remains fed84fb;
+  the town-audit branch has not been merged. Kol is the recommended next town.
+
 - Quick-services was committed/pushed as `fb3b13b` on `codex/quick-services`.
   It remains ahead of main; the town audit starts from that committed work.
 - `codex/town-audit` adds `audit_town`, `audit_town:services`,
