@@ -1,5 +1,26 @@
 # Current Investigation Scratchpad
 
+## 2026-09-17 Garinham town correction and NPC pass
+
+- CLEAN: map `0x09` now uses the verified Bank00 town collision table after
+  player reload. Fresh `inspect_tile:4,13` at frame `04320` reports raw type
+  `0`, `base_walkable=true`, and `reason=map_tile_type`.
+- CLEAN: player manually completed Tool Merchant, Inn, Weapons Merchant, and
+  all three chest routes with outward and return completion. Each chest had one
+  `AUTO_WALK_DRIFT_REROUTE` then recovered and completed; do not promote these
+  timing recoveries as blockers. One Weapons Merchant run ended by player
+  hotkey before the subsequent successful retry.
+- BASELINE: frame `54420`, Garinham entrance `(1,14)`, both doors open
+  (`(17,10)`, `(4,6)`), runtime blocks none, active path nil. All named NPC
+  targets are in bounds; seven are mobile and should be parked for route-only
+  checks.
+- CLEAN / PLAYER ACCEPTED: all named NPC/service dialogue targets, chest
+  routes, and their outward/return legs were manually validated. The NPC pass
+  logged four one-cell drift recoveries (Merchant1, Old Man1, Person1, and the
+  Exit return); each reached its target/return afterward, with no durable
+  reroute or blocker. Fresh frame `167280`: entrance `(1,14)`, both doors
+  open, runtime blocks none, active path nil.
+
 ## 2026-09-17 Kol final two NPC findings
 
 - Player acceptance closes the Kol town pass: the user validated Old Man4 and

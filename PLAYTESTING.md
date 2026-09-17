@@ -6,6 +6,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Garinham cleanup is complete (player acceptance, 2026-09-17). After the
+  map09 Bank00 town-collision correction and player reload, the open-door
+  entrance audit had 21/22 modeled routes, with only a transient Tool Merchant
+  NPC overlap. The player manually completed every named NPC/service dialogue,
+  chest, and outward/return route. The log records four one-cell automatic
+  drift recoveries during the NPC pass (Merchant1, Old Man1, Person1, and the
+  exit return), but every affected visit then completed and the final state has
+  no runtime blocks or active path. These are timing recoveries, not permanent
+  map-data candidates. Final frame167280: hero at Garinham entrance(1,14),
+  both doors open, clear field.
+
 - Kol cleanup is complete (player acceptance, 2026-09-17). The player
   validated the final Old Man4 and Person2 targets, reloaded, and exited/
   re-entered town a couple of times with Person2 in bounds each time. Combined

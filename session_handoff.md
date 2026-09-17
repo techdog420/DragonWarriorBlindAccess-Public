@@ -4,6 +4,17 @@ Updated: 2026-09-17
 
 ## Current implementation
 
+- Garinham polishing is player-accepted and complete (2026-09-17). Map09 now
+  has the verified Bank00 town collision/hazard table: raw0 grass is walkable
+  and raw4 stone is blocked. After the player reload, the open-door entrance
+  audit reached 21/22 modeled routes; the sole Tool Merchant overlap was
+  transient. The player manually completed all named NPC/service dialogues,
+  chest routes, and outward/return routes. Four one-cell drift recoveries
+  (Merchant1, Old Man1, Person1, and the exit return) resolved normally and
+  created no permanent blocker or map-data candidate. Fresh frame167280:
+  hero at entrance(1,14), both doors open, nil path, runtime blocks none.
+  Source/tests/acceptance notes are uncommitted.
+
 - Kol polishing is player-accepted and complete (2026-09-17). The player
   validated Old Man4 and Person2 after the final fixes, reloaded the script,
   and exited/re-entered town a couple of times; Person2 stayed in bounds on

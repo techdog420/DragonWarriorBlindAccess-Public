@@ -363,12 +363,35 @@ local MAP_TILE_WALKABILITY_OVERRIDES = {
         [14] = true,  -- bridge
         [15] = false, -- large tile / counter
     },
-    -- Brecconary pilot: Bank00 town conversion table ($9A00) and
+    -- Brecconary: Bank00 town conversion table ($9A00) and
     -- CheckCollision ($B1CC): converted blocks >= BLK_LRG_TILE block movement.
     -- Normal walking/probes on 2026-09-10 confirmed grass at (14,22)/(13,28)
     -- and blocked stone at (9,19). Keep existing per-cell/door overrides.
     -- Unaudited towns and dungeon tables retain their behavior for now.
     [0x08] = {
+        [0] = true,   -- grass
+        [1] = true,   -- sand
+        [2] = false,  -- water
+        [3] = true,   -- chest
+        [4] = false,  -- stone
+        [5] = true,   -- stairs up
+        [6] = true,   -- brick
+        [7] = true,   -- stairs down
+        [8] = true,   -- trees
+        [9] = true,   -- swamp (hazard)
+        [10] = true,  -- force field (hazard)
+        [11] = false, -- closed door (opened doors handled separately)
+        [12] = false, -- weapon-shop sign
+        [13] = false, -- inn sign
+        [14] = true,  -- bridge
+        [15] = false, -- large tile / counter
+    },
+    -- Garinham: same Bank00 town conversion/collision rules as Kol and
+    -- Brecconary. A normal-origin raw probe on 2026-09-17 crossed grass
+    -- `(3,13)->RIGHT` into `(4,13)` and carried through `(5,13)`, while the
+    -- old town table incorrectly modeled raw type 0 as blocked. Keep the
+    -- existing map-specific passthrough, directional, and door rules intact.
+    [0x09] = {
         [0] = true,   -- grass
         [1] = true,   -- sand
         [2] = false,  -- water
@@ -2040,8 +2063,8 @@ local function hazard_for_cell(map_id, x, y, tile_type)
         return explicit
     end
 
-    -- Match the verified Kol/Brecconary town tables; leave other maps alone.
-    if map_id == 0x07 or map_id == 0x08 then
+    -- Match the verified Kol/Brecconary/Garinham town tables; leave other maps alone.
+    if map_id == 0x07 or map_id == 0x08 or map_id == 0x09 then
         if tile_type == nil then tile_type = M.get_tile_type(map_id, x, y) end
         if tile_type == 9 then return "poison_swamp" end
         if tile_type == 10 then return "damage" end

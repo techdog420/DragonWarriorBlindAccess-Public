@@ -1836,7 +1836,7 @@ function tests.garinham_grave_dark_wall_entry_is_passthrough()
     local lower_bridge = env.map_reader.get_walkability_details(0x09, 19, 10)
     assert_equal(lower_bridge.tile_type, 2, "mocked Garinham lower bridge tile should match live wall type")
     assert_equal(lower_bridge.effective_walkable, false, "Garinham (19,10) should stay blocked after same-origin route/probe proof")
-    assert_equal(lower_bridge.reason, "tile_type", "Garinham (19,10) should no longer report passthrough")
+    assert_equal(lower_bridge.reason, "map_tile_type", "Garinham (19,10) should no longer report passthrough")
     local tool_pocket_passage = env.map_reader.get_walkability_details(0x09, 3, 13)
     assert_equal(tool_pocket_passage.tile_type, 2, "mocked Garinham tool-pocket passage should match live type-2 wall")
     assert_equal(tool_pocket_passage.effective_walkable, true, "Garinham (3,13) should be walkable after same-origin sweep/probe proof")
@@ -6429,7 +6429,7 @@ function tests.kol_terrain_decodes_collision_hazards_and_failed_door_route_cells
     env.restore()
 end
 
-function tests.brecconary_terrain_pilot_does_not_change_neighboring_towns_or_dungeons()
+function tests.verified_town_terrain_tables_do_not_change_dungeon_models()
     local data_start = 0x1010
     local rom_bytes = {}
     for _, map_id in ipairs({0x08, 0x09, 0x12}) do
@@ -6440,8 +6440,34 @@ function tests.brecconary_terrain_pilot_does_not_change_neighboring_towns_or_dun
     fill_packed_map(rom_bytes, data_start, 30, 30, 0)
     local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
     assert_equal(env.map_reader.is_walkable(0x08, 14, 22), true, "Brecconary grass should use the pilot")
-    assert_equal(env.map_reader.is_walkable(0x09, 14, 22), false, "Garinham retains the existing town model")
+    assert_equal(env.map_reader.is_walkable(0x09, 14, 22), true, "Garinham grass should use the verified town table")
     assert_equal(env.map_reader.is_walkable(0x12, 14, 22), false, "Charlock B4 type-zero stone remains blocked")
+    env.restore()
+end
+
+function tests.garinham_uses_verified_bank00_town_collision_table()
+    local data_start = 0x1010
+    local base = 9 * 5
+    local rom_bytes = {[base] = 0, [base+1] = 0x90, [base+2] = 23, [base+3] = 23, [base+4] = 0}
+    fill_packed_map(rom_bytes, data_start, 24, 24, 0)
+    -- Use y=20, outside Garinham's real 20x20 map, so this generic table
+    -- fixture cannot overlap a permanent door or map-specific seam override.
+    for tile = 0, 15 do set_packed_block(rom_bytes, data_start, 24, tile + 1, 20, tile) end
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local safe = env.map_reader.get_walkability_snapshot(0x09)
+    local hazardous = env.map_reader.get_walkability_snapshot(0x09, {allow_hazards = true})
+    local impassable = {[2]=true, [4]=true, [11]=true, [12]=true, [13]=true, [15]=true}
+    for tile = 0, 15 do
+        assert_equal(hazardous[20][tile + 1], not impassable[tile], "Garinham collision for tile " .. tile)
+        assert_equal(safe[20][tile + 1], not impassable[tile] and tile ~= 9 and tile ~= 10,
+            "Garinham safe routing for tile " .. tile)
+    end
+    assert_equal(env.map_reader.is_hazard_cell(0x09, 10, 20), "poison_swamp", "Garinham swamp is hazardous")
+    assert_equal(env.map_reader.is_hazard_cell(0x09, 11, 20), "damage", "Garinham force field is hazardous")
+    assert_equal(safe[20][1], true, "Garinham raw grass must be walkable")
+    assert_equal(safe[20][5], false, "Garinham raw stone must be blocked")
+    assert_equal(env.map_reader.get_walkability_details(0x09, 5, 20).reason, "map_tile_type",
+        "Garinham stone should use the map-scoped collision table")
     env.restore()
 end
 
