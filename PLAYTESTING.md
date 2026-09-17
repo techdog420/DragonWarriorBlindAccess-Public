@@ -1,10 +1,59 @@
 # Playtesting Notes
 
-Updated: 2026-09-15
+Updated: 2026-09-17
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Kol cleanup is complete (player acceptance, 2026-09-17). The player
+  validated the final Old Man4 and Person2 targets, reloaded, and exited/
+  re-entered town a couple of times with Person2 in bounds each time. Combined
+  with the earlier successful service/NPC/door outward and return routes and
+  browser reload acceptance, this closes the town pass. Person2's original
+  invalid position remains unexplained; retain it as a watch item. If the
+  routing warning recurs, capture live NPC state/logs before normal re-entry
+  clears the evidence. No additional Kol acceptance test remains.
+
+- Final Kol NPC findings (2026-09-17): the player completed all other outward/
+  return routes successfully. Old Man 4 needed a counter stand at(1,3), facing
+  north toward(1,1); fixed and agent-verified through TALK and return. The
+  approach crosses two swamp tiles, so normal auto-walk stops for manual
+  crossing. Person 2 was outside the map at(5,31). A normal exit/re-entry
+  restored his position;53-step survey, approach/TALK, and56-step return passed
+  without blocked events. Cause of the invalid NPC state remains unconfirmed.
+  New ordinary O/U feedback explains this condition and suggests re-entry;
+  the player has since reloaded main.lua. Agent checkpoint: hero atentrance
+  (19,23), HP86/86, keys2, clear field. Both doors closed on re-entry. Full gate
+  passes41 Lua suites and68 Python tests. Both targets are now player-accepted.
+
+- Object browser after agent debug work (2026-09-17): confirmed that all 20
+  Kol objects remained present, but keyboard handlers changed an old list while
+  speech described the replacement list. The player heard Bath repeatedly,
+  then Exit to World Map repeatedly after a debug next_object command.
+  Fixed navigation reload to reconnect the keyboard handlers. Regression and
+  full gates pass. Player reloaded main.lua, agent triggered inspect_tile's
+  debug reload, and player confirmed normal L/J/K browsing afterward. Accepted.
+
+- Kol player validation (2026-09-17): all three service routes reported perfect;
+  logs confirm Inn25/25, Tool Merchant45/45, Weapons Merchant16/16-step round
+  trips. Both doors were open at this halfway NPC checkpoint; see the final
+  two findings and subsequent door reset above.
+  Old Man1's return needed one two-step detour after its first LEFT from(2,13)
+  timed out. Return completed normally. Two normal-arrival raw probes later
+  crossed that exact edge into(1,13), with no NPC/directional block. Record as
+  transient timing to watch; no new permanent block or global timing change.
+
+- Kol West Side Door rerouting fixed and agent-validated (2026-09-15). The old
+  town table allowed routes through stone and blocked grass. Normal-arrival
+  raw probes confirmed both errors; Kol now uses the verified town collision
+  table and hazard handling. Original entrance-to-door route and return each
+  completed64 steps without blocked events or reroutes, with mobile-NPC parking
+  enabled/restored. All41 Lua suites /68 Python tests pass (87 map-reader tests).
+  Final hero(1,15), clear field, nil path, runtime none, bridge ready. Both doors
+  still closed, keys4; user can open West Side Door from the current stand.
+  Route length, remaining audit flags, other door access, and Tool Merchant
+  acceptance were pending here; the September17 acceptance above closes them.
 
 - Brecconary town cleanup is complete (player acceptance, 2026-09-15): the user
   manually visited every NPC and reported a couple of drifts but no reroutes.

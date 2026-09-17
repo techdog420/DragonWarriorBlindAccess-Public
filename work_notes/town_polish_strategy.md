@@ -1,6 +1,7 @@
 # Proposed town polishing workflow
 
-Reviewed 2026-09-10. Recommendation only; no live movement or map edits performed.
+Reviewed 2026-09-10; terrain preflight made explicit2026-09-17 after the
+Brecconary/Kol corrections. Initial recommendation below predates those fixes.
 Quick-services commit fb3b13b matches origin/codex/quick-services after fetch.
 
 ## Recommendation
@@ -45,8 +46,16 @@ and return paths. A service passing once is not whole-town completion.
 2. Briefly compare raw ROM layout decoding against independent local map
    references, and predicted movement against actual walked evidence in two
    towns. Inspect dimensions, nibble order, tileset choice, counter interpretation,
-   and old overrides. If failures share a pattern, investigate the shared rule
-   before accumulating coordinate exceptions. Do not remove old fixes wholesale.
+   and old overrides. For every remaining town, explicitly check raw0 grass
+   and raw4 stone against the game's town conversion/collision table and safe
+   normal-arrival movement probes before adding coordinate exceptions. Record
+   which terrain table the map actually uses and its validation status. The old
+   base table reversed these meanings in Brecconary/Kol, making missing routes
+   and wall reroutes appear to need many isolated patches. Verify door state
+   and raw9/A hazards separately; retain validated per-map exceptions. If other
+   failures share a pattern, investigate the shared rule before accumulating
+   coordinate exceptions. Do not remove old fixes wholesale or apply an
+   unaudited town/dungeon-wide change solely from another map's evidence.
 3. Inventory each target's ID, role, interaction stand/facing, and modeled route
    with and without NPCs. Services and exits first, then other talkable NPCs.
    Group failures sharing the same disconnected area or rejected edge.

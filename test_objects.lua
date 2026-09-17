@@ -2901,6 +2901,31 @@ function tests.kol_confirmed_services_and_dialogue_merchant_filtering()
     env.restore()
 end
 
+function tests.kol_old_man_uses_public_counter_without_becoming_a_service()
+    local env = make_env({npc_count = 11})
+    env.set_position(0x07, 1, 6)
+    env.set_terrain_offset(0x10)
+    env.set_npc(10, 0xA1, 0x41, 0) -- stationary Old Man at (1,1)
+    env.objects.refresh(0x07)
+    local obj = find_by_id(env.objects, "npc_10")
+    assert_equal(obj.interaction_x, 1, "Kol clue NPC public counter stand X")
+    assert_equal(obj.interaction_y, 3, "talk across the counter, not from its blocked tile")
+    assert_equal(obj.interaction_face_dir, "north", "face the clue NPC across the counter")
+    assert_equal(obj.service, false, "ordinary weapons advice must not become a shop")
+    env.objects.select_object_by_id("npc_10")
+    local description = env.objects.describe_current({map_id = 0x07})
+    assert_equal(description:find("counter", 1, true) ~= nil, true,
+        "live target description must retain the public stand")
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    assert_equal(env.objects.get_count(), 0, "advice NPC stays out of Services")
+    env.set_position(0x08, 1, 6)
+    env.objects.refresh(0x08)
+    assert_equal(find_by_id(env.objects, "npc_10").interaction_y, nil,
+        "the Kol counter must not affect the same cell in Brecconary")
+    env.restore()
+end
+
 function tests.kol_exposes_bath_without_hidden_search_tile()
     local env = make_env({npc_count = 0})
     env.set_terrain_offset(0x10)

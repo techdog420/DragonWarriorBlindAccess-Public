@@ -540,6 +540,108 @@ end
 
 local tests = {}
 
+-- Exercise the actual debug-reload coordinator without starting the emulator
+-- loop. Keep real hotkeys and its stub dependencies; unrelated debug modules
+-- need only their registration hooks for this regression.
+local function reload_navigation_from_main()
+    local file = assert(io.open("main.lua", "r"))
+    local source = file:read("*a")
+    file:close()
+    local coordinator = assert(source:match(
+        "(local function refresh_navigation_modules%(%)\n.-\nend)\n\nlocal function ensure_navigation_modules_fresh"),
+        "main navigation reload coordinator not found")
+    local chunk = assert(loadstring(coordinator .. "\nrefresh_navigation_modules()"))
+    setfenv(chunk, {
+        package = {loaded = setmetatable({}, {
+            __newindex = function(_, name, value)
+                if name == "objects" or name == "map_reader" or name == "overworld_routes" then
+                    package.loaded[name] = value
+                end
+            end,
+        })},
+        require = function(name)
+            if name == "objects" or name == "map_reader" or name == "overworld_routes" then
+                return require(name)
+            end
+            return {register = function() end, refresh_after_module_reload = function() end}
+        end,
+        route_mgr = require "route_manager",
+        hotkeys = require "hotkeys",
+        debug_tools = require "debug_tools",
+    })
+    chunk()
+end
+
+function tests.debug_reload_keeps_keyboard_selection_and_narration_on_same_list()
+    local env = make_env({delay = 0})
+    local names = {"Bath", "Exit to World Map", "Guard"}
+    local live_index, live_filter, visited = 1, "All", nil
+    local old_objects = require "objects"
+    package.preload["objects"] = function()
+        local replacement = {}
+        for key, value in pairs(old_objects) do replacement[key] = value end
+        replacement.current_object = function() return {name = names[live_index]} end
+        replacement.next_object = function()
+            live_index = live_index % #names + 1
+            return replacement.current_object()
+        end
+        replacement.prev_object = function()
+            live_index = (live_index - 2) % #names + 1
+            return replacement.current_object()
+        end
+        replacement.get_filter_name = function() return live_filter end
+        replacement.next_filter = function() live_filter = "Services"; return live_filter end
+        replacement.mark_current_visited = function()
+            visited = names[live_index]
+            return replacement.current_object()
+        end
+        return replacement
+    end
+    local routes = require "route_manager"
+    routes.describe_current_object = function() return require("objects").current_object().name end
+    routes.pathfind_to_current = function() visited = require("objects").current_object().name end
+
+    reload_navigation_from_main()
+    env.update({L = true})
+    assert_equal(env.outputs[#env.outputs].message, "Exit to World Map", "L must advance the narrated list after debug reload")
+    env.update({})
+    env.update({L = true})
+    assert_equal(env.outputs[#env.outputs].message, "Guard", "second L must keep advancing")
+    env.update({})
+    env.update({J = true})
+    assert_equal(env.outputs[#env.outputs].message, "Exit to World Map", "J must reverse the same selection")
+    env.update({})
+    env.update({K = true})
+    assert_equal(env.outputs[#env.outputs].message, "Exit to World Map", "K must reread the same selection")
+    env.update({})
+    env.update({Q = true})
+    assert_equal(require("objects").get_filter_name(), "Services", "category keys must change the live filter")
+    env.update({})
+    env.update({Shift = true, V = true})
+    assert_equal(visited, "Exit to World Map", "visited key must mark the live selection")
+    visited = nil
+    env.update({})
+    env.update({O = true})
+    assert_equal(visited, "Exit to World Map", "routing must target the browsed selection")
+    env.restore()
+end
+
+function tests.debug_reload_clears_stale_speech_and_deferred_walk_without_repeating_held_keys()
+    local env = make_env({delay = 3})
+    env.update({L = true})
+    assert_equal(env.pending(), "Object 1", "old list description should be pending")
+    reload_navigation_from_main()
+    assert_equal(env.pending(), nil, "reload must discard speech for the old selection")
+    env.update({L = true})
+    assert_equal(env.pending(), nil, "reload must preserve key edges rather than repeat a held L")
+    env.update({})
+    env.update({U = true})
+    reload_navigation_from_main()
+    env.update({})
+    assert_equal(env.autowalk_calls(), 0, "releasing U must not walk to a replacement selection")
+    env.restore()
+end
+
 function tests.next_object_waits_for_idle_gap_before_speaking()
     local env = make_env({delay = 2})
 

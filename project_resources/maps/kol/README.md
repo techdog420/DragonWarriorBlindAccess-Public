@@ -2,6 +2,15 @@
 
 Fetched: 2026-05-15
 
+Current status (2026-09-17): Kol's town polishing pass is player-accepted and
+complete. Service, NPC, door, and return routes passed, including the final
+Old Man4 counter correction and Person2 recovery. Person2 stayed in bounds
+through the player's subsequent reload and repeated town entries. His original
+out-of-bounds runtime position remains a watch item; capture state before
+re-entry if the routing warning recurs. Earlier investigation notes below are
+historical; current acceptance details are in PLAYTESTING.md and
+work_notes/current_investigation.md.
+
 ## Local Images
 
 - `external/mikesrpgcenter_kol.png`
@@ -133,10 +142,12 @@ Live findings from the stopped survey:
   facing west.
 - `Old Man 4` is the better-weapons clue NPC at `(1,1)`. Live TALK read that
   Bill cannot defeat the Dragonlord with current weapons and should come back
-  again. `debug_pathfind_adjacent:1,1` from `(1,22)` now chooses stand `(1,2)`
-  facing north. The earlier row-2 route loop proved directional blockers
-  `(9,2).east`, `(2,1).east`, and `(2,2).east`; those are modeled in
-  `map_reader.lua` without closing the neighboring cells wholesale.
+  again. September17 normal walking/TALK verified the public stand `(1,3)`,
+  facing north across the impassable counter `(1,2)`. `objects.lua` supplies
+  that stand without classifying the NPC as a service. This supersedes the
+  older adjacent-plan suggestion of standing on `(1,2)`. The approach crosses
+  swamp `(1,5)` and `(1,4)`; auto-walk retains its warning/stop for manual
+  hazard crossing. Both outward crossing and return passed live.
 - The guide note about a cellar west of Kol refers to the overworld
   `Northern Cave` / `Rain Shrine`, not a Kol town basement. The staged route
   starts from world-map Kol `(104,10)` and targets the existing

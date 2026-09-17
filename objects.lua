@@ -1690,6 +1690,17 @@ local SERVICE_ROLE_OVERRIDES = {
             ["Merchant 3"] = {name = "Weapons Merchant", infer_counter = true},
             ["Merchant 4"] = {name = "Tool Merchant", infer_counter = true},
         },
+        cells = {
+            -- Weapons-advice NPC, not a shop. Normal walking on 2026-09-17
+            -- reached (1,3); north-facing TALK spoke to Old Man 4 at (1,1)
+            -- across the impassable raw-F counter (1,2). The public approach
+            -- crosses swamp; retain the usual hazard preview/stop policy.
+            ["1,1"] = {
+                service = false, infer_counter = false,
+                interaction_x = 1, interaction_y = 3,
+                interaction_face_dir = "north", interaction_label = "counter",
+            },
+        },
     },
     -- Confirmed Brecconary special-service NPCs that are not merchant sprites.
     -- They should appear in Services, but route like ordinary adjacent NPCs.

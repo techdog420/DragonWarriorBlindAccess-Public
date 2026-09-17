@@ -2605,6 +2605,9 @@ local function build_pathfind_message(obj, result, face_dir, no_path_reason)
     end
     if result == "No path found" and no_path_reason == "goal_out_of_bounds" then
         msg = msg .. ". Target is outside this map"
+        if obj.type == objects.TYPE_NPC then
+            msg = msg .. ". Leave and re-enter the area to refresh NPC positions"
+        end
         return msg
     end
     if obj.service and result == "No path found" then
@@ -3011,6 +3014,14 @@ local function find_stationary_npc_on_path(path)
 end
 
 local function infer_no_path_reason(map_id, start_x, start_y, blocking, obj, path_mode, opts)
+    -- Normal O/U requests do not install the debug pathfinder stats callbacks.
+    -- Still identify invalid live NPC coordinates before testing doors/clutter.
+    if obj then
+        local goal_x, goal_y = get_plan_goal(obj)
+        if goal_is_out_of_bounds(map_id, goal_x, goal_y) then
+            return "goal_out_of_bounds"
+        end
+    end
     if obj and not (opts and opts.blocking) then
         local goal_x, goal_y = get_plan_goal(obj)
         local npc_free_blocking = M.build_path_blocking(map_id, {skip_npcs = true})

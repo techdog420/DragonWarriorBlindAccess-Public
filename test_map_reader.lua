@@ -3929,14 +3929,21 @@ end
 
 function tests.kol_entry_exit_tiles_are_passthrough_false_walls()
     local base = 7 * 5
+    local data_start = 0x1010
+    local rom_bytes = {
+        [base] = 0x00, [base + 1] = 0x90,
+        [base + 2] = 23, [base + 3] = 23, [base + 4] = 0,
+    }
+    fill_packed_map(rom_bytes, data_start, 24, 24, 0)
+    -- Use the captured ROM terrain for these old bridge candidates. A zero
+    -- fixture means grass, not a wall under the verified Kol town table.
+    for _, cell in ipairs({{4,14}, {4,17}, {7,14}}) do
+        set_packed_block(rom_bytes, data_start, 24, cell[1], cell[2], 4)
+    end
+    set_packed_block(rom_bytes, data_start, 24, 6, 14, 1)
+    set_packed_block(rom_bytes, data_start, 24, 17, 23, 8)
     local env = make_env({
-        rom_bytes = {
-            [base] = 0x00,
-            [base + 1] = 0x80,
-            [base + 2] = 23,
-            [base + 3] = 23,
-            [base + 4] = 0,
-        },
+        rom_bytes = rom_bytes,
         memory_bytes = {
             [0] = 0x10,
         },
@@ -3952,9 +3959,9 @@ function tests.kol_entry_exit_tiles_are_passthrough_false_walls()
     assert_equal(env.map_reader.is_walkable(0x07, 0, 17), false, "nearby unconfirmed west-edge cells should stay non-walkable")
     assert_equal(env.map_reader.is_walkable(0x07, 4, 14), false, "(4,14) should stay non-walkable after failed West Side Door bridge probes")
     assert_equal(env.map_reader.is_walkable(0x07, 4, 17), false, "unproven Tool Merchant hidden-bridge sibling (4,17) should stay non-walkable")
-    assert_equal(env.map_reader.is_walkable(0x07, 6, 14), false, "unproven Kol hidden-throat sibling (6,14) should stay non-walkable")
+    assert_equal(env.map_reader.is_walkable(0x07, 6, 14), true, "Kol sand (6,14) is walkable under the verified terrain table")
     assert_equal(env.map_reader.is_walkable(0x07, 7, 14), false, "unproven Kol hidden-throat sibling (7,14) should stay non-walkable")
-    assert_equal(env.map_reader.is_walkable(0x07, 17, 23), false, "nearby unconfirmed type-0 cells should stay non-walkable")
+    assert_equal(env.map_reader.is_walkable(0x07, 17, 23), true, "captured Kol tree tile remains walkable")
 
     local details = env.map_reader.get_walkability_details(0x07, 1, 17)
     assert_equal(details.reason, "passthrough", "(1,17) should report the passthrough override")
@@ -3975,13 +3982,13 @@ function tests.kol_entry_exit_tiles_are_passthrough_false_walls()
     assert_equal(snapshot[17][3], true, "walkability snapshot should include the Tool Merchant hidden bridge")
     assert_equal(snapshot[17][2], true, "walkability snapshot should include the West Side Door hidden bridge")
     assert_equal(snapshot[17][4], false, "walkability snapshot should keep unproven Tool Merchant bridge siblings closed")
-    assert_equal(snapshot[14][6], false, "walkability snapshot should keep unproven Kol hidden-throat siblings closed")
+    assert_equal(snapshot[14][6], true, "walkability snapshot should allow the captured Kol sand tile")
     assert_equal(snapshot[14][7], false, "walkability snapshot should keep unproven Kol hidden-throat siblings closed")
     assert_equal(snapshot[17][0], false, "walkability snapshot should keep unconfirmed west-edge cells closed")
     assert_equal(snapshot[23][18], true, "walkability snapshot should include the west Kol entry strip")
     assert_equal(snapshot[23][19], true, "walkability snapshot should include the Kol exit tile")
     assert_equal(snapshot[23][20], true, "walkability snapshot should include the adjacent Kol entry strip")
-    assert_equal(snapshot[23][17], false, "walkability snapshot should keep unconfirmed bottom-edge cells closed")
+    assert_equal(snapshot[23][17], true, "walkability snapshot should allow the captured tree tile")
 
     env.restore()
 end
@@ -6387,6 +6394,38 @@ function tests.brecconary_terrain_pilot_decodes_collision_and_hazards()
     assert_equal(safe[22][14], true, "normally walked grass connector should be modeled")
     assert_equal(safe[15][0], false, "west exit remains an engine boundary")
     assert_equal(safe[0][1], false, "north boundary remains blocked")
+    env.restore()
+end
+
+function tests.kol_terrain_decodes_collision_hazards_and_failed_door_route_cells()
+    local data_start = 0x1010
+    local base = 7 * 5
+    local rom_bytes = {[base] = 0, [base+1] = 0x90, [base+2] = 23, [base+3] = 23, [base+4] = 0}
+    fill_packed_map(rom_bytes, data_start, 24, 24, 0)
+    for tile = 0, 15 do set_packed_block(rom_bytes, data_start, 24, tile+1, 6, tile) end
+    for _, cell in ipairs({{7,3}, {16,23}, {10,17}, {7,14}}) do
+        set_packed_block(rom_bytes, data_start, 24, cell[1], cell[2], 4)
+    end
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local safe = env.map_reader.get_walkability_snapshot(0x07)
+    local hazardous = env.map_reader.get_walkability_snapshot(0x07, {allow_hazards = true})
+    local impassable = {[2]=true, [4]=true, [11]=true, [12]=true, [13]=true, [15]=true}
+    for tile = 0, 15 do
+        assert_equal(hazardous[6][tile+1], not impassable[tile], "Kol collision for tile " .. tile)
+        assert_equal(safe[6][tile+1], not impassable[tile] and tile ~= 9 and tile ~= 10,
+            "Kol safe routing for tile " .. tile)
+    end
+    assert_equal(env.map_reader.is_hazard_cell(0x07, 10, 6), "poison_swamp", "Kol swamp is hazardous")
+    assert_equal(env.map_reader.is_hazard_cell(0x07, 11, 6), "damage", "Kol force field is hazardous")
+    assert_equal(safe[1][4], true, "raw-probed Kol grass must be walkable in both directions")
+    for _, cell in ipairs({{7,3}, {16,23}, {10,17}, {7,14}}) do
+        assert_equal(safe[cell[2]][cell[1]], false, "Kol door route must avoid stone at " .. cell[1] .. "," .. cell[2])
+    end
+    assert_equal(env.map_reader.get_walkability_details(0x07, 7, 3).reason, "map_tile_type",
+        "raw-probed stone should use Kol's collision table")
+    assert_equal(safe[14][1], false, "west-side door remains closed without door RAM")
+    assert_equal(safe[12][7], false, "western-building door remains closed without door RAM")
+    assert_equal(safe[1][0], false, "west map boundary remains blocked")
     env.restore()
 end
 

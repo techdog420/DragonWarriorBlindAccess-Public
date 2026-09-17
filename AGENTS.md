@@ -265,6 +265,14 @@ When debugging pathfinding:
 
 ## Rules for map-decoding work
 
+- Begin every remaining town audit with a terrain-classification check. Compare
+  the raw tile IDs with the game's town conversion/collision table, especially
+  raw0 grass versus raw4 stone; verify a safe grass crossing and a stone edge
+  from normally reached origins before adding individual map overrides. Kol
+  and Brecconary proved that the old base table reversed these meanings and
+  caused both missing routes and repeated wall reroutes. Check door state and
+  raw9/A hazard handling separately. Record whether that town uses the verified
+  table; do not infer that an unaudited town or dungeon has been validated.
 When working on unstarted or partially decoded maps:
 - Before starting a new map or major new floor, look up external map or
   walkthrough guidance for intended layout, route shape, relevant objects, and

@@ -1026,12 +1026,21 @@ quality-of-life work.
   was manually visited, with a couple of drifts and no reroutes. Changes were
   committed/pushed as b559642 on codex/town-audit; remote verification passed.
   Evidence: work_notes/town_decoder_findings.md.
-- Prioritize a Kol service-route polishing pass next. The 2026-09-10 Tool
-  Merchant walk from (19,23) to stand (12,21) hit repeated reroutes and did not
-  arrive before the player stopped it. Reproduce the failed west approaches
-  at (16,23), (10,17), and (7,14), distinguish geometry from timing/NPC state,
-  and verify approach/return routes for all three services. Single-run evidence
-  is recorded in `work_notes/current_investigation.md`; no map data promoted.
+- Kol polishing is player-accepted and complete on codex/kol-town-polish
+  (September17); commit/push and integration remain.
+  The source-backed town collision/hazard table fixed grass/stone routing;
+  the player completed all service and NPC outward/return routes except the
+  final two findings investigated September17. Old Man4 now uses the verified
+  north-facing counter stand(1,3), retaining manual swamp crossing. Person2's
+  invalid out-of-map position recovered on normal town re-entry; subsequent
+  survey, approach/TALK, and return passed. Normal O/U now explains out-of-map
+  NPCs and suggests re-entry. The player validated both targets, reloaded, and
+  exited/re-entered town a couple of times; Person2 stayed in bounds each time.
+  Keep the origin of Person2's invalid coordinates and the earlier isolated
+  Old Man1 return timeout as watch items; neither warrants speculative map
+  blocks or NPC RAM repair. If the out-of-bounds routing warning recurs,
+  capture NPC state/logs before re-entry. No further Kol acceptance test is
+  outstanding. Evidence: work_notes/current_investigation.md.
 - Consider service-type search or cross-town service lookup after the current-map
   shortcut is playtested; reuse verified service roles and interaction stands.
 - Add named bookmarks for player-chosen locations such as a favorite grinding
@@ -1056,6 +1065,13 @@ quality-of-life work.
   into multiple files.
 
 ## Map Decoding
+
+- Every remaining town audit must start with a terrain-classification check:
+  verify raw0 grass/raw4 stone against the town conversion/collision table and
+  safe live probes, with doors and hazards checked separately. Kol and
+  Brecconary showed the old reversed table caused widespread false routes and
+  apparent disconnections. Follow work_notes/town_polish_strategy.md before
+  adding more per-cell overrides; unaudited maps remain unvalidated.
 
 - Brecconary tool-shop follow-up is closed. Missing grass passthroughs and
   wall-approach corrections restored the public counter at(23,25); ordinary

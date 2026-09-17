@@ -195,6 +195,18 @@ local function clear_object_nav_speech()
     pending_object_nav_frames = 0
 end
 
+-- Debug commands replace the stateful objects module while keeping hotkeys
+-- alive. Rebind its navigation dependencies so selection, speech, and routing
+-- share the new list. Preserve held-key edges and the registered handlers.
+function M.refresh_navigation_modules()
+    objects = require "objects"
+    map_reader = require "map_reader"
+    overworld_routes = require "overworld_routes"
+    clear_object_nav_speech()
+    pending_auto_walk_after_key_release = false
+    debug_tools.info("HOTKEY_NAVIGATION_MODULES_REFRESHED")
+end
+
 local function speak_now(message)
     clear_object_nav_speech()
     local ok, err = pcall(tolk.output_interrupt, message)

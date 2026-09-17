@@ -1,8 +1,86 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-15
+Updated: 2026-09-17
 
 ## Current implementation
+
+- Kol polishing is player-accepted and complete (2026-09-17). The player
+  validated Old Man4 and Person2 after the final fixes, reloaded the script,
+  and exited/re-entered town a couple of times; Person2 stayed in bounds on
+  each attempt. This closes the service/NPC/door route pass and the accepted
+  browser reload fix. No further Kol acceptance test is outstanding. The
+  unexplained NPC position and isolated Old Man1 timeout remain watch items,
+  not completion blockers. Capture live NPC state/logs before re-entry if the
+  out-of-bounds routing warning recurs. Ready for commit/push on
+  codex/kol-town-polish; publication/merge has not been performed.
+
+- September17 final Kol NPC findings: the player finished every other outward/
+  return route successfully. Old Man4 now routes to public stand(1,3), facing
+  north across counter(1,2), rather than seeking an impossible adjacent tile.
+  Live approach/TALK/return passed; the two swamp tiles retain the existing
+  manual-crossing warning/stop. This advice NPC stays out of Services.
+  Person2 had invalid live coordinates(5,31) outside Kol24x24. Normal town
+  exit/re-entry restored him;53-step survey, ordinary approach/TALK, and56-step
+  return passed with no blocked events. The original invalid-state cause is
+  unconfirmed. Normal O/U failures now explain an out-of-map NPC and suggest
+  leaving/re-entering; the player has now reloaded main.lua. Full gate passes
+  41 Lua suites and68 Python tests,
+  including125 object and164 route-manager tests; syntax/diff checks pass.
+  Agent checkpoint96480: hero atentrance(19,23), clear field/guards, runtime
+  none, HP86/86, keys2. Both doors closed on re-entry. The later player
+  acceptance is recorded above; changes remain uncommitted.
+
+- September 17 browser debug-reload fix: the apparent one-object list was a
+  stale hotkeys module reference. Live Bath was 1 of 20; debug next_object
+  changed it to Exit to World Map, but player L presses kept repeating that
+  same entity. main now rebinds hotkeys navigation dependencies after debug
+  refresh, keeping keyboard selection and narration on the same objects list.
+  It also cancels stale pending speech/deferred U while preserving held-key
+  edges. Two regressions fail before the fix and pass afterward; all 53 hotkey
+  tests, 41 Lua suites, and 68 Python tests pass. Player reloaded main.lua;
+  inspect_tile triggered the new hotkey reconnection log at960, and the player
+  confirmed normal L/J/K browsing afterward. Fresh2820: Guard 2 selected,
+  4 of 20; hero at Kol entrance(19,23), clear field/guards. Browser fix accepted;
+  final two NPC findings are recorded above. Changes remain uncommitted.
+
+- September17 player validation:all three Kol service routes passed perfectly
+  per user; logs confirm Inn25/25, Tool Merchant45/45, Weapons16/16-step round
+  trips. This was the halfway NPC checkpoint, with both doors open and keys2;
+  final validation and the later door reset are recorded above.
+  Old Man1 return had one first-step timeout from(2,13) LEFT into(1,13), then
+  completed a two-step detour. Two later normal-arrival raw probes crossed that
+  exact edge, supporting transient timing rather than permanent geometry.
+  No additional map/cadence changes made; keep as a watch item.
+- Earlier64920:hero atentrance(19,23), clear field/guards, nil path, runtime none,
+  speech bridge ready/error none. Review return completed62411 without blocked
+  steps/reroutes; all parking released. Later NPC validation is complete above.
+  Evidence:work_notes/current_investigation.md and local capture
+  .test_tmp/kol_old_man_return_review_live_20260917.log. Remaining-town audit
+  workflow now explicitly requires raw0 grass/raw4 stone checks before cell
+  patches (AGENTS.md and work_notes/town_polish_strategy.md).
+
+- Main is published at2be96d4, independently verified against GitHub. Active
+  branch:codex/kol-town-polish. Kol's West Side Door reroute loop is fixed and
+  agent-validated: source-backed town collision/hazard rules now also apply to
+  map07. Raw probes confirmed stone(7,3) blocked and grass(4,1) walkable both
+  ways. Per-cell/directional/door rules and other maps remain unchanged.
+  All87 map-reader tests,41 Lua suites,68 Python tests pass. Idle audit_town
+  refreshed map_reader; no manual reload is currently needed.
+- Live West Side Door access passed from(5,1), then a64-step round trip from
+  door stand(1,15) to entrance(19,23) and back passed without blocked steps or
+  reroutes, using the user's enabled mobile-NPC parking. Nine NPCs restored
+  after every route. This was the September15 closed-door checkpoint; the
+  player subsequently validated Tool Merchant and opened both doors above.
+- September15 checkpoint46860:hero atWest Side Door stand(1,15), field/guards
+  clear, nil path, runtime none, bridge ready. Doors were closed, keys4.
+  September17 player route to Western Building Door and return also passed.
+- Latest saved audit (before door opening):town_audit_07_20260916T005245Z_001, from entrance(19,23),13/20
+  modeled reachable,4 NPC-obstructed,3 model-blocked,4 NPC-only return concerns.
+  Model-blocked targets:Person2(0,3), Old Man4(1,1), Old Man1(1,11). Both closed
+  doors, hazards, and moving NPCs affected this historical snapshot. Later
+  route/TALK tests and player acceptance supersede it for completion status.
+  Details:work_notes/current_investigation.md. Local live capture:
+  .test_tmp/kol_west_door_fixed_live.log. Source/tests/notes are uncommitted.
 
 - Brecconary cleanup is player-accepted and complete (2026-09-15): the user
   manually visited every NPC, with a couple of drifts but no reroutes. Commit
@@ -11,8 +89,8 @@ Updated: 2026-09-15
   GitHub verification confirmed b559642 before integration. Acceptance notes
   were committed as a355859, then main fast-forwarded from fed84fb to a355859
   without conflicts on2026-09-15. Code remains identical to the tested b559642;
-  only acceptance/integration documentation changed afterward. Kol is next,
-  using a separate codex/kol-town-polish branch after main is published.
+  only acceptance/integration documentation changed afterward. Kol now uses
+  the separate codex/kol-town-polish branch from published main.
 
 - Quick-services (`fb3b13b`), the town audit (`6deef92`), and the accepted
   Brecconary fixes (`b559642`) are now included in main.
@@ -78,7 +156,7 @@ Updated: 2026-09-15
   closed-door audits had two gated targets and changing NPC-only obstructions.
   Ordinary walking verified both opened doorways inward/outward, the fairy-water
   counter(22,4), and inn west room(3,22). No new TALK/purchase check was performed.
-- Latest hero state: Brecconary(1,15), frame45420 in the fresh retest session,
+- Brecconary retest ended at(1,15), frame45420 in that retest session,
   nil path, zero runtime blockers, clear field/input guards, bridge ready without
   errors; all survey freeze and route parking released. Config unchanged.
   Final audit: town_audit_08_20260915T195938Z_001.json/.txt.

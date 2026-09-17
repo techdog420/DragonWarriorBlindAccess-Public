@@ -1,5 +1,229 @@
 # Current Investigation Scratchpad
 
+## 2026-09-17 Kol final two NPC findings
+
+- Player acceptance closes the Kol town pass: the user validated Old Man4 and
+  Person2, reloaded, and exited/re-entered town a couple of times with Person2
+  in bounds each time. No remaining acceptance blocker. KOL-NPC-STATE-01 stays
+  an unresolved-cause watch item; the new warning is route-request feedback,
+  not continuous NPC monitoring. On recurrence, capture live coordinates/raw
+  slots and recent logs before map re-entry resets the state. Documentation
+  updated only for acceptance; no additional code change or test rerun.
+
+- Player finished all other outward/return routes successfully. Remaining
+  failures: Old Man 4 (npc_10) and Person 2 (npc_1). Fresh34500: Kol(19,23),
+  both doors open, keys2, clear field/guards, no runtime blocks. Original
+  player log: .test_tmp/kol_final_npc_validation_20260917.log.
+- KOL-COUNTER-01 (fixed, player-accepted): Old Man 4 at(1,1) has no
+  walkable adjacent tile. Raw-F counter(1,2) blocks the south approach; public
+  stand(1,3) is brick surrounded on the public side by raw9 swamp. With hazards
+  allowed, the planner finds38 steps from entrance including(1,5)/(1,4).
+  Normal auto-walk reached(1,6), then same-origin probes crossed(1,5),(1,4),
+  and(1,3) at49943/51743/51938. North-facing TALK at54629 spoke the weapons
+  advice, confirming the across-counter interaction. Return probes crossed
+  the same swamp south at66267/66446/66625. No map tiles were changed.
+- objects.lua now gives this dialogue-only NPC interaction(1,3), north,
+  counter; service=false. All125 object tests pass, including a new regression
+  that failed before the fix. inspect_tile hot-refreshed the change at63480;
+  auto_walk_blocker:1,1 from the stand planned goal(1,3), Already there, at65220.
+  From(1,7), the fixed object route queued1 safe step to(1,6) at68040 and
+  delivered the existing two-swamp-tile warning/stop at68099. This preserves
+  the manual-crossing rule for interior hazards. Survey at the isolated public
+  stand was correctly refused by its no-safe-exits preflight; use normal
+  object routing and manual hazard crossing for this target.
+- KOL-NPC-STATE-01 (recovered; cause remains a watch item): Person 2 is a genuine ROM mobile slot1,
+  initially(5,12), Bank00 KolMobTbl $98B6. The failing visit's slot1 was(5,31), outside
+  the24x24 map, with raw05,3F,CF at35700 and05,1F,CF at43920. Player failures
+  already showed(5,31) at19213/26304/28784. The earlier audit's(0,3) was another
+  snapshot position, not fixed map geometry. Slot0 also reached the map's
+  northern edge and later returned inside. Root cause of these runtime
+  positions is not established; do not remove the NPC or invent passability.
+- Ordinary O/U no-path handling missed goal_out_of_bounds without debug stats
+  callbacks. route_manager now checks bounds explicitly during failure
+  classification and adds NPC-specific leave/re-enter guidance. New regression
+  failed before the fix; all164 route-manager tests pass afterward. The player
+  subsequently reloaded main.lua to load the retained route_manager module's
+  new message. No NPC RAM reset/teleport was used.
+- Normal exit/re-entry reset Person 2: left Kol at74558, walked south on the
+  world map, then north into Kol at75923. Fresh76020: entrance(19,23), keys2,
+  both doors closed by normal map entry; Person 2 at(5,11), raw05,8B,00.
+  survey_target:Person 2,park_npcs completed53 steps at79560, blocked_events=0,
+  movement_succeeded=true; all16 survey-parked slots restored. Ordinary
+  turn-twitch timing recovery occurred, without failed-edge rerouting.
+- Follow-up normal approach reached stand(6,14) at81855, faced south toward
+  Person 2 at(6,15), and released manual freeze/parking. TALK at82224 read
+  "Art thou the descendant of Erdrick? Hast thou any proof?" and marked npc_1
+  visited. The56-step return finished86765 with no blocked events; all9 parked
+  NPCs restored. Old Man 4's safe-ground return also finished71264 cleanly.
+- Final96480: hero Kol(19,23), clear field/input guards, no runtime blocks,
+  HP86/86, keys2. Person 2 remains in bounds at(5,13). Both doors are closed
+  after the normal re-entry. Existing user config is unchanged. Final live
+  capture before tests: .test_tmp/kol_last_two_fixed_live_20260917.log.
+  Full gate passes41 Lua suites and68 Python tests, including125 object and164
+  route-manager tests; syntax/diff checks pass. Gate log:
+  .test_tmp/kol_last_two_full_gate_20260917.log.
+
+## 2026-09-17 Object browser repeats one entity after debug work
+
+- BROWSER-RELOAD-01 (high usability impact, cause confirmed): after navigation
+  debug commands, J/L appeared to leave only Bath available. Fresh frame92400
+  at Kol entrance(19,23) reported Bath as 1 of 20; the list was intact.
+  Debug next_object advanced to Exit to World Map, 2 of 20, at95100. The player
+  then pressed L twice and confirmed it repeatedly spoke Exit to World Map.
+- main.refresh_navigation_modules replaces objects and refreshes route_manager
+  and object_commands, but retained hotkeys still held the old objects module.
+  J/L changed the old selection while route_manager narrated the new selection.
+  inspect_tile, inspect_move, audit and edge-debug workflows use this reload.
+- Fix: main now calls hotkeys.refresh_navigation_modules after rebuilding the
+  browser. Rebind objects/map_reader/overworld_routes, discard stale pending
+  speech and deferred U, preserve key edges and registered handlers.
+- Two regressions exercise main's actual reload coordinator: old code repeats
+  Bath and retains stale speech; fixed code passes selection/narration, category,
+  visit, routing, pending speech, deferred walk and held-key checks. All 53
+  hotkey tests pass. Full gate passes 41 Lua suites and 68 Python tests;
+  syntax/diff checks pass.
+  Gate: .test_tmp/kol_browser_full_gate_20260917.log.
+- Live acceptance: player reloaded main.lua. Fresh480 confirmed Kol(19,23),
+  clear field/input guards, Bath 1 of 20. inspect_tile:19,23 at960 triggered
+  HOTKEY_NAVIGATION_MODULES_REFRESHED and NAVIGATION_MODULES_REFRESHED.
+  Player then confirmed L/J/K browse and reread normally. Fresh2820 reported
+  Guard 2, 4 of 20, proving the keyboard changed the shared selection; hero
+  remained(19,23), with clear guards and no injected movement. Accepted fixed.
+  Post-fix capture: .test_tmp/kol_browser_fixed_live_20260917.log.
+- Captures before tests (which truncate the live log):
+  .test_tmp/kol_browser_stuck_20260917.log and
+  .test_tmp/kol_browser_stuck_confirmed_20260917.log.
+
+## 2026-09-17 Kol player validation and Old Man1 return timing review
+
+- Player reports all three service routes worked perfectly and is about halfway
+  through NPC outward/return validation. Log confirms Inn25/25, Tool Merchant
+  45/45, and Weapons Merchant16/16-step round trips; no blocked-step reroutes in
+  those service routes. Western Building Door was reached from West Side Door
+  in44 steps, then its entrance return took22. Both doors are now open.
+- KOL-RETURN-01 (low, timing watch): Old Man1 return began at(2,13), frame33619,
+  targeting entrance(19,23),39 steps. Its first LEFT into(1,13) exhausted the
+  queued-step timing retries at33854; only one temporary route block/reroute.
+  No directional-map change was made. The41-step detour went via(2,12)/(1,12),
+  entered(1,13) from north at34017, and completed at35476 with all9 parked NPCs
+  restored. This is a transient candidate, not proof of a permanent wall.
+- Fresh53400:hero(19,23), clear field/guards, nil path, runtime none, keys2,
+  opened-door RAM(1,14)/(7,12). Preserved original player log before probes:
+  .test_tmp/kol_old_man_return_20260917.log.
+- Same-origin raw probes after normal walked arrival at(2,13) passed LEFT into
+  (1,13) twice:57110 and60556. Both report raw6 brick, npc_blocked=false,
+  directional_blocked=false, status=moved, final(1,13). No teleport/reset used.
+  An intervening coordinate auto_walk_blocker resolved an NPC now at(2,13) and
+  correctly reported already adjacent; the exact-origin walked verifier was
+  used instead. This was not counted as a coordinate movement test.
+- Current evidence supports a transient movement/input timing issue. Exact
+  cause at33620 is not proved by a later passing probe; do not add permanent
+  map data or change global cadence from this isolated event. No new Lua/config
+  edits or automated test run in this review.
+- Review return from(1,13) to entrance(19,23) completed at62411 without another
+  blocked step or reroute;9 NPCs restored. Final64920:hero(19,23), clear field/
+  guards, nil path, runtime none, speech bridge ready/error none. Player can
+  resume remaining NPC validation. Full review capture:
+  .test_tmp/kol_old_man_return_review_live_20260917.log.
+- Audit workflow updated in AGENTS.md, work_notes/town_polish_strategy.md,
+  and TASKS.md: every remaining town checks raw0 grass/raw4 stone against the
+  game's conversion/collision table and normal-arrival live probes, with doors
+  and hazards handled separately before per-cell changes.
+
+## 2026-09-15 Kol West Side Door route failure
+
+- KOL-DOOR-01 (high navigation impact): user's26-step West Side Door route
+  from(19,23) to(1,15), frame1228, hit nine blocked edges before the user stopped
+  at6249. First failures(16,23).east1603, (10,17).east2269, (7,14).east2879
+  repeat the September10 Tool Merchant failure sequence. Later failures:
+  (8,4).east3662, (7,3).east4089, (8,4).north4507, (5,4).north5131,
+  (6,4).north5578, (7,3).west5987. Route used9 mobile-NPC parking slots.
+  Raw pre-fix capture:.test_tmp/kol_west_door_before_fix.log.
+- Fresh11460:Kol(7,2), clear field/guards, both doors closed, keys4, no runtime
+  blocks. inspect_move/down and three first failure cells at13020 all expose
+  raw4 as base_walkable=true, confirming the old town-table mismatch.
+- Local guide orientation:project_resources/maps/kol/external/vgmaps_kol.png
+  shows the west locked building and its outside approach; no hidden treasure
+  coordinate is added or exposed. Primary disassembly confirms Kol's town tile
+  mapping and Bank00 $9A00 conversion/CheckCollision $B1CC:
+  https://github.com/nmikstas/dragon-warrior-disassembly/blob/master/source_files/Bank00.asm
+- Normal-arrival raw probe14579:(7,2)->DOWN into(7,3), raw4, blocked,
+  npc_blocked=false, reason=raw_hold_timeout. This corroborates multiple route
+  attempts against the same stone from east/west and the player's final south
+  attempt; not merely auto-step cadence.
+- Walked-edge verifier reached(5,1) normally. Raw left probe17139 crossed raw0
+  (4,1), ending(3,1), despite effective_passable=false. Reverse right18575 crossed
+  the same grass and ended(5,1). No teleport/reset, no key use. NPC freeze was
+  explicitly released at19320. Hero left at(5,1) during source/test work.
+- Narrow fix:apply the verified16-entry town collision table to map07 alongside
+  map08; raw9/A use existing hazard policy. Preserve all per-cell/directional/
+  door overrides and other map tables. New Kol regression fails old code and
+  passes corrected code; all87 map-reader tests pass. Old passthrough fixture
+  now supplies captured stone/sand/tree IDs rather than assuming every zero
+  is blocked. Full gate and live route retest results are below.
+
+### Kol correction validation
+
+- All87 map-reader tests,41 Lua suites, and68 Python tests pass. Syntax and
+  diff checks pass. Gate:.test_tmp/kol_door_gate.log. New regression failed
+  pre-fix; no further source changes after the full gate.
+- Idle audit_town refreshed map_reader at35160 (no manual reload needed).
+  From(5,1), snapshot005040Z had13 reachable,5 NPC-obstructed,2 model-blocked.
+  Subsequent common-entrance snapshot005245Z from(19,23), frame42619, had13
+  reachable,4 NPC-obstructed,3 model-blocked. Both doors remain closed. Counts
+  vary with roaming NPC positions and now-correct hazard handling; no claim of
+  whole-town completion. Final model-blocked:Person2 at(0,3), Old Man4 at(1,1),
+  Old Man1 at(1,11). NPC-only flags:Tool Merchant, Guard4, Merchant1, West Side
+  Door. These need focused investigation rather than blanket new blockers.
+- Actual walks, using the user's enabled mobile-NPC parking setting:
+  (5,1)->West Side Door stand(1,15),30 steps, finished37591;
+  (1,15)->entrance(19,23),64 steps, finished41354;
+  original entrance(19,23)->door stand(1,15),64 steps, finished45944.
+  All three completed with no blocked events, reroutes, or drift cancellations;
+  ordinary cadence retries recovered. Nine mobile NPCs restored after each.
+  The 64-step route is stable but long; review old directional overrides and
+  alternate corridors later only with clean live evidence, not wholesale removal.
+- Final fresh46860:hero(1,15), field/input guards clear, nil path, runtime none,
+  speech bridge ready/error none, zero pending warnings. Doors closed, keys4;
+  no key use, teleport, or config change. All freeze/parking released. Final
+  capture:.test_tmp/kol_west_door_fixed_live.log. Hero is just south of West
+  Side Door, ready for the player's OPEN. Western Building Door approach has
+  not been live-validated in this slice.
+- KOL-DOOR-01 repeated-wall rerouting is fixed and agent-validated. Next: player
+  opens the doors, then repeat audit and investigate remaining target flags.
+  Also retest Tool Merchant, whose initial three failed cells were the same
+  stone misclassification; its corrected round trip is not yet claimed.
+
+## 2026-09-15 Kol initial audit (map0x07)
+
+- Brecconary/quick-services/town-audit work merged and published to main at
+  2be96d4; local main, origin/main, and an independent GitHub query agree.
+  Active branch:codex/kol-town-polish, created from that commit. Only new audit
+  notes differed from main at this initial audit; the correction above came later.
+- Fresh probe63180:hero(19,23), clear field/guards, nil target, runtime_count=0.
+  Audit64440..64459 saved town_audit_07_20260916T003731Z_001.json/.txt
+  (UTC September16; local September15). Both door slots closed, keys4.
+- Result:20 targets,16 modeled reachable,0 NPC-only obstructions,4 model-blocked,
+  0 reported return concerns. All actual arrival/TALK/return fields remain
+  untested. Services all have plans:Inn25 steps to(19,2), Weapons16 to(20,12),
+  Tool Merchant9 to(12,21). A valid plan does not resolve the prior Tool route
+  execution failures documented below.
+- Model-blocked targets, snapshot positions:
+  - Old Man4/npc_10 (1,1):raw0 cells(4,2)/(4,3) rejected by base tile_type;
+    frontier suggests these connect his area. Compare with the Brecconary raw0
+    grass correction, then verify live before promoting any Kol data.
+  - Old Man1/npc_3 (1,11):north approaches into(1..3,10) have directional blocks.
+  - Guard4/npc_16 (1,23):ranked frontier(2,16), raw4 with directional blocks.
+  - Old Man3/npc_8 (21,8):ranked frontiers(21,12) west and(9,2) east/south.
+  These are hypotheses; closed doors and old overrides still need separation.
+- Bath currently has object type exit, so its return is transition_not_tested,
+  just like the world exit. Zero reported return concerns is not proof of every
+  landmark return. Preserve the spoiler-safe Bath waypoint.
+- No movement, freeze/parking, door use, or map edits were issued. Fresh final
+  probe66120 confirms same position(19,23), clear field/guards, runtime none.
+- Next: verify the known Tool Merchant route with normal movement, then compare
+  Kol's terrain classification and door gating before fixing the four targets.
+
 ## 2026-09-15 Survey recovery fix and open-door retest
 
 - FIXED SURVEY-DRIFT-RETRY-01: defer the survey's raw drift decision until

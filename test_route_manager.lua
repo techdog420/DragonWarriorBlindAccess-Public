@@ -3695,6 +3695,20 @@ function tests.coordinate_debug_planning_uses_route_manager_path_policy()
     env.restore()
 end
 
+function tests.npc_outside_map_reports_reason_without_debug_pathfinder_callbacks()
+    local npc = {id = "npc_1", name = "Person 2", type = "npc", x = 5, y = 31}
+    local env = make_env({
+        start_map_id = 0x07, start_x = 19, start_y = 23,
+        map_width = 24, map_height = 24, current_object = npc,
+        pathfind_mode = "always_no_path",
+    })
+    local plan = env.route_manager.plan_path_to_object(npc, {store_debug_path = false})
+    assert_equal(plan.no_path_reason, "goal_out_of_bounds", "ordinary NPC routes must identify invalid live coordinates")
+    assert_equal(plan.message, "Person 2. No path found. Target is outside this map. Leave and re-enter the area to refresh NPC positions",
+        "provide recovery advice rather than implying a wall or missing route")
+    env.restore()
+end
+
 function tests.adjacent_coordinate_out_of_bounds_reason_survives_no_path_inference()
     local stats = {}
     local marker_opts = {

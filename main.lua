@@ -213,6 +213,7 @@ local function refresh_navigation_modules()
         object_command_module.refresh_after_module_reload()
     end
     object_command_module.register()
+    hotkeys.refresh_navigation_modules()
     debug_tools.info("NAVIGATION_MODULES_REFRESHED")
 end
 
