@@ -22,6 +22,71 @@ local snapshot = require "game_snapshot"
 
 local M = {}
 
+M.NORTH_EDGE_TALK_CONFIRM_FRAMES = 720
+
+-- The top two rows of an interior map can contain a false COMMAND header in
+-- the scrolling nametable.  main.lua normally requires a fresh menu-open or
+-- cursor-move transition after TALK/Yes-No rearming, but a real two-press
+-- TALK sequence at that edge can miss both transitions: the first A opens
+-- the menu after the frame sample and the second A selects the default TALK
+-- cursor before it moves.  This can happen either immediately after a
+-- previous TALK or from a fresh field state, so the predicates deliberately
+-- do not depend on the command parser's rearm flag.
+function M.is_north_edge_talk_menu_start(state)
+    local player_y = state and tonumber(state.player_y)
+    return state
+        and state.is_interior == true
+        and player_y ~= nil
+        and player_y <= 1
+        and state.a_just == true
+        and state.menu_opened ~= true
+        and state.cursor_moved ~= true
+        and state.raw_menu_open ~= true
+        and state.cursor_visible ~= true
+        and state.cancel_input ~= true
+end
+
+function M.is_north_edge_talk_candidate_valid(state)
+    local candidate = state and state.north_edge_talk_candidate
+    local frame = state and tonumber(state.frame)
+    local candidate_frame = type(candidate) == "table" and tonumber(candidate.frame) or nil
+    local player_y = state and tonumber(state.player_y)
+    if not state
+       or state.is_interior ~= true
+       or player_y == nil
+       or player_y > 1
+       or frame == nil
+       or candidate_frame == nil
+       or state.cancel_input == true then
+        return false
+    end
+
+    local age = frame - candidate_frame
+    return age >= 1
+        and age <= M.NORTH_EDGE_TALK_CONFIRM_FRAMES
+        and candidate.map_id == state.map_id
+        and candidate.player_x == state.player_x
+        and candidate.player_y == state.player_y
+end
+
+function M.is_north_edge_talk_menu_confirmation(state)
+    if not M.is_north_edge_talk_candidate_valid(state) then
+        return false
+    end
+
+    local visible_default_talk = state.raw_menu_open == true
+        and state.cursor_visible == true
+    local hidden_north_edge_menu = state.raw_menu_open ~= true
+        and state.cursor_visible ~= true
+    return state
+        and state.a_just == true
+        and state.menu_opened ~= true
+        and state.cursor_moved ~= true
+        and state.cursor_x == 0
+        and state.cursor_y == 0
+        and (visible_default_talk or hidden_north_edge_menu)
+end
+
 -- ============================================================
 -- PPU Constants
 -- ============================================================

@@ -6,6 +6,17 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Rimuldar Old Man3 counter fix (2026-09-17): the NPC is in his correct
+  enclosed cell(3,23). The intended conversation is from(5,23), facing west
+  across counter(4,23). Added that public interaction to ordinary object
+  routing, retaining dialogue-only classification. Agent walking/TALK/return
+  and automatic facing passed; visited tracking now recognizes the counter
+  conversation. Short routes had one-cell drift recovery but no blocked
+  events. Full gate passes41 Lua suites and68 Python tests. Two old pathfinder
+  expectations were updated for the earlier town-terrain correction, retaining
+  counter/NPC avoidance and return checks. The change is loaded; player
+  acceptance and the remaining Rimuldar NPC validation are still pending.
+
 - Garinham cleanup is complete (player acceptance, 2026-09-17). After the
   map09 Bank00 town-collision correction and player reload, the open-door
   entrance audit had 21/22 modeled routes, with only a transient Tool Merchant

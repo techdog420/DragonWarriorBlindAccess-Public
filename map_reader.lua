@@ -409,6 +409,30 @@ local MAP_TILE_WALKABILITY_OVERRIDES = {
         [14] = true,  -- bridge
         [15] = false, -- large tile / counter
     },
+    -- Rimuldar: same Bank00 town conversion/collision rules as Kol,
+    -- Brecconary, and Garinham. Normal-arrival probes on 2026-09-17 crossed
+    -- raw grass `(29,19)->DOWN` through `(29,20)`, while the player and a
+    -- direct same-origin probe both blocked on raw stone `(23,20)->LEFT`
+    -- into `(22,20)`. Keep the existing map-specific passthrough,
+    -- directional, hazard, and door rules intact.
+    [0x0B] = {
+        [0] = true,   -- grass
+        [1] = true,   -- sand
+        [2] = false,  -- water
+        [3] = true,   -- chest
+        [4] = false,  -- stone
+        [5] = true,   -- stairs up
+        [6] = true,   -- brick
+        [7] = true,   -- stairs down
+        [8] = true,   -- trees
+        [9] = true,   -- swamp (hazard)
+        [10] = true,  -- force field (hazard)
+        [11] = false, -- closed door (opened doors handled separately)
+        [12] = false, -- weapon-shop sign
+        [13] = false, -- inn sign
+        [14] = true,  -- bridge
+        [15] = false, -- large tile / counter
+    },
     -- Charlock Castle ground floor: the staged 20x20 guide map renders type-4
     -- cells as grey stone walls and type-6 cells as the red walkable corridor.
     -- Normal-route arrival at row 14 plus repeated same-origin raw probes on
@@ -2063,8 +2087,8 @@ local function hazard_for_cell(map_id, x, y, tile_type)
         return explicit
     end
 
-    -- Match the verified Kol/Brecconary/Garinham town tables; leave other maps alone.
-    if map_id == 0x07 or map_id == 0x08 or map_id == 0x09 then
+    -- Match the verified Bank00 town tables; leave other maps alone.
+    if map_id == 0x07 or map_id == 0x08 or map_id == 0x09 or map_id == 0x0B then
         if tile_type == nil then tile_type = M.get_tile_type(map_id, x, y) end
         if tile_type == 9 then return "poison_swamp" end
         if tile_type == 10 then return "damage" end
@@ -4682,6 +4706,14 @@ local MAP_DIRECTIONAL_BLOCKS = {
         -- direct horizontal proof, but leave row 3 open for exit routing.
         ["0,1"] = {east = true},
         ["0,2"] = {east = true},
+        -- Old Man 3's west wall. A prior same-origin probe
+        -- blocked `(3,23)->LEFT` into `(2,23)`. On 2026-09-17, normal
+        -- player routing from `(1,23)` blocked the reverse `(1,23)->RIGHT`
+        -- four times, including seam retries; a clean same-origin raw probe
+        -- after FCEUX input recovery also blocked. Keep both approaches out
+        -- of the plan. His public TALK stand is (5,23), facing west across
+        -- counter (4,23); objects.lua supplies that verified interaction.
+        ["2,23"] = {east = true, west = true},
         -- 2026-05-17 first town walkabout. The exit-route replan from
         -- (28,14) repeatedly failed moving UP into (28,13), including the
         -- seam brute-force retry, while (29,14)->UP into the confirmed east

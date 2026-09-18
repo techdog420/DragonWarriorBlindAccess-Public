@@ -725,7 +725,9 @@ function tests.rimuldar_live_magic_key_route_uses_real_decoder_and_pathfinder()
         assert_equal(#path, 52, "real Rimuldar route should use the deterministic shortest path: " .. path_to_string(path))
 
         local waypoints = {
-            {29, 2}, {21, 2}, {21, 0}, {0, 0}, {0, 3}, {1, 3}, {2, 3},
+            -- Correct raw-0 grass permits other equal-length turns onto the
+            -- north bank; retain the required outside approach and bridge.
+            {0, 0}, {0, 3}, {1, 3}, {2, 3},
             {3, 3}, {4, 3}, {4, 4}, {4, 5},
         }
         local next_waypoint = 1
@@ -761,7 +763,11 @@ function tests.rimuldar_live_magic_key_route_uses_real_decoder_and_pathfinder()
         assert_equal(open_top_bank[2].y, 0, "unoccupied top-bank endpoint should remain on row 0")
 
         local blocked_top_bank = env.pathfinder.find_path(0x0B, 26, 0, 28, 0, {["27,0"] = true})
-        assert_equal(blocked_top_bank, nil, "Person 4 at (27,0) should split the local top-bank lane")
+        assert_truthy(blocked_top_bank ~= nil, "correct north-bank grass should permit a detour around Person 4")
+        assert_equal(#blocked_top_bank, 4, "Person 4 should force the four-step grass detour")
+        for _, step in ipairs(blocked_top_bank) do
+            assert_equal(step.x == 27 and step.y == 0, false, "grass detour must avoid Person 4's occupied cell")
+        end
     end, env.restore)
 end
 
@@ -821,21 +827,23 @@ function tests.rimuldar_weapons_counter_round_trip_uses_west_corridor()
 
         local outbound = env.pathfinder.find_path(0x0B, 29, 14, 23, 9, blockers)
         assert_truthy(outbound ~= nil, "real Rimuldar stack should route from the entrance to the Weapons counter")
-        assert_equal(#outbound, 21, "Weapons route should use the proven west corridor: " .. path_to_string(outbound))
-        assert_run(outbound, 1, 11, "west", "entrance-to-counter")
-        assert_run(outbound, 12, 16, "north", "entrance-to-counter")
-        assert_run(outbound, 17, 21, "east", "entrance-to-counter")
-        assert_equal(outbound[21].x, 23, "Weapons route should finish on public counter stand X")
-        assert_equal(outbound[21].y, 9, "Weapons route should finish on public counter stand Y")
+        -- The verified town table opens raw grass (19,10), shortening the
+        -- earlier x=18 west-corridor detour by two steps in both directions.
+        assert_equal(#outbound, 19, "Weapons route should use the corrected west corridor: " .. path_to_string(outbound))
+        assert_run(outbound, 1, 10, "west", "entrance-to-counter")
+        assert_run(outbound, 11, 15, "north", "entrance-to-counter")
+        assert_run(outbound, 16, 19, "east", "entrance-to-counter")
+        assert_equal(outbound[19].x, 23, "Weapons route should finish on public counter stand X")
+        assert_equal(outbound[19].y, 9, "Weapons route should finish on public counter stand Y")
 
         local returned = env.pathfinder.find_path(0x0B, 23, 9, 29, 14, blockers)
         assert_truthy(returned ~= nil, "real Rimuldar stack should route back from the Weapons counter")
-        assert_equal(#returned, 21, "Weapons return should use the proven west corridor: " .. path_to_string(returned))
-        assert_run(returned, 1, 5, "west", "counter-to-entrance")
-        assert_run(returned, 6, 10, "south", "counter-to-entrance")
-        assert_run(returned, 11, 21, "east", "counter-to-entrance")
-        assert_equal(returned[21].x, 29, "Weapons return should finish on entrance approach X")
-        assert_equal(returned[21].y, 14, "Weapons return should finish on entrance approach Y")
+        assert_equal(#returned, 19, "Weapons return should use the corrected west corridor: " .. path_to_string(returned))
+        assert_run(returned, 1, 4, "west", "counter-to-entrance")
+        assert_run(returned, 5, 9, "south", "counter-to-entrance")
+        assert_run(returned, 10, 19, "east", "counter-to-entrance")
+        assert_equal(returned[19].x, 29, "Weapons return should finish on entrance approach X")
+        assert_equal(returned[19].y, 14, "Weapons return should finish on entrance approach Y")
     end, env.restore)
 end
 

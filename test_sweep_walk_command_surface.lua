@@ -224,7 +224,7 @@ assert_order(command_menu_handler,
     "local merchant_present = MER.active or MER.scan_present",
     "confirmed ITEM submenu entry should win before merchant false positives can own the held-item list")
 assert_order(command_menu_handler,
-    "local joy_a_now = joypad.read(1).A or false",
+    "local joy_a_now = command_joy.A or false",
     "local merchant_present = MER.active or MER.scan_present",
     "A-button edge tracking should happen before merchant override so direct ITEM selection can claim ownership")
 assert_order(command_menu_handler,

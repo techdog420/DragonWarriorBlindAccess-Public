@@ -2926,6 +2926,31 @@ function tests.kol_old_man_uses_public_counter_without_becoming_a_service()
     env.restore()
 end
 
+function tests.rimuldar_old_man_uses_east_counter_stand_without_becoming_a_service()
+    local env = make_env({npc_count = 18})
+    env.set_position(0x0B, 4, 21)
+    env.set_terrain_offset(0x10)
+    env.set_npc(17, 0xA3, 0x37, 0) -- stationary Old Man at (3,23)
+    env.objects.refresh(0x0B)
+    local obj = find_by_id(env.objects, "npc_17")
+    assert_equal(obj.interaction_x, 5, "Rimuldar clue NPC public counter stand X")
+    assert_equal(obj.interaction_y, 23, "stand east of the counter, not inside the NPC enclosure")
+    assert_equal(obj.interaction_face_dir, "west", "face the clue NPC across the counter")
+    assert_equal(obj.service, false, "temple advice must not become a shop")
+    env.objects.select_object_by_id("npc_17")
+    local description = env.objects.describe_current({map_id = 0x0B})
+    assert_equal(description:find("counter", 1, true) ~= nil, true,
+        "live target description must retain the public stand")
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    assert_equal(env.objects.get_count(), 0, "advice NPC stays out of Services")
+    env.set_position(0x07, 4, 21)
+    env.objects.refresh(0x07)
+    assert_equal(find_by_id(env.objects, "npc_17").interaction_x, nil,
+        "the Rimuldar counter must not affect the same cell in Kol")
+    env.restore()
+end
+
 function tests.kol_exposes_bath_without_hidden_search_tile()
     local env = make_env({npc_count = 0})
     env.set_terrain_offset(0x10)

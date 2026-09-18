@@ -4,6 +4,23 @@ Updated: 2026-09-17
 
 ## Current implementation
 
+- Rimuldar Old Man3 access is fixed and agent-verified (2026-09-17). His NPC
+  position(3,23) is correct; ordinary adjacent routing targeted the west house
+  wall. objects.lua now uses public stand(5,23), facing west across raw-F
+  counter(4,23), without adding him to Services. Normal movement, automatic
+  facing, TALK, and return to the player's original(4,21) passed. TALK after
+  the fix also correctly matched npc_17 for visited tracking. One-cell drift
+  recoveries occurred without blocked events. The counter data is loaded via
+  navigation refresh; no manual reload is needed for this change. Full gate
+  passes41 Lua suites/68 Python tests, including126 object and22 pathfinder
+  tests. Updated two stale route expectations from the earlier terrain-table
+  correction; runtime pathfinding is unchanged. Rimuldar's broader NPC pass and player
+  acceptance remain open. Active branch is Final-Town-Cleanup; earlier branch/
+  publication entries below are historical. Current source edits are uncommitted.
+  Post-gate513420/514560: hero(4,21), clear guards, speech bridge ready/error
+  none. NPCs filter restored with Old Man3 selected (10/20), counter(5,23).
+  Player can press U and TALK to confirm the corrected public interaction.
+
 - Garinham polishing is player-accepted and complete (2026-09-17). Map09 now
   has the verified Bank00 town collision/hazard table: raw0 grass is walkable
   and raw4 stone is blocked. After the player reload, the open-door entrance

@@ -1192,7 +1192,7 @@ function tests.rimuldar_live_magic_key_route_is_walkable_and_exit_seams_are_guar
         assert_equal(counter.tile_type, 0xF, "Rimuldar counter (4,6) should retain raw type 15")
         assert_equal(counter.base_walkable, false, "Rimuldar counter (4,6) should not be a passthrough")
         assert_equal(counter.effective_walkable, false, "Rimuldar counter (4,6) should remain globally non-walkable")
-        assert_equal(counter.reason, "tile_type", "Rimuldar counter (4,6) should be blocked by corrected tile decoding")
+        assert_equal(counter.reason, "map_tile_type", "Rimuldar counter (4,6) should be blocked by the verified town collision table")
 
         local dirs = env.map_reader.get_directional_blocks(map_id)
         for y = 1, 2 do
@@ -3883,7 +3883,7 @@ function tests.rimuldar_exit_route_avoids_false_north_entry()
     assert_open_approach("2,8", "west", "Rimuldar (2,8).west should stay unpromoted until the Magic Key route has an alternate bridge or state explanation")
     assert_open_approach("1,8", "east", "Rimuldar (1,8).east should stay unpromoted with the unresolved (2,8).west route-model decision")
     assert_open_approach("1,23", "east", "Rimuldar (1,23).east moved from the Old Man 3 west-side seam and must stay open")
-    assert_open_approach("2,23", "west", "Rimuldar (2,23).west moved from the Old Man 3 west-side seam and must stay open")
+    assert_equal((dirs["2,23"] or {}).west, true, "Rimuldar (2,23).west should block after the clean Old Man 3 probe from (1,23)->RIGHT")
     assert_equal(dirs["3,8"].east, true, "Rimuldar (3,8) should block entry from the east after focused verifier from (4,8)")
     assert_equal(dirs["3,8"].south, true, "Rimuldar (3,8) should block entry from the south after repeated route/seam failures from (3,9)")
     assert_equal(dirs["5,8"].south, true, "Rimuldar (5,8) should block entry from the south after direct verifier from (5,9)")
@@ -4715,10 +4715,12 @@ function tests.rimuldar_magic_key_route_bridge_is_passthrough()
         assert_equal(details.reason, "passthrough", "Rimuldar (" .. cell[1] .. ") should record passthrough as its walkability source")
     end
 
-    local nearby_wall = env.map_reader.get_walkability_details(0x0B, 24, 8)
-    assert_equal(nearby_wall.base_walkable, false, "nearby Rimuldar hidden cells outside the promoted x=24 strip should stay closed")
+    local nearby_grass = env.map_reader.get_walkability_details(0x0B, 24, 8)
+    assert_equal(nearby_grass.base_walkable, true, "ordinary Rimuldar raw grass outside the old passthrough strip should use the verified town table")
+    assert_equal(nearby_grass.reason, "map_tile_type", "ordinary Rimuldar grass should identify the verified town table")
     local npc_connector = env.map_reader.get_walkability_details(0x0B, 15, 8)
-    assert_equal(npc_connector.base_walkable, false, "Rimuldar (15,8) should stay unmodeled because Woman 3 occupies that alternate connector")
+    assert_equal(npc_connector.base_walkable, true, "Rimuldar (15,8) terrain should use the verified town table; a present NPC blocks it dynamically")
+    assert_equal(npc_connector.reason, "map_tile_type", "Rimuldar (15,8) terrain should identify the verified town table")
 
     local snapshot = env.map_reader.get_walkability_snapshot(0x0B)
     assert_equal(snapshot[15][11], true, "walkability snapshot should include the new upper x=11 false-wall strip cell")
@@ -4801,7 +4803,7 @@ function tests.rimuldar_magic_key_route_bridge_is_passthrough()
     assert_equal(snapshot[10][29], true, "walkability snapshot should include the entrance-to-Weapons x=29 false-wall strip")
     assert_equal(snapshot[11][29], true, "walkability snapshot should include the entrance-to-Weapons x=29 false-wall strip")
     assert_equal(snapshot[12][29], true, "walkability snapshot should include the entrance-to-Weapons x=29 false-wall strip")
-    assert_equal(snapshot[8][15], false, "walkability snapshot should keep the Woman 3 alternate connector closed")
+    assert_equal(snapshot[8][15], true, "walkability snapshot should retain the Woman 3 alternate connector terrain; NPC occupancy is dynamic")
 
     env.restore()
 end
@@ -6432,7 +6434,7 @@ end
 function tests.verified_town_terrain_tables_do_not_change_dungeon_models()
     local data_start = 0x1010
     local rom_bytes = {}
-    for _, map_id in ipairs({0x08, 0x09, 0x12}) do
+    for _, map_id in ipairs({0x08, 0x09, 0x0B, 0x12}) do
         local base = map_id * 5
         rom_bytes[base], rom_bytes[base+1] = 0, 0x90
         rom_bytes[base+2], rom_bytes[base+3], rom_bytes[base+4] = 29, 29, 0
@@ -6441,7 +6443,34 @@ function tests.verified_town_terrain_tables_do_not_change_dungeon_models()
     local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
     assert_equal(env.map_reader.is_walkable(0x08, 14, 22), true, "Brecconary grass should use the pilot")
     assert_equal(env.map_reader.is_walkable(0x09, 14, 22), true, "Garinham grass should use the verified town table")
+    assert_equal(env.map_reader.is_walkable(0x0B, 14, 22), true, "Rimuldar grass should use the verified town table")
     assert_equal(env.map_reader.is_walkable(0x12, 14, 22), false, "Charlock B4 type-zero stone remains blocked")
+    env.restore()
+end
+
+function tests.rimuldar_uses_verified_bank00_town_collision_table()
+    local data_start = 0x1010
+    local base = 11 * 5
+    local rom_bytes = {[base] = 0, [base+1] = 0x90, [base+2] = 29, [base+3] = 29, [base+4] = 0}
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0)
+    -- Row 29 stays clear of Rimuldar's permanent passthrough, door, and
+    -- directional-edge data, so this isolates the Bank00 collision table.
+    for tile = 0, 15 do set_packed_block(rom_bytes, data_start, 30, tile + 1, 29, tile) end
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local safe = env.map_reader.get_walkability_snapshot(0x0B)
+    local hazardous = env.map_reader.get_walkability_snapshot(0x0B, {allow_hazards = true})
+    local impassable = {[2]=true, [4]=true, [11]=true, [12]=true, [13]=true, [15]=true}
+    for tile = 0, 15 do
+        assert_equal(hazardous[29][tile + 1], not impassable[tile], "Rimuldar collision for tile " .. tile)
+        assert_equal(safe[29][tile + 1], not impassable[tile] and tile ~= 9 and tile ~= 10,
+            "Rimuldar safe routing for tile " .. tile)
+    end
+    assert_equal(env.map_reader.is_hazard_cell(0x0B, 10, 29), "poison_swamp", "Rimuldar swamp is hazardous")
+    assert_equal(env.map_reader.is_hazard_cell(0x0B, 11, 29), "damage", "Rimuldar force field is hazardous")
+    assert_equal(safe[29][1], true, "Rimuldar raw grass must be walkable")
+    assert_equal(safe[29][5], false, "Rimuldar raw stone must be blocked")
+    assert_equal(env.map_reader.get_walkability_details(0x0B, 5, 29).reason, "map_tile_type",
+        "Rimuldar stone should use the map-scoped collision table")
     env.restore()
 end
 

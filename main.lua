@@ -1888,6 +1888,7 @@ local CMD = {
     last_live_y          = nil,
     menu_live            = false,  -- true once a fresh field-menu session is re-armed
     rearm_required       = false,  -- blocks stale row-1 menu residue after TALK/YES-NO
+    north_edge_talk_candidate = false, -- first A of a north-edge TALK menu sequence
     movement_dialogue    = 0,      -- residual hold while text follows movement
     menu_upper_absorb    = 0,      -- post-menu upper-window baseline-absorb window
     recent_field_action  = 0,      -- recent field input window
@@ -2908,6 +2909,7 @@ local function check_command_menu(frame_delta)
     if game_state.state ~= state.STATE_FIELD then
         CMD.menu_confirmed = false
         CMD.menu_live = false
+        CMD.north_edge_talk_candidate = false
         CMD.cursor_hold = 0
         CMD.item_entry_pending = 0
         CMD.item_result_cursor_clear = 0
@@ -2918,7 +2920,8 @@ local function check_command_menu(frame_delta)
     -- Track A button EVERY frame (even during yes/no) so PREV.joy_a_cmd
     -- stays fresh. This must run before merchant detection so selecting ITEM
     -- can claim the inventory submenu before held items look like shop offers.
-    local joy_a_now = joypad.read(1).A or false
+    local command_joy = joypad.read(1) or {}
+    local joy_a_now = command_joy.A or false
     local a_just = joy_a_now and not PREV.joy_a_cmd
     PREV.joy_a_cmd = joy_a_now
 
@@ -3219,6 +3222,7 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.north_edge_talk_candidate = false
         CMD.item_entry_pending = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         trace_row1("CMD_BLOCK_YESNO", changes, {})
@@ -3243,6 +3247,7 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.north_edge_talk_candidate = false
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         trace_row1("CMD_BLOCK_LOWER_DIALOGUE", changes, {
             "cursor=" .. tostring(cursor_visible),
@@ -3329,6 +3334,75 @@ local function check_command_menu(frame_delta)
         return
     end
 
+    -- On the north edge the first A can open COMMAND after this frame's
+    -- sampling point, and the PPU scanner can remain false through the second
+    -- A that selects default TALK. Preserve that exact two-press sequence at
+    -- one map/cell. B, directional input, movement, and timeout invalidate it;
+    -- lower-dialogue and Yes/No states already returned above.
+    local north_edge_talk_state = {
+        is_interior = not snapshot.is_overworld,
+        frame = frame_count,
+        map_id = snapshot.map_id,
+        player_x = snapshot.player_x,
+        player_y = snapshot.player_y,
+        north_edge_talk_candidate = CMD.north_edge_talk_candidate,
+        a_just = a_just,
+        menu_opened = changes.menu_opened,
+        cursor_moved = changes.cursor_moved,
+        raw_menu_open = menu.is_open(),
+        cursor_visible = cursor_visible,
+        cursor_x = changes.cursor_x,
+        cursor_y = changes.cursor_y,
+        cancel_input = command_joy.B
+            or command_joy.up
+            or command_joy.down
+            or command_joy.left
+            or command_joy.right,
+    }
+    if CMD.north_edge_talk_candidate
+       and not menu.is_north_edge_talk_candidate_valid(north_edge_talk_state) then
+        local candidate = CMD.north_edge_talk_candidate
+        trace_row1("CMD_TALK_NORTH_EDGE_CANCEL", changes, {
+            "age=" .. tostring(type(candidate) == "table"
+                and (frame_count - (tonumber(candidate.frame) or frame_count)) or "invalid"),
+            "input=" .. tostring(north_edge_talk_state.cancel_input == true),
+        })
+        CMD.north_edge_talk_candidate = false
+        north_edge_talk_state.north_edge_talk_candidate = false
+    end
+    if menu.is_north_edge_talk_menu_confirmation(north_edge_talk_state) then
+        -- Person 4 in Rimuldar is reached from (27,1).  The first A can open
+        -- COMMAND without a reliable PPU header/cursor signal; this second A
+        -- still selects TALK because no navigation or movement intervened.
+        -- Preserve the marker so the real dialogue event marks the selected NPC.
+        local candidate = CMD.north_edge_talk_candidate
+        CMD.north_edge_talk_candidate = false
+        CMD.menu_live = false
+        CMD.rearm_required = true
+        DW_QOL_STATE.clear_cmd_open_speech_pending()
+        DW_QOL_STATE.arm_talk_visit_marker()
+        trace_row1("CMD_TALK_FIRE_NORTH_EDGE", changes, {
+            "cursor=" .. tostring(cursor_visible),
+            "age=" .. tostring(frame_count - candidate.frame),
+            "hidden=" .. tostring(menu.is_open() ~= true and cursor_visible ~= true),
+        })
+        return
+    end
+    if menu.is_north_edge_talk_menu_start(north_edge_talk_state) then
+        CMD.north_edge_talk_candidate = {
+            frame = frame_count,
+            map_id = snapshot.map_id,
+            player_x = snapshot.player_x,
+            player_y = snapshot.player_y,
+        }
+        trace_row1("CMD_TALK_NORTH_EDGE_CANDIDATE", changes, {
+            "position=" .. tostring(snapshot.player_x) .. "," .. tostring(snapshot.player_y),
+        })
+    elseif a_just and CMD.north_edge_talk_candidate then
+        -- Any other A press cannot complete the two-press TALK sequence.
+        CMD.north_edge_talk_candidate = false
+    end
+
     -- After TALK or YES/NO, row-1 interiors can leave stale COMMAND/cursor
     -- residue in RAM and the PPU. Require a fresh menu re-arm before treating
     -- any of that state as a live field menu again.
@@ -3345,6 +3419,7 @@ local function check_command_menu(frame_delta)
         CMD.menu_confirmed = false
         CMD.menu_live = false
         CMD.cursor_hold = 0
+        CMD.north_edge_talk_candidate = false
         CMD.item_entry_pending = 0
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         CMD.menu_upper_absorb = K.MENU_UPPER_ABSORB
@@ -3383,6 +3458,7 @@ local function check_command_menu(frame_delta)
 
     -- Normal menu opening and cursor movement.
     if changes.menu_opened then
+        CMD.north_edge_talk_candidate = false
         -- At y<=1 on interior maps, map tile noise in the scrolling nametable
         -- area (rows 6-17) can accidentally contain the "COMMAN" byte sequence
         -- that is_command_menu_open() searches for, producing a spurious
@@ -3431,6 +3507,7 @@ local function check_command_menu(frame_delta)
             event_bus.publish("menu_opened")
         end
     elseif changes.cursor_moved and not changes.menu_closed then
+        CMD.north_edge_talk_candidate = false
         -- Cursor moved within the open menu — announce the new item.
         -- A real D-pad move inside the menu confirms this is a live menu
         -- session, even in row-1 scroll cases where the opening line itself
@@ -3475,6 +3552,7 @@ local function check_command_menu(frame_delta)
        and CMD.menu_confirmed then
         CMD.menu_live = false
         CMD.rearm_required = true
+        CMD.north_edge_talk_candidate = false
         DW_QOL_STATE.clear_cmd_open_speech_pending()
         DW_QOL_STATE.arm_talk_visit_marker()
         trace_row1("CMD_TALK_FIRE", changes, {

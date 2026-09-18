@@ -101,8 +101,10 @@ hidden seams, locked doors, and service interaction tiles.
   - Erdrick created a rainbow on the west side of the island.
   - The Dragonlord's castle has a hidden entrance behind the throne.
   - Old Man 3 asks, "Hast thou found a magic temple?", with a yes/no prompt.
-    The access seam at `(1,23)<->(2,23)` is open both ways even though both
-    cells decode as blocked; `(2,23)` is the public stand facing east.
+    September17 normal movement/TALK confirmed public stand `(5,23)`, facing
+    west across counter `(4,23)` toward the NPC `(3,23)`. The earlier alleged
+    west-wall access at `(1,23)<->(2,23)` was disproved by repeated route/probe
+    failures; do not use it as the public approach.
   - A magic temple lies to the south.
   - Old Man 4 / Howard says that four steps south of the bath in Kol is a
     magic item, matching the Fairy Flute clue.
@@ -134,8 +136,10 @@ hidden seams, locked doors, and service interaction tiles.
   is dialogue-only; reachable hidden-cell probes only produced the short
   `Welcome!` greeting, so he should stay out of Services.
 - Rimuldar `Old Man 3` is live-confirmed as a temple-clue NPC at `(3,23)`.
-  The practical public stand is `(2,23)` facing east; the west-side seam
-  `(1,23)<->(2,23)` moved both ways during manual FCEUX play.
+  The verified public stand is `(5,23)` facing west across raw-F counter
+  `(4,23)`. Normal walking and TALK on2026-09-17 confirmed this; objects.lua
+  supplies the stand while retaining the NPC's dialogue-only classification.
+  The old `(2,23)` west-wall stand is superseded.
 - Rimuldar `Old Man 4` / Howard is live-confirmed at `(20,23)` with a north
   stand at `(20,22)`. His dialogue gives the Kol bath / hidden magic item clue.
 - Rimuldar `Wings Chest Door` is live-pinned at `(22,23)`. After the user

@@ -1,5 +1,106 @@
 # Current Investigation Scratchpad
 
+## 2026-09-17 Rimuldar Old Man 3 counter access
+
+- RIM-COUNTER-01: Old Man3 (stationary npc_17) is correctly located at(3,23).
+  Fresh352740: hero(4,21), clear field/guards, no runtime blocks, keys5, both
+  inn doors closed. The inaccessible west approach is the house wall(2,23),
+  not the public entrance; the three adjacent wall cells and east raw-F
+  counter(4,23) prevent ordinary adjacent-NPC routing.
+- ROM Bank00 RimuldarDat/RimStatTbl and the saved map image identify the east
+  public stand(5,23). No terrain or NPC relocation is needed. Skip-NPC planning
+  from(4,21) found (5,21)->(5,22)->(5,23); normal auto-walk reached it at359650
+  after one one-cell drift recovery, with no blocked event. West-facing TALK
+  at361152 read: "This is a magic place. Hast thou found a magic temple?"
+  B answered the hint question, producing "Go to the south."; another B closed.
+- objects.lua now assigns stand(5,23), facing west, counter, service=false.
+  Regression failed before the fix (interaction_x expected5, gotnil) and all
+  126 object tests pass afterward. Navigation refresh loaded the fix at366060;
+  Old Man3 now plans directly to(5,23) and faces west. Existing map edits from
+  the earlier audit are preserved; only their west-wall comment is clarified.
+- Return to the user's original(4,21) finished367501 after another one-cell
+  drift recovery, with no blocked event. Fixed named-object route finished
+  370349 at(5,23), faced west automatically, and TALK at372312 delivered the
+  temple dialogue and VISITED_AUTO matched npc_17. That route also recovered
+  one one-cell drift with no blocked event. Final return finished375999;
+  fresh376860 confirmed hero(4,21), clear guards, no runtime blocks, keys5,
+  doors unchanged/closed. Fixed live capture:
+  .test_tmp/rimuldar_oldman3_counter_fixed_live.log.
+  Initial full gate found two stale test_pathfinder expectations from the
+  earlier Rimuldar town-table correction: weapons corridor now uses19 moves
+  rather than21; key route retains52 moves but can turn across raw0 grass
+  along row1. Updated tests retain the required outer-bank/bridge approach,
+  public counter endpoints, return direction checks, and NPC/counter avoidance.
+  Person4 now forces a four-step grass detour instead of splitting the bank.
+  All22 pathfinder tests pass. Full gate rerun passes41 Lua suites and68 Python
+  tests, with syntax/diff checks passing. Gate log:
+  .test_tmp/rimuldar_oldman3_full_gate_after.log.
+  Post-gate513420: still(4,21), clear input guards, bridge ready/error none.
+  At514560 restored NPCs filter and Old Man3 selection(10/20); description
+  reports the correct counter(5,23). Ready for player U/TALK acceptance.
+  Initial live evidence saved before tests in
+  .test_tmp/rimuldar_oldman3_counter_before_tests.log.
+
+## 2026-09-17 Rimuldar terrain/audit start
+
+- BASELINE: Rimuldar map `0x0B`, exit stand `(29,13)`, both known doors open
+  (`(21,21)`, `(22,23)`), runtime blocks none, active path nil. Open-door
+  audit `town_audit_0b_20260917T172301Z_001` found 25 targets: 7 modeled
+  reachable, 15 NPC-obstructed, 3 model-blocked, and 0 return concerns.
+- UNRESOLVED / DO NOT PROMOTE: the current stand behaves as a one-way exit.
+  Clean retries after FCEUX input recovery repeatedly blocked
+  `(29,13)->DOWN` into `(29,14)`; northward raw probe also did not move. The
+  temporary runtime block was cleared after each attempt. This is directional
+  transition evidence, not grass/stone proof.
+- NEXT CHECK: re-anchor on normal interior floor `(29,14)` (or another
+  in-town origin), then raw-probe ordinary raw-0 grass and raw-4 stone before
+  replacing Rimuldar's generic town collision model. Current static model has
+  the familiar reversed signature: `(20,13)` raw0 is `tile_type` blocked,
+  while raw4 cells are walkable.
+- CLEAN: player re-entered and normally reached `(29,19)` in a fresh session.
+  After FCEUX input recovery, same-origin `probe_edge:DOWN` at frame `14184`
+  moved from raw0 `(29,19)` through raw0 `(29,20)` and settled at `(29,21)`.
+  Both cells are still modeled `tile_type` blocked, so this is direct grass
+  proof. The fresh session reset both opened-door RAM slots; reopen them only
+  after the terrain correction/reload, before the final audit.
+- NEXT CHECK (revised): from normal floor `(23,20)`, probe LEFT into raw4
+  `(22,20)` to establish the matching stone block. Do not promote the table
+  until that ordinary edge agrees.
+- CLEAN: the player and a direct raw probe both blocked `(23,20)->LEFT` into
+  raw4 `(22,20)` at frame `57959`; no NPC, runtime blocker, or timing suspect
+  was present. Together with the raw0 grass crossing above, this verifies
+  Rimuldar's Bank00 town table. The map-scoped table/hazard patch and updated
+  expectations pass `luac -p map_reader.lua test_map_reader.lua` plus all 89
+  `lua test_map_reader.lua` cases; manual FCEUX Lua reload remains pending.
+- CLEAN / PLAYER-VALIDATED: after reload and opening both doors, service,
+  chest, and door outward/return routes completed with no drift reroute or
+  runtime block: Inn 16/16, Magic Key Merchant 51/51, Weapons Merchant 20/20,
+  Chest 27/27, Rimuldar Inn Outer Door 21/21, and Wings Chest Door 24/24.
+  The Wings door initially reported NPC clutter several times, then planned
+  and completed once the mobile NPC layout changed; do not promote it as map
+  geometry. Final probe frame `47640`: entrance `(29,13)`, both doors open,
+  keys 6, nil path, runtime blocks none. NPC validation is next.
+- CLEAN / PROMOTED: Old Man 3 has no public approach from the west-side stand;
+  the east counter interaction is now identified above. Normal route
+  execution from `(1,23)` blocked east into
+  `(2,23)` four times, including both seam retries, with no NPC/runtime block;
+  after FCEUX input recovery, same-origin `probe_edge:RIGHT` also blocked at
+  frame `92339`. The temporary runtime edge `(2,23).west` gives both normal
+  and skip-NPC planners no route to an adjacent stand. Map `0x0B` now models
+  only this missing west approach, preserving the existing reverse block.
+  `luac -p map_reader.lua test_map_reader.lua` and all 89 map-reader tests
+  pass. The later navigation refresh loaded this wall model and the counter fix.
+- REPRODUCED / INPUT CAVEAT: after the player restored a save, reopened both
+  Rimuldar doors, and stood at `(1,23)`, the loaded model reported only the
+  east edge `(1,23)->RIGHT` into `(2,23)` closed; south to `(1,24)` remained
+  modeled open. `recover_fceux_input.sh` and `isolate_input:60` cleared the
+  game-side buttons, but FCEUX retained an ignored stale `D` key and relatched
+  `LeftAlt` during the probe. The raw probe nevertheless held RIGHT for 60
+  frames (`buttons=0x80`) and ended at frame `265979` with
+  `status=blocked`, `final=(1,23)`, and no runtime blocker. This confirms the
+  current engine failure from the restored state, but retain the FCEUX
+  stale-key caveat and do not broaden the directional patch.
+
 ## 2026-09-17 Garinham town correction and NPC pass
 
 - CLEAN: map `0x09` now uses the verified Bank00 town collision table after

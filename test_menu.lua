@@ -115,6 +115,120 @@ function tests.yesno_hold_timer_accepts_frame_delta()
     env.restore()
 end
 
+function tests.rimuldar_person4_north_edge_talk_sequence()
+    local env = make_env()
+    local base = {
+        is_interior = true,
+        map_id = 0x0B,
+        player_x = 27,
+        player_y = 1, -- Person 4 is talked to from Rimuldar (27,1).
+        a_just = true,
+        menu_opened = false,
+        cursor_moved = false,
+    }
+    local candidate = {
+        frame = 223,
+        map_id = base.map_id,
+        player_x = base.player_x,
+        player_y = base.player_y,
+    }
+
+    assert_equal(env.menu.is_north_edge_talk_menu_start({
+        is_interior = base.is_interior,
+        player_y = base.player_y,
+        a_just = base.a_just,
+        menu_opened = base.menu_opened,
+        cursor_moved = base.cursor_moved,
+        raw_menu_open = false,
+        cursor_visible = false,
+    }), true, "first A should remember the north-edge TALK menu attempt")
+
+    assert_equal(env.menu.is_north_edge_talk_menu_confirmation({
+        is_interior = base.is_interior,
+        frame = 305,
+        map_id = base.map_id,
+        player_x = base.player_x,
+        player_y = base.player_y,
+        north_edge_talk_candidate = candidate,
+        a_just = base.a_just,
+        menu_opened = base.menu_opened,
+        cursor_moved = base.cursor_moved,
+        raw_menu_open = false,
+        cursor_visible = false,
+        cursor_x = 0,
+        cursor_y = 0,
+    }), true, "live second A should confirm TALK even when north-edge menu graphics stay hidden")
+
+    assert_equal(env.menu.is_north_edge_talk_menu_confirmation({
+        is_interior = base.is_interior,
+        frame = 305,
+        map_id = base.map_id,
+        player_x = base.player_x,
+        player_y = base.player_y,
+        north_edge_talk_candidate = candidate,
+        a_just = base.a_just,
+        menu_opened = base.menu_opened,
+        cursor_moved = base.cursor_moved,
+        raw_menu_open = true,
+        cursor_visible = true,
+        cursor_x = 0,
+        cursor_y = 0,
+    }), true, "visible default TALK cursor should remain a valid confirmation")
+
+    assert_equal(env.menu.is_north_edge_talk_menu_confirmation({
+        is_interior = base.is_interior,
+        player_y = base.player_y,
+        north_edge_talk_candidate = false,
+        a_just = base.a_just,
+        menu_opened = base.menu_opened,
+        cursor_moved = base.cursor_moved,
+        raw_menu_open = true,
+        cursor_visible = true,
+        cursor_x = 0,
+        cursor_y = 0,
+    }), false, "stale north-edge command residue must not arm a visit without the first A")
+
+    assert_equal(env.menu.is_north_edge_talk_candidate_valid({
+        is_interior = base.is_interior,
+        frame = 944,
+        map_id = base.map_id,
+        player_x = base.player_x,
+        player_y = base.player_y,
+        north_edge_talk_candidate = candidate,
+    }), false, "candidate should expire after the bounded confirmation window")
+
+    assert_equal(env.menu.is_north_edge_talk_candidate_valid({
+        is_interior = base.is_interior,
+        frame = 305,
+        map_id = base.map_id,
+        player_x = 26,
+        player_y = base.player_y,
+        north_edge_talk_candidate = candidate,
+    }), false, "moving off the interaction cell should cancel the candidate")
+
+    assert_equal(env.menu.is_north_edge_talk_candidate_valid({
+        is_interior = base.is_interior,
+        frame = 305,
+        map_id = base.map_id,
+        player_x = base.player_x,
+        player_y = base.player_y,
+        north_edge_talk_candidate = candidate,
+        cancel_input = true,
+    }), false, "directional or B input should cancel the default-TALK candidate")
+
+    assert_equal(env.menu.is_north_edge_talk_menu_start({
+        is_interior = true,
+        player_y = 2,
+        a_just = true,
+        menu_opened = false,
+        cursor_moved = false,
+        raw_menu_open = false,
+        cursor_visible = false,
+    }), false, "the fallback must remain limited to the guarded north edge")
+
+    env.restore()
+end
+
 local failures = 0
 local total = 0
 

@@ -1803,6 +1803,14 @@ local SERVICE_ROLE_OVERRIDES = {
         },
         cells = {
             ["4,7"] = {name = "Magic Key Merchant", infer_counter = false},
+            -- Temple-clue NPC in the southwest house. Normal walking and
+            -- TALK on 2026-09-17 verified the east public stand (5,23),
+            -- facing west across raw-F counter (4,23) toward (3,23).
+            ["3,23"] = {
+                service = false, infer_counter = false,
+                interaction_x = 5, interaction_y = 23,
+                interaction_face_dir = "west", interaction_label = "counter",
+            },
         },
     },
 }
