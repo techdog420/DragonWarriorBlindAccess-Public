@@ -1,5 +1,33 @@
 # Current Investigation Scratchpad
 
+## 2026-09-18 Rimuldar Woman 4 southwest edge route
+
+- RIM-WOMAN4-EDGE-01 / PLAYER ACCEPTED: stationary `npc_19` is
+  correctly located at `(0,26)`. The valid conversation stand is `(0,27)`,
+  facing north; live TALK there delivered "Orwick is late again. I'm starving."
+  and `VISITED_AUTO` matched `npc_19`.
+- The natural route reaches `(1,28)` from the entrance by using the south
+  perimeter. The planner stopped there only because its generic west-boundary
+  guard hid `(0,28)` and `(0,27)`. Controlled one-tile moves proved
+  `(1,28)<->(0,28)<->(0,27)`. A 60-frame held-left probe first entered
+  `(0,28)` and then exited town on a second step; that overrun is expected at
+  the edge and is not blocker evidence.
+- `map_reader.lua` now exposes only `(0,28)` and `(0,27)` for map `0x0B`;
+  `(0,26)` remains blocked. `objects.lua` gives Woman 4 the exact `(0,27)`
+  north-facing talk stand and keeps her out of Services. Syntax and diff checks
+  pass, along with all 90 map-reader and 127 object tests; the full gate passes
+  41 host-runnable Lua suites and 68 Python tests.
+- PLAYER ROUND-TRIP ACCEPTANCE: after reload, two entrance-to-Woman4 routes
+  completed at `(0,27)`, faced north, and TALK matched `npc_19`. The first
+  return attempt completed its down step into `(2,29)` at frame687, then
+  residual south carry crossed the town exit at frame702 during the planned
+  turn to east; this is a timing/transition watch item, not a map blocker. Two
+  subsequent returns used the same southwest corridor and completed normally
+  at the entrance `(29,13)` (face completions frames5378 and9192), with no
+  runtime block. Fresh frame15240 confirms `(29,13)`, target/path nil, and
+  runtime blocks none. Acceptance log:
+  `.test_tmp/rimuldar_woman4_player_acceptance_20260918.log`.
+
 ## 2026-09-17 Rimuldar Old Man 3 counter access
 
 - RIM-COUNTER-01: Old Man3 (stationary npc_17) is correctly located at(3,23).

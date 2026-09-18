@@ -1193,6 +1193,13 @@ local MAP_PASSTHROUGH_CELLS = {
         ["0,1"] = true,
         ["0,2"] = true,
         ["0,3"] = true,
+        -- Woman 4 southwest edge approach. Controlled one-tile movement on
+        -- 2026-09-18 proved (1,28)<->(0,28) and (0,28)<->(0,27). A longer
+        -- held-left probe entered (0,28), then continued out of town on its
+        -- second step, so expose only the two stand/connector cells needed to
+        -- reach the NPC at (0,26).
+        ["0,27"] = true,
+        ["0,28"] = true,
         ["2,3"] = true,
         ["3,3"] = true,
         ["1,5"] = true,

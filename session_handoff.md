@@ -1,8 +1,22 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## Current implementation
+
+- Rimuldar Woman4 edge route is player-accepted (2026-09-18). The NPC remains
+  at(0,26); live TALK and visited tracking passed
+  from(0,27), facing north. Controlled moves proved
+  (1,28)<->(0,28)<->(0,27); a longer held-left probe only exited because it
+  continued a second step through the town boundary. map_reader.lua now opens
+  only edge cells(0,28) and(0,27), while objects.lua gives Woman4 the explicit
+  talk stand. All90 map-reader and127 object tests pass, with syntax and diff
+  checks clean; the full gate passes41 host-runnable Lua suites and68 Python
+  tests. After reload, the player completed two outward routes and two clean
+  returns. The first return carried south from(2,29) through the town exit
+  while turning east; two immediate repeats used the same corridor and reached
+  the entrance normally, so retain this as a timing/transition watch item, not
+  map data. Fresh frame15240: Rimuldar(29,13), no active path or runtime blocks.
 
 - Rimuldar Old Man3 access is fixed and agent-verified (2026-09-17). His NPC
   position(3,23) is correct; ordinary adjacent routing targeted the west house
@@ -14,8 +28,8 @@ Updated: 2026-09-17
   navigation refresh; no manual reload is needed for this change. Full gate
   passes41 Lua suites/68 Python tests, including126 object and22 pathfinder
   tests. Updated two stale route expectations from the earlier terrain-table
-  correction; runtime pathfinding is unchanged. Rimuldar's broader NPC pass and player
-  acceptance remain open. Active branch is Final-Town-Cleanup; earlier branch/
+  correction; runtime pathfinding is unchanged. Rimuldar's NPC pass is now
+  player-accepted. Active branch is Final-Town-Cleanup; earlier branch/
   publication entries below are historical. Current source edits are uncommitted.
   Post-gate513420/514560: hero(4,21), clear guards, speech bridge ready/error
   none. NPCs filter restored with Old Man3 selected (10/20), counter(5,23).

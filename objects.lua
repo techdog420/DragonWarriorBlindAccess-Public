@@ -1811,6 +1811,15 @@ local SERVICE_ROLE_OVERRIDES = {
                 interaction_x = 5, interaction_y = 23,
                 interaction_face_dir = "west", interaction_label = "counter",
             },
+            -- Woman 4 is fixed on the southwest map edge at (0,26). Normal
+            -- TALK on 2026-09-18 succeeded from the adjacent edge cell
+            -- (0,27), facing north. Keep her as an ordinary dialogue NPC and
+            -- route to that exact stand instead of the nearby exit boundary.
+            ["0,26"] = {
+                name = "Woman 4", service = false, infer_counter = false,
+                interaction_x = 0, interaction_y = 27,
+                interaction_face_dir = "north", interaction_label = "talk",
+            },
         },
     },
 }

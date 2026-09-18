@@ -2951,6 +2951,39 @@ function tests.rimuldar_old_man_uses_east_counter_stand_without_becoming_a_servi
     env.restore()
 end
 
+function tests.rimuldar_woman4_uses_walkable_south_edge_stand()
+    local env = make_env({npc_count = 20})
+    env.set_position(0x0B, 1, 24)
+    env.set_terrain_offset(0x10)
+    env.set_npc(19, 0xC0, 0x5A, 0) -- stationary Woman 4 at (0,26)
+    env.objects.refresh(0x0B)
+
+    local obj = find_by_id(env.objects, "npc_19")
+    assert_equal(obj ~= nil, true, "Rimuldar Woman 4 should remain browsable")
+    assert_equal(obj.name, "Woman 4", "Rimuldar edge NPC should retain her normal label")
+    assert_equal(obj.interaction_x, 0, "Rimuldar Woman 4 talk stand X")
+    assert_equal(obj.interaction_y, 27, "Rimuldar Woman 4 talk stand should be immediately south")
+    assert_equal(obj.interaction_face_dir, "north", "Rimuldar Woman 4 stand should face north")
+    assert_equal(obj.interaction_label, "talk", "Rimuldar Woman 4 should identify the stand as a talk position")
+    assert_equal(obj.service, false, "Rimuldar Woman 4 should remain an ordinary dialogue NPC")
+
+    env.objects.select_object_by_id("npc_19")
+    local description = env.objects.describe_current({map_id = 0x0B})
+    assert_equal(description:find("talk", 1, true) ~= nil, true,
+        "selected Woman 4 description should retain the verified talk stand")
+
+    env.objects.next_filter() -- NPCs
+    env.objects.next_filter() -- Services
+    assert_equal(env.objects.get_count(), 0, "Rimuldar Woman 4 should stay out of Services")
+
+    env.set_position(0x07, 1, 24)
+    env.objects.refresh(0x07)
+    assert_equal(find_by_id(env.objects, "npc_19").interaction_y, nil,
+        "the Rimuldar edge stand must not affect the same cell on another map")
+
+    env.restore()
+end
+
 function tests.kol_exposes_bath_without_hidden_search_tile()
     local env = make_env({npc_count = 0})
     env.set_terrain_offset(0x10)

@@ -1,10 +1,26 @@
 # Playtesting Notes
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Rimuldar Woman4 edge route is player-accepted (2026-09-18). Woman4 is
+  correctly fixed at(0,26), and TALK plus visited tracking
+  succeeded from(0,27), facing north. Normal routing already reaches(1,28);
+  controlled movement proved the missing west-edge connection
+  (1,28)<->(0,28)<->(0,27). Only(0,28) and(0,27) are now promoted as map0B
+  passthroughs, and the object uses the explicit north-facing talk stand.
+  A held-left probe that appeared to exit actually crossed(0,28) first and
+  continued one more step; it does not indicate a blocker. All90 map-reader
+  and127 object tests pass; the full gate passes41 host-runnable Lua suites and
+  68 Python tests. After reload, two outward routes and two return routes
+  completed normally. The first return attempt carried south through the town
+  exit immediately after reaching(2,29), but two repeats of the same corridor
+  reached(29,13) cleanly. Track that as intermittent turn-settle/transition
+  timing, not a permanent blocker. Fresh frame15240 has no active path or
+  runtime blocks.
 
 - Rimuldar Old Man3 counter fix (2026-09-17): the NPC is in his correct
   enclosed cell(3,23). The intended conversation is from(5,23), facing west
@@ -15,7 +31,7 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   events. Full gate passes41 Lua suites and68 Python tests. Two old pathfinder
   expectations were updated for the earlier town-terrain correction, retaining
   counter/NPC avoidance and return checks. The change is loaded; player
-  acceptance and the remaining Rimuldar NPC validation are still pending.
+  acceptance passed as part of the completed Rimuldar NPC validation.
 
 - Garinham cleanup is complete (player acceptance, 2026-09-17). After the
   map09 Bank00 town-collision correction and player reload, the open-door

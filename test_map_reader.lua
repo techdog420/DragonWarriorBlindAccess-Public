@@ -4488,6 +4488,49 @@ function tests.brecconary_tool_shop_public_stand_is_passthrough()
     env.restore()
 end
 
+function tests.rimuldar_woman4_edge_approach_is_passthrough()
+    local base = 0x0B * 5
+    local env = make_env({
+        rom_bytes = {
+            [base] = 0x00,
+            [base + 1] = 0x80,
+            [base + 2] = 29,
+            [base + 3] = 29,
+            [base + 4] = 0,
+        },
+        memory_bytes = {
+            [0] = 0x10,
+        },
+    })
+
+    for _, cell in ipairs({
+        {x = 0, y = 28, label = "southwest edge connector"},
+        {x = 0, y = 27, label = "Woman 4 talk stand"},
+    }) do
+        local details = env.map_reader.get_walkability_details(0x0B, cell.x, cell.y)
+        assert_equal(details.base_walkable, true,
+            "Rimuldar " .. cell.label .. " should override the generic west-edge boundary")
+        assert_equal(details.effective_walkable, true,
+            "Rimuldar " .. cell.label .. " should be available to A*")
+        assert_equal(details.reason, "passthrough",
+            "Rimuldar " .. cell.label .. " should record live movement proof")
+    end
+
+    local npc_cell = env.map_reader.get_walkability_details(0x0B, 0, 26)
+    assert_equal(npc_cell.base_walkable, false,
+        "Rimuldar Woman 4 NPC cell should remain outside the edge passthrough")
+    assert_equal(npc_cell.reason, "engine_boundary",
+        "Rimuldar Woman 4 NPC cell should retain the generic boundary guard")
+
+    local snapshot = env.map_reader.get_walkability_snapshot(0x0B)
+    assert_equal(snapshot[28][0], true,
+        "walkability snapshot should include the southwest edge connector")
+    assert_equal(snapshot[27][0], true,
+        "walkability snapshot should include the Woman 4 talk stand")
+
+    env.restore()
+end
+
 function tests.rimuldar_magic_key_route_bridge_is_passthrough()
     local base = 0x0B * 5
     local env = make_env({
