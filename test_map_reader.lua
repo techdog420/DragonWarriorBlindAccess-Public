@@ -3583,6 +3583,74 @@ function tests.rimuldar_marks_only_verified_entry_prime()
     )
 end
 
+function tests.cantlin_marks_only_verified_central_right_door_entry_cadence()
+    local env = make_env()
+    local get_settle = env.map_reader.get_entry_settle_frames
+    local get_prime = env.map_reader.get_entry_prime_frames
+    local actual = {
+        settle = get_settle(0x0A, 15, 24, "east"),
+        prime = get_prime(0x0A, 15, 24, "east"),
+        reverse_settle = get_settle(0x0A, 15, 24, "west"),
+        reverse_prime = get_prime(0x0A, 15, 24, "west"),
+        neighbor_settle = get_settle(0x0A, 14, 24, "east"),
+        neighbor_prime = get_prime(0x0A, 14, 24, "east"),
+        other_map_settle = get_settle(0x0B, 15, 24, "east"),
+        other_map_prime = get_prime(0x0B, 15, 24, "east"),
+    }
+    env.restore()
+
+    assert_equal(actual.settle, 16,
+        "Cantlin (15,24) east entry should require a 16-frame neutral settle")
+    assert_equal(actual.prime, 1,
+        "Cantlin (15,24) east entry should require a one-frame movement prime")
+    assert_equal(actual.reverse_settle, 0,
+        "Cantlin reverse entry should retain ordinary settle cadence")
+    assert_equal(actual.reverse_prime, 0,
+        "Cantlin reverse entry should not receive a movement prime")
+    assert_equal(actual.neighbor_settle, 0,
+        "neighboring Central Left Door cells should retain ordinary settle cadence")
+    assert_equal(actual.neighbor_prime, 0,
+        "neighboring Central Left Door cells should not receive a movement prime")
+    assert_equal(actual.other_map_settle, 0,
+        "Cantlin entry-settle metadata should remain map-scoped")
+    assert_equal(actual.other_map_prime, 0,
+        "Cantlin entry-prime metadata should remain map-scoped")
+end
+
+function tests.cantlin_marks_only_verified_fairy_water_return_entry_cadence()
+    local env = make_env()
+    local get_settle = env.map_reader.get_entry_settle_frames
+    local get_prime = env.map_reader.get_entry_prime_frames
+    local actual = {
+        settle = get_settle(0x0A, 20, 13, "west"),
+        prime = get_prime(0x0A, 20, 13, "west"),
+        reverse_settle = get_settle(0x0A, 20, 13, "east"),
+        reverse_prime = get_prime(0x0A, 20, 13, "east"),
+        neighbor_settle = get_settle(0x0A, 21, 13, "west"),
+        neighbor_prime = get_prime(0x0A, 21, 13, "west"),
+        other_map_settle = get_settle(0x0B, 20, 13, "west"),
+        other_map_prime = get_prime(0x0B, 20, 13, "west"),
+    }
+    env.restore()
+
+    assert_equal(actual.settle, 16,
+        "Cantlin (20,13) west entry should require a 16-frame neutral settle")
+    assert_equal(actual.prime, 1,
+        "Cantlin (20,13) west entry should require a one-frame movement prime")
+    assert_equal(actual.reverse_settle, 0,
+        "Cantlin Fairy Water reverse entry should retain ordinary settle cadence")
+    assert_equal(actual.reverse_prime, 0,
+        "Cantlin Fairy Water reverse entry should not receive a movement prime")
+    assert_equal(actual.neighbor_settle, 0,
+        "neighboring Fairy Water counter cells should retain ordinary settle cadence")
+    assert_equal(actual.neighbor_prime, 0,
+        "neighboring Fairy Water counter cells should not receive a movement prime")
+    assert_equal(actual.other_map_settle, 0,
+        "Cantlin Fairy Water settle metadata should remain map-scoped")
+    assert_equal(actual.other_map_prime, 0,
+        "Cantlin Fairy Water prime metadata should remain map-scoped")
+end
+
 function tests.rimuldar_exit_route_avoids_false_north_entry()
     local env = make_env()
 
@@ -6477,7 +6545,7 @@ end
 function tests.verified_town_terrain_tables_do_not_change_dungeon_models()
     local data_start = 0x1010
     local rom_bytes = {}
-    for _, map_id in ipairs({0x08, 0x09, 0x0B, 0x12}) do
+    for _, map_id in ipairs({0x08, 0x09, 0x0A, 0x0B, 0x12}) do
         local base = map_id * 5
         rom_bytes[base], rom_bytes[base+1] = 0, 0x90
         rom_bytes[base+2], rom_bytes[base+3], rom_bytes[base+4] = 29, 29, 0
@@ -6486,8 +6554,35 @@ function tests.verified_town_terrain_tables_do_not_change_dungeon_models()
     local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
     assert_equal(env.map_reader.is_walkable(0x08, 14, 22), true, "Brecconary grass should use the pilot")
     assert_equal(env.map_reader.is_walkable(0x09, 14, 22), true, "Garinham grass should use the verified town table")
+    assert_equal(env.map_reader.is_walkable(0x0A, 14, 22), true, "Cantlin grass should use the verified town table")
     assert_equal(env.map_reader.is_walkable(0x0B, 14, 22), true, "Rimuldar grass should use the verified town table")
     assert_equal(env.map_reader.is_walkable(0x12, 14, 22), false, "Charlock B4 type-zero stone remains blocked")
+    env.restore()
+end
+
+function tests.cantlin_uses_verified_bank00_town_collision_table()
+    local data_start = 0x1010
+    local base = 10 * 5
+    local rom_bytes = {[base] = 0, [base+1] = 0x90, [base+2] = 31, [base+3] = 31, [base+4] = 0}
+    fill_packed_map(rom_bytes, data_start, 32, 32, 0)
+    -- Use y=31, outside Cantlin's real 30x30 map, so this generic table
+    -- fixture cannot overlap a permanent door or map-specific seam override.
+    for tile = 0, 15 do set_packed_block(rom_bytes, data_start, 32, tile + 1, 31, tile) end
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local safe = env.map_reader.get_walkability_snapshot(0x0A)
+    local hazardous = env.map_reader.get_walkability_snapshot(0x0A, {allow_hazards = true})
+    local impassable = {[2]=true, [4]=true, [11]=true, [12]=true, [13]=true, [15]=true}
+    for tile = 0, 15 do
+        assert_equal(hazardous[31][tile + 1], not impassable[tile], "Cantlin collision for tile " .. tile)
+        -- Cantlin's damage barriers are coordinate-scoped rather than generic
+        -- raw-9/raw-10 hazards; that behavior has its own live-backed test.
+        assert_equal(safe[31][tile + 1], not impassable[tile],
+            "Cantlin safe routing for tile " .. tile)
+    end
+    assert_equal(safe[31][1], true, "Cantlin raw grass must be walkable")
+    assert_equal(safe[31][5], false, "Cantlin raw stone must be blocked")
+    assert_equal(env.map_reader.get_walkability_details(0x0A, 5, 31).reason, "map_tile_type",
+        "Cantlin stone should use the map-scoped collision table")
     env.restore()
 end
 

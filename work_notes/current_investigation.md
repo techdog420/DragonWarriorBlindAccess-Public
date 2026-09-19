@@ -1,5 +1,71 @@
 # Current Investigation Scratchpad
 
+## 2026-09-18 Cantlin terrain/audit start
+
+- TELEPORT-TAINTED BASELINE: hero `(7,23)`, all five known doors open
+  (`(14,25)`, `(15,25)`, `(26,9)`, `(8,25)`, `(4,21)`), keys 1, runtime
+  blocks none. Pre-correction audit `town_audit_0a_20260918T162410Z_001`
+  covered all 29 targets: 26 modeled reachable, 1 NPC-obstructed, 2
+  model-blocked, and 0 return concerns. Treat it as a comparison snapshot,
+  not final route acceptance, because the terrain table was still reversed.
+- CLEAN TERRAIN PROOF: exited Cantlin, walked normally on the World Map from
+  `(73,102)` to `(73,100)`, and re-entered at `(15,0)`, clearing teleport
+  taint. Normal auto-walk reached `(19,11)`; `probe_edge:LEFT` then entered
+  raw0 grass `(18,11)` despite the old model calling it blocked. Continuing
+  by normal movement reached `(9,23)`, where repeated west attempts into raw4
+  stone `(8,23)` blocked; the same clean route also blocked adjacent x=8
+  stone cells. No runtime blocks were present before the probes.
+- PATCHED / RELOAD PENDING: `map_reader.lua` now gives Cantlin map `0x0A` the
+  verified Bank00 town collision table (raw0 grass walkable, raw4 stone
+  blocked) without changing Cantlin's coordinate-scoped damage-barrier model.
+  `test_map_reader.lua` adds a full 16-tile Cantlin collision regression and
+  cross-map isolation. Syntax and diff checks pass; all 91 map-reader tests
+  pass. Navigation refreshes already report `(18,11)` walkable and `(8,23)`
+  blocked, but a manual FCEUX Lua reload is still required for acceptance.
+- CURRENT LIVE STATE: the clean re-entry reset opened-door RAM. Hero is at
+  `(8,20)`, all door slots are closed, HP 149/149, and runtime blocks are
+  none. The pre-edit live log is preserved at
+  `.test_tmp/cantlin_open_doors_teleport_tainted_baseline_20260918.log`.
+- RELOAD VERIFIED: fresh launcher probe `CANTLIN_TABLE_RELOAD` passed. At
+  frame3960, raw0 `(18,11)` reported walkable and raw4 `(8,23)` blocked, both
+  by `map_tile_type`; hero stayed `(8,20)` and runtime blocks remained empty.
+  The first closed-door audit was 21 reachable, 1 NPC-obstructed, 7 blocked,
+  with 1 return concern (`town_audit_0a_20260918T173033Z_001`).
+- OPEN-DOOR AUDIT: restored the user's intended five-door state with
+  `debug_seed_open_doors` for `(14,25)`, `(15,25)`, `(26,9)`, `(8,25)`, and
+  `(4,21)`. The first snapshot found 23 reachable, 1 NPC-obstructed, 5 blocked;
+  a repeat after mobile NPC movement improved to 24 reachable, 1
+  NPC-obstructed, 4 blocked, and 1 return concern
+  (`town_audit_0a_20260918T173209Z_001`). The remaining blocked targets are
+  Roaming Weapons Merchant `npc_4`, Old Man 4 `npc_18`, Old Man 1 `npc_6`,
+  and Merchant 3 `npc_8`; Guard 1 `npc_1` is the transient NPC obstruction.
+  Old Man 3 is now reachable. Final frame12000: hero `(8,20)`, all five seeded
+  doors open, no active path, and no runtime blocks. Live routes remain to be
+  validated; audit status alone is not passability proof.
+- FAIRY WATER CLASSIFICATION FIX: live route/TALK evidence identified roaming
+  `npc_5` (slot 5, Woman sprite, movement `0xD0`) as the duplicate Services
+  target; her dialogue is only "I know nothing." `objects.lua` now pins that
+  stable slot to `Woman 2`, explicitly keeps it out of Services, and leaves
+  stationary seller `npc_16` at `(22,13)` as `Fairy Water Merchant` with the
+  public `(20,13)` east-facing counter stand. The regression was demonstrated
+  red before the fix and all 128 object tests pass afterward; Lua syntax and
+  diff checks pass. Live navigation modules refreshed at frame24840, but the
+  immediate services audit was correctly refused because the prior dialogue
+  box was still open.
+- SERVICES PLAYER ACCEPTED: after closing the dialogue, the player confirmed
+  that `npc_5` is absent from Services and completed the category's usable
+  round trips. One Fairy Water leg rerouted after a timing-suspect timeout on
+  `(11,19)->RIGHT` into `(12,19)`; the repeat was clean. Do not promote that
+  single observation.
+- ROAMING WEAPONS MERCHANT EXPECTED NO-ROUTE: fresh frame74700 places `npc_4`
+  at `(22,4)`, with all five doors open and no runtime blockers. Frame76200
+  normal and skip-NPC adjacent planners both returned `No path found`
+  (visited557/587). Frontier analysis found a four-cell target-side component,
+  `bridge_candidates=0`, and `hidden_bridge_candidates=0`. This exactly
+  reproduces the previously verified sealed x=22, rows3-6 compartment. Leave
+  its walls and adjacent-NPC service behavior unchanged; it can be routed only
+  when its live position is in the public component.
+
 ## 2026-09-18 Rimuldar Woman 4 southwest edge route
 
 - RIM-WOMAN4-EDGE-01 / PLAYER ACCEPTED: stationary `npc_19` is
@@ -7202,3 +7268,90 @@ For the next live map task, start a new dated section here with:
   one model-blocked, two return concerns; Woman2 at20,7 is reachable. Count
   improvement is NPC-layout variation, not a fix. Prioritize shared NPC mobility
   correction, then a Brecconary pilot of the base town tile table.
+
+
+## 2026-09-19 Cantlin Central Right Door final-step timing seam
+
+- Repeated routes to Central Right Door from the town exit failed only on the
+  final step, `(16,24)->LEFT` into `(15,24)`. The same edge had already crossed
+  successfully twice when it was the penultimate step of a route to Central
+  Left Door.
+- Fresh raw probes crossed both directions with no NPC or runtime blocker:
+  LEFT from `(16,24)` reached `(15,24)` and carried to `(14,24)`; RIGHT from
+  `(14,24)` reached `(15,24)` and settled at `(16,24)`. The terrain model also
+  reports tile6/base-walkable. Do not add a permanent or directional block.
+- Failure signature: movement starts at frame2 (`subpixel 0x04->0x00`), then
+  `AUTO_STEP_GUARDED_TWITCH_REPRESS` releases the final-step twitch for 16
+  neutral frames. The fresh press times out and the route reroutes. Successful
+  penultimate crossings retain the twitch because another west step follows.
+- CLEAN / PROMOTED: map0A destination `(15,24)` approached from the east now
+  pre-arms the existing prime1/settle16 entry cadence. Regression coverage
+  keeps the reverse side, neighbor, and other maps unchanged. Live frame54120
+  queued the exact one-step route from `(16,24)`; frame54163 reached `(15,24)`
+  with zero retries, and frame54182 faced Central Right Door south. No reroute
+  or block was logged. All92 map-reader tests and the full41-Lua-suite/
+  68-Python-test gate pass. This is a timing change only, not passability.
+- PLAYER ACCEPTED — DOORS: all five door round trips passed. The retained
+  post-gate log confirms Central Right, Eastern Building, Western Shop North,
+  and Western Shop East outward/return routes with no reroutes; bounded timing
+  retries recovered in place. Western Shop East became reachable as expected
+  after Western Shop North was opened. Central Left's full-run evidence was
+  overwritten by the gate, so its category acceptance also relies on the
+  player's report plus the earlier successful agent approach. Frame87840:
+  hero `(20,28)`, all five door slots open, nil route, runtime blocks none.
+
+
+## 2026-09-19 Cantlin NPC route follow-up
+
+- PERSON1 — TRANSIENT: the first route recorded one blocked-step reroute and
+  immediately replanned one cell east. The second full approach, TALK, visited
+  update, and release succeeded. Do not promote a blocker for a mobile target.
+- WOMAN1 — TRANSIENT EDGE POSITION: no route existed while she occupied
+  `(0,26)` and `(0,28)`. Once she moved to `(1,29)`, a 31-step approach,
+  facing, TALK, and visited update succeeded. This is target-position
+  availability, not NPC clutter or a stable bad edge; no source change.
+- WOMAN2 — TIMING FIX: three return attempts failed identically on
+  `(19,13)->RIGHT` into `(20,13)` after bounded retries. From the same origin,
+  raw `probe_edge:RIGHT` moved to `(20,13)` at frame204083; the destination
+  was tile6 and no NPC occupied it. Map0A `(20,13).west` now uses prime1 and
+  settle16 only. The post-fix guided step logged the cadence at frames238020/
+  238056, moved at238083, arrived at238099, and completed at238118 with no
+  reroute. Passability and directional blocks are unchanged.
+- OLD MAN4 — FIXED COUNTER STAND: `npc_18` remains stationary at `(22,22)`.
+  TALK from west `(20,22)` across two tiles and from north `(22,20)` both
+  reported no one. Normal movement to `(22,24)`, facing north across raw-F
+  counter `(22,23)`, delivered the Erdrick's Sword clue. The object now uses
+  that explicit dialogue-only stand; selected-object routing and visited
+  tracking passed live at frames234804/235535.
+- MERCHANT3 — FIXED COUNTER STAND: `npc_8` roams inside the sealed
+  `x=2..4,y=25..27` room. Normal, skip-NPC, parked-NPC, and frontier searches
+  found no public bridge. The object now routes to `(6,26)`, faces west across
+  counter `(5,26)`, and temporarily holds the target at `(4,26)` on TALK.
+  Live TALK delivered the Wynn/Hauksness clue and marked `npc_8` visited at
+  frame231233.
+- HOLD RESTORATION: the old explicit target-hold path wrote the trigger
+  coordinates without restoring them, which displaced Merchant3 to `(2,23)`
+  in this live session after release. `route_manager.lua` now snapshots all
+  three NPC bytes plus map ID and restores them when the hold ends on the same
+  map. It skips stale restoration after a map transition. A full `main.lua`
+  reload is required because navigation hot reload does not reload the route
+  manager; reload also resets the contaminated live NPC placement.
+- STATIC GATE: `luac -p` passes the six changed source/test files;
+  `git diff --check` passes. Focused suites pass 93 map-reader, 130 objects,
+  and 165 route-manager tests. `python -u run_tests.py` passes 41
+  host-runnable Lua suites, 68 Python tests, syntax checks, shell checks,
+  bridge configuration, speech dependency, and command-queue checks.
+- PLAYER ACCEPTED — NPC FIXES: after reload, Merchant3 reached `(6,26)` at
+  frame3105, set visited and restored its original NPC coordinates at3474,
+  then returned to `(20,28)` at4807. Old Man4 reached `(22,24)` at5985, set
+  visited/restored at6281, and returned at7384. Woman2 reached its live
+  approach at11933, set visited/restored at12054, and returned at13175.
+- PLAYER ACCEPTED — ROAMING WEAPONS MERCHANT: after it moved into the public
+  component at `(16,8)`, its 23-step approach completed at frame17531,
+  TALK/visited plus coordinate restoration completed at17706, and the 23-step
+  return reached `(20,28)` at19103. This confirms the earlier no-path state at
+  `(22,4)` was position-dependent and the sealed compartment remains correct.
+- The validation log contains no `PATH_RUNTIME_BLOCK`, blocked-step reroute,
+  autowalk reroute, no-path, or route-failed record. Fresh read-only frame24960
+  reports Cantlin `(20,28)` with `RUNTIME_BLOCKS map=0x0A none`. Cantlin NPC
+  validation is complete.

@@ -1802,7 +1802,21 @@ local function prepare_route_planning_blocking(map_id, opts)
 end
 
 local function release_target_npc_hold(reason)
-    if target_npc_hold and reason then
+    local hold = target_npc_hold
+    if hold and hold.original_snapshot then
+        local current_map_id = select(1, nav.get_position())
+        if current_map_id == hold.map_id then
+            local original = hold.original_snapshot
+            local restored = write_npc_bytes_if_changed(
+                hold.slot, original[1], original[2], original[3])
+            if restored then
+                debug_tools.info(string.format(
+                    "NPC target hold restored: target=%s slot=%d map=0x%02X",
+                    tostring(hold.name), hold.slot, current_map_id or 0))
+            end
+        end
+    end
+    if hold and reason then
         debug_tools.info("NPC target hold released: " .. reason)
     end
     target_npc_hold = nil
@@ -1864,6 +1878,8 @@ local function start_target_npc_hold(obj, opts)
         slot = slot,
         frames = frames,
         name = obj.name,
+        map_id = select(1, nav.get_position()),
+        original_snapshot = {byte0, byte1, byte2},
         snapshot = snapshot,
     }
     write_target_npc_snapshot(slot, snapshot)

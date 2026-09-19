@@ -1,8 +1,77 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 ## Current implementation
+
+- Cantlin Doors are player-accepted as a category (2026-09-19). The retained
+  post-fix log verifies complete outward/return routes for Central Right,
+  Eastern Building, Western Shop North, and Western Shop East with no reroutes.
+  Several bounded timing retries recovered in place. Western Shop East was
+  initially unreachable until the North door was opened, then its round trip
+  passed; this is expected changing geometry. Central Left's earlier full-run
+  log was overwritten by the automated gate, but its approach worked during
+  agent validation and the player reports the round trip passed. Fresh
+  frame87840 confirms all five door slots open at `(14,25)`, `(15,25)`,
+  `(26,9)`, `(4,21)`, and `(8,25)`; hero `(20,28)`, one key, nil active path,
+  and no runtime blockers. NPC validation is now player-accepted, closing the
+  Cantlin town audit.
+
+- Cantlin Central Right Door final-step timing is fixed and agent-verified
+  (2026-09-19). The edge `(16,24)->LEFT` into interaction stand `(15,24)`
+  is physically passable but consistently failed when it was the route's final
+  step. `map_reader.lua` now assigns only that map0A/east approach the existing
+  prime1/settle16 entry cadence; no passability or directional block changed.
+  A fresh one-step route reached `(15,24)`, faced south, and completed with zero
+  retries or reroutes. All92 map-reader,164 route-manager, and154 auto-step
+  tests pass; the full gate passes41 host-runnable Lua suites and68 Python
+  tests. Current hero `(15,24)`, Central Right Door selected, five keys, no
+  active route or runtime blockers.
+
+- Cantlin's actionable NPC-route failures are fixed and player-accepted
+  (2026-09-19).
+  Dialogue-only roaming Merchant3 (`npc_8`) is confined to the sealed
+  `x=2..4,y=25..27` room; `objects.lua` now routes to public stand `(6,26)`,
+  faces west across counter `(5,26)`, and briefly holds the target on TALK
+  trigger `(4,26)`. Live TALK delivered the Wynn/Hauksness clue and marked
+  `npc_8` visited. Stationary Old Man4 (`npc_18`) now routes to `(22,24)`,
+  faces north across counter `(22,23)`, delivered the Erdrick's Sword clue,
+  and marked visited. Woman2's three returns failed at `(19,13)->RIGHT` into
+  `(20,13)`, while a same-origin raw probe moved; map0A `(20,13).west` now
+  uses prime1/settle16 without changing passability. The exact post-fix guided
+  step logged the cadence and reached `(20,13)` without rerouting. Target-NPC
+  holds now restore the NPC's original RAM position on release; this prevents
+  the Merchant3 interaction helper from leaving him displaced. Person1's
+  first route recovered on retry and its second route was clean. Woman1 was
+  temporarily unreachable only at edge positions `(0,26)`/`(0,28)`, then
+  routed and talked normally from `(1,29)`; no map data changed for either.
+  After reload, the player validated complete outward/TALK/return routes for
+  Merchant3, Old Man4, and Woman2. The formerly inaccessible roaming Weapons
+  Merchant also moved into the public component and completed a clean round
+  trip. Retained frames: Merchant3 approach3105, visited3474, return4807; Old
+  Man4 approach5985, visited6281, return7384; Woman2 approach11933,
+  visited12054, return13175; Weapons Merchant approach17531, visited17706,
+  return19103. Every target hold restored its original NPC coordinates. No
+  reroute, no-path, or runtime-block event appears in the validation run.
+  Fresh frame24960 has hero `(20,28)` and no runtime blocks. Focused suites
+  pass: 93 map-reader, 130 objects, 165 route-manager. The full gate passes 41
+  host-runnable Lua suites and 68 Python tests; syntax and `git diff --check`
+  are clean.
+
+- Cantlin Services are player-accepted as a category (2026-09-19). The
+  corrected list omits mobile `npc_5` (`Woman 2`) and retains stationary
+  `npc_16` as the Fairy Water seller. All ordinary service round trips passed.
+  One Fairy Water leg rerouted after a timing-suspect timeout at
+  `(11,19)->RIGHT`; the next run was clean, so no map blocker was promoted.
+  Roaming Weapons Merchant `npc_4` is position-dependent: it previously
+  occupied `(22,4)` in the verified sealed x=22, rows3-6 pocket.
+  Normal and skip-NPC adjacent searches both return `No path found`; fresh
+  frontier analysis reports `bridge_candidates=0` and
+  `hidden_bridge_candidates=0`. Keep its adjacent-NPC service behavior and the
+  compartment walls unchanged; it is routable only when it spawns or wanders
+  into the public town component. The player has now validated that case: at
+  `(16,8)`, its 23-step approach, TALK/visited event, and 23-step return all
+  completed without rerouting.
 
 - Rimuldar Woman4 edge route is player-accepted (2026-09-18). The NPC remains
   at(0,26); live TALK and visited tracking passed

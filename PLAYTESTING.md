@@ -1,10 +1,69 @@
 # Playtesting Notes
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Cantlin Doors are complete by player acceptance (2026-09-19). Retained logs
+  verify outward/return completion for Central Right, Eastern Building,
+  Western Shop North, and Western Shop East without reroutes. Timing retries
+  recovered in place. Western Shop East correctly had no path before opening
+  the North door and passed afterward. Central Left's earlier full-run log was
+  lost when the automated gate refreshed `dw_debug.log`; its agent-tested
+  approach, current open state, and the player's manual round-trip validation
+  agree. Fresh frame87840 shows all five doors open, hero `(20,28)`, no active
+  path, and no runtime blockers. The subsequent NPC acceptance pass completed,
+  closing the Cantlin town audit.
+
+- Cantlin Central Right Door's repeatable final-step reroute is fixed
+  (2026-09-19). The map model was already correct: raw probes crossed
+  `(16,24)<->(15,24)` and the edge also worked when another west step followed.
+  Only a route ending at `(15,24)` released the early movement twitch and
+  exhausted its retry. Map0A `(15,24).east` now uses the existing one-frame
+  prime plus16-frame neutral-settle entry cadence. The exact live one-step
+  route reached the stand, faced south, and completed without a retry or
+  reroute. Reverse and neighboring approaches retain normal timing. All92
+  map-reader tests and the full41-Lua-suite/68-Python-test gate pass.
+
+- Cantlin Services category is complete (2026-09-19). The player validated
+  the corrected Services list and all ordinarily reachable round trips. Mobile
+  `npc_5` is correctly absent as `Woman 2`; fixed `npc_16` remains the Fairy
+  Water seller. One Fairy Water round-trip leg rerouted after the executor
+  exhausted timing retries on `(11,19)->RIGHT` into `(12,19)`; a repeat was
+  clean, so retain this as transient execution evidence rather than map data.
+  Roaming Weapons Merchant `npc_4` is the sole no-route service in the current
+  NPC layout. At `(22,4)`, both normal and skip-NPC adjacent searches fail;
+  fresh frontier analysis finds no ordinary or hidden bridge into its four-cell
+  side component. This matches the previously verified sealed x=22, rows3-6
+  compartment. Do not weaken its walls or assign a false fixed counter stand;
+  adjacent routing works when the merchant is in the public town component.
+  The player has now validated that public-component case: the merchant was at
+  `(16,8)`, and its 23-step approach, TALK/visited event, and 23-step return
+  completed without a reroute.
+
+- Cantlin NPC follow-up is player-accepted after reload (2026-09-19).
+  Dialogue-only roaming Merchant3 (`npc_8`) is
+  sealed in the `x=2..4,y=25..27` room; navigation now uses public stand
+  `(6,26)`, faces west across `(5,26)`, and temporarily holds him at `(4,26)`
+  for TALK. Live dialogue and visited tracking passed. Stationary Old Man4
+  (`npc_18`) now uses `(22,24)`, facing north across `(22,23)`; live dialogue
+  and visited tracking also passed. Woman2's repeatable return failure at
+  `(19,13)->RIGHT` was contradicted by a same-origin raw move, so `(20,13)`
+  gets only west-entry prime1/settle16 timing, not a blocker. The post-fix
+  guided step crossed without rerouting. Target-NPC holds now restore the
+  original RAM coordinates on release; this route-manager change requires a
+  full script reload. Person1's retry was clean. Woman1 was unreachable only
+  while roaming at edge cells `(0,26)`/`(0,28)` and routed normally from
+  `(1,29)`; neither transient case changed map data. The player then completed
+  outward/TALK/return routes for Merchant3, Old Man4, and Woman2. Retained
+  logs show visited events and restored target holds for all three, and no
+  route failure or reroute. The roaming Weapons Merchant also passed once it
+  occupied the public component. Fresh frame24960: hero `(20,28)`, runtime
+  blocks none. Focused counts are 93 map-reader, 130 objects, and 165
+  route-manager tests. The full gate passes 41 host-runnable Lua suites and
+  68 Python tests.
 
 - Rimuldar Woman4 edge route is player-accepted (2026-09-18). Woman4 is
   correctly fixed at(0,26), and TALK plus visited tracking

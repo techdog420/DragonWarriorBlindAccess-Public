@@ -2561,6 +2561,101 @@ function tests.cantlin_fairy_water_merchant_uses_live_counter_stand()
 
     env.restore()
 end
+
+function tests.cantlin_old_man_4_uses_public_south_counter_stand()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x0A, 22, 24)
+    env.set_terrain_offset(0x10)
+    env.set_npc(18, 0xA0 + 22, 0x16, 0x00) -- stationary Old Man 4 at (22,22)
+    env.objects.refresh(0x0A)
+
+    local obj = env.objects.find_object_by_id("npc_18")
+    assert_equal(obj ~= nil, true, "Cantlin Old Man 4 should remain browsable")
+    assert_equal(obj.name:find("Old Man", 1, true), 1,
+        "Cantlin clue NPC should retain an Old Man label")
+    assert_equal(obj.interaction_x, 22, "Cantlin Old Man 4 public counter stand X")
+    assert_equal(obj.interaction_y, 24, "Cantlin Old Man 4 should route to the public south stand")
+    assert_equal(obj.interaction_face_dir, "north", "Cantlin Old Man 4 stand should face north")
+    assert_equal(obj.interaction_label, "counter", "Cantlin Old Man 4 stand should identify the counter")
+    assert_equal(obj.service, false, "Cantlin Old Man 4 should remain an ordinary dialogue NPC")
+
+    env.objects.select_object_by_id("npc_18")
+    local description = env.objects.describe_current({map_id = 0x0A})
+    assert_equal(description:find("counter", 1, true) ~= nil, true,
+        "selected Old Man 4 description should retain the public counter stand")
+
+    env.objects.set_filter(env.objects.FILTER_SERVICE)
+    assert_equal(env.objects.find_object_by_id("npc_18", {filtered = true}), nil,
+        "Cantlin Old Man 4 should stay out of Services")
+
+    local marked = env.objects.mark_adjacent_npc_visited(0x0A, 22, 24)
+    assert_equal(marked.id, obj.id, "Cantlin Old Man 4 counter stand should mark him visited")
+    assert_equal(env.objects.is_visited(obj, 0x0A), true,
+        "Cantlin Old Man 4 visit should persist from the public stand")
+
+    env.restore()
+end
+
+function tests.cantlin_roaming_merchant_3_uses_public_counter_and_trigger_hold()
+    for _, pos in ipairs({{3, 25}, {3, 26}, {4, 27}}) do
+        local env = make_env({npc_count = 9})
+
+        env.set_position(0x0A, 6, 26)
+        env.set_terrain_offset(0x10)
+        env.set_npc(8, 0x60 + pos[1], pos[2], 0xD0) -- mobile Merchant 3 in sealed 3x3 room
+        env.objects.refresh(0x0A)
+
+        local obj = env.objects.find_object_by_id("npc_8")
+        assert_equal(obj ~= nil, true, "Cantlin Merchant 3 should remain browsable")
+        assert_equal(obj.service, false, "Cantlin Merchant 3 should remain a dialogue-only NPC")
+        assert_equal(obj.mobility, "mobile", "Cantlin Merchant 3 should retain mobile-slot behavior")
+        assert_equal(obj.interaction_x, 6, "Cantlin Merchant 3 should use the public east counter stand")
+        assert_equal(obj.interaction_y, 26, "Cantlin Merchant 3 public stand should stay on the counter row")
+        assert_equal(obj.interaction_face_dir, "west", "Cantlin Merchant 3 stand should face west")
+        assert_equal(obj.interaction_label, "counter", "Cantlin Merchant 3 should identify the public counter")
+        assert_equal(obj.target_hold_x, 4, "Cantlin Merchant 3 should be held on the counter trigger column")
+        assert_equal(obj.target_hold_y, 26, "Cantlin Merchant 3 should be held on the counter trigger row")
+
+        env.restore()
+    end
+end
+
+function tests.cantlin_roaming_woman_is_not_a_fairy_water_service()
+    local env = make_env({npc_count = 20})
+
+    env.set_position(0x0A, 7, 22)
+    env.set_terrain_offset(0x10)
+    env.set_npc(3, 0xC0 + 4, 0x0E, 0x00)  -- First ordinary Woman.
+    env.set_npc(5, 0xC0 + 5, 0x16, 0xD0)  -- Mobile Woman 2; live TALK: "I know nothing."
+    env.set_npc(16, 0xC0 + 22, 0x0D, 0x00) -- Stationary, confirmed Fairy Water seller.
+    env.objects.refresh(0x0A)
+
+    local roaming = env.objects.find_object_by_id("npc_5")
+    assert_equal(roaming ~= nil, true, "Cantlin roaming Woman slot should be present")
+    assert_equal(roaming.name, "Woman 2", "Cantlin roaming Woman should keep a normal NPC label")
+    assert_equal(roaming.service, false, "Cantlin roaming Woman should stay out of Services")
+    assert_equal(roaming.mobility, "mobile", "Cantlin roaming Woman should retain mobile-slot behavior")
+    assert_equal(roaming.interaction_x, nil, "Cantlin roaming Woman should use ordinary adjacent-NPC routing")
+
+    local seller = env.objects.find_object_by_id("npc_16")
+    assert_equal(seller ~= nil, true, "Cantlin stationary Fairy Water seller should be present")
+    assert_equal(seller.name, "Fairy Water Merchant", "Cantlin stationary seller should retain the service label")
+    assert_equal(seller.service, true, "Cantlin stationary seller should remain in Services")
+    assert_equal(seller.interaction_x, 20, "Cantlin stationary seller should retain the public counter stand X")
+    assert_equal(seller.interaction_y, 13, "Cantlin stationary seller should retain the public counter stand Y")
+
+    env.objects.set_filter(env.objects.FILTER_SERVICE)
+    local service_ids = {}
+    for _, obj in ipairs(env.objects.get_objects({filtered = true})) do
+        service_ids[obj.id] = true
+    end
+    assert_equal(service_ids["npc_5"], nil, "Services should omit the roaming Cantlin Woman")
+    assert_equal(service_ids["npc_16"], true, "Services should retain the stationary Fairy Water seller")
+
+    env.restore()
+end
+
 function tests.cantlin_premium_weapons_merchant_uses_live_counter_stand()
     local env = make_env({npc_count = 2})
 

@@ -1729,8 +1729,10 @@ local SERVICE_ROLE_OVERRIDES = {
     -- roaming weapons/armor shop and should keep adjacent-NPC routing.
     -- Person 2 is the live-confirmed Herb/Torch tool shop. Merchant 4 is the
     -- live-confirmed inn keeper, Merchant 6 is the other tool shop,
-    -- Woman 2 is the live-confirmed Fairy Water seller, and Merchant 7 is the
-    -- second live-confirmed weapons/armor shop. Old Man 2 is the confirmed
+    -- stationary Woman slot 16 is the live-confirmed Fairy Water seller, and
+    -- Merchant 7 is the second live-confirmed weapons/armor shop. Mobile Woman
+    -- slot 5 only says "I know nothing", so keep her as a normal NPC. Old Man
+    -- 2 is the confirmed
     -- stationary Magic Key seller. Their fixed stands are modeled in
     -- SERVICE_INTERACTION_OVERRIDES above.
     -- Merchant 5 at (2,12) only gives the
@@ -1741,6 +1743,26 @@ local SERVICE_ROLE_OVERRIDES = {
         -- confirmed roles; retain name mappings for older fixtures/fallbacks.
         ids = {
             ["npc_4"] = {name = "Roaming Weapons Merchant", infer_counter = false},
+            ["npc_5"] = {
+                name = "Woman 2",
+                infer_counter = false,
+                service = false,
+                sprite_type = 6,
+            },
+            -- Dialogue-only Merchant 3 roams inside the sealed southwest 3x3
+            -- room. Route to the public east-side counter stand, then hold him
+            -- briefly on the live TALK trigger cell so the route does not
+            -- depend on his random position within the enclosure.
+            ["npc_8"] = {
+                service = false,
+                infer_counter = false,
+                interaction_x = 6,
+                interaction_y = 26,
+                interaction_face_dir = "west",
+                interaction_label = "counter",
+                target_hold_x = 4,
+                target_hold_y = 26,
+            },
             ["npc_10"] = {name = "Inn", infer_counter = true},
             ["npc_11"] = {name = "Magic Key Merchant", infer_counter = true},
             ["npc_12"] = {name = "Tool Merchant 2", infer_counter = true},
@@ -1756,6 +1778,17 @@ local SERVICE_ROLE_OVERRIDES = {
             ["npc_14"] = {name = "Tool Merchant", infer_counter = true},
             ["npc_15"] = {name = "Premium Weapons Merchant", infer_counter = true},
             ["npc_16"] = {name = "Fairy Water Merchant", infer_counter = true},
+            -- Old Man 4 is enclosed at (22,22). Normal walking reaches the
+            -- public south stand at (22,24); north-facing TALK there crosses
+            -- the raw-F counter at (22,23) and opens his Erdrick's Sword clue.
+            ["npc_18"] = {
+                service = false,
+                infer_counter = false,
+                interaction_x = 22,
+                interaction_y = 24,
+                interaction_face_dir = "north",
+                interaction_label = "counter",
+            },
             ["npc_19"] = {name = "Weapons Merchant", infer_counter = true},
         },
         names = {
@@ -1921,6 +1954,9 @@ local function apply_service_role_override(obj, map_id)
         return nil
     end
     local entry = by_map.ids and by_map.ids[obj.id]
+    if entry and entry.sprite_type ~= nil and entry.sprite_type ~= obj.sprite_type then
+        entry = nil
+    end
     if not entry then
         entry = by_map.names and by_map.names[obj.name]
     end
@@ -1939,6 +1975,10 @@ local function apply_service_role_override(obj, map_id)
         obj.interaction_y = entry.interaction_y
         obj.interaction_face_dir = entry.interaction_face_dir
         obj.interaction_label = entry.interaction_label
+    end
+    if entry.target_hold_x ~= nil and entry.target_hold_y ~= nil then
+        obj.target_hold_x = entry.target_hold_x
+        obj.target_hold_y = entry.target_hold_y
     end
     return entry
 end

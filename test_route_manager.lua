@@ -5642,6 +5642,42 @@ function tests.target_npc_hold_uses_explicit_hold_coordinates()
     env.restore()
 end
 
+function tests.explicit_target_hold_restores_original_npc_position_on_release()
+    local env = make_env({
+        is_bizhawk = true,
+        config_values = {
+            auto_walk_npc_hold_frames = "0",
+        },
+        memory_values = {
+            [6] = 0x80 + 24,
+            [7] = 0x60 + 5,
+            [8] = 0x22,
+        },
+    })
+
+    local ok = env.route_manager.hold_target_npc({
+        name = "Fairy Water Merchant",
+        type = "npc",
+        id = "npc_2",
+        x = 24,
+        y = 3,
+        target_hold_x = 24,
+        target_hold_y = 4,
+    }, "fixed service trigger", 3)
+    assert_equal(ok, true, "explicit hold should start before testing release restoration")
+
+    env.route_manager.release_target_npc_hold("talk dialogue opened")
+
+    assert_equal(#env.memory_writes, 2,
+        "release should restore the one coordinate changed by the explicit hold")
+    assert_equal(env.memory_writes[2].address, 7,
+        "release should restore the original target Y byte")
+    assert_equal(env.memory_writes[2].value, 0x60 + 5,
+        "release should return the target to its pre-hold row")
+
+    env.restore()
+end
+
 function tests.autowalk_to_npc_faces_target_after_arrival()
     local env = make_env({
         is_bizhawk = true,

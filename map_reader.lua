@@ -409,6 +409,31 @@ local MAP_TILE_WALKABILITY_OVERRIDES = {
         [14] = true,  -- bridge
         [15] = false, -- large tile / counter
     },
+    -- Cantlin: same Bank00 town conversion/collision rules as Kol,
+    -- Brecconary, Garinham, and Rimuldar. After a normal world-map re-entry
+    -- on 2026-09-18, a same-origin probe crossed raw grass `(19,11)->LEFT`
+    -- into `(18,11)`. The subsequent normal route repeatedly blocked on raw
+    -- stone `(9,23)->LEFT` into `(8,23)` and the adjacent x=8 stone edge,
+    -- while the old town table modeled the two terrain types in reverse.
+    -- Keep Cantlin's existing cell, directional, hazard, and door rules.
+    [0x0A] = {
+        [0] = true,   -- grass
+        [1] = true,   -- sand
+        [2] = false,  -- water
+        [3] = true,   -- chest
+        [4] = false,  -- stone
+        [5] = true,   -- stairs up
+        [6] = true,   -- brick
+        [7] = true,   -- stairs down
+        [8] = true,   -- trees
+        [9] = true,   -- swamp (hazard)
+        [10] = true,  -- force field (hazard)
+        [11] = false, -- closed door (opened doors handled separately)
+        [12] = false, -- weapon-shop sign
+        [13] = false, -- inn sign
+        [14] = true,  -- bridge
+        [15] = false, -- large tile / counter
+    },
     -- Rimuldar: same Bank00 town conversion/collision rules as Kol,
     -- Brecconary, and Garinham. Normal-arrival probes on 2026-09-17 crossed
     -- raw grass `(29,19)->DOWN` through `(29,20)`, while the player and a
@@ -5423,6 +5448,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
 -- Approach names use the same destination-side convention as
 -- MAP_DIRECTIONAL_BLOCKS.
 local MAP_ENTRY_SETTLE_FRAMES = {
+    [0x0A] = {
+        -- Central Right Door routes consistently stall when (16,24)->LEFT is
+        -- the final step, despite clean raw crossings in both directions.
+        -- Prime, then reproduce the verified 16-frame neutral re-press cadence.
+        ["15,24"] = {east = 16},
+        -- Woman 2 returns consistently stalled at (19,13)->RIGHT into the
+        -- Fairy Water counter stand and then rerouted. A same-origin raw edge
+        -- probe moved cleanly, so preserve passability and apply the verified
+        -- Cantlin prime-plus-settle cadence only to this west-side entry.
+        ["20,13"] = {west = 16},
+    },
     [0x0B] = {
         -- A held west run stalls at (1,0). Live raw sequences proved that
         -- 8- and 12-frame gaps fail while a 16-frame neutral gap succeeds.
@@ -5433,6 +5469,14 @@ local MAP_ENTRY_SETTLE_FRAMES = {
 -- Format and approach semantics match MAP_ENTRY_SETTLE_FRAMES. These entries
 -- request a brief movement press before the corresponding neutral settle.
 local MAP_ENTRY_PRIME_FRAMES = {
+    [0x0A] = {
+        -- Preserve the early movement twitch before settling this final-step
+        -- seam; passability remains unchanged.
+        ["15,24"] = {east = 1},
+        -- Pair with the west-entry settle above; this is timing metadata, not
+        -- a directional blocker.
+        ["20,13"] = {west = 1},
+    },
     [0x0B] = {
         -- The source-to-merchant route still stalled after settle-only entry;
         -- one movement frame primes the verified 16-frame re-press sequence.
