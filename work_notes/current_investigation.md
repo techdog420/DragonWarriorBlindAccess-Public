@@ -1,5 +1,119 @@
 # Current Investigation Scratchpad
 
+## 2026-09-22 Tantegel Sun Shrine and castle completion
+
+- PLAYER ACCEPTED / MAP0X0C COMPLETE: from entrance stair `(0,4)`, Chest
+  `chest_17` at `(4,5)` completed an 11-step approach and 11-step return with
+  no retry, replan, or reroute. Old Man `npc_10` at `(4,6)`, using stand
+  `(4,7)`, completed 7 steps each way and TALK logged `VISITED_AUTO`.
+- TIMING ONLY: the first step of each Old Man leg used one bounded timeout
+  retry, then crossed the same seam and completed the original route. No seam
+  brute force, drift, runtime block, replan, or reroute occurred.
+- AUDIT SCOPE: `audit_town` refused with `Town audit is available in towns and
+  Tantegel only`; map0x0C is outside its supported scope. The refusal was a
+  no-op. Live round trips already cover both shrine targets.
+- FINAL CHECKPOINT: frame 49800 is at `(0,4)`, path target nil, and runtime
+  blocks none. No map change is warranted. Main floor, Throne Room, and Sun
+  Shrine are all player-accepted, closing the Tantegel Castle pass.
+
+## 2026-09-22 Tantegel Throne Room third chest and floor acceptance
+
+- PLAYER ACCEPTED / FLOOR COMPLETE: after reloading the permanent correction,
+  chest 3 completed 19 steps each way. The return used the west-side route in
+  its initial plan and had no retry, replan, or reroute. Guard 1, Guard 2,
+  Guard 3, and King completed 12/12, 6/6, 6/6, and 9/9-step round trips; each
+  TALK logged `VISITED_AUTO`. The King's return retried its first step twice
+  for cadence, then crossed it and completed without rerouting. Final frame
+  19920: `(8,8)`, door `(4,7)` open, nil route, no runtime blocks. No further
+  map0x05 work is indicated.
+
+- POST-RELOAD ACCEPTANCE: the first two chest round trips passed cleanly after
+  the earlier south/right-wall correction was loaded.
+- CLEAN FAILURE: third chest `chest_6` at `(6,1)` was reached in 19 steps from
+  stair `(8,8)`. Its return initially planned east across the top row, then
+  exhausted route retries and the full seam retry on `(8,1)->RIGHT` into
+  `(9,1)`. The run had no NPC or drift contamination and recovered to `(8,8)`
+  by a west-side detour.
+- RUNTIME PROOF: explicit `add_blocked_edge:5,8,1,RIGHT` recorded
+  `(9,1).west`. The chest approach remained available. The return then planned
+  the west-side route immediately (`5 west, 4 south, 3 east, 3 south, 4 east`)
+  and completed all 19 steps with no retry, replan, or reroute.
+- SOURCE-FIXED / ACCEPTED: map0x05 includes only `(9,1).west`; the
+  opposite approach remains unblocked until proven. The regression failed
+  before the source edit and passes afterward. Syntax, `git diff --check`, all
+  95 map-reader tests, all 22 pathfinder tests, and the full gate of 41 Lua
+  suites plus 68 Python tests pass.
+
+## 2026-09-22 Tantegel Throne Room first chest wall correction
+
+- CLEAN FAILURE: starting at stair `(8,8)`, the first chest approach planned
+  4 north then4 west. Entry north into `(8,7)` exhausted route and seam retries
+  and stayed blocked, forcing an8-step reroute west through open door `(4,7)`.
+  The chest at `(4,4)` was reached.
+- CLEAN RETURN: the initial 4-east/4-south return again blocked `(8,7)`, this
+  time from the north at `(8,6)`. The successive alternatives also blocked
+  `(8,6)->RIGHT` into `(9,6)`, `(7,6)->DOWN` into `(7,7)`, and
+  `(6,6)->DOWN` into `(6,7)`. The route then recovered through door `(4,7)`
+  and reached `(8,8)`. These are the south/right castle walls, not random NPC
+  clutter or a grass/stone-table issue.
+- RUNTIME PROOF: full-cell test blocks at `(5,7)`, `(6,7)`, `(7,7)`, `(8,7)`
+  and `(9,6)` made the planner choose the open door immediately. The outward
+  and return routes each completed8 steps with no retry or reroute.
+- SOURCE-FIXED / RELOAD PENDING: `map_reader.lua` blocks the complete y7 south
+  wall except door `(4,7)`: x1-3 and x5-9. `(9,6).west` extends the existing
+  directional right-wall series. `test_map_reader.lua` protects the wall, the
+  door exception, and directional-only right-wall entry. All95 map-reader and
+  22 pathfinder tests pass; the full gate passes41 Lua suites and68 Python
+  tests; syntax and `git diff --check` pass.
+- CURRENT CONTAMINATION: frame374340 is at `(8,8)`, door open, nil route, with
+  five manual runtime blocks still active from the proof. Reload `main.lua`
+  before acceptance; do not count the runtime-assisted run as source acceptance.
+
+## 2026-09-22 Tantegel Throne Room modeled audit
+
+- CLEAN BASELINE: map0x05 at the return stair `(8,8)`, six keys, door `(4,7)`
+  open in slot7, nil route/path, and no runtime blocks.
+- AUDIT1 `town_audit_05_20260922T175232Z_001`: all9 targets;9 modeled
+  reachable,0 NPC-obstructed,0 model-blocked,0 return concerns. It covered the
+  King, return stair, three guards, three chests, and door. The stair's map
+  transition is not tested by the audit.
+- AUDIT2 `town_audit_05_20260922T175352Z_001`: the roaming Guard1 moved from
+  `(6,6)` to `(7,1)`, changing its route from5 steps to16 with captured NPCs.
+  The result remained9 reachable,0 NPC-obstructed,0 model-blocked,0 return
+  concerns; all other modeled target routes stayed available.
+- TERRAIN CHECK: this 10x10 castle floor has no raw0 grass. Raw4 is mixed
+  castle geometry already covered by map0x05-specific permanent blockers,
+  walkable south-corridor overrides, the `(4,7)` door, and directional edges.
+  There is no evidence that the main-floor Bank00 grass/stone correction
+  belongs here.
+- LIVE STATUS: no movement, TALK, chest opening, door use, or transition was
+  performed. Live round trips/interactions remain next, followed by a Sun
+  Shrine audit if desired. Fresh frame301980 retained `(8,8)`, open door, nil
+  path/route, and no runtime blocks.
+
+## 2026-09-22 Tantegel NPC and entrance acceptance
+
+- PLAYER ACCEPTED / MAIN FLOOR COMPLETE: starting each target from the main entrance
+  `(11,29)`, all 18 non-service NPCs were talked to and logged `VISITED_AUTO`.
+  All returns completed. Guard5 required manual damage-floor crossings on the
+  outward and return legs, with ordinary local routing used on each safe side;
+  preserve the safe planner's refusal to cross those hazards automatically.
+- RECOVERED TRANSIENTS: Merchant1 crossed `(16,18)->(17,18)` after exhausting
+  the bounded retries and invoking seam recovery. Old Man1 logged a direct
+  `AUTO_WALK_NPC_BLOCK` against the moving target at `(5,8)` and continued
+  after it cleared. Person1 logged one `AUTO_WALK_DRIFT_REROUTE`, then later
+  passed a clean 8/8-step retest. Woman1 crossed the end seam to `(6,4)`, lost
+  the first path after the target moved, then completed the retry and 42-step
+  return. None is permanent blocker evidence.
+- SECONDARY ENTRANCES ACCEPTED: the Throne Room stairs completed 30 steps each
+  way. Sun Shrine Stairs and Southeast Exit completed 94 each way; the planner
+  retained its existing risky-final-approach avoidance without changing the
+  route length.
+- FINAL CHECKPOINT: fresh frame200580 has map0x04 at `(11,29)`, both doors open
+  at `(18,6)` and `(4,13)`, six keys, nil path/route, and no runtime blocks.
+  This completes the Tantegel main-floor audit/cleanup pass. The Throne Room
+  and Sun Shrine floor follow-ups remain separate.
+
 ## 2026-09-18 Cantlin terrain/audit start
 
 - TELEPORT-TAINTED BASELINE: hero `(7,23)`, all five known doors open
@@ -7355,3 +7469,80 @@ For the next live map task, start a new dated section here with:
   autowalk reroute, no-path, or route-failed record. Fresh read-only frame24960
   reports Cantlin `(20,28)` with `RUNTIME_BLOCKS map=0x0A none`. Cantlin NPC
   validation is complete.
+
+
+## 2026-09-19 Tantegel Castle terrain check and initial audit
+
+- CLEAN BASELINE: map0x04 at `(5,13)`, both real doors open in RAM at
+  `(18,6)` and `(4,13)`, three keys, nil active route, and no runtime blocks.
+  The read-only audit captured this state before terrain movement.
+- AUDIT: `town_audit_04_20260919T200358Z_001` completed all29 targets from
+  `(5,13)`:23 modeled reachable,4 NPC-obstructed,2 model-blocked, and5 return
+  concerns. The two outward model failures are Magic Key Merchant `npc_10`
+  and Sun Shrine Stairs `(29,29)`. Guard5 has the non-NPC return concern; the
+  other four concern rows are the treasure-room chests obstructed by current
+  NPC placement. Live arrival/interaction remains untested by audit design.
+- TERRAIN TABLE — VERIFIED WRONG FOR MAP04: raw4 is currently treated as
+  castle floor, but three normally reached entries blocked in the engine:
+  `(5,6)->LEFT` into `(4,6)`, `(6,4)->UP` into `(6,3)`, and
+  `(10,3)->LEFT` into `(9,3)`. Each destination is raw4, modeled walkable,
+  and lacked the blocking approach needed to explain the live failure.
+- The converse raw0 proof is clean. A normal route reached `(10,3)`; the
+  current model described `(10,2)` as raw0/non-walkable with no NPC,
+  permanent block, or directional approach block. Same-origin `probe_edge:UP`
+  at frame85713 entered `(10,2)` and carried to `(10,1)`, logging
+  `moved_through_modeled_block`. Tantegel therefore uses the same Bank00
+  raw0-grass/raw4-stone collision meanings as the audited towns.
+- AUDIT IMPACT: Magic Key Merchant's two bridge frontiers `(22,1)` and
+  `(22,2)` are raw0, so its no-route result is direct terrain-table fallout.
+  The Sun Shrine stair and Guard5 return need reassessment only after the
+  table correction; their current frontier candidates include raw4 and old
+  directional data. Treasure-room chests are NPC-clutter cases, not terrain
+  evidence.
+- CONTAMINATED EXPLORATORY ROUTE / DO NOT PROMOTE INDIVIDUALLY: the attempted
+  route toward `(6,2)` rerouted around the raw4 failures and was manually
+  stopped at `(8,4)`. Its temporary route blocks were cleared. No individual
+  blocker was added because the shared raw-tile classification explains the
+  failures more directly.
+- FINAL PRE-FIX CHECKPOINT: frame89700 at `(10,1)`, both doors still open, nil
+  route, and `RUNTIME_BLOCKS map=0x04 none`.
+- PROMOTED / RELOAD PENDING: `map_reader.lua` now gives map0x04 the verified
+  Bank00 town table (raw0 grass open, raw4 stone blocked) and the shared raw9
+  poison-swamp/rawA damage-floor hazard handling. Existing door, passthrough,
+  directional, boundary, and coordinate-hazard data still layer on top.
+  `test_map_reader.lua` checks the full16-tile row, the live-proven raw0/raw4
+  cells, both hazard kinds, and safe-hazard exclusion. All94 focused tests pass;
+  `luac -p` and `git diff --check` are clean; `python -u run_tests.py` passes41
+  host-runnable Lua suites and68 Python tests. No live post-fix claim yet.
+- NEXT: reload `main.lua`, establish a fresh map0x04 baseline, then rerun
+  `audit_town` before beginning live target validation.
+
+## 2026-09-21 Tantegel post-reload audit
+
+- Fresh command polling at frame12360: map0x04, hero `(5,13)`, doors `(18,6)`
+  and `(4,13)` open, keys2, nil route, runtime blocks none. Repeated baseline
+  at frame24720 still had the same hero/door/route/block state.
+- Reloaded terrain inspection at frame13740: raw0 `(10,2)` now reports
+  `base_walkable=true`, `reason=map_tile_type`; raw4 `(4,6)`, `(6,3)`, and
+  `(9,3)` report `base_walkable=false`. Earlier normal-movement terrain proof
+  remains in the preceding section. No new movement probe was required.
+- Audit1 `town_audit_04_20260921T182014Z_001.txt`, frame14728: all29 targets;
+  28 modeled reachable,0 NPC-obstructed,1 model-blocked,0 return concerns.
+  Magic Key Merchant, Sun Shrine stairs, both doors, four chests, and Sage all
+  have modeled outward routes. Only Guard5 `npc_9` at `(24,21)` is no-route
+  with or without captured NPCs. No live arrival/interaction/return was tested.
+- Audit2 `town_audit_04_20260921T182058Z_001.txt`, frame17368:27 reachable,
+  0 NPC-obstructed,2 model-blocked,0 return concerns. Mobile Old Man1 moved to
+  `(17,10)` and became the second no-route target; Guard5 stayed `(24,21)`.
+- Audit3 `town_audit_04_20260921T182208Z_001.txt`, frame21568:16 reachable,
+  12 NPC-obstructed,1 model-blocked,10 return concerns. Guard5 at `(24,20)`
+  remained the sole model block; Old Man1 at `(16,11)` was routable again.
+  This was a fresh captured-NPC snapshot, not route execution evidence. Do not
+  promote its transient NPC obstructions to permanent terrain data.
+- GUARD5 / UNRESOLVED SAFE ACCESS: `inspect_tile` reports Guard5's raw6 cell
+  walkable except NPC occupancy, `(24,20)` and `(25,21)` raw6 open, `(24,22)`
+  raw4 stone blocked, and `(23,21)` raw6 but known damage hazard. No safe
+  modeled adjacent route from `(5,13)` in three audit snapshots. A read-only
+  skip-NPC/allow-hazards route to `(25,21)` exists in48 steps but crosses three
+  rawA damage cells `(25,18)`, `(26,18)`, `(26,19)`. Keep hazard protection;
+  no map edit or movement performed. Investigate only if player needs Guard5.

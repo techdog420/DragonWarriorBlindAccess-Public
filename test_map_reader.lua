@@ -409,13 +409,17 @@ function tests.charlock_ground_floor_uses_live_proven_walls_and_hidden_stair_pas
     assert_equal(hidden_stair.effective_walkable, true, "Charlock hidden stair should use the live-proven passage")
     assert_equal(hidden_stair.reason, "passthrough", "Charlock hidden stair should report the map-specific passthrough")
 
-    local tantegel_floor = env.map_reader.get_walkability_details(tantegel_map_id, 1, 1)
-    assert_equal(tantegel_floor.effective_walkable, true, "Charlock type-4 override should not change Tantegel")
-    assert_equal(tantegel_floor.reason, "tile_type", "Tantegel type 4 should keep the shared town rule")
+    local tantegel_stone = env.map_reader.get_walkability_details(tantegel_map_id, 1, 1)
+    assert_equal(tantegel_stone.effective_walkable, false,
+        "Tantegel type-4 stone should use its independently verified Bank00 rule")
+    assert_equal(tantegel_stone.reason, "map_tile_type",
+        "Tantegel type 4 should report its map-scoped town collision rule")
 
     local tantegel_type7 = env.map_reader.get_walkability_details(tantegel_map_id, 10, 1)
-    assert_equal(tantegel_type7.effective_walkable, false, "Charlock hidden-stair passage should not change Tantegel type 7")
-    assert_equal(tantegel_type7.reason, "tile_type", "Tantegel type 7 should keep the shared town rule")
+    assert_equal(tantegel_type7.effective_walkable, true,
+        "Tantegel raw7 stairs should use its independently verified Bank00 rule")
+    assert_equal(tantegel_type7.reason, "map_tile_type",
+        "Tantegel type 7 should report its map-scoped town collision rule")
 
     env.restore()
 end
@@ -1286,6 +1290,29 @@ function tests.throne_room_trapped_pocket_stays_blocked()
     env.restore()
 end
 
+function tests.throne_room_south_wall_routes_only_through_open_door()
+    local env = make_env()
+
+    for _, x in ipairs({1, 2, 3, 5, 6, 7, 8, 9}) do
+        assert_equal(
+            env.map_reader.is_permanently_blocked_override(0x05, x, 7),
+            true,
+            string.format("throne-room south wall (%d,7) should stay blocked", x)
+        )
+    end
+    assert_equal(
+        env.map_reader.is_permanently_blocked_override(0x05, 4, 7),
+        false,
+        "throne-room door (4,7) must remain controlled by opened-door RAM"
+    )
+
+    local dirs = env.map_reader.get_directional_blocks(0x05)
+    assert_equal(dirs["9,6"].west, true, "throne-room right wall (9,6) should block entry from the west")
+    assert_equal(dirs["9,6"].east, nil, "throne-room right wall (9,6) should remain directional-only")
+
+    env.restore()
+end
+
 function tests.throne_room_door_opens_from_door_ram_array()
     local rom_bytes = {
         [25] = 0x00,
@@ -1944,6 +1971,8 @@ function tests.throne_room_directional_candidates_are_promoted_conservatively()
     assert_equal(dirs["7,2"].east, true, "(7,2) should block east approach")
     assert_equal(dirs["7,2"].north, true, "(7,2) should block north approach")
     assert_equal(dirs["7,2"].south, nil, "(7,2) should stay open from south until confirmed")
+    assert_equal(dirs["9,1"].west, true, "(9,1) should block west approach after the third-chest return seam failure")
+    assert_equal(dirs["9,1"].east, nil, "(9,1) should stay open from east until confirmed")
     assert_equal(dirs["9,3"].west, true, "(9,3) should block west approach")
     assert_equal(dirs["9,4"].west, true, "(9,4) should block west approach")
     assert_equal(dirs["9,5"].west, true, "(9,5) should block west approach")
@@ -2492,7 +2521,9 @@ function tests.tantegel_castle_damage_tiles_are_modeled_as_hazards()
         [23] = 29,
         [24] = 0,
     }
-    fill_packed_map(rom_bytes, data_start, 30, 30, 0x4)
+    -- Use ordinary raw6 brick floor so this fixture isolates the coordinate-
+    -- scoped damage overrides from Tantegel's now-verified raw4 stone rule.
+    fill_packed_map(rom_bytes, data_start, 30, 30, 0x6)
 
     local env = make_env({
         rom_bytes = rom_bytes,
@@ -6479,6 +6510,52 @@ function tests.erdricks_cave_b2_chest_route_seams_are_directional()
     assert_equal(dirs["7,9"].east, true, "Erdrick B2 (7,9) should block entry from the east after route-shaped raw walk and fresh 15/15 verifier")
     assert_equal(dirs["7,9"].west, nil, "Erdrick B2 (7,9) should keep unconfirmed approaches open")
     assert_equal(dirs["7,5"], nil, "Erdrick B2 route evidence should not globally block the origin cell (7,5)")
+
+    env.restore()
+end
+
+function tests.tantegel_castle_uses_verified_bank00_town_collision_table()
+    local data_start = 0x1010
+    local base = 0x04 * 5
+    local rom_bytes = {[base] = 0, [base+1] = 0x90, [base+2] = 31, [base+3] = 31, [base+4] = 0}
+    fill_packed_map(rom_bytes, data_start, 32, 32, 6)
+    -- Row30 is clear of Tantegel's permanent cell and directional overrides,
+    -- so it isolates the Bank00 collision conversion for all raw tile IDs.
+    for tile = 0, 15 do set_packed_block(rom_bytes, data_start, 32, tile+1, 30, tile) end
+    -- Same-session normal-route probes on 2026-09-19 supplied the decisive
+    -- grass/stone evidence at these real map coordinates.
+    set_packed_block(rom_bytes, data_start, 32, 10, 2, 0)
+    for _, cell in ipairs({{4,6}, {6,3}, {9,3}}) do
+        set_packed_block(rom_bytes, data_start, 32, cell[1], cell[2], 4)
+    end
+
+    local env = make_env({rom_bytes = rom_bytes, memory_bytes = {[0] = 0x10}})
+    local safe = env.map_reader.get_walkability_snapshot(0x04)
+    local hazardous = env.map_reader.get_walkability_snapshot(0x04, {allow_hazards = true})
+    local impassable = {[2]=true, [4]=true, [11]=true, [12]=true, [13]=true, [15]=true}
+    for tile = 0, 15 do
+        assert_equal(hazardous[30][tile+1], not impassable[tile],
+            "Tantegel collision for tile " .. tile)
+        assert_equal(safe[30][tile+1], not impassable[tile] and tile ~= 9 and tile ~= 10,
+            "Tantegel safe routing for tile " .. tile)
+    end
+    assert_equal(env.map_reader.is_hazard_cell(0x04, 10, 30), "poison_swamp",
+        "Tantegel raw9 swamp should warn")
+    assert_equal(env.map_reader.is_hazard_cell(0x04, 11, 30), "damage",
+        "Tantegel raw10 force field should warn")
+
+    local walked_grass = env.map_reader.get_walkability_details(0x04, 10, 2)
+    assert_equal(walked_grass.base_walkable, true,
+        "same-origin-probed Tantegel raw grass at (10,2) must be walkable")
+    assert_equal(walked_grass.reason, "map_tile_type",
+        "ordinary Tantegel grass should identify the map-scoped collision table")
+    for _, cell in ipairs({{4,6}, {6,3}, {9,3}}) do
+        local stone = env.map_reader.get_walkability_details(0x04, cell[1], cell[2])
+        assert_equal(stone.base_walkable, false,
+            string.format("normally reached Tantegel raw stone (%d,%d) must block", cell[1], cell[2]))
+        assert_equal(stone.reason, "map_tile_type",
+            string.format("Tantegel stone (%d,%d) should use the map-scoped collision table", cell[1], cell[2]))
+    end
 
     env.restore()
 end

@@ -1026,6 +1026,17 @@ quality-of-life work.
   was manually visited, with a couple of drifts and no reroutes. Changes were
   committed/pushed as b559642 on codex/town-audit; remote verification passed.
   Evidence: work_notes/town_decoder_findings.md.
+- Tantegel's main-floor validation/cleanup pass is complete by player
+  acceptance as of 2026-09-22: services, doors, four chests, all 18 non-service
+  NPCs, and both secondary entrances completed round trips from the main
+  entrance. Guard5 intentionally required manual damage-floor crossings; safe
+  automatic hazard refusal remains unchanged. The Throne Room is also complete:
+  both modeled audits were clean at 9/9 targets, and the door, three chests,
+  three guards, and King passed player-facing routes/interactions after the
+  final `(9,1).west` correction was reloaded. The Sun Shrine's chest and Old
+  Man then completed clean round trips, closing all three Tantegel floors and
+  the overall castle pass. No further Tantegel map work remains.
+  Evidence: `session_handoff.md` and `work_notes/current_investigation.md`.
 - Kol polishing is player-accepted and complete on codex/kol-town-polish
   (September17); commit/push and integration remain.
   The source-backed town collision/hazard table fixed grass/stone routing;
@@ -1066,7 +1077,8 @@ quality-of-life work.
 
 ## Map Decoding
 
-- Every remaining town audit must start with a terrain-classification check:
+- Any future or reopened town audit must start with a terrain-classification
+  check:
   verify raw0 grass/raw4 stone against the town conversion/collision table and
   safe live probes, with doors and hazards checked separately. Kol and
   Brecconary showed the old reversed table caused widespread false routes and

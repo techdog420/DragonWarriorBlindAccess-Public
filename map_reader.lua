@@ -341,6 +341,29 @@ local WALKABILITY_TABLES = {
 -- ID. Keep those differences map-scoped so live evidence from one floor does
 -- not silently change every cave.
 local MAP_TILE_WALKABILITY_OVERRIDES = {
+    -- Tantegel Castle main floor: the same Bank00 town conversion/collision
+    -- rules used by the audited towns. From normally reached origins on
+    -- 2026-09-19, raw4 blocked at (4,6), (6,3), and (9,3), while a same-origin
+    -- probe moved through raw0 (10,2) and carried to (10,1). Keep the existing
+    -- map-specific passthrough, door, directional, boundary, and hazard rules.
+    [0x04] = {
+        [0] = true,   -- grass
+        [1] = true,   -- sand
+        [2] = false,  -- water
+        [3] = true,   -- chest
+        [4] = false,  -- stone
+        [5] = true,   -- stairs up
+        [6] = true,   -- brick
+        [7] = true,   -- stairs down
+        [8] = true,   -- trees
+        [9] = true,   -- swamp (hazard)
+        [10] = true,  -- force field (hazard)
+        [11] = false, -- closed door (opened doors handled separately)
+        [12] = false, -- weapon-shop sign
+        [13] = false, -- inn sign
+        [14] = true,  -- bridge
+        [15] = false, -- large tile / counter
+    },
     -- Kol: same Bank00 town conversion/collision rules as Brecconary below.
     -- 2026-09-15 normal-route raw probes blocked stone at (7,3) and crossed
     -- grass (4,1) both ways. The door route also repeatedly hit stone at
@@ -2007,11 +2030,21 @@ local MAP_BLOCKED_CELLS = {
     -- king is normally approached from (3,4). Keep the side blockers while
     -- leaving the south interaction tile open so pathfind_to_adjacent can
     -- route to the king for normal save interaction.
+    --
+    -- The south wall at y=7 has one real opening: the magic-key door at
+    -- (4,7). During the 2026-09-22 first-chest round trip, the engine rejected
+    -- (8,7) from both sides plus (7,7) and (6,7) from the north. A runtime
+    -- model of the complete non-door wall made both 8-step legs route directly
+    -- through the open door with no retries or reroutes. Keep the whole wall
+    -- closed so later targets do not rediscover adjacent false openings.
     [0x05] = {
         ["2,2"] = true, ["3,2"] = true, ["4,2"] = true,
         ["5,2"] = true, ["6,2"] = true,
         ["8,2"] = true,
         ["2,3"] = true, ["4,3"] = true,
+        ["1,7"] = true, ["2,7"] = true, ["3,7"] = true,
+        ["5,7"] = true, ["6,7"] = true, ["7,7"] = true,
+        ["8,7"] = true, ["9,7"] = true,
     },
 
     -- Map 0x08: Brecconary (30x30 town, west-edge exit at (0,15))
@@ -2120,7 +2153,7 @@ local function hazard_for_cell(map_id, x, y, tile_type)
     end
 
     -- Match the verified Bank00 town tables; leave other maps alone.
-    if map_id == 0x07 or map_id == 0x08 or map_id == 0x09 or map_id == 0x0B then
+    if map_id == 0x04 or map_id == 0x07 or map_id == 0x08 or map_id == 0x09 or map_id == 0x0B then
         if tile_type == nil then tile_type = M.get_tile_type(map_id, x, y) end
         if tile_type == 9 then return "poison_swamp" end
         if tile_type == 10 then return "damage" end
@@ -2917,9 +2950,17 @@ local MAP_DIRECTIONAL_BLOCKS = {
     [0x05] = {
         ["7,3"] = {east = true, south = true, west = true},
         ["7,2"] = {east = true, north = true},
+        -- Third-chest return on 2026-09-22 exhausted the full seam retry at
+        -- (8,1)->(9,1). A one-edge runtime mirror made the route avoid this
+        -- false cut from the initial plan and complete without rerouting.
+        ["9,1"] = {west = true},
         ["9,3"] = {west = true},
         ["9,4"] = {west = true},
         ["9,5"] = {west = true},
+        -- First-chest return on 2026-09-22 tried this continuation after the
+        -- south wall blocked. Entry from (8,6) also remained blocked through
+        -- the seam retry; extend the existing right-wall series one row.
+        ["9,6"] = {west = true},
     },
 
     -- Map 0x07: Kol

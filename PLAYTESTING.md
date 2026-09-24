@@ -1,10 +1,89 @@
 # Playtesting Notes
 
-Updated: 2026-09-19
+Updated: 2026-09-22
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 
 ## Latest Notes
+
+- Tantegel Sun Shrine map0x0C passed its complete player-facing route set
+  (2026-09-22), finishing the overall Tantegel Castle audit. From stair
+  `(0,4)`, the chest route completed 11 steps each way with no retry or
+  reroute. The Old Man route completed 7 steps each way and TALK set visited;
+  each leg used one bounded first-step timing retry, crossed normally, and
+  continued without replanning. The generic `audit_town` hook is intentionally
+  unavailable on map0x0C, so its refusal changed nothing; both shrine targets
+  already have stronger live outward/return coverage. Final frame 49800 is at
+  `(0,4)` with no active route or runtime blocks. No patch is needed.
+
+- Tantegel Castle Throne Room map0x05 is complete by player acceptance
+  (2026-09-22). The stair/door route, all three chests, all three guards, and
+  the King were validated. After the final source reload, chest 3 completed a
+  clean 19-step approach and 19-step return; the fixed return avoided
+  `(9,1).west` in its initial plan and never retried or rerouted. NPC round
+  trips were Guard 1 12/12, Guard 2 6/6, Guard 3 6/6, and King 9/9. Each TALK
+  logged `VISITED_AUTO`. The King return's first step needed two bounded timing
+  retries, then crossed and completed without a route change. Final frame
+  19920 has hero `(8,8)`, door `(4,7)` open, no active route, and no runtime
+  blocks. Together with the clean 9/9 modeled audits, this closes the floor.
+  The Sun Shrine has since passed as recorded above.
+
+- Tantegel Castle's NPC and secondary-entrance pass is complete by player
+  acceptance (2026-09-22), closing the main-floor pass. From the
+  main entrance `(11,29)`, all 18 non-service NPCs were reached, talked to,
+  marked visited, and returned from. Guard5 required intentional manual
+  damage-floor crossings in both directions; safe routing correctly remains
+  unavailable across that corridor. Merchant1's seam recovery, Old Man1's
+  moving-NPC wait, Person1's drift reroute, and Woman1's moved-target retry all
+  recovered without permanent map data. Person1 also passed a clean 8/8-step
+  retest. The Throne Room stairs completed 30 steps each way; the Sun Shrine/
+  Southeast Exit completed 94 each way. Fresh frame200580 confirms `(11,29)`,
+  both doors open, keys6, no active route, and no runtime blocks.
+
+- Tantegel Castle's four chests passed player-facing round-trip validation
+  (2026-09-22). Retained log confirms chest_0 `(1,13)` 34 steps each way,
+  chest_1 `(1,15)` 36 each way, chest_2 `(2,14)` 34 each way, and chest_3
+  `(3,15)` 34 each way. Their dialogue awarded 8, 12, 13, and 10 gold.
+  No reroutes, runtime blockers, or failed route legs occurred. The first
+  step toward chest_2 used one bounded timing retry and recovered in place.
+  Fresh frame54660: hero `(11,29)`, both doors open, keys6, no active route
+  or runtime blocker. NPCs and secondary entrances have since passed above.
+
+- Tantegel Castle services and doors passed player round-trip validation
+  (2026-09-22). Retained routes completed without reroutes or runtime
+  blockers: Magic Key Merchant 65 steps each way, Sage 34 each way, Magic Key
+  Area Door 53 each way, Treasure Room Door 30 each way. Both service TALKS
+  set visited. Sage return `(18,26)->(17,26)` and Treasure Room Door return
+  `(5,13)->(5,14)` each used one bounded timing retry, then continued without
+  rerouting. Fresh frame28080: hero at entrance `(11,29)`, both doors open,
+  keys6, no active route or runtime blockers. Chests, NPCs, and secondary
+  entrances have since passed as noted above.
+
+- Tantegel Castle post-reload modeled audit (2026-09-21): at `(5,13)` with both
+  doors open, the first complete29-target snapshot found28 reachable,
+  0 NPC-obstructed,1 model-blocked, and0 return concerns. Magic Key Merchant,
+  Sage, both doors, all four chests, and the Sun Shrine stairs now have modeled
+  outward routes. Guard5 `npc_9` remains no-route near `(24,20..21)` even when
+  NPCs are ignored; an exploratory hazard-allowed route to its side crosses
+  three damage cells `(25,18)`, `(26,18)`, `(26,19)`. Preserve safe routing.
+  Two later snapshots changed with live NPC positions: Old Man1 temporarily
+  became model-blocked at `(17,10)`; another snapshot marked12 targets
+  NPC-obstructed and10 returns concerned. These are snapshot-dependent model
+  results, not live failures or permanent blocker proof. Subsequent player
+  round trips and interactions passed as recorded above. Fresh frame24720 kept
+  hero `(5,13)`, both doors open, no active route or runtime blocks.
+
+- Tantegel Castle main floor terrain correction was prepared on 2026-09-19
+  and player-reloaded before the 2026-09-21 audit above. Normal-route evidence
+  proved raw4 blocked at `(4,6)`, `(6,3)`,
+  and `(9,3)`, while a same-origin normal probe crossed raw0 `(10,2)` despite
+  the old model rejecting it. Map0x04 now uses the verified Bank00 town table:
+  raw0 grass is open, raw4 stone is blocked, raw9 is poison swamp, and rawA is
+  damage floor. Existing door, coordinate, directional, boundary, and hazard
+  rules still apply. The pre-fix29-target audit had23 modeled reachable,
+  4 NPC-obstructed,2 model-blocked, and5 return concerns; the newer audit above
+  supersedes that snapshot. All94 map-reader tests and the full
+  41-Lua-suite/68-Python-test gate pass.
 
 - Cantlin Doors are complete by player acceptance (2026-09-19). Retained logs
   verify outward/return completion for Central Right, Eastern Building,
