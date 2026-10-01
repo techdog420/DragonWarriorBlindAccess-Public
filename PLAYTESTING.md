@@ -6,6 +6,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
 
 ## Latest Notes
 
+- Ending narration (2026-09-30): reproduced premature Title screen speech and
+  two decorative fragments after copyright. The new ending reader preserves
+  credits and recognizes the live final artwork. After manual Lua reload on
+  the final screen, the player heard The End; NVDA bridge logged one
+  `speak:The End.` and no title/artwork fragments. Fresh `ending_accepted`
+  probe consumed at frame2640. Gate passed 42 Lua suites and68 Python tests.
+  First replay exposed the earlier letter-artwork fragment; corrected its
+  five-row ROM fixture/filter. Final replay preserved story, full credits, and
+  copyright at21:10:22, suppressed both fragments and premature title speech,
+  and announced The End once at21:10:35 (frame12171). Fresh ending_clean_finish
+  probe consumed at frame12660. Ending polish is complete.
+
 - Tantegel Sun Shrine map0x0C passed its complete player-facing route set
   (2026-09-22), finishing the overall Tantegel Castle audit. From stair
   `(0,4)`, the chest route completed 11 steps each way with no retry or

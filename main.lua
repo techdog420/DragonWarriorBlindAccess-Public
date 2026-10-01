@@ -89,7 +89,7 @@ for _, mod_name in ipairs({
     "object_commands", "objects", "overworld_routes", "path_debug", "pathfinder",
     "route_manager", "scan_profiler", "state", "teleport_state", "text", "walked_edge_verifier",
     "warning_delivery", "settings_menu", "key_reference", "low_health",
-    "town_audit", "route_frontier", "npc_mobility",
+    "town_audit", "route_frontier", "npc_mobility", "ending",
 }) do
     package.loaded[mod_name] = nil
 end
@@ -1804,6 +1804,7 @@ local TITLE = {
 local frame_count = 0
 DW_QOL_STATE = rawget(_G, "DW_QOL_STATE") or {}
 _G.DW_QOL_STATE = DW_QOL_STATE
+DW_QOL_STATE.ending = require "ending"
 DW_QOL_STATE.pending_talk_visit = nil
 DW_QOL_STATE.teleport_input_suppress_frames = 0
 DW_QOL_STATE.TELEPORT_INPUT_SUPPRESS_FRAMES = 6
@@ -3782,6 +3783,20 @@ end
 --   4. Name-entry screen       — first-token of letter under cursor.
 --   5. All other title screens — cursor-tile scan with hold-timer.
 local function check_title_screen()
+    if DW_QOL_STATE.ending.is_active(snapshot) then
+        local rows = {}
+        for row = 0, 29 do rows[row + 1] = text.read_ppu_row(row) end
+        local kind, value = DW_QOL_STATE.ending.classify(rows, function(bytes)
+            return strip_noise(chars.decode_bytes(bytes))
+        end)
+        local announcement = DW_QOL_STATE.ending.update(kind, value, K.TITLE_STABLE)
+        if announcement then
+            debug_tools.info(string.format("ENDING_NARRATION kind=%s text=%q", kind, announcement))
+            tolk.output(announcement)
+        end
+        return
+    end
+    DW_QOL_STATE.ending.reset()
     -- Guard: when a Yes/No prompt is active (e.g. erase-quest confirmation),
     -- let check_yesno_prompt() handle it — don't compete with cursor scanning.
     if menu.is_yesno_active() then return end
@@ -4705,6 +4720,18 @@ debug_tools.register_command("speech_status", function()
         tonumber(warning_state.neutral_frames_required) or 0)
     debug_tools.info(status)
     tolk.output_interrupt(status)
+end)
+
+debug_tools.register_command("report_ending_screen", function()
+    debug_tools.info(string.format("ENDING_SCREEN level=%d state=%s chr=0x%02X",
+        snapshot.level, tostring(game_state.state), memory.readbyte(addr.CHR_PAGE_SPRITES)))
+    for row = 0, 29 do
+        local bytes = text.read_ppu_row(row, get_scroll_tiles(), DW_QOL_STATE.get_scroll_base_nametable())
+        local hex = {}
+        for _, byte in ipairs(bytes) do hex[#hex + 1] = string.format("%02X", byte) end
+        debug_tools.info(string.format("ENDING_ROW row=%02d text=%q raw=%s",
+            row, chars.decode_bytes(bytes), table.concat(hex, " ")))
+    end
 end)
 
 debug_tools.register_command("report_title_state", function()
@@ -7105,6 +7132,7 @@ while true do
     -- Read all tracked RAM values into the snapshot table.
     -- This MUST happen before any module reads from the snapshot this frame.
     checked_scan("snapshot.update", snapshot.update)
+    if not DW_QOL_STATE.ending.is_active(snapshot) then DW_QOL_STATE.ending.reset() end
     if objects.set_visibility_context then
         checked_call("objects.set_visibility_context", objects.set_visibility_context, snapshot)
     end
@@ -7234,7 +7262,7 @@ while true do
                 field_from_title_ct         = 0
                 reset_merchant_state(false)
                 reset_battle_menu_state()
-                tolk.output("Title screen.")
+                if not DW_QOL_STATE.ending.is_active(snapshot) then tolk.output("Title screen.") end
             end
         end
     else
@@ -7267,7 +7295,7 @@ while true do
                 field_from_title_ct         = 0
                 reset_merchant_state(false)
                 reset_battle_menu_state()
-                tolk.output("Title screen.")
+                if not DW_QOL_STATE.ending.is_active(snapshot) then tolk.output("Title screen.") end
             elseif game_state.state == state.STATE_BATTLE then
                 PREV.is_name_entry = false
                 TITLE.name_entry_active = false

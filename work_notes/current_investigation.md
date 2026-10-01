@@ -7546,3 +7546,42 @@ For the next live map task, start a new dated section here with:
   skip-NPC/allow-hazards route to `(25,21)` exists in48 steps but crosses three
   rawA damage cells `(25,18)`, `(26,18)`, `(26,19)`. Keep hazard protection;
   no map edit or movement performed. Investigate only if player needs Guard5.
+
+## 2026-09-30 Ending narration investigation (complete)
+
+- Fresh `ending_baseline` probe at frame 42960: map0x04 `(11,8)`, level21,
+  lower dialogue `The legends have proven true.`, speech bridge ready, no error.
+- Advanced ending pages individually with `simulate_input:A,12`; bridge log
+  contains the king/hero/princess pages and final story line. Gwaelin YES selected.
+- Reproduced premature `Title screen.` at 20:49:42, before congratulations
+  and staff credits. Credits/final screen use level255; detector labels this title.
+- Credits reached copyright at 20:51:27. Artwork decoded as
+  `ghi jklm nopq rstu vwxy` at 20:51:34 and punctuation at 20:51:41.
+  No `The End.` announcement. Terminal probe frame57120 consumed successfully.
+- Added read-only `report_ending_screen` command to main.lua, syntax passed.
+- CAPTURED after manual reload: frame4320, level255, terminal rows13/14,
+  columns10..21 (zero-based) are ascending tiles3E..49 and4A..55; every other
+  tile is5F. The artwork shares tile IDs with normal punctuation.
+- IMPLEMENTED: ending.lua handles stable credits and terminal artwork, main.lua
+  suppresses the title announcement only in the ending context. Added read-only
+  report_ending_screen documentation and included ending.lua in package-layout.json.
+- VERIFIED SOURCE: focused ending regression, Lua syntax, diff whitespace,
+  full python -u run_tests.py:42 Lua suites and68 Python tests passed.
+  Gate log: .tmp-tests/ending-gate-2026-09-30.log (ignored local evidence).
+- PLAYER ACCEPTED: after the second manual reload, user heard The End.
+  NVDA bridge log records one `speak:The End.` at20:58:46, with no Title screen
+  or decorative fragments. Fresh ending_accepted probe consumed at frame2640.
+- REPLAY: patched story/congratulations/full staff/copyright narration preserved;
+  no premature Title screen. Final The End logged once at21:04:26. Replay found
+  the earlier illustration still spoke `ghi jklm nopq rstu vwxy` at21:04:19.
+- CORRECTED: the first artwork fixture incorrectly modeled one long row. ROM
+  offset0x5912 writes separate runs to PPU$218F,$21AE,$21CE,$21EE,$220E,
+  tiles10..12,13..16,17..1A,1B..1E,1F..22. Added exact row filters and corrected
+  the regression fixture. Focused tests/syntax and full gate passed again:
+  42 Lua suites,68 Python tests, speech dependency and queue checks.
+- VERIFIED FINAL REPLAY: reloaded corrected source, story and all staff credits
+  preserved. Copyright at21:10:22 followed by silence for illustration and
+  The End once at21:10:35 (frame12171). No premature title or either artwork
+  fragment. ending_clean_finish consumed at frame12660; level255, map0x04.
+  Initial reload The End and subsequent replay The End are separate sessions.
+  No ending verification remains pending. Unrelated edits preserved.

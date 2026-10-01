@@ -4,6 +4,13 @@ Updated: 2026-09-22
 
 ## Current implementation
 
+Ending narration completed 2026-09-30. Full FCEUX replay preserved story,
+staff credits, and copyright, suppressed premature Title screen speech
+and both decorative fragments, and announced The End once per ending.
+The player heard The End with NVDA after reload. Validation passed
+42 Lua suites and 68 Python tests. See PLAYTESTING.md and the ending
+section of work_notes/current_investigation.md for live evidence.
+
 - Tantegel Sun Shrine map0x0C is player-accepted and complete (2026-09-22),
   which closes the overall Tantegel Castle pass. From the entrance stair
   `(0,4)`, the chest at `(4,5)` completed 11 steps out and 11 back with no

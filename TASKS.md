@@ -901,13 +901,14 @@ quality-of-life work.
 
 ## Quality of Life
 
-### Endgame narration polish
+### Endgame narration polish (completed 2026-09-30)
 
-- Detect the credits and terminal `The End` sequence separately from the
-  ordinary title screen. Preserve the successfully narrated story and staff
-  credits, suppress the premature `Title screen.` announcement, filter the two
-  decorative-glyph fragments after the copyright line, and announce a concise
-  `The End.` once when the terminal screen settles.
+Ending narration completed 2026-09-30. Full FCEUX replay preserved story,
+staff credits, and copyright, suppressed premature Title screen speech
+and both decorative fragments, and announced The End once per ending.
+The player heard The End with NVDA after reload. Validation passed
+42 Lua suites and 68 Python tests. See PLAYTESTING.md and the ending
+section of work_notes/current_investigation.md for live evidence.
 
 ### In-game mod configuration
 

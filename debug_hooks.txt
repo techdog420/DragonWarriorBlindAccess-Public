@@ -200,6 +200,9 @@ COMMANDS (write to dw_commands.txt, one per line)
   reset_map_crawl          Clear the current map's crawl report
   report_upper_dialogue_state  Dump upper-window state to log (active flag, lengths,
                            menu/submenu status, current window content)
+  report_ending_screen     Read-only capture of all 30 visible decoded/raw tile
+                           rows plus level, state, and sprite CHR page. Useful
+                           for distinguishing credits from terminal artwork.
   report_merchant_state    Dump merchant/shop detector state, visible decoded rows,
                            offers, prompt flag, and current cursor offer
   start_overworld_route    Start manual Travel-filter route guidance to Erdrick's Cave
