@@ -1,9 +1,89 @@
 # Current Investigation Scratchpad
 
-This is a dated evidence log through the 2026-10-02 corridor check. Older
+This is a dated evidence log through the 2026-10-02 Travel checks. Older
 "Next Work," branch, frame, and uncommitted-change notes below are historical.
 Use `session_handoff.md` and `TASKS.md` for the current resume point and
 roadmap; establish fresh FCEUX state before reusing a live observation.
+
+## 2026-10-02 Travel interruption and manual-drift validation - complete
+
+- SCOPE: representative loaded acceptance of menu interruption, battle
+  cancellation/resumption, and manual drift while retaining one Travel final
+  destination. This does not prove every destination from every world-map cell.
+- BASELINE: fresh `travel_baseline_20261002` at frame `624600`: World Map
+  `(56,59)`, field/menu clear, HP116/149, MP89/121, level21, no path or
+  NPC/runtime blockers, speech ready/error none. The pre-victory save was
+  loaded by the player. Lua retained old `charlock_return` guidance across
+  the save-state load; it was explicitly stopped before the new test.
+- DESTINATION: `start_overworld_route:castle` at frame `625920` selected
+  Tantegel Castle. Read-only recovery preview found 15 safe steps to network
+  entry `(61,49)` via `3 north, 2 east, 6 north, 3 east, 1 north`, then
+  `charlock_return` / `Charlock island bridge landing`, final `tantegel`.
+  Position unchanged, no movement started; no hazard tiles. Continuous
+  Travel is configured on, but recovery must stop at the network boundary.
+- BATTLE FIRST: the initial `auto_walk` at frame `629100` unexpectedly queued
+  a 29-step direct Tantegel segment, not the previewed recovery. At `(56,57)`,
+  a Demon Knight onset stopped movement; frame `629232` suppressed the pending
+  blocked-edge observation. The player defeated it. Frames `630540` and
+  `633240` retained Tantegel guidance, path nil, and zero runtime blocks;
+  no automatic restart occurred after battle or the player's brief menu open.
+- MENU ACCEPTED: explicit resume at `635820` followed by
+  `simulate_sequence:B,1,60;A,8,0` opened the command menu at `635915`.
+  `635916` cancelled active movement with `reason=can_walk_false` at `(56,56)`.
+  Fresh `636600` confirmed menu blocking, path nil, same destination, no
+  runtime blocks. Physical Shift+R at `642354` retained Tantegel; the player
+  confirmed its speech and that D closed the menu without restarting movement.
+- SELECTOR FIX: `(56,59)..(56,56)` are already Charlock network corridor cells,
+  so auto-walk skips off-network recovery. Tantegel's island variant lacked
+  corridor matching, selecting an unverified direct 26-29-step castle opening.
+  A regression covering alias/object starts, next waypoint/direction, retained
+  destination, and read-only status failed on the old code. Adding existing
+  `charlock_return` / `charlock_castle` selection corridors now produces the
+  established 1-3-step return openings. No waypoint or passability edit.
+  Lua syntax and focused suites pass: 342 overworld-route, 165 route-manager,
+  154 auto-step tests. After the player's manual FCEUX Lua reload, fresh probe
+  `travel_selector_reload_20261002` at frame `6600` found clear field `(56,56)`.
+  New selection/status at `7140` used `charlock_return` index14, lower east turn
+  `1 east`, final Tantegel Castle. The full native gate now passes 42
+  host-runnable Lua suites / 68 Python tests, syntax, speech dependency, and
+  command-queue checks (`.test_tmp/travel_validation_gate_20261002.log`).
+- EVIDENCE: exact pre-reload lines retained from command outputs are in
+  `work_notes/travel_validation_20261002_pre_reload.txt`. The live log reset
+  before copying; this is a focused subset, not the complete original log.
+- MANUAL DRIFT / RECOVERY: player tapped Down then Left to `(55,57)`, cleared
+  a Werewolf, and left clear field. `13080` retained Tantegel with no active
+  path/blocks. Preview `14880` offered one safe east step to `(56,57)`;
+  movement at `15660` completed `15723`, stopped at the network boundary even
+  with continuous Travel enabled, retained Tantegel, and recalculated the next
+  waypoint to `Charlock island southeast corridor`, one north. Fresh `17760`
+  confirmed the same stopped position and nil path.
+- TIMING WATCH / DO NOT PROMOTE: first explicit guided resume `19380` stalled
+  on `(56,57)->UP` and stopped at `19614` after bounded retries. Clear input,
+  field, and effective passability were confirmed at `23340`. Same-origin
+  `probe_edge:UP` crossed to `(56,56)` at `25473` without teleport or movement
+  reset. Normal resumed east/north legs then completed and a Demon Knight
+  battle at `(57,55)` cancelled the next leg at `28136` (`can_walk_false`).
+  The player cleared it and confirmed Tantegel still selected at `(57,55)`.
+- REPEATED HANDOFF PASSED: walked probes returned through `(57,56)`, `(56,56)`,
+  `(56,57)`, and `(55,57)`; all four crossed normally. The diagnostic one-frame
+  `simulate_input:DOWN` attempt only turned/produced an early twitch, so it is
+  not movement evidence. Repeated one-east recovery stopped at `(56,57)` at
+  `47819`; explicit guided resume completed the previously stalled north leg
+  at `48420` with timeout_retries=0. The seam classification became `noisy`.
+  Continuous Travel followed the established route to `(67,50)`, where a
+  Scorpion battle cancelled movement at `49348`. Live status in battle at
+  `50400` retained Tantegel, path nil, and no runtime blocks. No timing code,
+  terrain, or blocked-edge data was changed.
+- EVIDENCE: focused post-reload raw lines are preserved in
+  `work_notes/travel_validation_20261002_post_reload.txt`.
+- FINAL: the player cleared Scorpion. Fresh probe
+  `travel_validation_complete_20261002` at `59520` confirmed clear field/menu
+  at `(67,50)`, HP109/149, MP89/121, path nil, zero NPC/runtime blockers,
+  neutral buttons, and speech ready/error none. Guidance remains active to
+  Tantegel: `Rainbow Bridge inlet southeast turn, 3 east`. No automatic restart.
+  Broader destination/start-region and field-dialogue coverage remains open.
+  Player acceptance covers menu status/stopped state and retained destination
+  after battle; physical Shift+R speech during battle was not confirmed.
 
 ## 2026-10-02 Hauksness return-corridor selector acceptance
 

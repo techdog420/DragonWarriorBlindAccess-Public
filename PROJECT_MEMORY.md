@@ -1455,14 +1455,14 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
-Current authoritative offline gate (latest recorded full pass 2026-09-30):
+Current authoritative offline gate (latest recorded full pass 2026-10-02):
 - Run `python run_tests.py` from the repository root on Windows.
 - The runner discovers every root `test_*.lua` suite automatically except
   `test_env.lua`, which is a helper, and `test_screen.lua` / `test_speech.lua`,
   which require live FCEUX globals and are reported as explicit skips.
 - It syntax-checks every root Lua and Python file, runs all 42 host-runnable
   Lua suites through the discovered `lua` or `luajit` runtime, runs Python
-  unittest discovery (68 tests on 2026-09-30), validates shell syntax, speech
+  unittest discovery (68 tests on 2026-10-02), validates shell syntax, speech
   dependencies, and the command queue, and returns nonzero on any failure.
 - `speech_smoke.py` is intentionally manual because it produces real screen-
   reader speech; do not rename it to `test_*.py` or import it during automated

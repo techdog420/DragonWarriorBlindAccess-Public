@@ -1,0 +1,49 @@
+Travel validation before selector fix reload - 2026-10-02
+Baseline source: 089e849bdc6592277dcf80e8a92663d7a3ce763b
+Menu and battle first pass; incorrect direct Tantegel selector diagnosed at Charlock corridor (56,59)..(56,56).
+Player confirmed Shift+R status worked in the command menu and hero stayed stopped after D closed it.
+Focused regression failed before the selector edit, then passed with existing Charlock corridor selection.
+
+DEBUG EXTRACT
+The live log was reset by the manual reload before the file copy completed.
+The following exact lines were retained from command outputs captured earlier
+in this chat. They are a focused subset, not a copy of the complete old log.
+
+[FRAME:624600][INFO][field] LAUNCHER_PROBE: travel_baseline_20261002
+[FRAME:624600][INFO][field] POSITION: map=0x01(World Map) x=56 y=59
+[FRAME:624600][INFO][field] hp:        116 / 149
+[FRAME:624600][INFO][field] mp:        89 / 121
+[FRAME:624600][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:624600][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:625920][INFO][field] OVERWORLD_ROUTE: event=start route=tantegel waypoint=Tantegel Castle index=25
+[FRAME:625920][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(56,59) entry=(61,49) path_len=15 route=charlock_return next=Charlock island bridge landing final=tantegel candidates=741 rejected_opening=0 rejected_unreachable=1 skipped_farther=739 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:629100][INFO][field] OVERWORLD_AUTO_WALK: event=start route=tantegel waypoint=Tantegel Castle index=25 steps=29 from=(56,59) to=(43,43) carry=(nil,nil) continuous=true stop_on_blocker=false
+[FRAME:629231][INFO][field] SEAM_OBSERVATION_DEFERRED reason=battle_onset_grace frames=3 map=0x01 from=(56,57) dir=up source=queued_route_block
+[FRAME:629232][INFO][field] EVENT: battle started
+[FRAME:629232][INFO][field] SEAM_OBSERVATION_SUPPRESSED reason=battle_started map=0x01 from=(56,57) dir=up source=queued_route_block
+[FRAME:630540][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel waypoint=Tantegel Castle index=25
+[FRAME:630540][INFO][field] POSITION: map=0x01(World Map) x=56 y=57
+[FRAME:630540][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:630540][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:630540][INFO][field] hp:        109 / 149
+[FRAME:633240][INFO][field] POSITION: map=0x01(World Map) x=56 y=57
+[FRAME:633240][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:633240][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=0 dialogue_start_row=7
+[FRAME:635820][INFO][field] OVERWORLD_AUTO_WALK: event=start route=tantegel waypoint=Tantegel Castle index=25 steps=27 from=(56,57) to=(43,43) carry=(nil,nil) continuous=true stop_on_blocker=false
+[FRAME:635915][DEBUG][field] EVENT: command menu opened
+[FRAME:635916][INFO][field] OVERWORLD_AUTO_WALK: event=cancel route=tantegel waypoint=Tantegel Castle index=25 reason=can_walk_false current=(56,56) expected_carry=(nil,nil)
+[FRAME:636600][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel waypoint=Tantegel Castle index=25
+[FRAME:636600][INFO][field] POSITION: map=0x01(World Map) x=56 y=56
+[FRAME:636600][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:636600][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:636600][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=true cursor_visible=true cursor=(0,0) item=TALK cmd_confirmed=true cmd_live=true cmd_rearm=false cmd_hold=12 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=1 dialogue_start_row=5
+[FRAME:642354][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel waypoint=Tantegel Castle index=25
+
+SPEECH EXTRACT
+[2026-10-02 13:32:21] command='interrupt:Route to Tantegel Castle. Next: Tantegel Castle, 16 north, 13 west'
+[2026-10-02 13:33:17] command='interrupt:Battle!'
+[2026-10-02 13:33:18] command='interrupt:A Demon Knight draws near!'
+[2026-10-02 13:33:34] command='speak:defeating the Demon Knight. Thy Experience increases by 37. Thy GOLD increases by 118.'
+[2026-10-02 13:35:06] command='interrupt:Continuous overworld auto-walk to Tantegel Castle'
+[2026-10-02 13:35:08] command='speak:Command. TALK'
+[2026-10-02 13:36:55] command='speak:Route to Tantegel Castle. Next: Tantegel Castle, 13 north, 13 west'

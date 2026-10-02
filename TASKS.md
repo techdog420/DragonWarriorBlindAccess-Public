@@ -26,7 +26,7 @@ preserved in `handoff_archive/TASKS_2026-09-24_pre_cleanup.md`.
   gameplay, save, and relaunch checks, and one blind-player run reached the
   original `The End` screen. The current source is newer than that package.
 - The current native Windows gate is `python -u run_tests.py`. The latest
-  recorded pass on 2026-09-30 covered 42 host-runnable Lua suites and 68 Python
+  recorded pass on 2026-10-02 covered 42 host-runnable Lua suites and 68 Python
   tests, plus syntax, speech dependency, and command-queue checks.
   `test_screen.lua` and
   `test_speech.lua` require live FCEUX and are explicitly skipped.
@@ -59,14 +59,22 @@ each selected `Cantlin north road` at `(73,91)`, preserved its final destination
 in read-only status, and cancelled cleanly. The player confirmed Shift+R,
 Shift+U, and the resulting speech. See the dated `PLAYTESTING.md` entry.
 
+The representative Tantegel menu/battle/manual-drift check also passed on
+2026-10-02. It exposed and fixed a selector gap on known Charlock corridor
+cells: Tantegel now reuses the established return instead of a direct castle
+opening. Recovery stopped at the network boundary, explicit resume worked,
+and interruptions retained the destination without restarting movement.
+
 1. Complete the broader Travel acceptance criteria: supported destinations
-   from arbitrary reachable world-map starts; recovery after deliberate manual
-   drift; and safe resume after battles, menus, and dialogue. Build on the
-   existing connected-route and bounded off-network recovery paths. Preserve
+   from other reachable world-map start regions, additional destination/drift
+   combinations, and field-dialogue interruption/resume. Build on the recorded
+   Tantegel menu/battle/drift pass and bounded off-network recovery. Preserve
    the selected destination and explain the recovery leg and next waypoint.
    Do not silently cross hazards or promote timing stalls to map blockers.
 2. Treat isolated timing, moving-NPC, and FCEUX input-latch reports as watch
    items. Reproduce one in a fresh state before adding a permanent map rule.
+   The 2026-10-02 `(56,57)->UP` stop crossed with a same-origin probe and
+   passed the repeated recovery/guided handoff without timeout retries.
 
 ## Accessible discovery and quality of life
 

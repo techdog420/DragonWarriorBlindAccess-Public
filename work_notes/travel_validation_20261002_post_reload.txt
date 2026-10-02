@@ -1,0 +1,257 @@
+Travel validation after manual selector-fix reload - 2026-10-02
+Baseline source: 089e849bdc6592277dcf80e8a92663d7a3ce763b, plus the local selector fix and regression.
+Source changes: exact Charlock corridor matching for Tantegel, with focused regression.
+Scope: corrected route selection, menu/battle destination retention, manual drift recovery, explicit handoff resume.
+One initial north-step stall crossed with a same-origin raw edge probe; the repeated recovery and guided handoff passed without timeout retries.
+No teleport, runtime blocker injection, or map-data change was used.
+Final fresh probe: frame 59520, clear field/menu at (67,50), movement stopped, Tantegel active, next waypoint 3 east.
+Player accepted menu status/stopped state and retained destination after battle; physical Shift+R speech during battle was not confirmed.
+This file is a focused extract, not the complete live log.
+
+DEBUG EXTRACT
+[FRAME:10889][INFO][field] EVENT: battle started
+[FRAME:10889][INFO][field] hp:        112 / 149
+[FRAME:10889][INFO][field] mp:        89 / 121
+[FRAME:11896][DEBUG][battle] EVENT: dialogue: defeating the Werewolf. Thy Experience increases by 40. Thy GOLD increases by 125.
+[FRAME:12571][DEBUG][field] EVENT: command menu opened
+[FRAME:12608][DEBUG][field] EVENT: command menu closed
+[FRAME:13080][DEBUG][field] CMD: route_status
+[FRAME:13080][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island lower east turn index=14
+[FRAME:13080][DEBUG][field] CMD: report_position
+[FRAME:13080][INFO][field] POSITION: map=0x01(World Map) x=55 y=57
+[FRAME:13080][DEBUG][field] CMD: report_path_state
+[FRAME:13080][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:13080][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:13080][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:13080][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:13080][DEBUG][field] CMD: report_menu_state
+[FRAME:13080][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=14 base_nt=0 dialogue_start_row=7
+[FRAME:13080][DEBUG][field] CMD: log_state
+[FRAME:13080][INFO][field] hp:        100 / 149
+[FRAME:13080][INFO][field] mp:        89 / 121
+[FRAME:13080][DEBUG][field] CMD: launcher_probe:travel_manual_drift_check
+[FRAME:13080][INFO][field] LAUNCHER_PROBE: travel_manual_drift_check
+[FRAME:14880][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:14880][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=tantegel_kol method=single_field candidates=810 pathfind_calls=1 safe_nodes=48 hazard_nodes=0 candidate_ms=123.000 snapshot_ms=15.000 safe_field_ms=0.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=143.000 fallback=false
+[FRAME:14880][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(55,57) entry=(56,57) path_len=1 route=charlock_return next=Charlock island southeast corridor final=tantegel_kol candidates=810 rejected_opening=0 rejected_unreachable=0 skipped_farther=809 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:14880][DEBUG][field] CMD: route_status
+[FRAME:14880][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island lower east turn index=14
+[FRAME:14880][DEBUG][field] CMD: report_position
+[FRAME:14880][INFO][field] POSITION: map=0x01(World Map) x=55 y=57
+[FRAME:14880][DEBUG][field] CMD: launcher_probe:travel_drift_recovery_preview
+[FRAME:14880][INFO][field] LAUNCHER_PROBE: travel_drift_recovery_preview
+[FRAME:15660][DEBUG][field] CMD: auto_walk
+[FRAME:15660][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=tantegel_kol method=single_field candidates=810 pathfind_calls=1 safe_nodes=48 hazard_nodes=0 candidate_ms=0.000 snapshot_ms=15.000 safe_field_ms=0.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=20.000 fallback=false
+[FRAME:15660][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(55,57) entry=(56,57) path_len=1 route=charlock_return next=Charlock island southeast corridor final=tantegel_kol candidates=810 rejected_opening=0 rejected_unreachable=0 skipped_farther=809 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:15660][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(55,57) target=(56,57) entry=(56,57) steps=1 full_steps=1 route=charlock_return next=Charlock island southeast corridor final=tantegel_kol continuous_requested=true checkpoint_stop=false boundary_stop=true
+[FRAME:15723][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island south road east end index=nil steps=1
+[FRAME:15723][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=complete map=0x01 position=(56,57) entry=(56,57) final=tantegel_kol handoff_route=charlock_return next=Charlock island southeast corridor continuous_requested=true boundary_stop=true result=handoff_ready
+[FRAME:17760][DEBUG][field] CMD: route_status
+[FRAME:17760][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island southeast corridor index=13
+[FRAME:17760][DEBUG][field] CMD: report_position
+[FRAME:17760][INFO][field] POSITION: map=0x01(World Map) x=56 y=57
+[FRAME:17760][DEBUG][field] CMD: report_path_state
+[FRAME:17760][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:17760][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:17760][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:17760][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:17760][DEBUG][field] CMD: launcher_probe:travel_recovery_boundary_idle
+[FRAME:17760][INFO][field] LAUNCHER_PROBE: travel_recovery_boundary_idle
+[FRAME:19380][DEBUG][field] CMD: auto_walk
+[FRAME:19380][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island southeast corridor index=13 steps=1 from=(56,57) to=(56,56) carry=(57,56) continuous=true stop_on_blocker=false
+[FRAME:19614][INFO][field] OVERWORLD_AUTO_WALK: event=blocked route=charlock_return waypoint=Charlock island southeast corridor index=13 from=(56,57) dir=up source=queued_route_block
+[FRAME:20659][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island southeast corridor index=13
+[FRAME:23340][DEBUG][field] CMD: report_position
+[FRAME:23340][INFO][field] POSITION: map=0x01(World Map) x=56 y=57
+[FRAME:23340][DEBUG][field] CMD: report_path_state
+[FRAME:23340][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:23340][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:23340][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:23340][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:23340][DEBUG][field] CMD: report_movement_state:travel_resume_stall
+[FRAME:23340][DEBUG][field] CMD: report_input_guard_state
+[FRAME:23340][DEBUG][field] CMD: input_status:travel_resume_stall
+[FRAME:23340][DEBUG][field] CMD: inspect_move:UP
+[FRAME:23340][DEBUG][field] CMD: launcher_probe:travel_resume_stall
+[FRAME:23340][INFO][field] LAUNCHER_PROBE: travel_resume_stall
+[FRAME:25380][DEBUG][field] CMD: probe_edge:UP
+[FRAME:25380][INFO][field] EDGE_PROBE_START map=0x01 from=(56,57) dir=up dest=(56,56) raw_hold_frames=60 moved_settle_frames=60
+[FRAME:25412][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island southeast corridor index=14
+[FRAME:25473][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(56,57) dir=up dest=(56,56) status=moved final=(56,56) reached_dest=true settle_frames=60 tile=2 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=south approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:27900][DEBUG][field] CMD: auto_walk
+[FRAME:27900][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island lower east turn index=14 steps=1 from=(56,56) to=(57,56) carry=(57,55) continuous=true stop_on_blocker=false
+[FRAME:28013][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island lower east turn index=15
+[FRAME:28033][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island lower east turn index=14 steps=1
+[FRAME:28033][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island east lower bend index=15 steps=1 from=(57,56) to=(57,55) carry=(58,55) continuous=true stop_on_blocker=false
+[FRAME:28033][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island east lower bend index=15
+[FRAME:28080][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island east lower bend index=16
+[FRAME:28100][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island east lower bend index=15 steps=1
+[FRAME:28100][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island east descent index=16 steps=1 from=(57,55) to=(58,55) carry=(58,54) continuous=true stop_on_blocker=false
+[FRAME:28100][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island east descent index=16
+[FRAME:28135][INFO][field] EVENT: battle started
+[FRAME:28135][INFO][field] hp:        104 / 149
+[FRAME:28135][INFO][field] mp:        89 / 121
+[FRAME:28136][INFO][battle] OVERWORLD_AUTO_WALK: event=cancel route=charlock_return waypoint=Charlock island east descent index=16 reason=can_walk_false current=(57,55) expected_carry=(58,54)
+[FRAME:29199][DEBUG][battle] EVENT: dialogue: defeating the Demon Knight. Thy Experience increases by 37. Thy GOLD increases by 138.
+[FRAME:29820][DEBUG][field] CMD: route_status
+[FRAME:29820][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island east descent index=16
+[FRAME:29820][DEBUG][field] CMD: report_position
+[FRAME:29820][INFO][field] POSITION: map=0x01(World Map) x=57 y=55
+[FRAME:29820][DEBUG][field] CMD: report_path_state
+[FRAME:29820][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:29820][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:29820][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:29820][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:29820][DEBUG][field] CMD: log_state
+[FRAME:29820][INFO][field] hp:        84 / 149
+[FRAME:29820][INFO][field] mp:        89 / 121
+[FRAME:29820][DEBUG][field] CMD: launcher_probe:travel_fixed_battle_status
+[FRAME:29820][INFO][field] LAUNCHER_PROBE: travel_fixed_battle_status
+[FRAME:32697][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island east descent index=16
+[FRAME:40320][DEBUG][field] CMD: simulate_input:DOWN
+[FRAME:43680][DEBUG][field] CMD: probe_edge:DOWN
+[FRAME:43680][INFO][field] EDGE_PROBE_START map=0x01 from=(57,55) dir=down dest=(57,56) raw_hold_frames=60 moved_settle_frames=60
+[FRAME:43776][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(57,55) dir=down dest=(57,56) status=moved final=(57,56) reached_dest=true settle_frames=60 tile=2 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=north approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:44340][DEBUG][field] CMD: probe_edge:LEFT
+[FRAME:44340][INFO][field] EDGE_PROBE_START map=0x01 from=(57,56) dir=left dest=(56,56) raw_hold_frames=60 moved_settle_frames=60
+[FRAME:44433][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(57,56) dir=left dest=(56,56) status=moved final=(56,56) reached_dest=true settle_frames=60 tile=2 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=east approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:44940][DEBUG][field] CMD: probe_edge:DOWN
+[FRAME:44940][INFO][field] EDGE_PROBE_START map=0x01 from=(56,56) dir=down dest=(56,57) raw_hold_frames=60 moved_settle_frames=60
+[FRAME:45034][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(56,56) dir=down dest=(56,57) status=moved final=(56,57) reached_dest=true settle_frames=60 tile=2 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=north approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:45660][DEBUG][field] CMD: probe_edge:LEFT
+[FRAME:45660][INFO][field] EDGE_PROBE_START map=0x01 from=(56,57) dir=left dest=(55,57) raw_hold_frames=60 moved_settle_frames=60
+[FRAME:45755][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(56,57) dir=left dest=(55,57) status=moved final=(55,57) reached_dest=true settle_frames=60 tile=2 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=east approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:47760][DEBUG][field] CMD: auto_walk
+[FRAME:47760][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=tantegel_kol method=single_field candidates=810 pathfind_calls=1 safe_nodes=48 hazard_nodes=0 candidate_ms=97.000 snapshot_ms=14.000 safe_field_ms=0.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=115.000 fallback=false
+[FRAME:47760][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(55,57) entry=(56,57) path_len=1 route=charlock_return next=Charlock island southeast corridor final=tantegel_kol candidates=810 rejected_opening=0 rejected_unreachable=0 skipped_farther=809 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:47760][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(55,57) target=(56,57) entry=(56,57) steps=1 full_steps=1 route=charlock_return next=Charlock island southeast corridor final=tantegel_kol continuous_requested=true checkpoint_stop=false boundary_stop=true
+[FRAME:47819][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island south road east end index=nil steps=1
+[FRAME:47819][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=complete map=0x01 position=(56,57) entry=(56,57) final=tantegel_kol handoff_route=charlock_return next=Charlock island southeast corridor continuous_requested=true boundary_stop=true result=handoff_ready
+[FRAME:48360][DEBUG][field] CMD: auto_walk
+[FRAME:48360][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island southeast corridor index=13 steps=1 from=(56,57) to=(56,56) carry=(57,56) continuous=true stop_on_blocker=false
+[FRAME:48400][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island southeast corridor index=14
+[FRAME:48401][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(56,56) approach=south from=blocked_only to=noisy
+[FRAME:48420][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island southeast corridor index=13 steps=1
+[FRAME:48420][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island lower east turn index=14 steps=1 from=(56,56) to=(57,56) carry=(57,55) continuous=true stop_on_blocker=false
+[FRAME:48420][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island lower east turn index=14
+[FRAME:48467][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island lower east turn index=15
+[FRAME:48487][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island lower east turn index=14 steps=1
+[FRAME:48487][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island east lower bend index=15 steps=1 from=(57,56) to=(57,55) carry=(58,55) continuous=true stop_on_blocker=false
+[FRAME:48487][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island east lower bend index=15
+[FRAME:48534][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island east lower bend index=16
+[FRAME:48554][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island east lower bend index=15 steps=1
+[FRAME:48554][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island east descent index=16 steps=1 from=(57,55) to=(58,55) carry=(58,54) continuous=true stop_on_blocker=false
+[FRAME:48554][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island east descent index=16
+[FRAME:48601][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island east descent index=17
+[FRAME:48621][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island east descent index=16 steps=1
+[FRAME:48621][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island upper east lane index=17 steps=5 from=(58,55) to=(58,50) carry=(59,50) continuous=true stop_on_blocker=false
+[FRAME:48621][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island upper east lane index=17
+[FRAME:48831][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island upper east lane index=18
+[FRAME:48851][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island upper east lane index=17 steps=5
+[FRAME:48851][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island northeast shore index=18 steps=4 from=(58,50) to=(61,49) carry=(62,49) continuous=true stop_on_blocker=false
+[FRAME:48851][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island northeast shore index=18
+[FRAME:49023][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island northeast shore index=19
+[FRAME:49043][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island northeast shore index=18 steps=4
+[FRAME:49043][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island bridge landing index=19 steps=2 from=(61,49) to=(63,49) carry=(64,49) continuous=true stop_on_blocker=false
+[FRAME:49043][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island bridge landing index=19
+[FRAME:49103][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock island bridge landing index=20
+[FRAME:49123][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock island bridge landing index=19 steps=2
+[FRAME:49123][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Rainbow Bridge unlock point index=20 steps=2 from=(63,49) to=(65,49) carry=(66,49) continuous=true stop_on_blocker=false
+[FRAME:49123][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Rainbow Bridge unlock point index=20
+[FRAME:49167][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Rainbow Bridge unlock point index=21
+[FRAME:49184][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Rainbow Bridge unlock point index=20 steps=2
+[FRAME:49184][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Rainbow Bridge inlet southwest turn index=21 steps=2 from=(66,49) to=(67,50) carry=(68,50) continuous=true stop_on_blocker=false
+[FRAME:49184][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Rainbow Bridge inlet southwest turn index=21
+[FRAME:49295][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Rainbow Bridge inlet southwest turn index=22
+[FRAME:49315][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Rainbow Bridge inlet southwest turn index=21 steps=2
+[FRAME:49315][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Rainbow Bridge inlet southeast turn index=22 steps=3 from=(67,50) to=(70,50) carry=(70,49) continuous=true stop_on_blocker=false
+[FRAME:49315][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Rainbow Bridge inlet southeast turn index=22
+[FRAME:49347][INFO][field] EVENT: battle started
+[FRAME:49347][INFO][field] hp:        109 / 149
+[FRAME:49347][INFO][field] mp:        89 / 121
+[FRAME:49348][INFO][battle] OVERWORLD_AUTO_WALK: event=cancel route=charlock_return waypoint=Rainbow Bridge inlet southeast turn index=22 reason=can_walk_false current=(67,50) expected_carry=(70,49)
+[FRAME:50400][DEBUG][battle] CMD: stop_auto_walk
+[FRAME:50400][DEBUG][battle] CMD: route_status
+[FRAME:50400][INFO][battle] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Rainbow Bridge inlet southeast turn index=22
+[FRAME:50400][DEBUG][battle] CMD: report_position
+[FRAME:50400][INFO][battle] POSITION: map=0x01(World Map) x=67 y=50
+[FRAME:50400][DEBUG][battle] CMD: report_path_state
+[FRAME:50400][INFO][battle] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:50400][INFO][battle] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:50400][DEBUG][battle] CMD: report_runtime_blocks
+[FRAME:50400][INFO][battle] RUNTIME_BLOCKS map=0x01 none
+[FRAME:50400][DEBUG][battle] CMD: report_menu_state
+[FRAME:50400][INFO][battle] MENU_STATE raw_open=true cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=31 scroll_tiles=6 base_nt=1 dialogue_start_row=23
+[FRAME:50400][DEBUG][battle] CMD: log_state
+[FRAME:50400][INFO][battle] hp:        109 / 149
+[FRAME:50400][INFO][battle] mp:        89 / 121
+[FRAME:50400][DEBUG][battle] CMD: launcher_probe:travel_validation_movement_stopped
+[FRAME:50400][INFO][battle] LAUNCHER_PROBE: travel_validation_movement_stopped
+[FRAME:55909][DEBUG][battle] EVENT: dialogue: defeating the Scorpion. Thy Experience increases by 6. Thy GOLD increases by 13.
+[FRAME:56072][DEBUG][field] EVENT: command menu opened
+[FRAME:56126][DEBUG][field] EVENT: command menu closed
+[FRAME:59520][DEBUG][field] CMD: report_position
+[FRAME:59520][INFO][field] POSITION: map=0x01(World Map) x=67 y=50
+[FRAME:59520][DEBUG][field] CMD: report_path_state
+[FRAME:59520][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:59520][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:59520][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:59520][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:59520][DEBUG][field] CMD: log_state
+[FRAME:59520][INFO][field] hp:        109 / 149
+[FRAME:59520][INFO][field] mp:        89 / 121
+[FRAME:59520][DEBUG][field] CMD: report_menu_state
+[FRAME:59520][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=0 dialogue_start_row=23
+[FRAME:59520][DEBUG][field] CMD: input_status:travel_validation_complete
+[FRAME:59520][INFO][field] INPUT_STATUS tag=travel_validation_complete keys=LeftAlt joy1=- bridge=v3:44346:1790967398:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:59520][DEBUG][field] CMD: speech_status
+[FRAME:59520][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:59520][DEBUG][field] CMD: launcher_probe:travel_validation_complete_20261002
+[FRAME:59520][INFO][field] LAUNCHER_PROBE: travel_validation_complete_20261002
+[FRAME:59520][DEBUG][field] CMD: route_status
+[FRAME:59520][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Rainbow Bridge inlet southeast turn index=22
+
+SPEECH EXTRACT
+[2026-10-02 13:43:03] command='speak:World Map (56, 56)'
+[2026-10-02 13:43:08] command='interrupt:Battle!'
+[2026-10-02 13:43:25] command='speak:defeating the Werewolf. Thy Experience increases by 40. Thy GOLD increases by 125.'
+[2026-10-02 13:43:30] command='speak:World Map (55, 57)'
+[2026-10-02 13:43:36] command='speak:Command. TALK'
+[2026-10-02 13:43:45] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island lower east turn, 1 north, 2 east'
+[2026-10-02 13:44:15] command='interrupt:Recovery preview. Final destination: Tantegel Castle. Safe network entry: Charlock island south road east end at 56,57. 1 east. Then current leg to Swamp Cave South Entrance. Next: Charlock island southeast corridor. Preview only; no movement started.'
+[2026-10-02 13:44:15] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island lower east turn, 1 north, 2 east'
+[2026-10-02 13:44:28] command='interrupt:Recovery auto-walk. Network entry: Charlock island south road east end at 56,57, 1 steps. Final destination: Tantegel Castle. Auto-walk will stop at the waypoint network.'
+[2026-10-02 13:44:29] command='interrupt:Recovery complete. Waypoint network reached at Charlock island south road east end. Final destination: Tantegel Castle. Next: Charlock island southeast corridor. Press auto-walk again to continue.'
+[2026-10-02 13:45:03] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island southeast corridor, 1 north'
+[2026-10-02 13:45:30] command='interrupt:Continuous overworld auto-walk to Swamp Cave South Entrance'
+[2026-10-02 13:45:34] command='interrupt:Overworld auto-walk stopped. Blocked moving up toward Charlock island southeast corridor'
+[2026-10-02 13:45:51] command='speak:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island southeast corridor, 1 north'
+[2026-10-02 13:47:52] command='interrupt:Continuous overworld auto-walk to Swamp Cave South Entrance'
+[2026-10-02 13:47:56] command='interrupt:Battle!'
+[2026-10-02 13:48:13] command='speak:defeating the Demon Knight. Thy Experience increases by 37. Thy GOLD increases by 138.'
+[2026-10-02 13:48:19] command='speak:World Map (57, 55)'
+[2026-10-02 13:48:24] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island east descent, 1 east'
+[2026-10-02 13:49:12] command='speak:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island east descent, 1 east'
+[2026-10-02 13:49:15] command='speak:World Map (57, 55)'
+[2026-10-02 13:49:51] command='speak:World Map (57, 55)'
+[2026-10-02 13:53:22] command='interrupt:Recovery auto-walk. Network entry: Charlock island south road east end at 56,57, 1 steps. Final destination: Tantegel Castle. Auto-walk will stop at the waypoint network.'
+[2026-10-02 13:53:23] command='interrupt:Recovery complete. Waypoint network reached at Charlock island south road east end. Final destination: Tantegel Castle. Next: Charlock island southeast corridor. Press auto-walk again to continue.'
+[2026-10-02 13:53:32] command='interrupt:Continuous overworld auto-walk to Swamp Cave South Entrance'
+[2026-10-02 13:53:49] command='interrupt:Battle!'
+[2026-10-02 13:54:06] command='interrupt:No auto-walk is active'
+[2026-10-02 13:54:06] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Rainbow Bridge inlet southeast turn, 3 east'
+[2026-10-02 13:55:38] command='speak:defeating the Scorpion. Thy Experience increases by 6. Thy GOLD increases by 13.'
+[2026-10-02 13:55:41] command='speak:Command. TALK'
+[2026-10-02 13:56:38] command='interrupt:Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12'
+[2026-10-02 13:56:38] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Rainbow Bridge inlet southeast turn, 3 east'
+
+OFFLINE GATE EXTRACT
+SKIP  Lua emulator diagnostics: test_screen.lua, test_speech.lua (require live FCEUX globals)
+PASS  Lua syntax: OK via C:\Program Files (x86)\Lua\5.1\luac.EXE
+Completed 42 host-runnable Lua test suites via C:\Program Files (x86)\Lua\5.1\lua.EXE
+PASS  Shell syntax: OK
+PASS  Python syntax: OK
+Completed 68 Python unit tests
+PASS  Bridge config: speech_python_cmd OK (command): C:\Python314\python.EXE
+PASS  Speech dependency: accessible_output2 import OK via C:\Python314\python.EXE
+PASS  Command queue: dw_commands.sh append queue OK

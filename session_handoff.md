@@ -37,6 +37,13 @@ not instructions for the current checkout.
   cancellation cleared guidance. The player confirmed Shift+R/Shift+U speech
   for Charlock. This closes the loaded selector/status/cancellation gap;
   broader Travel acceptance remains open.
+- Representative Tantegel menu/battle/manual-drift validation passed on
+  2026-10-02. A narrow selector fix makes known Charlock corridor starts use
+  `charlock_return`, with alias/object regression coverage. Menu and battle
+  interruptions retained Tantegel and stopped movement; one-east recovery
+  from `(55,57)` stopped at the network boundary and required explicit resume.
+  One initial north-step timing stop crossed normally in a same-origin probe
+  and passed a repeated guided handoff. Keep it as a watch item, not map data.
 
 ## Accessibility and release state
 
@@ -49,9 +56,10 @@ not instructions for the current checkout.
   preserved story/credits/copyright, suppressed title/artwork fragments, and
   announced The End once. Ending polish is complete; progressive discovery
   remains in `TASKS.md`.
-- The published `v0.1.0-alpha` tag is at `133d65c` (2026-07-31). The latest
-  source commit before this documentation publication was `86252b0`
-  (2026-09-30), 145 commits after that tag. Check current Git state before
+- The published `v0.1.0-alpha` tag is at `133d65c` (2026-07-31). Current source
+  includes the later ending fix `86252b0` and published documentation through
+  `089e849` (2026-10-02). The Tantegel selector fix, regression, and validation
+  records are included in this validation update. Check Git state before
   publishing further work. The alpha package is not a build of current source.
   Its separate JAWS/NVDA acceptance and licensing/source-package checks remain
   historical release evidence.
@@ -62,17 +70,20 @@ not instructions for the current checkout.
 
 ## Verification and runtime rules
 
-- The latest recorded `python -u run_tests.py` pass on 2026-09-30 covered
+- The latest recorded `python -u run_tests.py` pass on 2026-10-02 covered
   42 host-runnable Lua suites, 68 Python tests, Lua/Python/shell syntax, speech
   dependency, and command
   queue checks. It explicitly skipped live-only `test_screen.lua` and
   `test_speech.lua`.
-- The 2026-10-02 live corridor check ended at frame `50520`, World Map
-  `(73,96)`, with guidance stopped, path target nil, zero NPC/runtime blockers,
-  HP149/149, MP118/121, and speech bridge ready with no error. The fresh
-  `hauksness_corridor_complete_20261002` probe was consumed. This is the last
+- The 2026-10-02 Travel validation ended at frame `59520`, World Map `(67,50)`,
+  clear field/menu, with movement stopped, path target nil, zero NPC/runtime
+  blockers, HP109/149, MP89/121, and speech bridge ready with no error.
+  Tantegel guidance remains active: `Rainbow Bridge inlet southeast turn`,
+  `3 east`, on `charlock_return`. The fresh
+  `travel_validation_complete_20261002` probe was consumed. This is the last
   observed state; probe again before further live work. Focused evidence is
-  in `work_notes/hauksness_corridor_acceptance_20261002.txt`.
+  in `work_notes/travel_validation_20261002_post_reload.txt`; menu and
+  pre-fix selection evidence is in the corresponding `pre_reload.txt` file.
 - FCEUX with the verified patched runtime is the normal gameplay/debug path;
   BizHawk remains an explicit alternate debug/reload path. Before a live
   check, verify fresh command polling with `launcher_probe` and use short,
@@ -88,9 +99,9 @@ not instructions for the current checkout.
 1. Keep `TASKS.md` as the active queue. Ending narration polish is complete;
    the next release task is qualification of a new player package from
    current source.
-2. Continue broader Travel acceptance from arbitrary reachable starts,
-   deliberate manual drift, and interruptions by battles, menus, and dialogue.
-   The specific Hauksness return-corridor selector gap is closed.
+2. Expand Travel acceptance to other destination/start-region combinations
+   and field-dialogue interruption/resume. The Hauksness selector gap and
+   representative Tantegel menu/battle/manual-drift slice are closed.
 3. Keep optional progressive discovery, Speech settings, cross-town services,
    and bookmarks behind the release and gameplay-reliability work unless the
    user reprioritizes them.

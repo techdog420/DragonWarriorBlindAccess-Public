@@ -3022,6 +3022,48 @@ function tests.tantegel_object_from_kol_uses_kol_return_variant()
     routes.reset_for_tests()
 end
 
+function tests.tantegel_from_charlock_mid_corridor_reuses_return_for_alias_and_object()
+    local target = {
+        id = "overworld_tantegel_castle",
+        name = "Tantegel Castle",
+        x = 43,
+        y = 43,
+    }
+    local cases = {
+        {y = 59, waypoint = "Charlock island southeast corridor", steps = 3, dir = "up"},
+        {y = 57, waypoint = "Charlock island southeast corridor", steps = 1, dir = "up"},
+        {y = 56, waypoint = "Charlock island lower east turn", steps = 1, dir = "right"},
+    }
+    for _, case in ipairs(cases) do
+        for _, use_object in ipairs({false, true}) do
+            routes.reset_for_tests()
+            local info
+            if use_object then
+                info = assert(routes.start_for_object(target, 0x01, 56, case.y))
+            else
+                info = assert(routes.start("castle", 0x01, 56, case.y))
+            end
+            assert_equal(info.route.id, "charlock_return",
+                "Tantegel must rejoin the established island return from a corridor cell")
+            local segment = assert(routes.plan_next_segment(0x01, 56, case.y))
+            assert_equal(segment.waypoint.name, case.waypoint,
+                "Tantegel must use the nearby island return waypoint")
+            assert_equal(segment.path_length, case.steps,
+                "Tantegel must avoid the long direct castle shortcut")
+            assert_equal(segment.steps[1], case.dir,
+                "Tantegel must follow the established return direction")
+            assert_equal(routes.active_route_matches_object(target), true,
+                "the final Travel destination must remain Tantegel")
+            local status = routes.status(0x01, 56, case.y)
+            assert_contains(status.message, "Final destination: Tantegel Castle",
+                "status must name the retained final destination")
+            assert_equal(routes.active_route_id(), "charlock_return",
+                "read-only status must preserve the return leg")
+        end
+    end
+    routes.reset_for_tests()
+end
+
 function tests.early_destinations_from_kol_start_bridge_junction_staging()
     local cases = {
         {

@@ -25,13 +25,48 @@ statements describe their original checkpoints; use `session_handoff.md` and
   Preserve safe hazard refusal; Guard5 required manual damage-floor crossing.
 - The Hauksness return-corridor loaded selector/status/cancellation check
   passed on 2026-10-02, closing the specific 2026-08-29 validation gap.
-  Broader arbitrary-start, manual-drift, and interrupted-route acceptance
-  remains open in `TASKS.md`.
-- The last live observation on 2026-10-02 was World Map `(73,96)` at frame
-  `50520`, with guidance stopped and no path or runtime blockers. Establish
+- Representative Tantegel menu/battle/manual-drift validation passed on
+  2026-10-02 after fixing corridor selection. Broader destination/start-region
+  and field-dialogue coverage remains open in `TASKS.md`.
+- The last live observation on 2026-10-02 was World Map `(67,50)` at frame
+  `59520`, clear field, movement stopped, Tantegel guidance active, and no
+  path or runtime blockers. Establish
   a fresh baseline before treating any recorded frame or coordinate as current.
 
 ## Dated Gameplay Record (newest first)
+
+- Tantegel Travel menu/battle/manual-drift validation passed in loaded FCEUX
+  (2026-10-02), using the player's pre-victory save from `(56,59)`. The command
+  menu cancelled active movement at `(56,56)` (`635916`); the player confirmed
+  physical Shift+R status and that closing with D did not restart movement.
+  This exposed a route-selector gap: known Charlock corridor starts chose an
+  unverified direct Tantegel opening. `tantegel_charlock` now matches existing
+  `charlock_return` / `charlock_castle` corridors. The new alias/object
+  regression failed before the fix and passed afterward; no geometry changed.
+  After manual Lua reload, fresh selection at frame `7140` chose the correct
+  lower east turn, one east, retaining final destination Tantegel Castle.
+  The player drifted to `(55,57)` and cleared a Werewolf. One-east recovery
+  completed at `15723`, stopped at network `(56,57)`, and retained Tantegel.
+  First guided resume stalled on `(56,57)->UP`; a same-origin normal edge
+  probe crossed at `25473`. After a Demon Knight stopped the next guided leg,
+  the player cleared battle and confirmed the retained destination at `(57,55)`.
+  A repeated walked return/recovery and explicit guided resume completed the
+  north leg at `48420` without timeout retries, then followed the established
+  route to `(67,50)`. Scorpion onset cancelled movement at `49348`; debug
+  status in battle retained Tantegel, and clearing it did not restart movement.
+  In-battle physical Shift+R speech was not player-confirmed because the popup
+  was missed. Final fresh `travel_validation_complete_20261002` at `59520`
+  confirmed clear field/menu, path nil, zero NPC/runtime blockers, HP109/149,
+  MP89/121, speech ready/error none, and active Tantegel guidance at
+  `Rainbow Bridge inlet southeast turn, 3 east`. The full native gate passed
+  42 host-runnable Lua suites and 68 Python tests, plus syntax, speech
+  dependency, and command-queue checks; live-only suites were skipped.
+  The isolated north-step stop remains a timing watch; no terrain, runtime
+  blockers, or timing code changed. This is representative coverage, with
+  other destinations/start regions and field-dialogue checks still open.
+  Evidence: `work_notes/travel_validation_20261002_pre_reload.txt` (exact
+  captured-output subset after the live log reset) and
+  `work_notes/travel_validation_20261002_post_reload.txt`.
 
 - Hauksness return-corridor selector validation passed in loaded FCEUX
   (2026-10-02). A fresh baseline at frame `28200` found World Map `(23,98)`;

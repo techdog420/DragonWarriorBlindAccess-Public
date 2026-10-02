@@ -2915,6 +2915,10 @@ ROUTES.tantegel_charlock = {
         {x = 48, y = 48, max_distance = 4},
         {x = 65, y = 49, max_distance = 4},
     },
+    -- A manual drift or interruption can leave the hero between the island
+    -- anchors. Reuse the established return instead of opening a direct
+    -- castle shortcut from those known corridor cells.
+    selection_route_corridors = {"charlock_return", "charlock_castle"},
     waypoints = copy_route_prefix(ROUTES.tantegel_kol, 43, 43),
 }
 
