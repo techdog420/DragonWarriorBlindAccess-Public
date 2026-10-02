@@ -1,0 +1,141 @@
+Hauksness return-corridor acceptance - 2026-10-02
+Source checkout: f343dee2bd56713c1368c3c9c67e5dca68720607
+Scope: loaded route selection, read-only status, cancellation at World Map (73,96).
+Position reached with guarded debug teleport; no full route traversal or blocker-data change.
+Player confirmed Shift+R status, Shift+U stop, and Shift+R no active route.
+
+DEBUG LOG EXTRACT
+[FRAME:28200][DEBUG][field] CMD: launcher_probe:hauksness_baseline_20261002
+[FRAME:28200][INFO][field] LAUNCHER_PROBE: hauksness_baseline_20261002
+[FRAME:28200][DEBUG][field] CMD: report_position
+[FRAME:28200][INFO][field] POSITION: map=0x01(World Map) x=23 y=98
+[FRAME:28200][DEBUG][field] CMD: log_state
+[FRAME:28200][INFO][field] hp:        149 / 149
+[FRAME:28200][INFO][field] mp:        118 / 121
+[FRAME:28200][INFO][field] level:     21
+[FRAME:28200][DEBUG][field] CMD: report_path_state
+[FRAME:28200][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:28200][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:28200][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:28200][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:28200][DEBUG][field] CMD: input_status
+[FRAME:28200][INFO][field] INPUT_STATUS tag=manual keys=LeftAlt joy1=- bridge=v3:2113:1790955974:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:28200][DEBUG][field] CMD: speech_status
+[FRAME:28200][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:33360][DEBUG][field] CMD: stop_auto_walk
+[FRAME:33360][INFO][field] AUTO_WALK: manually stopped active=false reason=manual stop_auto_walk
+[FRAME:33360][DEBUG][field] CMD: stop_overworld_route
+[FRAME:33360][INFO][field] OVERWORLD_ROUTE: event=stop route=hauksness_cantlin
+[FRAME:33360][DEBUG][field] CMD: inspect_tile:73,96
+[FRAME:33360][INFO][field] HOTKEY_NAVIGATION_MODULES_REFRESHED
+[FRAME:33360][INFO][field] NAVIGATION_MODULES_REFRESHED
+[FRAME:33360][INFO][field] TILE map=0x01 x=73 y=96 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:33360][DEBUG][field] CMD: report_movement_state:hauksness_preposition
+[FRAME:33360][DEBUG][field] CMD: input_status:hauksness_preposition
+[FRAME:33360][INFO][field] INPUT_STATUS tag=hauksness_preposition keys=LeftAlt joy1=- bridge=v3:2437:1790956060:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:34380][DEBUG][field] CMD: teleport_to:73,96
+[FRAME:34380][INFO][field] Teleported to (73,96)
+[FRAME:34380][DEBUG][field] CMD: report_position
+[FRAME:34380][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:34391][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(73,96) resets=12 last=(73,96) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:37320][DEBUG][field] CMD: start_overworld_route:rimuldar
+[FRAME:37320][INFO][field] OVERWORLD_ROUTE: event=start route=hauksness_return_staging waypoint=Cantlin north road index=2 staged_from=rimuldar
+[FRAME:37320][DEBUG][field] CMD: current_object
+[FRAME:37320][DEBUG][field] CMD: report_position
+[FRAME:37320][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:37320][DEBUG][field] CMD: report_path_state
+[FRAME:37320][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:37320][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:37320][DEBUG][field] CMD: launcher_probe:hauks_rimuldar_start
+[FRAME:37320][INFO][field] LAUNCHER_PROBE: hauks_rimuldar_start
+[FRAME:38460][DEBUG][field] CMD: route_status
+[FRAME:38460][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Cantlin north road index=2
+[FRAME:38460][DEBUG][field] CMD: current_object
+[FRAME:38460][DEBUG][field] CMD: report_position
+[FRAME:38460][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:38460][DEBUG][field] CMD: report_path_state
+[FRAME:38460][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:38460][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:38460][DEBUG][field] CMD: launcher_probe:hauks_rimuldar_status
+[FRAME:38460][INFO][field] LAUNCHER_PROBE: hauks_rimuldar_status
+[FRAME:41460][DEBUG][field] CMD: stop_auto_walk
+[FRAME:41460][INFO][field] AUTO_WALK: manually stopped active=false reason=manual stop_auto_walk
+[FRAME:41460][DEBUG][field] CMD: stop_overworld_route
+[FRAME:41460][INFO][field] OVERWORLD_ROUTE: event=stop route=hauksness_return_staging
+[FRAME:41460][DEBUG][field] CMD: route_status
+[FRAME:41460][INFO][field] OVERWORLD_ROUTE: event=status route=none
+[FRAME:41460][DEBUG][field] CMD: report_position
+[FRAME:41460][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:41460][DEBUG][field] CMD: report_path_state
+[FRAME:41460][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:41460][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:41460][DEBUG][field] CMD: launcher_probe:hauks_rimuldar_stopped
+[FRAME:41460][INFO][field] LAUNCHER_PROBE: hauks_rimuldar_stopped
+[FRAME:43140][DEBUG][field] CMD: start_overworld_route:magic temple
+[FRAME:43140][INFO][field] OVERWORLD_ROUTE: event=start route=hauksness_return_staging waypoint=Cantlin north road index=2 staged_from=magic_temple
+[FRAME:43140][DEBUG][field] CMD: report_position
+[FRAME:43140][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:43140][DEBUG][field] CMD: launcher_probe:hauks_temple_start
+[FRAME:43140][INFO][field] LAUNCHER_PROBE: hauks_temple_start
+[FRAME:43620][DEBUG][field] CMD: route_status
+[FRAME:43620][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Cantlin north road index=2
+[FRAME:43620][DEBUG][field] CMD: report_position
+[FRAME:43620][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:43620][DEBUG][field] CMD: launcher_probe:hauks_temple_status
+[FRAME:43620][INFO][field] LAUNCHER_PROBE: hauks_temple_status
+[FRAME:44220][DEBUG][field] CMD: stop_auto_walk
+[FRAME:44220][INFO][field] AUTO_WALK: manually stopped active=false reason=manual stop_auto_walk
+[FRAME:44220][DEBUG][field] CMD: stop_overworld_route
+[FRAME:44220][INFO][field] OVERWORLD_ROUTE: event=stop route=hauksness_return_staging
+[FRAME:44220][DEBUG][field] CMD: route_status
+[FRAME:44220][INFO][field] OVERWORLD_ROUTE: event=status route=none
+[FRAME:44220][DEBUG][field] CMD: report_position
+[FRAME:44220][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:44220][DEBUG][field] CMD: report_path_state
+[FRAME:44220][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:44220][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:44220][DEBUG][field] CMD: launcher_probe:hauks_temple_stopped
+[FRAME:44220][INFO][field] LAUNCHER_PROBE: hauks_temple_stopped
+[FRAME:45120][DEBUG][field] CMD: start_overworld_route:charlock
+[FRAME:45120][INFO][field] OVERWORLD_ROUTE: event=start route=hauksness_return_staging waypoint=Cantlin north road index=2 staged_from=charlock_castle
+[FRAME:45120][DEBUG][field] CMD: report_position
+[FRAME:45120][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:45120][DEBUG][field] CMD: launcher_probe:hauks_charlock_start
+[FRAME:45120][INFO][field] LAUNCHER_PROBE: hauks_charlock_start
+[FRAME:45600][DEBUG][field] CMD: route_status
+[FRAME:45600][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Cantlin north road index=2
+[FRAME:45600][DEBUG][field] CMD: report_position
+[FRAME:45600][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:45600][DEBUG][field] CMD: launcher_probe:hauks_charlock_status
+[FRAME:45600][INFO][field] LAUNCHER_PROBE: hauks_charlock_status
+[FRAME:48208][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Cantlin north road index=2
+[FRAME:49082][INFO][field] AUTO_WALK: manually stopped active=false reason=player hotkey
+[FRAME:49082][INFO][field] OVERWORLD_ROUTE: event=stop route=hauksness_return_staging
+[FRAME:49158][INFO][field] OVERWORLD_ROUTE: event=status route=none
+[FRAME:50520][DEBUG][field] CMD: route_status
+[FRAME:50520][INFO][field] OVERWORLD_ROUTE: event=status route=none
+[FRAME:50520][DEBUG][field] CMD: report_position
+[FRAME:50520][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:50520][DEBUG][field] CMD: report_path_state
+[FRAME:50520][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:50520][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:50520][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:50520][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:50520][DEBUG][field] CMD: log_state
+[FRAME:50520][INFO][field] hp:        149 / 149
+[FRAME:50520][INFO][field] mp:        118 / 121
+[FRAME:50520][INFO][field] level:     21
+[FRAME:50520][DEBUG][field] CMD: input_status:hauksness_corridor_complete
+[FRAME:50520][INFO][field] INPUT_STATUS tag=hauksness_corridor_complete keys=LeftAlt joy1=- bridge=v3:3489:1790956346:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:50520][DEBUG][field] CMD: speech_status
+[FRAME:50520][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:50520][DEBUG][field] CMD: launcher_probe:hauksness_corridor_complete_20261002
+[FRAME:50520][INFO][field] LAUNCHER_PROBE: hauksness_corridor_complete_20261002
+
+SPEECH BRIDGE EXTRACT
+[2026-10-02 10:49:05] command='interrupt:Current leg to Hauksness. Final destination: Rimuldar. Next: Cantlin north road, 5 north'
+[2026-10-02 10:50:31] command='interrupt:Current leg to Hauksness. Final destination: Magic Temple. Next: Cantlin north road, 5 north'
+[2026-10-02 10:51:04] command='interrupt:Current leg to Hauksness. Final destination: Charlock Castle. Next: Cantlin north road, 5 north'
+[2026-10-02 10:51:48] command='speak:Current leg to Hauksness. Final destination: Charlock Castle. Next: Cantlin north road, 5 north'
+[2026-10-02 10:52:02] command='interrupt:Route guidance stopped'
+[2026-10-02 10:52:03] command='speak:No overworld route active'

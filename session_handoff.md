@@ -30,11 +30,13 @@ not instructions for the current checkout.
   corridors have extensive source and representative live coverage. The first
   bounded off-network recovery also passed live FCEUX acceptance. The broader
   arbitrary-start/interruption acceptance goal remains open in `TASKS.md`.
-- One narrow route check is still recorded as pending: the 2026-08-29 final
-  Hauksness return-corridor Rimuldar selector addition was source-tested but
-  left awaiting loaded FCEUX validation from World Map `(73,96)`. The planned
-  comparison also selects Magic Temple and Charlock. This is a validation gap,
-  not a known route failure; use a fresh runtime baseline before testing it.
+- The final Hauksness return-corridor selector check closed on 2026-10-02.
+  At World Map `(73,96)`, Rimuldar, Magic Temple, and Charlock each selected
+  `hauksness_return_staging`, waypoint 2 `Cantlin north road` at `(73,91)`.
+  Separate status checks preserved the final destination and position;
+  cancellation cleared guidance. The player confirmed Shift+R/Shift+U speech
+  for Charlock. This closes the loaded selector/status/cancellation gap;
+  broader Travel acceptance remains open.
 
 ## Accessibility and release state
 
@@ -64,8 +66,13 @@ not instructions for the current checkout.
   42 host-runnable Lua suites, 68 Python tests, Lua/Python/shell syntax, speech
   dependency, and command
   queue checks. It explicitly skipped live-only `test_screen.lua` and
-  `test_speech.lua`. The 2026-10-02 documentation publication did not establish
-  or probe a current emulator session.
+  `test_speech.lua`.
+- The 2026-10-02 live corridor check ended at frame `50520`, World Map
+  `(73,96)`, with guidance stopped, path target nil, zero NPC/runtime blockers,
+  HP149/149, MP118/121, and speech bridge ready with no error. The fresh
+  `hauksness_corridor_complete_20261002` probe was consumed. This is the last
+  observed state; probe again before further live work. Focused evidence is
+  in `work_notes/hauksness_corridor_acceptance_20261002.txt`.
 - FCEUX with the verified patched runtime is the normal gameplay/debug path;
   BizHawk remains an explicit alternate debug/reload path. Before a live
   check, verify fresh command polling with `launcher_probe` and use short,
@@ -81,9 +88,9 @@ not instructions for the current checkout.
 1. Keep `TASKS.md` as the active queue. Ending narration polish is complete;
    the next release task is qualification of a new player package from
    current source.
-2. Close the specific Hauksness return-corridor loaded-validation gap during
-   the next suitable live FCEUX session, then continue broader Travel
-   acceptance from arbitrary starts and interruptions.
+2. Continue broader Travel acceptance from arbitrary reachable starts,
+   deliberate manual drift, and interruptions by battles, menus, and dialogue.
+   The specific Hauksness return-corridor selector gap is closed.
 3. Keep optional progressive discovery, Speech settings, cross-town services,
    and bookmarks behind the release and gameplay-reliability work unless the
    user reprioritizes them.

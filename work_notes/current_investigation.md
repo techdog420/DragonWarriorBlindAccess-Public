@@ -1,9 +1,48 @@
 # Current Investigation Scratchpad
 
-This is a dated evidence log through the 2026-09-22 map-cleanup pass. Older
+This is a dated evidence log through the 2026-10-02 corridor check. Older
 "Next Work," branch, frame, and uncommitted-change notes below are historical.
 Use `session_handoff.md` and `TASKS.md` for the current resume point and
 roadmap; establish fresh FCEUX state before reusing a live observation.
+
+## 2026-10-02 Hauksness return-corridor selector acceptance
+
+- SCOPE: close the final 2026-08-29 loaded selector/status/cancellation gap,
+  comparing Rimuldar, Magic Temple, and Charlock Castle at World Map `(73,96)`.
+  No full route traversal, map override, runtime block injection, or code edit.
+- BASELINE: fresh `hauksness_baseline_20261002` probe at frame `28200`;
+  hero `(23,98)`, field, HP149/149, MP118/121, level21, path nil, zero
+  NPC/runtime blockers, speech bridge ready/error none. Prior guidance was
+  stopped at frame `33360`; `inspect_tile:73,96` found effective passability
+  and refreshed the navigation modules. Input buttons were neutral; idle
+  LeftAlt was the logged benign FCEUX latch.
+- POSITIONING: guarded `teleport_to:73,96` reached the target at frame
+  `34380`; its state guard completed at `34391`. This was debug positioning,
+  not evidence of a normally walked approach. All selector checks followed
+  after the guard, in separate `--replace` batches with fresh probe tags.
+- LOADED RESULTS: all three start events selected `hauksness_return_staging`,
+  waypoint 2 `Cantlin north road` `(73,91)`. Each separate status preserved
+  guidance and position, with speech retaining the requested final destination
+  and reporting `5 north`.
+
+  | Destination | Start frame | Status frame | Cancel frame |
+  | --- | --- | --- | --- |
+  | Rimuldar | 37320 | 38460 | 41460 |
+  | Magic Temple | 43140 | 43620 | 44220 |
+  | Charlock Castle | 45120 | 45600; physical Shift+R 48208 | physical Shift+U 49082 |
+
+- PLAYER ACCEPTED: user confirmed all three physical checks worked:
+  Shift+R retained Charlock Castle and said `Cantlin north road, 5 north`;
+  Shift+U said `Route guidance stopped`; Shift+R said
+  `No overworld route active` at frame `49158`. Bridge timestamps were
+  10:51:48, 10:52:02, and 10:52:03 respectively.
+- FINAL: `hauksness_corridor_complete_20261002` consumed at frame `50520`;
+  World Map `(73,96)`, guidance none, path nil, zero NPC/runtime blockers,
+  HP149/149, MP118/121, speech ready/error none, input buttons0x00. The narrow
+  gap is closed in `TASKS.md`; broader Travel acceptance remains open.
+- EVIDENCE: `work_notes/hauksness_corridor_acceptance_20261002.txt` contains
+  focused raw debug and speech lines. No source changes required an offline
+  test gate or Lua reload.
 
 ## 2026-09-22 Tantegel Sun Shrine and castle completion
 

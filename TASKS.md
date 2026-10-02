@@ -53,21 +53,19 @@ per ending. Gate passed 42 Lua suites and 68 Python tests. See `PLAYTESTING.md`.
 
 ## Routing and gameplay reliability
 
-1. Close the specific Hauksness return-corridor live-validation gap recorded
-   on 2026-08-29. The source audit covered 125 corridor cells and all 16
-   landmarks, but the final Rimuldar selector addition was left awaiting a
-   loaded FCEUX check. From a fresh clear World Map state at `(73,96)`, check
-   Rimuldar, Magic Temple, and Charlock selection, read-only status, and clean
-   cancellation separately. If current source or runtime behavior has changed,
-   refresh the baseline before drawing a conclusion. See the archived roadmap
-   and the dated `PLAYTESTING.md` entry for expected waypoints.
-2. Complete the broader Travel acceptance criteria: supported destinations
+The specific Hauksness return-corridor validation gap closed on 2026-10-02.
+Loaded FCEUX checks at `(73,96)` passed for Rimuldar, Magic Temple, and Charlock:
+each selected `Cantlin north road` at `(73,91)`, preserved its final destination
+in read-only status, and cancelled cleanly. The player confirmed Shift+R,
+Shift+U, and the resulting speech. See the dated `PLAYTESTING.md` entry.
+
+1. Complete the broader Travel acceptance criteria: supported destinations
    from arbitrary reachable world-map starts; recovery after deliberate manual
    drift; and safe resume after battles, menus, and dialogue. Build on the
    existing connected-route and bounded off-network recovery paths. Preserve
    the selected destination and explain the recovery leg and next waypoint.
    Do not silently cross hazards or promote timing stalls to map blockers.
-3. Treat isolated timing, moving-NPC, and FCEUX input-latch reports as watch
+2. Treat isolated timing, moving-NPC, and FCEUX input-latch reports as watch
    items. Reproduce one in a fresh state before adding a permanent map rule.
 
 ## Accessible discovery and quality of life

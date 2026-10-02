@@ -23,15 +23,34 @@ statements describe their original checkpoints; use `session_handoff.md` and
 - The user reports map cleanup complete. The latest 2026-09-22 acceptance
   closed all three Tantegel Castle floors after earlier town and dungeon passes.
   Preserve safe hazard refusal; Guard5 required manual damage-floor crossing.
-- The next focused gameplay check is the specific Hauksness return-corridor
-  loaded-validation gap recorded on
-  2026-08-29. Broader arbitrary-start and interrupted-route acceptance remains
-  a separate roadmap goal.
-- No live emulator state was established during the 2026-10-02 documentation
-  publication. Establish a fresh baseline before treating any frame or coordinate
-  below as current.
+- The Hauksness return-corridor loaded selector/status/cancellation check
+  passed on 2026-10-02, closing the specific 2026-08-29 validation gap.
+  Broader arbitrary-start, manual-drift, and interrupted-route acceptance
+  remains open in `TASKS.md`.
+- The last live observation on 2026-10-02 was World Map `(73,96)` at frame
+  `50520`, with guidance stopped and no path or runtime blockers. Establish
+  a fresh baseline before treating any recorded frame or coordinate as current.
 
 ## Dated Gameplay Record (newest first)
+
+- Hauksness return-corridor selector validation passed in loaded FCEUX
+  (2026-10-02). A fresh baseline at frame `28200` found World Map `(23,98)`;
+  after stopping old guidance and inspecting the target, guarded debug
+  positioning reached `(73,96)` at frame `34380`. Separate starts for Rimuldar
+  (`37320`), Magic Temple (`43140`), and Charlock Castle (`45120`) each selected
+  `hauksness_return_staging`, waypoint 2 `Cantlin north road` at `(73,91)`.
+  Read-only status checks at frames `38460`, `43620`, and `45600` preserved
+  the route and position; bridge speech retained each final destination and
+  reported `5 north`. Rimuldar and Magic Temple cancelled cleanly at frames
+  `41460` and `44220`. For Charlock, the player confirmed physical Shift+R
+  status, Shift+U cancellation, and Shift+R's `No overworld route active`;
+  logs matched at frames `48208`, `49082`, and `49158`. Final fresh probe at
+  frame `50520` confirmed `(73,96)`, route none, path target nil, zero
+  NPC/runtime blockers, HP149/149, MP118/121, and speech bridge ready/error none.
+  This closes the pending loaded check without a code or map-data change.
+  Scope is selection, status, and cancellation; full route traversal was not
+  repeated. Focused raw evidence:
+  `work_notes/hauksness_corridor_acceptance_20261002.txt`.
 
 - Tantegel Sun Shrine map0x0C passed its complete player-facing route set
   (2026-09-22), finishing the overall Tantegel Castle audit. From stair
@@ -843,8 +862,8 @@ statements describe their original checkpoints; use `session_handoff.md` and
   `hauksness_return_staging` and target `Cantlin north road` at `(73,91)`, five
   steps north. Focused route tests pass `333/333`; Lua syntax, all 33
   host-runnable Lua suites, all 68 Python tests, speech dependency, and
-  command-queue checks pass. Reload `main.lua` and validate those three
-  selections from clear World Map `(73,96)`, using Shift+U between selections.
+  command-queue checks pass. The loaded comparison at `(73,96)` was pending
+  at this checkpoint; it passed on 2026-10-02 as recorded above.
 - The third Hauksness return-corridor recovery batch is source-complete and
   live-verified (`2026-08-29`). Swamp Cave North, Swamp Cave South, and Rainbow
   Bridge now recognize all 125 exact cells on
