@@ -1,5 +1,10 @@
 # Current Investigation Scratchpad
 
+This is a dated evidence log through the 2026-09-22 map-cleanup pass. Older
+"Next Work," branch, frame, and uncommitted-change notes below are historical.
+Use `session_handoff.md` and `TASKS.md` for the current resume point and
+roadmap; establish fresh FCEUX state before reusing a live observation.
+
 ## 2026-09-22 Tantegel Sun Shrine and castle completion
 
 - PLAYER ACCEPTED / MAP0X0C COMPLETE: from entrance stair `(0,4)`, Chest

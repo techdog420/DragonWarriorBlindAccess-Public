@@ -1,10 +1,13 @@
 # Playtesting Notes
 
-Updated: 2026-09-22
+Updated: 2026-10-02
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
+Entries below are dated evidence. Old branch, test-count, and "ready to commit"
+statements describe their original checkpoints; use `session_handoff.md` and
+`TASKS.md` for current state and open work.
 
-## Latest Notes
+## Current playtesting status
 
 - Ending narration (2026-09-30): reproduced premature Title screen speech and
   two decorative fragments after copyright. The new ending reader preserves
@@ -17,6 +20,18 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   copyright at21:10:22, suppressed both fragments and premature title speech,
   and announced The End once at21:10:35 (frame12171). Fresh ending_clean_finish
   probe consumed at frame12660. Ending polish is complete.
+- The user reports map cleanup complete. The latest 2026-09-22 acceptance
+  closed all three Tantegel Castle floors after earlier town and dungeon passes.
+  Preserve safe hazard refusal; Guard5 required manual damage-floor crossing.
+- The next focused gameplay check is the specific Hauksness return-corridor
+  loaded-validation gap recorded on
+  2026-08-29. Broader arbitrary-start and interrupted-route acceptance remains
+  a separate roadmap goal.
+- No live emulator state was established during the 2026-10-02 documentation
+  publication. Establish a fresh baseline before treating any frame or coordinate
+  below as current.
+
+## Dated Gameplay Record (newest first)
 
 - Tantegel Sun Shrine map0x0C passed its complete player-facing route set
   (2026-09-22), finishing the overall Tantegel Castle audit. From stair
@@ -5677,11 +5692,11 @@ This file tracks the shift from map decoding toward actual blind-player gameplay
   observations now stay as soft seam evidence instead of hard runtime map
   blockers.
 
-## Current Goal
+## Historical early-game goal (superseded)
 
 Run the early game as a player would, using the accessibility mod as the primary interface. Capture friction, missing narration, confusing commands, pathfinding recovery problems, and quality-of-life improvements.
 
-## Focus Areas
+## Historical early-game focus areas
 
 Location awareness:
 - Announce current map, coordinates when useful, facing, exits, nearby objects, and hazards
@@ -5948,7 +5963,7 @@ QoL feature check:
   fails closed for unavailable reads/writes instead of crashing. The second
   live reload succeeded and speech reported ready.
 
-## Initial Gameplay Pass Checklist
+## Historical initial gameplay pass checklist
 
 Use this as a lightweight first pass:
 - Start or load a normal early-game state
@@ -5966,7 +5981,7 @@ Use this as a lightweight first pass:
 - Enter a simple combat encounter and evaluate narration
 - Record every point where the player would feel lost, under-informed, or unable to recover
 
-## Open Gameplay Issues
+## Historical gameplay issue reports (resolved or watch)
 
 ### GP-002
 

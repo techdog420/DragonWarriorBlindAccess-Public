@@ -6,6 +6,10 @@
 > the original `The End` screen using the mod as the primary interface. Expect
 > rough edges, incomplete unrestricted routing, and occasional troubleshooting.
 
+The public `v0.1.0-alpha` package predates this development checkout. The
+features below describe current source; a newer player package needs its own
+build and acceptance pass before those changes are available in a release.
+
 ## Purpose
 
 Dragon Warrior Blind Accessibility Mod is a Lua-based accessibility layer for
@@ -421,48 +425,17 @@ instructions.
 
 ## Future Roadmap
 
-Near-term alpha stabilization:
+The current open backlog is in `TASKS.md`. Ending narration polish is complete.
+The next work is broader Travel recovery/interruption acceptance and
+qualification of a new player package from current source. Release testing
+still needs an actual Windows account with a non-ASCII username, plus broader
+screen-reader, controller, hardware, and blind-player coverage.
 
-- Continue normal gameplay testing using the mod as the primary interface.
-- Improve and validate narration for shops, inns, items, spells, battles, and
-  remaining menu or dialogue edge cases.
-- Maintain the completed Charlock and essential-map coverage as normal play
-  exposes regressions.
-- Expand guided routes and improve recovery wherever normal gameplay exposes a
-  real route failure.
-- Maintain the live-verified player-facing `Shift+U` auto-walk cancellation
-  control across ordinary routes and interruptions.
-- Validate the automatic installer on clean Windows systems and add a dedicated
-  troubleshooting section.
-- Broaden testing across screen readers, controllers, Windows systems, and both
-  supported emulators.
-- Collect feedback from blind players and use real playability problems to
-  prioritize fixes.
-
-Longer-term goals:
-
-- Repeat end-to-end regression playthroughs on future release candidates.
-- Turn the existing overworld waypoint routes into a connected travel network
-  that can route from any supported overworld location to any destination,
-  using intermediate waypoints when needed.
-- Add a recovery command that guides a player who has wandered off route back
-  to the nearest safe point on the overworld waypoint network.
-- Preserve the game's intended darkness mechanic in an accessible form. Route,
-  object, and map information should respect the character's usable light
-  radius rather than allowing a blind player to bypass darkness entirely.
-- Review hidden, clue-dependent treasures so navigation supports the clue
-  without revealing the answer automatically. For example, expose the bath or
-  another appropriate landmark in Kol rather than routing directly to the
-  hidden Fairy Flute.
-- Add an in-game configuration interface for settings such as tap-to-step,
-  speech output and verbosity, and diagnostic logging.
-- Expand the object navigator with sortable views such as distance and
-  alphabetical order, search or quick access to common services, and player
-  bookmarks for places such as a favorite grinding area.
-- Expand route and map coverage across the full game.
-- Reduce reliance on emergency teleport as route coverage improves.
-- Keep the reusable speech, navigation, logging, and automated-testing systems
-  suitable for future NES accessibility projects.
+Later work includes optional clue-aware search guidance for hidden treasures,
+speech settings, cross-town service lookup, and player-chosen bookmarks.
+Completed map cleanup, darkness-aware routing, grouped settings, object
+sorting, quick Services, and bounded off-network recovery should be maintained
+when new gameplay evidence reveals a regression.
 
 ## Reporting Problems
 

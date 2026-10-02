@@ -1,5 +1,9 @@
 # Proposed town polishing workflow
 
+Historical September 2026 strategy. The named town and Tantegel passes are now
+player-accepted; this remains a procedure for a future reopened audit, not a
+list of unfinished maps. Use `TASKS.md` for current open work.
+
 Reviewed 2026-09-10; terrain preflight made explicit2026-09-17 after the
 Brecconary/Kol corrections. Initial recommendation below predates those fixes.
 Quick-services commit fb3b13b matches origin/codex/quick-services after fetch.

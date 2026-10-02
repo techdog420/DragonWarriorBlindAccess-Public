@@ -1,8 +1,8 @@
 # Project Memory
 
-Updated: 2026-09-01
+Updated: 2026-10-02
 
-This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is intended to be stable, concise, and repo-native. Use `session_handoff.md` for current state and `PLAYTESTING.md` for active gameplay notes.
+This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is a chronological record, so dated checkpoints below may describe a branch or state that has since changed. Use `session_handoff.md` for current state and `PLAYTESTING.md` for dated gameplay evidence.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
 interrupt the active debug loop.
 
@@ -20,19 +20,11 @@ Core goals:
 - Repeatable debug and test workflows
 
 Current strategic direction:
-- The first decoded maps are good enough to move from map decoding toward real playtesting.
-- Garin's Grave / Grave of Garinham is complete for current playtesting needs
-  as of 2026-06-17. The Silver Harp route, Cursed Belt route, B1 entrance
-  route, B2 northwest-side escape, and B3/B4 stair pockets are stable enough
-  to stop broad blocker hunting unless fresh gameplay exposes a route failure.
-- Prefer service-grade routing over perfect map completion. Prioritize viable
-  paths to merchants, inns, exits, stairs, locked doors, chests, and other
-  essential services. Leave unreachable dialogue-only NPCs for polish unless
-  they provide a progression clue, required hint, or other gameplay-critical
-  information.
-- Tantegel Castle map `0x04` is the current example of "good enough": the Sun
-  Shrine stairs and Magic Key Merchant routes are live-working but noisy, and
-  should stay parked unless fresh gameplay failures recur.
+- Map cleanup is complete by player acceptance as of 2026-09-24. Reopen a
+  town or dungeon only when new gameplay evidence exposes a concrete failure.
+- Prioritize accessible narration, real-play routing reliability, and release
+  qualification. `TASKS.md` lists open work; older map and route checkpoints
+  below remain historical evidence, not active assignments.
 - Continue improving pathfinding when real gameplay exposes issues, but avoid broad unrelated refactors.
 - Before starting a new map or major new floor, check external map/walkthrough
   guidance for the intended route and special conditions. Prefer a visual or
@@ -1463,15 +1455,15 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
-Current authoritative offline gate (`2026-08-12`):
+Current authoritative offline gate (latest recorded full pass 2026-09-30):
 - Run `python run_tests.py` from the repository root on Windows.
 - The runner discovers every root `test_*.lua` suite automatically except
   `test_env.lua`, which is a helper, and `test_screen.lua` / `test_speech.lua`,
   which require live FCEUX globals and are reported as explicit skips.
-- It syntax-checks every root Lua and Python file, runs all 33 host-runnable
+- It syntax-checks every root Lua and Python file, runs all 42 host-runnable
   Lua suites through the discovered `lua` or `luajit` runtime, runs Python
-  unittest discovery, validates shell syntax, speech dependencies, and the
-  command queue, and returns nonzero on any failure.
+  unittest discovery (68 tests on 2026-09-30), validates shell syntax, speech
+  dependencies, and the command queue, and returns nonzero on any failure.
 - `speech_smoke.py` is intentionally manual because it produces real screen-
   reader speech; do not rename it to `test_*.py` or import it during automated
   discovery.

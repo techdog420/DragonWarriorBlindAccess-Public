@@ -265,7 +265,7 @@ When debugging pathfinding:
 
 ## Rules for map-decoding work
 
-- Begin every remaining town audit with a terrain-classification check. Compare
+- Begin any reopened or new town audit with a terrain-classification check. Compare
   the raw tile IDs with the game's town conversion/collision table, especially
   raw0 grass versus raw4 stone; verify a safe grass crossing and a stone edge
   from normally reached origins before adding individual map overrides. Kol
@@ -299,7 +299,9 @@ When changing code:
 
 ## Rules for speech-related work
 
-Speech is important, but current top priority is still pathfinding, map decoding, and testing reliability.
+Speech and gameplay accessibility are current priorities. Investigate a new
+map or pathfinding problem when normal play supplies fresh evidence; the
+completed map cleanup is not a standing assignment.
 
 For speech fixes:
 - Prefer targeted fixes
