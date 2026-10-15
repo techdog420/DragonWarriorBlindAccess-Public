@@ -1,0 +1,180 @@
+Broader Travel validation before source reload - 2026-10-13
+Baseline source: 63c64d6.
+Scope: correct castle-anchor selection; guided swamp stop; normally walked origin (51,50) and loaded shortcut selector repro.
+The northbound shortcuts include decoded mountain tiles at (51,48)..(51,46). No map data or runtime blockers were changed.
+First battle stopped movement at (51,50); player cleared it. In-battle Shift+R acceptance was not captured.
+This is a focused raw-log extract.
+
+DEBUG EXTRACT
+[FRAME:29160][DEBUG][field] CMD: launcher_probe:travel_charlock_baseline_20261013
+[FRAME:29160][INFO][field] LAUNCHER_PROBE: travel_charlock_baseline_20261013
+[FRAME:29160][DEBUG][field] CMD: report_position
+[FRAME:29160][INFO][field] POSITION: map=0x01(World Map) x=48 y=48
+[FRAME:29160][DEBUG][field] CMD: report_path_state
+[FRAME:29160][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:29160][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:29160][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:29160][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:29160][DEBUG][field] CMD: log_state
+[FRAME:29160][INFO][field] hp:        147 / 149
+[FRAME:29160][INFO][field] mp:        89 / 121
+[FRAME:29160][DEBUG][field] CMD: report_menu_state
+[FRAME:29160][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=0 base_nt=0 dialogue_start_row=19
+[FRAME:29160][DEBUG][field] CMD: input_status:travel_charlock_baseline
+[FRAME:29160][INFO][field] INPUT_STATUS tag=travel_charlock_baseline keys=LeftAlt joy1=- bridge=v3:1986:1791922199:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:29160][DEBUG][field] CMD: speech_status
+[FRAME:29160][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:29160][DEBUG][field] CMD: route_status
+[FRAME:29160][INFO][field] OVERWORLD_ROUTE: event=status route=none
+[FRAME:31200][DEBUG][field] CMD: start_overworld_route:castle
+[FRAME:31200][INFO][field] OVERWORLD_ROUTE: event=start route=charlock_return waypoint=Charlock Castle south approach index=2 staged_from=tantegel_kol
+[FRAME:31200][DEBUG][field] CMD: route_status
+[FRAME:31200][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle south approach index=2
+[FRAME:31200][DEBUG][field] CMD: launcher_probe:charlock_anchor_castle_20261013
+[FRAME:31200][INFO][field] LAUNCHER_PROBE: charlock_anchor_castle_20261013
+[FRAME:31320][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:31320][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle south approach index=2 staged_from=brecconary_swamp_cave_south
+[FRAME:31320][DEBUG][field] CMD: route_status
+[FRAME:31320][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle south approach index=2
+[FRAME:31320][DEBUG][field] CMD: launcher_probe:charlock_anchor_brecconary_20261013
+[FRAME:31320][INFO][field] LAUNCHER_PROBE: charlock_anchor_brecconary_20261013
+[FRAME:31440][DEBUG][field] CMD: start_overworld_route:rimuldar
+[FRAME:31440][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle south approach index=2 staged_from=rimuldar
+[FRAME:31440][DEBUG][field] CMD: route_status
+[FRAME:31440][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle south approach index=2
+[FRAME:31440][DEBUG][field] CMD: launcher_probe:charlock_anchor_rimuldar_20261013
+[FRAME:31440][INFO][field] LAUNCHER_PROBE: charlock_anchor_rimuldar_20261013
+[FRAME:36480][DEBUG][field] CMD: start_overworld_route:castle
+[FRAME:36480][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle south approach index=2 staged_from=tantegel_kol
+[FRAME:36480][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:36480][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=tantegel_kol method=single_field candidates=810 pathfind_calls=1 safe_nodes=1 hazard_nodes=116 candidate_ms=184.000 snapshot_ms=22.000 safe_field_ms=0.000 safe_astar_ms=0.000 hazard_field_ms=1.000 hazard_astar_ms=0.000 total_ms=235.000 fallback=false
+[FRAME:36480][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned_with_hazard map=0x01 from=(48,48) entry=(48,49) path_len=1 route=charlock_return next=Charlock Castle east approach final=tantegel_kol candidates=810 rejected_opening=0 rejected_unreachable=0 skipped_farther=809 hazardous=true hazard_tiles=1 hazard_first_step=1 rejected_safe_unreachable=810 preview_only=true
+[FRAME:36480][DEBUG][field] CMD: route_status
+[FRAME:36480][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle south approach index=2
+[FRAME:36480][DEBUG][field] CMD: launcher_probe:travel_charlock_departure_20261013
+[FRAME:36480][INFO][field] LAUNCHER_PROBE: travel_charlock_departure_20261013
+[FRAME:38040][DEBUG][field] CMD: auto_walk
+[FRAME:38040][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock Castle south approach index=2 steps=1 from=(48,48) to=(48,49) carry=(49,49) continuous=true stop_on_blocker=false
+[FRAME:38040][DEBUG][field] CMD: report_position
+[FRAME:38040][INFO][field] POSITION: map=0x01(World Map) x=48 y=48
+[FRAME:38040][DEBUG][field] CMD: report_path_state
+[FRAME:38040][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:38040][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:38040][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:38040][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:38040][DEBUG][field] CMD: launcher_probe:charlock_hazard_refusal_20261013
+[FRAME:38040][INFO][field] LAUNCHER_PROBE: charlock_hazard_refusal_20261013
+[FRAME:38040][INFO][field] AUTO_STEP_REFUSED_HAZARD map=0x01 from=(48,48) dir=down dest=(48,49) hazard=poison_swamp source=queued_route queued_route=true
+[FRAME:38040][INFO][field] OVERWORLD_AUTO_WALK: event=cancel route=charlock_return waypoint=Charlock Castle south approach index=2 reason=dangerous_tile current=(48,48) expected_carry=(49,49)
+[FRAME:38040][INFO][field] AUTO_WALK_HAZARD_CONFIRM_ARMED map=0x01 from=(48,48) dir=down dest=(48,49) hazard=poison_swamp route=charlock_return destination=tantegel_kol expires=10s
+[FRAME:38040][INFO][field] SPEECH_WARNING_QUEUED id=1 deferred=false pending=1 neutral=12/12 text="Poison swamp ahead. Auto-walk stopped. Press auto-walk again to continue through this swamp."
+[FRAME:38040][INFO][field] SPEECH_WARNING_DELIVERED id=1 deferred=false pending=0 neutral=12/12 text="Poison swamp ahead. Auto-walk stopped. Press auto-walk again to continue through this swamp."
+[FRAME:52316][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock Castle south approach index=3
+[FRAME:54360][DEBUG][field] CMD: report_position
+[FRAME:54360][INFO][field] POSITION: map=0x01(World Map) x=48 y=49
+[FRAME:54360][DEBUG][field] CMD: report_path_state
+[FRAME:54360][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:54360][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:54360][DEBUG][field] CMD: report_menu_state
+[FRAME:54360][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=0 base_nt=0 dialogue_start_row=21
+[FRAME:54360][DEBUG][field] CMD: inspect_tile:49,49
+[FRAME:54360][INFO][field] TILE map=0x01 x=49 y=49 dims=120x120 tile=7 base_walkable=true walkable=false reason=hazard permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:54360][DEBUG][field] CMD: inspect_tile:50,49
+[FRAME:54360][INFO][field] TILE map=0x01 x=50 y=49 dims=120x120 tile=1 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:54360][DEBUG][field] CMD: inspect_tile:51,49
+[FRAME:54360][INFO][field] TILE map=0x01 x=51 y=49 dims=120x120 tile=1 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:54360][DEBUG][field] CMD: route_status
+[FRAME:54360][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:54360][DEBUG][field] CMD: launcher_probe:charlock_manual_step_20261013
+[FRAME:54360][INFO][field] LAUNCHER_PROBE: charlock_manual_step_20261013
+[FRAME:59520][DEBUG][field] CMD: launcher_probe:charlock_safe_departure_20261013
+[FRAME:59520][INFO][field] LAUNCHER_PROBE: charlock_safe_departure_20261013
+[FRAME:59520][DEBUG][field] CMD: report_position
+[FRAME:59520][INFO][field] POSITION: map=0x01(World Map) x=49 y=49
+[FRAME:59520][DEBUG][field] CMD: report_path_state
+[FRAME:59520][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:59520][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:59520][DEBUG][field] CMD: report_menu_state
+[FRAME:59520][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=2 base_nt=0 dialogue_start_row=21
+[FRAME:59520][DEBUG][field] CMD: input_status:charlock_safe_departure
+[FRAME:59520][INFO][field] INPUT_STATUS tag=charlock_safe_departure keys=LeftAlt joy1=- bridge=v3:3852:1791922705:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:59520][DEBUG][field] CMD: log_state
+[FRAME:59520][INFO][field] hp:        149 / 149
+[FRAME:59520][INFO][field] mp:        89 / 121
+[FRAME:59520][DEBUG][field] CMD: route_status
+[FRAME:59520][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:61080][DEBUG][field] CMD: auto_walk
+[FRAME:61080][INFO][field] AUTO_WALK_HAZARD_CONFIRM_CLEARED state=pending map=0x01 position=(48,48) hazard=poison_swamp reason=confirmation expired
+[FRAME:61080][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock Castle east approach index=3 steps=2 from=(49,49) to=(51,49) carry=(51,50) continuous=true stop_on_blocker=false
+[FRAME:61120][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock Castle east approach index=4
+[FRAME:61140][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock Castle east approach index=3 steps=2
+[FRAME:61140][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island central corridor index=4 steps=8 from=(51,49) to=(51,57) carry=(50,57) continuous=true stop_on_blocker=false
+[FRAME:61140][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:61220][INFO][field] EVENT: battle started
+[FRAME:61220][INFO][field] hp:        149 / 149
+[FRAME:61220][INFO][field] mp:        89 / 121
+[FRAME:61221][INFO][battle] OVERWORLD_AUTO_WALK: event=cancel route=charlock_return waypoint=Charlock island central corridor index=4 reason=can_walk_false current=(51,50) expected_carry=(50,57)
+[FRAME:62348][DEBUG][battle] EVENT: dialogue: Thou hast done well in defeating the Demon Knight.
+[FRAME:68340][DEBUG][field] CMD: launcher_probe:charlock_after_first_battle_20261013
+[FRAME:68340][INFO][field] LAUNCHER_PROBE: charlock_after_first_battle_20261013
+[FRAME:68340][DEBUG][field] CMD: stop_auto_walk
+[FRAME:68340][DEBUG][field] CMD: report_position
+[FRAME:68340][INFO][field] POSITION: map=0x01(World Map) x=51 y=50
+[FRAME:68340][DEBUG][field] CMD: report_path_state
+[FRAME:68340][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:68340][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:68340][DEBUG][field] CMD: report_menu_state
+[FRAME:68340][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=0 dialogue_start_row=23
+[FRAME:68340][DEBUG][field] CMD: log_state
+[FRAME:68340][INFO][field] hp:        136 / 149
+[FRAME:68340][INFO][field] mp:        89 / 121
+[FRAME:68340][DEBUG][field] CMD: route_status
+[FRAME:68340][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:70980][DEBUG][field] CMD: start_overworld_route:castle
+[FRAME:70980][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=tantegel_kol
+[FRAME:70980][DEBUG][field] CMD: route_status
+[FRAME:70980][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:70980][DEBUG][field] CMD: launcher_probe:charlock_walked_castle_20261013
+[FRAME:70980][INFO][field] LAUNCHER_PROBE: charlock_walked_castle_20261013
+[FRAME:71100][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:71100][INFO][field] OVERWORLD_ROUTE: event=replace route=brecconary waypoint=Brecconary index=25
+[FRAME:71100][DEBUG][field] CMD: route_status
+[FRAME:71100][INFO][field] OVERWORLD_ROUTE: event=status route=brecconary waypoint=Brecconary index=25
+[FRAME:71100][DEBUG][field] CMD: launcher_probe:charlock_walked_brecconary_20261013
+[FRAME:71100][INFO][field] LAUNCHER_PROBE: charlock_walked_brecconary_20261013
+[FRAME:71220][DEBUG][field] CMD: start_overworld_route:rimuldar
+[FRAME:71220][INFO][field] OVERWORLD_ROUTE: event=replace route=kol_staging waypoint=Brecconary west bypass index=2 staged_from=rimuldar
+[FRAME:71220][DEBUG][field] CMD: route_status
+[FRAME:71220][INFO][field] OVERWORLD_ROUTE: event=status route=kol_staging waypoint=Brecconary west bypass index=2
+[FRAME:71220][DEBUG][field] CMD: launcher_probe:charlock_walked_rimuldar_20261013
+[FRAME:71220][INFO][field] LAUNCHER_PROBE: charlock_walked_rimuldar_20261013
+[FRAME:71340][DEBUG][field] CMD: inspect_tile:51,48
+[FRAME:71340][INFO][field] TILE map=0x01 x=51 y=48 dims=120x120 tile=3 base_walkable=false walkable=false reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:71340][DEBUG][field] CMD: inspect_tile:51,47
+[FRAME:71340][INFO][field] TILE map=0x01 x=51 y=47 dims=120x120 tile=3 base_walkable=false walkable=false reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:71340][DEBUG][field] CMD: inspect_tile:51,46
+[FRAME:71340][INFO][field] TILE map=0x01 x=51 y=46 dims=120x120 tile=3 base_walkable=false walkable=false reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:71340][DEBUG][field] CMD: report_position
+[FRAME:71340][INFO][field] POSITION: map=0x01(World Map) x=51 y=50
+[FRAME:71340][DEBUG][field] CMD: report_path_state
+[FRAME:71340][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:71340][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:71340][DEBUG][field] CMD: launcher_probe:charlock_north_tiles_20261013
+[FRAME:71340][INFO][field] LAUNCHER_PROBE: charlock_north_tiles_20261013
+
+SPEECH EXTRACT
+[2026-10-13 15:10:33] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock Castle south approach, 1 south'
+[2026-10-13 15:10:35] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock Castle south approach, 1 south'
+[2026-10-13 15:10:37] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Rimuldar. Next: Charlock Castle south approach, 1 south'
+[2026-10-13 15:12:01] command='interrupt:Recovery preview. Final destination: Tantegel Castle. Network entry: Charlock Castle south approach at 48,49. 1 south. Warning. No decoded-safe recovery path is available. Unsafe route crosses poison swamp: 1 tile, first in 1 step. Continue manually to enter hazards. Then current leg to Swamp Cave South Entrance. Next: Charlock Castle east approach. Preview only; no movement started.'
+[2026-10-13 15:12:01] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock Castle south approach, 1 south'
+[2026-10-13 15:12:27] command='interrupt:Poison swamp ahead. Auto-walk stopped. Press auto-walk again to continue through this swamp.'
+[2026-10-13 15:16:59] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock Castle east approach, 3 east'
+[2026-10-13 15:18:25] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock Castle east approach, 2 east'
+[2026-10-13 15:18:53] command='interrupt:Battle!'
+[2026-10-13 15:19:12] command='speak:Thou hast done well in defeating the Demon Knight.'
+[2026-10-13 15:20:52] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock island central corridor, 7 south'
+[2026-10-13 15:21:36] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:21:38] command='interrupt:Route changed. Route to Brecconary. Next: Brecconary, 9 north, 3 west'
+[2026-10-13 15:21:38] command='interrupt:Route to Brecconary. Next: Brecconary, 9 north, 3 west'
+[2026-10-13 15:21:40] command='interrupt:Current leg to Kol. Final destination: Rimuldar. Next: Brecconary west bypass, 9 north, 4 west'

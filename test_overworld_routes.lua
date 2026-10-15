@@ -3064,6 +3064,73 @@ function tests.tantegel_from_charlock_mid_corridor_reuses_return_for_alias_and_o
     routes.reset_for_tests()
 end
 
+function tests.charlock_mid_corridor_destinations_reuse_connected_return()
+    local targets = {
+        {alias = "castle", id = "overworld_tantegel_castle", name = "Tantegel Castle"},
+        {alias = "brecconary", id = "overworld_brecconary", name = "Brecconary"},
+        {alias = "erdrick", id = "overworld_erdrick_s_cave", name = "Erdrick's Cave"},
+        {alias = "garinham", id = "overworld_garinham", name = "Garinham"},
+        {alias = "kol", id = "overworld_kol", name = "Kol"},
+        {alias = "northern_cave", id = "overworld_northern_cave", name = "Northern Cave"},
+        {alias = "mountain_cave", id = "overworld_mountain_cave", name = "Mountain Cave"},
+        {alias = "swamp_cave", id = "overworld_swamp_cave", name = "Swamp Cave", final_title = "Swamp Cave North Entrance"},
+        {alias = "swamp_cave_south", id = "overworld_swamp_cave_south_entrance", name = "Swamp Cave South Entrance"},
+        {alias = "rainbow_bridge", id = "overworld_rainbow_bridge", name = "Rainbow Bridge", final_title = "Rainbow Bridge unlock point"},
+        {alias = "rimuldar", id = "overworld_rimuldar", name = "Rimuldar"},
+        {alias = "magic_temple", id = "overworld_southern_cave", name = "Magic Temple"},
+        {alias = "cantlin_hauksness", id = "overworld_cantlin", name = "Cantlin"},
+        {alias = "hauksness", id = "overworld_hauksness", name = "Hauksness"},
+        {alias = "great_swamp_cantlin", id = "overworld_eastern_great_swamp_search_area", name = "Eastern Great Swamp Search Area"},
+    }
+    -- Charlock Castle itself follows the inward route; other island requests
+    -- must use the existing outward corridor before their staged continuation.
+    local cases = {
+        {x = 51, y = 50, waypoint = "Charlock Castle east approach", steps = 1, dir = "up"},
+        {x = 51, y = 49, waypoint = "Charlock island central corridor", steps = 8, dir = "down"},
+        {x = 56, y = 59, waypoint = "Charlock island southeast corridor", steps = 3, dir = "up"},
+        {x = 56, y = 57, waypoint = "Charlock island southeast corridor", steps = 1, dir = "up"},
+        {x = 56, y = 56, waypoint = "Charlock island lower east turn", steps = 1, dir = "right"},
+    }
+    local checked = 0
+    for _, case in ipairs(cases) do
+        for _, target in ipairs(targets) do
+            for _, use_object in ipairs({false, true}) do
+                routes.reset_for_tests()
+                local info
+                if use_object then
+                    info = assert(routes.start_for_object(target, 0x01, case.x, case.y))
+                else
+                    info = assert(routes.start(target.alias, 0x01, case.x, case.y))
+                end
+                assert_equal(info.route.id, "charlock_return",
+                    target.name .. " must reuse the island return at " .. case.x .. "," .. case.y)
+                local segment = assert(routes.plan_next_segment(0x01, case.x, case.y))
+                assert_equal(segment.waypoint.name, case.waypoint,
+                    target.name .. " must select the established nearby waypoint")
+                assert_equal(segment.path_length, case.steps,
+                    target.name .. " must avoid a direct mainland opening")
+                assert_equal(segment.steps[1], case.dir,
+                    target.name .. " must follow the established corridor direction")
+                assert_equal(routes.active_route_matches_object(target), true,
+                    "the final Travel destination must remain " .. target.name)
+                local final_title = target.final_title or target.name
+                assert_equal(assert(routes.active_destination()).title, final_title,
+                    "the staged continuation must retain the requested destination")
+                local status = routes.status(0x01, case.x, case.y)
+                assert_contains(status.message, final_title,
+                    "status must retain the final destination")
+                assert_equal(routes.active_route_id(), "charlock_return",
+                    "read-only status must preserve the island return leg")
+                assert_equal(assert(routes.active_destination()).title, final_title,
+                    "read-only status must preserve the final destination")
+                checked = checked + 1
+            end
+        end
+    end
+    assert_equal(checked, 150, "the midpoint matrix must cover each destination, origin, and start form")
+    routes.reset_for_tests()
+end
+
 function tests.early_destinations_from_kol_start_bridge_junction_staging()
     local cases = {
         {
@@ -11882,6 +11949,86 @@ function tests.autowalk_advances_past_already_at_waypoint_with_opt_in()
     assert_equal(advanced.waypoint.x, wp2.x, "advanced plan should target the next waypoint")
     assert_equal(advanced.waypoint.y, wp2.y, "advanced plan should target the next waypoint")
 
+    routes.reset_for_tests()
+end
+
+function tests.segment_corridor_check_rejects_foreign_and_corner_shortcuts()
+    routes.reset_for_tests()
+    local foreign = assert(routes.preview_start("castle", 0x01, 11, 14))
+    assert_equal(routes.is_network_corridor_cell(11, 14), true,
+        "the western start belongs to some established route")
+    assert_equal(routes.segment_follows_corridor(foreign, 11, 14), false,
+        "global network membership must not authorize a mainland shortcut")
+
+    local corner = assert(routes.preview_start("castle", 0x01, 20, 89))
+    assert_equal(corner.route.id, "kol_return_staging",
+        "the corner must exercise the established Hauksness return")
+    assert_equal(routes.segment_follows_corridor(corner, 20, 89), false,
+        "an opening must follow the full corridor, even when its origin belongs to it")
+    for _, entry in ipairs(routes.network_entry_candidates("castle", 0x01)) do
+        assert(not (entry.x == 20 and entry.y == 89),
+            "recovery must not hand off to the same disconnected corner opening")
+    end
+    routes.reset_for_tests()
+end
+
+function tests.segment_corridor_check_preserves_guidance_and_scripted_crossings()
+    routes.reset_for_tests()
+    assert(routes.start("castle", 0x01, 56, 56))
+    local before = assert(routes.active_destination())
+    local next_before = routes.get_active_next_object_id()
+    local segment = assert(routes.plan_next_segment(0x01, 56, 56))
+    assert_equal(routes.segment_follows_corridor(segment, 56, 56), true,
+        "the established island turn must remain directly walkable")
+    assert_equal(assert(routes.active_destination()).id, before.id,
+        "the corridor check must not replace the final destination")
+    assert_equal(routes.get_active_next_object_id(), next_before,
+        "the corridor check must not advance a waypoint")
+
+    local swamp = assert(routes.preview_start("castle", 0x01, 48, 48))
+    assert_equal(routes.segment_follows_corridor(swamp, 48, 48), true,
+        "known swamp geometry must retain its separate hazard confirmation guard")
+    local bridge = assert(routes.preview_start("charlock_return", 0x01, 63, 49))
+    assert_equal(routes.segment_follows_corridor(bridge, 63, 49), true,
+        "the established bridge must retain its game-state-dependent crossing")
+    routes.reset_for_tests()
+end
+
+function tests.staged_destination_recovery_uses_public_request_id()
+    for _, case in ipairs({
+        {name = "swamp_cave", x = 73, y = 96},
+        {name = "swamp_cave_south", x = 93, y = 35},
+        {name = "swamp_cave_south", x = 73, y = 96},
+    }) do
+        routes.reset_for_tests()
+        assert(routes.start(case.name, 0x01, case.x, case.y))
+        local active_before = routes.active_route_id()
+        local next_before = routes.get_active_next_object_id()
+        local destination = assert(routes.active_destination())
+        assert_equal(destination.request_id, case.name,
+            "recovery must resolve the public destination rather than an internal staging ID")
+        local found_current = false
+        for _, candidate in ipairs(routes.network_entry_candidates(
+                destination.request_id, 0x01)) do
+            if candidate.x == case.x and candidate.y == case.y then
+                found_current = true
+                local preview = assert(routes.preview_start(
+                    destination.request_id, 0x01, case.x, case.y))
+                assert_equal(routes.segment_follows_corridor(preview, case.x, case.y), true,
+                    "the current established corridor must remain a usable recovery entry")
+                assert_equal(preview.destination_route.title, destination.title,
+                    "the recovery request must preserve the selected destination title")
+            end
+        end
+        assert_equal(found_current, true,
+            "staged destinations must not lose their current compatible network cell")
+        assert_equal(routes.active_route_id(), active_before,
+            "recovery diagnostics must not replace the active staging leg")
+        assert_equal(routes.get_active_next_object_id(), next_before,
+            "recovery diagnostics must not advance the waypoint")
+        assert_equal(assert(routes.active_destination()).id, destination.id,
+            "recovery diagnostics must preserve the selected variant identity")
+    end
     routes.reset_for_tests()
 end
 

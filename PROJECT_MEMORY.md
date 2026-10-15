@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-10-02
+Updated: 2026-10-15
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is a chronological record, so dated checkpoints below may describe a branch or state that has since changed. Use `session_handoff.md` for current state and `PLAYTESTING.md` for dated gameplay evidence.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -57,6 +57,26 @@ automatically switch filters or select the active waypoint. If the player
 selected a landmark such as Garinham or Erdrick's Cave, that destination should
 remain focused while `auto_walk` follows the active guided route internally.
 
+## Overworld Travel Corridor Safety
+
+- Global network membership does not establish that a destination's next
+  opening follows a usable corridor. `overworld_routes.segment_follows_corridor`
+  checks the origin and every step against the selected route's established
+  geometry. Recovery entry selection uses the same check, including corners.
+- Disconnected openings use the existing bounded recovery planner. If the
+  current cell is already a compatible entry but active guidance is stale,
+  auto-walk recalculates while stopped, refreshes route objects, and requires
+  another explicit press. Recovery checkpoint/network stops also apply with
+  continuous Travel enabled. Hazard authorization remains a separate guard.
+- `active_destination()` retains the selected variant `id` and also exposes
+  a resolvable public `request_id`. Recovery lookup and arrival reselection use
+  that request ID, so internal staging routes and entrance-only continuations
+  do not restrict recovery to the wrong origin family. Match destination object
+  IDs only; departure compatibility IDs must not change the requested target.
+- `dw_commands.ps1 --wait` matches a literal substring. Do not use regex
+  alternation when monitoring completion versus cancellation; inspect the
+  structured log or use separate literal waits.
+
 ## Chest State Policy
 
 - ROM-backed chest state is authoritative from the game's eight interleaved
@@ -97,6 +117,9 @@ Important details:
 - Use `--json` from `dw_commands.sh` / `dw_commands.ps1` when automated harness
   code needs machine-readable sent/matched/timeout status
 - A fresh `dw_debug.log` header does not prove command polling is active; verify command consumption
+- Preserve live debug and speech logs before full host gates as well as Lua
+  reloads. Host test initializers can replace local logs while FCEUX keeps its
+  frame counter. Recovered tool-output excerpts must be labelled as excerpts.
 
 For state-sensitive work:
 - Use short command batches
@@ -1455,14 +1478,14 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
-Current authoritative offline gate (latest recorded full pass 2026-10-02):
+Current authoritative offline gate (latest recorded full pass 2026-10-13):
 - Run `python run_tests.py` from the repository root on Windows.
 - The runner discovers every root `test_*.lua` suite automatically except
   `test_env.lua`, which is a helper, and `test_screen.lua` / `test_speech.lua`,
   which require live FCEUX globals and are reported as explicit skips.
 - It syntax-checks every root Lua and Python file, runs all 42 host-runnable
   Lua suites through the discovered `lua` or `luajit` runtime, runs Python
-  unittest discovery (68 tests on 2026-10-02), validates shell syntax, speech
+  unittest discovery (68 tests on 2026-10-13), validates shell syntax, speech
   dependencies, and the command queue, and returns nonzero on any failure.
 - `speech_smoke.py` is intentionally manual because it produces real screen-
   reader speech; do not rename it to `test_*.py` or import it during automated

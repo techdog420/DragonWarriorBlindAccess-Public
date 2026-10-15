@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-10-02
+Updated: 2026-10-15
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 Entries below are dated evidence. Old branch, test-count, and "ready to commit"
@@ -26,14 +26,118 @@ statements describe their original checkpoints; use `session_handoff.md` and
 - The Hauksness return-corridor loaded selector/status/cancellation check
   passed on 2026-10-02, closing the specific 2026-08-29 validation gap.
 - Representative Tantegel menu/battle/manual-drift validation passed on
-  2026-10-02 after fixing corridor selection. Broader destination/start-region
-  and field-dialogue coverage remains open in `TASKS.md`.
-- The last live observation on 2026-10-02 was World Map `(67,50)` at frame
-  `59520`, clear field, movement stopped, Tantegel guidance active, and no
-  path or runtime blockers. Establish
+  2026-10-02 after fixing corridor selection. The broader representative
+  destination/recovery and field-result pass completed on 2026-10-15.
+- The 2026-10-13 broader Travel pass fixed south-island corridor selection for
+  other destinations. All 16 loaded selectors passed at `(51,50)` after reload,
+  and Brecconary's corrected short opening completed. The player accepted the
+  physical TALK-result status/refusal/dismissal check. A later western repro
+  led to a general corridor guard; after reload it queued safe recovery south
+  instead of the mountain-cutting opening. Later regional checks exposed a
+  staging-ID recovery lookup bug; its fix passed the final native gate and
+  fresh loaded verification on 2026-10-15.
+- The 2026-10-15 pass completed four 24-step recovery checkpoints plus the final
+  14-step network entry, with explicit resume at every stop, then Kol arrival
+  and normal exit. The real REPEL-result/submenu keyboard check is now
+  player-accepted. Independent dialogue-only onset and physical in-battle
+  status speech remain unaccepted coverage cases; the isolated western carry
+  remains a timing watch, not map data.
+- Final fresh state at frame `91440`: clear World Map field/menu/text `(96,14)`,
+  path nil/blocks0, Brecconary retained, next West of Kol north lane `7 south`.
+  HP 149/149, MP 85/121, speech ready/error none. Establish
   a fresh baseline before treating any recorded frame or coordinate as current.
 
 ## Dated Gameplay Record (newest first)
+
+- Broader Travel continuation (2026-10-15). Fresh `17460` confirmed the player's
+  manual reload at `(73,96)`, clear field/menu, HP 149/149, MP89/121, neutral
+  input, path nil/blocks0 and speech ready/error none. Swamp Cave north/south
+  starts at `17880`/`18000` both retained their final destination and recognized
+  the current Hauksness return corridor as a safe network entry. The previous
+  internal-ID `no_safe_entry` and entrance-only hazardous preview are fixed.
+  The public request descriptor preserves selected variant identity; focused
+  regressions failed before the change and pass afterward (346 route,
+  169 manager, 154 auto-step tests). Final native gate on 2026-10-13 passed 42 Lua
+  suites / 68 Python tests plus syntax, speech dependency, and command queue.
+  All 16 fresh whole-map audits `18900..20700` completed: unreachable 0,
+  safe-within-limit7122..7196, safe-over-limit398..472, max safe distance 117.
+  These are model counts after all fixes; they do not prove live collision.
+  Guarded coarse positioning to `(91,108)`, then a normal left step, reached
+  `(90,108)`; the Brecconary preview planned 113 safe steps to `(23,98)`.
+  Wyvern and Wraith onsets stopped the first attempts at `(90,106)` and
+  `(90,105)`. Deferred blocker observations were suppressed on battle onset;
+  no runtime blocks were added. The player cleared both and cast REPEL.
+  Explicit resume from `(90,105)` completed 24-step checkpoints at `(83,88)`
+  `33202`, `(67,80)` `39552`, `(53,90)` `43684`, and `(37,98)` `44861`.
+  Every checkpoint stopped exactly, retained Brecconary, and required another
+  press despite continuous Travel. Final14-step entry completed at `(23,98)`
+  `47035`, stopped, and rebound the requested destination. Fresh `52020`
+  confirmed idle clear field/path nil/blocks0; explicit guided resume `53160`
+  worked and was manually stopped before changing test region.
+  A normally reached Kol doorstep `(103,10)` followed guarded coarse setup.
+  One-right guided entry changed to Kol at `55665`, announced arrival, cleared
+  guidance, and left path nil at town entrance `(19,23)`. Normal Down exited
+  at `58173`; no automatic restart followed. Brecconary departure then worked.
+  REPEL at `73704` produced real 32-character field text while the spell submenu
+  remained present. The player confirmed Shift+R/U/D behaved as expected.
+  Physical status `83862` retained Brecconary; U `84081` refused `Close the
+  submenu first`; D `84220` dismissed. Fresh `90000` confirmed clear menu/text,
+  unchanged stopped `(96,10)`, path nil/blocks0 and speech ready/error none.
+  Explicit resume `91200` completed 3 south steps to `(96,13)` at `91279`;
+  the next leg was manually stopped. Final fresh `91440` found clear field
+  `(96,14)`, path nil/blocks0, Brecconary retained, HP 149/149, MP 85/121.
+  This accepts the representative pass with combined menu/text coverage;
+  standalone dialogue onset and physical in-battle speech remain unaccepted.
+  Evidence: `work_notes/travel_acceptance_20261015.txt` and
+  `work_notes/travel_recovery_audit_20261015.txt`.
+
+- Broader Travel pass in progress (2026-10-13). Fresh `29160` confirmed the
+  player's pre-victory save at `(48,48)`, HP147/149, MP89/121, clear field,
+  no guidance/path/runtime blocks, and speech ready. Tantegel, Brecconary,
+  and Rimuldar selected the proper return at the castle anchor. Guided walking
+  stopped before poison at `38040`; the player manually crossed Down then
+  Right to `(49,49)`. A normally walked return started `61080`, then Demon
+  Knight onset stopped movement at `(51,50)` (`61221`). Player cleared it;
+  fresh `68340` confirmed HP136/149 and retained Tantegel with no restart.
+  Separate loaded checks there exposed Brecconary's direct9-north/3-west
+  opening and Rimuldar's9-north/4-west Kol opening. Both include raw3 mountain
+  cells `(51,48)..(51,46)`, confirmed by decoded inspection. No wall crossing
+  was attempted and no permanent/runtime blocker was added.
+  Ten existing south-island variants now match the established Charlock
+  corridors; the new150-case regression failed before the fix and passes.
+  Full native gate passed42 host-runnable Lua suites/68 Python tests in normal
+  host context, with syntax, speech dependency, and command queue intact.
+  Restricted-context startup/temp/shell failures were environmental.
+  After manual Lua reload, fresh `3840` confirmed the same clear field origin.
+  All16 loaded destination selectors/status checks at `5280..7080` passed.
+  Brecconary's corrected one-north opening completed at `11705`; opening the
+  real menu cancelled its following south leg at `11733`. TALK produced
+  `'There is no one there.` at `13027`. Fresh `14340` found lower dialogue
+  length23 and a still-active command menu, Brecconary retained, path nil,
+  no runtime blocks, and stopped hero `(51,49)`. The player accepted physical
+  Shift+R/U/D: status retained Brecconary, U refused with `Close the command
+  menu first`, and D cleared both text and menu. Fresh `60420` confirmed no
+  restart and unchanged position. This accepts the combined menu/result state;
+  it does not independently prove dialogue-onset cancellation.
+  All16 whole-map recovery audits completed at `62280..64080`, unreachable0
+  and max safe recovery distance117. Their counts precede the later entry
+  filter change and are decoded-model evidence, not live collision proof.
+  Guarded western positioning and normal walking reached `(11,14)`; loaded
+  starts exposed further shortcuts through decoded mountains `(19..22,13)`.
+  The new full-opening corridor check redirects these into bounded recovery
+  and filters corner-cutting entries. Focused suites pass345 route/167 manager/
+  154 auto-step tests; the final native42-Lua-suite/68-Python-test gate passes.
+  After a second manual reload, start `16920` queued16 safe south steps toward
+  `(11,30)` with continuous_requested=true and boundary_stop=true. Red Slime
+  onset cancelled at `17028`, `(11,17)`. Fresh `26220` found clear field/menu,
+  path nil/blocks0 and no automatic restart. Explicit resume `26760` safely
+  reached `(11,27)` before Magician onset cancelled at `26983`, preserving
+  Brecconary again. Network completion, other origin families, long recovery
+  checkpoints, and physical in-battle status acceptance remain pending.
+  Focused evidence: `work_notes/travel_acceptance_20261013_pre_reload.txt`,
+  `work_notes/travel_acceptance_20261013_post_reload.txt`,
+  `work_notes/travel_acceptance_20261013_recovery_reload.txt`, and
+  `work_notes/travel_recovery_audit_20261013.txt`.
 
 - Tantegel Travel menu/battle/manual-drift validation passed in loaded FCEUX
   (2026-10-02), using the player's pre-victory save from `(56,59)`. The command

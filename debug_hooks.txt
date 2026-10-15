@@ -240,7 +240,7 @@ COMMANDS (write to dw_commands.txt, one per line)
                            Read-only preview of the nearest decoded-safe
                            waypoint-network entry for the active Travel
                            destination. If poison swamp is unavoidable, reports
-                           a warned manual-only route instead. Reports the
+                           a warned hazardous fallback instead. Reports the
                            recovery path and next guided leg; never queues
                            movement or teleports.
   audit_overworld_recovery:ROUTE_ID
@@ -261,9 +261,17 @@ COMMANDS (write to dw_commands.txt, one per line)
                            boundary it stops, recalculates the selected final
                            destination, and again requires auto-walk to continue
                            guided travel. These stops also apply when continuous
-                           travel is enabled. Hazardous recovery previews never
-                           start movement. When already on the network, it queues
-                           the next waypoint segment.
+                           travel is enabled. Recovery never silently enters
+                           hazards: poison swamp uses the step guard and
+                           confirmation below; other hazardous recovery is
+                           refused. A globally known network cell also
+                           uses recovery if its next opening leaves the selected
+                           route's corridor. Recovery endpoints must have a
+                           complete opening on compatible corridor geometry.
+                           Stale guidance at an already compatible entry is
+                           recalculated without movement; press again to resume.
+                           With a connected opening, it queues the next waypoint
+                           segment.
                            By default it stops
                            there; when overworld_auto_walk_continuous=true, it
                            continues through later waypoints until arrival or

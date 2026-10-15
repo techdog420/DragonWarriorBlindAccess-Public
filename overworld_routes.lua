@@ -2479,9 +2479,13 @@ ROUTES.kol_swamp_cave_south = {
         {x = 65, y = 49, max_distance = 4},
         {x = 48, y = 48, max_distance = 4},
     },
+    -- Interrupted island travel can be outside the landmark-sized anchors.
+    -- Reuse the established return corridor instead of a mainland shortcut.
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.kol_swamp_cave, 104, 10),
 }
@@ -2507,6 +2511,8 @@ ROUTES.swamp_cave_north_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = {
         {
@@ -2746,6 +2752,8 @@ ROUTES.brecconary_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.brecconary, 48, 41),
 }
@@ -2766,6 +2774,8 @@ ROUTES.erdrick_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.erdrick, 28, 12),
 }
@@ -2786,6 +2796,8 @@ ROUTES.garinham_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.garinham, 1, 2),
 }
@@ -2991,6 +3003,8 @@ ROUTES.northern_cave_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.northern_cave),
 }
@@ -3011,6 +3025,8 @@ ROUTES.hauksness_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_with_kol_bypass(ROUTES.hauksness),
 }
@@ -3050,6 +3066,8 @@ ROUTES.mountain_cave_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.mountain_cave, 29, 57),
 }
@@ -3096,6 +3114,8 @@ ROUTES.cantlin_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.cantlin_hauksness, 73, 102),
 }
@@ -3143,6 +3163,8 @@ ROUTES.great_swamp_swamp_cave_south = {
     selection_route_corridors = {
         "rimuldar_magic_temple",
         "rimuldar_swamp_cave_north_staging",
+        "charlock_return",
+        "charlock_castle",
     },
     waypoints = copy_route_prefix(ROUTES.great_swamp_cantlin, 89, 112),
 }
@@ -4010,6 +4032,33 @@ local function position_is_on_route_corridor(route, px, py)
     return route_corridor_lookup(route)[px .. "," .. py] == true
 end
 
+-- A globally known cell can belong to another destination's corridor, and
+-- a nearest-waypoint opening can cut across a corner of its own corridor.
+-- Check the complete opening against the established route geometry.
+function M.segment_follows_corridor(segment, px, py)
+    local route = segment and segment.route
+    if not position_is_on_route_corridor(route, px, py) then
+        return false
+    end
+    for _, step in ipairs(segment.steps or {}) do
+        if step == "up" then
+            py = py - 1
+        elseif step == "down" then
+            py = py + 1
+        elseif step == "left" then
+            px = px - 1
+        elseif step == "right" then
+            px = px + 1
+        else
+            return false
+        end
+        if not position_is_on_route_corridor(route, px, py) then
+            return false
+        end
+    end
+    return true
+end
+
 local function preview_final_carry(route, index, opts)
     local point = route and route.waypoints and route.waypoints[index]
     local next_point =
@@ -4612,6 +4661,29 @@ function M.preview_start(route_name, map_id, px, py, opts)
     return resolve_start_preview(route_name, map_id, px, py, opts)
 end
 
+-- A selected variant may be an internal staging route or a continuation that
+-- only describes one entrance. Recovery must be able to select the same public
+-- destination again from its new origin. Keep explicit named route aliases,
+-- and match only destination object IDs, never departure compatibility IDs.
+local function destination_request_id(route)
+    if route.aliases and #route.aliases > 0 then
+        return route.id
+    end
+    for _, id in ipairs(ROUTE_IDS) do
+        local candidate = ROUTES[id]
+        if candidate.aliases and #candidate.aliases > 0 then
+            for _, target_id in ipairs(route.target_object_ids or {}) do
+                for _, candidate_target_id in ipairs(candidate.target_object_ids or {}) do
+                    if target_id == candidate_target_id then
+                        return id
+                    end
+                end
+            end
+        end
+    end
+    return route.id
+end
+
 function M.active_destination()
     local route = state.staged_from and ROUTES[state.staged_from]
         or active_route()
@@ -4620,6 +4692,7 @@ function M.active_destination()
     end
     return {
         id = route.id,
+        request_id = destination_request_id(route),
         title = route.title,
     }
 end
@@ -4762,8 +4835,8 @@ function M.network_entry_candidates(route_name, map_id, opts)
             opts)
         if preview
            and preview.route
-           and position_is_on_route_corridor(
-                preview.route, candidate.x, candidate.y) then
+           and M.segment_follows_corridor(
+                preview, candidate.x, candidate.y) then
             for _, point in ipairs(preview.route.waypoints or {}) do
                 if point.x == candidate.x and point.y == candidate.y then
                     candidate.name = point.name

@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-10-02
+Updated: 2026-10-15
 
 This file lists work that remains open. Current runtime state and resume steps
 belong in `session_handoff.md`; dated gameplay evidence belongs in
@@ -26,7 +26,7 @@ preserved in `handoff_archive/TASKS_2026-09-24_pre_cleanup.md`.
   gameplay, save, and relaunch checks, and one blind-player run reached the
   original `The End` screen. The current source is newer than that package.
 - The current native Windows gate is `python -u run_tests.py`. The latest
-  recorded pass on 2026-10-02 covered 42 host-runnable Lua suites and 68 Python
+  recorded pass on 2026-10-13 covered 42 host-runnable Lua suites and 68 Python
   tests, plus syntax, speech dependency, and command-queue checks.
   `test_screen.lua` and
   `test_speech.lua` require live FCEUX and are explicitly skipped.
@@ -65,16 +65,28 @@ cells: Tantegel now reuses the established return instead of a direct castle
 opening. Recovery stopped at the network boundary, explicit resume worked,
 and interruptions retained the destination without restarting movement.
 
-1. Complete the broader Travel acceptance criteria: supported destinations
-   from other reachable world-map start regions, additional destination/drift
-   combinations, and field-dialogue interruption/resume. Build on the recorded
-   Tantegel menu/battle/drift pass and bounded off-network recovery. Preserve
-   the selected destination and explain the recovery leg and next waypoint.
-   Do not silently cross hazards or promote timing stalls to map blockers.
+The broader representative Travel pass completed on 2026-10-15. It fixed
+Charlock selection, disconnected openings, and staged destination recovery;
+covered additional regional selectors and all 16 model audits; walked four
+24-step checkpoints plus a 14-step network boundary; and verified explicit
+resume and Kol arrival/exit. Physical TALK and REPEL result/refusal/dismissal
+are player-accepted. See `docs/plans/2026-10-13-travel-acceptance.md` and
+`PLAYTESTING.md` for scope and evidence. This does not establish every
+world-map cell, quest state, or destination as live-traversed.
+
+Remaining watch items:
+
+1. During normal play, capture physical in-battle Shift+R and an independent
+   dialogue-only onset if a suitable case occurs. Existing battle interruption
+   and combined menu/text results are covered; avoid a separate battle grind
+   or injected dialogue flags solely to fill these acceptance gaps.
 2. Treat isolated timing, moving-NPC, and FCEUX input-latch reports as watch
    items. Reproduce one in a fresh state before adding a permanent map rule.
    The 2026-10-02 `(56,57)->UP` stop crossed with a same-origin probe and
    passed the repeated recovery/guided handoff without timeout retries.
+   The 2026-10-13 western recovery carried from `(11,30)` to `(11,31)` and
+   cancelled conservatively; all five 2026-10-15 checkpoint/network stops
+   landed exactly. Reproduce the original case before changing timing or maps.
 
 ## Accessible discovery and quality of life
 

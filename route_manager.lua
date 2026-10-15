@@ -4226,9 +4226,10 @@ function M.preview_overworld_network_entry(opts)
         return result
     end
 
+    local destination_request_id = destination.request_id or destination.id
     local candidate_started = os.clock()
     local candidates = overworld_routes.network_entry_candidates(
-        destination.id, map_id, {terrain_offset = terrain_offset})
+        destination_request_id, map_id, {terrain_offset = terrain_offset})
     local candidate_ms = (os.clock() - candidate_started) * 1000
     local snapshot_started = os.clock()
     local safe_snapshot = map_reader.get_walkability_snapshot
@@ -4242,7 +4243,7 @@ function M.preview_overworld_network_entry(opts)
             map_id = map_id,
             start_x = px,
             start_y = py,
-            final_destination_id = destination.id,
+            final_destination_id = destination_request_id,
             candidate_count = #candidates,
             rejected_opening = 0,
             rejected_unreachable = 0,
@@ -4392,7 +4393,7 @@ function M.preview_overworld_network_entry(opts)
                 legacy.fallback = true
                 debug_tools.info(string.format(
                     "OVERWORLD_RECOVERY_SEARCH_FALLBACK route=%s selected=(%d,%d) field_distance=%s astar_distance=%s",
-                    tostring(destination.id),
+                    tostring(destination_request_id),
                     selected.candidate.x,
                     selected.candidate.y,
                     tostring(selected.distance),
@@ -4461,7 +4462,7 @@ function M.preview_overworld_network_entry(opts)
             map_id = map_id,
             start_x = px,
             start_y = py,
-            final_destination_id = destination.id,
+            final_destination_id = destination_request_id,
             final_destination_title = destination.title,
             candidate_count = #candidates,
             rejected_opening = rejected_opening,
@@ -4514,7 +4515,7 @@ function M.preview_overworld_network_entry(opts)
         route_id = candidate.route_id,
         route_title = candidate.route_title,
         next_waypoint_name = next_waypoint and next_waypoint.name or nil,
-        final_destination_id = destination.id,
+        final_destination_id = destination_request_id,
         final_destination_title = destination.title,
         candidate_count = #candidates,
         rejected_opening = rejected_opening,
@@ -5065,6 +5066,51 @@ function M.autowalk_overworld_segment(opts)
             ok = false,
             message = message,
         }
+    end
+
+    if overworld_routes.segment_follows_corridor
+       and not overworld_routes.segment_follows_corridor(segment, px, py) then
+        debug_tools.info(string.format(
+            "OVERWORLD_AUTO_WALK: event=recovery_required reason=opening_outside_route_corridor route=%s current=(%s,%s)",
+            tostring(segment.route and segment.route.id or "-"), tostring(px), tostring(py)))
+        local recovery = M.autowalk_overworld_recovery(
+            opts, map_id, px, py, continuous)
+        if recovery.status ~= "already_on_network" then
+            return recovery
+        end
+        -- The current tile may already be a valid entry for fresh guidance
+        -- while the active waypoint is stale. Rebind without queuing motion;
+        -- the normal recovery boundary still requires an explicit next press.
+        local info, recalc_err
+        local destination = overworld_routes.active_destination()
+        if destination and destination.request_id and overworld_routes.start then
+            info, recalc_err = overworld_routes.start(destination.request_id, map_id, px, py, {
+                terrain_offset = snapshot.terrain_offset,
+            })
+            if info then
+                info.message = "Route recalculated. " .. info.message
+            end
+        else
+            info, recalc_err = overworld_routes.recalculate(map_id, px, py, {
+                terrain_offset = snapshot.terrain_offset,
+            })
+        end
+        if info and info.refresh and objects.request_refresh then
+            objects.request_refresh()
+        end
+        recovery.status = info and "recalculated_at_network" or "unavailable"
+        recovery.ok = info ~= nil
+        recovery.boundary_stop = true
+        recovery.message = info
+            and (info.message .. " Press auto-walk again to continue.")
+            or (recalc_err or "Route recalculation unavailable")
+        if opts.speak ~= false then
+            tolk.output_interrupt(recovery.message)
+        end
+        debug_tools.info(string.format(
+            "OVERWORLD_RECOVERY_AUTO_WALK event=recalculate status=%s current=(%s,%s) boundary_stop=true",
+            tostring(recovery.status), tostring(px), tostring(py)))
+        return recovery
     end
 
     if not segment.steps or #segment.steps == 0 then

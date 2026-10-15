@@ -1,0 +1,559 @@
+Travel after the recovery-guard reload, before the staged-request fix reload - 2026-10-13
+Loaded source: 63c64d6 plus Charlock selector metadata and the full-opening corridor/recovery guard.
+The staged destination request fix was edited after the regional matrices; it is not live-loaded in this extract.
+Western recovery used safe south steps, with battle cancellation preserving Brecconary.
+The three-step finish reached (11,30), carried to (11,31) during final settle, and cancelled conservatively. Do not mark exact recovery-boundary stopping passed.
+Explicit stale-guidance recalculation at (11,31) queued no motion; the next explicit press completed three guided western legs before another battle.
+Regional matrices used guarded debug positioning only: Kol (93,35), Rimuldar (103,72), Hauksness (73,96). These are selector/status/model checks, not live collision proof.
+DO NOT PROMOTE: the Kol positioning probe from (93,36) carried through (93,35) to decoded-water (93,34). It was teleport-seeded and is not terrain evidence. Repositioned safely to (93,35) for selector-only checks.
+Hauksness Swamp Cave north preview reported no_safe_entry for an internal destination staging ID. Swamp Cave south previews near Kol/Hauksness were unnecessarily restricted to a cave-entry continuation.
+New request-ID regressions failed before the fix and pass after it; the fix awaits a third manual Lua reload.
+Physical Shift+R during battle remains unconfirmed; no corresponding accepted reply was received during this pass.
+Latest fresh stopped state: frame86640, World Map (73,96), field, HP149/149, MP89/121; last matrix ended with path nil/blocks0 and guidance stopped.
+
+Evidence limitation: the active log was truncated during the final native gate before backup. The following exact lines were recovered from this chat tool outputs, not from a complete original log. Matrix markers prove command consumption; they do not replace missing raw per-destination diagnostics. Re-run affected preview cases after reload. Preserve live debug/speech logs before full gates as well as reloads.
+
+RECOVERED DEBUG EXTRACT
+[FRAME:05160][DEBUG][field] CMD: report_menu_state
+[FRAME:05160][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=10 base_nt=0 dialogue_start_row=21
+[FRAME:05160][DEBUG][field] CMD: log_state
+[FRAME:05160][INFO][field] --- State Snapshot ---
+[FRAME:05160][INFO][field] frame:     5160
+[FRAME:05160][INFO][field] state:     field
+[FRAME:05160][INFO][field] map_id:    0x01 (World Map)
+[FRAME:05160][INFO][field] pos:       x=11, y=14
+[FRAME:05160][INFO][field] raw_pos:   player=(11,14) overworld=(16,4)
+[FRAME:05160][INFO][field] hp:        139 / 149
+[FRAME:05160][INFO][field] mp:        89 / 121
+[FRAME:05160][INFO][field] level:     21
+[FRAME:05160][INFO][field] stats:     STR=0x5F AGI=0x51 ATK=0x87 DEF=0x5A
+[FRAME:05160][INFO][field] gold:      52490
+[FRAME:05160][INFO][field] exp:       31807
+[FRAME:05160][INFO][field] keys:      5
+[FRAME:05160][INFO][field] herbs:     2
+[FRAME:05160][INFO][field] enemy_hp:  235
+[FRAME:05160][INFO][field] cursor:    D8=0 D9=0
+[FRAME:05160][INFO][field] stat_ram:  BA-CF=3F 7C 0A CD FF 05 02 75 E3 20 18 8B 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:05160][INFO][field] spells:    CE=0xFF CF=0x1F
+[FRAME:05160][INFO][field] flags:     combat=0x0A quest=0x42
+[FRAME:05160][INFO][field] terrain:   0x00
+[FRAME:05160][INFO][field] light:     radius=1 radiant_timer=0
+[FRAME:05160][INFO][field] ----------------------
+[FRAME:05160][DEBUG][field] CMD: input_status:corridor_guard_reload
+[FRAME:05160][INFO][field] INPUT_STATUS tag=corridor_guard_reload keys=LeftAlt joy1=- bridge=v3:17914:1791926526:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:05160][DEBUG][field] CMD: speech_status
+[FRAME:05160][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:05160][DEBUG][field] CMD: current_object
+[FRAME:05160][INFO][field] OBJECT: Brecconary: 27 south, 37 east (1 of 16) [player 11,14 obj 48,41]
+[FRAME:05340][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:05340][INFO][field] OVERWORLD_ROUTE: event=start route=brecconary waypoint=Cave road south lane index=15
+[FRAME:05340][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:05340][INFO][field] HOTKEY_NAVIGATION_MODULES_REFRESHED
+[FRAME:05340][INFO][field] NAVIGATION_MODULES_REFRESHED
+[FRAME:05340][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=133.000 snapshot_ms=20.000 safe_field_ms=51.000 safe_astar_ms=1.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=208.000 fallback=false
+[FRAME:05340][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(11,14) entry=(11,30) path_len=16 route=kol_return_staging next=Western desert south detour final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=0 skipped_farther=753 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:05340][INFO][field] CMD_TIMING command=preview_overworld_recovery ms=245.000
+[FRAME:05340][DEBUG][field] CMD: launcher_probe:western_recovery_preview_20261013
+[FRAME:05340][INFO][field] LAUNCHER_PROBE: western_recovery_preview_20261013
+[FRAME:05659][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=5659 keys=LeftAlt native_joy1=-
+[FRAME:05659][INFO][field] INPUT_STALE_ALT_IGNORED frame=5659 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:05660][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=5660 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:06548][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=6548 keys=LeftAlt native_joy1=-
+[FRAME:06548][INFO][field] INPUT_STALE_ALT_IGNORED frame=6548 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:06549][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=6549 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:06565][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=6565 keys=LeftAlt native_joy1=-
+[FRAME:06565][INFO][field] INPUT_STALE_ALT_IGNORED frame=6565 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:06566][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=6566 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:07092][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=7092 keys=LeftAlt native_joy1=-
+[FRAME:07092][INFO][field] INPUT_STALE_ALT_IGNORED frame=7092 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:07093][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=7093 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:10974][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=10974 keys=LeftAlt native_joy1=-
+[FRAME:10974][INFO][field] INPUT_STALE_ALT_IGNORED frame=10974 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:10975][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=10975 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:11498][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=11498 keys=LeftAlt native_joy1=-
+[FRAME:11498][INFO][field] INPUT_STALE_ALT_IGNORED frame=11498 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:11499][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=11499 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:12330][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=12330 keys=LeftAlt native_joy1=-
+[FRAME:12330][INFO][field] INPUT_STALE_ALT_IGNORED frame=12330 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:12331][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=12331 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:13052][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=13052 keys=LeftAlt native_joy1=-
+[FRAME:13052][INFO][field] INPUT_STALE_ALT_IGNORED frame=13052 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:13053][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=13053 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:15960][DEBUG][field] CMD: report_position
+[FRAME:15960][INFO][field] POSITION: map=0x01(World Map) x=11 y=14
+[FRAME:15960][DEBUG][field] CMD: report_path_state
+[FRAME:15960][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:15960][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:15960][DEBUG][field] CMD: report_menu_state
+[FRAME:15960][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=10 base_nt=0 dialogue_start_row=21
+[FRAME:15960][DEBUG][field] CMD: route_status
+[FRAME:15960][INFO][field] OVERWORLD_ROUTE: event=status route=brecconary waypoint=Cave road south lane index=15
+[FRAME:15960][DEBUG][field] CMD: launcher_probe:western_guard_ready_20261013
+[FRAME:15960][INFO][field] LAUNCHER_PROBE: western_guard_ready_20261013
+[FRAME:16920][DEBUG][field] auto_step begin_step dir=down from=(11,14) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:16920][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,14) source=queued_route route_index=2 route_len=16
+[FRAME:16920][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,14) source=queued_route
+[FRAME:16921][INFO][field] INPUT_STUCK_ALT_CLEAR frame=16921 frames=16385 keys=LeftAlt joy1=down
+[FRAME:16921][DEBUG][field] auto_step movement started dir=down from=(11,14) frame=1 subpixel=0x90->0x00 queued_route=true
+[FRAME:16921][DEBUG][field] auto_step early movement twitch held dir=down from=(11,14) frame=1 grace=10 queued_route=true
+[FRAME:16939][DEBUG][field] auto_step schedule turn repress dir=down from=(11,14) frame=18
+[FRAME:16942][DEBUG][field] auto_step resume pending repress
+[FRAME:16942][DEBUG][field] auto_step begin_step dir=down from=(11,14) timeout_retries=0 turn_represses=1 inject_limit=12 source=queued_route
+[FRAME:16942][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,14) source=queued_route route_index=2 route_len=16
+[FRAME:16942][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,14) source=queued_route
+[FRAME:16944][DEBUG][field] auto_step complete dir=down from=(11,14) to=(11,15) frames=2 timeout_retries=0 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:16944][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,15) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:16944][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,15) approach=north from=unseen to=passable_only
+[FRAME:16948][DEBUG][field] auto_step begin_step dir=down from=(11,15) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:16948][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,15) source=queued_route route_index=3 route_len=16
+[FRAME:16948][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,15) source=queued_route
+[FRAME:16960][DEBUG][field] auto_step complete dir=down from=(11,15) to=(11,16) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:16960][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,16) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:16960][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,16) approach=north from=unseen to=passable_only
+[FRAME:16964][DEBUG][field] auto_step begin_step dir=down from=(11,16) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:16964][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,16) source=queued_route route_index=4 route_len=16
+[FRAME:16964][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,16) source=queued_route
+[FRAME:16976][DEBUG][field] auto_step complete dir=down from=(11,16) to=(11,17) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:16976][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,17) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:16976][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,17) approach=north from=unseen to=passable_only
+[FRAME:16980][DEBUG][field] auto_step begin_step dir=down from=(11,17) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:16980][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,17) source=queued_route route_index=5 route_len=16
+[FRAME:16980][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,17) source=queued_route
+[FRAME:16982][DEBUG][field] auto_step movement started dir=down from=(11,17) frame=2 subpixel=0x00->0x04 queued_route=true
+[FRAME:16982][DEBUG][field] auto_step early movement twitch held dir=down from=(11,17) frame=2 grace=10 queued_route=true
+[FRAME:16999][DEBUG][field] auto_step schedule turn repress dir=down from=(11,17) frame=18
+[FRAME:17002][DEBUG][field] auto_step resume pending repress
+[FRAME:17002][DEBUG][field] auto_step begin_step dir=down from=(11,17) timeout_retries=0 turn_represses=1 inject_limit=12 source=queued_route
+[FRAME:17002][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,17) source=queued_route route_index=5 route_len=16
+[FRAME:17002][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,17) source=queued_route
+[FRAME:17003][DEBUG][field] auto_step movement started dir=down from=(11,17) frame=1 subpixel=0x00->0x04 queued_route=true
+[FRAME:17003][DEBUG][field] auto_step early movement twitch held dir=down from=(11,17) frame=1 grace=10 queued_route=true
+[FRAME:17027][INFO][field] EVENT: battle started
+[FRAME:17027][INFO][field] --- State Snapshot ---
+[FRAME:17027][INFO][field] frame:     17027
+[FRAME:17027][INFO][field] state:     field
+[FRAME:17027][INFO][field] map_id:    0x01 (World Map)
+[FRAME:17027][INFO][field] pos:       x=11, y=17
+[FRAME:17027][INFO][field] raw_pos:   player=(11,17) overworld=(0,160)
+[FRAME:17027][INFO][field] hp:        142 / 149
+[FRAME:17027][INFO][field] mp:        89 / 121
+[FRAME:17027][INFO][field] level:     21
+[FRAME:17027][INFO][field] stats:     STR=0x5F AGI=0x51 ATK=0x87 DEF=0x5A
+[FRAME:17027][INFO][field] gold:      52490
+[FRAME:17027][INFO][field] exp:       31807
+[FRAME:17027][INFO][field] keys:      5
+[FRAME:17027][INFO][field] herbs:     2
+[FRAME:17027][INFO][field] enemy_hp:  235
+[FRAME:17027][INFO][field] cursor:    D8=0 D9=0
+[FRAME:17027][INFO][field] stat_ram:  BA-CF=3F 7C 0A CD FF 05 02 75 E3 20 18 8E 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:17027][INFO][field] spells:    CE=0xFF CF=0x1F
+[FRAME:17027][INFO][field] flags:     combat=0x0A quest=0x42
+[FRAME:17027][INFO][field] terrain:   0x00
+[FRAME:17027][INFO][field] light:     radius=1 radiant_timer=0
+[FRAME:17027][INFO][field] ----------------------
+[FRAME:17027][INFO][field] BATTLE_MENU: FIGHT
+[FRAME:17028][DEBUG][battle] auto_step cancel: can_walk=false auto_dir=down pending_repress=nil
+[FRAME:17028][INFO][battle] OVERWORLD_AUTO_WALK: event=cancel route=kol_return_staging waypoint=Western desert lower west lane index=nil reason=can_walk_false current=(11,17) expected_carry=(nil,nil)
+[FRAME:17028][INFO][battle] OVERWORLD_RECOVERY_AUTO_WALK event=cancel reason=can_walk_false current=(11,17) entry=(11,30) final=brecconary
+[FRAME:17092][DEBUG][battle] EVENT: dialogue: A Red Slime draws near!
+[FRAME:17135][INFO][battle] INPUT_STUCK_ALT frame=17135 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:17214][INFO][battle] INPUT_STUCK_ALT_CLEAR frame=17214 frames=198 keys=LeftAlt joy1=A
+[FRAME:17221][DEBUG][battle] dialogue cache cleared: lower window empty
+[FRAME:17341][INFO][field] INPUT_STUCK_ALT frame=17341 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:17347][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=17347 keys=LeftAlt native_joy1=-
+[FRAME:17347][INFO][field] INPUT_STALE_ALT_IGNORED frame=17347 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:17348][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=17348 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:22646][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=22646 keys=LeftAlt native_joy1=-
+[FRAME:22646][INFO][field] INPUT_STALE_ALT_IGNORED frame=22646 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:22647][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=22647 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:25074][INFO][field] INPUT_STALE_ALT_IGNORED frame=25074 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:25075][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=25075 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:25320][DEBUG][field] CMD: log_state
+[FRAME:25320][INFO][field] --- State Snapshot ---
+[FRAME:25320][INFO][field] frame:     25320
+[FRAME:25320][INFO][field] state:     field
+[FRAME:25320][INFO][field] map_id:    0x01 (World Map)
+[FRAME:25320][INFO][field] pos:       x=11, y=17
+[FRAME:25320][INFO][field] raw_pos:   player=(11,17) overworld=(14,4)
+[FRAME:25320][INFO][field] hp:        142 / 149
+[FRAME:25320][INFO][field] mp:        89 / 121
+[FRAME:25320][INFO][field] level:     21
+[FRAME:25320][INFO][field] stats:     STR=0x5F AGI=0x51 ATK=0x87 DEF=0x5A
+[FRAME:25320][INFO][field] gold:      52490
+[FRAME:25320][INFO][field] exp:       31807
+[FRAME:25320][INFO][field] keys:      5
+[FRAME:25320][INFO][field] herbs:     2
+[FRAME:25320][INFO][field] enemy_hp:  4
+[FRAME:25320][INFO][field] cursor:    D8=0 D9=0
+[FRAME:25320][INFO][field] stat_ram:  BA-CF=3F 7C 0A CD FF 05 02 75 E3 20 18 8E 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:25320][INFO][field] spells:    CE=0xFF CF=0x1F
+[FRAME:25320][INFO][field] flags:     combat=0x0A quest=0x42
+[FRAME:25320][INFO][field] terrain:   0x00
+[FRAME:25320][INFO][field] light:     radius=1 radiant_timer=0
+[FRAME:25320][INFO][field] ----------------------
+[FRAME:25320][DEBUG][field] CMD: report_position
+[FRAME:25320][INFO][field] POSITION: map=0x01(World Map) x=11 y=17
+[FRAME:25320][DEBUG][field] CMD: launcher_probe:western_recovery_stopped_20261013
+[FRAME:25320][INFO][field] LAUNCHER_PROBE: western_recovery_stopped_20261013
+[FRAME:26220][DEBUG][field] CMD: report_menu_state
+[FRAME:26220][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=10 base_nt=0 dialogue_start_row=27
+[FRAME:26220][DEBUG][field] CMD: report_path_state
+[FRAME:26220][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:26220][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:26220][DEBUG][field] CMD: launcher_probe:western_resume_ready_20261013
+[FRAME:26220][INFO][field] LAUNCHER_PROBE: western_resume_ready_20261013
+[FRAME:26835][DEBUG][field] auto_step complete dir=down from=(11,20) to=(11,21) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26835][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,21) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26835][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,21) approach=north from=unseen to=passable_only
+[FRAME:26839][DEBUG][field] auto_step begin_step dir=down from=(11,21) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26839][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,21) source=queued_route route_index=6 route_len=13
+[FRAME:26839][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,21) source=queued_route
+[FRAME:26851][DEBUG][field] auto_step complete dir=down from=(11,21) to=(11,22) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26851][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,22) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26851][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,22) approach=north from=unseen to=passable_only
+[FRAME:26855][DEBUG][field] auto_step begin_step dir=down from=(11,22) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26855][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,22) source=queued_route route_index=7 route_len=13
+[FRAME:26855][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,22) source=queued_route
+[FRAME:26867][DEBUG][field] auto_step complete dir=down from=(11,22) to=(11,23) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26867][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,23) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26867][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,23) approach=north from=unseen to=passable_only
+[FRAME:26871][DEBUG][field] auto_step begin_step dir=down from=(11,23) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26871][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,23) source=queued_route route_index=8 route_len=13
+[FRAME:26871][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,23) source=queued_route
+[FRAME:26883][DEBUG][field] auto_step complete dir=down from=(11,23) to=(11,24) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26883][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,24) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26883][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,24) approach=north from=unseen to=passable_only
+[FRAME:26887][DEBUG][field] auto_step begin_step dir=down from=(11,24) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26887][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,24) source=queued_route route_index=9 route_len=13
+[FRAME:26887][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,24) source=queued_route
+[FRAME:26899][DEBUG][field] auto_step complete dir=down from=(11,24) to=(11,25) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26899][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,25) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26899][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,25) approach=north from=unseen to=passable_only
+[FRAME:26903][DEBUG][field] auto_step begin_step dir=down from=(11,25) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26903][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,25) source=queued_route route_index=10 route_len=13
+[FRAME:26903][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,25) source=queued_route
+[FRAME:26915][DEBUG][field] auto_step complete dir=down from=(11,25) to=(11,26) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26915][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,26) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26915][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,26) approach=north from=unseen to=passable_only
+[FRAME:26919][DEBUG][field] auto_step begin_step dir=down from=(11,26) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26919][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,26) source=queued_route route_index=11 route_len=13
+[FRAME:26919][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,26) source=queued_route
+[FRAME:26931][DEBUG][field] auto_step complete dir=down from=(11,26) to=(11,27) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:26931][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,27) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:26931][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,27) approach=north from=unseen to=passable_only
+[FRAME:26935][DEBUG][field] auto_step begin_step dir=down from=(11,27) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:26935][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,27) source=queued_route route_index=12 route_len=13
+[FRAME:26935][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,27) source=queued_route
+[FRAME:26937][DEBUG][field] auto_step movement started dir=down from=(11,27) frame=2 subpixel=0x04->0x00 queued_route=true
+[FRAME:26937][DEBUG][field] auto_step early movement twitch held dir=down from=(11,27) frame=2 grace=10 queued_route=true
+[FRAME:26954][DEBUG][field] auto_step schedule turn repress dir=down from=(11,27) frame=18
+[FRAME:26957][DEBUG][field] auto_step resume pending repress
+[FRAME:26957][DEBUG][field] auto_step begin_step dir=down from=(11,27) timeout_retries=0 turn_represses=1 inject_limit=12 source=queued_route
+[FRAME:26957][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,27) source=queued_route route_index=12 route_len=13
+[FRAME:26957][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,27) source=queued_route
+[FRAME:26958][DEBUG][field] auto_step movement started dir=down from=(11,27) frame=1 subpixel=0x04->0x00 queued_route=true
+[FRAME:26958][DEBUG][field] auto_step early movement twitch held dir=down from=(11,27) frame=1 grace=10 queued_route=true
+[FRAME:26982][INFO][field] EVENT: battle started
+[FRAME:26982][INFO][field] --- State Snapshot ---
+[FRAME:26982][INFO][field] frame:     26982
+[FRAME:26982][INFO][field] state:     field
+[FRAME:26982][INFO][field] map_id:    0x01 (World Map)
+[FRAME:26982][INFO][field] pos:       x=11, y=27
+[FRAME:26982][INFO][field] raw_pos:   player=(11,27) overworld=(0,160)
+[FRAME:26982][INFO][field] hp:        149 / 149
+[FRAME:26982][INFO][field] mp:        89 / 121
+[FRAME:26982][INFO][field] level:     21
+[FRAME:26982][INFO][field] stats:     STR=0x5F AGI=0x51 ATK=0x87 DEF=0x5A
+[FRAME:26982][INFO][field] gold:      52490
+[FRAME:26982][INFO][field] exp:       31807
+[FRAME:26982][INFO][field] keys:      5
+[FRAME:26982][INFO][field] herbs:     2
+[FRAME:26982][INFO][field] enemy_hp:  4
+[FRAME:26982][INFO][field] cursor:    D8=0 D9=0
+[FRAME:26982][INFO][field] stat_ram:  BA-CF=3F 7C 0A CD FF 05 02 75 E3 20 18 95 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:26982][INFO][field] spells:    CE=0xFF CF=0x1F
+[FRAME:26982][INFO][field] flags:     combat=0x0A quest=0x42
+[FRAME:26982][INFO][field] terrain:   0x00
+[FRAME:26982][INFO][field] light:     radius=1 radiant_timer=0
+[FRAME:26982][INFO][field] ----------------------
+[FRAME:26982][INFO][field] BATTLE_MENU: FIGHT
+[FRAME:26983][DEBUG][battle] auto_step cancel: can_walk=false auto_dir=down pending_repress=nil
+[FRAME:26983][INFO][battle] OVERWORLD_AUTO_WALK: event=cancel route=kol_return_staging waypoint=Western desert lower west lane index=nil reason=can_walk_false current=(11,27) expected_carry=(nil,nil)
+[FRAME:26983][INFO][battle] OVERWORLD_RECOVERY_AUTO_WALK event=cancel reason=can_walk_false current=(11,27) entry=(11,30) final=brecconary
+[FRAME:27046][DEBUG][battle] EVENT: dialogue: A Magician draws near!
+[FRAME:27090][INFO][battle] INPUT_STUCK_ALT frame=27090 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:28673][DEBUG][battle] EVENT: dialogue: Bill attacks! The Magician's Hit Points have been reduced by 55.
+[FRAME:28697][INFO][battle] INPUT_STUCK_ALT frame=28697 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:28740][DEBUG][battle] CMD: log_state
+[FRAME:28740][INFO][battle] --- State Snapshot ---
+[FRAME:28740][INFO][battle] frame:     28740
+[FRAME:28740][INFO][battle] state:     battle
+[FRAME:28740][INFO][battle] map_id:    0x01 (World Map)
+[FRAME:28740][INFO][battle] pos:       x=11, y=27
+[FRAME:28740][INFO][battle] raw_pos:   player=(11,27) overworld=(127,22)
+[FRAME:28740][INFO][battle] hp:        149 / 149
+[FRAME:28740][INFO][battle] mp:        89 / 121
+[FRAME:28740][INFO][battle] level:     21
+[FRAME:28740][INFO][battle] stats:     STR=0x5F AGI=0x51 ATK=0x87 DEF=0x5A
+[FRAME:28740][INFO][battle] gold:      52490
+[FRAME:28740][INFO][battle] exp:       31807
+[FRAME:28740][INFO][battle] keys:      5
+[FRAME:28740][INFO][battle] herbs:     2
+[FRAME:28740][INFO][battle] enemy_hp:  213
+[FRAME:28740][INFO][battle] cursor:    D8=0 D9=0
+[FRAME:28740][INFO][battle] stat_ram:  BA-CF=3F 7C 0A CD FF 05 02 75 E3 20 18 95 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:28740][INFO][battle] spells:    CE=0xFF CF=0x1F
+[FRAME:28740][INFO][battle] flags:     combat=0x0A quest=0x42
+[FRAME:28740][INFO][battle] terrain:   0x00
+[FRAME:28740][INFO][battle] light:     radius=1 radiant_timer=0
+[FRAME:28740][INFO][battle] ----------------------
+[FRAME:28740][DEBUG][battle] CMD: report_position
+[FRAME:28740][INFO][battle] POSITION: map=0x01(World Map) x=11 y=27
+[FRAME:28740][DEBUG][battle] CMD: launcher_probe:western_recovery_battle_stop_20261013
+[FRAME:28740][INFO][battle] LAUNCHER_PROBE: western_recovery_battle_stop_20261013
+[FRAME:28815][DEBUG][battle] EVENT: dialogue: defeating the Magician. Thy Experience increases by 4. Thy GOLD increases by 9.
+[FRAME:28874][INFO][battle] INPUT_STUCK_ALT_CLEAR frame=28874 frames=296 keys=LeftAlt joy1=A
+[FRAME:28888][DEBUG][battle] dialogue cache cleared: lower window empty
+[FRAME:29002][INFO][field] INPUT_STUCK_ALT frame=29002 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:29493][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=29493 keys=LeftAlt native_joy1=-
+[FRAME:29493][INFO][field] INPUT_STALE_ALT_IGNORED frame=29493 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:29494][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=29494 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:29663][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=29663 keys=LeftAlt native_joy1=-
+[FRAME:29663][INFO][field] INPUT_STALE_ALT_IGNORED frame=29663 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:29664][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=29664 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:31620][DEBUG][field] CMD: report_menu_state
+[FRAME:31620][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=10 base_nt=0 dialogue_start_row=17
+[FRAME:31620][DEBUG][field] CMD: report_path_state
+[FRAME:31620][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:31620][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:31620][DEBUG][field] CMD: report_position
+[FRAME:31620][INFO][field] POSITION: map=0x01(World Map) x=11 y=27
+[FRAME:31620][DEBUG][field] CMD: launcher_probe:western_boundary_ready_20261013
+[FRAME:31620][INFO][field] LAUNCHER_PROBE: western_boundary_ready_20261013
+[FRAME:31860][INFO][field] AUTO_WALK_TRACE queue_path_steps_after_start_route result=true steps=3
+[FRAME:31860][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(11,27) target=(11,30) entry=(11,30) steps=3 full_steps=3 route=kol_return_staging next=Western desert south detour final=brecconary continuous_requested=true checkpoint_stop=false boundary_stop=true
+[FRAME:31860][INFO][field] CMD_TIMING command=auto_walk ms=52.000
+[FRAME:31860][DEBUG][field] auto_step begin_step dir=down from=(11,27) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:31860][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,27) source=queued_route route_index=2 route_len=3
+[FRAME:31860][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,27) source=queued_route
+[FRAME:31861][INFO][field] INPUT_STUCK_ALT_CLEAR frame=31861 frames=2978 keys=LeftAlt joy1=down
+[FRAME:31861][DEBUG][field] auto_step movement started dir=down from=(11,27) frame=1 subpixel=0x90->0x00 queued_route=true
+[FRAME:31861][DEBUG][field] auto_step early movement twitch held dir=down from=(11,27) frame=1 grace=10 queued_route=true
+[FRAME:31879][DEBUG][field] auto_step schedule turn repress dir=down from=(11,27) frame=18
+[FRAME:31882][DEBUG][field] auto_step resume pending repress
+[FRAME:31882][DEBUG][field] auto_step begin_step dir=down from=(11,27) timeout_retries=0 turn_represses=1 inject_limit=12 source=queued_route
+[FRAME:31882][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,27) source=queued_route route_index=2 route_len=3
+[FRAME:31882][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,27) source=queued_route
+[FRAME:31887][DEBUG][field] auto_step complete dir=down from=(11,27) to=(11,28) frames=5 timeout_retries=0 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:31887][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,28) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:31887][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,28) approach=north from=unseen to=passable_only
+[FRAME:31891][DEBUG][field] auto_step begin_step dir=down from=(11,28) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:31891][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,28) source=queued_route route_index=3 route_len=3
+[FRAME:31891][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,28) source=queued_route
+[FRAME:31903][DEBUG][field] auto_step complete dir=down from=(11,28) to=(11,29) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:31903][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,29) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:31903][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,29) approach=north from=unseen to=passable_only
+[FRAME:31907][DEBUG][field] auto_step begin_step dir=down from=(11,29) timeout_retries=0 turn_represses=0 inject_limit=12 source=queued_route
+[FRAME:31907][INFO][field] AUTO_STEP_TRACE begin_step_before_joypad dir=down from=(11,29) source=queued_route route_index=4 route_len=3
+[FRAME:31907][INFO][field] AUTO_STEP_TRACE begin_step_after_joypad dir=down from=(11,29) source=queued_route
+[FRAME:31919][DEBUG][field] auto_step complete dir=down from=(11,29) to=(11,30) frames=12 timeout_retries=0 turn_represses=0 inject_limit=12 queued_route=true
+[FRAME:31919][DEBUG][field] auto_step route final settle prev=down frames=16
+[FRAME:31919][INFO][field] SEAM_OBSERVATION map=0x01 cell=(11,30) approach=north result=moved blocked=0 moved=1 classification=passable_only source=auto_hold
+[FRAME:31919][INFO][field] SEAM_CLASS_CHANGE map=0x01 cell=(11,30) approach=north from=unseen to=passable_only
+[FRAME:31935][DEBUG][field] auto_step route drift not on queued path from=(11,30) current=(11,31) next_index=4
+[FRAME:31935][DEBUG][field] auto_step clear_route: off-path drift from=(11,30) current=(11,31) next_index=4 source=route_settle_catchup
+[FRAME:31935][INFO][field] OVERWORLD_AUTO_WALK: event=cancel route=kol_return_staging waypoint=Western desert lower west lane index=nil reason=route_drift_off_path current=(11,31) expected_carry=(nil,nil)
+[FRAME:31935][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=cancel reason=route_drift_off_path current=(11,31) entry=(11,30) final=brecconary
+[FRAME:32039][INFO][field] INPUT_STUCK_ALT frame=32039 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:36180][DEBUG][field] CMD: report_position
+[FRAME:36180][INFO][field] POSITION: map=0x01(World Map) x=11 y=31
+[FRAME:36180][DEBUG][field] CMD: report_menu_state
+[FRAME:36180][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=10 base_nt=0 dialogue_start_row=25
+[FRAME:36180][DEBUG][field] CMD: report_path_state
+[FRAME:36180][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:36180][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:36180][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:36180][INFO][field] HOTKEY_NAVIGATION_MODULES_REFRESHED
+[FRAME:36180][INFO][field] NAVIGATION_MODULES_REFRESHED
+[FRAME:36180][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=123.000 snapshot_ms=13.000 safe_field_ms=31.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=170.000 fallback=false
+[FRAME:36180][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=already_on_network map=0x01 from=(11,31) entry=(11,31) path_len=0 route=kol_return_staging next=Western desert lower west lane final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=0 skipped_farther=784 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:36180][INFO][field] CMD_TIMING command=preview_overworld_recovery ms=205.000
+[FRAME:36180][DEBUG][field] CMD: launcher_probe:western_drift_probe_20261013
+[FRAME:36180][INFO][field] LAUNCHER_PROBE: western_drift_probe_20261013
+[FRAME:36840][DEBUG][field] CMD: auto_walk
+[FRAME:36840][INFO][field] AUTO_WALK_TRACE autowalk_to_object_entry target=Brecconary map=0x01 pos=(11,31) speak=true
+[FRAME:36840][INFO][field] AUTO_WALK_TRACE overworld_route_match target_id=overworld_brecconary target_route=brecconary_western_return active_route=brecconary active_matches=true follow_active=true
+[FRAME:36840][INFO][field] OVERWORLD_AUTO_WALK: event=recovery_required reason=opening_outside_route_corridor route=brecconary current=(11,31)
+[FRAME:36840][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=0.000 snapshot_ms=19.000 safe_field_ms=37.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=59.000 fallback=false
+[FRAME:36840][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=already_on_network map=0x01 from=(11,31) entry=(11,31) path_len=0 route=kol_return_staging next=Western desert lower west lane final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=0 skipped_farther=784 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:36840][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=recalculate status=recalculated_at_network current=(11,31) boundary_stop=true
+[FRAME:36840][INFO][field] CMD_TIMING command=auto_walk ms=63.000
+[FRAME:36840][DEBUG][field] CMD: report_position
+[FRAME:36840][INFO][field] POSITION: map=0x01(World Map) x=11 y=31
+[FRAME:36840][DEBUG][field] CMD: report_path_state
+[FRAME:36840][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:36840][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:36840][DEBUG][field] CMD: route_status
+[FRAME:36840][INFO][field] OVERWORLD_ROUTE: event=status route=kol_return_staging waypoint=Western desert lower west lane index=37
+[FRAME:36840][DEBUG][field] CMD: launcher_probe:western_stale_recalculate_20261013
+[FRAME:36840][INFO][field] LAUNCHER_PROBE: western_stale_recalculate_20261013
+[FRAME:38440][INFO][field] enemy_hp:  213
+[FRAME:38440][INFO][field] cursor:    D8=0 D9=0
+[FRAME:38440][INFO][field] stat_ram:  BA-CF=43 7C 13 CD FF 05 02 75 E3 20 18 95 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:38440][INFO][field] spells:    CE=0xFF CF=0x1F
+[FRAME:38440][INFO][field] flags:     combat=0x0A quest=0x42
+[FRAME:38440][INFO][field] terrain:   0x00
+[FRAME:38440][INFO][field] light:     radius=1 radiant_timer=0
+[FRAME:38440][INFO][field] ----------------------
+[FRAME:38440][INFO][field] BATTLE_MENU: FIGHT
+[FRAME:38441][DEBUG][battle] auto_step cancel: can_walk=false auto_dir=right pending_repress=nil
+[FRAME:38441][INFO][battle] OVERWORLD_AUTO_WALK: event=cancel route=kol_return_staging waypoint=Western desert south shelf index=40 reason=can_walk_false current=(13,28) expected_carry=(15,27)
+[FRAME:38442][INFO][battle] INPUT_EXTERNAL_BRIDGE_RESUME frame=38442 keys=LeftAlt native_joy1=-
+[FRAME:38442][INFO][battle] INPUT_STALE_ALT_IGNORED frame=38442 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:38443][INFO][battle] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=38443 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:38504][DEBUG][battle] EVENT: dialogue: A Magician draws near!
+[FRAME:38561][INFO][battle] INPUT_STUCK_ALT frame=38561 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:38676][INFO][battle] INPUT_STUCK_ALT_CLEAR frame=38676 frames=234 keys=LeftAlt joy1=A
+[FRAME:38700][DEBUG][battle] CMD: stop_auto_walk
+[FRAME:38700][INFO][battle] AUTO_WALK: manually stopped active=false reason=manual stop_auto_walk
+[FRAME:38700][DEBUG][battle] CMD: report_position
+[FRAME:38700][INFO][battle] POSITION: map=0x01(World Map) x=13 y=28
+[FRAME:38700][DEBUG][battle] CMD: report_path_state
+[FRAME:38700][INFO][battle] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:38700][INFO][battle] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:38700][DEBUG][battle] CMD: launcher_probe:western_guided_stop_20261013
+[FRAME:38700][INFO][battle] LAUNCHER_PROBE: western_guided_stop_20261013
+[FRAME:38780][DEBUG][battle] EVENT: dialogue: Bill attacks! The Magician's Hit Points have been reduced by 37.
+[FRAME:38803][INFO][battle] INPUT_STUCK_ALT frame=38803 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:38922][DEBUG][battle] EVENT: dialogue: defeating the Magician. Thy Experience increases by 4. Thy GOLD increases by 9.
+[FRAME:38934][INFO][battle] INPUT_STUCK_ALT_CLEAR frame=38934 frames=250 keys=LeftAlt joy1=A
+[FRAME:39081][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=39081 keys=LeftAlt native_joy1=-
+[FRAME:39081][INFO][field] INPUT_STALE_ALT_IGNORED frame=39081 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:39082][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=39082 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:39113][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=39113 keys=LeftAlt native_joy1=-
+[FRAME:39113][INFO][field] INPUT_STALE_ALT_IGNORED frame=39113 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:39114][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=39114 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:39196][INFO][field] INPUT_STUCK_ALT frame=39196 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:39379][INFO][field] INPUT_EXTERNAL_BRIDGE_RESUME frame=39379 keys=LeftAlt native_joy1=-
+[FRAME:39379][INFO][field] INPUT_STALE_ALT_IGNORED frame=39379 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:39380][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=39380 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:44461][INFO][field] INPUT_STALE_ALT_IGNORED frame=44461 keys=LeftAlt joy1=- bridge=- reason=fceux_alt_tab_latch
+[FRAME:44462][INFO][field] INPUT_EXTERNAL_BRIDGE_SUSPEND frame=44462 keys=LeftAlt native_joy1=- reason=menu_dialog_modifier_or_background
+[FRAME:44700][DEBUG][field] CMD: stop_auto_walk
+[FRAME:44700][INFO][field] AUTO_WALK: manually stopped active=false reason=manual stop_auto_walk
+[FRAME:44700][DEBUG][field] CMD: stop_overworld_route
+[FRAME:44700][INFO][field] OVERWORLD_ROUTE: event=stop route=kol_return_staging
+[FRAME:44700][DEBUG][field] CMD: report_menu_state
+[FRAME:44700][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=14 base_nt=0 dialogue_start_row=19
+[FRAME:44700][DEBUG][field] CMD: report_path_state
+[FRAME:44700][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:44700][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:44700][DEBUG][field] CMD: report_position
+[FRAME:44700][INFO][field] POSITION: map=0x01(World Map) x=13 y=28
+[FRAME:44700][DEBUG][field] CMD: inspect_tile:93,36
+[FRAME:44700][INFO][field] HOTKEY_NAVIGATION_MODULES_REFRESHED
+[FRAME:44700][INFO][field] NAVIGATION_MODULES_REFRESHED
+[FRAME:44700][INFO][field] TILE map=0x01 x=93 y=36 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:44700][INFO][field] CMD_TIMING command=inspect_tile:93,36 ms=33.000
+[FRAME:44700][DEBUG][field] CMD: inspect_tile:91,110
+[FRAME:44700][INFO][field] TILE map=0x01 x=91 y=110 dims=120x120 tile=2 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:44700][INFO][field] CMD_TIMING command=inspect_tile:91,110 ms=34.000
+[FRAME:44700][DEBUG][field] CMD: launcher_probe:regional_checks_ready_20261013
+[FRAME:44700][INFO][field] LAUNCHER_PROBE: regional_checks_ready_20261013
+[FRAME:45131][INFO][field] TELEPORT_LOOP_POST_MAP_SURVEY_TICK map=0x01 landing=(93,36) frames_left=1 reason=teleport_to
+[FRAME:45131][INFO][field] TELEPORT_LOOP_POST_MAP_CRAWLER_TICK map=0x01 landing=(93,36) frames_left=1 reason=teleport_to
+[FRAME:45131][INFO][field] TELEPORT_LOOP_PRE_FRAMEADVANCE map=0x01 landing=(93,36) frames_left=1 reason=teleport_to
+[FRAME:45131][INFO][field] TELEPORT_FRAMEADVANCE_ENTER map=0x01 landing=(93,36) frames_left=1 reason=teleport_to
+[FRAME:45131][INFO][field] TELEPORT_FRAMEADVANCE_RETURN map=0x01 landing=(93,36) frames_left=1 reason=teleport_to
+[FRAME:45131][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(93,36) resets=12 last=(93,36) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:45480][DEBUG][field] CMD: report_position
+[FRAME:45480][INFO][field] POSITION: map=0x01(World Map) x=93 y=36
+[FRAME:45600][DEBUG][field] CMD: probe_edge:UP
+[FRAME:45600][INFO][field] MOVE map=0x01 from=(93,36) dir=up dest=(93,35) dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=south approach_blocked=false effective_passable=true
+[FRAME:45600][INFO][field] EDGE_PROBE_START map=0x01 from=(93,36) dir=up dest=(93,35) raw_hold_frames=60 moved_settle_frames=60
+[FRAME:45600][INFO][field] EDGE_MOTION_STATE context=probe_start map=0x01(World Map) terrain=0x00 player=(93,36) overworld=(93,4) move=0x7F sub=0x90 ppu_ctrl=0x00 scroll_x=0x70 scroll_y=0x00 buttons=0x00 ram0038_0043=00 08 5D 24 7F 90 04 CB B5 F5 5D 17 ram0030_004F=76 DA B6 A7 A8 7A FF 00 00 08 5D 24 7F 90 04 CB B5 F5 5D 17 00 01 40 00 24 04 0F 07 00 FF 20 B4 from=(93,36) dir=up dest=(93,35)
+[FRAME:45601][INFO][field] INPUT_STUCK_ALT_CLEAR frame=45601 frames=6524 keys=LeftAlt joy1=up
+[FRAME:45694][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(93,36) dir=up dest=(93,35) status=moved final=(93,34) reached_dest=true settle_frames=60 tile=0 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=south approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:45694][INFO][field] EDGE_MOTION_STATE context=probe_result map=0x01(World Map) terrain=0x00 player=(93,34) overworld=(93,34) move=0x7F sub=0x90 ppu_ctrl=0x00 scroll_x=0x70 scroll_y=0xD0 buttons=0x00 ram0038_0043=03 21 5D 22 7F 90 22 08 FC 9F 5D 22 ram0030_004F=36 C4 AB 47 A8 78 FF 00 03 21 5D 22 7F 90 22 08 FC 9F 5D 22 00 01 40 00 2E 1A 0F 05 0C 00 20 2C from=(93,36) dir=up dest=(93,35) status=moved reached_dest=true reason=position_changed
+[FRAME:45694][INFO][field] EDGE_PROBE_CARRY map=0x01 from=(93,36) dir=up dest=(93,35) final=(93,34) carry_dx=0 carry_dy=-1
+[FRAME:45694][INFO][field] EDGE_PROBE_SETTLE_TRACE map=0x01 from=(93,36) dir=up dest=(93,35) final=(93,34) samples=18 trace=f00:(93,35) ow=(13,26) move=0x0B sub=0x10 scroll=(0x70,0xE0) buttons=0x10 ram0038_0043=03 21 5D 23 0B 10 1A 08 5E 9F 0D 1A; f00:(93,35) ow=(13,26) move=0x7F sub=0x90 scroll=(0x70,0xDF) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 5E 9F 0D 1A; f01:(93,35) ow=(86,26) move=0x7F sub=0x90 scroll=(0x70,0xDE) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 EC F5 56 1B; f02:(93,35) ow=(89,26) move=0x7F sub=0x90 scroll=(0x70,0xDD) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 EC F5 59 1B; f03:(93,35) ow=(92,26) move=0x7F sub=0x90 scroll=(0x70,0xDC) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 37 F6 5C 1B; f04:(93,35) ow=(95,26) move=0x7F sub=0x90 scroll=(0x70,0xDB) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 00 F6 5F 1B; f05:(93,35) ow=(98,26) move=0x7F sub=0x90 scroll=(0x70,0xDA) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 B5 F5 62 1B; f06:(93,35) ow=(101,26) move=0x7F sub=0x90 scroll=(0x70,0xD9) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 B5 F5 65 1B; f07:(93,35) ow=(101,26) move=0x7F sub=0x90 scroll=(0x70,0xD8) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 1A F5 65 1B; f08:(93,35) ow=(101,26) move=0x7F sub=0x90 scroll=(0x70,0xD7) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 1A F5 65 1B; f09:(93,35) ow=(86,26) move=0x7F sub=0x90 scroll=(0x70,0xD6) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 EC F5 56 1B; f10:(93,35) ow=(89,26) move=0x7F sub=0x90 scroll=(0x70,0xD5) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 EC F5 59 1B; f11:(93,35) ow=(92,26) move=0x7F sub=0x90 scroll=(0x70,0xD4) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 37 F6 5C 1B; f12:(93,35) ow=(95,26) move=0x7F sub=0x90 scroll=(0x70,0xD3) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 00 F6 5F 1B; f13:(93,35) ow=(98,26) move=0x7F sub=0x90 scroll=(0x70,0xD2) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 B5 F5 62 1B; f14:(93,35) ow=(101,26) move=0x7F sub=0x90 scroll=(0x70,0xD1) buttons=0x10 ram0038_0043=03 21 5D 23 7F 90 1A 08 B5 F5 65 1B; f15:(93,34) ow=(93,34) move=0x23 sub=0x67 scroll=(0x70,0xD0) buttons=0x00 ram0038_0043=03 21 5D 22 23 67 22 08 FC 9F 5D 22; f16:(93,34) ow=(93,34) move=0x7F sub=0x90 scroll=(0x70,0xD0) buttons=0x00 ram0038_0043=03 21 5D 22 7F 90 22 08 FC 9F 5D 22
+[FRAME:45754][INFO][field] INPUT_STUCK_ALT frame=45754 frames=120 keys=LeftAlt joy1=- recovery=stale_alt_ignored_or_run_recover_fceux_input benign=true
+[FRAME:49091][INFO][field] TELEPORT_FRAMEADVANCE_RETURN map=0x01 landing=(93,35) frames_left=1 reason=teleport_to
+[FRAME:49091][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(93,35) resets=12 last=(93,35) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:49200][DEBUG][field] CMD: report_position
+[FRAME:49200][INFO][field] POSITION: map=0x01(World Map) x=93 y=35
+[FRAME:49200][DEBUG][field] CMD: report_menu_state
+[FRAME:49200][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=14 base_nt=0 dialogue_start_row=15
+[FRAME:49200][DEBUG][field] CMD: launcher_probe:kol_selector_origin_20261013
+[FRAME:49200][INFO][field] LAUNCHER_PROBE: kol_selector_origin_20261013
+[FRAME:55620][DEBUG][field] CMD: report_position
+[FRAME:55620][INFO][field] POSITION: map=0x01(World Map) x=103 y=72
+[FRAME:55620][DEBUG][field] CMD: report_menu_state
+[FRAME:55620][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=14 base_nt=0 dialogue_start_row=15
+[FRAME:55620][DEBUG][field] CMD: launcher_probe:rimuldar_selector_origin_20261013
+[FRAME:55620][INFO][field] LAUNCHER_PROBE: rimuldar_selector_origin_20261013
+[FRAME:58991][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(73,96) resets=12 last=(73,96) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:59100][DEBUG][field] CMD: report_position
+[FRAME:59100][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:59100][DEBUG][field] CMD: report_menu_state
+[FRAME:59100][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=14 base_nt=0 dialogue_start_row=15
+[FRAME:59100][DEBUG][field] CMD: launcher_probe:hauksness_selector_origin_20261013
+[FRAME:59100][INFO][field] LAUNCHER_PROBE: hauksness_selector_origin_20261013
+[FRAME:86640][DEBUG][field] CMD: log_state
+[FRAME:86640][INFO][field] --- State Snapshot ---
+[FRAME:86640][INFO][field] frame:     86640
+[FRAME:86640][INFO][field] state:     field
+[FRAME:86640][INFO][field] map_id:    0x01 (World Map)
+[FRAME:86640][INFO][field] pos:       x=73, y=96
+[FRAME:86640][INFO][field] raw_pos:   player=(73,96) overworld=(73,4)
+[FRAME:86640][INFO][field] hp:        149 / 149
+[FRAME:86640][INFO][field] mp:        89 / 121
+[FRAME:86640][INFO][field] level:     21
+[FRAME:86640][INFO][field] stats:     STR=0x5F AGI=0x51 ATK=0x87 DEF=0x5A
+[FRAME:86640][INFO][field] gold:      52508
+[FRAME:86640][INFO][field] exp:       31815
+[FRAME:86640][INFO][field] keys:      5
+[FRAME:86640][INFO][field] herbs:     2
+[FRAME:86640][INFO][field] enemy_hp:  229
+[FRAME:86640][INFO][field] cursor:    D8=0 D9=0
+[FRAME:86640][INFO][field] stat_ram:  BA-CF=47 7C 1C CD FF 05 02 75 E3 20 18 95 59 15 5F 51 95 79 87 5A FF 1F
+[FRAME:86640][INFO][field] spells:    CE=0xFF CF=0x1F
+[FRAME:86640][INFO][field] flags:     combat=0x0A quest=0x42
+[FRAME:86640][INFO][field] terrain:   0x00
+[FRAME:86640][INFO][field] light:     radius=1 radiant_timer=0
+[FRAME:86640][INFO][field] ----------------------
+[FRAME:86640][DEBUG][field] CMD: report_position
+[FRAME:86640][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:86640][DEBUG][field] CMD: launcher_probe:staged_fix_reload_position_20261013
+[FRAME:86640][INFO][field] LAUNCHER_PROBE: staged_fix_reload_position_20261013
+
+REGIONAL COMMAND MARKERS
+Matched log: [FRAME:52740][INFO][field] LAUNCHER_PROBE: kol_matrix_stopped_20261013
+Matched log: [FRAME:58320][INFO][field] LAUNCHER_PROBE: rimuldar_matrix_stopped_20261013
+Matched log: [FRAME:61500][INFO][field] LAUNCHER_PROBE: hauksness_matrix_stopped_20261013
+
+RECOVERED SPEECH EXTRACT
+[2026-10-13 16:25:06] command='interrupt:Path state reported'
+[2026-10-13 16:25:06] command='interrupt:Menu state reported'
+[2026-10-13 16:25:06] command='interrupt:Route to Brecconary. Next: Cave road south lane, 1 north, 12 east'
+[2026-10-13 16:25:22] command='interrupt:Recovery auto-walk. Network entry: Western desert lower west lane at 11,30, 16 steps. Final destination: Brecconary. Auto-walk will stop at the waypoint network.'
+[2026-10-13 16:25:22] command='speak:Recovered 1 HP. HP 140'
+[2026-10-13 16:25:22] command='speak:Recovered 1 HP. HP 141'
+[2026-10-13 16:25:23] command='speak:Recovered 1 HP. HP 142'
+[2026-10-13 16:25:23] command='interrupt:Battle!'
+[2026-10-13 16:25:23] command='speak:FIGHT'
+[2026-10-13 16:25:25] command='interrupt:A Red Slime draws near!'
+[2026-10-13 16:22:09] command='interrupt:Route to Brecconary. Next: Cave road south lane, 1 north, 12 east'
+[2026-10-13 16:22:09] command='interrupt:Recovery preview. Final destination: Brecconary. Safe network entry: Western desert lower west lane at 11,30. 16 south. Then current leg to Kol. Next: Western desert south detour. Preview only; no movement started.'
+[2026-10-13 16:30:43] command='interrupt:Recovery preview. Final destination: Brecconary. Safe network entry: Western desert lower notch at 11,31. Already there. Then current leg to Kol. Next: Western desert lower west lane. Preview only; no movement started.'
+[2026-10-13 16:30:54] command='interrupt:Route recalculated. Current leg to Kol. Final destination: Brecconary. Next: Western desert lower west lane, 1 north Press auto-walk again to continue.'
+[2026-10-13 16:30:54] command='interrupt:Path state reported'
+[2026-10-13 16:30:54] command='interrupt:Current leg to Kol. Final destination: Brecconary. Next: Western desert lower west lane, 1 north'
+[2026-10-13 16:31:16] command='interrupt:Continuous overworld auto-walk to Kol'
+[2026-10-13 16:31:20] command='interrupt:Battle!'
+[2026-10-13 16:31:20] command='speak:FIGHT'
+[2026-10-13 16:31:21] command='interrupt:A Magician draws near!'
+[2026-10-13 16:31:25] command='interrupt:No auto-walk is active'
+[2026-10-13 16:31:25] command='interrupt:Path state reported'
+[2026-10-13 16:31:26] command="speak:Bill attacks! The Magician's Hit Points have been reduced by 37."
+[2026-10-13 16:31:28] command='speak:defeating the Magician. Thy Experience increases by 4. Thy GOLD increases by 9.'

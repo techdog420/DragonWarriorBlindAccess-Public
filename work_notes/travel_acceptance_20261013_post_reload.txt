@@ -1,0 +1,366 @@
+Travel after the first source reload, before the general recovery-guard reload - 2026-10-13
+Source: 63c64d6 plus Charlock selector fix.
+Player accepted physical Shift+R/U refusal/D dismissal; actual refusal was Close the command menu first.
+Fresh frame60420 confirmed menu and dialogue both cleared, same stopped (51,49), Brecconary retained.
+Western positioning used a guarded coarse teleport to (9,14), followed by a normal right probe. It carried through (10,14) to (11,14); this is positioning evidence, not a newly promoted edge.
+Loaded western selectors proposed openings through decoded mountains (19..22,13). General corridor/recovery hardening is not yet live-tested.
+Whole-map model audits are preserved separately in travel_recovery_audit_20261013.txt.
+
+DEBUG EXTRACT
+[FRAME:00301][DEBUG][field] EVENT: command menu opened
+[FRAME:00342][DEBUG][field] EVENT: command menu closed
+[FRAME:03840][DEBUG][field] CMD: launcher_probe:travel_selector_reload_20261013
+[FRAME:03840][INFO][field] LAUNCHER_PROBE: travel_selector_reload_20261013
+[FRAME:03840][DEBUG][field] CMD: report_position
+[FRAME:03840][INFO][field] POSITION: map=0x01(World Map) x=51 y=50
+[FRAME:03840][DEBUG][field] CMD: report_path_state
+[FRAME:03840][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:03840][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:03840][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:03840][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:03840][DEBUG][field] CMD: report_menu_state
+[FRAME:03840][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=0 dialogue_start_row=23
+[FRAME:03840][DEBUG][field] CMD: log_state
+[FRAME:03840][INFO][field] hp:        136 / 149
+[FRAME:03840][INFO][field] mp:        89 / 121
+[FRAME:03840][DEBUG][field] CMD: input_status:travel_selector_reload
+[FRAME:03840][INFO][field] INPUT_STATUS tag=travel_selector_reload keys=LeftAlt joy1=- bridge=v3:6720:1791923473:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:03840][DEBUG][field] CMD: speech_status
+[FRAME:03840][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:03840][DEBUG][field] CMD: current_object
+[FRAME:05280][DEBUG][field] CMD: start_overworld_route:castle
+[FRAME:05280][INFO][field] OVERWORLD_ROUTE: event=start route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=tantegel_kol
+[FRAME:05280][DEBUG][field] CMD: route_status
+[FRAME:05280][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:05280][DEBUG][field] CMD: launcher_probe:travel_loaded_castle_20261013
+[FRAME:05280][INFO][field] LAUNCHER_PROBE: travel_loaded_castle_20261013
+[FRAME:05400][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:05400][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=brecconary_swamp_cave_south
+[FRAME:05400][DEBUG][field] CMD: route_status
+[FRAME:05400][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:05400][DEBUG][field] CMD: launcher_probe:travel_loaded_brecconary_20261013
+[FRAME:05400][INFO][field] LAUNCHER_PROBE: travel_loaded_brecconary_20261013
+[FRAME:05520][DEBUG][field] CMD: start_overworld_route:erdrick
+[FRAME:05520][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=erdrick_swamp_cave_south
+[FRAME:05520][DEBUG][field] CMD: route_status
+[FRAME:05520][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:05520][DEBUG][field] CMD: launcher_probe:travel_loaded_erdrick_20261013
+[FRAME:05520][INFO][field] LAUNCHER_PROBE: travel_loaded_erdrick_20261013
+[FRAME:05640][DEBUG][field] CMD: start_overworld_route:garinham
+[FRAME:05640][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=garinham_swamp_cave_south
+[FRAME:05640][DEBUG][field] CMD: route_status
+[FRAME:05640][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:05640][DEBUG][field] CMD: launcher_probe:travel_loaded_garinham_20261013
+[FRAME:05640][INFO][field] LAUNCHER_PROBE: travel_loaded_garinham_20261013
+[FRAME:05760][DEBUG][field] CMD: start_overworld_route:kol
+[FRAME:05760][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=kol_swamp_cave_south
+[FRAME:05760][DEBUG][field] CMD: route_status
+[FRAME:05760][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:05760][DEBUG][field] CMD: launcher_probe:travel_loaded_kol_20261013
+[FRAME:05760][INFO][field] LAUNCHER_PROBE: travel_loaded_kol_20261013
+[FRAME:05880][DEBUG][field] CMD: start_overworld_route:northern_cave
+[FRAME:05880][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=northern_cave_swamp_cave_south
+[FRAME:05880][DEBUG][field] CMD: route_status
+[FRAME:05880][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:05880][DEBUG][field] CMD: launcher_probe:travel_loaded_northern_cave_20261013
+[FRAME:05880][INFO][field] LAUNCHER_PROBE: travel_loaded_northern_cave_20261013
+[FRAME:06000][DEBUG][field] CMD: start_overworld_route:mountain_cave
+[FRAME:06000][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=mountain_cave_swamp_cave_south
+[FRAME:06000][DEBUG][field] CMD: route_status
+[FRAME:06000][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06000][DEBUG][field] CMD: launcher_probe:travel_loaded_mountain_cave_20261013
+[FRAME:06000][INFO][field] LAUNCHER_PROBE: travel_loaded_mountain_cave_20261013
+[FRAME:06120][DEBUG][field] CMD: start_overworld_route:swamp_cave
+[FRAME:06120][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=swamp_cave_north_swamp_cave_south
+[FRAME:06120][DEBUG][field] CMD: route_status
+[FRAME:06120][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06120][DEBUG][field] CMD: launcher_probe:travel_loaded_swamp_cave_20261013
+[FRAME:06120][INFO][field] LAUNCHER_PROBE: travel_loaded_swamp_cave_20261013
+[FRAME:06240][DEBUG][field] CMD: start_overworld_route:swamp_cave_south
+[FRAME:06240][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06240][DEBUG][field] CMD: route_status
+[FRAME:06240][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06240][DEBUG][field] CMD: launcher_probe:travel_loaded_swamp_cave_south_20261013
+[FRAME:06240][INFO][field] LAUNCHER_PROBE: travel_loaded_swamp_cave_south_20261013
+[FRAME:06360][DEBUG][field] CMD: start_overworld_route:rainbow_bridge
+[FRAME:06360][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=rainbow_bridge
+[FRAME:06360][DEBUG][field] CMD: route_status
+[FRAME:06360][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06360][DEBUG][field] CMD: launcher_probe:travel_loaded_rainbow_bridge_20261013
+[FRAME:06360][INFO][field] LAUNCHER_PROBE: travel_loaded_rainbow_bridge_20261013
+[FRAME:06480][DEBUG][field] CMD: start_overworld_route:rimuldar
+[FRAME:06480][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=rimuldar
+[FRAME:06480][DEBUG][field] CMD: route_status
+[FRAME:06480][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06480][DEBUG][field] CMD: launcher_probe:travel_loaded_rimuldar_20261013
+[FRAME:06480][INFO][field] LAUNCHER_PROBE: travel_loaded_rimuldar_20261013
+[FRAME:06600][DEBUG][field] CMD: start_overworld_route:magic_temple
+[FRAME:06600][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=magic_temple
+[FRAME:06600][DEBUG][field] CMD: route_status
+[FRAME:06600][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06600][DEBUG][field] CMD: launcher_probe:travel_loaded_magic_temple_20261013
+[FRAME:06600][INFO][field] LAUNCHER_PROBE: travel_loaded_magic_temple_20261013
+[FRAME:06720][DEBUG][field] CMD: start_overworld_route:cantlin_hauksness
+[FRAME:06720][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=cantlin_swamp_cave_south
+[FRAME:06720][DEBUG][field] CMD: route_status
+[FRAME:06720][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06720][DEBUG][field] CMD: launcher_probe:travel_loaded_cantlin_hauksness_20261013
+[FRAME:06720][INFO][field] LAUNCHER_PROBE: travel_loaded_cantlin_hauksness_20261013
+[FRAME:06840][DEBUG][field] CMD: start_overworld_route:hauksness
+[FRAME:06840][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=hauksness_swamp_cave_south
+[FRAME:06840][DEBUG][field] CMD: route_status
+[FRAME:06840][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06840][DEBUG][field] CMD: launcher_probe:travel_loaded_hauksness_20261013
+[FRAME:06840][INFO][field] LAUNCHER_PROBE: travel_loaded_hauksness_20261013
+[FRAME:06960][DEBUG][field] CMD: start_overworld_route:great_swamp_cantlin
+[FRAME:06960][INFO][field] OVERWORLD_ROUTE: event=recalculate route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=great_swamp_swamp_cave_south
+[FRAME:06960][DEBUG][field] CMD: route_status
+[FRAME:06960][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:06960][DEBUG][field] CMD: launcher_probe:travel_loaded_great_swamp_cantlin_20261013
+[FRAME:06960][INFO][field] LAUNCHER_PROBE: travel_loaded_great_swamp_cantlin_20261013
+[FRAME:07080][DEBUG][field] CMD: start_overworld_route:charlock_castle
+[FRAME:07080][INFO][field] OVERWORLD_ROUTE: event=replace route=charlock_castle waypoint=Charlock Castle east approach index=26
+[FRAME:07080][DEBUG][field] CMD: route_status
+[FRAME:07080][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_castle waypoint=Charlock Castle east approach index=26
+[FRAME:07080][DEBUG][field] CMD: launcher_probe:travel_loaded_charlock_castle_20261013
+[FRAME:07080][INFO][field] LAUNCHER_PROBE: travel_loaded_charlock_castle_20261013
+[FRAME:11520][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:11520][INFO][field] OVERWORLD_ROUTE: event=replace route=charlock_return waypoint=Charlock Castle east approach index=3 staged_from=brecconary_swamp_cave_south
+[FRAME:11520][DEBUG][field] CMD: route_status
+[FRAME:11520][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock Castle east approach index=3
+[FRAME:11520][DEBUG][field] CMD: launcher_probe:field_dialogue_brecconary_20261013
+[FRAME:11520][INFO][field] LAUNCHER_PROBE: field_dialogue_brecconary_20261013
+[FRAME:11640][DEBUG][field] CMD: auto_walk
+[FRAME:11640][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock Castle east approach index=3 steps=1 from=(51,50) to=(51,49) carry=(51,50) continuous=true stop_on_blocker=false
+[FRAME:11640][DEBUG][field] CMD: simulate_sequence:B,1,60;A,8,0
+[FRAME:11685][INFO][field] OVERWORLD_ROUTE: event=advance route=charlock_return waypoint=Charlock Castle east approach index=4
+[FRAME:11686][DEBUG][field] auto_step complete dir=up from=(51,50) to=(51,49) frames=27 timeout_retries=0 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:11705][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=charlock_return waypoint=Charlock Castle east approach index=3 steps=1
+[FRAME:11705][INFO][field] OVERWORLD_AUTO_WALK: event=start route=charlock_return waypoint=Charlock island central corridor index=4 steps=8 from=(51,49) to=(51,57) carry=(50,57) continuous=true stop_on_blocker=false
+[FRAME:11705][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:11732][DEBUG][field] EVENT: command menu opened
+[FRAME:11733][INFO][field] OVERWORLD_AUTO_WALK: event=cancel route=charlock_return waypoint=Charlock island central corridor index=4 reason=can_walk_false current=(51,49) expected_carry=(50,57)
+[FRAME:12840][DEBUG][field] CMD: report_position
+[FRAME:12840][INFO][field] POSITION: map=0x01(World Map) x=51 y=49
+[FRAME:12840][DEBUG][field] CMD: report_menu_state
+[FRAME:12840][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=true cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=true cmd_live=true cmd_rearm=false cmd_hold=8 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=1 dialogue_start_row=21
+[FRAME:12840][DEBUG][field] CMD: report_path_state
+[FRAME:12840][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:12840][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:12840][DEBUG][field] CMD: route_status
+[FRAME:12840][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:12840][DEBUG][field] CMD: launcher_probe:dialogue_menu_ready_20261013
+[FRAME:12840][INFO][field] LAUNCHER_PROBE: dialogue_menu_ready_20261013
+[FRAME:12960][DEBUG][field] CMD: simulate_sequence:A,8,0
+[FRAME:13027][DEBUG][field] EVENT: dialogue: 'There is no one there.
+[FRAME:14340][DEBUG][field] CMD: report_menu_state
+[FRAME:14340][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=true cursor_visible=true cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=true cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=23 scroll_tiles=6 base_nt=0 dialogue_start_row=21
+[FRAME:14340][DEBUG][field] CMD: report_upper_dialogue_state
+[FRAME:14340][INFO][field] UPPER_STATE active=false menu_raw=true menu_active=true submenu=nil scroll_tiles=6 base_nt=0 PREV.dialogue_len=23 PREV.announced_dialogue_len=23 upper_len=228 baseline_len=228 announced_len=228 lower_len=23 upper="[GOLD][GOLD][GOLD][GOLD][GOLD] .... .COMMAND BillTALK    SPELL LV  21 STATUS  ITEM HP 137 STAIRS  DOOR MP  89 SEARCH  TAKE G52490 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] E31807 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD]" baseline="[GOLD][GOLD][GOLD][GOLD][GOLD] .... .COMMAND BillTALK    SPELL LV  21 STATUS  ITEM HP 137 STAIRS  DOOR MP  89 SEARCH  TAKE G52490 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] E31807 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD]" announced="[GOLD][GOLD][GOLD][GOLD][GOLD] .... .COMMAND BillTALK    SPELL LV  21 STATUS  ITEM HP 137 STAIRS  DOOR MP  89 SEARCH  TAKE G52490 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] E31807 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD]" lower="'There is no one there." prev_lower="'There is no one there." announced_lower="'There is no one there."
+[FRAME:14340][DEBUG][field] CMD: report_position
+[FRAME:14340][INFO][field] POSITION: map=0x01(World Map) x=51 y=49
+[FRAME:14340][DEBUG][field] CMD: report_path_state
+[FRAME:14340][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:14340][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:14340][DEBUG][field] CMD: launcher_probe:field_talk_active_20261013
+[FRAME:14340][INFO][field] LAUNCHER_PROBE: field_talk_active_20261013
+[FRAME:56367][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:56975][INFO][field] OBJECT_HOTKEY_BLOCKED key=key_auto_walk reason=Close the command menu first
+[FRAME:57255][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:60420][DEBUG][field] CMD: launcher_probe:talk_keys_accepted_20261013
+[FRAME:60420][INFO][field] LAUNCHER_PROBE: talk_keys_accepted_20261013
+[FRAME:60420][DEBUG][field] CMD: report_position
+[FRAME:60420][INFO][field] POSITION: map=0x01(World Map) x=51 y=49
+[FRAME:60420][DEBUG][field] CMD: report_path_state
+[FRAME:60420][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:60420][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:60420][DEBUG][field] CMD: report_runtime_blocks
+[FRAME:60420][INFO][field] RUNTIME_BLOCKS map=0x01 none
+[FRAME:60420][DEBUG][field] CMD: report_menu_state
+[FRAME:60420][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=true cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=0 dialogue_start_row=21
+[FRAME:60420][DEBUG][field] CMD: report_upper_dialogue_state
+[FRAME:60420][INFO][field] UPPER_STATE active=false menu_raw=false menu_active=false submenu=nil scroll_tiles=6 base_nt=0 PREV.dialogue_len=0 PREV.announced_dialogue_len=0 upper_len=268 baseline_len=268 announced_len=268 lower_len=0 upper="[GOLD][GOLD][GOLD][GOLD][GOLD] .... . Bill LV  21 [GOLD][GOLD][GOLD] HP 137 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] MP  89 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] G52490 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] E31807 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD]" baseline="[GOLD][GOLD][GOLD][GOLD][GOLD] .... . Bill LV  21 [GOLD][GOLD][GOLD] HP 137 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] MP  89 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] G52490 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] E31807 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD]" announced="[GOLD][GOLD][GOLD][GOLD][GOLD] .... . Bill LV  21 [GOLD][GOLD][GOLD] HP 137 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] MP  89 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] G52490 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD] E31807 [GOLD][GOLD][GOLD][GOLD][GOLD][GOLD][GOLD]" lower="" prev_lower="" announced_lower=""
+[FRAME:60420][DEBUG][field] CMD: log_state
+[FRAME:60420][INFO][field] hp:        137 / 149
+[FRAME:60420][INFO][field] mp:        89 / 121
+[FRAME:60420][DEBUG][field] CMD: input_status:talk_keys_accepted
+[FRAME:60420][INFO][field] INPUT_STATUS tag=talk_keys_accepted keys=LeftAlt joy1=- bridge=v3:10132:1791924416:0:suspended buttons=0x00 left_alt=true bridge_enabled=true bridge_override=config
+[FRAME:60420][DEBUG][field] CMD: speech_status
+[FRAME:60420][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:60420][DEBUG][field] CMD: route_status
+[FRAME:60420][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:62280][DEBUG][field] CMD: audit_overworld_recovery:tantegel
+[FRAME:62280][DEBUG][field] CMD: launcher_probe:recovery_audit_tantegel_20261013
+[FRAME:62280][INFO][field] LAUNCHER_PROBE: recovery_audit_tantegel_20261013
+[FRAME:62400][DEBUG][field] CMD: audit_overworld_recovery:brecconary
+[FRAME:62400][DEBUG][field] CMD: launcher_probe:recovery_audit_brecconary_20261013
+[FRAME:62400][INFO][field] LAUNCHER_PROBE: recovery_audit_brecconary_20261013
+[FRAME:62520][DEBUG][field] CMD: audit_overworld_recovery:erdrick
+[FRAME:62520][DEBUG][field] CMD: launcher_probe:recovery_audit_erdrick_20261013
+[FRAME:62520][INFO][field] LAUNCHER_PROBE: recovery_audit_erdrick_20261013
+[FRAME:62640][DEBUG][field] CMD: audit_overworld_recovery:garinham
+[FRAME:62640][DEBUG][field] CMD: launcher_probe:recovery_audit_garinham_20261013
+[FRAME:62640][INFO][field] LAUNCHER_PROBE: recovery_audit_garinham_20261013
+[FRAME:62760][DEBUG][field] CMD: audit_overworld_recovery:kol
+[FRAME:62760][DEBUG][field] CMD: launcher_probe:recovery_audit_kol_20261013
+[FRAME:62760][INFO][field] LAUNCHER_PROBE: recovery_audit_kol_20261013
+[FRAME:62880][DEBUG][field] CMD: audit_overworld_recovery:northern_cave
+[FRAME:62880][DEBUG][field] CMD: launcher_probe:recovery_audit_northern_cave_20261013
+[FRAME:62880][INFO][field] LAUNCHER_PROBE: recovery_audit_northern_cave_20261013
+[FRAME:63000][DEBUG][field] CMD: audit_overworld_recovery:mountain_cave
+[FRAME:63000][DEBUG][field] CMD: launcher_probe:recovery_audit_mountain_cave_20261013
+[FRAME:63000][INFO][field] LAUNCHER_PROBE: recovery_audit_mountain_cave_20261013
+[FRAME:63120][DEBUG][field] CMD: audit_overworld_recovery:swamp_cave
+[FRAME:63120][DEBUG][field] CMD: launcher_probe:recovery_audit_swamp_cave_20261013
+[FRAME:63120][INFO][field] LAUNCHER_PROBE: recovery_audit_swamp_cave_20261013
+[FRAME:63240][DEBUG][field] CMD: audit_overworld_recovery:swamp_cave_south
+[FRAME:63240][DEBUG][field] CMD: launcher_probe:recovery_audit_swamp_cave_south_20261013
+[FRAME:63240][INFO][field] LAUNCHER_PROBE: recovery_audit_swamp_cave_south_20261013
+[FRAME:63360][DEBUG][field] CMD: audit_overworld_recovery:rainbow_bridge
+[FRAME:63360][DEBUG][field] CMD: launcher_probe:recovery_audit_rainbow_bridge_20261013
+[FRAME:63360][INFO][field] LAUNCHER_PROBE: recovery_audit_rainbow_bridge_20261013
+[FRAME:63480][DEBUG][field] CMD: audit_overworld_recovery:rimuldar
+[FRAME:63480][DEBUG][field] CMD: launcher_probe:recovery_audit_rimuldar_20261013
+[FRAME:63480][INFO][field] LAUNCHER_PROBE: recovery_audit_rimuldar_20261013
+[FRAME:63600][DEBUG][field] CMD: audit_overworld_recovery:magic_temple
+[FRAME:63600][DEBUG][field] CMD: launcher_probe:recovery_audit_magic_temple_20261013
+[FRAME:63600][INFO][field] LAUNCHER_PROBE: recovery_audit_magic_temple_20261013
+[FRAME:63720][DEBUG][field] CMD: audit_overworld_recovery:cantlin_hauksness
+[FRAME:63720][DEBUG][field] CMD: launcher_probe:recovery_audit_cantlin_hauksness_20261013
+[FRAME:63720][INFO][field] LAUNCHER_PROBE: recovery_audit_cantlin_hauksness_20261013
+[FRAME:63840][DEBUG][field] CMD: audit_overworld_recovery:hauksness
+[FRAME:63840][DEBUG][field] CMD: launcher_probe:recovery_audit_hauksness_20261013
+[FRAME:63840][INFO][field] LAUNCHER_PROBE: recovery_audit_hauksness_20261013
+[FRAME:63960][DEBUG][field] CMD: audit_overworld_recovery:great_swamp_cantlin
+[FRAME:63960][DEBUG][field] CMD: launcher_probe:recovery_audit_great_swamp_cantlin_20261013
+[FRAME:63960][INFO][field] LAUNCHER_PROBE: recovery_audit_great_swamp_cantlin_20261013
+[FRAME:64080][DEBUG][field] CMD: audit_overworld_recovery:charlock_castle
+[FRAME:64080][DEBUG][field] CMD: launcher_probe:recovery_audit_charlock_castle_20261013
+[FRAME:64080][INFO][field] LAUNCHER_PROBE: recovery_audit_charlock_castle_20261013
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:93,35
+[FRAME:73980][INFO][field] TILE map=0x01 x=93 y=35 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:103,72
+[FRAME:73980][INFO][field] TILE map=0x01 x=103 y=72 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:73,96
+[FRAME:73980][INFO][field] TILE map=0x01 x=73 y=96 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:10,14
+[FRAME:73980][INFO][field] TILE map=0x01 x=10 y=14 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:92,110
+[FRAME:73980][INFO][field] TILE map=0x01 x=92 y=110 dims=120x120 tile=2 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:64,40
+[FRAME:73980][INFO][field] TILE map=0x01 x=64 y=40 dims=120x120 tile=7 base_walkable=true walkable=false reason=hazard permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:58,108
+[FRAME:73980][INFO][field] TILE map=0x01 x=58 y=108 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: inspect_tile:44,38
+[FRAME:73980][INFO][field] TILE map=0x01 x=44 y=38 dims=120x120 tile=6 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:73980][DEBUG][field] CMD: report_position
+[FRAME:73980][INFO][field] POSITION: map=0x01(World Map) x=51 y=49
+[FRAME:73980][DEBUG][field] CMD: route_status
+[FRAME:73980][INFO][field] OVERWORLD_ROUTE: event=status route=charlock_return waypoint=Charlock island central corridor index=4
+[FRAME:73980][DEBUG][field] CMD: launcher_probe:broader_origins_inspect_20261013
+[FRAME:73980][INFO][field] LAUNCHER_PROBE: broader_origins_inspect_20261013
+[FRAME:81360][DEBUG][field] CMD: inspect_tile:9,14
+[FRAME:81360][INFO][field] TILE map=0x01 x=9 y=14 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:81360][DEBUG][field] CMD: inspect_tile:93,34
+[FRAME:81360][INFO][field] TILE map=0x01 x=93 y=34 dims=120x120 tile=4 base_walkable=false walkable=false reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:81360][DEBUG][field] CMD: inspect_tile:103,73
+[FRAME:81360][INFO][field] TILE map=0x01 x=103 y=73 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:81360][DEBUG][field] CMD: inspect_tile:73,97
+[FRAME:81360][INFO][field] TILE map=0x01 x=73 y=97 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:81360][DEBUG][field] CMD: inspect_tile:58,109
+[FRAME:81360][INFO][field] TILE map=0x01 x=58 y=109 dims=120x120 tile=0 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true
+[FRAME:81360][DEBUG][field] CMD: inspect_tile:92,109
+[FRAME:81360][INFO][field] TILE map=0x01 x=92 y=109 dims=120x120 tile=4 base_walkable=false walkable=false reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=false
+[FRAME:81360][DEBUG][field] CMD: stop_overworld_route
+[FRAME:81360][INFO][field] OVERWORLD_ROUTE: event=stop route=charlock_return
+[FRAME:81360][DEBUG][field] CMD: launcher_probe:broader_approach_tiles_20261013
+[FRAME:81360][INFO][field] LAUNCHER_PROBE: broader_approach_tiles_20261013
+[FRAME:81540][DEBUG][field] CMD: teleport_to:9,14
+[FRAME:81551][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(9,14) resets=12 last=(9,14) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:81660][DEBUG][field] CMD: report_position
+[FRAME:81660][INFO][field] POSITION: map=0x01(World Map) x=9 y=14
+[FRAME:81660][DEBUG][field] CMD: report_menu_state
+[FRAME:81660][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=true cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=0 dialogue_start_row=21
+[FRAME:81660][DEBUG][field] CMD: report_path_state
+[FRAME:81660][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:81660][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:81660][DEBUG][field] CMD: launcher_probe:western_seed_20261013
+[FRAME:81660][INFO][field] LAUNCHER_PROBE: western_seed_20261013
+[FRAME:83580][DEBUG][field] CMD: probe_edge:RIGHT
+[FRAME:83694][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(9,14) dir=right dest=(10,14) status=moved final=(11,14) reached_dest=true settle_frames=60 tile=0 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=west approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:83694][INFO][field] EDGE_PROBE_CARRY map=0x01 from=(9,14) dir=right dest=(10,14) final=(11,14) carry_dx=1 carry_dy=0
+[FRAME:83880][DEBUG][field] CMD: start_overworld_route:castle
+[FRAME:83880][INFO][field] OVERWORLD_ROUTE: event=start route=tantegel waypoint=Cave road south lane index=15
+[FRAME:83880][DEBUG][field] CMD: route_status
+[FRAME:83880][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel waypoint=Cave road south lane index=15
+[FRAME:83880][DEBUG][field] CMD: launcher_probe:western_selector_castle_20261013
+[FRAME:83880][INFO][field] LAUNCHER_PROBE: western_selector_castle_20261013
+[FRAME:84000][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:84000][INFO][field] OVERWORLD_ROUTE: event=replace route=brecconary waypoint=Cave road south lane index=15
+[FRAME:84000][DEBUG][field] CMD: route_status
+[FRAME:84000][INFO][field] OVERWORLD_ROUTE: event=status route=brecconary waypoint=Cave road south lane index=15
+[FRAME:84000][DEBUG][field] CMD: launcher_probe:western_selector_brecconary_20261013
+[FRAME:84000][INFO][field] LAUNCHER_PROBE: western_selector_brecconary_20261013
+[FRAME:84120][DEBUG][field] CMD: start_overworld_route:rimuldar
+[FRAME:84120][INFO][field] OVERWORLD_ROUTE: event=replace route=kol_staging waypoint=Erdrick's Cave road index=11 staged_from=rimuldar
+[FRAME:84120][DEBUG][field] CMD: route_status
+[FRAME:84120][INFO][field] OVERWORLD_ROUTE: event=status route=kol_staging waypoint=Erdrick's Cave road index=11
+[FRAME:84120][DEBUG][field] CMD: launcher_probe:western_selector_rimuldar_20261013
+[FRAME:84120][INFO][field] LAUNCHER_PROBE: western_selector_rimuldar_20261013
+[FRAME:93360][DEBUG][field] CMD: dump_grid
+[FRAME:93360][DEBUG][field] CMD: report_position
+[FRAME:93360][INFO][field] POSITION: map=0x01(World Map) x=11 y=14
+[FRAME:93360][DEBUG][field] CMD: report_menu_state
+[FRAME:93360][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=true cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=10 base_nt=0 dialogue_start_row=21
+[FRAME:93360][DEBUG][field] CMD: report_path_state
+[FRAME:93360][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:93360][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:93360][DEBUG][field] CMD: launcher_probe:world_terrain_dump_20261013
+[FRAME:93360][INFO][field] LAUNCHER_PROBE: world_terrain_dump_20261013
+
+SPEECH EXTRACT
+[2026-10-13 15:31:37] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Tantegel Castle. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:39] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:41] command="interrupt:Current leg to Swamp Cave South Entrance. Final destination: Erdrick's Cave. Next: Charlock Castle east approach, 1 north"
+[2026-10-13 15:31:43] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Garinham. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:45] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Kol. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:47] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Northern Cave. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:49] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Mountain Cave. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:51] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Swamp Cave North Entrance. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:55] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Rainbow Bridge unlock point. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:57] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Rimuldar. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:31:59] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Magic Temple. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:32:01] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Cantlin. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:32:03] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Hauksness. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:32:05] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Eastern Great Swamp Search Area. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:32:07] command='interrupt:Route changed. Route to Charlock Castle. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:32:07] command='interrupt:Route to Charlock Castle. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:33:21] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock Castle east approach, 1 north'
+[2026-10-13 15:33:43] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock island central corridor, 8 south'
+[2026-10-13 15:33:46] command="interrupt:'There is no one there."
+[2026-10-13 15:45:49] command='speak:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock island central corridor, 8 south'
+[2026-10-13 15:45:59] command='speak:Close the command menu first'
+[2026-10-13 15:46:04] command='speak:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock island central corridor, 8 south'
+[2026-10-13 15:46:56] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock island central corridor, 8 south'
+[2026-10-13 15:47:28] command='interrupt:Recovery audit for tantegel. Network 977. Safe within 24 steps 7196. Safe beyond limit 398. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:30] command='interrupt:Recovery audit for brecconary. Network 977. Safe within 24 steps 7196. Safe beyond limit 398. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:32] command='interrupt:Recovery audit for erdrick. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:35] command='interrupt:Recovery audit for garinham. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:37] command='interrupt:Recovery audit for kol. Network 977. Safe within 24 steps 7179. Safe beyond limit 415. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:39] command='interrupt:Recovery audit for northern_cave. Network 977. Safe within 24 steps 7179. Safe beyond limit 415. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:42] command='interrupt:Recovery audit for mountain_cave. Network 977. Safe within 24 steps 7179. Safe beyond limit 415. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:44] command='interrupt:Recovery audit for swamp_cave. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:46] command='interrupt:Recovery audit for swamp_cave_south. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:49] command='interrupt:Recovery audit for rainbow_bridge. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:51] command='interrupt:Recovery audit for rimuldar. Network 977. Safe within 24 steps 7176. Safe beyond limit 418. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:53] command='interrupt:Recovery audit for magic_temple. Network 977. Safe within 24 steps 7176. Safe beyond limit 418. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:55] command='interrupt:Recovery audit for cantlin_hauksness. Network 977. Safe within 24 steps 7134. Safe beyond limit 460. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:47:58] command='interrupt:Recovery audit for hauksness. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:48:00] command='interrupt:Recovery audit for great_swamp_cantlin. Network 977. Safe within 24 steps 7134. Safe beyond limit 460. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:48:03] command='interrupt:Recovery audit for charlock_castle. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-13 15:50:49] command='interrupt:Current leg to Swamp Cave South Entrance. Final destination: Brecconary. Next: Charlock island central corridor, 8 south'
+[2026-10-13 15:53:36] command='interrupt:Route to Tantegel Castle. Next: Cave road south lane, 1 north, 12 east'
+[2026-10-13 15:53:36] command='interrupt:Route to Tantegel Castle. Next: Cave road south lane, 1 north, 12 east'
+[2026-10-13 15:53:38] command='interrupt:Route changed. Route to Brecconary. Next: Cave road south lane, 1 north, 12 east'
+[2026-10-13 15:53:38] command='interrupt:Route to Brecconary. Next: Cave road south lane, 1 north, 12 east'
+[2026-10-13 15:53:40] command="interrupt:Current leg to Kol. Final destination: Rimuldar. Next: Erdrick's Cave road, 1 north, 17 east"

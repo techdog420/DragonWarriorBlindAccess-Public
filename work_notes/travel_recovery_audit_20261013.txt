@@ -1,0 +1,180 @@
+Read-only decoded-world-map recovery coverage - 2026-10-13
+Source: 63c64d6 plus local Charlock corridor selector fix.
+These are model classifications and sample coordinates; individual engine movement is not verified by this audit.
+
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=tantegel map=0x01 size=120x120 candidates=810 eligible=810 rejected_opening=0 safe_entries=764 hazard_entries=809 network=977 safe_within_limit=7196 safe_over_limit=398 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=64 y=40 distance=23
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=65 y=40 distance=22
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=66 y=41 distance=22
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=65 y=39 distance=21
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=66 y=40 distance=21
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=92 y=110 distance=117
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=91 y=111 distance=117
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=90 y=112 distance=117
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=85 y=108 distance=116
+[FRAME:62280][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=93 y=108 distance=116
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=brecconary map=0x01 size=120x120 candidates=804 eligible=804 rejected_opening=0 safe_entries=749 hazard_entries=803 network=977 safe_within_limit=7196 safe_over_limit=398 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=64 y=40 distance=23
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=65 y=40 distance=22
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=66 y=41 distance=22
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=65 y=39 distance=21
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=66 y=40 distance=21
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=92 y=110 distance=117
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=91 y=111 distance=117
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=90 y=112 distance=117
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=85 y=108 distance=116
+[FRAME:62400][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=93 y=108 distance=116
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=erdrick map=0x01 size=120x120 candidates=806 eligible=806 rejected_opening=0 safe_entries=751 hazard_entries=805 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=64 y=40 distance=23
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=65 y=40 distance=22
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=66 y=41 distance=22
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=65 y=39 distance=21
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=66 y=40 distance=21
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=92 y=110 distance=117
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=91 y=111 distance=117
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=90 y=112 distance=117
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=85 y=108 distance=116
+[FRAME:62520][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=93 y=108 distance=116
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=garinham map=0x01 size=120x120 candidates=810 eligible=810 rejected_opening=0 safe_entries=755 hazard_entries=809 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=64 y=40 distance=23
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=65 y=40 distance=22
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=66 y=41 distance=22
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=65 y=39 distance=21
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=66 y=40 distance=21
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=92 y=110 distance=117
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=91 y=111 distance=117
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=90 y=112 distance=117
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=85 y=108 distance=116
+[FRAME:62640][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=93 y=108 distance=116
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=kol map=0x01 size=120x120 candidates=827 eligible=827 rejected_opening=0 safe_entries=772 hazard_entries=826 network=977 safe_within_limit=7179 safe_over_limit=415 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=64 y=40 distance=23
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=65 y=40 distance=22
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=66 y=41 distance=22
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=65 y=39 distance=21
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=66 y=40 distance=21
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=92 y=110 distance=117
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=91 y=111 distance=117
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=90 y=112 distance=117
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=85 y=108 distance=116
+[FRAME:62760][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=93 y=108 distance=116
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=northern_cave map=0x01 size=120x120 candidates=806 eligible=806 rejected_opening=0 safe_entries=760 hazard_entries=805 network=977 safe_within_limit=7179 safe_over_limit=415 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=64 y=40 distance=23
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=65 y=40 distance=22
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=66 y=41 distance=22
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=65 y=39 distance=21
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=66 y=40 distance=21
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=92 y=110 distance=117
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=91 y=111 distance=117
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=90 y=112 distance=117
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=85 y=108 distance=116
+[FRAME:62880][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=mountain_cave map=0x01 size=120x120 candidates=876 eligible=876 rejected_opening=0 safe_entries=830 hazard_entries=875 network=977 safe_within_limit=7179 safe_over_limit=415 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=64 y=40 distance=23
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=65 y=40 distance=22
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=66 y=41 distance=22
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=65 y=39 distance=21
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=66 y=40 distance=21
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63000][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=swamp_cave map=0x01 size=120x120 candidates=832 eligible=832 rejected_opening=0 safe_entries=777 hazard_entries=831 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=64 y=40 distance=26
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=65 y=40 distance=25
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=66 y=41 distance=25
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=65 y=39 distance=24
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=66 y=40 distance=24
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63120][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=swamp_cave_south map=0x01 size=120x120 candidates=832 eligible=832 rejected_opening=0 safe_entries=779 hazard_entries=832 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=64 y=40 distance=26
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=65 y=40 distance=25
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=66 y=41 distance=25
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=65 y=39 distance=24
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=66 y=40 distance=24
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63240][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=rainbow_bridge map=0x01 size=120x120 candidates=846 eligible=846 rejected_opening=0 safe_entries=792 hazard_entries=846 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=64 y=40 distance=26
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=65 y=40 distance=25
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=66 y=41 distance=25
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=65 y=39 distance=24
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=66 y=40 distance=24
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63360][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=rimuldar map=0x01 size=120x120 candidates=794 eligible=794 rejected_opening=0 safe_entries=753 hazard_entries=793 network=977 safe_within_limit=7176 safe_over_limit=418 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=64 y=40 distance=26
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=65 y=40 distance=25
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=66 y=41 distance=25
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=65 y=39 distance=24
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=66 y=40 distance=24
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63480][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=magic_temple map=0x01 size=120x120 candidates=767 eligible=767 rejected_opening=0 safe_entries=726 hazard_entries=766 network=977 safe_within_limit=7176 safe_over_limit=418 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=64 y=40 distance=26
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=65 y=40 distance=25
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=66 y=41 distance=25
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=65 y=39 distance=24
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=66 y=40 distance=24
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63600][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=cantlin_hauksness map=0x01 size=120x120 candidates=798 eligible=798 rejected_opening=0 safe_entries=739 hazard_entries=797 network=977 safe_within_limit=7134 safe_over_limit=460 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=64 y=40 distance=23
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=65 y=40 distance=22
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=66 y=41 distance=22
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=65 y=39 distance=21
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=66 y=40 distance=21
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63720][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=hauksness map=0x01 size=120x120 candidates=831 eligible=831 rejected_opening=0 safe_entries=785 hazard_entries=830 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=64 y=40 distance=23
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=65 y=40 distance=22
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=66 y=41 distance=22
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=65 y=39 distance=21
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=66 y=40 distance=21
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63840][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=93 y=108 distance=116
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=great_swamp_cantlin map=0x01 size=120x120 candidates=816 eligible=816 rejected_opening=0 safe_entries=754 hazard_entries=815 network=977 safe_within_limit=7134 safe_over_limit=460 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=64 y=40 distance=23
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=65 y=40 distance=22
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=66 y=41 distance=22
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=65 y=39 distance=21
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=66 y=40 distance=21
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=92 y=110 distance=117
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=91 y=111 distance=117
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=90 y=112 distance=117
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=85 y=108 distance=116
+[FRAME:63960][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=93 y=108 distance=116
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=charlock_castle map=0x01 size=120x120 candidates=851 eligible=851 rejected_opening=0 safe_entries=796 hazard_entries=850 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=64 y=40 distance=26
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=65 y=40 distance=25
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=66 y=41 distance=25
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=65 y=39 distance=24
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=66 y=40 distance=24
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=92 y=110 distance=117
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=91 y=111 distance=117
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=90 y=112 distance=117
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=85 y=108 distance=116
+[FRAME:64080][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=93 y=108 distance=116

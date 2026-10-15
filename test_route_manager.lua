@@ -1186,6 +1186,129 @@ function tests.off_network_recovery_autowalk_stops_at_network_and_hands_off_dest
     env.restore()
 end
 
+function tests.staged_recovery_looks_up_and_restarts_public_destination()
+    local env = off_network_recovery_env({
+        overworld_active_destination = {
+            id = "swamp_cave_western_return_staging",
+            request_id = "swamp_cave",
+            title = "Swamp Cave",
+        },
+    })
+    local requested_id
+    package.loaded["overworld_routes"].network_entry_candidates = function(id)
+        requested_id = id
+        return {{x = 10, y = 13, route_id = "swamp_cave", opening_length = 2}}
+    end
+    local result = env.route_manager.autowalk_to_current()
+    assert_equal(result.status, "recovery_queued", "staged recovery must queue safe movement")
+    assert_equal(requested_id, "swamp_cave", "entry lookup must use the public destination")
+    assert_equal(result.final_destination_id, "swamp_cave",
+        "the recovery handoff must retain a resolvable public destination")
+    assert_equal(result.final_destination_title, "Swamp Cave", "speech must retain the selected title")
+    env.set_position(0x01, 10, 13)
+    env.auto_step.on_route_complete()
+    assert_equal(env.overworld_start_calls()[1].route_id, "swamp_cave",
+        "arrival must restart the destination selection rather than a fixed internal variant")
+    assert_equal(env.start_route_calls(), 1, "arrival must still stop before guided movement")
+    env.restore()
+end
+
+function tests.stale_staged_recovery_reselects_public_destination_while_stopped()
+    local env = off_network_recovery_env({
+        overworld_on_network = true,
+        overworld_active_destination = {
+            id = "swamp_cave_western_return_staging", request_id = "swamp_cave", title = "Swamp Cave",
+        },
+        pathfind_to_fn = function(x, y, goal_x, goal_y)
+            if x == goal_x and y == goal_y then return "Path", nil, {} end
+            return "No path found", nil, nil
+        end,
+        overworld_network_candidates = {{x = 10, y = 10, route_id = "swamp_cave", opening_length = 1}},
+        overworld_segment = {route = {id = "stale"}, steps = {"right"}, path_length = 1},
+        overworld_start_result = {message = "Final destination: Swamp Cave", refresh = true},
+    })
+    package.loaded["overworld_routes"].segment_follows_corridor = function() return false end
+    local result = env.route_manager.autowalk_to_current()
+    assert_equal(result.status, "recalculated_at_network", "stale staged guidance must be rebound")
+    assert_equal(env.overworld_start_calls()[1].route_id, "swamp_cave",
+        "reselection must use the public request at the current entry")
+    assert_equal(env.start_route_calls(), 0, "reselection must not restart movement")
+    assert_equal(env.request_refresh_calls(), 1, "reselection must refresh route objects")
+    assert_contains(env.outputs[#env.outputs], "Press auto-walk again", "reselection needs explicit continuation")
+    env.restore()
+end
+
+function tests.foreign_network_corridor_uses_recovery_instead_of_shortcut()
+    local env = off_network_recovery_env({
+        overworld_on_network = true,
+        overworld_segment = {
+            route = {id = "unsafe_mainland", title = "Mainland"},
+            waypoint = {name = "Mainland opening", x = 11, y = 10},
+            steps = {"right"},
+            path_length = 1,
+        },
+    })
+    package.loaded["overworld_routes"].segment_follows_corridor = function()
+        return false
+    end
+    local result = env.route_manager.autowalk_to_current()
+    assert_equal(result.status, "recovery_queued",
+        "another route's corridor must use destination-specific recovery")
+    assert_equal(env.last_start_route_steps()[1], "down",
+        "the safe recovery must replace the unvalidated right step")
+    assert_equal(result.boundary_stop, true,
+        "recovery must retain its explicit network-boundary stop")
+    assert_equal(env.start_route_calls(), 1,
+        "only the safe recovery path may be queued")
+    env.restore()
+end
+
+function tests.stale_network_opening_recalculates_without_automatic_restart()
+    local env = off_network_recovery_env({
+        overworld_on_network = true,
+        pathfind_to_fn = function(start_x, start_y, goal_x, goal_y)
+            if start_x == goal_x and start_y == goal_y then
+                return "Path", nil, {}
+            end
+            return "No path found", nil, nil
+        end,
+        overworld_network_candidates = {{
+            x = 10, y = 10, name = "Current network entry",
+            route_id = "great_swamp_cantlin", opening_length = 1,
+        }},
+        overworld_segment = {
+            route = {id = "great_swamp_cantlin", title = "Great Swamp"},
+            waypoint = {name = "Stale opening", x = 11, y = 10},
+            steps = {"right"},
+            path_length = 1,
+        },
+    })
+    local recalc_calls = 0
+    package.loaded["overworld_routes"].segment_follows_corridor = function()
+        return false
+    end
+    package.loaded["overworld_routes"].recalculate = function(map_id, x, y)
+        assert_equal(map_id, 0x01, "recalculation must use the current map")
+        assert_equal(x, 10, "recalculation must use the current column")
+        assert_equal(y, 10, "recalculation must use the current row")
+        recalc_calls = recalc_calls + 1
+        return {message = "Route recalculated. Final destination: Great Swamp.", refresh = true}
+    end
+    local result = env.route_manager.autowalk_to_current()
+    assert_equal(result.status, "recalculated_at_network",
+        "a valid current entry must replace stale guidance without movement")
+    assert_equal(result.boundary_stop, true,
+        "recalculated guidance must require an explicit continuation")
+    assert_equal(recalc_calls, 1, "the current entry must be rebound once")
+    assert_equal(env.start_route_calls(), 0,
+        "recalculation must not queue the stale or replacement opening")
+    assert_equal(env.request_refresh_calls(), 1,
+        "the browsable waypoints must refresh after guidance is rebound")
+    assert_contains(env.outputs[#env.outputs], "Press auto-walk again",
+        "speech must explain the explicit continuation")
+    env.restore()
+end
+
 function tests.off_network_recovery_menu_interrupt_replans_from_current_position()
     local path_starts = {}
     local env = off_network_recovery_env({

@@ -1,0 +1,776 @@
+Representative broader Travel acceptance - 2026-10-15
+Source: 63c64d6 plus the current uncommitted corridor selection, recovery guard, and staged request-ID fixes.
+Player confirmed manual reload at (73,96) with clear field. Fresh baseline17460, HP149/149, MP89/121, path nil/blocks0, speech ready/error none.
+Both Swamp Cave requests now recognize that safe return-corridor entry, rather than no_safe_entry or an entrance-only hazardous recovery.
+All16 model audits were repeated after all fixes; summaries/samples are preserved separately in travel_recovery_audit_20261015.txt.
+Guarded coarse positioning91,108, then a normal left step, reached90,108. This is positioning, not new terrain proof.
+Brecconary recovery planned113 safe steps. Wyvern/Wraith interruptions stopped the first3 steps without adding blockers. Player cleared battles and cast REPEL.
+From90,105: four24-step checkpoints at83,88;67,80;53,90;37,98; final14-step network entry23,98. Every boundary stopped exactly with continuous Travel enabled; every restart was explicit.
+Kol's guided entry arrived on map0x07, cleared guidance and movement, then normal Down returned to the overworld. Brecconary departure worked.
+REPEL result at96,10 retained the spell submenu. Player acceptance: Performed the above.  Systems behaving as expected.  Menu closed now to clear field.
+Physical Shift+R83862 retained Brecconary; U84081 refused Close the submenu first; D84220 dismissed. Fresh90000 confirmed unchanged position, cleared menu/text, path nil/blocks0.
+Explicit resume91200 completed3 south steps; movement was manually stopped during the next leg. Final fresh91440: clear World Map96,14; HP149/149; MP85/121; path nil/blocks0; speech ready/error none; Brecconary retained, next West of Kol north lane7 south.
+This accepts the representative pass, not every cell/quest state. Independent dialogue-only onset and physical in-battle Shift+R remain unaccepted. Western11,30->11,31 carry remains a timing watch. No geometry or global movement timing changed.
+Transition-related seam observations with old local coordinates are not world-map terrain proof.
+Final native gate on2026-10-13 passed42 Lua suites/68 Python tests plus syntax, speech dependency, and command queue; no Lua changed afterward.
+
+DEBUG EXTRACT
+[FRAME:17460][DEBUG][field] CMD: report_position
+[FRAME:17460][INFO][field] POSITION: map=0x01(World Map) x=73 y=96
+[FRAME:17460][DEBUG][field] CMD: report_path_state
+[FRAME:17460][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:17460][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:17460][DEBUG][field] CMD: report_menu_state
+[FRAME:17460][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=14 base_nt=0 dialogue_start_row=15
+[FRAME:17460][DEBUG][field] CMD: log_state
+[FRAME:17460][INFO][field] frame:     17460
+[FRAME:17460][INFO][field] state:     field
+[FRAME:17460][INFO][field] map_id:    0x01 (World Map)
+[FRAME:17460][INFO][field] pos:       x=73, y=96
+[FRAME:17460][INFO][field] hp:        149 / 149
+[FRAME:17460][INFO][field] mp:        89 / 121
+[FRAME:17460][DEBUG][field] CMD: speech_status
+[FRAME:17460][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:17460][DEBUG][field] CMD: input_status:staged_request_reload_20261015
+[FRAME:17460][DEBUG][field] CMD: launcher_probe:staged_request_reload_20261015
+[FRAME:17460][INFO][field] LAUNCHER_PROBE: staged_request_reload_20261015
+[FRAME:17880][DEBUG][field] CMD: start_overworld_route:swamp_cave
+[FRAME:17880][INFO][field] OVERWORLD_ROUTE: event=start route=hauksness_return_staging waypoint=Cantlin north road index=2 staged_from=swamp_cave_western_return_staging
+[FRAME:17880][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:17880][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=swamp_cave method=single_field candidates=811 pathfind_calls=1 safe_nodes=225 hazard_nodes=0 candidate_ms=98.000 snapshot_ms=15.000 safe_field_ms=1.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=118.000 fallback=false
+[FRAME:17880][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=already_on_network map=0x01 from=(73,96) entry=(73,96) path_len=0 route=hauksness_return_staging next=Cantlin north road final=swamp_cave candidates=811 rejected_opening=0 rejected_unreachable=0 skipped_farther=810 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:17880][DEBUG][field] CMD: route_status
+[FRAME:17880][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Cantlin north road index=2
+[FRAME:17880][DEBUG][field] CMD: launcher_probe:swamp_north_request_20261015
+[FRAME:17880][INFO][field] LAUNCHER_PROBE: swamp_north_request_20261015
+[FRAME:18000][DEBUG][field] CMD: start_overworld_route:swamp_cave_south
+[FRAME:18000][INFO][field] OVERWORLD_ROUTE: event=recalculate route=hauksness_return_staging waypoint=Cantlin north road index=2 staged_from=swamp_cave_south_swamp_cave_north
+[FRAME:18000][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:18000][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=swamp_cave_south method=single_field candidates=811 pathfind_calls=1 safe_nodes=225 hazard_nodes=0 candidate_ms=154.000 snapshot_ms=18.000 safe_field_ms=1.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=176.000 fallback=false
+[FRAME:18000][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=already_on_network map=0x01 from=(73,96) entry=(73,96) path_len=0 route=hauksness_return_staging next=Cantlin north road final=swamp_cave_south candidates=811 rejected_opening=0 rejected_unreachable=0 skipped_farther=810 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:18000][DEBUG][field] CMD: route_status
+[FRAME:18000][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Cantlin north road index=2
+[FRAME:18000][DEBUG][field] CMD: launcher_probe:swamp_south_request_20261015
+[FRAME:18000][INFO][field] LAUNCHER_PROBE: swamp_south_request_20261015
+[FRAME:18900][DEBUG][field] CMD: audit_overworld_recovery:tantegel
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=tantegel map=0x01 size=120x120 candidates=791 eligible=791 rejected_opening=0 safe_entries=745 hazard_entries=790 network=977 safe_within_limit=7196 safe_over_limit=398 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=64 y=40 distance=23
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=65 y=40 distance=22
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=66 y=41 distance=22
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=65 y=39 distance=21
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=hazard_required x=66 y=40 distance=21
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=92 y=110 distance=117
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=91 y=111 distance=117
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=90 y=112 distance=117
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=85 y=108 distance=116
+[FRAME:18900][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=tantegel category=safe_over_limit x=93 y=108 distance=116
+[FRAME:18900][DEBUG][field] CMD: launcher_probe:recovery_audit_tantegel_20261015
+[FRAME:18900][INFO][field] LAUNCHER_PROBE: recovery_audit_tantegel_20261015
+[FRAME:19020][DEBUG][field] CMD: audit_overworld_recovery:brecconary
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=brecconary map=0x01 size=120x120 candidates=785 eligible=785 rejected_opening=0 safe_entries=730 hazard_entries=784 network=977 safe_within_limit=7196 safe_over_limit=398 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=64 y=40 distance=23
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=65 y=40 distance=22
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=66 y=41 distance=22
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=65 y=39 distance=21
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=hazard_required x=66 y=40 distance=21
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19020][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=brecconary category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19020][DEBUG][field] CMD: launcher_probe:recovery_audit_brecconary_20261015
+[FRAME:19020][INFO][field] LAUNCHER_PROBE: recovery_audit_brecconary_20261015
+[FRAME:19140][DEBUG][field] CMD: audit_overworld_recovery:erdrick
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=erdrick map=0x01 size=120x120 candidates=785 eligible=785 rejected_opening=0 safe_entries=730 hazard_entries=784 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=64 y=40 distance=23
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=65 y=40 distance=22
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=66 y=41 distance=22
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=65 y=39 distance=21
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=hazard_required x=66 y=40 distance=21
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19140][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=erdrick category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19140][DEBUG][field] CMD: launcher_probe:recovery_audit_erdrick_20261015
+[FRAME:19140][INFO][field] LAUNCHER_PROBE: recovery_audit_erdrick_20261015
+[FRAME:19260][DEBUG][field] CMD: audit_overworld_recovery:garinham
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=garinham map=0x01 size=120x120 candidates=788 eligible=788 rejected_opening=0 safe_entries=733 hazard_entries=787 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=64 y=40 distance=23
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=65 y=40 distance=22
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=66 y=41 distance=22
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=65 y=39 distance=21
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=hazard_required x=66 y=40 distance=21
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19260][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=garinham category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19260][DEBUG][field] CMD: launcher_probe:recovery_audit_garinham_20261015
+[FRAME:19260][INFO][field] LAUNCHER_PROBE: recovery_audit_garinham_20261015
+[FRAME:19380][DEBUG][field] CMD: audit_overworld_recovery:kol
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=kol map=0x01 size=120x120 candidates=809 eligible=809 rejected_opening=0 safe_entries=754 hazard_entries=808 network=977 safe_within_limit=7179 safe_over_limit=415 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=64 y=40 distance=23
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=65 y=40 distance=22
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=66 y=41 distance=22
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=65 y=39 distance=21
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=hazard_required x=66 y=40 distance=21
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19380][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=kol category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19380][DEBUG][field] CMD: launcher_probe:recovery_audit_kol_20261015
+[FRAME:19380][INFO][field] LAUNCHER_PROBE: recovery_audit_kol_20261015
+[FRAME:19500][DEBUG][field] CMD: audit_overworld_recovery:northern_cave
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=northern_cave map=0x01 size=120x120 candidates=787 eligible=787 rejected_opening=0 safe_entries=741 hazard_entries=786 network=977 safe_within_limit=7179 safe_over_limit=415 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=64 y=40 distance=23
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=65 y=40 distance=22
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=66 y=41 distance=22
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=65 y=39 distance=21
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=hazard_required x=66 y=40 distance=21
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19500][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=northern_cave category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19500][DEBUG][field] CMD: launcher_probe:recovery_audit_northern_cave_20261015
+[FRAME:19500][INFO][field] LAUNCHER_PROBE: recovery_audit_northern_cave_20261015
+[FRAME:19620][DEBUG][field] CMD: audit_overworld_recovery:mountain_cave
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=mountain_cave map=0x01 size=120x120 candidates=852 eligible=852 rejected_opening=0 safe_entries=806 hazard_entries=851 network=977 safe_within_limit=7179 safe_over_limit=415 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=64 y=40 distance=23
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=65 y=40 distance=22
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=66 y=41 distance=22
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=65 y=39 distance=21
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=hazard_required x=66 y=40 distance=21
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19620][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=mountain_cave category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19620][DEBUG][field] CMD: launcher_probe:recovery_audit_mountain_cave_20261015
+[FRAME:19620][INFO][field] LAUNCHER_PROBE: recovery_audit_mountain_cave_20261015
+[FRAME:19740][DEBUG][field] CMD: audit_overworld_recovery:swamp_cave
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=swamp_cave map=0x01 size=120x120 candidates=811 eligible=811 rejected_opening=0 safe_entries=756 hazard_entries=810 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=64 y=40 distance=26
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=65 y=40 distance=25
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=66 y=41 distance=25
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=65 y=39 distance=24
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=hazard_required x=66 y=40 distance=24
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19740][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19740][DEBUG][field] CMD: launcher_probe:recovery_audit_swamp_cave_20261015
+[FRAME:19740][INFO][field] LAUNCHER_PROBE: recovery_audit_swamp_cave_20261015
+[FRAME:19860][DEBUG][field] CMD: audit_overworld_recovery:swamp_cave_south
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=swamp_cave_south map=0x01 size=120x120 candidates=811 eligible=811 rejected_opening=0 safe_entries=758 hazard_entries=811 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=64 y=40 distance=26
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=65 y=40 distance=25
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=66 y=41 distance=25
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=65 y=39 distance=24
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=hazard_required x=66 y=40 distance=24
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19860][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=swamp_cave_south category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19860][DEBUG][field] CMD: launcher_probe:recovery_audit_swamp_cave_south_20261015
+[FRAME:19860][INFO][field] LAUNCHER_PROBE: recovery_audit_swamp_cave_south_20261015
+[FRAME:19980][DEBUG][field] CMD: audit_overworld_recovery:rainbow_bridge
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=rainbow_bridge map=0x01 size=120x120 candidates=825 eligible=825 rejected_opening=0 safe_entries=771 hazard_entries=825 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=64 y=40 distance=26
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=65 y=40 distance=25
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=66 y=41 distance=25
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=65 y=39 distance=24
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=hazard_required x=66 y=40 distance=24
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=92 y=110 distance=117
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=91 y=111 distance=117
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=90 y=112 distance=117
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=85 y=108 distance=116
+[FRAME:19980][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rainbow_bridge category=safe_over_limit x=93 y=108 distance=116
+[FRAME:19980][DEBUG][field] CMD: launcher_probe:recovery_audit_rainbow_bridge_20261015
+[FRAME:19980][INFO][field] LAUNCHER_PROBE: recovery_audit_rainbow_bridge_20261015
+[FRAME:20100][DEBUG][field] CMD: audit_overworld_recovery:rimuldar
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=rimuldar map=0x01 size=120x120 candidates=773 eligible=773 rejected_opening=0 safe_entries=732 hazard_entries=772 network=977 safe_within_limit=7176 safe_over_limit=418 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=64 y=40 distance=26
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=65 y=40 distance=25
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=66 y=41 distance=25
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=65 y=39 distance=24
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=hazard_required x=66 y=40 distance=24
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=92 y=110 distance=117
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=91 y=111 distance=117
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=90 y=112 distance=117
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=85 y=108 distance=116
+[FRAME:20100][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=rimuldar category=safe_over_limit x=93 y=108 distance=116
+[FRAME:20100][DEBUG][field] CMD: launcher_probe:recovery_audit_rimuldar_20261015
+[FRAME:20100][INFO][field] LAUNCHER_PROBE: recovery_audit_rimuldar_20261015
+[FRAME:20220][DEBUG][field] CMD: audit_overworld_recovery:magic_temple
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=magic_temple map=0x01 size=120x120 candidates=746 eligible=746 rejected_opening=0 safe_entries=705 hazard_entries=745 network=977 safe_within_limit=7176 safe_over_limit=418 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=64 y=40 distance=26
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=65 y=40 distance=25
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=66 y=41 distance=25
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=65 y=39 distance=24
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=hazard_required x=66 y=40 distance=24
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=92 y=110 distance=117
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=91 y=111 distance=117
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=90 y=112 distance=117
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=85 y=108 distance=116
+[FRAME:20220][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=magic_temple category=safe_over_limit x=93 y=108 distance=116
+[FRAME:20220][DEBUG][field] CMD: launcher_probe:recovery_audit_magic_temple_20261015
+[FRAME:20220][INFO][field] LAUNCHER_PROBE: recovery_audit_magic_temple_20261015
+[FRAME:20340][DEBUG][field] CMD: audit_overworld_recovery:cantlin_hauksness
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=cantlin_hauksness map=0x01 size=120x120 candidates=782 eligible=782 rejected_opening=0 safe_entries=723 hazard_entries=781 network=977 safe_within_limit=7122 safe_over_limit=472 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=64 y=40 distance=23
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=65 y=40 distance=22
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=66 y=41 distance=22
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=65 y=39 distance=21
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=hazard_required x=66 y=40 distance=21
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=92 y=110 distance=117
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=91 y=111 distance=117
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=90 y=112 distance=117
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=85 y=108 distance=116
+[FRAME:20340][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=cantlin_hauksness category=safe_over_limit x=93 y=108 distance=116
+[FRAME:20340][DEBUG][field] CMD: launcher_probe:recovery_audit_cantlin_hauksness_20261015
+[FRAME:20340][INFO][field] LAUNCHER_PROBE: recovery_audit_cantlin_hauksness_20261015
+[FRAME:20460][DEBUG][field] CMD: audit_overworld_recovery:hauksness
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=hauksness map=0x01 size=120x120 candidates=813 eligible=813 rejected_opening=0 safe_entries=767 hazard_entries=812 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=64 y=40 distance=23
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=65 y=40 distance=22
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=66 y=41 distance=22
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=65 y=39 distance=21
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=hazard_required x=66 y=40 distance=21
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=92 y=110 distance=117
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=91 y=111 distance=117
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=90 y=112 distance=117
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=85 y=108 distance=116
+[FRAME:20460][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=hauksness category=safe_over_limit x=93 y=108 distance=116
+[FRAME:20460][DEBUG][field] CMD: launcher_probe:recovery_audit_hauksness_20261015
+[FRAME:20460][INFO][field] LAUNCHER_PROBE: recovery_audit_hauksness_20261015
+[FRAME:20580][DEBUG][field] CMD: audit_overworld_recovery:great_swamp_cantlin
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=great_swamp_cantlin map=0x01 size=120x120 candidates=800 eligible=800 rejected_opening=0 safe_entries=738 hazard_entries=799 network=977 safe_within_limit=7122 safe_over_limit=472 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=64 y=40 distance=23
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=65 y=40 distance=22
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=66 y=41 distance=22
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=65 y=39 distance=21
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=hazard_required x=66 y=40 distance=21
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=92 y=110 distance=117
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=91 y=111 distance=117
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=90 y=112 distance=117
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=85 y=108 distance=116
+[FRAME:20580][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=great_swamp_cantlin category=safe_over_limit x=93 y=108 distance=116
+[FRAME:20580][DEBUG][field] CMD: launcher_probe:recovery_audit_great_swamp_cantlin_20261015
+[FRAME:20580][INFO][field] LAUNCHER_PROBE: recovery_audit_great_swamp_cantlin_20261015
+[FRAME:20700][DEBUG][field] CMD: audit_overworld_recovery:charlock_castle
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT status=complete route=charlock_castle map=0x01 size=120x120 candidates=830 eligible=830 rejected_opening=0 safe_entries=775 hazard_entries=829 network=977 safe_within_limit=7178 safe_over_limit=416 hazard_required=278 unreachable=0 transition=21 nonwalkable=5530 max_safe_distance=117 recovery_limit=24
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=64 y=40 distance=26
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=65 y=40 distance=25
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=66 y=41 distance=25
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=65 y=39 distance=24
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=hazard_required x=66 y=40 distance=24
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=92 y=110 distance=117
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=91 y=111 distance=117
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=90 y=112 distance=117
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=85 y=108 distance=116
+[FRAME:20700][INFO][field] OVERWORLD_RECOVERY_AUDIT_SAMPLE route=charlock_castle category=safe_over_limit x=93 y=108 distance=116
+[FRAME:20700][DEBUG][field] CMD: launcher_probe:recovery_audit_charlock_castle_20261015
+[FRAME:20700][INFO][field] LAUNCHER_PROBE: recovery_audit_charlock_castle_20261015
+[FRAME:22620][DEBUG][field] CMD: stop_overworld_route
+[FRAME:22620][INFO][field] OVERWORLD_ROUTE: event=stop route=hauksness_return_staging
+[FRAME:22620][DEBUG][field] CMD: inspect_tile:91,108
+[FRAME:22620][DEBUG][field] CMD: inspect_tile:90,108
+[FRAME:22620][DEBUG][field] CMD: inspect_tile:89,108
+[FRAME:22620][DEBUG][field] CMD: launcher_probe:long_recovery_region_ready_20261015
+[FRAME:22620][INFO][field] LAUNCHER_PROBE: long_recovery_region_ready_20261015
+[FRAME:22980][DEBUG][field] CMD: teleport_to:91,108
+[FRAME:22991][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(91,108) resets=12 last=(91,108) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:23100][DEBUG][field] CMD: report_position
+[FRAME:23100][INFO][field] POSITION: map=0x01(World Map) x=91 y=108
+[FRAME:23220][DEBUG][field] CMD: probe_edge:LEFT
+[FRAME:23317][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(91,108) dir=left dest=(90,108) status=moved final=(90,108) reached_dest=true settle_frames=60 tile=2 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=east approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:23700][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:23700][INFO][field] OVERWORLD_ROUTE: event=start route=brecconary waypoint=Brecconary index=25
+[FRAME:23700][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:23700][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=127.000 snapshot_ms=20.000 safe_field_ms=43.000 safe_astar_ms=5.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=201.000 fallback=false
+[FRAME:23700][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(90,108) entry=(23,98) path_len=113 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=268 skipped_farther=188 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:23700][DEBUG][field] CMD: report_position
+[FRAME:23700][INFO][field] POSITION: map=0x01(World Map) x=90 y=108
+[FRAME:23700][DEBUG][field] CMD: report_menu_state
+[FRAME:23700][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=12 base_nt=0 dialogue_start_row=15
+[FRAME:23700][DEBUG][field] CMD: launcher_probe:long_recovery_preview_20261015
+[FRAME:23700][INFO][field] LAUNCHER_PROBE: long_recovery_preview_20261015
+[FRAME:24360][DEBUG][field] CMD: auto_walk
+[FRAME:24360][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=0.000 snapshot_ms=18.000 safe_field_ms=37.000 safe_astar_ms=4.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=64.000 fallback=false
+[FRAME:24360][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(90,108) entry=(23,98) path_len=113 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=268 skipped_farther=188 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:24360][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(90,108) target=(83,91) entry=(23,98) steps=24 full_steps=113 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:24360][DEBUG][field] CMD: launcher_probe:long_recovery_start_20261015
+[FRAME:24360][INFO][field] LAUNCHER_PROBE: long_recovery_start_20261015
+[FRAME:24489][INFO][field] SEAM_OBSERVATION_DEFERRED reason=battle_onset_grace frames=3 map=0x01 from=(90,106) dir=up source=queued_route_block
+[FRAME:24489][INFO][field] OVERWORLD_AUTO_WALK: event=blocked route=hauksness_return_staging waypoint=recovery checkpoint index=nil from=(90,106) dir=up source=queued_route_block
+[FRAME:24489][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=blocked map=0x01 from=(90,106) dir=up entry=(23,98) final=brecconary source=queued_route_block
+[FRAME:24491][INFO][field] EVENT: battle started
+[FRAME:24491][INFO][field] frame:     24491
+[FRAME:24491][INFO][field] state:     field
+[FRAME:24491][INFO][field] map_id:    0x01 (World Map)
+[FRAME:24491][INFO][field] pos:       x=90, y=106
+[FRAME:24491][INFO][field] hp:        149 / 149
+[FRAME:24491][INFO][field] mp:        89 / 121
+[FRAME:24491][INFO][field] SEAM_OBSERVATION_SUPPRESSED reason=battle_started map=0x01 from=(90,106) dir=up source=queued_route_block
+[FRAME:28020][DEBUG][field] CMD: report_position
+[FRAME:28020][INFO][field] POSITION: map=0x01(World Map) x=90 y=106
+[FRAME:28020][DEBUG][field] CMD: report_menu_state
+[FRAME:28020][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=false cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=12 base_nt=0 dialogue_start_row=11
+[FRAME:28020][DEBUG][field] CMD: report_path_state
+[FRAME:28020][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:28020][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:28020][DEBUG][field] CMD: route_status
+[FRAME:28020][INFO][field] OVERWORLD_ROUTE: event=status route=brecconary waypoint=Brecconary index=25
+[FRAME:28020][DEBUG][field] CMD: launcher_probe:long_recovery_after_wyvern_20261015
+[FRAME:28020][INFO][field] LAUNCHER_PROBE: long_recovery_after_wyvern_20261015
+[FRAME:28500][DEBUG][field] CMD: auto_walk
+[FRAME:28500][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=0.000 snapshot_ms=13.000 safe_field_ms=32.000 safe_astar_ms=4.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=53.000 fallback=false
+[FRAME:28500][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(90,106) entry=(23,98) path_len=111 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=268 skipped_farther=188 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:28500][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(90,106) target=(83,89) entry=(23,98) steps=24 full_steps=111 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:28500][DEBUG][field] CMD: launcher_probe:long_recovery_resume_20261015
+[FRAME:28500][INFO][field] LAUNCHER_PROBE: long_recovery_resume_20261015
+[FRAME:28582][DEBUG][field] auto_step timeout retry 1/2 from=(90,106) dir=up inject_limit=12 timeout=60 turn_represses=1 source=queued_route
+[FRAME:28600][DEBUG][field] auto_step complete dir=up from=(90,106) to=(90,105) frames=17 timeout_retries=1 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:28652][INFO][field] SEAM_OBSERVATION_DEFERRED reason=battle_onset_grace frames=3 map=0x01 from=(90,105) dir=up source=queued_route_block
+[FRAME:28652][INFO][field] OVERWORLD_AUTO_WALK: event=blocked route=hauksness_return_staging waypoint=recovery checkpoint index=nil from=(90,105) dir=up source=queued_route_block
+[FRAME:28652][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=blocked map=0x01 from=(90,105) dir=up entry=(23,98) final=brecconary source=queued_route_block
+[FRAME:28654][INFO][field] EVENT: battle started
+[FRAME:28654][INFO][field] frame:     28654
+[FRAME:28654][INFO][field] state:     field
+[FRAME:28654][INFO][field] map_id:    0x01 (World Map)
+[FRAME:28654][INFO][field] pos:       x=90, y=105
+[FRAME:28654][INFO][field] hp:        149 / 149
+[FRAME:28654][INFO][field] mp:        89 / 121
+[FRAME:28654][INFO][field] SEAM_OBSERVATION_SUPPRESSED reason=battle_started map=0x01 from=(90,105) dir=up source=queued_route_block
+[FRAME:29236][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=29236 keys=Down native_joy1=- bridge=down reason=fceux_stale_keyboard_state
+[FRAME:29255][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=29255 keys=Down native_joy1=- bridge=down reason=fceux_stale_keyboard_state
+[FRAME:29270][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=29270 keys=Down native_joy1=- bridge=down reason=fceux_stale_keyboard_state
+[FRAME:29289][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=29289 keys=Down native_joy1=- bridge=down reason=fceux_stale_keyboard_state
+[FRAME:29347][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=29347 keys=Down native_joy1=- bridge=down reason=fceux_stale_keyboard_state
+[FRAME:29379][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=29379 keys=Down native_joy1=- bridge=down reason=fceux_stale_keyboard_state
+[FRAME:29491][DEBUG][field] EVENT: dialogue: Bill chanted the spell of REPEL.
+[FRAME:30300][DEBUG][field] CMD: report_menu_state
+[FRAME:30300][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=12 base_nt=0 dialogue_start_row=9
+[FRAME:30300][DEBUG][field] CMD: report_path_state
+[FRAME:30300][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:30300][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:30300][DEBUG][field] CMD: log_state
+[FRAME:30300][INFO][field] frame:     30300
+[FRAME:30300][INFO][field] state:     field
+[FRAME:30300][INFO][field] map_id:    0x01 (World Map)
+[FRAME:30300][INFO][field] pos:       x=90, y=105
+[FRAME:30300][INFO][field] hp:        149 / 149
+[FRAME:30300][INFO][field] mp:        87 / 121
+[FRAME:30300][DEBUG][field] CMD: launcher_probe:recovery_after_repel_20261015
+[FRAME:30300][INFO][field] LAUNCHER_PROBE: recovery_after_repel_20261015
+[FRAME:32040][DEBUG][field] CMD: auto_walk
+[FRAME:32040][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=0.000 snapshot_ms=14.000 safe_field_ms=31.000 safe_astar_ms=3.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=53.000 fallback=false
+[FRAME:32040][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(90,105) entry=(23,98) path_len=110 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=268 skipped_farther=188 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:32040][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(90,105) target=(83,88) entry=(23,98) steps=24 full_steps=110 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:32040][DEBUG][field] CMD: launcher_probe:recovery_with_repel_20261015
+[FRAME:32040][INFO][field] LAUNCHER_PROBE: recovery_with_repel_20261015
+[FRAME:33041][DEBUG][field] auto_step timeout retry 1/2 from=(83,92) dir=up inject_limit=12 timeout=60 turn_represses=0 source=queued_route
+[FRAME:33087][DEBUG][field] auto_step complete dir=up from=(83,92) to=(83,91) frames=23 timeout_retries=1 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:33202][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=hauksness_return_staging waypoint=recovery checkpoint index=nil steps=24
+[FRAME:33202][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=checkpoint_complete map=0x01 position=(83,88) target=(83,88) entry=(23,98) steps=24 remaining_steps=86 final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:37560][DEBUG][field] CMD: report_position
+[FRAME:37560][INFO][field] POSITION: map=0x01(World Map) x=83 y=88
+[FRAME:37560][DEBUG][field] CMD: report_path_state
+[FRAME:37560][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:37560][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:37560][DEBUG][field] CMD: report_menu_state
+[FRAME:37560][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=30 base_nt=0 dialogue_start_row=5
+[FRAME:37560][DEBUG][field] CMD: preview_overworld_recovery
+[FRAME:37560][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=154.000 snapshot_ms=19.000 safe_field_ms=45.000 safe_astar_ms=4.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=227.000 fallback=false
+[FRAME:37560][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(83,88) entry=(23,98) path_len=86 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=268 skipped_farther=214 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:37560][DEBUG][field] CMD: launcher_probe:checkpoint_one_stopped_20261015
+[FRAME:37560][INFO][field] LAUNCHER_PROBE: checkpoint_one_stopped_20261015
+[FRAME:38580][DEBUG][field] CMD: auto_walk
+[FRAME:38580][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=1.000 snapshot_ms=17.000 safe_field_ms=36.000 safe_astar_ms=3.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=63.000 fallback=false
+[FRAME:38580][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(83,88) entry=(23,98) path_len=86 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=268 skipped_farther=214 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:38580][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(83,88) target=(67,80) entry=(23,98) steps=24 full_steps=86 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:38580][DEBUG][field] CMD: launcher_probe:checkpoint_two_resume_20261015
+[FRAME:38580][INFO][field] LAUNCHER_PROBE: checkpoint_two_resume_20261015
+[FRAME:39552][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=hauksness_return_staging waypoint=recovery checkpoint index=nil steps=24
+[FRAME:39552][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=checkpoint_complete map=0x01 position=(67,80) target=(67,80) entry=(23,98) steps=24 remaining_steps=62 final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:42600][DEBUG][field] CMD: auto_walk
+[FRAME:42600][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=1.000 snapshot_ms=12.000 safe_field_ms=31.000 safe_astar_ms=2.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=51.000 fallback=false
+[FRAME:42600][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(67,80) entry=(23,98) path_len=62 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=229 skipped_farther=391 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:42600][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(67,80) target=(53,90) entry=(23,98) steps=24 full_steps=62 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:42600][DEBUG][field] CMD: launcher_probe:checkpoint_3_resume_20261015
+[FRAME:42600][INFO][field] LAUNCHER_PROBE: checkpoint_3_resume_20261015
+[FRAME:43684][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=hauksness_return_staging waypoint=recovery checkpoint index=nil steps=24
+[FRAME:43684][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=checkpoint_complete map=0x01 position=(53,90) target=(53,90) entry=(23,98) steps=24 remaining_steps=38 final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:43800][DEBUG][field] CMD: auto_walk
+[FRAME:43800][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=0.000 snapshot_ms=15.000 safe_field_ms=33.000 safe_astar_ms=1.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=53.000 fallback=false
+[FRAME:43800][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(53,90) entry=(23,98) path_len=38 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=45 skipped_farther=629 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:43800][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(53,90) target=(37,98) entry=(23,98) steps=24 full_steps=38 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:43800][DEBUG][field] CMD: launcher_probe:checkpoint_4_resume_20261015
+[FRAME:43800][INFO][field] LAUNCHER_PROBE: checkpoint_4_resume_20261015
+[FRAME:44861][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=hauksness_return_staging waypoint=recovery checkpoint index=nil steps=24
+[FRAME:44861][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=checkpoint_complete map=0x01 position=(37,98) target=(37,98) entry=(23,98) steps=24 remaining_steps=14 final=brecconary continuous_requested=true checkpoint_stop=true boundary_stop=false
+[FRAME:46500][DEBUG][field] CMD: auto_walk
+[FRAME:46500][INFO][field] OVERWORLD_RECOVERY_SEARCH_TIMING route=brecconary method=single_field candidates=785 pathfind_calls=1 safe_nodes=6573 hazard_nodes=0 candidate_ms=1.000 snapshot_ms=12.000 safe_field_ms=31.000 safe_astar_ms=0.000 hazard_field_ms=0.000 hazard_astar_ms=0.000 total_ms=47.000 fallback=false
+[FRAME:46500][INFO][field] OVERWORLD_RECOVERY_PREVIEW status=planned map=0x01 from=(37,98) entry=(23,98) path_len=14 route=hauksness_return_staging next=Hauksness western corridor final=brecconary candidates=785 rejected_opening=0 rejected_unreachable=0 skipped_farther=781 hazardous=false hazard_tiles=0 hazard_first_step=- rejected_safe_unreachable=0 preview_only=true
+[FRAME:46500][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=start map=0x01 from=(37,98) target=(23,98) entry=(23,98) steps=14 full_steps=14 route=hauksness_return_staging next=Hauksness western corridor final=brecconary continuous_requested=true checkpoint_stop=false boundary_stop=true
+[FRAME:46500][DEBUG][field] CMD: launcher_probe:long_recovery_final_slice_20261015
+[FRAME:46500][INFO][field] LAUNCHER_PROBE: long_recovery_final_slice_20261015
+[FRAME:46582][DEBUG][field] auto_step timeout retry 1/2 from=(37,98) dir=left inject_limit=12 timeout=60 turn_represses=1 source=queued_route
+[FRAME:46600][DEBUG][field] auto_step complete dir=left from=(37,98) to=(36,98) frames=17 timeout_retries=1 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:47035][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=hauksness_return_staging waypoint=Hauksness south corridor index=nil steps=14
+[FRAME:47035][INFO][field] OVERWORLD_RECOVERY_AUTO_WALK event=complete map=0x01 position=(23,98) entry=(23,98) final=brecconary handoff_route=hauksness_return_staging next=Hauksness western corridor continuous_requested=true boundary_stop=true result=handoff_ready
+[FRAME:52020][DEBUG][field] CMD: report_position
+[FRAME:52020][INFO][field] POSITION: map=0x01(World Map) x=23 y=98
+[FRAME:52020][DEBUG][field] CMD: report_path_state
+[FRAME:52020][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:52020][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:52020][DEBUG][field] CMD: report_menu_state
+[FRAME:52020][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=6 base_nt=0 dialogue_start_row=25
+[FRAME:52020][DEBUG][field] CMD: route_status
+[FRAME:52020][INFO][field] OVERWORLD_ROUTE: event=status route=hauksness_return_staging waypoint=Hauksness western corridor index=54
+[FRAME:52020][DEBUG][field] CMD: launcher_probe:long_recovery_boundary_stopped_20261015
+[FRAME:52020][INFO][field] LAUNCHER_PROBE: long_recovery_boundary_stopped_20261015
+[FRAME:53160][DEBUG][field] CMD: auto_walk
+[FRAME:53160][INFO][field] OVERWORLD_AUTO_WALK: event=start route=hauksness_return_staging waypoint=Hauksness western corridor index=54 steps=3 from=(23,98) to=(23,95) carry=(22,95) continuous=true stop_on_blocker=false
+[FRAME:53160][DEBUG][field] CMD: launcher_probe:network_explicit_resume_20261015
+[FRAME:53160][INFO][field] LAUNCHER_PROBE: network_explicit_resume_20261015
+[FRAME:53242][DEBUG][field] auto_step timeout retry 1/2 from=(23,98) dir=up inject_limit=12 timeout=60 turn_represses=1 source=queued_route
+[FRAME:53262][DEBUG][field] auto_step complete dir=up from=(23,98) to=(23,97) frames=19 timeout_retries=1 turn_represses=1 inject_limit=12 queued_route=true
+[FRAME:53280][DEBUG][field] CMD: stop_auto_walk
+[FRAME:53280][INFO][field] AUTO_WALK: manually stopped active=true reason=manual stop_auto_walk
+[FRAME:53280][DEBUG][field] CMD: report_position
+[FRAME:53280][INFO][field] POSITION: map=0x01(World Map) x=23 y=97
+[FRAME:53280][DEBUG][field] CMD: report_path_state
+[FRAME:53280][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:53280][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:53280][DEBUG][field] CMD: stop_overworld_route
+[FRAME:53280][INFO][field] OVERWORLD_ROUTE: event=stop route=hauksness_return_staging
+[FRAME:53280][DEBUG][field] CMD: launcher_probe:network_resume_stopped_20261015
+[FRAME:53280][INFO][field] LAUNCHER_PROBE: network_resume_stopped_20261015
+[FRAME:54780][DEBUG][field] CMD: inspect_tile:103,11
+[FRAME:54780][DEBUG][field] CMD: inspect_tile:103,10
+[FRAME:54780][DEBUG][field] CMD: inspect_tile:103,9
+[FRAME:54780][DEBUG][field] CMD: launcher_probe:kol_entry_region_ready_20261015
+[FRAME:54780][INFO][field] LAUNCHER_PROBE: kol_entry_region_ready_20261015
+[FRAME:54900][DEBUG][field] CMD: teleport_to:103,11
+[FRAME:54911][INFO][field] TELEPORT_STATE_GUARD_END map=0x01 landing=(103,11) resets=12 last=(103,11) last_move=0x7F last_sub=0x90 reason=complete
+[FRAME:55020][DEBUG][field] CMD: report_position
+[FRAME:55020][INFO][field] POSITION: map=0x01(World Map) x=103 y=11
+[FRAME:55140][DEBUG][field] CMD: probe_edge:UP
+[FRAME:55224][INFO][field] EDGE_PROBE_RESULT map=0x01 from=(103,11) dir=up dest=(103,10) status=moved final=(103,10) reached_dest=true settle_frames=60 tile=6 base_walkable=true walkable=true permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=south approach_blocked=false effective_passable=true reason=position_changed
+[FRAME:55620][DEBUG][field] CMD: start_overworld_route:kol
+[FRAME:55620][INFO][field] OVERWORLD_ROUTE: event=start route=kol waypoint=Kol index=32
+[FRAME:55620][DEBUG][field] CMD: route_status
+[FRAME:55620][INFO][field] OVERWORLD_ROUTE: event=status route=kol waypoint=Kol index=32
+[FRAME:55620][DEBUG][field] CMD: auto_walk
+[FRAME:55620][INFO][field] OVERWORLD_AUTO_WALK: event=start route=kol waypoint=Kol index=32 steps=1 from=(103,10) to=(104,10) carry=(nil,nil) continuous=true stop_on_blocker=false
+[FRAME:55620][DEBUG][field] CMD: launcher_probe:kol_terminal_entry_20261015
+[FRAME:55620][INFO][field] LAUNCHER_PROBE: kol_terminal_entry_20261015
+[FRAME:55665][INFO][field] EVENT: map change -> 0x07 (Kol)
+[FRAME:55665][INFO][field] OVERWORLD_ROUTE: event=arrived route=kol waypoint=Kol index=32
+[FRAME:56160][DEBUG][field] CMD: report_position
+[FRAME:56160][INFO][field] POSITION: map=0x07(Kol) x=19 y=23
+[FRAME:56160][DEBUG][field] CMD: report_path_state
+[FRAME:56160][INFO][field] PATH_STATE target=nil map=0x07 runtime_count=0
+[FRAME:56160][INFO][field] BLOCKERS map=0x07 npc_count=16 runtime_count=0
+[FRAME:56160][DEBUG][field] CMD: report_menu_state
+[FRAME:56160][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=0 base_nt=0 dialogue_start_row=19
+[FRAME:56160][DEBUG][field] CMD: route_status
+[FRAME:56160][INFO][field] OVERWORLD_ROUTE: event=status route=none
+[FRAME:56160][DEBUG][field] CMD: launcher_probe:kol_terminal_stopped_20261015
+[FRAME:56160][INFO][field] LAUNCHER_PROBE: kol_terminal_stopped_20261015
+[FRAME:58140][DEBUG][field] CMD: simulate_sequence:DOWN,12,0
+[FRAME:58140][DEBUG][field] CMD: launcher_probe:kol_exit_input_20261015
+[FRAME:58140][INFO][field] LAUNCHER_PROBE: kol_exit_input_20261015
+[FRAME:58173][INFO][field] EVENT: map change -> 0x01 (World Map)
+[FRAME:58260][DEBUG][field] CMD: report_position
+[FRAME:58260][INFO][field] POSITION: map=0x01(World Map) x=104 y=10
+[FRAME:58260][DEBUG][field] CMD: report_path_state
+[FRAME:58260][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:58260][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:58260][DEBUG][field] CMD: report_menu_state
+[FRAME:58260][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=0 base_nt=0 dialogue_start_row=19
+[FRAME:58260][DEBUG][field] CMD: launcher_probe:kol_exit_world_20261015
+[FRAME:58260][INFO][field] LAUNCHER_PROBE: kol_exit_world_20261015
+[FRAME:67020][DEBUG][field] CMD: simulate_sequence:LEFT,12,0
+[FRAME:67020][DEBUG][field] CMD: launcher_probe:final_dialogue_positioning_20261015
+[FRAME:67020][INFO][field] LAUNCHER_PROBE: final_dialogue_positioning_20261015
+[FRAME:67140][DEBUG][field] CMD: report_position
+[FRAME:67140][INFO][field] POSITION: map=0x01(World Map) x=104 y=10
+[FRAME:67140][DEBUG][field] CMD: report_menu_state
+[FRAME:67140][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=0 base_nt=0 dialogue_start_row=19
+[FRAME:67140][DEBUG][field] CMD: current_object
+[FRAME:67140][DEBUG][field] CMD: launcher_probe:final_dialogue_ready_20261015
+[FRAME:67140][INFO][field] LAUNCHER_PROBE: final_dialogue_ready_20261015
+[FRAME:67920][DEBUG][field] CMD: start_overworld_route:brecconary
+[FRAME:67920][INFO][field] OVERWORLD_ROUTE: event=start route=tantegel_bridge_staging waypoint=Kol forest west edge index=2 staged_from=brecconary_kol
+[FRAME:67920][DEBUG][field] CMD: auto_walk
+[FRAME:67920][INFO][field] OVERWORLD_AUTO_WALK: event=start route=tantegel_bridge_staging waypoint=Kol forest west edge index=2 steps=11 from=(104,10) to=(96,13) carry=(96,14) continuous=true stop_on_blocker=false
+[FRAME:67920][DEBUG][field] CMD: launcher_probe:kol_departure_brecconary_20261015
+[FRAME:67920][INFO][field] LAUNCHER_PROBE: kol_departure_brecconary_20261015
+[FRAME:68040][DEBUG][field] CMD: stop_auto_walk
+[FRAME:68040][INFO][field] AUTO_WALK: manually stopped active=true reason=manual stop_auto_walk
+[FRAME:68040][DEBUG][field] CMD: report_position
+[FRAME:68040][INFO][field] POSITION: map=0x01(World Map) x=97 y=10
+[FRAME:68040][DEBUG][field] CMD: report_path_state
+[FRAME:68040][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:68040][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:68040][DEBUG][field] CMD: route_status
+[FRAME:68040][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel_bridge_staging waypoint=Kol forest west edge index=2
+[FRAME:68040][DEBUG][field] CMD: launcher_probe:dialogue_safe_stopped_20261015
+[FRAME:68040][INFO][field] LAUNCHER_PROBE: dialogue_safe_stopped_20261015
+[FRAME:70200][DEBUG][field] CMD: simulate_sequence:A,8,0
+[FRAME:70200][DEBUG][field] CMD: launcher_probe:spell_result_menu_open_20261015
+[FRAME:70200][INFO][field] LAUNCHER_PROBE: spell_result_menu_open_20261015
+[FRAME:70320][DEBUG][field] CMD: report_position
+[FRAME:70320][INFO][field] POSITION: map=0x01(World Map) x=96 y=10
+[FRAME:70320][DEBUG][field] CMD: report_menu_state
+[FRAME:70320][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=true cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=true cmd_live=true cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=1 dialogue_start_row=19
+[FRAME:70320][DEBUG][field] CMD: launcher_probe:spell_result_command_state_20261015
+[FRAME:70320][INFO][field] LAUNCHER_PROBE: spell_result_command_state_20261015
+[FRAME:71700][DEBUG][field] CMD: simulate_sequence:RIGHT,8,20;A,8,0
+[FRAME:71700][DEBUG][field] CMD: launcher_probe:spell_list_open_20261015
+[FRAME:71700][INFO][field] LAUNCHER_PROBE: spell_list_open_20261015
+[FRAME:71820][DEBUG][field] CMD: report_menu_state
+[FRAME:71820][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=false cursor_visible=false cursor=(0,0) item=TALK cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=12 yesno=false yesno_seen=false submenu=SPELL merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=1 dialogue_start_row=19
+[FRAME:71820][DEBUG][field] CMD: launcher_probe:spell_list_state_20261015
+[FRAME:71820][INFO][field] LAUNCHER_PROBE: spell_list_state_20261015
+[FRAME:72600][DEBUG][field] CMD: simulate_raw_sequence:DOWN,8,12;DOWN,8,12;DOWN,8,12;DOWN,8,12;DOWN,8,12;DOWN,8,12;DOWN,8,12
+[FRAME:72840][DEBUG][field] CMD: report_menu_state
+[FRAME:72840][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=12 yesno=false yesno_seen=false submenu=SPELL merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=1 dialogue_start_row=19
+[FRAME:72840][DEBUG][field] CMD: launcher_probe:repel_selected_20261015
+[FRAME:72840][INFO][field] LAUNCHER_PROBE: repel_selected_20261015
+[FRAME:73620][DEBUG][field] CMD: simulate_sequence:A,8,0
+[FRAME:73704][DEBUG][field] EVENT: dialogue: Bill chanted the spell of REPEL.
+[FRAME:73800][DEBUG][field] CMD: report_position
+[FRAME:73800][INFO][field] POSITION: map=0x01(World Map) x=96 y=10
+[FRAME:73800][DEBUG][field] CMD: report_menu_state
+[FRAME:73800][INFO][field] MENU_STATE raw_open=true cached_open=true active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=12 yesno=false yesno_seen=false submenu=SPELL merchant_active=false merchant_scan=false lower_len=32 scroll_tiles=16 base_nt=0 dialogue_start_row=19
+[FRAME:73800][DEBUG][field] CMD: report_path_state
+[FRAME:73800][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:73800][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:73800][DEBUG][field] CMD: launcher_probe:repel_result_dialogue_20261015
+[FRAME:73800][INFO][field] LAUNCHER_PROBE: repel_result_dialogue_20261015
+[FRAME:77460][DEBUG][field] CMD: route_status
+[FRAME:77460][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel_bridge_staging waypoint=Kol forest west edge index=2
+[FRAME:77460][DEBUG][field] CMD: launcher_probe:repel_result_status_20261015
+[FRAME:77460][INFO][field] LAUNCHER_PROBE: repel_result_status_20261015
+[FRAME:83862][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel_bridge_staging waypoint=Kol forest west edge index=2
+[FRAME:84081][INFO][field] OBJECT_HOTKEY_BLOCKED key=key_auto_walk reason=Close the submenu first
+[FRAME:84220][INFO][field] INPUT_EXTERNAL_BRIDGE_ACTIVE frame=84220 keys=D native_joy1=- bridge=B reason=fceux_stale_keyboard_state
+[FRAME:90000][DEBUG][field] CMD: report_position
+[FRAME:90000][INFO][field] POSITION: map=0x01(World Map) x=96 y=10
+[FRAME:90000][DEBUG][field] CMD: report_menu_state
+[FRAME:90000][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=0 dialogue_start_row=19
+[FRAME:90000][DEBUG][field] CMD: report_path_state
+[FRAME:90000][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:90000][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:90000][DEBUG][field] CMD: current_object
+[FRAME:90000][DEBUG][field] CMD: log_state
+[FRAME:90000][INFO][field] frame:     90000
+[FRAME:90000][INFO][field] state:     field
+[FRAME:90000][INFO][field] map_id:    0x01 (World Map)
+[FRAME:90000][INFO][field] pos:       x=96, y=10
+[FRAME:90000][INFO][field] hp:        149 / 149
+[FRAME:90000][INFO][field] mp:        85 / 121
+[FRAME:90000][DEBUG][field] CMD: speech_status
+[FRAME:90000][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:90000][DEBUG][field] CMD: launcher_probe:repel_result_accepted_20261015
+[FRAME:90000][INFO][field] LAUNCHER_PROBE: repel_result_accepted_20261015
+[FRAME:91200][DEBUG][field] CMD: auto_walk
+[FRAME:91200][INFO][field] OVERWORLD_AUTO_WALK: event=start route=tantegel_bridge_staging waypoint=Kol forest west edge index=2 steps=3 from=(96,10) to=(96,13) carry=(96,14) continuous=true stop_on_blocker=false
+[FRAME:91200][DEBUG][field] CMD: launcher_probe:spell_result_explicit_resume_20261015
+[FRAME:91200][INFO][field] LAUNCHER_PROBE: spell_result_explicit_resume_20261015
+[FRAME:91243][INFO][field] OVERWORLD_ROUTE: event=advance route=tantegel_bridge_staging waypoint=Kol forest west edge index=3
+[FRAME:91279][INFO][field] OVERWORLD_AUTO_WALK: event=complete route=tantegel_bridge_staging waypoint=Kol forest west edge index=2 steps=3
+[FRAME:91279][INFO][field] OVERWORLD_AUTO_WALK: event=start route=tantegel_bridge_staging waypoint=West of Kol north lane index=3 steps=8 from=(96,13) to=(96,21) carry=(96,22) continuous=true stop_on_blocker=false
+[FRAME:91279][INFO][field] OVERWORLD_AUTO_WALK: event=continue route=tantegel_bridge_staging waypoint=West of Kol north lane index=3
+[FRAME:91320][DEBUG][field] CMD: stop_auto_walk
+[FRAME:91320][INFO][field] AUTO_WALK: manually stopped active=true reason=manual stop_auto_walk
+[FRAME:91320][DEBUG][field] CMD: launcher_probe:spell_result_resume_stopped_20261015
+[FRAME:91320][INFO][field] LAUNCHER_PROBE: spell_result_resume_stopped_20261015
+[FRAME:91440][DEBUG][field] CMD: report_position
+[FRAME:91440][INFO][field] POSITION: map=0x01(World Map) x=96 y=14
+[FRAME:91440][DEBUG][field] CMD: report_path_state
+[FRAME:91440][INFO][field] PATH_STATE target=nil map=0x01 runtime_count=0
+[FRAME:91440][INFO][field] BLOCKERS map=0x01 npc_count=0 runtime_count=0
+[FRAME:91440][DEBUG][field] CMD: report_menu_state
+[FRAME:91440][INFO][field] MENU_STATE raw_open=false cached_open=false active_block=false cursor_visible=false cursor=(0,7) item=unknown cmd_confirmed=true cmd_live=false cmd_rearm=false cmd_hold=0 yesno=false yesno_seen=false submenu=nil merchant_active=false merchant_scan=false lower_len=0 scroll_tiles=16 base_nt=0 dialogue_start_row=27
+[FRAME:91440][DEBUG][field] CMD: log_state
+[FRAME:91440][INFO][field] frame:     91440
+[FRAME:91440][INFO][field] state:     field
+[FRAME:91440][INFO][field] map_id:    0x01 (World Map)
+[FRAME:91440][INFO][field] pos:       x=96, y=14
+[FRAME:91440][INFO][field] hp:        149 / 149
+[FRAME:91440][INFO][field] mp:        85 / 121
+[FRAME:91440][DEBUG][field] CMD: speech_status
+[FRAME:91440][INFO][field] Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12
+[FRAME:91440][DEBUG][field] CMD: route_status
+[FRAME:91440][INFO][field] OVERWORLD_ROUTE: event=status route=tantegel_bridge_staging waypoint=West of Kol north lane index=3
+[FRAME:91440][DEBUG][field] CMD: launcher_probe:travel_acceptance_complete_20261015
+[FRAME:91440][INFO][field] LAUNCHER_PROBE: travel_acceptance_complete_20261015
+
+SPEECH EXTRACT
+[2026-10-15 14:52:22] python=C:\Python314\python.exe
+[2026-10-15 14:52:22] argv=['D:/modding/dragonwarrior1/speech_bridge.py', 'D:/modding/dragonwarrior1/speech_bridge.status', 'D:/modding/dragonwarrior1/speech_bridge.log']
+[2026-10-15 14:52:22] imported accessible_output2
+[2026-10-15 14:52:23] selected_backend=NVDA reason=active
+[2026-10-15 14:52:23] speaker=<accessible_output2.outputs.nvda.NVDA object at 0x00000181B6FD9FD0>
+[2026-10-15 14:52:23] audio pipeline prime queued
+[2026-10-15 14:52:23] command='speak:Dragon Warrior Accessibility Mod loaded.'
+[2026-10-15 14:54:03] command='speak:Command. TALK'
+[2026-10-15 14:56:32] command='speak:World Map (73, 96)'
+[2026-10-15 14:57:14] command='interrupt:Path state reported'
+[2026-10-15 14:57:14] command='interrupt:Menu state reported'
+[2026-10-15 14:57:14] command='interrupt:Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12'
+[2026-10-15 14:57:21] command='interrupt:Swamp Cave route starts from Hauksness. Starting route to Hauksness first. Route to Hauksness. Next: Cantlin north road, 5 north'
+[2026-10-15 14:57:21] command='interrupt:Recovery preview. Final destination: Swamp Cave. Safe network entry: Cantlin at 73,96. Already there. Then current leg to Hauksness. Next: Cantlin north road. Preview only; no movement started.'
+[2026-10-15 14:57:21] command='interrupt:Current leg to Hauksness. Final destination: Swamp Cave. Next: Cantlin north road, 5 north'
+[2026-10-15 14:57:23] command='interrupt:Swamp Cave South Entrance route starts from Hauksness. Starting route to Hauksness first. Route recalculated. Route to Hauksness. Next: Cantlin north road, 5 north'
+[2026-10-15 14:57:23] command='interrupt:Recovery preview. Final destination: Swamp Cave South Entrance. Safe network entry: Cantlin at 73,96. Already there. Then current leg to Hauksness. Next: Cantlin north road. Preview only; no movement started.'
+[2026-10-15 14:57:23] command='interrupt:Current leg to Hauksness. Final destination: Swamp Cave South Entrance. Next: Cantlin north road, 5 north'
+[2026-10-15 14:57:39] command='interrupt:Recovery audit for tantegel. Network 977. Safe within 24 steps 7196. Safe beyond limit 398. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:41] command='interrupt:Recovery audit for brecconary. Network 977. Safe within 24 steps 7196. Safe beyond limit 398. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:43] command='interrupt:Recovery audit for erdrick. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:46] command='interrupt:Recovery audit for garinham. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:48] command='interrupt:Recovery audit for kol. Network 977. Safe within 24 steps 7179. Safe beyond limit 415. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:50] command='interrupt:Recovery audit for northern_cave. Network 977. Safe within 24 steps 7179. Safe beyond limit 415. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:53] command='interrupt:Recovery audit for mountain_cave. Network 977. Safe within 24 steps 7179. Safe beyond limit 415. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:55] command='interrupt:Recovery audit for swamp_cave. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:57:57] command='interrupt:Recovery audit for swamp_cave_south. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:00] command='interrupt:Recovery audit for rainbow_bridge. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:02] command='interrupt:Recovery audit for rimuldar. Network 977. Safe within 24 steps 7176. Safe beyond limit 418. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:04] command='interrupt:Recovery audit for magic_temple. Network 977. Safe within 24 steps 7176. Safe beyond limit 418. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:07] command='interrupt:Recovery audit for cantlin_hauksness. Network 977. Safe within 24 steps 7122. Safe beyond limit 472. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:09] command='interrupt:Recovery audit for hauksness. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:11] command='interrupt:Recovery audit for great_swamp_cantlin. Network 977. Safe within 24 steps 7122. Safe beyond limit 472. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:14] command='interrupt:Recovery audit for charlock_castle. Network 977. Safe within 24 steps 7178. Safe beyond limit 416. Hazard required 278. Unreachable 0. Maximum safe distance 117.'
+[2026-10-15 14:58:46] command='interrupt:Stopped overworld route'
+[2026-10-15 14:58:46] command='interrupt:TILE map=0x01 x=91 y=108 dims=120x120 tile=2 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true'
+[2026-10-15 14:58:46] command='interrupt:TILE map=0x01 x=90 y=108 dims=120x120 tile=2 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true'
+[2026-10-15 14:58:46] command='interrupt:TILE map=0x01 x=89 y=108 dims=120x120 tile=2 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true'
+[2026-10-15 14:58:52] command='interrupt:Teleported to (91,108)'
+[2026-10-15 14:58:56] command='interrupt:Edge probe started. MOVE map=0x01 from=(91,108) dir=left dest=(90,108) dims=120x120 tile=2 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=east approach_blocked=false effective_passable=true'
+[2026-10-15 14:58:58] command='interrupt:Edge probe moved from 91,108 to 90,108.'
+[2026-10-15 14:59:04] command='interrupt:Route to Brecconary. Next: Brecconary, 67 north, 42 west'
+[2026-10-15 14:59:04] command='interrupt:Recovery preview. Final destination: Brecconary. Safe network entry: Hauksness south corridor at 23,98. 7 north, 2 west, 3 north, 1 west, 1 north, 1 west, 1 north, 2 west, 4 north, 1 west, 6 north, 1 west, 2 north, 3 west, 1 north, 1 west, 2 north, 1 west, 1 north, 13 west, 1 south, 1 west, 1 south, 1 west, 2 south, 6 west, 6 south, 8 west, 5 south, 5 west, 2 south, 1 west, 1 south, 19 west. Then current leg to Hauksness. Next: Hauksness western corridor. Preview only; no movement started.'
+[2026-10-15 14:59:04] command='interrupt:Menu state reported'
+[2026-10-15 14:59:16] command='interrupt:Recovery auto-walk. Checkpoint at 83,91, 24 steps. The waypoint network is 113 steps away. Final destination: Brecconary. Auto-walk will stop at the checkpoint; press it again to continue recovery.'
+[2026-10-15 14:59:18] command='interrupt:Recovery auto-walk stopped. Blocked moving up toward recovery checkpoint'
+[2026-10-15 14:59:18] command='interrupt:Battle!'
+[2026-10-15 14:59:18] command='speak:FIGHT'
+[2026-10-15 14:59:19] command='interrupt:A Wyvern draws near!'
+[2026-10-15 14:59:21] command="speak:Bill attacks! The Wyvern's Hit Points have been reduced by 30."
+[2026-10-15 14:59:22] command='speak:The Wyvern attacks!'
+[2026-10-15 14:59:22] command='speak:A miss!'
+[2026-10-15 14:59:23] command='speak:No damage hath been scored!'
+[2026-10-15 14:59:25] command="speak:Bill attacks! The Wyvern's Hit Points have been reduced by 30."
+[2026-10-15 14:59:26] command='speak:Thou hast done well in defeating the Wyvern.'
+[2026-10-15 14:59:28] command='speak:Thy Experience increases by 24. Thy GOLD increases by 85.'
+[2026-10-15 15:00:17] command='interrupt:Menu state reported'
+[2026-10-15 15:00:17] command='interrupt:Path state reported'
+[2026-10-15 15:00:17] command='interrupt:Route to Brecconary. Next: Brecconary, 65 north, 42 west'
+[2026-10-15 15:00:25] command='interrupt:Recovery auto-walk. Checkpoint at 83,89, 24 steps. The waypoint network is 111 steps away. Final destination: Brecconary. Auto-walk will stop at the checkpoint; press it again to continue recovery.'
+[2026-10-15 15:00:28] command='interrupt:Recovery auto-walk stopped. Blocked moving up toward recovery checkpoint'
+[2026-10-15 15:00:28] command='interrupt:Battle!'
+[2026-10-15 15:00:28] command='speak:FIGHT'
+[2026-10-15 15:00:29] command='interrupt:A Wraith draws near!'
+[2026-10-15 15:00:31] command="speak:Bill attacks! The Wraith's Hit Points have been reduced by 54."
+[2026-10-15 15:00:33] command='speak:Thou hast done well in defeating the Wraith. Thy Experience increases by 17. Thy GOLD increases by 59.'
+[2026-10-15 15:00:36] command='speak:Command. TALK'
+[2026-10-15 15:00:36] command='speak:SPELL'
+[2026-10-15 15:00:37] command='speak:Spells. Heal. 4 MP'
+[2026-10-15 15:00:37] command='speak:Hurt. 2 MP'
+[2026-10-15 15:00:38] command='speak:Sleep. 2 MP'
+[2026-10-15 15:00:38] command='speak:Radiant. 3 MP'
+[2026-10-15 15:00:38] command='speak:Stopspell. 2 MP'
+[2026-10-15 15:00:39] command='speak:Outside. 6 MP'
+[2026-10-15 15:00:39] command='speak:Return. 8 MP'
+[2026-10-15 15:00:40] command='speak:Repel. 2 MP'
+[2026-10-15 15:00:41] command='speak:Used 2 MP. MP 87'
+[2026-10-15 15:00:42] command='interrupt:Bill chanted the spell of REPEL.'
+[2026-10-15 15:00:55] command='interrupt:Menu state reported'
+[2026-10-15 15:00:55] command='interrupt:Path state reported'
+[2026-10-15 15:01:24] command='interrupt:Recovery auto-walk. Checkpoint at 83,88, 24 steps. The waypoint network is 110 steps away. Final destination: Brecconary. Auto-walk will stop at the checkpoint; press it again to continue recovery.'
+[2026-10-15 15:01:34] command='speak:Auto-walk 12 of 24 steps'
+[2026-10-15 15:01:44] command='interrupt:Recovery checkpoint reached. The waypoint network remains about 86 steps away. Final destination: Brecconary. Press auto-walk again to continue recovery.'
+[2026-10-15 15:02:57] command='interrupt:Path state reported'
+[2026-10-15 15:02:57] command='interrupt:Menu state reported'
+[2026-10-15 15:02:57] command='interrupt:Recovery preview. Final destination: Brecconary. Safe network entry: Hauksness south corridor at 23,98. 1 west, 4 north, 3 west, 1 north, 1 west, 2 north, 1 west, 1 north, 13 west, 1 south, 1 west, 1 south, 1 west, 2 south, 6 west, 6 south, 8 west, 5 south, 5 west, 2 south, 1 west, 1 south, 19 west. Then current leg to Hauksness. Next: Hauksness western corridor. Preview only; no movement started.'
+[2026-10-15 15:03:14] command='interrupt:Recovery auto-walk. Checkpoint at 67,80, 24 steps. The waypoint network is 86 steps away. Final destination: Brecconary. Auto-walk will stop at the checkpoint; press it again to continue recovery.'
+[2026-10-15 15:03:23] command='speak:Auto-walk 12 of 24 steps'
+[2026-10-15 15:03:31] command='interrupt:Recovery checkpoint reached. The waypoint network remains about 62 steps away. Final destination: Brecconary. Press auto-walk again to continue recovery.'
+[2026-10-15 15:04:22] command='interrupt:Recovery auto-walk. Checkpoint at 53,90, 24 steps. The waypoint network is 62 steps away. Final destination: Brecconary. Auto-walk will stop at the checkpoint; press it again to continue recovery.'
+[2026-10-15 15:04:30] command='speak:Auto-walk 12 of 24 steps'
+[2026-10-15 15:04:40] command='interrupt:Recovery checkpoint reached. The waypoint network remains about 38 steps away. Final destination: Brecconary. Press auto-walk again to continue recovery.'
+[2026-10-15 15:04:42] command='interrupt:Recovery auto-walk. Checkpoint at 37,98, 24 steps. The waypoint network is 38 steps away. Final destination: Brecconary. Auto-walk will stop at the checkpoint; press it again to continue recovery.'
+[2026-10-15 15:04:52] command='speak:Auto-walk 12 of 24 steps'
+[2026-10-15 15:05:00] command='interrupt:Recovery checkpoint reached. The waypoint network remains about 14 steps away. Final destination: Brecconary. Press auto-walk again to continue recovery.'
+[2026-10-15 15:05:28] command='interrupt:Recovery auto-walk. Network entry: Hauksness south corridor at 23,98, 14 steps. Final destination: Brecconary. Auto-walk will stop at the waypoint network.'
+[2026-10-15 15:05:35] command='speak:Auto-walk 12 of 14 steps'
+[2026-10-15 15:05:37] command='interrupt:Recovery complete. Waypoint network reached at Hauksness south corridor. Final destination: Brecconary. Next: Hauksness western corridor. Press auto-walk again to continue.'
+[2026-10-15 15:07:01] command='interrupt:Path state reported'
+[2026-10-15 15:07:01] command='interrupt:Menu state reported'
+[2026-10-15 15:07:01] command='interrupt:Current leg to Hauksness. Final destination: Brecconary. Next: Hauksness western corridor, 3 north'
+[2026-10-15 15:07:20] command='interrupt:Continuous overworld auto-walk to Hauksness'
+[2026-10-15 15:07:22] command='interrupt:Auto-walk stopped'
+[2026-10-15 15:07:22] command='interrupt:Path state reported'
+[2026-10-15 15:07:22] command='interrupt:Stopped overworld route'
+[2026-10-15 15:07:47] command='interrupt:TILE map=0x01 x=103 y=11 dims=120x120 tile=6 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true'
+[2026-10-15 15:07:47] command='interrupt:TILE map=0x01 x=103 y=10 dims=120x120 tile=6 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true'
+[2026-10-15 15:07:47] command='interrupt:TILE map=0x01 x=103 y=9 dims=120x120 tile=6 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false effective_passable=true'
+[2026-10-15 15:07:49] command='interrupt:Teleported to (103,11)'
+[2026-10-15 15:07:53] command='interrupt:Edge probe started. MOVE map=0x01 from=(103,11) dir=up dest=(103,10) dims=120x120 tile=6 base_walkable=true walkable=true reason=tile_type permanent_blocked=false npc_blocked=false directional_blocked=false blocked_approach=south approach_blocked=false effective_passable=true'
+[2026-10-15 15:07:54] command='interrupt:Edge probe moved from 103,11 to 103,10.'
+[2026-10-15 15:08:01] command='interrupt:Route to Kol. Next: Kol, 1 east'
+[2026-10-15 15:08:01] command='interrupt:Route to Kol. Next: Kol, 1 east'
+[2026-10-15 15:08:01] command='interrupt:Continuous overworld auto-walk to Kol'
+[2026-10-15 15:08:02] command='speak:Arrived at Kol'
+[2026-10-15 15:08:10] command='interrupt:Path state reported'
+[2026-10-15 15:08:10] command='interrupt:Menu state reported'
+[2026-10-15 15:08:10] command='interrupt:No overworld route active'
+[2026-10-15 15:08:44] command='speak:World Map'
+[2026-10-15 15:08:45] command='interrupt:Path state reported'
+[2026-10-15 15:08:45] command='interrupt:Menu state reported'
+[2026-10-15 15:11:14] command='interrupt:Menu state reported'
+[2026-10-15 15:11:14] command='interrupt:Brecconary: 31 south, 56 west (1 of 16) [player 104,10 obj 48,41]'
+[2026-10-15 15:11:27] command='interrupt:Brecconary route starts from Tantegel bridge junction. Starting route to Tantegel bridge junction first. Route to Tantegel bridge junction. Next: Kol forest west edge, 3 south, 8 west'
+[2026-10-15 15:11:27] command='interrupt:Continuous overworld auto-walk to Tantegel bridge junction'
+[2026-10-15 15:11:29] command='interrupt:Auto-walk stopped'
+[2026-10-15 15:11:29] command='interrupt:Path state reported'
+[2026-10-15 15:11:29] command='interrupt:Current leg to Tantegel bridge junction. Final destination: Brecconary. Next: Kol forest west edge, 3 south, 1 west'
+[2026-10-15 15:12:06] command='speak:Command. TALK'
+[2026-10-15 15:12:08] command='interrupt:Menu state reported'
+[2026-10-15 15:12:31] command='speak:SPELL'
+[2026-10-15 15:12:31] command='speak:Spells. Heal. 4 MP'
+[2026-10-15 15:12:33] command='interrupt:Menu state reported'
+[2026-10-15 15:12:46] command='speak:Hurt. 2 MP'
+[2026-10-15 15:12:46] command='speak:Sleep. 2 MP'
+[2026-10-15 15:12:46] command='speak:Radiant. 3 MP'
+[2026-10-15 15:12:47] command='speak:Stopspell. 2 MP'
+[2026-10-15 15:12:47] command='speak:Outside. 6 MP'
+[2026-10-15 15:12:47] command='speak:Return. 8 MP'
+[2026-10-15 15:12:48] command='speak:Repel. 2 MP'
+[2026-10-15 15:12:50] command='interrupt:Menu state reported'
+[2026-10-15 15:13:03] command='speak:Used 2 MP. MP 85'
+[2026-10-15 15:13:04] command='interrupt:Bill chanted the spell of REPEL.'
+[2026-10-15 15:13:06] command='interrupt:Menu state reported'
+[2026-10-15 15:13:06] command='interrupt:Path state reported'
+[2026-10-15 15:14:07] command='interrupt:Current leg to Tantegel bridge junction. Final destination: Brecconary. Next: Kol forest west edge, 3 south'
+[2026-10-15 15:15:53] command='speak:Current leg to Tantegel bridge junction. Final destination: Brecconary. Next: Kol forest west edge, 3 south'
+[2026-10-15 15:15:57] command='speak:Close the submenu first'
+[2026-10-15 15:17:36] command='interrupt:Menu state reported'
+[2026-10-15 15:17:36] command='interrupt:Path state reported'
+[2026-10-15 15:17:36] command='interrupt:Brecconary: 31 south, 48 west (1 of 18) [player 96,10 obj 48,41]'
+[2026-10-15 15:17:36] command='interrupt:Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12'
+[2026-10-15 15:17:57] command='interrupt:Continuous overworld auto-walk to Tantegel bridge junction'
+[2026-10-15 15:17:59] command='interrupt:Auto-walk stopped'
+[2026-10-15 15:18:01] command='interrupt:Path state reported'
+[2026-10-15 15:18:01] command='interrupt:Menu state reported'
+[2026-10-15 15:18:01] command='interrupt:Speech status. backend=bridge. ready=true. available=true. error=none. warning_pending=0. warning_input_active=false. warning_neutral=12/12'
+[2026-10-15 15:18:01] command='interrupt:Current leg to Tantegel bridge junction. Final destination: Brecconary. Next: West of Kol north lane, 7 south'
