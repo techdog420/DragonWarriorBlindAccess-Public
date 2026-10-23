@@ -536,7 +536,11 @@ function Set-ConfigValue {
     $pattern = ("(?m)^{0}\s*=.*$" -f [regex]::Escape($Key))
     $line = "{0} = {1}" -f $Key, $Value
     if ($text -match $pattern) {
-        $text = $text -replace $pattern, $line
+        # Keep dollar signs in installation paths literal during replacement.
+        $text = [regex]::Replace($text, $pattern, [System.Text.RegularExpressions.MatchEvaluator] {
+            param($match)
+            return $line
+        })
     } else {
         if (-not $text.EndsWith("`n")) {
             $text += [Environment]::NewLine

@@ -158,6 +158,51 @@ try {
         self.assertTrue(all(line.isascii() for line in lua_lines), lua_lines)
         self.assertTrue(all(line.endswith("/app/main.lua") for line in lua_lines), lua_lines)
 
+    def test_repeated_validation_preserves_literal_dollar_in_package_path(self):
+        special_root = self.temp_root / "DWA $& package"
+        shutil.copytree(self.root, special_root)
+        for _ in range(2):
+            result = self.run_player("-ValidateOnly", root=special_root)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            config_text = (special_root / "user/fceux/fceux.cfg").read_text(encoding="utf-8")
+            lua_path = str(special_root / "app/main.lua").replace("\\", "/")
+            for key in ("SDL.LastLoadLua", "SDL.LuaScript"):
+                lines = [line for line in config_text.splitlines() if line.startswith(key + " =")]
+                self.assertEqual(lines, [f"{key} = {lua_path}"])
+
+    def test_all_fceux_config_writers_preserve_literal_replacement_characters(self):
+        probe = self.temp_root / "config-writer-probe.ps1"
+        probe.write_text(r'''
+param([string] $RepoPath, [string] $ConfigFile)
+$ErrorActionPreference = "Stop"
+foreach ($relativePath in @("release\install_player.ps1", "release\play_player.ps1", "launch_dw.ps1")) {
+    $name = if ($relativePath -eq "launch_dw.ps1") { "Set-ConfigValue" } else { "Set-PrivateFceuxConfigValue" }
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $RepoPath $relativePath), [ref] $tokens, [ref] $parseErrors)
+    if ($parseErrors.Count -gt 0) { throw "Could not parse $relativePath" }
+    $writer = $ast.Find({param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
+    }, $true)
+    . ([scriptblock]::Create($writer.Extent.Text))
+    [IO.File]::WriteAllText($ConfigFile, "SDL.LuaScript = old`r`nSDL.Sound.Volume = 128`r`n")
+    $value = 'D:/Games/$&/$1/$$/${name}/app/main.lua'
+    & $name -ConfigPath $ConfigFile -Key "SDL.LuaScript" -Value $value
+    $lines = [IO.File]::ReadAllLines($ConfigFile)
+    if ($lines[0] -cne "SDL.LuaScript = $value") { throw "Path corrupted by $relativePath : $($lines[0])" }
+    if ($lines[1] -cne "SDL.Sound.Volume = 128") { throw "Unrelated setting changed" }
+}
+Write-Output "literal-config-writers=OK"
+''', encoding="utf-8")
+        result = subprocess.run(
+            [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(probe),
+             "-RepoPath", str(REPO_ROOT), "-ConfigFile", str(self.temp_root / "fceux.cfg")],
+            text=True, errors="replace", capture_output=True, timeout=15, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("literal-config-writers=OK", result.stdout)
+
     def test_missing_installed_rom_directs_player_to_setup(self):
         self.rom_path.unlink()
 
@@ -324,6 +369,46 @@ try {
         developer_text = (REPO_ROOT / "launch_dw.ps1").read_text(encoding="utf-8")
         self.assertIn('"-File", (Quote-Argument $keyboardBridgeScript)', developer_text)
         self.assertIn('"-OutputPath", (Quote-Argument $keyboardBridgeFile)', developer_text)
+
+    def test_keyboard_state_writer_recovers_after_temporary_read_lock(self):
+        # Load just the writer: do not poll real keys or start an emulator.
+        probe = self.temp_root / "writer-probe.ps1"
+        probe.write_text(r'''
+param([string] $BridgeScript, [string] $StateFile)
+$ErrorActionPreference = "Stop"
+$tokens = $null
+$parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    $BridgeScript, [ref] $tokens, [ref] $parseErrors)
+if ($parseErrors.Count -gt 0) { throw "Could not parse keyboard bridge" }
+$writer = $ast.Find({param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq "Write-State"
+}, $true)
+. ([scriptblock]::Create($writer.Extent.Text))
+$OutputPath = $StateFile
+[IO.File]::WriteAllText($OutputPath, "old")
+$reader = [IO.File]::Open($OutputPath, [IO.FileMode]::Open,
+    [IO.FileAccess]::Read, [IO.FileShare]::Read)
+try {
+    if (Write-State -Line "blocked") { throw "Locked publication should be deferred" }
+} finally { $reader.Dispose() }
+if (-not (Write-State -Line "fresh")) { throw "Publication should recover after unlock" }
+if ([IO.File]::ReadAllText($OutputPath).Trim() -ne "fresh") { throw "State did not recover" }
+$OutputPath = Join-Path (Join-Path (Split-Path -Parent $StateFile) "missing") "state.txt"
+$propagated = $false
+try { [void] (Write-State -Line "bad path") } catch { $propagated = $true }
+if (-not $propagated) { throw "Unrelated file errors must propagate" }
+Write-Output "keyboard-writer-recovery=OK"
+''', encoding="utf-8")
+        result = subprocess.run(
+            [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(probe),
+             "-BridgeScript", str(REPO_ROOT / "keyboard_bridge.ps1"),
+             "-StateFile", str(self.temp_root / "keyboard.txt")],
+            text=True, errors="replace", capture_output=True, timeout=15, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("keyboard-writer-recovery=OK", result.stdout)
 
     def test_config_lua_autoload_is_refreshed_after_old_emulator_shutdown(self):
         developer_text = (REPO_ROOT / "launch_dw.ps1").read_text(encoding="utf-8")

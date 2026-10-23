@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-10-15
+Updated: 2026-10-23
 
 This file contains durable project knowledge for the Dragon Warrior accessibility mod. It is a chronological record, so dated checkpoints below may describe a branch or state that has since changed. Use `session_handoff.md` for current state and `PLAYTESTING.md` for dated gameplay evidence.
 Use `TASKS.md` for lightweight future-work/backlog items that should not
@@ -326,6 +326,14 @@ Durable FCEUX facts:
   predates that fix, `clear_input` or `./recover_fceux_input.sh` can be used as
   a live neutral-pulse recovery.
 - `dw_keyboard_input.txt` is runtime bridge state and should stay ignored
+- Live Windows diagnostic readers must allow the producer's writes. A
+  `Copy-Item` collector of `dw_keyboard_input.txt` reproduced an `IOException`
+  in the keyboard helper's `WriteAllText`, terminating input. Use an explicit
+  read FileStream with `FileShare.ReadWrite | FileShare.Delete`, close it, and
+  write the snapshot separately. Sampled bytes may be mid-update; validate or
+  retry them rather than treating a partial diagnostic snapshot as game state.
+  Ordinary copies of frozen logs are fine. See `CAPTURE-LOCK-01` in
+  `work_notes/non_ascii_account_20261015.md`.
 - FCEUX can retain `LeftAlt` after Alt-tab/window focus changes. LeftAlt-only
   idle frames are logged as `INPUT_STALE_ALT_IGNORED` and return no synthetic
   joypad input; repeated idle stale-Alt warnings are log-only and
@@ -1478,18 +1486,23 @@ Known BizHawk risk:
 
 ## Testing Baseline
 
-Current authoritative offline gate (latest recorded full pass 2026-10-13):
+Current authoritative offline gate (latest recorded full pass 2026-10-23):
 - Run `python run_tests.py` from the repository root on Windows.
 - The runner discovers every root `test_*.lua` suite automatically except
   `test_env.lua`, which is a helper, and `test_screen.lua` / `test_speech.lua`,
   which require live FCEUX globals and are reported as explicit skips.
-- It syntax-checks every root Lua and Python file, runs all 42 host-runnable
+- It syntax-checks every root Lua and Python file, runs all 43 host-runnable
   Lua suites through the discovered `lua` or `luajit` runtime, runs Python
-  unittest discovery (68 tests on 2026-10-13), validates shell syntax, speech
+  unittest discovery (82 tests on 2026-10-23), validates shell syntax, speech
   dependencies, and the command queue, and returns nonzero on any failure.
 - `speech_smoke.py` is intentionally manual because it produces real screen-
   reader speech; do not rename it to `test_*.py` or import it during automated
   discovery.
+- Standalone Python test functions need a `load_tests` hook to participate in
+  unittest discovery. The inventory guard requires every automated Python
+  test module to contribute cases; importing a module is not test execution.
+- Lua pipe `write` and `flush` can return `nil, error` without throwing.
+  A protected call alone does not establish transport success.
 - On Windows, LuaJIT may be discoverable to Python even when PowerShell cannot
   invoke a bare `lua` command. Let the runner resolve `lua`/`luajit`, and use
   its reported executable path for focused manual Lua-suite runs.
@@ -2135,6 +2148,13 @@ Do not rely on assistant-local memory as the only record of important project st
 
 ## Player Package Path Compatibility
 
+- FCEUX config writers must insert values literally. Regex replacement strings
+  expand `$&`, `$1`, and `$$`, corrupting valid installation paths; use match
+  evaluators. Repeated-launch tests matter because initial appends bypass that
+  replacement path. See the 2026-10-16 source review.
+- A temporary diagnostic/reader sharing lock must not permanently terminate
+  the keyboard helper. Defer only sharing/lock violations, retry the current
+  state on the next poll, and retain the Lua lease for prolonged failures.
 - Qt FCEUX 2.6.6 can start from a non-ASCII extraction folder but cannot
   reliably open ROM or Lua paths containing those characters. A failed launch
   may therefore leave a responsive empty emulator window with no title music,

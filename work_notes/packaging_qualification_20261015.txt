@@ -1,0 +1,131 @@
+2026-10-15 packaging qualification evidence
+Candidate app source: b6261ba3aaafb7ea1d04d97abe9efd462d94eea1
+Chronological evidence: later checkpoints supersede earlier pending statuses.
+Final status: local NVDA/JAWS and actual non-ASCII account acceptance complete.
+Broader hardware/player coverage and public release decisions remain open.
+
+Actual non-ASCII account accepted (run 002):
+Windows identity TEST-PC\DWTest-é; real profile C:\Users\DWTest-é; SID ending 1021; session 2.
+Supported ROM install and two NVDA launches passed using the unchanged package.
+LOKI's King battery save reloaded; fresh speech reports 5 experience to level.
+Player confirmed battery load and normal manual keyboard movement.
+Speech positions changed from (6,4) to (6,6).
+Keyboard PID 46736, emulator PID 37812; v3 heartbeat 3 at 23:05:32 UTC -> 1017 at 23:10:03 UTC.
+Acceptance snapshot continued to sequence 1305 at 23:11:21 UTC.
+Only diagnostic collector corrected: shared-read snapshots prevent write-sharing interference.
+Player and corresponding-source archive hashes rechecked unchanged after acceptance.
+Evidence: .test_tmp/non_ascii_account_20261015/accepted-run-002/.
+FCEUX left running in the test account.
+
+First launcher excerpts:
+Started keyboard bridge PID 27272
+Started emulator PID 20900
+Ready: packaged speech bridge reported READY at D:\modding\DragonWarrior1\.test_tmp\packaging-20261015-baseline\clean extracted package\Dragon Warrior Accessibility 2026.10.15-qualification1\app\speech_bridge.status
+Dragon Warrior started successfully.
+
+Speech log excerpts (timestamps copied verbatim):
+[2026-10-15 16:01:47] selected_backend=NVDA reason=active
+[2026-10-15 16:01:47] command='speak:Dragon Warrior Accessibility Mod loaded.'
+[2026-10-15 16:01:48] command='speak:Title screen.'
+[2026-10-15 16:01:57] command='speak:BEGIN A NEW QUEST'
+[2026-10-15 16:02:01] command='speak:Slot 1'
+[2026-10-15 16:02:17] command='speak:Name entry. Arrow keys to select letter, BACK to delete, END to finish.'
+[2026-10-15 16:03:21] command='speak:Game started.'
+[2026-10-15 16:03:23] command='speak:Tantegel Castle Throne Room'
+[2026-10-15 16:03:30] command="interrupt:'Descendant of Erdrick, listen now to my words."
+[2026-10-15 16:04:20] command='speak:Tantegel Castle Throne Room (4, 4)'
+[2026-10-15 16:04:23] command='speak:Tantegel Castle Throne Room (5, 4)'
+
+Player-confirmed NVDA initial slice:
+Automatic NVDA detection, audible prompts, new character, King dialogue, opening a chest, movement, and closing FCEUX.
+Explicit King save and NVDA same-reader reload not confirmed.
+Battery file preserved before JAWS: 8192 bytes; SHA256 A2CF293E0A5E815152DBC7BF5AEC2B4CBB468C57131BE1F097F038989DC82C8B
+
+JAWS first relaunch of same extraction (automatic evidence; player acceptance pending):
+Started keyboard bridge PID 7312
+Started emulator PID 8724
+Ready: packaged speech bridge reported READY at D:\modding\DragonWarrior1\.test_tmp\packaging-20261015-baseline\clean extracted package\Dragon Warrior Accessibility 2026.10.15-qualification1\app\speech_bridge.status
+Dragon Warrior started successfully.
+[2026-10-15 16:08:27] selected_backend=Jaws reason=jfw-process
+[2026-10-15 16:08:27] command='speak:Dragon Warrior Accessibility Mod loaded.'
+[2026-10-15 16:08:28] command='speak:Title screen.'
+
+JAWS cross-reader load log evidence; audible/player acceptance remains pending:
+[2026-10-15 16:08:36] command='speak:CONTINUE A QUEST'
+[2026-10-15 16:08:39] command='speak:Slot 1'
+[2026-10-15 16:08:42] command='speak:Game started.'
+[2026-10-15 16:08:53] command="speak:'Now, Loki, thou must help us recover the Ball of Light and restore peace to our land."
+
+Player-confirmed JAWS initial slice:
+Emulator and script launched; JAWS validated successfully; game works as expected. FCEUX left running with JAWS active.
+Save/exit and second JAWS launch remain pending.
+
+SPEECH-LATENCY-01: player reports perceptible NVDA delay for object browsing and arriving dialogue compared with JAWS; more apparent with the quick switch. Deferred until after packaging; no measured latency, cause, or code change.
+Raw speech snapshots and package settings preserved under .test_tmp/packaging-20261015-baseline/reader-latency-baseline/.
+
+JAWS second launch after player-reported save/exit:
+Save method not yet confirmed. Pre-relaunch battery SHA256 24850A61133BAEF88ADF226B637C3E830A80EFA1E85183D3FBD93A83E4FD8004 (8192 bytes).
+Pre-relaunch FCEUX slot0 SHA256 B7912A878E45C70C0D688363EF407DBD1D00B6BC5CC4D4DFF42FBE7C43B5EC8F (4338 bytes).
+Backups: .test_tmp/packaging-20261015-baseline/jaws-saved-before-relaunch/.
+Started keyboard bridge PID 15032
+Started emulator PID 18460
+Ready: packaged speech bridge reported READY at D:\modding\DragonWarrior1\.test_tmp\packaging-20261015-baseline\clean extracted package\Dragon Warrior Accessibility 2026.10.15-qualification1\app\speech_bridge.status
+Dragon Warrior started successfully.
+[2026-10-15 16:23:05] selected_backend=Jaws reason=jfw-process
+[2026-10-15 16:23:05] command='speak:Dragon Warrior Accessibility Mod loaded.'
+[2026-10-15 16:23:06] command='speak:Title screen.'
+
+Save method clarified: the first reported save was FCEUX slot 0. The later JAWS session left the castle, fought battles, returned, and used the King battery save.
+King battery save SHA256 F248B24BA50F528A8C200DCC6F25F3C74ACA2F2FB18BB63BD9921E5923578F30 (8192 bytes).
+Backup: .test_tmp/packaging-20261015-baseline/jaws-king-save-before-battery-reload/.
+[2026-10-15 16:28:07] command="speak:'Will thou tell me now of thy deeds so they won't be forgotten?'"
+[2026-10-15 16:28:11] command="speak:'Thy deeds have been recorded on the Imperial Scrolls of Honor."
+[2026-10-15 16:28:16] command="speak:'Dost thou wish to continue thy quest?'"
+[2026-10-15 16:28:21] command='interrupt:Please push RESET, hold it in, then turn off the POWER.'
+[2026-10-15 16:28:22] stdin closed; exiting
+
+JAWS normal battery-save relaunch:
+Started emulator PID 13600
+Ready: packaged speech bridge reported READY at D:\modding\DragonWarrior1\.test_tmp\packaging-20261015-baseline\clean extracted package\Dragon Warrior Accessibility 2026.10.15-qualification1\app\speech_bridge.status
+Dragon Warrior started successfully.
+[2026-10-15 16:30:05] selected_backend=Jaws reason=jfw-process
+[2026-10-15 16:30:07] command='speak:Title screen.'
+[2026-10-15 16:30:15] command='speak:CONTINUE A QUEST'
+[2026-10-15 16:30:16] command='speak:Slot 1'
+[2026-10-15 16:30:18] command='speak:Game started.'
+
+JAWS battery-save/reload PLAYER ACCEPTED:
+Player confirms character restored with the same experience needed to level as before saving. FCEUX closed; NVDA active.
+Accepted JAWS logs/battery preserved under jaws-battery-accepted-before-nvda/.
+
+NVDA normal-save check launch:
+Started emulator PID 5412
+Ready: packaged speech bridge reported READY at D:\modding\DragonWarrior1\.test_tmp\packaging-20261015-baseline\clean extracted package\Dragon Warrior Accessibility 2026.10.15-qualification1\app\speech_bridge.status
+Dragon Warrior started successfully.
+[2026-10-15 16:35:21] selected_backend=NVDA reason=active
+[2026-10-15 16:35:21] command='speak:Dragon Warrior Accessibility Mod loaded.'
+[2026-10-15 16:35:22] command='speak:Title screen.'
+
+NVDA normal King save and final battery relaunch:
+Player reports prior battery loaded; two deaths then victory; required experience changed from 5 to 4; King save completed and FCEUX closed.
+Battery backup SHA256 A0E7FA77E524DB0C5F7E21FA6444CD561C5B1325AAF93EBA3F6DF3D0C013558D (8192 bytes).
+[2026-10-15 16:42:54] command="speak:'Before reaching thy next level of experience thou must gain 4 Points."
+[2026-10-15 16:43:00] command="speak:'Thy deeds have been recorded on the Imperial Scrolls of Honor."
+[2026-10-15 16:43:07] stdin closed; exiting
+Started emulator PID 7260
+Ready: packaged speech bridge reported READY at D:\modding\DragonWarrior1\.test_tmp\packaging-20261015-baseline\clean extracted package\Dragon Warrior Accessibility 2026.10.15-qualification1\app\speech_bridge.status
+Dragon Warrior started successfully.
+[2026-10-15 16:45:35] selected_backend=NVDA reason=active
+[2026-10-15 16:45:35] command='speak:Dragon Warrior Accessibility Mod loaded.'
+[2026-10-15 16:45:36] command='speak:Title screen.'
+
+FINAL NVDA BATTERY RELOAD PLAYER ACCEPTED:
+Player: Save file loaded as expected. King reports that 4 xp required.
+Local NVDA and JAWS launch/gameplay/normal King save/exit/battery reload acceptance complete.
+Actual non-ASCII account unavailable; hardware expansion and publication remain open.
+Final raw NVDA evidence preserved under nvda-final-accepted/.
+[2026-10-15 16:45:35] selected_backend=NVDA reason=active
+[2026-10-15 16:45:45] command='speak:CONTINUE A QUEST'
+[2026-10-15 16:45:46] command='speak:Slot 1'
+[2026-10-15 16:45:51] command='speak:Game started.'
+[2026-10-15 16:46:00] command="speak:'Before reaching thy next level of experience thou must gain 4 Points."

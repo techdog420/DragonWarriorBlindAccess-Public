@@ -258,8 +258,10 @@ local function send_bridge(cmd)
         return false
     end
     local ok, err = pcall(function()
-        bridge:write(cmd .. "\n")
-        bridge:flush()
+        -- Lua file I/O commonly returns nil, error rather than throwing.
+        -- Check both operations so a dead bridge cannot remain "ready".
+        assert(bridge:write(cmd .. "\n"))
+        assert(bridge:flush())
     end)
     if not ok then
         bridge_ready = false

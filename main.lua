@@ -1514,6 +1514,7 @@ local PREV = {
     row1_lower_dialogue_active = false,
     -- dungeon visibility
     darkness_context = nil,
+    darkness_announcement = {},
 }
 
 -- Startup grace period: skip all change-detection announcements for the
@@ -2245,10 +2246,10 @@ local function check_map_change()
         y1_baseline_pending = false
     elseif game_state.state == state.STATE_FIELD then
         objects.observe_npcs(snapshot.map_id)
-        light_change_speech = darkness.change_announcement(
-            PREV.darkness_context,
-            darkness_context)
     end
+    light_change_speech = darkness.observe_change(
+        PREV.darkness_announcement, PREV.darkness_context, darkness_context,
+        frame_count, changes.map_changed or game_state.state ~= state.STATE_FIELD)
     PREV.darkness_context = darkness_context
 
     local route_event = nil
@@ -7215,6 +7216,7 @@ while true do
             snapshot.items[4],
         }
         PREV.darkness_context = darkness.context(snapshot)
+        PREV.darkness_announcement.pending = nil
         nav.check_for_changes()   -- Initialize map/position tracking
         menu.check_for_changes()  -- Initialize menu cursor tracking
         if game_state.state == state.STATE_FIELD then
@@ -7419,6 +7421,7 @@ while true do
                     snapshot.items[4],
                 }
                 PREV.darkness_context = darkness.context(snapshot)
+                PREV.darkness_announcement.pending = nil
                 if post_start_grace > 0 then
                     post_start_grace = post_start_grace - 1
                     checked_call("nav.check_for_changes", nav.check_for_changes)  -- Initialize map tracking silently

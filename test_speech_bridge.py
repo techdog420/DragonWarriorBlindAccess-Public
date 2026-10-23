@@ -1,6 +1,7 @@
 import io
 import threading
 import time
+import unittest
 
 import speech_bridge
 
@@ -152,11 +153,73 @@ def test_create_speaker_uses_sapi_without_screen_reader():
     )
 
 
+def test_silence_discards_pending_speech_even_when_queue_is_full():
+    speaker = BlockingSpeaker()
+    dispatcher = speech_bridge.SpeechDispatcher(speaker, lambda message: None, max_queue=1)
+    try:
+        dispatcher.submit("speak", "block")
+        assert_true(speaker.started.wait(1), "first call should block the worker")
+        dispatcher.submit("speak", "obsolete")
+        dispatcher.submit("silence")
+        speaker.release.set()
+        dispatcher.close()
+        assert_true(speaker.calls == [("block", False), ("silence", False)],
+                    "silence must replace pending speech, including a full queue")
+    finally:
+        speaker.release.set()
+        dispatcher.close()
+
+
+def test_close_stops_worker_after_a_full_queue_drains():
+    speaker = BlockingSpeaker()
+    dispatcher = speech_bridge.SpeechDispatcher(speaker, lambda message: None, max_queue=1)
+    try:
+        dispatcher.submit("speak", "block")
+        assert_true(speaker.started.wait(1), "first call should block the worker")
+        dispatcher.submit("speak", "last")
+        dispatcher.close(wait=False)
+        speaker.release.set()
+        dispatcher.close()
+        assert_true(not dispatcher._thread.is_alive(), "close must work with a full queue")
+        assert_true(speaker.calls == [("block", False), ("last", False)],
+                    "graceful close should drain accepted speech")
+    finally:
+        speaker.release.set()
+        dispatcher.close()
+
+
+def test_submit_after_close_does_not_restart_or_enqueue_work():
+    speaker = BlockingSpeaker()
+    dispatcher = speech_bridge.SpeechDispatcher(speaker, lambda message: None)
+    dispatcher.close()
+    dispatcher.submit("interrupt", "too late")
+    assert_true(dispatcher._queue.empty(), "closed dispatcher must reject new commands")
+    assert_true(speaker.calls == [], "closed dispatcher must not call the backend")
+
+
+def test_silence_supports_backends_with_only_speak():
+    class SpeakOnly:
+        def __init__(self):
+            self.calls = []
+
+        def speak(self, text, interrupt=False):
+            self.calls.append((text, interrupt))
+
+    speaker = SpeakOnly()
+    logs = []
+    dispatcher = speech_bridge.SpeechDispatcher(speaker, logs.append)
+    dispatcher.submit("silence")
+    dispatcher.close()
+    assert_true(speaker.calls == [("", True)], "JAWS needs an empty interrupt")
+    assert_true(logs == [], "silence should not log a backend attribute failure")
+
+
+def load_tests(loader, tests, pattern):
+    # unittest discovery otherwise silently skips these standalone functions.
+    tests.addTests(unittest.FunctionTestCase(test) for name, test in sorted(globals().items())
+                   if name.startswith("test_") and callable(test))
+    return tests
+
+
 if __name__ == "__main__":
-    test_command_loop_keeps_reading_when_speaker_blocks()
-    test_create_speaker_prefers_jaws_when_jfw_is_running()
-    test_create_speaker_prefers_active_nvda()
-    test_create_speaker_preserves_nvda_when_jaws_also_runs()
-    test_create_speaker_falls_back_when_jaws_backend_fails()
-    test_create_speaker_uses_sapi_without_screen_reader()
-    print("test_speech_bridge.py: 6 tests passed")
+    unittest.main()

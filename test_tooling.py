@@ -1,4 +1,5 @@
 import json
+import importlib
 import os
 import shutil
 import subprocess
@@ -177,6 +178,13 @@ class RunTestsInventoryTests(unittest.TestCase):
     def test_python_discovery_contains_only_automated_test_modules(self):
         self.assertIn("test_tooling.py", run_tests.PYTHON_TEST_FILES)
         self.assertNotIn("speech_smoke.py", run_tests.PYTHON_TEST_FILES)
+
+    def test_each_python_test_module_contributes_discovered_tests(self):
+        loader = unittest.TestLoader()
+        for filename in run_tests.PYTHON_TEST_FILES:
+            with self.subTest(module=filename):
+                module = importlib.import_module(Path(filename).stem)
+                self.assertGreater(loader.loadTestsFromModule(module).countTestCases(), 0)
 
 
 class PreToolGuardTests(unittest.TestCase):

@@ -1,0 +1,70 @@
+{
+  "scope": "API return and bridge handoff; not audible onset",
+  "runtime": "D:\\modding\\DragonWarrior1\\.tools\\release-staging\\python-license1\\python.exe",
+  "samples": 9,
+  "dispatch": {
+    "n": 9,
+    "median_ms": 0.43,
+    "max_ms": 0.574
+  },
+  "queue": {
+    "n": 9,
+    "median_ms": 0.056,
+    "max_ms": 0.075
+  },
+  "pipe_to_call": {
+    "n": 9,
+    "median_ms": 0.516,
+    "max_ms": 0.653
+  },
+  "cancel": {
+    "n": 8,
+    "median_ms": 0.336,
+    "max_ms": 0.38
+  },
+  "speak": {
+    "n": 10,
+    "median_ms": 0.093,
+    "max_ms": 0.377
+  },
+  "rpc_errors": [],
+  "write_to_api_return_ms": {
+    "n": 9,
+    "median": 0.9066000000000001,
+    "max": 1.1711999999999998
+  },
+  "beginning_mark_probe": {
+    "scope": "synchronous SSML beginning mark callback, normal priority; not identical to speakText or measured audio onset",
+    "marks": [
+      {
+        "mark": "0",
+        "ms": 30.5957
+      },
+      {
+        "mark": "1",
+        "ms": 53.3626
+      },
+      {
+        "mark": "2",
+        "ms": 51.3571
+      }
+    ],
+    "calls": [
+      {
+        "returnCode": 0,
+        "completion_ms": 292.8796
+      },
+      {
+        "returnCode": 0,
+        "completion_ms": 285.2506
+      },
+      {
+        "returnCode": 0,
+        "completion_ms": 302.7774
+      }
+    ],
+    "mark_median_ms": 51.3571,
+    "mark_max_ms": 53.3626
+  },
+  "scope_limit": "Standalone bridge/controller probes with FCEUX closed; no physical key-to-audio measurement or JAWS timing comparison."
+}

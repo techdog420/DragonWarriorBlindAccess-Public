@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-10-15
+Updated: 2026-10-23
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 Entries below are dated evidence. Old branch, test-count, and "ready to commit"
@@ -9,6 +9,31 @@ statements describe their original checkpoints; use `session_handoff.md` and
 
 ## Current playtesting status
 
+- Darkness narration (2026-10-23): Radiant now announces only its final
+  three-tile radius, including balanced navigation restoration. World Map exit
+  no longer adds Radiant/darkness speech. Both cases are player-accepted after
+  manual reload with NVDA; the first attempt used the old loaded script.
+  Fresh warning delivery: frame 2655 / 11:36:55; exit: frame 3529 / 11:37:10.
+  See `work_notes/darkness_fixes_20261023.md`. New candidate
+  `2026.10.23-qualification1` has automated artifact checks and fresh packaged
+  launch smoke acceptance. In `C:\tmp1\Dragon Warrior Accessibility 2026.10.23-qualification1`,
+  the player confirmed ROM discovery, launch, character creation, quest start
+  and expected behavior. Package-local Python/NVDA startup, object browsing,
+  auto-walk and Tantegel Castle arrival are log-confirmed; all 525 installed
+  payload hashes match. Alternate-hardware validation remains open.
+- Current-source package candidate `2026.10.15-qualification1` (2026-10-15):
+  initial launch, speech, and gameplay are player-accepted with NVDA and JAWS.
+  JAWS also loaded the initial character slot created during the NVDA session.
+  The first reported save was an emulator slot. A later normal King save is
+  log-confirmed, and its JAWS battery relaunch starts successfully. Restored
+  progress is now player-confirmed with matching experience needed to level.
+  NVDA King save and final battery reload are now player-accepted with the new
+  4-experience-to-level marker. Both readers' local package checks are complete.
+  Actual non-ASCII account acceptance also passed under `C:\Users\DWTest-é`,
+  including King save/reload and manual input. Broader hardware/player coverage
+  and publication remain open. The player reported
+  comparative NVDA delay; see
+  `SPEECH-LATENCY-01` below and the package qualification plan.
 - Ending narration (2026-09-30): reproduced premature Title screen speech and
   two decorative fragments after copyright. The new ending reader preserves
   credits and recognizes the live final artwork. After manual Lua reload on
@@ -48,6 +73,82 @@ statements describe their original checkpoints; use `session_handoff.md` and
   a fresh baseline before treating any recorded frame or coordinate as current.
 
 ## Dated Gameplay Record (newest first)
+
+- Non-ASCII profile run 002 (2026-10-15): player confirmed successful battery
+  reload and restored manual keyboard movement with the corrected collector.
+  Actual `DWTest-é` identity/profile/session were verified again. NVDA READY,
+  Continue and LOKI's 5-point King marker are logged; position speech changed
+  from `(6,4)` to `(6,6)`. Keyboard heartbeat advanced from v3 sequence 3 to
+  1017 over more than four minutes. This closes actual account acceptance.
+  FCEUX was left running. Qualified ZIPs and production code remain unchanged.
+  See `work_notes/non_ascii_account_20261015.md` for evidence and collector fix.
+
+- Non-ASCII profile run 001 (2026-10-15): actual Windows identity/profile
+  `DWTest-é`, session 2; supported ROM install and automatic NVDA speech passed.
+  Player created LOKI, played, saved through the King, and closed FCEUX. Speech
+  confirms the Imperial Scrolls save with 5 experience needed to level. Manual
+  movement failed. The keyboard helper was started but its final cleanup
+  heartbeat predates emulator exit. A scratch reproduction twice showed the
+  account-test collector's Copy-Item read killing the unchanged helper with a
+  write-sharing error. The shared-reader correction survived 12,828 snapshots
+  with an advancing heartbeat; the successful run 002 above closes the retest.
+  Treat the first input
+  failure as a likely capture artifact, not a proved Unicode defect. Evidence:
+  `work_notes/non_ascii_account_20261015.md`.
+
+- Initial `SPEECH-LATENCY-01` profiling (2026-10-15), FCEUX closed. Using the
+  candidate's portable runtime/controller and the current bridge code, nine
+  isolated samples submitted speech in median 0.907 ms / maximum 1.171 ms
+  from parent pipe write through NVDA API return, with no controller errors.
+  A separate supported SSML beginning-mark probe returned callbacks at
+  31-53 ms; this is a different entry point and not an audio-onset measurement.
+  The player could not confidently compare the isolated samples with the game.
+  No production code or NVDA setting changed. The perceived reader difference
+  remains unresolved; the next useful check is equivalent in-game input/audio
+  timing. See `work_notes/nvda_responsiveness_20261015.md` for scope and sources.
+
+- Package NVDA normal save (2026-10-15). Player loaded the previous battery
+  save, fought battles (including deaths), then saved through the King and
+  closed FCEUX. Fresh speech records 4 experience needed to level (previously
+  5), the Imperial Scrolls save confirmation, and exit. Preserved 8 KB battery
+  SHA-256: `A0E7FA77E524DB0C5F7E21FA6444CD561C5B1325AAF93EBA3F6DF3D0C013558D`.
+  Final NVDA battery relaunch automatically selected NVDA, reached `READY`, and
+  logged Continue/Slot 1/game start. The King and player both confirmed 4
+  experience needed to level. NVDA normal-save/reload acceptance is complete.
+
+- Package JAWS relaunch (2026-10-15). Player reported saving and exiting.
+  Preserved first JAWS speech/status/launch logs, 8,192-byte battery save,
+  and slot 0 savestate. Second launch again selected `Jaws reason=jfw-process`,
+  reported `READY`, and narrated the title. The player clarified the first
+  save used FCEUX's slot system. During the next session the player left the
+  castle, fought battles, and returned to the King. Speech records the deeds
+  prompt and Imperial Scrolls confirmation, then the RESET/power-off request
+  and exit. Preserved battery SHA-256:
+  `F248B24BA50F528A8C200DCC6F25F3C74ACA2F2FB18BB63BD9921E5923578F30`.
+  A third JAWS launch reports `READY` and Continue/Slot 1/game start. The player
+  confirmed restored character and matching experience needed for the next
+  level, then closed FCEUX and switched to NVDA. JAWS battery-save/reload is
+  accepted. Do not equate
+  the emulator slot with the normal battery save or promote startup alone
+  to complete save/reload acceptance.
+
+- Package reader comparison (2026-10-15), `SPEECH-LATENCY-01`.
+  Severity: P2 usability report; unmeasured and deferred until after packaging.
+  On candidate `2026.10.15-qualification1`, the player accepted NVDA launch,
+  automatic backend detection, audible prompts, character creation, King
+  dialogue, opening a chest, movement, and exit. After switching to JAWS, the
+  same extraction selected `Jaws reason=jfw-process`, reached `READY`, and
+  logged Continue/Slot 1/game start/King addressing Loki. The player confirmed
+  JAWS launch, speech, and gameplay and left it running.
+  Reproduction: compare equivalent object-browser actions and arriving
+  dialogue under each reader, with only the intended reader active.
+  Observed: the player perceives NVDA delay and describes JAWS as snappier,
+  especially during the quick switch. Expected: prompt narration responsive
+  enough for rapid browsing and dialogue. No quantitative comparison or
+  backend cause is established. Preserve the package/settings; investigate
+  equivalent actions after the package checks. Evidence: player report in
+  this chat, `work_notes/packaging_qualification_20261015.txt`, and local raw
+  snapshots under `.test_tmp/packaging-20261015-baseline/reader-latency-baseline/`.
 
 - Broader Travel continuation (2026-10-15). Fresh `17460` confirmed the player's
   manual reload at `(73,96)`, clear field/menu, HP 149/149, MP89/121, neutral

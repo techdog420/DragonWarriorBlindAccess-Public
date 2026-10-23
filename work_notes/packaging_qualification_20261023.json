@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-23",
+  "releaseVersion": "2026.10.23-qualification1",
+  "qualificationStatus": "AUTOMATED_ARTIFACT_CHECKS_AND_FRESH_PACKAGE_SMOKE_COMPLETE",
+  "appSourceCommit": "b6261ba3aaafb7ea1d04d97abe9efd462d94eea1",
+  "appIncludesWorkingTreeChanges": true,
+  "hostGate": {
+    "result": "PASS",
+    "liveOnlySkipped": [
+      "test_screen.lua",
+      "test_speech.lua"
+    ],
+    "focusedDarknessTests": 21,
+    "pythonTests": 82,
+    "luaSuites": 43
+  },
+  "artifacts": {
+    "player": {
+      "path": "D:\\modding\\DragonWarrior1\\.tools\\release-output\\Dragon Warrior Accessibility 2026.10.23-qualification1.zip",
+      "bytes": 47567192,
+      "sha256": "6300B9147C7406FA40B8AB46FF622DAC752560B42BBBC4753D6A041C1E12E70A",
+      "payloadFiles": 525,
+      "manifestAndPolicy": "PASS",
+      "repeatBuild": "IDENTICAL"
+    },
+    "source": {
+      "path": "D:\\modding\\DragonWarrior1\\.tools\\release-output\\Dragon-Warrior-Accessibility-2026.10.23-qualification1-Corresponding-Source.zip",
+      "bytes": 157355169,
+      "sha256": "4BF4BB608E9C3752DAB7B96654935988F2406636398480D1005FF73DB9572431",
+      "payloadFiles": 2608,
+      "manifestAndPolicy": "PASS",
+      "repeatBuild": "IDENTICAL"
+    }
+  },
+  "extractedChecks": [
+    {
+      "case": "spaces",
+      "package": "D:\\modding\\DragonWarrior1\\.test_tmp\\darkness-20261023\\extraction-checks-final\\clean extracted package\\Dragon Warrior Accessibility 2026.10.23-qualification1",
+      "missingRomExit": 2,
+      "cmdInstaller": "PASS",
+      "repeatInstaller": "PASS",
+      "validateOnlyTwice": "PASS",
+      "privateConfigAndAsciiLuaPaths": "PASS",
+      "emulatorStarted": false,
+      "actualNonAsciiAccount": false
+    },
+    {
+      "case": "unicode",
+      "package": "D:\\modding\\DragonWarrior1\\.test_tmp\\darkness-20261023\\extraction-checks-final\\DWA – été テスト\\Dragon Warrior Accessibility 2026.10.23-qualification1",
+      "cmdInstaller": "PASS",
+      "repeatInstaller": "PASS",
+      "launcher": "SAFE_REFUSAL_NO_ASCII_ALIAS",
+      "emulatorStarted": false,
+      "actualNonAsciiAccount": false
+    }
+  ],
+  "developmentLiveCheck": {
+    "screenReader": "NVDA",
+    "warningDeliveredFrame": 2655,
+    "worldMapExitFrame": 3529,
+    "initialAttempt": "OLD_SCRIPT_NOT_RELOADED",
+    "castAndExit": "PLAYER_ACCEPTED_AFTER_MANUAL_RELOAD",
+    "laterEntryNoticePreservation": "HOST_REGRESSION_PASS"
+  },
+  "packagedLaunchSmoke": "PLAYER_ACCEPTED",
+  "alternateHardware": "PENDING",
+  "published": false,
+  "evidenceDirectory": ".test_tmp/darkness-20261023",
+  "packagedLaunchSmokeEvidence": {
+    "date": "2026-10-23",
+    "packagePath": "C:\\tmp1\\Dragon Warrior Accessibility 2026.10.23-qualification1",
+    "evidence": "PLAYER_REPORT_AND_PACKAGE_LOGS",
+    "romDiscoveryAndInstall": "PASS",
+    "launch": "PASS",
+    "characterCreation": "PLAYER_ACCEPTED",
+    "questStartAndInitialGameplay": "PLAYER_ACCEPTED",
+    "screenReader": "NVDA",
+    "python": "PACKAGE_LOCAL",
+    "installedPayloadFiles": 525,
+    "manifestMismatches": 0,
+    "loggedGameplay": [
+      "object browsing",
+      "completed auto-walks",
+      "door use",
+      "Tantegel Castle arrival"
+    ],
+    "logSnapshots": ".test_tmp/darkness-20261023/package-smoke-c-tmp1",
+    "scope": "Fresh-install smoke; alternate-hardware and publication remain open"
+  }
+}

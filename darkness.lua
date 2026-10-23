@@ -48,7 +48,9 @@ end
 function M.context(state)
     state = state or {}
     local terrain_offset = number_or_zero(state.terrain_offset)
-    local limited = terrain_offset == M.DUNGEON_TERRAIN_OFFSET
+    -- On dungeon exit the map ID can update before the terrain byte. The
+    -- overworld never uses dungeon visibility, even during that transition.
+    local limited = state.map_id ~= 0x01 and terrain_offset == M.DUNGEON_TERRAIN_OFFSET
     local light_radius = math.max(0, math.floor(number_or_zero(state.light_radius)))
     local half_span = M.visible_half_span(light_radius)
     local navigation_mode = configured_navigation_mode(state)
@@ -185,6 +187,43 @@ function M.change_announcement(previous, current)
         return message
     end
     return "The light dims. " .. M.describe(current)
+end
+
+-- Radiant animates through widths 3, 5, 7, eight frames apart. Wait for
+-- expansion to settle before speaking, retaining the pre-cast context so
+-- balanced navigation's restoration notice accompanies the final radius.
+-- Dimming and light loss remain immediate. This only delays automatic speech;
+-- visibility/navigation and explicit light reports always use current RAM.
+function M.observe_change(tracker, previous, current, frame, reset)
+    if reset or current.limited ~= true
+       or (previous and previous.map_id ~= current.map_id) then
+        tracker.pending = nil
+        return nil
+    end
+    if not previous or previous.limited ~= true then
+        tracker.pending = nil
+        return M.change_announcement(previous, current)
+    end
+
+    local old_span = number_or_zero(previous.half_span)
+    local new_span = number_or_zero(current.half_span)
+    if new_span > old_span then
+        tracker.pending = {
+            previous = tracker.pending and tracker.pending.previous or previous,
+            frame = frame,
+        }
+    elseif new_span < old_span then
+        local baseline = tracker.pending and tracker.pending.previous or previous
+        tracker.pending = nil
+        return M.change_announcement(baseline, current)
+    end
+
+    if tracker.pending and frame - tracker.pending.frame >= 12 then
+        local baseline = tracker.pending.previous
+        tracker.pending = nil
+        return M.change_announcement(baseline, current)
+    end
+    return nil
 end
 
 function M.limit_walkability_snapshot(walkability, context)

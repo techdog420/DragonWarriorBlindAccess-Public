@@ -77,6 +77,98 @@ function tests.announcements_ignore_timer_ticks_but_report_radius_changes()
         "final light loss should be explicit")
 end
 
+local function light_context(map_id, radius, timer, terrain)
+    return darkness.context({
+        map_id = map_id, terrain_offset = terrain or 0x20,
+        light_radius = radius, radiant_timer = timer or 0,
+        navigation_mode = "balanced",
+    })
+end
+
+function tests.radiant_animation_speaks_once_at_final_radius_with_navigation_restored()
+    local tracker, spoken = {}, {}
+    local previous = light_context(0x1C, 1)
+    -- Replay the exact expansion frames in the player's 2026-10-23 log.
+    for frame = 1206, 1250 do
+        local radius = frame >= 1223 and 7 or frame >= 1215 and 5 or frame >= 1207 and 3 or 1
+        local current = light_context(0x1C, radius, frame >= 1207 and 80 or 0)
+        local message = darkness.observe_change(tracker, previous, current, frame)
+        if message then
+            spoken[#spoken + 1] = message
+            assert_equal(frame, 1235, "speech should follow the final expansion's settling interval")
+        end
+        previous = current
+    end
+    assert_equal(#spoken, 1, "a cast should produce one automatic light announcement")
+    assert_equal(spoken[1],
+        "The light expands. Radiant light. 3 tiles are visible in every direction. " ..
+        "Navigation assistance is restored while the light lasts",
+        "the final announcement should include restored navigation")
+end
+
+function tests.torch_expansion_settles_without_waiting_for_radiant_radius()
+    local tracker = {}
+    local dark, torch = light_context(0x1C, 1), light_context(0x1C, 3)
+    assert_equal(darkness.observe_change(tracker, dark, torch, 10), nil, "torch expansion should settle")
+    assert_contains(darkness.observe_change(tracker, torch, torch, 22),
+        "Torchlight. One tile is visible", "torch should still announce its actual smaller radius")
+    assert_equal(darkness.observe_change(tracker, torch, torch, 23), nil, "torch should not repeat")
+end
+
+function tests.radiant_recast_and_dimming_keep_correct_notices()
+    local tracker = {}
+    local dim, wide = light_context(0x1C, 5, 20), light_context(0x1C, 7, 80)
+    assert_equal(darkness.observe_change(tracker, dim, wide, 10), nil, "recast expansion should settle")
+    local message = darkness.observe_change(tracker, wide, wide, 22)
+    assert_contains(message, "3 tiles are visible", "recast should report final light")
+    assert_not_contains(message, "restored", "already available navigation should not be called restored")
+    assert_contains(darkness.observe_change(tracker, wide, dim, 23), "The light dims", "dimming is immediate")
+    assert_contains(darkness.observe_change(tracker, dim, light_context(0x1C, 1), 24),
+        "Navigation beyond the current tile is unavailable", "light loss is immediate")
+end
+
+function tests.overworld_ignores_stale_dungeon_terrain_and_light_bytes()
+    local dungeon = light_context(0x1C, 7, 80)
+    local stale_world = light_context(0x01, 7, 80)
+    assert_equal(stale_world.limited, false, "World Map must ignore a lingering dungeon terrain byte")
+    assert_equal(darkness.describe(stale_world), "Area is fully lit", "World Map should never report Radiant")
+    assert_equal(darkness.change_announcement(dungeon, stale_world), nil, "exit must not announce dungeon light")
+    assert_equal(darkness.observe_change({}, dungeon, stale_world, 100, true), nil, "map change must stay quiet")
+    assert_equal(darkness.observe_change({}, stale_world, light_context(0x01, 1), 101), nil,
+        "subsequent overworld radius reset must stay quiet")
+end
+
+function tests.pending_expansion_is_cleared_on_exit_and_state_resets()
+    for _, reset in ipairs({false, true}) do
+        local tracker = {}
+        local dark, lit = light_context(0x1C, 1), light_context(0x1C, 3, 80)
+        darkness.observe_change(tracker, dark, lit, 10)
+        local next_context = reset and lit or light_context(0x01, 7, 80)
+        assert_equal(darkness.observe_change(tracker, lit, next_context, 11, reset), nil,
+            "exit or non-field state should cancel pending speech")
+        assert_equal(tracker.pending, nil, "pending message should be discarded")
+        assert_equal(darkness.observe_change(tracker, next_context, next_context, 30), nil,
+            "cancelled message must not leak later")
+    end
+end
+
+function tests.late_dungeon_terrain_keeps_the_existing_entry_notice()
+    local loading = light_context(0x1C, 1, 0, 0x00)
+    local dark = light_context(0x1C, 1)
+    assert_equal(darkness.observe_change({}, loading, dark, 11),
+        "Dungeon darkness. Only the current tile is visible",
+        "terrain arriving after the map-change frame should still report darkness")
+end
+
+function tests.cancelled_expansion_does_not_report_false_navigation_loss()
+    local tracker = {}
+    local dark, lit = light_context(0x1C, 1), light_context(0x1C, 3, 80)
+    darkness.observe_change(tracker, dark, lit, 10)
+    assert_equal(darkness.observe_change(tracker, lit, dark, 11), nil,
+        "an expansion reversed before speech should remain quiet")
+    assert_equal(tracker.pending, nil, "reversed expansion must not produce a delayed message")
+end
+
 function tests.walkability_mask_hides_cells_outside_the_visible_square()
     local source = {
         [4] = {[4] = true, [5] = true, [6] = true, [7] = true},

@@ -246,7 +246,19 @@ if ($PolicySelfTest) {
 function Write-State {
     param([string] $Line)
 
-    [System.IO.File]::WriteAllText($OutputPath, $Line + [Environment]::NewLine)
+    try {
+        [System.IO.File]::WriteAllText($OutputPath, $Line + [Environment]::NewLine)
+        return $true
+    } catch [System.IO.IOException] {
+        $errorCode = $_.Exception.HResult -band 0xFFFF
+        if ($errorCode -eq 32 -or $errorCode -eq 33) {
+            # A reader/collector may briefly deny writes. Retry the latest
+            # physical state on the next poll instead of losing input forever.
+            # Lua's lease still expires normally if the lock persists.
+            return $false
+        }
+        throw
+    }
 }
 
 $outputDir = Split-Path -Parent $OutputPath
@@ -290,9 +302,10 @@ try {
         if ($publishedState -ne $lastLine -or $heartbeatTimer.ElapsedMilliseconds -ge $HeartbeatMilliseconds) {
             $heartbeatCounter += 1
             $heartbeatTimestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            Write-State -Line ("v3:{0}:{1}:{2}" -f $heartbeatCounter, $heartbeatTimestamp, $publishedState)
-            $lastLine = $publishedState
-            $heartbeatTimer.Restart()
+            if (Write-State -Line ("v3:{0}:{1}:{2}" -f $heartbeatCounter, $heartbeatTimestamp, $publishedState)) {
+                $lastLine = $publishedState
+                $heartbeatTimer.Restart()
+            }
         }
 
         Start-Sleep -Milliseconds $PollMilliseconds
@@ -301,7 +314,7 @@ try {
     try {
         $heartbeatCounter += 1
         $heartbeatTimestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-        Write-State -Line ("v2:{0}:{1}:suspended" -f $heartbeatCounter, $heartbeatTimestamp)
+        [void] (Write-State -Line ("v2:{0}:{1}:suspended" -f $heartbeatCounter, $heartbeatTimestamp))
     } catch {
         # A force-killed process cannot guarantee cleanup; Lua's heartbeat
         # lease remains the authoritative fallback for that case.

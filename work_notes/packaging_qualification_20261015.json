@@ -1,0 +1,209 @@
+{
+  "date": "2026-10-15",
+  "releaseVersion": "2026.10.15-qualification1",
+  "appSourceCommit": "b6261ba3aaafb7ea1d04d97abe9efd462d94eea1",
+  "buildShell": "PowerShell 7.6.6",
+  "qualificationStatus": "LOCAL_AND_NON_ASCII_ACCOUNT_QUALIFICATION_COMPLETE",
+  "hostGate": {
+    "result": "PASS",
+    "luaSuites": 42,
+    "pythonTests": 68,
+    "liveOnlySkipped": [
+      "test_screen.lua",
+      "test_speech.lua"
+    ]
+  },
+  "artifacts": {
+    "player": {
+      "path": "D:\\modding\\DragonWarrior1\\.tools\\release-output\\Dragon Warrior Accessibility 2026.10.15-qualification1.zip",
+      "bytes": 47565986,
+      "sha256": "FC35731A8C3D9885D4089FF953DD919F7194AC9B564C0D7ADE6C2D3C6EA69C0A",
+      "payloadFiles": 525,
+      "manifestAndPolicy": "PASS",
+      "repeatBuild": "IDENTICAL"
+    },
+    "source": {
+      "path": "D:\\modding\\DragonWarrior1\\.tools\\release-output\\Dragon-Warrior-Accessibility-2026.10.15-qualification1-Corresponding-Source.zip",
+      "bytes": 157355170,
+      "sha256": "42DE81803D6586CA52E7149003189888D8AF9163A93E04BF89381A2E1376BA91",
+      "payloadFiles": 2608,
+      "manifestAndPolicy": "PASS",
+      "repeatBuild": "IDENTICAL"
+    }
+  },
+  "extractedChecks": [
+    {
+      "case": "spaces",
+      "package": "D:\\modding\\DragonWarrior1\\.test_tmp\\packaging-20261015-baseline\\extraction-checks-rerun\\clean extracted package\\Dragon Warrior Accessibility 2026.10.15-qualification1",
+      "missingRomExit": 2,
+      "cmdInstaller": "PASS",
+      "repeatInstaller": "PASS",
+      "validateOnlyTwice": "PASS",
+      "privateConfigAndAsciiLuaPaths": "PASS",
+      "emulatorStarted": false,
+      "actualNonAsciiAccount": false
+    },
+    {
+      "case": "unicode",
+      "package": "D:\\modding\\DragonWarrior1\\.test_tmp\\packaging-20261015-baseline\\extraction-checks-rerun\\DWA – été テスト\\Dragon Warrior Accessibility 2026.10.15-qualification1",
+      "cmdInstaller": "PASS",
+      "repeatInstaller": "PASS",
+      "launcher": "SAFE_REFUSAL_NO_ASCII_ALIAS",
+      "emulatorStarted": false,
+      "actualNonAsciiAccount": false
+    }
+  ],
+  "nvdaFirstLaunch": {
+    "selectedBackend": "NVDA",
+    "saveRelaunchAcceptance": "PLAYER_ACCEPTED_KING_BATTERY_SAVE_AND_RELOAD",
+    "finalBatteryRelaunch": {
+      "startup": "READY",
+      "selectedBackend": "NVDA",
+      "playerConfirmation": "Save loaded as expected; King reports 4 experience needed to level",
+      "experienceNeededToLevel": 4
+    },
+    "kingSave": {
+      "speechConfirmation": "Thy deeds have been recorded on the Imperial Scrolls of Honor.",
+      "experienceNeededToLevel": 4,
+      "priorExperienceNeededToLevel": 5,
+      "emulatorExited": true,
+      "bytes": 8192,
+      "sha256": "A0E7FA77E524DB0C5F7E21FA6444CD561C5B1325AAF93EBA3F6DF3D0C013558D"
+    },
+    "saveCheckLaunch": {
+      "startup": "READY",
+      "selectedBackend": "NVDA",
+      "reason": "active",
+      "jawsRunning": false
+    },
+    "gameplayAcceptance": "PLAYER_ACCEPTED_INITIAL_SLICE",
+    "playerConfirmed": [
+      "automatic NVDA selection",
+      "audible prompts",
+      "new character",
+      "King dialogue",
+      "opened chest",
+      "movement",
+      "FCEUX closed"
+    ],
+    "batteryFileBeforeJaws": {
+      "bytes": 8192,
+      "sha256": "A2CF293E0A5E815152DBC7BF5AEC2B4CBB468C57131BE1F097F038989DC82C8B",
+      "explicitInGameSaveConfirmed": false
+    },
+    "result": "READY",
+    "reason": "active",
+    "speechLogged": [
+      "mod loaded",
+      "title",
+      "new game",
+      "slot selection",
+      "name entry"
+    ]
+  },
+  "jawsAcceptance": {
+    "startup": "READY",
+    "selectedBackend": "Jaws",
+    "reason": "jfw-process",
+    "nvdaRunning": false,
+    "sameExtractionAsNvda": true,
+    "savedCharacterLoadLogged": "CONTINUE A QUEST; Slot 1; Game started; King addresses Loki",
+    "playerGameplay": "PLAYER_ACCEPTED_INITIAL_SLICE",
+    "playerConfirmed": [
+      "emulator and script launch",
+      "JAWS speech",
+      "game works as expected"
+    ],
+    "emulatorLeftRunning": false,
+    "saveRelaunch": "PLAYER_ACCEPTED_KING_BATTERY_SAVE_AND_RELOAD",
+    "playerReportedSaveAndExit": true,
+    "saveMethod": "FCEUX_SLOT0_THEN_KING_BATTERY_SAVE",
+    "kingSave": {
+      "speechConfirmation": "Thy deeds have been recorded on the Imperial Scrolls of Honor.",
+      "emulatorExited": true,
+      "bytes": 8192,
+      "sha256": "F248B24BA50F528A8C200DCC6F25F3C74ACA2F2FB18BB63BD9921E5923578F30"
+    },
+    "batteryRelaunch": {
+      "startup": "READY",
+      "selectedBackend": "Jaws",
+      "continueSlot1Logged": true,
+      "playerConfirmation": "Restored character and matching experience needed for next level; FCEUX closed"
+    },
+    "batteryBeforeSecondLaunch": {
+      "bytes": 8192,
+      "sha256": "24850A61133BAEF88ADF226B637C3E830A80EFA1E85183D3FBD93A83E4FD8004"
+    },
+    "secondLaunch": {
+      "startup": "READY",
+      "selectedBackend": "Jaws",
+      "reason": "jfw-process"
+    }
+  },
+  "nonAsciiAccount": {
+    "status": "ACTUAL_ACCOUNT_QUALIFICATION_COMPLETE",
+    "profile": "C:\\Users\\DWTest-é",
+    "sid": "S-1-5-21-4264405685-1258659329-1615301124-1021",
+    "sessionId": 2,
+    "nvdaPresentInSession": true,
+    "codexAccount": "developer",
+    "helper": "D:\\modding\\DragonWarrior1\\.test_tmp\\account-test.cmd",
+    "acceptance": "PLAYER_ACCEPTED_KING_BATTERY_RELOAD_AND_MANUAL_MOVEMENT",
+    "firstRun": {
+      "actualIdentity": "TEST-PC\\DWTest-é",
+      "install": "SUPPORTED_ROM_ACCEPTED",
+      "speechBackend": "NVDA",
+      "speechStatus": "READY",
+      "kingSavePlayer": "LOKI",
+      "experienceNeededToLevel": 5,
+      "batterySha256": "5D5325A17F69F7211CA083B05F41EEE096BD924B0558A8BF6B63407705ECB48C",
+      "manualMovement": "PLAYER_REPORTED_NOT_WORKING",
+      "keyboardPidStarted": 5056,
+      "keyboardCleanupBeforeEmulatorExit": true
+    },
+    "captureIncident": {
+      "id": "CAPTURE-LOCK-01",
+      "copyItemReaderKilledScratchHelperTwice": true,
+      "sharedReadSnapshotsSurvived": 12828,
+      "qualifiedPackageChanged": false,
+      "accountRetest": "PASS"
+    },
+    "secondRun": {
+      "startedUtc": "2026-10-15T23:05:28.8557202Z",
+      "actualIdentity": "TEST-PC\\DWTest-é",
+      "speechBackend": "NVDA",
+      "speechStatus": "READY",
+      "continueSlot1Logged": true,
+      "kingSavePlayer": "LOKI",
+      "experienceNeededToLevel": 5,
+      "batteryReload": "PLAYER_ACCEPTED",
+      "manualMovement": "PLAYER_ACCEPTED",
+      "positionSpeech": [
+        "6,4",
+        "6,6"
+      ],
+      "keyboardPid": 46736,
+      "emulatorPid": 37812,
+      "heartbeat": {
+        "startUtc": "2026-10-15T23:05:32Z",
+        "startSequence": 3,
+        "endUtc": "2026-10-15T23:10:03Z",
+        "endSequence": 1017,
+        "protocol": "v3",
+        "result": "SUSTAINED_WITH_CORRECTED_COLLECTOR"
+      },
+      "emulatorLeftRunning": true,
+      "evidence": ".test_tmp/non_ascii_account_20261015/accepted-run-002/"
+    }
+  },
+  "deferredFollowUps": [
+    {
+      "id": "SPEECH-LATENCY-01",
+      "status": "PLAYER_REPORTED_UNMEASURED",
+      "description": "NVDA feels slower than JAWS for object browsing and arriving dialogue during the quick reader switch.",
+      "when": "AFTER_PACKAGING",
+      "cause": "UNDETERMINED"
+    }
+  ],
+  "publication": "NOT_PUBLISHED"
+}

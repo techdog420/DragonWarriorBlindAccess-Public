@@ -149,7 +149,12 @@ function Set-PrivateFceuxConfigValue {
     $line = "{0} = {1}" -f $Key, $Value
     $pattern = "(?m)^{0}\s*=.*$" -f [regex]::Escape($Key)
     if ($text -match $pattern) {
-        $text = [regex]::Replace($text, $pattern, $line)
+        # Paths may contain dollar signs; a string replacement interprets $&,
+        # $1, and $$ as regex substitutions instead of literal path characters.
+        $text = [regex]::Replace($text, $pattern, [System.Text.RegularExpressions.MatchEvaluator] {
+            param($match)
+            return $line
+        })
     } else {
         if ($text.Length -gt 0 -and -not $text.EndsWith("`n")) {
             $text += [Environment]::NewLine

@@ -28,9 +28,6 @@ def _write_status(status_path: Path, status: str) -> None:
     status_path.write_text(status + "\n", encoding="utf-8")
 
 
-_STOP = object()
-
-
 def _running_process_names() -> set[str]:
     """Return Windows process image names without elevated access or a console."""
 
@@ -132,11 +129,14 @@ class SpeechDispatcher:
         self._speaker = speaker
         self._log = log
         self._queue: queue.Queue = queue.Queue(maxsize=max_queue)
+        self._closing = threading.Event()
         self._thread = threading.Thread(target=self._run, name="speech-dispatch", daemon=True)
         self._thread.start()
 
     def submit(self, kind: str, text: str = "") -> None:
-        if kind == "interrupt":
+        if self._closing.is_set():
+            return
+        if kind in {"interrupt", "silence"}:
             self._drop_pending()
         try:
             self._queue.put_nowait((kind, text))
@@ -144,10 +144,9 @@ class SpeechDispatcher:
             self._log(f"speech queue full; dropped {kind!r}")
 
     def close(self, wait: bool = True) -> None:
-        try:
-            self._queue.put_nowait(_STOP)
-        except queue.Full:
-            pass
+        # A sentinel can be lost when the bounded queue is full. A separate
+        # event lets the worker drain accepted commands and then always exit.
+        self._closing.set()
         if wait:
             self._thread.join(timeout=1.0)
 
@@ -161,17 +160,25 @@ class SpeechDispatcher:
 
     def _run(self) -> None:
         while True:
-            item = self._queue.get()
+            if self._closing.is_set() and self._queue.empty():
+                return
             try:
-                if item is _STOP:
-                    return
+                item = self._queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            try:
                 kind, text = item
                 if kind == "speak":
                     self._speaker.speak(text, interrupt=False)
                 elif kind == "interrupt":
                     self._speaker.speak(text, interrupt=True)
                 elif kind == "silence":
-                    self._speaker.silence()
+                    silence = getattr(self._speaker, "silence", None)
+                    if callable(silence):
+                        silence()
+                    else:
+                        # accessible-output2's JAWS backend exposes only speak.
+                        self._speaker.speak("", interrupt=True)
                 else:
                     self._log(f"ignored unknown dispatch kind: {kind!r}")
             except Exception as exc:

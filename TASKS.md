@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-10-15
+Updated: 2026-10-23
 
 This file lists work that remains open. Current runtime state and resume steps
 belong in `session_handoff.md`; dated gameplay evidence belongs in
@@ -26,10 +26,15 @@ preserved in `handoff_archive/TASKS_2026-09-24_pre_cleanup.md`.
   gameplay, save, and relaunch checks, and one blind-player run reached the
   original `The End` screen. The current source is newer than that package.
 - The current native Windows gate is `python -u run_tests.py`. The latest
-  recorded pass on 2026-10-13 covered 42 host-runnable Lua suites and 68 Python
+  recorded pass on 2026-10-23 covered 43 host-runnable Lua suites and 82 Python
   tests, plus syntax, speech dependency, and command-queue checks.
   `test_screen.lua` and
   `test_speech.lua` require live FCEUX and are explicitly skipped.
+- The current package passed actual non-ASCII Windows account acceptance on
+  2026-10-15 under `C:\Users\DWTest-é`: supported ROM install, two NVDA launches,
+  King battery save/reload, private paths and manual movement. The corrected
+  diagnostic collector preserved an advancing keyboard heartbeat. No package
+  changes were needed. See `work_notes/non_ascii_account_20261015.md`.
 
 ## Release and narration
 
@@ -38,16 +43,28 @@ NVDA/player acceptance and a full patched replay passed. Story/credits/copyright
 preserved, title/artwork fragments suppressed, and The End announced once
 per ending. Gate passed 42 Lua suites and 68 Python tests. See `PLAYTESTING.md`.
 
-1. Plan and qualify the next player package from current source. Rebuild the
-   player and corresponding-source artifacts, verify deterministic contents and
-   ROM/save exclusion, and repeat separate JAWS/NVDA launch, gameplay, save,
-   and relaunch acceptance before publication. The existing alpha checks are
-   historical evidence, not acceptance of the post-alpha source.
-2. Test the final package under an actual Windows account with a non-ASCII
-   username. Install the supported ROM, launch twice with NVDA, create and
-   reload a save, and verify private config, speech log, and keyboard bridge
-   paths. The earlier non-ASCII extraction-folder test did not cover this.
-3. Expand hardware and blind-player testing beyond the single complete run
+1. Choose the final public version and publication destination for the next
+   player release. Local qualification of `2026.10.15-qualification1`, built
+   from `b6261ba`, completed 2026-10-15: player/source repeat builds are
+   byte-identical; manifest/source matching, ROM/save exclusion, clean install,
+   and separate NVDA/JAWS launch, gameplay, normal King save, exit, and battery
+   reload checks pass. NVDA restored the new 4-experience-to-level marker;
+   JAWS restored its earlier 5-point marker. This is current candidate evidence,
+   separate from the historical alpha. Any changed payload needs qualification
+   of its final artifacts. Nothing has been published from this pass.
+   See `docs/plans/2026-10-15-player-package-qualification.md`.
+   The 2026-10-16 source review subsequently fixed keyboard write-lock recovery,
+   literal dollar-sign installation paths, Lua speech pipe errors, and speech
+   test/queue gaps. The original ZIPs remain unchanged. The new
+   `2026.10.23-qualification1` player/source ZIPs include these and the
+   player-accepted darkness speech fixes. Repeat builds, manifests and clean
+   install/validation pass. Fresh package smoke in C:\tmp1 is player-accepted
+   with NVDA: ROM discovery, startup, character creation, quest start and
+   initial gameplay. The candidate is ready for alternate-hardware validation.
+   See `work_notes/darkness_fixes_20261023.md` and
+   `docs/reviews/2026-10-16-pre-release-code-review.md`; broad refactoring is
+   deferred because no demonstrated gameplay benefit offsets its release risk.
+2. Expand hardware and blind-player testing beyond the single complete run
    when preparing a broader release. The supported, tested ROM remains
    `Dragon Warrior (USA) (Rev 1)`.
 
@@ -89,6 +106,14 @@ Remaining watch items:
    landed exactly. Reproduce the original case before changing timing or maps.
 
 ## Accessible discovery and quality of life
+
+`SPEECH-LATENCY-01` remains open: the player perceives NVDA delay relative to
+JAWS during browsing/dialogue. Initial standalone profiling found a 0.907 ms
+median pipe-write-to-API-return time and 31-53 ms NVDA beginning-mark callbacks.
+These do not measure physical key-to-audio latency or compare JAWS onset.
+No production fix is justified yet. Next: controlled in-game input/audio timing
+with equivalent actions. Preserve the qualified package and reader settings.
+See `work_notes/nvda_responsiveness_20261015.md` and `PLAYTESTING.md`.
 
 1. Design a later progressive-discovery slice for hidden treasures: track
    received clues and offer optional stronger search cues after clue receipt,

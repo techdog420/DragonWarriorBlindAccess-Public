@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-10-15
+Updated: 2026-10-23
 
 This is the short current-state entry point. `TASKS.md` is the open roadmap;
 `PLAYTESTING.md` holds dated gameplay evidence; `PROJECT_MEMORY.md` holds
@@ -11,6 +11,27 @@ not instructions for the current checkout.
 
 ## Project state
 
+- Darkness speech fixes completed 2026-10-23: Radiant's animated expansion now
+  produces one final-radius announcement, preserving navigation restoration;
+  World Map ignores dungeon light/terrain bytes on exit. Both are player-accepted
+  after manual Lua reload with NVDA. Focused suite: 21 tests; final host gate:
+  43 Lua suites and 82 Python tests. New local `2026.10.23-qualification1`
+  player/source ZIPs include these and the October 16 hardening fixes; repeat
+  builds and archive/clean-install checks pass. Fresh packaged launch smoke is
+  player-accepted at `C:\tmp1\Dragon Warrior Accessibility 2026.10.23-qualification1`:
+  ROM install/discovery, NVDA startup, character creation, quest start and initial
+  gameplay pass; all 525 installed payload hashes match. Ready for alternate-
+  hardware validation; publication remains open. See
+  `work_notes/darkness_fixes_20261023.md` and
+  `work_notes/packaging_qualification_20261023.json`.
+- Pre-release source review completed 2026-10-16 with focused local fixes for
+  keyboard sharing-lock recovery, literal dollar-sign paths in FCEUX config,
+  speech pipe error detection, and speech test/queue gaps. Final host gate:
+  43 Lua suites and 82 Python tests. No movement/map changes or live acceptance
+  were performed. The qualified `2026.10.15-qualification1` ZIPs are unchanged;
+  the October 23 rebuild includes these fixes and has passed the fresh packaged
+  player smoke test. Full findings and
+  refactor assessment: `docs/reviews/2026-10-16-pre-release-code-review.md`.
 - The user reports map cleanup complete. The latest accepted pass closed all
   three Tantegel Castle floors on 2026-09-22: main-floor services, doors, four
   chests, 18 non-service NPCs, and two secondary entrances; Throne Room door,
@@ -94,25 +115,78 @@ not instructions for the current checkout.
   commit. The alpha package is not a build of current source.
   Its separate JAWS/NVDA acceptance and licensing/source-package checks remain
   historical release evidence.
-- An actual non-ASCII Windows username has not been tested with the final
-  player package. A non-ASCII extraction directory was tested successfully;
-  it does not cover account-profile paths. A broader release also needs a
-  fresh package build and player acceptance on that build.
+- Local candidate `2026.10.15-qualification1` now builds the `b6261ba` app
+  payload. Player and matching corresponding-source ZIPs are under
+  `.tools/release-output/`; two builds of each are byte-identical. Independent
+  manifest/hash/source/policy checks and clean install/validation pass.
+  Separate NVDA and JAWS launch, gameplay, normal King save, exit, and battery
+  reload are now player-accepted. Each reader was active alone and selected
+  automatically. JAWS restored its 5-experience-to-level progress; NVDA then
+  saved new progress and restored the 4-point marker, confirmed by fresh speech
+  and the player. The early FCEUX slot save is recorded separately from the
+  accepted normal battery saves. Local qualification is complete; no runtime
+  source/config changes were needed. Raw logs and save backups remain under
+  `.test_tmp/packaging-20261015-baseline/`. The pristine artifact pair is still
+  unpublished; final version/destination and broader release checks remain.
+  See `docs/plans/2026-10-15-player-package-qualification.md` and
+  `work_notes/packaging_qualification_20261015.json` for hashes and scope.
+- Actual non-ASCII account acceptance is complete under `C:\Users\DWTest-é`,
+  SID ending `1021`, session 2 with NVDA. Supported ROM install, two launches,
+  private config/log/input paths and normal King battery save/reload passed.
+  Run 002 restored LOKI's 5-XP marker; the player confirmed manual arrows, with
+  fresh position speech and v3 heartbeat advancing from 3 to 1017 over more than
+  four minutes. FCEUX was left running in that account; Codex remains `developer`.
+  Run 001's input failure was traced to a likely diagnostic artifact: the old
+  `Copy-Item` collector twice reproduced a fatal sharing error against the
+  unchanged helper. Shared-read snapshots fixed the collector and passed both
+  stress and actual account retests. No ACLs or qualified package files changed.
+  Evidence: `work_notes/non_ascii_account_20261015.md` and local
+  `.test_tmp/non_ascii_account_20261015/accepted-run-002/`.
+  Separately, the D: Unicode extraction correctly refused launch when Windows
+  supplied no fully ASCII compatibility path, verifying the relocation fallback.
+- Post-package follow-up `SPEECH-LATENCY-01`: the player reports NVDA feels
+  slower than JAWS for object browsing and arriving dialogue during the quick
+  reader switch. Initial standalone profiling completed with FCEUX closed:
+  nine samples showed 0.907 ms median / 1.171 ms maximum from pipe write to
+  NVDA API return; separate beginning-mark callbacks took 31-53 ms. These
+  measure different stages and are not actual audible-onset timings or a JAWS
+  comparison. The player could not judge isolated samples confidently. No
+  production code/reader setting changed; package hashes remain intact.
+  Cause remains unresolved. Next useful evidence is controlled in-game
+  input-to-audio timing. See `work_notes/nvda_responsiveness_20261015.md`.
 
 ## Verification and runtime rules
 
-- The latest recorded `python -u run_tests.py` pass on 2026-10-13 covered
-  42 host-runnable Lua suites, 68 Python tests, Lua/Python/shell syntax, speech
+- The latest recorded `python -u run_tests.py` pass on 2026-10-23 covered
+  43 host-runnable Lua suites, 82 Python tests, Lua/Python/shell syntax, speech
   dependency, and command queue checks. Focused counts are 346 overworld-route,
   169 route-manager, 154 auto-step tests. The gate explicitly skipped live-only
-  `test_screen.lua` and `test_speech.lua`. No Lua changed after that final gate;
-  manual reload and loaded verification completed on 2026-10-15.
-- Final fresh `travel_acceptance_complete_20261015`, frame `91440`: clear World
+  `test_screen.lua` and `test_speech.lua`. Travel manual reload and loaded
+  verification completed on 2026-10-15. The current development source was
+  manually reloaded for the accepted October 23 darkness check. The October 23
+  rebuilt candidate includes `tolk.lua` hardening; its fresh packaged launch
+  smoke is now separately player-accepted with NVDA.
+- Latest gameplay evidence (2026-10-23) is the fresh package under
+  `C:\tmp1\Dragon Warrior Accessibility 2026.10.23-qualification1`, using its
+  bundled Python and NVDA. The player accepted character creation, quest start
+  and initial gameplay; speech logs include completed auto-walks and entry to
+  Tantegel Castle. Do not target development-root commands at this package.
+  Earlier same-day development-root evidence covers the accepted Radiant cast
+  in Erdrick's Cave B1 and World Map exit after manual reload.
+  The earlier October 15 package test used the separate account extraction under
+  `C:\Users\DWTest-é\Downloads\Dragon Warrior Package Test\Dragon Warrior Accessibility 2026.10.15-qualification1/`.
+  The distributable ZIP/build output remains untouched. The packaged defaults
+  keep debug logging off; first launches were checked through speech status/logs
+  and keyboard heartbeat. The earlier responsiveness probes ran standalone with
+  FCEUX closed. Keep that historical package/account evidence separate from
+  the October 23 fresh package smoke and development-source darkness acceptance.
+- Historical Travel probe `travel_acceptance_complete_20261015`, frame `91440`: clear World
   Map field/menu/text `(96,14)`, path nil, zero NPC/runtime blockers,
   HP 149/149, MP 85/121, speech ready/error none. Brecconary remains selected on
   `tantegel_bridge_staging`, next West of Kol north lane `7 south`; movement
-  was manually stopped after the explicit post-dialogue resume. No required player
-  check is pending. Probe afresh before further movement. Evidence:
+  was manually stopped after the explicit post-dialogue resume. No required Travel
+  player check is pending. This predates the separate package session; probe
+  afresh before further development movement. Evidence:
   `work_notes/travel_acceptance_20261015.txt` and
   `work_notes/travel_recovery_audit_20261015.txt`.
 - Recovery carry watch: the three-step recovery reached `(11,30)` at `31919`
@@ -141,9 +215,19 @@ not instructions for the current checkout.
 
 ## Next work
 
-1. Keep `TASKS.md` as the active queue. Ending narration polish is complete;
-   the next release task is qualification of a new player package from
-   current source.
+1. Keep `TASKS.md` as the active queue. October 15 local package qualification is complete
+   with separate NVDA/JAWS gameplay and normal save/reload acceptance. No local
+   reader check is pending on the original account. Actual non-ASCII account
+   acceptance is also complete, including Continue/5-XP progress, manual arrows
+   and sustained heartbeat. Final public version/destination and broader testing
+   remain open. The 2026-10-16 review fixes and October 23 darkness fixes are in
+   the new `2026.10.23-qualification1` candidate. Its fresh packaged launch smoke
+   passed in C:\tmp1 with NVDA; proceed to alternate-hardware validation. Preserve
+   both qualified artifact pairs. The first `SPEECH-LATENCY-01` investigation
+   found a fast standalone bridge handoff; the user agreed to defer it. Review
+   its focused report before adding instrumentation or changing behavior.
+   The latest gameplay check used the C:\tmp1 package, not DWTest-é. Preserve
+   that account's completed acceptance evidence rather than repeating its matrix.
 2. The broader representative Travel pass is complete; see the completed plan
    `docs/plans/2026-10-13-travel-acceptance.md`. Do not resume the old regional
    matrix or checkpoint assignment. Capture the remaining dialogue-only and
