@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-29",
+  "releaseVersion": "2026.10.29-qualification1",
+  "qualificationStatus": "AUTOMATED_ARTIFACT_CHECKS_COMPLETE_ALTERNATE_HARDWARE_PENDING",
+  "appSourceCommit": "90e50d099797d7b6094800149a704f5bcca9202e",
+  "appIncludesWorkingTreeChanges": false,
+  "hostGate": {
+    "result": "PASS",
+    "luaSuites": 44,
+    "pythonTests": 82,
+    "liveOnlySkipped": [
+      "test_screen.lua",
+      "test_speech.lua"
+    ]
+  },
+  "artifacts": {
+    "player": {
+      "path": "D:\\modding\\dragonwarrior1\\.tools\\release-output\\Dragon Warrior Accessibility 2026.10.29-qualification1.zip",
+      "bytes": 47573564,
+      "sha256": "2CEFE499C5EF56AE61CAB82EEF798EB9DB0B09BE9B4BEB94B943AA4BD80CDC33",
+      "payloadFiles": 526,
+      "manifestAndPolicy": "PASS",
+      "repeatBuild": "IDENTICAL"
+    },
+    "source": {
+      "path": "D:\\modding\\dragonwarrior1\\.tools\\release-output\\Dragon-Warrior-Accessibility-2026.10.29-qualification1-Corresponding-Source.zip",
+      "bytes": 157355170,
+      "sha256": "074D73689139ABBFB1E117A1FEEBDB3B54522EB7E53832E8A41A5D7866553080",
+      "payloadFiles": 2608,
+      "manifestAndPolicy": "PASS",
+      "repeatBuild": "IDENTICAL"
+    }
+  },
+  "extractedChecks": [
+    {
+      "case": "spaces",
+      "package": "D:\\modding\\DragonWarrior1\\.test_tmp\\descriptions-20261029\\extraction-checks-final\\clean extracted package\\Dragon Warrior Accessibility 2026.10.29-qualification1",
+      "missingRomExit": 2,
+      "cmdInstaller": "PASS",
+      "repeatInstaller": "PASS",
+      "validateOnlyTwice": "PASS",
+      "privateConfigAndAsciiLuaPaths": "PASS",
+      "emulatorStarted": false,
+      "actualNonAsciiAccount": false
+    },
+    {
+      "case": "unicode",
+      "package": "D:\\modding\\DragonWarrior1\\.test_tmp\\descriptions-20261029\\extraction-checks-final\\DWA \u2013 \u00e9t\u00e9 \u30c6\u30b9\u30c8\\Dragon Warrior Accessibility 2026.10.29-qualification1",
+      "cmdInstaller": "PASS",
+      "repeatInstaller": "PASS",
+      "launcher": "SAFE_REFUSAL_NO_ASCII_ALIAS",
+      "emulatorStarted": false,
+      "actualNonAsciiAccount": false
+    }
+  ],
+  "descriptionPlayerAcceptance": {
+    "result": "REPRESENTATIVE_TOWN_AND_DUNGEON_LISTENING_ACCEPTED",
+    "initialMaps": [
+      "Tantegel Throne Room",
+      "Tantegel main floor",
+      "Brecconary"
+    ],
+    "expandedReportDate": "2026-10-29",
+    "expandedAreas": [
+      "multiple floors in Garin's Grave",
+      "multiple floors in Charlock",
+      "additional towns"
+    ],
+    "exactExpandedMapIds": "NOT_SPECIFIED",
+    "specificLightInterruptionAutowalkCases": "NOT_SEPARATELY_REPORTED"
+  },
+  "packagedLaunchSmoke": "NOT_PERFORMED_FOR_NEW_ARTIFACTS",
+  "alternateHardware": "PENDING_ALTERNATE_HARDWARE_VALIDATION",
+  "published": false,
+  "releaseIntent": "User considers official release appropriate if alternate-hardware validation exposes no issues",
+  "previousCandidatePreservation": {
+    "2026.10.23-qualification1": "PLAYER_AND_SOURCE_ARCHIVE_HASHES_UNCHANGED",
+    "2026.10.15-qualification1": "UNTOUCHED"
+  },
+  "buildEnvironmentNote": "Source ownership check resolved with a process-only safe.directory entry for the pinned FCEUX source checkout; no global Git configuration changed",
+  "evidenceDirectory": ".test_tmp/descriptions-20261029"
+}

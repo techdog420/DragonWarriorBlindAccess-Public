@@ -11,6 +11,17 @@ not instructions for the current checkout.
 
 ## Project state
 
+- New local candidate `2026.10.29-qualification1` includes all map artwork
+  descriptions from `90e50d0`. Native Windows gate passed 44 Lua suites and
+  82 Python tests. Player/source archives are repeat-build identical; independent
+  manifest, source, hash, exclusion-policy, and clean archived install/validation
+  checks pass. No emulator was started for the archived checks; a gameplay smoke
+  pass for these exact ZIP bytes is not claimed. The player accepted broader
+  source spot checks across Garin's Grave, Charlock, and more towns. the tester's
+  alternate-hardware check is pending;
+  official release remains conditional on no issues. New artifacts are under
+  `.tools/release-output/`; older candidates remain preserved. See
+  `work_notes/packaging_qualification_20261029.json` and its companion Markdown.
 - Map artwork descriptions added 2026-10-28 in development source: all 28
   interior maps have short, spoiler-safe paragraphs. Shift+D (configurable
   `key_map_description`) and read-only `describe_map` use queued speech and leave
@@ -242,11 +253,14 @@ not instructions for the current checkout.
    and sustained heartbeat. Final public version/destination and broader testing
    remain open. The 2026-10-16 review fixes and October 23 darkness fixes are in
    the new `2026.10.23-qualification1` candidate. Its fresh packaged launch smoke
-   passed in C:\tmp1 with NVDA; proceed to alternate-hardware validation. Preserve
+   passed in C:\tmp1 with NVDA. The October 29 description-inclusive rebuild
+   supersedes it as the candidate for the tester: automated artifact checks pass, and
+   fresh gameplay/alternate-hardware acceptance of that package remains open. Preserve
    both qualified artifact pairs. The first `SPEECH-LATENCY-01` investigation
    found a fast standalone bridge handoff; the user agreed to defer it. Review
    its focused report before adding instrumentation or changing behavior.
-   The latest gameplay check used the C:\tmp1 package, not DWTest-é. Preserve
+   The latest source feedback is the October 29 description spot checks; the
+   latest recorded package gameplay smoke used C:\tmp1, not DWTest-é. Preserve
    that account's completed acceptance evidence rather than repeating its matrix.
 2. The broader representative Travel pass is complete; see the completed plan
    `docs/plans/2026-10-13-travel-acceptance.md`. Do not resume the old regional

@@ -64,6 +64,13 @@ per ending. Gate passed 42 Lua suites and 68 Python tests. See `PLAYTESTING.md`.
    See `work_notes/darkness_fixes_20261023.md` and
    `docs/reviews/2026-10-16-pre-release-code-review.md`; broad refactoring is
    deferred because no demonstrated gameplay benefit offsets its release risk.
+   The October 29 `2026.10.29-qualification1` rebuild now includes descriptions
+   from `90e50d0`: repeat builds, archive audits, and clean install/validation
+   pass. Use this new candidate for the tester's check.
+   Representative source description listening is accepted; fresh package
+   gameplay and alternate-hardware acceptance remain open. See
+   `work_notes/packaging_qualification_20261029.json`. Official release is
+   conditional on no issues from that check; no assets have been published.
 2. Expand hardware and blind-player testing beyond the single complete run
    when preparing a broader release. The supported, tested ROM remains
    `Dragon Warrior (USA) (Rev 1)`.

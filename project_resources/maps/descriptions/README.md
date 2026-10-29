@@ -128,3 +128,12 @@ claim an alternate-hardware pass or a published release.
 The debug equivalent of Shift+D is
 `./dw_commands.sh --replace --require-live 5 --wait "MAP_DESCRIPTION" describe_map`.
 Target the commands at the runtime's own app directory.
+
+## Candidate package (2026-10-29)
+
+The feature is committed in `90e50d0` and included in the local
+`2026.10.29-qualification1` player archive. Player/source repeat builds match,
+archive audits and clean install/validation checks pass, and older candidates
+are preserved. the tester's alternate-hardware check and official publication remain
+pending. Artifact hashes and coverage are recorded in
+`work_notes/packaging_qualification_20261029.json` at the repository root.

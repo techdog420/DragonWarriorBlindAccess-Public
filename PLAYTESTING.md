@@ -9,6 +9,13 @@ statements describe their original checkpoints; use `session_handoff.md` and
 
 ## Current playtesting status
 
+- Description-inclusive package `2026.10.29-qualification1` rebuilt from
+  `90e50d0`: 44 Lua suites and 82 Python tests pass; player/source repeat
+  builds match exactly; independent archive and clean install/validation checks
+  pass. No emulator was started by the archived checks. This is not a fresh
+  gameplay smoke or alternate-hardware acceptance of the new ZIPs. the tester's check
+  is pending; previous candidate artifacts remain preserved. Full record:
+  `work_notes/packaging_qualification_20261029.json`.
 - Map artwork descriptions (2026-10-29): the player spot-checked multiple
   floors in Garin's Grave and Charlock and a couple more towns, reporting that
   the descriptions bring a lot to the game. Exact floors and town names were
