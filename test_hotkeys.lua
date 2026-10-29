@@ -62,6 +62,9 @@ local function make_env(options)
         "debug_tools",
         "emulator_compat",
         "game_snapshot",
+        "map_descriptions",
+        "darkness",
+        "maps",
         "hotkeys",
         "items",
         "key_combo",
@@ -89,6 +92,7 @@ local function make_env(options)
         key_stats = "Shift+B",
         key_route_status = "Shift+R",
         key_screen_text = "Shift+T",
+        key_map_description = options.description_key or "Shift+D",
         key_visible_area = "Shift+N|F21",
         key_diag_cursor = "Ctrl+M",
         key_diag_ppu_dump = "Ctrl+D",
@@ -199,6 +203,8 @@ local function make_env(options)
 
     package.preload["game_snapshot"] = function()
         return {
+            map_id = options.map_id or 0x08,
+            light_radius = options.light_radius or 1,
             terrain_offset = options.snapshot_terrain_offset or 0x00,
         }
     end
@@ -958,6 +964,31 @@ function tests.modified_hotkeys_do_not_fire_as_bare_keys()
     env.update({Shift = true, F = true})
     assert_equal(env.freeze_calls(), 1, "Shift+F should toggle NPC freeze")
 
+    env.restore()
+end
+
+function tests.map_description_is_queued_once_without_touching_active_routes()
+    local env = make_env({map_id=0x08, route_active=true})
+    env.update({Shift=true,D=true}, {state="field"}, false, "Wait for movement to finish")
+    env.update({Shift=true,D=true}, {state="field"}, false)
+    assert_equal(#env.outputs, 1, "held key should read once")
+    assert(env.outputs[1].message:find("Brecconary. ",1,true))
+    assert_equal(env.outputs[1].interrupt, false, "description queues")
+    assert_equal(#env.stop_autowalk_calls, 0, "description must preserve walking")
+    assert_equal(env.stop_overworld_route_calls(), 0, "description must preserve guidance")
+    assert_equal(env.pathfind_calls(), 0, "description must not plan routes")
+    env.restore()
+end
+
+function tests.remapped_description_key_respects_light_and_battle()
+    local env = make_env({map_id=0x1C, snapshot_terrain_offset=0x20, description_key="F22"})
+    env.update({Shift=true,D=true}, {state="field"})
+    assert_equal(#env.outputs, 0, "old binding must be inactive")
+    env.update({F22=true}, {state="field"})
+    assert(env.outputs[1].message:find("too dark",1,true))
+    env.update({})
+    env.update({F22=true}, {state="battle"})
+    assert_equal(env.outputs[2].message, "Map description is unavailable outside field play", "battle guard")
     env.restore()
 end
 

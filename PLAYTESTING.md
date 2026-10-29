@@ -1,6 +1,6 @@
 # Playtesting Notes
 
-Updated: 2026-10-23
+Updated: 2026-10-29
 
 This file tracks the shift from map decoding toward actual blind-player gameplay.
 Entries below are dated evidence. Old branch, test-count, and "ready to commit"
@@ -9,6 +9,27 @@ statements describe their original checkpoints; use `session_handoff.md` and
 
 ## Current playtesting status
 
+- Map artwork descriptions (2026-10-29): the player spot-checked multiple
+  floors in Garin's Grave and Charlock and a couple more towns, reporting that
+  the descriptions bring a lot to the game. Exact floors and town names were
+  not specified. Together with the prior Tantegel/Brecconary checks, this closes
+  representative listening/content acceptance. No specific light-gating,
+  interruption, or continued auto-walk test was reported. The player requested
+  commit/push and a rebuilt package; the tester's alternate-hardware check is pending, with official release conditional on no issues.
+- Map artwork descriptions (2026-10-28) are implemented for all 28 interiors,
+  with Shift+D and `describe_map`, queued speech, and physical-light gating.
+  Native Windows host gate passed 44 Lua suites and 82 Python tests, plus
+  syntax, speech dependency, and queue checks. The player subsequently examined
+  Tantegel Throne Room (0x05), Tantegel main floor (0x04), and Brecconary (0x08),
+  accepting them as good general descriptions without information overload.
+  This confirms the sampled wording and length. Follow-up source/image review
+  refined the other 25 paragraphs to 71-80 words each, leaving those three
+  accepted entries unchanged. Description coverage tests and Lua syntax pass.
+  Editorial work is complete; this is not player acceptance of all maps. Dungeon
+  light gating, interruption, and continued auto-walk were not reported in the
+  player feedback.
+  Next player cases and source references are recorded in `TASKS.md` and
+  `project_resources/maps/descriptions/README.md`.
 - Darkness narration (2026-10-23): Radiant now announces only its final
   three-tile radius, including balanced navigation restoration. World Map exit
   no longer adds Radiant/darkness speech. Both cases are player-accepted after

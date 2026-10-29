@@ -21,7 +21,7 @@ function tests.groups_wrap_positions_remember_and_items_clamp()
     r.move(1,0);r.move(-1,0)
     assert(r.describe():find("Health and magic",1,true))
     for _=1,50 do r.move(0,-1) end
-    assert(r.describe():find("1 of 9",1,true))
+    assert(r.describe():find("1 of 10",1,true))
     r.move(-1,0);r.move(-1,0)
     assert(r.describe():find("Mod Settings",1,true))
     r.move(1,0);assert(r.describe():find("Gameplay",1,true))
@@ -48,7 +48,7 @@ function tests.every_player_hotkey_has_one_reference_entry()
     local counts={}
     local r=reference.new({get=function(key) counts[key]=(counts[key] or 0)+1;return key end})
     -- One initial item per group, then advance through that group's known size.
-    for _,size in ipairs({5,9,11,6,5,2}) do
+    for _,size in ipairs({5,10,11,6,5,2}) do
         r.describe()
         for _=2,size do r.move(0,1) end
         -- move reads the first binding in the next group; exclude that read.

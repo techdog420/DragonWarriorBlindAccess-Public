@@ -1,6 +1,6 @@
 # Project Roadmap and Backlog
 
-Updated: 2026-10-23
+Updated: 2026-10-29
 
 This file lists work that remains open. Current runtime state and resume steps
 belong in `session_handoff.md`; dated gameplay evidence belongs in
@@ -26,7 +26,7 @@ preserved in `handoff_archive/TASKS_2026-09-24_pre_cleanup.md`.
   gameplay, save, and relaunch checks, and one blind-player run reached the
   original `The End` screen. The current source is newer than that package.
 - The current native Windows gate is `python -u run_tests.py`. The latest
-  recorded pass on 2026-10-23 covered 43 host-runnable Lua suites and 82 Python
+  recorded pass on 2026-10-28 covered 44 host-runnable Lua suites and 82 Python
   tests, plus syntax, speech dependency, and command-queue checks.
   `test_screen.lua` and
   `test_speech.lua` require live FCEUX and are explicitly skipped.
@@ -142,3 +142,17 @@ See `work_notes/nvda_responsiveness_20261015.md` and `PLAYTESTING.md`.
 - Begin any reopened town audit with raw0 grass/raw4 stone classification,
   doors, and hazards. Do not infer one map's table from another without live
   evidence.
+
+## Map artwork descriptions - representative acceptance complete (2026-10-29)
+
+Implemented and source-reviewed for all 28 interiors. The player accepted
+Tantegel's throne room, Tantegel main floor, and Brecconary on October 28,
+then additional towns and multiple floors in Garin's Grave and Charlock on
+October 29. Exact additional map IDs were not enumerated. Keep the accepted
+style and length; no full map tour or further editorial pass is required.
+Physical-light, interruption, and continued auto-walk cases have host coverage
+but were not individually reported in these listening checks. Capture fresh
+issues during ordinary play. The next release gate is the tester's alternate-hardware
+validation. The player authorized commit/push and
+a new package including descriptions; official publication remains conditional
+on that check. Source index: `project_resources/maps/descriptions/README.md`.

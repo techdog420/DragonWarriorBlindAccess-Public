@@ -19,6 +19,7 @@ local groups = {
         command("key_experience", "Experience", "Announce current experience points."),
         command("key_stats", "Full status", "Announce attributes, equipment, spells, and other hero statistics."),
         command("key_screen_text", "Screen text", "Read the text currently shown on the game screen."),
+        command("key_map_description", "Map description", "Read a short, spoiler-safe overview of the current interior map artwork. Dark dungeons require Torch or Radiant light. This does not stop movement; gameplay announcements may interrupt. Nearby visible surroundings remain a separate report."),
         command("key_visible_area", "Visible surroundings", "In dark dungeons, describe nearby walls, paths, branches, and objects within the current light. This physical report always respects the light boundary."),
         command("key_diag_tiles", "Tile information", "Announce the tile type at the hero's position. This can include technical information useful for reporting map problems.")}},
     {name="Object Navigation", commands={

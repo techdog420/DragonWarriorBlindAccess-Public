@@ -31,8 +31,9 @@ tables, or implementation code from the outside accessibility mod.
 
 ## External Image References
 
-External images are reference links only and are not bundled with this
-repository.
+A local copy, `mikesrpgcenter_hauksness.png`, was added for artwork descriptions
+on 2026-10-28. Other images below remain reference links. See
+`../descriptions/README.md` for the download source and hash.
 
 - Mike's RPG Center
   - Source page: https://mikesrpgcenter.com/dw1/maps/hauksness.html

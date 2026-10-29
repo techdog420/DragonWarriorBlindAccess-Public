@@ -16,6 +16,7 @@ local DEFAULT_BIZHAWK_ALLOWLIST = table.concat({
     "key_experience",
     "key_stats",
     "key_screen_text",
+    "key_map_description",
     "key_object_prev",
     "key_object_current",
     "key_object_next",

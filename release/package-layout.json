@@ -36,6 +36,7 @@
     "map_reader.lua",
     "map_survey.lua",
     "maps.lua",
+    "map_descriptions.lua",
     "memory.lua",
     "menu.lua",
     "merchant.lua",

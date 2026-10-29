@@ -75,6 +75,15 @@ function tests.low_health_defaults_are_enabled_at_twenty_five_percent()
     assert_equal(config.get_default("low_health_threshold_percent"), "25", "threshold default")
 end
 
+function tests.map_description_default_is_available_in_shipped_allowlists()
+    local config = require "config"
+    assert_equal(config.get_default("key_map_description"), "Shift+D", "description binding")
+    assert(config.get_default("bizhawk_keyboard_hotkey_allowlist"):find("key_map_description",1,true))
+    local file = assert(io.open("dw_access.ini", "r"))
+    local ini = file:read("*a");file:close()
+    assert(ini:match("bizhawk_keyboard_hotkey_allowlist=[^\n]*key_map_description"))
+end
+
 local passed = 0
 local failed = 0
 

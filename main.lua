@@ -82,7 +82,7 @@ _G.DW_MIGRATE_OBJECT_VISITS_ON_RELOAD = nil
 for _, mod_name in ipairs({
     "addresses", "auto_step", "battle", "chars", "config",
     "debug_tools", "edge_flow_guard", "emulator_compat", "event_bus", "field_action_guard", "game_snapshot",
-    "darkness",
+    "darkness", "map_descriptions",
     "edge_verify_classifier",
     "hotkey_filter", "hotkeys", "items", "key_combo", "map_reader",
     "map_crawler", "map_survey", "maps", "menu", "merchant", "navigation",
@@ -5534,6 +5534,10 @@ debug_tools.register_command("pathfind_to", function(arg)
         reason and (" [" .. reason .. "]") or "")
     debug_tools.info(msg)
     tolk.output_interrupt(msg)
+end)
+
+debug_tools.register_command("describe_map", function()
+    require("map_descriptions").read(snapshot, game_state.state)
 end)
 
 debug_tools.register_command("report_light_state", function()

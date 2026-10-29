@@ -23,6 +23,14 @@ end
 
 local tests = {}
 
+function tests.description_combo_survives_safe_filter_without_enabling_all_keys()
+    local cfg = make_config({key_map_description="Shift+D", enable_bizhawk_keyboard_hotkeys="false"})
+    local keys = hotkey_filter.filter_bizhawk_keys({Shift=true,D=true,Y=true},cfg)
+    assert(keys.D and keys.Shift)
+    assert(not keys.Y)
+end
+
+
 function tests.default_bizhawk_filter_allows_object_navigation_keys()
     local config = make_config({
         enable_bizhawk_keyboard_hotkeys = "false",

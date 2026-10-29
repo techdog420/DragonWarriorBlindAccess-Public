@@ -101,6 +101,11 @@ G or F20: Announce current gold.
 E: Announce current experience points.
 Shift+B: Announce full status, including attributes, equipment, and spells.
 Shift+T: Read all text currently shown on the game screen.
+Shift+D: Read a short, spoiler-safe description of the current interior map's
+artwork. Dark dungeons require Torch or Radiant light. This is a general
+overview of the map, rather than a report of the currently illuminated area.
+Movement continues, and gameplay announcements may interrupt the paragraph.
+Press again to hear it again. The world map has no artwork description.
 Shift+N or F21: In a dark dungeon, describe visible walls and paths in the
 four directions, nearby visible branches or turns, and visible objects. This
 report never reveals cells beyond the current Torch or Radiant light.

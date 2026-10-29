@@ -21,6 +21,7 @@ class ReleaseKeyboardGuideTests(unittest.TestCase):
             "key_experience": ("E", "E:"),
             "key_stats": ("Shift+B", "Shift+B:"),
             "key_screen_text": ("Shift+T", "Shift+T:"),
+            "key_map_description": ("Shift+D", "Shift+D:"),
             "key_visible_area": ("Shift+N|F21", "Shift+N or F21"),
             "key_object_prev": ("J|F13", "J or F13"),
             "key_object_current": ("K|F14", "K or F14"),

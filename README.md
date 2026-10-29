@@ -31,6 +31,8 @@ Current features include:
   deferred delivery while input is held.
 - Spoken map names, coordinates, HP and MP, level, gold, experience, statistics,
   and visible screen text.
+- Short, spoiler-safe artwork descriptions for all 28 interior maps, available
+  on demand with Shift+D. Dark dungeons require Torch or Radiant light.
 - An object browser for nearby NPCs, services, treasure, doors, stairs, exits,
   and travel destinations.
 - Object category and reachability filters.
@@ -311,6 +313,12 @@ restart from a known-good save.
 
 ## Controls
 
+Shift+D reads a short, spoiler-safe artwork description for each of the 28
+interior maps. Dark dungeons require Torch or Radiant light. This general
+overview leaves movement unchanged and uses the existing speech queue; gameplay
+announcements may interrupt. Shift+N remains the local, light-aware surroundings
+report.
+
 All mod hotkeys can be changed in `dw_access.ini`. The controls below describe
 the current checked-in alpha configuration.
 
@@ -331,6 +339,7 @@ the current checked-in alpha configuration.
 - `E`: announce experience.
 - `Shift+B`: announce the full statistics summary.
 - `Shift+T`: read all detected text on the screen.
+- `Shift+D`: read the current interior map artwork description; dark dungeons require light.
 
 ### Objects and map
 

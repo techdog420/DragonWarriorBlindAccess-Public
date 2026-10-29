@@ -29,6 +29,7 @@ local overworld_routes = require "overworld_routes"
 local debug_tools = require "debug_tools"
 local key_combo  = require "key_combo"
 local emulator_compat = require "emulator_compat"
+local map_descriptions = require "map_descriptions"
 local snapshot   = require "game_snapshot"
 
 local M = {}
@@ -506,6 +507,11 @@ function M.update(keys, game_state, allow_object_hotkeys, object_hotkey_block_re
     -- Position: Read current position (map name + coordinates)
     if is_key_pressed(keys, config.get("key_position")) then
         speak_position()
+    end
+
+    if is_key_pressed(keys, config.get("key_map_description")) then
+        clear_object_nav_speech()
+        map_descriptions.read(snapshot, game_state and game_state.state)
     end
 
     -- Visible-area report: describe only the terrain and objects inside the

@@ -1,6 +1,6 @@
 # Session Handoff - Active Resume
 
-Updated: 2026-10-23
+Updated: 2026-10-29
 
 This is the short current-state entry point. `TASKS.md` is the open roadmap;
 `PLAYTESTING.md` holds dated gameplay evidence; `PROJECT_MEMORY.md` holds
@@ -11,6 +11,26 @@ not instructions for the current checkout.
 
 ## Project state
 
+- Map artwork descriptions added 2026-10-28 in development source: all 28
+  interior maps have short, spoiler-safe paragraphs. Shift+D (configurable
+  `key_map_description`) and read-only `describe_map` use queued speech and leave
+  movement unchanged. Dark dungeons require physical light even with unrestricted
+  navigation. Images, map bindings, sources, hashes, and editorial policy are in
+  `project_resources/maps/descriptions/README.md`. The player accepted descriptions
+  for Tantegel Throne Room, Tantegel main floor, and Brecconary on 2026-10-28:
+  useful general descriptions without information overload. Follow-up editorial
+  review completed all remaining 25 paragraphs against their NES images, keeping
+  each at 71-80 words and preserving the three accepted paragraphs unchanged.
+  Focused description tests and Lua syntax pass; see the linked editorial review
+  in the source index. On 2026-10-29 the player accepted additional spot checks
+  across multiple floors in Garin's Grave and Charlock and additional towns.
+  Exact floors/towns were not enumerated. Description authoring and representative
+  listening acceptance are complete; individual light/interruption/auto-walk cases
+  were not separately reported. The player authorized commit/push and a fresh
+  package; official release remains conditional on the tester's alternate-hardware check.
+  Native Windows `python -u run_tests.py` passed: 44 Lua suites, 82 Python
+  tests, syntax, speech dependency, and command queue checks. Existing qualified
+  ZIPs are preserved and do not include this feature.
 - Darkness speech fixes completed 2026-10-23: Radiant's animated expansion now
   produces one final-radius announcement, preserving navigation restoration;
   World Map ignores dungeon light/terrain bytes on exit. Both are player-accepted
@@ -157,8 +177,8 @@ not instructions for the current checkout.
 
 ## Verification and runtime rules
 
-- The latest recorded `python -u run_tests.py` pass on 2026-10-23 covered
-  43 host-runnable Lua suites, 82 Python tests, Lua/Python/shell syntax, speech
+- The latest recorded `python -u run_tests.py` pass on 2026-10-29 covered
+  44 host-runnable Lua suites, 82 Python tests, Lua/Python/shell syntax, speech
   dependency, and command queue checks. Focused counts are 346 overworld-route,
   169 route-manager, 154 auto-step tests. The gate explicitly skipped live-only
   `test_screen.lua` and `test_speech.lua`. Travel manual reload and loaded

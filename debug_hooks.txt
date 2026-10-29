@@ -60,6 +60,8 @@ COMMANDS (write to dw_commands.txt, one per line)
   log_state                Write full game state snapshot to log
   report_position          Write current map/x/y to log
   report_light_state       Report dungeon light radius and visible half-span
+  describe_map             Speak/log the current interior artwork overview;
+                           field play only, dark dungeons require light.
   visible_area             Speak/log local walls, paths, and objects inside
                            the current dungeon light square
   report_door_state        Write magic-key count and opened-door RAM slots
