@@ -1,9 +1,9 @@
 # Emulator Bakeoff
 
 This folder records same-save emulator comparison runs for Dragon Warrior
-playability. Use the raw battery save baseline at
-`project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav`
-for both emulator paths.
+playability. Use your own raw battery save for both emulator paths. The original baseline
+is retained in the private development archive; see
+[save setup](../saves/emulator_bakeoff/README.md).
 
 ## Task List
 

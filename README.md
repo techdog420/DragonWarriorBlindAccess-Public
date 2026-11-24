@@ -1,185 +1,213 @@
 # Dragon Warrior Blind Accessibility Mod
 
-> **Alpha / work in progress**
+> **Getting ready for open beta**
 >
-> A public alpha is available, and one complete blind-player run has reached
-> the original `The End` screen using the mod as the primary interface. Expect
-> rough edges, incomplete unrestricted routing, and occasional troubleshooting.
+> This project has come a long way since its original game-jam alpha. Navigation is more reliable, narration has improved, and a lot of the rough edges have been worked out.
+>
+> Most importantly, a blind player has now completed the game using the mod as their primary interface, all the way through to the original `The End` screen.
+>
+> The next step is getting the mod into the hands of more players and finding out how well it works across different Windows setups.
 
-The public `v0.1.0-alpha` package predates this development checkout. The
-features below describe current source; a newer player package needs its own
-build and acceptance pass before those changes are available in a release.
+A quick heads-up before downloading: this README describes the version I'm preparing for open beta. The existing `v0.1.0-alpha` release is older and doesn't include many of the improvements described here.
 
-## Purpose
+You can find available downloads and release notes on the [Releases page](https://github.com/techdog420/DragonWarriorBlindAccess-Public/releases). The open beta hasn't been published yet.
 
-Dragon Warrior Blind Accessibility Mod is a Lua-based accessibility layer for
-the original NES release of **Dragon Warrior**. It is designed to make the game
-playable without sight by adding screen-reader narration, location and object
-information, navigation assistance, and optional automated movement.
+If you run into a bug or have feedback from playing, please use the [GitHub issue tracker](https://github.com/techdog420/DragonWarriorBlindAccess-Public/issues). If you're unfamiliar with GitHub, I've included instructions in the [Reporting Problems](#reporting-problems) section below.
 
-The mod runs alongside the game in a supported NES emulator. It does not modify
-or distribute the Dragon Warrior ROM.
+## About the Project
+
+The goal of this project is to make the original NES version of **Dragon Warrior** playable without sight.
+
+The mod is written in Lua and runs alongside the game in an NES emulator. It adds screen-reader narration, information about your surroundings, object browsing, navigation assistance, and optional automatic movement.
+
+I want players to be able to explore the world, talk to people, fight monsters, discover things, and experience Dragon Warrior for themselves. The accessibility tools are there to help you play the game, not necessarily to play it for you.
+
+The mod doesn't modify or distribute the original Dragon Warrior ROM.
+
+## What's Changed Since the Alpha?
+
+Quite a bit has changed since the original game-jam release.
+
+- **More reliable navigation around towns and other locations.** I've worked through problems with collision data, moving NPCs, interaction positions, doors, and narrow passages. Focused player testing has covered Brecconary, Kol, Garinham, Rimuldar, Cantlin, and all three floors of Tantegel Castle. Navigation through Charlock and the return trip after victory have also been completed.
+- **Connected overworld routes.** Travel routes can now connect supported towns, caves, and landmarks through multiple legs. You can optionally auto-walk through successive waypoints. If you wander away from an established route, the mod can also try to guide you back, stopping at recovery checkpoints so you can decide whether to continue.
+- **Better handling of dungeon lighting.** Torch and Radiant now affect navigation assistance according to your chosen settings. You can ask the mod to describe your surroundings within the available light. I've also addressed problems with light-change announcements and leaving dungeons.
+- **Easier access to settings and commands.** There are now spoken Mod Settings and Key Reference menus, object sorting options, a quick shortcut to local services, and configurable warnings for low health and Travel.
+- **Map descriptions and improved narration.** You can press Shift+D to hear a short description of the artwork for any of the game's 28 interior maps. Battle and spell narration have improved, and the ending narration now includes the credits and `The End`.
+- **A more reliable Windows setup.** I've improved keyboard-input recovery, speech-bridge error handling, and installation-path handling. Package testing has included separate NVDA and JAWS gameplay and save/reload sessions, as well as installation under a Windows account with a non-ASCII username.
+
+All of this gives us a much better starting point for the beta. It doesn't mean every possible route, gameplay situation, controller, or computer configuration has been tested.
+
+That's where community testing comes in. If something doesn't work as expected during normal play, I'd like to hear about it.
 
 ## Features
 
-Current features include:
+Here's what the mod currently offers:
 
-- Screen-reader narration for title and save screens, name entry, dialogue,
-  Yes/No prompts, command menus, shops, inns, item and spell menus, battles,
-  status changes, and other gameplay text.
-- Configurable low-health warnings, with a default threshold of 25 percent and
-  deferred delivery while input is held.
-- Spoken map names, coordinates, HP and MP, level, gold, experience, statistics,
-  and visible screen text.
-- Short, spoiler-safe artwork descriptions for all 28 interior maps, available
-  on demand with Shift+D. Dark dungeons require Torch or Radiant light.
-- An object browser for nearby NPCs, services, treasure, doors, stairs, exits,
-  and travel destinations.
-- Object category and reachability filters.
-- Path previews and spoken route guidance to selected objects.
-- Tap-to-step movement for precise one-tile navigation.
-- Auto-walk to selected objects and along supported route segments.
-- Guided overworld routes between a growing set of important towns, caves, and
-  landmarks.
-- Selected-object teleport controls for recovery, testing, or bypassing a route
-  that is not yet usable.
-- Hazard-aware pathfinding that avoids known damage and death tiles.
-- Session-based visited markers for NPCs and objects.
-- A grouped spoken Mod Settings menu (Shift+F11), with contextual help
-  (Shift+F12), staged changes, and Control+Enter to save.
-- A spoken Key Reference (Shift+F12 outside settings), grouped by purpose and
-  reporting currently configured mod bindings.
-- Configurable keyboard hotkeys in `dw_access.ini`.
-- Optional controller access to extra mod commands through a JoyToKey example
-  available from the project repository.
-- Extensive logging and testing tools for bug reports and development.
+- Screen-reader narration for the title screen, save screens, name entry, dialogue, Yes/No prompts, command menus, shops, inns, item and spell menus, battles, status changes, and other gameplay text.
+- Configurable low-health warnings. By default, the mod warns you when your HP reaches 25 percent of your maximum. Warnings are deferred while input is held.
+- On-demand announcements of your map, coordinates, HP, MP, level, gold, experience, statistics, and visible screen text.
+- Short, spoiler-safe artwork descriptions for all 28 interior maps using Shift+D. Dark dungeons require Torch or Radiant light.
+- An object browser that lets you find nearby NPCs, services, treasure, doors, stairs, exits, and travel destinations.
+- Object category and reachability filters, Distance or Alphabetical sorting, and a shortcut to services on your current map.
+- Spoken path previews and route guidance to selected objects.
+- Tap-to-step movement for moving precisely one tile at a time.
+- Auto-walk to selected objects and along supported travel routes.
+- Connected overworld routes between supported towns, caves, and landmarks, with optional continuous auto-walk and assistance getting back to the route network.
+- Configurable dungeon navigation modes and light-aware descriptions of your surroundings.
+- Teleport controls for testing, recovering from navigation problems, or bypassing a route that isn't working yet.
+- Pathfinding that avoids known damage and death tiles.
+- The ability to mark NPCs and objects as visited during your current play session.
+- A spoken Mod Settings menu (Shift+F11), with contextual help (Shift+F12), staged changes, and Control+Enter to save.
+- A spoken Key Reference (Shift+F12 outside settings) that organizes commands into groups and reads your currently configured mod shortcuts.
+- Customizable keyboard shortcuts through `dw_access.ini`.
+- Optional controller access to additional mod commands through a JoyToKey example available in the project repository.
+- Logging and diagnostic tools to help track down bugs and improve the mod.
 
-## Requirements
+## What You'll Need
 
 - Windows.
-- A legally obtained copy of the supported Dragon Warrior ROM.
-- NVDA or JAWS, or an installed Windows SAPI5 voice for fallback speech.
+- Your own legally obtained copy of the supported Dragon Warrior ROM.
+- NVDA, JAWS, or an installed Windows SAPI5 voice for fallback speech.
 
-The recommended automatic installer handles the emulator, speech bridge, and
-other required setup. If you choose manual installation, you will also need one
-of the supported emulators and, for FCEUX, Python 3 and the
-`accessible_output2` package as described below.
+If you're just looking to play, I recommend using the automatic installer. It takes care of the emulator, speech bridge, and other supporting components.
+
+If you'd rather set everything up yourself, you'll also need a supported emulator. FCEUX users doing a manual installation will need Python 3 and the `accessible_output2` package.
+
+I'll cover both installation methods below.
 
 ## Emulator Support
 
-### FCEUX: recommended for normal play
+### FCEUX: My Recommendation for Playing
 
-FCEUX is the primary gameplay emulator. In same-save testing on the development
-machine, it provided smooth movement, object navigation, dialogue, auto-walk,
-and combat without noticeable emulator lag.
+FCEUX is the emulator I recommend for normal gameplay.
 
-The project is mainly developed and tested with FCEUX 2.6.6 using
-`qfceux.exe`. FCEUX has a few setup and input-focus quirks, but it currently
-provides the most comfortable playing experience.
+When comparing both emulators using the same save on my development machine, FCEUX provided smooth movement, object navigation, dialogue, auto-walk, and combat without noticeable emulator lag.
 
-### BizHawk: compatible, but performance may vary
+The player package includes a patched version of FCEUX 2.6.6, `qfceux.exe`, with a fix for Lua startup. I recommend sticking with the bundled version unless you have a particular reason to use another build.
 
-The script includes a compatibility layer for BizHawk and should function in
-both emulators. BizHawk is useful for development because ROM and Lua startup,
-script reloading, profiling, and automation are more reliable.
+FCEUX does still have a few keyboard-focus quirks, which I've described under [Current Limitations](#current-limitations).
 
-On the development machine, however, BizHawk's Lua memory access causes
-player-facing lag and occasional audio cut-outs during heavier work such as
-pathfinding, seam recovery, reachability-filter changes, map transitions, and
-some spell-menu activity. Multiple optimization passes reduced the lag but did
-not make it comfortable enough for normal play. Your results may vary.
+### BizHawk: Supported, but Performance May Vary
+
+The mod includes a compatibility layer for BizHawk and should work in both emulators.
+
+I find BizHawk particularly useful for development. Starting the ROM and Lua script, reloading scripts, profiling, and running automated tests tend to be more reliable there.
+
+Unfortunately, Lua memory access in BizHawk has caused noticeable lag on my development machine. This sometimes includes audio cutting out during more demanding operations, such as pathfinding, seam recovery, changing reachability filters, moving between maps, and certain spell-menu actions.
+
+Several rounds of optimization helped, but I still don't find the experience comfortable enough to recommend BizHawk over FCEUX for everyday play.
+
+Your experience may be different depending on your hardware.
 
 ## The ROM
 
-Development and testing use:
+The ROM I've been developing and testing against is:
 
-```text
+```
 Dragon Warrior (USA) (Rev 1).nes
 ```
 
-The supported ROM is 81,936 bytes and has SHA-256:
+The supported ROM is 81,936 bytes and has the following SHA-256 checksum:
 
-```text
+```
 676B89D76CF9E83EED76C0A67F81DA906916F0BCE321CF3A9A39AC78BC9C0845
 ```
 
-Including the revision is important because the mod reads the game's memory and
-ROM data at known addresses. Other regional releases, revisions, translations,
-and ROM hacks have not been validated and may not work correctly.
+The revision matters because the mod relies on specific memory addresses and ROM data to understand what's happening in the game.
 
-The ROM is copyrighted material and is **not included** with this project. You
-must provide your own legally obtained copy.
+Other regional releases, revisions, translations, and ROM hacks haven't been validated. They may behave differently or not work at all.
 
-The automatic installer checks the ROM's size and SHA-256 before copying it.
-If the checksum does not match, the installer displays both the expected and
-actual fingerprints and warns that narration, navigation, game behavior, and
-save compatibility may be incorrect. Power users may type `I ACCEPT` to
-install that exact hacked or otherwise unsupported ROM at their own risk.
-Compatibility and support are not guaranteed. The installer never modifies
-the selected source ROM.
+The ROM is copyrighted and is **not included** with the project. You'll need to provide your own legally obtained copy.
+
+The automatic installer checks the ROM's size and SHA-256 checksum before copying it.
+
+If your ROM doesn't match, the installer will show you both the expected and actual fingerprints. It'll also warn you that narration, navigation, game behavior, and save compatibility may be affected.
+
+For advanced users who deliberately want to experiment with a ROM hack or another unsupported ROM, typing `I ACCEPT` allows you to install that exact ROM at your own risk.
+
+I can't guarantee compatibility or support for those ROMs.
+
+The installer never modifies your original ROM file.
 
 ## Installation
 
-### Automatic installation: recommended
+### Automatic Installation (Recommended)
 
-The automatic installer is the easiest way to get started. It sets up the
-tested FCEUX environment and the mod's supporting components for you.
+If you just want to get the game running and start playing, this is the easiest option.
 
-The release uses two separate command files: run the installer once to set up
-the mod, then use `Play Dragon Warrior.cmd` whenever you want to play.
+The installer sets up the tested FCEUX environment and the components the accessibility mod needs.
 
-1. Download the latest release archive from the project's
-   [Releases page](https://github.com/techdog420/DragonWarriorBlindAccess-Public/releases).
-   Do not download the source-code archive unless you intend to install the mod
-   manually.
-2. Extract the entire release archive to a writable folder. Do not run the
-   installer from inside the ZIP file.
-3. Run **`Install Dragon Warrior.cmd`** from the extracted folder.
-4. Follow the spoken or on-screen prompts. When asked, select your legally
-   obtained `Dragon Warrior (USA) (Rev 1).nes` ROM.
-5. When installation finishes, run **`Play Dragon Warrior.cmd`** from the
-   extracted folder to start the game with the accessibility mod. Use this same
-   file for future play sessions; you do not need to run the installer again.
+There are two separate command files. You'll run the installer once, then use `Play Dragon Warrior.cmd` whenever you want to play.
 
-See **`Keyboard Commands.txt`** in the extracted folder for a concise shortcut
-reference designed for quick screen-reader lookup during play.
+1. Head over to the project's [Releases page](https://github.com/techdog420/DragonWarriorBlindAccess-Public/releases) and read the notes for the version you want to download.
 
-Keep the extracted release files together. If the installer reports that
-`install_player.ps1` is missing, extract the complete release ZIP again. If
-setup does not complete, review the messages in the command window or open
-`user\install.log` for more information.
+   Once the beta is published, choose the beta player ZIP. You may need to expand the **Assets** section to find it.
 
-If the play command later reports that `play_player.ps1` is missing, re-extract
-the complete release ZIP. For other launch failures, review the messages in the
-command window or open `user\launch.log`.
+   Make sure you're downloading the player package, not `Corresponding-Source.zip` or one of GitHub's automatically generated source-code archives.
 
-The ROM remains your property and is not included with, uploaded by, or
-distributed through the installer.
+   Remember that the existing `v0.1.0-alpha` download doesn't contain the beta improvements described in this README.
 
-### Manual installation
+2. Extract the entire ZIP file to a folder you can write to. Don't try to run the installer directly from inside the ZIP.
 
-Manual installation is intended for BizHawk users, people who already maintain
-their own FCEUX setup, developers, and anyone who wants control over where each
-component is installed.
+3. From the extracted folder, run **`Install Dragon Warrior.cmd`**.
+
+4. Follow the spoken or on-screen instructions. When prompted, select your legally obtained copy of `Dragon Warrior (USA) (Rev 1).nes`.
+
+5. Once installation finishes, run **`Play Dragon Warrior.cmd`** from the extracted folder.
+
+   This is the file you'll use whenever you want to play. You don't need to run the installer again each time.
+
+You'll also find **`Keyboard Commands.txt`** in the extracted folder. I've included this as a quick screen-reader-friendly shortcut reference that you can keep handy while playing.
+
+#### If Something Goes Wrong
+
+Keep all the extracted release files together.
+
+If the installer says it can't find `install_player.ps1`, try extracting the complete release ZIP again.
+
+If installation doesn't finish successfully, check the messages in the command window or open:
+
+```
+user\install.log
+```
+
+If the play command reports that `play_player.ps1` is missing, re-extract the complete release ZIP.
+
+For other problems starting the game, check the command window or:
+
+```
+user\launch.log
+```
+
+Your ROM stays yours. It isn't included with the installer, uploaded anywhere by the installer, or distributed through it.
+
+### Manual Installation
+
+You probably won't need this section if you're using the automatic installer.
+
+I've included manual setup instructions for BizHawk users, developers, people who already have their own FCEUX setup, and anyone who prefers to manage the individual components themselves.
 
 #### FCEUX
 
-1. Download or clone the project and keep all project files together in one
-   writable folder.
-2. Download [FCEUX 2.6.6](https://fceux.com/web/download.html). The main tested
-   version is the 64-bit Qt/SDL build containing `qfceux.exe`. If you already
-   use this build, you may keep your existing copy.
-3. Install Python 3 and make sure the `python` command works in PowerShell.
+1. Download or clone the project and keep all its files together in a writable folder.
+
+2. Download [FCEUX 2.6.6](https://fceux.com/web/download.html).
+
+   The main version I've tested is the 64-bit Qt/SDL build containing `qfceux.exe`.
+
+   Regular FCEUX builds don't contain the project's Lua startup fix, which is why I recommend the bundled player runtime for normal play.
+
+3. Install Python 3 and check that the `python` command works in PowerShell.
+
 4. Install the speech bridge dependency:
 
    ```powershell
    python -m pip install accessible_output2
    ```
 
-5. Place your legally obtained ROM wherever you prefer. It does not need to be
-   inside either the mod or emulator folder.
-6. From the mod folder, run the FCEUX launcher with the paths to your emulator
-   and ROM:
+5. Put your legally obtained ROM wherever you'd like. It doesn't need to be in the emulator or mod folder.
+
+6. From the mod folder, run the FCEUX launcher, providing the paths to your emulator and ROM:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\launch_dw.ps1 `
@@ -188,26 +216,27 @@ component is installed.
      -LuaPath ".\main.lua"
    ```
 
-The launcher configures the project's tested keyboard bridge and FCEUX input
-safety settings, then attempts to load the ROM and `main.lua`. Using it is
-recommended even when you install the other components manually.
+The launcher sets up the tested keyboard bridge and FCEUX input-safety settings before attempting to load the ROM and `main.lua`.
 
-FCEUX command-line loading is unreliable on some systems. If FCEUX opens but
-the game or script does not load, leave that launched session open, load the
-ROM through FCEUX's File menu, then open the Lua script window and load
-`main.lua` manually. Keep the emulator focused during play.
+I recommend using it even if you've installed everything else manually.
 
-If the mod does not speak, confirm that Python runs from PowerShell, reinstall
-`accessible_output2`, and inspect `speech_backend.log` and
-`speech_bridge.log` in the mod folder.
+FCEUX doesn't always handle command-line loading reliably. If the emulator opens but the ROM or script doesn't load, leave that emulator session running.
+
+Load the ROM through FCEUX's File menu, then open its Lua script window and load `main.lua` manually.
+
+Keep the emulator focused while playing.
+
+If the mod isn't speaking, check that Python works from PowerShell, try reinstalling `accessible_output2`, and check these files in the mod folder:
+
+- `speech_backend.log`
+- `speech_bridge.log`
 
 #### BizHawk
 
 1. Download or clone the project into a writable folder.
-2. Download and extract [BizHawk](https://github.com/TASEmulators/BizHawk/releases).
-   BizHawk 2.11.1 is the currently tested version.
-3. Place your legally obtained ROM wherever you prefer.
-4. From the mod folder, launch BizHawk with:
+2. Download and extract [BizHawk](https://github.com/TASEmulators/BizHawk/releases). The version currently tested is BizHawk 2.11.1.
+3. Put your legally obtained ROM wherever you'd like.
+4. From the mod folder, run:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\launch_bizhawk.ps1 `
@@ -216,266 +245,447 @@ If the mod does not speak, confirm that Python runs from PowerShell, reinstall
      -RomPath "C:\ROMs\Dragon Warrior (USA) (Rev 1).nes"
    ```
 
-The BizHawk launcher loads the ROM and Lua script together. If you prefer, you
-can instead open the ROM in BizHawk, open its Lua Console, and load `main.lua`
-manually.
+The BizHawk launcher loads the ROM and Lua script together.
 
-For safety, general BizHawk keyboard hotkeys are disabled in the checked-in
-configuration. Set `enable_bizhawk_keyboard_hotkeys=true` in `dw_access.ini`
-if you want to use all of the keyboard commands listed below. BizHawk's default
-NES keyboard controls differ from the FCEUX controls in this README, so review
-or remap them in BizHawk before playing.
+Alternatively, you can open the ROM in BizHawk yourself, open its Lua Console, and load `main.lua`.
 
-#### Developer and WSL launchers
+For safety, general BizHawk keyboard hotkeys are disabled in the configuration included with the source.
 
-From WSL, `./launch_dw.sh` defaults to FCEUX. When the verified patched runtime
-exists under `.tools/fceux-release-runtime-verified`, the development launcher
-selects it automatically; `--fceux-path` and `DW_FCEUX_PATH` still override the
-selection. Use `./launch_dw.sh --emulator bizhawk` only when you intentionally
-want the BizHawk path. These helpers are primarily for development and testing;
-most players should use the automatic installer or the Windows launchers above.
+If you'd like to enable all the keyboard commands listed in this README, set:
+
+```ini
+enable_bizhawk_keyboard_hotkeys=true
+```
+
+in `dw_access.ini`.
+
+BizHawk's default NES keyboard controls are different from the FCEUX controls listed below. You'll want to review or remap those before playing.
+
+#### Developer and WSL Launchers
+
+For anyone working on the project from WSL, `./launch_dw.sh` uses FCEUX by default.
+
+If the verified patched runtime exists under `.tools/fceux-release-runtime-verified`, the development launcher selects it automatically.
+
+You can still override that selection with `--fceux-path` or `DW_FCEUX_PATH`.
+
+Use `./launch_dw.sh --emulator bizhawk` when you specifically want to work with BizHawk.
+
+These launchers are mainly intended for development and testing. Most players will be better off using the automatic installer or one of the Windows launchers above.
 
 ## Movement and Navigation
 
-The mod offers three main ways to get around. They are meant to complement one
-another rather than replace normal gameplay.
+There are three main ways to get around with the mod: manual movement and guided routes, auto-walk, and teleporting.
 
-### Manual movement and guided routes
+Each serves a different purpose, and you're free to switch between them depending on what you're doing.
 
-Use the arrow keys to move normally. With tap-to-step enabled, a quick press
-finishes one tile of movement, which makes precise navigation easier. Holding a
-direction still allows ordinary continuous movement.
+### Manual Movement and Guided Routes
 
-For local navigation, select an object and press `O` to hear a path preview.
-For supported overworld destinations, select a Travel object and press `R` to
-start or check a guided route. The mod announces route landmarks and directions
-while you move the character yourself. Northern Cave and Swamp Cave routes
-started near Tantegel first follow the existing route to Kol. Route status names
-Kol as the current leg and preserves the selected cave as the final destination.
-On reaching or entering Kol, guidance changes to that cave's Kol-side leg and
-waits for the next movement command.
+You can move around normally using the arrow keys.
 
-Choose manual movement or route guidance when you want to explore, retain
-control, fight normal random encounters, and follow the intended game flow.
+With tap-to-step enabled, a quick press of an arrow key completes one tile of movement. This makes it easier to move precisely without accidentally going too far.
 
-### Auto-walk
+Holding down a direction still gives you normal continuous movement.
 
-Select an object and press, then release, `U`. The mod calculates a path and
-moves the character toward the target. It announces progress on longer routes
-and speaks when the route completes.
+If you want directions to a nearby object, select it in the object browser and press `O`. The mod will read a path preview.
 
-Press `Shift+U` to stop active or pending auto-walk and cancel guided Travel
-state immediately. This releases automatic movement, clears its current
-step/route state, and removes the active route marker without changing the
-selected object.
+For supported destinations on the world map, select a Travel object and press `R` to start or check a guided route.
 
-When an overworld guided route is active, auto-walk follows the current route
-segment to its next waypoint. It is not yet unrestricted whole-world
-pathfinding. At a multi-leg handoff, press and release `U` again to begin the
-new leg; the mod does not start that movement automatically.
+The mod announces directions and landmarks as you move. You're still controlling the character yourself.
 
-Auto-walk stops before entering poison swamp and announces the danger. To
-accept that risk, press and release `U` or `F18` again within ten seconds. The
-confirmation applies only to the matching contiguous swamp crossing and is
-cleared on safe terrain, a route or map change, an interruption, or
-`Shift+U`. Other hazardous terrain is never authorized by this confirmation.
+Some routes take you through another location along the way. For example, if you're near Tantegel and choose Northern Cave or Swamp Cave, you'll initially follow the established route to Kol.
 
-Auto-walk is useful for crossing known areas, reaching shops or stairs, and
-reducing repetitive directional input. It can stop when combat, dialogue,
-menus, locked doors, moving NPCs, or an unmodeled map edge interrupt the route.
+The route status will identify Kol as your current leg while keeping the cave as your final destination.
+
+When you reach or enter Kol, guidance switches to the next leg of the cave route and waits for your next movement command.
+
+Manual movement and guided routes are good options if you enjoy exploring, want to stay in control of the character, and want to experience the game's normal random encounters and progression.
+
+### Auto-Walk
+
+If you'd rather have the mod handle some of the walking, select an object, then press and release `U`.
+
+The mod calculates a path and starts moving your character toward the selected object. For longer routes, it announces progress along the way and lets you know when you've arrived.
+
+You can press `Shift+U` at any time to stop active or pending auto-walk and cancel guided Travel immediately.
+
+This releases automatic movement, clears the current movement and route state, and removes the active route marker. Your selected object stays selected.
+
+When you're following a guided overworld route, auto-walk uses established waypoints to move toward your destination.
+
+You can choose how this works by opening Mod Settings, selecting **Movement**, and finding **Overworld auto-walk**.
+
+There are two options:
+
+- **One waypoint:** The mod stops at each waypoint. Press and release `U` again whenever you're ready to continue.
+- **Continuous:** The mod continues through successive overworld waypoints until you reach your destination or something interrupts movement.
+
+If a route handoff or map transition stops movement, press and release `U` again when you're ready.
+
+Even in Continuous mode, auto-walk won't automatically resume after a battle, menu, dialogue, or recovery checkpoint.
+
+Guided Travel uses an established network of routes. It doesn't currently support full pathfinding from every possible starting point on the world map.
+
+#### Getting Back on Track
+
+If you've wandered away from the route network, Travel can try to find a safe way back without forgetting your original destination.
+
+Recovery stops at checkpoints and when you reach the route network again.
+
+Press and release `U` to continue from each of these stops, even if you're using Continuous mode.
+
+If the mod can't find a safe recovery path, it'll explain the problem. You may need to move manually before trying again.
+
+#### Hazardous Terrain
+
+Auto-walk stops before entering poison swamp and warns you about it.
+
+If you're willing to take the damage, press and release `U` or `F18` again within ten seconds to confirm the crossing.
+
+This confirmation only applies to that particular contiguous stretch of poison swamp.
+
+It's cleared when you reach safe terrain, change routes or maps, encounter an interruption, or press `Shift+U`.
+
+Confirming a swamp crossing doesn't authorize auto-walk to enter other hazardous terrain.
+
+Auto-walk is particularly handy when you're crossing familiar areas, heading to a shop or staircase, or simply want to cut down on repetitive directional input.
+
+Keep in mind that things like battles, dialogue, menus, locked doors, moving NPCs, and map edges that haven't been fully modeled can interrupt the route.
+
+### Dungeon Lighting and Surroundings
+
+I wanted players to have a choice in how much navigation assistance they receive in dark dungeons.
+
+The default mode is **Balanced**. With this setting, you have full navigation assistance while Torch or Radiant provides light. Once the light runs out, assistance beyond your current tile stops.
+
+You'll find two additional options under **Navigation**, then **Dungeon navigation**, in Mod Settings:
+
+- **Authentic:** Object browsing, path previews, and auto-walk are restricted to the area covered by your current light. If the light fades and the remaining auto-walk route falls outside that boundary, movement stops.
+- **Unrestricted:** Navigation assistance remains available even without light.
+
+You can press `Shift+N` or `F21` to hear about nearby walls, paths, branches, and objects within your current light.
+
+This surroundings report always respects the physical light boundary, regardless of which navigation mode you're using.
+
+Pressing `Shift+D` gives you a more general description of the artwork on your current interior map. In dark dungeons, you'll need Torch or Radiant light to use this command, even in Unrestricted mode.
 
 ### Teleport
 
-Teleport moves the character directly to or beside the selected object:
+Teleport is a more direct way of reaching a selected object.
 
-- `Shift+Enter` teleports to the selected object. NPCs use a nearby interaction
-  cell when possible.
-- `Shift+Arrow` teleports to the cell on that side of the selected object.
+- `Shift+Enter` teleports you to the selected object. For NPCs, the mod tries to use a nearby interaction cell when possible.
+- `Shift+Arrow` teleports you to the cell on that side of the selected object.
 
-Teleport is useful for recovering from an inaccessible position, testing, or
-bypassing incomplete route data. It can skip terrain, encounters, locked
-areas, and intended progression, so manual movement or auto-walk is recommended
-for ordinary play.
+I've included teleporting as a recovery and testing tool, and as another option if you encounter a route that isn't usable yet.
 
-**Warning:** Teleport changes live game state without following every normal
-movement, transition, door, hazard, encounter, or progression check. Known
-unsafe states are refused, but no safeguard can cover every situation. Misuse
-may leave the current session inconsistent, corrupt later gameplay, or produce
-unusable save data. Save normally before experimenting. If the game behaves
-strangely afterward, close it without saving and restart from a known-good
-save. Teleport does not modify the original ROM file.
+It can also skip terrain, encounters, locked areas, and parts of the game's intended progression. For ordinary play, I'd recommend manual movement or auto-walk instead.
 
-**Alpha recovery note:** After teleporting, ordinary controls may occasionally
-stop responding until `Start` is pressed once. If `Start` does not restore
-control, reloading the accessibility script may help. The simplest recovery is
-to close the emulator without saving, run `Play Dragon Warrior.cmd` again, and
-restart from a known-good save.
+**Important warning:** Teleport changes the live game state without going through every normal movement, transition, door, hazard, encounter, or progression check.
+
+The mod refuses known unsafe teleport states, but I can't account for every possible situation.
+
+Misusing teleport could leave your current session in an inconsistent state, cause problems later in the game, or result in unusable save data.
+
+Save normally before experimenting with it.
+
+If the game starts behaving strangely after teleporting, close it without saving and restart from a known-good save.
+
+Teleporting does not modify your original ROM file.
+
+**If your controls stop responding after teleporting:** Try pressing `Start` once. Occasionally, this is needed to restore normal controls.
+
+If that doesn't help, reloading the accessibility script may restore control.
+
+The simplest recovery is usually to close the emulator without saving, run `Play Dragon Warrior.cmd` again, and continue from a known-good save.
 
 ## Controls
 
-Shift+D reads a short, spoiler-safe artwork description for each of the 28
-interior maps. Dark dungeons require Torch or Radiant light. This general
-overview leaves movement unchanged and uses the existing speech queue; gameplay
-announcements may interrupt. Shift+N remains the local, light-aware surroundings
-report.
+You don't need to memorize everything in this section before you start playing.
 
-All mod hotkeys can be changed in `dw_access.ini`. The controls below describe
-the current checked-in alpha configuration.
+The mod includes a spoken Key Reference, and the player package comes with a separate `Keyboard Commands.txt` file for quick lookup.
 
-### Normal NES controls in the tested FCEUX setup
+All mod shortcuts can be customized through `dw_access.ini`. The commands listed here reflect the current configuration supplied with the project.
+
+### Spoken Settings and Key Help
+
+- `Shift+F11`: Open Mod Settings during normal field play.
+  - Left and Right switch between settings groups.
+  - Up and Down select an option.
+  - Enter begins editing the selected option.
+  - Use the arrow keys to change its value.
+  - Press Enter again to accept that edit.
+  - Press `Control+Enter` to save accepted changes and close settings.
+  - Escape cancels an active edit or discards changes from the main settings list.
+- `Shift+F12`: Open Key Reference during normal field play.
+  - Left and Right switch between command groups.
+  - Up and Down select a command.
+  - Enter explains the selected command without actually running it.
+  - If you're already in Mod Settings, `Shift+F12` explains the current setting instead.
+- Escape closes Key Reference. Release any held controls before returning to the game.
+
+Both spoken menus stop automatic movement and capture game input, although the emulator itself continues running.
+
+Available settings include movement, dungeon navigation, object sorting, browsing speech delay, auto-walk progress announcements, and warnings.
+
+Turning Travel warnings off doesn't disable hazard confirmation or movement safeguards.
+
+Low-health warnings have their own setting and default to 25 percent of maximum HP.
+
+### Normal NES Controls in FCEUX
+
+These are the controls used in the tested FCEUX setup:
 
 - Arrow keys: D-pad movement and menu navigation.
-- `F`: NES A button; confirm or interact.
-- `D`: NES B button; cancel or go back.
+- `F`: NES A button. Use this to confirm or interact.
+- `D`: NES B button. Use this to cancel or go back.
 - `Enter`: Start.
 - `S`: Select.
 
-### Information
+### Information Commands
 
-- `C` or `F17`: announce the current map and coordinates.
-- `H` or `F19`: announce HP and MP.
-- `I`: announce level.
-- `G` or `F20`: announce gold.
-- `E`: announce experience.
-- `Shift+B`: announce the full statistics summary.
-- `Shift+T`: read all detected text on the screen.
-- `Shift+D`: read the current interior map artwork description; dark dungeons require light.
+- `C` or `F17`: Hear your current map and coordinates.
+- `H` or `F19`: Hear your HP and MP.
+- `I`: Hear your level.
+- `G` or `F20`: Hear how much gold you have.
+- `E`: Hear your experience.
+- `Shift+B`: Hear your full statistics summary.
+- `Shift+T`: Read all detected text on the screen.
+- `Shift+D`: Hear a short description of the current interior map's artwork.
+- `Shift+N` or `F21`: Hear about your dungeon surroundings within the current light.
 
-### Objects and map
+Artwork descriptions are available for all 28 interior maps and are intended to be spoiler-safe.
 
-- `J` or `F13`: previous object.
-- `K` or `F14`: describe the current object.
-- `L` or `F15`: next object.
-- `Q`: cycle object categories: All, NPCs, Services, Treasure, Travel, and
-  Doors.
-- `Shift+P`: jump directly to Services on the current map. Keeps sorting and
-  reachability filters; use J/K/L to browse and U to approach the selection.
-  Services announce reachability and known blockers. Opening does not move the hero.
-- `Shift+Q`: switch Distance/Alphabetical sorting and save immediately.
-- `Shift+J`: previous object category.
-- `Shift+K`: return the object category to All.
-- `Shift+L`: next object category.
-- `Shift+O`: cycle reachability: All, Reachable, and Unreachable.
-- `Shift+V`: mark the selected object as visited for the current session.
-- `Shift+F`: freeze or unfreeze NPC positions for more predictable navigation.
+They don't change your movement or game state. They use the existing speech queue, so gameplay announcements may interrupt them.
 
-### Movement and navigation
+Dark dungeons require Torch or Radiant light for artwork descriptions.
 
-- `O` or `F16`: preview a path to the selected object.
-- `R`: start or check guided route information for a selected Travel object.
-- `Shift+R`: read route status without starting, replacing, or recalculating a
-  route.
-- `U` or `F18`: auto-walk to the selected object after the key is released.
-  If guided overworld travel stops before poison swamp, press the same key
-  again within ten seconds to confirm only that contiguous swamp crossing.
-- `Shift+U`: immediately stop active or pending auto-walk and cancel guided
-  Travel state.
-- `Shift+Enter`: teleport to the selected object.
-- `Shift+Arrow`: teleport to the adjacent cell on the chosen side of the
-  selected object.
+### Objects and Maps
 
-### Debugging controls
+- `J` or `F13`: Previous object.
+- `K` or `F14`: Describe the selected object.
+- `L` or `F15`: Next object.
+- `Q`: Cycle through object categories: All, NPCs, Services, Treasure, Travel, and Doors.
+- `Shift+P`: Jump directly to Services on your current map. Your existing sorting and reachability filters are preserved. Use J/K/L to browse and U to approach a selected service. The mod announces reachability and known blockers. Opening Services doesn't move your character.
+- `Shift+Q`: Switch between Distance and Alphabetical sorting. This setting is saved immediately.
+- `Shift+J`: Previous object category.
+- `Shift+K`: Return to the All object category.
+- `Shift+L`: Next object category.
+- `Shift+O`: Cycle through reachability filters: All, Reachable, and Unreachable.
+- `Shift+V`: Mark the selected object as visited for your current session.
+- `Shift+F`: Freeze or unfreeze NPC positions for more predictable navigation.
 
-These are intended for testers and developers:
+### Movement and Navigation
 
-- `Ctrl+M`: report raw menu cursor information.
-- `Ctrl+D`: dump PPU text and screen data to a diagnostic file.
-- `Ctrl+N`: speak tile information at the player's position.
-- `Ctrl+Y`: dump title-screen cursor and memory information.
+- `O` or `F16`: Hear a path preview to the selected object.
+- `R`: Start or check guided route information for a selected Travel object.
+- `Shift+R`: Hear your current route status without starting, replacing, or recalculating the route.
+- `U` or `F18`: Auto-walk to the selected object after releasing the key. If guided overworld travel stops before poison swamp, press and release the same key again within ten seconds to confirm that particular contiguous swamp crossing.
+- `Shift+U`: Immediately stop active or pending auto-walk and cancel guided Travel.
+- `Shift+Enter`: Teleport to the selected object.
+- `Shift+Arrow`: Teleport to the adjacent cell on the chosen side of the selected object.
 
-Set `debug_mode=true` in `dw_access.ini` to enable `dw_debug.log` and the
-`dw_commands.txt` automation interface. Debug mode is useful when reporting a
-problem but is not required for ordinary play.
+### Debugging Commands
+
+These commands are mainly intended for developers and testers who are trying to track down a problem:
+
+- `Ctrl+M`: Report raw menu cursor information.
+- `Ctrl+D`: Dump PPU text and screen data to a diagnostic file.
+- `Ctrl+N`: Speak tile information at your current position.
+- `Ctrl+Y`: Dump title-screen cursor and memory information.
+
+Setting:
+
+```ini
+debug_mode=true
+```
+
+in `dw_access.ini` enables `dw_debug.log` and the `dw_commands.txt` automation interface.
+
+Debug mode can be helpful when reporting a problem, but you don't need it enabled for normal play.
 
 ## Optional Controller Setup
 
-The game itself can be played with a controller through FCEUX. A tested
-[JoyToKey example](https://github.com/techdog420/DragonWarriorBlindAccess-Public/tree/main/project_resources/controller/joytokey)
-is available separately from the project repository for assigning spare
-modern-controller buttons to mod hotkeys such as object navigation, position,
-HP, gold, path preview, and auto-walk. It is not bundled in the lean player
-release ZIP.
+If you prefer playing with a controller, you can use one for the game's normal controls through FCEUX.
 
-JoyToKey is optional. Controller button numbers vary by model and driver, so the
-linked profile should be treated as a starting point rather than a universal
-layout. See the linked controller folder's README for setup and safety
-instructions.
+I've also made a tested [JoyToKey example](https://github.com/techdog420/DragonWarriorBlindAccess-Public/tree/main/project_resources/controller/joytokey) available in the project repository.
+
+It lets you assign some of the extra buttons on a modern controller to accessibility commands, such as object browsing, position, HP, gold, path previews, and auto-walk.
+
+JoyToKey isn't bundled with the player release ZIP.
+
+It's completely optional. You can play using the keyboard without setting it up.
+
+Controller button numbering can vary depending on the controller and driver you're using, so consider the example a starting point rather than a layout that's guaranteed to work with every controller.
+
+The README in the linked controller folder contains setup and safety instructions.
 
 ## Current Limitations
 
-- This is an alpha release. One complete blind-player run has reached the
-  original `The End` screen, but broader hardware and player testing remains.
-- Only `Dragon Warrior (USA) (Rev 1)` is currently supported and tested.
-- FCEUX is the main tested emulator. Manual installations using an ordinary
-  stock FCEUX build may fail to load the ROM or Lua script automatically, in
-  which case they must be loaded manually in the session started by the project
-  launcher. The automatic player package includes the project's patched and
-  tested FCEUX runtime.
-- FCEUX can occasionally retain Alt/menu focus after switching windows. Refocus
-  the emulator if game or mod keys stop responding.
-- BizHawk is functionally compatible but may produce noticeable lag and audio
-  cut-outs during pathfinding and other memory-heavy features.
-- Map and route coverage is incomplete. Development favors reliable routes to
-  essential services, exits, stairs, doors, treasure, and progression targets
-  over perfect coverage of every walkable tile or optional NPC.
-- Object reachability can change when doors are locked or moving NPCs block
-  narrow passages.
-- Guided overworld routes cover selected destinations and follow planned
-  waypoint segments. They are not full dynamic world-map pathfinding.
-- Auto-walk may stop for battles, dialogue, menus, route uncertainty, or an
-  unmodeled collision. Manual movement or teleport may be needed to recover.
-- Teleport intentionally bypasses normal movement and can also bypass intended
-  encounters, terrain, or progression barriers.
-- Visited-object markers currently last only for the running session.
-- The optional JoyToKey controller layout is an alpha feature and may need
-  remapping for different controllers.
-- Screen-reader and Windows setup combinations beyond the development system
-  need broader community testing.
+Although the mod has come a long way, there's still plenty of room for improvement.
 
-## Future Roadmap
+I'd rather be upfront about what has and hasn't been tested so you know what to expect.
 
-The current open backlog is in `TASKS.md`. Ending narration polish is complete.
-The next work is broader Travel recovery/interruption acceptance and
-qualification of a new player package from current source. Release testing
-still needs an actual Windows account with a non-ASCII username, plus broader
-screen-reader, controller, hardware, and blind-player coverage.
+- **The open beta is still being prepared.** One complete blind-player run has reached the original `The End` screen, which is an important milestone. We still need more players testing different hardware and controller setups, and bugs may interrupt individual playthroughs.
+- **ROM compatibility is limited.** Only `Dragon Warrior (USA) (Rev 1)` is currently supported and tested.
+- **FCEUX startup can be inconsistent with stock builds.** If you're using an ordinary FCEUX build and the ROM or Lua script doesn't load automatically, you may need to load them manually in the session started by the project launcher. The automatic player package includes the patched and tested runtime.
+- **FCEUX sometimes gets stuck in Alt or menu focus.** This can happen after switching windows. Try refocusing the emulator if the game controls or mod shortcuts stop responding.
+- **BizHawk can be laggy.** Pathfinding and other memory-intensive operations may cause noticeable delays and audio cut-outs.
+- **Navigation testing isn't exhaustive.** Focused testing and cleanup of the towns, castles, and dungeons are complete, with player acceptance of the recorded routes. That doesn't mean every walkable tile, optional interaction, or quest state has been covered. If you find a new navigation problem, please report the map, coordinates, and selected target when possible.
+- **Object reachability can change.** A locked door or an NPC standing in a narrow passage may prevent you from reaching an object.
+- **Overworld Travel has limited coverage.** Guided routes follow established waypoint segments between supported destinations rather than dynamically finding paths across the entire world map.
+- **Auto-walk can be interrupted.** Battles, dialogue, menus, route uncertainty, and unmodeled collisions can stop movement. Wait for NPCs to move or dismiss the interruption, then press and release `U` to try again. You may need to move manually to rejoin a route. Recovery can't safely handle every possible starting position.
+- **Teleport bypasses normal movement.** It can also bypass encounters, terrain, and progression barriers. Please read the teleport warning before using it.
+- **Visited markers aren't persistent.** They only last for your current play session.
+- **Controller layouts may need adjustments.** The optional JoyToKey example may need remapping for your particular controller.
+- **NVDA responsiveness is still being investigated.** I'm looking into differences in responsiveness between NVDA and JAWS during object browsing and dialogue. If you experience delayed speech, please mention your screen reader and what you were doing.
+- **More Windows and screen-reader testing is needed.** There are many possible setups beyond the development system, and community feedback will be particularly helpful here.
 
-Later work includes optional clue-aware search guidance for hidden treasures,
-speech settings, cross-town service lookup, and player-chosen bookmarks.
-Completed map cleanup, darkness-aware routing, grouped settings, object
-sorting, quick Services, and bounded off-network recovery should be maintained
-when new gameplay evidence reveals a regression.
+## Where the Project Goes Next
+
+My immediate focus is getting the open beta published, hearing from players, and fixing reproducible gameplay and accessibility problems.
+
+Representative Travel recovery and interruption checks are complete.
+
+Local package testing has included installation, gameplay with NVDA and JAWS, normal saving and reloading, and testing under a Windows account with a non-ASCII username.
+
+The latest package containing the artwork descriptions has passed automated archive and installation checks. Gameplay testing of that exact package and acceptance testing on alternate hardware still need to be completed before publication.
+
+Beyond the beta, there are several ideas I'd like to explore:
+
+- Optional, clue-aware guidance for searching for hidden treasures.
+- More speech settings.
+- Looking up services in other towns.
+- Player-created bookmarks.
+
+These are plans for future development, not features that are already available.
+
+If you're interested in the development side of things, you can find more details in the [project backlog](https://github.com/techdog420/DragonWarriorBlindAccess-Public/blob/main/TASKS.md).
+
+For gameplay bugs and accessibility problems, please use the issue tracker.
 
 ## Reporting Problems
 
-When reporting a problem, please include:
+Feedback from players is going to be a big part of improving this mod.
 
-- Emulator name and version.
-- Screen reader and version.
-- Dragon Warrior ROM revision.
-- Current map or location, if known.
-- What you were trying to do.
-- What happened and what you expected.
-- Relevant lines from `dw_debug.log`, if debug mode was enabled.
+If something isn't working, please don't feel that you need to understand the code or figure out why it's happening before reporting it.
 
-Please do not upload or attach the copyrighted ROM.
+Knowing what you were trying to do and what actually happened is already useful.
+
+The best place to report bugs is the project's [GitHub issue tracker](https://github.com/techdog420/DragonWarriorBlindAccess-Public/issues).
+
+If you're new to GitHub, here's a quick explanation:
+
+- **Releases** is where you'll find downloads and release notes.
+- **Issues** is where bugs are reported, discussed, and tracked.
+
+GitHub calls individual reports **issues**. You don't need any programming experience to create one.
+
+### Finding or Creating an Issue
+
+1. Open the issue tracker linked above, or select **Issues** from the project's GitHub page. You'll need a free GitHub account to post or comment.
+
+2. Search for a few words describing your problem.
+
+   Check both **Open** and **Closed** issues. Someone may have already reported the same problem, and a closed issue might explain how it was fixed or which version contains the fix.
+
+   If you find a matching issue, feel free to add your experience there.
+
+3. If you're reporting a different problem, sign in and select **New issue**, or follow the [new issue link](https://github.com/techdog420/DragonWarriorBlindAccess-Public/issues/new/choose).
+
+   Choose an appropriate template if one is available, or open a blank issue.
+
+4. Give your report a short, descriptive title and explain the problem.
+
+   Something like "Auto-walk stops before the inn in Brecconary" makes it easier to tell what the report is about.
+
+5. Select **Submit new issue** or **Create**, depending on what the form shows.
+
+   Keep the link to your issue so you can return to it, read replies, and answer any follow-up questions.
+
+If an issue link displays **404** or **Not Found**, open the project's main GitHub page and select **Issues**. You only need to sign in when you want to post or comment.
+
+GitHub also has its own [guide to creating an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue) if you need more help.
+
+### What to Include in a Bug Report
+
+Include as much of the following information as you can.
+
+Don't worry if you can't provide everything. I'd much rather receive a useful description of the problem than have you decide not to report it because you don't have logs or every technical detail.
+
+- The mod release version you're using, or the source commit if you're running from a checkout.
+- Your Windows version, emulator name and version, and screen reader name and version.
+- Whether you're using the bundled player package or a manual installation.
+- Whether you're playing with a keyboard or controller.
+- Your Dragon Warrior ROM revision, particularly whether it's the supported Rev 1 ROM.
+- What you were trying to do, which steps or keys led to the problem, what happened, and what you expected to happen. If you remember the spoken message, please include it.
+- For navigation problems, your map and coordinates (`C`), selected object (`K`), route status (`Shift+R`), and whether you were moving manually or using auto-walk. Mention dungeon lighting, locked doors, or moving NPCs if they seem relevant.
+- Whether the problem happens repeatedly and whether anything you tried restored normal gameplay.
+
+### Installation and Speech Logs
+
+If you're having trouble installing or starting the player package, include any relevant lines from these files in the extracted folder:
+
+```
+user\install.log
+user\launch.log
+```
+
+If you're experiencing speech problems, these logs may also be useful when present:
+
+```
+app\speech_backend.log
+app\speech_bridge.log
+```
+
+For manual installations, the speech logs are located in the mod folder.
+
+### Debug Logging
+
+Debug logging is optional, but it can be especially useful if you've found a gameplay problem that you can reproduce.
+
+To enable it:
+
+1. Close the game.
+2. Open `app\dw_access.ini` if you're using the player package, or `dw_access.ini` in a manual installation.
+3. Set:
+
+   ```ini
+   debug_mode=true
+   ```
+
+4. Relaunch the game and reproduce the problem.
+5. Include the relevant portion of `app\dw_debug.log`, or `dw_debug.log` for a manual installation, in your report.
+
+You can turn debug mode off again afterward.
+
+A written report is perfectly fine. Screenshots and recordings are optional, not requirements.
+
+Please create one issue per distinct problem when possible. It makes individual bugs much easier to track.
+
+Before posting logs, take a moment to check for personal file paths or other private information.
+
+Please don't upload or attach the copyrighted Dragon Warrior ROM.
 
 ## Development and AI Use
 
-This project is directed, tested, and playtested by a human developer. AI coding
-tools have assisted with implementation, code review, documentation, log
-analysis, and automated testing. Gameplay behavior and accessibility decisions
-are validated through human-directed testing in the emulator.
+I also want to be transparent about how this project is being developed.
+
+This is a human-directed, human-tested, and human-playtested accessibility project. AI coding tools have been part of my development workflow, helping with implementation, code review, documentation, log analysis, and automated testing.
+
+Gameplay behavior and accessibility decisions are validated through human-directed testing in the emulator.
+
+Ultimately, what matters is whether the mod works for the people who are actually playing the game.
 
 ## Licenses and Third-Party Notices
 
-Licenses and third-party notices are included in the `licenses` folder.
-Matching source code for bundled copyleft components is provided as the
-same-version `Corresponding-Source.zip` release asset.
+Licenses and third-party notices can be found in the `licenses` folder.
+
+Matching source code for bundled copyleft components is available in the same-version `Corresponding-Source.zip` release asset.
 
 ## Legal Notice
 
-This is an unofficial, fan-made accessibility project. It is not affiliated
-with or endorsed by Square Enix, Nintendo, or the original game's developers
-or publishers. Dragon Warrior and related names and assets belong to their
-respective owners.
+This is an unofficial, fan-made accessibility project.
+
+It isn't affiliated with or endorsed by Square Enix, Nintendo, or the original game's developers or publishers.
+
+Dragon Warrior and its related names and assets belong to their respective owners.

@@ -1,7 +1,7 @@
 Dragon Warrior Accessibility - Keyboard Commands
 =================================================
 
-These are the default keys in the game-jam release. Keep the FCEUX game
+These are the default keys supplied with the project. Keep the FCEUX game
 window focused while playing. A physical game controller can also be used.
 Where two keys are listed, either one works. F13 through F21 are optional
 alternatives for programmable keyboards or remapping; the ordinary letter key

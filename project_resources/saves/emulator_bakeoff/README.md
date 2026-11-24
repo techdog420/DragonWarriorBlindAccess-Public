@@ -1,21 +1,14 @@
 # Emulator Bakeoff Saves
 
-This folder holds repo-owned raw battery save baselines for cross-emulator
-Dragon Warrior testing. These are plain NES battery save files, not FCEUX
-`.fc*` savestates or BizHawk `.State` files.
+The public repository does not distribute game saves. The historical raw
+battery-save baseline remains in the private development archive.
 
-## Current Baseline
+For a same-save emulator comparison, make a normal in-game save with the king,
+close the emulator, and use your own raw battery save for both emulator paths.
+Use battery data, not FCEUX or BizHawk emulator savestates. Keep a backup before
+testing; save files are ignored by Git.
 
-- `dw1_bakeoff_king_save_2026-05-18.sav`
-  - Source: `D:\emulation\fceux\bin\sav\Dragon Warrior (USA) (Rev 1).sav`
-  - Captured after a normal in-game save with the king in FCEUX.
-  - Size: 8192 bytes.
-  - SHA-256:
-    `fdbf2150210b8761301ed75285885caf806d1c58f4cc08eb569dee148a099c4d`
+Example, replacing the path with your own save:
 
-Use this file with either emulator launcher:
-
-```bash
-./launch_dw.sh --battery-save project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav
-./launch_dw.sh --emulator fceux --battery-save project_resources/saves/emulator_bakeoff/dw1_bakeoff_king_save_2026-05-18.sav
-```
+    ./launch_dw.sh --battery-save path/to/your-own-save.sav
+    ./launch_dw.sh --emulator bizhawk --battery-save path/to/your-own-save.sav

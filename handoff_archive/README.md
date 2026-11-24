@@ -22,3 +22,7 @@ For active work, start with:
 - `../PROJECT_MEMORY.md`
 - `../PLAYTESTING.md`
 - `../AGENTS.md`
+
+Raw diagnostic logs and assistant-local memory archives are retained only in
+the private development archive. Historical filenames in the notes describe
+that evidence; those raw files are not part of this public checkout.

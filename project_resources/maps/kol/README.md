@@ -1,5 +1,10 @@
 # Kol Map And Route Reference
 
+> Public archive note: reference image filenames below document the research
+> sources. The images are retained in the private development archive and are
+> not included in this public checkout. Source links and authored descriptions
+> remain available; these images are not required to run or test the mod.
+
 Fetched: 2026-05-15
 
 Current status (2026-09-17): Kol's town polishing pass is player-accepted and

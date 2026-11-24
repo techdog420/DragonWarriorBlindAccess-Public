@@ -1,5 +1,10 @@
 # Map artwork descriptions
 
+> Public archive note: reference image filenames below document the research
+> sources. The images are retained in the private development archive and are
+> not included in this public checkout. Source links and authored descriptions
+> remain available; these images are not required to run or test the mod.
+
 Added 2026-10-28. All 28 interior maps have authored descriptions in
 `map_descriptions.lua`. World Map is outside this feature's scope.
 
@@ -122,7 +127,7 @@ were not individually reported; their automated coverage remains separate.
 Further editorial polishing or a full map tour is not a standing assignment.
 
 The player authorized committing/pushing the feature and rebuilding the package.
-the tester's alternate-hardware check is pending; official release remains conditional on that result. This report does not
+The tester's alternate-hardware check is pending; official release remains conditional on that result. This report does not
 claim an alternate-hardware pass or a published release.
 
 The debug equivalent of Shift+D is

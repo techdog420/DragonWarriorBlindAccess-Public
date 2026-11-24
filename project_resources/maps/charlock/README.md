@@ -1,5 +1,10 @@
 # Charlock Castle Map And ROM Reference
 
+> Public archive note: reference image filenames below document the research
+> sources. The images are retained in the private development archive and are
+> not included in this public checkout. Source links and authored descriptions
+> remain available; these images are not required to run or test the mod.
+
 Fetched: 2026-08-03
 
 This folder contains orientation material for decoding Charlock Castle and the

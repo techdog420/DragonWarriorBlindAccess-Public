@@ -47,7 +47,7 @@ The October 15 and October 23 candidates are preserved. October 23 player/source
 archive hashes were independently checked against the recorded qualification
 hashes and remain unchanged. No ROM, save, log, or private test state is bundled.
 
-the tester will perform alternate-hardware validation
+The tester will perform alternate-hardware validation
 over the next few days. The user considers the game ready for official release
 if that check exposes no issues. Alternate-hardware acceptance and publication
 remain pending; no release was created or assets uploaded by this rebuild.

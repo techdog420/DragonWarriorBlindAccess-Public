@@ -46,3 +46,41 @@ probe_*.sh
 # Local Mod Settings save transaction files
 dw_access.ini.bak
 dw_access.ini.tmp
+
+
+# Shared privacy and runtime exclusions
+.env.*
+!.env.example
+!.env.template
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+speech_bridge.status
+speech_bridge_launch.log
+ppu_dump1.txt
+row1_menu_diag.txt
+tile_diag.txt
+title_diag.txt
+codex
+codex.ps1
+
+# User-supplied game data and saves
+*.nes
+*.NES
+*.unf
+*.unif
+*.sav
+*.SaveRAM
+*.saveram
+*.fc[0-9]
+*.fcs
+*.state
+*.State
+
+# Reference artwork stays in the private development archive
+project_resources/maps/**/*.png
+project_resources/maps/**/*.gif
+project_resources/maps/**/*.jpg
+project_resources/maps/**/*.jpeg

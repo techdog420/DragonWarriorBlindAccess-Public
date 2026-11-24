@@ -1,5 +1,10 @@
 # Garin's Grave Map Reference
 
+> Public archive note: reference image filenames below document the research
+> sources. The images are retained in the private development archive and are
+> not included in this public checkout. Source links and authored descriptions
+> remain available; these images are not required to run or test the mod.
+
 Updated: 2026-06-17
 
 This folder stores orientation notes for Grave of Garinham / Garin's Grave.
